@@ -219,25 +219,53 @@ UI 设计：
 
 ## 4. 编译器架构
 
-### 4.1 模块位置
+### 4.1 模块位置（IR + adapter 架构）
 
-新增 `packages/compiler/` 工作区包：
+新增 `packages/compiler/` 工作区包，**两层切分**：
 
 ```
 packages/compiler/
-  package.json           # @open-pencil/compiler
+  package.json                # @open-pencil/compiler
   src/
-    index.ts             # public API
-    types.ts             # CompilerInput, CompilerOutput
-    project.ts           # generate package.json + vite.config.ts + index.html
-    page.ts              # generate src/pages/<page>.tsx
-    component.ts         # generate src/components/<Component>.tsx
-    expression.ts        # parse + emit `count + 1` style mini-expressions
-    state.ts             # emit useState hooks
-    event.ts             # emit event handlers
-    interactive.ts       # INPUT / BUTTON / etc. → React 元素
-    style.ts             # 复用 io/formats/jsx/tailwind-classes.ts
+    index.ts                  # public API: compile(input)
+    types.ts                  # CompilerInput/Output/Options (framework-neutral)
+    options.ts                # withDefaults() + target validation
+
+    # ── 框架无关层 ──
+    ir/
+      types.ts                # IR node types: Element, Text, StateDef,
+                              # Binding, Event, Conditional, List
+      collect-state.ts        # walk page → StateDef[]
+      collect-tree.ts         # SceneGraph → IRTree
+      collect-bindings.ts     # node.bindings → IR Binding nodes
+      expression.ts           # `count + 1` 子集 parse + emit (target-agnostic)
+      style.ts                # SceneNode → Tailwind class string
+                              # (复用 io/formats/jsx/tailwind-classes.ts)
+
+    # ── 框架适配层 ──
+    adapters/
+      types.ts                # interface FrameworkAdapter { emit, scaffold }
+      react/
+        index.ts              # FrameworkAdapter implementation
+        emit-element.ts       # IR Element → JSX
+        emit-state.ts         # StateDef → useState hook
+        emit-event.ts         # Event → onClick={() => setX(...)}
+        emit-binding.ts       # Binding → {expr}
+        scaffold.ts           # package.json / vite.config.ts / main.tsx
+      # adapters/vue/ 留空目录占位，Phase 5 实现
+
+    select-adapter.ts         # options.target → adapter instance
 ```
+
+**关键不变量**：
+- `ir/**` 只依赖 `@open-pencil/core`，**禁止**导入 `adapters/**`
+- `adapters/react/**` 只依赖 `ir/types.ts`，**禁止**直接访问 `SceneGraph`
+- 这条边界由 Steiger 规则强制 — 加 `lint/no-cross-layer-in-compiler.mjs`
+
+**测试策略**：
+- IR 层测试：input SceneGraph → assert IR shape（不涉及任何框架字符串）
+- Adapter 层测试：input IR → assert React 源码字符串
+- 端到端测试：SceneGraph → compile → 生成的源码 + Vite 实际能跑起来
 
 ### 4.2 公开 API
 
@@ -252,14 +280,16 @@ export interface CompilerInput {
 }
 
 export interface CompilerOptions {
-  /** 输出 React 18 vs 19 */
-  reactVersion: '18' | '19'
-  /** 路由方案 */
-  router: 'react-router-v6' | 'none'
+  /** 目标框架。Phase 0 仅 'react' 落地；'vue' 留 enum 占位，Phase 5 实现 */
+  target: 'react' | 'vue'
+  /** target=react 时生效。Phase 0 默认 '19' */
+  reactVersion?: '18' | '19'
+  /** 路由方案。Phase 0 都是 'none' */
+  router: 'react-router-v6' | 'vue-router-v4' | 'none'
   /** 输出目录的 package.json name */
   packageName: string
-  /** 是否包含 TypeScript */
-  typescript: boolean
+  /** 是否包含 TypeScript。Phase 0 始终 true */
+  typescript: true
 }
 
 export interface CompilerOutput {
@@ -271,6 +301,22 @@ export interface CompilerOutput {
 
 export function compile(input: CompilerInput): CompilerOutput
 ```
+
+**target='vue' 的处理**（Phase 0）：
+
+```ts
+if (options.target === 'vue') {
+  return {
+    files: new Map(),
+    warnings: [{
+      code: 'target-not-implemented',
+      message: "target 'vue' is reserved for Phase 5; only 'react' is implemented in Phase 0"
+    }]
+  }
+}
+```
+
+让类型上接受 Vue，运行时拒绝 — 这是「保留架构口子但不实现」的契约。
 
 ### 4.3 输出工程结构
 
@@ -467,16 +513,19 @@ src/
 
 ---
 
-## 7. 工作分解（建议 3 人，10-12 周）
+## 7. 工作分解（建议 3 人，11-13 周）
+
+> 比初稿多 1 周——为 IR 层（决定 #1 修订后引入）预留。
 
 | 周 | 工程师 A（Core） | 工程师 B（Compiler） | 工程师 C（App/UI） |
 |---|---|---|---|
 | 1-2 | Schema 扩展 + Kiwi pluginData 编解码 + types 测试 | 起 `@open-pencil/compiler` 骨架 + project.ts + 输出 hello-world Vite 工程 | 工具栏交互组 + 6 个交互节点的 Skia 渲染（FRAME 复用） |
-| 3-4 | 6 个 NodeType 的 defaultProps + 工具集成（ALL_TOOLS） | page.ts + state.ts + 简单 JSX emit（无 binding） | InteractivePropsPanel.vue 骨架 |
-| 5-6 | bindings/events 字段持久化 + undo 集成 | expression.ts（正则解析）+ event.ts + binding.ts 注入 | StatePanel.vue + BindingInput.vue |
+| 3 | 6 个 NodeType 的 defaultProps + 工具集成（ALL_TOOLS） | **IR 层：collect-tree.ts + ir/types.ts + 单测**（无 adapter） | InteractivePropsPanel.vue 骨架 |
+| 4 | — | **React adapter：emit-element.ts + scaffold.ts**（端到端 hello-element） | — |
+| 5-6 | bindings/events 字段持久化 + undo 集成 | expression.ts（IR 层）+ collect-bindings.ts + emit-binding.ts + emit-event.ts | StatePanel.vue + BindingInput.vue |
 | 7-8 | — | dev-server.ts + vfs-plugin.ts + HMR | PreviewPane.vue + 通信桥 |
-| 9-10 | 测试 + 文档 | 测试 + CLI 集成（`open-pencil compile`） | 端到端 demo 流程打磨 |
-| 11-12 | 联调 + bug bash + 验收 Phase 0 success criteria |
+| 9-10 | 测试 + 文档 | 测试 + CLI 集成（`open-pencil compile`）+ Steiger 跨层边界规则 | 端到端 demo 流程打磨 |
+| 11-13 | 联调 + bug bash + 验收 Phase 0 success criteria |
 
 ---
 
@@ -484,7 +533,7 @@ src/
 
 | # | 主题 | 决定 | 影响范围 |
 |---|---|---|---|
-| 1 | 输出目标框架 | **React** | 编辑器保持 Vue 不动，产物 100% React。Vue SDK 不参与编译器输出 |
+| 1 | 输出目标框架 | **IR + React adapter**（Phase 0 仅 React；Vue adapter 留架构口子，Phase 5 实现） | 编辑器保持 Vue 不动。编译器内部 SceneGraph → IR → React adapter → `.tsx`。Phase 0 + 1 周做 IR 层，换 Vue/Solid/Svelte adapter 都是 +3-4 周 |
 | 2 | 路由架构 | **Vite SPA**（Phase 0/MVP）；Next.js export 推迟到 Phase 4 | `react-router-v6` 仅 Phase 1 启用，Phase 0 无路由 |
 | 3 | 输出语言 | **TypeScript**（始终启用，无 JS 选项） | StateDef → 自动生成的 `.types.ts` 文件提供类型补全 |
 | 4 | 表达式语法 | Phase 0 用**白名单正则子集**（变量 + `+ - !` + 字面值）；Phase 1 升级到 `@babel/parser` AST 校验 | `packages/compiler/src/expression.ts` 在 Phase 0 不引 babel 依赖 |
