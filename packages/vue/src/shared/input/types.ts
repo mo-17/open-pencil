@@ -127,5 +127,11 @@ export const TOOL_TO_NODE: Partial<Record<Tool, NodeType>> = {
   LINE: 'LINE',
   POLYGON: 'POLYGON',
   STAR: 'STAR',
-  TEXT: 'TEXT'
+  TEXT: 'TEXT',
+  INPUT: 'INPUT',
+  BUTTON: 'BUTTON',
+  SELECT_FIELD: 'SELECT',
+  CHECKBOX: 'CHECKBOX',
+  FORM: 'FORM',
+  LIST: 'LIST'
 }

@@ -121,7 +121,13 @@ export const toolMessages = i18n('tools', {
   star: 'Star',
   pen: 'Pen',
   text: 'Text',
-  hand: 'Hand'
+  hand: 'Hand',
+  input: 'Input',
+  button: 'Button',
+  selectField: 'Select',
+  checkbox: 'Checkbox',
+  form: 'Form',
+  list: 'List'
 })
 
 export const panelMessages = i18n('panels', {

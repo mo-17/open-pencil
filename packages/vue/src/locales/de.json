@@ -89,7 +89,13 @@
     "star": "Stern",
     "pen": "Stift",
     "text": "Text",
-    "hand": "Hand"
+    "hand": "Hand",
+    "input": "Eingabe",
+    "button": "Schaltfläche",
+    "selectField": "Auswahl",
+    "checkbox": "Kontrollkästchen",
+    "form": "Formular",
+    "list": "Liste"
   },
   "panels": {
     "layers": "Ebenen",

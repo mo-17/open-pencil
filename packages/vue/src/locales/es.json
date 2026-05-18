@@ -89,7 +89,13 @@
     "star": "Estrella",
     "pen": "Pluma",
     "text": "Texto",
-    "hand": "Mano"
+    "hand": "Mano",
+    "input": "Entrada",
+    "button": "Botón",
+    "selectField": "Selección",
+    "checkbox": "Casilla",
+    "form": "Formulario",
+    "list": "Lista"
   },
   "panels": {
     "layers": "Capas",

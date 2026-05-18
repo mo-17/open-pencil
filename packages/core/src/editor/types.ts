@@ -26,6 +26,12 @@ export type Tool =
   | 'TEXT'
   | 'PEN'
   | 'HAND'
+  | 'INPUT'
+  | 'BUTTON'
+  | 'SELECT_FIELD'
+  | 'CHECKBOX'
+  | 'FORM'
+  | 'LIST'
 
 export interface EditorState {
   activeTool: Tool

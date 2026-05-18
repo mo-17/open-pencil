@@ -89,7 +89,13 @@
     "star": "Gwiazda",
     "pen": "Pióro",
     "text": "Tekst",
-    "hand": "Dłoń"
+    "hand": "Dłoń",
+    "input": "Pole tekstowe",
+    "button": "Przycisk",
+    "selectField": "Wybór",
+    "checkbox": "Pole wyboru",
+    "form": "Formularz",
+    "list": "Lista"
   },
   "panels": {
     "layers": "Warstwy",

@@ -89,7 +89,13 @@
     "star": "星形",
     "pen": "钢笔",
     "text": "文本",
-    "hand": "抓手"
+    "hand": "抓手",
+    "input": "输入框",
+    "button": "按钮",
+    "selectField": "选择器",
+    "checkbox": "复选框",
+    "form": "表单",
+    "list": "列表"
   },
   "panels": {
     "layers": "图层",

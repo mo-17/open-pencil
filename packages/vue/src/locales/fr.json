@@ -89,7 +89,13 @@
     "star": "Étoile",
     "pen": "Plume",
     "text": "Texte",
-    "hand": "Main"
+    "hand": "Main",
+    "input": "Saisie",
+    "button": "Bouton",
+    "selectField": "Sélecteur",
+    "checkbox": "Case",
+    "form": "Formulaire",
+    "list": "Liste"
   },
   "panels": {
     "layers": "Calques",

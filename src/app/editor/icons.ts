@@ -1,15 +1,21 @@
 import type { Component } from 'vue'
+import IconCheckSquare from '~icons/lucide/check-square'
+import IconChevronDown from '~icons/lucide/chevron-down'
 import IconCircle from '~icons/lucide/circle'
 import IconColumns from '~icons/lucide/columns-3'
 import IconComponentSet from '~icons/lucide/component'
 import IconComponent from '~icons/lucide/diamond'
+import IconFormInput from '~icons/lucide/form-input'
 import IconFrame from '~icons/lucide/frame'
 import IconGrid from '~icons/lucide/grid-3x3'
 import IconGroup from '~icons/lucide/group'
 import IconHand from '~icons/lucide/hand'
+import IconLayoutList from '~icons/lucide/layout-list'
 import IconSection from '~icons/lucide/layout-grid'
+import IconList from '~icons/lucide/list'
 import IconMinus from '~icons/lucide/minus'
 import IconMousePointer from '~icons/lucide/mouse-pointer'
+import IconMousePointerSquare from '~icons/lucide/mouse-pointer-square'
 import IconPenTool from '~icons/lucide/pen-tool'
 import IconRows from '~icons/lucide/rows-3'
 import IconSquare from '~icons/lucide/square'
@@ -30,7 +36,13 @@ export const toolIcons: Record<Tool, Component> = {
   STAR: IconStar,
   PEN: IconPenTool,
   TEXT: IconType,
-  HAND: IconHand
+  HAND: IconHand,
+  INPUT: IconFormInput,
+  BUTTON: IconMousePointerSquare,
+  SELECT_FIELD: IconChevronDown,
+  CHECKBOX: IconCheckSquare,
+  FORM: IconLayoutList,
+  LIST: IconList
 }
 
 export const NODE_ICONS: Partial<Record<string, typeof IconSquare>> = {
