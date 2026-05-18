@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "open-pencil-app",
@@ -110,6 +109,16 @@
       },
       "devDependencies": {
         "@types/bun": "^1.2.9",
+      },
+    },
+    "packages/compiler": {
+      "name": "@open-pencil/compiler",
+      "version": "0.0.0",
+      "dependencies": {
+        "@open-pencil/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^22.0.0",
       },
     },
     "packages/core": {
@@ -740,6 +749,8 @@
     "@nodelib/fs.walk": ["@nodelib/fs.walk@1.2.8", "", { "dependencies": { "@nodelib/fs.scandir": "2.1.5", "fastq": "^1.6.0" } }, "sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg=="],
 
     "@open-pencil/cli": ["@open-pencil/cli@workspace:packages/cli"],
+
+    "@open-pencil/compiler": ["@open-pencil/compiler@workspace:packages/compiler"],
 
     "@open-pencil/core": ["@open-pencil/core@workspace:packages/core"],
 
@@ -2861,6 +2872,8 @@
 
     "@multiformats/dns/@libp2p/interface": ["@libp2p/interface@3.1.0", "", { "dependencies": { "@multiformats/dns": "^1.0.6", "@multiformats/multiaddr": "^13.0.1", "main-event": "^1.0.1", "multiformats": "^13.4.0", "progress-events": "^1.0.1", "uint8arraylist": "^2.4.8" } }, "sha512-RE7/XyvC47fQBe1cHxhMvepYKa5bFCUyFrrpj8PuM0E7JtzxU7F+Du5j4VXbg2yLDcToe0+j8mB7jvwE2AThYw=="],
 
+    "@open-pencil/compiler/@types/node": ["@types/node@22.19.15", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-F0R/h2+dsy5wJAUe3tAU6oqa2qbWY5TpNfL/RGmo1y38hiyO1w3x2jPtt76wmuaJI4DQnOBu21cNXQ2STIUUWg=="],
+
     "@open-pencil/mcp/@types/node": ["@types/node@22.19.15", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-F0R/h2+dsy5wJAUe3tAU6oqa2qbWY5TpNfL/RGmo1y38hiyO1w3x2jPtt76wmuaJI4DQnOBu21cNXQ2STIUUWg=="],
 
     "@rollup/plugin-node-resolve/@rollup/pluginutils": ["@rollup/pluginutils@5.3.0", "", { "dependencies": { "@types/estree": "^1.0.0", "estree-walker": "^2.0.2", "picomatch": "^4.0.2" }, "peerDependencies": { "rollup": "^1.20.0||^2.0.0||^3.0.0||^4.0.0" }, "optionalPeers": ["rollup"] }, "sha512-5EdhGZtnu3V88ces7s53hhfK5KSASnJZv8Lulpc04cWO3REESroJXg73DFsOmgbU2BhwV0E20bu2IDZb3VKW4Q=="],
@@ -3062,6 +3075,8 @@
     "@libp2p/crypto/@libp2p/interface/@multiformats/multiaddr": ["@multiformats/multiaddr@13.0.1", "", { "dependencies": { "@chainsafe/is-ip": "^2.0.1", "multiformats": "^13.0.0", "uint8-varint": "^2.0.1", "uint8arrays": "^5.0.0" } }, "sha512-XToN915cnfr6Lr9EdGWakGJbPT0ghpg/850HvdC+zFX8XvpLZElwa8synCiwa8TuvKNnny6m8j8NVBNCxhIO3g=="],
 
     "@multiformats/dns/@libp2p/interface/@multiformats/multiaddr": ["@multiformats/multiaddr@13.0.1", "", { "dependencies": { "@chainsafe/is-ip": "^2.0.1", "multiformats": "^13.0.0", "uint8-varint": "^2.0.1", "uint8arrays": "^5.0.0" } }, "sha512-XToN915cnfr6Lr9EdGWakGJbPT0ghpg/850HvdC+zFX8XvpLZElwa8synCiwa8TuvKNnny6m8j8NVBNCxhIO3g=="],
+
+    "@open-pencil/compiler/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
     "@open-pencil/mcp/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
