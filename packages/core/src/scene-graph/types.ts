@@ -72,6 +72,12 @@ export type NodeType =
   | 'INSTANCE'
   | 'CONNECTOR'
   | 'SHAPE_WITH_TEXT'
+  | 'INPUT'
+  | 'BUTTON'
+  | 'SELECT'
+  | 'CHECKBOX'
+  | 'FORM'
+  | 'LIST'
 
 export type FillType =
   | 'SOLID'
@@ -371,6 +377,13 @@ export interface SceneNode {
 
   textPicture: Uint8Array | null
   figmaDerivedTextGlyphs: FigmaDerivedTextGlyph[] | null
+
+  // ── Lowcode (Phase 0) ──
+  // All fields optional so existing .pen / .fig files round-trip unchanged.
+  state?: StateDef[]
+  bindings?: Record<string, BindingExpr>
+  events?: Partial<Record<EventName, ActionDef[]>>
+  interactiveProps?: Record<string, unknown>
 }
 
 export type ComponentPropertyType = 'VARIANT' | 'TEXT' | 'BOOLEAN' | 'INSTANCE_SWAP'
@@ -407,4 +420,40 @@ export interface VariableCollection {
   modes: VariableCollectionMode[]
   defaultModeId: string
   variableIds: string[]
+}
+
+// ── Lowcode (Phase 0) ──────────────────────────────────────────────
+// Page- / component-scoped state declarations. Compiler emits one
+// `useState(defaultValue)` per StateDef when generating React output.
+
+export type StateValueType = 'string' | 'number' | 'boolean' | 'object' | 'array'
+
+export interface StateDef {
+  id: string
+  name: string
+  type: StateValueType
+  defaultValue: unknown
+  description?: string
+}
+
+// Binding describes how a node property pulls its value at runtime.
+// kind=literal → use literalValue directly.
+// kind=ref → resolve to the StateDef with id === stateId.
+export interface BindingExpr {
+  kind: 'literal' | 'ref'
+  stateId?: string
+  literalValue?: unknown
+}
+
+export type EventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'
+
+// Phase 0 ships only setState. Future kinds (navigate, apiCall, dbWrite…)
+// extend this union without breaking the schema.
+export interface ActionDef {
+  id: string
+  kind: 'setState'
+  targetStateId?: string
+  // Restricted expression: identifier | number | string | `expr + 1` | `expr - 1` | `!expr`.
+  // Validated at edit-time; emitted verbatim by the compiler.
+  valueExpr?: string
 }

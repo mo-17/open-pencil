@@ -125,7 +125,70 @@ export function createDefaultNode(
     flipY: false,
     textPicture: null,
     figmaDerivedTextGlyphs: null,
+    ...interactiveDefaults(type),
     ...overrides
+  }
+}
+
+function interactiveDefaults(type: NodeType): Partial<SceneNode> {
+  switch (type) {
+    case 'INPUT':
+      return {
+        width: 200,
+        height: 36,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        interactiveProps: { placeholder: 'Enter text', value: '' }
+      }
+    case 'BUTTON':
+      return {
+        width: 100,
+        height: 36,
+        cornerRadius: 6,
+        interactiveProps: { text: 'Button' }
+      }
+    case 'SELECT':
+      return {
+        width: 200,
+        height: 36,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        interactiveProps: { options: [], value: '' }
+      }
+    case 'CHECKBOX':
+      return {
+        width: 20,
+        height: 20,
+        cornerRadius: 4,
+        interactiveProps: { checked: false }
+      }
+    case 'FORM':
+      return {
+        width: 320,
+        height: 200,
+        layoutMode: 'VERTICAL',
+        primaryAxisSizing: 'FIXED',
+        counterAxisSizing: 'FIXED',
+        itemSpacing: 12,
+        paddingTop: 16,
+        paddingRight: 16,
+        paddingBottom: 16,
+        paddingLeft: 16
+      }
+    case 'LIST':
+      return {
+        width: 320,
+        height: 200,
+        layoutMode: 'VERTICAL',
+        primaryAxisSizing: 'FIXED',
+        counterAxisSizing: 'FIXED',
+        itemSpacing: 8,
+        interactiveProps: { dataSourceRef: null }
+      }
+    default:
+      return {}
   }
 }
 
@@ -137,5 +200,7 @@ export const CONTAINER_TYPES = new Set<NodeType>([
   'SECTION',
   'COMPONENT',
   'COMPONENT_SET',
-  'INSTANCE'
+  'INSTANCE',
+  'FORM',
+  'LIST'
 ])
