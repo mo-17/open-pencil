@@ -39,7 +39,8 @@
         { "name": "codex-acp", "cmd": "codex-acp", "args": true },
         { "name": "gemini", "cmd": "gemini", "args": true },
         { "name": "openpencil-mcp-http", "cmd": "openpencil-mcp-http", "args": true },
-        { "name": "cmd", "cmd": "cmd", "args": true }
+        { "name": "cmd", "cmd": "cmd", "args": true },
+        { "name": "lowcode-preview", "cmd": "bun", "args": true }
       ]
     },
     "shell:allow-stdin-write",

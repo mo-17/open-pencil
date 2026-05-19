@@ -5,6 +5,11 @@ export const WATCH_IGNORED = [
   '**/packages/cli/**',
   '**/packages/mcp/**',
   '**/packages/docs/**',
+  // Lowcode preview sidecar's private scan-root. The sidecar rewrites
+  // tsconfig.json here on every start; without this ignore the main Vite
+  // watcher reloads the app, which remounts the preview pane, which
+  // respawns the sidecar — an endless restart loop.
+  '**/packages/compiler/.preview-root/**',
   '**/tests/**',
   '**/.worktrees/**',
   '**/.github/**',

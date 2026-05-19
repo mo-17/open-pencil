@@ -7,7 +7,11 @@ import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 
 import { useViewportKind, formatShortcut } from '@open-pencil/vue'
 import { useKeyboard } from '@/app/shell/keyboard/use'
-import { loadEditorLayout, saveEditorLayout } from '@/app/shell/layout-storage'
+import {
+  loadEditorLayout,
+  previewPanelDefaultSize,
+  saveEditorLayout
+} from '@/app/shell/layout-storage'
 import { openFileFromPath, useMenu } from '@/app/shell/menu/use'
 import { useCollab, COLLAB_KEY } from '@/app/collab/use'
 import { connectAutomation } from '@/app/automation/bridge/server'
@@ -16,6 +20,7 @@ import { isTauri } from '@/app/tauri/env'
 import { appMenuShortcut } from '@/app/shell/menu/shortcut'
 import { createDemoShapes } from '@/app/demo/document'
 import { useEditorStore } from '@/app/editor/active-store'
+import PreviewPane from '@/app/lowcode/preview-pane/PreviewPane.vue'
 import { createTab, activeTab, getActiveStore, tabCount } from '@/app/tabs'
 
 import CollabPanel from '@/components/CollabPanel/CollabPanel.vue'
@@ -61,6 +66,8 @@ const automationCleanup = ref<(() => void) | null>(null)
 const mcpCleanup = ref<(() => void) | null>(null)
 const fileAssociationCleanup = ref<(() => void) | null>(null)
 const initialEditorLayout = loadEditorLayout()
+const initialPreviewSize = previewPanelDefaultSize(initialEditorLayout)
+const showPreviewPane = isTauri()
 
 type PendingOpenFile = {
   path: string
@@ -160,6 +167,20 @@ onUnmounted(() => {
         </div>
         <PropertiesPanel />
       </SplitterPanel>
+      <template v-if="showPreviewPane">
+        <SplitterResizeHandle class="group relative z-10 -mx-1 w-2 cursor-col-resize">
+          <div class="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
+        </SplitterResizeHandle>
+        <SplitterPanel
+          id="lowcode-preview"
+          :default-size="initialPreviewSize"
+          :min-size="12"
+          :max-size="50"
+          class="flex"
+        >
+          <PreviewPane />
+        </SplitterPanel>
+      </template>
     </SplitterGroup>
 
     <!-- Mobile layout -->

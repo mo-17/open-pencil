@@ -10,10 +10,16 @@ export interface CompilerInput {
 export interface CompilerOptions {
   /** package.json `name` field of the output project */
   packageName: string
-  /** React major version to target */
+  /**
+   * Target framework. Phase 0 only ships React; `'vue'` is a reserved enum
+   * value that returns a `target-not-implemented` warning at compile time.
+   * See docs/lowcode-phase-0.md §8 decision #1.
+   */
+  target: 'react' | 'vue'
+  /** React major version to target. Applies when `target === 'react'`. */
   reactVersion: '18' | '19'
   /** Router strategy. Phase 0 is single-page only (`none`). */
-  router: 'react-router-v6' | 'none'
+  router: 'react-router-v6' | 'vue-router-v4' | 'none'
   /** Phase 0 always emits TypeScript */
   typescript: true
 }

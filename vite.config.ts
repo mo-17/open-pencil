@@ -21,7 +21,12 @@ export default defineConfig(async ({ command }) => ({
     alias: createOpenPencilAliases(__dirname)
   },
   define: {
-    __OPENPENCIL_LOCAL_AUTOMATION_TOKEN__: JSON.stringify(localAutomationToken(command))
+    __OPENPENCIL_LOCAL_AUTOMATION_TOKEN__: JSON.stringify(localAutomationToken(command)),
+    // Project root path injected at build time; used by the lowcode preview
+    // pane to pass a known cwd + `--root` to the dev-server sidecar so it
+    // resolves react/tailwind from the workspace node_modules regardless of
+    // where Tauri spawned the child process.
+    __OPENPENCIL_PROJECT_ROOT__: JSON.stringify(__dirname)
   },
   plugins: [
     rawMarkdownPlugin(),

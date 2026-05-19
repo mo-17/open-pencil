@@ -22,9 +22,11 @@ export function buildPackageJson(options: CompilerOptions): string {
       'react-dom': v.reactDom
     },
     devDependencies: {
+      '@tailwindcss/vite': '^4.2.1',
       '@types/react': v.reactTypes,
       '@types/react-dom': v.reactDomTypes,
       '@vitejs/plugin-react': '^4.3.4',
+      tailwindcss: '^4.2.1',
       typescript: '~5.6.2',
       vite: '^7.0.0'
     }
@@ -35,11 +37,28 @@ export function buildPackageJson(options: CompilerOptions): string {
 export function buildViteConfig(): string {
   return `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  plugins: [react()]
+  plugins: [react(), tailwindcss()]
 })
 `
+}
+
+export function buildIndexCss(safelistClasses: readonly string[] = []): string {
+  // Tailwind v4's content auto-detection relies on Vite's module graph and a
+  // filesystem glob under the project root. Our preview dev-server serves the
+  // emitted project from an in-memory VFS, so the glob finds nothing on disk
+  // and only base/preflight CSS is generated — utilities are missing and
+  // every container collapses to 0×0 in the iframe. We already know every
+  // class used (the compiler derived them from the SceneGraph), so declare
+  // them via `@source inline(...)` to force Tailwind to emit those utilities
+  // regardless of file discovery. Same mechanism is used by Plasmic / WeWeb
+  // codegen output.
+  const head = `@import "tailwindcss";\n`
+  if (safelistClasses.length === 0) return head
+  const joined = safelistClasses.join(' ').replace(/"/g, '\\"')
+  return `${head}@source inline("${joined}");\n`
 }
 
 export function buildTsConfig(): string {
@@ -83,6 +102,7 @@ export function buildMainTsx(): string {
   return `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import './index.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
@@ -92,22 +112,6 @@ createRoot(root).render(
     <App />
   </StrictMode>
 )
-`
-}
-
-/**
- * Phase 0 hello-world: a single page that proves the toolchain — no scene
- * graph translation yet. Page → JSX wiring lands in week 3 (engineer B).
- */
-export function buildHelloAppTsx(): string {
-  return `export default function App() {
-  return (
-    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
-      <h1>OpenPencil compiled output</h1>
-      <p>Phase 0 placeholder. Scene graph translation lands in week 3.</p>
-    </div>
-  )
-}
 `
 }
 

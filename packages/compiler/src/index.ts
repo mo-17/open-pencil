@@ -1,27 +1,21 @@
-import {
-  buildGitignore,
-  buildHelloAppTsx,
-  buildIndexHtml,
-  buildMainTsx,
-  buildPackageJson,
-  buildTsConfig,
-  buildViteConfig
-} from './project'
+import { collectTree } from './ir/collect-tree'
+import { selectAdapter } from './select-adapter'
 import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
 export type { CompileWarning, CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
 const DEFAULT_OPTIONS: CompilerOptions = {
   packageName: 'openpencil-output',
+  target: 'react',
   reactVersion: '19',
   router: 'none',
   typescript: true
 }
 
 /**
- * Phase 0 hello-world compiler: returns a runnable Vite + React + TS project
- * regardless of input. Scene graph translation lands in week 3 once the page,
- * state, binding, and event emitters are in place.
+ * Compile a SceneGraph page into a runnable project. Phase 0 emits a Vite +
+ * React + TS app; Vue is reserved for Phase 5. State, events, and bindings
+ * are not yet wired — they land in week 5-6.
  */
 export function compile(input: CompilerInput): CompilerOutput {
   if (input.pageIds.length === 0) {
@@ -31,26 +25,14 @@ export function compile(input: CompilerInput): CompilerOutput {
     }
   }
 
-  const opts = input.options
-  const files = new Map<string, string | Uint8Array>()
-  files.set('package.json', buildPackageJson(opts))
-  files.set('vite.config.ts', buildViteConfig())
-  files.set('tsconfig.json', buildTsConfig())
-  files.set('index.html', buildIndexHtml(opts.packageName))
-  files.set('src/main.tsx', buildMainTsx())
-  files.set('src/App.tsx', buildHelloAppTsx())
-  files.set('.gitignore', buildGitignore())
-
-  return {
-    files,
-    warnings: [
-      {
-        code: 'phase-0-stub',
-        message:
-          'Phase 0 stub: hello-world template emitted; scene graph translation arrives in week 3'
-      }
-    ]
+  const { adapter, warnings: selectionWarnings } = selectAdapter(input.options)
+  if (!adapter) {
+    return { files: new Map(), warnings: selectionWarnings }
   }
+
+  const ir = collectTree(input.graph, input.pageIds[0])
+  const { files, warnings: adapterWarnings } = adapter.emit(ir, input.options)
+  return { files, warnings: [...selectionWarnings, ...adapterWarnings] }
 }
 
 export function withDefaults(overrides: Partial<CompilerOptions> = {}): CompilerOptions {
