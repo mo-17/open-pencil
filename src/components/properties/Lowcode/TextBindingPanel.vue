@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import type { BindingExpr } from '@open-pencil/core/scene-graph'
-import { useI18n, useSelectionState } from '@open-pencil/vue'
+import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -12,12 +12,12 @@ const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 
-const pageStates = computed(() => {
+const pageStates = useSceneComputed(() => {
   const page = editor.graph.getNode(editor.state.currentPageId)
   return page?.state ?? []
 })
 
-const binding = computed<BindingExpr | undefined>(() => selectedNode.value?.bindings?.text)
+const binding = useSceneComputed<BindingExpr | undefined>(() => selectedNode.value?.bindings?.text)
 
 // Empty string === literal mode; non-empty string === bound to that stateId.
 const selectedValue = computed(() => {

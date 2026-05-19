@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
-import { useI18n, useSelectionState } from '@open-pencil/vue'
+import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -27,12 +27,12 @@ const eventLabel = computed(() => {
   return ''
 })
 
-const pageStates = computed(() => {
+const pageStates = useSceneComputed(() => {
   const page = editor.graph.getNode(editor.state.currentPageId)
   return page?.state ?? []
 })
 
-const actions = computed<ActionDef[]>(() => {
+const actions = useSceneComputed<ActionDef[]>(() => {
   const node = selectedNode.value
   const name = eventName.value
   if (!node || !name) return []

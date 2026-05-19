@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import type { StateDef, StateValueType } from '@open-pencil/core/scene-graph'
-import { useI18n } from '@open-pencil/vue'
+import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -12,8 +12,8 @@ const sectionCls = useSectionUI()
 const { panels } = useI18n()
 
 const pageId = computed(() => editor.state.currentPageId)
-const states = computed<StateDef[]>(() => {
-  const page = editor.graph.getNode(pageId.value)
+const states = useSceneComputed<StateDef[]>(() => {
+  const page = editor.graph.getNode(editor.state.currentPageId)
   return page?.state ?? []
 })
 
