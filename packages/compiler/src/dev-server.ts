@@ -310,21 +310,22 @@ export async function createPreviewServer(
         server.ws.send({ type: 'full-reload' })
         return
       }
-      // HMR: send Vite's native `update` event with js-update / css-update
-      // entries. plugin-react's transform stage injects `import.meta.hot
-      // .accept(...)` into modules whose exports are React components; the
-      // client runtime then re-evaluates the module in place, preserving
-      // useState. If a module isn't accept-able the Vite client itself
-      // falls back to a full reload — we don't need to mirror that here.
+      // HMR: send Vite's native `update` event. Every emitted file — .tsx and
+      // .css alike — is served as a JS module in Vite dev: CSS goes through
+      // an `import './index.css'` statement that's transformed into a module
+      // calling `__vite__updateStyle(id, css)` to inject a `<style>` tag, and
+      // the module self-accepts via `import.meta.hot.accept()`. The native
+      // `css-update` event scans `document.querySelectorAll('link')` for the
+      // matching stylesheet — but we have no `<link>` tags, so css-update
+      // would be silently dropped. `js-update` routes through `queueUpdate`
+      // → `fetchUpdate`, which re-imports the module and re-runs its
+      // top-level `__vite__updateStyle` call, replacing the existing style.
+      // plugin-react's transform injects accept boundaries for React
+      // component modules, so `js-update` preserves `useState` for them too.
       const timestamp = Date.now()
       const updates: Update[] = invalidatedPaths.map((rel) => {
         const url = '/' + rel
-        return {
-          type: rel.endsWith('.css') ? 'css-update' : 'js-update',
-          path: url,
-          acceptedPath: url,
-          timestamp
-        }
+        return { type: 'js-update', path: url, acceptedPath: url, timestamp }
       })
       server.ws.send({ type: 'update', updates })
     },
