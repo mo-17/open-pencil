@@ -13,14 +13,14 @@
 
 | # | 主题 | 状态 |
 |---|---|---|
-| 1 | **Canvas-direct 子节点的绝对定位** | 锁定，本 doc §2 详述 |
+| 1 | **Canvas-direct 子节点的绝对定位** | ✅ 已交付（HEAD `d36be97`），本 doc §2 详述 |
+| 2 | **`@vitejs/plugin-react` Fast Refresh** | 锁定，本 doc §10 详述（原 §7.2 → 已纳入承诺） |
 
-> §1 是 Phase 1 唯一已承诺交付项。其余候选见 §7，需要排期时再写入 1.1。
+> §1 + §10 已承诺；其余候选见 §7，需要排期时再写入 1.1。
 
 ### 1.2 Phase 1 Out-of-Scope（明确推迟）
 
 - 多页面路由（react-router-v6）—— 候选 §7.1
-- `@vitejs/plugin-react` Fast Refresh —— 候选 §7.2
 - 实时表达式校验 UI —— 候选 §7.3
 - `ActionDef.kind` 收窄 + 扩 `navigate` / `setVariable` —— 候选 §7.4
 - `pluginData` → Kiwi schema 正式化 —— 候选 §7.5（Phase 0 收尾任务，落地窗口与 Phase 1 重叠）
@@ -250,7 +250,8 @@ React adapter 当前只编 `pageIds[0]`。本项启用 `react-router-v6`（Phase
 
 ### 7.2 `@vitejs/plugin-react` Fast Refresh
 
-`packages/compiler/src/dev-server.ts` 当前每次 compile 都广播 `full-reload`。Fast Refresh 让 iframe 内 `useState` 跨编辑保持——表单 / 计数器调试体验质变。
+> ✅ 已纳入 §1.1，详见 §10。原描述保留作为历史参考：
+> `packages/compiler/src/dev-server.ts` 当前每次 compile 都广播 `full-reload`。Fast Refresh 让 iframe 内 `useState` 跨编辑保持——表单 / 计数器调试体验质变。
 
 ### 7.3 实时表达式校验 UI
 
@@ -280,6 +281,126 @@ React adapter 当前只编 `pageIds[0]`。本项启用 `react-router-v6`（Phase
 ## 9. 下一步
 
 1. ✅ ~~批准本设计文档~~ §1 已锁定 5 项决定。
-2. 实施 §2 改动，按 §4 工作分解推进，commit 命名 `feat(lowcode): absolute positioning for canvas-direct children (Phase 1 §1)`。
-3. 完成 §1.3 全部 6 项成功标准后，更新 memory `lowcode-phase-0-next` → `lowcode-phase-1-progress`，把 §7 候选按用户优先级回填到 §1.1。
-4. Phase 1 §1 落地后，与用户决定 §7 候选的下一个调度——不要替用户决定。
+2. ✅ ~~实施 §2 改动~~ Phase 1 §1 已交付（HEAD `d36be97`），§1.3 全部 6 项成功标准通过 + Tauri 实测通过。
+3. ✅ ~~更新 memory `lowcode-phase-0-next` → `lowcode-phase-1-progress`~~ 已完成。
+4. ✅ ~~与用户决定 §7 候选的下一个调度~~ 用户选 §7.2 Fast Refresh；已纳入 §1.1，详见 §10。
+5. 实施 §10 改动；完成 §10.5 成功标准后再问用户选下一项。
+
+---
+
+## 10. §7.2 详细设计：Fast Refresh
+
+### 10.1 现状与问题
+
+`packages/compiler/src/dev-server.ts` 的 `updateFiles` 在**两条分支都**广播 `server.ws.send({ type: 'full-reload' })`（见 dev-server.ts:283-289 的 "play it safe; React Fast Refresh upgrade is a followup" 注释）。后果：编辑器里每改一处属性，iframe 都会整页重载——`useState` 状态、`<input>` 焦点、滚动位置全部丢失。
+
+**调试场景示例（当前行为）：**
+
+1. 画布上放一个 BUTTON + TEXT（绑定 `count`）+ Page state `count: number = 0`。
+2. iframe 里 +1 三次，counter 显示 `3`。
+3. 在编辑器修改 BUTTON 文字 "+1" → "Increment"。
+4. **当前**：iframe 整页重载，counter 重置为 `0`。
+5. **期望**：iframe 内 BUTTON 文字更新，counter 保持 `3`。
+
+VFS 没有文件 watcher，单靠 `moduleGraph.invalidateModule()` 不会通知客户端。`@vitejs/plugin-react` 已经在编译产物（`packages/compiler/src/project.ts` package.json + buildViteConfig）和 dev-server `plugins: [vfs, react(), tailwindcss()]` 里都跑着——Fast Refresh 链路其它部分已通，差的就是 dev-server 端的事件分发。
+
+### 10.2 dev-server 改动
+
+文件：`packages/compiler/src/dev-server.ts`
+
+**抽出 `classifyUpdate`（纯函数，便于单测）：**
+
+```ts
+export type UpdateMode = 'full-reload' | 'hmr' | 'noop'
+
+export function classifyUpdate(changes: readonly string[], invalidated: number): UpdateMode {
+  if (changes.length === 0) return 'noop'
+  if (changes.includes('index.html') || invalidated === 0) return 'full-reload'
+  return 'hmr'
+}
+```
+
+**改写 `updateFiles` 末段，发 Vite 自有 `update` 协议事件：**
+
+```ts
+const mode = classifyUpdate(changed, invalidated)
+if (mode === 'noop') return
+if (mode === 'full-reload') {
+  server.ws.send({ type: 'full-reload' })
+  return
+}
+// HMR: send Vite's native 'update' event with js-update / css-update entries.
+// plugin-react's transform stage auto-injects `import.meta.hot.accept(...)`
+// boundaries into modules whose only exports are React components; the
+// client runtime then re-evaluates the module in place and preserves
+// useState. If a module isn't accept-able (e.g. it exports non-component
+// values), the Vite client itself falls back to full-reload.
+const timestamp = Date.now()
+const updates = invalidatedPaths.map((rel) => {
+  const url = '/' + rel
+  const type = rel.endsWith('.css') ? 'css-update' : 'js-update'
+  return { type, path: url, acceptedPath: url, timestamp }
+})
+server.ws.send({ type: 'update', updates })
+```
+
+> `invalidatedPaths` is captured from the existing invalidation loop — store the rels alongside the counter rather than re-walking.
+
+### 10.3 关键决定（已锁定）
+
+| # | 主题 | 决定 | 理由 |
+|---|---|---|---|
+| 1 | 客户端协议 | 用 Vite 自有 HMR 协议 `{type:'update', updates:[...]}`，**不**发明自定义事件 | 客户端运行时已经在 iframe 里，无需 ship 额外代码 |
+| 2 | plugin-react 边界 | 信任 plugin-react 在 transform 阶段自动注入的 `import.meta.hot.accept`；**不**手工 invoke `handleHotUpdate` | 我们的 App.tsx 是纯组件模块（`export default function App`），命中 plugin-react 的自动 accept；写死调用是反模式 |
+| 3 | 分类抽出 | 把 `noop / full-reload / hmr` 三态抽成 pure helper，单测覆盖；**不**写 WebSocket 集成测试 | ws 集成测试重而脆；pure helper 覆盖决策矩阵已足够 |
+| 4 | 回退策略 | Fast Refresh 失败时（模块加了非组件导出）由 Vite 客户端自动回退到 full-reload；**不**在 server 端兜底 | Vite 客户端已实现此回退，重复实现只会跑偏 |
+| 5 | full-reload 触发条件 | `index.html` 变更 ∨ `invalidated === 0` → full-reload；其它 → HMR | index.html 是 SPA 入口，HMR 替换不了；零失效说明 VFS 没匹配上，HMR 没意义 |
+
+### 10.4 不动什么
+
+- 编译产物（`package.json` / `vite.config.ts` / `main.tsx`）保持不变；plugin-react 已在。
+- 编辑器侧 `PreviewPane.vue` / preview-bridge 不变；NDJSON `update` 命令格式不变。
+- 不引入 React DevTools / source maps / 错误边界（正交关注点）。
+- 不动 §1 的 absolute 定位逻辑。
+
+### 10.5 成功标准
+
+仅针对 §10。当所有项均通过即可宣告 §10 完成：
+
+1. `bun test ./tests/engine/compiler/` 全绿；新增 `classifyUpdate` 单测覆盖 4 个分支（empty/index-html/zero-invalidated/hmr）。
+2. `bun run check` 全绿。
+3. Tauri 实测（doc §10.6）：count-button demo —— +1 三次到 `count=3` → 编辑 BUTTON 文字 → iframe BUTTON 文字变，counter 数字仍是 `3`。
+4. 同实测：编辑 BUTTON 颜色或 padding（仅 className 变动）→ iframe 视觉更新，counter 数字保留。
+5. 视觉/交互回归：当 index.html 真的变了（比如改 packageName），仍触发 full-reload，行为与现在一致。
+
+### 10.6 测试策略
+
+**单元测试**：`tests/engine/compiler/classify-update.test.ts`
+
+| 用例 | 期望 |
+|---|---|
+| `classifyUpdate([], 0)` | `'noop'` |
+| `classifyUpdate(['index.html'], 1)` | `'full-reload'` |
+| `classifyUpdate(['src/App.tsx'], 0)` | `'full-reload'`（无匹配模块） |
+| `classifyUpdate(['src/App.tsx'], 1)` | `'hmr'` |
+| `classifyUpdate(['src/App.tsx', 'index.html'], 1)` | `'full-reload'` |
+
+**集成测试**：手动 Tauri，§10.5 #3-5。
+
+### 10.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| plugin-react 拒绝 accept（App.tsx 同时 export 非组件） | 中——Fast Refresh 失败 fall back to full-reload | Vite 客户端原生兜底，我们不引入额外异常；compile 端目前只 export 一个组件 |
+| HMR 事件 `path` 形式不对（应当 `/src/App.tsx`，不能裸 `src/App.tsx`） | 中——客户端拿不到 update | 严格用 `'/' + rel`；单测断言不需要（Vite 自己会忽略错误路径），手测覆盖 |
+| Tailwind v4 CSS 通过 `@source inline(...)` 注入；新增 className 后 css-update 是否覆盖？ | 低 | Tailwind v4 vite plugin 自带 HMR；我们 invalidate 后它会重 transform，Vite 自己发 css-update |
+| Vite 版本升级改了 HMR 协议字段名 | 低 | 项目锁 `vite: ^7.0.0`，本期不变；如升级需重新测 |
+| HMR 频繁触发导致 plugin-react runtime 累积内存 | 低 | iframe 是短命的；Tauri 重开就清 |
+
+### 10.8 工作分解（建议 1 名工程师，1–2 天）
+
+| 天 | 任务 | 验收 |
+|---|---|---|
+| A | doc §10 写完，决定锁定 | 本节存在 |
+| B | `classifyUpdate` 抽出 + `updateFiles` 改写 + 单测 | `bun test ./tests/engine/compiler/` 全绿；`bun run check` 全绿 |
+| C | Tauri 实测 §10.5 #3-5 | 全过 |
