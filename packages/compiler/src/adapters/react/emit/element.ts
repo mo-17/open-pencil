@@ -1,4 +1,7 @@
-import type { IRAttrValue, IRNode } from '#compiler/ir/types'
+import { emitExpression } from '#compiler/ir/expression'
+import type { IRAttrValue, IREventHandler, IREventName, IRNode } from '#compiler/ir/types'
+
+import { emitEventHandler } from './event'
 
 /** Tags that must self-close in JSX (no children). */
 const VOID_TAGS: ReadonlySet<string> = new Set(['input', 'br', 'hr', 'img', 'meta', 'link'])
@@ -16,18 +19,25 @@ export function emitElement(node: IRNode, indent: number): string {
     return `${pad}${escapeJSXText(node.value)}`
   }
 
-  const attrsStr = formatAttrs(node.className, node.attrs)
+  if (node.kind === 'expression') {
+    return `${pad}{${emitExpression(node.ast)}}`
+  }
+
+  const attrsStr = formatAttrs(node.className, node.attrs, node.events)
   const opening = attrsStr ? `<${node.tag} ${attrsStr}` : `<${node.tag}`
 
   if (VOID_TAGS.has(node.tag) || node.children.length === 0) {
     return `${pad}${opening} />`
   }
 
-  // Inline single text child for compactness: <p>Hello</p>
-  if (node.children.length === 1 && node.children[0].kind === 'text') {
-    const value = node.children[0].value
-    if (!value.includes('\n')) {
-      return `${pad}${opening}>${escapeJSXText(value)}</${node.tag}>`
+  // Inline single-child expressions for compactness: <p>{count}</p>.
+  if (node.children.length === 1) {
+    const only = node.children[0]
+    if (only.kind === 'text' && !only.value.includes('\n')) {
+      return `${pad}${opening}>${escapeJSXText(only.value)}</${node.tag}>`
+    }
+    if (only.kind === 'expression') {
+      return `${pad}${opening}>{${emitExpression(only.ast)}}</${node.tag}>`
     }
   }
 
@@ -37,11 +47,24 @@ export function emitElement(node: IRNode, indent: number): string {
   return lines.join('\n')
 }
 
-function formatAttrs(className: string, attrs: Record<string, IRAttrValue>): string {
+function formatAttrs(
+  className: string,
+  attrs: Record<string, IRAttrValue>,
+  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+): string {
   const parts: string[] = []
   if (className) parts.push(`className="${escapeAttr(className)}"`)
   for (const [key, value] of Object.entries(attrs)) {
     parts.push(formatAttr(key, value))
+  }
+  if (events) {
+    for (const [name, handlers] of Object.entries(events) as [
+      IREventName,
+      IREventHandler[]
+    ][]) {
+      if (handlers.length === 0) continue
+      parts.push(`${name}={${emitEventHandler(handlers)}}`)
+    }
   }
   return parts.join(' ')
 }

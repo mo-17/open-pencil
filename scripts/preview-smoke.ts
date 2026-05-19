@@ -1,6 +1,6 @@
 import { compile, withDefaults } from '@open-pencil/compiler'
-import { SceneGraph } from '@open-pencil/core'
 import { createPreviewServer } from '@open-pencil/compiler/dev-server'
+import { SceneGraph } from '@open-pencil/core/scene-graph'
 
 const graph = new SceneGraph()
 graph.addPage('Demo')

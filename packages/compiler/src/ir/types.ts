@@ -3,7 +3,9 @@
  * `adapters/**`; the data flow is one-way (SceneGraph → IR → adapter).
  */
 
-export type IRNode = IRElement | IRText
+import type { ExprAst } from './expression'
+
+export type IRNode = IRElement | IRText | IRExpression
 
 export interface IRElement {
   kind: 'element'
@@ -17,6 +19,8 @@ export interface IRElement {
   /** Static JSX attributes. Adapters quote/escape per their syntax. */
   attrs: Record<string, IRAttrValue>
   children: IRNode[]
+  /** Event handlers. Phase 0 only emits `onClick` (BUTTON) and `onSubmit` (FORM). */
+  events?: Partial<Record<IREventName, IREventHandler[]>>
 }
 
 export interface IRText {
@@ -25,7 +29,43 @@ export interface IRText {
   value: string
 }
 
+/** A dynamic text node — the adapter emits this as `{<expr>}` rather than a
+ *  string literal. Used when a TEXT node's `text` is bound to a state ref or
+ *  formula expression. */
+export interface IRExpression {
+  kind: 'expression'
+  /** Pre-parsed AST so the adapter does not re-parse. */
+  ast: ExprAst
+  /** Identifier names this expression depends on (state variables). */
+  references: string[]
+}
+
 export type IRAttrValue = string | number | boolean
+
+export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'
+
+/** A single statement that runs when an event fires. Phase 0 only ships
+ *  `setState`; future kinds extend this union. */
+export type IREventHandler = {
+  kind: 'setState'
+  /** Variable name of the state being updated (already resolved from stateId). */
+  stateName: string
+  /** Pre-parsed AST for the new-value expression. */
+  ast: ExprAst
+  /** Identifiers referenced by the expression. */
+  references: string[]
+}
+
+/** A page-level state declaration. Adapter emits `useState(defaultValue)`. */
+export interface IRStateDecl {
+  /** Underlying StateDef id. Adapters do not need it, but it helps debug. */
+  id: string
+  /** Variable name in emitted code (must be a valid JS identifier). */
+  name: string
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array'
+  /** Default value used to seed `useState(...)`. */
+  defaultValue: unknown
+}
 
 export interface IRTree {
   /** SceneNode id of the page (CANVAS) this tree was derived from. */
@@ -35,4 +75,14 @@ export interface IRTree {
   pageName: string
   /** Top-level children of the page. */
   children: IRNode[]
+  /** Page-scoped state declarations the adapter must hoist into the component. */
+  states: IRStateDecl[]
+  /** Warnings raised while collecting the IR (invalid bindings, expressions, etc.). */
+  warnings: IRWarning[]
+}
+
+export interface IRWarning {
+  code: string
+  message: string
+  nodeId?: string
 }

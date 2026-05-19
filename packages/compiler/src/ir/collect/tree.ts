@@ -1,7 +1,17 @@
 import type { NodeType, SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
 
-import { tailwindClassName } from './style'
-import type { IRAttrValue, IRElement, IRNode, IRTree } from './types'
+import { tailwindClassName } from '../style'
+import type {
+  IRAttrValue,
+  IRElement,
+  IRNode,
+  IRStateDecl,
+  IRTree,
+  IRWarning
+} from '../types'
+
+import { resolveEvents, resolveTextBinding } from './bindings'
+import { collectPageStates, indexStatesById } from './state'
 
 /**
  * Walk a CANVAS (page) node and produce a framework-neutral IRTree.
@@ -11,22 +21,42 @@ import type { IRAttrValue, IRElement, IRNode, IRTree } from './types'
  */
 export function collectTree(graph: SceneGraph, pageId: string): IRTree {
   const page = graph.getNode(pageId)
+  const warnings: IRWarning[] = []
+  const { states, invalid } = collectPageStates(page)
+  for (const { id, name, reason } of invalid) {
+    warnings.push({
+      code: 'state-invalid',
+      message: `state ${name} (id=${id}): ${reason}`,
+      nodeId: pageId
+    })
+  }
+  const stateById = indexStatesById(states)
+
   if (!page) {
-    return { pageId, pageName: 'Page', children: [] }
+    return { pageId, pageName: 'Page', children: [], states, warnings }
   }
 
+  const ctx: WalkCtx = { graph, states: stateById, warnings }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
     if (!child.visible) continue
-    const ir = nodeToIR(child, graph)
+    const ir = nodeToIR(child, ctx)
     if (ir) children.push(ir)
   }
 
   return {
     pageId,
     pageName: page.name || 'Page',
-    children
+    children,
+    states,
+    warnings
   }
+}
+
+interface WalkCtx {
+  graph: SceneGraph
+  states: Map<string, IRStateDecl>
+  warnings: IRWarning[]
 }
 
 /**
@@ -71,27 +101,34 @@ const CONTAINER_TYPES_FOR_RECURSION: ReadonlySet<NodeType> = new Set([
   'LIST'
 ])
 
-function nodeToIR(node: SceneNode, graph: SceneGraph): IRElement | null {
+function nodeToIR(node: SceneNode, ctx: WalkCtx): IRElement | null {
   const tag = TAG_BY_TYPE[node.type]
   if (!tag) return null
 
-  const className = tailwindClassName(node, graph)
+  const className = tailwindClassName(node, ctx.graph)
   const attrs: Record<string, IRAttrValue> = {}
   const children: IRNode[] = []
 
-  applyInteractiveProps(node, attrs, children)
+  applyInteractiveProps(node, attrs, children, ctx)
 
   if (node.type === 'TEXT') {
-    if (node.text) children.push({ kind: 'text', value: node.text })
+    const binding = resolveTextBinding(node, ctx.states, ctx.warnings)
+    if (binding) {
+      children.push(binding)
+    } else if (node.text) {
+      children.push({ kind: 'text', value: node.text })
+    }
   }
 
   if (CONTAINER_TYPES_FOR_RECURSION.has(node.type)) {
-    for (const child of graph.getChildren(node.id)) {
+    for (const child of ctx.graph.getChildren(node.id)) {
       if (!child.visible) continue
-      const ir = nodeToIR(child, graph)
+      const ir = nodeToIR(child, ctx)
       if (ir) children.push(ir)
     }
   }
+
+  const events = resolveEvents(node, ctx.states, ctx.warnings)
 
   return {
     kind: 'element',
@@ -99,14 +136,16 @@ function nodeToIR(node: SceneNode, graph: SceneGraph): IRElement | null {
     tag,
     className,
     attrs,
-    children
+    children,
+    ...(events ? { events } : {})
   }
 }
 
 function applyInteractiveProps(
   node: SceneNode,
   attrs: Record<string, IRAttrValue>,
-  children: IRNode[]
+  children: IRNode[],
+  ctx: WalkCtx
 ): void {
   const ip = node.interactiveProps ?? {}
   switch (node.type) {
@@ -122,8 +161,13 @@ function applyInteractiveProps(
     }
     case 'BUTTON': {
       attrs.type = 'button'
-      const text = typeof ip.text === 'string' ? ip.text : 'Button'
-      children.push({ kind: 'text', value: text })
+      const binding = resolveTextBinding(node, ctx.states, ctx.warnings)
+      if (binding) {
+        children.push(binding)
+      } else {
+        const text = typeof ip.text === 'string' ? ip.text : 'Button'
+        children.push({ kind: 'text', value: text })
+      }
       return
     }
     case 'SELECT': {

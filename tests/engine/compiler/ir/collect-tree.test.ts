@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { collectTree } from '@open-pencil/compiler/ir/collect-tree'
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRElement } from '@open-pencil/compiler/ir/types'
 import { SceneGraph } from '@open-pencil/core'
 

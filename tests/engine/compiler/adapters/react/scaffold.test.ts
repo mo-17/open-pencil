@@ -3,7 +3,13 @@ import { describe, expect, test } from 'bun:test'
 import { buildAppTsx } from '@open-pencil/compiler/adapters/react/scaffold'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 
-const empty: IRTree = { pageId: 'p1', pageName: 'Test', children: [] }
+const empty: IRTree = {
+  pageId: 'p1',
+  pageName: 'Test',
+  children: [],
+  states: [],
+  warnings: []
+}
 
 describe('buildAppTsx (React adapter scaffold)', () => {
   test('empty IR → returns stateless <div />', () => {
@@ -16,6 +22,8 @@ describe('buildAppTsx (React adapter scaffold)', () => {
     const tree: IRTree = {
       pageId: 'p1',
       pageName: 'Test',
+      states: [],
+      warnings: [],
       children: [
         {
           kind: 'element',

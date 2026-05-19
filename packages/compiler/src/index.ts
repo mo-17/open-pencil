@@ -1,4 +1,4 @@
-import { collectTree } from './ir/collect-tree'
+import { collectTree } from './ir/collect/tree'
 import { selectAdapter } from './select-adapter'
 import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
@@ -32,7 +32,10 @@ export function compile(input: CompilerInput): CompilerOutput {
 
   const ir = collectTree(input.graph, input.pageIds[0])
   const { files, warnings: adapterWarnings } = adapter.emit(ir, input.options)
-  return { files, warnings: [...selectionWarnings, ...adapterWarnings] }
+  return {
+    files,
+    warnings: [...selectionWarnings, ...ir.warnings, ...adapterWarnings]
+  }
 }
 
 export function withDefaults(overrides: Partial<CompilerOptions> = {}): CompilerOptions {
