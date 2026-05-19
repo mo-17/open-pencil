@@ -20,16 +20,18 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
 
+  const wrapperOpen = '<div className="relative min-h-screen">'
+
   if (ir.children.length === 0) {
     if (ir.states.length === 0) {
       return `${importPrefix}export default function App() {
-  return <div />
+  return ${wrapperOpen}</div>
 }
 `
     }
     return `${importPrefix}export default function App() {
 ${stateLines}
-  return <div />
+  return ${wrapperOpen}</div>
 }
 `
   }
@@ -38,7 +40,7 @@ ${stateLines}
   const statePrefix = ir.states.length > 0 ? `${stateLines}\n` : ''
   return `${importPrefix}export default function App() {
 ${statePrefix}  return (
-    <div>
+    ${wrapperOpen}
 ${body}
     </div>
   )
