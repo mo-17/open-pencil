@@ -15,9 +15,27 @@ import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { createServer, type Plugin, type ViteDevServer } from 'vite'
+import { createServer, type Plugin, type Update, type ViteDevServer } from 'vite'
 
 export type PreviewFiles = Map<string, string | Uint8Array>
+
+export type UpdateMode = 'full-reload' | 'hmr' | 'noop'
+
+/**
+ * Decide how the iframe should react to a batch of VFS changes.
+ *
+ * - `noop` — nothing changed (idempotent updateFiles call).
+ * - `full-reload` — index.html changed, or no VFS module mapped to the changes
+ *   (Vite can't HMR what it doesn't know about).
+ * - `hmr` — broadcast Vite's native `update` event so plugin-react's auto-
+ *   injected `import.meta.hot.accept(...)` boundaries can swap modules in
+ *   place and preserve `useState`.
+ */
+export function classifyUpdate(changes: readonly string[], invalidated: number): UpdateMode {
+  if (changes.length === 0) return 'noop'
+  if (changes.includes('index.html') || invalidated === 0) return 'full-reload'
+  return 'hmr'
+}
 
 export interface PreviewServerOptions {
   /** Port to bind. 0 picks a free port. Default 0. */
@@ -267,26 +285,38 @@ export async function createPreviewServer(
       }
       if (changed.length === 0) return
 
-      let invalidated = 0
+      const invalidatedPaths: string[] = []
       for (const rel of changed) {
         const mod = server.moduleGraph.getModuleById(vfsPrefix + rel)
         if (mod) {
           server.moduleGraph.invalidateModule(mod)
-          invalidated++
+          invalidatedPaths.push(rel)
         }
       }
 
-      // If index.html changed (or we couldn't resolve any module), force a
-      // full reload — HMR can't recover a fresh entry. Otherwise let
-      // plugin-react's Fast Refresh pick up changed .tsx/.css.
-      if (changed.includes('index.html') || invalidated === 0) {
+      const mode = classifyUpdate(changed, invalidatedPaths.length)
+      if (mode === 'noop') return
+      if (mode === 'full-reload') {
         server.ws.send({ type: 'full-reload' })
-      } else {
-        server.ws.send({ type: 'full-reload' })
-        // Note: plugin-react auto-emits fine-grained js-updates when modules
-        // are invalidated and re-requested. For Phase 0 we play it safe with
-        // a full-reload broadcast; React Fast Refresh upgrade is a followup.
+        return
       }
+      // HMR: send Vite's native `update` event with js-update / css-update
+      // entries. plugin-react's transform stage injects `import.meta.hot
+      // .accept(...)` into modules whose exports are React components; the
+      // client runtime then re-evaluates the module in place, preserving
+      // useState. If a module isn't accept-able the Vite client itself
+      // falls back to a full reload — we don't need to mirror that here.
+      const timestamp = Date.now()
+      const updates: Update[] = invalidatedPaths.map((rel) => {
+        const url = '/' + rel
+        return {
+          type: rel.endsWith('.css') ? 'css-update' : 'js-update',
+          path: url,
+          acceptedPath: url,
+          timestamp
+        }
+      })
+      server.ws.send({ type: 'update', updates })
     },
     async close() {
       await server.close()
