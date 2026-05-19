@@ -50,6 +50,8 @@ const SIDECAR_ENTRY = 'packages/compiler/src/dev-server.ts'
 const READY_TIMEOUT_MS = 15_000
 const DEBOUNCE_MS = 200
 
+const NOOP = (): void => undefined
+
 interface PreviewSidecar {
   url: string
   update(files: Map<string, string | Uint8Array>): Promise<void>
@@ -185,6 +187,10 @@ export type PreviewStatus =
 
 interface UseCompileOnChangeResult {
   status: Ref<PreviewStatus>
+  /** Compile + push immediately, bypassing the sceneVersion debounce. Used by
+   *  the PreviewPane reload button so the user can force a fresh build without
+   *  waiting on the next debounced tick. No-op until the sidecar is ready. */
+  forceRecompile: () => void
 }
 
 /**
@@ -197,7 +203,7 @@ export function useCompileOnChange(): UseCompileOnChangeResult {
 
   if (!isTauri()) {
     status.value = { kind: 'disabled', reason: 'Preview is only available in the desktop app' }
-    return { status }
+    return { status, forceRecompile: NOOP }
   }
 
   const store = useEditorStore()
@@ -270,5 +276,5 @@ export function useCompileOnChange(): UseCompileOnChangeResult {
     }
   })
 
-  return { status }
+  return { status, forceRecompile: recompileAndPush }
 }

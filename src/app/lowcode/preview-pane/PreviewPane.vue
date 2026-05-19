@@ -3,10 +3,11 @@ import { computed, ref } from 'vue'
 
 import { useCompileOnChange } from './use-compile-on-change'
 
-const { status } = useCompileOnChange()
+const { status, forceRecompile } = useCompileOnChange()
 
 const iframeKey = ref(0)
 function reload(): void {
+  forceRecompile()
   iframeKey.value++
 }
 
