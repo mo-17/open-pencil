@@ -65,7 +65,8 @@ export default defineCommand({
     },
     page: {
       type: 'string',
-      description: 'Page to compile by name (default: first page)',
+      description:
+        'Restrict output to a single page by name. Default: all pages compiled (multi-page projects use react-router-dom).',
       required: false
     },
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
@@ -84,11 +85,19 @@ export default defineCommand({
       process.exit(1)
     }
 
-    const target = page ? pages.find((p) => p.name === page) : pages[0]
-    if (!target) {
-      const available = pages.map((p) => `"${p.name}"`).join(', ')
-      printError(`Page "${page}" not found. Available pages: ${available || 'none'}.`)
-      process.exit(1)
+    let pageIds: string[]
+    if (page) {
+      const target = pages.find((p) => p.name === page)
+      if (!target) {
+        const available = pages.map((p) => `"${p.name}"`).join(', ')
+        printError(`Page "${page}" not found. Available pages: ${available || 'none'}.`)
+        process.exit(1)
+      }
+      pageIds = [target.id]
+    } else {
+      // Phase 1 §11: CLI defaults to compiling every page; the React adapter
+      // emits a `react-router-dom` shell when more than one page is present.
+      pageIds = pages.map((p) => p.id)
     }
 
     const packageName = sanitizePackageName(
@@ -100,7 +109,7 @@ export default defineCommand({
     try {
       result = compile({
         graph,
-        pageIds: [target.id],
+        pageIds,
         // CLI compile is the one-shot export path — emit a clean distributable
         // without the dev-only canvas↔preview bridge hooks.
         options: withDefaults({ packageName, devMode: false })
