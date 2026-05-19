@@ -106,6 +106,9 @@ const { panels } = useI18n()
     <StrokeSection />
     <EffectsSection />
     <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
+    <StatePanel
+      v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'"
+    />
     <EventsPanel v-if="node.type === 'BUTTON' || node.type === 'FORM'" />
 
     <ExportSection />
