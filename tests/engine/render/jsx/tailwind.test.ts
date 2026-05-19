@@ -418,7 +418,8 @@ describe('Tailwind JSX export', () => {
 
     const jsx = tw(graph, frame.id)
     expect(jsx).toContain('<div')
-    expect(jsx).toContain('flex flex-col')
+    expect(jsx).toContain('flex ')
+    expect(jsx).toContain('flex-col')
     expect(jsx).toContain('gap-2')
     expect(jsx).toMatch(/rounded/)
     expect(jsx).toContain('  <p')

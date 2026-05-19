@@ -100,6 +100,14 @@ function applyLayoutStyle(
 
   if (ctx.parentIsAutoLayout && node.layoutGrow > 0) style.flexGrow = '1'
   if (ctx.isAutoLayout) applyPadding(style, node)
+
+  if (ctx.parentIsCanvas) {
+    style.position = 'absolute'
+    style.left = px(node.x)
+    style.top = px(node.y)
+    if (!style.width) style.width = px(node.width)
+    if (!style.height) style.height = px(node.height)
+  }
 }
 
 function applyAppearanceStyle(style: Record<string, string>, node: SceneNode): void {

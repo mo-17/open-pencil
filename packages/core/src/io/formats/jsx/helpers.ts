@@ -63,7 +63,8 @@ export function getNodeContext(node: SceneNode, graph: SceneGraph) {
     isGrid: node.layoutMode === 'GRID',
     isFlex: node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL',
     parentIsAutoLayout: parent ? parent.layoutMode !== 'NONE' : false,
-    parentIsGrid: parent ? parent.layoutMode === 'GRID' : false
+    parentIsGrid: parent ? parent.layoutMode === 'GRID' : false,
+    parentIsCanvas: parent ? parent.type === 'CANVAS' : false
   }
 }
 
