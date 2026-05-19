@@ -12,39 +12,91 @@ import type { CompilerOptions, CompileWarning } from '#compiler/types'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
 import { buildPreviewBridge } from './preview-bridge'
-import { buildAppTsx, PAGE_WRAPPER_CLASSES } from './scaffold'
+import { derivePagePaths, type PagePathInfo } from './route-paths'
+import {
+  buildAppTsx,
+  buildPageModule,
+  buildRouterApp,
+  PAGE_WRAPPER_CLASSES
+} from './scaffold'
+
+/**
+ * Pinned alongside `react: ^19.2.0` / `react: ^18.3.1` — `react-router-dom@6`
+ * supports both. Lock to 6.27 minimum (the line that added React 19 support)
+ * to avoid older v6 versions crashing under `<StrictMode>` in React 19.
+ */
+const REACT_ROUTER_DOM_VERSION = '^6.27.0'
 
 export const reactAdapter: FrameworkAdapter = {
   emit(irs: readonly IRTree[], options: CompilerOptions): AdapterEmission {
-    // Phase 1 §11 step 1: pipeline accepts N IRs but only the single-page
-    // shape is wired through. The multi-page branch (router shell +
-    // src/pages/<slug>.tsx) lands in step 2; until then we warn and fall
-    // back to emitting just the first page so production callers
-    // (preview-pane, CLI single-page mode) keep working.
-    const warnings: CompileWarning[] = []
-    if (irs.length > 1) {
-      warnings.push({
-        code: 'multi-page-emit-pending',
-        message:
-          `${irs.length} pages were requested but the React adapter only emits ` +
-          `the first page until Phase 1 §11 step 2 lands (react-router-dom wiring).`
-      })
-    }
-    const ir = irs[0]
-    const files = new Map<string, string | Uint8Array>()
-    files.set('package.json', buildPackageJson(options))
-    files.set('vite.config.ts', buildViteConfig())
-    files.set('tsconfig.json', buildTsConfig())
-    files.set('index.html', buildIndexHtml(options.packageName))
-    files.set('src/main.tsx', buildMainTsx())
-    files.set('src/App.tsx', buildAppTsx(ir, { devMode: options.devMode }))
-    files.set('src/index.css', buildIndexCss(collectClassNames([ir])))
-    files.set('.gitignore', buildGitignore())
-    if (options.devMode) {
-      files.set('src/__preview-bridge.ts', buildPreviewBridge())
-    }
-    return { files, warnings }
+    return irs.length > 1 ? emitMultiPage(irs, options) : emitSinglePage(irs[0], options)
   }
+}
+
+function emitSinglePage(ir: IRTree, options: CompilerOptions): AdapterEmission {
+  const files = new Map<string, string | Uint8Array>()
+  files.set('package.json', buildPackageJson(options))
+  files.set('src/App.tsx', buildAppTsx(ir, { devMode: options.devMode }))
+  setSharedProjectFiles(files, options, collectClassNames([ir]))
+  return { files, warnings: [] }
+}
+
+function emitMultiPage(
+  irs: readonly IRTree[],
+  options: CompilerOptions
+): AdapterEmission {
+  const infos = derivePagePaths(irs)
+  const files = new Map<string, string | Uint8Array>()
+  files.set(
+    'package.json',
+    buildPackageJson(options, { 'react-router-dom': REACT_ROUTER_DOM_VERSION })
+  )
+  files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
+  for (const info of infos) {
+    files.set(
+      `src/pages/${info.file}`,
+      buildPageModule(info, { devMode: options.devMode })
+    )
+  }
+  setSharedProjectFiles(files, options, collectClassNames(irs))
+  return { files, warnings: collectSlugWarnings(infos) }
+}
+
+/**
+ * Project-shape files that are identical between single-page and multi-page
+ * emissions. Lives next to the dispatch so it stays in sync with both
+ * branches and stops jscpd flagging the otherwise-near-identical setups.
+ */
+function setSharedProjectFiles(
+  files: Map<string, string | Uint8Array>,
+  options: CompilerOptions,
+  classNames: string[]
+): void {
+  files.set('vite.config.ts', buildViteConfig())
+  files.set('tsconfig.json', buildTsConfig())
+  files.set('index.html', buildIndexHtml(options.packageName))
+  files.set('src/main.tsx', buildMainTsx())
+  files.set('src/index.css', buildIndexCss(classNames))
+  files.set('.gitignore', buildGitignore())
+  if (options.devMode) {
+    files.set('src/__preview-bridge.ts', buildPreviewBridge())
+  }
+}
+
+function collectSlugWarnings(infos: readonly PagePathInfo[]): CompileWarning[] {
+  const warnings: CompileWarning[] = []
+  for (const info of infos) {
+    if (info.slug === info.originalSlug) continue
+    warnings.push({
+      code: 'multi-page-duplicate-slug',
+      message:
+        `Page "${info.ir.pageName}" produced URL slug "${info.originalSlug}" ` +
+        `which collided with an earlier page; routed at "${info.route}" instead. ` +
+        `Rename the page to silence this warning.`,
+      nodeId: info.ir.pageId
+    })
+  }
+  return warnings
 }
 
 function collectClassNames(irs: readonly IRTree[]): string[] {

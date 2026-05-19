@@ -5,8 +5,22 @@ const REACT_DEP_VERSIONS = {
   '19': { react: '^19.2.0', reactDom: '^19.2.0', reactTypes: '^19.2.0', reactDomTypes: '^19.2.0' }
 } as const
 
-export function buildPackageJson(options: CompilerOptions): string {
+/**
+ * Build the emitted project's `package.json`. `extraDeps` lets adapters add
+ * runtime deps (e.g. `react-router-dom` in multi-page mode); they merge into
+ * `dependencies` after the React baseline so adapter-specific entries are
+ * grouped together but sort-stable across emits.
+ */
+export function buildPackageJson(
+  options: CompilerOptions,
+  extraDeps: Readonly<Record<string, string>> = {}
+): string {
   const v = REACT_DEP_VERSIONS[options.reactVersion]
+  const dependencies: Record<string, string> = {
+    react: v.react,
+    'react-dom': v.reactDom,
+    ...extraDeps
+  }
   const pkg = {
     name: options.packageName,
     private: true,
@@ -17,10 +31,7 @@ export function buildPackageJson(options: CompilerOptions): string {
       build: 'tsc --noEmit && vite build',
       preview: 'vite preview'
     },
-    dependencies: {
-      react: v.react,
-      'react-dom': v.reactDom
-    },
+    dependencies,
     devDependencies: {
       '@tailwindcss/vite': '^4.2.1',
       '@types/react': v.reactTypes,

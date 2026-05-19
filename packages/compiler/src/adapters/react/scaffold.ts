@@ -2,6 +2,7 @@ import type { IRTree } from '#compiler/ir/types'
 
 import { emitElement } from './emit/element'
 import { emitStateDecl } from './emit/state'
+import type { PagePathInfo } from './route-paths'
 
 /**
  * Classes the page wrapper carries on every compiled page. They never appear
@@ -13,18 +14,83 @@ import { emitStateDecl } from './emit/state'
 export const PAGE_WRAPPER_CLASSES = ['relative', 'min-h-screen'] as const
 const WRAPPER_CLASS_ATTR = PAGE_WRAPPER_CLASSES.join(' ')
 
+interface BuildPageOptions {
+  /** Emit `data-node-id` attributes on every element (canvas↔preview bridge). */
+  devMode: boolean
+  /** Prepend `import './__preview-bridge'` so the bridge runtime mounts.
+   *  Multi-page mode imports it once from the router shell (`App.tsx`); the
+   *  per-page modules omit it. */
+  importPreviewBridge: boolean
+  /** Default-exported function component name. */
+  exportName: string
+}
+
 interface BuildAppOptions {
   /** Emit the canvas↔preview bridge import + `data-node-id` attributes. */
   devMode: boolean
 }
 
 /**
- * Build `src/App.tsx`. Emits a stateful function component that hoists every
- * page-scoped state into a `useState` declaration, then renders the IR tree.
+ * Build `src/App.tsx` for the legacy single-page shape. Equivalent to
+ * `buildPageFile(ir, { devMode, importPreviewBridge: devMode, exportName: 'App' })`
+ * — kept as a thin wrapper so the single-page test suite stays byte-identical.
  */
 export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: false }): string {
-  const { devMode } = options
-  const bridgeImport = devMode ? `import './__preview-bridge'\n` : ''
+  return buildPageFile(ir, {
+    devMode: options.devMode,
+    importPreviewBridge: options.devMode,
+    exportName: 'App'
+  })
+}
+
+/**
+ * Build `src/pages/<slug>.tsx` for one page in a multi-page project.
+ * The router shell (`buildRouterApp`) owns the bridge import.
+ */
+export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): string {
+  return buildPageFile(info.ir, {
+    devMode: options.devMode,
+    importPreviewBridge: false,
+    exportName: info.component
+  })
+}
+
+/**
+ * Build the multi-page router shell `src/App.tsx`. Uses `BrowserRouter` from
+ * `react-router-dom@^6.27` per Phase 1 §11.3 decision #2.
+ */
+export function buildRouterApp(
+  infos: readonly PagePathInfo[],
+  options: BuildAppOptions
+): string {
+  const bridgeImport = options.devMode ? `import './__preview-bridge'\n` : ''
+  const routerImport = `import { BrowserRouter, Route, Routes } from 'react-router-dom'\n`
+  const pageImports = infos
+    .map((info) => `import ${info.component} from './pages/${info.slug}'`)
+    .join('\n')
+  const importBlock = `${bridgeImport}${routerImport}${pageImports}\n\n`
+  const routes = infos
+    .map((info) => `        <Route path="${info.route}" element={<${info.component} />} />`)
+    .join('\n')
+  return `${importBlock}export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+${routes}
+      </Routes>
+    </BrowserRouter>
+  )
+}
+`
+}
+
+/**
+ * Shared page-file template. Hoists every page-scoped state into a `useState`
+ * declaration, then renders the IR tree inside the wrapper div.
+ */
+function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
+  const { devMode, importPreviewBridge, exportName } = options
+  const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const importBlock = bridgeImport + reactImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
@@ -34,12 +100,12 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
 
   if (ir.children.length === 0) {
     if (ir.states.length === 0) {
-      return `${importPrefix}export default function App() {
+      return `${importPrefix}export default function ${exportName}() {
   return ${wrapperOpen}</div>
 }
 `
     }
-    return `${importPrefix}export default function App() {
+    return `${importPrefix}export default function ${exportName}() {
 ${stateLines}
   return ${wrapperOpen}</div>
 }
@@ -48,7 +114,7 @@ ${stateLines}
 
   const body = ir.children.map((c) => emitElement(c, 3, devMode)).join('\n')
   const statePrefix = ir.states.length > 0 ? `${stateLines}\n` : ''
-  return `${importPrefix}export default function App() {
+  return `${importPrefix}export default function ${exportName}() {
 ${statePrefix}  return (
     ${wrapperOpen}
 ${body}
