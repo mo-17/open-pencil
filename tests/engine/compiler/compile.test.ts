@@ -22,6 +22,7 @@ describe('compile (public API, end-to-end)', () => {
         'index.html',
         'package.json',
         'src/App.tsx',
+        'src/__preview-bridge.ts',
         'src/index.css',
         'src/main.tsx',
         'tsconfig.json',
@@ -114,5 +115,44 @@ describe('compile (public API, end-to-end)', () => {
     })
     const indexHtml = out.files.get('index.html') as string
     expect(indexHtml).toContain('<title>a&amp;b&lt;c&gt;</title>')
+  })
+
+  test('devMode=true emits the preview bridge and data-node-id', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const btn = graph.createNode('BUTTON', pageId, { interactiveProps: { text: 'Go' } })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults() // default devMode is true
+    })
+
+    expect(out.files.has('src/__preview-bridge.ts')).toBe(true)
+    const bridge = out.files.get('src/__preview-bridge.ts') as string
+    expect(bridge).toContain('op-lowcode-editor')
+    expect(bridge).toContain('op-lowcode-preview')
+    expect(bridge).toContain('data-node-id')
+
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain("import './__preview-bridge'")
+    expect(app).toContain(`data-node-id="${btn.id}"`)
+  })
+
+  test('devMode=false omits the bridge file and data-node-id attributes', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('BUTTON', pageId, { interactiveProps: { text: 'Go' } })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ devMode: false })
+    })
+
+    expect(out.files.has('src/__preview-bridge.ts')).toBe(false)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('__preview-bridge')
+    expect(app).not.toContain('data-node-id')
   })
 })

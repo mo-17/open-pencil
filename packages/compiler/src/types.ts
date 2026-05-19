@@ -22,6 +22,14 @@ export interface CompilerOptions {
   router: 'react-router-v6' | 'vue-router-v4' | 'none'
   /** Phase 0 always emits TypeScript */
   typescript: true
+  /**
+   * Emit the canvas↔preview bridge hooks: `data-node-id` attributes on every
+   * element + a small `__preview-bridge.ts` runtime that round-trips
+   * selection over `window.postMessage`. The in-editor preview pane runs with
+   * this on; the one-shot CLI export passes `false` so distributables stay
+   * clean. See docs/lowcode-phase-0.md §5.4.
+   */
+  devMode: boolean
 }
 
 export interface CompileWarning {

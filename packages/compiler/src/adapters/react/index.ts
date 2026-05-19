@@ -11,6 +11,7 @@ import type { IRNode, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions } from '#compiler/types'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
+import { buildPreviewBridge } from './preview-bridge'
 import { buildAppTsx } from './scaffold'
 
 export const reactAdapter: FrameworkAdapter = {
@@ -21,9 +22,12 @@ export const reactAdapter: FrameworkAdapter = {
     files.set('tsconfig.json', buildTsConfig())
     files.set('index.html', buildIndexHtml(options.packageName))
     files.set('src/main.tsx', buildMainTsx())
-    files.set('src/App.tsx', buildAppTsx(ir))
+    files.set('src/App.tsx', buildAppTsx(ir, { devMode: options.devMode }))
     files.set('src/index.css', buildIndexCss(collectClassNames(ir)))
     files.set('.gitignore', buildGitignore())
+    if (options.devMode) {
+      files.set('src/__preview-bridge.ts', buildPreviewBridge())
+    }
     return { files, warnings: [] }
   }
 }

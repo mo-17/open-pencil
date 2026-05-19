@@ -11,8 +11,12 @@ const VOID_TAGS: ReadonlySet<string> = new Set(['input', 'br', 'hr', 'img', 'met
  * adapter layer's contract.
  *
  * Indent is in two-space units, matching the surrounding `App.tsx` template.
+ *
+ * `devMode` toggles the canvas↔preview bridge hook: when true, every element
+ * is tagged with `data-node-id="<sceneId>"` so the bridge runtime can map a
+ * DOM click back to a SceneNode. Off for production / CLI export.
  */
-export function emitElement(node: IRNode, indent: number): string {
+export function emitElement(node: IRNode, indent: number, devMode = false): string {
   const pad = '  '.repeat(indent)
 
   if (node.kind === 'text') {
@@ -23,7 +27,12 @@ export function emitElement(node: IRNode, indent: number): string {
     return `${pad}{${emitExpression(node.ast)}}`
   }
 
-  const attrsStr = formatAttrs(node.className, node.attrs, node.events)
+  const attrsStr = formatAttrs(
+    node.className,
+    node.attrs,
+    node.events,
+    devMode ? node.sourceId : undefined
+  )
   const opening = attrsStr ? `<${node.tag} ${attrsStr}` : `<${node.tag}`
 
   if (VOID_TAGS.has(node.tag) || node.children.length === 0) {
@@ -42,7 +51,7 @@ export function emitElement(node: IRNode, indent: number): string {
   }
 
   const lines = [`${pad}${opening}>`]
-  for (const child of node.children) lines.push(emitElement(child, indent + 1))
+  for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode))
   lines.push(`${pad}</${node.tag}>`)
   return lines.join('\n')
 }
@@ -50,10 +59,12 @@ export function emitElement(node: IRNode, indent: number): string {
 function formatAttrs(
   className: string,
   attrs: Record<string, IRAttrValue>,
-  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+  events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
+  nodeId: string | undefined
 ): string {
   const parts: string[] = []
   if (className) parts.push(`className="${escapeAttr(className)}"`)
+  if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
   for (const [key, value] of Object.entries(attrs)) {
     parts.push(formatAttr(key, value))
   }

@@ -9,7 +9,8 @@ const DEFAULT_OPTIONS: CompilerOptions = {
   target: 'react',
   reactVersion: '19',
   router: 'none',
-  typescript: true
+  typescript: true,
+  devMode: true
 }
 
 /**

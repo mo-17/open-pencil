@@ -101,7 +101,9 @@ export default defineCommand({
       result = compile({
         graph,
         pageIds: [target.id],
-        options: withDefaults({ packageName })
+        // CLI compile is the one-shot export path — emit a clean distributable
+        // without the dev-only canvas↔preview bridge hooks.
+        options: withDefaults({ packageName, devMode: false })
       })
     } catch (e) {
       printError(e)
