@@ -265,7 +265,25 @@ export const panelMessages = i18n('panels', {
   setToCurrentWidth: 'Set to current width',
   setToCurrentHeight: 'Set to current height',
   sizingFillFr: 'Fill (fr)',
-  sizingFixedPx: 'Fixed (px)'
+  sizingFixedPx: 'Fixed (px)',
+
+  // Lowcode (Phase 0)
+  lowcodeState: 'State',
+  lowcodeStateAdd: 'Add state',
+  lowcodeStateName: 'Name',
+  lowcodeStateType: 'Type',
+  lowcodeStateDefault: 'Default',
+  lowcodeStateEmpty: 'No state variables yet',
+  lowcodeEvents: 'Events',
+  lowcodeEventOnClick: 'On click',
+  lowcodeEventOnSubmit: 'On submit',
+  lowcodeActionAdd: 'Add action',
+  lowcodeActionSet: 'Set',
+  lowcodeActionValue: 'Value',
+  lowcodeActionNoStates: 'Define a state first to wire an action',
+  lowcodeTextSource: 'Text',
+  lowcodeTextSourceLiteral: 'Literal',
+  lowcodeTextSourceBound: 'Bind to'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

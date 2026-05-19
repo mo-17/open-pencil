@@ -10,6 +10,9 @@ import EffectsSection from './properties/EffectsSection.vue'
 import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
+import EventsPanel from './properties/Lowcode/EventsPanel.vue'
+import StatePanel from './properties/Lowcode/StatePanel.vue'
+import TextBindingPanel from './properties/Lowcode/TextBindingPanel.vue'
 import PageSection from './properties/PageSection.vue'
 import PositionSection from './properties/PositionSection.vue'
 import StrokeSection from './properties/StrokeSection.vue'
@@ -102,6 +105,8 @@ const { panels } = useI18n()
     <FillSection />
     <StrokeSection />
     <EffectsSection />
+    <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
+    <EventsPanel v-if="node.type === 'BUTTON' || node.type === 'FORM'" />
 
     <ExportSection />
   </div>
@@ -112,6 +117,7 @@ const { panels } = useI18n()
     class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
   >
     <PageSection />
+    <StatePanel />
     <VariablesSection @open-dialog="variablesOpen = true" />
     <ExportSection />
   </div>
