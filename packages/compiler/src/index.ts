@@ -31,11 +31,15 @@ export function compile(input: CompilerInput): CompilerOutput {
     return { files: new Map(), warnings: selectionWarnings }
   }
 
-  const ir = collectTree(input.graph, input.pageIds[0])
-  const { files, warnings: adapterWarnings } = adapter.emit(ir, input.options)
+  const irs = input.pageIds.map((id) => collectTree(input.graph, id))
+  const { files, warnings: adapterWarnings } = adapter.emit(irs, input.options)
   return {
     files,
-    warnings: [...selectionWarnings, ...ir.warnings, ...adapterWarnings]
+    warnings: [
+      ...selectionWarnings,
+      ...irs.flatMap((ir) => ir.warnings),
+      ...adapterWarnings
+    ]
   }
 }
 

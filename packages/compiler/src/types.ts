@@ -2,7 +2,12 @@ import type { SceneGraph } from '@open-pencil/core/scene-graph'
 
 export interface CompilerInput {
   graph: SceneGraph
-  /** Page node IDs to compile. Phase 0 only emits the first entry. */
+  /**
+   * Page node IDs to compile. All entries are honored — Phase 1 §11 promoted
+   * the React adapter from "first only" to multi-page with react-router-dom
+   * v6. Single-entry input keeps the legacy single-`App.tsx` shape; multi-
+   * entry input emits a router shell + `src/pages/<slug>.tsx` per page.
+   */
   pageIds: string[]
   options: CompilerOptions
 }

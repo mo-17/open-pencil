@@ -10,8 +10,12 @@ import type { CompileWarning, CompilerOptions } from '../types'
  * types from `ir/types.ts`.
  */
 export interface FrameworkAdapter {
-  /** Emit the full project file map for one page IR. */
-  emit(ir: IRTree, options: CompilerOptions): AdapterEmission
+  /**
+   * Emit the full project file map for the given page IRs. A single-entry
+   * input keeps the legacy single-`App.tsx` shape; multi-entry input emits
+   * a router shell plus per-page modules (Phase 1 §11).
+   */
+  emit(irs: readonly IRTree[], options: CompilerOptions): AdapterEmission
 }
 
 export interface AdapterEmission {
