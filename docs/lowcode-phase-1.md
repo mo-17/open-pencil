@@ -14,17 +14,18 @@
 | # | 主题 | 状态 |
 |---|---|---|
 | 1 | **Canvas-direct 子节点的绝对定位** | ✅ 已交付（HEAD `d36be97`），本 doc §2 详述 |
-| 2 | **`@vitejs/plugin-react` Fast Refresh** | 锁定，本 doc §10 详述（原 §7.2 → 已纳入承诺） |
+| 2 | **`@vitejs/plugin-react` Fast Refresh** | ✅ 已交付（HEAD `4247e6e`），本 doc §10 详述（原 §7.2） |
+| 3 | **多页面编译 + `react-router-dom`（v6）** | 锁定，本 doc §11 详述（原 §7.1） |
 
-> §1 + §10 已承诺；其余候选见 §7，需要排期时再写入 1.1。
+> §1 / §10 / §11 已承诺；其余候选见 §7，需要排期时再写入 1.1。
 
 ### 1.2 Phase 1 Out-of-Scope（明确推迟）
 
-- 多页面路由（react-router-v6）—— 候选 §7.1
 - 实时表达式校验 UI —— 候选 §7.3
 - `ActionDef.kind` 收窄 + 扩 `navigate` / `setVariable` —— 候选 §7.4
 - `pluginData` → Kiwi schema 正式化 —— 候选 §7.5（Phase 0 收尾任务，落地窗口与 Phase 1 重叠）
 - `layoutMode: 'FREE'` schema 字段（任意层级混合 free + auto-layout）—— 留给 Phase 2+
+- 多页面 **preview iframe** 联动（编辑器 preview 仍传 `[currentPageId]` 单页切片）——`react-router-dom` 仅落地在 CLI 导出与 single-iframe-route 内部使用；preview-pane 跨页路由留作 §11 后续候选
 
 ### 1.3 Phase 1 成功标准
 
@@ -246,7 +247,8 @@ CANVAS
 
 ### 7.1 多页面路由
 
-React adapter 当前只编 `pageIds[0]`。本项启用 `react-router-v6`（Phase 0 §8 决定 #2 已批准 Phase 1 启用），编出多 `App.tsx` + `<Routes>` 入口。
+> ✅ 已纳入 §1.1，详见 §11。原描述保留作为历史参考：
+> React adapter 当前只编 `pageIds[0]`。本项启用 `react-router-v6`（Phase 0 §8 决定 #2 已批准 Phase 1 启用），编出多 `App.tsx` + `<Routes>` 入口。
 
 ### 7.2 `@vitejs/plugin-react` Fast Refresh
 
@@ -284,7 +286,9 @@ React adapter 当前只编 `pageIds[0]`。本项启用 `react-router-v6`（Phase
 2. ✅ ~~实施 §2 改动~~ Phase 1 §1 已交付（HEAD `d36be97`），§1.3 全部 6 项成功标准通过 + Tauri 实测通过。
 3. ✅ ~~更新 memory `lowcode-phase-0-next` → `lowcode-phase-1-progress`~~ 已完成。
 4. ✅ ~~与用户决定 §7 候选的下一个调度~~ 用户选 §7.2 Fast Refresh；已纳入 §1.1，详见 §10。
-5. 实施 §10 改动；完成 §10.5 成功标准后再问用户选下一项。
+5. ✅ ~~实施 §10 改动~~ Phase 1 §10 已交付（HEAD `4247e6e`），§10.5 成功标准全部通过 + Tauri 实测通过。
+6. ✅ ~~与用户决定下一项~~ 用户选 §7.1 多页面路由；已纳入 §1.1，详见 §11。
+7. 实施 §11 改动；完成 §11.5 成功标准后再问用户选下一项。
 
 ---
 
@@ -404,3 +408,145 @@ server.ws.send({ type: 'update', updates })
 | A | doc §10 写完，决定锁定 | 本节存在 |
 | B | `classifyUpdate` 抽出 + `updateFiles` 改写 + 单测 | `bun test ./tests/engine/compiler/` 全绿；`bun run check` 全绿 |
 | C | Tauri 实测 §10.5 #3-5 | 全过 |
+
+---
+
+## 11. §7.1 详细设计：多页面编译 + react-router-dom
+
+### 11.1 现状与问题
+
+`packages/compiler/src/index.ts:34` 当前只对 `input.pageIds[0]` 收集 IR；其它 page 一律忽略。CLI (`packages/cli/src/commands/compile.ts:103`) 默认拿 `pages[0]`，或按 `--page <name>` 过滤后取**一个** page。`CompilerOptions.router` 字段从 Phase 0 就是 `'react-router-v6' | 'vue-router-v4' | 'none'`，但 React adapter 完全不读它（`packages/compiler/src/adapters/react/index.ts` 没引用 `options.router`）。
+
+后果：用户在 SceneGraph 里 `addPage()` 几次得到多个 CANVAS 节点（schema 早就支持），但编译出来的项目只渲一个页面、没有路由，导航 / 跨页跳转无从谈起。Phase 0 §8 决定 #2（"react-router-v6 仅 Phase 1 启用"）就是为本期落地预留的口子。
+
+**调试场景（当前 vs 期望）：**
+
+```
+SceneGraph:
+  root
+  ├─ CANVAS "Home"     (id=p1)
+  ├─ CANVAS "About"    (id=p2)
+  └─ CANVAS "Contact"  (id=p3)
+
+CLI:    bun open-pencil compile demo.pen --out ./dist
+当前:  ./dist/src/App.tsx                  ← 只有 Home 一页，About/Contact 丢
+期望:  ./dist/src/App.tsx                  ← <BrowserRouter><Routes>…</Routes></BrowserRouter>
+       ./dist/src/pages/index.tsx          ← Home 路由 /
+       ./dist/src/pages/about.tsx          ← About 路由 /about
+       ./dist/src/pages/contact.tsx        ← Contact 路由 /contact
+```
+
+### 11.2 公开 API 改动
+
+唯一行为变化在 `compile()` 内部，签名不变：
+
+```ts
+// packages/compiler/src/index.ts
+export function compile(input: CompilerInput): CompilerOutput {
+  if (input.pageIds.length === 0) {
+    return { files: new Map(), warnings: [{ code: 'no-pages', message: 'CompilerInput.pageIds is empty' }] }
+  }
+  const { adapter, warnings: selectionWarnings } = selectAdapter(input.options)
+  if (!adapter) return { files: new Map(), warnings: selectionWarnings }
+
+  const irs: IRTree[] = input.pageIds.map((id) => collectTree(input.graph, id))
+  const { files, warnings: adapterWarnings } = adapter.emit(irs, input.options)
+  return {
+    files,
+    warnings: [...selectionWarnings, ...irs.flatMap((ir) => ir.warnings), ...adapterWarnings]
+  }
+}
+```
+
+`FrameworkAdapter.emit` 签名从 `(ir: IRTree, …)` 改为 `(irs: readonly IRTree[], …)`。React adapter 在 emit 内部判 `irs.length`：
+
+- `irs.length === 1` → 既有 `src/App.tsx` 路径，零回归（绝大部分既有测试沿用）
+- `irs.length > 1` → 走多页路径，emit `src/App.tsx`（router shell）+ `src/pages/<slug>.tsx`（每页一个），同时把 `react-router-dom` 加进 `package.json`
+
+`CompilerOptions.router` 字段 Phase 1 仍 **仅作类型占位 / 文档**，runtime 由 `irs.length` 单独决定（见 §11.3 决定 #4）。
+
+### 11.3 关键决定（已锁定）
+
+> 与 §5 / §10.3 同形式。锁定后**不在对话中重新讨论**；若用户后续想推翻视为显式 scope change 并更新本节。
+
+| # | 主题 | 决定 | 理由 |
+|---|---|---|---|
+| 1 | 单页 / 多页分支 | `pageIds.length === 1` 沿用既有 `src/App.tsx`；`length > 1` 拆 router shell + `src/pages/<slug>.tsx` | 单页路径零字节回归（既有测试不动）；多页是新形态；两条分支都很短，不引入抽象 |
+| 2 | 路由器选择 | `BrowserRouter` from `react-router-dom@^6.27.0` | Phase 0 §8 决定 #2 已批准；Vite SPA fallback 已天然兼容 `BrowserRouter`；HashRouter 留 Phase 2+ 评估部署场景再上 |
+| 3 | 路径派生 | 首页（`pageIds[0]`）固定 `/`；其它按 `pageName` slugify（小写 + `[^a-z0-9]+` → `-`，首尾去 `-`）；冲突追加 `-${index}`；空 slug fallback `page-${index}` | 用户可读、与 Plasmic/WeWeb 一致；page id 是内部细节不进 URL；冲突算法稳定可复现 |
+| 4 | `options.router` 字段 | Phase 1 不读；runtime 由 `pageIds.length` 单独决定多页 emit | 避免 `router: 'none' + 多页` 的语义歧义；该字段留作未来 Phase 区分 SPA / HashRouter / Next.js export 时再启用 |
+| 5 | preview-pane 仍单页 | 编辑器 preview-pane (`use-compile-on-change.ts`) 仍传 `[currentPageId]` 单页切片，命中 §11.3 决定 #1 的单页分支；多页只在 CLI 导出生效 | iframe + 路由 + HMR 三方联动复杂度高；本期先把"多页能编 + 多页能跑（CLI export）"做扎实，preview 跨页路由留作后续候选 |
+
+### 11.4 React adapter 改动
+
+文件清单：
+
+- `packages/compiler/src/adapters/types.ts` — `FrameworkAdapter.emit` 签名 `(ir → irs)`
+- `packages/compiler/src/adapters/react/index.ts` — 入口分发：单页走旧路径，多页走新路径；`collectClassNames` 改成接受 `irs`
+- `packages/compiler/src/adapters/react/scaffold.ts` — 抽出 `buildPageBody(ir, devMode)` 共享给单页 / 多页两条路径；新增 `buildRouterApp(slugByPageId, devMode)` emit router shell；保留 `buildAppTsx` 作为单页便捷封装
+- `packages/compiler/src/adapters/react/route-paths.ts` — **新增**，纯函数 `derivePagePaths(irs): Map<pageId, { slug, file, route, component }>`；冲突解决在这里集中
+- `packages/compiler/src/project.ts` — `buildPackageJson` 接受 `extraDeps?: Record<string, string>`；多页时 React adapter 传 `{ 'react-router-dom': '^6.27.0' }`
+- `packages/compiler/src/index.ts` — 收 IR 列表，转发给 adapter
+- `packages/compiler/src/types.ts` — `CompilerInput.pageIds` 注释从 "Phase 0 only emits the first entry" 改为 "All pages are compiled (Phase 1 §11)"
+
+不动的：
+
+- IR 层（`ir/types.ts` / `ir/collect/tree.ts`）—— `collectTree` 已经按 pageId 工作；只是被调用 N 次而已
+- preview-bridge.ts —— 不需要 navigate 消息（决定 #5）
+- `src/main.tsx` —— 仍 `<App />`，App 自己变成 router shell
+- `index.html` —— title 仍来自 packageName
+- esbuild / vfs / dev-server —— 不感知页面数量
+
+### 11.5 成功标准
+
+仅针对 §11。当所有项均通过即可宣告 Phase 1 §11 完成：
+
+1. `bun test ./tests/engine/compiler/` 全绿；新增 `multi-page.test.ts` + `route-paths.test.ts` 覆盖至少：slug 派生 / 冲突解决 / 单页路径零回归 / 多页文件清单 / package.json 含 `react-router-dom` 当且仅当多页 / router shell 含 `BrowserRouter` + `Routes` + 正确路由数。
+2. `bun run check` 全绿（oxlint、tsgo、vue-tsc、i18n、steiger、jscpd 0 clones）。
+3. CLI 实测（**用户主导**）：`bun open-pencil compile <multi-page.pen> --out /tmp/multi-page-out`，输出含 `src/App.tsx`（含 `BrowserRouter`）+ `src/pages/index.tsx` 与至少一个其它 `src/pages/<slug>.tsx`；`cd /tmp/multi-page-out && bun install && bun run dev`，浏览器手动改 URL 切路由，对应页面渲染。
+4. CLI 单页实测（**用户主导**）：在一个单页 `.pen` 上 `bun open-pencil compile`，输出与本期前完全一致（除非用户主动改了 page 内容）—— 单页字节级回归零。
+5. Tauri preview 实测（**用户主导**）：preview-pane 行为与本期前一致（仍传 `[currentPageId]` 单页切片），iframe 不应出现 router URL；切换 page 仍触发 recompile + 重渲染。
+
+### 11.6 测试策略
+
+**单元测试**：
+
+- `tests/engine/compiler/route-paths.test.ts` —— 纯函数 `derivePagePaths`
+  | 用例 | 期望 |
+  |---|---|
+  | 单页 `[{ name: 'Home' }]` | first → `{ slug: 'index', route: '/', component: 'PageIndex' }` |
+  | 多页 `['Home', 'About']` | `['/','/about']` |
+  | 名字含空格 / 大写 / 标点 `'My Page!'` | `'my-page'` |
+  | 同名冲突 `['Home','Home']` | second slug 追加 `-1` |
+  | 空名字 / 纯标点 `''` | fallback `page-${index}` |
+
+- `tests/engine/compiler/multi-page.test.ts` —— 端到端
+  | 用例 | 期望 |
+  |---|---|
+  | 单页 compile | 文件清单与本期前完全一致；`package.json.dependencies` 不含 `react-router-dom` |
+  | 三页 compile | `src/App.tsx` 含 `BrowserRouter` + 三个 `<Route>`；三个 `src/pages/*.tsx` 文件；`package.json.dependencies['react-router-dom']` 存在 |
+  | 多页 compile + devMode | `src/__preview-bridge.ts` 还在；router shell 顶部 `import './__preview-bridge'`；页面模块 **不** import bridge（决定 #4：每模块自防御已由 bridge 内部 `__openPencilPreviewBridge` guard） |
+  | 空 pageIds | `no-pages` warning + 0 文件（保持原行为） |
+
+**集成测试（手动 / 用户主导）**：§11.5 #3–#5。
+
+### 11.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| `react-router-dom@6.x` 在 React 19 下 `<StrictMode>` 双调用导致路由副作用重复 | 低 | 6.27 已支持 React 19；`main.tsx` 保持现状；如真出问题在 §11.5 #3 实测即暴露 |
+| Vite SPA fallback 在 dev-server VFS 里是否还能把 `/about` 重写到 `index.html` | 中——影响 CLI export 与 preview 多页 | preview 决定 #5 不走多页所以不受影响；CLI export 跑用户本机 Vite，是真 SPA fallback；VFS 中间件（`dev-server.ts:171-188`）只拦 `/` 与 `/index.html`，其它路径 fall through 到 Vite 默认 SPA fallback —— 不需要改 |
+| slugify 算法跟用户中文 page 名冲突（全转空 → 全 fallback） | 低——但生成的 URL 全是 `page-0` `page-1` 不可读 | 决定 #3 明确 fallback；后续 candidate 加 transliteration 时再扩；本期不上 |
+| `react-router-dom` 加进 `dependencies` 后用户 `bun install` 失败（registry hiccup） | 低 | 锁版本 `^6.27.0` 与现行 React `^19.2.0` 兼容；若用户自定义 reactVersion='18'，6.x 也支持 18 |
+| 重复 page name 导致路由冲突 | 中 | 决定 #3 #-${index} 后缀；新增 `multi-page-duplicate-slug` warning 提示用户 rename |
+| 编译输出文件数 1 → N，VFS / dev-server 是否吃得消 | 低 | VFS 走 Map，O(N) lookups；几十页以内无感知；preview 决定 #5 也用不上 |
+
+### 11.8 工作分解（建议 1 名工程师，2–3 天）
+
+| 天 / Step | 任务 | 验收 / commit message |
+|---|---|---|
+| A（已完成） | doc §11 写完，决定锁定，§1.1 / §1.2 / §7.1 / §9 同步 | 本节存在；用户在对话里 ACK 锁定决定 |
+| B（step 1） | `compile()` 收 N 个 IR；`FrameworkAdapter.emit` 改 `(irs, options)`；React adapter 入口分发；单页走旧 `buildAppTsx` 路径；既有测试零修改通过；新增 `multi-page.test.ts` 占位（单页用例） | `bun test ./tests/engine/compiler/` 全绿；`bun run check` 全绿；commit `feat(lowcode): step 1 — multi-page IR pipeline` |
+| C（step 2） | `route-paths.ts` 新增 + 单测；`scaffold.ts` 抽 `buildPageBody`；新增 `buildRouterApp` + `buildPageModule`；`project.ts` 接 `extraDeps`；React adapter 多页分支；`multi-page.test.ts` 多页用例补齐 | `bun test ./tests/engine/compiler/` 全绿；`bun run check` 全绿；commit `feat(lowcode): step 2 — react-router-dom emit` |
+| D（step 3） | CLI `compile.ts` 默认导出全部 pages；`--page <name>` 仍作单页过滤；CLI 集成测试补 multi-page snapshot | `bun test ./tests/engine/compiler/` 全绿（CLI 测试在 `tests/engine/cli` 内）；`bun run check` 全绿；commit `feat(lowcode): step 3 — CLI exports all pages` |
+| E（step 4） | Tauri / CLI 实测 §11.5 #3–#5（用户主导）；修发现的 bug；写 changelog | 用户在对话里 ACK 三条实测全过 |
