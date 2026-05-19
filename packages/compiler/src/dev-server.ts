@@ -114,6 +114,12 @@ function lookupFile(files: PreviewFiles, stem: string): string | null {
   return null
 }
 
+/** Drop any `?…` suffix Vite appends for HMR cache-busting or asset hints. */
+function stripQuery(s: string): string {
+  const i = s.indexOf('?')
+  return i === -1 ? s : s.slice(0, i)
+}
+
 function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin {
   return {
     name: 'openpencil-lowcode-vfs',
@@ -126,9 +132,11 @@ function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin 
       // route the iframe fetches). These come in two flavours:
       //   - source has no importer → first-load from index.html
       //   - source has importer == VFS html → same, after Vite re-resolves
-      // In both cases we want to map `/<rel>` into the VFS.
+      // Vite's CSS HMR appends `?t=<ts>` to bust the browser cache when it
+      // sends a `css-update` event; strip that (and any other query) so the
+      // VFS lookup still resolves.
       if (source.startsWith('/') && !source.startsWith('//')) {
-        const rel = source.slice(1)
+        const rel = stripQuery(source.slice(1))
         const found = lookupFile(state.files, rel)
         if (found) return vfsPrefix + found
         // Fall through — could be `/@vite/client`, `/@react-refresh`, etc.
@@ -137,8 +145,8 @@ function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin 
 
       // Relative imports from inside a VFS module: `./App`, `./index.css`.
       if (importer?.startsWith(vfsPrefix) && source.startsWith('.')) {
-        const importerRel = importer.slice(vfsPrefix.length)
-        const rel = resolveRelative(source, importerRel)
+        const importerRel = stripQuery(importer.slice(vfsPrefix.length))
+        const rel = stripQuery(resolveRelative(source, importerRel))
         const found = lookupFile(state.files, rel)
         return found ? vfsPrefix + found : null
       }
@@ -150,7 +158,9 @@ function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin 
 
     load(id) {
       if (!id.startsWith(vfsPrefix)) return null
-      const rel = id.slice(vfsPrefix.length)
+      // Strip any HMR / asset-hint query so the VFS lookup matches the keys
+      // emitted by the compiler (`src/App.tsx`, not `src/App.tsx?t=12345`).
+      const rel = stripQuery(id.slice(vfsPrefix.length))
       const content = state.files.get(rel)
       if (content === undefined) return null
       if (typeof content === 'string') return content
