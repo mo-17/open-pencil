@@ -3,6 +3,16 @@ import type { IRTree } from '#compiler/ir/types'
 import { emitElement } from './emit/element'
 import { emitStateDecl } from './emit/state'
 
+/**
+ * Classes the page wrapper carries on every compiled page. They never appear
+ * in the IR (the wrapper isn't an IRNode), so the React adapter must seed
+ * them into the Tailwind `@source inline(...)` safelist by hand — otherwise
+ * Tailwind v4 won't emit the corresponding utilities in our VFS-served
+ * iframe and the absolute-positioned children lose their reference frame.
+ */
+export const PAGE_WRAPPER_CLASSES = ['relative', 'min-h-screen'] as const
+const WRAPPER_CLASS_ATTR = PAGE_WRAPPER_CLASSES.join(' ')
+
 interface BuildAppOptions {
   /** Emit the canvas↔preview bridge import + `data-node-id` attributes. */
   devMode: boolean
@@ -20,7 +30,7 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
 
-  const wrapperOpen = '<div className="relative min-h-screen">'
+  const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}">`
 
   if (ir.children.length === 0) {
     if (ir.states.length === 0) {

@@ -12,7 +12,7 @@ import type { CompilerOptions } from '#compiler/types'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
 import { buildPreviewBridge } from './preview-bridge'
-import { buildAppTsx } from './scaffold'
+import { buildAppTsx, PAGE_WRAPPER_CLASSES } from './scaffold'
 
 export const reactAdapter: FrameworkAdapter = {
   emit(ir: IRTree, options: CompilerOptions): AdapterEmission {
@@ -33,7 +33,11 @@ export const reactAdapter: FrameworkAdapter = {
 }
 
 function collectClassNames(ir: IRTree): string[] {
-  const acc = new Set<string>()
+  // Seed with the wrapper classes scaffold.ts emits on the page <div>.
+  // They never appear in the IR (the wrapper isn't an IRNode), so without
+  // this seed Tailwind v4 wouldn't generate them and absolute children lose
+  // their reference frame in the VFS-served iframe.
+  const acc = new Set<string>(PAGE_WRAPPER_CLASSES)
   for (const child of ir.children) walk(child, acc)
   return [...acc].sort()
 }

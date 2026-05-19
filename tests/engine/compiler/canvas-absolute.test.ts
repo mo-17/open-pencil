@@ -94,6 +94,43 @@ describe('compile — canvas-direct absolute positioning (Phase 1 §1)', () => {
     expect(app).toContain('export default function App')
   })
 
+  test('index.css safelist includes the wrapper classes (Tailwind VFS needs them)', () => {
+    // Tailwind v4 vite plugin scans the FS module graph for utilities; our
+    // preview iframe serves the project from an in-memory VFS, so `@source
+    // inline(...)` is the *only* signal. The page wrapper's `relative` /
+    // `min-h-screen` classes aren't in the IR, so the adapter must seed
+    // them by hand. Regression guard for Phase 1 §1 safelist gap.
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('BUTTON', pageId, { x: 10, y: 10, width: 40, height: 20 })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'css-demo' })
+    })
+
+    const css = out.files.get('src/index.css') as string
+    expect(css).toContain('@import "tailwindcss"')
+    expect(css).toMatch(/@source inline\("[^"]*\brelative\b/)
+    expect(css).toMatch(/@source inline\("[^"]*\bmin-h-screen\b/)
+  })
+
+  test('index.css safelist includes wrapper classes even when the page is empty', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'empty-css-demo' })
+    })
+
+    const css = out.files.get('src/index.css') as string
+    expect(css).toMatch(/@source inline\("[^"]*\brelative\b/)
+    expect(css).toMatch(/@source inline\("[^"]*\bmin-h-screen\b/)
+  })
+
   test('a deeply nested rectangle keeps its flow layout regardless of CANVAS-direct ancestor', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
