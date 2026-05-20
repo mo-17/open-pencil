@@ -121,12 +121,7 @@ function applyAppearanceStyle(style: Record<string, string>, node: SceneNode): v
     style.borderStyle = 'solid'
   }
 
-  if (node.type === 'ELLIPSE') {
-    // ELLIPSE is intrinsically round in Figma; cornerRadius doesn't apply.
-    // '50%' (not '9999px') so width≠height nodes become true ellipses, not
-    // pill shapes.
-    style.borderRadius = '50%'
-  } else if (node.cornerRadius > 0) {
+  if (node.cornerRadius > 0) {
     if (node.independentCorners) {
       style.borderRadius = `${px(node.topLeftRadius)} ${px(node.topRightRadius)} ${px(node.bottomRightRadius)} ${px(node.bottomLeftRadius)}`
     } else {
@@ -153,6 +148,88 @@ function applyAppearanceStyle(style: Record<string, string>, node: SceneNode): v
   }
 }
 
+/**
+ * Round to 3 decimals; trailing zeros stripped. Keeps clip-path values
+ * stable and short in the emitted Tailwind class.
+ */
+function roundPct(n: number): string {
+  return Number(n.toFixed(3)).toString()
+}
+
+function regularPolygonClipPath(pointCount: number): string {
+  const n = pointCount >= 3 ? pointCount : 3
+  const points: string[] = []
+  for (let i = 0; i < n; i++) {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n
+    points.push(`${roundPct(50 + 50 * Math.cos(angle))}% ${roundPct(50 + 50 * Math.sin(angle))}%`)
+  }
+  return `polygon(${points.join(', ')})`
+}
+
+function starClipPath(pointCount: number, innerRatio: number): string {
+  const n = pointCount >= 3 ? pointCount : 5
+  const inner = innerRatio > 0 && innerRatio < 1 ? innerRatio : 0.38
+  const points: string[] = []
+  for (let i = 0; i < 2 * n; i++) {
+    const r = i % 2 === 0 ? 50 : 50 * inner
+    const angle = -Math.PI / 2 + (i * Math.PI) / n
+    points.push(`${roundPct(50 + r * Math.cos(angle))}% ${roundPct(50 + r * Math.sin(angle))}%`)
+  }
+  return `polygon(${points.join(', ')})`
+}
+
+/**
+ * Vector shapes (ELLIPSE / LINE / POLYGON / STAR) need overrides on top
+ * of the generic <div> styling because Figma represents them geometrically,
+ * not via CSS box properties. Runs after `applyAppearanceStyle` so it can
+ * supersede the border / radius emit when needed.
+ *
+ *   ELLIPSE  → border-radius: 50%
+ *   LINE     → stroke becomes background; height becomes stroke weight
+ *   POLYGON  → clip-path: regular polygon with `pointCount` vertices
+ *   STAR     → clip-path: star with `pointCount` outer points
+ *
+ * Stroke→border emit is suppressed for clip-pathed shapes because a CSS
+ * border on the bounding box would be clipped to the polygon shape and
+ * read as a thick fill, not an outline. A true outline would require SVG.
+ */
+function applyShapeStyle(style: Record<string, string>, node: SceneNode): void {
+  if (node.type === 'ELLIPSE') {
+    // ELLIPSE is intrinsically round in Figma; cornerRadius doesn't apply.
+    // '50%' (not '9999px') so width≠height nodes become true ellipses, not
+    // pill shapes.
+    style.borderRadius = '50%'
+    return
+  }
+
+  if (node.type === 'LINE') {
+    const stroke = solidStroke(node.strokes)
+    if (!stroke) return
+    style.backgroundColor = stroke.color
+    style.height = px(stroke.weight)
+    delete style.borderWidth
+    delete style.borderColor
+    delete style.borderStyle
+    return
+  }
+
+  if (node.type === 'POLYGON') {
+    style.clipPath = regularPolygonClipPath(node.pointCount)
+    delete style.borderWidth
+    delete style.borderColor
+    delete style.borderStyle
+    return
+  }
+
+  if (node.type === 'STAR') {
+    style.clipPath = starClipPath(node.pointCount, node.starInnerRadius)
+    delete style.borderWidth
+    delete style.borderColor
+    delete style.borderStyle
+    return
+  }
+}
+
 function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
   if (node.type !== 'TEXT') return
   style.fontSize = px(node.fontSize)
@@ -169,6 +246,7 @@ function nodeToStyle(node: SceneNode, graph: SceneGraph): Record<string, string>
   const style: Record<string, string> = {}
   applyLayoutStyle(style, node, graph)
   applyAppearanceStyle(style, node)
+  applyShapeStyle(style, node)
   applyTextStyle(style, node)
   return style
 }
