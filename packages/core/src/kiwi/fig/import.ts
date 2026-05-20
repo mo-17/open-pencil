@@ -9,9 +9,10 @@ import {
   setVariableColorResolver,
   VARIABLE_BINDING_FIELDS_INVERSE
 } from '#core/kiwi/node-change/convert'
+import { extractLowcodeAndPluginData } from '#core/kiwi/node-change/lowcode-plugin-data'
 import { applyStyleRefsToFields } from '#core/kiwi/node-change/style-refs'
 import { SceneGraph } from '#core/scene-graph'
-import type { VariableType, VariableValue } from '#core/scene-graph'
+import type { SceneNode, VariableType, VariableValue } from '#core/scene-graph'
 
 type AssetRef = { key: string; version?: string }
 type AliasRef = { guid?: GUID; assetRef?: AssetRef }
@@ -260,6 +261,22 @@ function importVariableEntries(
   }
 }
 
+/**
+ * Phase 1 §12: hydrate page-scoped lowcode fields from the CANVAS pluginData.
+ * The fast-path `addPage(name)` in `importPages` doesn't go through
+ * `nodeChangeToProps`, so without this helper we silently drop `state` and
+ * friends on every page round-trip.
+ */
+function applyLowcodeFieldsToPage(page: SceneNode, canvasNc: NodeChange): void {
+  const { pluginData, state, bindings, events, interactiveProps } =
+    extractLowcodeAndPluginData(canvasNc)
+  if (pluginData.length > 0) page.pluginData = pluginData
+  if (state !== undefined) page.state = state
+  if (bindings !== undefined) page.bindings = bindings
+  if (events !== undefined) page.events = events
+  if (interactiveProps !== undefined) page.interactiveProps = interactiveProps
+}
+
 function importPages(
   graph: SceneGraph,
   changeMap: Map<string, NodeChange>,
@@ -285,6 +302,7 @@ function importPages(
         const page = graph.addPage(canvasNc.name ?? 'Page')
         canvasIdToPageId.set(canvasId, page.id)
         if (canvasNc.internalOnly) page.internalOnly = true
+        applyLowcodeFieldsToPage(page, canvasNc)
         created.add(canvasId)
         for (const childId of childrenMap.get(canvasId) ?? []) {
           createSceneNode(childId, page.id)

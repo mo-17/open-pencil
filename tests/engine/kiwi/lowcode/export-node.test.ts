@@ -40,7 +40,7 @@ describe('export-node lowcode pluginData hook (Phase 1 §12 step 1)', () => {
     expect(JSON.parse(lowcodeEntry?.value ?? '')).toEqual(state)
   })
 
-  test('BUTTON with interactiveProps + onClick events emits two lowcode entries', () => {
+  test('BUTTON with interactiveProps + onClick events emits NodeType + 2 lowcode entries', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(page.id, {
@@ -61,6 +61,8 @@ describe('export-node lowcode pluginData hook (Phase 1 §12 step 1)', () => {
       .map((entry) => entry.key)
     expect(keys).toContain(LOWCODE_INTERACTIVE_PROPS_KEY)
     expect(keys).toContain(LOWCODE_EVENTS_KEY)
+    // NodeType override entry — without it the reimported node demotes to RECTANGLE.
+    expect(keys).toContain('lowcode/nodeType')
     expect(keys).not.toContain(LOWCODE_STATE_KEY)
     expect(keys).not.toContain(LOWCODE_BINDINGS_KEY)
   })

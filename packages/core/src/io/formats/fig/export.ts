@@ -7,6 +7,8 @@ import { renderThumbnail } from '#core/io/formats/raster'
 import { initCodec, getCompiledSchema, getSchemaBytes } from '#core/kiwi/binary/codec'
 import type { NodeChange } from '#core/kiwi/binary/codec'
 import { stringToGuid } from '#core/kiwi/node-change/convert'
+import { serializeLowcodeFields } from '#core/kiwi/node-change/lowcode-plugin-data'
+import { mergePluginData } from '#core/kiwi/node-change/plugin-data'
 import {
   sceneNodeToKiwi,
   fractionalPosition,
@@ -207,6 +209,14 @@ export async function exportFigFile(
       backgroundEnabled: true
     })
     if (page.internalOnly) canvasNc.internalOnly = true
+    // Phase 1 §12: pages bypass `sceneNodeToKiwi`, so the lowcode pluginData
+    // hook there never runs for CANVAS nodes. Attach the entries here so
+    // page-scoped state (the common case — page state declarations) actually
+    // makes it into the .fig.
+    const lowcodeEntries = serializeLowcodeFields(page)
+    if (lowcodeEntries.length > 0) {
+      canvasNc.pluginData = mergePluginData([...page.pluginData, ...lowcodeEntries])
+    }
     nodeChanges.push(canvasNc)
 
     const children = graph.getChildren(page.id)

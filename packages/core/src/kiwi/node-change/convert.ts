@@ -11,9 +11,9 @@ import { convertFigmaDerivedTextGlyphs } from './derived-text-glyphs'
 import { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
 export { convertEffects, convertFills, convertStrokes, setVariableColorResolver } from './paint'
 export { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
+import { extractLowcodeAndPluginData } from './lowcode-plugin-data'
 import {
   extractBoundVariables,
-  extractPluginData,
   extractPluginRelaunchData,
   getOpenPencilPluginValue,
   LAYOUT_DIRECTION_PLUGIN_KEY,
@@ -443,7 +443,12 @@ export function nodeChangeToProps(
   nc: NodeChange,
   blobs: Uint8Array[]
 ): Partial<SceneNode> & { nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' } {
-  let nodeType = mapNodeType(nc.type)
+  // Phase 1 §12: extract lowcode entries up-front so we can let the
+  // `lowcode/nodeType` side-channel override `mapNodeType`'s RECTANGLE
+  // fallback for the 6 lowcode NodeTypes (kiwi has no schema for them).
+  const { nodeTypeOverride, ...lowcodeRest } = extractLowcodeAndPluginData(nc)
+  let nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' =
+    nodeTypeOverride ?? mapNodeType(nc.type)
   if (nodeType === 'FRAME' && isComponentSet(nc)) nodeType = 'COMPONENT_SET'
 
   const vectorAndStrokeProps = convertVectorAndStrokeProps(nc, blobs)
@@ -481,7 +486,13 @@ export function nodeChangeToProps(
     expanded: true,
     autoRename: (nc.autoRename ?? true) as boolean,
     boundVariables: extractBoundVariables(nc),
-    pluginData: extractPluginData(nc),
+    // Phase 1 §12: lowcode pluginData entries (state / bindings / events /
+    // interactiveProps) are absorbed into structured fields here and
+    // stripped from the returned pluginData[] so the in-memory SceneNode
+    // keeps a single source of truth. NodeType override is applied
+    // separately above (it has to feed into `nodeType` directly). Other
+    // plugins' entries pass through unchanged.
+    ...lowcodeRest,
     pluginRelaunchData: extractPluginRelaunchData(nc),
     clipsContent: nc.frameMaskDisabled === false && nc.resizeToFit !== true,
     componentId: extractSymbolId(nc),

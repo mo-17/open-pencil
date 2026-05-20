@@ -639,11 +639,12 @@ return {
 | # | 主题 | 决定 | 理由 |
 |---|---|---|---|
 | 1 | 持久化通道 | `pluginData` 条目，**不**改 Kiwi schema | `kiwi-schema/` 是 vendored；pluginData 是 Figma 官方逃生路径，基础设施（`upsertPluginData` / `OPEN_PENCIL_PLUGIN_ID`）已就位；schema 升级留 Phase 2+ 评估 |
-| 2 | Key 命名 | `OPEN_PENCIL_PLUGIN_ID` + 字面 key `lowcode/state` / `lowcode/bindings` / `lowcode/events` / `lowcode/interactiveProps` | 命名空间清晰；新增 lowcode 字段只用加 key，不动 schema；查 .fig dump 时一眼能 grep 出来 |
+| 2 | Key 命名 | `OPEN_PENCIL_PLUGIN_ID` + 字面 key `lowcode/state` / `lowcode/bindings` / `lowcode/events` / `lowcode/interactiveProps` / `lowcode/nodeType` | 命名空间清晰；新增 lowcode 字段只用加 key，不动 schema；查 .fig dump 时一眼能 grep 出来 |
 | 3 | 编码 | `JSON.stringify` value，字符串存 pluginData | pluginData value 类型是 string；JSON 是已有 schema 的自然映射；StateDef / ActionDef / BindingExpr 都是纯数据可序列化 |
 | 4 | 空值跳过 | 字段 `undefined` 或值为空（`[]` / `{}`）不 emit 条目 | 单页/无 state 的 .fig 字节级零回归；与 §11 的"单页 / 多页不增删"分支一致 |
 | 5 | 错误恢复 | JSON.parse 失败 → 字段保持 `undefined` + `console.warn`；非 lowcode/* 的 OPEN_PENCIL_PLUGIN_ID 条目原样保留 | 一个字段坏不应让整文件加载失败；保留未知 key 给前向兼容 |
 | 6 | 范围 | **仅** `.fig` codec round-trip；`.pen` JSON codec 本期不动 | 用户主要保存路径是 `.fig`；`.pen` 内部用于 CLI 互操作且自身已是 JSON，未来同步即可；最小化本期改动 |
+| 7 | NodeType 持久化 | 6 个 lowcode NodeType（BUTTON / INPUT / CHECKBOX / FORM / LIST / SELECT）的 `node.type` 也走 `lowcode/nodeType` pluginData entry；导入时若存在则覆盖 `mapNodeType` 的 RECTANGLE 兜底 | Step 2 集成测试暴露：4 个字段持久化了但 BUTTON 等 NodeType 仍掉到 RECTANGLE（`mapToFigmaType` `default: 'RECTANGLE'`）。无 NodeType 持久化的话，编辑器 reopen 后画布渲染不出 BUTTON 占位卡片、CLI 编出来也认不出 INPUT/SELECT。同根问题不分两期 |
 
 ### 12.4 不动什么
 
