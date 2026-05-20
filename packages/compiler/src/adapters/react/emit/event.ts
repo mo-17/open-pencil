@@ -17,6 +17,18 @@ export function emitEventHandler(handlers: IREventHandler[]): string {
 }
 
 function emitHandlerStatement(h: IREventHandler): string {
-  const setter = setterName(h.stateName)
-  return `${setter}(${emitExpression(h.ast)})`
+  // Exhaustive switch over IREventHandler — the `never` assertion below
+  // makes tsgo flag any new kind added to ir/types.ts that misses a case
+  // here (the silent-drop hole Phase 0 had).
+  switch (h.kind) {
+    case 'setState':
+      return `${setterName(h.stateName)}(${emitExpression(h.ast)})`
+    case 'navigate':
+      return `navigate(${JSON.stringify(h.to)})`
+    default: {
+      const exhaustive: never = h
+      throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)
+    }
+  }
 }
+

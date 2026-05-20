@@ -81,42 +81,101 @@ function resolveActions(
 ): IREventHandler[] {
   const out: IREventHandler[] = []
   for (const action of actions) {
-    // ActionDef.kind is the literal 'setState' in Phase 0; future kinds will
-    // be added as additional cases when the union widens.
-    if (!action.targetStateId) {
-      warnings.push({
-        code: 'action-missing-target',
-        message: `node ${node.id} ${eventName} setState has no targetStateId`,
-        nodeId: node.id
-      })
-      continue
+    // Exhaustive dispatch on the discriminated union (Phase 1 §7.4). Adding
+    // a kind without a case here is a tsgo error — the silent-drop hole that
+    // Phase 0 had is closed.
+    switch (action.kind) {
+      case 'setState': {
+        const handler = resolveSetState(node, eventName, action, states, warnings)
+        if (handler) out.push(handler)
+        break
+      }
+      case 'navigate': {
+        const handler = resolveNavigate(node, eventName, action, warnings)
+        if (handler) out.push(handler)
+        break
+      }
+      case 'setVariable':
+        warnings.push({
+          code: 'action-setvariable-not-implemented',
+          message:
+            `node ${node.id} ${eventName} setVariable is reserved for future runtime; ` +
+            `the handler is dropped from the compiled output`,
+          nodeId: node.id
+        })
+        break
+      default: {
+        // `action satisfies never` would be ideal here, but the cast keeps
+        // older .fig files (saved with an unknown future kind) loadable.
+        const unknown = action as { kind: string }
+        warnings.push({
+          code: 'action-unsupported-kind',
+          message: `node ${node.id} ${eventName} has unsupported action kind "${unknown.kind}"`,
+          nodeId: node.id
+        })
+      }
     }
-    const target = states.get(action.targetStateId)
-    if (!target) {
-      warnings.push({
-        code: 'action-unknown-state',
-        message: `node ${node.id} ${eventName} setState references unknown state ${action.targetStateId}`,
-        nodeId: node.id
-      })
-      continue
-    }
-    const src = action.valueExpr ?? ''
-    const parsed = parseExpression(src)
-    if (!parsed.ok) {
-      warnings.push({
-        code: 'action-invalid-expression',
-        message: `node ${node.id} ${eventName} setState valueExpr "${src}" → ${parsed.error}`,
-        nodeId: node.id
-      })
-      continue
-    }
-    out.push({
-      kind: 'setState',
-      stateName: target.name,
-      ast: parsed.ast,
-      references: [...parsed.references]
-    })
   }
   return out
+}
+
+function resolveSetState(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'setState' }>,
+  states: Map<string, IRStateDecl>,
+  warnings: IRWarning[]
+): IREventHandler | null {
+  if (!action.targetStateId) {
+    warnings.push({
+      code: 'action-missing-target',
+      message: `node ${node.id} ${eventName} setState has no targetStateId`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const target = states.get(action.targetStateId)
+  if (!target) {
+    warnings.push({
+      code: 'action-unknown-state',
+      message: `node ${node.id} ${eventName} setState references unknown state ${action.targetStateId}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const src = action.valueExpr ?? ''
+  const parsed = parseExpression(src)
+  if (!parsed.ok) {
+    warnings.push({
+      code: 'action-invalid-expression',
+      message: `node ${node.id} ${eventName} setState valueExpr "${src}" → ${parsed.error}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  return {
+    kind: 'setState',
+    stateName: target.name,
+    ast: parsed.ast,
+    references: [...parsed.references]
+  }
+}
+
+function resolveNavigate(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'navigate' }>,
+  warnings: IRWarning[]
+): IREventHandler | null {
+  const to = action.to?.trim() ?? ''
+  if (to === '') {
+    warnings.push({
+      code: 'action-navigate-missing-to',
+      message: `node ${node.id} ${eventName} navigate has no target path`,
+      nodeId: node.id
+    })
+    return null
+  }
+  return { kind: 'navigate', to }
 }
 

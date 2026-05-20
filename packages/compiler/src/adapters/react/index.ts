@@ -11,6 +11,7 @@ import type { IRNode, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions, CompileWarning } from '#compiler/types'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
+import { stripNavigateForSinglePage } from './ir-walk'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import {
@@ -34,11 +35,15 @@ export const reactAdapter: FrameworkAdapter = {
 }
 
 function emitSinglePage(ir: IRTree, options: CompilerOptions): AdapterEmission {
+  // Phase 1 §7.4: navigate handlers require react-router-dom's `useNavigate`,
+  // which only exists in the multi-page router shell. Strip them up front and
+  // warn — the page body emit then proceeds as if they were never collected.
+  const { ir: cleaned, warnings } = stripNavigateForSinglePage(ir)
   const files = new Map<string, string | Uint8Array>()
   files.set('package.json', buildPackageJson(options))
-  files.set('src/App.tsx', buildAppTsx(ir, { devMode: options.devMode }))
-  setSharedProjectFiles(files, options, collectClassNames([ir]))
-  return { files, warnings: [] }
+  files.set('src/App.tsx', buildAppTsx(cleaned, { devMode: options.devMode }))
+  setSharedProjectFiles(files, options, collectClassNames([cleaned]))
+  return { files, warnings }
 }
 
 function emitMultiPage(

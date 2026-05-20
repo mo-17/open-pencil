@@ -2,6 +2,7 @@ import type { IRTree } from '#compiler/ir/types'
 
 import { emitElement } from './emit/element'
 import { emitStateDecl } from './emit/state'
+import { pageHasNavigateHandler } from './ir-walk'
 import type { PagePathInfo } from './route-paths'
 
 /**
@@ -86,36 +87,45 @@ ${routes}
 
 /**
  * Shared page-file template. Hoists every page-scoped state into a `useState`
- * declaration, then renders the IR tree inside the wrapper div.
+ * declaration, declares a `useNavigate` hook when any navigate action is
+ * present on the page (Phase 1 §7.4), then renders the IR tree inside the
+ * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const { devMode, importPreviewBridge, exportName } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
-  const importBlock = bridgeImport + reactImport
+  const needsNavigate = pageHasNavigateHandler(ir)
+  const routerImport = needsNavigate
+    ? `import { useNavigate } from 'react-router-dom'\n`
+    : ''
+  const importBlock = bridgeImport + reactImport + routerImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
+  const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''
+
+  const hookLines = [stateLines, navigateLine].filter((l) => l !== '').join('\n')
 
   const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}">`
 
   if (ir.children.length === 0) {
-    if (ir.states.length === 0) {
+    if (hookLines === '') {
       return `${importPrefix}export default function ${exportName}() {
   return ${wrapperOpen}</div>
 }
 `
     }
     return `${importPrefix}export default function ${exportName}() {
-${stateLines}
+${hookLines}
   return ${wrapperOpen}</div>
 }
 `
   }
 
   const body = ir.children.map((c) => emitElement(c, 3, devMode)).join('\n')
-  const statePrefix = ir.states.length > 0 ? `${stateLines}\n` : ''
+  const hookPrefix = hookLines !== '' ? `${hookLines}\n` : ''
   return `${importPrefix}export default function ${exportName}() {
-${statePrefix}  return (
+${hookPrefix}  return (
     ${wrapperOpen}
 ${body}
     </div>

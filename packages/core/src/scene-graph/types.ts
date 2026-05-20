@@ -447,13 +447,43 @@ export interface BindingExpr {
 
 export type EventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'
 
-// Phase 0 ships only setState. Future kinds (navigate, apiCall, dbWrite…)
-// extend this union without breaking the schema.
-export interface ActionDef {
+/** Update a page-scoped state variable. The compiler emits the matching
+ *  `setStateName(<expr>)` call from the `useState` pair. */
+export interface SetStateAction {
   id: string
   kind: 'setState'
   targetStateId?: string
-  // Restricted expression: identifier | number | string | `expr + 1` | `expr - 1` | `!expr`.
-  // Validated at edit-time; emitted verbatim by the compiler.
+  /** Restricted expression: identifier | number | string | `expr + 1` |
+   *  `expr - 1` | `!expr`. Validated at edit-time; emitted verbatim. */
   valueExpr?: string
 }
+
+/** Navigate to another route. Implemented for multi-page compiles via
+ *  `react-router-dom`'s `useNavigate`; single-page compiles drop the
+ *  handler with a `action-navigate-no-router` warning. */
+export interface NavigateAction {
+  id: string
+  kind: 'navigate'
+  /** Target path, e.g. `/about`. Phase 1 §7.4 keeps this a literal string
+   *  — expressions are a future candidate. */
+  to?: string
+}
+
+/** Reserved stub for runtime variable writes. The compiler currently emits
+ *  an `action-setvariable-not-implemented` warning and drops the handler —
+ *  the discriminated-union slot is in place so future work can wire it to
+ *  a real runtime store (localStorage / context / scene-graph variables). */
+export interface SetVariableAction {
+  id: string
+  kind: 'setVariable'
+  /** Variable name (target store key). */
+  targetName?: string
+  /** Same restricted expression sub-language as `SetStateAction.valueExpr`. */
+  valueExpr?: string
+}
+
+/** Phase 1 §7.4: discriminated union so the compiler can exhaustively
+ *  dispatch on `kind` and the editor UI can render per-kind inputs. */
+export type ActionDef = SetStateAction | NavigateAction | SetVariableAction
+
+export type ActionKind = ActionDef['kind']

@@ -44,9 +44,12 @@ export type IRAttrValue = string | number | boolean
 
 export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'
 
-/** A single statement that runs when an event fires. Phase 0 only ships
- *  `setState`; future kinds extend this union. */
-export type IREventHandler = {
+/** A statement that runs when an event fires. Phase 1 §7.4 widens this
+ *  into a discriminated union so the adapter can dispatch on `kind`
+ *  exhaustively (and refuse to compile an unknown future kind silently). */
+export type IREventHandler = IRSetStateHandler | IRNavigateHandler
+
+export interface IRSetStateHandler {
   kind: 'setState'
   /** Variable name of the state being updated (already resolved from stateId). */
   stateName: string
@@ -54,6 +57,15 @@ export type IREventHandler = {
   ast: ExprAst
   /** Identifiers referenced by the expression. */
   references: string[]
+}
+
+/** Navigate to a literal route at click time. The collector only emits
+ *  this when a router is in scope (multi-page compile); single-page
+ *  compiles drop the action with a warning at collect time. */
+export interface IRNavigateHandler {
+  kind: 'navigate'
+  /** Route path, e.g. `/about`. Already validated to be non-empty. */
+  to: string
 }
 
 /** A page-level state declaration. Adapter emits `useState(defaultValue)`. */

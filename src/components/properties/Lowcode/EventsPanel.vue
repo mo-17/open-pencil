@@ -2,7 +2,12 @@
 import { computed } from 'vue'
 
 import { validateExpression } from '@open-pencil/compiler'
-import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
+import type {
+  ActionDef,
+  ActionKind,
+  EventName,
+  SceneNode
+} from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -40,6 +45,8 @@ const actions = useSceneComputed<ActionDef[]>(() => {
   return node.events?.[name] ?? []
 })
 
+const ACTION_KINDS: ActionKind[] = ['setState', 'navigate', 'setVariable']
+
 function commitActions(node: SceneNode, name: EventName, next: ActionDef[]): void {
   const eventsCopy = { ...node.events }
   if (next.length === 0) {
@@ -50,18 +57,29 @@ function commitActions(node: SceneNode, name: EventName, next: ActionDef[]): voi
   editor.updateNodeWithUndo(node.id, { events: eventsCopy }, 'Update events')
 }
 
+// Phase 1 §7.4: factory per kind. Switching kinds discards the previous
+// kind's fields so the discriminated union invariant holds.
+function makeAction(kind: ActionKind, id: string): ActionDef {
+  if (kind === 'setState') {
+    const target = pageStates.value[0]
+    return {
+      id,
+      kind: 'setState',
+      targetStateId: target?.id,
+      valueExpr: target ? `${target.name} + 1` : ''
+    }
+  }
+  if (kind === 'navigate') {
+    return { id, kind: 'navigate', to: '/' }
+  }
+  return { id, kind: 'setVariable', targetName: '', valueExpr: '' }
+}
+
 function addAction(): void {
   const node = selectedNode.value
   const name = eventName.value
   if (!node || !name) return
-  const target = pageStates.value[0]
-  const def: ActionDef = {
-    id: crypto.randomUUID(),
-    kind: 'setState',
-    targetStateId: target?.id,
-    valueExpr: target ? `${target.name} + 1` : ''
-  }
-  commitActions(node, name, [...actions.value, def])
+  commitActions(node, name, [...actions.value, makeAction('setState', crypto.randomUUID())])
 }
 
 function removeAction(id: string): void {
@@ -75,34 +93,40 @@ function removeAction(id: string): void {
   )
 }
 
-function setTarget(id: string, targetStateId: string): void {
+function updateAction(id: string, patch: Partial<ActionDef>): void {
   const node = selectedNode.value
   const name = eventName.value
   if (!node || !name) return
   commitActions(
     node,
     name,
-    actions.value.map((a) => (a.id === id ? { ...a, targetStateId } : a))
+    actions.value.map((a) => {
+      if (a.id !== id) return a
+      return { ...a, ...patch } as ActionDef
+    })
   )
 }
 
-function setExpr(id: string, valueExpr: string): void {
+function changeKind(id: string, kind: ActionKind): void {
   const node = selectedNode.value
   const name = eventName.value
   if (!node || !name) return
   commitActions(
     node,
     name,
-    actions.value.map((a) => (a.id === id ? { ...a, valueExpr } : a))
+    actions.value.map((a) => (a.id === id ? makeAction(kind, a.id) : a))
   )
 }
 
-// Phase 1 §7.3 — mirror what the IR collect pass rejects
-// (`collect/bindings.ts` → `resolveActions`). Two failure modes can ride on
-// the same action row, so each entry holds both slots independently.
+// Phase 1 §7.3 + §7.4 — mirror what the IR collect pass rejects
+// (`collect/bindings.ts` → `resolveActions`). Each kind has its own slots;
+// every slot is independent so we can show two reds on the same row.
 interface ActionErrors {
   target?: string
   expr?: string
+  to?: string
+  variableName?: string
+  kind?: string
 }
 
 const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
@@ -111,14 +135,18 @@ const actionErrors = computed(() => {
   const errors = new Map<string, ActionErrors>()
   for (const action of actions.value) {
     const e: ActionErrors = {}
-    if (!action.targetStateId) {
-      e.target = 'target required'
-    } else if (!validStateIds.value.has(action.targetStateId)) {
-      e.target = 'state no longer exists'
+    if (action.kind === 'setState') {
+      if (!action.targetStateId) e.target = 'target required'
+      else if (!validStateIds.value.has(action.targetStateId))
+        e.target = 'state no longer exists'
+      const exprResult = validateExpression(action.valueExpr ?? '')
+      if (!exprResult.ok) e.expr = exprResult.reason
+    } else if (action.kind === 'navigate') {
+      if (!action.to || action.to.trim() === '') e.to = 'path required'
+    } else if (action.kind === 'setVariable') {
+      e.kind = 'not yet emitted — compiles to a warning'
     }
-    const exprResult = validateExpression(action.valueExpr ?? '')
-    if (!exprResult.ok) e.expr = exprResult.reason
-    if (e.target !== undefined || e.expr !== undefined) errors.set(action.id, e)
+    if (Object.keys(e).length > 0) errors.set(action.id, e)
   }
   return errors
 })
@@ -143,7 +171,7 @@ const actionErrors = computed(() => {
     </div>
 
     <p
-      v-if="pageStates.length === 0"
+      v-if="pageStates.length === 0 && actions.length === 0"
       class="text-[11px] text-muted"
     >
       {{ panels.lowcodeActionNoStates }}
@@ -157,41 +185,92 @@ const actionErrors = computed(() => {
         class="flex flex-col gap-0.5"
       >
         <div class="flex items-center gap-1">
-        <span class="text-[11px] text-muted">{{ panels.lowcodeActionSet }}</span>
-        <select
-          :value="action.targetStateId ?? ''"
-          :aria-label="panels.lowcodeActionSet"
-          :aria-invalid="actionErrors.get(action.id)?.target ? 'true' : undefined"
-          data-test-id="lowcode-action-target"
-          :class="[
-            'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
-            actionErrors.get(action.id)?.target ? 'border-red-500' : 'border-border'
-          ]"
-          @change="setTarget(action.id, ($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="s in pageStates" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-        <span class="text-[11px] text-muted">=</span>
-        <input
-          :value="action.valueExpr ?? ''"
-          :aria-label="panels.lowcodeActionValue"
-          :aria-invalid="actionErrors.get(action.id)?.expr ? 'true' : undefined"
-          data-test-id="lowcode-action-expr"
-          spellcheck="false"
-          :class="[
-            'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            actionErrors.get(action.id)?.expr ? 'border-red-500' : 'border-border'
-          ]"
-          @change="setExpr(action.id, ($event.target as HTMLInputElement).value)"
-        />
-        <button
-          type="button"
-          data-test-id="lowcode-action-remove"
-          class="rounded p-1 text-muted hover:bg-hover hover:text-surface"
-          @click="removeAction(action.id)"
-        >
-          <icon-lucide-x class="size-3" />
-        </button>
+          <select
+            :value="action.kind"
+            aria-label="Action kind"
+            data-test-id="lowcode-action-kind"
+            class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+            @change="changeKind(action.id, ($event.target as HTMLSelectElement).value as ActionKind)"
+          >
+            <option v-for="k in ACTION_KINDS" :key="k" :value="k">{{ k }}</option>
+          </select>
+
+          <template v-if="action.kind === 'setState'">
+            <select
+              :value="action.targetStateId ?? ''"
+              :aria-label="panels.lowcodeActionSet"
+              :aria-invalid="actionErrors.get(action.id)?.target ? 'true' : undefined"
+              data-test-id="lowcode-action-target"
+              :class="[
+                'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.target ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { targetStateId: ($event.target as HTMLSelectElement).value })"
+            >
+              <option v-if="pageStates.length === 0" value="" disabled>no state</option>
+              <option v-for="s in pageStates" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+            <span class="text-[11px] text-muted">=</span>
+            <input
+              :value="action.valueExpr ?? ''"
+              :aria-label="panels.lowcodeActionValue"
+              :aria-invalid="actionErrors.get(action.id)?.expr ? 'true' : undefined"
+              data-test-id="lowcode-action-expr"
+              spellcheck="false"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.expr ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { valueExpr: ($event.target as HTMLInputElement).value })"
+            />
+          </template>
+
+          <template v-else-if="action.kind === 'navigate'">
+            <span class="text-[11px] text-muted">to</span>
+            <input
+              :value="action.to ?? ''"
+              aria-label="Route path"
+              :aria-invalid="actionErrors.get(action.id)?.to ? 'true' : undefined"
+              data-test-id="lowcode-action-to"
+              spellcheck="false"
+              placeholder="/about"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.to ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { to: ($event.target as HTMLInputElement).value })"
+            />
+          </template>
+
+          <template v-else>
+            <input
+              :value="action.targetName ?? ''"
+              aria-label="Variable name"
+              data-test-id="lowcode-action-variable-name"
+              spellcheck="false"
+              placeholder="name"
+              class="min-w-0 w-20 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
+              @change="updateAction(action.id, { targetName: ($event.target as HTMLInputElement).value })"
+            />
+            <span class="text-[11px] text-muted">=</span>
+            <input
+              :value="action.valueExpr ?? ''"
+              aria-label="Variable value expression"
+              data-test-id="lowcode-action-variable-expr"
+              spellcheck="false"
+              class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
+              @change="updateAction(action.id, { valueExpr: ($event.target as HTMLInputElement).value })"
+            />
+          </template>
+
+          <button
+            type="button"
+            data-test-id="lowcode-action-remove"
+            class="rounded p-1 text-muted hover:bg-hover hover:text-surface"
+            @click="removeAction(action.id)"
+          >
+            <icon-lucide-x class="size-3" />
+          </button>
         </div>
         <p
           v-if="actionErrors.get(action.id)?.target"
@@ -206,6 +285,20 @@ const actionErrors = computed(() => {
           class="pl-1 text-[10px] text-red-500"
         >
           expression: {{ actionErrors.get(action.id)?.expr }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.to"
+          data-test-id="lowcode-action-to-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          to: {{ actionErrors.get(action.id)?.to }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.kind"
+          data-test-id="lowcode-action-kind-warning"
+          class="pl-1 text-[10px] text-amber-500"
+        >
+          {{ actionErrors.get(action.id)?.kind }}
         </p>
       </li>
     </ul>
