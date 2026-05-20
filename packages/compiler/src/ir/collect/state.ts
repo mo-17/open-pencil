@@ -1,12 +1,14 @@
 import type { SceneNode, StateDef } from '@open-pencil/core/scene-graph'
 
 import type { IRStateDecl } from '../types'
-
-const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
+import { validateStateName } from '../validate'
 
 /** Hoist page-scoped state declarations into IR. Drops entries with invalid
  *  identifier names so the emitted code stays compilable; the dropped entries
- *  are reported via `invalid` so the adapter can attach warnings. */
+ *  are reported via `invalid` so the adapter can attach warnings.
+ *
+ *  Validation rules live in `../validate.ts` so the editor UI (StatePanel)
+ *  surfaces the same reasons inline — Phase 1 §7.3. Don't fork the regex. */
 export function collectPageStates(page: SceneNode | undefined): {
   states: IRStateDecl[]
   invalid: { id: string; name: string; reason: string }[]
@@ -17,8 +19,9 @@ export function collectPageStates(page: SceneNode | undefined): {
 
   const seen = new Set<string>()
   for (const def of page.state) {
-    if (!IDENT_RE.test(def.name)) {
-      invalid.push({ id: def.id, name: def.name, reason: 'invalid identifier' })
+    const nameCheck = validateStateName(def.name)
+    if (!nameCheck.ok) {
+      invalid.push({ id: def.id, name: def.name, reason: nameCheck.reason ?? 'invalid' })
       continue
     }
     if (seen.has(def.name)) {
