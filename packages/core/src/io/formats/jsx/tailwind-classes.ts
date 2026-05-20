@@ -156,26 +156,33 @@ function roundPct(n: number): string {
   return Number(n.toFixed(3)).toString()
 }
 
-function regularPolygonClipPath(pointCount: number): string {
+/**
+ * Tailwind v4 silently drops `clip-path-[polygon(...)]` (the value the v3
+ * `clip-path-*` utility expects); only the arbitrary-property form
+ * `[clip-path:polygon(...)]` survives `@source inline(...)`. We bypass
+ * twirl for this CSS prop and emit the class directly. Inside the brackets
+ * Tailwind reads `_` as a space, so we never emit literal whitespace there.
+ */
+function polygonClipPathClass(pointCount: number): string {
   const n = pointCount >= 3 ? pointCount : 3
   const points: string[] = []
   for (let i = 0; i < n; i++) {
     const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n
-    points.push(`${roundPct(50 + 50 * Math.cos(angle))}% ${roundPct(50 + 50 * Math.sin(angle))}%`)
+    points.push(`${roundPct(50 + 50 * Math.cos(angle))}%_${roundPct(50 + 50 * Math.sin(angle))}%`)
   }
-  return `polygon(${points.join(', ')})`
+  return `[clip-path:polygon(${points.join(',_')})]`
 }
 
-function starClipPath(pointCount: number, innerRatio: number): string {
+function starClipPathClass(pointCount: number, innerRatio: number): string {
   const n = pointCount >= 3 ? pointCount : 5
   const inner = innerRatio > 0 && innerRatio < 1 ? innerRatio : 0.38
   const points: string[] = []
   for (let i = 0; i < 2 * n; i++) {
     const r = i % 2 === 0 ? 50 : 50 * inner
     const angle = -Math.PI / 2 + (i * Math.PI) / n
-    points.push(`${roundPct(50 + r * Math.cos(angle))}% ${roundPct(50 + r * Math.sin(angle))}%`)
+    points.push(`${roundPct(50 + r * Math.cos(angle))}%_${roundPct(50 + r * Math.sin(angle))}%`)
   }
-  return `polygon(${points.join(', ')})`
+  return `[clip-path:polygon(${points.join(',_')})]`
 }
 
 /**
@@ -213,21 +220,21 @@ function applyShapeStyle(style: Record<string, string>, node: SceneNode): void {
     return
   }
 
-  if (node.type === 'POLYGON') {
-    style.clipPath = regularPolygonClipPath(node.pointCount)
+  if (node.type === 'POLYGON' || node.type === 'STAR') {
+    // The clip-path class itself is appended later in
+    // `collectTailwindClasses` (see `collectShapeExtraClasses`) so it
+    // bypasses twirl. Here we only suppress the box-model border, which
+    // would otherwise be clipped to the polygon and read as a thick fill.
     delete style.borderWidth
     delete style.borderColor
     delete style.borderStyle
-    return
   }
+}
 
-  if (node.type === 'STAR') {
-    style.clipPath = starClipPath(node.pointCount, node.starInnerRadius)
-    delete style.borderWidth
-    delete style.borderColor
-    delete style.borderStyle
-    return
-  }
+function collectShapeExtraClasses(node: SceneNode): string[] {
+  if (node.type === 'POLYGON') return [polygonClipPathClass(node.pointCount)]
+  if (node.type === 'STAR') return [starClipPathClass(node.pointCount, node.starInnerRadius)]
+  return []
 }
 
 function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
@@ -262,6 +269,7 @@ export function collectTailwindClasses(node: SceneNode, graph: SceneGraph): stri
   if (node.layoutDirection === 'RTL') extraClasses.push('[direction:rtl]')
   if (node.type === 'TEXT' && resolveNodeTextDirection(node) === 'RTL')
     extraClasses.push('[direction:rtl]')
+  extraClasses.push(...collectShapeExtraClasses(node))
 
   const twirlClasses = twirl(style)
   const combined = twirlClasses ? twirlClasses.split(' ') : []

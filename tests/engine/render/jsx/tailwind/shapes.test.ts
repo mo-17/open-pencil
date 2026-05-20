@@ -49,7 +49,7 @@ describe('Tailwind JSX export — LINE / POLYGON / STAR', () => {
     expect(jsx).not.toContain('bg-')
   })
 
-  test('POLYGON emits clip-path-[polygon(...)] sized to the bounding box', () => {
+  test('POLYGON emits [clip-path:polygon(...)] sized to the bounding box', () => {
     const graph = makeGraph()
     const node = graph.createNode('POLYGON', pageId(graph), {
       width: 100,
@@ -57,8 +57,11 @@ describe('Tailwind JSX export — LINE / POLYGON / STAR', () => {
       pointCount: 3
     })
     const jsx = tw(graph, node.id)
-    expect(jsx).toMatch(/clip-path-\[polygon\(/)
-    // Top vertex at (50%, 0%); twirl underscores spaces.
+    // Tailwind v4 silently drops the v3-style `clip-path-[polygon(...)]` value
+    // syntax; the arbitrary-property form `[clip-path:polygon(...)]` is what
+    // actually survives `@source inline(...)` and reaches the compiled CSS.
+    expect(jsx).toMatch(/\[clip-path:polygon\(/)
+    // Top vertex at (50%, 0%); underscores stand in for spaces inside [].
     expect(jsx).toContain('50%_0%')
     // Border is suppressed — a polygon-clipped border reads as a thick fill,
     // not an outline.
@@ -80,7 +83,7 @@ describe('Tailwind JSX export — LINE / POLYGON / STAR', () => {
       starInnerRadius: 0.5
     })
     const jsx = tw(graph, node.id)
-    expect(jsx).toMatch(/clip-path-\[polygon\(/)
+    expect(jsx).toMatch(/\[clip-path:polygon\(/)
     // 5-point star → 10 vertices → 9 commas inside the polygon(...)
     const match = /polygon\(([^)]+)\)/.exec(jsx)
     expect(match).not.toBeNull()
@@ -93,6 +96,6 @@ describe('Tailwind JSX export — LINE / POLYGON / STAR', () => {
   test('POLYGON with default pointCount=5 (scene-graph default) still emits a polygon', () => {
     const graph = makeGraph()
     const node = graph.createNode('POLYGON', pageId(graph), { width: 60, height: 60 })
-    expect(tw(graph, node.id)).toMatch(/clip-path-\[polygon\(/)
+    expect(tw(graph, node.id)).toMatch(/\[clip-path:polygon\(/)
   })
 })
