@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import { validateExpression } from '@open-pencil/compiler'
 import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
@@ -95,6 +96,32 @@ function setExpr(id: string, valueExpr: string): void {
     actions.value.map((a) => (a.id === id ? { ...a, valueExpr } : a))
   )
 }
+
+// Phase 1 §7.3 — mirror what the IR collect pass rejects
+// (`collect/bindings.ts` → `resolveActions`). Two failure modes can ride on
+// the same action row, so each entry holds both slots independently.
+interface ActionErrors {
+  target?: string
+  expr?: string
+}
+
+const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
+
+const actionErrors = computed(() => {
+  const errors = new Map<string, ActionErrors>()
+  for (const action of actions.value) {
+    const e: ActionErrors = {}
+    if (!action.targetStateId) {
+      e.target = 'target required'
+    } else if (!validStateIds.value.has(action.targetStateId)) {
+      e.target = 'state no longer exists'
+    }
+    const exprResult = validateExpression(action.valueExpr ?? '')
+    if (!exprResult.ok) e.expr = exprResult.reason
+    if (e.target !== undefined || e.expr !== undefined) errors.set(action.id, e)
+  }
+  return errors
+})
 </script>
 
 <template>
@@ -127,14 +154,19 @@ function setExpr(id: string, valueExpr: string): void {
         v-for="action in actions"
         :key="action.id"
         data-test-id="lowcode-action-row"
-        class="flex items-center gap-1"
+        class="flex flex-col gap-0.5"
       >
+        <div class="flex items-center gap-1">
         <span class="text-[11px] text-muted">{{ panels.lowcodeActionSet }}</span>
         <select
           :value="action.targetStateId ?? ''"
           :aria-label="panels.lowcodeActionSet"
+          :aria-invalid="actionErrors.get(action.id)?.target ? 'true' : undefined"
           data-test-id="lowcode-action-target"
-          class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+          :class="[
+            'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+            actionErrors.get(action.id)?.target ? 'border-red-500' : 'border-border'
+          ]"
           @change="setTarget(action.id, ($event.target as HTMLSelectElement).value)"
         >
           <option v-for="s in pageStates" :key="s.id" :value="s.id">{{ s.name }}</option>
@@ -143,9 +175,13 @@ function setExpr(id: string, valueExpr: string): void {
         <input
           :value="action.valueExpr ?? ''"
           :aria-label="panels.lowcodeActionValue"
+          :aria-invalid="actionErrors.get(action.id)?.expr ? 'true' : undefined"
           data-test-id="lowcode-action-expr"
           spellcheck="false"
-          class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+            actionErrors.get(action.id)?.expr ? 'border-red-500' : 'border-border'
+          ]"
           @change="setExpr(action.id, ($event.target as HTMLInputElement).value)"
         />
         <button
@@ -156,6 +192,21 @@ function setExpr(id: string, valueExpr: string): void {
         >
           <icon-lucide-x class="size-3" />
         </button>
+        </div>
+        <p
+          v-if="actionErrors.get(action.id)?.target"
+          data-test-id="lowcode-action-target-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          target: {{ actionErrors.get(action.id)?.target }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.expr"
+          data-test-id="lowcode-action-expr-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          expression: {{ actionErrors.get(action.id)?.expr }}
+        </p>
       </li>
     </ul>
   </div>

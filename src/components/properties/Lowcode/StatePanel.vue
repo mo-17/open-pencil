@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import { validateStateName } from '@open-pencil/compiler'
 import type { StateDef, StateValueType } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
@@ -80,6 +81,28 @@ function defaultAsString(value: unknown): string {
   if (value == null) return ''
   return String(value)
 }
+
+// Phase 1 §7.3 — mirror what the IR collect pass rejects (`collect/state.ts`)
+// so invalid entries surface inline instead of silently disappearing from the
+// compiled output. Duplicate detection scans in order and flags every
+// occurrence past the first.
+const nameErrors = computed(() => {
+  const errors = new Map<string, string>()
+  const seen = new Set<string>()
+  for (const s of states.value) {
+    const result = validateStateName(s.name)
+    if (!result.ok) {
+      errors.set(s.id, result.reason ?? 'invalid')
+      continue
+    }
+    if (seen.has(s.name)) {
+      errors.set(s.id, `duplicate name "${s.name}"`)
+      continue
+    }
+    seen.add(s.name)
+  }
+  return errors
+})
 </script>
 
 <template>
@@ -105,13 +128,18 @@ function defaultAsString(value: unknown): string {
         v-for="state in states"
         :key="state.id"
         data-test-id="lowcode-state-row"
-        class="flex items-center gap-1"
+        class="flex flex-col gap-0.5"
       >
+        <div class="flex items-center gap-1">
         <input
           :value="state.name"
           :aria-label="panels.lowcodeStateName"
+          :aria-invalid="nameErrors.has(state.id) ? 'true' : undefined"
           data-test-id="lowcode-state-name"
-          class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
+            nameErrors.has(state.id) ? 'border-red-500' : 'border-border'
+          ]"
           @change="renameState(state.id, ($event.target as HTMLInputElement).value)"
         />
         <select
@@ -152,6 +180,14 @@ function defaultAsString(value: unknown): string {
         >
           <icon-lucide-x class="size-3" />
         </button>
+        </div>
+        <p
+          v-if="nameErrors.has(state.id)"
+          data-test-id="lowcode-state-name-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          {{ nameErrors.get(state.id) }}
+        </p>
       </li>
     </ul>
   </div>

@@ -3,6 +3,11 @@ import { selectAdapter } from './select-adapter'
 import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
 export type { CompileWarning, CompilerInput, CompilerOptions, CompilerOutput } from './types'
+export {
+  validateStateName,
+  validateExpression,
+  type ValidationResult
+} from './ir/validate'
 
 const DEFAULT_OPTIONS: CompilerOptions = {
   packageName: 'openpencil-output',
