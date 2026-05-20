@@ -121,7 +121,12 @@ function applyAppearanceStyle(style: Record<string, string>, node: SceneNode): v
     style.borderStyle = 'solid'
   }
 
-  if (node.cornerRadius > 0) {
+  if (node.type === 'ELLIPSE') {
+    // ELLIPSE is intrinsically round in Figma; cornerRadius doesn't apply.
+    // '50%' (not '9999px') so width≠height nodes become true ellipses, not
+    // pill shapes.
+    style.borderRadius = '50%'
+  } else if (node.cornerRadius > 0) {
     if (node.independentCorners) {
       style.borderRadius = `${px(node.topLeftRadius)} ${px(node.topRightRadius)} ${px(node.bottomRightRadius)} ${px(node.bottomLeftRadius)}`
     } else {
