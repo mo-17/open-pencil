@@ -3,6 +3,7 @@ import type { SceneGraph, SceneNode } from '#core/scene-graph'
 import type { Color, GUID, Matrix } from '#core/types'
 
 import { stringToGuid } from './guid'
+import { serializeLowcodeFields } from './lowcode-plugin-data'
 import { mergePluginData, serializePluginRelaunchData } from './plugin-data'
 
 export type KiwiNodeChange = NodeChange & Record<string, unknown>
@@ -190,7 +191,13 @@ export function sceneNodeToKiwiWithContext(
   context.serializeGeometry(node, nc, context.blobs)
   context.serializeVariableBindings(node, nc, context.graph, context.varIdToGuid)
 
-  const pluginData = mergePluginData(node.pluginData)
+  // Phase 1 §12: append lowcode pluginData entries before merge so they ride
+  // through the Kiwi codec. node.pluginData is never mutated — we hand a
+  // freshly concatenated array to mergePluginData.
+  const lowcodeEntries = serializeLowcodeFields(node)
+  const pluginDataSource =
+    lowcodeEntries.length === 0 ? node.pluginData : [...node.pluginData, ...lowcodeEntries]
+  const pluginData = mergePluginData(pluginDataSource)
   if (pluginData.length > 0) nc.pluginData = pluginData
   if (node.pluginRelaunchData.length > 0) {
     nc.pluginRelaunchData = serializePluginRelaunchData(node.pluginRelaunchData)
