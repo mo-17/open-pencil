@@ -210,27 +210,49 @@ function applyShapeStyle(style: Record<string, string>, node: SceneNode): void {
   }
 
   if (node.type === 'LINE') {
-    const stroke = solidStroke(node.strokes)
-    if (!stroke) return
-    style.backgroundColor = stroke.color
-    style.height = px(stroke.weight)
+    // OpenPencil stores LINE as the diagonal vector from (0, 0) to
+    // (width, height) in local coords (canvas renders it via
+    // `canvas.drawLine(0, 0, node.width, node.height, r.fillPaint)`).
+    // The diagonal angle is encoded into the bounding box geometry — not
+    // into `node.rotation` — so we have to convert (w, h) into
+    //   length = sqrt(w² + h²)
+    //   angle  = atan2(h, w)
+    // and render a thin horizontal bar of that length, rotated around the
+    // first endpoint.
+    //
+    // Colour: canvas uses `fillPaint` (default 1px hairline) — fill drives
+    // the visible line. If a real stroke is present, it takes precedence
+    // (Figma-imported files store the colour there). `applyAppearanceStyle`
+    // has already pushed the fill colour onto backgroundColor, so we only
+    // override when a stroke is present.
     delete style.borderWidth
     delete style.borderColor
     delete style.borderStyle
-    // Figma stores LINE with a 0-height bounding box; rotation pivots
-    // around the first endpoint (the local origin, not the bbox centre —
-    // see `canvas/scene.ts` `canvas.rotate(rotation, 0, 0)`). Our CSS
-    // <div> has visible height = stroke.weight, so the visible centreline
-    // sits half-a-stroke below the intended y, and the default transform-
-    // origin (centre) puts the rotation pivot in the wrong place.
-    // Two corrections to match canvas:
-    //   1. shift the absolute `top` up by half a stroke so the centreline
-    //      coincides with node.y (only when canvas-direct positioning is
-    //      in effect — auto-layout LINEs are rare and the centreline-vs-
-    //      bbox discrepancy is invisible there).
-    //   2. pin `transform-origin: 0 50%` so the rotation pivot lands on
-    //      the centreline at the first endpoint, regardless of rotation.
-    if (style.top) style.top = px(node.y - stroke.weight / 2)
+
+    const stroke = solidStroke(node.strokes)
+    if (stroke) style.backgroundColor = stroke.color
+    if (!style.backgroundColor) return
+
+    const weight = stroke?.weight ?? 1
+    const length = Math.sqrt(node.width * node.width + node.height * node.height)
+    const angleDeg = (Math.atan2(node.height, node.width) * 180) / Math.PI
+    const totalRotation = node.rotation + angleDeg
+
+    style.width = px(length)
+    style.height = px(weight)
+    // Centreline alignment: lift `top` by half the line weight so the
+    // visible centreline coincides with node.y. Only fires when canvas-
+    // direct positioning is in effect.
+    if (style.top) style.top = px(node.y - weight / 2)
+    // Pivot at the first endpoint on the centreline; combine the diagonal-
+    // encoded angle with any user-applied rotation. Override the rotation
+    // value that `applyAppearanceStyle` may have already written for plain
+    // `node.rotation`.
+    if (totalRotation !== 0) {
+      style.transform = `rotate(${totalRotation}deg)`
+    } else {
+      delete style.transform
+    }
     style.transformOrigin = '0 50%'
     return
   }
