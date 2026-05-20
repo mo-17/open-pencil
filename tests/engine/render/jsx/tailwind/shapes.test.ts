@@ -40,6 +40,28 @@ describe('Tailwind JSX export — LINE / POLYGON / STAR', () => {
     expect(jsx).not.toContain('border')
   })
 
+  test('LINE rotation pivots around the first endpoint (origin-left + half-stroke top shift)', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('LINE', pageId(graph), {
+      x: 20,
+      y: 100,
+      width: 200,
+      height: 0,
+      rotation: 45,
+      strokes: [{ color: BLACK, weight: 4, align: 'CENTER', opacity: 1, visible: true }]
+    })
+    const jsx = tw(graph, node.id)
+    // Canvas renderer rotates LINE around (0, 0) (the first endpoint, see
+    // `canvas/scene.ts`). CSS default origin is centre — mirror canvas by
+    // pinning to left-centre instead.
+    expect(jsx).toContain('origin-left')
+    // The <div> height = stroke weight, so without lifting the top by half
+    // a stroke the visible centreline drifts below node.y. Tailwind maps
+    // 98px → `top-[98px]` (not on the 4px spacing scale).
+    expect(jsx).toContain('top-[98px]')
+    expect(jsx).toContain('rotate-45')
+  })
+
   test('LINE without a stroke does not invent a height', () => {
     const graph = makeGraph()
     const node = graph.createNode('LINE', pageId(graph), { width: 100, height: 0 })

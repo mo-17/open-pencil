@@ -217,6 +217,21 @@ function applyShapeStyle(style: Record<string, string>, node: SceneNode): void {
     delete style.borderWidth
     delete style.borderColor
     delete style.borderStyle
+    // Figma stores LINE with a 0-height bounding box; rotation pivots
+    // around the first endpoint (the local origin, not the bbox centre —
+    // see `canvas/scene.ts` `canvas.rotate(rotation, 0, 0)`). Our CSS
+    // <div> has visible height = stroke.weight, so the visible centreline
+    // sits half-a-stroke below the intended y, and the default transform-
+    // origin (centre) puts the rotation pivot in the wrong place.
+    // Two corrections to match canvas:
+    //   1. shift the absolute `top` up by half a stroke so the centreline
+    //      coincides with node.y (only when canvas-direct positioning is
+    //      in effect — auto-layout LINEs are rare and the centreline-vs-
+    //      bbox discrepancy is invisible there).
+    //   2. pin `transform-origin: 0 50%` so the rotation pivot lands on
+    //      the centreline at the first endpoint, regardless of rotation.
+    if (style.top) style.top = px(node.y - stroke.weight / 2)
+    style.transformOrigin = '0 50%'
     return
   }
 
