@@ -15,17 +15,18 @@
 |---|---|---|
 | 1 | **Canvas-direct 子节点的绝对定位** | ✅ 已交付（HEAD `d36be97`），本 doc §2 详述 |
 | 2 | **`@vitejs/plugin-react` Fast Refresh** | ✅ 已交付（HEAD `4247e6e`），本 doc §10 详述（原 §7.2） |
-| 3 | **多页面编译 + `react-router-dom`（v6）** | 锁定，本 doc §11 详述（原 §7.1） |
+| 3 | **多页面编译 + `react-router-dom`（v6）** | 代码落地（HEAD `79db27e`），Tauri 实测暂停（依赖 §12），本 doc §11 详述（原 §7.1） |
+| 4 | **Lowcode 字段 `.fig` 持久化** | 锁定，本 doc §12 详述（原 §7.5；Phase 0 §2.5 承诺兜底） |
 
-> §1 / §10 / §11 已承诺；其余候选见 §7，需要排期时再写入 1.1。
+> §1 / §10 已交付；§11 代码已落地待联调；§12 锁定。其余候选见 §7，需要排期时再写入 1.1。
 
 ### 1.2 Phase 1 Out-of-Scope（明确推迟）
 
 - 实时表达式校验 UI —— 候选 §7.3
 - `ActionDef.kind` 收窄 + 扩 `navigate` / `setVariable` —— 候选 §7.4
-- `pluginData` → Kiwi schema 正式化 —— 候选 §7.5（Phase 0 收尾任务，落地窗口与 Phase 1 重叠）
 - `layoutMode: 'FREE'` schema 字段（任意层级混合 free + auto-layout）—— 留给 Phase 2+
 - 多页面 **preview iframe** 联动（编辑器 preview 仍传 `[currentPageId]` 单页切片）——`react-router-dom` 仅落地在 CLI 导出与 single-iframe-route 内部使用；preview-pane 跨页路由留作 §11 后续候选
+- Lowcode 字段升格为 Kiwi schema 一等字段（`kiwi-schema/` 是 vendored）—— Phase 2+ 评估
 
 ### 1.3 Phase 1 成功标准
 
@@ -265,7 +266,9 @@ CANVAS
 
 ### 7.5 `pluginData` → Kiwi schema 正式化
 
-`docs/lowcode-phase-0.md` §2.5 标记的 Phase 0 收尾。把 state / bindings / events / interactiveProps 从 `pluginData` 的临时存储升级为 Kiwi 一等字段。
+> ⚠️ Phase 1 §12 落地的是 **§7.5 的前半段**：用 `pluginData` 真正持久化 lowcode 字段。原 §7.5 描述里 "升格为 Kiwi 一等字段" 那部分（schema 升级）已划入 Phase 2+（见 §1.2），原因是 `kiwi-schema/` 是 vendored。
+>
+> 历史背景：`docs/lowcode-phase-0.md` §2.5 承诺 "全走 pluginData，正式化推到 Phase 0 验收后单独 PR" —— 但 Phase 0 验收时 pluginData 的 read/write 路径**就没写**：`SceneNode.state` 等 4 个字段仅在内存里活，存 `.fig` 时被 Kiwi codec 静默丢弃。§12 补上这条管线。
 
 ---
 
@@ -288,7 +291,9 @@ CANVAS
 4. ✅ ~~与用户决定 §7 候选的下一个调度~~ 用户选 §7.2 Fast Refresh；已纳入 §1.1，详见 §10。
 5. ✅ ~~实施 §10 改动~~ Phase 1 §10 已交付（HEAD `4247e6e`），§10.5 成功标准全部通过 + Tauri 实测通过。
 6. ✅ ~~与用户决定下一项~~ 用户选 §7.1 多页面路由；已纳入 §1.1，详见 §11。
-7. 实施 §11 改动；完成 §11.5 成功标准后再问用户选下一项。
+7. ✅ ~~实施 §11 代码~~ §11.5 #1–#2 单元测试全过（HEAD `79db27e`）。
+8. ✅ ~~Tauri 实测期间发现 §7.5 持久化缺口~~ 用户决定先做 §7.5；§11 Tauri 实测暂停，待 §12 完工后合并实测。
+9. 实施 §12 改动；完成 §12.5 成功标准 + 合并实测 §11 + §12 通过后再问用户选下一项。
 
 ---
 
@@ -550,3 +555,157 @@ export function compile(input: CompilerInput): CompilerOutput {
 | C（step 2） | `route-paths.ts` 新增 + 单测；`scaffold.ts` 抽 `buildPageBody`；新增 `buildRouterApp` + `buildPageModule`；`project.ts` 接 `extraDeps`；React adapter 多页分支；`multi-page.test.ts` 多页用例补齐 | `bun test ./tests/engine/compiler/` 全绿；`bun run check` 全绿；commit `feat(lowcode): step 2 — react-router-dom emit` |
 | D（step 3） | CLI `compile.ts` 默认导出全部 pages；`--page <name>` 仍作单页过滤；CLI 集成测试补 multi-page snapshot | `bun test ./tests/engine/compiler/` 全绿（CLI 测试在 `tests/engine/cli` 内）；`bun run check` 全绿；commit `feat(lowcode): step 3 — CLI exports all pages` |
 | E（step 4） | Tauri / CLI 实测 §11.5 #3–#5（用户主导）；修发现的 bug；写 changelog | 用户在对话里 ACK 三条实测全过 |
+
+> **Step 4 状态**：暂停 — Tauri 实测期间发现 lowcode 字段不持久化（state/bindings/events/interactiveProps 写 `.fig` 时被 Kiwi codec 静默丢弃，是 Phase 0 §2.5 的承诺没兑现）。§12 修这条管线后再合并实测 §11 + §12。
+
+---
+
+## 12. §7.5 详细设计：Lowcode 字段 `.fig` 持久化
+
+### 12.1 现状与问题
+
+`SceneNode` 类型上已声明 4 个 lowcode 字段（`packages/core/src/scene-graph/types.ts:383-386`）：
+
+```ts
+state?: StateDef[]
+bindings?: Record<string, BindingExpr>
+events?: Partial<Record<EventName, ActionDef[]>>
+interactiveProps?: Record<string, unknown>
+```
+
+编辑器 UI（StatePanel / EventsPanel / TextBindingPanel）通过 `updateNodeWithUndo` 把这些字段写入内存 `SceneNode`（`StatePanel.vue:23`）。然而 Kiwi binary codec **完全不读不写** —— 在 `kiwi/node-change/export-node.ts:193-194` 序列化时只 merge `node.pluginData`；4 个 lowcode 字段从未路由到 pluginData，也没有自己的 Kiwi schema 字段（schema 是 vendored，无法新增）。
+
+Phase 0 §2.5 当时的承诺是 "全走 pluginData，正式化推到 Phase 0 验收后单独 PR"，但**那个 PR 从没写过**。`upsertPluginData()` / `getOpenPencilPluginValue()` 这些工具函数（`plugin-data.ts:10-50`）已就位，但 grep 全文搜不到一个**写 lowcode 字段进 pluginData** 的调用点。
+
+后果：
+- 用户在 StatePanel 定义 `count: number = 0` → 保存 `.fig` → 关掉编辑器 / CLI 重读 → `count` 丢失。
+- §11 编出来的 `App.tsx` 没有 `useState` hook —— 因为 IR 收集器读 `page.state` 拿到 `undefined`。
+- Bindings / events / interactiveProps（包括 BUTTON 文字、INPUT placeholder）**同样**不持久化，目前能在 Tauri preview 里看到点击效果只是因为 SceneGraph 还在内存里。
+
+### 12.2 改动路径
+
+走 pluginData 通道（与 Phase 0 §2.5 的设计一致，不动 vendored Kiwi schema）。每个 SceneNode 上多挂 4 个 plugin-data 条目（按需，空值跳过），用 JSON 编码值：
+
+```
+PluginDataEntry {
+  pluginId: 'open-pencil',
+  key:      'lowcode/state' | 'lowcode/bindings' | 'lowcode/events' | 'lowcode/interactiveProps',
+  value:    JSON.stringify(<field-value>)
+}
+```
+
+**Write 端**（`kiwi/node-change/export-node.ts` 第 ~185–194 行附近）：
+
+```ts
+// 现在：
+const pluginData = mergePluginData(node.pluginData)
+if (pluginData.length > 0) nc.pluginData = pluginData
+
+// 改为：
+const lowcodeEntries = serializeLowcodeFields(node)
+const merged = mergePluginData([...node.pluginData, ...lowcodeEntries])
+if (merged.length > 0) nc.pluginData = merged
+```
+
+`serializeLowcodeFields(node)` 是新增的纯函数，返回 `PluginDataEntry[]`：
+- 跳过 `undefined` / 空数组 / 空对象（保 .fig 字节级零回归）
+- 每个非空字段 emit 一条 `{ pluginId: OPEN_PENCIL_PLUGIN_ID, key: 'lowcode/<field>', value: JSON.stringify(...) }`
+
+**Read 端**（`kiwi/node-change/convert.ts` 第 ~484 行 `pluginData: extractPluginData(nc)` 旁边）：
+
+```ts
+const { pluginData, lowcode } = extractPluginDataAndLowcode(nc)
+return {
+  // … 其它字段
+  pluginData,                  // 已剥离 lowcode/* 条目
+  ...lowcode,                  // { state?, bindings?, events?, interactiveProps? }
+  // …
+}
+```
+
+`extractPluginDataAndLowcode(nc)`：
+- 遍历 `nc.pluginData ?? []`：命中 `pluginId === OPEN_PENCIL_PLUGIN_ID && key.startsWith('lowcode/')` 的条目 → 解 JSON 进对应字段；剩下原样回填 pluginData
+- JSON.parse 异常 → 字段保持 `undefined` + `console.warn`，不抛错
+- key 不在白名单（未来加字段）→ 原样保留在 pluginData 里给前向兼容
+
+新增模块：`packages/core/src/kiwi/node-change/lowcode-plugin-data.ts`
+- 导出常量：`LOWCODE_KEYS = ['lowcode/state','lowcode/bindings','lowcode/events','lowcode/interactiveProps']`
+- 导出函数：`serializeLowcodeFields(node): PluginDataEntry[]` / `extractPluginDataAndLowcode(nc): { pluginData, lowcode }`
+
+### 12.3 关键决定（已锁定）
+
+> 与 §5 / §10.3 / §11.3 同形式。锁定后**不在对话中重新讨论**。
+
+| # | 主题 | 决定 | 理由 |
+|---|---|---|---|
+| 1 | 持久化通道 | `pluginData` 条目，**不**改 Kiwi schema | `kiwi-schema/` 是 vendored；pluginData 是 Figma 官方逃生路径，基础设施（`upsertPluginData` / `OPEN_PENCIL_PLUGIN_ID`）已就位；schema 升级留 Phase 2+ 评估 |
+| 2 | Key 命名 | `OPEN_PENCIL_PLUGIN_ID` + 字面 key `lowcode/state` / `lowcode/bindings` / `lowcode/events` / `lowcode/interactiveProps` | 命名空间清晰；新增 lowcode 字段只用加 key，不动 schema；查 .fig dump 时一眼能 grep 出来 |
+| 3 | 编码 | `JSON.stringify` value，字符串存 pluginData | pluginData value 类型是 string；JSON 是已有 schema 的自然映射；StateDef / ActionDef / BindingExpr 都是纯数据可序列化 |
+| 4 | 空值跳过 | 字段 `undefined` 或值为空（`[]` / `{}`）不 emit 条目 | 单页/无 state 的 .fig 字节级零回归；与 §11 的"单页 / 多页不增删"分支一致 |
+| 5 | 错误恢复 | JSON.parse 失败 → 字段保持 `undefined` + `console.warn`；非 lowcode/* 的 OPEN_PENCIL_PLUGIN_ID 条目原样保留 | 一个字段坏不应让整文件加载失败；保留未知 key 给前向兼容 |
+| 6 | 范围 | **仅** `.fig` codec round-trip；`.pen` JSON codec 本期不动 | 用户主要保存路径是 `.fig`；`.pen` 内部用于 CLI 互操作且自身已是 JSON，未来同步即可；最小化本期改动 |
+
+### 12.4 不动什么
+
+- `kiwi-schema/`（vendored，CLAUDE.md 明令禁动）
+- `pluginData[]` 自身的 Kiwi 二进制 wire 格式（只 piggyback，不重写）
+- `boundVariables` / `pluginRelaunchData`（正交，不混淆 lowcode 通道）
+- `.pen` codec（待 Phase 2 同步；当前 `.pen` 也不写 lowcode 字段，行为与本期前一致）
+- 编辑器 UI（`StatePanel.vue` / `EventsPanel.vue` / `TextBindingPanel.vue`）（已经写对地方了，只是 codec 这段断）
+- 编译器（compiler 读 `node.state` 就行；load 端把字段填回去后链路自然通）
+
+### 12.5 成功标准
+
+仅针对 §12。当所有项均通过即可宣告 Phase 1 §12 完成：
+
+1. `bun test ./tests/engine/kiwi/` + `bun test ./tests/engine/compiler/` 全绿；新增 `tests/engine/kiwi/lowcode-plugin-data.test.ts`（pure 序列化 helper）+ `tests/engine/kiwi/lowcode-roundtrip.test.ts`（真 `.fig` 端到端 export → parse round-trip）。
+2. `bun run check` 全绿。
+3. **不含 lowcode 字段**的旧 `.fig` 文件加载与本期前**字节级一致**（pluginData 不增条目；新增字段全 `undefined`）—— 在测试里用既有 fixtures 验证。
+4. Tauri 实测（**用户主导**）：在画布定义 page state、绑 BUTTON onClick、保存 `.fig` → 关闭编辑器 → 重新打开 → state / event / interactiveProps 全部还在；preview iframe 仍能跑 +1 计数。
+5. 合并 §11 + §12 端到端（**用户主导**）：编辑多页文档、每页配 state、保存 `.fig`、CLI `bun open-pencil compile` → 编出来的 `src/pages/<slug>.tsx` 含 `useState` hook、`onClick` handler；`bun run dev` 浏览器里点击交互按预期工作。
+
+### 12.6 测试策略
+
+**单元测试 1** — `tests/engine/kiwi/lowcode-plugin-data.test.ts`（纯函数）：
+
+| 用例 | 期望 |
+|---|---|
+| `serializeLowcodeFields` 无字段 | `[]` |
+| `serializeLowcodeFields` 仅 `state=[{id,name,type,defaultValue}]` | 1 条目，key=`lowcode/state`，value 是 JSON |
+| `serializeLowcodeFields` 4 字段都有 | 4 条目，顺序稳定 |
+| `serializeLowcodeFields` `state=[]` / `bindings={}` / `events={}` / `interactiveProps={}` | `[]`（跳过空） |
+| `extractPluginDataAndLowcode` 含 1 条 `lowcode/state` | lowcode.state 填回；pluginData 不含此条 |
+| `extractPluginDataAndLowcode` 含 JSON 损坏的 `lowcode/state` | lowcode.state 仍 `undefined`；pluginData 不含此条；`console.warn` |
+| `extractPluginDataAndLowcode` 含 `lowcode/futureField`（未来 key） | lowcode 不动；pluginData **保留**这条原样 |
+| `extractPluginDataAndLowcode` 含非 lowcode/* 的 OPEN_PENCIL_PLUGIN_ID 条目（如 `textDirection`） | 保留在 pluginData |
+
+**单元测试 2** — `tests/engine/kiwi/lowcode-roundtrip.test.ts`（真 .fig 二进制 round-trip）：
+
+| 用例 | 期望 |
+|---|---|
+| 一个 page 含 state，export → parse | 还原后 page.state 与原值深等 |
+| BUTTON 含 `interactiveProps: { text: 'Hi' }` + `events.onClick`，round-trip | 全部还原 |
+| 一个 TEXT 含 `bindings.text = { kind:'ref', stateId:'…' }`，round-trip | 还原后等值 |
+| 没有 lowcode 字段的图（既有 fixture），round-trip | pluginData 字节级零增；4 字段均 `undefined` |
+
+**集成测试（手动 / 用户主导）**：§12.5 #4 + #5。
+
+### 12.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 既有 .fig 测试 fixture 含 OPEN_PENCIL_PLUGIN_ID 条目但 key 不是 lowcode/* | 低 | 决定 #5 保留未知 key 原样；既有条目（如 `textDirection`）走 read 路径不变 |
+| StateDef.defaultValue 类型是 `unknown`，可能含函数 / Symbol / undefined | 中——JSON.stringify 静默丢函数/undefined | StateDef 是用户定义的纯数据；UI 已限制为 string/number/boolean/object/array；测试覆盖各 type；如果将来 UI 允许更复杂值再加 validator |
+| 大型 page 的 state 数组让单条 pluginData value 变大 | 低 | pluginData value 类型是 string，无显式上限；Figma 自家用法也走这个通道；几 KB 完全 ok |
+| Phase 2 引入 Kiwi schema 一等字段后，需要兼容期两个通道并存 | 低（未来） | 决定 #5 已为前向兼容铺垫：未知 key 保留；Phase 2 可让 schema 字段优先，pluginData 作 fallback |
+| 写出顺序不稳定让两次保存产生不同字节 | 低——影响 git diff 友好度但不影响功能 | `serializeLowcodeFields` 按 `LOWCODE_KEYS` 固定顺序 emit |
+| 编辑器内存里 state 在保存→重载之间 mutation 没触发 sceneVersion bump | 中——但与本期解耦 | 本期只补 codec 持久化；编辑器侧 mutation 信号是另一条链，已由 `updateNodeWithUndo` 处理 |
+
+### 12.8 工作分解（建议 1 名工程师，1.5–2 天）
+
+| 天 / Step | 任务 | 验收 / commit message |
+|---|---|---|
+| A（已完成） | doc §12 写完，决定锁定，§1.1 / §1.2 / §7.5 / §9 同步 | 本节存在；用户在对话里 ACK 锁定决定 |
+| B（step 1） | `lowcode-plugin-data.ts` 新增 `serializeLowcodeFields`；`export-node.ts` 接 write 端；纯函数单测（§12.6 测试 1 前半） | `bun test ./tests/engine/kiwi/` 全绿；`bun run check` 全绿；commit `feat(lowcode): step 1 — lowcode fields → pluginData on save` |
+| C（step 2） | `extractPluginDataAndLowcode` 实现；`convert.ts` 接 read 端；纯函数单测（§12.6 测试 1 后半）+ 真 .fig round-trip 单测（§12.6 测试 2） | `bun test ./tests/engine/kiwi/` + `./tests/engine/compiler/` 全绿；`bun run check` 全绿；commit `feat(lowcode): step 2 — pluginData → lowcode fields on load` |
+| D（step 3） | 合并 §11 + §12 Tauri / CLI 实测（用户主导）；修联调 bug；写 changelog | 用户在对话里 ACK §11.5 #3–#5 + §12.5 #4–#5 全过 |
