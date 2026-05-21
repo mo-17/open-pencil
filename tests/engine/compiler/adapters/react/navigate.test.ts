@@ -74,6 +74,89 @@ describe('navigate action — React adapter emit', () => {
     expect(out.warnings.some((w) => w.code === 'action-navigate-no-router')).toBe(true)
   })
 
+  test('navigate inside an IRConditional consequent still imports useNavigate (Phase 2 §9 regression)', () => {
+    // Before the ir-walk fix, `nodeHasNavigate` early-returned on
+    // IRConditional, so a BUTTON with onClick=navigate wrapped in a
+    // `renderCondition` produced JSX that called `navigate(...)` against an
+    // undefined identifier at runtime.
+    const graph = makeGraph()
+    const home = graph.getPages()[0]
+    graph.updateNode(home.id, {
+      name: 'Home',
+      state: [{ id: 's-flag', name: 'flag', type: 'boolean', defaultValue: true }]
+    })
+    graph.createNode('BUTTON', home.id, {
+      interactiveProps: { text: 'Go' },
+      events: { onClick: [{ id: 'a1', kind: 'navigate', to: '/about' }] },
+      renderCondition: 'flag'
+    })
+    graph.addPage('About')
+
+    const pages = graph.getPages()
+    const out = compile({
+      graph,
+      pageIds: pages.map((p) => p.id),
+      options: withDefaults({ packageName: 'nav-cond' })
+    })
+
+    const indexTsx = out.files.get('src/pages/index.tsx') as string
+    expect(indexTsx).toContain("import { useNavigate } from 'react-router-dom'")
+    expect(indexTsx).toContain('const navigate = useNavigate()')
+    expect(indexTsx).toContain('navigate("/about")')
+  })
+
+  test('navigate inside a LIST template still imports useNavigate (Phase 2 §9 regression)', () => {
+    const graph = makeGraph()
+    const home = graph.getPages()[0]
+    graph.updateNode(home.id, {
+      name: 'Home',
+      state: [{ id: 's-users', name: 'users', type: 'array', defaultValue: [] }]
+    })
+    const list = graph.createNode('LIST', home.id, {
+      interactiveProps: { dataSourceRef: { kind: 'stateRef', stateId: 's-users' } }
+    })
+    graph.createNode('BUTTON', list.id, {
+      interactiveProps: { text: 'Go' },
+      events: { onClick: [{ id: 'a1', kind: 'navigate', to: '/about' }] }
+    })
+    graph.addPage('About')
+
+    const pages = graph.getPages()
+    const out = compile({
+      graph,
+      pageIds: pages.map((p) => p.id),
+      options: withDefaults({ packageName: 'nav-list' })
+    })
+
+    const indexTsx = out.files.get('src/pages/index.tsx') as string
+    expect(indexTsx).toContain("import { useNavigate } from 'react-router-dom'")
+    expect(indexTsx).toContain('const navigate = useNavigate()')
+  })
+
+  test('single-page compile strips navigate even when wrapped in IRConditional', () => {
+    const graph = makeGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(page.id, {
+      state: [{ id: 's-flag', name: 'flag', type: 'boolean', defaultValue: true }]
+    })
+    graph.createNode('BUTTON', page.id, {
+      interactiveProps: { text: 'Go' },
+      events: { onClick: [{ id: 'a1', kind: 'navigate', to: '/about' }] },
+      renderCondition: 'flag'
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'nav-cond-single' })
+    })
+
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('useNavigate')
+    expect(app).not.toContain('navigate(')
+    expect(out.warnings.some((w) => w.code === 'action-navigate-no-router')).toBe(true)
+  })
+
   test('multi-page compile mixing setState + navigate: both emit cleanly', () => {
     const graph = makeGraph()
     const home = graph.getPages()[0]

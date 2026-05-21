@@ -18,6 +18,12 @@ export function pageHasNavigateHandler(ir: IRTree): boolean {
 }
 
 function nodeHasNavigate(node: IRNode): boolean {
+  // Phase 2 §9: navigate handlers can live inside an IRConditional consequent
+  // or an IRList template. Without descending here the scaffolder skips the
+  // `useNavigate` import + hook and the emitted JSX calls `navigate(...)`
+  // against an undefined identifier at runtime.
+  if (node.kind === 'conditional') return nodeHasNavigate(node.consequent)
+  if (node.kind === 'list') return nodeHasNavigate(node.template)
   if (node.kind !== 'element') return false
   if (node.events) {
     for (const handlers of Object.values(node.events)) {
@@ -44,6 +50,17 @@ export function stripNavigateForSinglePage(ir: IRTree): {
 }
 
 function stripNode(node: IRNode, pageId: string, warnings: CompileWarning[]): IRNode {
+  // Phase 2 §9: descend through the new wrapper kinds so navigate handlers
+  // inside conditional / list subtrees get the same single-page treatment
+  // (drop + warn) as anywhere else.
+  if (node.kind === 'conditional') {
+    const consequent = stripNode(node.consequent, pageId, warnings)
+    return consequent === node.consequent ? node : { ...node, consequent }
+  }
+  if (node.kind === 'list') {
+    const template = stripNode(node.template, pageId, warnings)
+    return template === node.template ? node : { ...node, template }
+  }
   if (node.kind !== 'element') return node
   const events = stripEvents(node, pageId, warnings)
   const children = node.children.map((c) => stripNode(c, pageId, warnings))
