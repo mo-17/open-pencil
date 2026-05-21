@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import { validateStateName } from '@open-pencil/compiler'
 import type { StateDef, StateValueType } from '@open-pencil/core/scene-graph'
@@ -19,6 +19,12 @@ const states = useSceneComputed<StateDef[]>(() => {
 })
 
 const TYPES: StateValueType[] = ['string', 'number', 'boolean', 'array', 'object']
+
+// Per-row JSON parse errors for array / object defaults. Populated on a
+// failed `@change` and cleared on the next successful commit, so a malformed
+// `[{name:'Alice'}]` (JS literal — invalid JSON) surfaces a red border + 10px
+// error line instead of silently reverting to `[]`.
+const valueErrors = ref<Map<string, string>>(new Map())
 
 function commitStates(next: StateDef[]): void {
   editor.updateNodeWithUndo(pageId.value, { state: next }, 'Update page state')
@@ -56,6 +62,23 @@ function changeType(id: string, type: StateValueType): void {
 }
 
 function changeDefault(id: string, rawValue: string, type: StateValueType): void {
+  if (type === 'array' || type === 'object') {
+    try {
+      const parsed = JSON.parse(rawValue)
+      const expectedArray = type === 'array'
+      if (expectedArray !== Array.isArray(parsed)) {
+        valueErrors.value.set(id, `expected a JSON ${type}`)
+        return
+      }
+      valueErrors.value.delete(id)
+      commitStates(states.value.map((s) => (s.id === id ? { ...s, defaultValue: parsed } : s)))
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err)
+      valueErrors.value.set(id, reason)
+    }
+    return
+  }
+  valueErrors.value.delete(id)
   commitStates(states.value.map((s) => (s.id === id ? { ...s, defaultValue: parseValue(rawValue, type) } : s)))
 }
 
@@ -75,16 +98,10 @@ function parseValue(raw: string, type: StateValueType): unknown {
   if (type === 'boolean') {
     return raw === 'true'
   }
-  if (type === 'array' || type === 'object') {
-    // Phase 2 §9: parse JSON literal so users can seed `[1,2,3]` /
-    // `{a:1}` defaults. On parse error keep the previous value rather
-    // than wipe the field, so a half-typed expression doesn't blow up.
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return defaultFor(type)
-    }
-  }
+  // Array / object handled inline in `changeDefault` so JSON parse errors
+  // can surface a red border + inline reason instead of silently snapping
+  // back to `[]` / `{}` — a JS literal like `[{name:'Alice'}]` is invalid
+  // JSON and the user needs to see why.
   return raw
 }
 
@@ -180,8 +197,23 @@ const nameErrors = computed(() => {
           :value="defaultAsString(state.defaultValue)"
           :type="state.type === 'number' ? 'number' : 'text'"
           :aria-label="panels.lowcodeStateDefault"
+          :aria-invalid="valueErrors.has(state.id) ? 'true' : undefined"
           data-test-id="lowcode-state-default"
-          class="w-20 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
+          spellcheck="false"
+          :placeholder="
+            state.type === 'array'
+              ? '[{&quot;name&quot;:&quot;Alice&quot;}]'
+              : state.type === 'object'
+                ? '{&quot;a&quot;:1}'
+                : undefined
+          "
+          :class="[
+            'rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
+            state.type === 'array' || state.type === 'object'
+              ? 'min-w-0 flex-1 font-mono'
+              : 'w-20',
+            valueErrors.has(state.id) ? 'border-red-500' : 'border-border'
+          ]"
           @change="changeDefault(state.id, ($event.target as HTMLInputElement).value, state.type)"
         />
         <button
@@ -200,6 +232,13 @@ const nameErrors = computed(() => {
           class="pl-1 text-[10px] text-red-500"
         >
           {{ nameErrors.get(state.id) }}
+        </p>
+        <p
+          v-if="valueErrors.has(state.id)"
+          data-test-id="lowcode-state-default-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          {{ valueErrors.get(state.id) }}
         </p>
       </li>
     </ul>
