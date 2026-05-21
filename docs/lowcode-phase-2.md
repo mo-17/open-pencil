@@ -22,7 +22,7 @@
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router | TBD §7 |
 | 7 | **更多交互组件**(候选 §8) | 中 | 当前 6 个(BUTTON/INPUT/CHECKBOX/FORM/LIST/SELECT)覆盖 80% 表单场景;补 RADIO/TEXTAREA/DATEPICKER/SWITCH | TBD §8 |
-| 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9(开工中,2026-05-21)** |
+| 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
 
 > §2 / §8 / §9 是产品层面影响最大的候选,§4 / §5 是工程债务清理。开工前每条都要回到本 doc 写 §X 详述,锁决定。
 
@@ -163,7 +163,9 @@
 
 ## 9. §9 详细设计:条件渲染 / 列表渲染
 
-> 本节是 Phase 2 第一个开工 § —— 2026-05-21 用户在对话里挑定。形式参照 `lowcode-phase-1.md` §11 / §12。**全部 10 项决定 2026-05-21 已由用户在对话中锁定**(主决定 #1–#3 第一轮 ACK,次级决定 #4–#10 第二轮一次性 ACK)。
+> 本节是 Phase 2 第一个开工 § —— 2026-05-21 用户在对话里挑定,**同日交付 + Tauri 用户实测通过**。形式参照 `lowcode-phase-1.md` §11 / §12。**全部 10 项决定 2026-05-21 已由用户在对话中锁定**(主决定 #1–#3 第一轮 ACK,次级决定 #4–#10 第二轮一次性 ACK)。
+>
+> **状态:🔒 已收尾**(HEAD `c1cd202`)。5 个 step 全 ✅。实测期间额外抓了 6 个相关 bug,见 §9.9 post-mortem。
 
 ### 9.1 现状与问题
 
@@ -397,6 +399,34 @@ export interface IRList {
 | F(step 5) | Tauri 实测 §9.5 #4(用户主导);修发现的 bug;changelog | 用户 ACK 全过;commit `docs(lowcode): §9 Tauri verification` |
 
 > 每个 step commit 前跑 `bun test ./tests/engine/compiler/` + `bun test ./tests/engine/kiwi/lowcode/` + `bun run check`,**不要**跑整个 `./tests/engine/`(15+ 分钟,含 LFS 慢测,且 `kiwi/serialize-fixes/line/height.test.ts:44` pre-existing 失败跟本工作无关)。
+
+### 9.9 Post-mortem(2026-05-21 实测发现 + 修复)
+
+5 个 step 自动化全绿后,Tauri 实测过程中**用户主导**地抓出 6 个相关 bug —— 没一个被自动化测试盖到,因此每个都补了回归测试 + 单独 commit。模式分两类:
+
+**A. "Walker 漏 case"类** —— Phase 2 §9 把 `IRNode` widen 加了 `IRConditional` / `IRList` 两个 kind,但若干个早写好的递归 walker 都 `if (node.kind !== 'element') return` 早返。需要每个 walker 显式 descend 进 `consequent` / `template`。
+
+| Commit | 漏 case 的 walker | 症状 |
+|---|---|---|
+| `a62f9af` | `collectClassNames` (adapter/react/index.ts) | 条件 / 列表里子树的 Tailwind class 进不了 `@source inline(...)` 安全列表;iframe CSS 缺失,元素错位 |
+| `c1cd202` | `nodeHasNavigate` + `stripNode` (adapter/react/ir-walk.ts) | 条件 / 列表里的 navigate handler 对 scaffold 不可见 → 没 `useNavigate` 导入 → 运行时 `navigate is not defined` |
+
+**经验**:**任何 IR 节点 kind 的扩展都要全文 grep 一遍 `node.kind`,确保每个 walker 都补上分支**。未来 §9.v2 / §3 / §4 加新 IR kind 时同样的 checklist 适用。
+
+**B. UX / 配置债**:
+
+| Commit | 问题 |
+|---|---|
+| `a62f9af` | `StatePanel.vue` TYPES 数组硬写三种 primitive,`array` / `object` 进不了 UI |
+| `64f7900` | array / object 默认值 JSON.parse 失败时静默 fallback 到 `[]`(掩盖 JS 字面量 vs JSON 字面量混淆) |
+| `f8b768a` | Tauri 2.x 默认 `dragDropEnabled: true` → OS handler 吃掉 webview 的 dragstart → 整个 Layers 拖拽链路死亡 |
+| `fcc8ec6` | atlaskit hitbox mode 只看 `hasChildren`,空容器无法接 make-child |
+| `1511ab0` | atlaskit `expanded` mode 无 reorder-below 区,末位容器无法被绕过 |
+
+**经验**:
+- Tauri 任何带前端 HTML5 drag-and-drop 的项目,`tauri.conf.json` 里的 `dragDropEnabled: false` 是默认配置,不是可选项。
+- atlaskit `pragmatic-drag-and-drop-hitbox/tree-item` 模式选择要按"是否容器 + 是否末位"二维矩阵决定,不是按 `hasChildren` 单维。
+- 任何接 JSON 字面量的输入都必须 surface parse error,不能 swallow + fallback 到默认值。
 
 ---
 
