@@ -41,7 +41,12 @@ export function useLayerDrag(
       const data = item()
 
       const isContainer = editor.graph.isContainer(data.id)
-      const mode: ItemMode = data.hasChildren ? 'expanded' : 'standard'
+      // Atlaskit's tree-item only offers a `make-child` hitbox in `expanded`
+      // mode — gating purely on `hasChildren` means an empty container (a
+      // freshly created LIST / FRAME) never lights up as a drop parent.
+      // Driving the mode off `isContainer` keeps reparent semantics intact
+      // while opening the middle hitbox for empty containers.
+      const mode: ItemMode = isContainer ? 'expanded' : 'standard'
 
       const cleanup = combine(
         draggable({
