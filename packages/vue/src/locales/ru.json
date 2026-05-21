@@ -242,7 +242,20 @@
     "lowcodeActionNoStates": "Define a state first to wire an action",
     "lowcodeTextSource": "Text",
     "lowcodeTextSourceLiteral": "Literal",
-    "lowcodeTextSourceBound": "Bind to"
+    "lowcodeTextSourceBound": "Bind to",
+    "lowcodeTextSourceExpression": "Expression",
+    "lowcodeTextSourceExprLabel": "Expression",
+    "lowcodeTextSourceExprPlaceholder": "e.g. item.name",
+    "lowcodeRenderCondition": "Render condition",
+    "lowcodeRenderConditionPlaceholder": "e.g. count > 0",
+    "lowcodeRenderConditionHint": "Renders only when the expression is truthy",
+    "lowcodeList": "List",
+    "lowcodeListDataSource": "Data source",
+    "lowcodeListDataSourcePlaceholder": "Pick an array state",
+    "lowcodeListItemName": "Item name",
+    "lowcodeListIndexName": "Index name",
+    "lowcodeListTemplateHint": "The first visible child of the LIST is rendered once per item",
+    "lowcodeListNoArrayStates": "Define an array state first to drive this list"
   },
   "pages": {
     "newPage": "Новая страница",

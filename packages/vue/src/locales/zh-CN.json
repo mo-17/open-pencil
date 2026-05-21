@@ -242,7 +242,20 @@
     "lowcodeActionNoStates": "请先定义一个状态再绑定动作",
     "lowcodeTextSource": "文本",
     "lowcodeTextSourceLiteral": "字面值",
-    "lowcodeTextSourceBound": "绑定至"
+    "lowcodeTextSourceBound": "绑定至",
+    "lowcodeTextSourceExpression": "表达式",
+    "lowcodeTextSourceExprLabel": "表达式",
+    "lowcodeTextSourceExprPlaceholder": "例如 item.name",
+    "lowcodeRenderCondition": "渲染条件",
+    "lowcodeRenderConditionPlaceholder": "例如 count > 0",
+    "lowcodeRenderConditionHint": "仅当表达式为真时渲染",
+    "lowcodeList": "列表",
+    "lowcodeListDataSource": "数据源",
+    "lowcodeListDataSourcePlaceholder": "选择一个数组类型的状态",
+    "lowcodeListItemName": "列表项名称",
+    "lowcodeListIndexName": "索引名称",
+    "lowcodeListTemplateHint": "列表的第一个可见子节点会作为每一项的模板",
+    "lowcodeListNoArrayStates": "请先定义一个数组类型的状态作为该列表的数据源"
   },
   "pages": {
     "newPage": "新建页面",

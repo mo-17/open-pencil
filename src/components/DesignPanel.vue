@@ -11,6 +11,8 @@ import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
+import ListPanel from './properties/Lowcode/ListPanel.vue'
+import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
 import StatePanel from './properties/Lowcode/StatePanel.vue'
 import TextBindingPanel from './properties/Lowcode/TextBindingPanel.vue'
 import PageSection from './properties/PageSection.vue'
@@ -110,6 +112,8 @@ const { panels } = useI18n()
       v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'"
     />
     <EventsPanel v-if="node.type === 'BUTTON' || node.type === 'FORM'" />
+    <ListPanel v-if="node.type === 'LIST'" />
+    <RenderConditionPanel />
 
     <ExportSection />
   </div>
