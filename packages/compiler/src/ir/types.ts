@@ -5,7 +5,7 @@
 
 import type { ExprAst } from './expression'
 
-export type IRNode = IRElement | IRText | IRExpression
+export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList
 
 export interface IRElement {
   kind: 'element'
@@ -41,6 +41,29 @@ export interface IRExpression {
 }
 
 export type IRAttrValue = string | number | boolean
+
+/** Phase 2 §9: conditional render wrapper. Adapter emits
+ *  `{(<expr>) && (<consequent>)}`. Only present when the source node's
+ *  `renderCondition` parses cleanly AND every referenced identifier is in
+ *  scope; failures degrade to the bare `consequent` with a warning. */
+export interface IRConditional {
+  kind: 'conditional'
+  ast: ExprAst
+  references: string[]
+  consequent: IRNode
+}
+
+/** Phase 2 §9: list-rendering directive. Adapter emits
+ *  `{(<arrayName>).map((<itemName>, <indexName>) => <template>)}`. Generated
+ *  for LIST nodes with a valid array-typed state datasource and at least
+ *  one visible child (which becomes the template). */
+export interface IRList {
+  kind: 'list'
+  arrayName: string
+  itemName: string
+  indexName: string
+  template: IRNode
+}
 
 export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'
 

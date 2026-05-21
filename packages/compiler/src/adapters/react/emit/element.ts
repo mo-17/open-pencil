@@ -27,6 +27,27 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     return `${pad}{${emitExpression(node.ast)}}`
   }
 
+  if (node.kind === 'conditional') {
+    // Phase 2 §9: `{(<expr>) && (<consequent>)}`. Trailing parens around the
+    // consequent let it span multiple lines without confusing the `&&`.
+    const inner = emitElement(node.consequent, indent + 1, devMode)
+    return `${pad}{(${emitExpression(node.ast)}) && (\n${inner}\n${pad})}`
+  }
+
+  if (node.kind === 'list') {
+    // Phase 2 §9: `{(<arr>).map((item, index) => (<template/>))}`. The
+    // template inherits the adapter's data-node-id when devMode is on.
+    // React needs `key=` on the iterated element; we inject it into the
+    // template's first JSX opening tag so even an IRConditional template
+    // ends up with the key on the inner element rather than the `&&`.
+    const tpl = injectKey(emitElement(node.template, indent + 1, devMode), node.indexName)
+    return (
+      `${pad}{(${node.arrayName}).map((${node.itemName}, ${node.indexName}) => (\n` +
+      `${tpl}\n` +
+      `${pad}))}`
+    )
+  }
+
   const attrsStr = formatAttrs(
     node.className,
     node.attrs,
@@ -100,4 +121,14 @@ const JSX_ENTITY: Record<string, string> = {
 
 function escapeJSXText(text: string): string {
   return text.replace(/[{}<>&]/g, (c) => JSX_ENTITY[c])
+}
+
+/**
+ * Phase 2 §9 LIST emit: insert `key={<expr>}` right after the tag name of the
+ * first JSX opening element in `emitted`. Matches `<tag ` or `<tag>` or
+ * `<tag/>`. No-ops if no JSX tag is found (e.g. the template emits to an
+ * expression block only).
+ */
+function injectKey(emitted: string, indexExpr: string): string {
+  return emitted.replace(/<([A-Za-z][A-Za-z0-9-]*)(?=[\s/>])/, `<$1 key={${indexExpr}}`)
 }

@@ -11,15 +11,48 @@ import type {
 
 /** Build IR for a node's text binding. Returns null when the node has no
  *  text binding or the binding is unresolvable; the caller falls back to the
- *  static literal. Warnings are pushed for partial failures. */
+ *  static literal. Warnings are pushed for partial failures.
+ *
+ *  Phase 2 §9: when `bindings.text.kind === 'expr'`, the expression is parsed
+ *  and its referenced identifiers are validated against the union of declared
+ *  states and the in-scope identifiers (e.g. `item` / `index` inside a LIST
+ *  template). Unknown identifiers fall back to a literal text and warn. */
 export function resolveTextBinding(
   node: SceneNode,
   states: Map<string, IRStateDecl>,
-  warnings: IRWarning[]
+  warnings: IRWarning[],
+  inScope: ReadonlySet<string> = EMPTY_SCOPE
 ): IRExpression | null {
   const binding = node.bindings?.text
   if (!binding) return null
   if (binding.kind === 'literal') return null
+  if (binding.kind === 'expr') {
+    const src = binding.expr ?? ''
+    if (src === '') return null
+    const parsed = parseExpression(src)
+    if (!parsed.ok) {
+      warnings.push({
+        code: 'binding-invalid-expression',
+        message: `node ${node.id} text binding expression "${src}" → ${parsed.error}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const unknown = unknownIdentifiers(parsed.references, states, inScope)
+    if (unknown.length > 0) {
+      warnings.push({
+        code: 'binding-unknown-identifier',
+        message: `node ${node.id} text binding expression references unknown identifier(s): ${unknown.join(', ')}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    return {
+      kind: 'expression',
+      ast: parsed.ast,
+      references: [...parsed.references]
+    }
+  }
   // kind === 'ref'
   if (!binding.stateId) {
     warnings.push({
@@ -43,6 +76,27 @@ export function resolveTextBinding(
     ast: { kind: 'ident', name: state.name },
     references: [state.name]
   }
+}
+
+const EMPTY_SCOPE: ReadonlySet<string> = new Set()
+
+/** Identifiers referenced by an expression that match neither a declared state
+ *  nor an in-scope identifier. Used by both `resolveTextBinding` (kind=expr)
+ *  and the renderCondition resolver in `tree.ts`. */
+export function unknownIdentifiers(
+  references: ReadonlySet<string>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>
+): string[] {
+  const stateNames = new Set<string>()
+  for (const s of states.values()) stateNames.add(s.name)
+  const out: string[] = []
+  for (const ref of references) {
+    if (stateNames.has(ref)) continue
+    if (inScope.has(ref)) continue
+    out.push(ref)
+  }
+  return out
 }
 
 const EVENT_NAMES_TO_RESOLVE: EventName[] = [
