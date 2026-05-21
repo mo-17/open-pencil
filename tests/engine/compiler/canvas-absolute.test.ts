@@ -131,6 +131,69 @@ describe('compile — canvas-direct absolute positioning (Phase 1 §1)', () => {
     expect(css).toMatch(/@source inline\("[^"]*\bmin-h-screen\b/)
   })
 
+  test('classes on a conditionally-rendered subtree still reach the safelist (Phase 2 §9 regression)', () => {
+    // Before the IRConditional walk-through fix, `collectClassNames` early-
+    // returned on non-element kinds, so the inner element's `absolute` /
+    // `left-[Npx]` classes never made it into `@source inline(...)` and
+    // Tailwind silently stripped them in the iframe.
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(pageId, {
+      state: [{ id: 's-flag', name: 'flag', type: 'boolean', defaultValue: true }]
+    })
+    graph.createNode('FRAME', pageId, {
+      name: 'Conditional',
+      x: 123,
+      y: 77,
+      width: 50,
+      height: 30,
+      renderCondition: 'flag'
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'cond-css-demo' })
+    })
+
+    const app = out.files.get('src/App.tsx') as string
+    const css = out.files.get('src/index.css') as string
+    // Sanity: the conditional `&&` made it through to App.tsx.
+    expect(app).toContain('{(flag) && (')
+    // The inner element's positioning classes have to be safelisted.
+    expect(css).toMatch(/@source inline\("[^"]*\babsolute\b/)
+    expect(css).toMatch(/@source inline\("[^"]*\bleft-\[123px\]/)
+  })
+
+  test('classes inside a LIST template still reach the safelist (Phase 2 §9 regression)', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(pageId, {
+      state: [{ id: 's-users', name: 'users', type: 'array', defaultValue: [] }]
+    })
+    const list = graph.createNode('LIST', pageId, {
+      name: 'List',
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 200,
+      interactiveProps: { dataSourceRef: { kind: 'stateRef', stateId: 's-users' } }
+    })
+    // TEXT inside a non-CANVAS parent emits flow-layout classes (not
+    // `left-[Npx]`), so we assert against its w-25 width class which is
+    // unique to the inner template element.
+    graph.createNode('TEXT', list.id, { width: 100, height: 20, text: 'row' })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'list-css-demo' })
+    })
+
+    const css = out.files.get('src/index.css') as string
+    expect(css).toMatch(/@source inline\("[^"]*\bw-25\b/)
+  })
+
   test('a deeply nested rectangle keeps its flow layout regardless of CANVAS-direct ancestor', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

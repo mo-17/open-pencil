@@ -18,7 +18,7 @@ const states = useSceneComputed<StateDef[]>(() => {
   return page?.state ?? []
 })
 
-const TYPES: StateValueType[] = ['string', 'number', 'boolean']
+const TYPES: StateValueType[] = ['string', 'number', 'boolean', 'array', 'object']
 
 function commitStates(next: StateDef[]): void {
   editor.updateNodeWithUndo(pageId.value, { state: next }, 'Update page state')
@@ -62,6 +62,8 @@ function changeDefault(id: string, rawValue: string, type: StateValueType): void
 function defaultFor(type: StateValueType): unknown {
   if (type === 'number') return 0
   if (type === 'boolean') return false
+  if (type === 'array') return []
+  if (type === 'object') return {}
   return ''
 }
 
@@ -73,12 +75,23 @@ function parseValue(raw: string, type: StateValueType): unknown {
   if (type === 'boolean') {
     return raw === 'true'
   }
+  if (type === 'array' || type === 'object') {
+    // Phase 2 §9: parse JSON literal so users can seed `[1,2,3]` /
+    // `{a:1}` defaults. On parse error keep the previous value rather
+    // than wipe the field, so a half-typed expression doesn't blow up.
+    try {
+      return JSON.parse(raw)
+    } catch {
+      return defaultFor(type)
+    }
+  }
   return raw
 }
 
 function defaultAsString(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   if (value == null) return ''
+  if (typeof value === 'object') return JSON.stringify(value)
   return String(value)
 }
 

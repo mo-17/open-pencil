@@ -117,6 +117,18 @@ function collectClassNames(irs: readonly IRTree[]): string[] {
 }
 
 function walk(node: IRNode, acc: Set<string>): void {
+  // Phase 2 §9: IRConditional / IRList carry no className of their own, but
+  // their subtrees do. Without descending here, Tailwind's safelist would miss
+  // classes on conditionally-rendered or list-templated elements and the
+  // iframe would silently strip their CSS.
+  if (node.kind === 'conditional') {
+    walk(node.consequent, acc)
+    return
+  }
+  if (node.kind === 'list') {
+    walk(node.template, acc)
+    return
+  }
   if (node.kind !== 'element') return
   if (node.className) {
     for (const cls of node.className.split(/\s+/)) {
