@@ -390,6 +390,13 @@ export interface SceneNode {
   // undefined → unconditional render (decision §9.2 #8). Persisted via §12
   // pluginData under `lowcode/renderCondition`.
   renderCondition?: string
+  // ── Lowcode (Phase 2 §2) ──
+  // Document-level "Document State" variable declarations. Bubble-style
+  // runtime K-V, distinct from Figma-style Variable / VariableCollection
+  // (which are design tokens with multi-mode). Only the root node
+  // (`graph.rootId`) populates this; on other nodes the field stays
+  // undefined. Persisted via §12 pluginData under `lowcode/documentState`.
+  lowcodeDocumentState?: DocumentStateDef[]
 }
 
 export type ComponentPropertyType = 'VARIANT' | 'TEXT' | 'BOOLEAN' | 'INSTANCE_SWAP'
@@ -442,17 +449,29 @@ export interface StateDef {
   description?: string
 }
 
+// Phase 2 §2: document-level "Document State" variable declarations.
+// Same shape as page-scoped StateDef; the distinction is *where* it is
+// attached (root node's `lowcodeDocumentState`) and *how* the compiler
+// emits it (a zustand-backed runtime store via `_lowcode_state.ts` rather
+// than per-page `useState`). Strictly different from Figma `Variable`
+// (which is a multi-mode design token, see types.ts:408).
+export type DocumentStateDef = StateDef
+
 // Binding describes how a node property pulls its value at runtime.
 // kind=literal → use literalValue directly.
 // kind=ref → resolve to the StateDef with id === stateId.
 // kind=expr (Phase 2 §9) → evaluate `expr` (§7.3 sub-language) at IR-collect
 //   time; identifiers in `expr` resolve against either declared states or the
 //   in-scope item/index identifiers when inside a LIST template subtree.
+// kind=docState (Phase 2 §2) → resolve to a DocumentStateDef by name on the
+//   root node's `lowcodeDocumentState`. Independent from `stateId` so doc-state
+//   and page-state can coexist without ID collisions.
 export interface BindingExpr {
-  kind: 'literal' | 'ref' | 'expr'
+  kind: 'literal' | 'ref' | 'expr' | 'docState'
   stateId?: string
   literalValue?: unknown
   expr?: string
+  docStateName?: string
 }
 
 export type EventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'

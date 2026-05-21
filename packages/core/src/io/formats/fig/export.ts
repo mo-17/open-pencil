@@ -184,7 +184,18 @@ export async function exportFigFile(
   const docGuid = { sessionID: 0, localID: 0 }
   const localIdCounter = { value: 2 }
 
-  const nodeChanges: KiwiNodeChange[] = [makeDocumentNodeChange(docGuid, graph.documentColorSpace)]
+  const docNc = makeDocumentNodeChange(docGuid, graph.documentColorSpace)
+  // Phase 2 §2: document-level lowcode fields (DocumentStateDef[]) live on the
+  // root SceneNode. Mirror Phase 1 §12's page-level attach pattern (below) so
+  // the DOCUMENT NodeChange carries the matching pluginData entry on save.
+  const rootNode = graph.getNode(graph.rootId)
+  if (rootNode) {
+    const rootLowcodeEntries = serializeLowcodeFields(rootNode)
+    if (rootLowcodeEntries.length > 0) {
+      docNc.pluginData = mergePluginData([...rootNode.pluginData, ...rootLowcodeEntries])
+    }
+  }
+  const nodeChanges: KiwiNodeChange[] = [docNc]
 
   const blobs: Uint8Array[] = []
   const pages = graph.getPages(true)

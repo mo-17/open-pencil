@@ -277,6 +277,20 @@ function applyLowcodeFieldsToPage(page: SceneNode, canvasNc: NodeChange): void {
   if (interactiveProps !== undefined) page.interactiveProps = interactiveProps
 }
 
+/**
+ * Phase 2 §2: hydrate root-scoped lowcode fields from the DOCUMENT pluginData.
+ * `lowcodeDocumentState` (document-level "Document State" declarations) is the
+ * only field currently routed here, but the helper takes the full extracted
+ * shape to stay symmetric with the page-level helper above.
+ */
+function applyLowcodeFieldsToRoot(graph: SceneGraph, docNc: NodeChange): void {
+  const root = graph.getNode(graph.rootId)
+  if (!root) return
+  const { pluginData, lowcodeDocumentState } = extractLowcodeAndPluginData(docNc)
+  if (pluginData.length > 0) root.pluginData = pluginData
+  if (lowcodeDocumentState !== undefined) root.lowcodeDocumentState = lowcodeDocumentState
+}
+
 function importPages(
   graph: SceneGraph,
   changeMap: Map<string, NodeChange>,
@@ -295,22 +309,22 @@ function importPages(
   }
 
   if (docId) {
-    for (const canvasId of childrenMap.get(docId) ?? []) {
-      const canvasNc = changeMap.get(canvasId)
-      if (!canvasNc) continue
-      if (canvasNc.type === 'CANVAS') {
-        const page = graph.addPage(canvasNc.name ?? 'Page')
-        canvasIdToPageId.set(canvasId, page.id)
-        if (canvasNc.internalOnly) page.internalOnly = true
-        applyLowcodeFieldsToPage(page, canvasNc)
-        created.add(canvasId)
-        for (const childId of childrenMap.get(canvasId) ?? []) {
-          createSceneNode(childId, page.id)
-        }
-      } else {
-        createSceneNode(canvasId, graph.getPages()[0]?.id ?? graph.rootId)
-      }
-    }
+    // Phase 2 §2: hydrate root-node lowcode fields (currently only
+    // `lowcodeDocumentState`) from the DOCUMENT NodeChange's pluginData. The
+    // root SceneNode was created by `new SceneGraph()` before import, so we
+    // patch its lowcode fields in place rather than going through
+    // `nodeChangeToProps`.
+    const docNc = changeMap.get(docId)
+    if (docNc) applyLowcodeFieldsToRoot(graph, docNc)
+    importPagesFromDoc(
+      graph,
+      docId,
+      changeMap,
+      childrenMap,
+      created,
+      canvasIdToPageId,
+      createSceneNode
+    )
   } else {
     const roots: string[] = []
     for (const [id] of changeMap) {
@@ -320,6 +334,33 @@ function importPages(
     const page = graph.getPages()[0] ?? graph.addPage('Page 1')
     for (const rootId of roots) {
       createSceneNode(rootId, page.id)
+    }
+  }
+}
+
+function importPagesFromDoc(
+  graph: SceneGraph,
+  docId: string,
+  changeMap: Map<string, NodeChange>,
+  childrenMap: Map<string, string[]>,
+  created: Set<string>,
+  canvasIdToPageId: Map<string, string>,
+  createSceneNode: (ncId: string, graphParentId: string) => void
+): void {
+  for (const canvasId of childrenMap.get(docId) ?? []) {
+    const canvasNc = changeMap.get(canvasId)
+    if (!canvasNc) continue
+    if (canvasNc.type === 'CANVAS') {
+      const page = graph.addPage(canvasNc.name ?? 'Page')
+      canvasIdToPageId.set(canvasId, page.id)
+      if (canvasNc.internalOnly) page.internalOnly = true
+      applyLowcodeFieldsToPage(page, canvasNc)
+      created.add(canvasId)
+      for (const childId of childrenMap.get(canvasId) ?? []) {
+        createSceneNode(childId, page.id)
+      }
+    } else {
+      createSceneNode(canvasId, graph.getPages()[0]?.id ?? graph.rootId)
     }
   }
 }

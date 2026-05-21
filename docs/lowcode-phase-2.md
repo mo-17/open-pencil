@@ -48,19 +48,337 @@
 
 ---
 
-## 2. 候选 §2 — `setVariable` 运行时存储
+## 2. §2 详细设计:Document State 运行时
 
-**当前**: `SetVariableAction` 在 §7.4 落了 union slot,但 compiler 端永远 warn 并 drop。
+> 2026-05-22 用户在对话中挑定 Phase 2 第二项开工。形式参照 §9 / `lowcode-phase-1.md` §11 / §12。**全部 6 项主决定 2026-05-22 已由用户在对话中锁定,10 项次级决定一次性 ACK 入锁**。
+>
+> **状态:🚧 开工中**(HEAD `2c5cd14`)。Step 1–5 分日 commit,跟 §9 同节奏。
 
-**Phase 2 目标**: 给编译产物补最小运行时变量 store,让 `setVariable` 从警告变功能。
+### 2.1 现状与问题
 
-**待锁决定**:
-- store 选什么?候选:`localStorage` / React Context / `zustand`(已用 React,加依赖小) / 自写 mini-store
-- 变量是页面级还是文档级?Phase 0 §2 的 state 是页面级,setVariable 走文档级才有意义,否则跟 setState 冗余
-- 跨页持久化:存 sessionStorage / localStorage / 内存
-- 跟 `bindings` 是否打通?(`TEXT.bindings.text = { kind: 'var', varName: 'username' }`?)
+- `SetVariableAction`(`packages/core/src/scene-graph/types.ts:486`)在 Phase 1 §7.4 落了判别联合 slot(`targetName` + `valueExpr`),编辑器 EventsPanel 也给了 input UI,但 compiler `bindings.ts:152` 永远 `warn + drop`。用户在 EventsPanel 看到 "not yet emitted — compiles to a warning" 的 amber stub。
+- `BindingExpr` 只有 `'literal' | 'ref' | 'expr'` 三种 kind,**没有**绑全局变量的路径。
+- `StateDef[]` 只能挂 CANVAS(页面)/ BUTTON / FORM / TEXT 等 4 个 NodeType 上,且语义是**页面级 `useState`**;Bubble 风格的"跨页全局 K-V"无法表达。
+- OpenPencil 现有 `Variable` / `VariableCollection`(`types.ts:405-429`)是 **Figma-style 设计 token**(`COLOR / FLOAT / STRING / BOOLEAN`,多 mode,绑节点属性,编译时常量替换),且已进 vendored Kiwi schema、有 MCP tool、有 Vue 组件 ABI —— 跟 Bubble 风格的运行时变量是**完全两个东西**,不能复用类型。
 
-**风险**: 若 store 选 Context,得改 `App.tsx` / 多页 router shell;若选 `zustand`,加 `dependencies` 一项。
+**调试场景(期望)**:
+
+```
+SceneGraph (root "Document"):
+  lowcodeDocumentState: [
+    { name: 'username',  type: 'string',  defaultValue: 'guest' },
+    { name: 'cartCount', type: 'number',  defaultValue: 0 },
+    { name: 'isLoggedIn', type: 'boolean', defaultValue: false }
+  ]
+
+  CANVAS Home
+    BUTTON  events.onClick = [{
+      kind: 'setVariable', targetName: 'cartCount', valueExpr: '$prev + 1'
+    }]
+    TEXT    bindings.text = { kind: 'docState', docStateName: 'cartCount' }
+  CANVAS About
+    TEXT    bindings.text = { kind: 'docState', docStateName: 'cartCount' }
+
+期望 emit (multi-page,简化):
+
+  // src/_lowcode_state.ts (auto-generated)
+  import { createStore } from 'zustand/vanilla'
+  import { useStore } from 'zustand'
+  type DocState = { username: string; cartCount: number; isLoggedIn: boolean }
+  const store = createStore<DocState>(() => ({
+    username: 'guest', cartCount: 0, isLoggedIn: false
+  }))
+  export function useDocState<K extends keyof DocState>(name: K): DocState[K] {
+    return useStore(store, (s) => s[name])
+  }
+  export function setDocState<K extends keyof DocState>(
+    name: K, value: DocState[K] | ((prev: DocState[K]) => DocState[K])
+  ): void {
+    store.setState((s) =>
+      ({ [name]: typeof value === 'function' ? (value as Function)(s[name]) : value }) as Partial<DocState>
+    )
+  }
+  export function getDocStateSnapshot<K extends keyof DocState>(name: K): DocState[K] {
+    return store.getState()[name]
+  }
+
+  // src/pages/Home.tsx (片段)
+  import { useDocState, setDocState } from '../_lowcode_state'
+  ...
+  const cartCount = useDocState('cartCount')
+  ...
+  <button onClick={() => setDocState('cartCount', (prev) => prev + 1)}>...</button>
+  <p>{cartCount}</p>
+```
+
+### 2.2 关键决定
+
+> 形式同 §9.2。**#1–#6 已锁;#a–#j 为次级默认,step 1 前用户 ACK 视为已锁。**
+
+| # | 主题 | 决定 | 理由 | 状态 |
+|---|---|---|---|---|
+| 1 | Store 实现 | **zustand 底层 + 自写封装层** —— compiler emit 出 `_lowcode_state.ts`,内部用 `zustand/vanilla` `createStore`,对外只暴露 `useDocState` / `setDocState` / `getDocStateSnapshot` 三个 API。zustand 加在**编译产物**的 `package.json`,**不**加到 `packages/compiler` 自身 deps | 自写 mini-store 要重新踩 React 18 concurrent / batching 边界;zustand 已被千万项目验证。封装层让用户 emit 代码只接触低代码语义符号,zustand 是实现细节,Phase 3+ 想加 `persist` 直接接 `zustand/middleware/persist`。compiler 自身保持框架无关 | **🔒 已锁** |
+| 2 | 变量粒度 | **仅文档级**。页面级 state 走 §7.4 已有 setState,不重复造 | setVariable 走文档级才与 setState 语义不重复(否则冗余);跨页共享必须文档级 | **🔒 已锁** |
+| 3 | 跨页持久化 | **仅内存**。运行时 store 只活在 preview iframe 里,iframe 刷新 = 回到 defaultValue。不写 localStorage / sessionStorage | Phase 2 §2 范围最小;不打开 JSON 序列化 / type fence / quota / schema 变更的门。Phase 3+ 再加 `persist` flag | **🔒 已锁** |
+| 4 | bindings 读 docState 的接口 | **新增** `BindingExpr.kind: 'docState'`,字段 `docStateName: string`。kind 集合扩为 `'literal' \| 'ref' \| 'expr' \| 'docState'` | 与 state ref(`kind:'ref'`)彻底分轨,不复用 `stateId` 字段避免 ID 冲突;`expr` 加 var 引用留 §4 一并(本期不动 expression.ts 标识符解析) | **🔒 已锁** |
+| 5 | 命名 / 边界严分 | 现有 Figma `Variable` / `VariableCollection` **不动**。新概念类型名 **`DocumentStateDef`**;编辑器中文术语 **"Document State / 全局状态"**;schema 字段 `SceneNode.lowcodeDocumentState?: DocumentStateDef[]`(仅 root 节点有意义);pluginData key `lowcode/documentState`;BindingExpr 新 kind 字面值 `'docState'`(不是 `'var'`);emit 文件路径 `src/_lowcode_state.ts`。`SetVariableAction.kind: 'setVariable'` 字面值因 §7.4 锁定保留,编辑器 UI dropdown 显示标签为 "Set Document State",emit 出来的运行时调用是 `setDocState(...)` | Figma Variable 已有完整 schema + Kiwi codec + MCP tool + UI,复用必撞;`SetVariableAction.kind` 撤换会破坏旧 .fig 兼容(prompt.md 明令)。两套并存、内部叫法严分 | **🔒 已锁** |
+| 6 | 回调式 set | valueExpr 子语言 reserve identifier **`$prev`**。检测 `$prev` 出现 → emit functional updater(`setDocState('name', (prev) => prev + 1)`/ `setCount((prev) => prev + 1)`);不含 → 维持绝对赋值。**setState + setVariable 两条路径同步生效**(避免心智不一致) | 防连续 set 读后写竞态;跟 React `setState` 心智一致;不加 schema 字段(零迁移成本);用户用 `$prev + 1` 即走回调,无需 UI toggle。这是 emit 路径扩展,**不**撤销 §7.4 锁定(§7.4 锁的是 union 形状,没锁 valueExpr 必须绝对赋值) | **🔒 已锁** |
+
+**次级默认(step 1 前用户 ACK 视为已锁)**:
+
+| # | 主题 | 默认 |
+|---|---|---|
+| a | DocumentStateDef 持久化通道 | 走 §12 同款 pluginData 通道。新增 key `LOWCODE_DOCUMENT_STATE_KEY = 'lowcode/documentState'`,JSON 编码,挂在 **root 节点**(`graph.rootId`)的 pluginData 上。**不**动 vendored `kiwi-schema/` |
+| b | DocumentStateDef shape | `type DocumentStateDef = StateDef`(类型别名,字段完全同形:`{ id, name, type: StateValueType, defaultValue, description? }`)。理由:语义同源,复用 StateDef 的编辑器组件 / 校验 / 默认值逻辑 |
+| c | 编辑器入口位置 | 在 `DesignPanel.vue` "no node selected" 分支里、`StatePanel` 与 `VariablesSection` 之间,**新增** `<DocumentStatePanel />`。`StatePanel` 当前在该分支也出现,但作用于**当前页面**;`DocumentStatePanel` 作用于整个文档,UI 形态高度复用 `StatePanel`(jscpd 0 clones → 抽 composable) |
+| d | emit 产物路径 | vfs 路径 `src/_lowcode_state.ts`(跟 §11 router shell 同款下划线前缀,标识 generated)。仅当文档有 ≥1 个 DocumentStateDef 时生成 |
+| e | 运行时 store 不进 .fig | 运行时 Map 只活在 preview iframe;`DocumentStateDef` 声明走 pluginData(同 a);**不**碰 `.fig` 二进制 |
+| f | setVariable action emit 形态 | `bindings.ts:152` 的 warn → `setDocState('name', <expr>)`;含 `$prev` → `setDocState('name', (prev) => <expr where $prev → prev>)`。`<expr>` 用 §7.3 受限子语言,内部标识符引用按上下文解析(setState 的 onClick 表达式可引用页面 state + `$prev`;setVariable 可引用页面 state + 当前 docState 是否可读 → 见 #h) |
+| g | bindings.expr 里读 docState | Phase 2 §2 范围内**不**给 expression 加 docState 标识符解析。要读 docState 走 `kind: 'docState'` binding 一条路 —— `expr` + docState 引用留 §4 一并 |
+| h | setVariable.valueExpr 不识别 docState | 跟 setState 同口径(避免 docState→docState 循环依赖)。仅识别:页面 state + literal + `$prev`(当前 target 的"上一值") |
+| i | 校验 | `targetName`(setVariable action)/ `docStateName`(binding)必须解析到一个 `DocumentStateDef`,否则 IR warning(`action-setvariable-unknown-target` / `binding-docstate-unknown-name`)+ 编辑器 amber 角标(复用 §7.3 inline 校验 UI)。`$prev` 仅在 set* action valueExpr 合法,binding.expr 出现 → IR warning(`expression-prev-out-of-context`) |
+| j | zustand 依赖加在哪里 | **仅编译产物** package.json(emit 时 `dependencies.zustand` 注入,版本 pin 跟 React 一致),preview esbuild prebundle 一次。**不**加到 `packages/compiler/package.json` |
+
+> 锁定后**不在对话中重新讨论**;若用户后续推翻视为显式 scope change,更新本节。
+
+### 2.3 公开 API / Schema 改动
+
+**SceneGraph types(`packages/core/src/scene-graph/types.ts`)**:
+
+```ts
+/** Phase 2 §2: document-level "Document State" variable declarations,
+ *  distinct from Figma-style Variable / VariableCollection (which are
+ *  design tokens with multi-mode). Document State is Bubble-style
+ *  runtime K-V — writable via SetVariableAction, read via
+ *  BindingExpr.kind:'docState'. Same shape as page-level StateDef. */
+export type DocumentStateDef = StateDef
+
+export interface SceneNode {
+  // ...existing fields
+  state?: StateDef[]              // page-/component-scoped
+  bindings?: Record<string, BindingExpr>
+  events?: Partial<Record<EventName, ActionDef[]>>
+  interactiveProps?: Record<string, unknown>
+  renderCondition?: string
+  /** Phase 2 §2: only the root node (graph.rootId) populates this. */
+  lowcodeDocumentState?: DocumentStateDef[]
+}
+
+export interface BindingExpr {
+  kind: 'literal' | 'ref' | 'expr' | 'docState'   // ← Phase 2 §2 adds 'docState'
+  stateId?: string
+  literalValue?: unknown
+  expr?: string
+  /** Phase 2 §2: when kind='docState', resolves to a DocumentStateDef by name. */
+  docStateName?: string
+}
+```
+
+> `SetVariableAction`(types.ts:486)字段不动 —— `kind: 'setVariable'` / `targetName` / `valueExpr` 仍是原样,改的是它在 `bindings.ts` 里的语义(从 warn 改成 emit 真实 handler)和编辑器 UI 标签("Set Variable" → "Set Document State")。
+
+**pluginData(`packages/core/src/kiwi/node-change/lowcode-plugin-data.ts`)**:
+
+```ts
+/** Phase 2 §2: document-level state declarations, attached to the root node only. */
+export const LOWCODE_DOCUMENT_STATE_KEY = 'lowcode/documentState'
+
+// serializeLowcodeFields 新增:
+if (isNonEmpty(node.lowcodeDocumentState)) {
+  entries.push(makeEntry(LOWCODE_DOCUMENT_STATE_KEY, node.lowcodeDocumentState))
+}
+
+// assignLowcodeField 新增 case:
+case LOWCODE_DOCUMENT_STATE_KEY:
+  target.lowcodeDocumentState = value as DocumentStateDef[]
+  return
+```
+
+**expression sub-language(`packages/compiler/src/ir/expression.ts`)**:
+
+- IDENT_RE 由 `/^[A-Za-z_][A-Za-z0-9_]*/` 扩为 `/^[A-Za-z_$][A-Za-z0-9_$]*/`(allow `$` in identifiers,跟 JS 同款)
+- `parseExpression` / `emitExpression` 行为不变 —— `$prev` 仅作为合法 identifier 通过,`references` 集合里会包含 `'$prev'`
+- 新增导出函数:`hasPrevReference(ast: ExprAst): boolean` 和 `substitutePrev(ast: ExprAst, replacement: string): ExprAst` —— functional updater emit 路径用
+
+**IR collect(`packages/compiler/src/ir/collect/`)**:
+
+- `bindings.ts:152` 的 `case 'setVariable'` warn 改为真实 handler `resolveSetVariable(...)`:
+  - 解析 `valueExpr` AST
+  - 校验 `targetName` 必须在 `graph.rootNode.lowcodeDocumentState` 里
+  - 校验表达式 references:页面 state ids + `$prev` 合法,docState 名 / 未声明 ident 报 warning
+  - 检测 `$prev` → 标记 `IRSetVariable { mode: 'functional', innerExpr: <expr with $prev as prev> }`,否则 `mode: 'absolute'`
+- `resolveSetState`(同文件)同步加 `$prev` 检测 + functional 标记 → `IRSetState { mode: 'absolute' | 'functional' }`
+- `BindingExpr.kind: 'docState'` 在 `collect/bindings.ts` / binding 解析处加 case,生成 `IRDocStateRef { name: string }` 之类的 IR(具体 IR 类型名见 step 2 实现 PR)
+- 任何 `binding.expr` collect 路径检测到 references 含 `'$prev'` → warning `expression-prev-out-of-context`
+
+**IR types(`packages/compiler/src/ir/types.ts`)**:
+
+```ts
+// IREventHandler 已是 union;扩展 setVariable / 增强 setState:
+export interface IRSetStateHandler {
+  kind: 'setState'
+  stateName: string
+  innerExpr: string
+  mode: 'absolute' | 'functional'   // ← Phase 2 §2 新增 mode
+}
+
+export interface IRSetVariableHandler {
+  kind: 'setVariable'
+  docStateName: string
+  innerExpr: string
+  mode: 'absolute' | 'functional'
+}
+
+// Binding IR:扩展 docState 一支(具体 union 形状以现有 collect/bindings.ts 输出为准)
+```
+
+**emit react(`packages/compiler/src/adapters/react/`)**:
+
+- 新增 scaffold file gen:`scaffoldLowcodeState(stateDefs: DocumentStateDef[]) => { path: 'src/_lowcode_state.ts', source: string }`。仅当 `stateDefs.length > 0` 时调用
+- emit 产物 `package.json` 在有 docState 时注入 `dependencies.zustand`(版本跟随当前 React 版本兼容范围 —— 见 step 3 选定)
+- 每个 page module 在引用 docState 时自动 import `useDocState` / `setDocState` from `'../_lowcode_state'`(类似 §11 router shell import 同 pattern)
+- `emit/handlers.ts`(或同位)给 `IRSetStateHandler` / `IRSetVariableHandler` 加 `mode` 分支:`absolute` emit `setX('name', <expr>)`;`functional` emit `setX('name', (prev) => <expr>)`(setState 的 `name` 形参就是 stateName setter,签名匹配)
+
+**编辑器 UI**:
+
+- 新建 `src/components/properties/Lowcode/DocumentStatePanel.vue`,UI 高度复用 `StatePanel.vue`(抽 composable `useStateRowEditor` 把行级编辑、JSON parse 校验、命名校验等逻辑共享 → jscpd 0 clones)。挂在 `DesignPanel.vue` no-node-selected 分支中 `<PageSection />` 与 `<StatePanel />` 之后、`<VariablesSection />` 之前
+- `EventsPanel.vue` 第 146-148 行 setVariable amber stub 去掉,改为正常输入:
+  - target 是 docState 名下拉(只列 `graph.rootNode.lowcodeDocumentState`,空时显示 "no document state")
+  - valueExpr 同 setState 的输入框 + §7.3 inline 校验(`$prev` 是合法 token)
+  - dropdown 显示标签:`'setState' / 'navigate' / 'Set Document State'`(setVariable 显示成 "Set Document State")
+- `TextBindingPanel.vue`(或 binding 选择器所在文件)选 `kind: 'docState'` 时显示 docState 名下拉
+- `$prev` 快速按钮:setState / setVariable input 右侧加 "插入 $prev" chip(可选,Step 4 收尾再加,不阻塞)
+- i18n 新 key:`panels.lowcodeDocumentState*` 系列 + `panels.lowcodeActionSetDocument*`
+
+### 2.4 不动什么
+
+- **kiwi schema**(vendored)—— DocumentStateDef 走 pluginData,不 fork
+- **Figma `Variable` / `VariableCollection` / `VariableBinding` / `VariablesDialog.vue`** —— 不动,跟 docState 严分两轨
+- `validateExpression`(`packages/compiler/src/ir/validate.ts`)—— 复用,只增加 `$prev` 合法上下文判定
+- `useState` emit / `IRStateDecl` —— 不动;docState 走独立 emit 路径
+- `App.tsx` / router shell(§11)—— 不动;`_lowcode_state.ts` 是模块单例,无 Provider
+- `SetVariableAction.kind` 字面值 `'setVariable'` —— 不动(§7.4 锁 + 老 .fig 兼容)
+- `OPEN_PENCIL_PLUGIN_ID` —— 不动
+- `EventsPanel.vue` 的 `ACTION_KINDS` 数组(`['setState', 'navigate', 'setVariable']`)字面值不动,只改显示标签
+
+### 2.5 成功标准
+
+仅针对 §2。所有项通过即可宣告 Phase 2 §2 完成:
+
+1. `bun test ./tests/engine/compiler/` 全绿;新增至少:
+   - `ir/collect/set-variable.test.ts` —— targetName 解析 / 未声明 docState warning / `$prev` functional 标记 / valueExpr 不识别 docState
+   - `ir/collect/set-state-prev.test.ts` —— setState 也支持 `$prev`;不含 `$prev` 保持 absolute 形态
+   - `ir/collect/binding-docstate.test.ts` —— `kind:'docState'` 合法 / 未声明 docStateName warning / binding.expr 用 `$prev` warning
+   - `ir/expression-prev.test.ts` —— `$prev` 作为合法 identifier 通过 parse;`hasPrevReference` / `substitutePrev` 工作
+   - `adapters/react/emit-document-state.test.ts` —— `_lowcode_state.ts` scaffold 内容正确;有/无 docState 时 package.json `dependencies.zustand` 注入/不注入
+   - `adapters/react/emit-set-variable.test.ts` —— absolute / functional 两种 emit 形态
+   - `adapters/react/emit-set-state-prev.test.ts` —— setState functional emit 形态
+
+2. `bun test ./tests/engine/kiwi/lowcode/` 全绿;新增至少:
+   - `document-state-pluginData.test.ts` —— root 节点 `lowcodeDocumentState` 来回 .fig;旧 .fig(无字段)字节级回归
+   - `bindings-docstate-kind.test.ts` —— `bindings.text = { kind:'docState', docStateName:'x' }` 来回
+
+3. `bun run check` 全绿(oxlint、tsgo、vue-tsc、i18n、steiger、jscpd 0 clones)
+
+4. **Tauri 实测(用户主导,§9 同节奏)**:
+   - "no node selected" 时 DocumentStatePanel 出现在 PageSection 下方;添加 username/cartCount/isLoggedIn 三个 docState
+   - BUTTON onClick setVariable target dropdown 列出三个 docState 名;valueExpr 输入 `$prev + 1` 不报红
+   - TEXT bindings.text 切到 `kind:'docState'`,选 cartCount;画布上 TEXT 显示 0
+   - preview iframe 里点 BUTTON;cartCount TEXT 实时变 1 / 2 / 3
+   - 跨页(Home → About)切换,About 页面同样有 TEXT 绑 cartCount,值保持不变(跨页共享)
+   - 保存 .fig → reopen → docState 声明 / binding / action 全部还在
+   - iframe 刷新(reload)→ cartCount 复位到 0(确认无持久化)
+
+5. 不破坏 Phase 0 §8 / Phase 1 §1 §5 §7.3 §7.4 §10.3 §11.3 §12.3 / Phase 2 §9.2 任一锁定决定 —— 旧 demo / 旧 .fig 行为完全不变
+
+### 2.6 测试策略
+
+**单元测试(`tests/engine/compiler/`)**:
+
+- `ir/expression-prev.test.ts`
+  | 用例 | 期望 |
+  |---|---|
+  | `parseExpression('$prev')` | ok=true;references=Set(['$prev']) |
+  | `parseExpression('$prev + 1')` | ok=true;references=Set(['$prev']) |
+  | `parseExpression('$prev * 2 - count')` | ok=true;references=Set(['$prev', 'count']) |
+  | `hasPrevReference(ast)` 在含 `$prev` 时 true,不含时 false | |
+  | `substitutePrev(ast, 'prev')` 把 ident 节点 `'$prev'` 替成 `'prev'`,emit 出 `prev + 1` 等 | |
+
+- `ir/collect/set-variable.test.ts`
+  | 用例 | 期望 |
+  |---|---|
+  | targetName 在 docState 里 + valueExpr=`5` | IRSetVariableHandler { mode:'absolute', innerExpr:'5' } |
+  | targetName 在 docState 里 + valueExpr=`$prev + 1` | IRSetVariableHandler { mode:'functional', innerExpr:'prev + 1' } |
+  | targetName 不在 docState 里 | warning `action-setvariable-unknown-target`;handler 丢 |
+  | valueExpr 引用未声明 ident `foo` | warning `expression-unknown-identifier` |
+  | valueExpr 引用另一个 docState 名 | warning `expression-unknown-identifier`(决定 #h:setVariable.valueExpr 不识别 docState) |
+
+- `ir/collect/set-state-prev.test.ts`
+  | 用例 | 期望 |
+  |---|---|
+  | 现有 setState 不含 `$prev` | IRSetStateHandler { mode:'absolute' } (兼容现有行为) |
+  | setState valueExpr=`$prev + 1` | IRSetStateHandler { mode:'functional', innerExpr:'prev + 1' } |
+  | setState valueExpr=`$prev * 2 + count` | functional;innerExpr:`prev * 2 + count`;references 包含 count |
+
+- `ir/collect/binding-docstate.test.ts`
+  | 用例 | 期望 |
+  |---|---|
+  | bindings.text = { kind:'docState', docStateName:'username' } + docState 已声明 | IR 含 docState 引用;无 warning |
+  | docStateName 未声明 | warning `binding-docstate-unknown-name` |
+  | bindings.text = { kind:'expr', expr:'$prev' } | warning `expression-prev-out-of-context` |
+  | bindings.text = { kind:'expr', expr:'count + $prev' } | warning(同上) |
+
+- `adapters/react/emit-document-state.test.ts`
+  | 用例 | 期望 |
+  |---|---|
+  | 文档有 3 个 docState | 产生 `src/_lowcode_state.ts`,内容包含 `import { createStore } from 'zustand/vanilla'`、三个字段初值;package.json `dependencies.zustand` 注入 |
+  | 文档 0 个 docState | 不产生 `_lowcode_state.ts`;package.json 不注入 zustand |
+
+- `adapters/react/emit-set-variable.test.ts` / `emit-set-state-prev.test.ts`
+  | 用例 | 期望 emit 含 |
+  |---|---|
+  | setVariable absolute | `setDocState('cartCount', 5)` |
+  | setVariable functional | `setDocState('cartCount', (prev) => prev + 1)` |
+  | setState absolute(回归) | `setCartCount(5)` |
+  | setState functional | `setCartCount((prev) => prev + 1)` |
+
+**Kiwi 持久化(`tests/engine/kiwi/lowcode/`)**:
+
+- `document-state-pluginData.test.ts` —— root 节点加 `lowcodeDocumentState: [...]` → save .fig → reload → 字段还在 + JSON 编码正确;旧 .fig(无字段)字节级回归
+- `bindings-docstate-kind.test.ts` —— bindings.text = { kind:'docState', docStateName:'x' } → 来回
+
+**集成测试(用户主导)**:§2.5 #4。
+
+### 2.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| `BindingExpr.kind` 加 `'docState'` 后旧 .fig 解析撞 union 收窄 | 中 | kind 是 string union;读路径 switch 默认走 unknown-kind warning 而非崩溃;**Phase 1 §12 实测过的 .fig 做 fixture 字节回归** |
+| zustand 加在编译产物会影响 preview esbuild prebundle 时间 | 低 | zustand ~1KB gzipped + zero transitive deps;esbuild prebundle 一次后缓存;Tauri 实测在 5 个 docState 规模下肉眼无感 |
+| `$prev` widen IDENT_RE 后老 .fig 里 valueExpr 含 `$` 字符(虽然原本不合法但 tokenize 已拒)突然合法 | 低 | 现状 tokenize 见 `$` 直接 `unexpected character '$'`;改后 `$` 起首会进 ident 通道,旧 .fig 没有合法 `$ident` → 不会有 false negative;`$` 在 String 字面量内不受影响 |
+| `$prev` 在嵌套 set 里(setState + 别处 setVariable 同 handler)上下文歧义 | 低 | `$prev` 在 valueExpr **解析时**就携带"当前 set target"上下文 —— setState 的 `$prev` = 当前 stateName 上一值,setVariable 的 `$prev` = 当前 docStateName 上一值;两条 handler 之间不共享 `$prev`(它是 emit 时的 closure 形参) |
+| 跨页 docState 共享但 `_lowcode_state.ts` 在 multi-page compile 下能否正确单例 | 中 | zustand vanilla `createStore` 是模块顶层;esm 模块单例语义 → 两个 page module `import`,同一个 store 实例 |
+| 文档级 state 名命名空间跟页面 state 名重叠时,binding 解析歧义 | 中 | `kind:'ref'` 解析 page state(stateId);`kind:'docState'` 解析 docState(docStateName)。**两种 kind 完全不复用字段** → ID 冲突零风险。但 valueExpr 里裸 ident 解析:页面 state 名优先;裸 ident 撞 docState 名时 IR warning(`expression-shadow-docstate-name`)提醒用户改名 |
+| Phase 2 §9 加的 walker(collectClassNames / nodeHasNavigate / stripNode)对 IRSetVariable 漏 case | **中—§9 经验 A** | step 5 走 §9.9 同款 walker checklist;**任何**新 handler kind / IR kind 扩展都 grep 全文 `.kind ===` / `case '`,verify 每个 walker 显式 descend |
+| `_lowcode_state.ts` 路径跟用户某 page 命名冲突 | 极低 | `_` 前缀 + Phase 2 §2 锁定路径;§11 router shell 同款约定,无报错 |
+| jscpd 0 clones —— DocumentStatePanel.vue 跟 StatePanel.vue 行级编辑逻辑高度重复 | 中 | step 4 抽 composable `useStateRowEditor` 共享;两边都消费同一个 composable;jscpd 通过 |
+| 用户 valueExpr 写 `$prev = 5` 之类的赋值 | 极低 | expression 子语言**没有**赋值运算符(没有 `=`);tokenize 见 `=` 在等号上下文只识 `==` / `===` / `<=` / `>=` / `!=` / `!==`,单等号直接 `unexpected character` |
+
+### 2.8 工作分解(建议 1 名工程师,3–5 天)
+
+| 天 / Step | 任务 | 验收 / commit message |
+|---|---|---|
+| A | 本节(§2)写完,主决定 #1–#6 + 次级 #a–#j 用户 ACK | 本节存在;memory `lowcode-phase-2-progress` 更新 |
+| B(step 1) | `DocumentStateDef` 类型 + `SceneNode.lowcodeDocumentState` + `BindingExpr.kind:'docState'` + `docStateName` 字段;pluginData 通道扩 `LOWCODE_DOCUMENT_STATE_KEY`;expression.ts IDENT_RE 扩 `$` + `hasPrevReference` / `substitutePrev`;kiwi 持久化测试 + expression 单测 | `bun test ./tests/engine/kiwi/lowcode/` + `bun test ./tests/engine/compiler/ir/expression*` 全绿;`bun run check` 全绿;commit `feat(lowcode): step 1 — document state schema + bindings.docState + $prev (§2)` |
+| C(step 2) | `bindings.ts:152` 改为真实 `resolveSetVariable`;`resolveSetState` 加 `$prev` 检测 → `mode:'absolute'\|'functional'` 分支;binding collect 加 `kind:'docState'` case;`expression-prev-out-of-context` warning 在 binding.expr 路径生效;IR collect 单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;commit `feat(lowcode): step 2 — IRSetVariable + docState collect + $prev (§2)` |
+| D(step 3) | `scaffoldLowcodeState`(emit `_lowcode_state.ts`);编译产物 package.json 注入 zustand;每个 page module 自动 import `useDocState` / `setDocState`;emit handlers `absolute` / `functional` 两种形态;emit 单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;commit `feat(lowcode): step 3 — emit lowcode document state runtime (§2)` |
+| E(step 4) | `DocumentStatePanel.vue` 新建 + `useStateRowEditor` composable 抽出(StatePanel 同步消费,jscpd 通过);`EventsPanel.vue` setVariable amber stub 改为完整 UI + dropdown 标签 "Set Document State";`TextBindingPanel.vue` binding 选择器加 docState 选项;i18n key 同步;(可选)`$prev` 插入 chip | `bun run check:vue` + `bun run check:i18n` + `bun run test:dupes` 全绿;commit `feat(lowcode): step 4 — document state editor UI (§2)` |
+| F(step 5) | §9.9 walker checklist 跑一遍(grep 全文 `.kind ===` / `case '`,verify IRSetVariable / `kind:'docState'` 不漏);跨路径 `$prev` 回归测试;Tauri 实测 §2.5 #4(用户主导);修发现的 bug | 用户 ACK 全过;changelog + commit `docs(lowcode): §2 Tauri verification` |
+
+> 每个 step commit 前跑 `bun test ./tests/engine/compiler/` + `bun test ./tests/engine/kiwi/lowcode/` + `bun run check`,**不要**跑整个 `./tests/engine/`(15+ 分钟,LFS 慢测 + `kiwi/serialize-fixes/line/height.test.ts:44` pre-existing 失败跟本工作无关)。
+
+### 2.9 Post-mortem
+
+(留空待 Tauri 实测后补)
 
 ---
 

@@ -190,4 +190,54 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
       text: { kind: 'expr', expr: 'item.name' }
     })
   })
+
+  test('document-level lowcodeDocumentState round-trips on the root node (Phase 2 §2)', async () => {
+    const graph = new SceneGraph()
+    const docState = [
+      { id: 'd-username', name: 'username', type: 'string' as const, defaultValue: 'guest' },
+      { id: 'd-cart', name: 'cartCount', type: 'number' as const, defaultValue: 0 },
+      { id: 'd-on', name: 'isLoggedIn', type: 'boolean' as const, defaultValue: false }
+    ]
+    graph.updateNode(graph.rootId, { lowcodeDocumentState: docState })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedRoot = reimported.getNode(reimported.rootId)
+
+    expect(reimportedRoot?.lowcodeDocumentState).toEqual(docState)
+  })
+
+  test('bindings.text with kind=docState round-trips through .fig (Phase 2 §2)', async () => {
+    const graph = new SceneGraph()
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd-cart', name: 'cartCount', type: 'number', defaultValue: 0 }
+      ]
+    })
+    const page = graph.getPages()[0]
+    graph.createNode('TEXT', page.id, {
+      text: '0',
+      bindings: { text: { kind: 'docState', docStateName: 'cartCount' } }
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedText = findFirst(reimported, 'TEXT')
+
+    expect(reimportedText.bindings).toEqual({
+      text: { kind: 'docState', docStateName: 'cartCount' }
+    })
+  })
+
+  test('graph without lowcodeDocumentState → reimported root has the field undefined (byte regression)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('RECTANGLE', page.id, { name: 'Plain rect', width: 80, height: 60 })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedRoot = reimported.getNode(reimported.rootId)
+
+    expect(reimportedRoot?.lowcodeDocumentState).toBeUndefined()
+  })
 })

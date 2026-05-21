@@ -7,6 +7,7 @@ import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/node-change/plugin-data'
 import {
   extractLowcodeAndPluginData,
   LOWCODE_BINDINGS_KEY,
+  LOWCODE_DOCUMENT_STATE_KEY,
   LOWCODE_EVENTS_KEY,
   LOWCODE_INTERACTIVE_PROPS_KEY,
   LOWCODE_NODE_TYPE_KEY,
@@ -30,6 +31,7 @@ function makeNode(fields: Partial<SceneNode> = {}): SceneNode {
     events: undefined,
     interactiveProps: undefined,
     renderCondition: undefined,
+    lowcodeDocumentState: undefined,
     ...fields
   } as SceneNode
 }
@@ -159,6 +161,56 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
       const entries = serializeLowcodeFields(makeNode({ type }))
       expect(entries.find((e) => e.key === LOWCODE_NODE_TYPE_KEY)).toBeUndefined()
     }
+  })
+
+  test('emits a lowcode/documentState entry only when the array is non-empty (Phase 2 §2)', () => {
+    expect(serializeLowcodeFields(makeNode({ lowcodeDocumentState: [] }))).toEqual([])
+    const docState = [
+      { id: 'd1', name: 'username', type: 'string' as const, defaultValue: 'guest' }
+    ]
+    const entries = serializeLowcodeFields(makeNode({ lowcodeDocumentState: docState }))
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toEqual({
+      pluginId: OPEN_PENCIL_PLUGIN_ID,
+      key: LOWCODE_DOCUMENT_STATE_KEY,
+      value: JSON.stringify(docState)
+    })
+  })
+
+  test('appends lowcode/documentState last so older .fig key ordering stays stable', () => {
+    // All six fields populated → documentState should be last in the emitted
+    // entry order (matching the comment in serializeLowcodeFields).
+    const node = makeNode({
+      state: [{ id: 's1', name: 'pageState', type: 'number', defaultValue: 0 }],
+      bindings: { text: { kind: 'ref', stateId: 's1' } },
+      events: { onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: '1' }] },
+      interactiveProps: { text: 'Go' },
+      renderCondition: 'flag',
+      lowcodeDocumentState: [
+        { id: 'd1', name: 'cartCount', type: 'number' as const, defaultValue: 0 }
+      ]
+    })
+    const keys = serializeLowcodeFields(node).map((e) => e.key)
+    expect(keys).toEqual([
+      LOWCODE_STATE_KEY,
+      LOWCODE_BINDINGS_KEY,
+      LOWCODE_EVENTS_KEY,
+      LOWCODE_INTERACTIVE_PROPS_KEY,
+      LOWCODE_RENDER_CONDITION_KEY,
+      LOWCODE_DOCUMENT_STATE_KEY
+    ])
+  })
+
+  test('round-trips a bindings.docState entry (Phase 2 §2 BindingExpr widening)', () => {
+    const node = makeNode({
+      bindings: { text: { kind: 'docState', docStateName: 'cartCount' } }
+    })
+    const entries = serializeLowcodeFields(node)
+    expect(entries).toHaveLength(1)
+    expect(entries[0].key).toBe(LOWCODE_BINDINGS_KEY)
+    expect(JSON.parse(entries[0].value)).toEqual({
+      text: { kind: 'docState', docStateName: 'cartCount' }
+    })
   })
 })
 
@@ -367,6 +419,42 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
     )
     expect(result.nodeTypeOverride).toBeUndefined()
     expect(result.pluginData).toEqual([])
+  })
+
+  test('hydrates lowcode/documentState into lowcodeDocumentState array (Phase 2 §2)', () => {
+    const docState = [
+      { id: 'd1', name: 'username', type: 'string', defaultValue: 'guest' },
+      { id: 'd2', name: 'cartCount', type: 'number', defaultValue: 0 },
+      { id: 'd3', name: 'isLoggedIn', type: 'boolean', defaultValue: false }
+    ]
+    const result = extractLowcodeAndPluginData(
+      makeNc([
+        {
+          pluginID: OPEN_PENCIL_PLUGIN_ID,
+          key: LOWCODE_DOCUMENT_STATE_KEY,
+          value: JSON.stringify(docState)
+        }
+      ])
+    )
+    expect(result.lowcodeDocumentState).toEqual(docState)
+    expect(result.pluginData).toEqual([])
+  })
+
+  test('hydrates bindings.docState alongside other binding kinds (Phase 2 §2)', () => {
+    const bindings = {
+      text: { kind: 'docState' as const, docStateName: 'cartCount' },
+      placeholder: { kind: 'ref' as const, stateId: 's1' }
+    }
+    const result = extractLowcodeAndPluginData(
+      makeNc([
+        {
+          pluginID: OPEN_PENCIL_PLUGIN_ID,
+          key: LOWCODE_BINDINGS_KEY,
+          value: JSON.stringify(bindings)
+        }
+      ])
+    )
+    expect(result.bindings).toEqual(bindings)
   })
 })
 

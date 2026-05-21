@@ -16,6 +16,7 @@ import type { NodeChange } from '#core/kiwi/binary/codec'
 import type {
   ActionDef,
   BindingExpr,
+  DocumentStateDef,
   EventName,
   NodeType,
   PluginDataEntry,
@@ -31,6 +32,8 @@ export const LOWCODE_EVENTS_KEY = 'lowcode/events'
 export const LOWCODE_INTERACTIVE_PROPS_KEY = 'lowcode/interactiveProps'
 /** Phase 2 §9: optional per-node render-condition expression string. */
 export const LOWCODE_RENDER_CONDITION_KEY = 'lowcode/renderCondition'
+/** Phase 2 §2: document-level state declarations, attached to the root node only. */
+export const LOWCODE_DOCUMENT_STATE_KEY = 'lowcode/documentState'
 /** Phase 0 NodeType extensions that are NOT in the vendored Figma schema —
  *  kiwi serializes them as 'RECTANGLE' via `mapToFigmaType`'s default arm,
  *  so without this side-channel they all become rectangles after a save. */
@@ -53,16 +56,18 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_EVENTS_KEY,
   LOWCODE_INTERACTIVE_PROPS_KEY,
   LOWCODE_RENDER_CONDITION_KEY,
+  LOWCODE_DOCUMENT_STATE_KEY,
   LOWCODE_NODE_TYPE_KEY
 ])
 
 /**
  * Build the pluginData entries that mirror this node's lowcode fields. Order
- * is stable (state → bindings → events → interactiveProps → renderCondition)
- * so two saves of the same in-memory graph produce byte-identical .fig output.
- * `renderCondition` is appended last (Phase 2 §9) so older .fig files re-saved
- * after upgrade keep the original four-key ordering when the new field is
- * empty.
+ * is stable so two saves of the same in-memory graph produce byte-identical
+ * .fig output. New keys are appended at the end so older .fig files re-saved
+ * after upgrade keep their original key ordering when the new field is empty.
+ *
+ * Order: nodeType → state → bindings → events → interactiveProps →
+ * renderCondition (Phase 2 §9) → documentState (Phase 2 §2).
  */
 export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   const entries: PluginDataEntry[] = []
@@ -77,6 +82,9 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   }
   if (typeof node.renderCondition === 'string' && node.renderCondition !== '') {
     entries.push(makeEntry(LOWCODE_RENDER_CONDITION_KEY, node.renderCondition))
+  }
+  if (isNonEmpty(node.lowcodeDocumentState)) {
+    entries.push(makeEntry(LOWCODE_DOCUMENT_STATE_KEY, node.lowcodeDocumentState))
   }
   return entries
 }
@@ -119,6 +127,9 @@ export interface ExtractedLowcodeAndPluginData {
   events?: Partial<Record<EventName, ActionDef[]>>
   interactiveProps?: Record<string, unknown>
   renderCondition?: string
+  /** Phase 2 §2: document-level state declarations (only the root node
+   *  carries this in practice; on other nodes it stays undefined). */
+  lowcodeDocumentState?: DocumentStateDef[]
 }
 
 export function extractLowcodeAndPluginData(
@@ -173,6 +184,9 @@ function assignLowcodeField(
       return
     case LOWCODE_RENDER_CONDITION_KEY:
       if (typeof value === 'string') target.renderCondition = value
+      return
+    case LOWCODE_DOCUMENT_STATE_KEY:
+      target.lowcodeDocumentState = value as DocumentStateDef[]
       return
   }
 }

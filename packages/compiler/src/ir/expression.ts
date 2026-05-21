@@ -57,7 +57,12 @@ type Token =
   | { type: 'op'; value: string }
   | { type: 'punc'; value: '(' | ')' | '?' | ':' | '.' | ',' }
 
-const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*/
+// `$` is allowed in identifiers (standard JS rule). Phase 2 §2 introduces the
+// reserved identifier `$prev` for functional setState / setVariable updates;
+// callers (`hasPrevReference` / `substitutePrev`) decide whether a `$`-prefixed
+// reference is contextually valid. Other `$<name>` parses fine here but is
+// flagged at IR-collect / validate time as an unknown identifier.
+const IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*/
 const NUM_RE = /^\d+(?:\.\d+)?/
 // Longest-match-first so multi-char ops win over their prefixes.
 const OPS = [
@@ -406,4 +411,66 @@ function emitWithPrec(ast: ExprAst, parentPrec: number): string {
 
 function wrap(src: string, ownPrec: number, parentPrec: number): string {
   return ownPrec < parentPrec ? `(${src})` : src
+}
+
+/**
+ * Phase 2 §2: reserved identifier used inside SetStateAction / SetVariableAction
+ * `valueExpr` to opt into a React functional updater (`setX(prev => …)`). Other
+ * call sites (BindingExpr.expr, renderCondition) reject `$prev` at IR-collect /
+ * validate time.
+ */
+export const PREV_IDENT = '$prev'
+
+/** True if the AST references `$prev` anywhere. */
+export function hasPrevReference(ast: ExprAst): boolean {
+  switch (ast.kind) {
+    case 'ident':
+      return ast.name === PREV_IDENT
+    case 'member':
+      return hasPrevReference(ast.object)
+    case 'unary':
+      return hasPrevReference(ast.arg)
+    case 'binary':
+      return hasPrevReference(ast.left) || hasPrevReference(ast.right)
+    case 'ternary':
+      return (
+        hasPrevReference(ast.test) ||
+        hasPrevReference(ast.consequent) ||
+        hasPrevReference(ast.alternate)
+      )
+    default:
+      return false
+  }
+}
+
+/**
+ * Return a new AST with every `$prev` identifier renamed to `replacement` so
+ * the emit step can splice the result into a functional-updater body
+ * (`(prev) => <substituted-expr>`). The input AST is not mutated.
+ */
+export function substitutePrev(ast: ExprAst, replacement: string): ExprAst {
+  switch (ast.kind) {
+    case 'ident':
+      return ast.name === PREV_IDENT ? { kind: 'ident', name: replacement } : ast
+    case 'member':
+      return { kind: 'member', object: substitutePrev(ast.object, replacement), property: ast.property }
+    case 'unary':
+      return { kind: 'unary', op: ast.op, arg: substitutePrev(ast.arg, replacement) }
+    case 'binary':
+      return {
+        kind: 'binary',
+        op: ast.op,
+        left: substitutePrev(ast.left, replacement),
+        right: substitutePrev(ast.right, replacement)
+      }
+    case 'ternary':
+      return {
+        kind: 'ternary',
+        test: substitutePrev(ast.test, replacement),
+        consequent: substitutePrev(ast.consequent, replacement),
+        alternate: substitutePrev(ast.alternate, replacement)
+      }
+    default:
+      return ast
+  }
 }
