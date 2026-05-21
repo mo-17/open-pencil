@@ -60,7 +60,7 @@ describe('resolveActions — discriminated kind dispatch', () => {
     expect(ir.warnings.some((w) => w.code === 'action-navigate-missing-to')).toBe(true)
   })
 
-  test('setVariable is always dropped with a not-implemented warning', () => {
+  test('setVariable targeting an unknown docState is dropped with a warning (Phase 2 §2)', () => {
     const { graph, pageId } = makeButtonWith({
       onClick: [{ id: 'a1', kind: 'setVariable', targetName: 'cookie', valueExpr: '1' }]
     })
@@ -69,7 +69,7 @@ describe('resolveActions — discriminated kind dispatch', () => {
     if (button.kind !== 'element') throw new Error('expected element')
     expect(button.events?.onClick).toBeUndefined()
     expect(
-      ir.warnings.some((w) => w.code === 'action-setvariable-not-implemented')
+      ir.warnings.some((w) => w.code === 'action-setvariable-unknown-target')
     ).toBe(true)
   })
 

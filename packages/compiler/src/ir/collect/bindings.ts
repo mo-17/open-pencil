@@ -1,13 +1,22 @@
 import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
 
-import { parseExpression } from '../expression'
+import type { ExprAst } from '../expression'
+import { hasPrevReference, parseExpression, PREV_IDENT, substitutePrev } from '../expression'
 import type {
+  IRDocStateDecl,
   IREventHandler,
   IREventName,
   IRExpression,
+  IRSetVariableHandler,
   IRStateDecl,
-  IRWarning
+  IRWarning,
+  ValueUpdateMode
 } from '../types'
+
+/** Phase 2 §2: the formal parameter the adapter binds inside a functional
+ *  updater (`setX((prev) => ...)`). Collector rewrites `$prev` → this name
+ *  in the AST so emit can splice the AST verbatim. */
+const PREV_FORMAL = 'prev'
 
 /** Build IR for a node's text binding. Returns null when the node has no
  *  text binding or the binding is unresolvable; the caller falls back to the
@@ -21,11 +30,38 @@ export function resolveTextBinding(
   node: SceneNode,
   states: Map<string, IRStateDecl>,
   warnings: IRWarning[],
-  inScope: ReadonlySet<string> = EMPTY_SCOPE
+  inScope: ReadonlySet<string> = EMPTY_SCOPE,
+  docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES,
+  docStateRefs?: Set<string>
 ): IRExpression | null {
   const binding = node.bindings?.text
   if (!binding) return null
   if (binding.kind === 'literal') return null
+  if (binding.kind === 'docState') {
+    const name = binding.docStateName ?? ''
+    if (name === '') {
+      warnings.push({
+        code: 'binding-docstate-missing-name',
+        message: `node ${node.id} text binding has no docStateName`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (!docStates.has(name)) {
+      warnings.push({
+        code: 'binding-docstate-unknown-name',
+        message: `node ${node.id} text binding references unknown document state "${name}"`,
+        nodeId: node.id
+      })
+      return null
+    }
+    docStateRefs?.add(name)
+    return {
+      kind: 'expression',
+      ast: { kind: 'ident', name },
+      references: [name]
+    }
+  }
   if (binding.kind === 'expr') {
     const src = binding.expr ?? ''
     if (src === '') return null
@@ -34,6 +70,14 @@ export function resolveTextBinding(
       warnings.push({
         code: 'binding-invalid-expression',
         message: `node ${node.id} text binding expression "${src}" → ${parsed.error}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (parsed.references.has(PREV_IDENT)) {
+      warnings.push({
+        code: 'expression-prev-out-of-context',
+        message: `node ${node.id} text binding expression references ${PREV_IDENT}; ${PREV_IDENT} is only valid inside setState / setVariable valueExpr`,
         nodeId: node.id
       })
       return null
@@ -79,6 +123,7 @@ export function resolveTextBinding(
 }
 
 const EMPTY_SCOPE: ReadonlySet<string> = new Set()
+const EMPTY_DOCSTATES: ReadonlyMap<string, IRDocStateDecl> = new Map()
 
 /** Identifiers referenced by an expression that match neither a declared state
  *  nor an in-scope identifier. Used by both `resolveTextBinding` (kind=expr)
@@ -113,14 +158,16 @@ const EVENT_NAMES_TO_RESOLVE: EventName[] = [
 export function resolveEvents(
   node: SceneNode,
   states: Map<string, IRStateDecl>,
-  warnings: IRWarning[]
+  warnings: IRWarning[],
+  docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES,
+  docStateRefs?: Set<string>
 ): Partial<Record<IREventName, IREventHandler[]>> | undefined {
   if (!node.events) return undefined
   const out: Partial<Record<IREventName, IREventHandler[]>> = {}
   for (const name of EVENT_NAMES_TO_RESOLVE) {
     const actions = node.events[name]
     if (!actions || actions.length === 0) continue
-    const handlers = resolveActions(node, name, actions, states, warnings)
+    const handlers = resolveActions(node, name, actions, states, warnings, docStates, docStateRefs)
     if (handlers.length > 0) out[name] = handlers
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -131,7 +178,9 @@ function resolveActions(
   eventName: EventName,
   actions: ActionDef[],
   states: Map<string, IRStateDecl>,
-  warnings: IRWarning[]
+  warnings: IRWarning[],
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateRefs: Set<string> | undefined
 ): IREventHandler[] {
   const out: IREventHandler[] = []
   for (const action of actions) {
@@ -149,15 +198,21 @@ function resolveActions(
         if (handler) out.push(handler)
         break
       }
-      case 'setVariable':
-        warnings.push({
-          code: 'action-setvariable-not-implemented',
-          message:
-            `node ${node.id} ${eventName} setVariable is reserved for future runtime; ` +
-            `the handler is dropped from the compiled output`,
-          nodeId: node.id
-        })
+      case 'setVariable': {
+        const handler = resolveSetVariable(
+          node,
+          eventName,
+          action,
+          states,
+          docStates,
+          warnings
+        )
+        if (handler) {
+          out.push(handler)
+          docStateRefs?.add(handler.docStateName)
+        }
         break
+      }
       default: {
         // `action satisfies never` would be ideal here, but the cast keeps
         // older .fig files (saved with an unknown future kind) loadable.
@@ -171,6 +226,38 @@ function resolveActions(
     }
   }
   return out
+}
+
+/**
+ * Phase 2 §2: derive the AST + references that emit a (functional-or-absolute)
+ * setX call. `$prev` triggers functional mode; in functional mode the AST is
+ * rewritten so `$prev` becomes the formal parameter `prev` and `$prev` is
+ * stripped from the references list (it isn't a state name — it's a closure
+ * argument). `extraScope` provides identifiers the adapter binds for free in
+ * a functional updater body (currently just the formal parameter itself, used
+ * only for setState's stateName when relevant).
+ */
+function buildValueUpdate(
+  parsed: { ast: ExprAst; references: Set<string> }
+): {
+  ast: ExprAst
+  references: string[]
+  mode: ValueUpdateMode
+} {
+  if (!hasPrevReference(parsed.ast)) {
+    return {
+      ast: parsed.ast,
+      references: [...parsed.references],
+      mode: 'absolute'
+    }
+  }
+  const stripped = new Set(parsed.references)
+  stripped.delete(PREV_IDENT)
+  return {
+    ast: substitutePrev(parsed.ast, PREV_FORMAL),
+    references: [...stripped],
+    mode: 'functional'
+  }
 }
 
 function resolveSetState(
@@ -207,11 +294,79 @@ function resolveSetState(
     })
     return null
   }
+  const { ast, references, mode } = buildValueUpdate(parsed)
   return {
     kind: 'setState',
     stateName: target.name,
-    ast: parsed.ast,
-    references: [...parsed.references]
+    ast,
+    references,
+    mode
+  }
+}
+
+function resolveSetVariable(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'setVariable' }>,
+  states: Map<string, IRStateDecl>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  warnings: IRWarning[]
+): IRSetVariableHandler | null {
+  const name = action.targetName ?? ''
+  if (name === '') {
+    warnings.push({
+      code: 'action-setvariable-missing-target',
+      message: `node ${node.id} ${eventName} setVariable has no targetName`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (!docStates.has(name)) {
+    warnings.push({
+      code: 'action-setvariable-unknown-target',
+      message: `node ${node.id} ${eventName} setVariable references unknown document state "${name}"`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const src = action.valueExpr ?? ''
+  const parsed = parseExpression(src)
+  if (!parsed.ok) {
+    warnings.push({
+      code: 'action-setvariable-invalid-expression',
+      message: `node ${node.id} ${eventName} setVariable valueExpr "${src}" → ${parsed.error}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  // Decision §2.2 #h: setVariable.valueExpr is identifier-resolved against
+  // page states only (plus `$prev`). It does NOT resolve identifiers against
+  // other doc-state names — that would invite docState→docState reference
+  // graphs we don't want to validate this phase. `$prev` is removed by
+  // `buildValueUpdate` (it's the closure parameter, not a real reference).
+  const refsExcludingPrev = new Set(parsed.references)
+  refsExcludingPrev.delete(PREV_IDENT)
+  const stateNames = new Set<string>()
+  for (const s of states.values()) stateNames.add(s.name)
+  const unknown: string[] = []
+  for (const ref of refsExcludingPrev) {
+    if (!stateNames.has(ref)) unknown.push(ref)
+  }
+  if (unknown.length > 0) {
+    warnings.push({
+      code: 'action-setvariable-unknown-identifier',
+      message: `node ${node.id} ${eventName} setVariable valueExpr references unknown identifier(s): ${unknown.join(', ')}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const { ast, references, mode } = buildValueUpdate(parsed)
+  return {
+    kind: 'setVariable',
+    docStateName: name,
+    ast,
+    references,
+    mode
   }
 }
 

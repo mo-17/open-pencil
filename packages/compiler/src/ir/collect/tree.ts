@@ -1,10 +1,11 @@
 import type { NodeType, SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
 
-import { parseExpression } from '../expression'
+import { parseExpression, PREV_IDENT } from '../expression'
 import { tailwindClassName } from '../style'
 import type {
   IRAttrValue,
   IRConditional,
+  IRDocStateDecl,
   IRElement,
   IRList,
   IRNode,
@@ -34,12 +35,30 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
     })
   }
   const stateById = indexStatesById(states)
+  const docStates = collectDocStates(graph, warnings)
+  const docStatesByName = indexDocStatesByName(docStates)
+  const docStateRefs = new Set<string>()
 
   if (!page) {
-    return { pageId, pageName: 'Page', children: [], states, warnings }
+    return {
+      pageId,
+      pageName: 'Page',
+      children: [],
+      states,
+      docStates,
+      docStateRefs: [],
+      warnings
+    }
   }
 
-  const ctx: WalkCtx = { graph, states: stateById, warnings, inScope: new Set() }
+  const ctx: WalkCtx = {
+    graph,
+    states: stateById,
+    docStates: docStatesByName,
+    docStateRefs,
+    warnings,
+    inScope: new Set()
+  }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
     if (!child.visible) continue
@@ -52,6 +71,8 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
     pageName: page.name || 'Page',
     children,
     states,
+    docStates,
+    docStateRefs: [...docStateRefs],
     warnings
   }
 }
@@ -59,12 +80,56 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
 interface WalkCtx {
   graph: SceneGraph
   states: Map<string, IRStateDecl>
+  /** Phase 2 §2: document-level state decls keyed by name (the same map for
+   *  every page in a compile). */
+  docStates: Map<string, IRDocStateDecl>
+  /** Phase 2 §2: accumulated set of doc-state names referenced on this page. */
+  docStateRefs: Set<string>
   warnings: IRWarning[]
   /** Phase 2 §9: identifiers in scope at the current traversal point, in
    *  addition to declared states. Pushed when descending into a LIST template
    *  (`itemName` / `indexName`), popped when leaving. Used by expression
    *  validation in bindings + renderCondition. */
   inScope: Set<string>
+}
+
+/** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
+ *  to the IR shape. Validates names; invalid entries warn and are dropped. */
+function collectDocStates(graph: SceneGraph, warnings: IRWarning[]): IRDocStateDecl[] {
+  const root = graph.getNode(graph.rootId)
+  const decls = root?.lowcodeDocumentState ?? []
+  const out: IRDocStateDecl[] = []
+  const seen = new Set<string>()
+  for (const d of decls) {
+    if (typeof d.name !== 'string' || d.name === '') {
+      warnings.push({
+        code: 'docstate-invalid',
+        message: `document state (id=${d.id}) has no name; dropped`
+      })
+      continue
+    }
+    if (seen.has(d.name)) {
+      warnings.push({
+        code: 'docstate-duplicate-name',
+        message: `document state name "${d.name}" is declared more than once; the second declaration is dropped`
+      })
+      continue
+    }
+    seen.add(d.name)
+    out.push({
+      id: d.id,
+      name: d.name,
+      type: d.type,
+      defaultValue: d.defaultValue
+    })
+  }
+  return out
+}
+
+function indexDocStatesByName(decls: IRDocStateDecl[]): Map<string, IRDocStateDecl> {
+  const m = new Map<string, IRDocStateDecl>()
+  for (const d of decls) m.set(d.name, d)
+  return m
 }
 
 /**
@@ -122,7 +187,14 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   applyInteractiveProps(node, attrs, children, ctx)
 
   if (node.type === 'TEXT') {
-    const binding = resolveTextBinding(node, ctx.states, ctx.warnings, ctx.inScope)
+    const binding = resolveTextBinding(
+      node,
+      ctx.states,
+      ctx.warnings,
+      ctx.inScope,
+      ctx.docStates,
+      ctx.docStateRefs
+    )
     if (binding) {
       children.push(binding)
     } else if (node.text) {
@@ -141,7 +213,13 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     }
   }
 
-  const events = resolveEvents(node, ctx.states, ctx.warnings)
+  const events = resolveEvents(
+    node,
+    ctx.states,
+    ctx.warnings,
+    ctx.docStates,
+    ctx.docStateRefs
+  )
 
   const element: IRElement = {
     kind: 'element',
@@ -251,6 +329,14 @@ function wrapConditional(node: SceneNode, element: IRElement, ctx: WalkCtx): IRN
     })
     return element
   }
+  if (parsed.references.has(PREV_IDENT)) {
+    ctx.warnings.push({
+      code: 'expression-prev-out-of-context',
+      message: `node ${node.id} renderCondition references ${PREV_IDENT}; ${PREV_IDENT} is only valid inside setState / setVariable valueExpr`,
+      nodeId: node.id
+    })
+    return element
+  }
   const unknown = unknownIdentifiers(parsed.references, ctx.states, ctx.inScope)
   if (unknown.length > 0) {
     ctx.warnings.push({
@@ -289,7 +375,14 @@ function applyInteractiveProps(
     }
     case 'BUTTON': {
       attrs.type = 'button'
-      const binding = resolveTextBinding(node, ctx.states, ctx.warnings)
+      const binding = resolveTextBinding(
+        node,
+        ctx.states,
+        ctx.warnings,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateRefs
+      )
       if (binding) {
         children.push(binding)
       } else {

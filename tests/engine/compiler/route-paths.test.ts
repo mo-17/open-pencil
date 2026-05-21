@@ -4,7 +4,15 @@ import { derivePagePaths } from '@open-pencil/compiler/adapters/react/route-path
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 
 function makeIR(pageName: string, pageId = `p-${pageName}`): IRTree {
-  return { pageId, pageName, children: [], states: [], warnings: [] }
+  return {
+    pageId,
+    pageName,
+    children: [],
+    states: [],
+    docStates: [],
+    docStateRefs: [],
+    warnings: []
+  }
 }
 
 describe('derivePagePaths (Phase 1 §11)', () => {

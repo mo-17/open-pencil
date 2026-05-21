@@ -21,10 +21,20 @@ function emitHandlerStatement(h: IREventHandler): string {
   // makes tsgo flag any new kind added to ir/types.ts that misses a case
   // here (the silent-drop hole Phase 0 had).
   switch (h.kind) {
-    case 'setState':
-      return `${setterName(h.stateName)}(${emitExpression(h.ast)})`
+    case 'setState': {
+      const inner = emitExpression(h.ast)
+      return h.mode === 'functional'
+        ? `${setterName(h.stateName)}((prev) => ${inner})`
+        : `${setterName(h.stateName)}(${inner})`
+    }
     case 'navigate':
       return `navigate(${JSON.stringify(h.to)})`
+    case 'setVariable': {
+      const inner = emitExpression(h.ast)
+      return h.mode === 'functional'
+        ? `setDocState(${JSON.stringify(h.docStateName)}, (prev) => ${inner})`
+        : `setDocState(${JSON.stringify(h.docStateName)}, ${inner})`
+    }
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)

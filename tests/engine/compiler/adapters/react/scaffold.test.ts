@@ -8,6 +8,8 @@ const empty: IRTree = {
   pageName: 'Test',
   children: [],
   states: [],
+  docStates: [],
+  docStateRefs: [],
   warnings: []
 }
 
@@ -23,6 +25,8 @@ describe('buildAppTsx (React adapter scaffold)', () => {
       pageId: 'p1',
       pageName: 'Test',
       states: [],
+      docStates: [],
+      docStateRefs: [],
       warnings: [],
       children: [
         {
