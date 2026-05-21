@@ -10,6 +10,7 @@ import {
   LOWCODE_EVENTS_KEY,
   LOWCODE_INTERACTIVE_PROPS_KEY,
   LOWCODE_NODE_TYPE_KEY,
+  LOWCODE_RENDER_CONDITION_KEY,
   LOWCODE_STATE_KEY,
   serializeLowcodeFields
 } from '#core/kiwi/node-change/lowcode-plugin-data'
@@ -28,6 +29,7 @@ function makeNode(fields: Partial<SceneNode> = {}): SceneNode {
     bindings: undefined,
     events: undefined,
     interactiveProps: undefined,
+    renderCondition: undefined,
     ...fields
   } as SceneNode
 }
@@ -40,7 +42,13 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
   test('skips empty arrays and empty objects so .fig stays byte-identical', () => {
     expect(
       serializeLowcodeFields(
-        makeNode({ state: [], bindings: {}, events: {}, interactiveProps: {} })
+        makeNode({
+          state: [],
+          bindings: {},
+          events: {},
+          interactiveProps: {},
+          renderCondition: ''
+        })
       )
     ).toEqual([])
   })
@@ -58,7 +66,7 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
     })
   })
 
-  test('round-trips all four fields when populated, in stable emit order', () => {
+  test('round-trips all five fields when populated, in stable emit order', () => {
     const node = makeNode({
       state: [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }],
       bindings: { text: { kind: 'ref', stateId: 's1' } },
@@ -67,14 +75,16 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
           { id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'count + 1' }
         ]
       },
-      interactiveProps: { text: 'Go' }
+      interactiveProps: { text: 'Go' },
+      renderCondition: 'count > 0'
     })
     const entries = serializeLowcodeFields(node)
     expect(entries.map((e) => e.key)).toEqual([
       LOWCODE_STATE_KEY,
       LOWCODE_BINDINGS_KEY,
       LOWCODE_EVENTS_KEY,
-      LOWCODE_INTERACTIVE_PROPS_KEY
+      LOWCODE_INTERACTIVE_PROPS_KEY,
+      LOWCODE_RENDER_CONDITION_KEY
     ])
     for (const entry of entries) expect(entry.pluginId).toBe(OPEN_PENCIL_PLUGIN_ID)
 
@@ -86,6 +96,32 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
     expect(JSON.parse(byKey.get(LOWCODE_INTERACTIVE_PROPS_KEY) as string)).toEqual(
       node.interactiveProps
     )
+    expect(JSON.parse(byKey.get(LOWCODE_RENDER_CONDITION_KEY) as string)).toBe(
+      node.renderCondition
+    )
+  })
+
+  test('emits a lowcode/renderCondition entry only for a non-empty expression string', () => {
+    expect(serializeLowcodeFields(makeNode({ renderCondition: '' }))).toEqual([])
+    const entries = serializeLowcodeFields(makeNode({ renderCondition: 'flag' }))
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toEqual({
+      pluginId: OPEN_PENCIL_PLUGIN_ID,
+      key: LOWCODE_RENDER_CONDITION_KEY,
+      value: JSON.stringify('flag')
+    })
+  })
+
+  test('round-trips a bindings.expr entry (Phase 2 §9 BindingExpr widening)', () => {
+    const node = makeNode({
+      bindings: { text: { kind: 'expr', expr: 'item.name' } }
+    })
+    const entries = serializeLowcodeFields(node)
+    expect(entries).toHaveLength(1)
+    expect(entries[0].key).toBe(LOWCODE_BINDINGS_KEY)
+    expect(JSON.parse(entries[0].value)).toEqual({
+      text: { kind: 'expr', expr: 'item.name' }
+    })
   })
 
   test('does not mutate node.pluginData; existing pluginData entries are untouched', () => {
@@ -272,6 +308,51 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
       expect(result.nodeTypeOverride).toBe(type)
       expect(result.pluginData).toEqual([])
     }
+  })
+
+  test('hydrates lowcode/renderCondition into renderCondition string (Phase 2 §9)', () => {
+    const result = extractLowcodeAndPluginData(
+      makeNc([
+        {
+          pluginID: OPEN_PENCIL_PLUGIN_ID,
+          key: LOWCODE_RENDER_CONDITION_KEY,
+          value: JSON.stringify('count > 0')
+        }
+      ])
+    )
+    expect(result.renderCondition).toBe('count > 0')
+    expect(result.pluginData).toEqual([])
+  })
+
+  test('drops a non-string lowcode/renderCondition payload (forward-compat)', () => {
+    const result = extractLowcodeAndPluginData(
+      makeNc([
+        {
+          pluginID: OPEN_PENCIL_PLUGIN_ID,
+          key: LOWCODE_RENDER_CONDITION_KEY,
+          value: JSON.stringify({ unexpected: 'object' })
+        }
+      ])
+    )
+    expect(result.renderCondition).toBeUndefined()
+    expect(result.pluginData).toEqual([])
+  })
+
+  test('hydrates bindings.expr alongside other bindings kinds (Phase 2 §9)', () => {
+    const bindings = {
+      text: { kind: 'expr' as const, expr: 'item.name' },
+      placeholder: { kind: 'ref' as const, stateId: 's1' }
+    }
+    const result = extractLowcodeAndPluginData(
+      makeNc([
+        {
+          pluginID: OPEN_PENCIL_PLUGIN_ID,
+          key: LOWCODE_BINDINGS_KEY,
+          value: JSON.stringify(bindings)
+        }
+      ])
+    )
+    expect(result.bindings).toEqual(bindings)
   })
 
   test('rejects an unknown nodeType override (decision #5 forward-compat applies — drop value)', () => {

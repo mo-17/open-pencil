@@ -29,6 +29,8 @@ export const LOWCODE_STATE_KEY = 'lowcode/state'
 export const LOWCODE_BINDINGS_KEY = 'lowcode/bindings'
 export const LOWCODE_EVENTS_KEY = 'lowcode/events'
 export const LOWCODE_INTERACTIVE_PROPS_KEY = 'lowcode/interactiveProps'
+/** Phase 2 §9: optional per-node render-condition expression string. */
+export const LOWCODE_RENDER_CONDITION_KEY = 'lowcode/renderCondition'
 /** Phase 0 NodeType extensions that are NOT in the vendored Figma schema —
  *  kiwi serializes them as 'RECTANGLE' via `mapToFigmaType`'s default arm,
  *  so without this side-channel they all become rectangles after a save. */
@@ -50,13 +52,17 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_BINDINGS_KEY,
   LOWCODE_EVENTS_KEY,
   LOWCODE_INTERACTIVE_PROPS_KEY,
+  LOWCODE_RENDER_CONDITION_KEY,
   LOWCODE_NODE_TYPE_KEY
 ])
 
 /**
  * Build the pluginData entries that mirror this node's lowcode fields. Order
- * is stable (state → bindings → events → interactiveProps) so two saves of
- * the same in-memory graph produce byte-identical .fig output.
+ * is stable (state → bindings → events → interactiveProps → renderCondition)
+ * so two saves of the same in-memory graph produce byte-identical .fig output.
+ * `renderCondition` is appended last (Phase 2 §9) so older .fig files re-saved
+ * after upgrade keep the original four-key ordering when the new field is
+ * empty.
  */
 export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   const entries: PluginDataEntry[] = []
@@ -68,6 +74,9 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (isNonEmpty(node.events)) entries.push(makeEntry(LOWCODE_EVENTS_KEY, node.events))
   if (isNonEmpty(node.interactiveProps)) {
     entries.push(makeEntry(LOWCODE_INTERACTIVE_PROPS_KEY, node.interactiveProps))
+  }
+  if (typeof node.renderCondition === 'string' && node.renderCondition !== '') {
+    entries.push(makeEntry(LOWCODE_RENDER_CONDITION_KEY, node.renderCondition))
   }
   return entries
 }
@@ -109,6 +118,7 @@ export interface ExtractedLowcodeAndPluginData {
   bindings?: Record<string, BindingExpr>
   events?: Partial<Record<EventName, ActionDef[]>>
   interactiveProps?: Record<string, unknown>
+  renderCondition?: string
 }
 
 export function extractLowcodeAndPluginData(
@@ -160,6 +170,9 @@ function assignLowcodeField(
       return
     case LOWCODE_INTERACTIVE_PROPS_KEY:
       target.interactiveProps = value as Record<string, unknown>
+      return
+    case LOWCODE_RENDER_CONDITION_KEY:
+      if (typeof value === 'string') target.renderCondition = value
       return
   }
 }

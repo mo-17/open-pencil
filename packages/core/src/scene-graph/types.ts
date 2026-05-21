@@ -384,6 +384,12 @@ export interface SceneNode {
   bindings?: Record<string, BindingExpr>
   events?: Partial<Record<EventName, ActionDef[]>>
   interactiveProps?: Record<string, unknown>
+  // ── Lowcode (Phase 2 §9) ──
+  // Optional render-condition expression (sub-language matches §7.3 valueExpr).
+  // Compiler wraps the emitted node in `{(<expr>) && (...)}`. Empty string or
+  // undefined → unconditional render (decision §9.2 #8). Persisted via §12
+  // pluginData under `lowcode/renderCondition`.
+  renderCondition?: string
 }
 
 export type ComponentPropertyType = 'VARIANT' | 'TEXT' | 'BOOLEAN' | 'INSTANCE_SWAP'
@@ -439,10 +445,14 @@ export interface StateDef {
 // Binding describes how a node property pulls its value at runtime.
 // kind=literal → use literalValue directly.
 // kind=ref → resolve to the StateDef with id === stateId.
+// kind=expr (Phase 2 §9) → evaluate `expr` (§7.3 sub-language) at IR-collect
+//   time; identifiers in `expr` resolve against either declared states or the
+//   in-scope item/index identifiers when inside a LIST template subtree.
 export interface BindingExpr {
-  kind: 'literal' | 'ref'
+  kind: 'literal' | 'ref' | 'expr'
   stateId?: string
   literalValue?: unknown
+  expr?: string
 }
 
 export type EventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'

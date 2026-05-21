@@ -31,6 +31,12 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     return node
   }
 
+  function findByName(graph: SceneGraph, name: string): SceneNode {
+    const node = [...graph.getAllNodes()].find((n) => n.name === name)
+    if (!node) throw new Error(`No node named "${name}" in reimported graph`)
+    return node
+  }
+
   test('page-scoped state round-trips through .fig', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
@@ -114,7 +120,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedText.bindings).toEqual({ text: { kind: 'ref', stateId: 's-count' } })
   })
 
-  test('graph without lowcode fields → reimported nodes have all four fields undefined', async () => {
+  test('graph without lowcode fields → reimported nodes have all five fields undefined', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.createNode('RECTANGLE', page.id, {
@@ -132,8 +138,10 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedPage.bindings).toBeUndefined()
     expect(reimportedPage.events).toBeUndefined()
     expect(reimportedPage.interactiveProps).toBeUndefined()
+    expect(reimportedPage.renderCondition).toBeUndefined()
     expect(reimportedRect.state).toBeUndefined()
     expect(reimportedRect.bindings).toBeUndefined()
+    expect(reimportedRect.renderCondition).toBeUndefined()
 
     // pluginData stays clean of any `lowcode/*` entries when nothing was set.
     // Other entries (e.g. textDirection on TEXT, layoutDirection on FRAME)
@@ -142,5 +150,44 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
       (e) => e.pluginId === 'open-pencil' && e.key.startsWith('lowcode/')
     )
     expect(ourLowcodeEntries).toEqual([])
+  })
+
+  test('renderCondition expression round-trips through .fig (Phase 2 §9)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(page.id, {
+      state: [{ id: 's-flag', name: 'flag', type: 'boolean', defaultValue: false }]
+    })
+    graph.createNode('FRAME', page.id, {
+      name: 'Conditional frame',
+      width: 200,
+      height: 80,
+      renderCondition: 'flag'
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    // findFirst('FRAME') would return the document root (also typed FRAME);
+    // look up by the unique node name instead.
+    const reimportedFrame = findByName(reimported, 'Conditional frame')
+
+    expect(reimportedFrame.renderCondition).toBe('flag')
+  })
+
+  test('bindings.text with kind=expr round-trips through .fig (Phase 2 §9)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('TEXT', page.id, {
+      text: 'placeholder',
+      bindings: { text: { kind: 'expr', expr: 'item.name' } }
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedText = findFirst(reimported, 'TEXT')
+
+    expect(reimportedText.bindings).toEqual({
+      text: { kind: 'expr', expr: 'item.name' }
+    })
   })
 })
