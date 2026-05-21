@@ -8,7 +8,7 @@ import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 /**
  * Phase 2 §2 — bindings.text with `kind: 'docState'` resolves to an
  * IRExpression that references the docState name. The collector also
- * tracks the referenced names in `IRTree.docStateRefs` so the React
+ * tracks the referenced names in `IRTree.docStateReads` so the React
  * adapter knows which `useDocState(...)` declarations to emit per page.
  * Separately: `kind: 'expr'` expressions reject `$prev` since it has
  * no meaning outside a setState / setVariable updater context.
@@ -37,7 +37,9 @@ describe('text binding — kind:"docState" (Phase 2 §2)', () => {
     if (child.kind !== 'expression') throw new Error('expected expression child')
     expect(child.ast).toEqual({ kind: 'ident', name: 'cartCount' })
     expect(child.references).toEqual(['cartCount'])
-    expect(ir.docStateRefs).toContain('cartCount')
+    expect(ir.docStateReads).toContain('cartCount')
+    // a read is not a write — should not appear in docStateWrites.
+    expect(ir.docStateWrites).toEqual([])
     expect(ir.warnings).toEqual([])
   })
 
@@ -54,8 +56,8 @@ describe('text binding — kind:"docState" (Phase 2 §2)', () => {
     expect(
       ir.warnings.some((w) => w.code === 'binding-docstate-unknown-name')
     ).toBe(true)
-    // Unknown name is NOT added to docStateRefs (nothing to emit a hook for).
-    expect(ir.docStateRefs).toEqual([])
+    // Unknown name is NOT added to docStateReads (nothing to emit a hook for).
+    expect(ir.docStateReads).toEqual([])
   })
 
   test('missing docStateName → warning, falls back', () => {

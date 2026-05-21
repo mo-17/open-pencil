@@ -12,6 +12,7 @@ import type { CompilerOptions, CompileWarning } from '#compiler/types'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
 import { stripNavigateForSinglePage } from './ir-walk'
+import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode-state'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import {
@@ -28,6 +29,8 @@ import {
  */
 const REACT_ROUTER_DOM_VERSION = '^6.27.0'
 
+const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
+
 export const reactAdapter: FrameworkAdapter = {
   emit(irs: readonly IRTree[], options: CompilerOptions): AdapterEmission {
     return irs.length > 1 ? emitMultiPage(irs, options) : emitSinglePage(irs[0], options)
@@ -40,8 +43,19 @@ function emitSinglePage(ir: IRTree, options: CompilerOptions): AdapterEmission {
   // warn — the page body emit then proceeds as if they were never collected.
   const { ir: cleaned, warnings } = stripNavigateForSinglePage(ir)
   const files = new Map<string, string | Uint8Array>()
-  files.set('package.json', buildPackageJson(options))
-  files.set('src/App.tsx', buildAppTsx(cleaned, { devMode: options.devMode }))
+  const extraDeps = lowcodeStateExtraDeps(cleaned.docStates)
+  files.set('package.json', buildPackageJson(options, extraDeps))
+  // Phase 2 §2: emit the lowcode runtime alongside App.tsx when any
+  // DocumentStateDef exists; the page module imports `useDocState` /
+  // `setDocState` from `./` (single-page) or `../` (multi-page).
+  maybeEmitLowcodeRuntime(files, cleaned.docStates)
+  files.set(
+    'src/App.tsx',
+    buildAppTsx(cleaned, {
+      devMode: options.devMode,
+      lowcodeStateImportPath: './_lowcode_state'
+    })
+  )
   setSharedProjectFiles(files, options, collectClassNames([cleaned]))
   return { files, warnings }
 }
@@ -52,19 +66,39 @@ function emitMultiPage(
 ): AdapterEmission {
   const infos = derivePagePaths(irs)
   const files = new Map<string, string | Uint8Array>()
-  files.set(
-    'package.json',
-    buildPackageJson(options, { 'react-router-dom': REACT_ROUTER_DOM_VERSION })
-  )
+  const docStates = irs[0]?.docStates ?? []
+  const extraDeps: Record<string, string> = {
+    'react-router-dom': REACT_ROUTER_DOM_VERSION,
+    ...lowcodeStateExtraDeps(docStates)
+  }
+  files.set('package.json', buildPackageJson(options, extraDeps))
+  maybeEmitLowcodeRuntime(files, docStates)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
     files.set(
       `src/pages/${info.file}`,
-      buildPageModule(info, { devMode: options.devMode })
+      buildPageModule(info, {
+        devMode: options.devMode,
+        lowcodeStateImportPath: '../_lowcode_state'
+      })
     )
   }
   setSharedProjectFiles(files, options, collectClassNames(irs))
   return { files, warnings: collectSlugWarnings(infos) }
+}
+
+function lowcodeStateExtraDeps(
+  docStates: readonly IRTree['docStates'][number][]
+): Record<string, string> {
+  return docStates.length > 0 ? { zustand: ZUSTAND_VERSION } : {}
+}
+
+function maybeEmitLowcodeRuntime(
+  files: Map<string, string | Uint8Array>,
+  docStates: readonly IRTree['docStates'][number][]
+): void {
+  if (docStates.length === 0) return
+  files.set(LOWCODE_STATE_FILE, buildLowcodeStateRuntime(docStates))
 }
 
 /**

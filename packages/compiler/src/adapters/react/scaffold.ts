@@ -24,11 +24,21 @@ interface BuildPageOptions {
   importPreviewBridge: boolean
   /** Default-exported function component name. */
   exportName: string
+  /** Phase 2 §2: relative path the page module uses to reach
+   *  `src/_lowcode_state.ts`. `'./_lowcode_state'` for single-page (App.tsx
+   *  sits in `src/`), `'../_lowcode_state'` for multi-page (page modules
+   *  sit in `src/pages/`). Only consulted when the page reads or writes
+   *  a doc-state. */
+  lowcodeStateImportPath: string
 }
 
 interface BuildAppOptions {
   /** Emit the canvas↔preview bridge import + `data-node-id` attributes. */
   devMode: boolean
+  /** Phase 2 §2: see `BuildPageOptions.lowcodeStateImportPath`. Defaults to
+   *  `'./_lowcode_state'` (the single-page default) so existing call sites
+   *  that don't carry a doc-state stay unchanged. */
+  lowcodeStateImportPath?: string
 }
 
 /**
@@ -40,7 +50,8 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
   return buildPageFile(ir, {
     devMode: options.devMode,
     importPreviewBridge: options.devMode,
-    exportName: 'App'
+    exportName: 'App',
+    lowcodeStateImportPath: options.lowcodeStateImportPath ?? './_lowcode_state'
   })
 }
 
@@ -52,7 +63,8 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
   return buildPageFile(info.ir, {
     devMode: options.devMode,
     importPreviewBridge: false,
-    exportName: info.component
+    exportName: info.component,
+    lowcodeStateImportPath: options.lowcodeStateImportPath ?? '../_lowcode_state'
   })
 }
 
@@ -92,19 +104,23 @@ ${routes}
  * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const needsNavigate = pageHasNavigateHandler(ir)
   const routerImport = needsNavigate
     ? `import { useNavigate } from 'react-router-dom'\n`
     : ''
-  const importBlock = bridgeImport + reactImport + routerImport
+  const lowcodeStateImport = buildLowcodeStateImport(ir, lowcodeStateImportPath)
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''
+  const docStateReadLines = ir.docStateReads
+    .map((name) => `  const ${name} = useDocState(${JSON.stringify(name)})`)
+    .join('\n')
 
-  const hookLines = [stateLines, navigateLine].filter((l) => l !== '').join('\n')
+  const hookLines = [stateLines, docStateReadLines, navigateLine].filter((l) => l !== '').join('\n')
 
   const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}">`
 
@@ -132,4 +148,18 @@ ${body}
   )
 }
 `
+}
+
+/**
+ * Phase 2 §2: build the `import { useDocState, setDocState } from '<path>'`
+ * line. `useDocState` is included only if the page reads at least one
+ * doc-state; `setDocState` only if it writes at least one. When neither is
+ * needed the function returns an empty string and the page omits the import.
+ */
+function buildLowcodeStateImport(ir: IRTree, path: string): string {
+  const names: string[] = []
+  if (ir.docStateReads.length > 0) names.push('useDocState')
+  if (ir.docStateWrites.length > 0) names.push('setDocState')
+  if (names.length === 0) return ''
+  return `import { ${names.join(', ')} } from '${path}'\n`
 }

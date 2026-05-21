@@ -32,7 +32,7 @@ export function resolveTextBinding(
   warnings: IRWarning[],
   inScope: ReadonlySet<string> = EMPTY_SCOPE,
   docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES,
-  docStateRefs?: Set<string>
+  docStateReads?: Set<string>
 ): IRExpression | null {
   const binding = node.bindings?.text
   if (!binding) return null
@@ -55,7 +55,7 @@ export function resolveTextBinding(
       })
       return null
     }
-    docStateRefs?.add(name)
+    docStateReads?.add(name)
     return {
       kind: 'expression',
       ast: { kind: 'ident', name },
@@ -160,14 +160,14 @@ export function resolveEvents(
   states: Map<string, IRStateDecl>,
   warnings: IRWarning[],
   docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES,
-  docStateRefs?: Set<string>
+  docStateWrites?: Set<string>
 ): Partial<Record<IREventName, IREventHandler[]>> | undefined {
   if (!node.events) return undefined
   const out: Partial<Record<IREventName, IREventHandler[]>> = {}
   for (const name of EVENT_NAMES_TO_RESOLVE) {
     const actions = node.events[name]
     if (!actions || actions.length === 0) continue
-    const handlers = resolveActions(node, name, actions, states, warnings, docStates, docStateRefs)
+    const handlers = resolveActions(node, name, actions, states, warnings, docStates, docStateWrites)
     if (handlers.length > 0) out[name] = handlers
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -180,7 +180,7 @@ function resolveActions(
   states: Map<string, IRStateDecl>,
   warnings: IRWarning[],
   docStates: ReadonlyMap<string, IRDocStateDecl>,
-  docStateRefs: Set<string> | undefined
+  docStateWrites: Set<string> | undefined
 ): IREventHandler[] {
   const out: IREventHandler[] = []
   for (const action of actions) {
@@ -209,7 +209,7 @@ function resolveActions(
         )
         if (handler) {
           out.push(handler)
-          docStateRefs?.add(handler.docStateName)
+          docStateWrites?.add(handler.docStateName)
         }
         break
       }

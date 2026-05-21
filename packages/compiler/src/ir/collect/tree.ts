@@ -37,7 +37,8 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
   const stateById = indexStatesById(states)
   const docStates = collectDocStates(graph, warnings)
   const docStatesByName = indexDocStatesByName(docStates)
-  const docStateRefs = new Set<string>()
+  const docStateReads = new Set<string>()
+  const docStateWrites = new Set<string>()
 
   if (!page) {
     return {
@@ -46,7 +47,8 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
       children: [],
       states,
       docStates,
-      docStateRefs: [],
+      docStateReads: [],
+      docStateWrites: [],
       warnings
     }
   }
@@ -55,7 +57,8 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
     graph,
     states: stateById,
     docStates: docStatesByName,
-    docStateRefs,
+    docStateReads,
+    docStateWrites,
     warnings,
     inScope: new Set()
   }
@@ -72,7 +75,8 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
     children,
     states,
     docStates,
-    docStateRefs: [...docStateRefs],
+    docStateReads: [...docStateReads],
+    docStateWrites: [...docStateWrites],
     warnings
   }
 }
@@ -83,8 +87,10 @@ interface WalkCtx {
   /** Phase 2 §2: document-level state decls keyed by name (the same map for
    *  every page in a compile). */
   docStates: Map<string, IRDocStateDecl>
-  /** Phase 2 §2: accumulated set of doc-state names referenced on this page. */
-  docStateRefs: Set<string>
+  /** Phase 2 §2: doc-state names read via `kind: 'docState'` bindings. */
+  docStateReads: Set<string>
+  /** Phase 2 §2: doc-state names written via setVariable handlers. */
+  docStateWrites: Set<string>
   warnings: IRWarning[]
   /** Phase 2 §9: identifiers in scope at the current traversal point, in
    *  addition to declared states. Pushed when descending into a LIST template
@@ -193,7 +199,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
       ctx.warnings,
       ctx.inScope,
       ctx.docStates,
-      ctx.docStateRefs
+      ctx.docStateReads
     )
     if (binding) {
       children.push(binding)
@@ -218,7 +224,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.states,
     ctx.warnings,
     ctx.docStates,
-    ctx.docStateRefs
+    ctx.docStateWrites
   )
 
   const element: IRElement = {
@@ -381,7 +387,7 @@ function applyInteractiveProps(
         ctx.warnings,
         ctx.inScope,
         ctx.docStates,
-        ctx.docStateRefs
+        ctx.docStateReads
       )
       if (binding) {
         children.push(binding)

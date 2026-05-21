@@ -158,7 +158,7 @@ describe('resolveSetVariable (Phase 2 §2)', () => {
     ).toBe(true)
   })
 
-  test('a valid setVariable adds the target name to IRTree.docStateRefs', () => {
+  test('a valid setVariable adds the target name to IRTree.docStateWrites', () => {
     const { graph, pageId } = makeButtonWith(
       [
         { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 },
@@ -168,9 +168,11 @@ describe('resolveSetVariable (Phase 2 §2)', () => {
       [{ id: 'a1', kind: 'setVariable', targetName: 'cartCount', valueExpr: '1' }]
     )
     const ir = collectTree(graph, pageId)
-    expect(ir.docStateRefs).toContain('cartCount')
+    expect(ir.docStateWrites).toContain('cartCount')
     // username was declared but not referenced from this page.
-    expect(ir.docStateRefs).not.toContain('username')
+    expect(ir.docStateWrites).not.toContain('username')
+    // setVariable is a write, not a read — should NOT appear in docStateReads.
+    expect(ir.docStateReads).toEqual([])
   })
 
   test('IRTree.docStates is hydrated from graph.rootNode.lowcodeDocumentState', () => {

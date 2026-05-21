@@ -10,7 +10,8 @@ function makeIR(pageName: string, pageId = `p-${pageName}`): IRTree {
     children: [],
     states: [],
     docStates: [],
-    docStateRefs: [],
+    docStateReads: [],
+    docStateWrites: [],
     warnings: []
   }
 }

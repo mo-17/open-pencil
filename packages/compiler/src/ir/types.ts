@@ -150,11 +150,15 @@ export interface IRTree {
    *  every `IRTree` from the same compile. The adapter scaffolds the
    *  zustand store from this list once. */
   docStates: IRDocStateDecl[]
-  /** Phase 2 §2: doc-state names actually referenced on this page (via
-   *  a `kind: 'docState'` binding or a `setVariable` action). Adapter
-   *  emits one `const x = useDocState('x')` line per name at the top of
-   *  the page component. */
-  docStateRefs: string[]
+  /** Phase 2 §2: doc-state names this page READS via a `kind: 'docState'`
+   *  binding. Adapter emits one `const x = useDocState('x')` per name at
+   *  the top of the page component so the IRExpression's `ident(x)` AST
+   *  resolves to a real local. */
+  docStateReads: string[]
+  /** Phase 2 §2: doc-state names this page WRITES via a `setVariable`
+   *  action. Adapter imports `setDocState` when this list is non-empty;
+   *  no hook declaration is needed (setDocState is a plain function). */
+  docStateWrites: string[]
   /** Warnings raised while collecting the IR (invalid bindings, expressions, etc.). */
   warnings: IRWarning[]
 }
