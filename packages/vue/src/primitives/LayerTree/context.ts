@@ -13,7 +13,11 @@ export interface LayerNode {
 }
 
 export interface LayerDragInstruction {
-  type: 'reorder-above' | 'reorder-below' | 'make-child'
+  // `reparent` only fires in `last-in-group` mode and only when the cursor is
+  // in the indent gutter to the left of the row icon — useLayerDrag currently
+  // treats it as a no-op so the user can keep using on-row drops for their
+  // intended level. A future pass can map it to a parent-level reorder.
+  type: 'reorder-above' | 'reorder-below' | 'make-child' | 'reparent'
 }
 
 export interface LayerTreeContext {
