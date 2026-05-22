@@ -137,7 +137,7 @@ SceneGraph (root "Document"):
 | g | bindings.expr 里读 docState | Phase 2 §2 范围内**不**给 expression 加 docState 标识符解析。要读 docState 走 `kind: 'docState'` binding 一条路 —— `expr` + docState 引用留 §4 一并 |
 | h | setVariable.valueExpr 不识别 docState | 跟 setState 同口径(避免 docState→docState 循环依赖)。仅识别:页面 state + literal + `$prev`(当前 target 的"上一值") |
 | i | 校验 | `targetName`(setVariable action)/ `docStateName`(binding)必须解析到一个 `DocumentStateDef`,否则 IR warning(`action-setvariable-unknown-target` / `binding-docstate-unknown-name`)+ 编辑器 amber 角标(复用 §7.3 inline 校验 UI)。`$prev` 仅在 set* action valueExpr 合法,binding.expr 出现 → IR warning(`expression-prev-out-of-context`) |
-| j | zustand 依赖加在哪里 | **仅编译产物** package.json(emit 时 `dependencies.zustand` 注入,版本 pin 跟 React 一致),preview esbuild prebundle 一次。**不**加到 `packages/compiler/package.json` |
+| j | zustand 依赖加在哪里 | 编译产物 package.json 注入 `dependencies.zustand`(标准导出用);**且** `packages/compiler` devDependencies 也加 `zustand`(pin = `ZUSTAND_VERSION`)。**修订(2026-05-22 Tauri 实测)**:原决定"不加到 `packages/compiler/package.json`"错误 —— preview dev-server 从 monorepo hoisted `node_modules` 解析裸 import(同 `react` / `react-dom`),从不对 VFS 跑 `npm install`;不加则 `_lowcode_state.ts` 的 `zustand/vanilla` 解析失败,docState 页面 preview 白屏。见 commit `4f41917` |
 
 > 锁定后**不在对话中重新讨论**;若用户后续推翻视为显式 scope change,更新本节。
 
