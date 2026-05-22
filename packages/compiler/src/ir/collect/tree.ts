@@ -467,11 +467,16 @@ function applyButtonProps(
   }
 }
 
+/** The string entries of `interactiveProps.options`, used by both SELECT and
+ *  RADIO (Phase 2 §8). Non-string entries are dropped. */
+function optionStrings(ip: InteractiveProps): string[] {
+  const raw = Array.isArray(ip.options) ? ip.options : []
+  return raw.filter((o): o is string => typeof o === 'string')
+}
+
 /** SELECT — one `<option>` child per string in `interactiveProps.options`. */
 function applySelectOptions(node: SceneNode, ip: InteractiveProps, children: IRNode[]): void {
-  const options = Array.isArray(ip.options) ? ip.options : []
-  for (const opt of options) {
-    if (typeof opt !== 'string') continue
+  for (const opt of optionStrings(ip)) {
     children.push({
       kind: 'element',
       sourceId: node.id,
@@ -479,6 +484,30 @@ function applySelectOptions(node: SceneNode, ip: InteractiveProps, children: IRN
       className: '',
       attrs: { value: opt },
       children: [{ kind: 'text', value: opt }]
+    })
+  }
+}
+
+/** RADIO — a radio-group div (Phase 2 §8). Each option becomes a
+ *  `<label><input type="radio" name={groupName} value={opt}/> opt</label>`;
+ *  the option matching `interactiveProps.value` is `defaultChecked`. */
+function applyRadioOptions(node: SceneNode, ip: InteractiveProps, children: IRNode[]): void {
+  const groupName = typeof ip.groupName === 'string' ? ip.groupName : ''
+  const selected = typeof ip.value === 'string' ? ip.value : ''
+  for (const opt of optionStrings(ip)) {
+    const inputAttrs: Record<string, IRAttrValue> = { type: 'radio', value: opt }
+    if (groupName !== '') inputAttrs.name = groupName
+    if (opt === selected) inputAttrs.defaultChecked = true
+    children.push({
+      kind: 'element',
+      sourceId: node.id,
+      tag: 'label',
+      className: '',
+      attrs: {},
+      children: [
+        { kind: 'element', sourceId: node.id, tag: 'input', className: '', attrs: inputAttrs, children: [] },
+        { kind: 'text', value: opt }
+      ]
     })
   }
 }
@@ -509,6 +538,9 @@ function applyInteractiveProps(
       return
     case 'SELECT':
       applySelectOptions(node, ip, children)
+      return
+    case 'RADIO':
+      applyRadioOptions(node, ip, children)
       return
     default:
       return

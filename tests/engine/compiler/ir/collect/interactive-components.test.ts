@@ -8,7 +8,7 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 /**
  * Phase 2 §8 — the four new interactive components compile to native HTML.
  * `TEXTAREA` / `DATEPICKER` / `SWITCH` are leaf inputs; `RADIO` is a
- * radio-group node (covered in `radio.test.ts`).
+ * radio-group `<div>` of `<label><input type="radio">…</label>`.
  */
 describe('collectTree — Phase 2 §8 interactive components', () => {
   test('TEXTAREA → <textarea> with placeholder + defaultValue', () => {
@@ -83,5 +83,58 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     const sw = ir.children[0] as IRElement
     expect(sw.attrs.role).toBe('switch')
     expect(sw.attrs.defaultChecked).toBeUndefined()
+  })
+
+  test('RADIO → <div> of <label><input type="radio">…</label>, checked option marked', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RADIO', pageId, {
+      interactiveProps: { options: ['Yes', 'No'], value: 'No', groupName: 'answer' }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const radio = ir.children[0] as IRElement
+    expect(radio.tag).toBe('div')
+    expect(radio.children).toHaveLength(2)
+
+    const firstLabel = radio.children[0] as IRElement
+    expect(firstLabel.tag).toBe('label')
+    const firstInput = firstLabel.children[0] as IRElement
+    expect(firstInput.tag).toBe('input')
+    expect(firstInput.attrs).toEqual({ type: 'radio', value: 'Yes', name: 'answer' })
+    expect(firstLabel.children[1]).toEqual({ kind: 'text', value: 'Yes' })
+
+    const secondInput = (radio.children[1] as IRElement).children[0] as IRElement
+    // 'No' matches interactiveProps.value → defaultChecked.
+    expect(secondInput.attrs).toEqual({
+      type: 'radio',
+      value: 'No',
+      name: 'answer',
+      defaultChecked: true
+    })
+  })
+
+  test('RADIO with default props (empty options) → empty <div>', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RADIO', pageId)
+
+    const ir = collectTree(graph, pageId)
+    const radio = ir.children[0] as IRElement
+    expect(radio.tag).toBe('div')
+    expect(radio.children).toEqual([])
+  })
+
+  test('RADIO without a groupName → input has no name attr', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RADIO', pageId, {
+      interactiveProps: { options: ['A'], value: '', groupName: '' }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const input = ((ir.children[0] as IRElement).children[0] as IRElement)
+      .children[0] as IRElement
+    expect(input.attrs).toEqual({ type: 'radio', value: 'A' })
   })
 })
