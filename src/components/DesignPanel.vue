@@ -10,6 +10,7 @@ import EffectsSection from './properties/EffectsSection.vue'
 import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
+import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
@@ -125,6 +126,7 @@ const { panels } = useI18n()
   >
     <PageSection />
     <StatePanel />
+    <DocumentStatePanel />
     <VariablesSection @open-dialog="variablesOpen = true" />
     <ExportSection />
   </div>

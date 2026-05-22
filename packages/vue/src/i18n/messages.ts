@@ -296,7 +296,15 @@ export const panelMessages = i18n('panels', {
   lowcodeListItemName: 'Item name',
   lowcodeListIndexName: 'Index name',
   lowcodeListTemplateHint: 'The first visible child of the LIST is rendered once per item',
-  lowcodeListNoArrayStates: 'Define an array state first to drive this list'
+  lowcodeListNoArrayStates: 'Define an array state first to drive this list',
+
+  // Lowcode (Phase 2 §2 — Document State)
+  lowcodeDocumentState: 'Document State',
+  lowcodeDocumentStateAdd: 'Add state',
+  lowcodeDocumentStateEmpty: 'No document state yet',
+  lowcodeActionSetDocument: 'Set Document State',
+  lowcodeActionNoDocumentState: 'No document state',
+  lowcodeTextSourceDocState: 'Document State'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

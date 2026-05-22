@@ -255,7 +255,13 @@
     "lowcodeListItemName": "列表项名称",
     "lowcodeListIndexName": "索引名称",
     "lowcodeListTemplateHint": "列表的第一个可见子节点会作为每一项的模板",
-    "lowcodeListNoArrayStates": "请先定义一个数组类型的状态作为该列表的数据源"
+    "lowcodeListNoArrayStates": "请先定义一个数组类型的状态作为该列表的数据源",
+    "lowcodeDocumentState": "全局状态",
+    "lowcodeDocumentStateAdd": "新增全局状态",
+    "lowcodeDocumentStateEmpty": "暂无全局状态",
+    "lowcodeActionSetDocument": "设置全局状态",
+    "lowcodeActionNoDocumentState": "暂无全局状态",
+    "lowcodeTextSourceDocState": "全局状态"
   },
   "pages": {
     "newPage": "新建页面",

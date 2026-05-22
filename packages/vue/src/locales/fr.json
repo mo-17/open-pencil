@@ -255,7 +255,13 @@
     "lowcodeListItemName": "Item name",
     "lowcodeListIndexName": "Index name",
     "lowcodeListTemplateHint": "The first visible child of the LIST is rendered once per item",
-    "lowcodeListNoArrayStates": "Define an array state first to drive this list"
+    "lowcodeListNoArrayStates": "Define an array state first to drive this list",
+    "lowcodeDocumentState": "Document State",
+    "lowcodeDocumentStateAdd": "Add state",
+    "lowcodeDocumentStateEmpty": "No document state yet",
+    "lowcodeActionSetDocument": "Set Document State",
+    "lowcodeActionNoDocumentState": "No document state",
+    "lowcodeTextSourceDocState": "Document State"
   },
   "pages": {
     "newPage": "Nouvelle page",

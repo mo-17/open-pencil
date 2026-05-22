@@ -38,6 +38,15 @@ const pageStates = useSceneComputed(() => {
   return page?.state ?? []
 })
 
+// Phase 2 §2 — `setVariable` writes a document-level Document State, declared
+// on the root node. The dropdown lists these by name; empty → "no document
+// state". The `setVariable` action *kind* literal stays (§7.4 lock); only the
+// editor label reads "Set Document State".
+const docStates = useSceneComputed(() => {
+  const root = editor.graph.getNode(editor.graph.rootId)
+  return root?.lowcodeDocumentState ?? []
+})
+
 const actions = useSceneComputed<ActionDef[]>(() => {
   const node = selectedNode.value
   const name = eventName.value
@@ -46,6 +55,12 @@ const actions = useSceneComputed<ActionDef[]>(() => {
 })
 
 const ACTION_KINDS: ActionKind[] = ['setState', 'navigate', 'setVariable']
+
+// The `setVariable` kind literal is locked (§7.4 + old .fig compat); only its
+// editor-facing label differs.
+function actionKindLabel(kind: ActionKind): string {
+  return kind === 'setVariable' ? panels.value.lowcodeActionSetDocument : kind
+}
 
 function commitActions(node: SceneNode, name: EventName, next: ActionDef[]): void {
   const eventsCopy = { ...node.events }
@@ -72,7 +87,13 @@ function makeAction(kind: ActionKind, id: string): ActionDef {
   if (kind === 'navigate') {
     return { id, kind: 'navigate', to: '/' }
   }
-  return { id, kind: 'setVariable', targetName: '', valueExpr: '' }
+  const docTarget = docStates.value[0]
+  return {
+    id,
+    kind: 'setVariable',
+    targetName: docTarget?.name ?? '',
+    valueExpr: docTarget ? '$prev + 1' : ''
+  }
 }
 
 function addAction(): void {
@@ -125,11 +146,10 @@ interface ActionErrors {
   target?: string
   expr?: string
   to?: string
-  variableName?: string
-  kind?: string
 }
 
 const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
+const validDocStateNames = computed(() => new Set(docStates.value.map((d) => d.name)))
 
 const actionErrors = computed(() => {
   const errors = new Map<string, ActionErrors>()
@@ -144,7 +164,14 @@ const actionErrors = computed(() => {
     } else if (action.kind === 'navigate') {
       if (!action.to || action.to.trim() === '') e.to = 'path required'
     } else if (action.kind === 'setVariable') {
-      e.kind = 'not yet emitted — compiles to a warning'
+      // §2.5 #i — `targetName` must resolve to a declared Document State.
+      // `valueExpr` accepts the §7.3 sub-language; `$prev` is a legal token
+      // (parses as a `$`-prefixed identifier post step 1).
+      if (!action.targetName || action.targetName.trim() === '') e.target = 'target required'
+      else if (!validDocStateNames.value.has(action.targetName))
+        e.target = 'document state no longer exists'
+      const exprResult = validateExpression(action.valueExpr ?? '')
+      if (!exprResult.ok) e.expr = exprResult.reason
     }
     if (Object.keys(e).length > 0) errors.set(action.id, e)
   }
@@ -192,7 +219,7 @@ const actionErrors = computed(() => {
             class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
             @change="changeKind(action.id, ($event.target as HTMLSelectElement).value as ActionKind)"
           >
-            <option v-for="k in ACTION_KINDS" :key="k" :value="k">{{ k }}</option>
+            <option v-for="k in ACTION_KINDS" :key="k" :value="k">{{ actionKindLabel(k) }}</option>
           </select>
 
           <template v-if="action.kind === 'setState'">
@@ -243,22 +270,33 @@ const actionErrors = computed(() => {
           </template>
 
           <template v-else>
-            <input
+            <select
               :value="action.targetName ?? ''"
-              aria-label="Variable name"
+              :aria-label="panels.lowcodeActionSet"
+              :aria-invalid="actionErrors.get(action.id)?.target ? 'true' : undefined"
               data-test-id="lowcode-action-variable-name"
-              spellcheck="false"
-              placeholder="name"
-              class="min-w-0 w-20 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
-              @change="updateAction(action.id, { targetName: ($event.target as HTMLInputElement).value })"
-            />
+              :class="[
+                'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.target ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { targetName: ($event.target as HTMLSelectElement).value })"
+            >
+              <option v-if="docStates.length === 0" value="" disabled>
+                {{ panels.lowcodeActionNoDocumentState }}
+              </option>
+              <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
+            </select>
             <span class="text-[11px] text-muted">=</span>
             <input
               :value="action.valueExpr ?? ''"
-              aria-label="Variable value expression"
+              :aria-label="panels.lowcodeActionValue"
+              :aria-invalid="actionErrors.get(action.id)?.expr ? 'true' : undefined"
               data-test-id="lowcode-action-variable-expr"
               spellcheck="false"
-              class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.expr ? 'border-red-500' : 'border-border'
+              ]"
               @change="updateAction(action.id, { valueExpr: ($event.target as HTMLInputElement).value })"
             />
           </template>
@@ -292,13 +330,6 @@ const actionErrors = computed(() => {
           class="pl-1 text-[10px] text-red-500"
         >
           to: {{ actionErrors.get(action.id)?.to }}
-        </p>
-        <p
-          v-if="actionErrors.get(action.id)?.kind"
-          data-test-id="lowcode-action-kind-warning"
-          class="pl-1 text-[10px] text-amber-500"
-        >
-          {{ actionErrors.get(action.id)?.kind }}
         </p>
       </li>
     </ul>
