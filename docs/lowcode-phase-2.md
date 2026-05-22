@@ -21,7 +21,7 @@
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router | TBD §7 |
-| 7 | **更多交互组件**(候选 §8) | 中 | 当前 6 个(BUTTON/INPUT/CHECKBOX/FORM/LIST/SELECT)覆盖 80% 表单场景;补 RADIO/TEXTAREA/DATEPICKER/SWITCH | TBD §8 |
+| 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 开工中**(详见 §8) |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
 
 > 行 1(§2)已收尾:**§2 ✅ 2026-05-22**(HEAD `d3d1fd9`)。
@@ -875,18 +875,132 @@ export interface IRApiCallHandler {
 
 ---
 
-## 8. 候选 §8 — 更多交互组件
+## 8. §8 详细设计:更多交互组件
 
-**当前**: BUTTON / INPUT / CHECKBOX / FORM / LIST / SELECT(6 个)。
+> 2026-05-23 用户挑定 Phase 2 第五项开工(§4 收尾后)。形式参照 §3 / §4。
+> **4 项主决定 2026-05-23 已由用户在对话中锁定**(#1 / #3 第一轮分别 ACK「原生零依赖」「RADIO 单选组」;#2 / #4 + #a–#g 第二轮一次性 ACK)。
+>
+> **状态:🔨 开工中**(step 1–4)。
 
-**Phase 2 目标**: 加 RADIO / TEXTAREA / DATEPICKER / SWITCH(4 个,或视用户实际诉求)。
+### 8.1 现状与问题
 
-**待锁决定**:
-- 每加一个组件:`NODE_TYPES` + `node-defaults.ts` 加默认 interactiveProps + `nodeTypeToJSX` 加映射 + compiler emit
-- DATEPICKER 涉及第三方库,引入 dependency 慎重
-- canvas-side 的占位卡片(画布上不真渲染交互组件,只画占位)样式定义
+当前 6 个交互组件:`BUTTON` / `INPUT` / `CHECKBOX` / `FORM` / `LIST` / `SELECT`。
+覆盖了大部分表单场景,但缺多行文本、单选组、日期、开关 —— Bubble 表单的常见件。
 
-**风险**: 没什么风险,纯加法;每个组件 0.5–1 天工作量。**适合作为 Phase 2 早期热身**。
+**Phase 2 目标**:加 `RADIO` / `TEXTAREA` / `DATEPICKER` / `SWITCH` 共 4 个。
+
+**加一个交互组件的改动面**(已逐文件核过):
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| scene-graph | `scene-graph/types.ts` | `NodeType` 联合加字面值 |
+| scene-graph | `scene-graph/node-defaults.ts` | `interactiveDefaults()` 加 `case`(尺寸 + 默认 `interactiveProps`) |
+| editor | `editor/types.ts` | `Tool` 联合加字面值 |
+| editor | `editor/tool-registry.ts` | `EDITOR_TOOLS` 的 Interactive flyout 列表 |
+| editor | `editor/shapes.ts` | `INTERACTIVE_TYPES` 集合(跳过通用 fill 覆盖) |
+| canvas | `canvas/renderer.ts` | `isRectangularType()` |
+| kiwi | `kiwi/node-change/lowcode-plugin-data.ts` | `LOWCODE_NODE_TYPES` 集合 —— **决定能否 .fig 往返** |
+| vue | `shared/input/types.ts` | `TOOL_TO_NODE` 工具→节点映射 |
+| vue | `editor/tool-cursor/index.ts` | `TOOL_CURSORS`(`Record<Tool>` 穷举) |
+| vue | `i18n/messages.ts` + 7 locale | `tools` 组工具标签 |
+| app | `app/editor/icons.ts` | `toolIcons`(`Record<Tool>` 穷举) |
+| app | `components/Toolbar/Toolbar.vue` | `toolLabels` / `toolShortcuts`(`Record<Tool>` 穷举) |
+| compiler | `ir/collect/tree.ts` | `TAG_BY_TYPE` + `applyInteractiveProps()` 加 `case` |
+
+**关键现状**:**当前没有 interactiveProps 编辑面板** —— `INPUT` 的 `placeholder` / `value`、`CHECKBOX` 的 `checked`、`SELECT` 的 `options` 都没有 UI 可编辑,只吃 `node-defaults.ts` 默认值(`ListPanel` 是唯一编 `interactiveProps` 的面板,只编 `dataSourceRef`)。§8 跟进同一现状 —— 不为新组件造属性面板。
+
+### 8.2 关键决定
+
+> 形式同 §3.2 / §4.2。**#1–#4 已锁(2026-05-23 对话);#a–#g 为次级默认,开工前用户 ACK 视为已锁。**
+
+| # | 主题 | 决定 | 理由 | 状态 |
+|---|---|---|---|---|
+| 1 | DOM 落地 | 4 个组件**全 emit 原生 HTML 元素,零新依赖**:`RADIO`→`<input type="radio">`、`TEXTAREA`→`<textarea>`、`DATEPICKER`→`<input type="date">`、`SWITCH`→`<input type="checkbox" role="switch">`。`DATEPICKER` 走原生 date input,**不引** react-datepicker | 原生元素零成本、零运行时依赖 → 经验 D 不触发(emit 产物不背新 npm 包),§8 保持真·纯增量零风险;日期选择 UI 交给浏览器原生件,本期够用 | **🔒 已锁** |
+| 2 | 范围 | **纯组件增量**:加 NodeType / Tool / 默认值 / canvas 占位 / kiwi 持久化 / 编译 emit。**不**新增 interactiveProps 编辑面板(沿用 INPUT/CHECKBOX/SELECT 现状)、**不**动 `EventsPanel`(事件仍只 BUTTON / FORM) | 属性面板缺失是预存现状,补它是独立工作不属 §8;事件扩展(onChange 等)触及 `EventsPanel` + IR + emit,远超「纯加法」范畴 | **🔒 已锁** |
+| 3 | RADIO 模型 | `RADIO` 是**单选组节点** —— 一个节点带 `interactiveProps.options: string[]` + `value` + `groupName`,emit 一个 `<div>` 包 N 个 `<label><input type="radio" name={groupName}>…</label>`。同构 `SELECT`(options 数组 → 多子节点)。**无** `RADIO_GROUP` 容器(推迟) | 叶子单选钮在缺属性面板时所有 RADIO 吃同一默认 `groupName` → 不可区分、实际不可用;单选组节点与 SELECT 同构,开箱即一个完整单选组 | **🔒 已锁** |
+| 4 | 持久化 | 4 个新 `NodeType` 经 `lowcode/nodeType` pluginData **旁路持久化**(kiwi 二进制按 `mapToFigmaType` 默认存成 `RECTANGLE`,读回时 `nodeTypeOverride` 还原)。只需把 4 个字面值加进 `LOWCODE_NODE_TYPES` 集合 —— **零 vendored `kiwi-schema/` 改动** | §12 既有机制,新 NodeType 自动套用;不动 vendored schema(Phase 1 §12.3 #1 锁定) | **🔒 已锁** |
+
+**次级默认(开工前用户 ACK 视为已锁)**:
+
+| # | 主题 | 默认 |
+|---|---|---|
+| a | NodeType / Tool 字面值 | 组件名直用:`RADIO` / `TEXTAREA` / `DATEPICKER` / `SWITCH`。`Tool` key 同名 —— 无与现有 Tool 冲突(只有 `SELECT` 节点因撞 move 工具 `SELECT` 才用 `SELECT_FIELD` 别名) |
+| b | node-defaults | `RADIO` 200×96 白底灰框 `{ options: [], value: '', groupName: 'radio-group' }`;`TEXTAREA` 200×80 圆角 6 + 左右 padding 12 白底灰框 `{ placeholder: 'Enter text', value: '' }`;`DATEPICKER` 200×36 同 `INPUT` `{ value: '' }`;`SWITCH` 44×24 圆角 12 灰底 `{ checked: false }`。4 个**均非** `CONTAINER`(无子场景节点 —— RADIO 选项同 SELECT options 是 emit 期生成) |
+| c | canvas 占位 | 4 个都进 `renderer.ts` `isRectangularType()` —— 画布画成矩形占位卡片,选项/开关态/日期值**不在画布渲染**(与 SELECT/CHECKBOX 一致,只在 emit / preview 出真元素) |
+| d | compiler emit | `TAG_BY_TYPE`:`RADIO`→`div`、`TEXTAREA`→`textarea`、`DATEPICKER`→`input`、`SWITCH`→`input`。`applyInteractiveProps`:`TEXTAREA` 同 `INPUT`(`placeholder` 属性 + `value`→`defaultValue`);`DATEPICKER` `type="date"` + `value`→`defaultValue`;`SWITCH` `type="checkbox"` + `role="switch"` + `checked`→`defaultChecked`;`RADIO` 遍历 `options` push `<label>`(内含 `<input type="radio" name value defaultChecked>` + 文本)。RADIO 的 options 循环若与 SELECT 的 jscpd 报 clone → 抽公共 helper |
+| e | flyout 顺序 | Interactive flyout 按逻辑分组:`[BUTTON, INPUT, TEXTAREA, SELECT_FIELD, CHECKBOX, RADIO, SWITCH, DATEPICKER, FORM, LIST]` |
+| f | i18n | `tools` i18n 组加 `radio` / `textarea` / `datepicker` / `switch`(键 `switch` 作对象属性名 + 成员访问均合法 JS;若 oxlint 报保留字再改 `switchToggle`)+ 7 locale 同步。`toolShortcuts` 4 个均空串(无快捷键,同 INPUT/SELECT_FIELD/CHECKBOX) |
+| g | 不加什么 | 不加 `EventsPanel` / interactiveProps 属性面板 / `NODE_ICONS` 图层图标(现有 6 个交互组件在图层面板本就 fallback `IconSquare`,§8 跟进) |
+
+> 锁定后**不在对话中重新讨论**;若用户后续推翻视为显式 scope change,更新本节。
+
+### 8.3 公开 API / Schema 改动
+
+**SceneGraph(`packages/core/src/scene-graph/`)**:
+
+```ts
+// types.ts — NodeType 联合追加
+export type NodeType =
+  | …
+  | 'INPUT' | 'BUTTON' | 'SELECT' | 'CHECKBOX' | 'FORM' | 'LIST'
+  | 'RADIO' | 'TEXTAREA' | 'DATEPICKER' | 'SWITCH'   // §8
+
+// node-defaults.ts — interactiveDefaults() 加 4 个 case(尺寸 + interactiveProps)
+```
+
+**editor(`packages/core/src/editor/`)**:`Tool` 联合 + `EDITOR_TOOLS` flyout + `INTERACTIVE_TYPES` 集合各加 4 个。
+
+**canvas**:`renderer.ts` `isRectangularType()` 加 4 个。
+
+**kiwi**:`lowcode-plugin-data.ts` `LOWCODE_NODE_TYPES` 集合加 4 个 —— 4 个新类型自动经 `lowcode/nodeType` 往返。`LOWCODE_PLUGIN_KEYS` 不变(无新 key)。
+
+**vue / app**:`TOOL_TO_NODE`、`TOOL_CURSORS`、`toolIcons`、`toolLabels`、`toolShortcuts` 各加 4 个(后 4 个是 `Record<Tool>` 穷举 → tsgo 强制不漏);i18n `tools` 组 + 7 locale。
+
+**compiler(`packages/compiler/src/ir/collect/tree.ts`)**:`TAG_BY_TYPE` + `applyInteractiveProps()` 各加 4 个 `case`。`CONTAINER_TYPES` / `CONTAINER_TYPES_FOR_RECURSION` **不动**(新组件非容器)。
+
+> 无新 IR 类型、无新 `ExprAst` / `ActionDef` / `IREventHandler` kind、无 scene-graph 字段新增 —— 4 个组件全部复用既有 `interactiveProps: Record<string, unknown>` 通道。
+
+### 8.4 不动什么
+
+- **不引入** react-datepicker / 任何 npm 包(决定 #1)
+- **不新增** interactiveProps 编辑面板(决定 #2)
+- **不动** `EventsPanel.vue` —— 事件仍只 BUTTON / FORM,新组件无事件(决定 #2)
+- **不动** vendored `kiwi-schema/`、`LOWCODE_PLUGIN_KEYS`、pluginData key 前缀(决定 #4)
+- **不动** `CONTAINER_TYPES` / `CONTAINER_TYPES_FOR_RECURSION`(新组件非容器)
+- **不动** 既有 6 个交互组件的 NodeType / 默认值 / emit
+- **不新增** IR 类型 / `ExprAst` / `ActionDef` / `IREventHandler` kind
+- **不动** `OPEN_PENCIL_PLUGIN_ID`
+
+### 8.5 成功标准
+
+1. `bun test ./tests/engine/compiler/` 全绿;新增至少 `ir/collect/interactive-components.test.ts` —— 4 个组件 `TAG_BY_TYPE` + `applyInteractiveProps`(TEXTAREA placeholder/value、DATEPICKER `type=date`、SWITCH `type=checkbox` + `role=switch`、RADIO options→`<label>` 组)
+2. `bun test ./tests/engine/kiwi/lowcode/` 全绿;新增 4 个新 `NodeType` 的 `lowcode/nodeType` 往返测试 + 旧 .fig 字节回归
+3. `bun run check` 全绿(jscpd 0 clones —— RADIO/SELECT 循环抽 helper 后)
+4. **Tauri 实测(用户主导)**:Interactive flyout 出现 4 个新工具、画布能画占位卡片、preview 渲染成对应原生元素(`<textarea>` / `<input type="date">` / radio 组 / switch)、`.fig` 存读回类型不丢
+5. 不破坏 Phase 0 §8 / Phase 1 / Phase 2 §9 §2 §3 §4 任一锁定决定
+
+### 8.6 工作分解(建议 1 名工程师,2–3 天)
+
+| Step | 任务 | 验收 / commit message |
+|---|---|---|
+| 1 | scene-graph + editor + canvas + kiwi + vue/app 脚手架(NodeType / Tool / node-defaults / tool-registry / shapes / renderer / `LOWCODE_NODE_TYPES` / `TOOL_TO_NODE` / cursor / icons / labels / i18n×8);kiwi `lowcode/nodeType` 往返测试 | `bun test ./tests/engine/kiwi/lowcode/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — RADIO/TEXTAREA/DATEPICKER/SWITCH scaffolding (§8)` |
+| 2 | compiler emit:`TEXTAREA` / `DATEPICKER` / `SWITCH` 三个叶子组件 `TAG_BY_TYPE` + `applyInteractiveProps` + emit 单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — TEXTAREA/DATEPICKER/SWITCH emit (§8)` |
+| 3 | compiler emit:`RADIO` 单选组(options→`<label>` 子节点,与 SELECT 抽公共 helper)+ emit 单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿(jscpd 0);`feat(lowcode): step 3 — RADIO radio-group emit (§8)` |
+| 4 | walker checklist(经验 A)+ 跨 walker 回归测试;Tauri 实测(用户主导);修 bug | 用户 ACK 全过;`docs(lowcode): §8 Tauri verification` |
+
+### 8.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 新 `NodeType` ×4 被某 `node.type` switch 漏 | 中(经验 A) | `Record<Tool>` 四张表(`TOOL_CURSORS` / `toolIcons` / `toolLabels` / `toolShortcuts`)tsgo 穷举强制;`interactiveDefaults` / `applyInteractiveProps` 是 `default`-兜底 switch,**不**报错 → step 4 走 walker checklist 逐个核 `node.type` / `NodeType` + 跨 walker 回归测试 |
+| RADIO 的 options 循环与 SELECT 的 jscpd 报 clone | 低 | 决定 #d:抽公共 helper(SELECT 的 `<option>` 与 RADIO 的 `<label><input>` 结构不同,helper 收敛「遍历 options + 类型守卫」骨架);`bun run test:dupes` 钉 0 clones |
+| `<textarea>` 的 React value 应走 `defaultValue` 而非 children | 低 | `applyInteractiveProps` 把 value 写进 `attrs.defaultValue`(同 INPUT)—— React `<textarea defaultValue="…" />` 是正确写法,emit 的 attr 通道天然正确 |
+| 新组件无属性面板,用户只能用默认值 | 低(预存现状) | 决定 #2:SELECT 的 options 当前同样无 UICN;非 §8 回归。文档提示;属性面板是独立后续工作 |
+| `lowcode/nodeType` 往返:旧 .fig 不含新类型 | 低 | `LOWCODE_NODE_TYPES` 只控制**写**;读端 `assignLowcodeField` 对未知类型字符串已有守卫(`LOWCODE_NODE_TYPES.has` 判断)。旧 .fig 字节回归测试钉死 |
+
+### 8.8 Post-mortem
+
+> 开工后逐 step 回填(commit 链 / walker checklist 结果 / 实测发现)。
 
 ---
 
