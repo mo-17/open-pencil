@@ -16,7 +16,7 @@
 | # | 主题 | 优先级 | 简述 | 详写 |
 |---|---|---|---|---|
 | 1 | **`setVariable` 运行时存储**(候选 §2) | 高 | §7.4 留了占位 stub;Phase 2 给编译产物补一个最小运行时变量 store,把 `setVariable` 从警告变成能跑 | TBD §2 |
-| 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **🚧 §3 开工中**(详见 §3) |
+| 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **§3 ✅ 2026-05-22**(HEAD `df5e1b4`) |
 | 3 | **表达式子语言扩展**(候选 §4) | 中 | 加函数调用、数组 / 对象字面量;字符串模板留 §5+;触及 `expression.ts` 语法表 + emit | TBD §4 |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
@@ -409,7 +409,7 @@ export interface IRSetVariableHandler {
 
 > 2026-05-22 用户挑定 Phase 2 第三项开工(§2 收尾后)。形式参照 §2 / §9。**4 项主决定 2026-05-22 已由用户在对话中锁定**;次级默认 step 1 前用户 ACK 视为已锁。
 >
-> **状态:🚧 待开工**(HEAD `cbbab20`)。Step 1–5 分日 commit,跟 §2 同节奏。
+> **状态:🔒 已收尾**(HEAD `df5e1b4`)。Step 1–4 全 ✅,Tauri 实测 2026-05-22 用户 ACK 全过;实测期间补了 1 个链路缺口(LIST 不能绑 docState),见 §3.8 post-mortem。
 
 ### 3.1 现状与问题
 
@@ -559,13 +559,14 @@ export interface IRApiCallHandler {
 
 ### 3.6 工作分解(建议 1 名工程师,3–4 天)
 
+> **步骤耦合说明**:`emit/event.ts` 的 `IREventHandler` switch 是 `never`-穷举式 —— 一旦把 `IRApiCallHandler` 加进 `IREventHandler` 联合,collect 与 emit 必须同一 commit 落地(否则 `bun run check` 红)。故 step 1 只定义 `IRApiCallHandler` 接口(不进联合),collect + emit 合并为 step 2。
+
 | Step | 任务 | 验收 / commit message |
 |---|---|---|
-| 1 | `ApiCallAction` schema + `ActionDef` 联合扩 + `IRApiCallHandler` IR type;kiwi 持久化测试 | `bun test ./tests/engine/kiwi/lowcode/` 全绿;`feat(lowcode): step 1 — ApiCallAction schema + IR type (§3)` |
-| 2 | `resolveActions` 加 `apiCall` case + 三类校验 + `docStateWrites`;IR collect 单测 | `bun test ./tests/engine/compiler/` 全绿;`feat(lowcode): step 2 — apiCall IR collect + validation (§3)` |
-| 3 | `emitEventHandler` async 化 + GET/POST emit 形态;emit 单测 | `bun test ./tests/engine/compiler/` 全绿;`feat(lowcode): step 3 — emit async fetch handler (§3)` |
-| 4 | `EventsPanel.vue` apiCall 完整 UI(method / url / body / target)+ i18n + locale 同步 | `check:vue` + `check:i18n` + `test:dupes` 全绿;`feat(lowcode): step 4 — Call API editor UI (§3)` |
-| 5 | walker checklist(§9.9 经验 A)+ 跨 walker 回归测试;Tauri 实测(用户主导);修 bug | 用户 ACK 全过;`docs(lowcode): §3 Tauri verification` |
+| 1 | `ApiCallAction` scene-graph schema + `ActionDef` 联合扩(`resolveActions` `default` 非穷举,安全);`IRApiCallHandler` 接口定义(**暂不进** `IREventHandler` 联合);kiwi 持久化测试 | `bun test ./tests/engine/kiwi/lowcode/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — ApiCallAction schema + IR type (§3)` |
+| 2 | `IRApiCallHandler` 进 `IREventHandler` 联合;`resolveActions` 加 `apiCall` case + 三类校验 + `docStateWrites`;`emitEventHandler` async 化 + GET/POST emit 形态;collect + emit 单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — apiCall IR collect + async fetch emit (§3)` |
+| 3 | `EventsPanel.vue` apiCall 完整 UI(method / url / body / target)+ i18n + locale 同步 | `check:vue` + `check:i18n` + `test:dupes` 全绿;`feat(lowcode): step 3 — Call API editor UI (§3)` |
+| 4 | walker checklist(§9.9 经验 A)+ 跨 walker 回归测试;Tauri 实测(用户主导);修 bug | 用户 ACK 全过;`docs(lowcode): §3 Tauri verification` |
 
 ### 3.7 风险
 
@@ -579,7 +580,26 @@ export interface IRApiCallHandler {
 
 ### 3.8 Post-mortem
 
-(留空待 Tauri 实测后补)
+**Step commits:**
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 1 | `0c6fef8` | `ApiCallAction` schema + `ActionDef` 联合扩 + `IRApiCallHandler` 接口(暂不进 `IREventHandler` 联合)+ 持久化测试 |
+| 2 | `362ea8f` | `IRApiCallHandler` 进联合 + `resolveApiCall` collect(3 道校验)+ `emitEventHandler` async fetch emit |
+| 3 | `362ea8f` | EventsPanel "Call API" UI(method/url/body/target)+ i18n×8 |
+| 4 | `5961432` | walker checklist + `cross-walker-apicall.test.ts` |
+| fix | `df5e1b4` | LIST 可绑 docState 作数据源 |
+| docs | (本提交) | §3 Tauri verification |
+
+> Step 2+3 同一 commit(`362ea8f`):`IREventHandler` 的 `never`-穷举 switch 让 collect+emit 必须同 commit。
+
+**Walker checklist(§9 经验 A)**:跑了一遍,**无 walker miss**。`emit/event.ts` switch 穷举式(`never` 兜底);`collect/bindings.ts` `resolveActions` 有 `case 'apiCall'`;`ir-walk.ts` 只过滤 `navigate`,apiCall 自动保留;`emit/element.ts` kind-agnostic。`cross-walker-apicall.test.ts` 钉死。
+
+**实测发现 1 —— 瞬态 URL 重复(非 bug)**:用户报告 preview 里 apiCall 请求 URL 被重复拼接 9× → 404。编译器侧反复跑都是单次 URL(repro 验证),preview-bridge / dev-server 链路也无拼接逻辑。用户重试即恢复。判定为 preview 陈旧构建态(HMR 没吃到最新编译),非代码缺陷,不修补。教训:preview 偶发陈旧态;复现需抓 DevTools Network 的实际 Request URL + 当时 preview 跑的 `App.tsx` 才能区分。
+
+**实测发现 2 —— LIST 不能绑 docState(链路缺口,已修 `df5e1b4`)**:§3 设计假定 apiCall 响应写进 docState 后,LIST 能绑该 docState 渲染。但 §9 建 LIST 数据源选择器时 §2 还不存在,LIST 只认页面 state;§2 加了 docState 却没接 LIST;§3 默认这条线通。修复:`dataSourceRef` 加 `docStateRef` 变体,`ListPanel.vue` 数据源下拉用两个 optgroup 列页面 state + docState,`collect/tree.ts` 抽 `resolveListArrayName` 双路解析、docState 源登记 `docStateReads`。emit 零改动(IRList `{(name).map}` 直接迭代 `useDocState` 局部)。回归测试 `list-docstate.test.ts`。**教训(§3 经验 E)**:跨 §X 的能力组合(本期 apiCall→docState→LIST 三段)要在设计阶段显式检查每段接口是否已存在 —— 不能假定前序 §X 留下的组件已经互相打通。§4+ 凡涉及"A 写、B 读"的数据流,设计 doc 里列一行"读写两端的现有接口核对"。
+
+**测试结果**:`bun test ./tests/engine/compiler/` 230 pass、`./tests/engine/kiwi/lowcode/` 49 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测 2026-05-22 §3.5 #4 用户 ACK 全过。
 
 ---
 
