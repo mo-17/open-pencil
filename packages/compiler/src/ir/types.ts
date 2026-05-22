@@ -71,11 +71,11 @@ export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onB
  *  into a discriminated union so the adapter can dispatch on `kind`
  *  exhaustively (and refuse to compile an unknown future kind silently).
  *  Phase 2 §2 lights up the previously-stubbed `setVariable` slot. */
-// Phase 2 §3: `IRApiCallHandler` is defined below but is intentionally NOT
-// in this union until step 2 — adding it here forces every exhaustive
-// `IREventHandler` switch (`emit/event.ts`) to grow a case in the same
-// commit, which couples the collect + emit work. Step 2 extends the union.
-export type IREventHandler = IRSetStateHandler | IRNavigateHandler | IRSetVariableHandler
+export type IREventHandler =
+  | IRSetStateHandler
+  | IRNavigateHandler
+  | IRSetVariableHandler
+  | IRApiCallHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector

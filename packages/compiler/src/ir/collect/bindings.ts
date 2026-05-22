@@ -3,6 +3,7 @@ import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-gr
 import type { ExprAst } from '../expression'
 import { hasPrevReference, parseExpression, PREV_IDENT, substitutePrev } from '../expression'
 import type {
+  IRApiCallHandler,
   IRDocStateDecl,
   IREventHandler,
   IREventName,
@@ -213,6 +214,14 @@ function resolveActions(
         }
         break
       }
+      case 'apiCall': {
+        const handler = resolveApiCall(node, eventName, action, docStates, warnings)
+        if (handler) {
+          out.push(handler)
+          docStateWrites?.add(handler.docStateName)
+        }
+        break
+      }
       default: {
         // `action satisfies never` would be ideal here, but the cast keeps
         // older .fig files (saved with an unknown future kind) loadable.
@@ -367,6 +376,74 @@ function resolveSetVariable(
     ast,
     references,
     mode
+  }
+}
+
+/** Phase 2 §3: resolve an `apiCall` action into an `IRApiCallHandler`.
+ *  Three validation gates — non-empty URL, target resolves to a declared
+ *  Document State, and (POST only) the body parses as JSON. Any failure
+ *  drops the handler with a warning so the emitted code stays compilable.
+ *  The stored `body` is the re-serialised (compact, guaranteed-valid)
+ *  JSON so emit can splice it as a JS literal. */
+function resolveApiCall(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'apiCall' }>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  warnings: IRWarning[]
+): IRApiCallHandler | null {
+  const url = action.url.trim()
+  if (url === '') {
+    warnings.push({
+      code: 'action-apicall-missing-url',
+      message: `node ${node.id} ${eventName} apiCall has no url`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const name = action.targetName
+  if (name === '') {
+    warnings.push({
+      code: 'action-apicall-missing-target',
+      message: `node ${node.id} ${eventName} apiCall has no targetName`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (!docStates.has(name)) {
+    warnings.push({
+      code: 'action-apicall-unknown-target',
+      message: `node ${node.id} ${eventName} apiCall references unknown document state "${name}"`,
+      nodeId: node.id
+    })
+    return null
+  }
+  // POST body is a JSON literal. GET ignores it entirely. An empty / absent
+  // body on POST is allowed (a bodyless POST is valid).
+  let body: string | undefined
+  if (action.method === 'POST') {
+    const raw = (action.bodyJson ?? '').trim()
+    if (raw !== '') {
+      try {
+        body = JSON.stringify(JSON.parse(raw))
+      } catch (err) {
+        warnings.push({
+          code: 'action-apicall-invalid-body',
+          message: `node ${node.id} ${eventName} apiCall body is not valid JSON: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          nodeId: node.id
+        })
+        return null
+      }
+    }
+  }
+  return {
+    kind: 'apiCall',
+    method: action.method,
+    url,
+    body,
+    docStateName: name
   }
 }
 
