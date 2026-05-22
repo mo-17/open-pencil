@@ -25,8 +25,9 @@ const PREV_FORMAL = 'prev'
  *
  *  Phase 2 §9: when `bindings.text.kind === 'expr'`, the expression is parsed
  *  and its referenced identifiers are validated against the union of declared
- *  states and the in-scope identifiers (e.g. `item` / `index` inside a LIST
- *  template). Unknown identifiers fall back to a literal text and warn. */
+ *  page states, in-scope identifiers (e.g. `item` / `index` inside a LIST
+ *  template), and — Phase 2 §4 — Document State names. Unknown identifiers
+ *  fall back to a literal text and warn. */
 export function resolveTextBinding(
   node: SceneNode,
   states: Map<string, IRStateDecl>,
@@ -83,7 +84,7 @@ export function resolveTextBinding(
       })
       return null
     }
-    const unknown = unknownIdentifiers(parsed.references, states, inScope)
+    const unknown = unknownIdentifiers(parsed.references, states, inScope, docStates)
     if (unknown.length > 0) {
       warnings.push({
         code: 'binding-unknown-identifier',
@@ -92,6 +93,9 @@ export function resolveTextBinding(
       })
       return null
     }
+    // Phase 2 §4: a docState referenced inside the expression needs a
+    // `useDocState` local on the page.
+    registerDocStateReads(parsed.references, docStates, docStateReads)
     return {
       kind: 'expression',
       ast: parsed.ast,
@@ -126,13 +130,20 @@ export function resolveTextBinding(
 const EMPTY_SCOPE: ReadonlySet<string> = new Set()
 const EMPTY_DOCSTATES: ReadonlyMap<string, IRDocStateDecl> = new Map()
 
-/** Identifiers referenced by an expression that match neither a declared state
- *  nor an in-scope identifier. Used by both `resolveTextBinding` (kind=expr)
- *  and the renderCondition resolver in `tree.ts`. */
+/** Identifiers referenced by an expression that match neither a declared
+ *  page state, an in-scope identifier, nor a Document State. Used by
+ *  `resolveTextBinding` (kind=expr), the renderCondition resolver in
+ *  `tree.ts`, and the apiCall URL-template resolver.
+ *
+ *  Phase 2 §4: `docStates` widens the allow-set so a read-context expression
+ *  may reference a Document State name (decision §4.2 #3). Callers that
+ *  accept the reference must also call `registerDocStateReads` so the page
+ *  emits the matching `useDocState` local. */
 export function unknownIdentifiers(
   references: ReadonlySet<string>,
   states: Map<string, IRStateDecl>,
-  inScope: ReadonlySet<string>
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES
 ): string[] {
   const stateNames = new Set<string>()
   for (const s of states.values()) stateNames.add(s.name)
@@ -140,9 +151,24 @@ export function unknownIdentifiers(
   for (const ref of references) {
     if (stateNames.has(ref)) continue
     if (inScope.has(ref)) continue
+    if (docStates.has(ref)) continue
     out.push(ref)
   }
   return out
+}
+
+/** Phase 2 §4: record every reference that resolves to a Document State into
+ *  `docStateReads`, so the page component emits a `const x = useDocState('x')`
+ *  local for it. A no-op when `docStateReads` is undefined. */
+export function registerDocStateReads(
+  references: Iterable<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined
+): void {
+  if (!docStateReads) return
+  for (const ref of references) {
+    if (docStates.has(ref)) docStateReads.add(ref)
+  }
 }
 
 const EVENT_NAMES_TO_RESOLVE: EventName[] = [

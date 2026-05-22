@@ -14,7 +14,7 @@ import type {
   IRWarning
 } from '../types'
 
-import { resolveEvents, resolveTextBinding, unknownIdentifiers } from './bindings'
+import { registerDocStateReads, resolveEvents, resolveTextBinding, unknownIdentifiers } from './bindings'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -388,7 +388,7 @@ function wrapConditional(node: SceneNode, element: IRElement, ctx: WalkCtx): IRN
     })
     return element
   }
-  const unknown = unknownIdentifiers(parsed.references, ctx.states, ctx.inScope)
+  const unknown = unknownIdentifiers(parsed.references, ctx.states, ctx.inScope, ctx.docStates)
   if (unknown.length > 0) {
     ctx.warnings.push({
       code: 'condition-unknown-identifier',
@@ -397,6 +397,9 @@ function wrapConditional(node: SceneNode, element: IRElement, ctx: WalkCtx): IRN
     })
     return element
   }
+  // Phase 2 §4: a docState referenced by the condition needs a `useDocState`
+  // local on the page.
+  registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
   const conditional: IRConditional = {
     kind: 'conditional',
     ast: parsed.ast,
