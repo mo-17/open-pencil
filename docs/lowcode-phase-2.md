@@ -1000,7 +1000,24 @@ export type NodeType =
 
 ### 8.8 Post-mortem
 
-> 开工后逐 step 回填(commit 链 / walker checklist 结果 / 实测发现)。
+> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §8 Tauri verification`。
+
+**Step commits:**
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `e5a8bc2` | §8 详细设计 + 锁定决定 |
+| 1 | `2cf788d` | 4 个组件脚手架(NodeType / Tool / node-defaults / tool-registry / shapes / renderer / `LOWCODE_NODE_TYPES` / `TOOL_TO_NODE` / cursor / icons / labels / i18n×8)+ kiwi 往返测试 |
+| 2 | `149234d` | `TEXTAREA` / `DATEPICKER` / `SWITCH` emit;`applyInteractiveProps` 重构为薄分发 + 抽 per-component helper(内联 switch 触 oxlint complexity-20 上限) |
+| 3 | `f60a5ee` | `RADIO` 单选组 emit;SELECT/RADIO 共用 `optionStrings` helper |
+| 4 | `1925628` | walker checklist + `cross-walker/interactive-components.test.ts` |
+| docs | (待提交) | §8 Tauri verification |
+
+**Walker checklist(经验 A)**:跑了一遍,**无 walker miss**。4 个新 `NodeType` 被每个 `node.type` 分发处理 —— `TAG_BY_TYPE` / `applyInteractiveProps` / `isRectangularType` / `INTERACTIVE_TYPES` / `LOWCODE_NODE_TYPES` / `TOOL_TO_NODE` + 4 张 tsgo 穷举 `Record<Tool>` 表。`canvas/scene.ts` 的 `isClippableContainer` 与 `CONTAINER_TYPES` 正确不含新类型(非容器);`DesignPanel` / `EventsPanel` 正确不含(决定 #2 —— 无面板、无事件)。`io/formats/jsx` 核心导出器对交互类型本就泛化处理,无新增 type switch。
+
+**意外 1 —— `applyInteractiveProps` 复杂度超标**:step 2 把 4 个组件 case 内联进 switch 后 oxlint `complexity` 报 21 > 20。重构成薄分发 + 5 个 per-component helper(`applyTextInputProps` / `applyToggleProps` / `applyDatePickerProps` / `applyButtonProps` / `applySelectOptions`),CHECKBOX 与 SWITCH 共用 `applyToggleProps`。顺带消除了 RADIO/SELECT 的 jscpd 风险(step 3 抽 `optionStrings`)。
+
+**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 324 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
 
 ---
 
