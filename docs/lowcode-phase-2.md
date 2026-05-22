@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | 1 | **`setVariable` 运行时存储**(候选 §2) | 高 | §7.4 留了占位 stub;Phase 2 给编译产物补一个最小运行时变量 store,把 `setVariable` 从警告变成能跑 | TBD §2 |
 | 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **§3 ✅ 2026-05-22**(HEAD `df5e1b4`) |
-| 3 | **表达式子语言扩展**(候选 §4) | 中 | 加函数调用、数组 / 对象字面量;字符串模板留 §5+;触及 `expression.ts` 语法表 + emit | TBD §4 |
+| 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 设计已写**(详见 §4) |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router | TBD §7 |
@@ -603,20 +603,208 @@ export interface IRApiCallHandler {
 
 ---
 
-## 4. 候选 §4 — 表达式子语言扩展
+## 4. §4 详细设计:表达式子语言扩展(窄口径)
 
-**当前**(`packages/compiler/src/ir/expression.ts`):
-- 算术 / 比较 / 逻辑 / 三元 / 一元 / 成员访问
-- **没有**函数调用、数组字面量、对象字面量、字符串模板
+> 2026-05-22 用户挑定 Phase 2 第四项开工(§3 收尾后)。形式参照 §2 / §3 / §9。
+> **范围在对话中先锁为「窄口径」** —— 只接 §3 留的尾,不做 stub 原计划的函数调用 /
+> 数组 / 对象字面量。4 项主决定 + 7 项次级默认见 §4.2。**4 项主决定 + 7 项次级默认
+> 2026-05-22 已由用户在对话中锁定**(范围 #1 第一轮锁;#2–#4 + #a–#g 第二轮一次性 ACK)。
+>
+> **状态:🔨 开工中**(step 1–4)。
 
-**Phase 2 目标**: 加 `expr(args)` / `[a, b, c]` / `{ k: v }` 三件;字符串模板留 §5+。
+### 4.1 现状与问题
 
-**待锁决定**:
-- 函数调用允许什么前缀?`Math.*` / `String.*` 等内置允许,用户自定义函数怎么走?
-- 数组 / 对象字面量是否允许嵌套 spread?(`{...obj, x: 1}` 影响 emit 复杂度)
-- AST + emit 的回滚兼容性:旧 .fig 里的表达式必须依然 parse
+当前表达式子语言(`packages/compiler/src/ir/expression.ts`)是一个 precedence-climbing
+解析器:算术 / 比较 / 逻辑 / 三元 / 一元 / 成员访问 + 数字 / 字符串 / 标识符字面量。
+`parseExpression(src) → { ast, references }`,`emitExpression(ast) → JS 串`。**没有**
+函数调用、数组 / 对象字面量、字符串模板。
 
-**风险**: 解析器从 precedence climbing 改成更复杂的 LR;测试用例量级会涨;为了换"能用"不一定值。先做"用户最实际诉求是什么"调研再开工。
+§3(API fetch)收尾时显式往本节推了两个尾:
+
+1. **`${}` URL 模板** —— §3 决定 #3 锁了 `ApiCallAction.url` 是**静态字符串**,
+   `https://api.example.com/users/${userId}` 这种带插值的 URL 不支持。Bubble 里
+   "按行 ID 调接口" 是基本盘,本期补上。
+2. **docState-in-expr** —— §2 落地 Document State 后,docState 只能经 `kind:'docState'`
+   **直接绑定**整个值;不能在 `kind:'expr'` 表达式里把 docState 名当标识符引用
+   (`users.length > 0`)。已确认是真实间隙:`unknownIdentifiers()`
+   (`ir/collect/bindings.ts:132`)把表达式引用比对 page state + inScope,
+   **docState 不在白名单**,所以 `kind:'expr'` 文本绑定 / `renderCondition` 里
+   引用 docState 会被判 `binding-unknown-identifier` / `condition-unknown-identifier`。
+
+stub 原计划的函数调用 `f(args)` / 数组字面量 `[a,b,c]` / 对象字面量 `{k:v}` —— stub 自身
+已警告"为了换'能用'不一定值得";本期**不做**,推迟 §4.v2 / Phase 3。
+
+**调试场景(期望)**:
+
+```
+SceneGraph (root "Document"):
+  lowcodeDocumentState: [
+    { name: 'userId', type: 'number', defaultValue: 1 },
+    { name: 'user',   type: 'object', defaultValue: {} }
+  ]
+
+  CANVAS Home
+    BUTTON  events.onClick = [{
+      kind: 'apiCall', method: 'GET',
+      url: 'https://jsonplaceholder.typicode.com/users/${userId}',  ← §4 模板
+      targetName: 'user'
+    }]
+    TEXT    text binding kind:'expr', expr = 'user.name'            ← §4 docState-in-expr
+    TEXT    renderCondition = 'user.id > 0'                          ← §4 docState-in-expr
+
+期望 emit (片段):
+
+  const userId = useDocState('userId')
+  const user   = useDocState('user')
+  ...
+  <button onClick={async () => {
+    try {
+      const res = await fetch(`https://jsonplaceholder.typicode.com/users/${userId}`)
+      const data = await res.json()
+      setDocState("user", data)
+    } catch (err) { console.error("apiCall failed:", err) }
+  }}>...</button>
+  ...
+  <span>{user.name}</span>
+  {(user.id > 0) && (<span>…</span>)}
+```
+
+**读写两端接口核对(经验 E)** —— §4 涉及的数据流每一段现有接口都已存在:
+
+| 数据流 | 写端 | 读端 | 核对 |
+|---|---|---|---|
+| `${userId}` 在 URL → 读 docState | §2 `setDocState` / §3 apiCall | `docStateReads` → emit `const userId = useDocState('userId')` | ✅ `docStateReads` 机制 §2 已落地 |
+| `${pageState}` 在 URL → 读 page state | 页面 `setX` | page state 已是组件内 `useState` 局部 | ✅ 无需额外登记 |
+| docState-in-expr(文本绑定 / renderCondition) | §2 / §3 | 同上,`docStateReads` → `useDocState` 局部 | ✅ §2 已落地;§4 只需把引用登记进 `docStateReads` |
+
+> §4 **不**新建任何"写"端 —— 全部复用 §2 / §3 已有的 docState 写入路径。
+
+### 4.2 关键决定
+
+> 形式同 §2.2 / §3.2。**#1–#4 已锁(2026-05-22 对话);#a–#g 为次级默认,开工前用户 ACK 视为已锁。**
+
+| # | 主题 | 决定 | 理由 | 状态 |
+|---|---|---|---|---|
+| 1 | 范围 | **窄口径**:§4 = (1) `${}` 字符串插值,新 `ExprAst` kind `'template'` + 独立 `parseTemplate` scanner;(2) docState 名可在**读上下文**表达式引用。函数调用 / 数组字面量 / 对象字面量 **不做** | §3 留的尾是真实诉求;stub 自警函数 / 字面量扩展价值存疑、解析器复杂度抬升大。窄口径低风险、walker 改动面小 | **🔒 已锁** |
+| 2 | `${}` 机制 | 插值落点是 `ApiCallAction.url`(§3 字段,scene-graph 类型**不变**仍 `string`)。IR collect 阶段用独立 `parseTemplate(raw)` 把原始 URL 串解析成 `template` AST。**不**给 `parseExpression` 文法加反引号模板字面量 —— `parseExpression` 文法**冻结**(零回归);`parseTemplate` 是独立 scanner,只在 URL 这一处入口用 | URL 字段是个原始串(不是表达式),需要一个"整串即模板体"的入口;给 `parseExpression` 加反引号 sugar 会动 tokenizer,带回归面而文本 `${}` 仅是 `+` 拼接的语法糖(`"Hello " + name` 今天就能用) | **🔒 已锁** |
+| 3 | docState 可见上下文 | docState 名只在**读上下文**表达式可引用:`kind:'expr'` 文本绑定、`renderCondition`、apiCall url 模板。**写上下文 valueExpr 不变** —— setState / setVariable `valueExpr` 仍只解析 page state + `$prev` | 尊重 §2.2 #h 锁定决定(valueExpr 不开 docState→docState 引用图);读上下文引用 docState 无环路风险,是纯增量 | **🔒 已锁** |
+| 4 | scene-graph / kiwi 改动 | §4 **零** scene-graph schema / kiwi / pluginData 改动。`ApiCallAction.url` 仍 `string`(原始用户串,含 `${}`,JSON 安全、`lowcode/events` 直接来回);模板解析全在 compiler IR 层。只 `IRApiCallHandler.url` 从 `string` 升 `ExprAst` | 模板是 compiler 关注点,不是持久化关注点;零 schema 改动 → 无 kiwi 持久化测试、无 vendored `kiwi-schema/` 顾虑、老 .fig 字节不变 | **🔒 已锁** |
+
+**次级默认(开工前用户 ACK 视为已锁)**:
+
+| # | 主题 | 默认 |
+|---|---|---|
+| a | `template` AST shape | `{ kind:'template'; quasis:string[]; expressions:ExprAst[] }`,不变式 `quasis.length === expressions.length + 1`。零 expression 的退化 template 表示纯静态串 |
+| b | `parseTemplate(raw)` 行为 | 扫 raw 串找 `${`,提取**平衡 `}`** 段喂 `parseExpression`,累积 quasis。raw 不含 `${` → 单 quasi、零 expression 的退化 template。`${` 不平衡 / 内层表达式语法错 → 返回 `{ ok:false, error }`(复用 `ParseResult` 的 ok/error 联合)。`${}` 字面量在 quasi 段内不需转义还原 —— scanner 只识别 `${` |
+| c | emit | `emitWithPrec` 加 `case 'template'`:`expressions.length === 0` → `JSON.stringify(quasis[0])`(双引号串,与 §3 字节一致 → 静态 URL 零回归);否则反引号模板 `` `q0${e0}q1…` ``,每个 expression 以 prec `0` emit,quasi 段对反引号 / `${` / 反斜杠转义 |
+| d | walker(经验 A) | `collectReferences` / `hasPrevReference` / `substitutePrev` 各加 `case 'template'` 递归进 `expressions`。`collectReferences` 必需(收集 `${}` 内标识符);`hasPrevReference` / `substitutePrev` 为完备性补 —— 模板理论上不携 `$prev`,但 walker 是 `ExprAst` 全函数,不留隐式 `default` 漏 |
+| e | url 模板引用解析 | apiCall url 模板的标识符按**读上下文**解析:page state + docState + inScope(LIST item/index)。`unknownIdentifiers` 加 `docStates` 入参;`resolveApiCall` 经 `resolveEvents`→`resolveActions` 新拿 `states` / `inScope` / `docStateReads`。引用解析到 docState → 登记 `docStateReads` |
+| f | 新 warning code | `action-apicall-invalid-url`(url 模板 parse 失败,handler 丢)+ `action-apicall-unknown-identifier`(url 模板引用未知标识符,handler 丢);`expression-prev-out-of-context` 复用(`$prev` 出现在 url 模板)。§3 的 `action-apicall-missing-url`(空 url)保留。docState-in-expr 复用既有 `binding-unknown-identifier` / `condition-unknown-identifier` —— 只是白名单放宽,引用真未知时仍报 |
+| g | 编辑器 UI | `EventsPanel.vue` apiCall 的 url `<input>` 加实时模板校验 —— `parseTemplate` 失败 → 红框 + 10px error line(经验 C),i18n 加一条 "supports ${expr}" 提示。docState-in-expr 的文本绑定 / `renderCondition` 面板**不**动(纯 compiler 白名单放宽,无 UI 表面) |
+
+> 锁定后**不在对话中重新讨论**;若用户后续推翻视为显式 scope change,更新本节。
+
+### 4.3 公开 API / Schema 改动
+
+**表达式子语言(`packages/compiler/src/ir/expression.ts`)**:
+
+```ts
+export type ExprAst =
+  | { kind: 'number'; value: number }
+  | { kind: 'string'; value: string }
+  | { kind: 'ident'; name: string }
+  | { kind: 'member'; object: ExprAst; property: string }
+  | { kind: 'unary'; op: '!' | '-' | '+'; arg: ExprAst }
+  | { kind: 'binary'; op: BinaryOp; left: ExprAst; right: ExprAst }
+  | { kind: 'ternary'; test: ExprAst; consequent: ExprAst; alternate: ExprAst }
+  | { kind: 'template'; quasis: string[]; expressions: ExprAst[] }  // §4
+
+/** Phase 2 §4: parse a raw string as a template body — no surrounding
+ *  backticks. Splits on `${ … }` (balanced braces); each interpolation
+ *  segment is parsed by `parseExpression`. A raw string with no `${`
+ *  yields a degenerate single-quasi template. Used for `ApiCallAction.url`.
+ *  `parseExpression`'s grammar is NOT touched — this is a standalone scanner. */
+export function parseTemplate(raw: string): ParseResult
+```
+
+> `emitExpression` / `collectReferences` / `hasPrevReference` / `substitutePrev` 各加 `case 'template'`(经验 A)。`parseExpression` 文法、tokenizer、`Token` 联合 —— **不动**。
+
+**IR types(`packages/compiler/src/ir/types.ts`)**:
+
+```ts
+export interface IRApiCallHandler {
+  kind: 'apiCall'
+  method: 'GET' | 'POST'
+  /** Phase 2 §4: parsed URL template (a `kind:'template'` ExprAst). A
+   *  static URL is a degenerate zero-expression template — emits as a
+   *  plain double-quoted string, byte-identical to §3. */
+  url: ExprAst
+  body?: string
+  docStateName: string
+}
+```
+
+> `IRApiCallHandler.url` 由 `string` 升 `ExprAst`。其余 IR 类型不动。
+
+**IR collect**:
+
+- `unknownIdentifiers`(`collect/bindings.ts`)签名加 `docStates: ReadonlyMap<string, IRDocStateDecl>` 入参;docState 名进白名单。
+- `resolveTextBinding` `kind:'expr'` 分支(`bindings.ts`)+ `wrapConditional`(`collect/tree.ts`):调 `unknownIdentifiers` 时传 `docStates`;引用解析到 docState → `docStateReads.add(name)`。
+- `resolveApiCall`(`bindings.ts`):`url` 改走 `parseTemplate`;非空校验后,模板 parse 失败 → `action-apicall-invalid-url`;收集模板引用,`$prev` → `expression-prev-out-of-context`,未知标识符 → `action-apicall-unknown-identifier`,docState 引用 → `docStateReads`。`resolveEvents` / `resolveActions` 新增 `inScope` / `docStateReads` 透传。
+- 写上下文(`resolveSetState` / `resolveSetVariable` 的 `valueExpr`)—— **不动**(决定 #3)。
+
+**emit react(`adapters/react/emit/event.ts`)**:
+
+- `apiCall` case:`fetch(${url})` 的 `url` 由 `JSON.stringify(h.url)` 改 `emitExpression(h.url)`。静态 URL → `emitExpression` 输出双引号串,字节不变;带插值 → 反引号模板。
+
+**编辑器 UI(`EventsPanel.vue`)**:url `<input>` 实时 `parseTemplate` 校验 → 红框 + 10px error line;i18n `panels.lowcodeActionApiUrlHint`(+ 7 locale 同步)。
+
+### 4.4 不动什么
+
+- **不做**函数调用 `f(args)` / 数组字面量 `[a,b,c]` / 对象字面量 `{k:v}`(推迟 §4.v2 / Phase 3)
+- **不动** `parseExpression` 文法 / tokenizer / `Token` 联合 —— 反引号模板字面量**不**进通用文法(决定 #2)
+- **不动** scene-graph schema / `ApiCallAction` 字段 / kiwi / pluginData(决定 #4);`ApiCallAction.url` 仍 `string`
+- **不动**写上下文 `valueExpr` 的标识符解析 —— setState / setVariable 仍只认 page state + `$prev`(尊重 §2.2 #h,决定 #3)
+- **不动** §2 的 `_lowcode_state.ts` / zustand runtime / `useDocState` / `setDocState`
+- **不动** `ActionDef.kind` 字面值、`OPEN_PENCIL_PLUGIN_ID`、pluginData key 前缀
+- vendored `kiwi-schema/` —— 不动
+
+### 4.5 成功标准
+
+1. `bun test ./tests/engine/compiler/` 全绿;新增至少:
+   - `ir/expression-template.test.ts` —— `parseTemplate` 退化 / 单插值 / 多插值 / 不平衡 `${` / 内层语法错;`emitExpression` template 形态(零 expression → 双引号、带插值 → 反引号);`collectReferences` 收集模板引用
+   - `ir/collect/expr-docstate.test.ts` —— `kind:'expr'` 文本绑定 + `renderCondition` 引用 docState 解析成功 + `docStateReads` 登记;引用真未知仍报 warning
+   - `ir/collect/api-call-url-template.test.ts` —— url 模板引用 page state / docState / item;模板 parse 失败 / 未知标识符 / `$prev` 三类 warning
+   - `adapters/react/emit/api-call.test.ts`(§3 既有)—— 更新:静态 URL emit 字节不变;带插值 URL emit 反引号模板
+2. `bun test ./tests/engine/kiwi/lowcode/` 全绿(§4 零 schema 改动 → 无新增测试,既有全过)
+3. `bun run check` 全绿(jscpd 0 clones)
+4. **Tauri 实测(用户主导)**:apiCall url 写 `${docState}` 模板、docState 在文本绑定 / renderCondition 里引用、preview 看插值生效;静态 URL 回归无变化;.fig 存/读回
+5. 不破坏 Phase 0 §8 / Phase 1 / Phase 2 §9 §2 §3 任一锁定决定
+
+### 4.6 工作分解(建议 1 名工程师,2–3 天)
+
+> **步骤耦合说明**:`IRApiCallHandler.url` 从 `string` 升 `ExprAst` 后,collect(产出 `url:ExprAst`)与 emit(`emitExpression(h.url)`)必须同 commit 落地(否则类型不符,`bun run check` 红)。故 step 3 collect + emit 合并。step 1(`expression.ts` 纯增量)、step 2(docState-in-expr,改 `unknownIdentifiers` 签名)各自独立可单 commit。
+
+| Step | 任务 | 验收 / commit message |
+|---|---|---|
+| 1 | `expression.ts`:`template` AST kind + `parseTemplate` scanner + `emitWithPrec` / `collectReferences` / `hasPrevReference` / `substitutePrev` 各加 `case 'template'`;`parseExpression` 文法冻结不动;单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — template AST + parseTemplate (§4)` |
+| 2 | docState-in-expr:`unknownIdentifiers` 加 `docStates` 入参;`resolveTextBinding` `kind:'expr'` + `wrapConditional` 传 `docStates` + 登记 `docStateReads`;collect 单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — docState-in-expr read contexts (§4)` |
+| 3 | apiCall url 模板:`IRApiCallHandler.url` 升 `ExprAst`;`resolveApiCall` 走 `parseTemplate` + 引用校验(`states`/`inScope`/`docStateReads` 透传);`emitEventHandler` apiCall case 改 `emitExpression`;§3 既有测试更新 + 新增 url-template 测试 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 3 — apiCall url template (§4)` |
+| 4 | `EventsPanel.vue` url 实时模板校验(红框 + error line)+ i18n×8;walker checklist(经验 A)+ 跨 walker 回归测试;Tauri 实测(用户主导);修 bug | `check:vue` + `check:i18n` + `test:dupes` 全绿;用户 ACK 全过;`docs(lowcode): §4 Tauri verification` |
+
+### 4.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 新 `ExprAst` kind `template` 被某 expr walker 漏 | 中(经验 A) | `expression.ts` 内 4 个 walker(`emitWithPrec` / `collectReferences` / `hasPrevReference` / `substitutePrev`)全有 `default` 分支 —— 加 union member **不**触发 tsgo 报错,必须 step 4 走 walker checklist 逐个核对 + 跨 walker 回归测试钉死 |
+| `parseTemplate` 的 `${}` 平衡括号扫描出错(嵌套 `{}`、字符串内 `}`) | 中 | 内层表达式可含对象成员?本期无对象字面量 → `${}` 内不会有裸 `{`;字符串字面量内的 `}` 要靠 scanner 跳过引号段。单测覆盖 `${"a}b"}` / 不平衡 `${` |
+| 静态 URL emit 字节漂移 → §3 emit 测试回归 | 低 | `emitWithPrec` template 零 expression 分支走 `JSON.stringify(quasis[0])`,与 §3 `JSON.stringify(h.url)` 完全一致;§3 `api-call.test.ts` 静态用例不改即过 |
+| `IRApiCallHandler.url` 类型变更打到 §3 既有测试 | 低(预期内) | §3 `api-call.test.ts` 断言 `url` 为 string 的用例随 step 3 更新为 `ExprAst`;属计划内改动,不是回归 |
+| docState-in-expr 放宽白名单后,老 .fig 里"恰好撞 docState 名"的表达式语义变化 | 低 | docState 引用前本来就报 `unknown-identifier` 并丢绑定 → 老 .fig 该表达式本就不生效;放宽后开始生效是修复不是回归。文档记一句 |
+
+### 4.8 Post-mortem
+
+> 开工后逐 step 回填(commit 链 / walker checklist 结果 / 实测发现)。
 
 ---
 
