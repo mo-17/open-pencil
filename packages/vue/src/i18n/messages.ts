@@ -304,7 +304,14 @@ export const panelMessages = i18n('panels', {
   lowcodeDocumentStateEmpty: 'No document state yet',
   lowcodeActionSetDocument: 'Set Document State',
   lowcodeActionNoDocumentState: 'No document state',
-  lowcodeTextSourceDocState: 'Document State'
+  lowcodeTextSourceDocState: 'Document State',
+
+  // Lowcode (Phase 2 §3 — API fetch)
+  lowcodeActionCallApi: 'Call API',
+  lowcodeActionApiUrl: 'URL',
+  lowcodeActionApiMethod: 'Method',
+  lowcodeActionApiBody: 'Body (JSON)',
+  lowcodeActionApiTarget: 'Write response to'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

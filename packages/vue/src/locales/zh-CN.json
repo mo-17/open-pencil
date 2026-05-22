@@ -261,7 +261,12 @@
     "lowcodeDocumentStateEmpty": "暂无全局状态",
     "lowcodeActionSetDocument": "设置全局状态",
     "lowcodeActionNoDocumentState": "暂无全局状态",
-    "lowcodeTextSourceDocState": "全局状态"
+    "lowcodeTextSourceDocState": "全局状态",
+    "lowcodeActionCallApi": "调用接口",
+    "lowcodeActionApiUrl": "URL",
+    "lowcodeActionApiMethod": "方法",
+    "lowcodeActionApiBody": "请求体(JSON)",
+    "lowcodeActionApiTarget": "响应写入"
   },
   "pages": {
     "newPage": "新建页面",

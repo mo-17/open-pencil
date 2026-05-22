@@ -261,7 +261,12 @@
     "lowcodeDocumentStateEmpty": "No document state yet",
     "lowcodeActionSetDocument": "Set Document State",
     "lowcodeActionNoDocumentState": "No document state",
-    "lowcodeTextSourceDocState": "Document State"
+    "lowcodeTextSourceDocState": "Document State",
+    "lowcodeActionCallApi": "Call API",
+    "lowcodeActionApiUrl": "URL",
+    "lowcodeActionApiMethod": "Method",
+    "lowcodeActionApiBody": "Body (JSON)",
+    "lowcodeActionApiTarget": "Write response to"
   },
   "pages": {
     "newPage": "Nouvelle page",

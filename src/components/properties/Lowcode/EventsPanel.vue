@@ -54,12 +54,16 @@ const actions = useSceneComputed<ActionDef[]>(() => {
   return node.events?.[name] ?? []
 })
 
-const ACTION_KINDS: ActionKind[] = ['setState', 'navigate', 'setVariable']
+const ACTION_KINDS: ActionKind[] = ['setState', 'navigate', 'setVariable', 'apiCall']
 
-// The `setVariable` kind literal is locked (§7.4 + old .fig compat); only its
-// editor-facing label differs.
+const API_METHODS = ['GET', 'POST'] as const
+
+// `setVariable` / `apiCall` kind literals are locked (§7.4 + old .fig
+// compat); only their editor-facing labels differ.
 function actionKindLabel(kind: ActionKind): string {
-  return kind === 'setVariable' ? panels.value.lowcodeActionSetDocument : kind
+  if (kind === 'setVariable') return panels.value.lowcodeActionSetDocument
+  if (kind === 'apiCall') return panels.value.lowcodeActionCallApi
+  return kind
 }
 
 function commitActions(node: SceneNode, name: EventName, next: ActionDef[]): void {
@@ -88,11 +92,20 @@ function makeAction(kind: ActionKind, id: string): ActionDef {
     return { id, kind: 'navigate', to: '/' }
   }
   const docTarget = docStates.value[0]
+  if (kind === 'setVariable') {
+    return {
+      id,
+      kind: 'setVariable',
+      targetName: docTarget?.name ?? '',
+      valueExpr: docTarget ? '$prev + 1' : ''
+    }
+  }
   return {
     id,
-    kind: 'setVariable',
-    targetName: docTarget?.name ?? '',
-    valueExpr: docTarget ? '$prev + 1' : ''
+    kind: 'apiCall',
+    method: 'GET',
+    url: '',
+    targetName: docTarget?.name ?? ''
   }
 }
 
@@ -146,33 +159,71 @@ interface ActionErrors {
   target?: string
   expr?: string
   to?: string
+  url?: string
+  body?: string
 }
 
 const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
 const validDocStateNames = computed(() => new Set(docStates.value.map((d) => d.name)))
 
+// One validator per kind so `actionErrors` stays a thin dispatch — each
+// mirrors the matching `resolveActions` branch in `collect/bindings.ts`.
+function setStateErrors(action: Extract<ActionDef, { kind: 'setState' }>): ActionErrors {
+  const e: ActionErrors = {}
+  if (!action.targetStateId) e.target = 'target required'
+  else if (!validStateIds.value.has(action.targetStateId))
+    e.target = 'state no longer exists'
+  const result = validateExpression(action.valueExpr ?? '')
+  if (!result.ok) e.expr = result.reason
+  return e
+}
+
+function setVariableErrors(action: Extract<ActionDef, { kind: 'setVariable' }>): ActionErrors {
+  // §2.5 #i — `targetName` must resolve to a declared Document State.
+  // `valueExpr` accepts the §7.3 sub-language; `$prev` is a legal token.
+  const e: ActionErrors = {}
+  if (!action.targetName || action.targetName.trim() === '') e.target = 'target required'
+  else if (!validDocStateNames.value.has(action.targetName))
+    e.target = 'document state no longer exists'
+  const result = validateExpression(action.valueExpr ?? '')
+  if (!result.ok) e.expr = result.reason
+  return e
+}
+
+function apiCallErrors(action: Extract<ActionDef, { kind: 'apiCall' }>): ActionErrors {
+  // §3.2 #1/#3 — mirror `resolveApiCall`: non-empty URL, target resolves to
+  // a docState, and (POST only) the body parses as JSON.
+  const e: ActionErrors = {}
+  if (action.url.trim() === '') e.url = 'url required'
+  if (action.targetName.trim() === '') e.target = 'target required'
+  else if (!validDocStateNames.value.has(action.targetName))
+    e.target = 'document state no longer exists'
+  if (action.method === 'POST') {
+    const raw = (action.bodyJson ?? '').trim()
+    if (raw !== '') {
+      try {
+        JSON.parse(raw)
+      } catch (err) {
+        e.body = err instanceof Error ? err.message : String(err)
+      }
+    }
+  }
+  return e
+}
+
+function errorsFor(action: ActionDef): ActionErrors {
+  if (action.kind === 'setState') return setStateErrors(action)
+  if (action.kind === 'navigate') {
+    return !action.to || action.to.trim() === '' ? { to: 'path required' } : {}
+  }
+  if (action.kind === 'setVariable') return setVariableErrors(action)
+  return apiCallErrors(action)
+}
+
 const actionErrors = computed(() => {
   const errors = new Map<string, ActionErrors>()
   for (const action of actions.value) {
-    const e: ActionErrors = {}
-    if (action.kind === 'setState') {
-      if (!action.targetStateId) e.target = 'target required'
-      else if (!validStateIds.value.has(action.targetStateId))
-        e.target = 'state no longer exists'
-      const exprResult = validateExpression(action.valueExpr ?? '')
-      if (!exprResult.ok) e.expr = exprResult.reason
-    } else if (action.kind === 'navigate') {
-      if (!action.to || action.to.trim() === '') e.to = 'path required'
-    } else if (action.kind === 'setVariable') {
-      // §2.5 #i — `targetName` must resolve to a declared Document State.
-      // `valueExpr` accepts the §7.3 sub-language; `$prev` is a legal token
-      // (parses as a `$`-prefixed identifier post step 1).
-      if (!action.targetName || action.targetName.trim() === '') e.target = 'target required'
-      else if (!validDocStateNames.value.has(action.targetName))
-        e.target = 'document state no longer exists'
-      const exprResult = validateExpression(action.valueExpr ?? '')
-      if (!exprResult.ok) e.expr = exprResult.reason
-    }
+    const e = errorsFor(action)
     if (Object.keys(e).length > 0) errors.set(action.id, e)
   }
   return errors
@@ -301,6 +352,48 @@ const actionErrors = computed(() => {
             />
           </template>
 
+          <template v-else-if="action.kind === 'apiCall'">
+            <select
+              :value="action.method"
+              :aria-label="panels.lowcodeActionApiMethod"
+              data-test-id="lowcode-action-api-method"
+              class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+              @change="updateAction(action.id, { method: ($event.target as HTMLSelectElement).value as 'GET' | 'POST' })"
+            >
+              <option v-for="m in API_METHODS" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <input
+              :value="action.url"
+              :aria-label="panels.lowcodeActionApiUrl"
+              :aria-invalid="actionErrors.get(action.id)?.url ? 'true' : undefined"
+              data-test-id="lowcode-action-api-url"
+              spellcheck="false"
+              placeholder="https://api.example.com/users"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.url ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { url: ($event.target as HTMLInputElement).value })"
+            />
+            <span class="text-[11px] text-muted">→</span>
+            <select
+              :value="action.targetName"
+              :aria-label="panels.lowcodeActionApiTarget"
+              :aria-invalid="actionErrors.get(action.id)?.target ? 'true' : undefined"
+              data-test-id="lowcode-action-api-target"
+              :class="[
+                'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.target ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { targetName: ($event.target as HTMLSelectElement).value })"
+            >
+              <option v-if="docStates.length === 0" value="" disabled>
+                {{ panels.lowcodeActionNoDocumentState }}
+              </option>
+              <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
+            </select>
+          </template>
+
           <button
             type="button"
             data-test-id="lowcode-action-remove"
@@ -310,12 +403,40 @@ const actionErrors = computed(() => {
             <icon-lucide-x class="size-3" />
           </button>
         </div>
+        <input
+          v-if="action.kind === 'apiCall' && action.method === 'POST'"
+          :value="action.bodyJson ?? ''"
+          :aria-label="panels.lowcodeActionApiBody"
+          :aria-invalid="actionErrors.get(action.id)?.body ? 'true' : undefined"
+          data-test-id="lowcode-action-api-body"
+          spellcheck="false"
+          :placeholder="panels.lowcodeActionApiBody"
+          :class="[
+            'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+            actionErrors.get(action.id)?.body ? 'border-red-500' : 'border-border'
+          ]"
+          @change="updateAction(action.id, { bodyJson: ($event.target as HTMLInputElement).value })"
+        />
         <p
           v-if="actionErrors.get(action.id)?.target"
           data-test-id="lowcode-action-target-error"
           class="pl-1 text-[10px] text-red-500"
         >
           target: {{ actionErrors.get(action.id)?.target }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.url"
+          data-test-id="lowcode-action-url-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          url: {{ actionErrors.get(action.id)?.url }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.body"
+          data-test-id="lowcode-action-body-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          body: {{ actionErrors.get(action.id)?.body }}
         </p>
         <p
           v-if="actionErrors.get(action.id)?.expr"
