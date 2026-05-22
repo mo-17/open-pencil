@@ -49,8 +49,10 @@ function emitHandlerStatement(h: IREventHandler): string {
     case 'apiCall': {
       // GET → `fetch(url)`; POST → `fetch(url, { method, headers, body })`.
       // `h.body` is compact, validated JSON, so it splices verbatim as a JS
-      // literal inside `JSON.stringify(...)`.
-      const url = JSON.stringify(h.url)
+      // literal inside `JSON.stringify(...)`. Phase 2 §4: `h.url` is a
+      // template AST — a static URL emits as a double-quoted string, an
+      // interpolated one as a backtick template.
+      const url = emitExpression(h.url)
       const fetchCall =
         h.method === 'POST'
           ? `fetch(${url}, { method: "POST", headers: { "Content-Type": "application/json" }` +

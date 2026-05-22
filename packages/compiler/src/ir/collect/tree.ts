@@ -224,7 +224,9 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.states,
     ctx.warnings,
     ctx.docStates,
-    ctx.docStateWrites
+    ctx.docStateWrites,
+    ctx.inScope,
+    ctx.docStateReads
   )
 
   const element: IRElement = {

@@ -1,19 +1,28 @@
 import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
+import type { ExprAst } from '@open-pencil/compiler/ir/expression'
 import type { IREventHandler } from '@open-pencil/compiler/ir/types'
 
 /**
- * Phase 2 §3 step 2 — `apiCall` handler emit.
+ * Phase 2 §3 step 2 — `apiCall` handler emit. Phase 2 §4 — the `url` field
+ * is a template AST: a static URL emits as a double-quoted string
+ * (byte-identical to §3), an interpolated one as a backtick template.
  *
  * An apiCall `await`s `fetch`, so the arrow becomes `async` and its body is
  * a `try/catch` block. The handler is never given a trailing `;` and always
  * forces the brace-wrapped form, even as the sole handler.
  */
+
+/** A static URL — a degenerate zero-expression template (Phase 2 §4). */
+function staticUrl(s: string): ExprAst {
+  return { kind: 'template', quasis: [s], expressions: [] }
+}
+
 const GET_HANDLER: IREventHandler = {
   kind: 'apiCall',
   method: 'GET',
-  url: 'https://x.test/users',
+  url: staticUrl('https://x.test/users'),
   body: undefined,
   docStateName: 'users'
 }
@@ -33,7 +42,7 @@ describe('emit apiCall handler (Phase 2 §3)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'POST',
-      url: 'https://x.test/users',
+      url: staticUrl('https://x.test/users'),
       body: '{"name":"Alice"}',
       docStateName: 'users'
     }
@@ -50,7 +59,7 @@ describe('emit apiCall handler (Phase 2 §3)', () => {
     const handler: IREventHandler = {
       kind: 'apiCall',
       method: 'POST',
-      url: 'https://x.test',
+      url: staticUrl('https://x.test'),
       body: undefined,
       docStateName: 'users'
     }
@@ -60,6 +69,27 @@ describe('emit apiCall handler (Phase 2 §3)', () => {
         'headers: { "Content-Type": "application/json" } })'
     )
     expect(out).not.toContain('body:')
+  })
+
+  test('Phase 2 §4 — interpolated GET url emits a backtick template', () => {
+    const handler: IREventHandler = {
+      kind: 'apiCall',
+      method: 'GET',
+      url: {
+        kind: 'template',
+        quasis: ['https://x.test/users/', ''],
+        expressions: [{ kind: 'ident', name: 'userId' }]
+      },
+      body: undefined,
+      docStateName: 'user'
+    }
+    expect(emitEventHandler([handler])).toContain(
+      'const res = await fetch(`https://x.test/users/${userId}`);'
+    )
+  })
+
+  test('Phase 2 §4 — static url stays a double-quoted string (§3 byte-identical)', () => {
+    expect(emitEventHandler([GET_HANDLER])).toContain('await fetch("https://x.test/users");')
   })
 
   test('sole apiCall is still brace-wrapped (try/catch is a block statement)', () => {

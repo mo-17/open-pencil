@@ -126,8 +126,10 @@ export interface IRSetVariableHandler {
 export interface IRApiCallHandler {
   kind: 'apiCall'
   method: 'GET' | 'POST'
-  /** Static request URL — already validated to be non-empty. */
-  url: string
+  /** Phase 2 §4: parsed request-URL template (a `kind:'template'` ExprAst).
+   *  A static URL is a degenerate zero-expression template — the adapter
+   *  emits it as a plain double-quoted string, byte-identical to §3. */
+  url: ExprAst
   /** Validated JSON string for POST requests; undefined for GET. */
   body?: string
   /** Name of the DocumentStateDef the response is written to. */

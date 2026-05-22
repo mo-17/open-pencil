@@ -42,10 +42,11 @@ describe('resolveApiCall — apiCall IR collect (Phase 2 §3)', () => {
     const { graph, pageId } = makeGraph([
       { id: 'a1', kind: 'apiCall', method: 'GET', url: 'https://x.test/users', targetName: 'users' }
     ])
+    // Phase 2 §4 — a static URL is a degenerate zero-expression template.
     expect(onlyHandler(graph, pageId)).toEqual({
       kind: 'apiCall',
       method: 'GET',
-      url: 'https://x.test/users',
+      url: { kind: 'template', quasis: ['https://x.test/users'], expressions: [] },
       body: undefined,
       docStateName: 'users'
     })

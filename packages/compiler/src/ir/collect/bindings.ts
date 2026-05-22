@@ -1,7 +1,13 @@
 import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
 
 import type { ExprAst } from '../expression'
-import { hasPrevReference, parseExpression, PREV_IDENT, substitutePrev } from '../expression'
+import {
+  hasPrevReference,
+  parseExpression,
+  parseTemplate,
+  PREV_IDENT,
+  substitutePrev
+} from '../expression'
 import type {
   IRApiCallHandler,
   IRDocStateDecl,
@@ -187,14 +193,26 @@ export function resolveEvents(
   states: Map<string, IRStateDecl>,
   warnings: IRWarning[],
   docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES,
-  docStateWrites?: Set<string>
+  docStateWrites?: Set<string>,
+  inScope: ReadonlySet<string> = EMPTY_SCOPE,
+  docStateReads?: Set<string>
 ): Partial<Record<IREventName, IREventHandler[]>> | undefined {
   if (!node.events) return undefined
   const out: Partial<Record<IREventName, IREventHandler[]>> = {}
   for (const name of EVENT_NAMES_TO_RESOLVE) {
     const actions = node.events[name]
     if (!actions || actions.length === 0) continue
-    const handlers = resolveActions(node, name, actions, states, warnings, docStates, docStateWrites)
+    const handlers = resolveActions(
+      node,
+      name,
+      actions,
+      states,
+      warnings,
+      docStates,
+      docStateWrites,
+      inScope,
+      docStateReads
+    )
     if (handlers.length > 0) out[name] = handlers
   }
   return Object.keys(out).length > 0 ? out : undefined
@@ -207,7 +225,9 @@ function resolveActions(
   states: Map<string, IRStateDecl>,
   warnings: IRWarning[],
   docStates: ReadonlyMap<string, IRDocStateDecl>,
-  docStateWrites: Set<string> | undefined
+  docStateWrites: Set<string> | undefined,
+  inScope: ReadonlySet<string>,
+  docStateReads: Set<string> | undefined
 ): IREventHandler[] {
   const out: IREventHandler[] = []
   for (const action of actions) {
@@ -241,7 +261,16 @@ function resolveActions(
         break
       }
       case 'apiCall': {
-        const handler = resolveApiCall(node, eventName, action, docStates, warnings)
+        const handler = resolveApiCall(
+          node,
+          eventName,
+          action,
+          states,
+          inScope,
+          docStates,
+          docStateReads,
+          warnings
+        )
         if (handler) {
           out.push(handler)
           docStateWrites?.add(handler.docStateName)
@@ -405,24 +434,56 @@ function resolveSetVariable(
   }
 }
 
-/** Phase 2 §3: resolve an `apiCall` action into an `IRApiCallHandler`.
- *  Three validation gates — non-empty URL, target resolves to a declared
- *  Document State, and (POST only) the body parses as JSON. Any failure
- *  drops the handler with a warning so the emitted code stays compilable.
- *  The stored `body` is the re-serialised (compact, guaranteed-valid)
- *  JSON so emit can splice it as a JS literal. */
+/** Phase 2 §3 + §4: resolve an `apiCall` action into an `IRApiCallHandler`.
+ *  Validation gates — non-empty URL, the URL parses as a `${}` template
+ *  (§4) whose identifiers all resolve (page state / docState / in-scope),
+ *  target resolves to a declared Document State, and (POST only) the body
+ *  parses as JSON. Any failure drops the handler with a warning so the
+ *  emitted code stays compilable. The stored `body` is the re-serialised
+ *  (compact, guaranteed-valid) JSON so emit can splice it as a JS literal. */
 function resolveApiCall(
   node: SceneNode,
   eventName: EventName,
   action: Extract<ActionDef, { kind: 'apiCall' }>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
   docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
   warnings: IRWarning[]
 ): IRApiCallHandler | null {
-  const url = action.url.trim()
-  if (url === '') {
+  const rawUrl = action.url.trim()
+  if (rawUrl === '') {
     warnings.push({
       code: 'action-apicall-missing-url',
       message: `node ${node.id} ${eventName} apiCall has no url`,
+      nodeId: node.id
+    })
+    return null
+  }
+  // Phase 2 §4: the URL is a `${}` template. A static URL is a degenerate
+  // zero-expression template.
+  const urlTemplate = parseTemplate(rawUrl)
+  if (!urlTemplate.ok) {
+    warnings.push({
+      code: 'action-apicall-invalid-url',
+      message: `node ${node.id} ${eventName} apiCall url "${rawUrl}" → ${urlTemplate.error}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (urlTemplate.references.has(PREV_IDENT)) {
+    warnings.push({
+      code: 'expression-prev-out-of-context',
+      message: `node ${node.id} ${eventName} apiCall url references ${PREV_IDENT}; ${PREV_IDENT} is only valid inside setState / setVariable valueExpr`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const unknown = unknownIdentifiers(urlTemplate.references, states, inScope, docStates)
+  if (unknown.length > 0) {
+    warnings.push({
+      code: 'action-apicall-unknown-identifier',
+      message: `node ${node.id} ${eventName} apiCall url references unknown identifier(s): ${unknown.join(', ')}`,
       nodeId: node.id
     })
     return null
@@ -464,10 +525,13 @@ function resolveApiCall(
       }
     }
   }
+  // Phase 2 §4: a docState referenced inside the URL template needs a
+  // `useDocState` local on the page.
+  registerDocStateReads(urlTemplate.references, docStates, docStateReads)
   return {
     kind: 'apiCall',
     method: action.method,
-    url,
+    url: urlTemplate.ast,
     body,
     docStateName: name
   }
