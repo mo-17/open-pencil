@@ -804,7 +804,22 @@ export interface IRApiCallHandler {
 
 ### 4.8 Post-mortem
 
-> 开工后逐 step 回填(commit 链 / walker checklist 结果 / 实测发现)。
+> 设计 + step 1–4 已交付(2026-05-22);**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §4 Tauri verification`。
+
+**Step commits:**
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `ddf60b5` | §4 详细设计 + 锁定决定 |
+| 1 | `d740a0a` | `template` ExprAst kind + `parseTemplate` scanner + 4 walker case + 单测 |
+| 2 | `6584e9b` | docState-in-expr:`unknownIdentifiers` `docStates` 入参 + `registerDocStateReads` + 文本绑定 / renderCondition 登记 reads |
+| 3 | `85345c3` | `IRApiCallHandler.url` 升 `ExprAst`;`resolveApiCall` `parseTemplate` + 引用校验;emit `emitExpression(h.url)` |
+| 4 | `ae42730` | `validateUrlTemplate` + EventsPanel url 红框/hint + i18n×8;walker checklist + `cross-walker/template.test.ts` |
+| docs | (待提交) | §4 Tauri verification |
+
+**Walker checklist(经验 A)**:跑了一遍,**无 walker miss**。新增的是 `ExprAst` kind `template`(非 IRNode / ActionDef kind)。4 个 ExprAst walker(`emitWithPrec` / `collectReferences` / `hasPrevReference` / `substitutePrev`,全在 `expression.ts`)各加显式 `case 'template'`。其余 `ExprAst` 触点(`element.ts` / `event.ts` 的 `emitExpression(...)`、`bindings.ts` 的 `buildValueUpdate`)均 kind-agnostic,经 walker 处理。`ir-walk.ts` 不碰表达式。`cross-walker/template.test.ts` 钉死每个 walker 下降进 template + 全编译端到端。
+
+**测试结果**:`bun test ./tests/engine/compiler/` 313 pass(含 `./tests/engine/kiwi/lowcode/`);`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
 
 ---
 
