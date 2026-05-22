@@ -311,7 +311,9 @@ export const panelMessages = i18n('panels', {
   lowcodeActionApiUrl: 'URL',
   lowcodeActionApiMethod: 'Method',
   lowcodeActionApiBody: 'Body (JSON)',
-  lowcodeActionApiTarget: 'Write response to'
+  lowcodeActionApiTarget: 'Write response to',
+  // Lowcode (Phase 2 §4 — expression sub-language: URL templating)
+  lowcodeActionApiUrlHint: 'URL supports ${expr} interpolation'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

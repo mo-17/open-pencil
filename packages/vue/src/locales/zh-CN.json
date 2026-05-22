@@ -266,7 +266,8 @@
     "lowcodeActionApiUrl": "URL",
     "lowcodeActionApiMethod": "方法",
     "lowcodeActionApiBody": "请求体(JSON)",
-    "lowcodeActionApiTarget": "响应写入"
+    "lowcodeActionApiTarget": "响应写入",
+    "lowcodeActionApiUrlHint": "URL 支持 ${expr} 插值"
   },
   "pages": {
     "newPage": "新建页面",

@@ -6,7 +6,7 @@
  * the same errors inline without round-tripping a full compile. Don't
  * tighten one side without the other or warnings will diverge.
  */
-import { parseExpression } from './expression'
+import { parseExpression, parseTemplate } from './expression'
 
 export interface ValidationResult {
   ok: boolean
@@ -36,6 +36,18 @@ export function validateStateName(name: string): ValidationResult {
 export function validateExpression(src: string): ValidationResult {
   if (src.trim() === '') return { ok: false, reason: 'expression is required' }
   const result = parseExpression(src)
+  if (result.ok) return { ok: true }
+  return { ok: false, reason: result.error }
+}
+
+/** Phase 2 §4 — an apiCall URL is a `${}` template. Mirrors the
+ *  `resolveApiCall` URL gates the editor can check without a full compile:
+ *  non-empty, and the template parses. Identifier resolution stays a
+ *  compile-time warning — the editor cannot see the full handler scope
+ *  (page state + docState + LIST item|index). */
+export function validateUrlTemplate(src: string): ValidationResult {
+  if (src.trim() === '') return { ok: false, reason: 'url is required' }
+  const result = parseTemplate(src)
   if (result.ok) return { ok: true }
   return { ok: false, reason: result.error }
 }

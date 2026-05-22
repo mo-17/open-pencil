@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { validateExpression } from '@open-pencil/compiler'
+import { validateExpression, validateUrlTemplate } from '@open-pencil/compiler'
 import type {
   ActionDef,
   ActionKind,
@@ -191,10 +191,12 @@ function setVariableErrors(action: Extract<ActionDef, { kind: 'setVariable' }>):
 }
 
 function apiCallErrors(action: Extract<ActionDef, { kind: 'apiCall' }>): ActionErrors {
-  // §3.2 #1/#3 — mirror `resolveApiCall`: non-empty URL, target resolves to
-  // a docState, and (POST only) the body parses as JSON.
+  // §3.2 #1/#3 + §4 — mirror `resolveApiCall`: the URL is a non-empty `${}`
+  // template that parses, the target resolves to a docState, and (POST only)
+  // the body parses as JSON.
   const e: ActionErrors = {}
-  if (action.url.trim() === '') e.url = 'url required'
+  const urlResult = validateUrlTemplate(action.url)
+  if (!urlResult.ok) e.url = urlResult.reason
   if (action.targetName.trim() === '') e.target = 'target required'
   else if (!validDocStateNames.value.has(action.targetName))
     e.target = 'document state no longer exists'
@@ -430,6 +432,13 @@ const actionErrors = computed(() => {
           class="pl-1 text-[10px] text-red-500"
         >
           url: {{ actionErrors.get(action.id)?.url }}
+        </p>
+        <p
+          v-if="action.kind === 'apiCall' && !actionErrors.get(action.id)?.url"
+          data-test-id="lowcode-action-api-url-hint"
+          class="pl-1 text-[10px] text-muted"
+        >
+          {{ panels.lowcodeActionApiUrlHint }}
         </p>
         <p
           v-if="actionErrors.get(action.id)?.body"

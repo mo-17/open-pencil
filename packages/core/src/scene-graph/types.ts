@@ -512,13 +512,14 @@ export interface SetVariableAction {
 }
 
 /** Phase 2 §3: fire an HTTP request on an event and write the parsed JSON
- *  response into a Document State (§2). GET + POST only; the URL is a
- *  static literal — no `${}` templating (that rides §4). */
+ *  response into a Document State (§2). GET + POST only. Phase 2 §4: the URL
+ *  may carry `${ … }` interpolation — the compiler parses it as a template. */
 export interface ApiCallAction {
   id: string
   kind: 'apiCall'
   method: 'GET' | 'POST'
-  /** Static request URL. Literal string — no interpolation in Phase 2 §3. */
+  /** Request URL. A raw string that may contain `${ … }` interpolation
+   *  (Phase 2 §4); parsed as a template at compile time. */
   url: string
   /** POST request body — a JSON literal string, parsed + validated like a
    *  StatePanel array/object default. Undefined / ignored for GET. */

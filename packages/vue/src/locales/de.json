@@ -266,7 +266,8 @@
     "lowcodeActionApiUrl": "URL",
     "lowcodeActionApiMethod": "Method",
     "lowcodeActionApiBody": "Body (JSON)",
-    "lowcodeActionApiTarget": "Write response to"
+    "lowcodeActionApiTarget": "Write response to",
+    "lowcodeActionApiUrlHint": "URL supports ${expr} interpolation"
   },
   "pages": {
     "newPage": "Neue Seite",

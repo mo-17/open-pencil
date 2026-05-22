@@ -6,6 +6,7 @@ export type { CompileWarning, CompilerInput, CompilerOptions, CompilerOutput } f
 export {
   validateStateName,
   validateExpression,
+  validateUrlTemplate,
   type ValidationResult
 } from './ir/validate'
 
