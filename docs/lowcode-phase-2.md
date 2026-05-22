@@ -24,6 +24,8 @@
 | 7 | **更多交互组件**(候选 §8) | 中 | 当前 6 个(BUTTON/INPUT/CHECKBOX/FORM/LIST/SELECT)覆盖 80% 表单场景;补 RADIO/TEXTAREA/DATEPICKER/SWITCH | TBD §8 |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
 
+> 行 1(§2)已收尾:**§2 ✅ 2026-05-22**(HEAD `d3d1fd9`)。
+
 > §2 / §8 / §9 是产品层面影响最大的候选,§4 / §5 是工程债务清理。开工前每条都要回到本 doc 写 §X 详述,锁决定。
 
 ### 1.2 Phase 2 Out-of-Scope(明确推迟到 Phase 3+)
@@ -52,7 +54,7 @@
 
 > 2026-05-22 用户在对话中挑定 Phase 2 第二项开工。形式参照 §9 / `lowcode-phase-1.md` §11 / §12。**全部 6 项主决定 2026-05-22 已由用户在对话中锁定,10 项次级决定一次性 ACK 入锁**。
 >
-> **状态:🚧 开工中**(HEAD `2c5cd14`)。Step 1–5 分日 commit,跟 §9 同节奏。
+> **状态:🔒 已收尾**(HEAD `d3d1fd9`)。Step 1–5 全 ✅,Tauri 实测 2026-05-22 用户 ACK 全过;实测期间抓 1 个 bug(preview 解析不到 zustand),见 §2.9 post-mortem。
 
 ### 2.1 现状与问题
 
@@ -378,7 +380,28 @@ export interface IRSetVariableHandler {
 
 ### 2.9 Post-mortem
 
-(留空待 Tauri 实测后补)
+**Step commits:**
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 1 | `f9734f2` | document state schema + bindings.docState + `$prev` |
+| 2 | `5c25bd6` | IRSetVariable + docState collect + `$prev` |
+| 3 | `8751a30` | emit lowcode document state runtime |
+| 4 | `a5d5d6e` | document state editor UI(`useStateRowEditor` composable + `DocumentStatePanel.vue` + EventsPanel/TextBindingPanel) |
+| 5 | `984391c` | cross-walker 回归测试(`cross-walker-docstate.test.ts`) |
+| fix | `4f41917` | preview 解析不到 zustand → docState 页面白屏 |
+| docs | `d3d1fd9` | 修订 §2.2 #j |
+
+**Walker checklist(§9 经验 A)**:本期跑了一遍,**无 walker miss**。`emit/event.ts` switch 是穷举式(`never` 兜底自动报错);`collect/bindings.ts` `resolveActions` 有 `case 'setVariable'`、`resolveTextBinding` 有 `kind:'docState'` 分支;`adapters/react/ir-walk.ts` 只过滤 `navigate`,其余 handler 全保留;`IRTree` 拷贝点(`ir-walk.ts` 的 `{...ir}` spread)带过 `docStates` / `docStateReads` / `docStateWrites` 三字段。`cross-walker-docstate.test.ts` 钉死这条。§9 是 IRNode 加新 kind(walker 重灾区),§2 是加新 handler kind + 新 binding kind + 新 IRTree 字段 —— 后者风险低于前者(handler / binding switch 本来就穷举式),实测印证。
+
+**实测抓到的 bug —— preview 解析不到 zustand(`4f41917`)**:
+
+- **现象**:TEXT 绑字面值 preview 正常,绑 docState 时 preview iframe 白屏。
+- **根因**:preview 单页编译,产物 `_lowcode_state.ts` `import 'zustand/vanilla'`;preview dev-server(`dev-server.ts`)从 **monorepo hoisted `node_modules`** 解析裸 import(同 `react` / `react-dom`),**从不**对 VFS 产物 `package.json` 跑 `npm install`。`zustand` 没装进 monorepo → 解析失败 → 模块崩 → 白屏。字面值页面无此 import,故不对称。
+- **修复**:`zustand` 加进 `packages/compiler` devDependencies(理由同 `react` 在那里)。产物 package.json 仍注入 `dependencies.zustand`(标准导出用)。这推翻了次级决定 #j 里"不加到 `packages/compiler/package.json`"—— 已在 §2.2 #j 标注修订。
+- **教训(新增一条,与 §9.9 经验 A/B/C 并列)**:**经验 D —— emit 产物的新裸 import,preview 能不能解析?** 任何让 emit 出来的代码 `import` 一个新 npm 包的改动(本期 zustand,未来 §3 可能引入 fetch 库 / `@tanstack/react-query`),都要同步把该包加进 `packages/compiler` devDependencies,否则 CLI / 单测路径(走 `compile()` 返回字符串,不解析)全绿、唯独 preview 白屏。单测层加一条"该包能从 monorepo resolve"的回归断言(见 `preview-zustand-resolvable.test.ts`)。
+
+**测试结果**:`bun test ./tests/engine/compiler/` 208 pass、`./tests/engine/kiwi/lowcode/` 45 pass;`bun run check` 全绿(oxlint / tsgo / vue-tsc / i18n / steiger / jscpd 0 clones)。Tauri 实测 2026-05-22 §2.5 #4 七条用户 ACK 全过。
 
 ---
 
