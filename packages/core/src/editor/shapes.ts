@@ -38,7 +38,11 @@ const INTERACTIVE_TYPES = new Set<NodeType>([
   'SELECT',
   'CHECKBOX',
   'FORM',
-  'LIST'
+  'LIST',
+  'RADIO',
+  'TEXTAREA',
+  'DATEPICKER',
+  'SWITCH'
 ])
 
 export function createShapeActions(ctx: EditorContext) {

@@ -95,7 +95,11 @@
     "selectField": "Выбор",
     "checkbox": "Флажок",
     "form": "Форма",
-    "list": "Список"
+    "list": "Список",
+    "textarea": "Текстовая область",
+    "radio": "Радиокнопка",
+    "switch": "Переключатель",
+    "datepicker": "Выбор даты"
   },
   "panels": {
     "layers": "Слои",

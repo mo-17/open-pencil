@@ -95,7 +95,11 @@
     "selectField": "选择器",
     "checkbox": "复选框",
     "form": "表单",
-    "list": "列表"
+    "list": "列表",
+    "textarea": "多行文本",
+    "radio": "单选组",
+    "switch": "开关",
+    "datepicker": "日期选择器"
   },
   "panels": {
     "layers": "图层",

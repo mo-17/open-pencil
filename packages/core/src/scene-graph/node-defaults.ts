@@ -195,6 +195,46 @@ function interactiveDefaults(type: NodeType): Partial<SceneNode> {
         strokes: [strokeSolid(BORDER_GRAY, 1.5)],
         interactiveProps: { checked: false }
       }
+    // Phase 2 §8 — four more interactive components. All emit native HTML.
+    case 'RADIO':
+      return {
+        width: 200,
+        height: 96,
+        cornerRadius: 6,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { options: [], value: '', groupName: 'radio-group' }
+      }
+    case 'TEXTAREA':
+      return {
+        width: 200,
+        height: 80,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { placeholder: 'Enter text', value: '' }
+      }
+    case 'DATEPICKER':
+      return {
+        width: 200,
+        height: 36,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { value: '' }
+      }
+    case 'SWITCH':
+      return {
+        width: 44,
+        height: 24,
+        cornerRadius: 12,
+        fills: [fillSolid(BORDER_GRAY)],
+        interactiveProps: { checked: false }
+      }
     case 'FORM':
       return {
         width: 320,

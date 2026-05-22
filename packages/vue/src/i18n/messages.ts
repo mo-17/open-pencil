@@ -127,7 +127,11 @@ export const toolMessages = i18n('tools', {
   selectField: 'Select',
   checkbox: 'Checkbox',
   form: 'Form',
-  list: 'List'
+  list: 'List',
+  textarea: 'Textarea',
+  radio: 'Radio',
+  switch: 'Switch',
+  datepicker: 'Date picker'
 })
 
 export const panelMessages = i18n('panels', {

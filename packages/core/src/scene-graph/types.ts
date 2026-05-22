@@ -78,6 +78,10 @@ export type NodeType =
   | 'CHECKBOX'
   | 'FORM'
   | 'LIST'
+  | 'RADIO'
+  | 'TEXTAREA'
+  | 'DATEPICKER'
+  | 'SWITCH'
 
 export type FillType =
   | 'SOLID'

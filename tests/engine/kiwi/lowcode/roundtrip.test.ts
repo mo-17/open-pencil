@@ -85,10 +85,24 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     })
   })
 
-  test('all 6 lowcode NodeTypes (BUTTON/INPUT/CHECKBOX/FORM/LIST/SELECT) survive round-trip', async () => {
+  test('all 10 lowcode NodeTypes survive round-trip (Phase 2 §8 adds 4)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const types = ['BUTTON', 'INPUT', 'CHECKBOX', 'FORM', 'LIST', 'SELECT'] as const
+    // BUTTON/INPUT/CHECKBOX/FORM/LIST/SELECT (Phase 0) + RADIO/TEXTAREA/
+    // DATEPICKER/SWITCH (Phase 2 §8) — all ride the lowcode/nodeType
+    // pluginData channel; without it the kiwi codec demotes them to RECTANGLE.
+    const types = [
+      'BUTTON',
+      'INPUT',
+      'CHECKBOX',
+      'FORM',
+      'LIST',
+      'SELECT',
+      'RADIO',
+      'TEXTAREA',
+      'DATEPICKER',
+      'SWITCH'
+    ] as const
     for (const type of types) {
       graph.createNode(type, page.id, { name: `${type}-node` })
     }
@@ -100,6 +114,22 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
       .map((n) => n.type)
       .sort()
     expect(reimportedTypes).toEqual([...types].sort())
+  })
+
+  test('RADIO default interactiveProps (options/value/groupName) round-trip (Phase 2 §8)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('RADIO', page.id, {
+      name: 'Radio-node',
+      interactiveProps: { options: ['a', 'b'], value: 'b', groupName: 'choice' }
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const radio = findFirst(reimported, 'RADIO')
+
+    expect(radio.type).toBe('RADIO')
+    expect(radio.interactiveProps).toEqual({ options: ['a', 'b'], value: 'b', groupName: 'choice' })
   })
 
   test('TEXT with bindings.text → ref(stateId) round-trips through .fig', async () => {

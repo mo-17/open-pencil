@@ -95,7 +95,11 @@
     "selectField": "Wybór",
     "checkbox": "Pole wyboru",
     "form": "Formularz",
-    "list": "Lista"
+    "list": "Lista",
+    "textarea": "Pole tekstowe",
+    "radio": "Przycisk opcji",
+    "switch": "Przełącznik",
+    "datepicker": "Wybór daty"
   },
   "panels": {
     "layers": "Warstwy",

@@ -95,7 +95,11 @@
     "selectField": "Selezione",
     "checkbox": "Casella",
     "form": "Modulo",
-    "list": "Elenco"
+    "list": "Elenco",
+    "textarea": "Area di testo",
+    "radio": "Pulsante radio",
+    "switch": "Interruttore",
+    "datepicker": "Selettore data"
   },
   "panels": {
     "layers": "Livelli",

@@ -95,7 +95,11 @@
     "selectField": "Selección",
     "checkbox": "Casilla",
     "form": "Formulario",
-    "list": "Lista"
+    "list": "Lista",
+    "textarea": "Área de texto",
+    "radio": "Botón de opción",
+    "switch": "Interruptor",
+    "datepicker": "Selector de fecha"
   },
   "panels": {
     "layers": "Capas",

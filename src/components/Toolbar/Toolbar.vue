@@ -42,7 +42,11 @@ const toolLabels = computed<Record<Tool, string>>(() => ({
   SELECT_FIELD: toolTexts.value.selectField,
   CHECKBOX: toolTexts.value.checkbox,
   FORM: toolTexts.value.form,
-  LIST: toolTexts.value.list
+  LIST: toolTexts.value.list,
+  RADIO: toolTexts.value.radio,
+  TEXTAREA: toolTexts.value.textarea,
+  DATEPICKER: toolTexts.value.datepicker,
+  SWITCH: toolTexts.value.switch
 }))
 
 const toolShortcuts: Record<Tool, string> = {
@@ -62,7 +66,11 @@ const toolShortcuts: Record<Tool, string> = {
   SELECT_FIELD: '',
   CHECKBOX: '',
   FORM: '',
-  LIST: ''
+  LIST: '',
+  RADIO: '',
+  TEXTAREA: '',
+  DATEPICKER: '',
+  SWITCH: ''
 }
 
 const flyoutMenuCls = useMenuUI({ content: 'min-w-32' })

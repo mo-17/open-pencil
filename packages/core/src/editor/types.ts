@@ -32,6 +32,10 @@ export type Tool =
   | 'CHECKBOX'
   | 'FORM'
   | 'LIST'
+  | 'RADIO'
+  | 'TEXTAREA'
+  | 'DATEPICKER'
+  | 'SWITCH'
 
 export interface EditorState {
   activeTool: Tool

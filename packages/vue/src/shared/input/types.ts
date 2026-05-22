@@ -133,5 +133,9 @@ export const TOOL_TO_NODE: Partial<Record<Tool, NodeType>> = {
   SELECT_FIELD: 'SELECT',
   CHECKBOX: 'CHECKBOX',
   FORM: 'FORM',
-  LIST: 'LIST'
+  LIST: 'LIST',
+  RADIO: 'RADIO',
+  TEXTAREA: 'TEXTAREA',
+  DATEPICKER: 'DATEPICKER',
+  SWITCH: 'SWITCH'
 }

@@ -95,7 +95,11 @@
     "selectField": "Sélecteur",
     "checkbox": "Case",
     "form": "Formulaire",
-    "list": "Liste"
+    "list": "Liste",
+    "textarea": "Zone de texte",
+    "radio": "Bouton radio",
+    "switch": "Interrupteur",
+    "datepicker": "Sélecteur de date"
   },
   "panels": {
     "layers": "Calques",

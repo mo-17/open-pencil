@@ -20,7 +20,18 @@ export const EDITOR_TOOLS: EditorToolDef[] = [
     key: 'BUTTON',
     label: 'Interactive',
     shortcut: 'I',
-    flyout: ['BUTTON', 'INPUT', 'SELECT_FIELD', 'CHECKBOX', 'FORM', 'LIST']
+    flyout: [
+      'BUTTON',
+      'INPUT',
+      'TEXTAREA',
+      'SELECT_FIELD',
+      'CHECKBOX',
+      'RADIO',
+      'SWITCH',
+      'DATEPICKER',
+      'FORM',
+      'LIST'
+    ]
   },
   { key: 'PEN', label: 'Pen', shortcut: 'P' },
   { key: 'TEXT', label: 'Text', shortcut: 'T' },

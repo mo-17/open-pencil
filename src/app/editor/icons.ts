@@ -1,7 +1,9 @@
 import type { Component } from 'vue'
+import IconCalendar from '~icons/lucide/calendar'
 import IconCheckSquare from '~icons/lucide/check-square'
 import IconChevronDown from '~icons/lucide/chevron-down'
 import IconCircle from '~icons/lucide/circle'
+import IconCircleDot from '~icons/lucide/circle-dot'
 import IconColumns from '~icons/lucide/columns-3'
 import IconComponentSet from '~icons/lucide/component'
 import IconComponent from '~icons/lucide/diamond'
@@ -20,6 +22,8 @@ import IconPenTool from '~icons/lucide/pen-tool'
 import IconRows from '~icons/lucide/rows-3'
 import IconSquare from '~icons/lucide/square'
 import IconStar from '~icons/lucide/star'
+import IconText from '~icons/lucide/text'
+import IconToggleLeft from '~icons/lucide/toggle-left'
 import IconTriangle from '~icons/lucide/triangle'
 import IconType from '~icons/lucide/type'
 
@@ -42,7 +46,11 @@ export const toolIcons: Record<Tool, Component> = {
   SELECT_FIELD: IconChevronDown,
   CHECKBOX: IconCheckSquare,
   FORM: IconLayoutList,
-  LIST: IconList
+  LIST: IconList,
+  RADIO: IconCircleDot,
+  TEXTAREA: IconText,
+  DATEPICKER: IconCalendar,
+  SWITCH: IconToggleLeft
 }
 
 export const NODE_ICONS: Partial<Record<string, typeof IconSquare>> = {

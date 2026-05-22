@@ -17,7 +17,11 @@ const TOOL_CURSORS: Record<Tool, string> = {
   SELECT_FIELD: 'crosshair',
   CHECKBOX: 'crosshair',
   FORM: 'crosshair',
-  LIST: 'crosshair'
+  LIST: 'crosshair',
+  RADIO: 'crosshair',
+  TEXTAREA: 'crosshair',
+  DATEPICKER: 'crosshair',
+  SWITCH: 'crosshair'
 }
 
 export function toolCursor(tool: Tool, override?: string | null): string {

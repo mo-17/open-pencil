@@ -325,7 +325,11 @@ export class SkiaRenderer {
       type === 'SELECT' ||
       type === 'CHECKBOX' ||
       type === 'FORM' ||
-      type === 'LIST'
+      type === 'LIST' ||
+      type === 'RADIO' ||
+      type === 'TEXTAREA' ||
+      type === 'DATEPICKER' ||
+      type === 'SWITCH'
     )
   }
 

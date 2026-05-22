@@ -45,7 +45,12 @@ const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'CHECKBOX',
   'FORM',
   'LIST',
-  'SELECT'
+  'SELECT',
+  // Phase 2 §8
+  'RADIO',
+  'TEXTAREA',
+  'DATEPICKER',
+  'SWITCH'
 ])
 
 /** Set of pluginData keys this module owns. Step 2's read side uses it to
@@ -120,7 +125,7 @@ function isNonEmpty(value: unknown): boolean {
 export interface ExtractedLowcodeAndPluginData {
   pluginData: PluginDataEntry[]
   /** Override for `mapNodeType`'s 'RECTANGLE' fallback. Present only when
-   *  the SceneNode was one of the 6 lowcode types on save. */
+   *  the SceneNode was one of the lowcode interactive types on save. */
   nodeTypeOverride?: NodeType
   state?: StateDef[]
   bindings?: Record<string, BindingExpr>

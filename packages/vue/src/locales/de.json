@@ -95,7 +95,11 @@
     "selectField": "Auswahl",
     "checkbox": "Kontrollkästchen",
     "form": "Formular",
-    "list": "Liste"
+    "list": "Liste",
+    "textarea": "Textbereich",
+    "radio": "Optionsfeld",
+    "switch": "Schalter",
+    "datepicker": "Datumsauswahl"
   },
   "panels": {
     "layers": "Ebenen",
