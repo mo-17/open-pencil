@@ -17,7 +17,7 @@
 |---|---|---|---|---|
 | 1 | **`setVariable` 运行时存储**(候选 §2) | 高 | §7.4 留了占位 stub;Phase 2 给编译产物补一个最小运行时变量 store,把 `setVariable` 从警告变成能跑 | TBD §2 |
 | 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **§3 ✅ 2026-05-22**(HEAD `df5e1b4`) |
-| 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 设计已写**(详见 §4) |
+| 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 ✅ 2026-05-23** |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router | TBD §7 |
@@ -610,7 +610,7 @@ export interface IRApiCallHandler {
 > 数组 / 对象字面量。4 项主决定 + 7 项次级默认见 §4.2。**4 项主决定 + 7 项次级默认
 > 2026-05-22 已由用户在对话中锁定**(范围 #1 第一轮锁;#2–#4 + #a–#g 第二轮一次性 ACK)。
 >
-> **状态:🔨 开工中**(step 1–4)。
+> **状态:🔒 已收尾**(HEAD `ae42730`)。Step 1–4 全 ✅,Tauri 实测 2026-05-23 用户 ACK 全过;实测期间无新发现。
 
 ### 4.1 现状与问题
 
@@ -804,7 +804,7 @@ export interface IRApiCallHandler {
 
 ### 4.8 Post-mortem
 
-> 设计 + step 1–4 已交付(2026-05-22);**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §4 Tauri verification`。
+> 设计 + step 1–4 交付 2026-05-22;**Tauri 用户实测 2026-05-23 §4.5 #4 全过,实测期间无新发现 —— 无 bug-fix commit。**
 
 **Step commits:**
 
@@ -815,11 +815,14 @@ export interface IRApiCallHandler {
 | 2 | `6584e9b` | docState-in-expr:`unknownIdentifiers` `docStates` 入参 + `registerDocStateReads` + 文本绑定 / renderCondition 登记 reads |
 | 3 | `85345c3` | `IRApiCallHandler.url` 升 `ExprAst`;`resolveApiCall` `parseTemplate` + 引用校验;emit `emitExpression(h.url)` |
 | 4 | `ae42730` | `validateUrlTemplate` + EventsPanel url 红框/hint + i18n×8;walker checklist + `cross-walker/template.test.ts` |
-| docs | (待提交) | §4 Tauri verification |
+| docs | `77ea85e` | §4 step 1–4 post-mortem(commit 链 + walker checklist) |
+| docs | (本提交) | §4 Tauri verification |
 
 **Walker checklist(经验 A)**:跑了一遍,**无 walker miss**。新增的是 `ExprAst` kind `template`(非 IRNode / ActionDef kind)。4 个 ExprAst walker(`emitWithPrec` / `collectReferences` / `hasPrevReference` / `substitutePrev`,全在 `expression.ts`)各加显式 `case 'template'`。其余 `ExprAst` 触点(`element.ts` / `event.ts` 的 `emitExpression(...)`、`bindings.ts` 的 `buildValueUpdate`)均 kind-agnostic,经 walker 处理。`ir-walk.ts` 不碰表达式。`cross-walker/template.test.ts` 钉死每个 walker 下降进 template + 全编译端到端。
 
-**测试结果**:`bun test ./tests/engine/compiler/` 313 pass(含 `./tests/engine/kiwi/lowcode/`);`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
+**实测发现**:无。§4.5 #4 六项(`${}` URL 模板 / docState-in-expr 文本绑定 + renderCondition / EventsPanel url 红框校验 / 静态 URL 回归 / `.fig` 存读回)2026-05-23 用户逐项 ACK 全过。窄口径锁得准 —— 零 scene-graph / kiwi 改动,无 §3 那种链路缺口(经验 E:设计阶段「读写两端接口核对」表已先核过 `docStateReads → useDocState` 全链路)。
+
+**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 313 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测 §4.5 #4 用户 ACK 全过。
 
 ---
 
