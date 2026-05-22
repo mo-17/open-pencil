@@ -16,7 +16,7 @@
 | # | 主题 | 优先级 | 简述 | 详写 |
 |---|---|---|---|---|
 | 1 | **`setVariable` 运行时存储**(候选 §2) | 高 | §7.4 留了占位 stub;Phase 2 给编译产物补一个最小运行时变量 store,把 `setVariable` 从警告变成能跑 | TBD §2 |
-| 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | TBD §3 |
+| 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **🚧 §3 开工中**(详见 §3) |
 | 3 | **表达式子语言扩展**(候选 §4) | 中 | 加函数调用、数组 / 对象字面量;字符串模板留 §5+;触及 `expression.ts` 语法表 + emit | TBD §4 |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
@@ -405,19 +405,181 @@ export interface IRSetVariableHandler {
 
 ---
 
-## 3. 候选 §3 — 数据 fetch / API 调用
+## 3. §3 详细设计:API fetch / 数据调用
 
-**当前**: ActionDef 只能 setState / navigate;不能"按钮点了 → 调 API → 拿到数据 → 写到 state"。
+> 2026-05-22 用户挑定 Phase 2 第三项开工(§2 收尾后)。形式参照 §2 / §9。**4 项主决定 2026-05-22 已由用户在对话中锁定**;次级默认 step 1 前用户 ACK 视为已锁。
+>
+> **状态:🚧 待开工**(HEAD `cbbab20`)。Step 1–5 分日 commit,跟 §2 同节奏。
 
-**Phase 2 目标**: 加 `ApiCallAction`(或类似 kind),编译时 emit `fetch()` + 回写 state。
+### 3.1 现状与问题
 
-**待锁决定**:
-- URL / method / body 怎么在 ActionDef 里表达?静态 URL 还是支持 `${ }` 模板?
-- 鉴权头:从哪里读 token?跟 §2 store 联动?
-- 响应类型 / 错误处理:用 fetch + try/catch 还是引入 `@tanstack/react-query`?
-- 加载状态:是否给 ActionDef 加自动 `loading` / `error` 状态写回?
+- `ActionDef`(§7.4 判别联合)只有 `setState` / `navigate` / `setVariable` 三种 kind。无法表达 Bubble 最基本的 "按钮点了 → 调 API → 响应写进状态"。
+- §2 落地了 Document State 运行时(`useDocState` / `setDocState` + zustand store)。§3 的 API 响应正好有处可写 —— 复用 §2 store,不另造状态层。
+- 当前 onClick handler emit 全是**同步** arrow(`() => { setX(); setY(); }`)。fetch 是异步,emit 路径要支持 `async () => { ... }`。
 
-**风险**: 一旦加 fetch,跨域 / CORS / 网络重试是用户层面的麻烦点;Phase 2 锁最小范围(只发请求 + 写一个 state),其它推 Phase 3。
+**调试场景(期望)**:
+
+```
+SceneGraph (root "Document"):
+  lowcodeDocumentState: [{ name: 'users', type: 'array', defaultValue: [] }]
+
+  CANVAS Home
+    BUTTON  events.onClick = [{
+      kind: 'apiCall',
+      method: 'GET',
+      url: 'https://jsonplaceholder.typicode.com/users',
+      targetName: 'users'
+    }]
+    LIST    dataSource = users   (§9 列表渲染)
+
+期望 emit (片段):
+
+  const users = useDocState('users')
+  ...
+  <button onClick={async () => {
+    try {
+      const res = await fetch("https://jsonplaceholder.typicode.com/users")
+      const data = await res.json()
+      setDocState("users", data)
+    } catch (err) {
+      console.error("apiCall failed:", err)
+    }
+  }}>...</button>
+```
+
+### 3.2 关键决定
+
+> 形式同 §2.2。**#1–#4 已锁(2026-05-22 对话);#a–#g 为次级默认,step 1 前用户 ACK 视为已锁。**
+
+| # | 主题 | 决定 | 理由 | 状态 |
+|---|---|---|---|---|
+| 1 | 响应写回目标 | API 响应 JSON **写回一个 Document State**(§2)。`ApiCallAction.targetName` 指向 root `lowcodeDocumentState` 里的一个名字;emit `setDocState(name, data)` | 复用 §2 store —— 跨页可读、不再造第三套状态层;与 setVariable 同口径(都写 docState) | **🔒 已锁** |
+| 2 | HTTP 库 | **原生 `fetch` + `try/catch`**,不引入 axios / `@tanstack/react-query`。§3.v2 上鉴权 + loading/error 时再换 axios(那时 interceptor 正好统一加 token) | 本期范围(GET/POST、静态 URL、JSON body、无鉴权、无 loading/error)fetch 完全够;零依赖 → 不触发经验 D、emit 产物不背运行时依赖。axios 的价值(interceptor / 重试 / 取消)对应被推迟的能力,本期引入只付成本 | **🔒 已锁** |
+| 3 | 范围 | **GET + POST**;`url` 是**静态字符串**(不支持 `${}` 模板 —— 留 §4);POST `body` 是 **JSON 字面量字符串**(同 StatePanel array/object 默认值,parse + 校验);响应一律 `res.json()` | 最小可用面;`${}` 模板 / 表达式 body 触及 expression.ts 语法,与 §4 范畴重叠,本期不开门 | **🔒 已锁** |
+| 4 | loading / error 自动状态 | **不**自动写回 `loading` / `error` 状态。只把成功响应写进 `targetName`;失败 `console.error` | 自动造 `<name>_loading` 之类是隐式状态 + schema 膨胀,IR/emit/UI 全要特判;留 §3.v2 跟鉴权一起做 | **🔒 已锁** |
+
+**次级默认(step 1 前用户 ACK 视为已锁)**:
+
+| # | 主题 | 默认 |
+|---|---|---|
+| a | 新 kind 字面值 | `ActionKind` 扩为 `'setState' \| 'navigate' \| 'setVariable' \| 'apiCall'`;`ApiCallAction.kind = 'apiCall'`。全新 kind,无老 .fig 兼容包袱;编辑器 dropdown 标签 "Call API" |
+| b | 持久化 | `ApiCallAction` 走现有 `lowcode/events` pluginData 通道(events 负载 schema-free JSON,新 kind 自动序列化)。**不**新增 pluginData key、**不**动 vendored `kiwi-schema/` |
+| c | `ApiCallAction` shape | `{ id, kind:'apiCall', method:'GET'\|'POST', url:string, bodyJson?:string, targetName:string }`。`bodyJson` 仅 POST 用,GET 忽略;`targetName` 必填(空 → IR warning + 编辑器 amber) |
+| d | IR handler | 新增 `IRApiCallHandler { kind:'apiCall', method, url, body?:string, docStateName }`;`IREventHandler` 联合扩。`body` 是已校验过的 JSON 字符串(GET 时 undefined) |
+| e | async handler emit | onClick handler 列表中**只要有一个** `apiCall` → 整个 arrow emit 成 `async () => { … }`,每个 handler 变语句;`apiCall` 是 `try { … } catch { … }` 块,同步 handler(setState 等)仍是表达式语句。纯同步列表维持现有 `() => …` 形态(零回归) |
+| f | docStateWrites | `apiCall` 解析成功 → `docStateName` 进 `IRTree.docStateWrites`(驱动 `setDocState` import),与 setVariable 同 |
+| g | 响应不校验类型 | 响应 `data` 直接 `setDocState(targetName, data)`,**不**比对 docState 声明的 type。类型不符是用户问题(或 §3.v2 + 运行时校验)。CORS / 网络错误同理 —— emit 不处理,文档提示 |
+
+> 锁定后**不在对话中重新讨论**;若用户后续推翻视为显式 scope change,更新本节。
+
+### 3.3 公开 API / Schema 改动
+
+**SceneGraph types(`packages/core/src/scene-graph/types.ts`)**:
+
+```ts
+/** Phase 2 §3: fire an HTTP request on an event and write the parsed JSON
+ *  response into a Document State. GET + POST only; static URL (no ${}
+ *  templating — that rides §4). */
+export interface ApiCallAction {
+  id: string
+  kind: 'apiCall'
+  method: 'GET' | 'POST'
+  /** Static request URL. Literal string — no interpolation in Phase 2 §3. */
+  url: string
+  /** POST request body — a JSON literal string, parsed + validated like a
+   *  StatePanel array/object default. Undefined / ignored for GET. */
+  bodyJson?: string
+  /** Name of the DocumentStateDef the parsed JSON response is written into. */
+  targetName: string
+}
+
+export type ActionDef = SetStateAction | NavigateAction | SetVariableAction | ApiCallAction
+```
+
+> `ActionKind = ActionDef['kind']` 自动扩成四元联合。`SetVariableAction` 等其它三个不动。
+
+**IR types(`packages/compiler/src/ir/types.ts`)**:
+
+```ts
+/** Phase 2 §3: an HTTP request handler. Emits an async fetch + setDocState. */
+export interface IRApiCallHandler {
+  kind: 'apiCall'
+  method: 'GET' | 'POST'
+  url: string
+  /** Validated JSON string for POST; undefined for GET. */
+  body?: string
+  /** Resolved target Document State name. */
+  docStateName: string
+}
+// IREventHandler 联合扩 IRApiCallHandler
+```
+
+**IR collect(`packages/compiler/src/ir/collect/bindings.ts`)**:
+
+- `resolveActions` switch 加 `case 'apiCall'`:
+  - 校验 `url` 非空 → 否则 warning `action-apicall-missing-url`,handler 丢
+  - 校验 `targetName` 在 `docStates` 里 → 否则 warning `action-apicall-unknown-target`,handler 丢
+  - `method === 'POST'` 且 `bodyJson` 非空 → `JSON.parse` 校验,失败 warning `action-apicall-invalid-body`;GET 忽略 body
+  - 成功 → push `IRApiCallHandler`,`docStateName` 进 `docStateWrites`
+
+**emit react(`packages/compiler/src/adapters/react/emit/event.ts`)**:
+
+- `emitEventHandler` 检测列表含 `apiCall` → arrow 前缀 `async `,body 走多语句块
+- `case 'apiCall'`:emit `try { const res = await fetch(<url>[, <init>]); const data = await res.json(); setDocState(<name>, data) } catch (err) { console.error("apiCall failed:", err) }`;POST 时 `<init>` = `{ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(<parsed body>) }`
+
+**编辑器 UI(`EventsPanel.vue`)**:
+
+- `ACTION_KINDS` 加 `'apiCall'`;`actionKindLabel` 映射 `apiCall → "Call API"`
+- `makeAction('apiCall')` → `{ id, kind:'apiCall', method:'GET', url:'', targetName: docStates[0]?.name ?? '' }`
+- 行 UI:method 下拉(GET/POST)+ url input + targetName docState 下拉(同 setVariable);`method==='POST'` 时多一行 body JSON 输入(parse 错误 → 红框 + 10px error line,沿用 §2 经验 C)
+- 校验:url 必填、targetName 解析到 docState、POST body JSON 合法
+
+**i18n**:`panels.lowcodeActionCallApi` / `lowcodeActionApiUrl` / `lowcodeActionApiMethod` / `lowcodeActionApiBody` / `lowcodeActionApiTarget` 系列 + 7 locale 同步。
+
+### 3.4 不动什么
+
+- **不引入** axios / `@tanstack/react-query` / 任何 HTTP 库(决定 #2)
+- **不做**鉴权头 / token(§3.v2)
+- **不做** loading / error 自动状态(§3.v2)
+- **不做** `${}` URL 模板 / 表达式 body(§4)
+- `expression.ts` 子语言 —— 不动
+- §2 的 `_lowcode_state.ts` / zustand runtime —— 不动(响应复用 `setDocState`)
+- `kiwi-schema/`(vendored)、pluginData key 前缀 —— 不动
+- `SetVariableAction` / `SetStateAction` / `NavigateAction` 三个既有 kind —— 不动
+
+### 3.5 成功标准
+
+1. `bun test ./tests/engine/compiler/` 全绿;新增至少:
+   - `ir/collect/api-call.test.ts` —— url/targetName 校验、POST body JSON 校验、docStateWrites 写入
+   - `adapters/react/emit/api-call.test.ts` —— GET / POST emit 形态、async handler、apiCall 与同步 handler 混排
+2. `bun test ./tests/engine/kiwi/lowcode/` 全绿;新增 `api-call-action-pluginData.test.ts` —— `ApiCallAction` 经 `lowcode/events` 来回 .fig + 旧 .fig 字节回归
+3. `bun run check` 全绿(jscpd 0 clones)
+4. **Tauri 实测(用户主导)**:BUTTON onClick 加 apiCall、GET 一个公开 API、响应写进 array docState、画布上 LIST(§9)绑该 docState、preview iframe 点按钮看数据填充;POST + JSON body;.fig 存/读回
+5. 不破坏 Phase 0 §8 / Phase 1 / Phase 2 §9 §2 任一锁定决定
+
+### 3.6 工作分解(建议 1 名工程师,3–4 天)
+
+| Step | 任务 | 验收 / commit message |
+|---|---|---|
+| 1 | `ApiCallAction` schema + `ActionDef` 联合扩 + `IRApiCallHandler` IR type;kiwi 持久化测试 | `bun test ./tests/engine/kiwi/lowcode/` 全绿;`feat(lowcode): step 1 — ApiCallAction schema + IR type (§3)` |
+| 2 | `resolveActions` 加 `apiCall` case + 三类校验 + `docStateWrites`;IR collect 单测 | `bun test ./tests/engine/compiler/` 全绿;`feat(lowcode): step 2 — apiCall IR collect + validation (§3)` |
+| 3 | `emitEventHandler` async 化 + GET/POST emit 形态;emit 单测 | `bun test ./tests/engine/compiler/` 全绿;`feat(lowcode): step 3 — emit async fetch handler (§3)` |
+| 4 | `EventsPanel.vue` apiCall 完整 UI(method / url / body / target)+ i18n + locale 同步 | `check:vue` + `check:i18n` + `test:dupes` 全绿;`feat(lowcode): step 4 — Call API editor UI (§3)` |
+| 5 | walker checklist(§9.9 经验 A)+ 跨 walker 回归测试;Tauri 实测(用户主导);修 bug | 用户 ACK 全过;`docs(lowcode): §3 Tauri verification` |
+
+### 3.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| onClick handler 变 async | 低 | React `onClick` 接受 async 函数(返回的 promise 被忽略);纯同步列表维持 `() => …` 形态,零回归 |
+| 新 handler kind `apiCall` 被某 walker 漏 | 中(§9 经验 A) | step 5 走 walker checklist;`event.ts` switch 是穷举式(`never` 兜底自动报错),`ir-walk.ts` `stripEvents` 只过滤 navigate → apiCall 自动保留;跨 walker 回归测试 |
+| apiCall 必须有 docState target,文档无 docState 时不可用 | 低 | UI target 下拉空时显示 "no document state"(同 setVariable);IR warning `action-apicall-unknown-target` |
+| CORS / 网络失败 | 用户层 | emit 不处理,`try/catch` + `console.error`;文档提示这是用户后端 / 部署问题 |
+| 响应非 JSON → `res.json()` 抛错 | 低 | 落进 `catch`,`console.error`;§3.v2 再加响应类型选择 |
+
+### 3.8 Post-mortem
+
+(留空待 Tauri 实测后补)
 
 ---
 
