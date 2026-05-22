@@ -239,6 +239,75 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   return wrapConditional(node, element, ctx)
 }
 
+/** A LIST datasource ref — either a page-scoped array state (Phase 2 §9) or
+ *  a document-level array Document State (Phase 2 §3). */
+interface ListDataSourceRef {
+  kind?: string
+  stateId?: string
+  docStateName?: string
+}
+
+/**
+ * Resolve a LIST's `dataSourceRef` to the identifier the emitted `.map()`
+ * iterates. A `stateRef` resolves against page state; a `docStateRef`
+ * resolves against the document's Document State and registers a read so
+ * the page declares `const <name> = useDocState('<name>')`. Either way the
+ * source must be array-typed. Returns null (with a warning) on any failure.
+ */
+function resolveListArrayName(
+  node: SceneNode,
+  ref: ListDataSourceRef | null | undefined,
+  ctx: WalkCtx
+): string | null {
+  if (ref?.kind === 'stateRef' && typeof ref.stateId === 'string') {
+    const state = ctx.states.get(ref.stateId)
+    if (!state) {
+      ctx.warnings.push({
+        code: 'list-unknown-datasource',
+        message: `LIST ${node.id} dataSourceRef points to unknown state ${ref.stateId}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (state.type !== 'array') {
+      ctx.warnings.push({
+        code: 'list-bad-datasource-type',
+        message: `LIST ${node.id} dataSource state ${state.name} is type ${state.type}, expected array`,
+        nodeId: node.id
+      })
+      return null
+    }
+    return state.name
+  }
+  if (ref?.kind === 'docStateRef' && typeof ref.docStateName === 'string') {
+    const decl = ctx.docStates.get(ref.docStateName)
+    if (!decl) {
+      ctx.warnings.push({
+        code: 'list-unknown-datasource',
+        message: `LIST ${node.id} dataSourceRef points to unknown document state ${ref.docStateName}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (decl.type !== 'array') {
+      ctx.warnings.push({
+        code: 'list-bad-datasource-type',
+        message: `LIST ${node.id} dataSource document state ${decl.name} is type ${decl.type}, expected array`,
+        nodeId: node.id
+      })
+      return null
+    }
+    ctx.docStateReads.add(decl.name)
+    return decl.name
+  }
+  ctx.warnings.push({
+    code: 'list-no-datasource',
+    message: `LIST ${node.id} has no array-typed dataSourceRef; nothing will render`,
+    nodeId: node.id
+  })
+  return null
+}
+
 /**
  * Phase 2 §9: resolve a LIST node's interactiveProps datasource + template.
  * Returns an `IRList` when datasource is a valid array-typed state ref AND
@@ -247,36 +316,12 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
  */
 function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
   const ip = (node.interactiveProps ?? {}) as {
-    dataSourceRef?: { kind?: string; stateId?: string } | null
+    dataSourceRef?: ListDataSourceRef | null
     itemName?: string
     indexName?: string
   }
-  const ref = ip.dataSourceRef
-  if (ref?.kind !== 'stateRef' || typeof ref.stateId !== 'string') {
-    ctx.warnings.push({
-      code: 'list-no-datasource',
-      message: `LIST ${node.id} has no array-typed dataSourceRef; nothing will render`,
-      nodeId: node.id
-    })
-    return null
-  }
-  const state = ctx.states.get(ref.stateId)
-  if (!state) {
-    ctx.warnings.push({
-      code: 'list-unknown-datasource',
-      message: `LIST ${node.id} dataSourceRef points to unknown state ${ref.stateId}`,
-      nodeId: node.id
-    })
-    return null
-  }
-  if (state.type !== 'array') {
-    ctx.warnings.push({
-      code: 'list-bad-datasource-type',
-      message: `LIST ${node.id} dataSource state ${state.name} is type ${state.type}, expected array`,
-      nodeId: node.id
-    })
-    return null
-  }
+  const arrayName = resolveListArrayName(node, ip.dataSourceRef, ctx)
+  if (arrayName === null) return null
 
   const itemName = typeof ip.itemName === 'string' && ip.itemName !== '' ? ip.itemName : 'item'
   const indexName =
@@ -310,7 +355,7 @@ function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
   if (!template) return null
   return {
     kind: 'list',
-    arrayName: state.name,
+    arrayName,
     itemName,
     indexName,
     template

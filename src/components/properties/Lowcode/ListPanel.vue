@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import { validateStateName } from '@open-pencil/compiler'
-import type { StateDef } from '@open-pencil/core/scene-graph'
+import type { DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -13,10 +13,12 @@ const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 
-interface DataSourceRef {
-  kind: 'stateRef'
-  stateId: string
-}
+// Phase 2 §3: a LIST can iterate either a page-scoped array state
+// (`stateRef`) or a document-level array Document State (`docStateRef`) —
+// the latter is what an `apiCall` response writes into.
+type DataSourceRef =
+  | { kind: 'stateRef'; stateId: string }
+  | { kind: 'docStateRef'; docStateName: string }
 
 interface ListInteractiveProps {
   dataSourceRef?: DataSourceRef | null
@@ -24,17 +26,34 @@ interface ListInteractiveProps {
   indexName?: string
 }
 
+// The <select> value namespaces the two ref kinds so a page-state id and a
+// docState name can't collide: `state:<id>` vs `doc:<name>`.
+const STATE_PREFIX = 'state:'
+const DOC_PREFIX = 'doc:'
+
 const arrayStates = useSceneComputed<StateDef[]>(() => {
   const page = editor.graph.getNode(editor.state.currentPageId)
   return (page?.state ?? []).filter((s) => s.type === 'array')
+})
+
+const arrayDocStates = useSceneComputed<DocumentStateDef[]>(() => {
+  const root = editor.graph.getNode(editor.graph.rootId)
+  return (root?.lowcodeDocumentState ?? []).filter((d) => d.type === 'array')
 })
 
 const ip = useSceneComputed<ListInteractiveProps>(
   () => (selectedNode.value?.interactiveProps ?? {}) as ListInteractiveProps
 )
 
-const selectedStateId = computed(() =>
-  ip.value.dataSourceRef?.kind === 'stateRef' ? ip.value.dataSourceRef.stateId : ''
+const selectedValue = computed(() => {
+  const ref = ip.value.dataSourceRef
+  if (ref?.kind === 'stateRef') return STATE_PREFIX + ref.stateId
+  if (ref?.kind === 'docStateRef') return DOC_PREFIX + ref.docStateName
+  return ''
+})
+
+const hasAnyArraySource = computed(
+  () => arrayStates.value.length > 0 || arrayDocStates.value.length > 0
 )
 const itemName = computed(() => ip.value.itemName ?? 'item')
 const indexName = computed(() => ip.value.indexName ?? 'index')
@@ -62,8 +81,16 @@ function commit(patch: Partial<ListInteractiveProps>): void {
 }
 
 function onSourceChange(event: Event): void {
-  const id = (event.target as HTMLSelectElement).value
-  commit({ dataSourceRef: id === '' ? null : { kind: 'stateRef', stateId: id } })
+  const value = (event.target as HTMLSelectElement).value
+  if (value === '') {
+    commit({ dataSourceRef: null })
+  } else if (value.startsWith(STATE_PREFIX)) {
+    commit({ dataSourceRef: { kind: 'stateRef', stateId: value.slice(STATE_PREFIX.length) } })
+  } else if (value.startsWith(DOC_PREFIX)) {
+    commit({
+      dataSourceRef: { kind: 'docStateRef', docStateName: value.slice(DOC_PREFIX.length) }
+    })
+  }
 }
 
 function onItemNameChange(event: Event): void {
@@ -83,17 +110,26 @@ function onIndexNameChange(event: Event): void {
       <div class="flex flex-col gap-0.5">
         <label class="text-[10px] text-muted">{{ panels.lowcodeListDataSource }}</label>
         <select
-          :value="selectedStateId"
+          :value="selectedValue"
           :aria-label="panels.lowcodeListDataSource"
           data-test-id="lowcode-list-datasource"
           class="w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
           @change="onSourceChange"
         >
           <option value="">{{ panels.lowcodeListDataSourcePlaceholder }}</option>
-          <option v-for="s in arrayStates" :key="s.id" :value="s.id">{{ s.name }}</option>
+          <optgroup v-if="arrayStates.length > 0" :label="panels.lowcodeState">
+            <option v-for="s in arrayStates" :key="s.id" :value="STATE_PREFIX + s.id">
+              {{ s.name }}
+            </option>
+          </optgroup>
+          <optgroup v-if="arrayDocStates.length > 0" :label="panels.lowcodeDocumentState">
+            <option v-for="d in arrayDocStates" :key="d.id" :value="DOC_PREFIX + d.name">
+              {{ d.name }}
+            </option>
+          </optgroup>
         </select>
         <p
-          v-if="arrayStates.length === 0"
+          v-if="!hasAnyArraySource"
           data-test-id="lowcode-list-no-arrays"
           class="pl-1 text-[10px] text-amber-500"
         >
