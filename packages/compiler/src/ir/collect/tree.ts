@@ -163,7 +163,12 @@ const TAG_BY_TYPE: Partial<Record<NodeType, string>> = {
   SELECT: 'select',
   CHECKBOX: 'input',
   FORM: 'form',
-  LIST: 'div'
+  LIST: 'div',
+  // Phase 2 §8
+  RADIO: 'div',
+  TEXTAREA: 'textarea',
+  DATEPICKER: 'input',
+  SWITCH: 'input'
 }
 
 const CONTAINER_TYPES_FOR_RECURSION: ReadonlySet<NodeType> = new Set([
@@ -411,6 +416,73 @@ function wrapConditional(node: SceneNode, element: IRElement, ctx: WalkCtx): IRN
   return conditional
 }
 
+type InteractiveProps = Record<string, unknown>
+
+/** INPUT / TEXTAREA — a text-entry field carrying placeholder + value. */
+function applyTextInputProps(ip: InteractiveProps, attrs: Record<string, IRAttrValue>): void {
+  if (typeof ip.placeholder === 'string') attrs.placeholder = ip.placeholder
+  if (typeof ip.value === 'string' && ip.value !== '') attrs.defaultValue = ip.value
+}
+
+/** CHECKBOX / SWITCH — a checkbox input; SWITCH adds the `switch` ARIA role
+ *  (Phase 2 §8 — the visual styling is the only difference). */
+function applyToggleProps(
+  ip: InteractiveProps,
+  attrs: Record<string, IRAttrValue>,
+  role?: string
+): void {
+  attrs.type = 'checkbox'
+  if (role !== undefined) attrs.role = role
+  if (ip.checked === true) attrs.defaultChecked = true
+}
+
+/** DATEPICKER — a native `<input type="date">` (Phase 2 §8). */
+function applyDatePickerProps(ip: InteractiveProps, attrs: Record<string, IRAttrValue>): void {
+  attrs.type = 'date'
+  if (typeof ip.value === 'string' && ip.value !== '') attrs.defaultValue = ip.value
+}
+
+/** BUTTON — `type="button"` plus a text child from a binding or the literal. */
+function applyButtonProps(
+  node: SceneNode,
+  ip: InteractiveProps,
+  attrs: Record<string, IRAttrValue>,
+  children: IRNode[],
+  ctx: WalkCtx
+): void {
+  attrs.type = 'button'
+  const binding = resolveTextBinding(
+    node,
+    ctx.states,
+    ctx.warnings,
+    ctx.inScope,
+    ctx.docStates,
+    ctx.docStateReads
+  )
+  if (binding) {
+    children.push(binding)
+  } else {
+    const text = typeof ip.text === 'string' ? ip.text : 'Button'
+    children.push({ kind: 'text', value: text })
+  }
+}
+
+/** SELECT — one `<option>` child per string in `interactiveProps.options`. */
+function applySelectOptions(node: SceneNode, ip: InteractiveProps, children: IRNode[]): void {
+  const options = Array.isArray(ip.options) ? ip.options : []
+  for (const opt of options) {
+    if (typeof opt !== 'string') continue
+    children.push({
+      kind: 'element',
+      sourceId: node.id,
+      tag: 'option',
+      className: '',
+      attrs: { value: opt },
+      children: [{ kind: 'text', value: opt }]
+    })
+  }
+}
+
 function applyInteractiveProps(
   node: SceneNode,
   attrs: Record<string, IRAttrValue>,
@@ -419,49 +491,25 @@ function applyInteractiveProps(
 ): void {
   const ip = node.interactiveProps ?? {}
   switch (node.type) {
-    case 'INPUT': {
-      if (typeof ip.placeholder === 'string') attrs.placeholder = ip.placeholder
-      if (typeof ip.value === 'string' && ip.value !== '') attrs.defaultValue = ip.value
+    case 'INPUT':
+    case 'TEXTAREA':
+      applyTextInputProps(ip, attrs)
       return
-    }
-    case 'CHECKBOX': {
-      attrs.type = 'checkbox'
-      if (ip.checked === true) attrs.defaultChecked = true
+    case 'CHECKBOX':
+      applyToggleProps(ip, attrs)
       return
-    }
-    case 'BUTTON': {
-      attrs.type = 'button'
-      const binding = resolveTextBinding(
-        node,
-        ctx.states,
-        ctx.warnings,
-        ctx.inScope,
-        ctx.docStates,
-        ctx.docStateReads
-      )
-      if (binding) {
-        children.push(binding)
-      } else {
-        const text = typeof ip.text === 'string' ? ip.text : 'Button'
-        children.push({ kind: 'text', value: text })
-      }
+    case 'SWITCH':
+      applyToggleProps(ip, attrs, 'switch')
       return
-    }
-    case 'SELECT': {
-      const options = Array.isArray(ip.options) ? ip.options : []
-      for (const opt of options) {
-        if (typeof opt !== 'string') continue
-        children.push({
-          kind: 'element',
-          sourceId: node.id,
-          tag: 'option',
-          className: '',
-          attrs: { value: opt },
-          children: [{ kind: 'text', value: opt }]
-        })
-      }
+    case 'DATEPICKER':
+      applyDatePickerProps(ip, attrs)
       return
-    }
+    case 'BUTTON':
+      applyButtonProps(node, ip, attrs, children, ctx)
+      return
+    case 'SELECT':
+      applySelectOptions(node, ip, children)
+      return
     default:
       return
   }
