@@ -20,6 +20,10 @@
  *   pure JS expression string.
  * - Identifiers are NOT resolved at parse time; callers (adapters) walk
  *   `result.references` to decide which state names are required in scope.
+ * - Phase 2 §4: `parseExpression`'s grammar is FROZEN — the `template` AST
+ *   kind is produced ONLY by the separate `parseTemplate` scanner (raw
+ *   strings with `${ … }` interpolation, used for `ApiCallAction.url`).
+ *   `parseExpression` itself never emits a `template` node.
  */
 
 export type ExprAst =
@@ -30,6 +34,11 @@ export type ExprAst =
   | { kind: 'unary'; op: '!' | '-' | '+'; arg: ExprAst }
   | { kind: 'binary'; op: BinaryOp; left: ExprAst; right: ExprAst }
   | { kind: 'ternary'; test: ExprAst; consequent: ExprAst; alternate: ExprAst }
+  /** Phase 2 §4: a string template — `quasis` are the literal segments,
+   *  `expressions` the `${ … }` interpolations. Invariant:
+   *  `quasis.length === expressions.length + 1`. A zero-expression
+   *  template is a plain static string. Produced only by `parseTemplate`. */
+  | { kind: 'template'; quasis: string[]; expressions: ExprAst[] }
 
 export type BinaryOp =
   | '+' | '-' | '*' | '/' | '%'
@@ -325,6 +334,74 @@ export function parseExpression(src: string): ParseResult {
   return { ok: true, ast, references: collectReferences(ast) }
 }
 
+/**
+ * Phase 2 §4: parse a raw string as a template body — no surrounding
+ * backticks. The whole input IS the template: literal text plus zero or more
+ * `${ … }` interpolations, each parsed by `parseExpression`. A raw string with
+ * no `${` yields a degenerate single-quasi, zero-expression template (a plain
+ * static string). Used for `ApiCallAction.url`.
+ *
+ * This is a standalone scanner — it does NOT touch `parseExpression`'s grammar
+ * or tokenizer. Failures: an unterminated `${`, or an interpolation whose
+ * inner expression does not parse.
+ */
+export function parseTemplate(raw: string): ParseResult {
+  const quasis: string[] = []
+  const expressions: ExprAst[] = []
+  const references = new Set<string>()
+  let quasi = ''
+  let i = 0
+  while (i < raw.length) {
+    if (raw[i] === '$' && raw[i + 1] === '{') {
+      quasis.push(quasi)
+      quasi = ''
+      const scan = scanInterpolation(raw, i + 2)
+      if (typeof scan === 'string') return { ok: false, error: scan }
+      const parsed = parseExpression(scan.exprSrc)
+      if (!parsed.ok) {
+        return { ok: false, error: `interpolation ${JSON.stringify(scan.exprSrc)} → ${parsed.error}` }
+      }
+      expressions.push(parsed.ast)
+      for (const ref of parsed.references) references.add(ref)
+      i = scan.next
+      continue
+    }
+    quasi += raw[i]
+    i++
+  }
+  quasis.push(quasi)
+  return { ok: true, ast: { kind: 'template', quasis, expressions }, references }
+}
+
+/** Scan a `${ … }` body starting just after the `${`. The expression
+ *  sub-language has no `{`/`}` tokens, so the first unquoted `}` closes the
+ *  interpolation; a `}` inside a string literal is skipped. Returns the inner
+ *  source + the index past the closing `}`, or an error string. */
+function scanInterpolation(raw: string, start: number): { exprSrc: string; next: number } | string {
+  let i = start
+  let quote: string | null = null
+  while (i < raw.length) {
+    const ch = raw[i]
+    if (quote !== null) {
+      if (ch === '\\' && i + 1 < raw.length) {
+        i += 2
+        continue
+      }
+      if (ch === quote) quote = null
+      i++
+      continue
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch
+      i++
+      continue
+    }
+    if (ch === '}') return { exprSrc: raw.slice(start, i), next: i + 1 }
+    i++
+  }
+  return 'unterminated ${ in template'
+}
+
 function collectReferences(ast: ExprAst, acc = new Set<string>()): Set<string> {
   switch (ast.kind) {
     case 'ident':
@@ -344,6 +421,9 @@ function collectReferences(ast: ExprAst, acc = new Set<string>()): Set<string> {
       collectReferences(ast.test, acc)
       collectReferences(ast.consequent, acc)
       collectReferences(ast.alternate, acc)
+      return acc
+    case 'template':
+      for (const expr of ast.expressions) collectReferences(expr, acc)
       return acc
     default:
       return acc
@@ -404,9 +484,29 @@ function emitWithPrec(ast: ExprAst, parentPrec: number): string {
       const alternate = emitWithPrec(ast.alternate, TERNARY_PREC)
       return wrap(`${test} ? ${consequent} : ${alternate}`, TERNARY_PREC, parentPrec)
     }
+    case 'template': {
+      // A zero-expression template is a plain string — emit it as a
+      // double-quoted literal so static `ApiCallAction.url`s stay
+      // byte-identical to the Phase 2 §3 `JSON.stringify(url)` output.
+      if (ast.expressions.length === 0) return JSON.stringify(ast.quasis[0])
+      let out = '`'
+      for (let i = 0; i < ast.expressions.length; i++) {
+        out += escapeTemplateQuasi(ast.quasis[i])
+        out += `\${${emitWithPrec(ast.expressions[i], 0)}}`
+      }
+      out += escapeTemplateQuasi(ast.quasis[ast.quasis.length - 1])
+      // A template literal is a primary — never needs outer parens.
+      return `${out}\``
+    }
     default:
       return ''
   }
+}
+
+/** Escape a literal quasi segment so it is safe between backticks: backslash
+ *  first, then backtick, then the `${` interpolation opener. */
+function escapeTemplateQuasi(src: string): string {
+  return src.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${')
 }
 
 function wrap(src: string, ownPrec: number, parentPrec: number): string {
@@ -438,6 +538,11 @@ export function hasPrevReference(ast: ExprAst): boolean {
         hasPrevReference(ast.consequent) ||
         hasPrevReference(ast.alternate)
       )
+    case 'template':
+      // Templates never legitimately carry `$prev` ($prev is valueExpr-only),
+      // but the walker is a total function over ExprAst — recurse anyway so a
+      // future caller cannot silently miss this branch (经验 A).
+      return ast.expressions.some((expr) => hasPrevReference(expr))
     default:
       return false
   }
@@ -469,6 +574,14 @@ export function substitutePrev(ast: ExprAst, replacement: string): ExprAst {
         test: substitutePrev(ast.test, replacement),
         consequent: substitutePrev(ast.consequent, replacement),
         alternate: substitutePrev(ast.alternate, replacement)
+      }
+    case 'template':
+      // See `hasPrevReference` — recurse for total-function correctness even
+      // though templates are never used as a valueExpr (经验 A).
+      return {
+        kind: 'template',
+        quasis: ast.quasis,
+        expressions: ast.expressions.map((expr) => substitutePrev(expr, replacement))
       }
     default:
       return ast
