@@ -71,6 +71,10 @@ export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onB
  *  into a discriminated union so the adapter can dispatch on `kind`
  *  exhaustively (and refuse to compile an unknown future kind silently).
  *  Phase 2 §2 lights up the previously-stubbed `setVariable` slot. */
+// Phase 2 §3: `IRApiCallHandler` is defined below but is intentionally NOT
+// in this union until step 2 — adding it here forces every exhaustive
+// `IREventHandler` switch (`emit/event.ts`) to grow a case in the same
+// commit, which couples the collect + emit work. Step 2 extends the union.
 export type IREventHandler = IRSetStateHandler | IRNavigateHandler | IRSetVariableHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
@@ -113,6 +117,21 @@ export interface IRSetVariableHandler {
   ast: ExprAst
   references: string[]
   mode: ValueUpdateMode
+}
+
+/** Phase 2 §3: fire an HTTP request and write the parsed JSON response into
+ *  a Document State via `setDocState(name, data)`. The adapter emits an
+ *  async fetch wrapped in try/catch. Resolved against `IRTree.docStates`;
+ *  unknown `docStateName` / empty `url` is dropped with a warning. */
+export interface IRApiCallHandler {
+  kind: 'apiCall'
+  method: 'GET' | 'POST'
+  /** Static request URL — already validated to be non-empty. */
+  url: string
+  /** Validated JSON string for POST requests; undefined for GET. */
+  body?: string
+  /** Name of the DocumentStateDef the response is written to. */
+  docStateName: string
 }
 
 /** A page-level state declaration. Adapter emits `useState(defaultValue)`. */

@@ -511,8 +511,25 @@ export interface SetVariableAction {
   valueExpr?: string
 }
 
+/** Phase 2 §3: fire an HTTP request on an event and write the parsed JSON
+ *  response into a Document State (§2). GET + POST only; the URL is a
+ *  static literal — no `${}` templating (that rides §4). */
+export interface ApiCallAction {
+  id: string
+  kind: 'apiCall'
+  method: 'GET' | 'POST'
+  /** Static request URL. Literal string — no interpolation in Phase 2 §3. */
+  url: string
+  /** POST request body — a JSON literal string, parsed + validated like a
+   *  StatePanel array/object default. Undefined / ignored for GET. */
+  bodyJson?: string
+  /** Name of the DocumentStateDef the parsed JSON response is written into. */
+  targetName: string
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
- *  dispatch on `kind` and the editor UI can render per-kind inputs. */
-export type ActionDef = SetStateAction | NavigateAction | SetVariableAction
+ *  dispatch on `kind` and the editor UI can render per-kind inputs.
+ *  Phase 2 §3 adds `ApiCallAction`. */
+export type ActionDef = SetStateAction | NavigateAction | SetVariableAction | ApiCallAction
 
 export type ActionKind = ActionDef['kind']

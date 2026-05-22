@@ -269,7 +269,7 @@ const actionErrors = computed(() => {
             />
           </template>
 
-          <template v-else>
+          <template v-else-if="action.kind === 'setVariable'">
             <select
               :value="action.targetName ?? ''"
               :aria-label="panels.lowcodeActionSet"
