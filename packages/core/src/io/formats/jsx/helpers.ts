@@ -65,7 +65,14 @@ export function getNodeContext(node: SceneNode, graph: SceneGraph) {
     isFlex: node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL',
     parentIsAutoLayout: parent ? isAutoLayoutMode(parent.layoutMode) : false,
     parentIsGrid: parent ? parent.layoutMode === 'GRID' : false,
-    parentIsCanvas: parent ? parent.type === 'CANVAS' : false
+    // Phase 2 §6: renamed from `parentIsCanvas` and widened.
+    // CANVAS is implicitly FREE (free positioning at the page root); any
+    // FRAME with `layoutMode === 'FREE'` opts into the same semantic for
+    // its children. The absolute-positioning emit branch (tailwind-classes
+    // `applyLayoutStyle`) keys off this single predicate.
+    parentIsFreeLayout: parent
+      ? parent.type === 'CANVAS' || parent.layoutMode === 'FREE'
+      : false
   }
 }
 

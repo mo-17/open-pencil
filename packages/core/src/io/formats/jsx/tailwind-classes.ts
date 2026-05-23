@@ -101,10 +101,19 @@ function applyLayoutStyle(
   if (ctx.parentIsAutoLayout && node.layoutGrow > 0) style.flexGrow = '1'
   if (ctx.isAutoLayout) applyPadding(style, node)
 
-  if (ctx.parentIsCanvas) {
+  // Phase 2 §6: free positioning fires for two cases that share the same
+  // CSS shape — parent opts the whole container into free layout (CANVAS
+  // implicitly, or any FRAME with `layoutMode === 'FREE'`), OR a single
+  // child opts itself out of the parent's auto-layout via Figma's existing
+  // `layoutPositioning: 'ABSOLUTE'` field (canvas-side Yoga + drag/snap
+  // honored it before; this is the emit honor that closes the gap).
+  if (ctx.parentIsFreeLayout || node.layoutPositioning === 'ABSOLUTE') {
     style.position = 'absolute'
     style.left = px(node.x)
     style.top = px(node.y)
+    // §6 decision #g: sizing fallback for both code paths — HUG-sized
+    // children would otherwise collapse once `position: absolute` removes
+    // them from the parent's flow.
     if (!style.width) style.width = px(node.width)
     if (!style.height) style.height = px(node.height)
   }
