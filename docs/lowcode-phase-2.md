@@ -21,7 +21,7 @@
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router | TBD §7 |
-| 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 开工中**(详见 §8) |
+| 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 ✅ 2026-05-23** |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
 
 > 行 1(§2)已收尾:**§2 ✅ 2026-05-22**(HEAD `d3d1fd9`)。
@@ -880,7 +880,7 @@ export interface IRApiCallHandler {
 > 2026-05-23 用户挑定 Phase 2 第五项开工(§4 收尾后)。形式参照 §3 / §4。
 > **4 项主决定 2026-05-23 已由用户在对话中锁定**(#1 / #3 第一轮分别 ACK「原生零依赖」「RADIO 单选组」;#2 / #4 + #a–#g 第二轮一次性 ACK)。
 >
-> **状态:🔨 开工中**(step 1–4)。
+> **状态:🔒 已收尾(2026-05-23 Tauri verified)**。
 
 ### 8.1 现状与问题
 
@@ -1000,7 +1000,7 @@ export type NodeType =
 
 ### 8.8 Post-mortem
 
-> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §8 Tauri verification`。
+> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测 2026-05-23 全过**(§8.5 #4 全部 4 项 user-ACK)。**无 bug 修复 commit** —— 决定 #1(全 emit 原生 HTML 零依赖)规避经验 D,决定 #2(纯组件增量、不动属性面板/EventsPanel)规避经验 A 中可能的面板侧 walker 漏。
 
 **Step commits:**
 
@@ -1011,13 +1011,25 @@ export type NodeType =
 | 2 | `149234d` | `TEXTAREA` / `DATEPICKER` / `SWITCH` emit;`applyInteractiveProps` 重构为薄分发 + 抽 per-component helper(内联 switch 触 oxlint complexity-20 上限) |
 | 3 | `f60a5ee` | `RADIO` 单选组 emit;SELECT/RADIO 共用 `optionStrings` helper |
 | 4 | `1925628` | walker checklist + `cross-walker/interactive-components.test.ts` |
-| docs | (待提交) | §8 Tauri verification |
+| post-mortem | `87e6fe5` | §8 step 1–4 post-mortem(commit 链 + walker checklist) |
+| docs | (本 commit) | §8 Tauri verification |
 
 **Walker checklist(经验 A)**:跑了一遍,**无 walker miss**。4 个新 `NodeType` 被每个 `node.type` 分发处理 —— `TAG_BY_TYPE` / `applyInteractiveProps` / `isRectangularType` / `INTERACTIVE_TYPES` / `LOWCODE_NODE_TYPES` / `TOOL_TO_NODE` + 4 张 tsgo 穷举 `Record<Tool>` 表。`canvas/scene.ts` 的 `isClippableContainer` 与 `CONTAINER_TYPES` 正确不含新类型(非容器);`DesignPanel` / `EventsPanel` 正确不含(决定 #2 —— 无面板、无事件)。`io/formats/jsx` 核心导出器对交互类型本就泛化处理,无新增 type switch。
 
 **意外 1 —— `applyInteractiveProps` 复杂度超标**:step 2 把 4 个组件 case 内联进 switch 后 oxlint `complexity` 报 21 > 20。重构成薄分发 + 5 个 per-component helper(`applyTextInputProps` / `applyToggleProps` / `applyDatePickerProps` / `applyButtonProps` / `applySelectOptions`),CHECKBOX 与 SWITCH 共用 `applyToggleProps`。顺带消除了 RADIO/SELECT 的 jscpd 风险(step 3 抽 `optionStrings`)。
 
-**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 324 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
+**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 324 pass;`bun run check` 全绿(jscpd 0 clones)。
+
+**Tauri 实测结果(2026-05-23)**:
+
+| §8.5 #4 子项 | 结果 |
+|---|---|
+| Interactive flyout 出现 4 个新工具 | ✅ |
+| 画布画占位卡片 | ✅ |
+| preview 渲染成原生元素(`<textarea>` / `<input type="date">` / radio 组 / switch) | ✅ |
+| `.fig` 存读回类型不丢 | ✅ |
+
+**Follow-up(非 §8 回归)** —— SWITCH preview UI 美观度差(原生 `<input type="checkbox" role="switch">` 浏览器默认渲染就是个 checkbox,跟「滑动开关」语义视觉不符)。决定 #1 锁了「零依赖原生 HTML」+ 决定 #2 锁了「不动属性面板」,所以 §8 范围内不修;留为独立后续工作 —— 候选方向是「emit 时附 CSS-only switch 样式」(零依赖、不破坏决定 #1)或「等 Phase 3+ 加 component 主题层」时统一收敛。本期组件功能可用,语义/`role=switch` 无障碍属性正确。
 
 ---
 
