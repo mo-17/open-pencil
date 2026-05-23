@@ -191,6 +191,7 @@ export const panelMessages = i18n('panels', {
   noVariablesFound: 'No variables found',
   addAutoLayout: 'Add auto layout',
   removeAutoLayout: 'Remove auto layout',
+  freeLayout: 'Free layout',
   alignLeft: 'Align left',
   alignCenterHorizontally: 'Align center horizontally',
   alignRight: 'Align right',

@@ -140,6 +140,7 @@
     "noVariablesFound": "Nie znaleziono zmiennych",
     "addAutoLayout": "Dodaj auto-layout",
     "removeAutoLayout": "Usuń auto-layout",
+    "freeLayout": "Układ swobodny",
     "mixed": "Mieszane",
     "layersCount": "{count} warstw",
     "goToMainComponent": "Przejdź do głównego komponentu",

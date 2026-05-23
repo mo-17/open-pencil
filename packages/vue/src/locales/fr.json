@@ -140,6 +140,7 @@
     "noVariablesFound": "Aucune variable trouvée",
     "addAutoLayout": "Ajouter un auto-layout",
     "removeAutoLayout": "Retirer l'auto-layout",
+    "freeLayout": "Mise en page libre",
     "mixed": "Mixte",
     "layersCount": "{count} calques",
     "goToMainComponent": "Aller au composant principal",

@@ -140,6 +140,7 @@
     "noVariablesFound": "未找到变量",
     "addAutoLayout": "添加自动布局",
     "removeAutoLayout": "移除自动布局",
+    "freeLayout": "自由布局",
     "alignLeft": "左对齐",
     "alignCenterHorizontally": "水平居中",
     "alignRight": "右对齐",

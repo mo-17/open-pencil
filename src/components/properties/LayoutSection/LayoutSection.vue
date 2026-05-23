@@ -27,7 +27,10 @@ const CONTAINER_TYPES = ['FRAME', 'COMPONENT', 'COMPONENT_SET', 'INSTANCE']
         <div :class="sectionCls.wrapper">
           <AutoLayoutControls />
 
-          <template v-if="ctx.node.layoutMode !== 'NONE'">
+          <!-- Phase 2 §6: FREE has no flex/grid/padding controls (no
+               auto-layout); fall through with the existing isFlex /
+               isGrid gates which now both return false for FREE. -->
+          <template v-if="ctx.isFlex || ctx.isGrid">
             <FlexControls v-if="ctx.isFlex" />
             <template v-if="ctx.isGrid">
               <GridControls />

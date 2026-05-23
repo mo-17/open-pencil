@@ -140,6 +140,7 @@
     "noVariablesFound": "Переменные не найдены",
     "addAutoLayout": "Добавить автораскладку",
     "removeAutoLayout": "Убрать автораскладку",
+    "freeLayout": "Свободная раскладка",
     "alignLeft": "Выровнять по левому краю",
     "alignCenterHorizontally": "Выровнять по центру по горизонтали",
     "alignRight": "Выровнять по правому краю",

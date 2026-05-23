@@ -1,4 +1,5 @@
 import type { Editor } from '@open-pencil/core/editor'
+import { isAutoLayoutMode } from '@open-pencil/core/scene-graph'
 
 import { duplicateAndDrag } from '#vue/shared/input/duplicate-drag'
 import type { DragState } from '#vue/shared/input/types'
@@ -18,7 +19,7 @@ function autoLayoutMoveTarget(id: string, editor: Editor): string {
     if (!parent) break
     if (
       current.type === 'INSTANCE' &&
-      parent.layoutMode !== 'NONE' &&
+      isAutoLayoutMode(parent.layoutMode) &&
       current.layoutPositioning !== 'ABSOLUTE'
     ) {
       target = current
@@ -50,7 +51,7 @@ function detectDragAutoLayoutParent(originals: Map<string, MoveOriginal>, editor
   const [id, original] = [...originals][0]
   const node = editor.graph.getNode(id)
   const parent = editor.graph.getNode(original.parentId)
-  if (parent && parent.layoutMode !== 'NONE' && node?.layoutPositioning !== 'ABSOLUTE') {
+  if (parent && isAutoLayoutMode(parent.layoutMode) && node?.layoutPositioning !== 'ABSOLUTE') {
     return parent.id
   }
   return undefined
