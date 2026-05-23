@@ -20,7 +20,7 @@
 | 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 ✅ 2026-05-23** |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
-| 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router(本节内显式推翻 §11 #5) | **§7 开工中**(详见 §7) |
+| 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router(本节内显式推翻 §11 #5) | **§7 ✅ 2026-05-23** |
 | 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 ✅ 2026-05-23** |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
 
@@ -866,7 +866,7 @@ export interface IRApiCallHandler {
 > **4 项主决定 + 7 项次级默认 2026-05-23 已由用户在对话中一次性锁定**。
 > **本节即对 Phase 1 §11.3 #5「preview 仍单页」锁的显式推翻(scope change)**;Phase 1 §11.3 #5 仍记录历史,但行为以本节为准。
 >
-> **状态:🔨 开工中**(step 1–4)。
+> **状态:🔒 已收尾(2026-05-23 Tauri verified)**。
 
 ### 7.1 现状与问题
 
@@ -987,7 +987,7 @@ export { derivePagePaths, type PagePathInfo } from './adapters/react/route-paths
 
 ### 7.8 Post-mortem
 
-> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §7 Tauri verification`。
+> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测 2026-05-23 全过**(§7.5 #4 全部 5 项 user-ACK)。**实测期间发现 1 个 UX bug 已单独 commit 修复**(`6ab0558` —— preview header URL 显示),不影响 §7 核心 navigation 行为。
 
 **Step commits:**
 
@@ -998,7 +998,9 @@ export { derivePagePaths, type PagePathInfo } from './adapters/react/route-paths
 | 2 | `9e1df7d` | preview-bridge.ts `'select' \| 'navigate'` 联合 + pushState monkeypatch + popstate listener + `suppressOutbound` flag + `nativePushState` alias;`preview/bridge.test.ts` 11 断言。3 个 `preview-*` 同前缀 sibling 触发 Steiger 域文件夹规则 → 全移 `preview/` 子目录 |
 | 3 | `65467c1` | `use-compile-on-change.ts` 多页 compile(`pages.length > 1` 全发,单页 fast path)、删 `currentPageId` recompile watcher;`PreviewPane.vue` 接 inbound navigate → `store.switchPage`(包 `suppressOutboundNavigate`)、`currentPageId` watcher 发 outbound navigate、`postSelection` 跨页先 navigate 再 select、`onIframeLoad` 后两条都重发;pageId↔slug 走 `derivePagePaths` + IR stub |
 | 4 | `4787e6a` | walker checklist + `cross-walker/navigate-bridge.test.ts`(单页/多页 emit 都含两 dispatch branch + outbound emit + 防回环 flag) |
-| docs | (本 commit) | §7 step 1–4 post-mortem(commit 链 + walker checklist) |
+| post-mortem | `4a2ad3e` | §7 step 1–4 post-mortem(commit 链 + walker checklist) |
+| fix | `6ab0558` | preview header URL tracks current route(实测发现 1) |
+| docs | (本 commit) | §7 Tauri verification |
 
 **Walker checklist(经验 A 应用到 bridge 协议层)**:跑了一遍,**无 dispatch miss**。bridge `type` 联合从 `'select'` 扩成 `'select' | 'navigate'`,grep `op-lowcode-{editor,preview}` / `INBOUND_SOURCE` / `OUTBOUND_SOURCE` 全仓 **仅 2 个消费者**:
 
@@ -1011,7 +1013,21 @@ bridge 模板字面值 tsgo 不检 —— 字符串内的 dispatch 是「非 tsg
 
 **实测受限提醒**:§7 实测必须在 Tauri 桌面端(preview iframe 仅 Tauri 启,见 `use-compile-on-change.ts:204` `isTauri()` 守卫);浏览器跑 `bun run dev` 不会启 preview sidecar,看不到 §7 行为。
 
-**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 342 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
+**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 342 pass;`bun run check` 全绿(jscpd 0 clones)。
+
+**Tauri 实测结果(2026-05-23)**:
+
+| §7.5 #4 子项 | 结果 |
+|---|---|
+| 双页文档切页 → iframe URL + 内容跟随、console 不打 `[preview]` recompile log(决定 #4 验证) | ✅ |
+| iframe 内 `<button onClick={navigate(...)}>` 点击 → iframe 跳 + 编辑器 `currentPageId` 跟随切(决定 #2 双向联动核心回报) | ✅ |
+| 跨页选择 → iframe 自动先 navigate 再高亮 overlay(决定 #b 串行) | ✅ |
+| 单页文档零回归(header URL 无 slug、无 BrowserRouter) | ✅ |
+| `.fig` 多页 + §8/§9/§2 能力存读回零回归 | ✅ |
+
+**实测发现 1 —— preview header URL 显示停在 `/`**:`PreviewPane.vue:38` 的 `statusLabel` 直接渲染 `status.value.url`(sidecar 给的 dev-server origin,从不变),用户切页时顶上文本一直显示 `http://localhost:58856/`,误读成「iframe 没切」(实际 iframe 内容是切的,这是纯 UX 错觉)。Fix `6ab0558`:`statusLabel` 走 `origin + findRouteForPageId(currentPageId)` 组合显示,iframe-initiated 与 editor-initiated 两向都通过 `currentPageId` 这个共同源驱动 —— 切完后 header 实时跟随 `http://localhost:58856/about`。
+
+**经验总结**:UX「停在某个值」类 bug 不在 walker checklist 也不在 cross-walker 测试覆盖范围内,只能 Tauri 实测发现 —— 凡新增「跨双向同步」的功能,设计阶段就该列「所有面向用户的显示元素是否反映同步后状态」核对项。本期是 1 行 header label,下次类似 §X 设计 doc 的「公开 API/Schema 改动」节多加一条「面向用户的显示元素清单 + 状态来源」。
 
 ---
 
