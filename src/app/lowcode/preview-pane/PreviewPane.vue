@@ -35,14 +35,30 @@ function reload(): void {
 }
 
 const url = computed(() => (status.value.kind === 'ready' ? status.value.url : null))
+
+// §7: the sidecar's `status.url` is only the dev-server origin (e.g.
+// `http://localhost:58856/`). On its own it never updates, which makes the
+// preview header look "stuck on /" after the user switches pages. Compose
+// the displayed URL from the origin + the route that maps to the editor's
+// current page so the header tracks navigation 1:1 with what the iframe
+// would render. Iframe-initiated navs (`<button onClick={navigate(...)}>`)
+// reach the editor via the inbound `navigate` channel → switchPage →
+// currentPageId, so this derivation stays correct in both directions.
+function formatPreviewUrl(origin: string, route: string): string {
+  const base = origin.replace(/\/$/, '')
+  return `${base}${route}`
+}
+
 const statusLabel = computed(() => {
   switch (status.value.kind) {
     case 'idle':
       return 'Idle'
     case 'starting':
       return 'Starting dev server…'
-    case 'ready':
-      return status.value.url
+    case 'ready': {
+      const route = findRouteForPageId(store.state.currentPageId) ?? '/'
+      return formatPreviewUrl(status.value.url, route)
+    }
     case 'error':
       return `Error: ${status.value.message}`
     case 'disabled':
