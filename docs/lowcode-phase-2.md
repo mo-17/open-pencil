@@ -987,7 +987,31 @@ export { derivePagePaths, type PagePathInfo } from './adapters/react/route-paths
 
 ### 7.8 Post-mortem
 
-> 设计 2026-05-23 锁定;step 1–4 + Tauri 实测后回填。
+> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §7 Tauri verification`。
+
+**Step commits:**
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `64e23b6` | §7 详细设计 + 锁定决定;Phase 1 §11.3 #5 单页锁显式推翻指针 |
+| 1 | `dd4b6d5` | `PagePathInfo.pageId` 字段 + `findPageInfoByPageId` 反查 helper;`@open-pencil/compiler` 公开导出 `derivePagePaths` / `findPageInfoByPageId` / `PagePathInfo` |
+| 2 | `9e1df7d` | preview-bridge.ts `'select' \| 'navigate'` 联合 + pushState monkeypatch + popstate listener + `suppressOutbound` flag + `nativePushState` alias;`preview/bridge.test.ts` 11 断言。3 个 `preview-*` 同前缀 sibling 触发 Steiger 域文件夹规则 → 全移 `preview/` 子目录 |
+| 3 | `65467c1` | `use-compile-on-change.ts` 多页 compile(`pages.length > 1` 全发,单页 fast path)、删 `currentPageId` recompile watcher;`PreviewPane.vue` 接 inbound navigate → `store.switchPage`(包 `suppressOutboundNavigate`)、`currentPageId` watcher 发 outbound navigate、`postSelection` 跨页先 navigate 再 select、`onIframeLoad` 后两条都重发;pageId↔slug 走 `derivePagePaths` + IR stub |
+| 4 | `4787e6a` | walker checklist + `cross-walker/navigate-bridge.test.ts`(单页/多页 emit 都含两 dispatch branch + outbound emit + 防回环 flag) |
+| docs | (本 commit) | §7 step 1–4 post-mortem(commit 链 + walker checklist) |
+
+**Walker checklist(经验 A 应用到 bridge 协议层)**:跑了一遍,**无 dispatch miss**。bridge `type` 联合从 `'select'` 扩成 `'select' | 'navigate'`,grep `op-lowcode-{editor,preview}` / `INBOUND_SOURCE` / `OUTBOUND_SOURCE` 全仓 **仅 2 个消费者**:
+
+- `packages/compiler/src/adapters/react/preview-bridge.ts`(iframe 侧 runtime):inbound message handler 显式两 `if (data.type === '...')` 分支;outbound 由 `postOutboundNavigate` 与既有 Alt-click select 路径分别发。`preview/bridge.test.ts` 11 case 锚定两分支 + 防回环 flag + pushState 别名。
+- `src/app/lowcode/preview-pane/PreviewPane.vue`(editor 侧):同样显式两 `if (data.type === '...')` 分支;outbound 由 `postIframe({ type: 'navigate' / 'select' })` 单点发。`postSelection` 内 cross-page 走「先 navigate 再 select」串行(决定 #b)。
+
+bridge 模板字面值 tsgo 不检 —— 字符串内的 dispatch 是「非 tsgo-enforced」的经验 A 风险类。靠 `preview/bridge.test.ts` + `cross-walker/navigate-bridge.test.ts` 双层字符串断言锚定。
+
+**意外**:`preview/bridge.test.ts` 新增触发 Steiger `prefer-domain-folders-over-filename-prefixes` 规则(3 个 `preview-` 前缀 sibling:新加的 bridge test + 既有 `preview-hmr.test.ts` + 既有 `preview-zustand-resolvable.test.ts`)。同 §4 step 4 经验(三个 `cross-walker-*.test.ts` 同样移 `cross-walker/`),全移到 `tests/engine/compiler/preview/` 子目录。step 2 commit 顺手做了。
+
+**实测受限提醒**:§7 实测必须在 Tauri 桌面端(preview iframe 仅 Tauri 启,见 `use-compile-on-change.ts:204` `isTauri()` 守卫);浏览器跑 `bun run dev` 不会启 preview sidecar,看不到 §7 行为。
+
+**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 342 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
 
 ---
 
