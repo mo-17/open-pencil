@@ -20,7 +20,7 @@
 | 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 ✅ 2026-05-23** |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
-| 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router | TBD §7 |
+| 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router(本节内显式推翻 §11 #5) | **§7 开工中**(详见 §7) |
 | 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 ✅ 2026-05-23** |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
 
@@ -860,18 +860,134 @@ export interface IRApiCallHandler {
 
 ---
 
-## 7. 候选 §7 — 多页 preview iframe 联动
+## 7. §7 详细设计:多页 preview iframe 联动
 
-**当前**: 编辑器 preview pane 始终编 `[currentPageId]`,iframe 没 router URL,切页靠 sceneVersion 重新 compile。
+> 2026-05-23 用户挑定 Phase 2 第六项开工(§8 收尾后)。形式参照 §3 / §4 / §8。
+> **4 项主决定 + 7 项次级默认 2026-05-23 已由用户在对话中一次性锁定**。
+> **本节即对 Phase 1 §11.3 #5「preview 仍单页」锁的显式推翻(scope change)**;Phase 1 §11.3 #5 仍记录历史,但行为以本节为准。
+>
+> **状态:🔨 开工中**(step 1–4)。
 
-**Phase 2 目标**: 评估是否给 preview iframe 上 router。
+### 7.1 现状与问题
 
-**待锁决定**:
-- 体验是否真改善?切页本来就靠点编辑器侧的页面面板,不靠 URL
-- 如果上 router,preview 一直在重 compile 整套多页项目,性能 / debounce 怎么调?
-- 跟 Tauri 桥(`__preview-bridge`)的 selection 信号怎么处理?多页切换会丢 selection 上下文吗?
+Phase 1 §11 让编译器多页:`pageIds.length > 1` → router shell + `src/pages/<slug>.tsx`(`packages/compiler/src/adapters/react/index.ts:36`)。`useNavigate` 与 `<button onClick={navigate(...)}>` emit 链路全通。
 
-**风险**: 大概率不值得。**优先级低,等用户主动要求再开工**。
+但 preview pane 走另一条路 —— `src/app/lowcode/preview-pane/use-compile-on-change.ts:217-222` 死写 `pageIds: [currentPageId]` 单页切片(Phase 1 §11.3 #5 当时锁的)。直接后果:
+
+| 现状 | 痛点 |
+|---|---|
+| 编辑器 navigate handler emit 出来,**只能在 CLI export 里测** | 用户必须 `bun open-pencil compile <pen> --out /tmp/x && cd /tmp/x && bun install && bun run dev` 才能验「跨页跳转」;in-editor preview 完全跑不到这条路径 |
+| 编辑器切 `currentPageId` → preview **全量重 compile + iframe HMR refresh** | 大文档每次切页都浪费;`use-compile-on-change.ts:261-267` 显式以 `currentPageId` 作 recompile trigger |
+| preview-bridge.ts **只**双向同步 selection,不传 navigation | iframe 里 `<button>` 调 `navigate('/about')` 触发,iframe URL 跳了,**编辑器 `currentPageId` 不跟随** —— 编辑器和 preview 在不同页;反过来:编辑器切页,iframe 不跟 |
+
+**§7 目标**:让 preview 编 N 页 → router shell + 全部 `src/pages/*` → iframe 跑 react-router-dom → 编辑器切页 ↔ iframe 切路由**双向联动**。
+
+### 7.2 关键决定
+
+> 形式同 §3.2 / §4.2 / §8.2。**#1–#4 已锁(2026-05-23 对话);#a–#g 为次级默认,用户一次性 ACK 视为已锁。**
+
+| # | 主题 | 决定 | 理由 | 状态 |
+|---|---|---|---|---|
+| 1 | 多页 compile 在 preview 启用 | preview 改成 `compile({ pageIds: graph.getPages().map(p => p.id) })`,emit 跟 CLI export 同形态(router shell + `src/pages/*.tsx`)。**单页文档(`pages.length === 1`)继续走 `[currentPageId]` 路径** —— 字节级零回归(对应 Phase 1 §11.3 #1 单页分支不动) | 复用现成 CLI 路径,零新 emit 形态;单页用户的 preview 行为完全不变 | **🔒 已锁** |
+| 2 | 编辑器 ↔ iframe **双向**联动 | 编辑器 `currentPageId` 变 → bridge inbound `navigate` → iframe `history.pushState` + `dispatchEvent(new PopStateEvent('popstate'))` → BrowserRouter 路由响应。iframe 内 `useNavigate()` 触发 → bridge `popstate` + `history.pushState` monkeypatch 捕获 → outbound `navigate` 给编辑器 → `store.switchPage(targetPageId)` | 单向只能测点静态切页;双向才能测 emit 的 `<button onClick={navigate(...)}>` —— §7 主要回报 | **🔒 已锁** |
+| 3 | 路由载体按 **slug**,非 pageId | bridge 消息 payload `{ route: string }`(同 `derivePagePaths()` 出的 slug);编辑器侧 pageId↔slug 反查复用同一份 `derivePagePaths` —— 从 `@open-pencil/compiler` 公开导出 | 与 §11.3 #3 一致(pageId 不进 URL);用户看到的 preview URL 与 CLI export 部署后完全一致 | **🔒 已锁** |
+| 4 | `sceneVersion` 触发 recompile,`currentPageId` 改触发 **navigate**(不 recompile) | 编辑器切页 → 只发 postMessage navigate,**不重 compile** —— 大文档切页瞬时响应,iframe 不抖。`use-compile-on-change.ts` 删 currentPageId-recompile-watcher,加 currentPageId-navigate-watcher | 有了 router 就该走 router;recompile 全部 N 页的成本只在 `sceneVersion` 真变时支付 | **🔒 已锁** |
+
+**次级默认(用户 ACK 视为已锁)**:
+
+| # | 主题 | 默认 |
+|---|---|---|
+| a | 单页 fast path | `pages.length === 1` 走旧 `[currentPageId]` 路径 —— Phase 1 §11.3 #1 单页分支零字节回归。`pages.length > 1` 才走新多页路径 |
+| b | 选择联动跨页 | PreviewPane.vue `postSelection` 前先看节点的 page id(走 `node.parentId` 链直到 `type === 'PAGE'` 祖先);若与 iframe 当前 page 不同,**先**发 `navigate` 再发 `select`(否则 iframe 的 `data-node-id` 没 mount,overlay 找不到) |
+| c | iframe 首加载 | `onIframeLoad` 后立即发 `navigate` 到当前 `currentPageId` 对应 slug —— 否则 iframe 默认停 `/`(`pageIds[0]`)即首页,与编辑器初始 page 不同步 |
+| d | bridge 协议扩展 | 复用既有 `INBOUND_SOURCE='op-lowcode-editor'` / `OUTBOUND_SOURCE='op-lowcode-preview'`,加 `type: 'navigate'` 消息(payload `{ route: string }`)。`type` 联合从 `'select'` 扩成 `'select' \| 'navigate'`,bridge 内 switch 两 case 显式处理。`__openPencilPreviewBridge` 双 mount guard 不变 |
+| e | popstate + pushState 双管 | iframe 内 react-router-dom 内部 nav 走 `history.pushState` 不发 `popstate`,要 monkeypatch `pushState` 才能监到。`__openPencilPreviewBridge` guard 内只 patch 一次,patch 前 alias 真 pushState(`const nativePushState = history.pushState.bind(history)`)、patch 后转发原始调用 |
+| f | 防回环 flag | bridge 收到 inbound `navigate` 调 pushState 时设 `suppressOutbound` flag 抑制本 tick outbound;编辑器侧收到 outbound `navigate` 也用 `suppressInbound` 标记本次 `switchPage` 不再回 push 给 iframe(否则 inbound→outbound→inbound 无限循环) |
+| g | route-paths 公开化 | `PagePathInfo` 加 `pageId: string` 字段方便编辑器侧反查(目前 `info.ir.pageId` 已能拿到 —— 提升到 `info` 顶层只是简化使用)。`derivePagePaths` + `PagePathInfo` 从 `@open-pencil/compiler` 升公开导出 |
+
+> 锁定后**不在对话中重新讨论**;若用户后续推翻视为显式 scope change,更新本节。
+
+### 7.3 公开 API / Schema 改动
+
+**compiler(`packages/compiler/src/`)**:
+
+```ts
+// adapters/react/route-paths.ts — PagePathInfo 加 pageId 字段
+export interface PagePathInfo {
+  ir: IRTree
+  pageId: string  // §7 新增 —— 编辑器侧反查
+  slug: string
+  // …unchanged
+}
+
+// index.ts — 公开导出
+export { derivePagePaths, type PagePathInfo } from './adapters/react/route-paths'
+```
+
+**preview-bridge(`packages/compiler/src/adapters/react/preview-bridge.ts`)**:
+
+- `INBOUND` / `OUTBOUND` 消息 `type` 联合从 `'select'` 扩成 `'select' | 'navigate'`
+- bridge dispatch 内显式 switch 两 case(走 `never`-exhaustive guard)
+- inbound `navigate`:`nativePushState(null, '', route)` + `dispatchEvent(new PopStateEvent('popstate'))`,前后包 `suppressOutbound` flag
+- outbound `navigate`:`history.pushState` patch 截获(`history.pushState = function (...args) { nativePushState(...args); if (!suppressOutbound) parent.postMessage({ source: OUTBOUND_SOURCE, type: 'navigate', route: location.pathname }, '*') }`) + `popstate` listener 同样 emit outbound
+
+**编辑器侧(`src/app/lowcode/preview-pane/`)**:
+
+- `use-compile-on-change.ts`:`pageIds` 改 `graph.getPages().map(p => p.id)`(决定 #a 加 length-1 fast path);删 `currentPageId` 的 recompile watcher;加 `currentPageId` 的 navigate-post watcher
+- `PreviewPane.vue`:加 `postNavigate(route: string)` helper;inbound `navigate` message handler → `store.switchPage(targetPageId)`(`suppressInbound` flag 包住);`postSelection` 前 `findNodePageId(graph, id)` 反查 → 若与 iframe 当前 page 不同先 `postNavigate` 再 `postSelection`
+
+**iframe 内运行时**:无新 npm 依赖 —— `history.pushState` / `PopStateEvent` / `postMessage` 全是浏览器原生。
+
+### 7.4 不动什么
+
+- 不动 `BrowserRouter` 选择(Phase 1 §11.3 #2)/ slug 派生算法(§11.3 #3)/ `pageIds` 数组语义
+- 不引入 HashRouter / MemoryRouter
+- 不动 selection 消息现有 `type: 'select'` 形状(只加新 `'navigate'` case)
+- **不动单页(`pages.length === 1`)文档 emit 字节**(决定 #a)
+- 不动 `compile()` 签名 / `CompilerInput` / `CompilerOutput`
+- 不动 dev-server / VFS / esbuild —— 它们对页面数量无感(Phase 1 §11.4 已记)
+- 不动 `OPEN_PENCIL_PLUGIN_ID` / pluginData key 前缀 / emit 的 `useNavigate` 符号
+- 不动 IR(`IRTree.pageId` 早已存在)/ scene-graph / kiwi —— **零字节 .fig 回归**
+- 不新增 `ExprAst` / `ActionDef` / `IREventHandler` / `IRNode` / `NodeType` / `Tool` kind
+
+### 7.5 成功标准
+
+1. `bun test ./tests/engine/compiler/` 全绿;新增 `tests/engine/compiler/preview-bridge.test.ts` 覆盖 navigate 双向(字符串断言 bridge 含 `pushState` patch + `popstate` 监听 + 两个抑制 flag);`route-paths.test.ts` 加 `pageId` 字段断言
+2. `bun test ./tests/engine/kiwi/lowcode/` 全绿(本 § 无 kiwi 改动 —— 字节级零回归)
+3. `bun run check` 全绿(jscpd 0 clones)
+4. **Tauri 实测(用户主导)**:
+   - **双页文档**:编辑器左右切页 → iframe URL 跟随切换(`/` ↔ `/about`)、对应页面渲染、console 不打 `[preview]` recompile log(决定 #4)
+   - **iframe 内点 navigate**:在画布画个 BUTTON 配 `navigate` action 到第二页,preview 里点击 → iframe 跳 /about、编辑器 `currentPageId` 跟随切到 about 页
+   - **跨页选择**:在编辑器图层面板选 about 页的节点 → iframe 自动先 navigate /about 再高亮 overlay
+   - **单页文档**:行为与 Phase 1 §11.5 #5 一致(单页切片、`package.json` 无 `react-router-dom`、`src/App.tsx` 无 `BrowserRouter`)
+   - **`.fig` 存读回**:`renderCondition` / `interactiveProps` / 多页结构等本期前已工作的能力零回归
+5. 不破坏 Phase 0 §8 / Phase 1 §1 §5 §7.3 §7.4 §10.3 §11.3(除 #5 显式推翻外)§12.3 / Phase 2 §9.2 §2.2 §3.2 §4.2 §8.2 任一锁定决定
+
+### 7.6 工作分解(建议 1 名工程师,2–3 天)
+
+| Step | 任务 | 验收 / commit message |
+|---|---|---|
+| 1 | `route-paths.ts` `PagePathInfo.pageId` 字段 + 反查 helper(`findPageInfoByPageId(infos, pageId)`)+ 单测;`@open-pencil/compiler` 公开导出 `derivePagePaths` / `PagePathInfo`(`packages/compiler/src/index.ts`);`route-paths.test.ts` 加 `pageId` 字段断言 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — route-paths public API + pageId (§7)` |
+| 2 | `preview-bridge.ts` 加 inbound + outbound navigate(`type: 'select' \| 'navigate'`)+ pushState monkeypatch + popstate listener + `suppressOutbound` flag + 双 mount guard 不变;`tests/engine/compiler/preview-bridge.test.ts` 字符串断言(`pushState` patch / `popstate` / 两 flag)+ jsdom 行为级测试(模拟 inbound navigate → 验 pushState 被调 + outbound 被抑制) | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — preview-bridge navigate channel (§7)` |
+| 3 | `use-compile-on-change.ts` 切多页 compile(`pages.length === 1` fast path)、`currentPageId` 改发 navigate 不 recompile;`PreviewPane.vue` 接 inbound navigate → `store.switchPage`(包 `suppressInbound`)、`postSelection` 前节点反查 page 跨页则先 navigate;在 PreviewPane 用 `derivePagePaths` 拿 slug;手工核 single-page 文档行为未变 | `bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` 全绿;`bun run check` 全绿;`feat(lowcode): step 3 — editor↔iframe navigation bridge (§7)` |
+| 4 | walker / dispatch checklist(经验 A,本 § 无新 IR/ExprAst/ActionDef kind 但 bridge `type` 联合从 `'select'` 扩成两支 —— 核 bridge 内 switch 与 PreviewPane.vue 内 dispatch 均 exhaustive)+ 跨场景回归(`tests/engine/compiler/cross-walker/navigate-bridge.test.ts` 锚定 bridge `type` 两 case 都被覆盖);Tauri 实测(用户主导);修 bug | 用户 ACK 全过;`docs(lowcode): §7 Tauri verification` |
+
+### 7.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| inbound `navigate` 调 pushState 自身触发 patch 出 outbound `navigate` 无限循环 | 高 | 决定 #f:`suppressOutbound` flag 包住 inbound 处理;编辑器侧 `suppressInbound` 包住 `switchPage` —— 两边对称防回环 |
+| `pushState` patch 影响用户代码里的 `history.pushState` 调用 | 低 | patch 内 `nativePushState.apply(history, args)` 行为完全等同;唯一额外效应是发 1 个 outbound `navigate` postMessage,不影响用户代码语义 |
+| 大文档(>20 页)每次 sceneVersion 全 recompile 卡 | 低 | 不修;debounce 200ms + dev-server HMR diff 已够;Phase 3 再上 per-page IR 缓存。决定 #4 已降切页成本(切页不再 recompile),`sceneVersion` 真改动才编译 |
+| iframe load 与 currentPageId watch 时序竞争 | 中 | `onIframeLoad` 触发后立刻 navigate;`currentPageId` 变化也 navigate —— 两条都幂等,重复 navigate 同一 route 是 no-op |
+| 跨页 selection 时序:postNavigate 还没让 iframe 切到目标 page,postSelection 就到了 → overlay 找不到 | 中 | 决定 #b 串行(`postNavigate` → 等下一帧 → `postSelection`);bridge 内 `updateOverlay` 已有 fallback(找不到元素就隐藏);后续刷新 tick(`requestAnimationFrame` 内)会重试 |
+| Phase 1 §11.3 #5 锁定推翻被未来 reviewer 当回归 | 中(治理) | 本节顶端 callout 显式声明 scope change;§11.3 #5 旁加箭头指向本节 |
+| 单页文档(`pages.length === 1`)被新代码意外走多页路径 → emit 字节回归 | 高(决定 #a 直接被破) | `use-compile-on-change.ts` 内 `pages.length === 1` 早分支 → 与新增多页路径完全二分;`tests/engine/compiler/multi-page.test.ts` 单页用例已是字节级 fixture,新增改动会触发回归 |
+| bridge `type` 联合扩展漏处理(经验 A 在 bridge runtime 上的等价) | 中 | step 4 walker checklist 显式核 bridge dispatch + PreviewPane 内 dispatch 是 `never`-exhaustive 或显式 `default` 抛 |
+
+### 7.8 Post-mortem
+
+> 设计 2026-05-23 锁定;step 1–4 + Tauri 实测后回填。
 
 ---
 

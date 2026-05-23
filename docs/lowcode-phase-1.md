@@ -482,6 +482,8 @@ export function compile(input: CompilerInput): CompilerOutput {
 | 4 | `options.router` 字段 | Phase 1 不读；runtime 由 `pageIds.length` 单独决定多页 emit | 避免 `router: 'none' + 多页` 的语义歧义；该字段留作未来 Phase 区分 SPA / HashRouter / Next.js export 时再启用 |
 | 5 | preview-pane 仍单页 | 编辑器 preview-pane (`use-compile-on-change.ts`) 仍传 `[currentPageId]` 单页切片，命中 §11.3 决定 #1 的单页分支；多页只在 CLI 导出生效 | iframe + 路由 + HMR 三方联动复杂度高；本期先把"多页能编 + 多页能跑（CLI export）"做扎实，preview 跨页路由留作后续候选 |
 
+> **→ Phase 2 §7 已显式推翻本 #5**(2026-05-23):preview 改成多页 compile + bridge navigate 双向联动。本行记录历史,行为以 `docs/lowcode-phase-2.md` §7 为准。
+
 ### 11.4 React adapter 改动
 
 文件清单：
