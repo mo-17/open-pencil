@@ -212,6 +212,21 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
       text: { kind: 'docState', docStateName: 'cartCount' }
     })
   })
+
+  test('emits lowcode/freeLayout=true when layoutMode === FREE (Phase 2 §6)', () => {
+    const node = makeNode({ layoutMode: 'FREE' })
+    const entries = serializeLowcodeFields(node)
+    expect(entries).toHaveLength(1)
+    expect(entries[0].key).toBe('lowcode/freeLayout')
+    expect(JSON.parse(entries[0].value)).toBe(true)
+  })
+
+  test('skips lowcode/freeLayout for the other four LayoutMode values', () => {
+    for (const mode of ['NONE', 'HORIZONTAL', 'VERTICAL', 'GRID'] as const) {
+      const entries = serializeLowcodeFields(makeNode({ layoutMode: mode }))
+      expect(entries.map((e) => e.key)).not.toContain('lowcode/freeLayout')
+    }
+  })
 })
 
 /** Build a minimal NodeChange-shaped object for `extractLowcodeAndPluginData`.
@@ -455,6 +470,44 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
       ])
     )
     expect(result.bindings).toEqual(bindings)
+  })
+
+  test('hydrates lowcode/freeLayout=true into freeLayoutOverride (Phase 2 §6)', () => {
+    const result = extractLowcodeAndPluginData(
+      makeNc([
+        {
+          pluginID: OPEN_PENCIL_PLUGIN_ID,
+          key: 'lowcode/freeLayout',
+          value: JSON.stringify(true)
+        }
+      ])
+    )
+    expect(result.freeLayoutOverride).toBe(true)
+    expect(result.pluginData).toEqual([])
+  })
+
+  test('drops a non-true lowcode/freeLayout value defensively', () => {
+    // A hand-edited .fig with `false` / `"true"` / `1` / `null` should not
+    // accidentally trigger the FREE override.
+    for (const bad of [false, 'true', 1, null, {}, 'FREE']) {
+      const result = extractLowcodeAndPluginData(
+        makeNc([
+          {
+            pluginID: OPEN_PENCIL_PLUGIN_ID,
+            key: 'lowcode/freeLayout',
+            value: JSON.stringify(bad)
+          }
+        ])
+      )
+      expect(result.freeLayoutOverride).toBeUndefined()
+    }
+  })
+
+  test('legacy .fig with no lowcode/freeLayout entry leaves freeLayoutOverride undefined', () => {
+    // The whole point of pluginData persistence: pre-§6 .fig files round-trip
+    // with no FREE flag and no behaviour change.
+    const result = extractLowcodeAndPluginData(makeNc([]))
+    expect(result.freeLayoutOverride).toBeUndefined()
   })
 })
 

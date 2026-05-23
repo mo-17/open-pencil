@@ -38,6 +38,12 @@ export const LOWCODE_DOCUMENT_STATE_KEY = 'lowcode/documentState'
  *  kiwi serializes them as 'RECTANGLE' via `mapToFigmaType`'s default arm,
  *  so without this side-channel they all become rectangles after a save. */
 export const LOWCODE_NODE_TYPE_KEY = 'lowcode/nodeType'
+/** Phase 2 §6: `layoutMode: 'FREE'` is also outside the vendored Figma
+ *  enum (`stackMode` carries HORIZONTAL/VERTICAL/undefined only — see
+ *  `serialize.ts:285 serializeLayoutProps`). Presence of this flag (value
+ *  must be boolean `true`) overrides the kiwi-restored `layoutMode` from
+ *  whatever stack mode the schema gave back (typically NONE) to FREE. */
+export const LOWCODE_FREE_LAYOUT_KEY = 'lowcode/freeLayout'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -62,7 +68,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_INTERACTIVE_PROPS_KEY,
   LOWCODE_RENDER_CONDITION_KEY,
   LOWCODE_DOCUMENT_STATE_KEY,
-  LOWCODE_NODE_TYPE_KEY
+  LOWCODE_NODE_TYPE_KEY,
+  LOWCODE_FREE_LAYOUT_KEY
 ])
 
 /**
@@ -90,6 +97,12 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   }
   if (isNonEmpty(node.lowcodeDocumentState)) {
     entries.push(makeEntry(LOWCODE_DOCUMENT_STATE_KEY, node.lowcodeDocumentState))
+  }
+  // Phase 2 §6: persist the FREE flag only when explicitly set; absent ≡
+  // false. Legacy .fig files without the flag stay byte-identical
+  // (decision §12.3 #4 + §6 risk-mitigation).
+  if (node.layoutMode === 'FREE') {
+    entries.push(makeEntry(LOWCODE_FREE_LAYOUT_KEY, true))
   }
   return entries
 }
@@ -135,6 +148,11 @@ export interface ExtractedLowcodeAndPluginData {
   /** Phase 2 §2: document-level state declarations (only the root node
    *  carries this in practice; on other nodes it stays undefined). */
   lowcodeDocumentState?: DocumentStateDef[]
+  /** Phase 2 §6: when present, callers must override the kiwi-restored
+   *  `layoutMode` to `'FREE'`. The vendored schema can only carry
+   *  HORIZONTAL/VERTICAL/undefined in `stackMode`, so we store FREE
+   *  out-of-band via the `lowcode/freeLayout` flag and restore here. */
+  freeLayoutOverride?: true
 }
 
 export function extractLowcodeAndPluginData(
@@ -192,6 +210,11 @@ function assignLowcodeField(
       return
     case LOWCODE_DOCUMENT_STATE_KEY:
       target.lowcodeDocumentState = value as DocumentStateDef[]
+      return
+    case LOWCODE_FREE_LAYOUT_KEY:
+      // Strict boolean-true gate — anything else is treated as absent so a
+      // hand-edited / malformed .fig doesn't accidentally toggle FREE.
+      if (value === true) target.freeLayoutOverride = true
       return
   }
 }

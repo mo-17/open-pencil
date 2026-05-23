@@ -270,4 +270,51 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
 
     expect(reimportedRoot?.lowcodeDocumentState).toBeUndefined()
   })
+
+  test('FRAME with layoutMode FREE round-trips through .fig (Phase 2 §6)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('FRAME', page.id, {
+      name: 'FreeCard',
+      width: 300,
+      height: 200,
+      layoutMode: 'FREE'
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedFrame = findByName(reimported, 'FreeCard')
+
+    expect(reimportedFrame.layoutMode).toBe('FREE')
+  })
+
+  test('FRAME without FREE → reimported FRAME keeps the original layoutMode (byte regression)', async () => {
+    // Pre-§6 .fig files have no `lowcode/freeLayout` entry, so a FRAME with
+    // a non-FREE layoutMode (NONE / HORIZONTAL / VERTICAL / GRID) must
+    // round-trip unchanged — `freeLayoutOverride` stays undefined and the
+    // kiwi-restored mode wins.
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('FRAME', page.id, {
+      name: 'FlexRow',
+      width: 400,
+      height: 80,
+      layoutMode: 'HORIZONTAL',
+      itemSpacing: 16,
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED'
+    })
+    graph.createNode('FRAME', page.id, {
+      name: 'PlainBox',
+      width: 100,
+      height: 100,
+      layoutMode: 'NONE'
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(findByName(reimported, 'FlexRow').layoutMode).toBe('HORIZONTAL')
+    expect(findByName(reimported, 'PlainBox').layoutMode).toBe('NONE')
+  })
 })

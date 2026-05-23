@@ -449,7 +449,10 @@ export function nodeChangeToProps(
   // Phase 1 §12: extract lowcode entries up-front so we can let the
   // `lowcode/nodeType` side-channel override `mapNodeType`'s RECTANGLE
   // fallback for the 6 lowcode NodeTypes (kiwi has no schema for them).
-  const { nodeTypeOverride, ...lowcodeRest } = extractLowcodeAndPluginData(nc)
+  // Phase 2 §6: `freeLayoutOverride` peels off the same way so we can
+  // override `layoutMode` to `'FREE'` after `convertLayoutProps`.
+  const { nodeTypeOverride, freeLayoutOverride, ...lowcodeRest } =
+    extractLowcodeAndPluginData(nc)
   let nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' =
     nodeTypeOverride ?? mapNodeType(nc.type)
   if (nodeType === 'FRAME' && isComponentSet(nc)) nodeType = 'COMPONENT_SET'
@@ -479,6 +482,11 @@ export function nodeChangeToProps(
     horizontalConstraint: mapConstraint(nc.horizontalConstraint as string),
     verticalConstraint: mapConstraint(nc.verticalConstraint as string),
     ...convertLayoutProps(nc),
+    // Phase 2 §6: `convertLayoutProps` restored `layoutMode` from kiwi's
+    // `stackMode` (HORIZONTAL/VERTICAL/undefined → NONE). The
+    // `lowcode/freeLayout` pluginData flag is the only signal that the
+    // user actually picked FREE, so apply it AFTER the convert spread.
+    ...(freeLayoutOverride === true ? { layoutMode: 'FREE' as const } : {}),
     ...vectorAndStrokeProps,
     minWidth: (nc.minWidth ?? null) as number | null,
     maxWidth: (nc.maxWidth ?? null) as number | null,
