@@ -19,7 +19,7 @@
 | 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **§3 ✅ 2026-05-22**(HEAD `df5e1b4`) |
 | 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 ✅ 2026-05-23** |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
-| 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽 | TBD §6 |
+| 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽(本节内显式推翻 §1.5 #3 + #5);邻近顺手补 `layoutPositioning='ABSOLUTE'` emit honor | **§6 开工中**(详见 §6) |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router(本节内显式推翻 §11 #5) | **§7 ✅ 2026-05-23** |
 | 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 ✅ 2026-05-23** |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
@@ -844,19 +844,169 @@ export interface IRApiCallHandler {
 
 ---
 
-## 6. 候选 §6 — `layoutMode: 'FREE'`
+## 6. §6 详细设计:`layoutMode: 'FREE'` + `layoutPositioning: 'ABSOLUTE'` emit
 
-**当前**: §1 只在 "CANVAS → 直接子项"一层做绝对定位。深层嵌套(FRAME 里再放一个 free-position 的子)用不了。
+> 2026-05-23 用户挑定 Phase 2 第七项开工(§7 收尾后)。形式参照 §3 / §4 / §7 / §8。
+> **5 项主决定 + 9 项次级默认 + 邻近能力(`layoutPositioning: 'ABSOLUTE'` emit honor)2026-05-23 已由用户在对话中一次性锁定**。
+> **本节即对 Phase 1 §1.5 决定 #3「只针对 CANVAS → 直接子项一层」+ #5「Phase 1 不引入 `layoutMode: 'FREE'`」两条锁的显式推翻(scope change)**;Phase 1 §1.5 仍记录历史,但行为以本节为准。
+>
+> **状态:🔨 开工中**(step 1–4)。
 
-**Phase 2 目标**: 加 `layoutMode: 'FREE'` schema 字段,任意 FRAME 可以切到 free 模式。
+### 6.1 现状与问题
 
-**待锁决定**:
-- schema 字段位置:现有 `layoutMode: 'NONE' | 'HORIZONTAL' | 'VERTICAL'`,加 `'FREE'`?
-- Properties 面板 UI:在哪里出"FREE"开关?
-- 嵌套规则:FREE 容器里的 auto-layout 容器,sizing 怎么算?
-- 跟 §1 联动:CANVAS 默认就是 FREE 吗?如果是,§1 的 `parentIsCanvas` 判断可以放宽成 `parentIsFreeLayout`
+**问题 1 —— 父级 toggle 缺失**:Phase 1 §1 让 CANVAS 直接子项 emit 成 `position: absolute; left/top`,但只此一层。任何深层嵌套(FRAME 里再放节点希望按 x/y 摆)都被 emit 走 flex/grid 流。用户对标 Bubble 的「FRAME → free positioning」期望(一个 Modal 容器、一个浮动卡片堆等典型 UI)无法表达。
 
-**风险**: 复杂度真不低;Bubble 也没有像样的混合 layout。**优先级低,Phase 2 末期再启动**。
+**问题 2 —— 子级 opt-out emit 漏**:Figma 现有字段 `SceneNode.layoutPositioning: 'AUTO' | 'ABSOLUTE'`(`types.ts:308`),让 auto-layout FRAME 里某个子项跳出 flex 流。canvas-side 已 honor —— Yoga(`layout.ts:107/217/259`)跳过 ABSOLUTE 子项,drag/snap(`packages/vue/src/shared/input/*`)也不 snap。但 **emit 没 honor** —— `tailwind-classes.ts:80 applyLayoutStyle` 永远走 flex 流,ABSOLUTE 子项在 preview/CLI export 里被 emit 成 flex item。
+
+§6 合并解决这两个 gap。
+
+**关键现状(`layoutMode === 'NONE'` 散点)**:14 处 callsite(linter rule 3 处:`consistent-spacing` / `no-detached-instances` / `prefer-auto-layout`;describe 7 处:`issues` 5 + `summaries` 1 + `layout-issues` 1;tools 2 处:`rpc/analyze-commands` + `editor/layout-mode`;shell 1 处:`keyboard/actions`;jsx 1 处:本节改;Yoga 1 处:`layout/apply.ts:52`)。引入 `'FREE'` 后,所有「NONE 走特殊路径」处都要决定是否同样处理 FREE。
+
+### 6.2 关键决定
+
+> 形式同 §3.2 / §4.2 / §7.2 / §8.2。**#1–#5 + 邻近能力已锁(2026-05-23 对话);#a–#i 为次级默认,用户一次性 ACK 视为已锁。**
+
+| # | 主题 | 决定 | 理由 | 状态 |
+|---|---|---|---|---|
+| 1 | 持久化(旁路 same as §12 / §8) | `layoutMode: 'FREE'` 经 `lowcode/freeLayout: true` pluginData 旁路持久化。kiwi 二进制按既有四枚举仍存 `'NONE'`,读回时若 pluginData flag 在则覆盖回 `'FREE'`。**零 vendored `kiwi-schema/` 改动**(Phase 1 §12.3 #1 不动) | §12 既有机制,新枚举值自动套用;不动 vendored | **🔒 已锁** |
+| 2 | type 扩展 | `LayoutMode` 联合从 `'NONE' \| 'HORIZONTAL' \| 'VERTICAL' \| 'GRID'` 扩成加 `'FREE'`。in-memory 类型携带 FREE,kiwi 回环时还原 | 简单且 tsgo 能在 exhaustive switch 处提示部分新 case;但 `=== 'NONE'` 比较不报错,要 helper(#5) | **🔒 已锁** |
+| 3 | emit 改动 | `getNodeContext.parentIsCanvas` **重命名为 `parentIsFreeLayout`**:`parent?.type === 'CANVAS' \|\| parent?.layoutMode === 'FREE'`。**CANVAS 隐式 FREE**(本来就是,不动 CANVAS 节点 `layoutMode` 字段);既有 absolute 分支(`applyLayoutStyle`)直接用 `ctx.parentIsFreeLayout`。**邻近能力**:`applyLayoutStyle` 加 `if (node.layoutPositioning === 'ABSOLUTE')` 5 行分支,emit absolute + left/top + width/height(与 parentIsFreeLayout 走同一兜底路径) | 与 §1 #3「只 CANVAS 一层」显式推翻;复用既有 absolute 分支零新 CSS 路径;`layoutPositioning='ABSOLUTE'` emit honor 是「Figma 字段早有、emit 漏的」典型 phase 0 债务 | **🔒 已锁** |
+| 4 | canvas-side Yoga | FREE 容器的子项**不走 Yoga**(x/y 由用户拖,Yoga 不覆写)。`layout/apply.ts:52` `if (... layoutMode === 'NONE')` 扩成 `... === 'NONE' \|\| ... === 'FREE'`(或更优 `!isAutoLayoutMode(...)`,见 #5) | Yoga 跑 FREE 会覆盖用户摆放,必须跳;1 行改 | **🔒 已锁** |
+| 5 | helper + 14 处 sweep | 新引 helper `isAutoLayoutMode(mode: LayoutMode): mode is 'HORIZONTAL' \| 'VERTICAL' \| 'GRID'`,把 14 处 `layoutMode === 'NONE'` 现场逐个改成 `!isAutoLayoutMode(...)` —— FREE 与 NONE 在「非 auto-layout」语义上等价。Properties panel layout-mode dropdown 加 "Free" 选项;`editor/layout-mode.ts` `layoutModeUpdates` 处理 FREE | 没有 helper 的话,`=== 'NONE'` 在联合扩展后仍合法 type,tsgo **不报错**,14 处会默默漏(经验 A 经典:`default`-兜底 switch / scalar equality 类型扩展不报错) | **🔒 已锁** |
+
+**显式声明**:本节合并推翻 Phase 1 §1.5 决定 #3 + #5;在 `docs/lowcode-phase-1.md` §1.5 两条旁加箭头指向本节。
+
+**次级默认(用户 ACK 视为已锁)**:
+
+| # | 主题 | 默认 |
+|---|---|---|
+| a | CANVAS 隐式 FREE | 不动 CANVAS 节点 `layoutMode` 字段(始终 'NONE');FREE 行为通过 `getNodeContext.parentIsFreeLayout` 合并判断 |
+| b | 新 FRAME 默认 | `layoutMode: 'NONE'` 不变;FREE 是用户主动 opt-in |
+| c | 14 处 sweep | 全用 helper `isAutoLayoutMode` 改写:linter rule 3 处 / describe issues 7 处 / tools 2 处 / editor 1 处 / shell 1 处。改完后凡是「NONE 走特殊路径」的,FREE 都走同样路径(均是「非 auto-layout」语义) |
+| d | Figma API | `figma-api/serialization.ts` FREE → NONE 暴露给 Figma plugin code(Figma 不知道 FREE);反向同理(读 Figma 注入的 NONE,需用户在编辑器手动切 FREE,无法自动推断) |
+| e | pluginData key | `lowcode/freeLayout`(value 必须 boolean true;absent 或 false 视作未启用);新 key 进 `LOWCODE_PLUGIN_KEYS` 集合;复用 §12 的 `pluginData` 同一通道 |
+| f | i18n | `panels.layoutMode.free` = "自由" / "Free";messages.ts + 7 locale 同步 |
+| g | sizing 兜底 | FREE 容器子项 + `layoutPositioning='ABSOLUTE'` 子项均沿用 §1 已有的 `if (!style.width) style.width = px(node.width); if (!style.height) ...` 路径,HUG sizing 落回显式 width/height(同 CANVAS 直接子项现状) |
+| h | dropdown 顺序 | `[NONE, HORIZONTAL, VERTICAL, GRID, FREE]`(FREE 末尾,与 type 扩展顺序一致) |
+| i | keyboard 不动 | `src/app/shell/keyboard/actions.ts:76` 的 `'NONE' ↔ 'VERTICAL'` toggle 快捷键保持原样,FREE 不进入快捷循环;要 FREE 走 Properties panel |
+
+> 锁定后**不在对话中重新讨论**;若用户后续推翻视为显式 scope change,更新本节。
+
+### 6.3 公开 API / Schema 改动
+
+**SceneGraph(`packages/core/src/scene-graph/`)**:
+
+```ts
+// types.ts — LayoutMode 联合追加 FREE
+export type LayoutMode = 'NONE' | 'HORIZONTAL' | 'VERTICAL' | 'GRID' | 'FREE'
+
+// types.ts (新增 helper,临近 LayoutMode 定义)
+export function isAutoLayoutMode(
+  mode: LayoutMode
+): mode is 'HORIZONTAL' | 'VERTICAL' | 'GRID' {
+  return mode === 'HORIZONTAL' || mode === 'VERTICAL' || mode === 'GRID'
+}
+```
+
+**14 处 `layoutMode === 'NONE'` callsite** 全用 `!isAutoLayoutMode(node.layoutMode)` 替换。
+
+**JSX exporter(`packages/core/src/io/formats/jsx/`)**:
+
+```ts
+// helpers.ts — getNodeContext 改字段名 + 语义放宽
+export function getNodeContext(node: SceneNode, graph: SceneGraph) {
+  const parent = node.parentId ? graph.getNode(node.parentId) : null
+  return {
+    isAutoLayout: isAutoLayoutMode(node.layoutMode),
+    isGrid: node.layoutMode === 'GRID',
+    isFlex: node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL',
+    parentIsAutoLayout: parent ? isAutoLayoutMode(parent.layoutMode) : false,
+    parentIsGrid: parent ? parent.layoutMode === 'GRID' : false,
+    // §6: 重命名 + 语义放宽。CANVAS 隐式 FREE。
+    parentIsFreeLayout: parent
+      ? parent.type === 'CANVAS' || parent.layoutMode === 'FREE'
+      : false
+  }
+}
+
+// tailwind-classes.ts — applyLayoutStyle 末尾改两行 + 加邻近 5 行
+function applyLayoutStyle(style, node, graph): void {
+  // …既有 Grid/Flex/默认尺寸分支不变…
+  if (ctx.parentIsAutoLayout && node.layoutGrow > 0) style.flexGrow = '1'
+  if (ctx.isAutoLayout) applyPadding(style, node)
+
+  // §6: parentIsCanvas → parentIsFreeLayout(语义放宽)
+  if (ctx.parentIsFreeLayout || node.layoutPositioning === 'ABSOLUTE') {
+    style.position = 'absolute'
+    style.left = px(node.x)
+    style.top = px(node.y)
+    if (!style.width) style.width = px(node.width)
+    if (!style.height) style.height = px(node.height)
+  }
+}
+```
+
+**Yoga(`packages/core/src/layout/apply.ts`)**:`line 52` `if (!updated || updated.layoutMode === 'NONE') return` → `if (!updated || !isAutoLayoutMode(updated.layoutMode)) return`。
+
+**Kiwi 持久化(`packages/core/src/kiwi/node-change/lowcode-plugin-data.ts`)**:
+- `LOWCODE_PLUGIN_KEYS` 加 `'freeLayout'`
+- 写端:`assignLowcodeField` 检查 `node.layoutMode === 'FREE'` → 写 `lowcode/freeLayout: true` pluginData;kiwi 二进制仍按 `layoutMode: 'NONE'` 存(序列化兼容)
+- 读端:`applyLowcodeField` 检查 `lowcode/freeLayout: true` → 覆盖回 `layoutMode: 'FREE'`
+
+**Figma API(`packages/core/src/figma-api/serialization.ts`)**:layoutMode 序列化 / 反序列化时 FREE ↔ NONE 双向映射(Figma plugin code 看不到 FREE)。
+
+**editor(`packages/core/src/editor/layout-mode.ts`)**:`layoutModeUpdates` 加 FREE 分支(切到 FREE 不调 `applyGridDefaults` / `autoLayoutDefaults`)。
+
+**UI(`src/components/.../LayoutModePanel.vue` 或类似)**:dropdown 加 "Free" 选项;i18n key `panels.layoutMode.free`(+7 locale)。
+
+### 6.4 不动什么
+
+- 不动 `BrowserRouter` / route 派生 / preview-bridge 协议(§7 边界)
+- 不动 vendored `kiwi-schema/`(Phase 1 §12.3 #1 + §6 决定 #1)
+- 不动 CANVAS 节点的 `layoutMode` 字段(始终 'NONE',决定 #a)
+- 不动既有 6 个交互组件(BUTTON/INPUT/CHECKBOX/FORM/LIST/SELECT)+ 4 个 §8 组件 的 layoutMode 默认 / emit
+- 不动 keyboard `'NONE' ↔ 'VERTICAL'` 快捷键(决定 #i)
+- 不动 `OPEN_PENCIL_PLUGIN_ID` / 既有 pluginData key 前缀
+- 不动 `SceneNode.layoutPositioning` 字段本身(已存在);只补 emit 端 honor
+
+### 6.5 成功标准
+
+1. `bun test ./tests/engine/compiler/` 全绿;新增 `tests/engine/compiler/free-layout.test.ts` 覆盖至少:FREE FRAME 子项 emit absolute / `layoutPositioning='ABSOLUTE'` 子项 emit absolute / 嵌套 FREE-in-FREE / FREE 内 auto-layout 子项 / sizing 兜底 / 单页+多页 compile 同 §1/§11 字节回归
+2. `bun test ./tests/engine/kiwi/lowcode/` 全绿;新增 FREE pluginData 往返测试 + 旧 .fig 字节回归
+3. `bun run check` 全绿(jscpd 0 clones、Steiger pass)
+4. **Tauri 实测(用户主导)**:
+   - 画一个 FRAME → Properties 切 Free → 拖 BUTTON 进去 → BUTTON 按 x/y 摆,不被 flex 流挤
+   - canvas-side 显示 BUTTON 在拖放点(不重排)
+   - preview iframe 渲染相同
+   - `.fig` 存读回:FREE 标记保留
+   - 在 auto-layout FRAME 里挑一个子项设 `layoutPositioning='ABSOLUTE'`(可走 Figma API / 程序设置 —— §6 不补 UI),preview 看 ABSOLUTE 子项跳出 flex 流
+   - 单页文档零回归(§1 已 Tauri 实测过的 demo 行为不变)
+5. 不破坏 Phase 0 §8 / Phase 1 §1.3(除 #3/#5 显式推翻外)/ §5 §7.3 §7.4 §10.3 §11.3 §12.3 / Phase 2 §9.2 §2.2 §3.2 §4.2 §8.2 §7.2 任一锁定决定
+
+### 6.6 工作分解(建议 1 名工程师,3–4 天)
+
+| Step | 任务 | 验收 / commit message |
+|---|---|---|
+| 1 | `LayoutMode` 加 'FREE' + `isAutoLayoutMode` helper;**14 处 `layoutMode === 'NONE'` callsite 全 sweep** 改成 `!isAutoLayoutMode(...)`;Yoga `apply.ts:52` 改用 helper;helper + sweep 的单元/类型单测 | `bun test ./tests/engine/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — LayoutMode 'FREE' + isAutoLayoutMode sweep (§6)` |
+| 2 | jsx exporter:`getNodeContext.parentIsCanvas` 改名 `parentIsFreeLayout` + 语义放宽;`applyLayoutStyle` 写新条件 + `layoutPositioning='ABSOLUTE'` 5 行;`tests/engine/compiler/free-layout.test.ts` emit 单测 | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — FREE + layoutPositioning ABSOLUTE emit (§6)` |
+| 3 | kiwi 持久化:`lowcode/freeLayout` pluginData hook + 读写 + `LOWCODE_PLUGIN_KEYS` + 往返测试 + 旧 .fig 字节回归;Figma API serialization FREE↔NONE 映射 | `bun test ./tests/engine/kiwi/lowcode/` 全绿;`bun run check` 全绿;`feat(lowcode): step 3 — FREE pluginData persistence + Figma API mapping (§6)` |
+| 4 | editor:`layout-mode.ts` FREE 处理;UI Properties panel dropdown + i18n×8;walker checklist(经验 A:所有 `LayoutMode` switch / `=== 'NONE'` callsite)+ 跨场景回归 `tests/engine/compiler/cross-walker/free-layout.test.ts`;Tauri 实测 | 用户 ACK 全过;`docs(lowcode): §6 Tauri verification` |
+
+### 6.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 14 处 `layoutMode === 'NONE'` 漏 sweep → FREE 在某 lint / describe / tools 路径行为分叉 | 高(经验 A 经典) | 决定 #5 引 helper + step 1 显式 sweep;`bun run check` 跑全仓 grep 验残留;walker checklist (step 4) 二次核 |
+| Yoga 漏跳 FREE → 用户拖的 x/y 被 Yoga 覆写 → 画布看 layout 跳变 | 高 | 决定 #4 + 引 helper;`free-layout.test.ts` end-to-end 测试断言「FREE FRAME 子项 x/y SceneGraph 与 Yoga 输出一致」 |
+| kiwi 旧 .fig 不含 `lowcode/freeLayout` → 字节回归挂 | 低 | pluginData 缺省即视作未启用;`LOWCODE_PLUGIN_KEYS` 同 §12 控制写端 only;旧 .fig 字节级回归测试钉死 |
+| Figma plugin code 期望读到 FREE → 永远拿不到 | 低 | 决定 #d:Figma API 强制 FREE→NONE 暴露,文档提示;Figma 本来就不知道 FREE,这是预期 |
+| `layoutPositioning='ABSOLUTE'` emit honor 与 parentIsFreeLayout 双重 condition 冲突(同子项同时满足两条件)| 低 | `applyLayoutStyle` 用 `OR` 合并 condition,语义等价(absolute + left/top + sizing 兜底),不重复 emit |
+| Phase 1 §1.5 #3 / #5 锁定推翻被未来 reviewer 当回归 | 中(治理) | 本节顶端 callout 显式声明 scope change;§1.5 #3 + #5 旁加箭头指向本节 |
+| HUG sizing × FREE 容器子项 → 子项希望 0 尺寸 但 absolute 期望显式 | 低 | 决定 #g:沿用 §1 已有 `if (!style.width)` 兜底路径,所有 absolute 子项(FREE 父 + layoutPositioning ABSOLUTE)统一兜底 |
+
+### 6.8 Post-mortem
+
+> 设计 2026-05-23 锁定;step 1–4 + Tauri 实测后回填。
 
 ---
 

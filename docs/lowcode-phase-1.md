@@ -228,6 +228,8 @@ CANVAS
 | 4 | Page wrapper | 默认 `relative min-h-screen`（无论是否真有 absolute 子项） | 单一 wrapper 类型，AutoLayout-only 页面也无副作用 |
 | 5 | 不引入 `layoutMode: 'FREE'` | Phase 1 不动 schema | 留给 Phase 2 重新评估是否要在树内任意层混合 |
 
+> **→ Phase 2 §6 已显式推翻本 #3 + #5**(2026-05-23):任意 FRAME 可切 `layoutMode: 'FREE'`,`getNodeContext.parentIsCanvas` 重命名 `parentIsFreeLayout` 语义放宽(`CANVAS || parent.layoutMode === 'FREE'`);邻近补 `layoutPositioning='ABSOLUTE'` emit honor。本两行记录历史,行为以 `docs/lowcode-phase-2.md` §6 为准。
+
 ---
 
 ## 6. 风险与缓解
