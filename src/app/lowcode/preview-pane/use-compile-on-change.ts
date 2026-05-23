@@ -1,6 +1,6 @@
 // Wires the editor scene-graph into the lowcode preview pipeline:
 //
-//   sceneVersion --(200ms debounce)--> compile(currentPage)
+//   sceneVersion --(200ms debounce)--> compile(all pages | currentPage)
 //                                          |
 //                                          v
 //                                  Map<path, content>
@@ -11,11 +11,19 @@
 //                                          v
 //                                  iframe HMR refresh
 //
+// Phase 2 §7: multi-page docs (pages.length > 1) compile all pages so the
+// iframe runs the same react-router-dom router shell as CLI export, and
+// editor↔iframe navigation rides the preview-bridge `navigate` channel
+// (owned by PreviewPane.vue, not this composable). Single-page docs keep
+// the legacy [currentPageId] fast path for byte-identical regression with
+// Phase 1 §11.5 #5 (§7 decision #a). Switching `currentPageId` no longer
+// triggers a recompile — only `sceneVersion` does (§7 decision #4).
+//
 // Tauri-only. The sidecar runs `bun packages/compiler/src/dev-server.ts`
 // via @tauri-apps/plugin-shell; that path is never imported statically so
 // the browser bundle stays clean.
 
-import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { onBeforeUnmount, ref, type Ref } from 'vue'
 import { watchDebounced } from '@vueuse/core'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
@@ -214,10 +222,18 @@ export function useCompileOnChange(): UseCompileOnChangeResult {
     if (!sidecar) return
     try {
       const graph = store.graph
-      const pageId = store.state.currentPageId
+      const pages = graph.getPages()
+      // §7 decision #a: single-page docs keep the legacy fast path so the
+      // emitted bytes stay identical to Phase 1 §11.5 #5. Multi-page docs
+      // hand all pages to the compiler so the iframe boots the same
+      // BrowserRouter shell as CLI export — that's what makes editor↔iframe
+      // navigation possible (decision #1).
+      const pageIds = pages.length > 1
+        ? pages.map((p) => p.id)
+        : [store.state.currentPageId]
       const out = compile({
         graph,
-        pageIds: [pageId],
+        pageIds,
         options: withDefaults({ packageName: 'openpencil-preview' })
       })
       for (const w of out.warnings) {
@@ -256,20 +272,15 @@ export function useCompileOnChange(): UseCompileOnChangeResult {
     { debounce: DEBOUNCE_MS }
   )
 
-  // Re-push on page switch too — switching currentPageId without a
-  // sceneVersion bump should still rebuild the preview.
-  const stopPageWatch = watch(
-    () => store.state.currentPageId,
-    () => {
-      if (!sidecar) return
-      recompileAndPush()
-    }
-  )
+  // §7 decision #4: switching `currentPageId` no longer rebuilds the
+  // preview — it just navigates the existing iframe via the bridge
+  // (handled in PreviewPane.vue). For single-page docs the watcher would
+  // have been a no-op anyway (only one page id exists); for multi-page
+  // we explicitly avoid the recompile cost on every page switch.
 
   onBeforeUnmount(() => {
     cancelled = true
     stopDebounced()
-    stopPageWatch()
     if (sidecar) {
       void sidecar.dispose()
       sidecar = null

@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { useEventListener } from '@vueuse/core'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+
+import { derivePagePaths, type PagePathInfo } from '@open-pencil/compiler'
+import type { IRTree } from '@open-pencil/compiler/ir/types'
 
 import { useEditorStore } from '@/app/editor/active-store'
 
 import { useCompileOnChange } from './use-compile-on-change'
 
-// docs/lowcode-phase-0.md §5.4 — two-way selection bridge over postMessage.
-// The compiled iframe ships an Alt/Option-click handler + a highlight overlay
-// (see packages/compiler/src/adapters/react/preview-bridge.ts).
+// docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
+// Two message kinds: 'select' (overlay highlight, Alt/Option-click round-trip)
+// and 'navigate' (editor↔iframe page sync). The compiled iframe ships the
+// other side in packages/compiler/src/adapters/react/preview-bridge.ts.
 const INBOUND_SOURCE = 'op-lowcode-preview'
 const OUTBOUND_SOURCE = 'op-lowcode-editor'
 
@@ -17,6 +21,13 @@ const store = useEditorStore()
 
 const iframeKey = ref(0)
 const iframeEl = ref<HTMLIFrameElement | null>(null)
+
+// §7 decision #f mirror: while the editor is replaying an inbound `navigate`
+// (iframe → editor) via `store.switchPage`, the resulting `currentPageId`
+// change must not post outbound navigate back to the iframe. Without this
+// flag the iframe → editor → iframe echo would loop until one side missed
+// a frame.
+let suppressOutboundNavigate = false
 
 function reload(): void {
   forceRecompile()
@@ -40,23 +51,80 @@ const statusLabel = computed(() => {
   return ''
 })
 
+// §7 decision #g: pageId↔slug round-trip uses the compiler's single source
+// of truth (`derivePagePaths`). `derivePagePaths` only reads `ir.pageId`
+// and `ir.pageName`, so we hand it minimal IR stubs built from the
+// SceneGraph and skip the full `collectTree` pass on every nav.
+function getPagePathInfos(): readonly PagePathInfo[] {
+  const stubs: IRTree[] = store.graph.getPages().map((p) => ({
+    pageId: p.id,
+    pageName: p.name,
+    children: [],
+    states: [],
+    docStates: [],
+    docStateReads: [],
+    docStateWrites: [],
+    warnings: []
+  }))
+  return derivePagePaths(stubs)
+}
+
+function findRouteForPageId(pageId: string): string | null {
+  return getPagePathInfos().find((info) => info.pageId === pageId)?.route ?? null
+}
+
+function findPageIdForRoute(route: string): string | null {
+  return getPagePathInfos().find((info) => info.route === route)?.pageId ?? null
+}
+
+// §7 decision #b: a selection of a node on a non-current page needs the
+// iframe to mount that page's DOM first or the bridge's `data-node-id`
+// querySelector misses and the overlay stays hidden.
+function findPageIdOfNode(nodeId: string): string | null {
+  let cur = store.graph.getNode(nodeId)
+  while (cur && cur.type !== 'CANVAS') {
+    cur = cur.parentId ? store.graph.getNode(cur.parentId) : undefined
+  }
+  return cur?.id ?? null
+}
+
 function currentSelectionId(): string | null {
   const ids = [...store.state.selectedIds]
   return ids.length === 1 ? ids[0] : null
 }
 
-function postSelection(): void {
-  const target = iframeEl.value?.contentWindow
-  if (!target) return
-  target.postMessage(
-    { source: OUTBOUND_SOURCE, type: 'select', id: currentSelectionId() },
+function postIframe(payload: { type: 'select'; id: string | null } | { type: 'navigate'; route: string }): void {
+  iframeEl.value?.contentWindow?.postMessage(
+    { source: OUTBOUND_SOURCE, ...payload },
     '*'
   )
 }
 
+function postNavigateToCurrent(): void {
+  const route = findRouteForPageId(store.state.currentPageId)
+  if (!route) return
+  postIframe({ type: 'navigate', route })
+}
+
+function postSelection(): void {
+  const id = currentSelectionId()
+  if (id) {
+    const nodePageId = findPageIdOfNode(id)
+    if (nodePageId) {
+      const route = findRouteForPageId(nodePageId)
+      // The bridge's inbound navigate handler no-ops on same-route, so
+      // always sending is safe and saves a comparison branch here.
+      if (route) postIframe({ type: 'navigate', route })
+    }
+  }
+  postIframe({ type: 'select', id })
+}
+
 function onIframeLoad(): void {
-  // Bridge installs on every reload — sync the current selection so the
-  // overlay matches state from the previous mount.
+  // After every iframe reload the bridge starts fresh — replay current
+  // editor state (target page + selection) so the iframe doesn't sit on
+  // the default `/` route or with a stale overlay.
+  postNavigateToCurrent()
   postSelection()
 }
 
@@ -64,12 +132,46 @@ let unsubscribeSelection: (() => void) | null = null
 
 useEventListener(window, 'message', (event: MessageEvent) => {
   if (event.source !== iframeEl.value?.contentWindow) return
-  const data = event.data as { source?: unknown; type?: unknown; id?: unknown } | null
-  if (!data || data.source !== INBOUND_SOURCE || data.type !== 'select') return
-  if (typeof data.id !== 'string' || data.id === '') return
-  if (!store.graph.getNode(data.id)) return
-  store.select([data.id])
+  const data = event.data as {
+    source?: unknown
+    type?: unknown
+    id?: unknown
+    route?: unknown
+  } | null
+  if (!data || data.source !== INBOUND_SOURCE) return
+
+  // §7 step 4 walker concern: dispatch on `type` must stay exhaustive.
+  // The bridge widens its outbound `type` from 'select' to
+  // 'select' | 'navigate' — both branches handled below; unknown values
+  // silently drop (acceptable for a postMessage channel).
+  if (data.type === 'select') {
+    if (typeof data.id !== 'string' || data.id === '') return
+    if (!store.graph.getNode(data.id)) return
+    store.select([data.id])
+    return
+  }
+
+  if (data.type === 'navigate') {
+    if (typeof data.route !== 'string') return
+    const targetPageId = findPageIdForRoute(data.route)
+    if (!targetPageId || targetPageId === store.state.currentPageId) return
+    suppressOutboundNavigate = true
+    void store.switchPage(targetPageId).finally(() => {
+      suppressOutboundNavigate = false
+    })
+  }
 })
+
+// §7 decision #4: switching pages just navigates the iframe — no recompile
+// (the watcher used to live in use-compile-on-change.ts and forced a full
+// rebuild; the new compile path runs once per scene mutation instead).
+watch(
+  () => store.state.currentPageId,
+  () => {
+    if (suppressOutboundNavigate) return
+    postNavigateToCurrent()
+  }
+)
 
 onMounted(() => {
   unsubscribeSelection = store.onEditorEvent('selection:changed', () => {
