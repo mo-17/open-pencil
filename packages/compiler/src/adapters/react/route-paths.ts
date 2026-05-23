@@ -15,6 +15,10 @@ import type { IRTree } from '#compiler/ir/types'
 export interface PagePathInfo {
   /** Source page IR. */
   ir: IRTree
+  /** SceneNode id of the page. Lifted from `ir.pageId` so editor-side
+   *  consumers (e.g. Phase 2 §7 preview iframe bridge) can pageId↔slug
+   *  round-trip without reaching into the IR. */
+  pageId: string
   /** URL-safe identifier (no leading slash). 'index' for the first page. */
   slug: string
   /** Slug derived from `pageName` before any collision suffix. */
@@ -51,6 +55,7 @@ export function derivePagePaths(irs: readonly IRTree[]): PagePathInfo[] {
     const route = slug === 'index' ? '/' : `/${slug}`
     out.push({
       ir,
+      pageId: ir.pageId,
       slug,
       originalSlug,
       route,
@@ -59,6 +64,19 @@ export function derivePagePaths(irs: readonly IRTree[]): PagePathInfo[] {
     })
   }
   return out
+}
+
+/**
+ * Look up the `PagePathInfo` for a given scene-graph page id. Returns
+ * `undefined` when the page is not in the derived list (e.g. the editor
+ * holds a stale id after a page was deleted). Phase 2 §7 — used by the
+ * preview iframe bridge to map editor `currentPageId` to a route slug.
+ */
+export function findPageInfoByPageId(
+  infos: readonly PagePathInfo[],
+  pageId: string
+): PagePathInfo | undefined {
+  return infos.find((info) => info.pageId === pageId)
 }
 
 function componentNameFromSlug(slug: string): string {

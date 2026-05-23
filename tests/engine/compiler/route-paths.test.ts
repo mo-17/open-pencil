@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { derivePagePaths } from '@open-pencil/compiler/adapters/react/route-paths'
+import {
+  derivePagePaths,
+  findPageInfoByPageId
+} from '@open-pencil/compiler/adapters/react/route-paths'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 
 function makeIR(pageName: string, pageId = `p-${pageName}`): IRTree {
@@ -68,5 +71,34 @@ describe('derivePagePaths (Phase 1 §11)', () => {
   test('leading/trailing punctuation gets trimmed', () => {
     const [, info] = derivePagePaths([makeIR('Home'), makeIR('!!About!!')])
     expect(info.slug).toBe('about')
+  })
+
+  // Phase 2 §7: editor preview bridge needs pageId on PagePathInfo so it can
+  // map currentPageId → route without traversing back through `info.ir`.
+  test('pageId is lifted to the info from ir.pageId', () => {
+    const infos = derivePagePaths([
+      makeIR('Home', 'page-home-123'),
+      makeIR('About', 'page-about-456')
+    ])
+    expect(infos[0].pageId).toBe('page-home-123')
+    expect(infos[1].pageId).toBe('page-about-456')
+  })
+})
+
+describe('findPageInfoByPageId (Phase 2 §7)', () => {
+  test('returns the info whose pageId matches', () => {
+    const infos = derivePagePaths([makeIR('Home', 'p-1'), makeIR('About', 'p-2')])
+    const found = findPageInfoByPageId(infos, 'p-2')
+    expect(found?.slug).toBe('about')
+    expect(found?.route).toBe('/about')
+  })
+
+  test('returns undefined when no page matches (e.g. stale id after deletion)', () => {
+    const infos = derivePagePaths([makeIR('Home', 'p-1')])
+    expect(findPageInfoByPageId(infos, 'p-missing')).toBeUndefined()
+  })
+
+  test('works against an empty list (defensive — pre-derivePagePaths state)', () => {
+    expect(findPageInfoByPageId([], 'anything')).toBeUndefined()
   })
 })

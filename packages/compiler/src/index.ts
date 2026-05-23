@@ -9,6 +9,14 @@ export {
   validateUrlTemplate,
   type ValidationResult
 } from './ir/validate'
+// Phase 2 §7 — preview iframe needs pageId↔slug round-trip; the React adapter's
+// route derivation is the single source of truth, so we lift it to the public
+// surface (and an editor-side helper) instead of replicating the algorithm.
+export {
+  derivePagePaths,
+  findPageInfoByPageId,
+  type PagePathInfo
+} from './adapters/react/route-paths'
 
 const DEFAULT_OPTIONS: CompilerOptions = {
   packageName: 'openpencil-output',
