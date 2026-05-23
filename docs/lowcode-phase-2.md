@@ -1006,7 +1006,45 @@ function applyLayoutStyle(style, node, graph): void {
 
 ### 6.8 Post-mortem
 
-> 设计 2026-05-23 锁定;step 1–4 + Tauri 实测后回填。
+> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §6 Tauri verification`。
+
+**Step commits:**
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `9bf5cdf` | §6 详细设计 + 锁定决定;Phase 1 §1.5 #3 + #5 显式推翻指针 |
+| 1 | `aa26beb` | `LayoutMode` 加 `'FREE'` + `isAutoLayoutMode` 类型守卫;sweep 24 处 `=== 'NONE'` / `!== 'NONE'` 现场到 helper;Yoga `apply.ts:52` / `layout.ts:38/77/113/265` / `grid.ts:48` 跳 FREE;`LintNode.layoutMode` + `LayerNode.layoutMode` 类型从 `string` 紧化为 `LayoutMode`;kiwi serialize 3 处 `!== 'NONE' && !== 'GRID'` 改成显式 `=== 'HORIZONTAL' \|\| === 'VERTICAL'`(vendored stackMode 只认这俩);Figma API serialization FREE→NONE 映射 + accessors/layout FREE 收敛到 parent 继承;`is-auto-layout-mode.test.ts` 4 case |
+| 2 | `12b40ee` | jsx exporter:`getNodeContext.parentIsCanvas` → `parentIsFreeLayout`(语义放宽 CANVAS \|\| `layoutMode==='FREE'`);`applyLayoutStyle` absolute 分支同时 honor `parentIsFreeLayout` 与 `node.layoutPositioning==='ABSOLUTE'`(邻近能力 emit 补缺,5 行);`free-layout.test.ts` 6 case |
+| 3 | `eb44569` | kiwi 持久化:`lowcode/freeLayout` pluginData hook(true-only 严格守卫)+ `LOWCODE_PLUGIN_KEYS` + `freeLayoutOverride` 字段;`nodeChangeToProps` 解构后 spread `{ layoutMode: 'FREE' }`;`plugin-data.test.ts` +4 case + `roundtrip.test.ts` +2 case(含字节级回归) |
+| 4 | `846ad24` | UI:`AutoLayoutControls.vue` 加第 4 按钮 "FREE"(lucide move icon,decision #h 末尾);`LayoutSection.vue` 子控件 gate 紧化为 `isFlex \|\| isGrid`(FREE 显示零子控件);i18n `panels.freeLayout` + 7 locale;walker checklist 第二轮发现 7 处 vue 端漏 sweep 全补;`isAutoLayoutMode` 从 `@open-pencil/core` 公开导出;`cross-walker/free-layout.test.ts` 3 case |
+| post-mortem | (本 commit) | §6 step 1–4 post-mortem(commit 链 + walker checklist + 实测受限提醒) |
+
+**Walker checklist(经验 A)**:跑了两轮。
+
+**Round 1(step 1 sweep)**:`grep "layoutMode === 'NONE'" / "!== 'NONE'"` 抓到 18 处,各按语义重写:
+- linter 3 处(`consistent-spacing` / `no-detached-instances` / `prefer-auto-layout`)→ `isAutoLayoutMode` 取代
+- describe 7 处(`issues` ×5 / `summaries` ×1 / `layout-issues` ×6 其实 6 处)→ 同上
+- tools 2 处(`analyze/spacing` / `modify/layout`)→ `wasNone` → `wasNotAutoLayout`
+- rpc 1 处 / editor 4 处(`layout-mode` setLayoutMode `mode !== 'NONE'` 改 `isAutoLayoutMode(mode)`;`layoutModeUpdates` transition condition 改 `isAutoLayoutMode(mode) && !isAutoLayoutMode(node.layoutMode)`)/ kiwi 3 处(convert + instance-overrides)/ figma-api 3 处 / jsx helpers 2 处 / app icons 1 处
+
+**Round 2(step 4 二次审计)**:`grep` 再扫,发现 7 处 vue 包内漏:`shared/input/select/move.ts` ×2、`shared/input/move.ts` ×2、`shared/input/auto-layout.ts` ×1、`shared/input/resize.ts` ×1、`controls/layout/helpers.ts` ×1。全 sweep。
+
+**保留字面 `=== 'NONE'` 的 5 处(intentional)**:
+- `packages/cli/src/format.ts` + `commands/node.ts`:CLI 输出 `layoutMode.toLowerCase()`,FREE 显示为 "free"(用户期望)
+- `src/app/shell/keyboard/actions.ts:76`:decision #i 锁的 `'NONE' ↔ 'VERTICAL'` toggle
+- `src/components/properties/LayoutSection/AutoLayoutControls.vue` ×2:UX gate —— `=== 'NONE'` 控制 + 按钮可见(FREE 不显示 +),`!== 'NONE'` 控制 mode strip 可见(FREE 显示完整 strip,允许切其他模式)
+
+经验:`scalar equality` survives 联合扩展 tsgo 不报错 —— **必须 helper + 两轮 grep**。本 § 共 25 处 sweep,helper-first 设计是唯一能跨 round 不漏的方式;后续任何 union 扩展(NodeType / EventName / ActionDef.kind / LayoutMode / LayoutSizing 等)应优先引 `isXxx`-类 helper 而非 `=== '字面值'` 散布。
+
+**意外 1 —— LintNode + LayerNode `layoutMode: string` 故意松散**:step 1 sweep 在 lint 规则里失败,LintNode 把 layoutMode 写成 `string`。同样发现 LayerNode(`packages/vue/src/primitives/LayerTree/context.ts`,公开导出)也松散。两处都紧化为 `LayoutMode` —— 构造端 (`linter.ts:81` / SceneNode 来源) 都已喂真 `LayoutMode`,运行时零变化。
+
+**意外 2 —— kiwi `stackMode` 只认两枚举**:step 1 引 FREE 后 tsgo 直接报 `serialize.ts:288`:`type '"FREE" | "HORIZONTAL" | "VERTICAL"' is not assignable to '"HORIZONTAL" | "NONE" | "VERTICAL" | undefined'`。原 `!== 'NONE' && !== 'GRID'` 守卫漏过 FREE。改为显式 `=== 'HORIZONTAL' || === 'VERTICAL'`,3 处同步;NONE / GRID / FREE 一律跳过 stack 序列化(FREE 走 `lowcode/freeLayout` 旁路)。
+
+**实测受限提醒**:
+- 单页 `.fig` 文档 byte-level 回归靠 `roundtrip.test.ts` 钉死 —— 但具体的 Phase 0 / Phase 1 既有 demo `.fig` 在 LFS 内,本地依赖网络;若 Tauri 实测发现旧 demo 视觉漂移而单元测试全过,大概率是 emit 路径里 `parentIsFreeLayout` 在 CANVAS-only 旧 demo 上的行为分叉
+- `layoutPositioning='ABSOLUTE'` 子级 opt-out **暂无 UI**(决定 #5 + 邻近声明,要 UI 走 follow-up);Tauri 实测要走 Figma plugin API / 程序设置才能验
+
+**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` + `./tests/engine/scene-graph/is-auto-layout-mode.test.ts` 362 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
 
 ---
 
