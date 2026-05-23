@@ -1,5 +1,5 @@
 import { computeLayout } from '#core/layout'
-import type { LayoutMode, SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type LayoutMode, type SceneNode } from '#core/scene-graph'
 
 import type { EditorContext } from './types'
 
@@ -12,7 +12,8 @@ export function createLayoutModeActions(ctx: EditorContext) {
     const updates = layoutModeUpdates(ctx, node, id, mode)
 
     ctx.graph.updateNode(id, updates)
-    if (mode !== 'NONE') computeLayout(ctx.graph, id)
+    // Phase 2 §6: only auto-layout modes need Yoga; FREE / NONE don't.
+    if (isAutoLayoutMode(mode)) computeLayout(ctx.graph, id)
     ctx.runLayoutForNode(id)
 
     const updated = ctx.graph.getNode(id)
@@ -20,10 +21,10 @@ export function createLayoutModeActions(ctx: EditorContext) {
     const finalState = pickState(updated, Object.keys(previous) as (keyof SceneNode)[])
 
     ctx.undo.push({
-      label: mode === 'NONE' ? 'Remove auto layout' : 'Add auto layout',
+      label: isAutoLayoutMode(mode) ? 'Add auto layout' : 'Remove auto layout',
       forward: () => {
         ctx.graph.updateNode(id, finalState)
-        if (mode !== 'NONE') computeLayout(ctx.graph, id)
+        if (isAutoLayoutMode(mode)) computeLayout(ctx.graph, id)
         ctx.runLayoutForNode(id)
       },
       inverse: () => {
@@ -70,7 +71,9 @@ function layoutModeUpdates(
   const updates: Partial<SceneNode> = { layoutMode: mode }
   if (mode === 'GRID' && node.layoutMode !== 'GRID') {
     applyGridDefaults(ctx, node, id, updates)
-  } else if (mode !== 'NONE' && node.layoutMode === 'NONE') {
+  } else if (isAutoLayoutMode(mode) && !isAutoLayoutMode(node.layoutMode)) {
+    // Phase 2 §6: any transition INTO an auto-layout mode FROM a
+    // non-auto-layout mode (NONE or FREE) gets fresh auto-layout defaults.
     Object.assign(updates, autoLayoutDefaults())
   }
   return updates

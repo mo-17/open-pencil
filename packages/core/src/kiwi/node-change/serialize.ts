@@ -236,10 +236,12 @@ function serializeCornerRadii(node: SceneNode, nc: KiwiNodeChange): void {
 
 function resolveTextAutoResize(node: SceneNode, graph: SceneGraph): SceneNode['textAutoResize'] {
   const parent = node.parentId ? graph.getNode(node.parentId) : undefined
+  // Only flex (HORIZONTAL/VERTICAL) parents force HEIGHT auto-resize on a
+  // text child. Phase 2 §6: explicit enumeration (was `!== 'NONE' && !==
+  // 'GRID'`) so the new `'FREE'` variant doesn't accidentally fall through.
   if (
     parent &&
-    parent.layoutMode !== 'NONE' &&
-    parent.layoutMode !== 'GRID' &&
+    (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL') &&
     node.layoutPositioning !== 'ABSOLUTE'
   ) {
     return 'HEIGHT'
@@ -284,7 +286,11 @@ function serializeTextProps(
 
 function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange): void {
   upsertPluginData(node, LAYOUT_DIRECTION_PLUGIN_KEY, node.layoutDirection)
-  if (node.layoutMode !== 'NONE' && node.layoutMode !== 'GRID') {
+  // Phase 2 §6: explicit HORIZONTAL/VERTICAL guard — the vendored
+  // `KiwiNodeChange.stackMode` schema only carries those two. `'NONE'` /
+  // `'GRID'` / `'FREE'` all skip stack serialization (FREE rides the
+  // `lowcode/freeLayout` pluginData bypass, persisted in step 3).
+  if (node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL') {
     nc.stackMode = node.layoutMode
     nc.stackSpacing = node.itemSpacing
     nc.stackVerticalPadding = node.paddingTop
@@ -372,10 +378,12 @@ function computeExportTransform(node: SceneNode, graph: SceneGraph): Matrix {
   // Auto-layout children should have (0,0) transform — Figma computes
   // their positions from the layout engine at render time.
   const parent = node.parentId ? graph.getNode(node.parentId) : undefined
+  // Phase 2 §6: flex-parent (HORIZONTAL/VERTICAL) only — Yoga rewrites the
+  // child position so we drop the literal transform here. FREE/NONE/GRID
+  // parents keep the child's authored transform.
   const isAutoLayoutChild =
     parent &&
-    parent.layoutMode !== 'NONE' &&
-    parent.layoutMode !== 'GRID' &&
+    (parent.layoutMode === 'HORIZONTAL' || parent.layoutMode === 'VERTICAL') &&
     node.layoutPositioning !== 'ABSOLUTE'
 
   const m00 = cos * sx

@@ -1,5 +1,5 @@
 import { colorDistance, colorToHex } from '#core/color'
-import type { SceneGraph, SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '#core/scene-graph'
 
 import { detectLayoutIssues } from './layout-issues'
 import { CONTAINER_TYPES, findAncestorBackground, looksLikeButton } from './shared'
@@ -195,7 +195,7 @@ function checkZeroPaddingContainer(
   issues: DescribeIssue[]
 ): void {
   if (!CONTAINER_TYPES.has(node.type)) return
-  if (node.layoutMode === 'NONE') return
+  if (!isAutoLayoutMode(node.layoutMode)) return
   if (node.childIds.length < 3) return
   const allPad = node.paddingTop + node.paddingRight + node.paddingBottom + node.paddingLeft
   if (allPad > 0) return
@@ -218,7 +218,7 @@ function checkButtonWithoutPadding(
   issues: DescribeIssue[]
 ): void {
   if (!looksLikeButton(node)) return
-  if (node.layoutMode === 'NONE') return
+  if (!isAutoLayoutMode(node.layoutMode)) return
   const hPad = node.paddingLeft + node.paddingRight
   if (hPad === 0 && node.childIds.length > 0) {
     issues.push({
@@ -234,7 +234,7 @@ function checkFlexContainerWithoutAlignment(
   issues: DescribeIssue[]
 ): void {
   if (!CONTAINER_TYPES.has(node.type)) return
-  if (node.layoutMode === 'NONE') return
+  if (!isAutoLayoutMode(node.layoutMode)) return
   if (node.childIds.length === 0) return
   const isRow = node.layoutMode === 'HORIZONTAL'
   if (isRow && node.counterAxisAlign === 'MIN' && node.height > 60) {
@@ -289,7 +289,7 @@ function detectVisibilityIssues(node: SceneNode, graph: SceneGraph, issues: Desc
 const RADIUS_TOLERANCE = 2
 
 function detectRadiusIssues(node: SceneNode, graph: SceneGraph, issues: DescribeIssue[]): void {
-  if (node.cornerRadius <= 0 || node.layoutMode === 'NONE') return
+  if (node.cornerRadius <= 0 || !isAutoLayoutMode(node.layoutMode)) return
   const minPad = Math.min(node.paddingTop, node.paddingRight, node.paddingBottom, node.paddingLeft)
   if (minPad <= 0) return
   const expectedInner = Math.max(0, node.cornerRadius - minPad)
@@ -344,7 +344,7 @@ function detectSpacingIssues(
   _gridSize: number,
   issues: DescribeIssue[]
 ): void {
-  if (node.layoutMode === 'NONE') return
+  if (!isAutoLayoutMode(node.layoutMode)) return
   const children = node.childIds
     .map((id) => graph.getNode(id))
     .filter((c): c is SceneNode => c?.visible === true && c.layoutPositioning !== 'ABSOLUTE')
@@ -374,7 +374,7 @@ function detectSpacingIssues(
     }
   }
 
-  const flexChildren = children.filter((c) => c.layoutMode !== 'NONE')
+  const flexChildren = children.filter((c) => isAutoLayoutMode(c.layoutMode))
   if (flexChildren.length >= 3) {
     const paddings = flexChildren.map(
       (c) => c.paddingTop + c.paddingRight + c.paddingBottom + c.paddingLeft

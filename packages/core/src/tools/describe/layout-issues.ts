@@ -1,7 +1,7 @@
 import { wcagLuminance } from 'culori'
 
 import { colorToHex } from '#core/color'
-import type { SceneGraph, SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '#core/scene-graph'
 import type { Color } from '#core/types'
 
 import type { DescribeIssue } from './issues'
@@ -122,7 +122,7 @@ function checkGrowInHug(ctx: LayoutContext): void {
 
 function checkGrowSizeConflict(ctx: LayoutContext): void {
   for (const child of ctx.children) {
-    if (child.layoutGrow > 0 && child.layoutMode === 'NONE') {
+    if (child.layoutGrow > 0 && !isAutoLayoutMode(child.layoutMode)) {
       const mainSizing = ctx.isRow ? child.primaryAxisSizing : child.counterAxisSizing
       if (mainSizing === 'FILL') continue
       const fixedDim = ctx.isRow ? child.width : child.height
@@ -275,7 +275,7 @@ function visibleChildren(node: SceneNode, graph: SceneGraph): SceneNode[] {
 
 function checkChildUndersize(ctx: LayoutContext): void {
   const { node, graph, issues } = ctx
-  if (node.layoutMode !== 'NONE') return
+  if (isAutoLayoutMode(node.layoutMode)) return
   for (const child of visibleChildren(node, graph)) {
     if (
       child.width > 0 &&
@@ -311,7 +311,7 @@ function checkCrossAxisOverflow(ctx: LayoutContext): void {
 
 function checkFillWithoutFlex(ctx: LayoutContext): void {
   const { node, graph, issues } = ctx
-  if (node.layoutMode !== 'NONE') return
+  if (isAutoLayoutMode(node.layoutMode)) return
   for (const child of visibleChildren(node, graph)) {
     if (!CONTAINER_TYPES.has(child.type)) continue
     if (child.primaryAxisSizing === 'FILL' || child.counterAxisSizing === 'FILL') {
@@ -337,7 +337,7 @@ function effectivelyFillsCrossAxis(child: SceneNode, parent: SceneNode, isRow: b
 }
 
 function childNeedsFill(child: SceneNode, parent: SceneNode, isRow: boolean): boolean {
-  if (child.layoutMode === 'NONE') return false
+  if (!isAutoLayoutMode(child.layoutMode)) return false
   const crossDim = isRow ? child.width : child.height
   const crossSizing = isRow ? child.counterAxisSizing : child.primaryAxisSizing
   if (crossDim <= 0 && crossSizing !== 'FILL') return false
@@ -369,7 +369,7 @@ function hasSiblingWithGrowOrFill(
 
 function checkNestedFlexWithoutFill(ctx: LayoutContext): void {
   const { node, isRow, children, issues } = ctx
-  if (node.layoutMode === 'NONE') return
+  if (!isAutoLayoutMode(node.layoutMode)) return
   if (node.primaryAxisAlign !== 'MIN') return
   if (node.layoutWrap === 'WRAP') return
   for (const child of children) {
@@ -418,7 +418,7 @@ export function detectLayoutIssues(
   checkChildUndersize(ctx)
   checkAbsoluteInFlex(ctx)
 
-  if (node.layoutMode === 'NONE') return
+  if (!isAutoLayoutMode(node.layoutMode)) return
 
   if (node.layoutWrap === 'WRAP' && node.counterAxisSpacing <= 0 && children.length > 1) {
     issues.push({

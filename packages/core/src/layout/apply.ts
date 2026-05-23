@@ -1,6 +1,6 @@
 import type { Node as YogaNode } from 'yoga-layout'
 
-import type { SceneGraph, SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '#core/scene-graph'
 
 export type ComputeLayoutFn = (graph: SceneGraph, frameId: string) => void
 
@@ -49,7 +49,7 @@ function recomputeGridChild(
   computeLayout: ComputeLayoutFn
 ): void {
   const updated = graph.getNode(child.id)
-  if (!updated || updated.layoutMode === 'NONE') return
+  if (!updated || !isAutoLayoutMode(updated.layoutMode)) return
 
   const savedPrimary = updated.primaryAxisSizing
   const savedCounter = updated.counterAxisSizing
@@ -84,7 +84,7 @@ export function applyYogaLayout(
 
     updateChildFromYoga(graph, child, yogaChild)
 
-    if (child.layoutMode !== 'NONE') {
+    if (isAutoLayoutMode(child.layoutMode)) {
       if (child.layoutMode === 'GRID' && child.visible && child.layoutPositioning !== 'ABSOLUTE') {
         computeLayout(graph, child.id)
       } else if (

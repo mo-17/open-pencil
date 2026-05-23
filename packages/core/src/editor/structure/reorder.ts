@@ -1,5 +1,6 @@
 import type { EditorContext } from '#core/editor/types'
 import { computeLayout } from '#core/layout'
+import { isAutoLayoutMode } from '#core/scene-graph'
 
 export function createStructureReorderActions(ctx: EditorContext) {
   function doReorderChild(nodeId: string, parentId: string, insertIndex: number) {
@@ -19,7 +20,7 @@ export function createStructureReorderActions(ctx: EditorContext) {
 
   function reorderInAutoLayout(nodeId: string, parentId: string, insertIndex: number) {
     const parent = ctx.graph.getNode(parentId)
-    if (!parent || parent.layoutMode === 'NONE') return
+    if (!parent || !isAutoLayoutMode(parent.layoutMode)) return
 
     const node = ctx.graph.getNode(nodeId)
     if (!node) return

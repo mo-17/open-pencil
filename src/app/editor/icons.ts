@@ -27,6 +27,8 @@ import IconToggleLeft from '~icons/lucide/toggle-left'
 import IconTriangle from '~icons/lucide/triangle'
 import IconType from '~icons/lucide/type'
 
+import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/core/scene-graph'
+
 import type { Tool } from '@/app/editor/session'
 
 export const toolIcons: Record<Tool, Component> = {
@@ -77,8 +79,10 @@ export const COMPONENT_TYPES = new Set(['COMPONENT', 'COMPONENT_SET', 'INSTANCE'
 
 export { IconFrame, IconSquare }
 
-export function nodeIcon(node: { type: string; layoutMode: string }) {
-  if (node.type === 'FRAME' && node.layoutMode !== 'NONE')
+export function nodeIcon(node: { type: string; layoutMode: LayoutMode }) {
+  // Phase 2 §6: only auto-layout frames pick from AUTO_LAYOUT_ICONS;
+  // FREE (and any future non-auto-layout mode) falls back to IconFrame.
+  if (node.type === 'FRAME' && isAutoLayoutMode(node.layoutMode))
     return AUTO_LAYOUT_ICONS[node.layoutMode] ?? IconFrame
   return NODE_ICONS[node.type] ?? IconSquare
 }

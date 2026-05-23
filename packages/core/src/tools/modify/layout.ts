@@ -1,4 +1,4 @@
-import type { SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneNode } from '#core/scene-graph'
 import { defineTool, nodeNotFound } from '#core/tools/schema'
 
 export const setLayout = defineTool({
@@ -45,15 +45,15 @@ export const setLayout = defineTool({
     if (!node) return nodeNotFound(args.id)
 
     const raw = figma.graph.getNode(args.id)
-    if (!args.direction && raw?.layoutMode === 'NONE') {
+    if (!args.direction && raw && !isAutoLayoutMode(raw.layoutMode)) {
       return {
         error: 'Frame has no auto-layout. Pass direction ("HORIZONTAL" or "VERTICAL") to enable it.'
       }
     }
 
-    const wasNone = raw?.layoutMode === 'NONE'
+    const wasNotAutoLayout = !!raw && !isAutoLayoutMode(raw.layoutMode)
     if (args.direction) node.layoutMode = args.direction as 'HORIZONTAL' | 'VERTICAL'
-    if (wasNone) {
+    if (wasNotAutoLayout) {
       node.primaryAxisSizingMode = 'AUTO'
       node.counterAxisSizingMode = 'AUTO'
     }

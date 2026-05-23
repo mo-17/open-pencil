@@ -1,4 +1,10 @@
-import type { GeometryPath, SceneGraph, SceneNode, VectorNetwork } from '#core/scene-graph'
+import {
+  isAutoLayoutMode,
+  type GeometryPath,
+  type SceneGraph,
+  type SceneNode,
+  type VectorNetwork
+} from '#core/scene-graph'
 import { copyGeometryPaths } from '#core/scene-graph/copy'
 
 import { buildClonesMap } from './sync'
@@ -21,8 +27,9 @@ export function applyConstraintScaling(ctx: OverrideContext): void {
     const basis = resolveScaleBasis(graph, node, comp)
     if (!basis) continue
 
-    // Skip if instance uses auto-layout — layout engine handles child sizing
-    if (node.layoutMode !== 'NONE') continue
+    // Skip if instance uses auto-layout — layout engine handles child sizing.
+    // FREE / NONE both fall through to constraint scaling here.
+    if (isAutoLayoutMode(node.layoutMode)) continue
 
     const sx = node.width / basis.width
     const sy = node.height / basis.height

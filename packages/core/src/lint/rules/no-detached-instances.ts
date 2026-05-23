@@ -1,4 +1,5 @@
 import { defineRule } from '#core/lint/rule'
+import { isAutoLayoutMode } from '#core/scene-graph'
 const PATTERNS = [
   /^(button|btn)/i,
   /^(input|field|text-?field)/i,
@@ -22,7 +23,7 @@ export default defineRule({
       node.componentId ||
       !PATTERNS.some((p) => p.test(node.name)) ||
       context.getChildren(node).length === 0 ||
-      node.layoutMode === 'NONE'
+      !isAutoLayoutMode(node.layoutMode)
     )
       return
     context.report({

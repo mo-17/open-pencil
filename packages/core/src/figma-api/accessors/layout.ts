@@ -4,7 +4,7 @@ import {
   type NodeProxyInternals,
   type ProxyThis
 } from '#core/figma-api/accessor-utils'
-import type { LayoutMode, SceneGraph, SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type LayoutMode, type SceneGraph, type SceneNode } from '#core/scene-graph'
 
 function graph(target: ProxyThis, internals: NodeProxyInternals): SceneGraph {
   return target[internals.graph] as SceneGraph
@@ -29,7 +29,12 @@ function setLayoutSizing(
   value: string
 ): void {
   const node = raw(target, internals)
-  const layout = node.layoutMode !== 'NONE' ? node.layoutMode : parentLayout(target, internals)
+  // Phase 2 §6 decision #d: Figma API never exposes FREE — treat as NONE
+  // for inheritance purposes so plugin code's `layoutSizing` lookup falls
+  // through to the parent's mode like the legacy behaviour.
+  const layout = isAutoLayoutMode(node.layoutMode)
+    ? node.layoutMode
+    : parentLayout(target, internals)
   const isHorizontal = axis === 'HORIZONTAL'
   const usesCounterAxis = isHorizontal ? layout === 'VERTICAL' : layout === 'HORIZONTAL'
   const updates: Partial<SceneNode> = usesCounterAxis
@@ -124,7 +129,10 @@ function layoutSizingAccessor(
   return {
     get(this: ProxyThis): string {
       const node = raw(this, internals)
-      const layout = node.layoutMode !== 'NONE' ? node.layoutMode : parentLayout(this, internals)
+      // Phase 2 §6 decision #d: FREE collapses to parent inheritance same as NONE.
+      const layout = isAutoLayoutMode(node.layoutMode)
+        ? node.layoutMode
+        : parentLayout(this, internals)
       if (layout === 'NONE') return 'FIXED'
       return layout === axis ? node.primaryAxisSizing : node.counterAxisSizing
     },

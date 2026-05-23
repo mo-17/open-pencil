@@ -186,8 +186,28 @@ export interface ArcData {
   innerRadius: number
 }
 
-export type LayoutMode = 'NONE' | 'HORIZONTAL' | 'VERTICAL' | 'GRID'
+export type LayoutMode = 'NONE' | 'HORIZONTAL' | 'VERTICAL' | 'GRID' | 'FREE'
 export type LayoutSizing = 'FIXED' | 'HUG' | 'FILL'
+
+/**
+ * True when the layout mode runs an auto-layout (flex / grid) engine over
+ * the node's children. `'NONE'` and `'FREE'` both opt out of auto-layout
+ * (NONE = legacy default that emits free positioning only when the parent
+ * is CANVAS; `'FREE'` = Phase 2 §6 parent-level toggle that emits free
+ * positioning anywhere). Use this helper wherever a callsite wants the
+ * "is auto-layout?" semantic — direct equality with `'NONE'` would
+ * silently exclude `'FREE'` from the FREE-as-non-auto-layout semantic.
+ *
+ * Phase 2 §6 — introduced alongside the `'FREE'` variant; swept across
+ * every existing `layoutMode === 'NONE'` / `!== 'NONE'` callsite in the
+ * codebase as part of step 1 (经验 A: scalar equality survives a union
+ * widening with no tsgo error).
+ */
+export function isAutoLayoutMode(
+  mode: LayoutMode
+): mode is 'HORIZONTAL' | 'VERTICAL' | 'GRID' {
+  return mode === 'HORIZONTAL' || mode === 'VERTICAL' || mode === 'GRID'
+}
 
 export type GridTrackSizing = 'FIXED' | 'FR' | 'AUTO'
 

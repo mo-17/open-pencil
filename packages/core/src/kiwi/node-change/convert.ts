@@ -23,27 +23,28 @@ import { resolveGeometryPaths, resolveVectorNetwork } from './vector-geometry'
 export { resolveGeometryPaths } from './vector-geometry'
 
 import type { NodeChange } from '#core/kiwi/binary/codec'
-import type {
-  SceneNode,
-  NodeType,
-  Fill,
-  StrokeCap,
-  StrokeJoin,
-  LayoutMode,
-  LayoutSizing,
-  LayoutAlign,
-  LayoutAlignSelf,
-  LayoutCounterAlign,
-  ConstraintType,
-  TextAutoResize,
-  TextAlignVertical,
-  TextCase,
-  ArcData,
-  VectorNetwork,
-  ComponentPropertyDefinition,
-  ComponentPropertyType,
-  SymbolLink,
-  VariantPropSpec
+import {
+  isAutoLayoutMode,
+  type SceneNode,
+  type NodeType,
+  type Fill,
+  type StrokeCap,
+  type StrokeJoin,
+  type LayoutMode,
+  type LayoutSizing,
+  type LayoutAlign,
+  type LayoutAlignSelf,
+  type LayoutCounterAlign,
+  type ConstraintType,
+  type TextAutoResize,
+  type TextAlignVertical,
+  type TextCase,
+  type ArcData,
+  type VectorNetwork,
+  type ComponentPropertyDefinition,
+  type ComponentPropertyType,
+  type SymbolLink,
+  type VariantPropSpec
 } from '#core/scene-graph'
 import type { GUID } from '#core/types'
 
@@ -338,7 +339,9 @@ function visibleContainerDerivedLayout(
   const hasVisiblePaint =
     (nc.fillPaints?.some((paint) => paint.visible !== false) ?? false) ||
     (nc.strokePaints?.some((paint) => paint.visible !== false) ?? false)
-  if (layoutMode === 'NONE' || !hasHugAxis || !hasVisiblePaint) return undefined
+  // Phase 2 §6: `figmaDerivedLayout` only applies to auto-layout modes
+  // (HUG sizing on FREE/NONE has no flex axis to derive from).
+  if (!isAutoLayoutMode(layoutMode) || !hasHugAxis || !hasVisiblePaint) return undefined
 
   return {
     x: nc.transform?.m02 ?? 0,

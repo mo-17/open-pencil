@@ -1,4 +1,4 @@
-import type { SceneGraph } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph } from '#core/scene-graph'
 
 import type { NodeProxyHost } from './proxy'
 
@@ -29,7 +29,11 @@ export function nodeProxyToJSON(
   if (!n.visible) obj.visible = false
   if (n.text) obj.characters = n.text
   if (n.type === 'TEXT') obj.textDirection = n.textDirection
-  if (n.layoutMode !== 'NONE') {
+  // Phase 2 §6 decision #d: Figma plugin code never sees `'FREE'` — the
+  // serialized JSON only exposes auto-layout modes (Figma's own enum).
+  // FREE / NONE both omit the layout fields entirely (Figma reads absent
+  // layoutMode as NONE).
+  if (isAutoLayoutMode(n.layoutMode)) {
     obj.layoutMode = n.layoutMode
     obj.layoutDirection = n.layoutDirection
     obj.itemSpacing = n.itemSpacing

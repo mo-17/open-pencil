@@ -1,5 +1,5 @@
 import { computeAllLayouts, computeLayout } from '#core/layout'
-import type { SceneGraph } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph } from '#core/scene-graph'
 
 export function createLayoutRunner(getGraph: () => SceneGraph) {
   function runLayoutForNode(id: string) {
@@ -11,7 +11,7 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
 
     let parent = node.parentId ? graph.getNode(node.parentId) : undefined
     while (parent) {
-      if (parent.layoutMode !== 'NONE') {
+      if (isAutoLayoutMode(parent.layoutMode)) {
         computeLayout(graph, parent.id)
       }
       parent = parent.parentId ? graph.getNode(parent.parentId) : undefined

@@ -1,12 +1,13 @@
 import { colorToHex8 } from '#core/color'
-import type {
-  SceneGraph,
-  SceneNode,
-  Fill,
-  Stroke,
-  Effect,
-  Color,
-  GridTrack
+import {
+  isAutoLayoutMode,
+  type SceneGraph,
+  type SceneNode,
+  type Fill,
+  type Stroke,
+  type Effect,
+  type Color,
+  type GridTrack
 } from '#core/scene-graph'
 
 export function formatColor(color: Color, opacity = 1): string {
@@ -59,10 +60,10 @@ export function formatProp(key: string, value: unknown): string {
 export function getNodeContext(node: SceneNode, graph: SceneGraph) {
   const parent = node.parentId ? graph.getNode(node.parentId) : null
   return {
-    isAutoLayout: node.layoutMode !== 'NONE',
+    isAutoLayout: isAutoLayoutMode(node.layoutMode),
     isGrid: node.layoutMode === 'GRID',
     isFlex: node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL',
-    parentIsAutoLayout: parent ? parent.layoutMode !== 'NONE' : false,
+    parentIsAutoLayout: parent ? isAutoLayoutMode(parent.layoutMode) : false,
     parentIsGrid: parent ? parent.layoutMode === 'GRID' : false,
     parentIsCanvas: parent ? parent.type === 'CANVAS' : false
   }

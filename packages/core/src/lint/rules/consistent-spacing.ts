@@ -1,5 +1,6 @@
 import { defineRule } from '#core/lint/rule'
 import { isMultipleOf, SPACING_SCALE } from '#core/lint/utils'
+import { isAutoLayoutMode } from '#core/scene-graph'
 
 export default defineRule({
   meta: {
@@ -9,7 +10,7 @@ export default defineRule({
   },
   match: ['FRAME', 'COMPONENT'],
   check(node, context) {
-    if (node.layoutMode === 'NONE') return
+    if (!isAutoLayoutMode(node.layoutMode)) return
     const config = context.getConfig() as { base?: number } | undefined
     const base = config?.base ?? 8
     const valid = (value: number) => SPACING_SCALE.includes(value) || isMultipleOf(value, base)

@@ -1,6 +1,6 @@
 import { Direction, Display, Gutter, Edge, type Node as YogaNode } from 'yoga-layout'
 
-import type { SceneGraph, SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '#core/scene-graph'
 import { resolveNodeLayoutDirection } from '#core/text/direction'
 
 import { configureAbsoluteChild, createYogaNode, mapGridTrack } from './yoga-helpers'
@@ -45,7 +45,7 @@ export function createGridChildNode(child: SceneNode): YogaNode {
       yogaChild.setGridRowStart(pos.row)
       yogaChild.setGridRowEndSpan(pos.rowSpan)
     }
-    const hasLayout = child.layoutMode !== 'NONE'
+    const hasLayout = isAutoLayoutMode(child.layoutMode)
     const explicitStretch = child.layoutGrow > 0 || child.layoutAlignSelf === 'STRETCH'
 
     if (explicitStretch || hasLayout) {
@@ -79,11 +79,7 @@ export function buildGridTree(
       root.insertChild(yogaChild, root.getChildCount())
     } else {
       const yogaChild = createGridChildNode(child)
-      if (
-        child.layoutMode === 'GRID' ||
-        child.layoutMode === 'HORIZONTAL' ||
-        child.layoutMode === 'VERTICAL'
-      ) {
+      if (isAutoLayoutMode(child.layoutMode)) {
         const childDirection = resolveNodeLayoutDirection(child, direction)
         yogaChild.setDirection(childDirection === 'RTL' ? Direction.RTL : Direction.LTR)
       }

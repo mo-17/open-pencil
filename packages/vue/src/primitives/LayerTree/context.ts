@@ -1,12 +1,17 @@
 import { type ComputedRef, type InjectionKey, type Ref, inject, provide } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
+import type { LayoutMode } from '@open-pencil/core/scene-graph'
 
 export interface LayerNode {
   id: string
   name: string
   type: string
-  layoutMode: string
+  // Phase 2 §6 — tightened from `string` to `LayoutMode` so consumers using
+  // `nodeIcon()` (and any other `isAutoLayoutMode`-based dispatch) type-check
+  // against the FREE variant. Population sites already feed real LayoutMode
+  // values from `SceneNode.layoutMode`.
+  layoutMode: LayoutMode
   visible: boolean
   locked: boolean
   children?: LayerNode[]
