@@ -3,13 +3,16 @@ import { calc } from './calc'
 import { render } from './create'
 import { describe } from './describe'
 import {
+  setDocStates,
   setFill,
   setLayout,
   setLayoutChild,
   setRadius,
   setStroke,
+  setSupabaseConfig,
   setText,
   setTextProperties,
+  updateLowcodeNode,
   updateNode
 } from './modify'
 import {
@@ -51,6 +54,10 @@ export const CORE_TOOLS: ToolDef[] = [
   setStroke,
   setText,
   setTextProperties,
+  // Modify — lowcode (Phase 3 §3)
+  updateLowcodeNode,
+  setDocStates,
+  setSupabaseConfig,
   // Structure
   deleteNode,
   reparentNode,
