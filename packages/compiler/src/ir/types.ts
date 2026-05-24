@@ -225,8 +225,23 @@ export interface IRTree {
    *  action. Adapter imports `setDocState` when this list is non-empty;
    *  no hook declaration is needed (setDocState is a plain function). */
   docStateWrites: string[]
+  /** Phase 3 §2: connection settings from the root SceneNode, lifted into
+   *  every IRTree from the same compile. Adapter uses this to decide
+   *  whether to emit `_lowcode_supabase.ts` and inject the supabase-js
+   *  dependency. Undefined when the document has no Supabase wiring. */
+  supabaseConfig?: IRSupabaseConfig
   /** Warnings raised while collecting the IR (invalid bindings, expressions, etc.). */
   warnings: IRWarning[]
+}
+
+/** Phase 3 §2: IR-local mirror of `SupabaseConfig` from scene-graph, so the
+ *  adapter layer never has to reach into core. Same shape — anonKey is the
+ *  public anon JWT (safe per Supabase RLS design); `schema` defaults to
+ *  `'public'` at runtime. */
+export interface IRSupabaseConfig {
+  url: string
+  anonKey: string
+  schema?: string
 }
 
 export interface IRWarning {

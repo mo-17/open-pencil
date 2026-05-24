@@ -39,6 +39,10 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
   const docStatesByName = indexDocStatesByName(docStates)
   const docStateReads = new Set<string>()
   const docStateWrites = new Set<string>()
+  // Phase 3 §2: lift root-level supabaseConfig onto the tree so the React
+  // adapter can decide to emit `_lowcode_supabase.ts` without re-reading
+  // the SceneGraph (which it doesn't have access to from `emit(irs, opts)`).
+  const supabaseConfig = graph.getNode(graph.rootId)?.lowcodeSupabaseConfig
 
   if (!page) {
     return {
@@ -49,6 +53,7 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
       docStates,
       docStateReads: [],
       docStateWrites: [],
+      supabaseConfig,
       warnings
     }
   }
@@ -77,6 +82,7 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
     docStates,
     docStateReads: [...docStateReads],
     docStateWrites: [...docStateWrites],
+    supabaseConfig,
     warnings
   }
 }

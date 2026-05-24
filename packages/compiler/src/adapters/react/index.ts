@@ -7,12 +7,17 @@ import {
   buildTsConfig,
   buildViteConfig
 } from '#compiler/project'
-import type { IRNode, IRTree } from '#compiler/ir/types'
+import type { IRNode, IRSupabaseConfig, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions, CompileWarning } from '#compiler/types'
+
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
 import { stripNavigateForSinglePage } from './ir-walk'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode-state'
+import {
+  buildLowcodeSupabaseRuntime,
+  SUPABASE_JS_VERSION
+} from './lowcode-supabase'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import {
@@ -30,6 +35,7 @@ import {
 const REACT_ROUTER_DOM_VERSION = '^6.27.0'
 
 const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
+const LOWCODE_SUPABASE_FILE = 'src/_lowcode_supabase.ts'
 
 export const reactAdapter: FrameworkAdapter = {
   emit(irs: readonly IRTree[], options: CompilerOptions): AdapterEmission {
@@ -43,12 +49,16 @@ function emitSinglePage(ir: IRTree, options: CompilerOptions): AdapterEmission {
   // warn — the page body emit then proceeds as if they were never collected.
   const { ir: cleaned, warnings } = stripNavigateForSinglePage(ir)
   const files = new Map<string, string | Uint8Array>()
-  const extraDeps = lowcodeStateExtraDeps(cleaned.docStates)
+  const extraDeps: Record<string, string> = {
+    ...lowcodeStateExtraDeps(cleaned.docStates),
+    ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig)
+  }
   files.set('package.json', buildPackageJson(options, extraDeps))
   // Phase 2 §2: emit the lowcode runtime alongside App.tsx when any
   // DocumentStateDef exists; the page module imports `useDocState` /
   // `setDocState` from `./` (single-page) or `../` (multi-page).
   maybeEmitLowcodeRuntime(files, cleaned.docStates)
+  maybeEmitLowcodeSupabaseRuntime(files, cleaned.supabaseConfig)
   files.set(
     'src/App.tsx',
     buildAppTsx(cleaned, {
@@ -67,12 +77,15 @@ function emitMultiPage(
   const infos = derivePagePaths(irs)
   const files = new Map<string, string | Uint8Array>()
   const docStates = irs[0]?.docStates ?? []
+  const supabaseConfig = irs[0]?.supabaseConfig
   const extraDeps: Record<string, string> = {
     'react-router-dom': REACT_ROUTER_DOM_VERSION,
-    ...lowcodeStateExtraDeps(docStates)
+    ...lowcodeStateExtraDeps(docStates),
+    ...lowcodeSupabaseExtraDeps(supabaseConfig)
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
   maybeEmitLowcodeRuntime(files, docStates)
+  maybeEmitLowcodeSupabaseRuntime(files, supabaseConfig)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
     files.set(
@@ -93,12 +106,26 @@ function lowcodeStateExtraDeps(
   return docStates.length > 0 ? { zustand: ZUSTAND_VERSION } : {}
 }
 
+function lowcodeSupabaseExtraDeps(
+  config: IRSupabaseConfig | undefined
+): Record<string, string> {
+  return config ? { '@supabase/supabase-js': SUPABASE_JS_VERSION } : {}
+}
+
 function maybeEmitLowcodeRuntime(
   files: Map<string, string | Uint8Array>,
   docStates: readonly IRTree['docStates'][number][]
 ): void {
   if (docStates.length === 0) return
   files.set(LOWCODE_STATE_FILE, buildLowcodeStateRuntime(docStates))
+}
+
+function maybeEmitLowcodeSupabaseRuntime(
+  files: Map<string, string | Uint8Array>,
+  config: IRSupabaseConfig | undefined
+): void {
+  if (!config) return
+  files.set(LOWCODE_SUPABASE_FILE, buildLowcodeSupabaseRuntime(config))
 }
 
 /**
