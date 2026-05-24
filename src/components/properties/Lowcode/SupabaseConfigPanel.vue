@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
@@ -23,6 +23,23 @@ const config = useSceneComputed<SupabaseConfig | undefined>(() => {
 const urlInput = computed(() => config.value?.url ?? '')
 const anonKeyInput = computed(() => config.value?.anonKey ?? '')
 const schemaInput = computed(() => config.value?.schema ?? '')
+
+// Local mirror of the anon key DOM input. `buildPatch` refuses to persist
+// a service_role JWT, so deriving `serviceRoleDetected` from the committed
+// config (`anonKeyInput`) would mean the bad value never reaches reactivity
+// — banner, red border, and disabled Test button would all stay silent
+// even though §2.7 risk row 1 demands all four indicators. Tracking what
+// the user has typed locally lets the banner fire live on @input while
+// the committed config stays clean. The watch resyncs only when the
+// committed anon key actually changes (undo/redo, external load), so a
+// rejected service_role attempt stays visible until the user clears it.
+const anonKeyTyped = ref<string>(config.value?.anonKey ?? '')
+watch(
+  () => config.value?.anonKey,
+  (val) => {
+    anonKeyTyped.value = val ?? ''
+  }
+)
 
 const testStatus = ref<'idle' | 'pending' | 'ok' | 'error'>('idle')
 const testError = ref<string>('')
@@ -57,7 +74,7 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
 }
 
 const serviceRoleDetected = computed(() => {
-  const payload = decodeJwtPayload(anonKeyInput.value)
+  const payload = decodeJwtPayload(anonKeyTyped.value)
   return payload?.role === 'service_role'
 })
 
@@ -168,7 +185,7 @@ async function testConnection(): Promise<void> {
         @change="updateUrl(($event.target as HTMLInputElement).value)"
       />
       <input
-        :value="anonKeyInput"
+        :value="anonKeyTyped"
         :aria-label="panels.lowcodeSupabaseAnonKey"
         :aria-invalid="serviceRoleDetected ? 'true' : undefined"
         data-test-id="lowcode-supabase-anon-key"
@@ -178,6 +195,7 @@ async function testConnection(): Promise<void> {
           'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
           serviceRoleDetected ? 'border-red-500' : 'border-border'
         ]"
+        @input="anonKeyTyped = ($event.target as HTMLInputElement).value"
         @change="updateAnonKey(($event.target as HTMLInputElement).value)"
       />
       <input
