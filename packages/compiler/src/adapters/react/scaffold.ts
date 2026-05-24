@@ -2,7 +2,7 @@ import type { IRTree } from '#compiler/ir/types'
 
 import { emitElement } from './emit/element'
 import { emitStateDecl } from './emit/state'
-import { pageHasNavigateHandler } from './ir-walk'
+import { pageHasNavigateHandler, pageUsesSupabase } from './ir-walk'
 import type { PagePathInfo } from './route-paths'
 
 /**
@@ -30,6 +30,12 @@ interface BuildPageOptions {
    *  sit in `src/pages/`). Only consulted when the page reads or writes
    *  a doc-state. */
   lowcodeStateImportPath: string
+  /** Phase 3 §2: relative path the page module uses to reach
+   *  `src/_lowcode_supabase.ts`. Mirrors `lowcodeStateImportPath` —
+   *  `'./_lowcode_supabase'` for single-page, `'../_lowcode_supabase'`
+   *  for multi-page page modules. Only consulted when the page contains
+   *  a `supabaseQuery` or `supabaseMutation` handler. */
+  lowcodeSupabaseImportPath: string
 }
 
 interface BuildAppOptions {
@@ -39,6 +45,10 @@ interface BuildAppOptions {
    *  `'./_lowcode_state'` (the single-page default) so existing call sites
    *  that don't carry a doc-state stay unchanged. */
   lowcodeStateImportPath?: string
+  /** Phase 3 §2: see `BuildPageOptions.lowcodeSupabaseImportPath`. Defaults
+   *  to `'./_lowcode_supabase'` for single-page; multi-page call sites
+   *  pass `'../_lowcode_supabase'` explicitly. */
+  lowcodeSupabaseImportPath?: string
 }
 
 /**
@@ -51,7 +61,8 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     devMode: options.devMode,
     importPreviewBridge: options.devMode,
     exportName: 'App',
-    lowcodeStateImportPath: options.lowcodeStateImportPath ?? './_lowcode_state'
+    lowcodeStateImportPath: options.lowcodeStateImportPath ?? './_lowcode_state',
+    lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase'
   })
 }
 
@@ -64,7 +75,8 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     devMode: options.devMode,
     importPreviewBridge: false,
     exportName: info.component,
-    lowcodeStateImportPath: options.lowcodeStateImportPath ?? '../_lowcode_state'
+    lowcodeStateImportPath: options.lowcodeStateImportPath ?? '../_lowcode_state',
+    lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase'
   })
 }
 
@@ -104,7 +116,7 @@ ${routes}
  * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const needsNavigate = pageHasNavigateHandler(ir)
@@ -112,7 +124,10 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     ? `import { useNavigate } from 'react-router-dom'\n`
     : ''
   const lowcodeStateImport = buildLowcodeStateImport(ir, lowcodeStateImportPath)
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport
+  const lowcodeSupabaseImport = pageUsesSupabase(ir)
+    ? `import { getSupabaseClient } from '${lowcodeSupabaseImportPath}'\n`
+    : ''
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''

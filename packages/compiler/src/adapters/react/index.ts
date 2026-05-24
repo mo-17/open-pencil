@@ -63,7 +63,8 @@ function emitSinglePage(ir: IRTree, options: CompilerOptions): AdapterEmission {
     'src/App.tsx',
     buildAppTsx(cleaned, {
       devMode: options.devMode,
-      lowcodeStateImportPath: './_lowcode_state'
+      lowcodeStateImportPath: './_lowcode_state',
+      lowcodeSupabaseImportPath: './_lowcode_supabase'
     })
   )
   setSharedProjectFiles(files, options, collectClassNames([cleaned]))
@@ -92,7 +93,8 @@ function emitMultiPage(
       `src/pages/${info.file}`,
       buildPageModule(info, {
         devMode: options.devMode,
-        lowcodeStateImportPath: '../_lowcode_state'
+        lowcodeStateImportPath: '../_lowcode_state',
+        lowcodeSupabaseImportPath: '../_lowcode_supabase'
       })
     )
   }

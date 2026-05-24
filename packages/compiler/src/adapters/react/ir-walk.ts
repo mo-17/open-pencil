@@ -34,6 +34,33 @@ function nodeHasNavigate(node: IRNode): boolean {
 }
 
 /**
+ * Phase 3 §2: a page uses supabase when any handler in its tree is a
+ * `supabaseQuery` or `supabaseMutation`. The scaffolder consults this to
+ * decide whether to emit `import { getSupabaseClient } from '<path>'` —
+ * step 3's runtime template exports the symbol, but step 3 forgot the
+ * page-side import wiring, so emitted pages threw ReferenceError at
+ * runtime even though every emit-level test passed (they checked the
+ * call site string, not module resolution).
+ */
+export function pageUsesSupabase(ir: IRTree): boolean {
+  return ir.children.some(nodeUsesSupabase)
+}
+
+function nodeUsesSupabase(node: IRNode): boolean {
+  if (node.kind === 'conditional') return nodeUsesSupabase(node.consequent)
+  if (node.kind === 'list') return nodeUsesSupabase(node.template)
+  if (node.kind !== 'element') return false
+  if (node.events) {
+    for (const handlers of Object.values(node.events)) {
+      if (handlers.some((h) => h.kind === 'supabaseQuery' || h.kind === 'supabaseMutation')) {
+        return true
+      }
+    }
+  }
+  return node.children.some(nodeUsesSupabase)
+}
+
+/**
  * Return a copy of `ir` with every `navigate` handler removed and a
  * `action-navigate-no-router` warning pushed per drop. The input tree is
  * not mutated. When the page has no navigate handlers the original tree

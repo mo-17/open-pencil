@@ -111,6 +111,10 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
     const app = out.files.get('src/App.tsx') as string
     expect(app).not.toContain('navigate(')
     expect(app).toContain('async () => {')
+    // step 5b regression — the call site emit predates the import wiring;
+    // without this assertion the page module ReferenceError'd at runtime
+    // even though every emit-level test passed.
+    expect(app).toContain("import { getSupabaseClient } from './_lowcode_supabase'")
     expect(app).toContain('getSupabaseClient().from("users")')
     expect(app).toContain('.select("id, name")')
     expect(app).toContain('setDocState("users", data)')
@@ -140,6 +144,9 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
 
     const home = out.files.get('src/pages/index.tsx') as string
     expect(home).toContain('navigate("/about")')
+    // Page modules sit one level deeper than the runtime files; the import
+    // path must climb out of `pages/` to reach `src/_lowcode_supabase.ts`.
+    expect(home).toContain("import { getSupabaseClient } from '../_lowcode_supabase'")
     expect(home).toContain('getSupabaseClient().from("users")')
     expect(home).toContain('setDocState("users", data)')
     // Runtime files live at `src/` (project root), not inside `pages/`.
@@ -168,6 +175,10 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('const $currentUser = useDocState("$currentUser")')
     expect(app).toContain('{$currentUser}')
+    // The page reads $currentUser but never calls getSupabaseClient itself —
+    // the named import is gated on actual handler usage, not just config
+    // presence, so this page should not import it.
+    expect(app).not.toContain('getSupabaseClient')
 
     const stateRuntime = out.files.get('src/_lowcode_state.ts') as string
     expect(stateRuntime).toContain('$currentUser:')
@@ -216,6 +227,7 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
 
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('async () => {')
+    expect(app).toContain("import { getSupabaseClient } from './_lowcode_supabase'")
     // Order is preserved by the emit walker.
     const idxSet = app.indexOf('setDocState("count"')
     const idxQuery = app.indexOf('getSupabaseClient().from("rows").select("*")')
@@ -253,6 +265,9 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
     expect(out.files.has('src/_lowcode_supabase.ts')).toBe(false)
     const pkg = JSON.parse(out.files.get('package.json') as string)
     expect(pkg.dependencies['@supabase/supabase-js']).toBeUndefined()
+    // No supabase config → no import in the page either.
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('_lowcode_supabase')
     // $currentUser must NOT slip into the docState shape when supabaseConfig
     // is absent — the auto-register gate keys on that flag.
     const stateRuntime = out.files.get('src/_lowcode_state.ts') as string
