@@ -108,14 +108,29 @@ async function testConnection(): Promise<void> {
   testStatus.value = 'pending'
   testError.value = ''
   try {
-    // Supabase PostgREST root responds 200 (or 401 for bad key) for the
-    // bare `/rest/v1/` path with the `apikey` header. We don't care about
-    // the body — only that the request reaches the server and is accepted.
-    const url = urlInput.value.replace(/\/$/, '') + '/rest/v1/'
-    const res = await fetch(url, { headers: { apikey: anonKeyInput.value } })
+    // Hit GoTrue's `/auth/v1/settings` rather than PostgREST root: on
+    // current Supabase versions `/rest/v1/` requires the service_role key
+    // (returns 401 with hint "Only the 'service_role' API key can be used
+    // for this endpoint"). `/auth/v1/settings` is the only public endpoint
+    // that takes the anon `apikey` header AND returns 200, so it validates
+    // URL + key in a single round-trip without ever asking for elevated
+    // credentials. A successful settings fetch implies the project is
+    // reachable and the anon key is accepted by the same gateway PostgREST
+    // sits behind, so subsequent table queries will authenticate.
+    const url = urlInput.value.replace(/\/$/, '') + '/auth/v1/settings'
+    const res = await fetch(url, {
+      headers: {
+        apikey: anonKeyInput.value
+      }
+    })
     if (!res.ok) {
+      // Surface Supabase's response body so the red banner shows the real
+      // reason ("Invalid API key" / "JWT expired" / "TenantNotFound" / …)
+      // instead of a bare HTTP code. Trim to 200 chars to keep the banner
+      // readable; swallow body-read failures so we still report the status.
+      const body = await res.text().catch(() => '')
       testStatus.value = 'error'
-      testError.value = `HTTP ${res.status} ${res.statusText}`
+      testError.value = `HTTP ${res.status} ${res.statusText}${body ? ` — ${body.slice(0, 200)}` : ''}`
       return
     }
     testStatus.value = 'ok'
