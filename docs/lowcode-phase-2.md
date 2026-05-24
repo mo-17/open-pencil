@@ -19,7 +19,7 @@
 | 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **§3 ✅ 2026-05-22**(HEAD `df5e1b4`) |
 | 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 ✅ 2026-05-23** |
 | 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
-| 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽(本节内显式推翻 §1.5 #3 + #5);邻近顺手补 `layoutPositioning='ABSOLUTE'` emit honor | **§6 开工中**(详见 §6) |
+| 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽(本节内显式推翻 §1.5 #3 + #5);邻近顺手补 `layoutPositioning='ABSOLUTE'` emit honor | **§6 ✅ 2026-05-24** |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router(本节内显式推翻 §11 #5) | **§7 ✅ 2026-05-23** |
 | 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 ✅ 2026-05-23** |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
@@ -850,7 +850,7 @@ export interface IRApiCallHandler {
 > **5 项主决定 + 9 项次级默认 + 邻近能力(`layoutPositioning: 'ABSOLUTE'` emit honor)2026-05-23 已由用户在对话中一次性锁定**。
 > **本节即对 Phase 1 §1.5 决定 #3「只针对 CANVAS → 直接子项一层」+ #5「Phase 1 不引入 `layoutMode: 'FREE'`」两条锁的显式推翻(scope change)**;Phase 1 §1.5 仍记录历史,但行为以本节为准。
 >
-> **状态:🔨 开工中**(step 1–4)。
+> **状态:🔒 已收尾(2026-05-24 Tauri verified)**。
 
 ### 6.1 现状与问题
 
@@ -1006,7 +1006,7 @@ function applyLayoutStyle(style, node, graph): void {
 
 ### 6.8 Post-mortem
 
-> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测待跑**,实测后回填发现 + `docs(lowcode): §6 Tauri verification`。
+> 设计 + step 1–4 交付 2026-05-23;**Tauri 用户实测 2026-05-24 一次过**(§6.5 #4 全 6 项 user-ACK),无 bug-fix commit。
 
 **Step commits:**
 
@@ -1017,7 +1017,8 @@ function applyLayoutStyle(style, node, graph): void {
 | 2 | `12b40ee` | jsx exporter:`getNodeContext.parentIsCanvas` → `parentIsFreeLayout`(语义放宽 CANVAS \|\| `layoutMode==='FREE'`);`applyLayoutStyle` absolute 分支同时 honor `parentIsFreeLayout` 与 `node.layoutPositioning==='ABSOLUTE'`(邻近能力 emit 补缺,5 行);`free-layout.test.ts` 6 case |
 | 3 | `eb44569` | kiwi 持久化:`lowcode/freeLayout` pluginData hook(true-only 严格守卫)+ `LOWCODE_PLUGIN_KEYS` + `freeLayoutOverride` 字段;`nodeChangeToProps` 解构后 spread `{ layoutMode: 'FREE' }`;`plugin-data.test.ts` +4 case + `roundtrip.test.ts` +2 case(含字节级回归) |
 | 4 | `846ad24` | UI:`AutoLayoutControls.vue` 加第 4 按钮 "FREE"(lucide move icon,decision #h 末尾);`LayoutSection.vue` 子控件 gate 紧化为 `isFlex \|\| isGrid`(FREE 显示零子控件);i18n `panels.freeLayout` + 7 locale;walker checklist 第二轮发现 7 处 vue 端漏 sweep 全补;`isAutoLayoutMode` 从 `@open-pencil/core` 公开导出;`cross-walker/free-layout.test.ts` 3 case |
-| post-mortem | (本 commit) | §6 step 1–4 post-mortem(commit 链 + walker checklist + 实测受限提醒) |
+| post-mortem | `52842f2` | §6 step 1–4 post-mortem(commit 链 + walker checklist + 实测受限提醒) |
+| verification | (本 commit) | §6 Tauri verification 收尾:§1.1 表行 5 ✅、§6 标 🔒、§6.8 实测结论回填 |
 
 **Walker checklist(经验 A)**:跑了两轮。
 
@@ -1044,7 +1045,19 @@ function applyLayoutStyle(style, node, graph): void {
 - 单页 `.fig` 文档 byte-level 回归靠 `roundtrip.test.ts` 钉死 —— 但具体的 Phase 0 / Phase 1 既有 demo `.fig` 在 LFS 内,本地依赖网络;若 Tauri 实测发现旧 demo 视觉漂移而单元测试全过,大概率是 emit 路径里 `parentIsFreeLayout` 在 CANVAS-only 旧 demo 上的行为分叉
 - `layoutPositioning='ABSOLUTE'` 子级 opt-out **暂无 UI**(决定 #5 + 邻近声明,要 UI 走 follow-up);Tauri 实测要走 Figma plugin API / 程序设置才能验
 
-**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` + `./tests/engine/scene-graph/is-auto-layout-mode.test.ts` 362 pass;`bun run check` 全绿(jscpd 0 clones)。Tauri 实测待用户主导。
+**测试结果**:`bun test ./tests/engine/compiler/` + `./tests/engine/kiwi/lowcode/` + `./tests/engine/scene-graph/is-auto-layout-mode.test.ts` 362 pass;`bun run check` 全绿(jscpd 0 clones)。
+
+**Tauri 实测结果(2026-05-24,§6.5 #4 全 6 项 user-ACK)**:
+1. FRAME → Properties Auto Layout `+`(进 VERTICAL)→ strip 第 4 按钮 `✥` (lucide-move) → `layoutMode === 'FREE'`;拖 BUTTON 进去按 x/y 摆,不被 flex 流挤 —— **过**
+2. canvas-side 显示 BUTTON 在拖放点不重排(`layout/apply.ts:52` Yoga skip FREE 生效)—— **过**
+3. preview iframe 渲染同 canvas —— **过**
+4. `.fig` 存读回:FREE 标记保留(`lowcode/freeLayout: true` pluginData 旁路读回 → `nodeChangeToProps` spread `{ layoutMode: 'FREE' }`)—— **过**
+5. auto-layout FRAME 子项设 `layoutPositioning='ABSOLUTE'`(无 UI,走 Figma plugin API / 程序设置)→ preview 子项跳出 flex 流(`parentIsFreeLayout || layoutPositioning==='ABSOLUTE'` OR-condition 生效)—— **过**
+6. **单页文档零回归**(§1 既有 demo,CANVAS-only 行为不变;`parentIsFreeLayout` 语义放宽未影响 CANVAS 路径)—— **过**
+
+**无 bug-fix commit** —— 设计 + 两轮 walker checklist + helper-first sweep + cross-walker 回归 + 字节级 .fig 回归全套配合,实测一次过。
+
+经验 G(union widening → helper-first)在本节得到强力验证:25 处 sweep 跨 round 1/round 2 + 7 处 vue 端漏全部命中,`isAutoLayoutMode` helper 是唯一能让 `LayoutMode` 第 5 个变体扩展不在某 callsite 静默失败的路径。
 
 ---
 
