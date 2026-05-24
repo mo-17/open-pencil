@@ -12,7 +12,15 @@ import {
   setTextProperties,
   updateNode
 } from './modify'
-import { findNodes, getJsx, getNode, getSelection } from './read'
+import {
+  findNodes,
+  getJsx,
+  getNode,
+  getSelection,
+  readDocStates,
+  readLowcodeNode,
+  readSupabaseConfig
+} from './read'
 import type { ToolDef } from './schema'
 import { stockPhoto } from './stock-photo'
 import { batchUpdate, deleteNode, nodeResize, reparentNode } from './structure'
@@ -28,6 +36,10 @@ export const CORE_TOOLS: ToolDef[] = [
   getNode,
   findNodes,
   getJsx,
+  // Read — lowcode (Phase 3 §3)
+  readLowcodeNode,
+  readDocStates,
+  readSupabaseConfig,
   // Create
   render,
   // Modify
