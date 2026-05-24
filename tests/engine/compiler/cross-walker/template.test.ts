@@ -9,7 +9,7 @@ import {
   hasPrevReference,
   parseTemplate,
   substitutePrev
-} from '@open-pencil/compiler/ir/expression'
+} from '@open-pencil/core/lowcode-validation'
 
 /**
  * Phase 2 §4 step 4 — cross-walker regression (经验 A).

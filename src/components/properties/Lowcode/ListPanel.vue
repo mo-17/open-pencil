@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { validateStateName } from '@open-pencil/compiler'
+import { validateStateName } from '@open-pencil/core/lowcode-validation'
 import type { DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'

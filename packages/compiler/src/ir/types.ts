@@ -3,7 +3,7 @@
  * `adapters/**`; the data flow is one-way (SceneGraph → IR → adapter).
  */
 
-import type { ExprAst } from './expression'
+import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
 export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList
 

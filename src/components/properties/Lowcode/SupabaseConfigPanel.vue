@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
+import { detectServiceRole } from '@open-pencil/core/lowcode-validation'
 import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
@@ -57,26 +58,12 @@ function maybeFireRlsToast(): void {
 }
 
 // Phase 3 §2.7 risk row 1 — service_role JWTs carry full DB privileges and
-// MUST never land in .fig / pluginData / git. JWTs are
-// `header.payload.signature` (base64url); decode payload + check `role` claim.
-// Falls back to "not a service_role key" on any parse failure so a typo or
-// non-JWT string doesn't block legitimate anon keys.
-function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
-  const parts = jwt.split('.')
-  if (parts.length !== 3) return null
-  try {
-    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4))
-    return JSON.parse(json) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
-
-const serviceRoleDetected = computed(() => {
-  const payload = decodeJwtPayload(anonKeyTyped.value)
-  return payload?.role === 'service_role'
-})
+// MUST never land in .fig / pluginData / git. The detector lives in
+// `@open-pencil/core/lowcode-validation` so the editor UI here and the
+// lowcode AI tool (Phase 3 §3) share one source — a divergence between
+// the two would be silent on this side (banner still shows) and dangerous
+// on the tool side (key would persist).
+const serviceRoleDetected = computed(() => detectServiceRole(anonKeyTyped.value))
 
 function commit(next: SupabaseConfig | undefined): void {
   editor.updateNodeWithUndo(
@@ -93,7 +80,7 @@ function buildPatch(url: string, anonKey: string, schema: string): SupabaseConfi
   // §2.2 #j hard-reject: a service_role key NEVER persists. Mid-typing the
   // key is fine (banner shows), but the moment a commit would happen we
   // refuse to persist the bad value.
-  if (k && decodeJwtPayload(k)?.role === 'service_role') return config.value
+  if (k && detectServiceRole(k)) return config.value
   if (!u && !k) return undefined
   return s ? { url: u, anonKey: k, schema: s } : { url: u, anonKey: k }
 }

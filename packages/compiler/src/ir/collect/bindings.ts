@@ -1,13 +1,12 @@
 import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
-
-import type { ExprAst } from '../expression'
 import {
+  type ExprAst,
   hasPrevReference,
   parseExpression,
   parseTemplate,
   PREV_IDENT,
   substitutePrev
-} from '../expression'
+} from '@open-pencil/core/lowcode-validation'
 import type {
   IRApiCallHandler,
   IRDocStateDecl,

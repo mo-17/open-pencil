@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { validateExpression, validateUrlTemplate } from '@open-pencil/compiler'
+import { validateExpression, validateUrlTemplate } from '@open-pencil/core/lowcode-validation'
 import type {
   ActionDef,
   ActionKind,

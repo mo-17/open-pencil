@@ -3,12 +3,17 @@ import { selectAdapter } from './select-adapter'
 import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
 export type { CompileWarning, CompilerInput, CompilerOptions, CompilerOutput } from './types'
+// Phase 3 §3: validator + expression sublanguage live in
+// `@open-pencil/core/lowcode-validation` so the lowcode AI tool surface
+// (which sits in core) can share one source with editor + compiler.
+// Re-exported here so existing consumers (`import { validateStateName }
+// from '@open-pencil/compiler'`) stay unbroken.
 export {
   validateStateName,
   validateExpression,
   validateUrlTemplate,
   type ValidationResult
-} from './ir/validate'
+} from '@open-pencil/core/lowcode-validation'
 // Phase 2 §7 — preview iframe needs pageId↔slug round-trip; the React adapter's
 // route derivation is the single source of truth, so we lift it to the public
 // surface (and an editor-side helper) instead of replicating the algorithm.

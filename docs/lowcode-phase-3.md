@@ -422,15 +422,13 @@ export function useSupabaseAuth() {
 
 | 文件 | 内容 |
 |---|---|
-| `packages/core/src/lowcode-validation/state-name.ts` | `validateStateName(name)` 提取自 `packages/core/src/scene-graph/lowcode/state.ts`(step 1 §2)+ `^\$` reject 共用 |
-| `packages/core/src/lowcode-validation/supabase-config.ts` | `validateSupabaseConfig(config)` + `decodeJwtPayload` + service_role detect;提取自 `src/components/properties/Lowcode/SupabaseConfigPanel.vue` |
-| `packages/core/src/lowcode-validation/expression.ts` | `validateExpression(src, scope)` 提取自 `packages/compiler/src/expr/` 的 parser entry,以便 tool 校验 `valueExpr` / `bindings.expr` |
-| `packages/core/src/lowcode-validation/binding.ts` | `validateBinding(channel, binding, ctx)` —— per-channel kind / shape;借用既有 `IRBinding` discriminated union |
-| `packages/core/src/lowcode-validation/action.ts` | `validateAction(action, ctx)` —— per-kind shape;借用 ActionDef union 6 kind 完整覆盖 |
-| `packages/core/src/lowcode-validation/index.ts` | 单一 barrel,导出全部 validator + 共享 `ValidationResult` 类型 |
+| `packages/core/src/lowcode-validation/expression.ts` | **从 `packages/compiler/src/ir/expression.ts` 整体移过来**:Phase 0 表达式子语言 parser + AST + `parseExpression` / `parseTemplate` / `emitExpression` / `PREV_IDENT` / `hasPrevReference` / `substitutePrev`(589 行,Phase 2 §4 FROZEN grammar 不改)|
+| `packages/core/src/lowcode-validation/validate.ts` | **从 `packages/compiler/src/ir/validate.ts` 整体移过来**:`ValidationResult` + `validateStateName` + `validateExpression` + `validateUrlTemplate` |
+| `packages/core/src/lowcode-validation/supabase-config.ts` | NEW:`decodeJwtPayload` + `detectServiceRole` + `validateSupabaseConfig`,提取自 `src/components/properties/Lowcode/SupabaseConfigPanel.vue` |
+| `packages/core/src/lowcode-validation/index.ts` | 单一 barrel,导出全部 validator + parser + `ValidationResult` 类型 |
 | `packages/core/src/tools/read/lowcode.ts` | `readLowcodeNode` / `readDocStates` / `readSupabaseConfig` 3 tool |
-| `packages/core/src/tools/modify/lowcode.ts` | `updateLowcodeNode` / `setDocStates` / `setSupabaseConfig` 3 tool |
-| `tests/engine/lowcode-validation/{state-name,supabase-config,expression,binding,action}.test.ts` | 5 个 validator 单测 |
+| `packages/core/src/tools/modify/lowcode.ts` | `updateLowcodeNode` / `setDocStates` / `setSupabaseConfig` 3 tool;入参 `validateBinding` / `validateAction` 在 step 3 与 tool 一起新建(scope 推后:无现有调用站,无 drift 风险,由 tool 真实需求驱动 API 定形)|
+| `tests/engine/lowcode-validation/{expression,expression-template,expression-prev,validate,supabase-config}.test.ts` | 5 个 validator + parser 单测(前 4 个从 `tests/engine/compiler/ir/` 移过来,`supabase-config.test.ts` 是 step 1 新加)|
 | `tests/engine/tools/lowcode/{read,modify}.test.ts` | 2 个 tool 集成测试 |
 | `tests/engine/tools/lowcode/cross-walker.test.ts` | walker checklist round-2 用 |
 
@@ -438,9 +436,12 @@ export function useSupabaseAuth() {
 
 | 文件 | 改 |
 |---|---|
-| `packages/core/src/scene-graph/lowcode/state.ts` | `validateStateName` 内联实现替换为 `import { validateStateName } from '#core/lowcode-validation/state-name'` re-export(保留旧 API 入口,防 Phase 0/1/2 既有调用站破坏)|
-| `src/components/properties/Lowcode/SupabaseConfigPanel.vue` | `decodeJwtPayload` + serviceRoleDetected 改 import 共享 `@open-pencil/core/lowcode-validation` 入口;`testConnection` 不动(那是网络 IO 不是 schema 校验)|
-| `packages/core/src/tools/registry-core.ts` 或 `registry-extended.ts` | 注册 6 个新 tool |
+| `packages/compiler/src/ir/expression.ts` | **删除**(整体移到 `@open-pencil/core/lowcode-validation/expression.ts`)|
+| `packages/compiler/src/ir/validate.ts` | **删除**(整体移到 `@open-pencil/core/lowcode-validation/validate.ts`)|
+| `packages/compiler/src/index.ts` + 5 个 compiler 内部 import 站(`ir/types.ts` / `ir/collect/{state,tree,bindings}.ts` / `adapters/react/emit/{element,event}.ts`)| import 路径从 `./expression` / `../validate` / `#compiler/ir/expression` 改 `@open-pencil/core/lowcode-validation`;`compiler/src/index.ts` 保留 `validateStateName` / `validateExpression` / `validateUrlTemplate` / `ValidationResult` re-export 防外部破坏 |
+| `src/components/properties/Lowcode/{EventsPanel,ListPanel,RenderConditionPanel,TextBindingPanel}.vue` + `state-row-editor.ts` | import 从 `@open-pencil/compiler` 直接换 `@open-pencil/core/lowcode-validation`(canonical source)|
+| `src/components/properties/Lowcode/SupabaseConfigPanel.vue` | 删除内联 `decodeJwtPayload`,改 import `detectServiceRole` 共享;`testConnection` 不动(那是网络 IO 不是 schema 校验)|
+| `packages/core/src/tools/registry-core.ts` 或 `registry-extended.ts` | 注册 6 个新 tool(step 3 落)|
 
 **ToolDef 入参 shape**(锁定):
 

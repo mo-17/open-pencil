@@ -1,6 +1,6 @@
 import type { NodeType, SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
+import { parseExpression, PREV_IDENT } from '@open-pencil/core/lowcode-validation'
 
-import { parseExpression, PREV_IDENT } from '../expression'
 import { tailwindClassName } from '../style'
 import type {
   IRAttrValue,

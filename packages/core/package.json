@@ -78,6 +78,11 @@
       "bun": "./src/lint/index.ts",
       "default": "./src/lint/index.ts"
     },
+    "./lowcode-validation": {
+      "types": "./src/lowcode-validation/index.ts",
+      "bun": "./src/lowcode-validation/index.ts",
+      "default": "./src/lowcode-validation/index.ts"
+    },
     "./io": {
       "types": "./src/io/index.ts",
       "bun": "./src/io/index.ts",

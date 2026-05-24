@@ -1,7 +1,8 @@
 import type { SceneNode, StateDef } from '@open-pencil/core/scene-graph'
 
+import { validateStateName } from '@open-pencil/core/lowcode-validation'
+
 import type { IRStateDecl } from '../types'
-import { validateStateName } from '../validate'
 
 /** Hoist page-scoped state declarations into IR. Drops entries with invalid
  *  identifier names so the emitted code stays compilable; the dropped entries

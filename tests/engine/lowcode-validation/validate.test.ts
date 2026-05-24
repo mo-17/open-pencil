@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { validateStateName, validateExpression } from '@open-pencil/compiler'
+import { validateStateName, validateExpression } from '@open-pencil/core/lowcode-validation'
 
 /**
  * Phase 1 §7.3 — these helpers back the StatePanel / EventsPanel inline

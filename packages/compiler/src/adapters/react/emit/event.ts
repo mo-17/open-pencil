@@ -1,4 +1,4 @@
-import { emitExpression } from '#compiler/ir/expression'
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
 import type {
   IREventHandler,
   IRSupabaseFilter,

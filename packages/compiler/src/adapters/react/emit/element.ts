@@ -1,4 +1,4 @@
-import { emitExpression } from '#compiler/ir/expression'
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
 import type { IRAttrValue, IREventHandler, IREventName, IRNode } from '#compiler/ir/types'
 
 import { emitEventHandler } from './event'
