@@ -4,8 +4,12 @@
 > `lowcode-phase-0`)收官,所有 5 项主条目交付:§1 canvas-direct 绝对定位、§7.3
 > inline 表达式校验 UI、§7.4 ActionDef 判别联合 + navigate / setVariable、§10
 > Fast Refresh + VFS HMR、§11 多页编译 + react-router-dom、§12 lowcode 字段
-> `.fig` 持久化。本 doc 是 Phase 2 的 source of truth。**目前所有候选未锁定,以下
-> 列出范围预期 + 优先级建议,实际开工前每条候选单独锁决定并扩写本 doc。**
+> `.fig` 持久化。
+>
+> **Phase 2 状态:🔒 已收尾(2026-05-24,HEAD `f9a58ca`)**。§1.1 候选 7
+> 项交付(§2/§3/§4/§6/§7/§8/§9 全 Tauri-verified);§5(Kiwi schema 升格)经
+> 评估为高风险纯工程债务,推迟到 Phase 3 作为候选。继续工作见
+> `docs/lowcode-phase-3.md`。
 
 ---
 
@@ -18,13 +22,13 @@
 | 1 | **`setVariable` 运行时存储**(候选 §2) | 高 | §7.4 留了占位 stub;Phase 2 给编译产物补一个最小运行时变量 store,把 `setVariable` 从警告变成能跑 | TBD §2 |
 | 2 | **数据 fetch / API 调用**(候选 §3) | 高 | Bubble 能力对位的基本要件;扩展 `ActionDef` 加 `apiCall` 或类似 kind | **§3 ✅ 2026-05-22**(HEAD `df5e1b4`) |
 | 3 | **表达式子语言扩展**(候选 §4) | 中 | 窄口径:`${}` 字符串插值(URL 模板)+ docState 可在读上下文表达式引用 —— 接 §3 留的尾;函数调用 / 数组 / 对象字面量推迟 | **§4 ✅ 2026-05-23** |
-| 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | TBD §5 |
+| 4 | **lowcode 字段升格为 Kiwi schema**(候选 §5) | 中 | §12 用的是 pluginData 通道;Phase 2 评估是否值得 fork `kiwi-schema/`(vendored)拿一等字段位 | **推迟到 Phase 3**(2026-05-24 用户决定;§6 收尾后 §2/§8/§6/§12 4 条 pluginData 旁路通道已稳定运行,升格高风险且产品端无收益,转 `docs/lowcode-phase-3.md` 候选) |
 | 5 | **`layoutMode: 'FREE'` schema 字段**(候选 §6) | 低 | 任意层级混合 free + auto-layout;§1 收尾时锁定的"只在 CANVAS → 直接子项一层"放宽(本节内显式推翻 §1.5 #3 + #5);邻近顺手补 `layoutPositioning='ABSOLUTE'` emit honor | **§6 ✅ 2026-05-24** |
 | 6 | **多页 preview iframe 联动**(候选 §7) | 低 | §11 决定 #5 锁定 preview 仍传 `[currentPageId]` 单页切片;Phase 2 评估是否给 preview 也上 router(本节内显式推翻 §11 #5) | **§7 ✅ 2026-05-23** |
 | 7 | **更多交互组件**(候选 §8) | 中 | 补 RADIO/TEXTAREA/DATEPICKER/SWITCH 四个,全 emit 原生 HTML 零依赖;纯组件增量,不动属性面板 / EventsPanel | **§8 ✅ 2026-05-23** |
 | 8 | **条件渲染 / 列表渲染**(候选 §9) | 高 | 当前不能在画布上表达 "if / for";至少需要 IR 层加 `IRConditional` / `IRList` + 编辑器 UI 暴露 | **§9 ✅ 2026-05-21**(HEAD `c1cd202`) |
 
-> 行 1(§2)已收尾:**§2 ✅ 2026-05-22**(HEAD `d3d1fd9`)。
+> **Phase 2 收尾(2026-05-24)**:§1.1 候选 8 项中 7 项交付(§2/§3/§4/§6/§7/§8/§9 全 Tauri-verified),§5(Kiwi schema 升格)推迟到 Phase 3。继续工作见 `docs/lowcode-phase-3.md`。
 
 > §2 / §8 / §9 是产品层面影响最大的候选,§4 / §5 是工程债务清理。开工前每条都要回到本 doc 写 §X 详述,锁决定。
 
