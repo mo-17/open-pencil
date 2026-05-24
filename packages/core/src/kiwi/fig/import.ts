@@ -278,17 +278,19 @@ function applyLowcodeFieldsToPage(page: SceneNode, canvasNc: NodeChange): void {
 }
 
 /**
- * Phase 2 §2: hydrate root-scoped lowcode fields from the DOCUMENT pluginData.
- * `lowcodeDocumentState` (document-level "Document State" declarations) is the
- * only field currently routed here, but the helper takes the full extracted
- * shape to stay symmetric with the page-level helper above.
+ * Phase 2 §2 + Phase 3 §2: hydrate root-scoped lowcode fields from the
+ * DOCUMENT pluginData. `lowcodeDocumentState` (document-level "Document State"
+ * declarations) and `lowcodeSupabaseConfig` (Supabase connection settings)
+ * both live on the root node only, so this is the single hydration point.
  */
 function applyLowcodeFieldsToRoot(graph: SceneGraph, docNc: NodeChange): void {
   const root = graph.getNode(graph.rootId)
   if (!root) return
-  const { pluginData, lowcodeDocumentState } = extractLowcodeAndPluginData(docNc)
+  const { pluginData, lowcodeDocumentState, lowcodeSupabaseConfig } =
+    extractLowcodeAndPluginData(docNc)
   if (pluginData.length > 0) root.pluginData = pluginData
   if (lowcodeDocumentState !== undefined) root.lowcodeDocumentState = lowcodeDocumentState
+  if (lowcodeSupabaseConfig !== undefined) root.lowcodeSupabaseConfig = lowcodeSupabaseConfig
 }
 
 function importPages(

@@ -227,6 +227,48 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
       expect(entries.map((e) => e.key)).not.toContain('lowcode/freeLayout')
     }
   })
+
+  test('emits lowcode/supabaseConfig when set on root (Phase 3 §2)', () => {
+    const config = { url: 'https://x.supabase.co', anonKey: 'anon-key-jwt' }
+    const node = makeNode({ lowcodeSupabaseConfig: config })
+    const entries = serializeLowcodeFields(node)
+    expect(entries).toHaveLength(1)
+    expect(entries[0].key).toBe('lowcode/supabaseConfig')
+    expect(JSON.parse(entries[0].value)).toEqual(config)
+  })
+
+  test('preserves the optional schema field on supabaseConfig', () => {
+    const config = { url: 'https://x.supabase.co', anonKey: 'anon', schema: 'public' }
+    const entries = serializeLowcodeFields(makeNode({ lowcodeSupabaseConfig: config }))
+    expect(JSON.parse(entries[0].value)).toEqual(config)
+  })
+
+  test('skips lowcode/supabaseConfig when url or anonKey is empty (defensive)', () => {
+    for (const bad of [
+      { url: '', anonKey: 'anon' },
+      { url: 'https://x', anonKey: '' },
+      { url: '', anonKey: '' }
+    ]) {
+      const entries = serializeLowcodeFields(
+        makeNode({ lowcodeSupabaseConfig: bad as Parameters<typeof makeNode>[0]['lowcodeSupabaseConfig'] })
+      )
+      expect(entries.map((e) => e.key)).not.toContain('lowcode/supabaseConfig')
+    }
+  })
+
+  test('legacy node without supabaseConfig emits no lowcode/supabaseConfig entry', () => {
+    const entries = serializeLowcodeFields(makeNode())
+    expect(entries.map((e) => e.key)).not.toContain('lowcode/supabaseConfig')
+  })
+
+  test('supabaseConfig appears after freeLayout so older key ordering stays stable', () => {
+    const node = makeNode({
+      layoutMode: 'FREE',
+      lowcodeSupabaseConfig: { url: 'https://x.supabase.co', anonKey: 'anon' }
+    })
+    const keys = serializeLowcodeFields(node).map((e) => e.key)
+    expect(keys).toEqual(['lowcode/freeLayout', 'lowcode/supabaseConfig'])
+  })
 })
 
 /** Build a minimal NodeChange-shaped object for `extractLowcodeAndPluginData`.
@@ -508,6 +550,52 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
     // with no FREE flag and no behaviour change.
     const result = extractLowcodeAndPluginData(makeNc([]))
     expect(result.freeLayoutOverride).toBeUndefined()
+  })
+
+  test('hydrates lowcode/supabaseConfig into lowcodeSupabaseConfig (Phase 3 §2)', () => {
+    const config = { url: 'https://x.supabase.co', anonKey: 'anon-jwt', schema: 'public' }
+    const result = extractLowcodeAndPluginData(
+      makeNc([
+        {
+          pluginID: OPEN_PENCIL_PLUGIN_ID,
+          key: 'lowcode/supabaseConfig',
+          value: JSON.stringify(config)
+        }
+      ])
+    )
+    expect(result.lowcodeSupabaseConfig).toEqual(config)
+    expect(result.pluginData).toEqual([])
+  })
+
+  test('drops a malformed lowcode/supabaseConfig defensively', () => {
+    // Hand-edited / corrupt .fig with missing url / anonKey / wrong type.
+    for (const bad of [
+      { url: 'https://x' }, // missing anonKey
+      { anonKey: 'k' }, // missing url
+      { url: '', anonKey: 'k' }, // empty url
+      { url: 'https://x', anonKey: '' }, // empty anonKey
+      'not-an-object',
+      null,
+      42
+    ]) {
+      const result = extractLowcodeAndPluginData(
+        makeNc([
+          {
+            pluginID: OPEN_PENCIL_PLUGIN_ID,
+            key: 'lowcode/supabaseConfig',
+            value: JSON.stringify(bad)
+          }
+        ])
+      )
+      expect(result.lowcodeSupabaseConfig).toBeUndefined()
+    }
+  })
+
+  test('legacy .fig with no lowcode/supabaseConfig entry leaves field undefined', () => {
+    // Pre-Phase-3 §2 .fig files round-trip with no Supabase wiring → field
+    // stays undefined → compiler skips `_lowcode_supabase.ts` emit.
+    const result = extractLowcodeAndPluginData(makeNc([]))
+    expect(result.lowcodeSupabaseConfig).toBeUndefined()
   })
 })
 

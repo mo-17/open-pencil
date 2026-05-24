@@ -421,6 +421,12 @@ export interface SceneNode {
   // (`graph.rootId`) populates this; on other nodes the field stays
   // undefined. Persisted via §12 pluginData under `lowcode/documentState`.
   lowcodeDocumentState?: DocumentStateDef[]
+  // ── Lowcode (Phase 3 §2) ──
+  // Supabase connection config. Like `lowcodeDocumentState`, only the root
+  // node carries this in practice. Presence unlocks the Supabase runtime
+  // emit + `$currentUser` auto-registration. Persisted via §12 pluginData
+  // under `lowcode/supabaseConfig`.
+  lowcodeSupabaseConfig?: SupabaseConfig
 }
 
 export type ComponentPropertyType = 'VARIANT' | 'TEXT' | 'BOOLEAN' | 'INSTANCE_SWAP'
@@ -552,9 +558,72 @@ export interface ApiCallAction {
   targetName: string
 }
 
+/** Phase 3 §2: a where-clause filter on a Supabase query or mutation.
+ *  `valueExpr` uses the same restricted expression sub-language as
+ *  `SetStateAction.valueExpr` so a filter value can reference page state,
+ *  docState, or a literal. Resolved at compile time. */
+export interface SupabaseFilter {
+  column: string
+  op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in'
+  valueExpr: string
+}
+
+/** Phase 3 §2: typed read against a Supabase table. The compiler emits
+ *  `supabase.from(table).select(columns).<filter chain>.<single?>` and
+ *  writes the result into `resultTarget` (a DocumentStateDef name).
+ *  Error path writes to `errorTarget` when set; otherwise dropped silently.
+ *  Static table / column names only — schema-aware autocomplete is §2.v2. */
+export interface SupabaseQueryAction {
+  id: string
+  kind: 'supabaseQuery'
+  table: string
+  /** Comma-separated column list; defaults to `'*'` when undefined. */
+  columns?: string
+  filters?: SupabaseFilter[]
+  /** When true, emits `.single()` and writes a single row; otherwise array. */
+  single?: boolean
+  /** Name of the DocumentStateDef the result rows / row are written into. */
+  resultTarget: string
+  /** Name of the DocumentStateDef the error is written into, if any. */
+  errorTarget?: string
+}
+
+/** Phase 3 §2: typed write against a Supabase table. `payloadJson` is a JSON
+ *  literal string (insert/update/upsert) parsed + validated like
+ *  `ApiCallAction.bodyJson`. `filters` is required for update/delete (where
+ *  clause). Result and error targets are optional — mutations are usually
+ *  fire-and-forget at the UI level. */
+export interface SupabaseMutationAction {
+  id: string
+  kind: 'supabaseMutation'
+  operation: 'insert' | 'update' | 'delete' | 'upsert'
+  table: string
+  payloadJson?: string
+  filters?: SupabaseFilter[]
+  resultTarget?: string
+  errorTarget?: string
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
- *  Phase 2 §3 adds `ApiCallAction`. */
-export type ActionDef = SetStateAction | NavigateAction | SetVariableAction | ApiCallAction
+ *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation}. */
+export type ActionDef =
+  | SetStateAction
+  | NavigateAction
+  | SetVariableAction
+  | ApiCallAction
+  | SupabaseQueryAction
+  | SupabaseMutationAction
 
 export type ActionKind = ActionDef['kind']
+
+/** Phase 3 §2: connection settings for a Supabase project. Persisted on the
+ *  root node via `lowcode/supabaseConfig` pluginData. `anonKey` is the
+ *  public anon JWT — safe to commit because Supabase enforces auth via
+ *  Row Level Security in the database. NEVER store a service_role key here;
+ *  the editor UI rejects them on entry. `schema` defaults to `'public'`. */
+export interface SupabaseConfig {
+  url: string
+  anonKey: string
+  schema?: string
+}

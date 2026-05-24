@@ -317,4 +317,47 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(findByName(reimported, 'FlexRow').layoutMode).toBe('HORIZONTAL')
     expect(findByName(reimported, 'PlainBox').layoutMode).toBe('NONE')
   })
+
+  test('root lowcodeSupabaseConfig round-trips through .fig (Phase 3 §2)', async () => {
+    const graph = new SceneGraph()
+    const config = {
+      url: 'https://abc.supabase.co',
+      anonKey: 'eyJhbGc.anonpayload.sig',
+      schema: 'public'
+    }
+    graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: config })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedRoot = reimported.getNode(reimported.rootId)
+
+    expect(reimportedRoot?.lowcodeSupabaseConfig).toEqual(config)
+  })
+
+  test('root lowcodeSupabaseConfig round-trips without optional schema field', async () => {
+    const graph = new SceneGraph()
+    const config = { url: 'https://x.supabase.co', anonKey: 'anon' }
+    graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: config })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedRoot = reimported.getNode(reimported.rootId)
+
+    expect(reimportedRoot?.lowcodeSupabaseConfig).toEqual(config)
+  })
+
+  test('graph without supabaseConfig → reimported root has the field undefined (byte regression)', async () => {
+    // Pre-Phase-3 §2 .fig files have no `lowcode/supabaseConfig` entry, so a
+    // graph without Supabase wiring must round-trip unchanged — the field
+    // stays undefined and the compiler skips the `_lowcode_supabase.ts` emit.
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('RECTANGLE', page.id, { name: 'Plain rect', width: 80, height: 60 })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedRoot = reimported.getNode(reimported.rootId)
+
+    expect(reimportedRoot?.lowcodeSupabaseConfig).toBeUndefined()
+  })
 })

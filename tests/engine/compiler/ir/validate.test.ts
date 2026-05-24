@@ -32,6 +32,14 @@ describe('validateStateName', () => {
     expect(validateStateName('myCount2').ok).toBe(true)
     expect(validateStateName('UPPER').ok).toBe(true)
   })
+
+  test('rejects $ prefix (reserved for built-in states, Phase 3 §2)', () => {
+    for (const reserved of ['$currentUser', '$sessionTime', '$', '$x']) {
+      const r = validateStateName(reserved)
+      expect(r.ok).toBe(false)
+      expect(r.reason).toMatch(/reserved/)
+    }
+  })
 })
 
 describe('validateExpression', () => {

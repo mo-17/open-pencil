@@ -21,7 +21,8 @@ import type {
   NodeType,
   PluginDataEntry,
   SceneNode,
-  StateDef
+  StateDef,
+  SupabaseConfig
 } from '#core/scene-graph'
 
 import { OPEN_PENCIL_PLUGIN_ID } from './plugin-data'
@@ -44,6 +45,11 @@ export const LOWCODE_NODE_TYPE_KEY = 'lowcode/nodeType'
  *  must be boolean `true`) overrides the kiwi-restored `layoutMode` from
  *  whatever stack mode the schema gave back (typically NONE) to FREE. */
 export const LOWCODE_FREE_LAYOUT_KEY = 'lowcode/freeLayout'
+/** Phase 3 §2: Supabase connection settings carried on the root node only.
+ *  Value is the JSON-encoded SupabaseConfig object ({ url, anonKey, schema? }).
+ *  Absent ≡ no Supabase wiring → compiler skips the `_lowcode_supabase.ts`
+ *  emit and `$currentUser` auto-registration. */
+export const LOWCODE_SUPABASE_CONFIG_KEY = 'lowcode/supabaseConfig'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -69,7 +75,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_RENDER_CONDITION_KEY,
   LOWCODE_DOCUMENT_STATE_KEY,
   LOWCODE_NODE_TYPE_KEY,
-  LOWCODE_FREE_LAYOUT_KEY
+  LOWCODE_FREE_LAYOUT_KEY,
+  LOWCODE_SUPABASE_CONFIG_KEY
 ])
 
 /**
@@ -104,7 +111,18 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (node.layoutMode === 'FREE') {
     entries.push(makeEntry(LOWCODE_FREE_LAYOUT_KEY, true))
   }
+  // Phase 3 §2: Supabase config on the root node. Absent → no entry written
+  // → legacy .fig files without Supabase wiring stay byte-identical.
+  if (isSupabaseConfig(node.lowcodeSupabaseConfig)) {
+    entries.push(makeEntry(LOWCODE_SUPABASE_CONFIG_KEY, node.lowcodeSupabaseConfig))
+  }
   return entries
+}
+
+function isSupabaseConfig(value: unknown): value is SupabaseConfig {
+  if (value === null || typeof value !== 'object') return false
+  const v = value as Record<string, unknown>
+  return typeof v.url === 'string' && v.url !== '' && typeof v.anonKey === 'string' && v.anonKey !== ''
 }
 
 function makeEntry(key: string, value: unknown): PluginDataEntry {
@@ -153,6 +171,10 @@ export interface ExtractedLowcodeAndPluginData {
    *  HORIZONTAL/VERTICAL/undefined in `stackMode`, so we store FREE
    *  out-of-band via the `lowcode/freeLayout` flag and restore here. */
   freeLayoutOverride?: true
+  /** Phase 3 §2: Supabase connection config restored from
+   *  `lowcode/supabaseConfig`. Present only when the saved value passed
+   *  the type guard (object with non-empty `url` and `anonKey`). */
+  lowcodeSupabaseConfig?: SupabaseConfig
 }
 
 export function extractLowcodeAndPluginData(
@@ -215,6 +237,13 @@ function assignLowcodeField(
       // Strict boolean-true gate — anything else is treated as absent so a
       // hand-edited / malformed .fig doesn't accidentally toggle FREE.
       if (value === true) target.freeLayoutOverride = true
+      return
+    case LOWCODE_SUPABASE_CONFIG_KEY:
+      // Strict type-guard same as the write side: object with non-empty
+      // `url` and `anonKey`. Anything else (corrupt JSON, schema mismatch)
+      // is treated as absent rather than dropped silently — the read-side
+      // JSON.parse already logged a warn for true parse failures.
+      if (isSupabaseConfig(value)) target.lowcodeSupabaseConfig = value
       return
   }
 }

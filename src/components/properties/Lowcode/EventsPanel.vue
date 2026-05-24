@@ -219,7 +219,11 @@ function errorsFor(action: ActionDef): ActionErrors {
     return !action.to || action.to.trim() === '' ? { to: 'path required' } : {}
   }
   if (action.kind === 'setVariable') return setVariableErrors(action)
-  return apiCallErrors(action)
+  if (action.kind === 'apiCall') return apiCallErrors(action)
+  // Phase 3 §2: supabaseQuery / supabaseMutation — UI + validation arrive
+  // in step 4 (ACTION_KINDS dropdown still hides them, so this branch is
+  // unreachable from the editor today but type-safe for IR-fed actions).
+  return {}
 }
 
 const actionErrors = computed(() => {

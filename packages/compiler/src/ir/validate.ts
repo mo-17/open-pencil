@@ -17,9 +17,20 @@ const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** A state name must be a legal JS identifier — it becomes the `useState`
  *  binding name directly. Empty strings are rejected explicitly so the UI
- *  can show "required" before the user has typed anything. */
+ *  can show "required" before the user has typed anything.
+ *
+ *  Phase 3 §2: names starting with `$` are reserved for built-in docStates
+ *  (`$currentUser` and future `$sessionTime` / etc.). The `$` check fires
+ *  before the IDENT_RE check so the error message can name the reservation
+ *  instead of the generic "must start with a letter or _" message. */
 export function validateStateName(name: string): ValidationResult {
   if (name === '') return { ok: false, reason: 'name is required' }
+  if (name.startsWith('$')) {
+    return {
+      ok: false,
+      reason: 'names starting with $ are reserved for built-in states (e.g. $currentUser)'
+    }
+  }
   if (!IDENT_RE.test(name)) {
     return {
       ok: false,
