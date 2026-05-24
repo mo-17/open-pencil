@@ -1,0 +1,217 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+
+import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
+import { useI18n, useSceneComputed } from '@open-pencil/vue'
+import { useSectionUI } from '@/components/ui/section'
+
+import { useEditorStore } from '@/app/editor/active-store'
+import { toast } from '@/app/shell/ui'
+
+const editor = useEditorStore()
+const sectionCls = useSectionUI()
+const { panels } = useI18n()
+
+// Phase 3 §2 #2 — connection config lives on the root node only, persisted
+// via `lowcode/supabaseConfig` pluginData. This panel is shown in the
+// no-selection branch (root-level properties), before DocumentStatePanel.
+const config = useSceneComputed<SupabaseConfig | undefined>(() => {
+  const root = editor.graph.getNode(editor.graph.rootId)
+  return root?.lowcodeSupabaseConfig
+})
+
+const urlInput = computed(() => config.value?.url ?? '')
+const anonKeyInput = computed(() => config.value?.anonKey ?? '')
+const schemaInput = computed(() => config.value?.schema ?? '')
+
+const testStatus = ref<'idle' | 'pending' | 'ok' | 'error'>('idle')
+const testError = ref<string>('')
+
+// Toast guard: §2.2 #j — the RLS reminder fires once per editor session the
+// first time the user opens this panel with both url + anonKey filled in.
+// Module-scoped so navigating between root and other selections doesn't
+// re-fire it; survives panel remounts within the same browser tab.
+let rlsToastShown = false
+function maybeFireRlsToast(): void {
+  if (rlsToastShown) return
+  if (!urlInput.value || !anonKeyInput.value) return
+  rlsToastShown = true
+  toast.info(panels.value.lowcodeSupabaseRlsToast)
+}
+
+// Phase 3 §2.7 risk row 1 — service_role JWTs carry full DB privileges and
+// MUST never land in .fig / pluginData / git. JWTs are
+// `header.payload.signature` (base64url); decode payload + check `role` claim.
+// Falls back to "not a service_role key" on any parse failure so a typo or
+// non-JWT string doesn't block legitimate anon keys.
+function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+  const parts = jwt.split('.')
+  if (parts.length !== 3) return null
+  try {
+    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4))
+    return JSON.parse(json) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+const serviceRoleDetected = computed(() => {
+  const payload = decodeJwtPayload(anonKeyInput.value)
+  return payload?.role === 'service_role'
+})
+
+function commit(next: SupabaseConfig | undefined): void {
+  editor.updateNodeWithUndo(
+    editor.graph.rootId,
+    { lowcodeSupabaseConfig: next },
+    'Update Supabase config'
+  )
+}
+
+function buildPatch(url: string, anonKey: string, schema: string): SupabaseConfig | undefined {
+  const u = url.trim()
+  const k = anonKey.trim()
+  const s = schema.trim()
+  // §2.2 #j hard-reject: a service_role key NEVER persists. Mid-typing the
+  // key is fine (banner shows), but the moment a commit would happen we
+  // refuse to persist the bad value.
+  if (k && decodeJwtPayload(k)?.role === 'service_role') return config.value
+  if (!u && !k) return undefined
+  return s ? { url: u, anonKey: k, schema: s } : { url: u, anonKey: k }
+}
+
+function updateUrl(value: string): void {
+  commit(buildPatch(value, anonKeyInput.value, schemaInput.value))
+  testStatus.value = 'idle'
+  testError.value = ''
+}
+function updateAnonKey(value: string): void {
+  commit(buildPatch(urlInput.value, value, schemaInput.value))
+  testStatus.value = 'idle'
+  testError.value = ''
+  maybeFireRlsToast()
+}
+function updateSchema(value: string): void {
+  commit(buildPatch(urlInput.value, anonKeyInput.value, value))
+  testStatus.value = 'idle'
+  testError.value = ''
+}
+
+async function testConnection(): Promise<void> {
+  if (!urlInput.value || !anonKeyInput.value) {
+    testStatus.value = 'error'
+    testError.value = panels.value.lowcodeSupabaseTestMissing
+    return
+  }
+  if (serviceRoleDetected.value) return
+  testStatus.value = 'pending'
+  testError.value = ''
+  try {
+    // Supabase PostgREST root responds 200 (or 401 for bad key) for the
+    // bare `/rest/v1/` path with the `apikey` header. We don't care about
+    // the body — only that the request reaches the server and is accepted.
+    const url = urlInput.value.replace(/\/$/, '') + '/rest/v1/'
+    const res = await fetch(url, { headers: { apikey: anonKeyInput.value } })
+    if (!res.ok) {
+      testStatus.value = 'error'
+      testError.value = `HTTP ${res.status} ${res.statusText}`
+      return
+    }
+    testStatus.value = 'ok'
+  } catch (err) {
+    testStatus.value = 'error'
+    testError.value = err instanceof Error ? err.message : String(err)
+  }
+}
+</script>
+
+<template>
+  <div data-test-id="lowcode-supabase-config-section" :class="sectionCls.wrapper">
+    <div class="mb-1.5 flex items-center justify-between">
+      <label class="text-[11px] text-muted">{{ panels.lowcodeSupabaseConfig }}</label>
+      <span
+        v-if="testStatus !== 'idle'"
+        data-test-id="lowcode-supabase-status-dot"
+        :class="[
+          'size-2 rounded-full',
+          testStatus === 'pending' && 'bg-muted',
+          testStatus === 'ok' && 'bg-green-500',
+          testStatus === 'error' && 'bg-red-500'
+        ]"
+      />
+    </div>
+
+    <div class="flex flex-col gap-1.5">
+      <input
+        :value="urlInput"
+        :aria-label="panels.lowcodeSupabaseUrl"
+        data-test-id="lowcode-supabase-url"
+        spellcheck="false"
+        :placeholder="panels.lowcodeSupabaseUrlPlaceholder"
+        class="min-w-0 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
+        @change="updateUrl(($event.target as HTMLInputElement).value)"
+      />
+      <input
+        :value="anonKeyInput"
+        :aria-label="panels.lowcodeSupabaseAnonKey"
+        :aria-invalid="serviceRoleDetected ? 'true' : undefined"
+        data-test-id="lowcode-supabase-anon-key"
+        spellcheck="false"
+        :placeholder="panels.lowcodeSupabaseAnonKeyPlaceholder"
+        :class="[
+          'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+          serviceRoleDetected ? 'border-red-500' : 'border-border'
+        ]"
+        @change="updateAnonKey(($event.target as HTMLInputElement).value)"
+      />
+      <input
+        :value="schemaInput"
+        :aria-label="panels.lowcodeSupabaseSchema"
+        data-test-id="lowcode-supabase-schema"
+        spellcheck="false"
+        :placeholder="panels.lowcodeSupabaseSchemaPlaceholder"
+        class="min-w-0 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
+        @change="updateSchema(($event.target as HTMLInputElement).value)"
+      />
+      <button
+        type="button"
+        data-test-id="lowcode-supabase-test"
+        :disabled="testStatus === 'pending' || serviceRoleDetected"
+        class="rounded border border-border px-2 py-1 text-[11px] text-muted hover:bg-hover hover:text-surface disabled:cursor-not-allowed disabled:opacity-50"
+        @click="testConnection"
+      >
+        {{ testStatus === 'pending' ? panels.lowcodeSupabaseTesting : panels.lowcodeSupabaseTest }}
+      </button>
+    </div>
+
+    <p
+      v-if="serviceRoleDetected"
+      data-test-id="lowcode-supabase-service-role-error"
+      class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+    >
+      {{ panels.lowcodeSupabaseServiceRoleReject }}
+    </p>
+    <p
+      v-else-if="testStatus === 'error'"
+      data-test-id="lowcode-supabase-test-error"
+      class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+    >
+      {{ testError }}
+    </p>
+    <p
+      v-else-if="testStatus === 'ok'"
+      data-test-id="lowcode-supabase-test-ok"
+      class="mt-1 text-[10px] text-green-500"
+    >
+      {{ panels.lowcodeSupabaseTestOk }}
+    </p>
+
+    <p
+      data-test-id="lowcode-supabase-rls-note"
+      class="mt-1.5 text-[10px] text-muted"
+    >
+      {{ panels.lowcodeSupabaseRlsNote }}
+    </p>
+  </div>
+</template>

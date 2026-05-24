@@ -6,12 +6,15 @@ import type {
   ActionDef,
   ActionKind,
   EventName,
-  SceneNode
+  SceneNode,
+  SupabaseFilter
 } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+
+import AuthControls from './AuthControls.vue'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
@@ -54,15 +57,29 @@ const actions = useSceneComputed<ActionDef[]>(() => {
   return node.events?.[name] ?? []
 })
 
-const ACTION_KINDS: ActionKind[] = ['setState', 'navigate', 'setVariable', 'apiCall']
+const ACTION_KINDS: ActionKind[] = [
+  'setState',
+  'navigate',
+  'setVariable',
+  'apiCall',
+  'supabaseQuery',
+  'supabaseMutation'
+]
 
 const API_METHODS = ['GET', 'POST'] as const
+const SUPABASE_OPS = ['insert', 'update', 'delete', 'upsert'] as const
+const SUPABASE_FILTER_OPS: SupabaseFilter['op'][] = [
+  'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'
+]
 
-// `setVariable` / `apiCall` kind literals are locked (§7.4 + old .fig
-// compat); only their editor-facing labels differ.
+// `setVariable` / `apiCall` / `supabaseQuery` / `supabaseMutation` kind
+// literals are locked (§7.4 + §2.2 #c + old .fig compat); only their
+// editor-facing labels differ.
 function actionKindLabel(kind: ActionKind): string {
   if (kind === 'setVariable') return panels.value.lowcodeActionSetDocument
   if (kind === 'apiCall') return panels.value.lowcodeActionCallApi
+  if (kind === 'supabaseQuery') return panels.value.lowcodeActionSupabaseQuery
+  if (kind === 'supabaseMutation') return panels.value.lowcodeActionSupabaseMutation
   return kind
 }
 
@@ -100,12 +117,28 @@ function makeAction(kind: ActionKind, id: string): ActionDef {
       valueExpr: docTarget ? '$prev + 1' : ''
     }
   }
+  if (kind === 'apiCall') {
+    return {
+      id,
+      kind: 'apiCall',
+      method: 'GET',
+      url: '',
+      targetName: docTarget?.name ?? ''
+    }
+  }
+  if (kind === 'supabaseQuery') {
+    return {
+      id,
+      kind: 'supabaseQuery',
+      table: '',
+      resultTarget: docTarget?.name ?? ''
+    }
+  }
   return {
     id,
-    kind: 'apiCall',
-    method: 'GET',
-    url: '',
-    targetName: docTarget?.name ?? ''
+    kind: 'supabaseMutation',
+    operation: 'insert',
+    table: ''
   }
 }
 
@@ -152,15 +185,49 @@ function changeKind(id: string, kind: ActionKind): void {
   )
 }
 
+// Phase 3 §2 — filter list mutators for supabaseQuery / supabaseMutation.
+// `updateAction({ filters: next })` would discard list identity on every
+// keystroke; we surface scoped helpers instead so the row component just
+// dispatches by index.
+function patchFilters(
+  id: string,
+  next: (current: SupabaseFilter[]) => SupabaseFilter[]
+): void {
+  const action = actions.value.find((a) => a.id === id)
+  if (!action) return
+  if (action.kind !== 'supabaseQuery' && action.kind !== 'supabaseMutation') return
+  const current = action.filters ?? []
+  updateAction(id, { filters: next(current) })
+}
+
+function addFilter(id: string): void {
+  patchFilters(id, (current) => [...current, { column: '', op: 'eq', valueExpr: '' }])
+}
+
+function removeFilter(id: string, index: number): void {
+  patchFilters(id, (current) => current.filter((_, i) => i !== index))
+}
+
+function updateFilter(id: string, index: number, patch: Partial<SupabaseFilter>): void {
+  patchFilters(id, (current) =>
+    current.map((f, i) => (i === index ? { ...f, ...patch } : f))
+  )
+}
+
 // Phase 1 §7.3 + §7.4 — mirror what the IR collect pass rejects
 // (`collect/bindings.ts` → `resolveActions`). Each kind has its own slots;
 // every slot is independent so we can show two reds on the same row.
+// Phase 3 §2 widens this with Supabase-specific slots: `table`, `payload`,
+// per-filter `valueExpr` keyed by filter index.
 interface ActionErrors {
   target?: string
   expr?: string
   to?: string
   url?: string
   body?: string
+  table?: string
+  payload?: string
+  filters?: Map<number, string>
 }
 
 const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
@@ -213,6 +280,58 @@ function apiCallErrors(action: Extract<ActionDef, { kind: 'apiCall' }>): ActionE
   return e
 }
 
+// Phase 3 §2 — `resolveSupabaseFilters` mirror: each filter row's `valueExpr`
+// is validated independently; errors are keyed by index so the UI can red
+// only the offending row.
+function filterErrors(filters: SupabaseFilter[] | undefined): Map<number, string> | undefined {
+  if (!filters || filters.length === 0) return undefined
+  const out = new Map<number, string>()
+  filters.forEach((f, i) => {
+    const result = validateExpression(f.valueExpr ?? '')
+    if (!result.ok) out.set(i, result.reason ?? 'invalid expression')
+  })
+  return out.size > 0 ? out : undefined
+}
+
+function supabaseQueryErrors(
+  action: Extract<ActionDef, { kind: 'supabaseQuery' }>
+): ActionErrors {
+  // §2.2 #i + §2.4 `resolveSupabaseQuery`: table is non-empty, resultTarget
+  // resolves to a docState, filter exprs all parse. errorTarget when set
+  // must also resolve.
+  const e: ActionErrors = {}
+  if (action.table.trim() === '') e.table = 'table required'
+  if (action.resultTarget.trim() === '') e.target = 'target required'
+  else if (!validDocStateNames.value.has(action.resultTarget))
+    e.target = 'document state no longer exists'
+  if (action.errorTarget && !validDocStateNames.value.has(action.errorTarget))
+    e.target = 'error target no longer exists'
+  const fe = filterErrors(action.filters)
+  if (fe) e.filters = fe
+  return e
+}
+
+function supabaseMutationErrors(
+  action: Extract<ActionDef, { kind: 'supabaseMutation' }>
+): ActionErrors {
+  // §2.4 `resolveSupabaseMutation`: table is non-empty; payloadJson (when
+  // present) parses; filters required for update/delete (collect drops the
+  // action otherwise — the editor surfaces it as a red banner upfront).
+  const e: ActionErrors = {}
+  if (action.table.trim() === '') e.table = 'table required'
+  const raw = (action.payloadJson ?? '').trim()
+  if (raw !== '') {
+    try {
+      JSON.parse(raw)
+    } catch (err) {
+      e.payload = err instanceof Error ? err.message : String(err)
+    }
+  }
+  const fe = filterErrors(action.filters)
+  if (fe) e.filters = fe
+  return e
+}
+
 function errorsFor(action: ActionDef): ActionErrors {
   if (action.kind === 'setState') return setStateErrors(action)
   if (action.kind === 'navigate') {
@@ -220,10 +339,8 @@ function errorsFor(action: ActionDef): ActionErrors {
   }
   if (action.kind === 'setVariable') return setVariableErrors(action)
   if (action.kind === 'apiCall') return apiCallErrors(action)
-  // Phase 3 §2: supabaseQuery / supabaseMutation — UI + validation arrive
-  // in step 4 (ACTION_KINDS dropdown still hides them, so this branch is
-  // unreachable from the editor today but type-safe for IR-fed actions).
-  return {}
+  if (action.kind === 'supabaseQuery') return supabaseQueryErrors(action)
+  return supabaseMutationErrors(action)
 }
 
 const actionErrors = computed(() => {
@@ -253,6 +370,8 @@ const actionErrors = computed(() => {
         + {{ panels.lowcodeActionAdd }}
       </button>
     </div>
+
+    <AuthControls />
 
     <p
       v-if="pageStates.length === 0 && actions.length === 0"
@@ -400,6 +519,64 @@ const actionErrors = computed(() => {
             </select>
           </template>
 
+          <template v-else-if="action.kind === 'supabaseQuery'">
+            <input
+              :value="action.table"
+              :aria-label="panels.lowcodeActionSupabaseTable"
+              :aria-invalid="actionErrors.get(action.id)?.table ? 'true' : undefined"
+              data-test-id="lowcode-action-supabase-table"
+              spellcheck="false"
+              :placeholder="panels.lowcodeActionSupabaseTablePlaceholder"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.table ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { table: ($event.target as HTMLInputElement).value })"
+            />
+            <span class="text-[11px] text-muted">→</span>
+            <select
+              :value="action.resultTarget"
+              :aria-label="panels.lowcodeActionApiTarget"
+              :aria-invalid="actionErrors.get(action.id)?.target ? 'true' : undefined"
+              data-test-id="lowcode-action-supabase-result-target"
+              :class="[
+                'rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.target ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { resultTarget: ($event.target as HTMLSelectElement).value })"
+            >
+              <option v-if="docStates.length === 0" value="" disabled>
+                {{ panels.lowcodeActionNoDocumentState }}
+              </option>
+              <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
+            </select>
+          </template>
+
+          <template v-else-if="action.kind === 'supabaseMutation'">
+            <select
+              :value="action.operation"
+              :aria-label="panels.lowcodeActionSupabaseOperation"
+              data-test-id="lowcode-action-supabase-operation"
+              class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+              @change="updateAction(action.id, { operation: ($event.target as HTMLSelectElement).value as 'insert' | 'update' | 'delete' | 'upsert' })"
+            >
+              <option v-for="op in SUPABASE_OPS" :key="op" :value="op">{{ op }}</option>
+            </select>
+            <input
+              :value="action.table"
+              :aria-label="panels.lowcodeActionSupabaseTable"
+              :aria-invalid="actionErrors.get(action.id)?.table ? 'true' : undefined"
+              data-test-id="lowcode-action-supabase-table"
+              spellcheck="false"
+              :placeholder="panels.lowcodeActionSupabaseTablePlaceholder"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.table ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { table: ($event.target as HTMLInputElement).value })"
+            />
+          </template>
+
           <button
             type="button"
             data-test-id="lowcode-action-remove"
@@ -423,12 +600,132 @@ const actionErrors = computed(() => {
           ]"
           @change="updateAction(action.id, { bodyJson: ($event.target as HTMLInputElement).value })"
         />
+
+        <template v-if="action.kind === 'supabaseQuery'">
+          <input
+            :value="action.columns ?? ''"
+            :aria-label="panels.lowcodeActionSupabaseColumns"
+            data-test-id="lowcode-action-supabase-columns"
+            spellcheck="false"
+            :placeholder="panels.lowcodeActionSupabaseColumnsPlaceholder"
+            class="min-w-0 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
+            @change="updateAction(action.id, { columns: ($event.target as HTMLInputElement).value })"
+          />
+          <label class="flex items-center gap-1 pl-1 text-[11px] text-muted">
+            <input
+              type="checkbox"
+              :checked="action.single ?? false"
+              data-test-id="lowcode-action-supabase-single"
+              @change="updateAction(action.id, { single: ($event.target as HTMLInputElement).checked })"
+            />
+            {{ panels.lowcodeActionSupabaseSingle }}
+          </label>
+        </template>
+
+        <input
+          v-if="action.kind === 'supabaseMutation'"
+          :value="action.payloadJson ?? ''"
+          :aria-label="panels.lowcodeActionSupabasePayload"
+          :aria-invalid="actionErrors.get(action.id)?.payload ? 'true' : undefined"
+          data-test-id="lowcode-action-supabase-payload"
+          spellcheck="false"
+          :placeholder="panels.lowcodeActionSupabasePayload"
+          :class="[
+            'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+            actionErrors.get(action.id)?.payload ? 'border-red-500' : 'border-border'
+          ]"
+          @change="updateAction(action.id, { payloadJson: ($event.target as HTMLInputElement).value })"
+        />
+
+        <template v-if="action.kind === 'supabaseQuery' || action.kind === 'supabaseMutation'">
+          <div class="flex flex-col gap-1 pl-1">
+            <div
+              v-for="(filter, i) in action.filters ?? []"
+              :key="i"
+              data-test-id="lowcode-action-supabase-filter"
+              class="flex items-center gap-1"
+            >
+              <input
+                :value="filter.column"
+                :aria-label="panels.lowcodeActionSupabaseFilterColumn"
+                data-test-id="lowcode-action-supabase-filter-column"
+                spellcheck="false"
+                :placeholder="panels.lowcodeActionSupabaseFilterColumn"
+                class="w-20 rounded border border-border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent"
+                @change="updateFilter(action.id, i, { column: ($event.target as HTMLInputElement).value })"
+              />
+              <select
+                :value="filter.op"
+                aria-label="Filter operator"
+                data-test-id="lowcode-action-supabase-filter-op"
+                class="rounded border border-border bg-input px-1 py-0.5 text-[11px] text-surface outline-none focus:border-accent"
+                @change="updateFilter(action.id, i, { op: ($event.target as HTMLSelectElement).value as SupabaseFilter['op'] })"
+              >
+                <option v-for="op in SUPABASE_FILTER_OPS" :key="op" :value="op">{{ op }}</option>
+              </select>
+              <input
+                :value="filter.valueExpr"
+                :aria-label="panels.lowcodeActionValue"
+                :aria-invalid="actionErrors.get(action.id)?.filters?.has(i) ? 'true' : undefined"
+                data-test-id="lowcode-action-supabase-filter-value"
+                spellcheck="false"
+                :class="[
+                  'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+                  actionErrors.get(action.id)?.filters?.has(i) ? 'border-red-500' : 'border-border'
+                ]"
+                @change="updateFilter(action.id, i, { valueExpr: ($event.target as HTMLInputElement).value })"
+              />
+              <button
+                type="button"
+                :aria-label="panels.lowcodeActionSupabaseFilterRemove"
+                data-test-id="lowcode-action-supabase-filter-remove"
+                class="rounded p-0.5 text-muted hover:bg-hover hover:text-surface"
+                @click="removeFilter(action.id, i)"
+              >
+                <icon-lucide-x class="size-3" />
+              </button>
+            </div>
+            <button
+              type="button"
+              data-test-id="lowcode-action-supabase-filter-add"
+              class="self-start rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
+              @click="addFilter(action.id)"
+            >
+              + {{ panels.lowcodeActionSupabaseFilterAdd }}
+            </button>
+          </div>
+          <select
+            :value="action.errorTarget ?? ''"
+            :aria-label="panels.lowcodeActionSupabaseErrorTarget"
+            data-test-id="lowcode-action-supabase-error-target"
+            class="rounded border border-border bg-input px-1.5 py-0.5 text-[11px] text-surface outline-none focus:border-accent"
+            @change="updateAction(action.id, { errorTarget: ($event.target as HTMLSelectElement).value || undefined })"
+          >
+            <option value="">{{ panels.lowcodeActionSupabaseErrorTargetNone }}</option>
+            <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
+          </select>
+        </template>
+
         <p
           v-if="actionErrors.get(action.id)?.target"
           data-test-id="lowcode-action-target-error"
           class="pl-1 text-[10px] text-red-500"
         >
           target: {{ actionErrors.get(action.id)?.target }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.table"
+          data-test-id="lowcode-action-table-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          table: {{ actionErrors.get(action.id)?.table }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.payload"
+          data-test-id="lowcode-action-payload-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          payload: {{ actionErrors.get(action.id)?.payload }}
         </p>
         <p
           v-if="actionErrors.get(action.id)?.url"

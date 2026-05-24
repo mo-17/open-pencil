@@ -15,6 +15,7 @@ import EventsPanel from './properties/Lowcode/EventsPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
 import StatePanel from './properties/Lowcode/StatePanel.vue'
+import SupabaseConfigPanel from './properties/Lowcode/SupabaseConfigPanel.vue'
 import TextBindingPanel from './properties/Lowcode/TextBindingPanel.vue'
 import PageSection from './properties/PageSection.vue'
 import PositionSection from './properties/PositionSection.vue'
@@ -126,6 +127,7 @@ const { panels } = useI18n()
   >
     <PageSection />
     <StatePanel />
+    <SupabaseConfigPanel />
     <DocumentStatePanel />
     <VariablesSection @open-dialog="variablesOpen = true" />
     <ExportSection />
