@@ -70,12 +70,15 @@ export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onB
 /** A statement that runs when an event fires. Phase 1 §7.4 widens this
  *  into a discriminated union so the adapter can dispatch on `kind`
  *  exhaustively (and refuse to compile an unknown future kind silently).
- *  Phase 2 §2 lights up the previously-stubbed `setVariable` slot. */
+ *  Phase 2 §2 lights up the previously-stubbed `setVariable` slot.
+ *  Phase 3 §2 adds Supabase {Query,Mutation} for typed DB access. */
 export type IREventHandler =
   | IRSetStateHandler
   | IRNavigateHandler
   | IRSetVariableHandler
   | IRApiCallHandler
+  | IRSupabaseQueryHandler
+  | IRSupabaseMutationHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector
@@ -134,6 +137,48 @@ export interface IRApiCallHandler {
   body?: string
   /** Name of the DocumentStateDef the response is written to. */
   docStateName: string
+}
+
+/** Phase 3 §2: a single where-clause filter on a Supabase query / mutation.
+ *  `ast` is the parsed value expression (same restricted sub-language as
+ *  `IRSetStateHandler.ast` / `IRApiCallHandler.url`); adapter emits its JS
+ *  value as the second argument to `.eq(column, value)` / `.gt(...)` / etc. */
+export interface IRSupabaseFilter {
+  column: string
+  op: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in'
+  ast: ExprAst
+  references: string[]
+}
+
+/** Phase 3 §2: typed read against a Supabase table. Adapter emits an
+ *  async chain `await getSupabaseClient().from(table).select(columns)
+ *  .<filter chain>.<.single()?>` and writes the result into `resultTarget`
+ *  (a DocumentStateDef name). Error path writes to `errorTarget` when set. */
+export interface IRSupabaseQueryHandler {
+  kind: 'supabaseQuery'
+  table: string
+  /** Comma-separated column list; adapter emits as a JS string literal.
+   *  Defaults to `'*'` when the source action's `columns` was undefined. */
+  columns: string
+  filters: IRSupabaseFilter[]
+  single: boolean
+  resultTarget: string
+  errorTarget?: string
+}
+
+/** Phase 3 §2: typed write against a Supabase table. `payload` is compact,
+ *  validated JSON (parsed + re-serialised at collect time, like
+ *  `IRApiCallHandler.body`), spliced verbatim as a JS literal. `filters`
+ *  is the update / delete where-clause; required by collect for those two
+ *  operations. */
+export interface IRSupabaseMutationHandler {
+  kind: 'supabaseMutation'
+  operation: 'insert' | 'update' | 'delete' | 'upsert'
+  table: string
+  payload?: string
+  filters: IRSupabaseFilter[]
+  resultTarget?: string
+  errorTarget?: string
 }
 
 /** A page-level state declaration. Adapter emits `useState(defaultValue)`. */

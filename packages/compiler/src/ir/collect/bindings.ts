@@ -16,6 +16,9 @@ import type {
   IRExpression,
   IRSetVariableHandler,
   IRStateDecl,
+  IRSupabaseFilter,
+  IRSupabaseMutationHandler,
+  IRSupabaseQueryHandler,
   IRWarning,
   ValueUpdateMode
 } from '../types'
@@ -230,66 +233,117 @@ function resolveActions(
   docStateReads: Set<string> | undefined
 ): IREventHandler[] {
   const out: IREventHandler[] = []
+  const ctx: ResolveCtx = {
+    node,
+    eventName,
+    states,
+    warnings,
+    docStates,
+    docStateWrites,
+    inScope,
+    docStateReads
+  }
   for (const action of actions) {
-    // Exhaustive dispatch on the discriminated union (Phase 1 §7.4). Adding
-    // a kind without a case here is a tsgo error — the silent-drop hole that
-    // Phase 0 had is closed.
-    switch (action.kind) {
-      case 'setState': {
-        const handler = resolveSetState(node, eventName, action, states, warnings)
-        if (handler) out.push(handler)
-        break
-      }
-      case 'navigate': {
-        const handler = resolveNavigate(node, eventName, action, warnings)
-        if (handler) out.push(handler)
-        break
-      }
-      case 'setVariable': {
-        const handler = resolveSetVariable(
-          node,
-          eventName,
-          action,
-          states,
-          docStates,
-          warnings
-        )
-        if (handler) {
-          out.push(handler)
-          docStateWrites?.add(handler.docStateName)
-        }
-        break
-      }
-      case 'apiCall': {
-        const handler = resolveApiCall(
-          node,
-          eventName,
-          action,
-          states,
-          inScope,
-          docStates,
-          docStateReads,
-          warnings
-        )
-        if (handler) {
-          out.push(handler)
-          docStateWrites?.add(handler.docStateName)
-        }
-        break
-      }
-      default: {
-        // `action satisfies never` would be ideal here, but the cast keeps
-        // older .fig files (saved with an unknown future kind) loadable.
-        const unknown = action as { kind: string }
-        warnings.push({
-          code: 'action-unsupported-kind',
-          message: `node ${node.id} ${eventName} has unsupported action kind "${unknown.kind}"`,
-          nodeId: node.id
-        })
-      }
+    const handler = dispatchAction(action, ctx)
+    if (handler) {
+      out.push(handler)
+      recordWrites(handler, docStateWrites)
     }
   }
   return out
+}
+
+interface ResolveCtx {
+  node: SceneNode
+  eventName: EventName
+  states: Map<string, IRStateDecl>
+  warnings: IRWarning[]
+  docStates: ReadonlyMap<string, IRDocStateDecl>
+  docStateWrites: Set<string> | undefined
+  inScope: ReadonlySet<string>
+  docStateReads: Set<string> | undefined
+}
+
+/** Exhaustive dispatch on the discriminated union (Phase 1 §7.4). Adding a
+ *  kind without a case here is a tsgo error — the silent-drop hole that
+ *  Phase 0 had is closed. */
+function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | null {
+  switch (action.kind) {
+    case 'setState':
+      return resolveSetState(ctx.node, ctx.eventName, action, ctx.states, ctx.warnings)
+    case 'navigate':
+      return resolveNavigate(ctx.node, ctx.eventName, action, ctx.warnings)
+    case 'setVariable':
+      return resolveSetVariable(ctx.node, ctx.eventName, action, ctx.states, ctx.docStates, ctx.warnings)
+    case 'apiCall':
+      return resolveApiCall(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
+    case 'supabaseQuery':
+      return resolveSupabaseQuery(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
+    case 'supabaseMutation':
+      return resolveSupabaseMutation(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
+    default: {
+      // `action satisfies never` would be ideal here, but the cast keeps
+      // older .fig files (saved with an unknown future kind) loadable.
+      const unknown = action as { kind: string }
+      ctx.warnings.push({
+        code: 'action-unsupported-kind',
+        message: `node ${ctx.node.id} ${ctx.eventName} has unsupported action kind "${unknown.kind}"`,
+        nodeId: ctx.node.id
+      })
+      return null
+    }
+  }
+}
+
+/** Mirror what each handler kind writes into docState so the page emits the
+ *  matching `setDocState` import. apiCall + setVariable both write a single
+ *  target; supabase handlers may write a result and/or error target. */
+function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | undefined): void {
+  if (!docStateWrites) return
+  switch (handler.kind) {
+    case 'setVariable':
+    case 'apiCall':
+      docStateWrites.add(handler.docStateName)
+      return
+    case 'supabaseQuery':
+      docStateWrites.add(handler.resultTarget)
+      if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
+      return
+    case 'supabaseMutation':
+      if (handler.resultTarget) docStateWrites.add(handler.resultTarget)
+      if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
+      return
+    case 'setState':
+    case 'navigate':
+      return
+  }
 }
 
 /**
@@ -553,5 +607,344 @@ function resolveNavigate(
     return null
   }
   return { kind: 'navigate', to }
+}
+
+/** Phase 3 §2: parse `SupabaseFilter[]` into `IRSupabaseFilter[]`. Returns
+ *  `null` (and warns) on the first failing filter so the whole action drops
+ *  rather than silently emitting a partial chain. Validates each value
+ *  expression against state / inScope / docState — same allow-set as
+ *  apiCall URL templates — and records reachable docStates as reads. */
+function resolveSupabaseFilters(
+  node: SceneNode,
+  eventName: EventName,
+  source: { filters?: { column: string; op: string; valueExpr: string }[] } | undefined,
+  code: string,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): IRSupabaseFilter[] | null {
+  const raw = source?.filters ?? []
+  const out: IRSupabaseFilter[] = []
+  for (let i = 0; i < raw.length; i++) {
+    const f = raw[i]
+    if (!f.column || f.column.trim() === '') {
+      warnings.push({
+        code: `${code}-filter-missing-column`,
+        message: `node ${node.id} ${eventName} ${code} filter[${i}] has no column`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const expr = f.valueExpr.trim()
+    if (expr === '') {
+      warnings.push({
+        code: `${code}-filter-missing-value`,
+        message: `node ${node.id} ${eventName} ${code} filter[${i}] "${f.column}" has no valueExpr`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const parsed = parseExpression(expr)
+    if (!parsed.ok) {
+      warnings.push({
+        code: `${code}-filter-invalid-value`,
+        message: `node ${node.id} ${eventName} ${code} filter[${i}] valueExpr "${expr}" → ${parsed.error}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const refCtx = `${eventName} ${code} filter[${i}]`
+    if (!checkExprRefs(parsed.references, states, inScope, docStates, node, refCtx, code, warnings)) {
+      return null
+    }
+    registerDocStateReads(parsed.references, docStates, docStateReads)
+    out.push({
+      column: f.column,
+      op: f.op as IRSupabaseFilter['op'],
+      ast: parsed.ast,
+      references: [...parsed.references]
+    })
+  }
+  return out
+}
+
+/** Phase 3 §2: shared `$prev` + unknown-identifier check. Pushes the right
+ *  warning code/message on failure (callers per-context still own the gate
+ *  for parse + missing-target). */
+function checkExprRefs(
+  references: ReadonlySet<string>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  node: SceneNode,
+  ctxLabel: string,
+  code: string,
+  warnings: IRWarning[]
+): boolean {
+  if (references.has(PREV_IDENT)) {
+    warnings.push({
+      code: 'expression-prev-out-of-context',
+      message: `node ${node.id} ${ctxLabel} references ${PREV_IDENT}; ${PREV_IDENT} is only valid inside setState / setVariable valueExpr`,
+      nodeId: node.id
+    })
+    return false
+  }
+  const unknown = unknownIdentifiers(references, states, inScope, docStates)
+  if (unknown.length > 0) {
+    warnings.push({
+      code: `${code}-unknown-identifier`,
+      message: `node ${node.id} ${ctxLabel} references unknown identifier(s): ${unknown.join(', ')}`,
+      nodeId: node.id
+    })
+    return false
+  }
+  return true
+}
+
+function resolveDocStateTarget(
+  node: SceneNode,
+  eventName: EventName,
+  code: string,
+  name: string | undefined,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  warnings: IRWarning[],
+  required: boolean
+): string | undefined | null {
+  const trimmed = (name ?? '').trim()
+  if (trimmed === '') {
+    if (!required) return undefined
+    warnings.push({
+      code: `${code}-missing-target`,
+      message: `node ${node.id} ${eventName} ${code} has no resultTarget`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (!docStates.has(trimmed)) {
+    warnings.push({
+      code: `${code}-unknown-target`,
+      message: `node ${node.id} ${eventName} ${code} references unknown document state "${trimmed}"`,
+      nodeId: node.id
+    })
+    return null
+  }
+  return trimmed
+}
+
+/** Phase 3 §2: validate + lower a `supabaseQuery` action. Mirrors
+ *  `resolveApiCall`'s shape — drops the handler on any partial failure so
+ *  emit stays compilable. */
+function resolveSupabaseQuery(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'supabaseQuery' }>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): IRSupabaseQueryHandler | null {
+  const table = action.table.trim()
+  if (table === '') {
+    warnings.push({
+      code: 'action-supabase-query-missing-table',
+      message: `node ${node.id} ${eventName} supabaseQuery has no table`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const resultTarget = resolveDocStateTarget(
+    node,
+    eventName,
+    'action-supabase-query',
+    action.resultTarget,
+    docStates,
+    warnings,
+    true
+  )
+  if (resultTarget === null) return null
+  const errorTarget =
+    action.errorTarget === undefined
+      ? undefined
+      : resolveDocStateTarget(
+          node,
+          eventName,
+          'action-supabase-query',
+          action.errorTarget,
+          docStates,
+          warnings,
+          false
+        )
+  if (errorTarget === null) return null
+  const filters = resolveSupabaseFilters(
+    node,
+    eventName,
+    action,
+    'action-supabase-query',
+    states,
+    inScope,
+    docStates,
+    docStateReads,
+    warnings
+  )
+  if (filters === null) return null
+  return {
+    kind: 'supabaseQuery',
+    table,
+    columns: action.columns?.trim() ? action.columns.trim() : '*',
+    filters,
+    single: !!action.single,
+    resultTarget: resultTarget as string,
+    errorTarget
+  }
+}
+
+/** Phase 3 §2: validate + lower a `supabaseMutation` action.
+ *  - insert / upsert: payloadJson required (row to write)
+ *  - update: payloadJson required + filters required (which rows)
+ *  - delete: payloadJson forbidden + filters required
+ *  payloadJson is re-serialised compact (same as apiCall body) so emit
+ *  splices it verbatim. resultTarget / errorTarget both optional. */
+function resolveSupabaseMutation(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'supabaseMutation' }>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): IRSupabaseMutationHandler | null {
+  const table = action.table.trim()
+  if (table === '') {
+    warnings.push({
+      code: 'action-supabase-mutation-missing-table',
+      message: `node ${node.id} ${eventName} supabaseMutation has no table`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const payload = resolveMutationPayload(node, eventName, action, warnings)
+  if (payload === null) return null
+  if (!ensureMutationFilters(node, eventName, action, warnings)) return null
+  const filters = resolveSupabaseFilters(
+    node,
+    eventName,
+    action,
+    'action-supabase-mutation',
+    states,
+    inScope,
+    docStates,
+    docStateReads,
+    warnings
+  )
+  if (filters === null) return null
+  const resultTarget = resolveOptionalTarget(
+    node,
+    eventName,
+    'action-supabase-mutation',
+    action.resultTarget,
+    docStates,
+    warnings
+  )
+  if (resultTarget === null) return null
+  const errorTarget = resolveOptionalTarget(
+    node,
+    eventName,
+    'action-supabase-mutation',
+    action.errorTarget,
+    docStates,
+    warnings
+  )
+  if (errorTarget === null) return null
+  return {
+    kind: 'supabaseMutation',
+    operation: action.operation,
+    table,
+    payload: payload === undefined ? undefined : payload,
+    filters,
+    resultTarget,
+    errorTarget
+  }
+}
+
+/** Per-operation payload rules:
+ *   insert / update / upsert require a non-empty JSON literal,
+ *   delete forbids one. Returns the compact JSON on success, `undefined`
+ *   when no payload is expected, or `null` to abort the whole handler.
+ *   Mirrors `resolveApiCall`'s POST-body re-serialisation. */
+function resolveMutationPayload(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'supabaseMutation' }>,
+  warnings: IRWarning[]
+): string | undefined | null {
+  const raw = (action.payloadJson ?? '').trim()
+  if (action.operation === 'delete') {
+    if (raw !== '') {
+      warnings.push({
+        code: 'action-supabase-mutation-unexpected-payload',
+        message: `node ${node.id} ${eventName} supabaseMutation operation "delete" must not have payloadJson`,
+        nodeId: node.id
+      })
+      return null
+    }
+    return undefined
+  }
+  if (raw === '') {
+    warnings.push({
+      code: 'action-supabase-mutation-missing-payload',
+      message: `node ${node.id} ${eventName} supabaseMutation operation "${action.operation}" requires payloadJson`,
+      nodeId: node.id
+    })
+    return null
+  }
+  try {
+    return JSON.stringify(JSON.parse(raw))
+  } catch (err) {
+    warnings.push({
+      code: 'action-supabase-mutation-invalid-payload',
+      message: `node ${node.id} ${eventName} supabaseMutation payloadJson is not valid JSON: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      nodeId: node.id
+    })
+    return null
+  }
+}
+
+/** update / delete must carry at least one filter (where clause); otherwise
+ *  the mutation would touch every row in the table. Returns `false` and
+ *  warns to drop the handler when violated. */
+function ensureMutationFilters(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'supabaseMutation' }>,
+  warnings: IRWarning[]
+): boolean {
+  if (action.operation !== 'update' && action.operation !== 'delete') return true
+  if (action.filters !== undefined && action.filters.length > 0) return true
+  warnings.push({
+    code: 'action-supabase-mutation-missing-filters',
+    message: `node ${node.id} ${eventName} supabaseMutation operation "${action.operation}" requires filters (where clause)`,
+    nodeId: node.id
+  })
+  return false
+}
+
+/** Wrap `resolveDocStateTarget` for optional fields so callers can chain
+ *  uniform `=== null` aborts. */
+function resolveOptionalTarget(
+  node: SceneNode,
+  eventName: EventName,
+  code: string,
+  name: string | undefined,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  warnings: IRWarning[]
+): string | undefined | null {
+  if (name === undefined) return undefined
+  return resolveDocStateTarget(node, eventName, code, name, docStates, warnings, false)
 }
 

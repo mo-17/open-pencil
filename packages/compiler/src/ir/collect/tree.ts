@@ -100,12 +100,22 @@ interface WalkCtx {
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
- *  to the IR shape. Validates names; invalid entries warn and are dropped. */
+ *  to the IR shape. Validates names; invalid entries warn and are dropped.
+ *
+ *  Phase 3 §2: when the root carries `lowcodeSupabaseConfig`, auto-prepend a
+ *  built-in `$currentUser` doc-state so user pages can bind to auth session
+ *  values. `$` is a reserved name prefix (rejected by `validateStateName`),
+ *  so collisions with user-declared docStates aren't possible. */
 function collectDocStates(graph: SceneGraph, warnings: IRWarning[]): IRDocStateDecl[] {
   const root = graph.getNode(graph.rootId)
   const decls = root?.lowcodeDocumentState ?? []
   const out: IRDocStateDecl[] = []
   const seen = new Set<string>()
+  if (root?.lowcodeSupabaseConfig) {
+    const builtIn = currentUserBuiltIn()
+    seen.add(builtIn.name)
+    out.push(builtIn)
+  }
   for (const d of decls) {
     if (typeof d.name !== 'string' || d.name === '') {
       warnings.push({
@@ -130,6 +140,19 @@ function collectDocStates(graph: SceneGraph, warnings: IRWarning[]): IRDocStateD
     })
   }
   return out
+}
+
+/** Phase 3 §2: shape of the auto-registered `$currentUser` doc-state. The
+ *  runtime in `_lowcode_supabase.ts` writes into it via `setDocState` on
+ *  `auth.getSession()` + `onAuthStateChange`; user pages read it via the
+ *  usual `useDocState('$currentUser')` channel. */
+function currentUserBuiltIn(): IRDocStateDecl {
+  return {
+    id: '$currentUser',
+    name: '$currentUser',
+    type: 'object',
+    defaultValue: { id: null, email: null, signedIn: false }
+  }
 }
 
 function indexDocStatesByName(decls: IRDocStateDecl[]): Map<string, IRDocStateDecl> {
