@@ -353,7 +353,7 @@ export function useSupabaseAuth() {
 | 1 | 连接配置 UI(URL / anonKey / Test connection 绿 dot + 红 banner + service_role 拒绝) | ✅ 修两次:endpoint 换 + surface body(`75ac999`)|
 | 2 | .fig 存读回 supabaseConfig + service_role 永不入 .fig | ✅ A 持久化 + B 红 banner(修反应链,`00ca198`)+ C .fig 干净 |
 | 3 | supabaseQuery emit + 执行 | ✅ 修一次:补 page-side `getSupabaseClient` import(`183e6fc`)|
-| 4 | supabaseMutation INSERT → Supabase Dashboard 看到行 | ✅ 复用 #3 的 import 修,直接 work |
+| 4 | supabaseMutation INSERT → Supabase Dashboard 看到行 | ✅ 复用 #3 的 import 修,直接 work。**UPDATE / DELETE / UPSERT closure gap**:代码 + 单测 + IR collect 三层验过(`emit/event.ts:109-126` 全四 op 都有 chain;`ir/collect/supabase.test.ts:214/234` reject malformed update/delete;`emit/supabase-mutation.test.ts` `BASE(operation)` 参数化覆盖),emit chain 形 + import 接线与 INSERT 同;**Tauri 未单独跑**,推断 work,严格意义算 closure 残留 → 已加入 §3 step 5 实测 #9-#11 顺手补 |
 | 5 | Auth signIn / signOut 流 | ❌ **SKIPPED**(KNOWN-LIMITATION,2026-05-24 用户 ACK)—— AuthControls 是 info-toast shim;runtime `useSupabaseAuth()` 已就位但无 ActionDef.kind 把 hook 调用绑到 onClick(锁定 6 个 kind,改要走 §2.v2),要让用户在 emit 出来的 React 项目里手写代码才能调用 |
 | 6 | 跨页 client 单例(navigate 切页 `getSupabaseClient()` 不重复 init) | ✅ Network 验:GoTrue 初始化仅一次,navigate 后不新增 init |
 | 7 | 零回归(无 supabaseConfig → 旧 demo `_lowcode_supabase.ts` + supabase-js dep + page import 都不出现) | ✅ 测试层验(`supabase-auth-emit.test.ts` + `cross-walker/supabase.test.ts` 各两条负向断言),419/419 全绿 |
@@ -489,7 +489,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 1. `bun test ./tests/engine/lowcode-validation/` 全绿;`bun test ./tests/engine/tools/lowcode/` 全绿
 2. `bun test ./tests/engine/compiler/` + `bun test ./tests/engine/kiwi/lowcode/` 全绿(零回归)
 3. `bun run check` 全绿
-4. **Tauri 实测(用户主导)8 项 user-ACK**:
+4. **Tauri 实测(用户主导)11 项 user-ACK**(§3 本期 8 项 + §2 closure gap 3 项):
    1. AI chat 输入「读当前选中节点的 lowcode 状态」→ AI 调 `readLowcodeNode` 返结构化结果
    2. AI 输入「列出所有 document states」→ AI 调 `readDocStates` 返全表
    3. AI 输入「读当前 Supabase 配置」→ AI 调 `readSupabaseConfig`(anon key 直接返,不脱敏 —— editor-side AI,信任边界内)
@@ -498,6 +498,9 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
    6. AI 输入「设置 Supabase anonKey 为 <service_role JWT>」→ tool **reject**,AI 返「拒绝原因」消息;不持久化任何字段
    7. AI 改完后,**Cmd+Z 一次**回到改前(单 undo entry)
    8. **零回归**:Phase 2 既有 8 项 + §2 既有 7 项 Tauri 实测 spot-check 通过(SupabaseConfigPanel Test connection 仍 work / .fig 存读回 / supabaseQuery emit 跑起来)
+   9. **§2 closure gap — UPDATE 实测**:Form 触发 `supabaseMutation` `operation: 'update'` + filter where 子句 → Supabase Dashboard 看到目标行字段值变化(§2.8 row 4 仅验过 INSERT,UPDATE 走 §3 step 5 补)
+   10. **§2 closure gap — DELETE 实测**:Form 触发 `supabaseMutation` `operation: 'delete'` + filter where 子句 → Supabase Dashboard 看到目标行消失;无 filters 在 IR collect 已 reject(走代码 + 单测验过,Tauri 仅需 happy-path)
+   11. **§2 closure gap — UPSERT 实测**:`operation: 'upsert'` + payload 含 primary key → 行不存在时插入、行存在时更新,Supabase Dashboard 双场景各验一次
 5. 不破坏 Phase 0 §8 / Phase 1 §1(除 §1.5 #3+#5)§5 §7.3 §7.4 §10.3 §11.3(除 #5)§12.3 / Phase 2 §9.2 §2.2 §3.2 §4.2 §6.2 §7.2 §8.2 / Phase 3 §2.2 任一锁定决定
 
 ### 3.6 工作分解(建议 1 名工程师,4–5 天)
