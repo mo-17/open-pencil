@@ -67,6 +67,7 @@
 | **F. 别全仓 `bun run format`** | `bun run format` 会重排整个仓库(~140 文件 pre-existing 格式漂移)。只在自己改的文件上验格式;若 format 污染了无关文件,`git checkout` 掉非本任务文件 |
 | **G. union widening → helper-first** | 任何向现有 union 加变体的 §X(`LayoutMode` 加 FREE / `NodeType` 加 X / `ActionDef.kind` 加 X)**先引 `isXxx`-类 helper 再 sweep callsite**。否则 `=== '字面值'` 在 tsgo 下永远合法,变体加完每个旧 callsite 默默漏 —— 唯一可靠 mitigation 是 helper-first + 双轮 grep + cross-walker 回归。sub-lesson:`LintNode` / `LayerNode` 等故意「松散 string」类型在 sweep 时会断,**紧化到真 union 是最干净的修法**(构造端已喂真值,零运行时变化) |
 | **H. UX 显示元素 vs 后台同步** | 任何跨双向同步的功能,设计阶段就列「面向用户的显示元素清单 + 状态来源」核对表 —— UX「停在某个值」类 bug 不在 walker checklist 不在 cross-walker 覆盖范围内,只能 Tauri 实测发现。Phase 3 §3(协作)、§2(AI 流式生成)、§9(工作流编排实时状态)直接吃这条 |
+| **I. emit 完 + 单测全绿 ≠ 跑得起来(module-resolve 维度)** | 涉及新 export / 新 import / 新 ALL_TOOLS 注册的 emit 或 tool 改动,cross-walker test 必须包含「import 行 / 注册行 存在 vs 不存在」的正负断言 —— 仅 grep call-site 字符串会漏 module 解析裂缝。来源:Phase 3 §2 step 5b `183e6fc` —— `emit/event.ts` 写 `getSupabaseClient().from(...)` 进 page body,scaffold 端漏配 `import { getSupabaseClient } from '<path>'`,unit + cross-walker call-site 字符串全绿,Tauri `bun run dev` ReferenceError 才暴露。两次实证:Phase 3 §2 step 5a + §3 step 4 cross-walker 都把 import-line 正负断言写进 test 顶层。**经验 D 守 dep-resolve 维度**(npm 包能否被 resolve),**本经验守 module-resolve 维度**(import 行 / 注册行是否实际被 emit / scaffold / registry 写出),两条并行 |
 
 ### 1.5 测试 / 验证命令
 
@@ -372,7 +373,7 @@ export function useSupabaseAuth() {
 3. **emit page-side import 接线漏配** —— step 3 runtime 文件 export `getSupabaseClient`,step 4 emit walker 写 `getSupabaseClient()...` 进 page body,但 scaffold 从未生成 `import { getSupabaseClient } from '<path>'`。单测 + cross-walker 全在 grep call site 字符串而**不验 module 解析**,所以 emit-level 一直绿,Tauri `bun run dev` 跑起来 ReferenceError 才暴露。修法对称 `pageHasNavigateHandler` —— 新加 `pageUsesSupabase` 走 IR 树,scaffold 按需 emit import line,paths 走单/多页对称(`./_lowcode_supabase` / `../_lowcode_supabase`)
 4. **`@supabase/supabase-js` 在 Tauri WKWebView(macOS Darwin 25.5.0)兼容性** —— 无异常。createClient / GoTrue session / PostgREST query / mutation / auth listener 全部 work,无 CORS / fetch 怪行为。可信
 5. **$currentUser 与现有 docState 冲突的实际发生率** —— 本期实测 session 中**未发生**:step 1 `validateStateName` reject `^\$` 在用户侧入口就挡;auto-register 在 collectDocStates 内部 prepend 与用户 decls 走 dedup。验证路径覆盖到了 reserved-name 拦截,但「用户在旧 .fig 里 raw 写 $currentUser」的 wild case 没遇到 —— 风险低,代码层兜底齐
-6. **「emit 出来的代码能跑」与「emit 单测全绿」是两个不同的验证维度** —— 前者要 module 解析 + runtime 调用栈跑通;后者只要 grep 字符串匹配。本期 5a 后还冒出 3 个 5b fix commit,根因都在这条裂缝。**经验 I 候选**(待 Phase 4 沉淀):**emit 走完 + 单测全绿 ≠ 跑得起来;凡是涉及新 export / 新 import 的 emit 改动,cross-walker test 必须包含「import 行存在 / 不存在」的正负断言**(本期已补 3 条)。补充经验 D 的「dep resolve 维度」
+6. **「emit 出来的代码能跑」与「emit 单测全绿」是两个不同的验证维度** —— 前者要 module 解析 + runtime 调用栈跑通;后者只要 grep 字符串匹配。本期 5a 后还冒出 3 个 5b fix commit,根因都在这条裂缝。本期已补 3 条 import-line 正负断言;**Phase 3 §3 step 4 cross-walker `39b3729` 又验一次**(tool 注册 / import line 正负覆盖)→ 已升 §1.4 正式 **经验 I**(emit 完 + 单测全绿 ≠ 跑得起来;module-resolve 维度;补充经验 D 的 dep-resolve 维度)
 
 ---
 
