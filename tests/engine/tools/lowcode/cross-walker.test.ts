@@ -1,7 +1,13 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { initCodec } from '@open-pencil/core'
-import type { DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
+import { createEditor } from '@open-pencil/core/editor'
+import { FigmaAPI } from '@open-pencil/core/figma-api'
+import {
+  SceneGraph,
+  type DocumentStateDef,
+  type StateDef
+} from '@open-pencil/core/scene-graph'
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 
@@ -410,5 +416,161 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     // Negative import-line assertion: no useDocState-only import (write also
     // needed → both names imported together).
     expect(app).not.toContain("import { useDocState } from './_lowcode_state'")
+  })
+
+  /**
+   * Phase 3 §3.v2 step 1 — mega-undo cross-walker. With ctx.editor wired
+   * through the tool dispatch (mirrors src/app/automation/bridge/
+   * tool-handlers.ts beginBatch/commitBatch path), a single mega patch
+   * touching 4 lowcode fields collapses to exactly one UndoEntry. Cmd+Z
+   * once restores every field, fixing §3.8 surprise #2 (Cmd+Z used to
+   * take two presses).
+   */
+  test('§3.v2 mega patch under editor.runBatch → exactly 1 undo entry, Cmd+Z restores all fields', () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    const editor = createEditor({ graph, skipInitialGraphSetup: true })
+    const pageId = graph.getPages()[0].id
+    graph.updateNode(pageId, {
+      state: [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
+    })
+    getTool('set_doc_states').execute(
+      figma,
+      {
+        states_json: JSON.stringify([
+          { id: 'd1', name: 'items', type: 'array', defaultValue: [] }
+        ])
+      },
+      { editor }
+    )
+    const btn = graph.createNode('BUTTON', pageId, { name: 'Save' })
+    const before = {
+      bindings: structuredClone(graph.getNode(btn.id)?.bindings),
+      events: structuredClone(graph.getNode(btn.id)?.events),
+      interactiveProps: structuredClone(graph.getNode(btn.id)?.interactiveProps),
+      renderCondition: graph.getNode(btn.id)?.renderCondition
+    }
+    // Clear the set_doc_states undo entry; we only want to measure the mega.
+    while (editor.undo.canUndo) editor.undo.undo()
+
+    editor.undo.beginBatch('AI: update_lowcode_node')
+    const res = getTool('update_lowcode_node').execute(
+      figma,
+      {
+        id: btn.id,
+        patch_json: JSON.stringify({
+          bindings: { text: { kind: 'docState', docStateName: 'items' } },
+          events: {
+            onClick: [
+              { id: 'a1', kind: 'setVariable', targetName: 'items', valueExpr: '$prev' }
+            ]
+          },
+          interactiveProps: { text: 'Save' },
+          renderCondition: 'count >= 0'
+        })
+      },
+      { editor }
+    )
+    editor.undo.commitBatch()
+    expect((res as Result).ok).toBe(true)
+    expect(editor.undo.canUndo).toBe(true)
+    expect(editor.undo.undoLabel).toBe('AI: update_lowcode_node')
+
+    // Patch must have actually applied across all four fields before undo.
+    const after = graph.getNode(btn.id)
+    expect(after?.interactiveProps).toEqual({ text: 'Save' })
+    expect(after?.renderCondition).toBe('count >= 0')
+    expect(after?.bindings?.text).toBeDefined()
+    expect(after?.events?.onClick?.length).toBe(1)
+
+    // Single Cmd+Z restores every field — confirms 1 entry, not N.
+    editor.undo.undo()
+    expect(editor.undo.canUndo).toBe(false)
+    const reverted = graph.getNode(btn.id)
+    expect(reverted?.bindings).toEqual(before.bindings)
+    expect(reverted?.events).toEqual(before.events)
+    expect(reverted?.interactiveProps).toEqual(before.interactiveProps)
+    expect(reverted?.renderCondition).toEqual(before.renderCondition)
+  })
+
+  /**
+   * Phase 3 §3.v2 step 2 — payloadEntries end-to-end cross-walker. Tool
+   * input → IR collect → React emit. docState refs in valueExpr land as
+   * `{ "<key>": <docStateRead> }` inside `.insert(...)`, and the read
+   * pulls the useDocState import along so the emitted module compiles.
+   */
+  test('§3.v2 supabaseMutation payloadEntries with docState ref → IR + emit propagate', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+
+    getTool('set_supabase_config').execute(figma, {
+      config_json: JSON.stringify({
+        url: 'https://x.supabase.co',
+        anonKey: 'anon-jwt'
+      })
+    })
+    getTool('set_doc_states').execute(figma, {
+      states_json: JSON.stringify([
+        { id: 'd1', name: 'formName', type: 'string', defaultValue: '' },
+        { id: 'd2', name: 'formAge', type: 'number', defaultValue: 0 }
+      ])
+    })
+
+    const btn = graph.createNode('BUTTON', pageId, { name: 'Submit' })
+    const res = getTool('update_lowcode_node').execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [
+            {
+              id: 'a1',
+              kind: 'supabaseMutation',
+              operation: 'insert',
+              table: 'users',
+              payloadEntries: [
+                { key: 'name', valueExpr: 'formName' },
+                { key: 'age', valueExpr: 'formAge' }
+              ]
+            }
+          ]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(res.ok).toBe(true)
+
+    // IR level: handler picked up payloadEntries (not payload), references
+    // resolve, no warnings.
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings).toEqual([])
+    const buttonEl = ir.children[0]
+    if (!buttonEl || buttonEl.kind !== 'element') throw new Error('expected button')
+    const handler = buttonEl.events?.onClick?.[0]
+    if (handler?.kind !== 'supabaseMutation') throw new Error('expected supabaseMutation')
+    expect(handler.payload).toBeUndefined()
+    expect(handler.payloadEntries?.map((e) => e.key)).toEqual(['name', 'age'])
+    expect(handler.payloadEntries?.[0].references).toContain('formName')
+    expect(ir.docStateReads.sort()).toEqual(['formAge', 'formName'])
+
+    // Emit level: object literal with the two valueExpr expressions,
+    // chained into .insert; useDocState import paired (formName / formAge
+    // both read) — experience I import-line +/- assertions.
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'cw-payload-entries' })
+    })
+    expect(out.warnings).toEqual([])
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('.insert({ "name": formName, "age": formAge })')
+    // Both targets are reads → useDocState import line must be present
+    expect(app).toContain("import { useDocState } from './_lowcode_state'")
+    expect(app).toContain('useDocState("formName")')
+    expect(app).toContain('useDocState("formAge")')
+    // Negative: payloadJson literal path must not contaminate output
+    expect(app).not.toContain('.insert({})')
+    expect(app).not.toContain('.insert(null)')
+    // Supabase runtime imports + dep
+    expect(app).toContain("import { getSupabaseClient } from './_lowcode_supabase'")
+    expect(out.files.has('src/_lowcode_supabase.ts')).toBe(true)
   })
 })
