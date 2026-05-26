@@ -601,6 +601,142 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 ---
 
+## 3.v2 §3.v2 详细设计:mega-undo + payloadEntries + `'{}'` normalize
+
+**Scope = §3.v2 mini-scope**(follow-up 1 + 2 + 7,1-2 天)。§3.v2 follow-up 3/4/5/6 推 §3.v3(留候选)。
+
+### 3.v2.1 现状与问题
+
+§3 step 5 Tauri 实测暴露 3 条主线 surprise:
+
+1. **Cmd+Z 多 entry**(surprise #2)— `update_lowcode_node` mega patch 走 `figma.graph.updateNode`(全局 mutator,不进 undo stack);先 commit data 字段、再走 setSelectedIds 路径,Cmd+Z 一次只能撤一步,与 §3.2 #6 「mega tool = 一个 undo entry」设计意图冲突。
+2. **payloadJson 不支持表达式**(surprise #3)— `SupabaseMutationAction.payloadJson` 是 JSON literal,IR collect 走 `JSON.parse(JSON.stringify(...))` 再 verbatim splice 进 `.insert/.update/.upsert(...)`,**INPUT 输入 → mutation payload** 这条 UX 路径不存在(filters 没这问题,因为 `SupabaseFilter.valueExpr` 走 expression sub-language)。
+3. **AI 残留 `'{}'` silent drop**(surprise #6)— `payloadJson === '{}'` trim 后非 `''`,delete + 残留 `'{}'` 触发 IR collect `action-supabase-mutation-unexpected-payload` warning + drop。AI 写 prompt「No payloadJson」时容易留 `'{}'`,行为变成 silent fail。
+
+§3.v2 mini-scope **不做**:CHECKBOX / TEXTAREA / DATEPICKER / SELECT / RADIO / SWITCH 的 controlled binding(follow-up 3,推 §3.v3,体量 6 类型 × IR/emit/UI/test);`$event` / `$value` token 扩 grammar(follow-up 4,§4.2 FROZEN 绕路工程量大);INPUT boolean/date(follow-up 5);RLS 健康检查(follow-up 6,UX nice-to-have);§3.v3 视产品节奏再排。
+
+### 3.v2.2 关键决定
+
+**8 主决定**(对话锁定 2026-05-26):
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **ToolDef API** = `execute: (figma, args, ctx?: { editor?: Editor }) => unknown` 第 3 位 opt-in,既有 tool 0 改;`Editor` type 从 `#core/editor` 导入,核内引用不破跨包 | 选 1 而非新 `defineToolWithEditor`(两套并存 ALL_TOOLS 变 union 改动面广);选 1 而非塞进 FigmaAPI(违 core framework-agnostic) |
+| b | **谁注入** = 仅 `src/app/ai/**` 调 lowcode tool 时注入 editor(app 层有 session.editor);CLI / MCP server / fixture 测试不注入 → fallback 走既有 `figma.graph.updateNode` 路径(no undo) | CLI/MCP/headless 调用本就无 editor 上下文,fallback 是设计意图 |
+| c | **哪些 tool opt-in** = 仅 3 个 lowcode mutate(`update_lowcode_node` / `set_doc_states` / `set_supabase_config`);其它 modify tools(paint/geometry/layout/text/effects)本期不动 | mini-scope;其它 tool 走既有 `updateNodeWithUndo`(已有单 undo),无 batch 需求 |
+| d | **batch 内部 mutate** = 3 mutate tool 内部新 helper `pushFieldUpdate(ctx, node, key, value)` snap previous + mutate + `ctx.undo.push({ forward, inverse })`;外层 `editor.undo.runBatch('AI: <tool_name>', () => { ... })` 汇聚 | `runBatch` 只汇聚 push 进来的 entries,不会自动 capture mutations;需显式 push 出 inverse closure |
+| e | **payloadEntries 字段** = `SupabaseMutationAction.payloadEntries?: { key: string; valueExpr: string }[]` 与 `payloadJson` 并存;both 时 entries 胜 + payloadJson drop + warn `action-supabase-mutation-payload-source-conflict` | 不破 Phase 0 §2 既有 payloadJson 持久化;新功能 opt-in;AI 逐步迁 |
+| f | **payloadEntries.valueExpr grammar** = 复用 `SupabaseFilter.valueExpr` = `SetStateAction.valueExpr` 的 restricted sub-language(page-state + docState + `$prev` + 字面),0 新 grammar | 避开 §4.2 FROZEN;filters 已用,无新风险 |
+| g | **payloadEntries emit** = `{ <key>: <valueExpr emit>, ... }` object literal 喂 `.insert/.update/.upsert(payloadObj)`;delete + entries 非空 → warn 沿用既有 `action-supabase-mutation-unexpected-payload` code;`payloadEntries.length === 0` 视同 empty | 与 payloadJson emit 形态对齐(都是 object literal),emit walker 只需处理 entries 路径多一条分支 |
+| h | **`payloadJson '{}'` / '[]' 防呆位置** = shared validator `validateActions` 入口处 trim 后 === '{}' / '[]' → normalize 为 `''`;IR collect / tool 入口同走这个 validator,自动覆盖 | 入口处 normalize 一次,下游 emit / IR collect 看到的就是 empty;比双 normalize 简洁 |
+
+**8 次级默认**(用户 one-shot ACK 2026-05-26):
+
+- **i.** undo label = `'AI: <tool_name>'`(例:`'AI: update_lowcode_node'`)— 短英文,Edit menu 看得懂
+- **ii.** `runBatch` throw → `UndoManager.rollbackBatch` 自动逆操作(已实现);tool 返 `{ ok: false, error }`
+- **iii.** `set_doc_states` / `set_supabase_config` 同样 runBatch 包(一致性,即便单 root node 改)
+- **iv.** `payloadEntries` tool param 走 JSON-string,format 同 `filters`(AI 拼 `'[{"key":"name","valueExpr":"$prev.name"}]'`)
+- **v.** `payloadEntries.key` 校验:non-empty + duplicate key reject + JS identifier-safe(同 `DocumentStateDef.name` 字符集);failed → 该 entry drop + warn,不整行丢
+- **vi.** Kiwi schema 0 改(actions 走 JSON-string blob 存 `lowcode/events` pluginData,加 field 0 schema 改)
+- **vii.** cross-walker 增 2 用例:① mega patch with editor ⇒ undo stack 长度 == 1(模拟 editor.undo);② payloadEntries 端到端(AI tool → IR → emit valueExpr 引 docState)
+- **viii.** `update_lowcode_node` tool description 加 ~150 字段:payloadEntries 优先于 payloadJson + 表达式语法 + delete 不带 payload + `'{}'` 视同 empty
+
+### 3.v2.3 公开 API / Schema 改动
+
+**新增 / 改 type**:
+
+| 文件 | 改 |
+|---|---|
+| `packages/core/src/scene-graph/types.ts` | `SupabaseMutationAction` 加 `payloadEntries?: { key: string; valueExpr: string }[]` |
+| `packages/core/src/tools/schema.ts` | `ToolDef.execute` + `defineTool` 入参签名加第 3 位 `ctx?: { editor?: Editor }`;既有 tool 0 改(typescript 优化:`ctx` 可省) |
+| `packages/core/src/tools/modify/lowcode.ts` | 3 mutate tool 实现拆 with-editor / fallback 分支;新 helper `pushFieldUpdate` |
+| `packages/core/src/lowcode-validation/validate.ts` | `validateActions`(或对应入口)新增 `normalizeEmptyPayloadJson`:trim 后 === '{}' / '[]' → '' |
+| `packages/compiler/src/ir/collect/bindings.ts` | `collectSupabaseMutationPayload` 拆出 `collectPayloadEntries` 分支;both-present 检测 + warn;emit-side `emitSupabaseMutation` 加 entries 路径 |
+| `packages/compiler/src/adapters/react/emit/event.ts` | emit `.insert/.update/.upsert({key: valueExpr, ...})` 当 entries 在 IR 里(对齐既有 valueExpr emit pathway) |
+| `src/app/ai/**`(AI 调用 dispatch 处) | tool 调用点拼 `ctx: { editor: session.editor }` 注入 |
+
+**注册 / 测试**:
+
+| 文件 | 改 |
+|---|---|
+| `tests/engine/tools/lowcode/modify.test.ts` | 加 with-editor / fallback 路径;assert undo stack length == 1 with-editor;assert 既有 figma.graph.updateNode 路径 fallback 时 0 entry(behavior 不变) |
+| `tests/engine/compiler/ir/supabase-mutation-payload-entries.test.ts` | 新:6 IR case + 4 emit case + valueExpr grammar 校验 |
+| `tests/engine/lowcode-validation/validate.test.ts` | 加 `'{}'` / `' {} '` / `'[]'` / `' [] '` normalize 测试 |
+| `tests/engine/tools/lowcode/cross-walker.test.ts` | 加 2 用例(主决定 vii) |
+
+### 3.v2.4 内部实现拆解
+
+**Step 1 — ToolDef ctx + runBatch**:
+
+- `schema.ts`:`ToolDef.execute` 加 opt 第 3 参;`defineTool` 同步加;`ToolCtx` type alias `{ editor?: Editor }`
+- `tools/modify/lowcode.ts`:3 mutate tool 实现拆 `executeWithEditor(ctx.editor)` vs `executeFigmaPath()`(既有);with-editor 路径 `editor.undo.runBatch('AI: <name>', () => { ... pushFieldUpdate × N ... })`
+- `pushFieldUpdate(ctx, nodeId, key, value)`:snapshot `node[key]`(用 structuredClone)→ mutate → `ctx.undo.push({ label, forward, inverse })`;`forward = () => ctx.graph.updateNode(...)`、`inverse = () => ctx.graph.updateNode(... previous)`
+- app 注入点:找 AI tool dispatch(`src/app/ai/{tools,chat,acp}` 之一)调 `tool.execute(figma, args)` 处,append `, { editor: session.editor }`
+
+**Step 2 — payloadEntries**:
+
+- `types.ts` 加 field;Kiwi 不动
+- `bindings.ts` IR collect:`collectSupabaseMutationAction` 内 `payloadEntries` 长度 > 0 → 走 entries 分支;同时 payloadJson 非空 → warn `payload-source-conflict` + drop payloadJson 路径;每 entry `validateExpression(valueExpr, scope)` 拒掉非 expression 子语言;key 校验(主决定 v)
+- `event.ts` emit:既有 `supabaseMutation` emit 分支多 entries 路径,生成 `{ [JSON.stringify(key)]: <valueExpr emit>, ... }` object literal
+- tool input:`update_lowcode_node` patch 解析 `payloadEntries` JSON-string;校验失败返 `{ ok: false, error }`
+
+**Step 3 — `{}` / `[]` normalize**:
+
+- `lowcode-validation/validate.ts`:`validateActions` 入口扫每个 action,若 `kind === 'supabaseMutation'` 且 `payloadJson?.trim()` ∈ `['{}', '[]']` → `payloadJson = ''`
+- IR collect 端 `collectSupabaseMutationPayload` 现有防御代码沿用(double safety,不依赖 normalize 是否被调)
+- tool description 加 ~150 字段
+
+**Step 4 — cross-walker**:
+
+- 模拟 `editor.undo.push` 计数(jest-style spy 或 stub `UndoManager`),验 with-editor ⇒ stack +1;without-editor ⇒ 0
+- payloadEntries 端到端:`update_lowcode_node` 拼 supabaseMutation action with entries → 跑 collectTree → assert IR 里 entries 长度 + emit 里 `.update({...})` 含 valueExpr emit
+- 经验 I:断言 IR `bindings.ts:collectPayloadEntries` 调用链 + emit `event.ts` 含 entries 路径 import 行 / 函数名 +/- 双向
+
+### 3.v2.5 成功标准
+
+1. `bun test ./tests/engine/lowcode-validation/` 全绿
+2. `bun test ./tests/engine/tools/lowcode/` 全绿(含 modify with-editor / fallback)
+3. `bun test ./tests/engine/compiler/` 全绿(含新 supabase-mutation-payload-entries.test.ts)
+4. `bun test ./tests/engine/kiwi/lowcode/` 全绿(零回归)
+5. `bun run check` 全绿
+6. **Tauri 实测(用户主导)~6 项 user-ACK**:
+   1. AI 改完 lowcode 节点 → **Cmd+Z 一次**全部回到改前(修 surprise #2)
+   2. AI 用 INPUT 输入值绑 docState → 加 supabaseMutation insert 用 payloadEntries 引 docState → 提交后 Supabase Dashboard 看到行的字段值就是 INPUT 的输入(修 surprise #3)
+   3. AI 调 update_lowcode_node 残留 `payloadJson: '{}'` 在 delete action → IR collect / Tauri 都按 empty 处理,不再 silent fail(修 surprise #6)
+   4. **零回归**:Phase 3 §3 既有 8 项 + §3.x INPUT controlled + §2 Supabase 11 项 spot-check 通过
+   5. CLI / MCP server 调 lowcode tool fallback 不挂(无 editor 上下文,走既有 figma.graph 路径)
+   6. payloadEntries `both-present` warning 在 DevTools console 露出(经验 C 防 silent drop)
+7. 不破坏 Phase 0 §8 / Phase 1(除 §1.5 #3+#5 §11.3 #5)/ Phase 2 §9.2 §2.2 §3.2 §4.2 §6.2 §7.2 §8.2 / Phase 3 §2.2 §3.2 §3.x 任一锁定决定
+
+### 3.v2.6 工作分解(建议 1 名工程师,1-2 天)
+
+| Step | 任务 | 验收 / commit message |
+|---|---|---|
+| 1 | ToolDef.execute 加 ctx 参 + 3 lowcode mutate tool runBatch + app 注入;测试 with-editor / fallback | `bun test ./tests/engine/tools/lowcode/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — ToolDef ctx + lowcode mega-tool runBatch (§3.v2)` |
+| 2 | `SupabaseMutationAction.payloadEntries` 字段 + IR collect + emit + tool input;新测试文件 6 IR + 4 emit | `bun test ./tests/engine/compiler/` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — supabaseMutation payloadEntries (§3.v2)` |
+| 3 | shared validator `'{}'` / `'[]'` normalize + tool desc 加 150 字 | `bun test ./tests/engine/lowcode-validation/` 全绿;`bun run check` 全绿;`feat(lowcode): step 3 — payloadJson '{}' normalize + tool desc (§3.v2)` |
+| 4 | cross-walker 2 新用例(mega 单 entry / payloadEntries 端到端) | `bun test ./tests/engine/tools/lowcode/` 全绿;`bun run check` 全绿;`test(lowcode): step 4 — §3.v2 cross-walker (mega undo + payloadEntries)` |
+| 5 | Tauri 实测 ~6 项 user-ACK + §3.v2.8 post-mortem + 关闭 §3.v2 + memory 更新 | 6 项全 ACK;`docs(lowcode): §3.v2 Tauri verification + close` |
+
+### 3.v2.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| `ToolDef.execute` 加 ctx 参破坏既有 ToolDef 实现(隐式签名漏接)| 中 | TS strict;optional 第 3 参 + 既有 0 改;ctx 默认 undefined,既有 tool 不读 |
+| `pushFieldUpdate` snapshot 用 structuredClone 性能慢(大节点)| 低 | lowcode 字段都 small(bindings/events/interactiveProps/renderCondition/freeLayout 各几 KB);profile 真慢再优化 |
+| `payloadEntries` 与 `payloadJson` both-present 时迁移期 AI 会同时给两个(漏)→ warn 但 entries 胜 | 低 | tool desc + 单测覆盖;production runtime warn 在 console 不挡 |
+| `valueExpr` 引 docState 失败 silent drop(原 `action-setvariable-unknown-identifier` 风格)| 中 | IR collect warn 必须 surface(经验 C);单测覆盖 4 失败 case |
+| 经验 I — 新 `ctx?: { editor }` 参跨包传递 / `payloadEntries` 新字段 emit walker 漏接 | 高 | cross-walker 双新用例钉死;import 行 +/- 断言 |
+| 经验 D — payloadEntries emit 不需新 npm import(`Number(...)` 之类 lowcode runtime 已在),无 dep-resolve 风险 | 0 | 沿用 |
+| AI 漏 `payloadEntries.key` JS identifier 校验 → emit 出语法错误 JS | 中 | step 2 validator key 校验 + 单测 |
+| `runBatch` throw rollback 后部分字段 already mutated(snapshot 漂移)| 中 | `pushFieldUpdate` snap 在 mutate 前 + push inverse;rollbackBatch 走 inverse;单测验 throw 路径 |
+
+### 3.v2.8 Post-mortem
+
+**待填**:§3.v2 closed `<date>`(HEAD `<post-mortem-commit>` 后)。Commit 链 + Tauri ACK 结果 + surprise 列表 + 对经验 A-J 的增补 / 印证。
+
+---
+
 ---
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
