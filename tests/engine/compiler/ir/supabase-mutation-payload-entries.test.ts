@@ -185,6 +185,48 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     ).toBe(true)
   })
 
+  test('§3 step 3 — delete + payloadJson `{}` no longer surfaces unexpected-payload (§3.v2 #h)', () => {
+    const { graph, pageId } = setupGraph({
+      docStates: [{ id: 'd-id', name: 'targetId', type: 'number', defaultValue: 0 }],
+      onClick: [
+        {
+          id: 'a1',
+          kind: 'supabaseMutation',
+          operation: 'delete',
+          table: 'users',
+          payloadJson: '{}',
+          filters: [{ column: 'id', op: 'eq', valueExpr: 'targetId' }]
+        }
+      ]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(firstMutation(graph, pageId)).toBeDefined()
+    expect(
+      ir.warnings.some(
+        (w) => w.code === 'action-supabase-mutation-unexpected-payload'
+      )
+    ).toBe(false)
+  })
+
+  test('§3 step 3 — insert + payloadJson `{}` falls through to missing-payload (still rejects, but cleaner)', () => {
+    const { graph, pageId } = setupGraph({
+      onClick: [
+        {
+          id: 'a1',
+          kind: 'supabaseMutation',
+          operation: 'insert',
+          table: 'users',
+          payloadJson: '{}'
+        }
+      ]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(firstMutation(graph, pageId)).toBeUndefined()
+    expect(
+      ir.warnings.some((w) => w.code === 'action-supabase-mutation-missing-payload')
+    ).toBe(true)
+  })
+
   test('entry referencing an unknown identifier → dropped (unknown-identifier warn)', () => {
     const { graph, pageId } = setupGraph({
       onClick: [

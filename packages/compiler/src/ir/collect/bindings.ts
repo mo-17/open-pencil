@@ -2,6 +2,7 @@ import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-gr
 import {
   type ExprAst,
   hasPrevReference,
+  normalizeSupabaseMutationPayloadJson,
   parseExpression,
   parseTemplate,
   PREV_IDENT,
@@ -931,7 +932,8 @@ function resolveSupabaseMutation(
     return null
   }
   const hasEntries = (action.payloadEntries?.length ?? 0) > 0
-  if (hasEntries && (action.payloadJson?.trim() ?? '') !== '') {
+  const normalizedJson = normalizeSupabaseMutationPayloadJson(action.payloadJson)
+  if (hasEntries && (normalizedJson ?? '') !== '') {
     warnings.push({
       code: 'action-supabase-mutation-payload-source-conflict',
       message: `node ${node.id} ${eventName} supabaseMutation has both payloadEntries and payloadJson — payloadEntries wins, payloadJson dropped (decision §3.v2.2 #e)`,
@@ -1107,7 +1109,7 @@ function resolveMutationPayload(
   action: Extract<ActionDef, { kind: 'supabaseMutation' }>,
   warnings: IRWarning[]
 ): string | undefined | null {
-  const raw = (action.payloadJson ?? '').trim()
+  const raw = (normalizeSupabaseMutationPayloadJson(action.payloadJson) ?? '').trim()
   if (action.operation === 'delete') {
     if (raw !== '') {
       warnings.push({

@@ -28,6 +28,7 @@
  */
 import type { FigmaAPI } from '#core/figma-api'
 import {
+  normalizeSupabaseMutationPayloadJson,
   validateExpression,
   validateStateName,
   validateSupabaseConfig,
@@ -358,7 +359,9 @@ function buildActionFromValidated(
         kind,
         operation: raw.operation as 'insert' | 'update' | 'delete' | 'upsert',
         table: raw.table as string,
-        payloadJson: raw.payloadJson as string | undefined,
+        payloadJson: normalizeSupabaseMutationPayloadJson(
+          raw.payloadJson as string | undefined
+        ),
         payloadEntries: raw.payloadEntries as SupabasePayloadEntry[] | undefined,
         filters: raw.filters as SupabaseFilter[] | undefined,
         resultTarget: raw.resultTarget as string | undefined,

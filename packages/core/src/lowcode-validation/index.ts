@@ -25,6 +25,7 @@ export {
 
 export {
   type ValidationResult,
+  normalizeSupabaseMutationPayloadJson,
   validateExpression,
   validateStateName,
   validateUrlTemplate
