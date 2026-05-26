@@ -528,9 +528,78 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 ### 3.8 Post-mortem
 
-> 设计 2026-05-25 锁定;step 1–5 待开工。
->
-> step 完成后回填:commit 链 + walker checklist round-2 记录 + Tauri 实测 8 项结果 + 任何 surprise(AI 选 tool 准确率、tool description 写法对实际调用的影响、service_role detection 在 tool 入口的有效性、validator 共享模块对既有 editor 路径的零回归验证、mega `updateLowcodeNode` 单 undo 实际 UX 反馈)。
+**§3 closed 2026-05-26**(HEAD `<post-mortem-commit>` 后)。
+
+#### Commit 链
+
+| Step / 项 | Commit | 内容 |
+|---|---|---|
+| 设计 | `9297711` | §3 详细设计 + 8 主决定 + 10 次级默认 |
+| 1 | `b1210df` | shared validators — `@open-pencil/core/lowcode-validation/` subpath(`expression.ts` + `validate.ts` + `supabase-config.ts` + barrel);6 compiler + 5 editor + 4 test 改 import;75 单测 |
+| 2 | `d97b284` | read tools — `tools/read/lowcode.ts`(`readLowcodeNode` / `readDocStates` / `readSupabaseConfig`)+ `LowcodeNodeRead` 类型 + 进 `CORE_TOOLS`;9 case 测试 |
+| 3 | `6f31ca9` | modify tools — `tools/modify/lowcode.ts`(`updateLowcodeNode` mega patch / `setDocStates` / `setSupabaseConfig`)+ 7 field appliers + 6 action builders + `parseSupabaseConfig` 共享 helper;21 case 测试 |
+| 4 | `39b3729` | cross-walker — `tests/engine/tools/lowcode/cross-walker.test.ts` 7 用例 / 66 expect;walker round-2 + 经验 I 正负 import-line 断言 |
+| follow-up 1 | `62dddf1` | §3.3 doc drift 修;`update_lowcode_node` desc 加 setVariable.valueExpr scope 注释 |
+| follow-up 2 | `6e1dea5` | 经验 I 升 §1.4 正式经验(module-resolve 维度) |
+| follow-up 3 | `d1d4c7d` | §2 closure gap 标注 + §3 step 5 ACK 8 项扩 11 项 |
+| **§3.x** | (本期) | INPUT controlled input via `bindings.value`:IR `IRControlledInput`(targetType=string\|number)+ collect `resolveValueBinding` + emit `controlledOnChangeBody`(`Number(...)` coercion + auto `type="number"`)+ `InputValueBindingPanel.vue` + 4 i18n key × 7 locale + `update_lowcode_node` desc 加 200 字段。8 新测试 case;`bun run check` 0 error |
+| 5 | (本期) | Tauri 实测 user-ACK 11 项 + §3.8 post-mortem + memory 更新 |
+
+#### Walker checklist round-2(step 4)
+
+- IR collect 端 `update_lowcode_node` mega patch 5 字段(state / bindings / events / interactiveProps / renderCondition)在 `tests/engine/tools/lowcode/cross-walker.test.ts:43` 钉死 5 字段命中 + 0 warnings
+- React emit 端的 useState / useDocState/setDocState import 行 + call-site 在 `cross-walker.test.ts:106` 双向断言
+- 零回归 baseline 用 `byte-stable against a baseline graph` 模式
+- 6 个 §3 tool snake_case 名注册校验
+
+#### Tauri 实测 11 项结果(用户主导,本期 §3.x 扩 → 17 项实质)
+
+| # | Check | 结果 |
+|---|---|---|
+| 1 | `read_lowcode_node` 返结构化 | ✅ |
+| 2 | `read_doc_states` 返全表 | ✅ |
+| 3 | `read_supabase_config` 返完整 config(不脱敏)| ✅ |
+| 4 | AI 给 BUTTON 加 supabaseQuery → Properties **立即**反映 | ✅(经验 H sceneVersion bump 起效)|
+| 5 | AI 加 docState `items` → Properties **立即**出新 state line | ✅ |
+| 6 | service_role JWT 拒掉 + 带 reason | ✅ |
+| 7 | Cmd+Z 单 undo 回滚 | 🟨 **多 undo entry**:第 1 次撤 data,第 2 次撤 UI/selection。比预期(完全无 undo)温和。known-limitation:§3.v2 改 ToolDef.execute 入参带 Editor + `beginUndoGroup`/`endUndoGroup` 合 1 entry |
+| 8 | 零回归 spot-check | ✅(SupabaseConfigPanel Test connection / .fig 持久化 / Phase 2 supabaseQuery preview 全 OK)|
+| 9 | supabaseMutation UPDATE | ✅ filter 动态 + payload 字面;debug:UPDATE/DELETE/UPSERT 首次全无效 → 定位 Supabase users 表只有 INSERT policy,缺 UPDATE/DELETE policy;加 anon UPDATE/DELETE policy 后通过 |
+| 10 | supabaseMutation DELETE | ✅ delete 无 payloadJson;debug:首次请求未发,AI 给 delete action 残留 payloadJson 被 IR collect drop(`action-supabase-mutation-unexpected-payload`);删 payload 后通过 |
+| 11 | supabaseMutation UPSERT | ✅ PK 类型 + 值匹配后双场景双结果;debug:首次用 `'upsert-demo-1'` 字符串值与 `bigint` PK 不匹配,Supabase 走 INSERT 自动分配新 id;改成数字 PK 值后第二次 UPSERT 走 UPDATE 分支 |
+
+#### Surprise 列表
+
+1. **INPUT controlled 路径整个不存在(experience H 重击)** — 设计阶段 §3.5 假设 form-driven supabaseMutation `filters` / `payload` 能引用「表单当前值」,但 Phase 0/2/3 全部 INPUT emit 是 `defaultValue` uncontrolled,没 `bindings.value` 通道,onChange handler 也无 `$event` / `$value` token 拿 `e.target.value`。expression grammar §4.2 FROZEN 又封死 `$event` 拓展。**本期被迫提前实现 §3.v2 一部分作 §3.x**:`bindings.value` controlled 通道 + IR `controlled` 字段 + emit two-way wiring(string + number)+ UI 面板 + i18n。Tauri 实测前必须重启。**等于本期 scope 实质扩了 30-40%**。
+2. **Cmd+Z 多 undo entry**(§3.5 #7) — 不是预期的「无 undo」,而是「data + UI 两步分撤」。比预期温和,但仍违 §3.2 #6「mega tool = 单 undo」设计意图。fix path:`editor.beginUndoGroup` / `endUndoGroup` 包,推 §3.v2。
+3. **supabaseMutation.payloadJson 是纯字面 JSON**(本期 #9 debug 期发现) — `payload` 走 `JSON.parse(JSON.stringify(...))` 校验然后 emit 时 verbatim splice 进 `.update(...)`,**不支持表达式插值**。意味着「INPUT 输入 → mutation payload 写入」这条 UX 路径**不存在**。filters 没这个问题(filters.valueExpr 是表达式 AST)。所以 #9 走「filter 动态 + payload 字面」,#11 UPSERT 完全用字面值演示 INSERT vs UPDATE 分支。**§3.v2 列入**:`supabaseMutation.payloadEntries: { key, valueExpr }[]` 替代 / 并存 `payloadJson` literal。
+4. **Tauri 网络面板「An error occurred trying to load the resource」是 204 No Content 误显** — UPDATE/DELETE 走 PostgREST 返 204(无 body),Tauri WKWebView devtools 面板把这显示成「错误」字样。不是网络失败。**经验 C 沿用**:debug 看完整 Headers / Status / Request Body,别信面板顶层文案。
+5. **Supabase RLS UPDATE / DELETE 静默 0 行**(本期 #9 debug 主血泪) — anon 缺 UPDATE policy 时,PATCH 仍返 204 但「matched 0 rows under RLS」,看上去「id 没传过去」;UPSERT 因为 anon 看不到既有行,fallback 走 INSERT 创建重复行。**修法**:测试期临时关 RLS 或加 anon UPDATE/DELETE policy。这是 Supabase 一个隐蔽 footgun,值得在 §3.v2 SupabaseConfigPanel 加 RLS policy 健康检查(可选)。
+6. **AI tool 调用「delete + payloadJson 静默 drop」陷阱** — IR collect 端 `action-supabase-mutation-unexpected-payload` 警告 + drop handler;runtime 完全无反应、无网络请求。AI 写 prompt「No payloadJson」时容易给 action 留 `payloadJson: ''` 或 `'{}'`,被 trim 后判 `raw !== ''` 触发 drop。**修法 v2**:`payloadJson === '{}'` 也按 empty 处理,或 tool 入参 validator 直接拒。当前期 doc 标 known-pitfall。
+7. **PK 类型不匹配 UPSERT 静默 INSERT**(本期 #11 debug) — Supabase `users.id` 是 `bigint` 时,upsert payload `{"id":"upsert-demo-1",...}`(字符串)Supabase 不报错,直接走 INSERT 自动分配新 id。**修法**:doc UPSERT prompt 强调「PK 值类型必须与列匹配」。
+8. **setVariable.valueExpr 仅 page-state + `$prev`**(step 4 期间发现,§3.5 已 hint) — 在 cross-walker 写 `valueExpr: 'items'` 引用 docState `items` 时被 IR walker drop(`action-setvariable-unknown-identifier`)。已在 `update_lowcode_node` desc 加 IMPORTANT 注。Tauri ACK 期没再踩。
+9. **emit import 顺序 read-then-write 非字母序**(step 4 期间发现) — React adapter 拼 `useDocState, setDocState` 是按 `ir.docStateReads.length > 0` then `ir.docStateWrites.length > 0`,cross-walker 断言要镜像或用 regex。
+
+#### 经验沉淀(对 §1.4 增补 / 印证)
+
+- **A + G** 走 union widening / walker 多轮 — 本期 IR collect / emit / cross-walker / UI panel / i18n × 7 locale 全维度命中,**新增 i18n locale 维度**(我新增 4 个 key,7 个 locale 文件得各加,check-locales 钉)
+- **H** Tauri 实测出 unit / cross-walker 找不到的问题 — 本期最严重:**INPUT controlled 路径根本不存在**这一基础事实,unit + cross-walker 不可能发现(因为这是设计层面的洞,不是实现层面的回归)。**§4 / §5 / §X 设计阶段强烈建议先 Tauri 短跑 UX 假设链,再写详细设计**(designsmoke testing)
+- **I** module-resolve 维度 — 本期再次印证:`InputValueBindingPanel.vue` 加进去后,DesignPanel.vue 必须 import + 注册,Steiger 钉死;漏 i18n key 任一 locale → check-locales 钉死。两道独立栅栏 work
+- **C** no-swallow — 本期 #10 DELETE debug 全靠 IR collect warning(`action-supabase-mutation-unexpected-payload`)在 DevTools console 露出;若 IR collect 静默 drop 就完全 dead-end
+- **新经验候选 J**:**设计阶段先做「假设链反向核」** — §3.5 ACK 表里写「Form 触发 supabaseMutation」是设计假设,但没人 reverse-check「form 输入到底怎么进 state」这条 UX 链。结果实施完整套发现链条断了。**Phase 4 起草 §X.5 ACK 表前,必须沿 ACK 倒推每一步技术依赖,任一步不存在标黄推回 §X.2 决定表**
+
+#### §3.v2 follow-up
+
+按本期 surprise 沉淀的 todo 列表(优先级降序):
+1. ToolDef.execute 入参加 Editor + `beginUndoGroup`/`endUndoGroup` 合并 mega 调用为 1 undo entry(surprise #2)
+2. `supabaseMutation.payloadJson` 升级为 / 并存 `payloadEntries: { key, valueExpr }[]`,支持 docState / page-state 引用(surprise #3)
+3. CHECKBOX / TEXTAREA / DATEPICKER / SELECT / RADIO / SWITCH 的 controlled binding(扩 §3.x 模式)
+4. expression grammar 加 `$event` / `$value` token(若需要,可能避开 §4.2 FROZEN 走 token 后置注入路径)
+5. INPUT controlled boolean / date 类型支持
+6. SupabaseConfigPanel 加 RLS policy 健康检查(可选 nice-to-have,surprise #5)
+7. `payloadJson === '{}'` 按 empty 处理消歧义(surprise #6 防呆)
+
+---
 
 ---
 
