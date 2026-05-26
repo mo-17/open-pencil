@@ -42,7 +42,8 @@ import type {
   StateDef,
   StateValueType,
   SupabaseConfig,
-  SupabaseFilter
+  SupabaseFilter,
+  SupabasePayloadEntry
 } from '#core/scene-graph'
 
 type BindingKind = BindingExpr['kind']
@@ -208,6 +209,47 @@ function validateSupabaseFilters(
   return { ok: true }
 }
 
+// Mirror of `PAYLOAD_ENTRY_KEY_RE` in
+// `packages/compiler/src/ir/collect/bindings.ts` — JS identifier rule
+// for Supabase column names coming through `payloadEntries[].key`.
+const PAYLOAD_ENTRY_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+function validateSupabasePayloadEntries(
+  where: string,
+  raw: unknown
+): { ok: true } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true }
+  if (!Array.isArray(raw)) return failAt(where, '.payloadEntries must be an array')
+  const seenKeys = new Set<string>()
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i]
+    if (!isPlainObject(entry)) {
+      return failAt(where, `.payloadEntries[${i}] must be an object`)
+    }
+    if (typeof entry.key !== 'string' || entry.key === '') {
+      return failAt(where, `.payloadEntries[${i}].key must be a non-empty string`)
+    }
+    if (!PAYLOAD_ENTRY_KEY_RE.test(entry.key)) {
+      return failAt(
+        where,
+        `.payloadEntries[${i}].key "${entry.key}" must be a JS identifier (column name)`
+      )
+    }
+    if (seenKeys.has(entry.key)) {
+      return failAt(where, `.payloadEntries[${i}] duplicates key "${entry.key}"`)
+    }
+    seenKeys.add(entry.key)
+    if (typeof entry.valueExpr !== 'string') {
+      return failAt(where, `.payloadEntries[${i}].valueExpr must be a string`)
+    }
+    const r = validateExpression(entry.valueExpr)
+    if (!r.ok) {
+      return failAt(where, `.payloadEntries[${i}] "${entry.key}".valueExpr — ${r.reason}`)
+    }
+  }
+  return { ok: true }
+}
+
 function validateSupabaseAction(
   where: string,
   kind: 'supabaseQuery' | 'supabaseMutation',
@@ -225,6 +267,8 @@ function validateSupabaseAction(
         `.operation must be one of insert / upsert / update / delete (got ${JSON.stringify(raw.operation)})`
       )
     }
+    const e = validateSupabasePayloadEntries(where, raw.payloadEntries)
+    if (!e.ok) return e
   }
   return { ok: true }
 }
@@ -315,6 +359,7 @@ function buildActionFromValidated(
         operation: raw.operation as 'insert' | 'update' | 'delete' | 'upsert',
         table: raw.table as string,
         payloadJson: raw.payloadJson as string | undefined,
+        payloadEntries: raw.payloadEntries as SupabasePayloadEntry[] | undefined,
         filters: raw.filters as SupabaseFilter[] | undefined,
         resultTarget: raw.resultTarget as string | undefined,
         errorTarget: raw.errorTarget as string | undefined
@@ -586,7 +631,7 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
-    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object) and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is dropped (with an `input-controlled-onchange-conflict` warning) so the synthesized writer stays the single source of truth. This is the only path for capturing runtime input values into state today — other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) have no controlled binding yet. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
+    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object) and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is dropped (with an `input-controlled-onchange-conflict` warning) so the synthesized writer stays the single source of truth. This is the only path for capturing runtime input values into state today — other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) have no controlled binding yet. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },
     patch_json: {

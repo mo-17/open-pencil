@@ -423,6 +423,120 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
     expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toBeUndefined()
   })
 
+  test('update_lowcode_node accepts supabaseMutation payloadEntries (§3.v2 step 2)', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    const result = tool.execute(
+      figma,
+      {
+        id: btn.id,
+        patch_json: JSON.stringify({
+          events: {
+            onClick: [
+              {
+                id: 'a1',
+                kind: 'supabaseMutation',
+                operation: 'insert',
+                table: 'users',
+                payloadEntries: [
+                  { key: 'name', valueExpr: 'newName' },
+                  { key: 'age', valueExpr: 'newAge' }
+                ]
+              }
+            ]
+          }
+        })
+      },
+      { editor }
+    ) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    const action = graph.getNode(btn.id)?.events?.onClick?.[0] as {
+      kind: string
+      payloadEntries?: { key: string; valueExpr: string }[]
+    }
+    expect(action.payloadEntries?.length).toBe(2)
+    expect(action.payloadEntries?.[0].key).toBe('name')
+  })
+
+  test('update_lowcode_node rejects payloadEntries with non-identifier key (column safety)', () => {
+    const { figma } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    const result = tool.execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [
+            {
+              id: 'a1',
+              kind: 'supabaseMutation',
+              operation: 'insert',
+              table: 'users',
+              payloadEntries: [{ key: '1bad', valueExpr: '"x"' }]
+            }
+          ]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('JS identifier')
+  })
+
+  test('update_lowcode_node rejects payloadEntries with duplicate keys', () => {
+    const { figma } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    const result = tool.execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [
+            {
+              id: 'a1',
+              kind: 'supabaseMutation',
+              operation: 'insert',
+              table: 'users',
+              payloadEntries: [
+                { key: 'name', valueExpr: '"a"' },
+                { key: 'name', valueExpr: '"b"' }
+              ]
+            }
+          ]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('duplicates key')
+  })
+
+  test('update_lowcode_node rejects payloadEntries with unparseable valueExpr', () => {
+    const { figma } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    const result = tool.execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [
+            {
+              id: 'a1',
+              kind: 'supabaseMutation',
+              operation: 'insert',
+              table: 'users',
+              payloadEntries: [{ key: 'name', valueExpr: 'a + ' }]
+            }
+          ]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('valueExpr')
+  })
+
   test('runBatch (begin/commit) at dispatch layer collapses N tool pushes into 1 undo entry', () => {
     const { figma, editor } = setupEditorToolTest()
     const rect = figma.createRectangle()

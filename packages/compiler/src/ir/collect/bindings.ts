@@ -18,10 +18,18 @@ import type {
   IRStateDecl,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
+  IRSupabasePayloadEntry,
   IRSupabaseQueryHandler,
   IRWarning,
   ValueUpdateMode
 } from '../types'
+
+/** Phase 3 §3.v2: matches a JS identifier used as a Supabase column name
+ *  in `SupabaseMutationAction.payloadEntries[].key`. Mirrors the same
+ *  constraint applied to `DocumentStateDef.name` / page state names so an
+ *  AI tool can't smuggle `e.target.value` or other expression syntax
+ *  through the key channel. */
+const PAYLOAD_ENTRY_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** Phase 2 §2: the formal parameter the adapter binds inside a functional
  *  updater (`setX((prev) => ...)`). Collector rewrites `$prev` → this name
@@ -922,8 +930,34 @@ function resolveSupabaseMutation(
     })
     return null
   }
-  const payload = resolveMutationPayload(node, eventName, action, warnings)
-  if (payload === null) return null
+  const hasEntries = (action.payloadEntries?.length ?? 0) > 0
+  if (hasEntries && (action.payloadJson?.trim() ?? '') !== '') {
+    warnings.push({
+      code: 'action-supabase-mutation-payload-source-conflict',
+      message: `node ${node.id} ${eventName} supabaseMutation has both payloadEntries and payloadJson — payloadEntries wins, payloadJson dropped (decision §3.v2.2 #e)`,
+      nodeId: node.id
+    })
+  }
+  let payload: string | undefined
+  let payloadEntries: IRSupabasePayloadEntry[] | undefined
+  if (hasEntries) {
+    const resolved = resolvePayloadEntries(
+      node,
+      eventName,
+      action,
+      states,
+      inScope,
+      docStates,
+      docStateReads,
+      warnings
+    )
+    if (resolved === null) return null
+    payloadEntries = resolved
+  } else {
+    const literal = resolveMutationPayload(node, eventName, action, warnings)
+    if (literal === null) return null
+    payload = literal
+  }
   if (!ensureMutationFilters(node, eventName, action, warnings)) return null
   const filters = resolveSupabaseFilters(
     node,
@@ -959,11 +993,107 @@ function resolveSupabaseMutation(
     kind: 'supabaseMutation',
     operation: action.operation,
     table,
-    payload: payload === undefined ? undefined : payload,
+    payload,
+    payloadEntries,
     filters,
     resultTarget,
     errorTarget
   }
+}
+
+/** Phase 3 §3.v2: parse + validate `SupabaseMutationAction.payloadEntries`.
+ *  Per-entry: `key` must be a JS identifier (column-safe); `valueExpr`
+ *  must parse + reference only in-scope identifiers (same rules as
+ *  filter values). Duplicate keys drop the whole handler. `delete` +
+ *  non-empty entries reuses the existing
+ *  `action-supabase-mutation-unexpected-payload` code so editor / AI
+ *  tooling can surface both payload channels with one filter. */
+function resolvePayloadEntries(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'supabaseMutation' }>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): IRSupabasePayloadEntry[] | null {
+  const raw = action.payloadEntries ?? []
+  if (action.operation === 'delete' && raw.length > 0) {
+    warnings.push({
+      code: 'action-supabase-mutation-unexpected-payload',
+      message: `node ${node.id} ${eventName} supabaseMutation operation "delete" must not have payloadEntries`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const out: IRSupabasePayloadEntry[] = []
+  const seenKeys = new Set<string>()
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i]
+    const key = entry.key.trim()
+    if (key === '') {
+      warnings.push({
+        code: 'action-supabase-mutation-entry-missing-key',
+        message: `node ${node.id} ${eventName} supabaseMutation payloadEntries[${i}] has no key`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (!PAYLOAD_ENTRY_KEY_RE.test(key)) {
+      warnings.push({
+        code: 'action-supabase-mutation-entry-invalid-key',
+        message: `node ${node.id} ${eventName} supabaseMutation payloadEntries[${i}] key "${key}" must be a JS identifier (column name)`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (seenKeys.has(key)) {
+      warnings.push({
+        code: 'action-supabase-mutation-entry-duplicate-key',
+        message: `node ${node.id} ${eventName} supabaseMutation payloadEntries[${i}] duplicates key "${key}"`,
+        nodeId: node.id
+      })
+      return null
+    }
+    seenKeys.add(key)
+    const exprSrc = entry.valueExpr.trim()
+    if (exprSrc === '') {
+      warnings.push({
+        code: 'action-supabase-mutation-entry-missing-value',
+        message: `node ${node.id} ${eventName} supabaseMutation payloadEntries[${i}] "${key}" has no valueExpr`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const parsed = parseExpression(exprSrc)
+    if (!parsed.ok) {
+      warnings.push({
+        code: 'action-supabase-mutation-entry-invalid-value',
+        message: `node ${node.id} ${eventName} supabaseMutation payloadEntries[${i}] "${key}" valueExpr "${exprSrc}" → ${parsed.error}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const refCtx = `${eventName} action-supabase-mutation payloadEntries[${i}]`
+    if (
+      !checkExprRefs(
+        parsed.references,
+        states,
+        inScope,
+        docStates,
+        node,
+        refCtx,
+        'action-supabase-mutation',
+        warnings
+      )
+    ) {
+      return null
+    }
+    registerDocStateReads(parsed.references, docStates, docStateReads)
+    out.push({ key, ast: parsed.ast, references: [...parsed.references] })
+  }
+  return out
 }
 
 /** Per-operation payload rules:

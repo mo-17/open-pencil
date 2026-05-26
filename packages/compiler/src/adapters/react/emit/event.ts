@@ -104,26 +104,43 @@ function emitSupabaseQuery(h: IRSupabaseQueryHandler): string {
 }
 
 /** Phase 3 §2: insert / update / delete / upsert chain. Filters become the
- *  where clause for update / delete (collect side requires them); payload is
- *  pre-validated compact JSON spliced verbatim. */
+ *  where clause for update / delete (collect side requires them). Payload is
+ *  either an expression-based object literal built from `payloadEntries`
+ *  (Phase 3 §3.v2) or a pre-validated compact JSON spliced verbatim from
+ *  `payload`. IR collect picks one — both never present at this point. */
 function emitSupabaseMutation(h: IRSupabaseMutationHandler): string {
   const base = `getSupabaseClient().from(${JSON.stringify(h.table)})`
+  const payloadLiteral = emitMutationPayload(h)
   let chain: string
   switch (h.operation) {
     case 'insert':
-      chain = `${base}.insert(${h.payload ?? '{}'})`
+      chain = `${base}.insert(${payloadLiteral})`
       break
     case 'upsert':
-      chain = `${base}.upsert(${h.payload ?? '{}'})`
+      chain = `${base}.upsert(${payloadLiteral})`
       break
     case 'update':
-      chain = `${base}.update(${h.payload ?? '{}'})` + emitFilterChain(h.filters)
+      chain = `${base}.update(${payloadLiteral})` + emitFilterChain(h.filters)
       break
     case 'delete':
       chain = `${base}.delete()` + emitFilterChain(h.filters)
       break
   }
   return wrapAsyncResult(chain, h.resultTarget, h.errorTarget)
+}
+
+/** Phase 3 §3.v2: prefer `payloadEntries` (expression-based object literal)
+ *  over `payload` (verbatim JSON). Falls back to `{}` only when neither
+ *  channel is set — collect rejects insert/update/upsert with no payload,
+ *  so this branch only matters for `delete` where the payload is unused. */
+function emitMutationPayload(h: IRSupabaseMutationHandler): string {
+  if (h.payloadEntries && h.payloadEntries.length > 0) {
+    const entries = h.payloadEntries
+      .map((e) => `${JSON.stringify(e.key)}: ${emitExpression(e.ast)}`)
+      .join(', ')
+    return `{ ${entries} }`
+  }
+  return h.payload ?? '{}'
 }
 
 function emitFilterChain(filters: readonly IRSupabaseFilter[]): string {

@@ -588,17 +588,36 @@ export interface SupabaseQueryAction {
   errorTarget?: string
 }
 
-/** Phase 3 §2: typed write against a Supabase table. `payloadJson` is a JSON
- *  literal string (insert/update/upsert) parsed + validated like
- *  `ApiCallAction.bodyJson`. `filters` is required for update/delete (where
- *  clause). Result and error targets are optional — mutations are usually
- *  fire-and-forget at the UI level. */
+/** Phase 3 §3.v2: a single payload field built from a value expression
+ *  rather than a JSON literal. `valueExpr` uses the same restricted
+ *  expression sub-language as `SupabaseFilter.valueExpr` /
+ *  `SetStateAction.valueExpr` (page state, doc state, `$prev`, literals),
+ *  so a mutation can write the value of an INPUT or any other reactive
+ *  source into a row. `key` must be a JS identifier (column name). */
+export interface SupabasePayloadEntry {
+  key: string
+  valueExpr: string
+}
+
+/** Phase 3 §2: typed write against a Supabase table. Payload comes from
+ *  one of two channels:
+ *   - `payloadEntries` — Phase 3 §3.v2 expression-based, one entry per
+ *     column, supports docState / page-state references. Preferred when
+ *     present.
+ *   - `payloadJson` — Phase 3 §2 JSON literal string parsed + validated
+ *     like `ApiCallAction.bodyJson`. Static values only.
+ *  When both are set, IR collect emits a `payload-source-conflict`
+ *  warning and prefers `payloadEntries` (decision §3.v2.2 #e).
+ *  `filters` is required for update/delete (where clause). Result and
+ *  error targets are optional — mutations are usually fire-and-forget at
+ *  the UI level. */
 export interface SupabaseMutationAction {
   id: string
   kind: 'supabaseMutation'
   operation: 'insert' | 'update' | 'delete' | 'upsert'
   table: string
   payloadJson?: string
+  payloadEntries?: SupabasePayloadEntry[]
   filters?: SupabaseFilter[]
   resultTarget?: string
   errorTarget?: string

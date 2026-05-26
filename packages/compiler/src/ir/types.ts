@@ -185,16 +185,33 @@ export interface IRSupabaseQueryHandler {
   errorTarget?: string
 }
 
-/** Phase 3 §2: typed write against a Supabase table. `payload` is compact,
- *  validated JSON (parsed + re-serialised at collect time, like
- *  `IRApiCallHandler.body`), spliced verbatim as a JS literal. `filters`
- *  is the update / delete where-clause; required by collect for those two
- *  operations. */
+/** Phase 3 §3.v2: a single expression-driven payload column. `key` is a
+ *  JS identifier (the table column); `ast` is the parsed value expression
+ *  (same restricted sub-language as `IRSupabaseFilter.ast`); adapter emits
+ *  its JS value as the object-literal value for `<key>:`. */
+export interface IRSupabasePayloadEntry {
+  key: string
+  ast: ExprAst
+  references: string[]
+}
+
+/** Phase 3 §2: typed write against a Supabase table. One of two payload
+ *  channels:
+ *    - `payloadEntries` (Phase 3 §3.v2) — expression-based, one entry per
+ *      column; supports docState / page-state references.
+ *    - `payload` (Phase 3 §2) — compact validated JSON literal,
+ *      parsed + re-serialised at collect time like `IRApiCallHandler.body`;
+ *      spliced verbatim as a JS object literal.
+ *  When source `SupabaseMutationAction` carries both, IR collect emits
+ *  `action-supabase-mutation-payload-source-conflict` warning and prefers
+ *  `payloadEntries` (decision §3.v2.2 #e). `filters` is the update / delete
+ *  where-clause; required by collect for those two operations. */
 export interface IRSupabaseMutationHandler {
   kind: 'supabaseMutation'
   operation: 'insert' | 'update' | 'delete' | 'upsert'
   table: string
   payload?: string
+  payloadEntries?: IRSupabasePayloadEntry[]
   filters: IRSupabaseFilter[]
   resultTarget?: string
   errorTarget?: string
