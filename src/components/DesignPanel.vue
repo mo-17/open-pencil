@@ -12,6 +12,7 @@ import FillSection from './properties/FillSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
+import InputValueBindingPanel from './properties/Lowcode/InputValueBindingPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
 import StatePanel from './properties/Lowcode/StatePanel.vue'
@@ -110,6 +111,7 @@ const { panels } = useI18n()
     <StrokeSection />
     <EffectsSection />
     <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
+    <InputValueBindingPanel v-if="node.type === 'INPUT'" />
     <StatePanel
       v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'"
     />

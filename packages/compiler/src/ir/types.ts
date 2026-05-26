@@ -21,6 +21,25 @@ export interface IRElement {
   children: IRNode[]
   /** Event handlers. Phase 0 only emits `onClick` (BUTTON) and `onSubmit` (FORM). */
   events?: Partial<Record<IREventName, IREventHandler[]>>
+  /** Phase 3 §3.x: controlled-input two-way wiring for INPUT nodes that bind
+   *  `bindings.value` to a string-typed docState or page-state. Adapter emits
+   *  `value={<read>}` plus a synthesized `onChange` writer; uncontrolled
+   *  `defaultValue` and any user-defined `onChange` are dropped (the latter
+   *  with an `input-controlled-onchange-conflict` warning at collect time). */
+  controlled?: IRControlledInput
+}
+
+/** Phase 3 §3.x: descriptor for a controlled INPUT — both halves of the
+ *  two-way binding the adapter emits. `read` is the JS identifier the value
+ *  attribute references (already in scope as a `useState` local or as a
+ *  `useDocState` hoist from the scaffold). `write` identifies the writer
+ *  the synthesized `onChange` calls; `targetType` selects the coercion
+ *  applied to `e.target.value` — string passes through, number wraps the
+ *  value in `Number(...)` and the adapter also sets `type="number"` on the
+ *  emitted `<input>`. */
+export interface IRControlledInput {
+  read: string
+  write: { kind: 'docState' | 'state'; name: string; targetType: 'string' | 'number' }
 }
 
 export interface IRText {

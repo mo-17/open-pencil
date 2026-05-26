@@ -5,8 +5,11 @@ import { tailwindClassName } from '../style'
 import type {
   IRAttrValue,
   IRConditional,
+  IRControlledInput,
   IRDocStateDecl,
   IRElement,
+  IREventHandler,
+  IREventName,
   IRList,
   IRNode,
   IRStateDecl,
@@ -14,7 +17,13 @@ import type {
   IRWarning
 } from '../types'
 
-import { registerDocStateReads, resolveEvents, resolveTextBinding, unknownIdentifiers } from './bindings'
+import {
+  registerDocStateReads,
+  resolveEvents,
+  resolveTextBinding,
+  resolveValueBinding,
+  unknownIdentifiers
+} from './bindings'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -263,6 +272,8 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.docStateReads
   )
 
+  const controlled = applyControlledInput(node, ctx, attrs, events)
+
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
@@ -270,9 +281,31 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     className,
     attrs,
     children,
-    ...(events ? { events } : {})
+    ...(events && Object.keys(events).length > 0 ? { events } : {}),
+    ...(controlled ? { controlled } : {})
   }
   return wrapConditional(node, element, ctx)
+}
+
+function applyControlledInput(
+  node: SceneNode,
+  ctx: WalkCtx,
+  attrs: Record<string, IRAttrValue>,
+  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+): IRControlledInput | undefined {
+  if (node.type !== 'INPUT') return undefined
+  const controlled = resolveValueBinding(node, ctx.states, ctx.warnings, ctx.docStates, ctx.docStateReads, ctx.docStateWrites)
+  if (!controlled) return undefined
+  if (events?.onChange) {
+    ctx.warnings.push({
+      code: 'input-controlled-onchange-conflict',
+      message: `INPUT ${node.id} has both bindings.value and a user onChange; dropping the user onChange`,
+      nodeId: node.id
+    })
+    delete events.onChange
+  }
+  delete attrs.defaultValue
+  return controlled
 }
 
 /** A LIST datasource ref — either a page-scoped array state (Phase 2 §9) or

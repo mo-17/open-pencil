@@ -10,7 +10,9 @@ function element(overrides: Partial<IRElement> & { tag: string }): IRElement {
     tag: overrides.tag,
     className: overrides.className ?? '',
     attrs: overrides.attrs ?? {},
-    children: overrides.children ?? []
+    children: overrides.children ?? [],
+    ...(overrides.events ? { events: overrides.events } : {}),
+    ...(overrides.controlled ? { controlled: overrides.controlled } : {})
   }
 }
 
@@ -106,6 +108,79 @@ describe('emitElement (React adapter)', () => {
         '      <button type="submit">OK</button>',
         '    </form>'
       ].join('\n')
+    )
+  })
+
+  // Phase 3 §3.x: controlled INPUT emission. The `controlled` IR field
+  // expands to a two-way bound input — `value={read}` plus a synthesized
+  // `onChange` writer. docState writes call the lowcode runtime
+  // `setDocState('name', e.target.value)`; page-state writes call the
+  // `useState` setter `setName(e.target.value)`.
+  test('controlled INPUT (docState string) emits value + setDocState onChange', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { placeholder: 'Enter text' },
+        controlled: {
+          read: 'formId',
+          write: { kind: 'docState', name: 'formId', targetType: 'string' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input placeholder="Enter text" value={formId} onChange={(e) => setDocState("formId", e.target.value)} />`
+    )
+  })
+
+  test('controlled INPUT (page-state ref string) emits value + useState setter onChange', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { placeholder: 'Search' },
+        controlled: {
+          read: 'query',
+          write: { kind: 'state', name: 'query', targetType: 'string' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />`
+    )
+  })
+
+  test('controlled INPUT (docState number) emits type=number + Number() coercion', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: {},
+        controlled: {
+          read: 'age',
+          write: { kind: 'docState', name: 'age', targetType: 'number' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="number" value={age} onChange={(e) => setDocState("age", Number(e.target.value))} />`
+    )
+  })
+
+  test('controlled INPUT (page-state ref number) emits type=number + Number() coercion', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: {},
+        controlled: {
+          read: 'qty',
+          write: { kind: 'state', name: 'qty', targetType: 'number' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} />`
     )
   })
 })

@@ -354,4 +354,61 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     expect(getTool('read_doc_states').mutates).toBeFalsy()
     expect(getTool('read_supabase_config').mutates).toBeFalsy()
   })
+
+  // Phase 3 §3.x — AI tool sets bindings.value on an INPUT → IR collects the
+  // controlled descriptor → React emit produces value={read} + synthesized
+  // onChange writer → docState read/write imports + per-page hoist are wired
+  // (experience I: assert import-line presence both ways so a missing
+  // module-resolve hole surfaces at test time, not in Tauri).
+  test('update_lowcode_node bindings.value (INPUT controlled) → emit value+onChange+docState wiring', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+
+    getTool('set_doc_states').execute(figma, {
+      states_json: JSON.stringify([
+        { id: 'd1', name: 'formId', type: 'string', defaultValue: '' }
+      ])
+    })
+
+    const input = graph.createNode('INPUT', pageId, { name: 'IdInput' })
+    const patch = getTool('update_lowcode_node').execute(figma, {
+      id: input.id,
+      patch_json: JSON.stringify({
+        bindings: { value: { kind: 'docState', docStateName: 'formId' } }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(patch.ok).toBe(true)
+
+    // IR collect: controlled descriptor lands + docState reads/writes register.
+    const ir = collectTree(graph, pageId)
+    const inputEl = ir.children[0]
+    if (inputEl.kind !== 'element') throw new Error('expected element')
+    expect(inputEl.controlled).toEqual({
+      read: 'formId',
+      write: { kind: 'docState', name: 'formId', targetType: 'string' }
+    })
+    expect(ir.docStateReads).toContain('formId')
+    expect(ir.docStateWrites).toContain('formId')
+
+    // React emit: positive call-sites + the matching import line. Experience
+    // I bites here if the runtime ever lacks `setDocState` while the emit
+    // calls it — the negative assertion below catches a future regression
+    // that drops the import while leaving the call-site intact.
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'cw-input-controlled' })
+    })
+    expect(out.warnings).toEqual([])
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain("import { useDocState, setDocState } from './_lowcode_state'")
+    expect(app).toContain('const formId = useDocState("formId")')
+    expect(app).toContain('value={formId}')
+    expect(app).toContain('onChange={(e) => setDocState("formId", e.target.value)}')
+    // Uncontrolled defaultValue must NOT leak through when controlled.
+    expect(app).not.toContain('defaultValue=')
+    // Negative import-line assertion: no useDocState-only import (write also
+    // needed → both names imported together).
+    expect(app).not.toContain("import { useDocState } from './_lowcode_state'")
+  })
 })

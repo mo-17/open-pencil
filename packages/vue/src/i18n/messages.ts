@@ -311,6 +311,12 @@ export const panelMessages = i18n('panels', {
   lowcodeActionNoDocumentState: 'No document state',
   lowcodeTextSourceDocState: 'Document State',
 
+  // Lowcode (Phase 3 §3.x — INPUT controlled value binding)
+  lowcodeInputValue: 'Value',
+  lowcodeInputValueUncontrolled: 'Uncontrolled',
+  lowcodeInputValueHint: 'Bind to a string- or number-typed state for a controlled input',
+  lowcodeInputValueNoStringStates: 'No string- or number-typed state available',
+
   // Lowcode (Phase 2 §3 — API fetch)
   lowcodeActionCallApi: 'Call API',
   lowcodeActionApiUrl: 'URL',

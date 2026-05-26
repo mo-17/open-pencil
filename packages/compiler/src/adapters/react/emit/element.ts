@@ -1,7 +1,14 @@
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
-import type { IRAttrValue, IREventHandler, IREventName, IRNode } from '#compiler/ir/types'
+import type {
+  IRAttrValue,
+  IRControlledInput,
+  IREventHandler,
+  IREventName,
+  IRNode
+} from '#compiler/ir/types'
 
 import { emitEventHandler } from './event'
+import { setterName } from './state'
 
 /** Tags that must self-close in JSX (no children). */
 const VOID_TAGS: ReadonlySet<string> = new Set(['input', 'br', 'hr', 'img', 'meta', 'link'])
@@ -52,7 +59,8 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     node.className,
     node.attrs,
     node.events,
-    devMode ? node.sourceId : undefined
+    devMode ? node.sourceId : undefined,
+    node.controlled
   )
   const opening = attrsStr ? `<${node.tag} ${attrsStr}` : `<${node.tag}`
 
@@ -81,13 +89,25 @@ function formatAttrs(
   className: string,
   attrs: Record<string, IRAttrValue>,
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
-  nodeId: string | undefined
+  nodeId: string | undefined,
+  controlled: IRControlledInput | undefined
 ): string {
   const parts: string[] = []
   if (className) parts.push(`className="${escapeAttr(className)}"`)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
   for (const [key, value] of Object.entries(attrs)) {
     parts.push(formatAttr(key, value))
+  }
+  if (controlled) {
+    // Number-typed controlled inputs steer HTML to the native numeric
+    // keypad / arrow-step UI; the synthesized writer additionally wraps the
+    // string value from `e.target.value` in `Number(…)` so the docState /
+    // page-state local stays correctly typed.
+    if (controlled.write.targetType === 'number' && !('type' in attrs)) {
+      parts.push('type="number"')
+    }
+    parts.push(`value={${controlled.read}}`)
+    parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
   }
   if (events) {
     for (const [name, handlers] of Object.entries(events) as [
@@ -99,6 +119,20 @@ function formatAttrs(
     }
   }
   return parts.join(' ')
+}
+
+/** Phase 3 §3.x: emit body for a controlled INPUT's onChange — calls the
+ *  matching writer with `e.target.value` (string targets) or
+ *  `Number(e.target.value)` (number targets). docState writes go through
+ *  the lowcode runtime `setDocState('name', value)`; page-state writes go
+ *  through the `useState` setter `setName(value)`. */
+function controlledOnChangeBody(c: IRControlledInput): string {
+  const valueExpr =
+    c.write.targetType === 'number' ? 'Number(e.target.value)' : 'e.target.value'
+  if (c.write.kind === 'docState') {
+    return `setDocState(${JSON.stringify(c.write.name)}, ${valueExpr})`
+  }
+  return `${setterName(c.write.name)}(${valueExpr})`
 }
 
 function formatAttr(key: string, value: IRAttrValue): string {

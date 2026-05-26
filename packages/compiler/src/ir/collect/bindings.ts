@@ -9,6 +9,7 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import type {
   IRApiCallHandler,
+  IRControlledInput,
   IRDocStateDecl,
   IREventHandler,
   IREventName,
@@ -132,6 +133,102 @@ export function resolveTextBinding(
     kind: 'expression',
     ast: { kind: 'ident', name: state.name },
     references: [state.name]
+  }
+}
+
+/** Phase 3 §3.x: resolve an INPUT's `bindings.value` to a controlled-input
+ *  descriptor the adapter can emit as `value={read}` + a synthesized
+ *  `onChange` writer. Returns null when there is no value binding or the
+ *  binding cannot be wired (kind / type validation failures push a warning
+ *  and fall back to the uncontrolled emit path).
+ *
+ *  Supported `kind`s: `'docState'` (write through `setDocState`), `'ref'`
+ *  (write through the page-state setter). `'literal'` and `'expr'` are
+ *  rejected because the writer needs an addressable target. The resolved
+ *  state must be `type: 'string'` (pass-through) or `'number'` (adapter
+ *  wraps `e.target.value` in `Number(…)` and sets `<input type="number">`
+ *  on the HTML side); other types (boolean / array / object) fall back to
+ *  uncontrolled with a warning. Resolving against a docState additionally
+ *  registers a read + write so the page scaffolds `useDocState` /
+ *  `setDocState` imports. */
+export function resolveValueBinding(
+  node: SceneNode,
+  states: Map<string, IRStateDecl>,
+  warnings: IRWarning[],
+  docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES,
+  docStateReads?: Set<string>,
+  docStateWrites?: Set<string>
+): IRControlledInput | null {
+  const binding = node.bindings?.value
+  if (!binding) return null
+  if (binding.kind === 'literal' || binding.kind === 'expr') {
+    warnings.push({
+      code: 'binding-value-unsupported-kind',
+      message: `node ${node.id} bindings.value kind "${binding.kind}" is not addressable; only docState / ref are supported for controlled inputs`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (binding.kind === 'docState') {
+    const name = binding.docStateName ?? ''
+    if (name === '') {
+      warnings.push({
+        code: 'binding-value-docstate-missing-name',
+        message: `node ${node.id} bindings.value has no docStateName`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const decl = docStates.get(name)
+    if (!decl) {
+      warnings.push({
+        code: 'binding-value-docstate-unknown-name',
+        message: `node ${node.id} bindings.value references unknown document state "${name}"`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (decl.type !== 'string' && decl.type !== 'number') {
+      warnings.push({
+        code: 'binding-value-bad-state-type',
+        message: `node ${node.id} bindings.value docState "${name}" is type ${decl.type}; controlled INPUT requires type=string or number`,
+        nodeId: node.id
+      })
+      return null
+    }
+    docStateReads?.add(name)
+    docStateWrites?.add(name)
+    return { read: name, write: { kind: 'docState', name, targetType: decl.type } }
+  }
+  // kind === 'ref'
+  if (!binding.stateId) {
+    warnings.push({
+      code: 'binding-value-missing-state',
+      message: `node ${node.id} bindings.value has no stateId`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const state = states.get(binding.stateId)
+  if (!state) {
+    warnings.push({
+      code: 'binding-value-unknown-state',
+      message: `node ${node.id} bindings.value references unknown state ${binding.stateId}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (state.type !== 'string' && state.type !== 'number') {
+    warnings.push({
+      code: 'binding-value-bad-state-type',
+      message: `node ${node.id} bindings.value state "${state.name}" is type ${state.type}; controlled INPUT requires type=string or number`,
+      nodeId: node.id
+    })
+    return null
+  }
+  return {
+    read: state.name,
+    write: { kind: 'state', name: state.name, targetType: state.type }
   }
 }
 
