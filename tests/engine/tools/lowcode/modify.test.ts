@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
+import { createEditor } from '@open-pencil/core/editor'
+import { FigmaAPI } from '@open-pencil/core/figma-api'
+import { SceneGraph } from '@open-pencil/core/scene-graph'
+
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
 type Ok<T = undefined> = { ok: true; data?: T }
@@ -312,5 +316,136 @@ describe('set_supabase_config', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toContain('anonKey')
+  })
+})
+
+/**
+ * Phase 3 §3.v2 step 1 — editor ctx undo path. With `ctx.editor` present
+ * the mega tools push one `UndoEntry` per dispatch, so Cmd+Z restores
+ * the whole patch in one step. Without ctx (CLI / MCP / fixture tests
+ * above) the mutator falls back to `figma.graph.updateNode` with no
+ * undo, preserving the headless-call semantics.
+ */
+describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
+  function setupEditorToolTest() {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    const editor = createEditor({ graph, skipInitialGraphSetup: true })
+    return { graph, figma, editor }
+  }
+
+  test('update_lowcode_node with editor pushes one undo entry that reverts the patch', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const rect = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    expect(editor.undo.canUndo).toBe(false)
+    const result = tool.execute(
+      figma,
+      {
+        id: rect.id,
+        patch_json: JSON.stringify({
+          interactiveProps: { text: 'Submit' },
+          renderCondition: 'true'
+        })
+      },
+      { editor }
+    ) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    expect(editor.undo.canUndo).toBe(true)
+    expect(editor.undo.undoLabel).toBe('AI: update_lowcode_node')
+    const after = graph.getNode(rect.id) as Record<string, unknown>
+    expect((after.interactiveProps as { text?: string })?.text).toBe('Submit')
+    const label = editor.undo.undo()
+    expect(label).toBe('AI: update_lowcode_node')
+    const reverted = graph.getNode(rect.id) as Record<string, unknown>
+    expect(reverted.interactiveProps).toBeUndefined()
+    expect(reverted.renderCondition).toBeUndefined()
+  })
+
+  test('update_lowcode_node without editor leaves undo stack empty (fallback path)', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const rect = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    const result = tool.execute(figma, {
+      id: rect.id,
+      patch_json: JSON.stringify({ interactiveProps: { text: 'Submit' } })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    const after = graph.getNode(rect.id) as Record<string, unknown>
+    expect((after.interactiveProps as { text?: string })?.text).toBe('Submit')
+    expect(editor.undo.canUndo).toBe(false)
+  })
+
+  test('set_doc_states with editor pushes one undo entry that restores prior states', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd-0', name: 'before', type: 'string', defaultValue: 'x' }
+      ]
+    })
+    const tool = getTool('set_doc_states')
+    const result = tool.execute(
+      figma,
+      {
+        states_json: JSON.stringify([
+          { id: 'd-1', name: 'after', type: 'number', defaultValue: 1 }
+        ])
+      },
+      { editor }
+    ) as Result<{ count: number }>
+    expect(result.ok).toBe(true)
+    expect(editor.undo.undoLabel).toBe('AI: set_doc_states')
+    editor.undo.undo()
+    const restored = graph.getNode(graph.rootId)?.lowcodeDocumentState
+    expect(restored).toEqual([
+      { id: 'd-0', name: 'before', type: 'string', defaultValue: 'x' }
+    ])
+  })
+
+  test('set_supabase_config with editor pushes one undo entry that restores prior config', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const tool = getTool('set_supabase_config')
+    const r1 = tool.execute(
+      figma,
+      {
+        config_json: JSON.stringify({
+          url: 'https://x.supabase.co',
+          anonKey: FAKE_ANON_JWT
+        })
+      },
+      { editor }
+    ) as Result<{ cleared: boolean }>
+    expect(r1.ok).toBe(true)
+    expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig?.url).toBe(
+      'https://x.supabase.co'
+    )
+    editor.undo.undo()
+    expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toBeUndefined()
+  })
+
+  test('runBatch (begin/commit) at dispatch layer collapses N tool pushes into 1 undo entry', () => {
+    const { figma, editor } = setupEditorToolTest()
+    const rect = figma.createRectangle()
+    editor.undo.beginBatch('AI: update_lowcode_node')
+    getTool('update_lowcode_node').execute(
+      figma,
+      {
+        id: rect.id,
+        patch_json: JSON.stringify({ interactiveProps: { text: 'a' } })
+      },
+      { editor }
+    )
+    getTool('update_lowcode_node').execute(
+      figma,
+      {
+        id: rect.id,
+        patch_json: JSON.stringify({ interactiveProps: { text: 'b' } })
+      },
+      { editor }
+    )
+    editor.undo.commitBatch()
+    expect(editor.undo.canUndo).toBe(true)
+    editor.undo.undo()
+    expect(editor.undo.canUndo).toBe(false)
   })
 })

@@ -6,6 +6,7 @@
  * and MCP (JSON Schema) are generated from these definitions.
  */
 
+import type { Editor } from '#core/editor'
 import type { FigmaAPI, FigmaNodeProxy } from '#core/figma-api'
 import type { SceneNode } from '#core/scene-graph'
 
@@ -21,12 +22,20 @@ export interface ParamDef {
   max?: number
 }
 
+/** Phase 3 §3.v2: optional editor context for tools that need to push
+ *  undo entries. Only the 3 lowcode mutate tools opt in today; CLI / MCP
+ *  / fixture call sites pass nothing and the tool falls back to the
+ *  legacy `figma.graph.updateNode` path (no undo). */
+export interface ToolCtx {
+  editor?: Editor
+}
+
 export interface ToolDef {
   name: string
   description: string
   mutates?: boolean
   params: Record<string, ParamDef>
-  execute: (figma: FigmaAPI, args: Record<string, unknown>) => unknown
+  execute: (figma: FigmaAPI, args: Record<string, unknown>, ctx?: ToolCtx) => unknown
 }
 
 type ResolvedType<T extends ParamType> = T extends 'string'
@@ -52,7 +61,7 @@ export function defineTool<P extends Record<string, ParamDef>>(def: {
   description: string
   mutates?: boolean
   params: P
-  execute: (figma: FigmaAPI, args: ResolvedParams<P>) => unknown
+  execute: (figma: FigmaAPI, args: ResolvedParams<P>, ctx?: ToolCtx) => unknown
 }): ToolDef {
   return def as ToolDef
 }

@@ -26,6 +26,7 @@
  * into shared `binding.ts` / `action.ts` modules waits until v2, when
  * a second consumer materializes.
  */
+import type { FigmaAPI } from '#core/figma-api'
 import {
   validateExpression,
   validateStateName,
@@ -49,7 +50,7 @@ type BindingKind = BindingExpr['kind']
 // it as a Set here for runtime validation. Keep this in sync with
 // `SupabaseFilter.op` in `scene-graph/types.ts` (Phase 3 §2).
 type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in'
-import { defineTool } from '#core/tools/schema'
+import { defineTool, type ToolCtx } from '#core/tools/schema'
 
 type ModifyResult<T = undefined> =
   | { ok: true; data?: T }
@@ -545,6 +546,42 @@ function buildPatch(raw: Record<string, unknown>): ModifyResult<Partial<SceneNod
   return { ok: true, data: patch }
 }
 
+/** Phase 3 §3.v2: apply `patch` to `nodeId` so the change is undoable. When
+ *  `ctx.editor` is present (browser dispatch via app's tool-handlers), snap
+ *  the previous field values, mutate via the editor's graph, and push an
+ *  `UndoEntry` so Cmd+Z restores the whole patch in one step. When
+ *  `ctx.editor` is missing (CLI / MCP / fixture tests), fall back to the
+ *  raw `figma.graph.updateNode` path so headless callers keep working with
+ *  no undo (decision §3.v2 #b). */
+function applyPatchWithUndo(
+  figma: FigmaAPI,
+  nodeId: string,
+  patch: Partial<SceneNode>,
+  label: string,
+  ctx: ToolCtx | undefined
+): void {
+  if (!ctx?.editor) {
+    figma.graph.updateNode(nodeId, patch)
+    return
+  }
+  const editor = ctx.editor
+  const node = editor.graph.getNode(nodeId)
+  if (!node) {
+    figma.graph.updateNode(nodeId, patch)
+    return
+  }
+  const keys = Object.keys(patch) as (keyof SceneNode)[]
+  const previous = Object.fromEntries(
+    keys.map((key) => [key, structuredClone(node[key])])
+  ) as Partial<SceneNode>
+  editor.graph.updateNode(nodeId, patch)
+  editor.undo.push({
+    label,
+    forward: () => editor.graph.updateNode(nodeId, patch),
+    inverse: () => editor.graph.updateNode(nodeId, previous)
+  })
+}
+
 export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
@@ -559,7 +596,7 @@ export const updateLowcodeNode = defineTool({
       required: true
     }
   },
-  execute: (figma, args): ModifyResult<{ id: string; updated: string[] }> => {
+  execute: (figma, args, ctx): ModifyResult<{ id: string; updated: string[] }> => {
     const node = figma.graph.getNode(args.id)
     if (!node) return fail(`Node "${args.id}" not found`)
     const parsed = parseJson(args.patch_json, 'patch_json')
@@ -568,7 +605,7 @@ export const updateLowcodeNode = defineTool({
     const built = buildPatch(parsed.value)
     if (!built.ok) return built
     const patch = built.data ?? {}
-    figma.graph.updateNode(args.id, patch)
+    applyPatchWithUndo(figma, args.id, patch, 'AI: update_lowcode_node', ctx)
     return { ok: true, data: { id: args.id, updated: Object.keys(patch) } }
   }
 })
@@ -586,13 +623,19 @@ export const setDocStates = defineTool({
       required: true
     }
   },
-  execute: (figma, args): ModifyResult<{ count: number }> => {
+  execute: (figma, args, ctx): ModifyResult<{ count: number }> => {
     const parsed = parseJson(args.states_json, 'states_json')
     if (!parsed.ok) return fail(parsed.error)
     const validated = validateStateDecls('states_json', parsed.value, true)
     if (!validated.ok) return validated
     const decls = validated.decls
-    figma.graph.updateNode(figma.graph.rootId, { lowcodeDocumentState: decls })
+    applyPatchWithUndo(
+      figma,
+      figma.graph.rootId,
+      { lowcodeDocumentState: decls },
+      'AI: set_doc_states',
+      ctx
+    )
     return { ok: true, data: { count: decls.length } }
   }
 })
@@ -610,16 +653,28 @@ export const setSupabaseConfig = defineTool({
       required: true
     }
   },
-  execute: (figma, args): ModifyResult<{ cleared: boolean }> => {
+  execute: (figma, args, ctx): ModifyResult<{ cleared: boolean }> => {
     const parsed = parseJson(args.config_json, 'config_json')
     if (!parsed.ok) return fail(parsed.error)
     if (parsed.value === null) {
-      figma.graph.updateNode(figma.graph.rootId, { lowcodeSupabaseConfig: undefined })
+      applyPatchWithUndo(
+        figma,
+        figma.graph.rootId,
+        { lowcodeSupabaseConfig: undefined },
+        'AI: set_supabase_config',
+        ctx
+      )
       return { ok: true, data: { cleared: true } }
     }
     const r = parseSupabaseConfig(parsed.value, 'config_json')
     if (!r.ok) return r
-    figma.graph.updateNode(figma.graph.rootId, { lowcodeSupabaseConfig: r.config })
+    applyPatchWithUndo(
+      figma,
+      figma.graph.rootId,
+      { lowcodeSupabaseConfig: r.config },
+      'AI: set_supabase_config',
+      ctx
+    )
     return { ok: true, data: { cleared: false } }
   }
 })
