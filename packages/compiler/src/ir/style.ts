@@ -24,18 +24,24 @@ const SWITCH_CLASSES = [
   'checked:bg-blue-500',
   'transition-colors',
   // Thumb via ::before pseudo-element — square, ~80% of track height,
-  // positioned at the left edge in off state, at ~55% from left in
-  // checked state (works visually across the common 44x24 / 56x32 sizes).
+  // anchored 5% from the LEFT edge in off state and 5% from the RIGHT
+  // edge when checked (left-auto handoff). This gives true visual
+  // symmetry across any aspect ratio — fixed-percentage anchors like
+  // `left-[55%]` only line up for one specific track ratio. Animation
+  // between left and right anchors is snappier than a translate-x
+  // tween; full smooth-tween CSS goes to §13.
   "before:content-['']",
   'before:absolute',
   'before:inset-y-[10%]',
   'before:left-[5%]',
+  'before:right-auto',
   'before:aspect-square',
   'before:rounded-full',
   'before:bg-white',
   'before:shadow',
-  'before:transition-all',
-  'checked:before:left-[55%]'
+  'before:transition-colors',
+  'checked:before:left-auto',
+  'checked:before:right-[5%]'
 ].join(' ')
 
 export function tailwindClassName(node: SceneNode, graph: SceneGraph): string {
