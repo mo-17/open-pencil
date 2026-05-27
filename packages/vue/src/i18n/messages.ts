@@ -314,11 +314,12 @@ export const panelMessages = i18n('panels', {
   lowcodeActionNoDocumentState: 'No document state',
   lowcodeTextSourceDocState: 'Document State',
 
-  // Lowcode (Phase 3 §3.x — INPUT controlled value binding)
-  lowcodeInputValue: 'Value',
-  lowcodeInputValueUncontrolled: 'Uncontrolled',
-  lowcodeInputValueHint: 'Bind to a string- or number-typed state for a controlled input',
-  lowcodeInputValueNoStringStates: 'No string- or number-typed state available',
+  // Lowcode (Phase 3 §3.x + §3.v4 — controlled value binding for 7 form controls)
+  lowcodeValueBinding: 'Value',
+  lowcodeValueBindingUncontrolled: 'Uncontrolled',
+  lowcodeValueBindingHint: 'Bind to a state for a controlled form control',
+  lowcodeValueBindingBooleanHint: 'Bind to a boolean state for a controlled checkbox/switch',
+  lowcodeValueBindingNoStates: 'No matching state type available',
 
   // Lowcode (Phase 2 §3 — API fetch)
   lowcodeActionCallApi: 'Call API',

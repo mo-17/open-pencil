@@ -1,34 +1,54 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { BindingExpr } from '@open-pencil/core/scene-graph'
+import type { BindingExpr, NodeType } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 
-// Phase 3 §3.x — controlled INPUT value binding. The IR collect step accepts
-// only `kind: 'ref'` (page-state) or `kind: 'docState'`, and only when the
-// target state is `type: 'string'` or `'number'` — anything else falls back
-// to the uncontrolled emit path with a warning. This panel mirrors those
-// rules at the UI level so users never commit a binding the compiler would
-// reject. Numbers route through `Number(e.target.value)` on write + emit
-// `<input type="number">`; strings pass through.
+// Phase 3 §3.x + §3.v4 — controlled form-control value binding. IR collect
+// only accepts `kind: 'ref'` (page-state) or `kind: 'docState'`, and per
+// node type a specific target state-type set:
+//   INPUT                                  → string | number
+//   TEXTAREA / SELECT / RADIO / DATEPICKER → string
+//   CHECKBOX / SWITCH                      → boolean
+// Anything else falls back to uncontrolled emit with a warning. This panel
+// mirrors those rules at the UI level so users never commit a binding the
+// compiler would reject. The candidate dropdown filters page-state and
+// docState by allowed type per node; numbers route through Number(...)
+// on write + emit `<input type="number">` (INPUT only).
+
+type CtrlType = 'string' | 'number' | 'boolean'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 
+const allowedTypes = computed<readonly CtrlType[]>(() => {
+  const t = selectedNode.value?.type as NodeType | undefined
+  if (t === 'INPUT') return ['string', 'number']
+  if (t === 'CHECKBOX' || t === 'SWITCH') return ['boolean']
+  return ['string']
+})
+
+const isBooleanControl = computed(() => {
+  const t = selectedNode.value?.type
+  return t === 'CHECKBOX' || t === 'SWITCH'
+})
+
 const candidatePageStates = useSceneComputed(() => {
   const page = editor.graph.getNode(editor.state.currentPageId)
-  return (page?.state ?? []).filter((s) => s.type === 'string' || s.type === 'number')
+  const allow = allowedTypes.value
+  return (page?.state ?? []).filter((s) => allow.includes(s.type as CtrlType))
 })
 
 const candidateDocStates = useSceneComputed(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
-  return (root?.lowcodeDocumentState ?? []).filter(
-    (d) => d.type === 'string' || d.type === 'number'
+  const allow = allowedTypes.value
+  return (root?.lowcodeDocumentState ?? []).filter((d) =>
+    allow.includes(d.type as CtrlType)
   )
 })
 
@@ -81,16 +101,16 @@ function onSourceChange(event: Event): void {
 </script>
 
 <template>
-  <div data-test-id="lowcode-input-value-binding" :class="sectionCls.wrapper">
-    <label class="mb-1.5 block text-[11px] text-muted">{{ panels.lowcodeInputValue }}</label>
+  <div data-test-id="lowcode-value-binding" :class="sectionCls.wrapper">
+    <label class="mb-1.5 block text-[11px] text-muted">{{ panels.lowcodeValueBinding }}</label>
     <select
       :value="selectedValue"
       :disabled="!hasAnyCandidate"
-      data-test-id="lowcode-input-value-binding-select"
+      data-test-id="lowcode-value-binding-select"
       class="w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
       @change="onSourceChange"
     >
-      <option value="">{{ panels.lowcodeInputValueUncontrolled }}</option>
+      <option value="">{{ panels.lowcodeValueBindingUncontrolled }}</option>
       <option
         v-for="s in candidatePageStates"
         :key="s.id"
@@ -108,13 +128,13 @@ function onSourceChange(event: Event): void {
     </select>
     <p
       v-if="!hasAnyCandidate"
-      data-test-id="lowcode-input-value-binding-empty"
+      data-test-id="lowcode-value-binding-empty"
       class="mt-1 text-[10px] text-muted"
     >
-      {{ panels.lowcodeInputValueNoStringStates }}
+      {{ panels.lowcodeValueBindingNoStates }}
     </p>
     <p v-else class="mt-1 text-[10px] text-muted">
-      {{ panels.lowcodeInputValueHint }}
+      {{ isBooleanControl ? panels.lowcodeValueBindingBooleanHint : panels.lowcodeValueBindingHint }}
     </p>
   </div>
 </template>
