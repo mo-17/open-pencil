@@ -29,17 +29,24 @@ export interface IRElement {
   controlled?: IRControlledInput
 }
 
-/** Phase 3 §3.x: descriptor for a controlled INPUT — both halves of the
- *  two-way binding the adapter emits. `read` is the JS identifier the value
- *  attribute references (already in scope as a `useState` local or as a
- *  `useDocState` hoist from the scaffold). `write` identifies the writer
- *  the synthesized `onChange` calls; `targetType` selects the coercion
- *  applied to `e.target.value` — string passes through, number wraps the
- *  value in `Number(...)` and the adapter also sets `type="number"` on the
- *  emitted `<input>`. */
+/** Phase 3 §3.x + §3.v4: descriptor for a controlled form control — both
+ *  halves of the two-way binding the adapter emits. `read` is the JS
+ *  identifier the value attribute references (already in scope as a
+ *  `useState` local or a `useDocState` hoist from the scaffold). `write`
+ *  identifies the writer the synthesized `onChange` calls; `targetType`
+ *  selects the read attr + coercion + onChange source:
+ *   - string  → `value={read}` + `e.target.value` (pass-through)
+ *   - number  → `value={read}` + `Number(e.target.value)` + `type="number"`
+ *   - boolean → `checked={read}` + `e.target.checked` (no coerce; §3.v4
+ *     CHECKBOX / SWITCH).
+ *  Per-node-type targetType constraint lives in `resolveValueBinding`. */
 export interface IRControlledInput {
   read: string
-  write: { kind: 'docState' | 'state'; name: string; targetType: 'string' | 'number' }
+  write: {
+    kind: 'docState' | 'state'
+    name: string
+    targetType: 'string' | 'number' | 'boolean'
+  }
 }
 
 export interface IRText {

@@ -139,21 +139,41 @@ export function resolveTextBinding(
   }
 }
 
-/** Phase 3 §3.x: resolve an INPUT's `bindings.value` to a controlled-input
- *  descriptor the adapter can emit as `value={read}` + a synthesized
- *  `onChange` writer. Returns null when there is no value binding or the
- *  binding cannot be wired (kind / type validation failures push a warning
- *  and fall back to the uncontrolled emit path).
+/** Phase 3 §3.v4: per-node-type valid `targetType` constraint for a
+ *  controlled form control. INPUT supports both string and number; the
+ *  text-like family (TEXTAREA / SELECT / RADIO / DATEPICKER) is string
+ *  only; CHECKBOX / SWITCH is boolean only. Returns the legal set; type
+ *  mismatches go through `binding-value-bad-state-type` (sourced from
+ *  `resolveValueBinding`). */
+type CtrlTargetType = 'string' | 'number' | 'boolean'
+
+function allowedTargetTypes(nodeType: SceneNode['type']): ReadonlySet<CtrlTargetType> {
+  if (nodeType === 'INPUT') return new Set(['string', 'number'])
+  if (nodeType === 'CHECKBOX' || nodeType === 'SWITCH') return new Set(['boolean'])
+  return new Set(['string'])
+}
+
+function asCtrlTargetType(
+  t: 'string' | 'number' | 'boolean' | 'object' | 'array'
+): CtrlTargetType | null {
+  return t === 'string' || t === 'number' || t === 'boolean' ? t : null
+}
+
+/** Phase 3 §3.x + §3.v4: resolve a form control's `bindings.value` to a
+ *  controlled descriptor the adapter can emit as a two-way binding.
+ *  Returns null when there is no value binding or the binding cannot be
+ *  wired (kind / type validation failures push a warning and fall back to
+ *  the uncontrolled emit path).
  *
  *  Supported `kind`s: `'docState'` (write through `setDocState`), `'ref'`
  *  (write through the page-state setter). `'literal'` and `'expr'` are
  *  rejected because the writer needs an addressable target. The resolved
- *  state must be `type: 'string'` (pass-through) or `'number'` (adapter
- *  wraps `e.target.value` in `Number(…)` and sets `<input type="number">`
- *  on the HTML side); other types (boolean / array / object) fall back to
- *  uncontrolled with a warning. Resolving against a docState additionally
- *  registers a read + write so the page scaffolds `useDocState` /
- *  `setDocState` imports. */
+ *  state type must be in `allowedTargetTypes(node.type)`: INPUT accepts
+ *  string|number; TEXTAREA/SELECT/RADIO/DATEPICKER accept string only;
+ *  CHECKBOX/SWITCH accept boolean only. Mismatches fall back to
+ *  uncontrolled with `binding-value-bad-state-type`. Resolving against a
+ *  docState additionally registers a read + write so the page scaffolds
+ *  `useDocState` / `setDocState` imports. */
 export function resolveValueBinding(
   node: SceneNode,
   states: Map<string, IRStateDecl>,
@@ -172,6 +192,8 @@ export function resolveValueBinding(
     })
     return null
   }
+  const allowed = allowedTargetTypes(node.type)
+  const allowedList = [...allowed].join('|')
   if (binding.kind === 'docState') {
     const name = binding.docStateName ?? ''
     if (name === '') {
@@ -191,17 +213,18 @@ export function resolveValueBinding(
       })
       return null
     }
-    if (decl.type !== 'string' && decl.type !== 'number') {
+    const ctrlType = asCtrlTargetType(decl.type)
+    if (ctrlType === null || !allowed.has(ctrlType)) {
       warnings.push({
         code: 'binding-value-bad-state-type',
-        message: `node ${node.id} bindings.value docState "${name}" is type ${decl.type}; controlled INPUT requires type=string or number`,
+        message: `node ${node.id} (${node.type}) bindings.value docState "${name}" is type ${decl.type}; controlled ${node.type} requires type=${allowedList}`,
         nodeId: node.id
       })
       return null
     }
     docStateReads?.add(name)
     docStateWrites?.add(name)
-    return { read: name, write: { kind: 'docState', name, targetType: decl.type } }
+    return { read: name, write: { kind: 'docState', name, targetType: ctrlType } }
   }
   // kind === 'ref'
   if (!binding.stateId) {
@@ -221,18 +244,16 @@ export function resolveValueBinding(
     })
     return null
   }
-  if (state.type !== 'string' && state.type !== 'number') {
+  const ctrlType = asCtrlTargetType(state.type)
+  if (ctrlType === null || !allowed.has(ctrlType)) {
     warnings.push({
       code: 'binding-value-bad-state-type',
-      message: `node ${node.id} bindings.value state "${state.name}" is type ${state.type}; controlled INPUT requires type=string or number`,
+      message: `node ${node.id} (${node.type}) bindings.value state "${state.name}" is type ${state.type}; controlled ${node.type} requires type=${allowedList}`,
       nodeId: node.id
     })
     return null
   }
-  return {
-    read: state.name,
-    write: { kind: 'state', name: state.name, targetType: state.type }
-  }
+  return { read: state.name, write: { kind: 'state', name: state.name, targetType: ctrlType } }
 }
 
 const EMPTY_SCOPE: ReadonlySet<string> = new Set()
