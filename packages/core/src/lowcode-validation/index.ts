@@ -36,3 +36,8 @@ export {
   detectServiceRole,
   validateSupabaseConfig
 } from './supabase-config'
+
+export {
+  PAYLOAD_ENTRY_KEY_RE,
+  validateSupabasePayloadEntries
+} from './supabase-payload-entries'

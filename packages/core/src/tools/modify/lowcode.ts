@@ -32,6 +32,7 @@ import {
   validateExpression,
   validateStateName,
   validateSupabaseConfig,
+  validateSupabasePayloadEntries,
   validateUrlTemplate
 } from '#core/lowcode-validation'
 import type {
@@ -205,47 +206,6 @@ function validateSupabaseFilters(
     }
     if (!KNOWN_FILTER_OPS.has(f.op as FilterOp)) {
       return failAt(where, `.filters[${i}].op invalid (got ${JSON.stringify(f.op)})`)
-    }
-  }
-  return { ok: true }
-}
-
-// Mirror of `PAYLOAD_ENTRY_KEY_RE` in
-// `packages/compiler/src/ir/collect/bindings.ts` — JS identifier rule
-// for Supabase column names coming through `payloadEntries[].key`.
-const PAYLOAD_ENTRY_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
-
-function validateSupabasePayloadEntries(
-  where: string,
-  raw: unknown
-): { ok: true } | { ok: false; error: string } {
-  if (raw === undefined) return { ok: true }
-  if (!Array.isArray(raw)) return failAt(where, '.payloadEntries must be an array')
-  const seenKeys = new Set<string>()
-  for (let i = 0; i < raw.length; i++) {
-    const entry = raw[i]
-    if (!isPlainObject(entry)) {
-      return failAt(where, `.payloadEntries[${i}] must be an object`)
-    }
-    if (typeof entry.key !== 'string' || entry.key === '') {
-      return failAt(where, `.payloadEntries[${i}].key must be a non-empty string`)
-    }
-    if (!PAYLOAD_ENTRY_KEY_RE.test(entry.key)) {
-      return failAt(
-        where,
-        `.payloadEntries[${i}].key "${entry.key}" must be a JS identifier (column name)`
-      )
-    }
-    if (seenKeys.has(entry.key)) {
-      return failAt(where, `.payloadEntries[${i}] duplicates key "${entry.key}"`)
-    }
-    seenKeys.add(entry.key)
-    if (typeof entry.valueExpr !== 'string') {
-      return failAt(where, `.payloadEntries[${i}].valueExpr must be a string`)
-    }
-    const r = validateExpression(entry.valueExpr)
-    if (!r.ok) {
-      return failAt(where, `.payloadEntries[${i}] "${entry.key}".valueExpr — ${r.reason}`)
     }
   }
   return { ok: true }

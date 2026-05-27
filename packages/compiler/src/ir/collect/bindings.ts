@@ -5,6 +5,7 @@ import {
   normalizeSupabaseMutationPayloadJson,
   parseExpression,
   parseTemplate,
+  PAYLOAD_ENTRY_KEY_RE,
   PREV_IDENT,
   substitutePrev
 } from '@open-pencil/core/lowcode-validation'
@@ -24,13 +25,6 @@ import type {
   IRWarning,
   ValueUpdateMode
 } from '../types'
-
-/** Phase 3 §3.v2: matches a JS identifier used as a Supabase column name
- *  in `SupabaseMutationAction.payloadEntries[].key`. Mirrors the same
- *  constraint applied to `DocumentStateDef.name` / page state names so an
- *  AI tool can't smuggle `e.target.value` or other expression syntax
- *  through the key channel. */
-const PAYLOAD_ENTRY_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** Phase 2 §2: the formal parameter the adapter binds inside a functional
  *  updater (`setX((prev) => ...)`). Collector rewrites `$prev` → this name
