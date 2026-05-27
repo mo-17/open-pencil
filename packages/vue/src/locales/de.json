@@ -273,6 +273,7 @@
     "lowcodeValueBindingUncontrolled": "Unkontrolliert",
     "lowcodeValueBindingHint": "An einen Zustand binden, um das Formularelement kontrolliert zu machen",
     "lowcodeValueBindingBooleanHint": "An einen Boolean-Zustand binden für ein kontrolliertes Checkbox/Switch",
+    "lowcodeValueBindingArrayHint": "An einen Array-Zustand binden für eine Mehrfachauswahl-Checkbox-Gruppe",
     "lowcodeValueBindingNoStates": "Kein passender Zustand verfügbar",
     "lowcodeInteractiveOptions": "Optionen",
     "lowcodeInteractiveOptionAdd": "Option hinzufügen",

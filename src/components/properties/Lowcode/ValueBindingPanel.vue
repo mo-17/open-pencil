@@ -19,23 +19,33 @@ import { useEditorStore } from '@/app/editor/active-store'
 // docState by allowed type per node; numbers route through Number(...)
 // on write + emit `<input type="number">` (INPUT only).
 
-type CtrlType = 'string' | 'number' | 'boolean'
+type CtrlType = 'string' | 'number' | 'boolean' | 'array'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 
+function checkboxHasOptions(): boolean {
+  const raw = selectedNode.value?.interactiveProps?.options
+  return Array.isArray(raw) && raw.length > 0
+}
+
 const allowedTypes = computed<readonly CtrlType[]>(() => {
   const t = selectedNode.value?.type as NodeType | undefined
   if (t === 'INPUT') return ['string', 'number']
-  if (t === 'CHECKBOX' || t === 'SWITCH') return ['boolean']
+  if (t === 'SWITCH') return ['boolean']
+  // Phase 3 §3.v4 step 8 — CHECKBOX with options[] becomes a multi-select
+  // group bound to array<string>; without options it's a single boolean.
+  if (t === 'CHECKBOX') return [checkboxHasOptions() ? 'array' : 'boolean']
   return ['string']
 })
 
-const isBooleanControl = computed(() => {
+const controlMode = computed<'boolean' | 'array' | 'text'>(() => {
   const t = selectedNode.value?.type
-  return t === 'CHECKBOX' || t === 'SWITCH'
+  if (t === 'SWITCH') return 'boolean'
+  if (t === 'CHECKBOX') return checkboxHasOptions() ? 'array' : 'boolean'
+  return 'text'
 })
 
 const candidatePageStates = useSceneComputed(() => {
@@ -134,7 +144,13 @@ function onSourceChange(event: Event): void {
       {{ panels.lowcodeValueBindingNoStates }}
     </p>
     <p v-else class="mt-1 text-[10px] text-muted">
-      {{ isBooleanControl ? panels.lowcodeValueBindingBooleanHint : panels.lowcodeValueBindingHint }}
+      {{
+        controlMode === 'array'
+          ? panels.lowcodeValueBindingArrayHint
+          : controlMode === 'boolean'
+            ? panels.lowcodeValueBindingBooleanHint
+            : panels.lowcodeValueBindingHint
+      }}
     </p>
   </div>
 </template>

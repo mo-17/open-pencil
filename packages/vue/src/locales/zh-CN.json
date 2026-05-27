@@ -273,6 +273,7 @@
     "lowcodeValueBindingUncontrolled": "非受控",
     "lowcodeValueBindingHint": "绑定到匹配类型的状态以启用受控表单控件",
     "lowcodeValueBindingBooleanHint": "绑定到 boolean 类型状态以启用受控 checkbox/switch",
+    "lowcodeValueBindingArrayHint": "绑定到 array 类型状态以启用多选 checkbox 组(先在下方配置选项)",
     "lowcodeValueBindingNoStates": "暂无所需类型的状态",
     "lowcodeInteractiveOptions": "选项",
     "lowcodeInteractiveOptionAdd": "添加选项",

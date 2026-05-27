@@ -273,6 +273,7 @@
     "lowcodeValueBindingUncontrolled": "Неуправляемый",
     "lowcodeValueBindingHint": "Привязать к состоянию для управляемого элемента формы",
     "lowcodeValueBindingBooleanHint": "Привязать к boolean-состоянию для управляемого checkbox/switch",
+    "lowcodeValueBindingArrayHint": "Привязать к array-состоянию для группы checkbox с множественным выбором",
     "lowcodeValueBindingNoStates": "Нет состояния подходящего типа",
     "lowcodeInteractiveOptions": "Варианты",
     "lowcodeInteractiveOptionAdd": "Добавить вариант",

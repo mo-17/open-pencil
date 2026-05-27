@@ -203,6 +203,64 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     ).toBe(true)
   })
 
+  test('CHECKBOX group (options[] + array docState) → wrapper div + N inputs + per-option includes/toggle', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd1', name: 'fruits', type: 'array', defaultValue: [] }
+      ]
+    })
+    graph.createNode('CHECKBOX', page.id, {
+      interactiveProps: { options: ['Apple', 'Banana', 'Cherry'] },
+      bindings: { value: { kind: 'docState', docStateName: 'fruits' } }
+    })
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'cw-checkbox-group' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    // Wrapper is a div (CHECKBOX with options renders as group), not <input>.
+    // Three checkbox children with per-option includes + toggle writer.
+    expect(app).toContain('checked={fruits.includes("Apple")}')
+    expect(app).toContain('checked={fruits.includes("Banana")}')
+    expect(app).toContain('checked={fruits.includes("Cherry")}')
+    expect(app).toContain(
+      'setDocState("fruits", e.target.checked ? [...fruits, "Apple"] : fruits.filter((v) => v !== "Apple"))'
+    )
+    // Single-mode boolean writer must NOT appear (we're in group mode).
+    expect(app).not.toContain('setDocState("fruits", e.target.checked)')
+    // Wrapper div should NOT carry `value=` / `onChange=` (those belong to leaves).
+    expect(app).not.toMatch(/<div [^>]*value=\{fruits\}/)
+    expect(out.warnings).toEqual([])
+  })
+
+  test('CHECKBOX single (no options) + boolean docState still works (back-compat)', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
+      ]
+    })
+    graph.createNode('CHECKBOX', page.id, {
+      bindings: { value: { kind: 'docState', docStateName: 'agreed' } }
+    })
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'cw-checkbox-single-backcompat' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    // Boolean branch unchanged.
+    expect(app).toContain('checked={agreed}')
+    expect(app).toContain('onChange={(e) => setDocState("agreed", e.target.checked)}')
+    // No group-mode array helpers.
+    expect(app).not.toContain('.includes')
+    expect(app).not.toContain('.filter((v) =>')
+  })
+
   test('user onChange + controlled value → drop onChange + warn (sticks per-type)', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

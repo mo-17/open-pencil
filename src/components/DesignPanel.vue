@@ -123,7 +123,9 @@ const { panels } = useI18n()
         node.type === 'DATEPICKER'
       "
     />
-    <InteractiveOptionsPanel v-if="node.type === 'SELECT' || node.type === 'RADIO'" />
+    <InteractiveOptionsPanel
+      v-if="node.type === 'SELECT' || node.type === 'RADIO' || node.type === 'CHECKBOX'"
+    />
     <StatePanel
       v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'"
     />

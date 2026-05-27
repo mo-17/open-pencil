@@ -100,17 +100,26 @@ function formatAttrs(
   }
   if (controlled) {
     // §3.v4 dispatch:
-    //  - type="radio"  → per-option `checked={read === <opt>}` (the IR collect
+    //  - type="radio" → per-option `checked={read === <opt>}` (the IR collect
     //    pass copies the parent's controlled descriptor onto each radio child
-    //    so formatAttrs sees it here at the leaf)
-    //  - targetType=boolean (CHECKBOX/SWITCH) → `checked={read}` + e.target.checked
+    //    so formatAttrs sees it at the leaf)
+    //  - type="checkbox" + targetType=array → group/multi-select: per-option
+    //    `checked={read.includes(<opt>)}` + onChange toggles `<opt>` in/out
+    //    of the array (§3.v4 step 8 CHECKBOX group)
+    //  - targetType=boolean (CHECKBOX single / SWITCH) → `checked={read}` +
+    //    e.target.checked
     //  - text-like (string / number; INPUT/TEXTAREA/SELECT/DATEPICKER) →
-    //    `value={read}` + e.target.value (number wraps in Number(...) +
-    //    sets type="number" when not already set)
+    //    `value={read}` + e.target.value (number wraps in Number(...) + sets
+    //    type="number" when not already set)
     if (attrs.type === 'radio') {
       const optValue = typeof attrs.value === 'string' ? attrs.value : ''
       parts.push(`checked={${controlled.read} === ${JSON.stringify(optValue)}}`)
       parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
+    } else if (attrs.type === 'checkbox' && controlled.write.targetType === 'array') {
+      const optValue = typeof attrs.value === 'string' ? attrs.value : ''
+      const literal = JSON.stringify(optValue)
+      parts.push(`checked={${controlled.read}.includes(${literal})}`)
+      parts.push(`onChange={(e) => ${arrayCheckboxOnChangeBody(controlled, literal)}}`)
     } else if (controlled.write.targetType === 'boolean') {
       parts.push(`checked={${controlled.read}}`)
       parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
@@ -153,6 +162,18 @@ function controlledEventValue(targetType: IRControlledInput['write']['targetType
   if (targetType === 'boolean') return 'e.target.checked'
   if (targetType === 'number') return 'Number(e.target.value)'
   return 'e.target.value'
+}
+
+/** §3.v4 step 8: CHECKBOX group writer body. Toggles `optLiteral` in or
+ *  out of the bound array depending on `e.target.checked`. Uses spread +
+ *  filter rather than mutation so React sees a fresh reference and
+ *  re-renders. */
+function arrayCheckboxOnChangeBody(c: IRControlledInput, optLiteral: string): string {
+  const next = `e.target.checked ? [...${c.read}, ${optLiteral}] : ${c.read}.filter((v) => v !== ${optLiteral})`
+  if (c.write.kind === 'docState') {
+    return `setDocState(${JSON.stringify(c.write.name)}, ${next})`
+  }
+  return `${setterName(c.write.name)}(${next})`
 }
 
 function formatAttr(key: string, value: IRAttrValue): string {

@@ -225,8 +225,18 @@ const CONTAINER_TYPES_FOR_RECURSION: ReadonlySet<NodeType> = new Set([
   // than statically emitted siblings.
 ])
 
+function isCheckboxGroup(node: SceneNode): boolean {
+  if (node.type !== 'CHECKBOX') return false
+  const raw = node.interactiveProps?.options
+  return Array.isArray(raw) && raw.length > 0
+}
+
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
-  const tag = TAG_BY_TYPE[node.type]
+  // Phase 3 §3.v4 step 8 — CHECKBOX with options[] becomes a multi-select
+  // group: render as a <div> wrapper with N child <input type="checkbox">
+  // (mirrors RADIO). Without options it stays the single-input boolean
+  // toggle from §3.x / §3.v4.
+  const tag = isCheckboxGroup(node) ? 'div' : TAG_BY_TYPE[node.type]
   if (!tag) return null
 
   const className = tailwindClassName(node, ctx.graph)
@@ -334,20 +344,36 @@ function applyControlledInput(
   // reads/writes were already registered as a side effect inside
   // `resolveValueBinding` so the page scaffold imports are unaffected.
   if (node.type === 'RADIO') {
-    patchRadioControlled(children, controlled)
+    patchOptionLeafControlled(children, 'radio', controlled)
+    return undefined
+  }
+  // CHECKBOX group (§3.v4 step 8): same wrapper-vs-leaf split as RADIO.
+  // Per-child checkbox gets the controlled descriptor; emit branches on
+  // `attrs.type === 'checkbox' && targetType === 'array'` to produce the
+  // array-includes/toggle pair.
+  if (isCheckboxGroup(node)) {
+    patchOptionLeafControlled(children, 'checkbox', controlled)
     return undefined
   }
   return controlled
 }
 
-function patchRadioControlled(children: IRNode[], controlled: IRControlledInput): void {
+/** Shared: walk a wrapper's `<label><input.../></label>` children, find the
+ *  per-option <input> leaves matching `inputType`, drop their uncontrolled
+ *  `defaultChecked` fallback, and attach the parent's controlled descriptor.
+ *  Used by both RADIO (inputType='radio') and CHECKBOX group (='checkbox'). */
+function patchOptionLeafControlled(
+  children: IRNode[],
+  inputType: 'radio' | 'checkbox',
+  controlled: IRControlledInput
+): void {
   for (const child of children) {
     if (child.kind !== 'element' || child.tag !== 'label') continue
     for (const inner of child.children) {
       if (
         inner.kind === 'element' &&
         inner.tag === 'input' &&
-        inner.attrs.type === 'radio'
+        inner.attrs.type === inputType
       ) {
         delete inner.attrs.defaultChecked
         inner.controlled = controlled
@@ -598,16 +624,17 @@ function applySelectOptions(node: SceneNode, ip: InteractiveProps, children: IRN
   }
 }
 
-/** RADIO — a radio-group div (Phase 2 §8). Each option becomes a
- *  `<label><input type="radio" name={groupName} value={opt}/> opt</label>`;
- *  the option matching `interactiveProps.value` is `defaultChecked`. */
-function applyRadioOptions(node: SceneNode, ip: InteractiveProps, children: IRNode[]): void {
-  const groupName = typeof ip.groupName === 'string' ? ip.groupName : ''
-  const selected = typeof ip.value === 'string' ? ip.value : ''
+/** Shared per-option emit for RADIO + CHECKBOX-group wrappers. Each option
+ *  becomes a `<label><input ...> opt</label>` child of the wrapper div.
+ *  `makeInputAttrs(opt)` lets the caller specialize the input attrs
+ *  (type, name, value, defaultChecked). */
+function appendOptionInputs(
+  node: SceneNode,
+  ip: InteractiveProps,
+  children: IRNode[],
+  makeInputAttrs: (opt: string) => Record<string, IRAttrValue>
+): void {
   for (const opt of optionStrings(ip)) {
-    const inputAttrs: Record<string, IRAttrValue> = { type: 'radio', value: opt }
-    if (groupName !== '') inputAttrs.name = groupName
-    if (opt === selected) inputAttrs.defaultChecked = true
     children.push({
       kind: 'element',
       sourceId: node.id,
@@ -615,11 +642,46 @@ function applyRadioOptions(node: SceneNode, ip: InteractiveProps, children: IRNo
       className: '',
       attrs: {},
       children: [
-        { kind: 'element', sourceId: node.id, tag: 'input', className: '', attrs: inputAttrs, children: [] },
+        {
+          kind: 'element',
+          sourceId: node.id,
+          tag: 'input',
+          className: '',
+          attrs: makeInputAttrs(opt),
+          children: []
+        },
         { kind: 'text', value: opt }
       ]
     })
   }
+}
+
+/** CHECKBOX group (Phase 3 §3.v4 step 8) — when `interactiveProps.options`
+ *  is set, the CHECKBOX node renders as a wrapper div with one
+ *  `<label><input type="checkbox" value={opt}/> opt</label>` per option,
+ *  bound to an array<string> state (each option toggles in/out). Mirrors
+ *  RADIO's option emit; the uncontrolled fallback path doesn't pre-check
+ *  any option (multi-select has no single "selected" concept). */
+function applyCheckboxGroupOptions(
+  node: SceneNode,
+  ip: InteractiveProps,
+  children: IRNode[]
+): void {
+  appendOptionInputs(node, ip, children, (opt) => ({ type: 'checkbox', value: opt }))
+}
+
+/** RADIO — a radio-group div (Phase 2 §8). Each option becomes a
+ *  `<label><input type="radio" name={groupName} value={opt}/> opt</label>`;
+ *  the option matching `interactiveProps.value` is `defaultChecked`. */
+function applyRadioOptions(node: SceneNode, ip: InteractiveProps, children: IRNode[]): void {
+  const groupName = typeof ip.groupName === 'string' ? ip.groupName : ''
+  const selected = typeof ip.value === 'string' ? ip.value : ''
+  appendOptionInputs(node, ip, children, (opt) => {
+    const inputAttrs: Record<string, IRAttrValue> = { type: 'radio', value: opt }
+    if (groupName !== '') inputAttrs.name = groupName
+    if (opt === selected) inputAttrs.defaultChecked = true
+    return inputAttrs
+  })
 }
 
 function applyInteractiveProps(
@@ -635,7 +697,10 @@ function applyInteractiveProps(
       applyTextInputProps(ip, attrs)
       return
     case 'CHECKBOX':
-      applyToggleProps(ip, attrs)
+      // Phase 3 §3.v4 step 8 — options[] → multi-select group (mirrors
+      // RADIO); no options → single boolean toggle (back-compat).
+      if (isCheckboxGroup(node)) applyCheckboxGroupOptions(node, ip, children)
+      else applyToggleProps(ip, attrs)
       return
     case 'SWITCH':
       applyToggleProps(ip, attrs, 'switch')

@@ -139,24 +139,34 @@ export function resolveTextBinding(
   }
 }
 
-/** Phase 3 §3.v4: per-node-type valid `targetType` constraint for a
- *  controlled form control. INPUT supports both string and number; the
- *  text-like family (TEXTAREA / SELECT / RADIO / DATEPICKER) is string
- *  only; CHECKBOX / SWITCH is boolean only. Returns the legal set; type
- *  mismatches go through `binding-value-bad-state-type` (sourced from
- *  `resolveValueBinding`). */
-type CtrlTargetType = 'string' | 'number' | 'boolean'
+/** Phase 3 §3.v4: per-node valid `targetType` constraint for a controlled
+ *  form control. INPUT supports both string and number; the text-like
+ *  family (TEXTAREA / SELECT / RADIO / DATEPICKER) is string only;
+ *  SWITCH is boolean only. CHECKBOX depends on `interactiveProps.options`
+ *  presence — step 8: with options it becomes a multi-select group bound
+ *  to an `array<string>` state; without options it stays a single boolean
+ *  toggle (back-compat with §3.x). Returns the legal set; mismatches go
+ *  through `binding-value-bad-state-type` (sourced from `resolveValueBinding`). */
+type CtrlTargetType = 'string' | 'number' | 'boolean' | 'array'
 
-function allowedTargetTypes(nodeType: SceneNode['type']): ReadonlySet<CtrlTargetType> {
-  if (nodeType === 'INPUT') return new Set(['string', 'number'])
-  if (nodeType === 'CHECKBOX' || nodeType === 'SWITCH') return new Set(['boolean'])
+function checkboxHasOptions(node: SceneNode): boolean {
+  const raw = node.interactiveProps?.options
+  return Array.isArray(raw) && raw.length > 0
+}
+
+function allowedTargetTypes(node: SceneNode): ReadonlySet<CtrlTargetType> {
+  if (node.type === 'INPUT') return new Set(['string', 'number'])
+  if (node.type === 'SWITCH') return new Set(['boolean'])
+  if (node.type === 'CHECKBOX') {
+    return new Set([checkboxHasOptions(node) ? 'array' : 'boolean'])
+  }
   return new Set(['string'])
 }
 
 function asCtrlTargetType(
   t: 'string' | 'number' | 'boolean' | 'object' | 'array'
 ): CtrlTargetType | null {
-  return t === 'string' || t === 'number' || t === 'boolean' ? t : null
+  return t === 'string' || t === 'number' || t === 'boolean' || t === 'array' ? t : null
 }
 
 /** Phase 3 §3.x + §3.v4: resolve a form control's `bindings.value` to a
@@ -168,10 +178,12 @@ function asCtrlTargetType(
  *  Supported `kind`s: `'docState'` (write through `setDocState`), `'ref'`
  *  (write through the page-state setter). `'literal'` and `'expr'` are
  *  rejected because the writer needs an addressable target. The resolved
- *  state type must be in `allowedTargetTypes(node.type)`: INPUT accepts
+ *  state type must be in `allowedTargetTypes(node)`: INPUT accepts
  *  string|number; TEXTAREA/SELECT/RADIO/DATEPICKER accept string only;
- *  CHECKBOX/SWITCH accept boolean only. Mismatches fall back to
- *  uncontrolled with `binding-value-bad-state-type`. Resolving against a
+ *  SWITCH accepts boolean only; CHECKBOX accepts boolean (single mode)
+ *  or array (group mode — when `interactiveProps.options` is set).
+ *  Mismatches fall back to uncontrolled with `binding-value-bad-state-type`.
+ *  Resolving against a
  *  docState additionally registers a read + write so the page scaffolds
  *  `useDocState` / `setDocState` imports. */
 export function resolveValueBinding(
@@ -192,7 +204,7 @@ export function resolveValueBinding(
     })
     return null
   }
-  const allowed = allowedTargetTypes(node.type)
+  const allowed = allowedTargetTypes(node)
   const allowedList = [...allowed].join('|')
   if (binding.kind === 'docState') {
     const name = binding.docStateName ?? ''

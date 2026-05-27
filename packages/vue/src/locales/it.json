@@ -273,6 +273,7 @@
     "lowcodeValueBindingUncontrolled": "Non controllato",
     "lowcodeValueBindingHint": "Collega a uno stato per rendere il controllo del modulo controllato",
     "lowcodeValueBindingBooleanHint": "Collega a uno stato booleano per checkbox/switch controllato",
+    "lowcodeValueBindingArrayHint": "Collega a uno stato array per un gruppo di checkbox a selezione multipla",
     "lowcodeValueBindingNoStates": "Nessuno stato del tipo richiesto disponibile",
     "lowcodeInteractiveOptions": "Opzioni",
     "lowcodeInteractiveOptionAdd": "Aggiungi opzione",

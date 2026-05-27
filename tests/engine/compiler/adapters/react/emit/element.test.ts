@@ -324,4 +324,41 @@ describe('emitElement (React adapter)', () => {
       `<input type="radio" name="g" value="F" checked={gender === "F"} onChange={(e) => setGender(e.target.value)} />`
     )
   })
+
+  // Phase 3 §3.v4 step 8 — CHECKBOX group (multi-select array binding).
+  // Each per-option <input type="checkbox"> emits `checked={read.includes(opt)}`
+  // and `onChange={(e) => write(e.target.checked ? [...read, opt] : read.filter(...))}`.
+  test('controlled CHECKBOX group option (docState array) emits includes + toggle', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'checkbox', value: 'Apple' },
+        controlled: {
+          read: 'fruits',
+          write: { kind: 'docState', name: 'fruits', targetType: 'array' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="checkbox" value="Apple" checked={fruits.includes("Apple")} onChange={(e) => setDocState("fruits", e.target.checked ? [...fruits, "Apple"] : fruits.filter((v) => v !== "Apple"))} />`
+    )
+  })
+
+  test('controlled CHECKBOX group option (page-state array) uses useState setter', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'checkbox', value: 'Banana' },
+        controlled: {
+          read: 'picks',
+          write: { kind: 'state', name: 'picks', targetType: 'array' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="checkbox" value="Banana" checked={picks.includes("Banana")} onChange={(e) => setPicks(e.target.checked ? [...picks, "Banana"] : picks.filter((v) => v !== "Banana"))} />`
+    )
+  })
 })

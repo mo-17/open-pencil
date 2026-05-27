@@ -273,6 +273,7 @@
     "lowcodeValueBindingUncontrolled": "No controlado",
     "lowcodeValueBindingHint": "Vincula a un estado para un control de formulario controlado",
     "lowcodeValueBindingBooleanHint": "Vincula a un estado booleano para un checkbox/switch controlado",
+    "lowcodeValueBindingArrayHint": "Vincula a un estado array para un grupo de checkboxes multi-selección",
     "lowcodeValueBindingNoStates": "No hay estados con el tipo requerido",
     "lowcodeInteractiveOptions": "Opciones",
     "lowcodeInteractiveOptionAdd": "Agregar opción",

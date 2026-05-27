@@ -38,6 +38,19 @@ function makeNode(type: SceneNode['type'], bindingValue: BindingExpr): SceneNode
   return graph.createNode(type, page.id, { bindings: { value: bindingValue } })
 }
 
+function makeNodeWithOptions(
+  type: SceneNode['type'],
+  bindingValue: BindingExpr,
+  options: string[]
+): SceneNode {
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  return graph.createNode(type, page.id, {
+    bindings: { value: bindingValue },
+    interactiveProps: { options }
+  })
+}
+
 describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', () => {
   // ── INPUT: string | number (§3.x baseline, unchanged) ────────────────
   test('INPUT + string docState → controlled OK targetType=string', () => {
@@ -183,5 +196,68 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
     expect(r).toBeNull()
     expect(warnings[0]?.code).toBe('binding-value-bad-state-type')
+  })
+
+  // ── CHECKBOX group mode (§3.v4 step 8) ──────────────────────────────
+  test('CHECKBOX + options[] + array docState → controlled OK targetType=array', () => {
+    const docs = makeDocStates([
+      { id: 'd1', name: 'fruits', type: 'array', defaultValue: [] }
+    ])
+    const node = makeNodeWithOptions(
+      'CHECKBOX',
+      { kind: 'docState', docStateName: 'fruits' },
+      ['Apple', 'Banana', 'Cherry']
+    )
+    const reads = new Set<string>()
+    const writes = new Set<string>()
+    const warnings: IRWarning[] = []
+    const r = resolveValueBinding(node, new Map(), warnings, docs, reads, writes)
+    expect(r).toEqual({
+      read: 'fruits',
+      write: { kind: 'docState', name: 'fruits', targetType: 'array' }
+    })
+    expect(reads.has('fruits')).toBe(true)
+    expect(writes.has('fruits')).toBe(true)
+    expect(warnings).toEqual([])
+  })
+
+  test('CHECKBOX + options[] + boolean docState → warn (group mode wants array)', () => {
+    const docs = makeDocStates([
+      { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
+    ])
+    const node = makeNodeWithOptions(
+      'CHECKBOX',
+      { kind: 'docState', docStateName: 'agreed' },
+      ['A', 'B']
+    )
+    const warnings: IRWarning[] = []
+    const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
+    expect(r).toBeNull()
+    expect(warnings[0]?.code).toBe('binding-value-bad-state-type')
+    expect(warnings[0]?.message).toContain('CHECKBOX')
+  })
+
+  test('CHECKBOX (single, no options) + array docState → warn (single mode wants boolean)', () => {
+    const docs = makeDocStates([{ id: 'd1', name: 'items', type: 'array', defaultValue: [] }])
+    const node = makeNode('CHECKBOX', { kind: 'docState', docStateName: 'items' })
+    const warnings: IRWarning[] = []
+    const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
+    expect(r).toBeNull()
+    expect(warnings[0]?.code).toBe('binding-value-bad-state-type')
+  })
+
+  test('CHECKBOX + empty options[] → still single mode (boolean)', () => {
+    const docs = makeDocStates([
+      { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
+    ])
+    const node = makeNodeWithOptions(
+      'CHECKBOX',
+      { kind: 'docState', docStateName: 'agreed' },
+      []
+    )
+    const warnings: IRWarning[] = []
+    const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
+    expect(r?.write.targetType).toBe('boolean')
+    expect(warnings).toEqual([])
   })
 })

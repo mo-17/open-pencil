@@ -38,14 +38,18 @@ export interface IRElement {
  *   - string  → `value={read}` + `e.target.value` (pass-through)
  *   - number  → `value={read}` + `Number(e.target.value)` + `type="number"`
  *   - boolean → `checked={read}` + `e.target.checked` (no coerce; §3.v4
- *     CHECKBOX / SWITCH).
+ *     CHECKBOX / SWITCH, single mode)
+ *   - array   → per-child `checked={read.includes(<opt>)}` + onChange that
+ *     toggles `<opt>` in/out of the array (§3.v4 step 8 CHECKBOX group
+ *     mode — only meaningful when the parent has `interactiveProps.options`
+ *     so we know which option each child represents).
  *  Per-node-type targetType constraint lives in `resolveValueBinding`. */
 export interface IRControlledInput {
   read: string
   write: {
     kind: 'docState' | 'state'
     name: string
-    targetType: 'string' | 'number' | 'boolean'
+    targetType: 'string' | 'number' | 'boolean' | 'array'
   }
 }
 

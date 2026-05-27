@@ -273,6 +273,7 @@
     "lowcodeValueBindingUncontrolled": "Non contrôlé",
     "lowcodeValueBindingHint": "Lier à un état pour rendre le contrôle de formulaire contrôlé",
     "lowcodeValueBindingBooleanHint": "Lier à un état booléen pour une case à cocher/switch contrôlé",
+    "lowcodeValueBindingArrayHint": "Lier à un état tableau pour un groupe de cases à cocher multi-sélection",
     "lowcodeValueBindingNoStates": "Aucun état du type requis disponible",
     "lowcodeInteractiveOptions": "Options",
     "lowcodeInteractiveOptionAdd": "Ajouter une option",

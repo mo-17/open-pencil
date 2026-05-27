@@ -319,6 +319,7 @@ export const panelMessages = i18n('panels', {
   lowcodeValueBindingUncontrolled: 'Uncontrolled',
   lowcodeValueBindingHint: 'Bind to a state for a controlled form control',
   lowcodeValueBindingBooleanHint: 'Bind to a boolean state for a controlled checkbox/switch',
+  lowcodeValueBindingArrayHint: 'Bind to an array state for a multi-select checkbox group',
   lowcodeValueBindingNoStates: 'No matching state type available',
   // Lowcode (Phase 3 §3.v4 step 7 — SELECT / RADIO options + groupName editor)
   lowcodeInteractiveOptions: 'Options',
