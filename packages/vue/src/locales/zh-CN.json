@@ -251,6 +251,8 @@
     "lowcodeTextSourceExpression": "表达式",
     "lowcodeTextSourceExprLabel": "表达式",
     "lowcodeTextSourceExprPlaceholder": "例如 item.name",
+    "lowcodeButtonText": "按钮文字",
+    "lowcodeButtonTextPlaceholder": "Button",
     "lowcodeRenderCondition": "渲染条件",
     "lowcodeRenderConditionPlaceholder": "例如 count > 0",
     "lowcodeRenderConditionHint": "仅当表达式为真时渲染",

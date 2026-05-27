@@ -59,6 +59,23 @@ const docStateName = computed(() =>
   binding.value?.kind === 'docState' ? (binding.value.docStateName ?? '') : ''
 )
 
+// Phase 3 §3.v3 — BUTTON `interactiveProps.text` literal editor.
+//
+// `applyButtonProps` in the compiler tree walker reads `interactiveProps.text`
+// only when no `bindings.text` is set; otherwise the binding wins. So this
+// input is the manual fallback for users who don't want to wire a state at
+// all — currently the ONLY way to change a BUTTON's static label without
+// going through AI / CLI (§3.v2 ACK #1 user feedback).
+//
+// TEXT nodes intentionally don't get this input: their text lives on
+// `node.characters` and is edited via canvas double-click, not Properties.
+const isButton = computed(() => selectedNode.value?.type === 'BUTTON')
+const inLiteralMode = computed(() => !binding.value || binding.value.kind === 'literal')
+const buttonLiteralText = computed(() => {
+  const ip = selectedNode.value?.interactiveProps
+  return typeof ip?.text === 'string' ? (ip.text as string) : ''
+})
+
 function commitBinding(next: BindingExpr | undefined): void {
   const node = selectedNode.value
   if (!node) return
@@ -66,6 +83,23 @@ function commitBinding(next: BindingExpr | undefined): void {
   if (next === undefined) delete bindingsCopy.text
   else bindingsCopy.text = next
   editor.updateNodeWithUndo(node.id, { bindings: bindingsCopy }, 'Update binding')
+}
+
+function onButtonTextChange(event: Event): void {
+  const node = selectedNode.value
+  if (!node) return
+  const next = (event.target as HTMLInputElement).value
+  const ipPrev = (node.interactiveProps ?? {}) as Record<string, unknown>
+  // Empty input clears the field → emit falls back to default 'Button' literal.
+  // Aligns with §3.2 "set null/undefined to clear" semantics.
+  const ipNext: Record<string, unknown> = { ...ipPrev }
+  if (next === '') delete ipNext.text
+  else ipNext.text = next
+  editor.updateNodeWithUndo(
+    node.id,
+    { interactiveProps: ipNext },
+    'Update button text'
+  )
 }
 
 function onSourceChange(event: Event): void {
@@ -108,6 +142,22 @@ function onDocStateChange(event: Event): void {
       <option :value="DOCSTATE_SENTINEL">{{ panels.lowcodeTextSourceDocState }}</option>
       <option :value="EXPR_SENTINEL">{{ panels.lowcodeTextSourceExpression }}</option>
     </select>
+
+    <div
+      v-if="isButton && inLiteralMode"
+      class="mt-1.5 flex flex-col gap-0.5"
+    >
+      <label class="text-[10px] text-muted">{{ panels.lowcodeButtonText }}</label>
+      <input
+        :value="buttonLiteralText"
+        :aria-label="panels.lowcodeButtonText"
+        data-test-id="lowcode-button-interactive-text"
+        spellcheck="false"
+        :placeholder="panels.lowcodeButtonTextPlaceholder"
+        class="w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
+        @change="onButtonTextChange"
+      />
+    </div>
 
     <div v-if="binding?.kind === 'expr'" class="mt-1.5 flex flex-col gap-0.5">
       <label class="text-[10px] text-muted">{{ panels.lowcodeTextSourceExprLabel }}</label>

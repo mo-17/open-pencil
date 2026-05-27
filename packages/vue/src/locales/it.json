@@ -251,6 +251,8 @@
     "lowcodeTextSourceExpression": "Expression",
     "lowcodeTextSourceExprLabel": "Expression",
     "lowcodeTextSourceExprPlaceholder": "e.g. item.name",
+    "lowcodeButtonText": "Etichetta pulsante",
+    "lowcodeButtonTextPlaceholder": "Button",
     "lowcodeRenderCondition": "Render condition",
     "lowcodeRenderConditionPlaceholder": "e.g. count > 0",
     "lowcodeRenderConditionHint": "Renders only when the expression is truthy",

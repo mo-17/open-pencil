@@ -292,6 +292,9 @@ export const panelMessages = i18n('panels', {
   lowcodeTextSourceExpression: 'Expression',
   lowcodeTextSourceExprLabel: 'Expression',
   lowcodeTextSourceExprPlaceholder: 'e.g. item.name',
+  // Lowcode (Phase 3 §3.v3 — BUTTON interactiveProps.text manual editor)
+  lowcodeButtonText: 'Button label',
+  lowcodeButtonTextPlaceholder: 'Button',
   lowcodeRenderCondition: 'Render condition',
   lowcodeRenderConditionPlaceholder: 'e.g. count > 0',
   lowcodeRenderConditionHint: 'Renders only when the expression is truthy',
