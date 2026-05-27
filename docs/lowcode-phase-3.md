@@ -789,6 +789,159 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 ---
 
+## 3.v3 §3.v3 详细设计:UI 补全(BUTTON text + payloadEntries editor + CLI docs)
+
+**Scope = §3.v3 mini-scope**(§3.v2 ACK 反馈 #1 + #2 + surprise #1 sourced;3-4 天)。§3.v3 候选池剩余 4 条(`payloadEntries` ≠ §3.v3 候选 #2 是本期内容;6 控件 controlled / `$event` token / INPUT boolean+date / RLS 健康检查)推 §3.v4 / §X.X 视用户节奏。
+
+### 3.v3.1 现状与问题
+
+§3.v2 closed 2026-05-27 后用户 Tauri ACK 反馈 2 处 UI 缺口 + 1 处 docs 不准:
+
+1. **BUTTON `interactiveProps.text` 无手动编辑入口**(§3.v2 ACK #1 用户反馈)— `TextBindingPanel.vue:73-74` 在 select=`literal` 时 `commitBinding(undefined)` 直接删 `bindings.text`,**没**给 `interactiveProps.text` 的 input 入口;BUTTON 默认显示 `'Button'`,手动用户无法改文字,只能 AI / CLI 调 `update_lowcode_node` 改
+2. **EventsPanel 无 `payloadEntries` 编辑器**(§3.v2 ACK #2 用户反馈)— `EventsPanel.vue:625-638` 只 input `payloadJson`(§2),`payloadEntries` 字段只能 AI / CLI 写,手动用户既看不到也不可编辑;`SupabaseFilter` 的行编辑器(EventsPanel.vue:642-)已有可镜像模板
+3. **prompt.md ACK #5 CLI 示例错误**(§3.v2 surprise #1)— `tools.update_lowcode_node(...)` 这种 MCP/AI 侧的简写在 CLI eval 不 work;`packages/cli/src/commands/eval.ts:83` 只注入 `figma` 全局,正确写法是 `const { ALL_TOOLS } = await import('@open-pencil/core/tools'); const t = ALL_TOOLS.find(x => x.name === 'update_lowcode_node'); return t.execute(figma, args)`
+
+§3.v3 mini-scope 解决这 3 条;§3.v3 **不做**:6 控件(CHECKBOX / TEXTAREA / DATEPICKER / SELECT / RADIO / SWITCH)controlled binding(体量 5 day,§3.x 模式镜像 6 倍);`$event` / `$value` token 扩 grammar;INPUT boolean / date 类型;SupabaseConfigPanel RLS 健康检查。
+
+### 3.v3.2 关键决定
+
+**8 主决定**(2026-05-27 ACK 锁定):
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | BUTTON `interactiveProps.text` 入口**扩 `TextBindingPanel.vue`**:当 select=`literal` 且 `selectedNode.type === 'BUTTON'` 时露 input 写 `interactiveProps.text`;TEXT 节点不露 input(TEXT 文字走 `node.characters` + canvas 双击) | 最小 UI 改动 + 用户直觉(已选 literal 自然想到输入文字);TEXT 不出现 input 避免歧义 |
+| b | `interactiveProps.text` 清空 input → 删字段(写 `undefined`),emit fallback `'Button'` literal(`applyButtonProps:527`) | 与 §3.2 "set null/undefined to clear" 语义一致 |
+| c | `EventsPanel` `payloadEntries` 行编辑器**镜像 filters 行 UI**(`EventsPanel.vue:642-`):column input + valueExpr input + 删除按钮 + "Add entry" 按钮 | 零 UX 学习成本;reuse 既有 css/test-id 风格 |
+| d | both-present(`payloadJson` + `payloadEntries` 都设)→ UI **两块都显示** + surface `payload-source-conflict` warn 条(镜像 IR warn,经验 C no-swallow);**不**强制单选 / 不自动清对方 | 镜像 runtime warn fidelity;UI 不藏 AI/CLI 设的状态 |
+| e | `operation === 'delete'` → UI **隐藏** payload + entries 编辑器(强约束,与 IR `unexpected-payload` 一致);切到 delete 时已存字段**保留 raw**,切回 insert/update 字段重现 | UI 层强约束消歧;raw 保留体现「不 silent drop 用户已写的数据」(经验 C) |
+| f | `validateSupabasePayloadEntries` + `PAYLOAD_ENTRY_KEY_RE` 从 `tools/modify/lowcode.ts:213-260` **上抬到** `@open-pencil/core/lowcode-validation` barrel;3 处(tool input + IR collect + EventsPanel UI)共享 | 经验 I 单源;沿用 `validateUrlTemplate` / `normalizeSupabaseMutationPayloadJson` / `validateExpression` 同位置惯例 |
+| g | UI 写入走 `editor.updateNodeWithUndo`(沿用 EventsPanel 既有 mutate 模式) | §3.v2.2 #b 锁:仅 `src/app/ai/**` 注入 editor 给 tool;UI 自己**就是** editor 持有方,不绕道 ToolDef ctx |
+| h | prompt.md ACK #5 CLI 写法 fix 沉到入仓位置:`docs/lowcode-phase-3.md §3.v2.5` ACK #5 加正确示例 + `packages/cli/src/commands/eval.ts` 顶部 jsdoc 1 行;prompt.md 本地顺手改(不入仓) | 经验沉淀必须入仓;prompt.md 是 untracked 模板,本地改不算交付 |
+
+**8 次级默认**:
+
+1. BUTTON literal input placeholder = `'Button'`(显示 emit fallback 值);test-id `lowcode-button-interactive-text`
+2. payloadEntries 行 test-id `lowcode-action-supabase-payload-entry` + 子 `-key` / `-value` / `-remove`;Add 按钮 `-add-entry`;warn 条 `-payload-source-conflict`
+3. payloadEntries column input 用 `PAYLOAD_ENTRY_KEY_RE` **即时校验**(invalid 红框 + `aria-invalid="true"`);dup-key 红框
+4. payloadEntries valueExpr input 复用 `validateExpression`(与 filters valueExpr UX 一致)
+5. delete 隐藏 payload 时 **保留 raw 数据**,只藏 UI(`v-if action.operation !== 'delete'`);切回 insert/update 字段重现
+6. both-present warn 条:`text-orange-500 text-[10px]`,显示在 entries 列表上方;i18n key `panels.lowcodeActionSupabasePayloadSourceConflict`
+7. **8 新 i18n key × 7 locale** = 56 新条目:`lowcodeButtonText` + `lowcodeButtonTextPlaceholder` + `lowcodeActionSupabasePayloadEntries` + `lowcodeActionSupabasePayloadAddEntry` + `lowcodeActionSupabasePayloadEntryKey` + `lowcodeActionSupabasePayloadEntryValue` + `lowcodeActionSupabasePayloadEntryKeyInvalid` + `lowcodeActionSupabasePayloadSourceConflict`
+8. 不动既有 test-id;新增一律 `lowcode-` 前缀(CONTRIBUTING.md 规则)
+
+**经验 J 反向核**(每条 ACK 倒推技术链,0 链路不存在):
+
+| 假设 | 技术链反向核 |
+|---|---|
+| BUTTON literal input 改值 → emit 出新字 | ✅ `editor.updateNodeWithUndo` → `SceneNode.interactiveProps` 已支持 → `applyButtonProps:527` `ip.text` 已读 |
+| entry 新增 + emit → Supabase 写入 | ✅ §3.v2 step 2 `resolvePayloadEntries` IR + `emitMutationPayload` 已实现;`SceneNode.events` 已支持 entries 字段 |
+| both-set UI surface warn | ✅ UI 镜像 IR `payload-source-conflict`(已存),只渲染 warn 条,**不**重做校验逻辑 |
+| delete 隐藏 payload | ✅ `v-if action.operation !== 'delete'`;raw 数据不动 |
+| dup-key UI 红框 | ✅ `validateSupabasePayloadEntries` 上抬后 UI 复用 |
+
+### 3.v3.3 公开 API / Schema 改动
+
+- ➕ **新 export** `@open-pencil/core/lowcode-validation` barrel:
+  - `validateSupabasePayloadEntries(where: string, raw: unknown): { ok: true; entries: SupabasePayloadEntry[] } | { ok: false; error: string }`
+  - `PAYLOAD_ENTRY_KEY_RE: RegExp`
+  - 签名 0 改动,纯位置迁移(`tools/modify/lowcode.ts:213-260` → `packages/core/src/lowcode-validation/supabase-payload-entries.ts`)
+- ➕ **8 i18n key × 7 locale** = 56 新条目(详 §3.v3.2 次级默认 #7)
+- ➕ **7 新 test-id**(全 `lowcode-` 前缀):
+  - `lowcode-button-interactive-text`
+  - `lowcode-action-supabase-payload-entry` + `-key` / `-value` / `-remove`
+  - `lowcode-action-supabase-payload-add-entry`
+  - `lowcode-action-supabase-payload-source-conflict`
+- 0 SceneNode / ActionDef shape 改动
+- 0 Kiwi 改动
+- 0 既有 `bindings.text` 通道改动 / `EDITOR_UNDO_TOOLS` 改动 / `applyPatchWithUndo` 签名改动
+
+### 3.v3.4 内部实现拆解
+
+#### `lowcode-validation/supabase-payload-entries.ts`(新文件)
+
+从 `tools/modify/lowcode.ts:213-260` 抬出:
+- `export const PAYLOAD_ENTRY_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/`
+- `export function validateSupabasePayloadEntries(where: string, raw: unknown): ValidationResult` —— 校验 raw 是数组、每项有 `key` 和 `valueExpr`、key 合法、key 唯一、valueExpr 非空且 parse 通过
+
+`packages/core/src/lowcode-validation/index.ts` barrel 加 export。`tools/modify/lowcode.ts` 改为 `import { validateSupabasePayloadEntries, PAYLOAD_ENTRY_KEY_RE } from '@open-pencil/core/lowcode-validation'`,移除私有定义。
+
+#### `TextBindingPanel.vue`
+
+- 新 computed `buttonLiteralText`:`selectedNode.value?.type === 'BUTTON' ? (selectedNode.value.interactiveProps?.text as string ?? '') : null`
+- `<input v-if="binding == null && buttonLiteralText !== null"` 在 select 下方;`@change` 写 `editor.updateNodeWithUndo(id, { interactiveProps: { ...prev, text: value || undefined } }, 'Update button text')`
+- 空字符串 → 写 `undefined`(触发 emit fallback `'Button'`)
+- placeholder = i18n `panels.lowcodeButtonTextPlaceholder`(默认 'Button')
+- test-id `lowcode-button-interactive-text`
+
+#### `EventsPanel.vue`
+
+- `updateEntry(actionId, index, patch)` / `addEntry(actionId)` / `removeEntry(actionId, index)`:镜像 `updateFilter` / `addFilter` / `removeFilter`(已有 ~640 行)
+- `addEntry` 默认 `{ key: '', valueExpr: '' }`
+- 完整 payload 块包 `v-if action.operation !== 'delete'`(insert/update/upsert 时显示)
+- payload 块内布局:
+  1. 既有 `payloadJson` input(不动)
+  2. **新** payloadEntries 列表(每行:column input + valueExpr input + remove 按钮)
+  3. **新** "Add entry" 按钮
+  4. **新** both-present warn 条(top of entries 列表,`v-if conflictWarn`)
+- `conflictWarn = computed`:`action.payloadJson?.trim() && (action.payloadEntries?.length ?? 0) > 0`
+- entry column input 即时校验:`PAYLOAD_ENTRY_KEY_RE.test(entry.key)`,失败 → `border-red-500 + aria-invalid="true"`
+- entry dup-key 校验:对每条 entry 计算其 key 在 entries 中重复 → 红框
+- entry valueExpr input 复用 `validateExpression`(与 filters valueExpr 一致)
+
+#### docs / cli
+
+- `docs/lowcode-phase-3.md §3.v2.5` ACK #5 那行后加示例 block:
+  ```sh
+  bun open-pencil eval <file.pen> -c "
+    const { ALL_TOOLS } = await import('@open-pencil/core/tools')
+    const t = ALL_TOOLS.find(x => x.name === 'update_lowcode_node')
+    return t.execute(figma, { id: '<node-id>', patch_json: '...' })
+  "
+  ```
+- `packages/cli/src/commands/eval.ts` 顶部 jsdoc 加 1 行:`// To invoke a ToolDef: const { ALL_TOOLS } = await import('@open-pencil/core/tools'); ALL_TOOLS.find(t => t.name === '...').execute(figma, args)`
+
+### 3.v3.5 成功标准
+
+1. `bun test ./tests/engine/lowcode-validation/` 全绿(含新文件 `supabase-payload-entries.test.ts` 移过来)
+2. `bun test ./tests/engine/tools/lowcode/` 全绿(import 改后零回归)
+3. `bun run check` 全绿(含 `check:i18n` 钉 8 新 key × 7 locale)
+4. **Tauri 实测(用户主导)~7 项 user-ACK**:
+   1. BUTTON Properties → source=literal → input 出现 → 改 'Save' → canvas 即时刷 + emit `<button>Save</button>`
+   2. BUTTON literal input 清空 → emit fallback `'Button'`
+   3. EventsPanel insert + Add 2 entries `{ name: formName, age: '25' }` → Preview 提交后 Supabase 行 `name=<INPUT>, age=25`
+   4. EventsPanel 同时设 `payloadJson` + `payloadEntries` → UI 橙色 `payload-source-conflict` warn 条;Preview body 是 entries 值(不含 payloadJson 静态值)
+   5. EventsPanel 切 op=`delete` → payload 编辑器 + entries 编辑器**消失**;切回 `insert` → 字段重现(raw 保留)
+   6. dup-key(两 entry 都叫 `name`)→ 第二行红框 + aria-invalid
+   7. 零回归:§3.v2 6 ACK 仍 work;TEXT 节点 TextBindingPanel literal **不**露 input
+5. 不破坏 Phase 0 §8 / Phase 1 / Phase 2 §9.2 §2.2 §3.2 §4.2 §6.2 §7.2 §8.2 / Phase 3 §2.2 §3.2 §3.x §3.v2.2 任一锁定决定
+
+### 3.v3.6 工作分解(建议 1 名工程师,3-4 天)
+
+| Step | 任务 | 验收 / commit |
+|---|---|---|
+| 0 | §3.v3 设计 doc 写入 + commit | 本 commit `docs(lowcode): §3.v3 mini-scope detailed design (UI补全 + payloadEntries editor + CLI docs)` |
+| 1 | 上抬 `validateSupabasePayloadEntries` + `PAYLOAD_ENTRY_KEY_RE` 到 `@open-pencil/core/lowcode-validation`;tools/modify import 改;tests 迁移 | `bun test ./tests/engine/lowcode-validation/` + `tools/lowcode/` 全绿;`bun run check` 全绿;`refactor(lowcode): step 1 — lift validateSupabasePayloadEntries (§3.v3)` |
+| 2 | `TextBindingPanel.vue` BUTTON-only literal input;2 i18n key × 7 locale;单测 | `bun run check` 全绿(`check:i18n` 钉);`feat(lowcode): step 2 — BUTTON interactiveProps.text editor (§3.v3)` |
+| 3 | `EventsPanel.vue` payloadEntries 行编辑器 + Add + both-present warn + delete v-if;6 i18n key × 7 locale | `bun run check` 全绿;`feat(lowcode): step 3 — EventsPanel payloadEntries editor + delete-hide + conflict-warn (§3.v3)` |
+| 4 | docs fix:`§3.v2.5` ACK #5 + `cli/commands/eval.ts` jsdoc | `bun run check` 全绿;`docs(lowcode): step 4 — CLI eval ALL_TOOLS example (§3.v3)` |
+| 5 | Tauri 实测 7 项 + §3.v3.8 post-mortem + 关闭 + memory | 7 ACK 全 ✅;`docs(lowcode): §3.v3 Tauri verification + close` |
+
+### 3.v3.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 上抬 `validateSupabasePayloadEntries` 破坏 tool import / 既有单测路径 | 低 | TS strict + step 1 单测 + Steiger 钉 import 链 |
+| TEXT 节点漏 v-if 也露 BUTTON input | 低 | step 2 单测 TEXT 节点 v-if=false |
+| both-present warn 文案过长撑爆窄面板 | 低 | `text-[10px] truncate` + 真宽度调整 |
+| delete v-if 后用户以为 payload 字段没了 | 中 | raw 保留 + 切回 insert/update 字段重现(经验 C);可选加 helper text "Delete operations cannot have payload" |
+| 经验 I — `validateSupabasePayloadEntries` barrel + 跨包 import 双侧改 | 中 | step 1 单测 + Steiger 钉 |
+| 8 i18n key × 7 locale 漏译 | 中 | `check:i18n` 钉死 |
+| BUTTON literal input + bindings.text 共存语义混淆(`bindings.text` 优先于 `interactiveProps.text`) | 低 | helper text 标 source 优先级;`applyButtonProps:516-528` 已有清晰 fallback 链 |
+
+### 3.v3.8 Post-mortem
+
+**待填**:§3.v3 closed `<date>`(HEAD `<post-mortem-commit>` 后)。Commit 链 + Tauri ACK 结果 + surprise 列表 + 对经验 A-J 的增补 / 印证。
+
 ---
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
