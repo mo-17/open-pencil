@@ -1227,7 +1227,87 @@ RADIO(`applyRadioOptions`)— 每 radio 当前 emit `defaultChecked` if `opt ===
 
 ### 3.v4.8 Post-mortem
 
-**待填**:§3.v4 closed `<date>`(HEAD `<post-mortem-commit>` 后)。Commit 链 + Tauri ACK 结果 + surprise 列表 + 对经验 A-J 的增补 / 印证。
+**§3.v4 closed 2026-05-27**(HEAD this commit;Tauri ACK 8/8 ✅ 后回填)。Scope 从 5 step 扩到 **10 commit + 4 mid-flight hotfix**(step 7/8/9/9b),全部源于 Tauri 实测发现的"用户心智模型 vs 我们实现"错位 — 经验 J 再次细化。
+
+#### Commit 链
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `6504686` | §3.v4 mini-scope 8 主决定 + 8 次默 + 5 step + 7 风险 |
+| 1 | `8f5ee2c` | filters valueExpr placeholder hint(1 i18n × 7 locale) |
+| 2 | `821868f` | `IRControlledInput.targetType` 扩 boolean + `resolveValueBinding` per-type 规则 + 13 IR 单测 |
+| 3 | `6f8e2b3` | emit `formatAttrs` 3 路分支(radio / boolean / text-like)+ RADIO 子节点 controlled patching + 8 emit + 8 cross-walker |
+| 4 | `614eebf` | `InputValueBindingPanel.vue` → `ValueBindingPanel.vue` rename + 7 类型路由 + per-type candidate 过滤 + boolean hint + 5 i18n × 7 locale |
+| 7 | `f8bb3e0` | **(hotfix)** `InteractiveOptionsPanel.vue` 新建 — SELECT/RADIO `interactiveProps.options` + RADIO `groupName` 编辑器;7 i18n × 7 locale。修 ACK #5/#6 |
+| 8 | `71afe71` | **(hotfix)** CHECKBOX group:options[] → array<string> 多选;`IRControlledInput.targetType` 扩 array;emit 新 `arrayCheckboxOnChangeBody`;`patchOptionLeafControlled` + `appendOptionInputs` 共享 helper(顺手 dedupe RADIO);10 新测试。修 CHECKBOX 单 boolean 不能多选的 mental-model gap |
+| 9 | `fbdce37` | **(hotfix)** SWITCH Tailwind 滑动样式(`appearance-none` + track + `before` thumb)|
+| 9b | `a771318` | **(hotfix)** SWITCH thumb 改 left/right 双 anchor 对称,任何 aspect ratio |
+| 5 | _this commit_ | Tauri ACK 8 + §3.v4.8 回填 + close + memory 更新 |
+
+**测试**:`bun run check` 全程 0 error / 4 pre-existing max-lines / 0 clones。351/351 compiler tests + 49/49 tools tests,零回归(含 §3.x INPUT 完全保持原行为)。
+
+#### Tauri ACK 结果(用户主导 2026-05-27)
+
+| # | Check | Result | 备注 |
+|---|---|---|---|
+| 1 | filter valueExpr input 出 placeholder hint | ✅ | |
+| 2 | CHECKBOX(单)+ boolean docState → 勾选 toggles | ✅ | back-compat 保留 |
+| 3 | SWITCH(单)+ boolean docState | ✅ | step 9/9b hotfix 后视觉是滑动 toggle 对称 |
+| 4 | TEXTAREA + string docState | ✅ | |
+| 5 | SELECT + string docState + options 切换 | ✅ | 初测 #5 ❌(无 options UI)→ step 7 hotfix → retest ✅ |
+| 6 | RADIO + string docState + 选项切换 | ✅ | 初测 #6 ❌(无 options/groupName UI)→ step 7 hotfix → retest ✅ |
+| 7 | DATEPICKER + string docState | ✅ | 初测描述不清,step 7+8 后用户确认 work |
+| 8 | 零回归(§3.v3 + §3.x INPUT) + 类型不匹配 fallback | ✅ | |
+
+**新增隐式 ACK**:CHECKBOX group(options[] + array<string>)→ 多选 ✅;SWITCH 视觉滑动 + thumb 对称 ✅。
+
+#### Surprise 列表
+
+3 mid-flight hotfix step 全部源于 Tauri 实测发现的"用户心智模型 vs 我们实现"错位 — 都不是 wiring bug,是 scope/UX 假设错位:
+
+1. **SELECT/RADIO 无 `interactiveProps.options` UI**(step 7 hotfix `f8bb3e0`)— 与 §3.v2 ACK #1 BUTTON.text 同型 UI 缺口。controlled wiring(value binding → docState 写)全链路 work(IR + emit + cross-walker 测试都过),但 Preview 渲染空 `<select>` / 零 radios,因为 SELECT/RADIO 的 options 数组没有手动编辑入口,只能 AI/CLI 改。设计阶段反向核(经验 J Q1/Q2)漏了"用户怎么填 options"这条 — 我们只问"controlled 链路通吗"和"binding UI 引导对吗",没问"组件渲染所需的非-binding 数据怎么填"。**Fix**:新建 `InteractiveOptionsPanel.vue`,DesignPanel v-if SELECT/RADIO(后 step 8 widen 到 CHECKBOX)。
+
+2. **CHECKBOX 设计成单 boolean,用户心智是多选组**(step 8 hotfix `71afe71`)— 设计阶段把 CHECKBOX = SWITCH 都归 `boolean` targetType,假设两者都是单状态 toggle。用户立刻反馈:"建立多个复选框,选择两个,绑定的数据应该不能是布尔值吧" — 立即暴露设计盲点。Web 表单中 CHECKBOX 默认是多选组(N 个选项 → array<string>),不是单 boolean(那是 SWITCH 或同意条款)。**Fix**:`IRControlledInput.targetType` 扩 `'array'`;CHECKBOX 节点 with `interactiveProps.options` 切换到 group mode(div wrapper + N child input + array.includes/toggle writer);without options 沿用单 boolean(back-compat)。**这是 Phase 3 整个 §3.v4 最大设计 surprise** — 整个 §3.v4.2 决定表里 CHECKBOX/SWITCH 都归 boolean 是 8 主决定 #c 锁定项,被用户一句话推翻。如果坚持锁定决定,这个 hotfix 就推 §3.v5 了;选择 mid-flight fix 是因为问题足够基础(CHECKBOX 多选是 Web 表单第一类需求)。
+
+3. **SWITCH 视觉渲染成原生 checkbox**(step 9/9b hotfix `fbdce37` + `a771318`)— wiring 完美(`role="switch"` + checked/onChange),但浏览器渲染就是 checkbox 方框,不是用户期待的滑动按钮。`role` 是 ARIA 语义,不改视觉。设计阶段没考虑视觉特化,因为 §13 SWITCH CSS 是已分类的"低优先候选",但用户 ACK 时立刻不接受"功能对但样子像 checkbox"。**Fix**:`style.ts` 加 SWITCH 节点专用 Tailwind 类(`appearance-none` + track 颜色 + `before` thumb + checked 切换)。两轮:初版 fixed-percentage anchor (`left-[5%]/[55%]`) 在非 44×24 节点上不对称 → 改 left/right 双 anchor 真正对称。
+
+#### 经验沉淀 — J 第二次细化:**三问题**反向核(从两问题升级)
+
+§3.v3.8 把经验 J 从一问题(Q1 技术链)细化为两问题(+ Q2 UI 引导)。本期 3 个 surprise 全部不是 Q1/Q2 漏,而是更深层的"用户心智模型 vs 实现假设"错位。**第三个问题** Q3 必须问:
+
+> **Q3:用户期待的组件语义 / 视觉 / 数据形状,是否匹配实现?**(mental model alignment)
+
+三个 surprise 都是 Q3 漏:
+- SELECT/RADIO surprise 1:数据形状 — 用户期待"组件自带选项列表(像 native `<select>` 有 options)",我们实现要求用户外部填 options;UI 没暴露填的入口
+- CHECKBOX surprise 2:数据形状 — 用户期待"多个 checkbox = 数组",我们实现"一个 checkbox = boolean"
+- SWITCH surprise 3:视觉模型 — 用户期待"滑动按钮",我们实现"checkbox + ARIA role"
+
+**Process change for Phase 4+**:`§X.5 ACK` 表每条问 **三个问题**:
+1. Q1:技术链存在?(state shape / IR / emit / UI panel / i18n / persistence — 经验 J 原版)
+2. Q2:UI 引导用户走对路径?(placeholder / hint / label — §3.v3 升级)
+3. Q3:用户心智模型 / 期待视觉 / 期待数据形状 与实现一致?(**本期升级**)
+
+任一问题失败 → 推回 §X.2 决定表 或 标"design-only / 不验"。
+
+#### 其它经验印证
+
+- **A + G** Walker union widening — `IRControlledInput.targetType` 扩 3 次(boolean 在 step 2、array 在 step 8),`applyControlledInput` 白名单 7 类型 + RADIO/CHECKBOX 特殊 patching,emit `formatAttrs` 4 路分支(radio / array-checkbox / boolean / text-like),全部带 cross-walker 钉死。step 8 dedupe(`patchOptionLeafControlled` + `appendOptionInputs`)主动应对 jscpd clone 警告 — **经验 A/G 现在内含"dedupe is mandatory when adding parallel paths"**。
+- **C** No-swallow — type mismatch / kind unsupported 全部走 `binding-value-bad-state-type` / `binding-value-unsupported-kind` warning;CHECKBOX group + boolean docState mismatch 产生明确 warning("controlled CHECKBOX requires type=array"),用户 ACK 一眼可见为什么不工作。
+- **H** Tauri 实测找设计层洞 — 本期 3 个 hotfix step 全部源于 Tauri 实测,unit + cross-walker **完全无能**(我们能写的所有单测都过了,因为单测验的是"实现按设计 work",而非"设计对不对")。经验 H 现在含义扩大:Tauri 不止找"链路不存在"洞、不止找"UI 引导缺失"洞,还找"心智模型错位"洞 — 三类都只有人眼操作能发现。
+- **I** Module-resolve / 跨包 — 新文件 `InteractiveOptionsPanel.vue` + `lowcodeValueBindingArrayHint` i18n key 等都走 DesignPanel import + check-locales 钉死;jscpd 主动钉 clone 强制 helper 抽取。零 module-resolve 漏。
+- **J refined 2nd time** — 上面单独段。
+
+#### §3.v4 未做 / §3.v5 候选(沿用 §3.v3 候选池 + 本期新增 4 候选)
+
+| # | 候选 | 来源 | 体量估 |
+|---|---|---|---|
+| 1 | §13 SWITCH CSS proper(尺寸/颜色/动画 tween/暗色主题等)| §3.v4 step 9/9b 是 hotfix,完整设计待 §13 | ~2 day |
+| 2 | RADIO/CHECKBOX-group label 间距 + inline 排版(用户提及"radio/switch preview UI 需要优化好看一点")| §3.v4 surprise(scope 外) | ~1 day |
+| 3 | `$event` / `$value` token in expression grammar | §3.8 follow-up #4 沿用 | ~3 day(§4.2 FROZEN 绕路) |
+| 4 | INPUT controlled boolean / date types | §3.8 follow-up #5 沿用 | ~1 day(boolean 已在 §3.v4 step 2 扩 INPUT 不支持) |
+| 5 | SupabaseConfigPanel RLS policy 健康检查 | §3.8 follow-up #6 沿用 | ~1 day nice-to-have |
+| 6 | InteractiveProps 通用编辑器框架(BUTTON.text / SELECT.options / RADIO.groupName / CHECKBOX.options 等都是同型缺口的反复出现 — 抽通用)| 经验 J Q2 系统化 | ~3 day refactor |
+| 7 | DATEPICKER 格式校验 + range 限制 | §3.v4 留 | ~1 day |
 
 ---
 
