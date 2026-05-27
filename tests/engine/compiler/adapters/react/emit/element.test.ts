@@ -183,4 +183,145 @@ describe('emitElement (React adapter)', () => {
       `<input type="number" value={qty} onChange={(e) => setQty(Number(e.target.value))} />`
     )
   })
+
+  // Phase 3 §3.v4: 6 new controlled component types share the same
+  // `controlled` IR field but dispatch on attrs.type / targetType inside
+  // formatAttrs. boolean targetType (CHECKBOX/SWITCH) → checked + e.target.checked;
+  // type=radio → checked={read === <opt>} + shared onChange;
+  // SELECT/TEXTAREA/DATEPICKER all share the string text-like branch.
+  test('controlled CHECKBOX (boolean docState) emits checked + e.target.checked', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'checkbox' },
+        controlled: {
+          read: 'agreed',
+          write: { kind: 'docState', name: 'agreed', targetType: 'boolean' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="checkbox" checked={agreed} onChange={(e) => setDocState("agreed", e.target.checked)} />`
+    )
+  })
+
+  test('controlled SWITCH (boolean docState) — role attr preserved, checked + setDocState', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'checkbox', role: 'switch' },
+        controlled: {
+          read: 'dark',
+          write: { kind: 'docState', name: 'dark', targetType: 'boolean' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="checkbox" role="switch" checked={dark} onChange={(e) => setDocState("dark", e.target.checked)} />`
+    )
+  })
+
+  test('controlled CHECKBOX (page-state ref boolean) uses setter not setDocState', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'checkbox' },
+        controlled: {
+          read: 'remember',
+          write: { kind: 'state', name: 'remember', targetType: 'boolean' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />`
+    )
+  })
+
+  test('controlled TEXTAREA (docState string) emits value + e.target.value', () => {
+    const out = emitElement(
+      element({
+        tag: 'textarea',
+        attrs: { placeholder: 'Bio' },
+        controlled: {
+          read: 'bio',
+          write: { kind: 'docState', name: 'bio', targetType: 'string' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<textarea placeholder="Bio" value={bio} onChange={(e) => setDocState("bio", e.target.value)} />`
+    )
+  })
+
+  test('controlled SELECT (docState string) emits value + setDocState onChange', () => {
+    const out = emitElement(
+      element({
+        tag: 'select',
+        attrs: {},
+        controlled: {
+          read: 'country',
+          write: { kind: 'docState', name: 'country', targetType: 'string' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<select value={country} onChange={(e) => setDocState("country", e.target.value)} />`
+    )
+  })
+
+  test('controlled DATEPICKER (docState string) preserves type=date (no type=number injection)', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'date' },
+        controlled: {
+          read: 'dob',
+          write: { kind: 'docState', name: 'dob', targetType: 'string' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="date" value={dob} onChange={(e) => setDocState("dob", e.target.value)} />`
+    )
+  })
+
+  test('controlled RADIO option emits checked={read === <opt>} + shared setter', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'radio', name: 'g', value: 'M' },
+        controlled: {
+          read: 'gender',
+          write: { kind: 'docState', name: 'gender', targetType: 'string' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="radio" name="g" value="M" checked={gender === "M"} onChange={(e) => setDocState("gender", e.target.value)} />`
+    )
+  })
+
+  test('controlled RADIO option with page-state ref uses useState setter', () => {
+    const out = emitElement(
+      element({
+        tag: 'input',
+        attrs: { type: 'radio', name: 'g', value: 'F' },
+        controlled: {
+          read: 'gender',
+          write: { kind: 'state', name: 'gender', targetType: 'string' }
+        }
+      }),
+      0
+    )
+    expect(out).toBe(
+      `<input type="radio" name="g" value="F" checked={gender === "F"} onChange={(e) => setGender(e.target.value)} />`
+    )
+  })
 })

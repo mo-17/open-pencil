@@ -272,7 +272,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.docStateReads
   )
 
-  const controlled = applyControlledInput(node, ctx, attrs, events)
+  const controlled = applyControlledInput(node, ctx, attrs, children, events)
 
   const element: IRElement = {
     kind: 'element',
@@ -287,25 +287,73 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   return wrapConditional(node, element, ctx)
 }
 
+// Phase 3 §3.v4: form-control types eligible for `bindings.value` controlled
+// wiring. Per-type allowed targetType (string / number / boolean) is enforced
+// inside `resolveValueBinding`.
+const CONTROLLED_NODE_TYPES: ReadonlySet<SceneNode['type']> = new Set([
+  'INPUT',
+  'TEXTAREA',
+  'CHECKBOX',
+  'SWITCH',
+  'SELECT',
+  'RADIO',
+  'DATEPICKER'
+])
+
 function applyControlledInput(
   node: SceneNode,
   ctx: WalkCtx,
   attrs: Record<string, IRAttrValue>,
+  children: IRNode[],
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined
 ): IRControlledInput | undefined {
-  if (node.type !== 'INPUT') return undefined
+  if (!CONTROLLED_NODE_TYPES.has(node.type)) return undefined
   const controlled = resolveValueBinding(node, ctx.states, ctx.warnings, ctx.docStates, ctx.docStateReads, ctx.docStateWrites)
   if (!controlled) return undefined
   if (events?.onChange) {
+    // Same code as §3.x (locked) — message generalized to cover the new
+    // node types added in §3.v4.
     ctx.warnings.push({
       code: 'input-controlled-onchange-conflict',
-      message: `INPUT ${node.id} has both bindings.value and a user onChange; dropping the user onChange`,
+      message: `controlled ${node.type} ${node.id} has user-defined onChange; dropped (binding.value owns onChange)`,
       nodeId: node.id
     })
     delete events.onChange
   }
+  // Drop uncontrolled fallback attrs per node type — text-like writes through
+  // `value=`, boolean through `checked=`; either way the uncontrolled
+  // counterpart on the same control would race with React's value reconciler.
   delete attrs.defaultValue
+  delete attrs.defaultChecked
+  // RADIO: the parent <div> wrapper isn't the interactive element — each
+  // child <input type="radio"> is. Copy the controlled descriptor onto every
+  // radio leaf so the emit pass picks up `checked={read === <opt>}` +
+  // shared onChange at the leaf, drop the per-radio uncontrolled
+  // `defaultChecked`, and return undefined so the wrapper itself doesn't
+  // emit `value=` / `onChange=` (div has no such semantics). docState
+  // reads/writes were already registered as a side effect inside
+  // `resolveValueBinding` so the page scaffold imports are unaffected.
+  if (node.type === 'RADIO') {
+    patchRadioControlled(children, controlled)
+    return undefined
+  }
   return controlled
+}
+
+function patchRadioControlled(children: IRNode[], controlled: IRControlledInput): void {
+  for (const child of children) {
+    if (child.kind !== 'element' || child.tag !== 'label') continue
+    for (const inner of child.children) {
+      if (
+        inner.kind === 'element' &&
+        inner.tag === 'input' &&
+        inner.attrs.type === 'radio'
+      ) {
+        delete inner.attrs.defaultChecked
+        inner.controlled = controlled
+      }
+    }
+  }
 }
 
 /** A LIST datasource ref — either a page-scoped array state (Phase 2 §9) or

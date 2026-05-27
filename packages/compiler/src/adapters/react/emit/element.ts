@@ -99,15 +99,28 @@ function formatAttrs(
     parts.push(formatAttr(key, value))
   }
   if (controlled) {
-    // Number-typed controlled inputs steer HTML to the native numeric
-    // keypad / arrow-step UI; the synthesized writer additionally wraps the
-    // string value from `e.target.value` in `Number(…)` so the docState /
-    // page-state local stays correctly typed.
-    if (controlled.write.targetType === 'number' && !('type' in attrs)) {
-      parts.push('type="number"')
+    // §3.v4 dispatch:
+    //  - type="radio"  → per-option `checked={read === <opt>}` (the IR collect
+    //    pass copies the parent's controlled descriptor onto each radio child
+    //    so formatAttrs sees it here at the leaf)
+    //  - targetType=boolean (CHECKBOX/SWITCH) → `checked={read}` + e.target.checked
+    //  - text-like (string / number; INPUT/TEXTAREA/SELECT/DATEPICKER) →
+    //    `value={read}` + e.target.value (number wraps in Number(...) +
+    //    sets type="number" when not already set)
+    if (attrs.type === 'radio') {
+      const optValue = typeof attrs.value === 'string' ? attrs.value : ''
+      parts.push(`checked={${controlled.read} === ${JSON.stringify(optValue)}}`)
+      parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
+    } else if (controlled.write.targetType === 'boolean') {
+      parts.push(`checked={${controlled.read}}`)
+      parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
+    } else {
+      if (controlled.write.targetType === 'number' && !('type' in attrs)) {
+        parts.push('type="number"')
+      }
+      parts.push(`value={${controlled.read}}`)
+      parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
     }
-    parts.push(`value={${controlled.read}}`)
-    parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
   }
   if (events) {
     for (const [name, handlers] of Object.entries(events) as [
@@ -127,12 +140,19 @@ function formatAttrs(
  *  the lowcode runtime `setDocState('name', value)`; page-state writes go
  *  through the `useState` setter `setName(value)`. */
 function controlledOnChangeBody(c: IRControlledInput): string {
-  const valueExpr =
-    c.write.targetType === 'number' ? 'Number(e.target.value)' : 'e.target.value'
+  // §3.v4: boolean writes the `checked` value of the event target; number
+  // wraps `value` in Number(...); string passes value through unchanged.
+  const valueExpr = controlledEventValue(c.write.targetType)
   if (c.write.kind === 'docState') {
     return `setDocState(${JSON.stringify(c.write.name)}, ${valueExpr})`
   }
   return `${setterName(c.write.name)}(${valueExpr})`
+}
+
+function controlledEventValue(targetType: IRControlledInput['write']['targetType']): string {
+  if (targetType === 'boolean') return 'e.target.checked'
+  if (targetType === 'number') return 'Number(e.target.value)'
+  return 'e.target.value'
 }
 
 function formatAttr(key: string, value: IRAttrValue): string {
