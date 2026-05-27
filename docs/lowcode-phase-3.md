@@ -1004,6 +1004,233 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 ---
 
+## 3.v4 §3.v4 详细设计:filters hint + 6 控件 controlled bindings
+
+**Scope = §3.v4 mini-scope**(§3.v3 候选池 #1 + #2,5-6 天)。§3.v4 **不做**:`$event` / `$value` token 扩 grammar(§3.8 follow-up #4,§4.2 FROZEN 绕路);INPUT controlled `boolean` / `date` targetType(boolean 本期顺带 CHECKBOX/SWITCH 已扩;date 留 §3.v5 需要 'YYYY-MM-DD' 格式验证);SupabaseConfigPanel RLS 健康检查。
+
+### 3.v4.1 现状与问题
+
+§3.v3 closed 2026-05-27 后:
+
+1. **filters valueExpr 引号坑**(§3.v3 ACK #3 sibling) — `EventsPanel.vue:809-820` filter valueExpr input **无 placeholder**;同 §3.v3 step 6 修法,加 hint。`filters.valueExpr` 走 §7.3 / §4.2 expression sublanguage,字符串必须引号(`'static'`),identifier 引 state(`formId`)。filter 语境数字比较(`id = 1`)多,但 like / in 操作字符串字面也常见
+2. **§3.x 只 INPUT 一种 controlled**(§3.v2 follow-up #3 + #5 沿用) — Phase 2/3 实现的 6 类型 interactive components 全 emit `defaultValue` / `defaultChecked` uncontrolled:
+   - `CHECKBOX` `<input type="checkbox" defaultChecked={ip.checked}>` (`applyToggleProps`)
+   - `SWITCH` 同 CHECKBOX + `role="switch"` (`applyToggleProps('switch')`)
+   - `TEXTAREA` `<textarea defaultValue={ip.value} placeholder={ip.placeholder}>` (`applyTextInputProps`)
+   - `SELECT` `<select><option value={opt}>{opt}</option>...` (`applySelectOptions`)
+   - `RADIO` `<label><input type="radio" name={groupName} value={opt} [defaultChecked]/>{opt}</label>...` (`applyRadioOptions`)
+   - `DATEPICKER` `<input type="date" defaultValue={ip.value}>` (`applyDatePickerProps`)
+
+   `applyControlledInput:296` early-return `if (node.type !== 'INPUT') return undefined` 卡住其它 6 类型。`IRControlledInput.write.targetType: 'string' \| 'number'` 不含 `'boolean'` 故 CHECKBOX/SWITCH 也无法走 docState 写。**form 端 → state 端**链路只 INPUT;Bubble-like 表单基本只能用 INPUT 一种字段
+
+### 3.v4.2 关键决定
+
+**8 主决定**(2026-05-27 ACK 锁定):
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | `IRControlledInput.write.targetType` 扩 `'string' \| 'number' \| 'boolean'`(单一 shape,**不**新增 IR 变体) | 单源 dispatch;emit branch 按 targetType + node.type 双键展开;最小 IR 表面扩张 |
+| b | `applyControlledInput:296` early-return 白名单从 `INPUT` 扩到 **7 类型**(`INPUT/TEXTAREA/CHECKBOX/SWITCH/SELECT/RADIO/DATEPICKER`);每类型在 `resolveValueBinding` 内部走 per-type 合法 targetType 校验 | switch by node.type 集中校验;UI / IR / emit 三处共享 |
+| c | `resolveValueBinding` per-type targetType 规则:**INPUT** = string \| number;**TEXTAREA/SELECT/RADIO/DATEPICKER** = string;**CHECKBOX/SWITCH** = boolean | 与 React 控件 value/checked 语义一致;number 单 INPUT 支持(textarea/date 数值不实用) |
+| d | emit 分支:**text-like(targetType ∈ string/number)** → `value={read}` + `onChange={(e) => write(<coerce>(e.target.value))}`(沿用 §3.x);**boolean** → `checked={read}` + `onChange={(e) => write(e.target.checked)}` | 单 boolean 写器无 coerce,Number(...) 只在 number 路径;清晰可枚举 |
+| e | RADIO controlled:每个 `<input type="radio">` emit `checked={read === <optValue>}` + 共享 `onChange={(e) => write(e.target.value)}`(每 radio 都 attach);丢弃 `defaultChecked` | 标准 React 受控 radio group 写法;与 SELECT 都是单值选择故复用 onChange writer |
+| f | SELECT controlled:`<select value={read} onChange={...}>`;option 不带 `defaultSelected`;uncontrolled 时保持现状 | 标准 React 受控 select |
+| g | 既有 onChange 与 controlled value 冲突 → drop 用户 onChange + warn **沿用** `input-controlled-onchange-conflict` code,**不**改 code 字面(已锁);message 模板改 `controlled {type} {nodeId} has user onChange; dropped` | 不动锁定 warning code(经验 C 单源);用 message 描述新覆盖类型 |
+| h | UI:`InputValueBindingPanel.vue` **重命名** `ValueBindingPanel.vue`;DesignPanel.vue:114 `v-if` 扩 7 类型;panel 内部按 `selectedNode.type` 路由候选 state 过滤(string-only / string+number / boolean-only)+ 切换 hint 文案;test-id 改 `lowcode-value-binding` | 单 Vue 组件 + 内部路由(经验 I 单源);DesignPanel 一行 v-if 改 |
+
+**8 次级默认**:
+
+1. filters valueExpr placeholder 新 i18n key `lowcodeActionSupabaseFilterValuePlaceholder` = `e.g. id, count, 'static'`(中文 `如 id, count, 'static'(字符串要加引号)`)— **不**复用 step-6 entry key,filter 语境数字/标识符更多
+2. `lowcode-input-value-binding*` test-id 全部改 `lowcode-value-binding*`(同步 panel 改名);**不**保留 alias(test-id 内部 contract,直接迁移 + 更新 e2e)
+3. boolean docState/page-state 默认值 dropdown 行 `{name} (boolean)` 与既有 `(string)` / `(number)` 一致风格
+4. 6 类型新 onChange 冲突 warn message 用 `controlled {type} {nodeId} has user-defined onChange; dropped` 统一模板;code 不变
+5. cross-walker 新用例每类型 1 个(6 用例)+ filter hint 0 walker(纯 UI)
+6. i18n 新 key:`lowcodeActionSupabaseFilterValuePlaceholder` + `lowcodeValueBindingBooleanHint` = **2 新 key × 7 locale** = 14 条目。原 INPUT i18n key 4 个(`lowcodeInputValue` / `lowcodeInputValueUncontrolled` / `lowcodeInputValueHint` / `lowcodeInputValueNoStringStates`)**重命名** `lowcodeValueBinding*`;**不**保留 alias(i18n key 内部 contract)
+7. emit walker 改动 = `element.ts` `formatAttrs` 加 boolean 分支 + RADIO/SELECT 分支;`applyControlledInput` switch 扩
+8. SceneNode shape 0 改动;Kiwi 0 改动;`bindings.value` 通道名锁(§3.x 沿用);`EDITOR_UNDO_TOOLS` / `applyPatchWithUndo` 0 改动
+
+**经验 J 双问题反向核**(每 ACK × Q1 Q2,0 漏):
+
+| ACK 项 | Q1 技术链 | Q2 UI 引导 |
+|---|---|---|
+| filter valueExpr placeholder hint | ✅ existing input + placeholder attr | ✅ 本期加 hint 即修 |
+| INPUT 仍 work(零回归) | ✅ unchanged path | ✅ unchanged |
+| CHECKBOX bool docState → 勾选状态写入 | ✅ widen targetType + apply 白名单 + emit boolean branch | ✅ ValueBindingPanel 改名 + boolean filter |
+| SWITCH bool docState | ✅ 同 CHECKBOX(同 applyToggleProps) | ✅ 同 CHECKBOX |
+| TEXTAREA string docState | ✅ 白名单加 + 同 INPUT string path | ✅ 改名 panel + string filter |
+| SELECT string docState options 切换 | ✅ 白名单加 + `<select value=>` emit | ✅ 改名 panel + string filter |
+| RADIO string docState 选项切换 | ✅ 白名单加 + 每 radio checked + 共享 onChange | ✅ 改名 panel + string filter |
+| DATEPICKER string docState 日期 | ✅ 白名单加 + 同 INPUT string path | ✅ 改名 panel + string filter |
+
+### 3.v4.3 公开 API / Schema 改动
+
+- ✏️ **改型** `IRControlledInput.write.targetType`:`'string' | 'number'` → `'string' | 'number' | 'boolean'`(`packages/compiler/src/ir/types.ts:40-43`)
+- ✏️ **改型** `resolveValueBinding` 内部 per-type targetType 规则(签名不变;`packages/compiler/src/ir/collect/bindings.ts:157-236`)
+- ✏️ **改型** `applyControlledInput` 早返白名单(签名不变;`packages/compiler/src/ir/collect/tree.ts:290-309`)
+- ✏️ **emit** `formatAttrs` + `controlledOnChangeBody` 加 boolean 分支 + RADIO/SELECT 分支(`packages/compiler/src/adapters/react/emit/element.ts:88-136`)
+- ➕ **i18n 新 key**:`lowcodeActionSupabaseFilterValuePlaceholder` + `lowcodeValueBindingBooleanHint` × 7 locale
+- 🔁 **i18n 重命名**:`lowcodeInputValue*` 4 个 → `lowcodeValueBinding*`(不保留 alias)
+- 🔁 **test-id 重命名**:`lowcode-input-value-binding*` → `lowcode-value-binding*`(不保留 alias)
+- 🔁 **文件重命名**:`InputValueBindingPanel.vue` → `ValueBindingPanel.vue`;DesignPanel.vue:114 v-if 扩 7 类型
+- 0 SceneNode / ActionDef / Kiwi 改动
+- 0 `bindings.value` 通道名改动(§3.x 锁继承)
+- 0 `EDITOR_UNDO_TOOLS` / `applyPatchWithUndo` / `validateSupabasePayloadEntries` / `normalizeSupabaseMutationPayloadJson` 改动
+
+### 3.v4.4 内部实现拆解
+
+#### `IRControlledInput.write.targetType` 扩 boolean
+
+`packages/compiler/src/ir/types.ts:40-43`:
+
+```ts
+export interface IRControlledInput {
+  read: string
+  write: { kind: 'docState' | 'state'; name: string; targetType: 'string' | 'number' | 'boolean' }
+}
+```
+
+#### `resolveValueBinding` per-type targetType
+
+`packages/compiler/src/ir/collect/bindings.ts` — 当前 line 194 / 224 都硬编码 `'string' \| 'number'`。改为按 `node.type` 决定合法 targetType set:
+
+```ts
+function allowedTargetTypes(nodeType: SceneNode['type']): Set<'string' | 'number' | 'boolean'> {
+  if (nodeType === 'INPUT') return new Set(['string', 'number'])
+  if (nodeType === 'CHECKBOX' || nodeType === 'SWITCH') return new Set(['boolean'])
+  // TEXTAREA / SELECT / RADIO / DATEPICKER → string only
+  return new Set(['string'])
+}
+```
+
+type 不匹配 → warn `binding-value-bad-state-type` + return null(沿用既有 code)。
+
+#### `applyControlledInput` 白名单
+
+`packages/compiler/src/ir/collect/tree.ts:296`:
+
+```ts
+const CONTROLLED_TYPES = new Set<SceneNode['type']>([
+  'INPUT', 'TEXTAREA', 'CHECKBOX', 'SWITCH', 'SELECT', 'RADIO', 'DATEPICKER'
+])
+if (!CONTROLLED_TYPES.has(node.type)) return undefined
+```
+
+加完后 drop uncontrolled fallback attrs(per-type):
+
+- TEXTAREA/INPUT: drop `defaultValue`(已有 `delete attrs.defaultValue`)
+- CHECKBOX/SWITCH: drop `defaultChecked`
+- DATEPICKER: drop `defaultValue`
+- SELECT: 0(option-level)
+- RADIO: 0(option-level,emit 端 skip `defaultChecked`)
+
+#### emit 分支
+
+`packages/compiler/src/adapters/react/emit/element.ts:101-110`:
+
+```ts
+if (controlled) {
+  if (controlled.write.targetType === 'boolean') {
+    parts.push(`checked={${controlled.read}}`)
+    parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
+  } else {
+    // text-like (string / number) — sync §3.x path
+    if (controlled.write.targetType === 'number' && !('type' in attrs)) {
+      parts.push('type="number"')
+    }
+    parts.push(`value={${controlled.read}}`)
+    parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
+  }
+}
+```
+
+`controlledOnChangeBody` 加 boolean 分支:
+
+```ts
+function controlledOnChangeBody(c: IRControlledInput): string {
+  const valueExpr =
+    c.write.targetType === 'boolean' ? 'e.target.checked'
+    : c.write.targetType === 'number' ? 'Number(e.target.value)'
+    : 'e.target.value'
+  // (same docState / state dispatch)
+}
+```
+
+#### SELECT / RADIO controlled
+
+SELECT(`applySelectOptions`)— 当前 emit option list 不变;controlled value 通过 `<select value={read}>` 在 parent attr 拼上(formatAttrs 已处理)。option-level 无需改。
+
+RADIO(`applyRadioOptions`)— 每 radio 当前 emit `defaultChecked` if `opt === selected`;controlled 时 emit `checked={read === <optValue>}` + `onChange`。需要把 `controlled` 传进 `applyRadioOptions`。建议:radio 不走 parent-level formatAttrs(因为 radio group 没单一 root element 容器),改为 per-radio inputAttrs 注入 `checked` + `onChange`(JSX 表达式属性)。
+
+#### `ValueBindingPanel.vue` 改名 + 7 类型路由
+
+- `src/components/properties/Lowcode/ValueBindingPanel.vue`(原 `InputValueBindingPanel.vue`)
+- 顶部 computed `targetTypeFilter`:by `selectedNode.value?.type` 返 `('string' | 'number' | 'boolean')[]`
+- `candidatePageStates` / `candidateDocStates` filter 按 `targetTypeFilter`
+- hint 文案 by node type:CHECKBOX/SWITCH → `lowcodeValueBindingBooleanHint`;其余沿用 `lowcodeValueBindingHint`(原 `lowcodeInputValueHint`)
+- test-id `lowcode-value-binding` + 子项
+
+`src/components/DesignPanel.vue:114`:
+
+```vue
+<ValueBindingPanel
+  v-if="['INPUT','TEXTAREA','CHECKBOX','SWITCH','SELECT','RADIO','DATEPICKER'].includes(node.type)"
+/>
+```
+
+#### filters valueExpr placeholder
+
+`src/components/properties/Lowcode/EventsPanel.vue:809-820` filter valueExpr input 加 `:placeholder="panels.lowcodeActionSupabaseFilterValuePlaceholder"`。零逻辑改动,纯 placeholder + 1 i18n key × 7 locale。
+
+### 3.v4.5 成功标准 + Tauri ACK
+
+1. `bun test ./tests/engine/compiler/` 全绿(含 6 新 emit + IR collect 用例)
+2. `bun test ./tests/engine/tools/lowcode/` 全绿(import 改后零回归)
+3. `bun run check` 全绿(`check:i18n` 钉 2 新 key + 4 重命名 × 7 locale)
+4. **Tauri 实测(用户主导)~8 项 user-ACK**:
+
+| # | ACK | 反向核 Q1/Q2 |
+|---|---|---|
+| 1 | filter valueExpr input 出 placeholder hint;不影响既有 filter 行为 | Q1 ✅/Q2 ✅ |
+| 2 | docState `agreed: boolean` + CHECKBOX bindings.value 绑 `agreed` → Preview 勾选/取消勾选 → DevTools `useDocState('agreed')` 实时变化 | Q1 ✅/Q2 ✅ |
+| 3 | SWITCH 同 CHECKBOX(`agreed` boolean docState) | Q1 ✅/Q2 ✅ |
+| 4 | docState `bio: string` + TEXTAREA bindings.value → Preview 多行输入 → docState 实时变化 | Q1 ✅/Q2 ✅ |
+| 5 | docState `country: string` + SELECT(options `[US,CN,JP]`)bindings.value 绑 `country` → 切换 option → docState 实时变化 | Q1 ✅/Q2 ✅ |
+| 6 | docState `gender: string` + RADIO(options `[M,F]` + groupName `g`)bindings.value 绑 `gender` → 切换 radio → docState 实时变化 | Q1 ✅/Q2 ✅ |
+| 7 | docState `dob: string` + DATEPICKER bindings.value → Preview 选日期 → docState 写入 `'YYYY-MM-DD'` | Q1 ✅/Q2 ✅ |
+| 8 | 零回归:§3.v3 7 ACK 仍 work;§3.x INPUT controlled 仍 work;type 不匹配(给 CHECKBOX 绑 string docState)→ fallback uncontrolled + warn `binding-value-bad-state-type` | Q1 ✅/Q2 ✅ |
+
+5. 不破坏 Phase 0 §8 / Phase 1 / Phase 2 §9.2 §2.2 §3.2 §4.2 §6.2 §7.2 §8.2 / Phase 3 §2.2 §3.2 §3.x §3.v2.2 §3.v3.2 任一锁定决定
+
+### 3.v4.6 工作分解(建议 1 名工程师,5-6 天)
+
+| Step | 任务 | 验收 / commit |
+|---|---|---|
+| 0 | §3.v4 设计 doc 写入 + commit | `docs(lowcode): §3.v4 mini-scope detailed design (filters hint + 6 controlled bindings)` |
+| 1 | filters valueExpr placeholder hint(#1)+ 1 i18n key × 7 locale | `bun run check` 全绿;`fix(lowcode): step 1 — filters valueExpr placeholder hint (§3.v4)` |
+| 2 | `IRControlledInput.write.targetType` 扩 boolean + `resolveValueBinding` per-type 规则 + IR collect 单测 6 case(每类型 1 + bool typecheck)| `bun test ./tests/engine/compiler/` + `bun run check` 全绿;`feat(lowcode): step 2 — IRControlledInput boolean + per-type validation (§3.v4)` |
+| 3 | emit:`formatAttrs` + `controlledOnChangeBody` 加 boolean 分支 + SELECT/RADIO 分支;6 emit 单测;cross-walker 6 用例 | `bun test ./tests/engine/compiler/` + `tools/lowcode/` 全绿;`feat(lowcode): step 3 — emit controlled CHECKBOX/SWITCH/TEXTAREA/SELECT/RADIO/DATEPICKER (§3.v4)` |
+| 4 | UI:`InputValueBindingPanel.vue` → `ValueBindingPanel.vue` rename + 7 类型 v-if + per-type candidate filter + 1 i18n key 加(boolean hint)+ 4 key 改名 × 7 locale + test-id 改名 | `bun run check` + `check:i18n` 全绿;`refactor(lowcode): step 4 — ValueBindingPanel 7 component types (§3.v4)` |
+| 5 | Tauri 实测 8 项 + §3.v4.8 post-mortem + 关闭 + memory | 8 ACK 全 ✅;`docs(lowcode): §3.v4 Tauri verification + close` |
+
+### 3.v4.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| `IRControlledInput.targetType` 扩 boolean 破坏既有 INPUT only string/number 假设 | 中 | TS strict;step 2 单测既有 INPUT 路径零回归;cross-walker 钉 |
+| 6 类型 cross-walker 缺一个 → silent 漏 emit boolean / SELECT / RADIO branch | 高 | step 3 cross-walker 每类型 1 用例必带 import 行 +/- 双向断言(经验 A/G/I) |
+| RADIO 每 option emit onChange 字符串重复(每 radio 都 attach 同一函数体)→ 生成代码膨胀 | 低 | 可接受;React 抽 helper 是 §4.v3 优化项,本期不做 |
+| SELECT controlled value 与现有 `optionStrings` 渲染逻辑交互 → option `defaultSelected` 与 value 矛盾 | 中 | step 3 emit drop `defaultSelected`;单测覆盖 |
+| panel 重命名 + test-id 重命名 → 既有 e2e / Steiger import 链断 | 中 | step 4 同 commit 改 DesignPanel import + grep 所有 test-id 引用替换;Steiger 钉新 import |
+| i18n key 重命名 → 7 locale × 4 key 全替换漏译 | 中 | check-locales 钉死;单 commit 同步 7 locale |
+| 经验 J Q2 — 7 类型 UI hint 文案不够 actionable | 中 | step 4 boolean / string 各 hint;Tauri ACK 8 验 |
+| DATEPICKER `'YYYY-MM-DD'` 格式校验缺失 → 用户输非法日期写入 docState | 低 | 本期不做(留 §3.v5 INPUT controlled boolean/date type 候选);native `<input type=date>` 浏览器自带格式校验已基本兜底 |
+
+### 3.v4.8 Post-mortem
+
+**待填**:§3.v4 closed `<date>`(HEAD `<post-mortem-commit>` 后)。Commit 链 + Tauri ACK 结果 + surprise 列表 + 对经验 A-J 的增补 / 印证。
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
