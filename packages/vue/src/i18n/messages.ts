@@ -366,6 +366,8 @@ export const panelMessages = i18n('panels', {
   lowcodeActionSupabasePayloadSourceConflict:
     'Both payloadJson and entries are set — entries win, payloadJson dropped.',
   lowcodeActionSupabaseFilterColumn: 'Column',
+  // Lowcode (Phase 3 §3.v4 — filters valueExpr placeholder hint)
+  lowcodeActionSupabaseFilterValuePlaceholder: "e.g. id, count, 'static'",
   lowcodeActionSupabaseFilterAdd: 'Add filter',
   lowcodeActionSupabaseFilterRemove: 'Remove filter',
   lowcodeActionSupabaseErrorTarget: 'Write error to',

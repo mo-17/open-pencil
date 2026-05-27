@@ -812,6 +812,7 @@ const actionErrors = computed(() => {
                 :aria-invalid="actionErrors.get(action.id)?.filters?.has(i) ? 'true' : undefined"
                 data-test-id="lowcode-action-supabase-filter-value"
                 spellcheck="false"
+                :placeholder="panels.lowcodeActionSupabaseFilterValuePlaceholder"
                 :class="[
                   'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
                   actionErrors.get(action.id)?.filters?.has(i) ? 'border-red-500' : 'border-border'

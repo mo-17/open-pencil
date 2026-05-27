@@ -310,6 +310,7 @@
     "lowcodeActionSupabasePayloadEntryRemove": "Supprimer l'entrée",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson et entries sont tous deux définis — entries l'emporte, payloadJson est ignoré.",
     "lowcodeActionSupabaseFilterColumn": "Column",
+    "lowcodeActionSupabaseFilterValuePlaceholder": "p. ex. id, count, 'static'",
     "lowcodeActionSupabaseFilterAdd": "Add filter",
     "lowcodeActionSupabaseFilterRemove": "Remove filter",
     "lowcodeActionSupabaseErrorTarget": "Write error to",

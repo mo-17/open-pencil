@@ -310,6 +310,7 @@
     "lowcodeActionSupabasePayloadEntryRemove": "Удалить запись",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson и entries оба установлены — entries побеждает, payloadJson отбрасывается.",
     "lowcodeActionSupabaseFilterColumn": "Column",
+    "lowcodeActionSupabaseFilterValuePlaceholder": "напр. id, count, 'static'",
     "lowcodeActionSupabaseFilterAdd": "Add filter",
     "lowcodeActionSupabaseFilterRemove": "Remove filter",
     "lowcodeActionSupabaseErrorTarget": "Write error to",

@@ -310,6 +310,7 @@
     "lowcodeActionSupabasePayloadEntryRemove": "Rimuovi voce",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson e entries sono entrambi impostati — entries vince, payloadJson viene scartato.",
     "lowcodeActionSupabaseFilterColumn": "Column",
+    "lowcodeActionSupabaseFilterValuePlaceholder": "es. id, count, 'static'",
     "lowcodeActionSupabaseFilterAdd": "Add filter",
     "lowcodeActionSupabaseFilterRemove": "Remove filter",
     "lowcodeActionSupabaseErrorTarget": "Write error to",

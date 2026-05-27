@@ -310,6 +310,7 @@
     "lowcodeActionSupabasePayloadEntryRemove": "删除字段",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson 和 entries 同时设置 — entries 胜出,payloadJson 被丢弃。",
     "lowcodeActionSupabaseFilterColumn": "列",
+    "lowcodeActionSupabaseFilterValuePlaceholder": "如 id, count, 'static'(字符串要加引号)",
     "lowcodeActionSupabaseFilterAdd": "新增过滤",
     "lowcodeActionSupabaseFilterRemove": "删除过滤",
     "lowcodeActionSupabaseErrorTarget": "错误写入",
