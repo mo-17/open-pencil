@@ -733,7 +733,59 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 ### 3.v2.8 Post-mortem
 
-**待填**:§3.v2 closed `<date>`(HEAD `<post-mortem-commit>` 后)。Commit 链 + Tauri ACK 结果 + surprise 列表 + 对经验 A-J 的增补 / 印证。
+**§3.v2 closed 2026-05-27**(HEAD this commit;实现链 `d588dc1` → `933461c` → `bb8be39` → `d677c4f`;Tauri 实测后本节回填 + close)。
+
+#### Commit 链
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `dd97656` | §3.v2 mini-scope 设计(8 主决定 + 8 次级默认 + 5 step + 8 风险 + post-mortem stub) |
+| 1 | `d588dc1` | `ToolDef.execute` 加第 3 参 `ctx?: { editor?: Editor }`(opt-in,既有 tool 0 改);3 lowcode mutate tool 走 `applyPatchWithUndo`;`src/app/automation/bridge/tool-handlers.ts` 注入 editor + `beginBatch/commitBatch` 包 lowcode tool;5 新测试 |
+| 2 | `933461c` | `SupabaseMutationAction.payloadEntries` + `IRSupabasePayloadEntry`;IR `resolvePayloadEntries`(key identifier-safe + dedupe + valueExpr 解析 + refs 校验);emit `emitMutationPayload`;tool input `validateSupabasePayloadEntries`;both-present → `payload-source-conflict` warn;7 IR + 4 emit + 4 tool-input case |
+| 3 | `bb8be39` | `normalizeSupabaseMutationPayloadJson` 在 `@open-pencil/core/lowcode-validation`;trim 后 ∈ `['{}', '[]', '']` → `''`;tool input + IR collect 两端调;6 + 2 新 case |
+| 4 | `d677c4f` | cross-walker:① mega patch under `editor.runBatch` → 1 undo entry + Cmd+Z 恢复 4 字段;② payloadEntries 端到端(tool → IR docStateReads + emit `.insert({"name": formName, ...})` + import 行 +/- 双向) |
+| 5 | _this commit_ | Tauri ACK 6 项 + §3.v2.8 回填 + memory 更新 |
+
+**测试**:`bun test ./tests/engine/{compiler,tools/lowcode,lowcode-validation,kiwi/lowcode}` 512 pass / 0 fail / 1367 expect。`bun run check` 0 error / 4 pre-existing max-lines warn(已记 prompt.md §max-lines warnings)。
+
+#### Tauri ACK 结果(用户主导 2026-05-27)
+
+| # | Check | Result | 备注 |
+|---|---|---|---|
+| 1 | AI mega update_lowcode_node + Cmd+Z 一次回 3 字段 | ✅ | 用户反馈 UI gap:BUTTON Properties 面板**没**手动编辑 `interactiveProps.text` 的入口 → §3.v3 候选(只能 AI 改) |
+| 2 | docState + INPUT bindings.value + BUTTON supabaseMutation `payloadEntries` → Supabase Dashboard 写入 | ✅ | 用户反馈 UI gap:EventsPanel **没**展示 / 编辑 `payloadEntries` 的 UI(目前只能 AI 改 / read 出来的 supabaseMutation 看不到) → §3.v3 候选 |
+| 3 | AI 残留 `payloadJson: '{}'` 在 delete action → 不再 silent fail | ✅ | normalize 在 tool 入口生效,Console 无 `unexpected-payload` warn |
+| 4 | 零回归 spot-check | ✅ | 3 read tool / §3.x INPUT controlled / §2 Test connection / 既有 supabaseMutation payloadJson(无 entries)全 work |
+| 5 | CLI `update_lowcode_node` 不挂 → fallback path | ✅ | 通过 `bun open-pencil eval tests/fixtures/pencil_button.pen -c "const {ALL_TOOLS}=...; return tool.execute(figma, args)"` 实测,返 `{ ok: true, data: { id: 'T3Um0', updated: ['interactiveProps'] } }`,无 crash。注:CLI 注入只暴露 `figma`,不暴露 `tools` 全局;prompt.md 里 `tools.update_lowcode_node(...)` 语法是 MCP / AI 侧的简写,CLI 要 `ALL_TOOLS.find(t => t.name === '...').execute(figma, args)` |
+| 6 | `payloadEntries` + `payloadJson` 同时设 → entries 胜 + warn | ✅ | DevTools `action-supabase-mutation-payload-source-conflict` warn 露出;Network body 是 entries 值 |
+
+全 6 项 ✅;0 个 🟨 / ❌。
+
+#### Surprise 列表
+
+1. **CLI eval globals 不含 `tools`**(ACK #5 期间发现) — `packages/cli/src/commands/eval.ts:83` 只注入 `figma` 一个全局;`tools.update_lowcode_node(...)` 这种 prompt.md 简写在 CLI 不 work。正确 incantation 是 `const { ALL_TOOLS } = await import('@open-pencil/core/tools'); const t = ALL_TOOLS.find(x => x.name === 'update_lowcode_node'); return t.execute(figma, args)`。**这不是 §3.v2 bug**(fallback 行为正确),是 prompt.md / docs 示例不准确。**fix**:更新 prompt.md ACK #5 命令,把 `tools.update_lowcode_node(...)` 改成 ALL_TOOLS 写法,或给 CLI eval 加 `tools` 全局(后者破坏 isolation,推荐前者)。
+2. **BUTTON `interactiveProps.text` 无手动编辑 UI**(ACK #1 用户反馈) — Properties / EventsPanel / DesignPanel 无字段;AI 能 update_lowcode_node 改,但用户在 canvas 上手动点不开。**§3.v3 候选**(UI 补全,体量小,~1 day)。
+3. **`payloadEntries` 无 EventsPanel UI**(ACK #2 用户反馈) — supabaseMutation action UI 只显示 `payloadJson`(§2),`payloadEntries` 字段只能 AI / CLI 注入,手动用户不可见。**§3.v3 候选**(UI 补全 + table-style key/valueExpr editor,体量中,~2 day)。
+
+#### 经验沉淀(对 §1.4 / §3.8 增补 / 印证)
+
+- **A + G** Walker union widening — §3.v2 step 2 加 `payloadEntries`,IR `bindings.ts` resolvePayloadEntries + emit `emitMutationPayload` 双侧 sweep,7 IR + 4 emit + cross-walker 钉死,**0 漏 case**(经验 A 完整 work)
+- **C** No-swallow — both-present `payload-source-conflict` warn + `'{}'` normalize 两端 surface,**ACK #3 / #6 正面印证**:Console warn 即诊断信号;若静默 drop / coerce,ACK 全靠肉眼对 Dashboard 数据,debug 不可能
+- **H** Tauri 实测找设计层洞 — 本期 §3.v2 设计阶段已沿用 §3.8 新经验 J(反向核),没踩 §3.x 那种基础事实洞,但 Tauri 实测**找到 2 个 UI 缺口**(ACK #1/#2 用户反馈)。这两个 unit + cross-walker **不可能发现**,仍只 Tauri 可见。**继续印证**:UX-end-to-end 必须人眼 + 鼠标手验
+- **I** Module-resolve / new-symbol cross-walker — §3.v2 step 2 加 `SupabasePayloadEntry` interface 跨 4 包(`core/scene-graph` decl / `compiler/ir` collect / `compiler/emit/react` walker / `core/tools` validator),cross-walker `useDocState` import 行 +/- 双向断言;ACK #2 端到端 Dashboard 写入印证完整链路;**沿用未踩坑**
+- **J**(原候选,本期升正经验)— 反向核已写进 §3.v2.5 ACK 表(6 项 × 设计阶段反向核技术依赖),Tauri 实测期没踩**任何**「链路根本不存在」型洞;唯有 ACK #1/#2 的 UI 缺口属于「scope 内不验,本就推 §3.v3」类。**经验 J 从候选转正**
+
+#### §3.v2 follow-up(推 §3.v3 候选池)
+
+| # | 候选 | 来源 | 体量估 |
+|---|---|---|---|
+| 1 | BUTTON `interactiveProps.text` 手动编辑 UI(Properties / DesignPanel) | ACK #1 用户反馈 | ~1 day |
+| 2 | EventsPanel `payloadEntries` 编辑器(table-style key/valueExpr,与 `payloadJson` 并存切换 / both-present 警示) | ACK #2 用户反馈 | ~2 day |
+| 3 | prompt.md ACK #5 CLI 示例改成 ALL_TOOLS 写法(顺手 fix) | surprise #1 | <1h |
+| 4 | CHECKBOX / TEXTAREA / DATEPICKER / SELECT / RADIO / SWITCH controlled binding(扩 §3.x 模式) | §3.8 follow-up #3 沿用 | ~5 day |
+| 5 | expression grammar 加 `$event` / `$value` token | §3.8 follow-up #4 沿用 | ~3 day(§4.2 FROZEN 绕路) |
+| 6 | INPUT controlled boolean / date | §3.8 follow-up #5 沿用 | ~1 day |
+| 7 | SupabaseConfigPanel RLS policy 健康检查 | §3.8 follow-up #6 沿用 | ~1 day nice-to-have |
 
 ---
 
