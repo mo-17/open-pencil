@@ -320,6 +320,14 @@ export const panelMessages = i18n('panels', {
   lowcodeValueBindingHint: 'Bind to a state for a controlled form control',
   lowcodeValueBindingBooleanHint: 'Bind to a boolean state for a controlled checkbox/switch',
   lowcodeValueBindingNoStates: 'No matching state type available',
+  // Lowcode (Phase 3 §3.v4 step 7 — SELECT / RADIO options + groupName editor)
+  lowcodeInteractiveOptions: 'Options',
+  lowcodeInteractiveOptionAdd: 'Add option',
+  lowcodeInteractiveOptionRemove: 'Remove option',
+  lowcodeInteractiveOptionValue: 'Option',
+  lowcodeInteractiveOptionPlaceholder: 'e.g. US',
+  lowcodeInteractiveGroupName: 'Group name',
+  lowcodeInteractiveGroupNamePlaceholder: 'shared name for radio inputs',
 
   // Lowcode (Phase 2 §3 — API fetch)
   lowcodeActionCallApi: 'Call API',
