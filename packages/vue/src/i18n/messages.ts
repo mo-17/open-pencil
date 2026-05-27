@@ -361,6 +361,7 @@ export const panelMessages = i18n('panels', {
   lowcodeActionSupabasePayloadAddEntry: 'Add entry',
   lowcodeActionSupabasePayloadEntryKey: 'Column',
   lowcodeActionSupabasePayloadEntryValue: 'Value expression',
+  lowcodeActionSupabasePayloadEntryValuePlaceholder: "e.g. formName or 'static'",
   lowcodeActionSupabasePayloadEntryRemove: 'Remove entry',
   lowcodeActionSupabasePayloadSourceConflict:
     'Both payloadJson and entries are set — entries win, payloadJson dropped.',

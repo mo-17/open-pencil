@@ -306,6 +306,7 @@
     "lowcodeActionSupabasePayloadAddEntry": "Добавить запись",
     "lowcodeActionSupabasePayloadEntryKey": "Столбец",
     "lowcodeActionSupabasePayloadEntryValue": "Выражение значения",
+    "lowcodeActionSupabasePayloadEntryValuePlaceholder": "напр. formName или 'static'",
     "lowcodeActionSupabasePayloadEntryRemove": "Удалить запись",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson и entries оба установлены — entries побеждает, payloadJson отбрасывается.",
     "lowcodeActionSupabaseFilterColumn": "Column",

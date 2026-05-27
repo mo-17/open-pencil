@@ -306,6 +306,7 @@
     "lowcodeActionSupabasePayloadAddEntry": "Eintrag hinzufügen",
     "lowcodeActionSupabasePayloadEntryKey": "Spalte",
     "lowcodeActionSupabasePayloadEntryValue": "Wertausdruck",
+    "lowcodeActionSupabasePayloadEntryValuePlaceholder": "z. B. formName oder 'static'",
     "lowcodeActionSupabasePayloadEntryRemove": "Eintrag entfernen",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson und entries sind beide gesetzt — entries gewinnen, payloadJson wird verworfen.",
     "lowcodeActionSupabaseFilterColumn": "Column",

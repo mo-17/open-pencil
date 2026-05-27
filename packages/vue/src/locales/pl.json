@@ -306,6 +306,7 @@
     "lowcodeActionSupabasePayloadAddEntry": "Dodaj wpis",
     "lowcodeActionSupabasePayloadEntryKey": "Kolumna",
     "lowcodeActionSupabasePayloadEntryValue": "Wyrażenie wartości",
+    "lowcodeActionSupabasePayloadEntryValuePlaceholder": "np. formName lub 'static'",
     "lowcodeActionSupabasePayloadEntryRemove": "Usuń wpis",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson i entries są oba ustawione — entries wygrywa, payloadJson zostaje odrzucony.",
     "lowcodeActionSupabaseFilterColumn": "Column",

@@ -306,6 +306,7 @@
     "lowcodeActionSupabasePayloadAddEntry": "添加字段",
     "lowcodeActionSupabasePayloadEntryKey": "列名",
     "lowcodeActionSupabasePayloadEntryValue": "值表达式",
+    "lowcodeActionSupabasePayloadEntryValuePlaceholder": "如 formName 或 'static'(字符串要加引号)",
     "lowcodeActionSupabasePayloadEntryRemove": "删除字段",
     "lowcodeActionSupabasePayloadSourceConflict": "payloadJson 和 entries 同时设置 — entries 胜出,payloadJson 被丢弃。",
     "lowcodeActionSupabaseFilterColumn": "列",

@@ -752,7 +752,7 @@ const actionErrors = computed(() => {
                 :aria-invalid="actionErrors.get(action.id)?.entries?.get(i)?.valueError ? 'true' : undefined"
                 data-test-id="lowcode-action-supabase-payload-entry-value"
                 spellcheck="false"
-                :placeholder="panels.lowcodeActionSupabasePayloadEntryValue"
+                :placeholder="panels.lowcodeActionSupabasePayloadEntryValuePlaceholder"
                 :class="[
                   'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
                   actionErrors.get(action.id)?.entries?.get(i)?.valueError ? 'border-red-500' : 'border-border'
