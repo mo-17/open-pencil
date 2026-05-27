@@ -704,7 +704,14 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
    2. AI 用 INPUT 输入值绑 docState → 加 supabaseMutation insert 用 payloadEntries 引 docState → 提交后 Supabase Dashboard 看到行的字段值就是 INPUT 的输入(修 surprise #3)
    3. AI 调 update_lowcode_node 残留 `payloadJson: '{}'` 在 delete action → IR collect / Tauri 都按 empty 处理,不再 silent fail(修 surprise #6)
    4. **零回归**:Phase 3 §3 既有 8 项 + §3.x INPUT controlled + §2 Supabase 11 项 spot-check 通过
-   5. CLI / MCP server 调 lowcode tool fallback 不挂(无 editor 上下文,走既有 figma.graph 路径)
+   5. CLI / MCP server 调 lowcode tool fallback 不挂(无 editor 上下文,走既有 figma.graph 路径)。CLI eval 只暴露 `figma` 全局;调 ToolDef 用 `ALL_TOOLS.find`,**不是** `tools.<name>(...)`:
+      ```sh
+      bun open-pencil eval <file.pen> -c "
+        const { ALL_TOOLS } = await import('@open-pencil/core/tools')
+        const t = ALL_TOOLS.find(x => x.name === 'update_lowcode_node')
+        return t.execute(figma, { id: '<node-id>', patch_json: '{...}' })
+      "
+      ```
    6. payloadEntries `both-present` warning 在 DevTools console 露出(经验 C 防 silent drop)
 7. 不破坏 Phase 0 §8 / Phase 1(除 §1.5 #3+#5 §11.3 #5)/ Phase 2 §9.2 §2.2 §3.2 §4.2 §6.2 §7.2 §8.2 / Phase 3 §2.2 §3.2 §3.x 任一锁定决定
 
