@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import { validateExpression, validateUrlTemplate } from '@open-pencil/core/lowcode-validation'
+import {
+  PAYLOAD_ENTRY_KEY_RE,
+  validateExpression,
+  validateUrlTemplate
+} from '@open-pencil/core/lowcode-validation'
 import type {
   ActionDef,
   ActionKind,
   EventName,
   SceneNode,
-  SupabaseFilter
+  SupabaseFilter,
+  SupabasePayloadEntry
 } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
@@ -214,11 +219,44 @@ function updateFilter(id: string, index: number, patch: Partial<SupabaseFilter>)
   )
 }
 
+// Phase 3 §3.v3 — payloadEntries list mutators (mirror of filter mutators).
+// Only valid on `supabaseMutation`; the `delete` operation hides the editor
+// in the template but the raw data is preserved (so toggling op back to
+// insert/update brings the entries back — §3.v3.2 #e no-swallow).
+function patchEntries(
+  id: string,
+  next: (current: SupabasePayloadEntry[]) => SupabasePayloadEntry[]
+): void {
+  const action = actions.value.find((a) => a.id === id)
+  if (!action || action.kind !== 'supabaseMutation') return
+  const current = action.payloadEntries ?? []
+  updateAction(id, { payloadEntries: next(current) })
+}
+
+function addEntry(id: string): void {
+  patchEntries(id, (current) => [...current, { key: '', valueExpr: '' }])
+}
+
+function removeEntry(id: string, index: number): void {
+  patchEntries(id, (current) => current.filter((_, i) => i !== index))
+}
+
+function updateEntry(id: string, index: number, patch: Partial<SupabasePayloadEntry>): void {
+  patchEntries(id, (current) =>
+    current.map((e, i) => (i === index ? { ...e, ...patch } : e))
+  )
+}
+
 // Phase 1 §7.3 + §7.4 — mirror what the IR collect pass rejects
 // (`collect/bindings.ts` → `resolveActions`). Each kind has its own slots;
 // every slot is independent so we can show two reds on the same row.
 // Phase 3 §2 widens this with Supabase-specific slots: `table`, `payload`,
 // per-filter `valueExpr` keyed by filter index.
+interface PayloadEntryError {
+  keyError?: string
+  valueError?: string
+}
+
 interface ActionErrors {
   target?: string
   expr?: string
@@ -228,6 +266,10 @@ interface ActionErrors {
   table?: string
   payload?: string
   filters?: Map<number, string>
+  // Phase 3 §3.v3 — per-row payloadEntries errors keyed by index.
+  entries?: Map<number, PayloadEntryError>
+  // Phase 3 §3.v3 — mirrors IR `action-supabase-mutation-payload-source-conflict`.
+  payloadSourceConflict?: boolean
 }
 
 const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
@@ -311,12 +353,37 @@ function supabaseQueryErrors(
   return e
 }
 
+// Phase 3 §3.v3 — per-entry validator. Key must be a JS identifier (column
+// safety); dup keys flagged on the second occurrence; valueExpr parses.
+// Mirrors `validateSupabasePayloadEntries` in lowcode-validation but emits
+// per-row error maps instead of bailing at first failure so the UI can red
+// every offending row at once.
+function payloadEntryErrors(
+  entries: SupabasePayloadEntry[] | undefined
+): Map<number, PayloadEntryError> | undefined {
+  if (!entries || entries.length === 0) return undefined
+  const out = new Map<number, PayloadEntryError>()
+  const seen = new Map<string, number>()
+  entries.forEach((entry, i) => {
+    const slot: PayloadEntryError = {}
+    if (entry.key === '') slot.keyError = 'column required'
+    else if (!PAYLOAD_ENTRY_KEY_RE.test(entry.key)) slot.keyError = 'invalid identifier'
+    else if (seen.has(entry.key)) slot.keyError = `duplicates "${entry.key}"`
+    else seen.set(entry.key, i)
+    const v = validateExpression(entry.valueExpr ?? '')
+    if (!v.ok) slot.valueError = v.reason ?? 'invalid expression'
+    if (slot.keyError || slot.valueError) out.set(i, slot)
+  })
+  return out.size > 0 ? out : undefined
+}
+
 function supabaseMutationErrors(
   action: Extract<ActionDef, { kind: 'supabaseMutation' }>
 ): ActionErrors {
   // §2.4 `resolveSupabaseMutation`: table is non-empty; payloadJson (when
   // present) parses; filters required for update/delete (collect drops the
   // action otherwise — the editor surfaces it as a red banner upfront).
+  // §3.v2.2 #e — both payloadJson and payloadEntries set → conflict warning.
   const e: ActionErrors = {}
   if (action.table.trim() === '') e.table = 'table required'
   const raw = (action.payloadJson ?? '').trim()
@@ -329,6 +396,14 @@ function supabaseMutationErrors(
   }
   const fe = filterErrors(action.filters)
   if (fe) e.filters = fe
+  const ee = payloadEntryErrors(action.payloadEntries)
+  if (ee) e.entries = ee
+  // Conflict only relevant when both channels actually carry content (after
+  // the `'{}'` normalize hides "AI residue"; mirrors IR `payload-source
+  // -conflict` warn — surfacing here so the user sees it before runtime).
+  if (raw !== '' && (action.payloadEntries?.length ?? 0) > 0) {
+    e.payloadSourceConflict = true
+  }
   return e
 }
 
@@ -622,20 +697,88 @@ const actionErrors = computed(() => {
           </label>
         </template>
 
-        <input
-          v-if="action.kind === 'supabaseMutation'"
-          :value="action.payloadJson ?? ''"
-          :aria-label="panels.lowcodeActionSupabasePayload"
-          :aria-invalid="actionErrors.get(action.id)?.payload ? 'true' : undefined"
-          data-test-id="lowcode-action-supabase-payload"
-          spellcheck="false"
-          :placeholder="panels.lowcodeActionSupabasePayload"
-          :class="[
-            'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-            actionErrors.get(action.id)?.payload ? 'border-red-500' : 'border-border'
-          ]"
-          @change="updateAction(action.id, { payloadJson: ($event.target as HTMLInputElement).value })"
-        />
+        <template
+          v-if="action.kind === 'supabaseMutation' && action.operation !== 'delete'"
+        >
+          <p
+            v-if="actionErrors.get(action.id)?.payloadSourceConflict"
+            data-test-id="lowcode-action-supabase-payload-source-conflict"
+            class="pl-1 text-[10px] text-orange-500"
+          >
+            {{ panels.lowcodeActionSupabasePayloadSourceConflict }}
+          </p>
+          <input
+            :value="action.payloadJson ?? ''"
+            :aria-label="panels.lowcodeActionSupabasePayload"
+            :aria-invalid="actionErrors.get(action.id)?.payload ? 'true' : undefined"
+            data-test-id="lowcode-action-supabase-payload"
+            spellcheck="false"
+            :placeholder="panels.lowcodeActionSupabasePayload"
+            :class="[
+              'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+              actionErrors.get(action.id)?.payload ? 'border-red-500' : 'border-border'
+            ]"
+            @change="updateAction(action.id, { payloadJson: ($event.target as HTMLInputElement).value })"
+          />
+          <div class="flex flex-col gap-1 pl-1">
+            <label
+              v-if="(action.payloadEntries?.length ?? 0) > 0"
+              class="text-[10px] text-muted"
+            >
+              {{ panels.lowcodeActionSupabasePayloadEntries }}
+            </label>
+            <div
+              v-for="(entry, i) in action.payloadEntries ?? []"
+              :key="i"
+              data-test-id="lowcode-action-supabase-payload-entry"
+              class="flex items-center gap-1"
+            >
+              <input
+                :value="entry.key"
+                :aria-label="panels.lowcodeActionSupabasePayloadEntryKey"
+                :aria-invalid="actionErrors.get(action.id)?.entries?.get(i)?.keyError ? 'true' : undefined"
+                data-test-id="lowcode-action-supabase-payload-entry-key"
+                spellcheck="false"
+                :placeholder="panels.lowcodeActionSupabasePayloadEntryKey"
+                :class="[
+                  'w-20 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+                  actionErrors.get(action.id)?.entries?.get(i)?.keyError ? 'border-red-500' : 'border-border'
+                ]"
+                @change="updateEntry(action.id, i, { key: ($event.target as HTMLInputElement).value })"
+              />
+              <input
+                :value="entry.valueExpr"
+                :aria-label="panels.lowcodeActionSupabasePayloadEntryValue"
+                :aria-invalid="actionErrors.get(action.id)?.entries?.get(i)?.valueError ? 'true' : undefined"
+                data-test-id="lowcode-action-supabase-payload-entry-value"
+                spellcheck="false"
+                :placeholder="panels.lowcodeActionSupabasePayloadEntryValue"
+                :class="[
+                  'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+                  actionErrors.get(action.id)?.entries?.get(i)?.valueError ? 'border-red-500' : 'border-border'
+                ]"
+                @change="updateEntry(action.id, i, { valueExpr: ($event.target as HTMLInputElement).value })"
+              />
+              <button
+                type="button"
+                :aria-label="panels.lowcodeActionSupabasePayloadEntryRemove"
+                data-test-id="lowcode-action-supabase-payload-entry-remove"
+                class="rounded p-0.5 text-muted hover:bg-hover hover:text-surface"
+                @click="removeEntry(action.id, i)"
+              >
+                <icon-lucide-x class="size-3" />
+              </button>
+            </div>
+            <button
+              type="button"
+              data-test-id="lowcode-action-supabase-payload-add-entry"
+              class="self-start rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
+              @click="addEntry(action.id)"
+            >
+              + {{ panels.lowcodeActionSupabasePayloadAddEntry }}
+            </button>
+          </div>
+        </template>
 
         <template v-if="action.kind === 'supabaseQuery' || action.kind === 'supabaseMutation'">
           <div class="flex flex-col gap-1 pl-1">

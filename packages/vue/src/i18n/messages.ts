@@ -356,6 +356,14 @@ export const panelMessages = i18n('panels', {
   lowcodeActionSupabaseColumnsPlaceholder: 'id, name, email',
   lowcodeActionSupabaseSingle: 'single row',
   lowcodeActionSupabasePayload: 'Payload (JSON)',
+  // Lowcode (Phase 3 §3.v3 — supabaseMutation payloadEntries editor)
+  lowcodeActionSupabasePayloadEntries: 'Entries',
+  lowcodeActionSupabasePayloadAddEntry: 'Add entry',
+  lowcodeActionSupabasePayloadEntryKey: 'Column',
+  lowcodeActionSupabasePayloadEntryValue: 'Value expression',
+  lowcodeActionSupabasePayloadEntryRemove: 'Remove entry',
+  lowcodeActionSupabasePayloadSourceConflict:
+    'Both payloadJson and entries are set — entries win, payloadJson dropped.',
   lowcodeActionSupabaseFilterColumn: 'Column',
   lowcodeActionSupabaseFilterAdd: 'Add filter',
   lowcodeActionSupabaseFilterRemove: 'Remove filter',
