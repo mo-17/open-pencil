@@ -947,7 +947,60 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 ### 3.v3.8 Post-mortem
 
-**待填**:§3.v3 closed `<date>`(HEAD `<post-mortem-commit>` 后)。Commit 链 + Tauri ACK 结果 + surprise 列表 + 对经验 A-J 的增补 / 印证。
+**§3.v3 closed 2026-05-27**(HEAD this commit;实现链 `ee96a2f` → `754bb3c` → `f862be4` → `65c53ab` → `fbf47d9`,Tauri 7 ACK 全绿后本节回填 + close)。
+
+#### Commit 链
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `77d9852` | §3.v3 mini-scope 设计(8 主决定 + 8 次默 + 5 step → 6 step + 7 风险 + post-mortem stub) |
+| 1 | `ee96a2f` | `validateSupabasePayloadEntries` + `PAYLOAD_ENTRY_KEY_RE` 上抬到 `@open-pencil/core/lowcode-validation`;`tools/modify/lowcode.ts` + `compiler/ir/collect/bindings.ts` 双侧改 import 单源;11 新单测 |
+| 2 | `754bb3c` | `TextBindingPanel.vue` BUTTON literal 模式露 `interactiveProps.text` input(TEXT 节点不露);2 i18n key × 7 locale |
+| 3 | `f862be4` | `EventsPanel.vue` `payloadEntries` 行编辑器(镜像 filters 行 UI)+ delete v-if 隐藏 + both-present 橙色 conflict warn 条;raw 数据保留切回 op 重现;6 i18n key × 7 locale;5 新 test-id |
+| 4 | `65c53ab` | `docs §3.v2.5 ACK #5` + `cli/commands/eval.ts` 顶部加 ALL_TOOLS 正确写法示例 |
+| 6 | `fbf47d9` | payloadEntries valueExpr placeholder hint(ACK #3 surprise sourced)— 1 i18n key × 7 locale |
+| 5 | _this commit_ | Tauri ACK 7 + 重测 + §3.v3.8 回填 + 关闭 + memory 更新 |
+
+**测试**:`bun run check` 全程 0 error / 4 pre-existing max-lines warn / 0 clones;step 1 的 11 新单测全绿;现有 lowcode/compiler/tools 测试零回归(363 pass via `tests/engine/tools/lowcode/ + compiler/`)。
+
+#### Tauri ACK 结果(用户主导 2026-05-27)
+
+| # | Check | Result | 备注 |
+|---|---|---|---|
+| 1 | BUTTON Properties Text source=Literal → input 出现 → 改 'Save' → canvas 即时 + emit | ✅ | |
+| 2 | BUTTON literal input 清空 → fallback `'Button'` | ✅ | |
+| 3 | EventsPanel insert + Add 2 entries(name+age)→ Supabase Dashboard 写入 | ✅(初测后 retest)| 初测踩坑:用户给 `email` 字段写 `alice@example.com`(无引号)→ valueExpr parser 报 `unexpected character '@'`。识别为 §3.v3 surprise #1 → step 6 加 placeholder hint(`e.g. formName or 'static'`)→ retest ✅ |
+| 4 | both 设 `payloadJson` + `payloadEntries` → UI 橙色 warn + body 是 entries 值 | ✅ | |
+| 5 | 切 op=delete → payload + entries 区消失;切回 insert → 字段重现(raw 保留)| ✅ | |
+| 6 | dup-key 第二行红框 + aria-invalid | ✅ | |
+| 7 | 零回归:§3.v2 6 ACK 仍 work;TEXT 节点 TextBindingPanel literal **不**露 BUTTON input | ✅ | |
+
+全 7 项 ✅;ACK #3 经一次踩坑 + step 6 修后 retest ✅。
+
+#### Surprise 列表
+
+1. **valueExpr 字符串字面值必须加引号**(ACK #3 用户反馈)— `payloadEntries[].valueExpr` 走 §7.3 / §4.2 expression sublanguage(同 `filters.valueExpr` / `setState.valueExpr`),tokenizer 在 `'`/`"` 包裹外的 `@` `.` 等字符 throw `unexpected character`。用户输 `alice@example.com`(无引号)→ parser fail。**根因**:UI placeholder 只写 `Value expression` 不暗示"这是表达式不是 raw 字符串"。filters 有同问题但常用数字/标识符所以没暴露。**修法**:step 6 新 i18n key `lowcodeActionSupabasePayloadEntryValuePlaceholder` = `e.g. formName or 'static'`(中文 `如 formName 或 'static'(字符串要加引号)`),aria-label 保留 `Value expression` 清晰。filters 这边**没修**(scope 外,推 §3.v4 / §X 视后续 UX 反馈)。
+2. **(无,#1 是本期唯一 surprise)**
+
+#### 经验沉淀(对 §1.4 / §3.8 / §3.v2.8 增补 / 印证)
+
+- **A + G** Walker union widening — §3.v3 step 1 上抬纯 import 重定向,IR collect + tool 两侧验证零回归,A 完整 work。
+- **C** No-swallow — `payload-source-conflict` warn 现在**双层** surface(IR collect runtime warn + EventsPanel UI 橙色提示条),ACK #4 一眼可见;step 3 delete v-if 选择"raw 保留 / 仅藏 UI"而非"silent 删",切回 insert/update 字段重现 = 真正的 no-swallow 实现。
+- **H** Tauri 实测找设计层洞 — §3.v3 设计阶段反向核 7 项 ACK 都对应到现有 schema/IR/emit/UI 路径,**0 链路不存在**;但 Tauri 实测仍找到 1 个 UX 缺口(ACK #3 引号坑)。**继续印证**:即便每条 ACK 技术链都核过,UX-discoverability 维度仍只 Tauri 可见;经验 H 含义应扩为「Tauri 不止找设计洞,还找 UX 引导洞」。
+- **I** Module-resolve / cross-file dedup — step 1 把 `validateSupabasePayloadEntries` + 同名常量 `PAYLOAD_ENTRY_KEY_RE`(原存 2 份)抬到单源,Steiger + check-locales 双栅栏过;0 漏 callsite。
+- **J**(2026-05-27 §3.v2.8 promoted)— §3.v3 设计阶段对 7 ACK 全反向核;0 链路不存在 surprise;**升级**:反向核应不仅核「技术链是否存在」,也核「UI 是否引导用户用对路径」(本期 ACK #3 引号坑就是技术链存在但 UI 不引导)。**经验 J refined**:`§X.5 ACK 表每条问两个问题:(1) 技术链是否存在?(2) UI placeholder / helper / label 是否引导用户用对路径?任一缺 → 推回 §X.2 或标 design-only`。
+
+#### §3.v3 未做 / §3.v4 候选(沿用 §3.v2.8 候选池 + 本期增量)
+
+| # | 候选 | 来源 | 体量估 |
+|---|---|---|---|
+| 1 | filters `valueExpr` 同 hint placeholder(`Filter row UI 引号坑`)| §3.v3 ACK #3 sibling | <1 day |
+| 2 | CHECKBOX / TEXTAREA / DATEPICKER / SELECT / RADIO / SWITCH controlled bindings(§3.x mirror)| §3.8 follow-up #3 沿用 | ~5 day |
+| 3 | `$event` / `$value` token in expression grammar | §3.8 follow-up #4 沿用 | ~3 day(§4.2 FROZEN 绕路) |
+| 4 | INPUT controlled boolean / date types | §3.8 follow-up #5 沿用 | ~1 day |
+| 5 | SupabaseConfigPanel RLS policy 健康检查 | §3.8 follow-up #6 沿用 | ~1 day nice-to-have |
+
+**推荐下一轮**:§3.v4 #1(filters hint 顺手,<1 day)+ #2(6 控件 controlled,5 day)= §3.v4 mini-scope,~6 day。或直接 §4 / §5(协作 / 部署)。
 
 ---
 
