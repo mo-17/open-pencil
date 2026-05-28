@@ -329,6 +329,15 @@ export const panelMessages = i18n('panels', {
   lowcodeInteractiveOptionPlaceholder: 'e.g. US',
   lowcodeInteractiveGroupName: 'Group name',
   lowcodeInteractiveGroupNamePlaceholder: 'shared name for radio inputs',
+  // Lowcode (Phase 3 §3.v6 — generic InteractiveProps editor)
+  lowcodeInteractiveProps: 'Properties',
+  lowcodeInteractivePlaceholder: 'Placeholder',
+  lowcodeInteractiveValue: 'Default value',
+  lowcodeInteractiveDefaultChecked: 'Default checked',
+  lowcodeInteractiveDefaultSelected: 'Default selected',
+  lowcodeInteractiveDefaultSelectedNone: '(none)',
+  lowcodeInteractiveDateValue: 'Default date',
+  lowcodeInteractiveOptionsHint: 'Add options to make it a multi-select group',
 
   // Lowcode (Phase 2 §3 — API fetch)
   lowcodeActionCallApi: 'Call API',

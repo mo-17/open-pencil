@@ -12,7 +12,8 @@ import FillSection from './properties/FillSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
-import InteractiveOptionsPanel from './properties/Lowcode/InteractiveOptionsPanel.vue'
+import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
+import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
 import ValueBindingPanel from './properties/Lowcode/ValueBindingPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
@@ -123,9 +124,7 @@ const { panels } = useI18n()
         node.type === 'DATEPICKER'
       "
     />
-    <InteractiveOptionsPanel
-      v-if="node.type === 'SELECT' || node.type === 'RADIO' || node.type === 'CHECKBOX'"
-    />
+    <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
     <StatePanel
       v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'"
     />
