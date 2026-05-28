@@ -1311,6 +1311,171 @@ RADIO(`applyRadioOptions`)— 每 radio 当前 emit `defaultChecked` if `opt ===
 
 ---
 
+## 3.v5 §3.v5 详细设计:完整 SWITCH CSS + RADIO/CHECKBOX-group inline 排版
+
+**Scope = §3.v5 mini-scope**(§3.v5 候选池 #1 + #2,~3 天 UI-polish-only)。这是 **Q3-only(纯视觉)** scope —— 专门收尾 §3.v4 三次 mid-flight hotfix(step 7/8/9)留下的视觉债:SWITCH 是 step 9/9b hotfix(只有 anchor 跳变、硬编码色、无暗色),RADIO/CHECKBOX-group option 的 `<label>`/`<input>` className 全空(挤一起、无间距、input 与文字不对齐)。
+
+§3.v5 **不做**:`$event` / `$value` token 扩 grammar(候选 #4,§4.2 FROZEN 绕路);DATEPICKER format 校验 + range(候选 #5);SupabaseConfigPanel RLS 健康检查(候选 #6);InteractiveProps 通用编辑器 refactor(候选 #3,本期不抽框架,只补视觉);**任何新 i18n key / 新 UI panel / 新 test-id / SceneNode·IR·Kiwi schema 改动**(本期纯 emit className 字符串)。
+
+### 3.v5.1 现状与问题
+
+§3.v4 closed 2026-05-27 后,3 个视觉缺口(全部 Q3,人眼 Tauri 可见,单测无能):
+
+1. **SWITCH 只有 hotfix 级 CSS**(`packages/compiler/src/ir/style.ts:16-45` `SWITCH_CLASSES` 扁平常量)—— step 9/9b 是赶工 hotfix:
+   - **不滑动**:thumb 用 `before:left-[5%]` ↔ `checked:before:left-auto right-[5%]` 双 anchor 切换,`before:transition-colors` 只 tween 颜色;`left`/`right` 在 CSS 里**无法 tween 到/从 `auto`**,所以 thumb 是**跳变**不是滑动
+   - **硬编码颜色**:`bg-gray-300` / `checked:bg-blue-500` 写死,忽略 SceneNode fill;用户在画布给 SWITCH 改色无效
+   - **无暗色**:无 `dark:` 变体,暗色主题下 track 灰白难辨
+   - 注释自己标了 "full smooth-tween CSS goes to §13" / "full CSS spec lives at §13" —— 即本节
+2. **RADIO / CHECKBOX-group option 排版裸奔**(`packages/compiler/src/ir/collect/tree.ts:631-657` `appendOptionInputs`)—— 每 option emit `<label className=''>` 内含 `<input className=''>` + 文字 text node,**className 全空**:
+   - `<label>` 默认 `display:inline` → N 个 option 横向挤成一行无间距
+   - `<input>` 与其文字之间无 gap、不垂直居中对齐
+   - wrapper `<div>` className 来自 SceneNode(`tailwindClassName`);若用户用 FREE 布局(非 auto-layout)则 wrapper 无 `flex`/`gap` → option 之间也无间距
+   - 用户 §3.v4 ACK 原话:"radio/switch preview UI 需要优化好看一点"
+
+### 3.v5.2 关键决定
+
+**8 主决定**:
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | `SWITCH_CLASSES` 扁平常量 → `switchClasses(node, graph): string` builder(仍在 `style.ts`)。**这是锁定项里唯一被授权改 SWITCH_CLASSES 顶层结构的地方**(§3.v5 #1) | checked 颜色需按 node fill 派生 → 必须从常量升为 builder;off-track + thumb 几何仍是常量片段拼接 |
+| b | **平滑滑动**:抛弃 `left`/`right` 双 anchor(无法 tween),改 thumb 固定锚 `left` + `checked:before:translate-x-[calc(100cqw_-_100cqh)]` + `before:transition-transform`。`<input>` 设 `[container-type:size]` 使 `cqw`/`cqh` 解析为 track 自身宽/高 | translate 可 tween → 真滑动;cqw/cqh 让位移 = 轨道宽 − 轨道高 = 对称落位,**任何 aspect ratio 通用**且随 bbox 缩放(比 §3.v4 anchor 跳变严格更优) |
+| c | thumb 几何用 `cqh`:`before:h-[80cqh] before:aspect-square before:top-[10cqh] before:left-[10cqh]`(高 80%、上下各 10% gap、左 10% gap)→ checked 位移 `100cqw − 100cqh` 落到右 10% gap 对称 | 单位统一 cqh,几何自洽;数学已验:off 左缘 10cqh、右缘 10cqh+80cqh=90cqh;checked 位移后右缘 = 90cqh + (100cqw−100cqh) = 100cqw−10cqh,右 gap = 10cqh ✅ 对称 |
+| d | **颜色按 SceneNode fill 派生**:builder 读 node 第一个 SOLID fill → hex → `checked:bg-[#hex]`;无 fill → 默认 `checked:bg-blue-500`。off-track 恒 `bg-gray-300`(覆盖 base 的 fill bg) | 画布给 SWITCH 改填充色 = 改 ON 态颜色(Q3 直觉);OFF 态恒中性灰 |
+| e | **暗色变体**:off `dark:bg-gray-600`、默认 checked `dark:checked:bg-blue-400`、thumb `dark:before:bg-gray-100`;自定义 fill 的 checked 不加 dark 变体(自定义色明暗一致) | 暗色主题可辨;自定义色不强行反转 |
+| f | **option `<label>` 排版**:`appendOptionInputs` body 把 label className 从 `''` 改为常量 `OPTION_LABEL_CLASSES = 'inline-flex items-center gap-2 cursor-pointer'`;option `<input>` className 改为 `OPTION_INPUT_CLASSES = 'accent-blue-500 dark:accent-blue-400'` | input 与文字对齐 + gap;inline-flex 让 label 自身横向不撑满;accent 给原生 radio/checkbox 上色 |
+| g | **wrapper 布局兜底**:`nodeToIR` 算完 className 后,若 node 是 RADIO 或 checkbox-group **且** base className 不含 flex/grid token → append 常量 `OPTION_GROUP_WRAPPER_CLASSES = 'flex flex-col gap-2'`;**auto-layout(base 已有 flex)原样尊重**(用户在画布设的 row/col 不被覆盖) | FREE 布局给个竖排默认间距;auto-layout 用户已掌控方向 → 不动(经验 H:不抢用户已表达的意图) |
+| h | **零签名 / 零 tag 逻辑改动**:`appendOptionInputs` / `patchOptionLeafControlled` / `arrayCheckboxOnChangeBody` 签名不动;`isCheckboxGroup` group-vs-single tag 逻辑不动;`tailwindClassName(node, graph)` 签名不动(SWITCH 分支内部从常量换 builder 调用) | 全是 emit className 字符串 body 改动,不碰任一 §3.v4.2 锁定的 shape / 签名 / tag 决策 |
+
+**8 次级默认**:
+
+1. SWITCH 几何用 cqw/cqh(container query units,2023+ 浏览器 + 近期 WKWebView 支持);**风险兜底**:若 Tauri 实测 cqw 不滑动,回退 §3.v4 anchor-swap(hotfix 即安全网),标记 "design-only"。`[container-type:size]` 用 Tailwind 任意属性 `[container-type:size]`
+2. checked 自定义色用 Tailwind 任意值 `checked:bg-[#3b82f6]` —— 字面 hex 直接进 emit 的 .tsx,下游项目自带 Tailwind JIT 扫源码可识别(经验 D 类:emit 产物用任意值无需新依赖)
+3. SWITCH **不**做尺寸预设(sm/md/lg)—— 尺寸由 bbox 决定(cqw/cqh 自动缩放);显式 size 变体若 ACK 要再加,本期默认 bbox-driven
+4. wrapper flex 兜底的"base 无 flex"判定用正则 `/(^|\s)(flex|inline-flex|grid|inline-grid)(\s|$)/.test(base)`;`flex-wrap`/`flex-col` 单独出现(无 `flex`)罕见,不特判
+5. option `<input>` 不强制尺寸(原生大小),只加 accent 色 + shrink-0(防文字长时被压);label gap-2 ≈ 0.5rem
+6. emit 测试:扩 `element.test.ts`(SWITCH 新 class 串 + RADIO/checkbox label/input class)+ `interactive-components.test.ts`(wrapper flex 兜底正负例:FREE 加 flex / auto-layout 不加);cross-walker 视情况加 1 SWITCH + 1 RADIO className 断言
+7. 现有 golden 断言若硬编码旧 SWITCH class 串 / 空 label className → step 1/2 同 commit 更新
+8. SceneNode / ActionDef / Kiwi / i18n / test-id / `bindings.value` / `IRControlledInput` shape / `EDITOR_UNDO_TOOLS` / payloadEntries 全 **0 改动**;Steiger / check-locales 无新增
+
+**经验 J 三问题反向核**(每决定 × Q1 Q2 Q3):本期 Q1 技术链全部**既存**(改的是已渲染元素的 className 字符串,链路早通);Q2 UI 引导**N/A**(无新 authoring surface —— "默认即好看,无需用户配置"本身就是 Q2 的答案);**Q3 是全部 scope**(视觉 / 心智模型,只人眼 Tauri 可见):
+
+| 决定 | Q1 技术链 | Q2 UI 引导 | Q3 心智模型 / 视觉 |
+|---|---|---|---|
+| SWITCH 平滑滑动(b/c) | ✅ class 串挂已渲染 input | N/A 无配置 | ✅ 用户期待"滑动按钮会平滑动",非跳变 |
+| SWITCH 颜色派生 fill(d) | ✅ builder 读 node.fills | ✅ 画布填充色即 affordance | ✅ 用户期待"改 SWITCH 颜色 = 改填充" |
+| 暗色变体(e) | ✅ dark: 变体 | N/A | ✅ 暗色主题下控件可辨 |
+| RADIO/CHECKBOX label 排版(f) | ✅ className 挂已渲染 label/input | N/A 无配置 | ✅ 用户期待 option 有间距、input 对齐文字 |
+| wrapper flex 兜底(g) | ✅ className append | N/A | ✅ FREE 布局 option 不挤一行;auto-layout 尊重用户方向 |
+
+### 3.v5.3 公开 API / Schema 改动
+
+- ✏️ **重构** `style.ts`:`const SWITCH_CLASSES`(扁平常量)→ `function switchClasses(node, graph): string`(builder);`tailwindClassName` SWITCH 分支调 builder(签名不变)
+- ✏️ **改 body** `tree.ts` `appendOptionInputs`:label/input className `''` → 常量(签名不变)
+- ✏️ **改 body** `tree.ts` `nodeToIR`:className 算完后 RADIO/checkbox-group wrapper flex 兜底(`const` → `let`)
+- ➕ **新常量**(`tree.ts`):`OPTION_LABEL_CLASSES` / `OPTION_INPUT_CLASSES` / `OPTION_GROUP_WRAPPER_CLASSES`(模块私有)
+- **0** SceneNode / ActionDef / Kiwi / i18n key / test-id / `bindings.value` / `IRControlledInput` shape / `applyPatchWithUndo` / payloadEntries 改动
+- **0** 新文件 / 新 UI panel / 新 DesignPanel v-if / Steiger import 链改动
+
+### 3.v5.4 内部实现拆解
+
+#### `style.ts` — `switchClasses(node, graph)` builder
+
+```ts
+// 共享几何片段(off-track / thumb)—— 常量。
+const SWITCH_TRACK = [
+  'appearance-none', 'cursor-pointer', 'relative', 'rounded-full',
+  '[container-type:size]',           // cqw/cqh 解析锚点 = input 自身
+  'bg-gray-300', 'dark:bg-gray-600', // off-track(覆盖 base fill)
+  'transition-colors'
+]
+const SWITCH_THUMB = [
+  "before:content-['']", 'before:absolute',
+  'before:top-[10cqh]', 'before:left-[10cqh]',
+  'before:h-[80cqh]', 'before:aspect-square',
+  'before:rounded-full', 'before:bg-white', 'dark:before:bg-gray-100',
+  'before:shadow',
+  'before:transition-transform', 'before:duration-200', 'before:ease-in-out',
+  'checked:before:translate-x-[calc(100cqw_-_100cqh)]'  // 对称滑动
+]
+
+function switchCheckedColor(node: SceneNode): string {
+  const hex = firstSolidFillHex(node)  // culori → #rrggbb;无则 undefined
+  return hex ? `checked:bg-[${hex}]` : 'checked:bg-blue-500 dark:checked:bg-blue-400'
+}
+
+function switchClasses(node: SceneNode): string {
+  return [...SWITCH_TRACK, ...SWITCH_THUMB, switchCheckedColor(node)].join(' ')
+}
+```
+
+`tailwindClassName` SWITCH 分支:`return base === '' ? switchClasses(node) : \`${base} ${switchClasses(node)}\``(`bg-gray-300` 在 base 之后 → off 态覆盖 fill;`checked:bg-[#hex]` 给 ON 态)。`firstSolidFillHex` 复用 core 既有 fill→hex helper(若无则 culori `formatHex`)。
+
+#### `tree.ts` — option 排版常量
+
+```ts
+const OPTION_LABEL_CLASSES = 'inline-flex items-center gap-2 cursor-pointer'
+const OPTION_INPUT_CLASSES = 'shrink-0 accent-blue-500 dark:accent-blue-400'
+const OPTION_GROUP_WRAPPER_CLASSES = 'flex flex-col gap-2'
+```
+
+`appendOptionInputs` body:label node `className: OPTION_LABEL_CLASSES`、input node `className: OPTION_INPUT_CLASSES`(原 `''`)。
+
+`nodeToIR`(line 242 附近):
+```ts
+let className = tailwindClassName(node, ctx.graph)
+if ((node.type === 'RADIO' || isCheckboxGroup(node)) &&
+    !/(^|\s)(flex|inline-flex|grid|inline-grid)(\s|$)/.test(className)) {
+  className = className === '' ? OPTION_GROUP_WRAPPER_CLASSES : `${className} ${OPTION_GROUP_WRAPPER_CLASSES}`
+}
+```
+`isCheckboxGroup` 复用既有(tree.ts:228),不改其逻辑。
+
+### 3.v5.5 成功标准 + Tauri ACK
+
+1. `bun test ./tests/engine/compiler/` 全绿(含更新的 SWITCH class 串 + 新 option className + wrapper flex 兜底正负例)
+2. `bun test ./tests/engine/tools/lowcode/` 全绿(零回归)
+3. `bun run check` 全绿(0 新 i18n → check:i18n 无变;jscpd 0 clones;Steiger 无新 import)
+4. **Tauri 实测(用户主导)~6 项 user-ACK(全 Q3 人眼)**:
+
+| # | ACK | Q1 / Q2 / Q3 |
+|---|---|---|
+| 1 | SWITCH 切换 ON/OFF → thumb **平滑滑动**(非跳变)左右对称,任意宽高比 | Q1 ✅ / Q2 N/A / **Q3** 滑动动画 |
+| 2 | 画布给 SWITCH 设填充色(如绿)→ Preview ON 态 track = 该色;无 fill → 默认蓝 | Q1 ✅ / Q2 ✅ 填充即配置 / **Q3** 颜色随 fill |
+| 3 | 暗色主题:SWITCH off/on + thumb 可辨;option accent 可辨 | Q1 ✅ / Q2 N/A / **Q3** 暗色可辨 |
+| 4 | RADIO(options [M,F] FREE 布局)→ option 竖排有间距、input 与文字对齐有 gap | Q1 ✅ / Q2 N/A / **Q3** 间距对齐 |
+| 5 | CHECKBOX-group(options [A,B,C])同 RADIO 排版;多选 array 仍 work(零回归 §3.v4 step 8) | Q1 ✅ / Q2 N/A / **Q3** 间距 + 回归 |
+| 6 | RADIO/CHECKBOX 用 **auto-layout 横排** → 方向被尊重(不被竖排兜底覆盖),仅 label 内对齐改善 | Q1 ✅ / Q2 N/A / **Q3** 不抢用户意图 |
+
+5. 零回归:§3.v4 7 controlled bindings(含 CHECKBOX group array、SWITCH boolean 绑定)+ §3.x INPUT + §3.v3 + §3.v2 全 work;不破坏任一 Phase 0/1/2/§2/§3/§3.x/§3.v2/§3.v3/§3.v4 锁定决定(尤其 `appendOptionInputs`/`patchOptionLeafControlled`/`arrayCheckboxOnChangeBody` 签名、CHECKBOX group-vs-single tag、`bindings.value`、`IRControlledInput` shape)
+
+### 3.v5.6 工作分解(建议 1 名工程师,~3 天)
+
+| Step | 任务 | 验收 / commit |
+|---|---|---|
+| 0 | §3.v5 设计 doc 写入 + commit | `docs(lowcode): §3.v5 mini-scope detailed design (full SWITCH CSS + RADIO/CHECKBOX inline layout)` |
+| 1 | #1 SWITCH:`SWITCH_CLASSES` → `switchClasses(node)` builder(cqw/cqh 滑动 + dark + fill 派生 checked 色);更新/扩 emit 测试 | `bun test ./tests/engine/compiler/` + `bun run check` 全绿;`feat(lowcode): step 1 — full SWITCH CSS (slide tween + dark + fill color) (§3.v5)` |
+| 2 | #2 RADIO/CHECKBOX-group:option label/input className 常量 + wrapper flex 兜底(RADIO+checkbox-group,base 无 flex 时);扩 emit 正负例测试 | `bun test ./tests/engine/compiler/` + `bun run check` 全绿;`feat(lowcode): step 2 — RADIO/CHECKBOX-group inline layout polish (§3.v5)` |
+| 3 | Tauri 实测 6 项(Q3 人眼)+ §3.v5.8 post-mortem 回填 + memory 更新 + close | 6 ACK 全 ✅(或 cqw 回退标记);`docs(lowcode): §3.v5 Tauri verification + close` |
+
+### 3.v5.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| `cqw`/`cqh` + `[container-type:size]` 在 Tauri WKWebView 不生效 → SWITCH 不滑动 | 中 | Step 3 Tauri 必验;不滑回退 §3.v4 anchor-swap(hotfix 安全网)并标 design-only;container query units macOS WKWebView 近年支持,预期 OK |
+| `[container-type:size]` 给 `<input>` 加 size containment 影响其内在尺寸 | 中 | bbox 已给显式 w/h(Tailwind)→ 应不受影响;Tauri 验 |
+| `checked:bg-[#hex]` 自定义色 dark 态太亮/太暗 | 低 | 自定义色不加 dark 变体(明暗一致),用户自负;默认蓝才有 dark |
+| wrapper flex 兜底正则误判(base 有 `flex-wrap` 无 `flex`)| 低 | 罕见;`flex-wrap` 必伴 `flex`(用户极少裸用);可接受 |
+| 现有 golden 测试硬编码旧 SWITCH class 串 → step 1 break | 中 | step 1 同 commit 更新断言;已确认 element/cross-walker 测试断 `role="switch"`/`checked=` 而非全 class 串,影响面小 |
+| jscpd:SWITCH_TRACK/THUMB 与 option 常量片段被判 clone | 低 | 常量是声明非逻辑,片段短;若触发抽到单一数组 |
+| 误改 `appendOptionInputs` 签名或 CHECKBOX group tag 逻辑(锁定项)| 高 | 只改 body 的 className 字面 + 加 wrapper 后处理;签名/tag 决策 grep 自查不动 |
+
+### 3.v5.8 Post-mortem
+
+**§3.v5 待 Tauri ACK 后回填**(commit chain / ACK 表 / surprise / 经验印证)。预期本期是 Phase 3 首个"纯 Q3 视觉收尾"scope —— 验证经验 J 的判断:Q3 视觉债只能人眼 Tauri 关闭,单测全程只能保证"class 串按设计 emit",保证不了"渲染出来好看"。若 cqw 回退,记为 "CSS 能力 vs 运行时支持" 类 surprise(经验 D/H 邻域)。
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
