@@ -13,7 +13,13 @@ export const WATCH_IGNORED = [
   '**/tests/**',
   '**/.worktrees/**',
   '**/.github/**',
-  '**/.pi/**'
+  '**/.pi/**',
+  // Design documents are user data, never Vite modules (loaded at runtime via
+  // fetch / Tauri fs). Saving one (Cmd+S) into the watched project tree would
+  // otherwise trip the main watcher and full-reload the app — same restart
+  // class as the .preview-root loop above.
+  '**/*.fig',
+  '**/*.pen'
 ]
 
 export function createDevServerOptions(host: string | undefined): ServerOptions {
