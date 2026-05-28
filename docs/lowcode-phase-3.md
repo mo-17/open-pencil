@@ -1341,8 +1341,8 @@ RADIO(`applyRadioOptions`)— 每 radio 当前 emit `defaultChecked` if `opt ===
 | a | `SWITCH_CLASSES` 扁平常量 → `switchClasses(node, graph): string` builder(仍在 `style.ts`)。**这是锁定项里唯一被授权改 SWITCH_CLASSES 顶层结构的地方**(§3.v5 #1) | checked 颜色需按 node fill 派生 → 必须从常量升为 builder;off-track + thumb 几何仍是常量片段拼接 |
 | b | **平滑滑动**:抛弃 `left`/`right` 双 anchor(无法 tween),改 thumb 固定锚 `left` + `checked:before:translate-x-[calc(100cqw_-_100cqh)]` + `before:transition-transform`。`<input>` 设 `[container-type:size]` 使 `cqw`/`cqh` 解析为 track 自身宽/高 | translate 可 tween → 真滑动;cqw/cqh 让位移 = 轨道宽 − 轨道高 = 对称落位,**任何 aspect ratio 通用**且随 bbox 缩放(比 §3.v4 anchor 跳变严格更优) |
 | c | thumb 几何用 `cqh`:`before:h-[80cqh] before:aspect-square before:top-[10cqh] before:left-[10cqh]`(高 80%、上下各 10% gap、左 10% gap)→ checked 位移 `100cqw − 100cqh` 落到右 10% gap 对称 | 单位统一 cqh,几何自洽;数学已验:off 左缘 10cqh、右缘 10cqh+80cqh=90cqh;checked 位移后右缘 = 90cqh + (100cqw−100cqh) = 100cqw−10cqh,右 gap = 10cqh ✅ 对称 |
-| d | **颜色按 SceneNode fill 派生**:builder 读 node 第一个 SOLID fill → hex → `checked:bg-[#hex]`;无 fill → 默认 `checked:bg-blue-500`。off-track 恒 `bg-gray-300`(覆盖 base 的 fill bg) | 画布给 SWITCH 改填充色 = 改 ON 态颜色(Q3 直觉);OFF 态恒中性灰 |
-| e | **暗色变体**:off `dark:bg-gray-600`、默认 checked `dark:checked:bg-blue-400`、thumb `dark:before:bg-gray-100`;自定义 fill 的 checked 不加 dark 变体(自定义色明暗一致) | 暗色主题可辨;自定义色不强行反转 |
+| d | **固定颜色**:OFF 恒 `bg-gray-300`、ON 恒 `checked:bg-blue-500`(覆盖 base 的 fill bg)。**~~原定"按 SceneNode fill 派生 checked 色"在 step 1 实现时推翻~~**:`node-defaults.ts:235` SWITCH 专属默认 fill 就是 `BORDER_GRAY`(gray-300),`solidFillColor` 永远非 null → ON 永远读到默认灰(灰底灰,看不见);且无可靠的"用户是否改过 fill"信号 | 与 §3.v4 已 ACK 配色一致;无脆弱"是否默认灰"启发式;颜色定制非核心诉求(用户原话是"好看一点",由滑动 + 暗色 + 排版满足)|
+| e | **暗色变体**:off `dark:bg-gray-600`、ON `dark:checked:bg-blue-400`、thumb `dark:before:bg-gray-100` | 暗色主题可辨 |
 | f | **option `<label>` 排版**:`appendOptionInputs` body 把 label className 从 `''` 改为常量 `OPTION_LABEL_CLASSES = 'inline-flex items-center gap-2 cursor-pointer'`;option `<input>` className 改为 `OPTION_INPUT_CLASSES = 'accent-blue-500 dark:accent-blue-400'` | input 与文字对齐 + gap;inline-flex 让 label 自身横向不撑满;accent 给原生 radio/checkbox 上色 |
 | g | **wrapper 布局兜底**:`nodeToIR` 算完 className 后,若 node 是 RADIO 或 checkbox-group **且** base className 不含 flex/grid token → append 常量 `OPTION_GROUP_WRAPPER_CLASSES = 'flex flex-col gap-2'`;**auto-layout(base 已有 flex)原样尊重**(用户在画布设的 row/col 不被覆盖) | FREE 布局给个竖排默认间距;auto-layout 用户已掌控方向 → 不动(经验 H:不抢用户已表达的意图) |
 | h | **零签名 / 零 tag 逻辑改动**:`appendOptionInputs` / `patchOptionLeafControlled` / `arrayCheckboxOnChangeBody` 签名不动;`isCheckboxGroup` group-vs-single tag 逻辑不动;`tailwindClassName(node, graph)` 签名不动(SWITCH 分支内部从常量换 builder 调用) | 全是 emit className 字符串 body 改动,不碰任一 §3.v4.2 锁定的 shape / 签名 / tag 决策 |
@@ -1363,14 +1363,14 @@ RADIO(`applyRadioOptions`)— 每 radio 当前 emit `defaultChecked` if `opt ===
 | 决定 | Q1 技术链 | Q2 UI 引导 | Q3 心智模型 / 视觉 |
 |---|---|---|---|
 | SWITCH 平滑滑动(b/c) | ✅ class 串挂已渲染 input | N/A 无配置 | ✅ 用户期待"滑动按钮会平滑动",非跳变 |
-| SWITCH 颜色派生 fill(d) | ✅ builder 读 node.fills | ✅ 画布填充色即 affordance | ✅ 用户期待"改 SWITCH 颜色 = 改填充" |
+| SWITCH 固定颜色(d) | ✅ class 串恒 gray/blue | N/A 无配置 | ✅ 与 §3.v4 已 ACK 配色一致(默认 fill=灰,派生会灰底灰 → 推翻派生)|
 | 暗色变体(e) | ✅ dark: 变体 | N/A | ✅ 暗色主题下控件可辨 |
 | RADIO/CHECKBOX label 排版(f) | ✅ className 挂已渲染 label/input | N/A 无配置 | ✅ 用户期待 option 有间距、input 对齐文字 |
 | wrapper flex 兜底(g) | ✅ className append | N/A | ✅ FREE 布局 option 不挤一行;auto-layout 尊重用户方向 |
 
 ### 3.v5.3 公开 API / Schema 改动
 
-- ✏️ **重构** `style.ts`:`const SWITCH_CLASSES`(扁平常量)→ `function switchClasses(node, graph): string`(builder);`tailwindClassName` SWITCH 分支调 builder(签名不变)
+- ✏️ **重构** `style.ts`:`const SWITCH_CLASSES`(扁平常量)→ `SWITCH_TRACK` + `SWITCH_THUMB` 两段常量拼成的 `SWITCH_CLASSES`(cqw/cqh 滑动 + dark + 固定 gray/blue);`tailwindClassName` SWITCH 分支不变(仍拼常量,**不**升 builder —— 颜色派生已在 step 1 推翻,builder 失去理由)
 - ✏️ **改 body** `tree.ts` `appendOptionInputs`:label/input className `''` → 常量(签名不变)
 - ✏️ **改 body** `tree.ts` `nodeToIR`:className 算完后 RADIO/checkbox-group wrapper flex 兜底(`const` → `let`)
 - ➕ **新常量**(`tree.ts`):`OPTION_LABEL_CLASSES` / `OPTION_INPUT_CLASSES` / `OPTION_GROUP_WRAPPER_CLASSES`(模块私有)
@@ -1379,14 +1379,14 @@ RADIO(`applyRadioOptions`)— 每 radio 当前 emit `defaultChecked` if `opt ===
 
 ### 3.v5.4 内部实现拆解
 
-#### `style.ts` — `switchClasses(node, graph)` builder
+#### `style.ts` — `SWITCH_TRACK` + `SWITCH_THUMB` 常量
 
 ```ts
-// 共享几何片段(off-track / thumb)—— 常量。
 const SWITCH_TRACK = [
   'appearance-none', 'cursor-pointer', 'relative', 'rounded-full',
-  '[container-type:size]',           // cqw/cqh 解析锚点 = input 自身
-  'bg-gray-300', 'dark:bg-gray-600', // off-track(覆盖 base fill)
+  '[container-type:size]',                       // cqw/cqh 解析锚点 = input 自身
+  'bg-gray-300', 'dark:bg-gray-600',             // off-track(覆盖 base fill)
+  'checked:bg-blue-500', 'dark:checked:bg-blue-400', // on-track(固定,非派生)
   'transition-colors'
 ]
 const SWITCH_THUMB = [
@@ -1398,18 +1398,10 @@ const SWITCH_THUMB = [
   'before:transition-transform', 'before:duration-200', 'before:ease-in-out',
   'checked:before:translate-x-[calc(100cqw_-_100cqh)]'  // 对称滑动
 ]
-
-function switchCheckedColor(node: SceneNode): string {
-  const hex = firstSolidFillHex(node)  // culori → #rrggbb;无则 undefined
-  return hex ? `checked:bg-[${hex}]` : 'checked:bg-blue-500 dark:checked:bg-blue-400'
-}
-
-function switchClasses(node: SceneNode): string {
-  return [...SWITCH_TRACK, ...SWITCH_THUMB, switchCheckedColor(node)].join(' ')
-}
+const SWITCH_CLASSES = [...SWITCH_TRACK, ...SWITCH_THUMB].join(' ')
 ```
 
-`tailwindClassName` SWITCH 分支:`return base === '' ? switchClasses(node) : \`${base} ${switchClasses(node)}\``(`bg-gray-300` 在 base 之后 → off 态覆盖 fill;`checked:bg-[#hex]` 给 ON 态)。`firstSolidFillHex` 复用 core 既有 fill→hex helper(若无则 culori `formatHex`)。
+`tailwindClassName` SWITCH 分支:`return base === '' ? SWITCH_CLASSES : \`${base} ${SWITCH_CLASSES}\``(`bg-gray-300` 在 base 之后 → off 态覆盖 fill;`checked:bg-blue-500` 给 ON 态)。**step 1 实现时发现 SWITCH 默认 fill = gray-300 → 放弃颜色派生**(见决定 d 推翻),故无需 builder / 无需 `solidFillColor` 导出。
 
 #### `tree.ts` — option 排版常量
 
@@ -1441,7 +1433,7 @@ if ((node.type === 'RADIO' || isCheckboxGroup(node)) &&
 | # | ACK | Q1 / Q2 / Q3 |
 |---|---|---|
 | 1 | SWITCH 切换 ON/OFF → thumb **平滑滑动**(非跳变)左右对称,任意宽高比 | Q1 ✅ / Q2 N/A / **Q3** 滑动动画 |
-| 2 | 画布给 SWITCH 设填充色(如绿)→ Preview ON 态 track = 该色;无 fill → 默认蓝 | Q1 ✅ / Q2 ✅ 填充即配置 / **Q3** 颜色随 fill |
+| 2 | SWITCH OFF 态 gray-300、ON 态 blue-500(固定,不随 fill);与 §3.v4 配色一致 | Q1 ✅ / Q2 N/A / **Q3** 配色清晰 |
 | 3 | 暗色主题:SWITCH off/on + thumb 可辨;option accent 可辨 | Q1 ✅ / Q2 N/A / **Q3** 暗色可辨 |
 | 4 | RADIO(options [M,F] FREE 布局)→ option 竖排有间距、input 与文字对齐有 gap | Q1 ✅ / Q2 N/A / **Q3** 间距对齐 |
 | 5 | CHECKBOX-group(options [A,B,C])同 RADIO 排版;多选 array 仍 work(零回归 §3.v4 step 8) | Q1 ✅ / Q2 N/A / **Q3** 间距 + 回归 |

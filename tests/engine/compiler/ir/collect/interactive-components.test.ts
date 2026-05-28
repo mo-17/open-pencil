@@ -74,6 +74,28 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     expect(sw.attrs.defaultChecked).toBe(true)
   })
 
+  test('SWITCH className → §3.v5 full CSS (cqw slide tween + fixed colors + dark)', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('SWITCH', pageId)
+
+    const ir = collectTree(graph, pageId)
+    const sw = ir.children[0] as IRElement
+    // container query unit anchor + smooth translate-x tween (replaces the
+    // §3.v4 left↔right anchor swap, which couldn't animate).
+    expect(sw.className).toContain('[container-type:size]')
+    expect(sw.className).toContain('before:transition-transform')
+    expect(sw.className).toContain('checked:before:translate-x-[calc(100cqw_-_100cqh)]')
+    // Fixed off/on colors with dark variants — not derived from the (gray) fill.
+    expect(sw.className).toContain('bg-gray-300')
+    expect(sw.className).toContain('dark:bg-gray-600')
+    expect(sw.className).toContain('checked:bg-blue-500')
+    expect(sw.className).toContain('dark:checked:bg-blue-400')
+    // The §3.v4 anchor-swap tokens are gone.
+    expect(sw.className).not.toContain('checked:before:right-[5%]')
+    expect(sw.className).not.toContain('before:left-[5%]')
+  })
+
   test('SWITCH unchecked → no defaultChecked attr', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

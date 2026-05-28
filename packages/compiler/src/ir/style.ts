@@ -2,48 +2,61 @@ import { collectTailwindClasses } from '@open-pencil/core/io/formats/jsx'
 import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
 
 /**
- * Derive the Tailwind class string for a SceneNode. Delegates to the core
- * JSX exporter so the design canvas and the compiled output stay in sync —
- * one source of truth for SceneNode → Tailwind translation.
+ * Phase 3 §3.v5 — full SWITCH CSS (supersedes the §3.v4 step 9/9b hotfix).
  *
- * Phase 3 §3.v4 step 9 — appends SWITCH-specific styling so a `role="switch"`
- * checkbox renders as a sliding toggle (track + thumb) instead of the native
- * checkbox glyph. Uses percentage positioning + aspect-square so it scales
- * with the SceneNode's bbox; background colors override any fill from the
- * SceneNode (acceptable for a control; users rarely customize SWITCH fill).
- * Full CSS spec lives at §13.
+ * Track: `appearance-none` strips the native checkbox glyph; the input is a
+ * query container (`container-type:size`) so the thumb pseudo-element can size
+ * and travel in `cqw`/`cqh` — i.e. relative to the track's own width/height.
+ * Colors are fixed (off gray / on blue, both with a dark variant) and override
+ * any SceneNode fill — a created SWITCH already carries a default gray fill, so
+ * deriving the on-color from it would just paint the toggle gray-on-gray.
  */
-const SWITCH_CLASSES = [
-  // Strip the native checkbox glyph + treat the input as a styled box.
+const SWITCH_TRACK = [
   'appearance-none',
   'cursor-pointer',
   'relative',
   'rounded-full',
-  // Track color (off / checked).
+  '[container-type:size]',
   'bg-gray-300',
+  'dark:bg-gray-600',
   'checked:bg-blue-500',
-  'transition-colors',
-  // Thumb via ::before pseudo-element — square, ~80% of track height,
-  // anchored 5% from the LEFT edge in off state and 5% from the RIGHT
-  // edge when checked (left-auto handoff). This gives true visual
-  // symmetry across any aspect ratio — fixed-percentage anchors like
-  // `left-[55%]` only line up for one specific track ratio. Animation
-  // between left and right anchors is snappier than a translate-x
-  // tween; full smooth-tween CSS goes to §13.
+  'dark:checked:bg-blue-400',
+  'transition-colors'
+]
+
+/**
+ * Thumb via the ::before pseudo-element. Square, 80% of the track height,
+ * inset 10cqh on every side in the off state. Checked translates it by
+ * `100cqw - 100cqh` (track width minus track height) so it lands with a
+ * symmetric 10cqh gap on the right for ANY aspect ratio — and because it's a
+ * `translate-x`, it tweens smoothly (the §3.v4 left↔right anchor swap couldn't
+ * animate, CSS can't tween to/from `auto`).
+ */
+const SWITCH_THUMB = [
   "before:content-['']",
   'before:absolute',
-  'before:inset-y-[10%]',
-  'before:left-[5%]',
-  'before:right-auto',
+  'before:top-[10cqh]',
+  'before:left-[10cqh]',
+  'before:h-[80cqh]',
   'before:aspect-square',
   'before:rounded-full',
   'before:bg-white',
+  'dark:before:bg-gray-100',
   'before:shadow',
-  'before:transition-colors',
-  'checked:before:left-auto',
-  'checked:before:right-[5%]'
-].join(' ')
+  'before:transition-transform',
+  'before:duration-200',
+  'before:ease-in-out',
+  'checked:before:translate-x-[calc(100cqw_-_100cqh)]'
+]
 
+const SWITCH_CLASSES = [...SWITCH_TRACK, ...SWITCH_THUMB].join(' ')
+
+/**
+ * Derive the Tailwind class string for a SceneNode. Delegates to the core
+ * JSX exporter so the design canvas and the compiled output stay in sync —
+ * one source of truth for SceneNode → Tailwind translation. SWITCH appends
+ * the toggle-specific styling above.
+ */
 export function tailwindClassName(node: SceneNode, graph: SceneGraph): string {
   const base = collectTailwindClasses(node, graph).join(' ')
   if (node.type === 'SWITCH') {
