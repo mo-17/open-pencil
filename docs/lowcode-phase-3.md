@@ -1688,7 +1688,42 @@ import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vu
 
 ### 3.v6.8 Post-mortem
 
-**§3.v6 待 Tauri ACK 后回填**(commit chain / ACK 表 / surprise / 经验印证)。预期是 Phase 3 首个 **Q1 全既存、纯补 Q2 引导**的 refactor —— 验证经验 J Q2 的系统化判断:把反复出现的"interactiveProps 无 UI"缺口一次性用声明式 schema 消除,后续加字段不再触发同类 surprise。若 Tauri 暴露新 Q3 洞(如某字段用户心智与 kind 不符),记入并评估是否调 schema kind。
+**§3.v6 closed 2026-05-28**(HEAD this commit;Tauri ACK 8/8 ✅,零 surprise)。Phase 3 首个 **Q1 全既存、Q2-only(纯补 authoring UI)**的 refactor —— 验证经验 J Q2 的系统化判断成立:声明式 schema 一次性消除"interactiveProps 无 UI"缺口类,后续加字段 = 改一处数组,不再触发同类 surprise。
+
+#### Commit 链(4 个,无 hotfix)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `e96de06` | §3.v6 8 主决定 + 8 次默 + Q1/Q2/Q3 反向核 |
+| 1 | `e386d4a` | `interactive-fields.ts` 声明式 schema(7 类型 × 字段 × 5 kind);对齐 emit `applyXxxProps` 消费 |
+| 2 | `90eeeb0` | `InteractivePropsPanel.vue`(按 kind 渲染)+ 删 `InteractiveOptionsPanel.vue` + DesignPanel 单 v-if + 8 i18n key × 7 locale |
+| 3 | _this commit_ | Tauri ACK 8/8 + §3.v6.8 回填 + close + memory |
+
+**测试**:`bun run check` 0 error / 5 pre-existing max-lines / 0 clones / locales 同步 / Steiger 干净;405/405 compiler+tools 测试零回归(**本期 0 compiler 改动** → emit 早已消费全部字段,纯 app-side UI + i18n)。
+
+#### Tauri ACK 结果(用户主导 2026-05-28)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | INPUT placeholder + value 字段可填 → Preview 生效 | ✅ |
+| 2 | TEXTAREA 同 INPUT | ✅ |
+| 3 | SWITCH Default checked toggle | ✅ |
+| 4 | CHECKBOX:无 options 出 checked;填 options → checked 隐藏 + 多选组(hint)| ✅(Q3 模式分裂清晰)|
+| 5 | DATEPICKER date 默认值 | ✅ |
+| 6 | SELECT/RADIO options + groupName 零回归 | ✅ |
+| 7 | RADIO Default selected = options 派生下拉 | ✅(Q3 enum 防错填)|
+| 8 | BUTTON.text 仍在 TextBindingPanel,通用面板不出(决定 e)| ✅ |
+
+#### Surprise 列表(1 个,工具链非功能)
+
+1. **`scripts/make-v5-testdoc.ts` 触发 `no-script-core-barrel-imports`**(step 1)—— §3.v5 用 `bun run` 直跑、从没被 lint;step 1 跑 `bun run check` 时 `lint:structure` 扫 `scripts/`(+`tests/`)发现它用了 `@open-pencil/core` barrel import,报 error 卡住整个 gate。Fix:改 `@open-pencil/core/scene-graph` subpath。**教训:`scripts/` 下的 untracked 文件也进 `lint:structure` 扫描范围 —— 一次性脚本也得 lint-clean,否则卡 gate**(经验 I 邻域:gate 的扫描面比"我改的文件"大)。非 §3.v6 功能 surprise。
+
+#### 经验印证
+
+- **J Q2 系统化兑现** + **K 第二次印证(候选 → 可升正)**:本期无"依赖默认值"的决定,但 step 1 的 schema 字段集是靠**静读 emit `applyXxxProps` 源码**对齐的(经验 E 跨层接口核),Tauri 8/8 一次过 = 对齐正确。**经验 K 的同源思想**:不确定就实测/静读真源,别假设 —— 本期对 emit 消费字段做了源码核对,零字段漏/错。
+- **H**:Tauri ACK 仍是 UI 面板唯一验收关口(本期无 e2e,沿用 §3.v2-§3.v5 lowcode 面板的 Tauri-ACK 先例);8 项全人眼过。
+- **零回归无 compiler 改动**:本期证明"补 UI 引导"可以完全不碰引擎 —— 当 Q1 技术链全既存时,scope 收敛到纯 app-side。
+- **YAGNI 边界**:5 kind + 单文件面板 + 不扩到 events/bindings,由 4 次实证缺口(§3.v2/§3.v4×2)驱动,非预设抽象。
 
 ---
 
