@@ -159,4 +159,51 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
       .children[0] as IRElement
     expect(input.attrs).toEqual({ type: 'radio', value: 'A' })
   })
+
+  test('§3.v5 — RADIO option label/input get inline-layout classes', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RADIO', pageId, { interactiveProps: { options: ['A', 'B'] } })
+
+    const radio = collectTree(graph, pageId).children[0] as IRElement
+    const label = radio.children[0] as IRElement
+    const input = label.children[0] as IRElement
+    expect(label.className).toBe('inline-flex items-center gap-2 cursor-pointer')
+    expect(input.className).toBe('shrink-0 accent-blue-500 dark:accent-blue-400')
+  })
+
+  test('§3.v5 — FREE-positioned RADIO wrapper gets flex-col fallback', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RADIO', pageId, { interactiveProps: { options: ['A'] } })
+
+    const radio = collectTree(graph, pageId).children[0] as IRElement
+    expect(radio.className).toContain('flex flex-col gap-2')
+  })
+
+  test('§3.v5 — auto-layout RADIO wrapper keeps the user direction (no fallback)', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RADIO', pageId, {
+      layoutMode: 'HORIZONTAL',
+      interactiveProps: { options: ['A'] }
+    })
+
+    const radio = collectTree(graph, pageId).children[0] as IRElement
+    expect(radio.className).toContain('flex')
+    expect(radio.className).not.toContain('flex flex-col gap-2')
+  })
+
+  test('§3.v5 — CHECKBOX-group wrapper + option labels get layout classes', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('CHECKBOX', pageId, { interactiveProps: { options: ['X', 'Y'] } })
+
+    const group = collectTree(graph, pageId).children[0] as IRElement
+    expect(group.tag).toBe('div')
+    expect(group.className).toContain('flex flex-col gap-2')
+    expect((group.children[0] as IRElement).className).toBe(
+      'inline-flex items-center gap-2 cursor-pointer'
+    )
+  })
 })

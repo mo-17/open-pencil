@@ -239,7 +239,18 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const tag = isCheckboxGroup(node) ? 'div' : TAG_BY_TYPE[node.type]
   if (!tag) return null
 
-  const className = tailwindClassName(node, ctx.graph)
+  let className = tailwindClassName(node, ctx.graph)
+  // Phase 3 §3.v5 — give RADIO / CHECKBOX-group wrappers a sane vertical
+  // stack with spacing when the SceneNode itself isn't an auto-layout
+  // (FREE-positioned wrappers would otherwise let the option <label>s run
+  // together inline with no gaps). Auto-layout wrappers already carry a
+  // flex/grid layout from the canvas — respect the direction the user set.
+  if (
+    (node.type === 'RADIO' || isCheckboxGroup(node)) &&
+    !/(^|\s)(flex|inline-flex|grid|inline-grid)(\s|$)/.test(className)
+  ) {
+    className = className === '' ? OPTION_GROUP_WRAPPER_CLASSES : `${className} ${OPTION_GROUP_WRAPPER_CLASSES}`
+  }
   const attrs: Record<string, IRAttrValue> = {}
   const children: IRNode[] = []
 
@@ -624,6 +635,14 @@ function applySelectOptions(node: SceneNode, ip: InteractiveProps, children: IRN
   }
 }
 
+// Phase 3 §3.v5 — option-list visual polish for RADIO + CHECKBOX-group.
+// The wrapper fallback only applies to FREE-positioned wrappers (auto-layout
+// keeps the user's direction); the label/input classes always apply so the
+// control + its text align with a small gap instead of butting together.
+const OPTION_GROUP_WRAPPER_CLASSES = 'flex flex-col gap-2'
+const OPTION_LABEL_CLASSES = 'inline-flex items-center gap-2 cursor-pointer'
+const OPTION_INPUT_CLASSES = 'shrink-0 accent-blue-500 dark:accent-blue-400'
+
 /** Shared per-option emit for RADIO + CHECKBOX-group wrappers. Each option
  *  becomes a `<label><input ...> opt</label>` child of the wrapper div.
  *  `makeInputAttrs(opt)` lets the caller specialize the input attrs
@@ -639,14 +658,14 @@ function appendOptionInputs(
       kind: 'element',
       sourceId: node.id,
       tag: 'label',
-      className: '',
+      className: OPTION_LABEL_CLASSES,
       attrs: {},
       children: [
         {
           kind: 'element',
           sourceId: node.id,
           tag: 'input',
-          className: '',
+          className: OPTION_INPUT_CLASSES,
           attrs: makeInputAttrs(opt),
           children: []
         },
