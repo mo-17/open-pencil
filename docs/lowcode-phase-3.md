@@ -1504,6 +1504,194 @@ if ((node.type === 'RADIO' || isCheckboxGroup(node)) &&
 
 ---
 
+## 3.v6 §3.v6 详细设计:InteractiveProps 通用编辑器框架
+
+**Scope = §3.v6 mini-scope**(§3.v5 候选池 #3,~3 天 refactor)。系统性消除 §3.v2 / §3.v4 反复出现的「interactiveProps 字段无 authoring UI」缺口类(§3.v2 ACK#1 BUTTON.text / §3.v4 ACK#5/#6 SELECT·RADIO options),把零散 bespoke 面板抽成一个**声明式 per-NodeType 字段 schema + 单一通用面板**。经验 J Q2 系统化。
+
+**关键性质**:emit 的 `applyXxxProps`(`tree.ts`)**早已消费**所有这些字段(placeholder/value/checked/options/groupName/value)—— 缺的只是 UI authoring 入口。故本期 **0 SceneNode / 0 IR / 0 emit / 0 Kiwi 改动 / 0 compiler 改动**,纯 app-side UI + i18n。这是 Phase 3 首个 **Q1 全既存、Q2 是全部 scope** 的"补 UI 引导"refactor。
+
+§3.v6 **不做**:把 BUTTON.text 折进通用 schema(决定 e:留 TextBindingPanel,binding 耦合);interactiveProps 字段类型校验(如 date 格式 —— 候选 #5);通用编辑器扩到 events/bindings(只管 interactiveProps 一类);新 number 字段(当前无 number 型 interactiveProps)。
+
+### 3.v6.1 现状与问题
+
+§3.v5 closed 2026-05-28 后,interactiveProps 字段的 UI 覆盖**零散且有洞**:
+
+| NodeType | interactiveProps 字段(emit 消费) | 当前 UI |
+|---|---|---|
+| INPUT | `placeholder`, `value` | ❌ 无(只 AI/CLI)|
+| TEXTAREA | `placeholder`, `value` | ❌ 无 |
+| CHECKBOX | `options`(group)/ `checked`(single)| options ✅(InteractiveOptionsPanel);`checked` ❌ |
+| SWITCH | `checked` | ❌ 无 |
+| DATEPICKER | `value`(日期)| ❌ 无 |
+| BUTTON | `text` | ✅ TextBindingPanel(literal mode)|
+| SELECT | `options` | ✅ InteractiveOptionsPanel |
+| RADIO | `options`, `groupName`, `value`(默认选中)| options ✅ / groupName ✅ / `value` ❌ |
+
+3 个问题:
+1. **6 个字段完全无 UI**:INPUT/TEXTAREA `placeholder`+`value`、DATEPICKER `value`、CHECKBOX/SWITCH `checked`、RADIO 默认 `value` —— Bubble-like 表单里这些是最基本的字段属性,却只能 AI/CLI 改(同 §3.v2/§3.v4 缺口类)
+2. **两个 bespoke 面板**(`InteractiveOptionsPanel.vue` options+groupName / `TextBindingPanel.vue` button-text)各自硬编码 —— 每加一个 interactiveProps 字段就要新写/改一个面板 + DesignPanel v-if,缺口反复出现(经验 J Q2 指出的系统病)
+3. **DesignPanel.vue:126-128** `InteractiveOptionsPanel v-if SELECT||RADIO||CHECKBOX` —— 加类型/字段都要手改 v-if
+
+### 3.v6.2 关键决定
+
+**8 主决定**:
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **声明式 schema**:新 `src/components/properties/Lowcode/interactive-fields.ts` 导出 `INTERACTIVE_PROP_FIELDS: Partial<Record<SceneNode['type'], InteractiveField[]>>`。`InteractiveField = { key: string; kind: FieldKind; labelKey: PanelKey; placeholderKey?: PanelKey; visibleWhen?: (ip: Record<string, unknown>) => boolean }` | 单源:per-NodeType "哪些 interactiveProps 字段可编辑 + 怎么编辑";加字段 = 改一处数组,不再新写面板 |
+| b | **5 个 FieldKind**:`text`(string `<input>`)/ `boolean`(checkbox toggle)/ `date`(`<input type=date>`)/ `string-array`(options 列表增删改)/ `enum`(从兄弟字段 options 派生的 `<select>`,用于 RADIO 默认 value)| 覆盖全部现存字段形状;`enum` 让 RADIO 默认值从 options 里选(防自由文本错填,Q3)|
+| c | **单一 `InteractivePropsPanel.vue`**:按 `INTERACTIVE_PROP_FIELDS[node.type]` 遍历,每 field 按 kind v-if 内联渲染(**不**拆子文件 —— 同域避免多文件惯例);读 `useSceneComputed(interactiveProps)`,写 `editor.updateNodeWithUndo(id, { interactiveProps: merged }, label)`。**替换并删除 `InteractiveOptionsPanel.vue`**(options/groupName 变成 schema 字段)| 一个面板 + 内部 kind 路由(经验 I 单源);string-array 编辑逻辑从 InteractiveOptionsPanel 原样搬入 |
+| d | **CHECKBOX 模式分裂**:`options`(string-array)恒显示;`checked`(boolean)仅 `visibleWhen: ip => !hasOptions(ip)` 时显示;options 字段带 hint「填选项 → 切换为多选组」。镜像 emit `isCheckboxGroup`(options 非空 = group)| 与 §3.v4 step 8 emit 语义一致;条件可见 + hint 解决"options vs checked 哪个生效"的 Q3 困惑 |
+| e | **BUTTON.text 留 `TextBindingPanel`,不进通用 schema** | BUTTON.text 本质是 `bindings.text` 的字面 fallback(binding 存在时被覆盖),属于 binding UI 旁;折进通用面板会(1)回退 §3.v3 的"仅 literal mode 显示"UX,或(2)把 binding 感知泄进通用面板。通用面板只管"无 binding 通道的纯 interactiveProps 数据" |
+| f | **schema 字段集**(对齐 compiler `applyXxxProps` 消费,经验 E):INPUT/TEXTAREA = [placeholder:text, value:text];CHECKBOX = [options:string-array, checked:boolean(no options 时)];SWITCH = [checked:boolean];DATEPICKER = [value:date];SELECT = [options:string-array];RADIO = [options:string-array, groupName:text, value:enum] | 字段集 = emit 真实读取的字段(单源对齐);BUTTON 不入(决定 e)|
+| g | **DesignPanel 接线**:删 `InteractiveOptionsPanel` import + v-if;加 `InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS"`(import schema 做单一 v-if 判定)| 加类型只改 schema,DesignPanel v-if 不再逐类型手列 |
+| h | **i18n**:复用现有 option/groupName key(`lowcodeInteractiveOptions*` / `lowcodeInteractiveGroupName*`);新增通用字段 label key(panel 标题 + placeholder/value/defaultChecked/defaultSelected/date)× 7 locale。test-id:新根 `lowcode-interactive-props`;复用 option/group 子 id;text/boolean/date/enum 字段加新 id | 最小化 i18n / test-id churn;check-locales + Steiger 钉 |
+
+**8 次级默认**:
+
+1. **清空语义**:text/date 空串 → `delete ipNext[key]`(emit fallback 到默认);boolean 仅 `true` 时存 `checked: true`,`false` → `delete`(镜像 `applyToggleProps` 的 `ip.checked === true`);沿用 §3.2 + §3.v3 button-text 先例
+2. **enum(RADIO.value)** 选项 = 当前 `options` 字段实时值;含一个空 `(none)` 默认项;value 不在 options 内时仍显示当前值不报错(emit 端 `opt === selected` 自然不命中)
+3. **date kind** = `<input type=date>`,浏览器原生格式校验;空 → undefined
+4. **string-array 编辑器** = InteractiveOptionsPanel 的 add/remove/update + commit-merge 逻辑原样搬入(reuse,非重写;jscpd 0 clone)
+5. **字段顺序** = schema 数组顺序;panel 标题新 key `lowcodeInteractiveProps`('Properties' / '属性')
+6. **visibleWhen** 对当前 `interactiveProps` 响应式求值(useSceneComputed 驱动)
+7. **0 compiler / SceneNode / IR / emit / Kiwi 改动** —— 全 app-side(`src/components/properties/Lowcode/`)+ i18n(`packages/vue/src/i18n` + 7 locale json)
+8. **e2e**:`InteractiveOptionsPanel` 既有 e2e 重命名/迁移到 `InteractivePropsPanel`;新增缺口字段(placeholder/value/checked/date/default-selected)用例;test-id 迁移在同 commit
+
+**经验 J 三问题反向核**:本期 **Q1 技术链对所有字段既存**(emit 早已消费 → 设新 UI 写入 interactiveProps 即生效,零新链路);**Q2 是全部 scope**(系统补 authoring UI + label/hint 引导);**Q3** 重点在 CHECKBOX 模式分裂 + RADIO 默认值 enum:
+
+| 字段/决定 | Q1 技术链 | Q2 UI 引导 | Q3 心智模型 |
+|---|---|---|---|
+| INPUT/TEXTAREA placeholder+value | ✅ applyTextInputProps 已读 | ✅ text 字段 + placeholder hint | ✅ 表单字段基本属性,用户期待可编辑 |
+| CHECKBOX/SWITCH checked | ✅ applyToggleProps 已读 | ✅ boolean toggle | ✅ "默认勾选"符合预期 |
+| CHECKBOX options vs checked | ✅ isCheckboxGroup 已分支 | ✅ options hint「填选项→多选组」 | ⚠️ 重点:条件可见 + hint 防"哪个生效"困惑 |
+| DATEPICKER value | ✅ applyDatePickerProps 已读 | ✅ date input | ✅ 默认日期 |
+| RADIO default value | ✅ applyRadioOptions 已读 `opt===selected` | ✅ enum 从 options 选 | ⚠️ enum 防自由文本错填 |
+| SELECT/RADIO options + groupName | ✅ 既有 | ✅ 复用既有编辑器 | ✅ 零回归 |
+| BUTTON.text 留 TextBindingPanel(e)| ✅ 既有 | ✅ 不动 | ✅ binding fallback 语义不变 |
+
+### 3.v6.3 公开 API / Schema 改动
+
+- ➕ **新文件** `src/components/properties/Lowcode/interactive-fields.ts`:`InteractiveField` 类型 + `FieldKind` 联合 + `INTERACTIVE_PROP_FIELDS` schema(app-side,纯数据)
+- ➕ **新文件** `src/components/properties/Lowcode/InteractivePropsPanel.vue`
+- 🗑️ **删** `src/components/properties/Lowcode/InteractiveOptionsPanel.vue`(逻辑并入通用面板)
+- 🔁 **改** `src/components/DesignPanel.vue`:import 替换 + v-if 改 `node.type in INTERACTIVE_PROP_FIELDS`
+- ➕ **i18n 新 key** × 7 locale:`lowcodeInteractiveProps`(标题)+ `lowcodeInteractivePlaceholder` / `lowcodeInteractiveValue` / `lowcodeInteractiveDefaultChecked` / `lowcodeInteractiveDefaultSelected` / `lowcodeInteractiveDateValue` 等字段 label(具体集 step 1 定),复用 option/groupName key
+- 🔁 **test-id**:新 `lowcode-interactive-props`(根)+ 字段子 id;复用 `lowcode-interactive-option*` / `lowcode-interactive-group-name`
+- **0** SceneNode / ActionDef / IR / emit / Kiwi / compiler / `bindings.*` / `IRControlledInput` 改动
+- **0** `appendOptionInputs` / `patchOptionLeafControlled` / CHECKBOX group tag 逻辑改动(锁定项不碰)
+
+### 3.v6.4 内部实现拆解
+
+#### `interactive-fields.ts`(新)
+
+```ts
+import type { SceneNode } from '@open-pencil/core/scene-graph'
+
+export type FieldKind = 'text' | 'boolean' | 'date' | 'string-array' | 'enum'
+
+export interface InteractiveField {
+  key: string                 // interactiveProps key
+  kind: FieldKind
+  labelKey: string            // i18n panels key
+  placeholderKey?: string
+  optionsFrom?: string        // enum: sibling key holding the string[]
+  visibleWhen?: (ip: Record<string, unknown>) => boolean
+}
+
+const hasOptions = (ip: Record<string, unknown>): boolean =>
+  Array.isArray(ip.options) && ip.options.length > 0
+
+export const INTERACTIVE_PROP_FIELDS: Partial<Record<SceneNode['type'], InteractiveField[]>> = {
+  INPUT: [
+    { key: 'placeholder', kind: 'text', labelKey: 'lowcodeInteractivePlaceholder' },
+    { key: 'value', kind: 'text', labelKey: 'lowcodeInteractiveValue' }
+  ],
+  TEXTAREA: [/* same as INPUT */],
+  CHECKBOX: [
+    { key: 'options', kind: 'string-array', labelKey: 'lowcodeInteractiveOptions' },
+    { key: 'checked', kind: 'boolean', labelKey: 'lowcodeInteractiveDefaultChecked',
+      visibleWhen: (ip) => !hasOptions(ip) }
+  ],
+  SWITCH: [{ key: 'checked', kind: 'boolean', labelKey: 'lowcodeInteractiveDefaultChecked' }],
+  DATEPICKER: [{ key: 'value', kind: 'date', labelKey: 'lowcodeInteractiveDateValue' }],
+  SELECT: [{ key: 'options', kind: 'string-array', labelKey: 'lowcodeInteractiveOptions' }],
+  RADIO: [
+    { key: 'options', kind: 'string-array', labelKey: 'lowcodeInteractiveOptions' },
+    { key: 'groupName', kind: 'text', labelKey: 'lowcodeInteractiveGroupName',
+      placeholderKey: 'lowcodeInteractiveGroupNamePlaceholder' },
+    { key: 'value', kind: 'enum', labelKey: 'lowcodeInteractiveDefaultSelected', optionsFrom: 'options' }
+  ]
+}
+```
+
+字段集**严格对齐** `tree.ts` 各 `applyXxxProps` 实际读取的 key(经验 E 跨层接口核对)。
+
+#### `InteractivePropsPanel.vue`(新)
+
+- `fields = computed(() => INTERACTIVE_PROP_FIELDS[selectedNode.value?.type ?? ''] ?? [])`
+- `ip = useSceneComputed(() => selectedNode.value?.interactiveProps ?? {})`
+- `commit(patch)`:`{ ...ip.value, ...patch }`,空值 delete key,`updateNodeWithUndo(id, { interactiveProps: merged }, 'Update properties')`
+- template:`v-for field in fields`,内层 `v-if field.visibleWhen?.(ip) ?? true`,再按 `field.kind` v-if 渲染 text / boolean / date / string-array(搬 InteractiveOptionsPanel)/ enum(`<select>` from `ip[field.optionsFrom]`)
+- 根 `data-test-id="lowcode-interactive-props"`
+
+#### `DesignPanel.vue`
+
+```vue
+import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
+import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
+// 删 InteractiveOptionsPanel import
+...
+<InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
+```
+
+### 3.v6.5 成功标准 + Tauri ACK
+
+1. `bun run check` 全绿(check:i18n 钉新 key × 7 locale;Steiger 钉新 import + 删文件;jscpd 0 clone —— string-array 逻辑搬移非复制)
+2. `bun test ./tests/engine/compiler/` + `tools/lowcode/` 全绿(本期 0 compiler 改动 → 应纯零回归)
+3. e2e 全绿(InteractiveOptionsPanel → InteractivePropsPanel 迁移 + 新字段用例)
+4. **Tauri 实测(用户主导)~8 项 ACK**(Q2/Q3 为主):
+
+| # | ACK | Q1/Q2/Q3 |
+|---|---|---|
+| 1 | INPUT 选中 → Properties 出 placeholder + value 字段;填 → Preview `<input placeholder= defaultValue=>` | Q1 ✅(emit 既有)/ Q2 ✅ / Q3 ✅ |
+| 2 | TEXTAREA 同 INPUT | ✅✅✅ |
+| 3 | SWITCH → "Default checked" toggle;勾 → Preview 默认 on | ✅✅✅ |
+| 4 | CHECKBOX 无 options → 出 "Default checked";填 options → checked 字段隐藏 + 变多选组(hint 提示)| ✅✅ / **Q3 模式分裂清晰** |
+| 5 | DATEPICKER → date input;选日期 → Preview 默认日期 | ✅✅✅ |
+| 6 | SELECT/RADIO options + RADIO groupName 仍 work(零回归 §3.v4 step 7)| ✅✅✅ |
+| 7 | RADIO → "Default selected" 是从 options 派生的下拉;选 → Preview 对应 radio defaultChecked | ✅✅ / **Q3 enum 防错填** |
+| 8 | BUTTON.text 仍在 TextBindingPanel(决定 e),通用面板不重复出 BUTTON.text;零回归 | ✅✅✅ |
+
+5. 不破坏任一 Phase 0/1/2/§2/§3/§3.x/§3.v2/§3.v3/§3.v4/§3.v5 锁定决定
+
+### 3.v6.6 工作分解(建议 1 名工程师,~3 天)
+
+| Step | 任务 | 验收 / commit |
+|---|---|---|
+| 0 | §3.v6 设计 doc + commit | `docs(lowcode): §3.v6 mini-scope detailed design (InteractiveProps generic editor)` |
+| 1 | `interactive-fields.ts` schema + 类型(对齐 emit 消费)| `bun run check` 全绿;`feat(lowcode): step 1 — interactiveProps field schema (§3.v6)` |
+| 2 | `InteractivePropsPanel.vue`(全 kind)+ 删 InteractiveOptionsPanel + DesignPanel 接线 + i18n × 7 locale + e2e 迁移/扩 | `bun run check` + e2e 全绿;`feat(lowcode): step 2 — generic InteractivePropsPanel + remove InteractiveOptionsPanel (§3.v6)` |
+| 3 | Tauri 实测 8 项 + §3.v6.8 post-mortem + memory + close | 8 ACK ✅;`docs(lowcode): §3.v6 Tauri verification + close` |
+
+### 3.v6.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 删 InteractiveOptionsPanel + DesignPanel v-if 改 → 既有 e2e / Steiger import 断 | 中 | step 2 同 commit 改 DesignPanel import + 迁移 e2e test-id + grep 全引用 |
+| CHECKBOX options-vs-checked 模式分裂 UX 困惑 | 中 | 条件可见 + options hint;Tauri ACK #4 专验 Q3 |
+| schema 与 compiler `applyXxxProps` 漂移(将来加 emit 字段忘加 schema)| 中 | 字段集设计阶段对齐 + 文件头注释指向 tree.ts;ACK 覆盖全 8 类型;经验 E |
+| i18n 新 key × 7 locale 漏译 | 中 | check-locales 钉死;step 2 单 commit 同步 7 locale |
+| enum(RADIO.value)options 改变后下拉不同步 | 低 | useSceneComputed 响应式;value 不在 options 不报错 |
+| 过度抽象(YAGNI)| 低 | 由 4 次反复缺口(§3.v2/§3.v4×2)实证驱动,非预设;限 5 kind + 单文件面板,不扩到 events/bindings |
+| string-array 逻辑搬移引入 jscpd clone | 低 | 搬移非复制(InteractiveOptionsPanel 删除);check 跑 jscpd 确认 0 |
+
+### 3.v6.8 Post-mortem
+
+**§3.v6 待 Tauri ACK 后回填**(commit chain / ACK 表 / surprise / 经验印证)。预期是 Phase 3 首个 **Q1 全既存、纯补 Q2 引导**的 refactor —— 验证经验 J Q2 的系统化判断:把反复出现的"interactiveProps 无 UI"缺口一次性用声明式 schema 消除,后续加字段不再触发同类 surprise。若 Tauri 暴露新 Q3 洞(如某字段用户心智与 kind 不符),记入并评估是否调 schema kind。
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
