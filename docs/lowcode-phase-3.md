@@ -1464,7 +1464,43 @@ if ((node.type === 'RADIO' || isCheckboxGroup(node)) &&
 
 ### 3.v5.8 Post-mortem
 
-**§3.v5 待 Tauri ACK 后回填**(commit chain / ACK 表 / surprise / 经验印证)。预期本期是 Phase 3 首个"纯 Q3 视觉收尾"scope —— 验证经验 J 的判断:Q3 视觉债只能人眼 Tauri 关闭,单测全程只能保证"class 串按设计 emit",保证不了"渲染出来好看"。若 cqw 回退,记为 "CSS 能力 vs 运行时支持" 类 surprise(经验 D/H 邻域)。
+**§3.v5 closed 2026-05-28**(HEAD this commit;Tauri ACK 6/6 ✅,cqw 滑动在 WKWebView 顺畅,无需回退)。Phase 3 首个"纯 Q3 视觉收尾"scope,**零 Tauri surprise**(对照 §3.v4 的 3 个 mid-flight hotfix)—— 不是因为运气,而是因为本期没有遗留 Q3 洞:视觉债本身就是 §3.v4 三次 hotfix 明确推迟的部分,且唯一的 Q3-数据形状风险(颜色派生)在 step 1 用 runtime probe 提前抓掉了。
+
+#### Commit 链(4 个,无 hotfix)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `b0ed907` | §3.v5 8 主决定 + 8 次默 + Q1/Q2/Q3 反向核 + 5 step |
+| 1 | `36bcbf8` | 完整 SWITCH CSS:`SWITCH_CLASSES` 扁平常量 → `SWITCH_TRACK`+`SWITCH_THUMB`;`[container-type:size]` + `checked:before:translate-x-[calc(100cqw_-_100cqh)]` 真滑动(替代 §3.v4 anchor-swap)+ dark 变体;**决定 (d) 颜色派生 fill 在本 step 推翻**(SWITCH 默认 fill=gray-300 → 派生会灰底灰)→ 固定 gray/blue;新增 SWITCH className 测试 |
+| 2 | `4184625` | RADIO/CHECKBOX-group inline 排版:option `<label>` = `inline-flex items-center gap-2 cursor-pointer`、`<input>` = `accent-blue-500 dark:accent-blue-400`;FREE wrapper 补 `flex flex-col gap-2` 兜底(auto-layout 尊重方向);4 新测试(label/input class + FREE 兜底 + auto-layout 不兜底 + CHECKBOX-group)|
+| 3 | _this commit_ | Tauri ACK 6/6 + §3.v5.8 回填 + close + memory |
+
+**测试**:356/356 compiler tests(+5 新:1 SWITCH className + 4 option/wrapper)+ 49/49 tools tests,零回归。`bun run check` 0 error / 5 pre-existing max-lines(含 tree.ts 700→742,同一既有 warning)/ 0 clones / locales 同步 / Steiger 干净。**0 新 i18n / 0 新 UI panel / 0 新 test-id / 0 SceneNode·IR·Kiwi 改动** —— 全 emit className 字符串。
+
+#### Tauri ACK 结果(用户主导 2026-05-28)
+
+| # | Check | Result | 备注 |
+|---|---|---|---|
+| 1 | SWITCH thumb 平滑滑动、左右对称 | ✅ | **cqw/cqh + container-type:size 在 WKWebView 生效**,无需回退 anchor-swap 安全网;用户:"switch 滑动很顺" |
+| 2 | OFF=gray / ON=blue 固定色 | ✅ | |
+| 3 | 暗色变体可辨 | ✅ | |
+| 4 | RADIO(FREE)竖排间距 + input 对齐 | ✅ | |
+| 5 | CHECKBOX-group(FREE)同上 + 多选 array work | ✅ | 回归 §3.v4 step 8 OK |
+| 6 | RADIO auto-layout 横排方向被尊重 | ✅ | wrapper 有 `flex ... gap-5`(来自 auto-layout),无 `flex flex-col` 兜底 |
+
+测试文档:`lowcode-v5-test.fig`(单页 4 节点,`scripts/make-v5-testdoc.ts` 生成,均 untracked 不入仓)。`bun open-pencil compile` 已离线证明 4 节点 emit 出全部 §3.v5 类(见 `index.tsx`),Tauri 仅验运行时渲染。
+
+#### Surprise 列表(1 个,且在 Tauri 之前抓掉)
+
+1. **SWITCH 默认 fill = gray-300 → 颜色派生决定 (d) 自毁**(step 1,`node-defaults.ts:235` `BORDER_GRAY`)。设计阶段锁了"ON 色按 SceneNode fill 派生"(Q3 直觉:画布改色=改 toggle 色),但 step 1 用 `bun -e` 实跑 `createNode('SWITCH')` 看 `node.fills` 时发现**新建 SWITCH 默认就带 gray-300 SOLID fill**(各类型默认 fill 不同:CHECKBOX/INPUT 白、BUTTON 蓝、SWITCH 灰)。派生会让 ON 永远读到默认灰 → 灰底灰看不见,且无可靠"用户是否改过 fill"信号。**这是 §3.v4 同型的 Q3-数据形状错位,但本期在 implementation 阶段(非 Tauri)抓到** —— 关键差异:决定一旦依赖"X 的实际默认/当前状态是什么",就用 runtime eval 实测,别假设。推翻 (d),固定 gray/blue(与 §3.v4 已 ACK 配色一致),对话确认后 close。
+
+#### 经验沉淀(对 §1.4 / §3.v4.8 印证 + 1 条新增)
+
+- **J 三问题反向核验证**:本期 Q1/Q2 设计阶段即判定"技术链既存 + 无新 authoring surface",Q3 是全部 scope。结果 6/6 ACK 全过、零 Tauri surprise —— **印证 J 的核心论断**:当 Q1/Q2 真清且 Q3 洞被提前堵(本期靠 runtime probe + 直接源于用户视觉反馈的设计),Tauri 就没有 surprise。§3.v4 的 3 个 surprise 是 Q3 洞没堵;§3.v5 是 Q3 洞堵住的对照组。
+- **新增经验 K(候选,待二次印证)——「依赖默认/现状的决定必须 runtime probe」**:当一个决定的正确性取决于"某属性的实际默认值 / 当前状态 / 运行时形状"(本期 = SWITCH 默认 fill),不要凭记忆或源码静读假设,用 `bun -e` / 单测实跑确认。本期靠它把一个 Q3-数据形状错位从 Tauri 提前到 implementation 阶段(成本从"mid-flight hotfix"降到"step 内调整")。是经验 J Q3 的一个可操作前置检查 + 经验 H"Tauri 找洞"的成本左移。
+- **H 反向印证**:Tauri 本期"没找到洞"不是 H 失效,而是设计真没留 Q3 洞 —— Tauri 仍是唯一能确认"渲染出来好看"的关口(单测全程只证 class 串按设计 emit,compile 离线证明产物含类,但"cqw 在 WKWebView 是否真滑动""暗色是否可辨"只有人眼 Tauri 能答)。
+- **A/G 持平**:本期无 union widening / walker 改动(纯 className body),`appendOptionInputs` 签名 / CHECKBOX group-vs-single tag 逻辑 0 改动,jscpd 0 clones。
+- **cqw/cqh 技术点**:用容器查询单位让 thumb 位移 = `100cqw - 100cqh`,实现任意宽高比对称 + 可 tween 的滑动(CSS 无法 tween 到/从 `auto`,故 §3.v4 anchor-swap 不可能平滑)。WKWebView(近期 macOS)支持确认。这是本期 headline 技术升级。
 
 ---
 
