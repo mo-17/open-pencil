@@ -411,7 +411,9 @@ export const panelMessages = i18n('panels', {
   lowcodeActionAuthPassword: 'Password expression',
   lowcodeActionAuthPasswordPlaceholder: 'e.g. passwordInput',
   lowcodeActionAuthCurrentUserHint:
-    'After sign-in, read $currentUser.signedIn / .email / .id in any Text binding or render condition.'
+    'After sign-in, read $currentUser.signedIn / .email / .id in any Text binding or render condition.',
+  lowcodeActionAuthSignUpNote:
+    'With email confirmation on (Supabase default), sign-up does not log the user in — $currentUser.signedIn stays false until they confirm via email.'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

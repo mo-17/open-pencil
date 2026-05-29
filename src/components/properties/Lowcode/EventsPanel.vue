@@ -72,7 +72,7 @@ const ACTION_KINDS: ActionKind[] = [
 
 const API_METHODS = ['GET', 'POST'] as const
 const SUPABASE_OPS = ['insert', 'update', 'delete', 'upsert'] as const
-const SUPABASE_AUTH_OPS = ['signIn', 'signOut'] as const
+const SUPABASE_AUTH_OPS = ['signIn', 'signUp', 'signOut'] as const
 const SUPABASE_FILTER_OPS: SupabaseFilter['op'][] = [
   'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'
 ]
@@ -681,7 +681,7 @@ const actionErrors = computed(() => {
               :aria-label="panels.lowcodeActionSupabaseOperation"
               data-test-id="lowcode-action-auth-operation"
               class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
-              @change="updateAction(action.id, { operation: ($event.target as HTMLSelectElement).value as 'signIn' | 'signOut' })"
+              @change="updateAction(action.id, { operation: ($event.target as HTMLSelectElement).value as 'signIn' | 'signOut' | 'signUp' })"
             >
               <option v-for="op in SUPABASE_AUTH_OPS" :key="op" :value="op">{{ op }}</option>
             </select>
@@ -711,7 +711,12 @@ const actionErrors = computed(() => {
           @change="updateAction(action.id, { bodyJson: ($event.target as HTMLInputElement).value })"
         />
 
-        <template v-if="action.kind === 'supabaseAuth' && action.operation === 'signIn'">
+        <template
+          v-if="
+            action.kind === 'supabaseAuth' &&
+            (action.operation === 'signIn' || action.operation === 'signUp')
+          "
+        >
           <input
             :value="action.emailExpr ?? ''"
             :aria-label="panels.lowcodeActionAuthEmail"
@@ -946,6 +951,13 @@ const actionErrors = computed(() => {
           class="pl-1 text-[10px] text-muted"
         >
           {{ panels.lowcodeActionAuthCurrentUserHint }}
+        </p>
+        <p
+          v-if="action.kind === 'supabaseAuth' && action.operation === 'signUp'"
+          data-test-id="lowcode-action-auth-signup-note"
+          class="pl-1 text-[10px] text-muted"
+        >
+          {{ panels.lowcodeActionAuthSignUpNote }}
         </p>
         <p
           v-if="actionErrors.get(action.id)?.target"

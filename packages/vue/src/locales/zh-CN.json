@@ -349,7 +349,8 @@
     "lowcodeActionAuthEmailPlaceholder": "如 emailInput 或 'a@b.co'",
     "lowcodeActionAuthPassword": "密码表达式",
     "lowcodeActionAuthPasswordPlaceholder": "如 passwordInput",
-    "lowcodeActionAuthCurrentUserHint": "登录后 $currentUser.signedIn / .email / .id 自动可用,直接在 Text 绑定或渲染条件里引用。"
+    "lowcodeActionAuthCurrentUserHint": "登录后 $currentUser.signedIn / .email / .id 自动可用,直接在 Text 绑定或渲染条件里引用。",
+    "lowcodeActionAuthSignUpNote": "开启邮箱确认时(Supabase 默认),注册不会立即登录 —— $currentUser.signedIn 会保持 false,直到用户点确认邮件。"
   },
   "pages": {
     "newPage": "新建页面",

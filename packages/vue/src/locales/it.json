@@ -349,7 +349,8 @@
     "lowcodeActionAuthEmailPlaceholder": "e.g. emailInput or 'a@b.co'",
     "lowcodeActionAuthPassword": "Password expression",
     "lowcodeActionAuthPasswordPlaceholder": "e.g. passwordInput",
-    "lowcodeActionAuthCurrentUserHint": "After sign-in, read $currentUser.signedIn / .email / .id in any Text binding or render condition."
+    "lowcodeActionAuthCurrentUserHint": "After sign-in, read $currentUser.signedIn / .email / .id in any Text binding or render condition.",
+    "lowcodeActionAuthSignUpNote": "With email confirmation on (Supabase default), sign-up does not log the user in — $currentUser.signedIn stays false until they confirm via email."
   },
   "pages": {
     "newPage": "Nuova pagina",
