@@ -109,6 +109,7 @@ export type IREventHandler =
   | IRApiCallHandler
   | IRSupabaseQueryHandler
   | IRSupabaseMutationHandler
+  | IRSupabaseAuthHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector
@@ -225,6 +226,22 @@ export interface IRSupabaseMutationHandler {
   payloadEntries?: IRSupabasePayloadEntry[]
   filters: IRSupabaseFilter[]
   resultTarget?: string
+  errorTarget?: string
+}
+
+/** Phase 3 §2.v2: sign a user in / out. Adapter emits
+ *  `await getSupabaseClient().auth.signInWithPassword({ email, password })`
+ *  (signIn) or `.signOut()`. `emailAst` / `passwordAst` (signIn only) are the
+ *  parsed credential expressions (same sub-language as `IRSupabaseFilter.ast`).
+ *  No `resultTarget`: `$currentUser` stays synced via the runtime's
+ *  `onAuthStateChange` (decision §2.v2.2 e). `errorTarget` optionally captures
+ *  the auth error. */
+export interface IRSupabaseAuthHandler {
+  kind: 'supabaseAuth'
+  operation: 'signIn' | 'signOut'
+  emailAst?: ExprAst
+  passwordAst?: ExprAst
+  references: string[]
   errorTarget?: string
 }
 

@@ -1,6 +1,8 @@
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
+import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type {
   IREventHandler,
+  IRSupabaseAuthHandler,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
   IRSupabaseQueryHandler
@@ -14,7 +16,8 @@ import { setterName } from './state'
 const BLOCK_KINDS = new Set<IREventHandler['kind']>([
   'apiCall',
   'supabaseQuery',
-  'supabaseMutation'
+  'supabaseMutation',
+  'supabaseAuth'
 ])
 
 /**
@@ -83,6 +86,8 @@ function emitHandlerStatement(h: IREventHandler): string {
       return emitSupabaseQuery(h)
     case 'supabaseMutation':
       return emitSupabaseMutation(h)
+    case 'supabaseAuth':
+      return emitSupabaseAuth(h)
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)
@@ -127,6 +132,33 @@ function emitSupabaseMutation(h: IRSupabaseMutationHandler): string {
       break
   }
   return wrapAsyncResult(chain, h.resultTarget, h.errorTarget)
+}
+
+/** Phase 3 §2.v2: signIn / signOut against Supabase auth. signIn emits
+ *  `signInWithPassword({ email, password })` ({ data, error }); signOut emits
+ *  `signOut()` ({ error } — no data, per runtime probe). Both only destructure
+ *  `{ error }`: a successful auth updates `$currentUser` through the runtime's
+ *  `onAuthStateChange`, so neither writes a result target (decision §2.v2.2 e).
+ *  `errorTarget`, when set, captures the auth error. */
+function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
+  const errorWrite = h.errorTarget
+    ? `setDocState(${JSON.stringify(h.errorTarget)}, error); `
+    : ''
+  // signIn handlers always carry both ASTs (collect drops the handler
+  // otherwise), so the casts narrow away the schema-level `undefined`.
+  const call =
+    h.operation === 'signOut'
+      ? 'getSupabaseClient().auth.signOut()'
+      : `getSupabaseClient().auth.signInWithPassword({ email: ${emitExpression(
+          h.emailAst as ExprAst
+        )}, password: ${emitExpression(h.passwordAst as ExprAst)} })`
+  const label = h.operation === 'signOut' ? 'signOut' : 'signIn'
+  return (
+    `try { ` +
+    `const { error } = await ${call}; ` +
+    `if (error) { ${errorWrite}console.error("${label} failed:", error) } ` +
+    `} catch (err) { console.error("${label} threw:", err) }`
+  )
 }
 
 /** Phase 3 §3.v2: prefer `payloadEntries` (expression-based object literal)

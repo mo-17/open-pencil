@@ -6,6 +6,7 @@ import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
 import { collectTree } from '#compiler/ir/collect/tree'
 import type {
   IREventHandler,
+  IRSupabaseAuthHandler,
   IRSupabaseMutationHandler,
   IRSupabaseQueryHandler
 } from '#compiler/ir/types'
@@ -274,5 +275,68 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
     const ir = collectTree(graph, pageId)
     expect(ir.docStateWrites).toContain('newUser')
     expect(ir.docStateWrites).toContain('lastError')
+  })
+
+  // ── Phase 3 §2.v2: supabaseAuth signIn / signOut ──
+
+  test('signIn lowers email/password exprs into a supabaseAuth handler', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [
+        {
+          id: 'a1',
+          kind: 'supabaseAuth',
+          operation: 'signIn',
+          emailExpr: "'a@b.co'",
+          passwordExpr: "'secret'"
+        }
+      ]
+    })
+    const h = firstHandler<IRSupabaseAuthHandler>(graph, pageId, 'supabaseAuth')
+    expect(h?.operation).toBe('signIn')
+    expect(h?.emailAst).toBeDefined()
+    expect(h?.passwordAst).toBeDefined()
+  })
+
+  test('signOut needs no credentials', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [{ id: 'a1', kind: 'supabaseAuth', operation: 'signOut' }]
+    })
+    const h = firstHandler<IRSupabaseAuthHandler>(graph, pageId, 'supabaseAuth')
+    expect(h?.operation).toBe('signOut')
+    expect(h?.emailAst).toBeUndefined()
+  })
+
+  test('signIn with a missing credential is dropped with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [
+        { id: 'a1', kind: 'supabaseAuth', operation: 'signIn', emailExpr: "'a@b.co'" }
+      ]
+    })
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    expect(button?.kind === 'element' && (button.events?.onClick?.length ?? 0)).toBe(0)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-auth-missing-credentials')).toBe(true)
+  })
+
+  test('signIn errorTarget is recorded as a docState write', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      docStates: [{ id: 'e', name: 'authError', type: 'object', defaultValue: null }],
+      onClick: [
+        {
+          id: 'a1',
+          kind: 'supabaseAuth',
+          operation: 'signIn',
+          emailExpr: "'a@b.co'",
+          passwordExpr: "'secret'",
+          errorTarget: 'authError'
+        }
+      ]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.docStateWrites).toContain('authError')
   })
 })

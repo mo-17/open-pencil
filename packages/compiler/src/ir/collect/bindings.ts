@@ -18,6 +18,7 @@ import type {
   IRExpression,
   IRSetVariableHandler,
   IRStateDecl,
+  IRSupabaseAuthHandler,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
   IRSupabasePayloadEntry,
@@ -440,6 +441,17 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
         ctx.docStateReads,
         ctx.warnings
       )
+    case 'supabaseAuth':
+      return resolveSupabaseAuth(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
     default: {
       // `action satisfies never` would be ideal here, but the cast keeps
       // older .fig files (saved with an unknown future kind) loadable.
@@ -470,6 +482,9 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
       return
     case 'supabaseMutation':
       if (handler.resultTarget) docStateWrites.add(handler.resultTarget)
+      if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
+      return
+    case 'supabaseAuth':
       if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
       return
     case 'setState':
@@ -1028,6 +1043,102 @@ function resolveSupabaseMutation(
     resultTarget,
     errorTarget
   }
+}
+
+/** Phase 3 §2.v2: validate + lower a `supabaseAuth` action. signIn parses
+ *  emailExpr / passwordExpr (same sub-language as filter values, so they can
+ *  read a controlled INPUT's docState); empty creds drop the handler with a
+ *  warning. signOut takes no inputs. No resultTarget — `$currentUser` stays
+ *  synced via the runtime's `onAuthStateChange` (decision §2.v2.2 e).
+ *  `errorTarget` is the only optional docState write. */
+function resolveSupabaseAuth(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'supabaseAuth' }>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): IRSupabaseAuthHandler | null {
+  const errorTarget = resolveOptionalTarget(
+    node,
+    eventName,
+    'action-supabase-auth',
+    action.errorTarget,
+    docStates,
+    warnings
+  )
+  if (errorTarget === null) return null
+  if (action.operation === 'signOut') {
+    return { kind: 'supabaseAuth', operation: 'signOut', references: [], errorTarget }
+  }
+  const email = resolveAuthCredential(
+    node, eventName, 'email', action.emailExpr, states, inScope, docStates, docStateReads, warnings
+  )
+  if (email === null) return null
+  const password = resolveAuthCredential(
+    node, eventName, 'password', action.passwordExpr, states, inScope, docStates, docStateReads, warnings
+  )
+  if (password === null) return null
+  return {
+    kind: 'supabaseAuth',
+    operation: 'signIn',
+    emailAst: email.ast,
+    passwordAst: password.ast,
+    references: [...email.references, ...password.references],
+    errorTarget
+  }
+}
+
+/** Parse one signIn credential expression. Empty → missing-credentials warn;
+ *  bad parse / unknown reference → drop the handler. */
+function resolveAuthCredential(
+  node: SceneNode,
+  eventName: EventName,
+  which: 'email' | 'password',
+  exprSrc: string | undefined,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): { ast: ExprAst; references: string[] } | null {
+  const src = (exprSrc ?? '').trim()
+  if (src === '') {
+    warnings.push({
+      code: 'action-supabase-auth-missing-credentials',
+      message: `node ${node.id} ${eventName} supabaseAuth signIn has no ${which} expression`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const parsed = parseExpression(src)
+  if (!parsed.ok) {
+    warnings.push({
+      code: 'action-supabase-auth-invalid-credential',
+      message: `node ${node.id} ${eventName} supabaseAuth signIn ${which} "${src}" → ${parsed.error}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const refCtx = `${eventName} action-supabase-auth ${which}`
+  if (
+    !checkExprRefs(
+      parsed.references,
+      states,
+      inScope,
+      docStates,
+      node,
+      refCtx,
+      'action-supabase-auth',
+      warnings
+    )
+  ) {
+    return null
+  }
+  registerDocStateReads(parsed.references, docStates, docStateReads)
+  return { ast: parsed.ast, references: [...parsed.references] }
 }
 
 /** Phase 3 §3.v2: parse + validate `SupabaseMutationAction.payloadEntries`.
