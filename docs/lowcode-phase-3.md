@@ -2540,6 +2540,139 @@ signUp 按钮初次点击 **无 network 无报错** → 逐层排查(确认门�
 
 ---
 
+## §2.v4 Supabase auth — resetPassword + updatePassword(设计 2026-05-30)
+
+§2.v3 闭认证三件套(signIn/signOut/signUp)。**用户挑「忘记密码」方向 B** = 补 `resetPassword`(发重置邮件)+ `updatePassword`(设新密码)。两者仍复用 `supabaseAuth` kind 的 operation union(决 a),`ActionDef` 仍 7 kind。与 signUp 的纯镜像不同,本期引入 **per-operation 字段门控**(决 b)。
+
+### 2.v4.1 现状与问题
+
+1. `SupabaseAuthAction.operation` 现为 `signIn|signOut|signUp`(§2.v3),无密码找回路径。Supabase 的密码找回是**两步**:`resetPasswordForEmail(email, {redirectTo})` 发邮件 → 用户点链接落地(`onAuthStateChange` 发 `PASSWORD_RECOVERY`)→ `updateUser({password})` 设新密码。
+2. emit 侧 `supabase.auth.resetPasswordForEmail` / `updateUser` 早在 SDK,无代码路径触达。
+3. `updateUser({password})` 不限恢复会话 —— **任何已登录态都能改密码**,所以「已登录用户改密码」与「忘记密码后设新密码」共用一个 operation(`updatePassword`)。
+
+### 2.v4.2 关键决定
+
+**8 主决定**(决 f 经 AskUserQuestion 锁):
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **operation union 扩到 5:`+'resetPassword'\|'updatePassword'`**,复用 `supabaseAuth` kind,**0 新 ActionDef kind / 0 新 schema 字段**(emailExpr/passwordExpr 复用)| 沿 §2.v3 决 a;`ActionDef` 仍 7 kind,§2.v2 锁不动 |
+| b | **per-operation 字段门控**(本期新增,非 signUp 纯镜像):signOut=无;**resetPassword=email only**;**updatePassword=password only**;signIn/signUp=email+password。贯穿 collect / tool / UI | resetPasswordForEmail 只收 email,updateUser 只收 password |
+| c | **emit 内联**(同 §2.v2 决 c):resetPassword → `getSupabaseClient().auth.resetPasswordForEmail(email, { redirectTo: window.location.origin })`;updatePassword → `getSupabaseClient().auth.updateUser({ password })`。两者只解构 `{ error }` | 沿内联非 hook 先例 |
+| d | **runtime probe(经验 K)已做**:`resetPasswordForEmail(email,{redirectTo})` 返 `{data:{},error}`;`updateUser({password})` 返 `{data:{user},error}` —— 都 `{data,error}`,同 signIn 只用 `{error}` | `bun -e` 实证 |
+| e | **无 resultTarget**(继承决 e):resetPassword 不改 session;updatePassword 触发 `USER_UPDATED` 但仍登录态,`$currentUser` 经 onAuthStateChange 自动同步。errorTarget 对两者生效(reset:限流/坏邮箱;update:弱密码/无会话)| 避免双写 |
+| f | **redirectTo = `window.location.origin`**(用户 2026-05-30 AskUserQuestion ACK 推荐项):重置邮件链接指回「应用当前被服务的地址」——preview 是 localhost:port,生产是部署域名,零硬编码、零新字段。落地后 onAuthStateChange 发 PASSWORD_RECOVERY | 不需要「应用部署 URL」概念即可双环境工作;**注意**:origin 须在 Supabase Dashboard Redirect URLs 白名单(localhost 默认允许,生产域名手加)|
+| g | **tool 校验**:`validateSupabaseAuthAction` 接受 reset/update;沿既有「present-then-parse」—— 哪个 expr 在场就校验哪个(坏→reject),**缺失留 IR warn**(决 g 继承,tool 从不强制 required)| 与 signIn/signUp 同档 |
+| h | **验证边界(经验 K boundary)**:updatePassword 在 preview **可端到端验**(登录→改密→登出→新密码登录,`updateUser` 不限恢复会话);**resetPassword 的邮件→链接→落地不可在 preview 验**(无真邮箱/真重定向落地),preview 只验请求发出(network `/auth/v1/recover`),端到端靠真部署 | 同 §3.v8「探不了的别假装能探」 |
+
+**8 次级默认**:
+1. UI:email / password 输入**拆成独立 v-if**(不再合并在一个 template)——email 显示于 signIn∨signUp∨resetPassword;password 显示于 signIn∨signUp∨updatePassword。
+2. `SUPABASE_AUTH_OPS` 顺序 `['signIn','signUp','signOut','resetPassword','updatePassword']`。
+3. `makeAction` 默认仍 signIn。
+4. i18n:复用 `lowcodeActionAuthEmail`/`lowcodeActionAuthPassword`(+Placeholder);**净增 2 key**(`lowcodeActionAuthResetNote` 邮件往返/部署验提示 + `lowcodeActionAuthUpdateNote` 「改当前登录用户密码」提示)× 8 文件。
+5. test-id:复用 `lowcode-action-auth-operation`/`-email`/`-password`;新增 `lowcode-action-auth-reset-note`/`-update-note`。
+6. updatePassword 的 password 框语义是「新密码」,placeholder 复用既有(`e.g. passwordInput`)。
+7. errorTarget 走既有 UI(对全部 5 op 生效)。
+8. **0 Kiwi / 0 新 npm / 0 新 ActionDef kind**。
+
+**经验 J 三问题反向核**:
+
+| ACK 项 | Q1 技术链 | Q2 UI/状态浮现 | Q3 心智模型 |
+|---|---|---|---|
+| updatePassword:登录→改密→登出→新密码登录 | ✅ 决 b/c per-op | ✅ password-only 表单 | ✅ 「改密码」匹配心智;preview 可验 |
+| resetPassword:点击→发 `/auth/v1/recover` | ⚠️ redirectTo=origin(决 f)| ✅ email-only 表单 + **reset note(邮件往返/部署验)** | ⚠️ **用户可能以为 preview 点完就能改密 → reset note 说明「邮件链接落地才进下一步、preview 验不了往返」(决 h/Q2 设计阶段堵)** |
+| resetPassword 后落地 PASSWORD_RECOVERY → updatePassword | ⚠️ 端到端依赖真邮件+白名单 | n/a(部署验)| ✅ note 已铺垫两步流 |
+| 坏 emailExpr(reset)/ 坏 passwordExpr(update)→ tool reject | ✅ 决 g | n/a | ✅ |
+| 零回归:signIn/signOut/signUp + 6 既有 kind + .fig 往返 | ✅ | ✅ | ✅ |
+
+→ Q3 风险(reset 的「preview 验不了邮件往返」)用 reset note **设计阶段堵**(沿 §2.v3 决 e 前移先例);updatePassword 全 preview 可验。
+
+### 2.v4.3 公开 API / Schema 改动
+
+```ts
+// packages/core/src/scene-graph/types.ts — operation union 扩到 5(无新字段)
+operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword'
+```
+
+- 🔁 schema `types.ts` + IR types `ir/types.ts`:`operation` union +2
+- 🔁 IR collect `bindings.ts`:`resolveSupabaseAuth` per-op 门控(needsEmail / needsPassword)
+- 🔁 emit `emit/event.ts`:`emitSupabaseAuth` 加 resetPassword / updatePassword 分支
+- 🔁 tool `modify/lowcode.ts`:接受 2 新 op + cast
+- 🔁 EventsPanel.vue:`SUPABASE_AUTH_OPS` +2;email/password 输入拆独立 v-if;reset/update note;`supabaseAuthErrors` per-op
+- ➕ i18n 2 新 key × 8
+- **0** Kiwi / 新 npm / 新 ActionDef kind
+
+### 2.v4.4 内部实现拆解
+
+#### IR collect `resolveSupabaseAuth`(per-op 门控)
+
+```ts
+if (action.operation === 'signOut') return { ...signOut, references: [], errorTarget }
+const needsEmail = op === 'signIn' || op === 'signUp' || op === 'resetPassword'
+const needsPassword = op === 'signIn' || op === 'signUp' || op === 'updatePassword'
+let emailAst, passwordAst, refs = []
+if (needsEmail) { const e = resolveAuthCredential(...,'email',...); if (e===null) return null; emailAst=e.ast; refs.push(...e.references) }
+if (needsPassword) { const p = resolveAuthCredential(...,'password',...); if (p===null) return null; passwordAst=p.ast; refs.push(...p.references) }
+return { kind:'supabaseAuth', operation: op, emailAst, passwordAst, references: refs, errorTarget }
+```
+
+#### emit `emitSupabaseAuth`(call 分支)
+
+```ts
+const call =
+  op === 'signOut'        ? 'getSupabaseClient().auth.signOut()' :
+  op === 'resetPassword'  ? `getSupabaseClient().auth.resetPasswordForEmail(${email}, { redirectTo: window.location.origin })` :
+  op === 'updatePassword' ? `getSupabaseClient().auth.updateUser({ password: ${password} })` :
+  op === 'signUp'         ? `getSupabaseClient().auth.signUp({ email: ${email}, password: ${password} })` :
+                            `getSupabaseClient().auth.signInWithPassword({ email: ${email}, password: ${password} })`
+const label = op
+```
+（避免 oxlint no-nested-ternary:用 if-链或 `switch` 而非嵌套 `?:`,沿 §2.v3 step 2 教训。）
+
+#### EventsPanel form
+
+email 输入 `v-if op∈{signIn,signUp,resetPassword}`;password 输入 `v-if op∈{signIn,signUp,updatePassword}`;reset note `v-if op==='resetPassword'`;update note `v-if op==='updatePassword'`。`supabaseAuthErrors`:needsEmail 才校 email,needsPassword 才校 password。
+
+### 2.v4.5 成功标准 + Tauri ACK
+
+1. `bun run check` 全绿;compiler + tools + kiwi 全绿;新增 emit/IR/tool/cross-walker 测试
+2. **Tauri 实测(用户主导)~6 项 ACK**:
+
+| # | ACK |
+|---|---|
+| 1 | updatePassword:已登录 → 改密动作(password 绑 INPUT)→ 登出 → 新密码能登录(端到端,preview 可验)|
+| 2 | resetPassword:点击 → network 发 `/auth/v1/recover`(请求发出;邮件往返部署验)|
+| 3 | reset note 显示「邮件链接落地才进下一步、preview 验不了往返」;update note 显示「改当前登录用户密码」|
+| 4 | per-op 表单:resetPassword 只显 email、updatePassword 只显 password、signOut 都不显 |
+| 5 | 坏 emailExpr(reset)/ 坏 passwordExpr(update)→ tool/IR 诊断 |
+| 6 | 零回归:signIn/signOut/signUp + 6 既有 kind + .fig 往返;auth-only 页仍 import getSupabaseClient（§2.v3 hotfix 不回退)|
+
+### 2.v4.6 工作分解(~1-1.5 day)
+
+| Step | 任务 | commit |
+|---|---|---|
+| 0 | §2.v4 设计 doc | `docs(lowcode): §2.v4 mini-scope detailed design (Supabase resetPassword + updatePassword)` |
+| 1 | operation union +2(schema+IR)+ Kiwi 往返 | `feat(lowcode): step 1 — reset/updatePassword operation union + persistence (§2.v4)` |
+| 2 | IR collect per-op 门控 + emit + 测试 | `feat(lowcode): step 2 — reset/updatePassword IR collect + emit (§2.v4)` |
+| 3 | tool 校验 + 测试 | `feat(lowcode): step 3 — tool-boundary reset/updatePassword validation (§2.v4)` |
+| 4 | EventsPanel per-op form + 2 note + i18n×8 + Tauri ACK + §2.v4.8 + close | `docs(lowcode): §2.v4 Tauri verification + close` |
+
+### 2.v4.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| operation union widening 漏 callsite(经验 A/G)| 中 | grep `operation ===` 全 callsite + emit if-链 + cross-walker；§2.v3 已建 auth-only import 回归 |
+| per-op 门控分支错(reset 误要 password 等)| 中 | collect/tool/UI 三处对齐 needsEmail/needsPassword;单测覆盖 4 op × 字段 |
+| resetPassword preview 验不了邮件往返被误判 bug | 中 | 决 h + reset note 设计阶段堵;ACK #2 只验请求发出 |
+| redirectTo origin 不在 Supabase 白名单 | 低(部署期配置)| reset note 提示;localhost 默认允许 |
+| nested ternary oxlint(§2.v3 踩过)| 低 | emit 用 if-链/switch 非嵌套 `?:` |
+
+### 2.v4.8 Post-mortem
+
+待 Tauri ACK 回填。
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
