@@ -1966,6 +1966,202 @@ export const INTERACTIVE_PROP_VALIDATORS: Partial<Record<SceneNode['type'], (ip:
 
 ---
 
+## §3.v8 SupabaseConfigPanel RLS policy advisor(静态 usage-driven,设计 2026-05-29)
+
+候选池 #6(§3.8 follow-up #6 沿用)。用户在 §3.v7 close 后挑定 A(小修收尾),堵 §3.8 surprise #5 的 RLS silent-0-row footgun。**两关键岔口在设计阶段经 AskUserQuestion 锁定**(经验 J Q3 前移):形态 = A 静态策略顾问(对话锁);policy 谓词 = A `(true)` 占位 + 生产提醒注释(对话锁)。
+
+### 3.v8.1 现状与问题
+
+§2 决定 j 只做了「不配 RLS = 全表裸奔」的安全侧警告(首次 connect 一次性 toast + Properties 永久 inline note)。§3.8 surprise #5 暴露**另一侧 footgun**(功能侧,不是安全侧):
+
+1. **anon 缺 UPDATE/DELETE policy → PATCH/DELETE 返 HTTP 204 但 0 行受影响**,看上去像「id 没传过去」,实际是 RLS 在 row 层把所有行挡在外面。PostgREST 对「RLS 拦截」和「0 行匹配」**返回完全一样**(204 / `[]`)—— 这正是它成为隐蔽 footgun 的原因,也是为什么**无法靠 anon REST API 可靠探测**(形态选 A 静态而非 B 实时探测的根因)。
+2. **upsert 在 anon 缺 UPDATE policy 时静默 fallback 走 INSERT**,创建重复行(anon 看不到既有行 → 认为是新行)。
+3. 现状缺口:用户在编辑器内**无从得知**「我这份文档用了哪些表、每张表需要哪些 anon policy」,只能去 Supabase dashboard 试错。
+
+§3.8 把它列为 follow-up #6 nice-to-have(~1 day)。
+
+### 3.v8.2 关键决定
+
+**8 主决定**:
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **形态 = 静态 usage-driven 策略顾问**(用户 2026-05-29 AskUserQuestion ACK):扫描文档全部 supabase action,聚合「每表 → anon 所需操作集」→ 生成最小 anon RLS policy SQL + footgun 提示。**0 网络 / 0 破坏 / 确定性**。**不做实时探测(B)**:silent-0-row footgun 本质无法靠 anon REST 可靠探测,且 PostgREST RLS 运行时语义无 live 实例不可 probe(经验 K) | 直击 surprise #5;诚实于「可探测的边界」 |
+| b | **共享纯函数** `collectRlsRequirements(actions: ActionDef[]): RlsTableRequirement[]` 落 `@open-pencil/core/lowcode-validation/rls-advisor.ts` + barrel 导出。**输入 = 已收集的 action 列表(不吃 graph API)**,纯逻辑全可单测;panel 侧用一个 thin walker 收集 root subtree 全部 `node.events` 的 action 喂进去 | 经验 I 单源,沿 §3.v3/v7 validator 先例;保持 lowcode-validation framework-agnostic(只 `import type { ActionDef } from '#core/scene-graph'`) |
+| c | **operation → SQL command 映射**:`supabaseQuery` → `SELECT`;mutation `insert`→`INSERT` / `update`→`UPDATE` / `delete`→`DELETE` / **`upsert`→{`INSERT`,`UPDATE`}**(footgun 核心:upsert 缺 UPDATE 静默 INSERT 重复行)| upsert 双命令是用户最易踩的洞,显式拆开 |
+| d | **SQL 生成**:每表一 block = `ALTER TABLE "<t>" ENABLE ROW LEVEL SECURITY;` + 每 command 一条 `CREATE POLICY "<t>_<cmd>_anon" ON "<t>" FOR <CMD> TO anon, authenticated <子句>;`。**USING / WITH CHECK 矩阵据 Postgres RLS 文档确定**(经验 K,文档化 PG 语义,非 probe):`SELECT`/`DELETE` → 仅 `USING (true)`;`INSERT` → 仅 `WITH CHECK (true)`;`UPDATE` → `USING (true) WITH CHECK (true)` | 标准 Postgres RLS 命令-子句矩阵;Tauri ACK #6 由用户在真 Supabase SQL editor 验跑通 |
+| e | **target role = `anon, authenticated`**:emit 始终用 anon key(未登录);登录后 supabase-js 自动带 user JWT → role 变 `authenticated`。两者都需 policy 才不被挡 | 覆盖两种运行时身份;呼应 §2 `$currentUser` auth 同步 |
+| f | **policy 谓词 = `(true)` 占位 + 生产提醒注释**(用户 2026-05-29 AskUserQuestion ACK):全放行最快解除 silent-0-row 阻塞;每 block 顶部 SQL 注释 `-- ⚠ replace (true) with a real predicate before production (e.g. auth.uid() = user_id)`。**不自动推断真实谓词(B)/ 不双段(C)** | 真谓词业务相关无法自动推断;顾问目的是「解除阻塞」;注释呼应 §2 决定 j 的「别裸奔上生产」 |
+| g | **UI = SupabaseConfigPanel 内新折叠子区「RLS policies」**,仅当 `config 已设 && 文档有 ≥1 supabase action` 时显示;列每表 + 操作 chip + `<pre>` SQL 块 + Copy 按钮 + footgun 提示行。沿 §3.v3/v7「面板内信息区」先例,**无 e2e,Tauri ACK 验** | 收尾性 nice-to-have,信息展示型,无需独立 panel |
+| h | **footgun 文案明示**:含 `UPDATE`/`DELETE`/upsert 的表,块顶橙色提示「Without these policies, update/delete return HTTP 204 with 0 rows changed (looks like a missing id), and upsert silently inserts duplicate rows.」(surprise #5 原话)| no-swallow 精神(经验 C):把隐蔽 footgun 显式化 |
+
+**8 次级默认**:
+
+1. 扫描范围 = root subtree 全部 node 的 `events`(所有 `EventName` → `ActionDef[]`);panel 侧 walker 遍历 `editor.graph` 全节点。
+2. `table` 名 trim 后空 → 跳过(不入需求表)。
+3. 聚合去重:同表多 action 合并操作集(`Set<SqlCommand>`),同表只出一个 block;block 内 command 按固定序 `SELECT,INSERT,UPDATE,DELETE` 排(稳定输出)。
+4. Copy:**每表一个 Copy 按钮**(复制该表整 block SQL via `navigator.clipboard.writeText`)。**不做 Copy-all**(YAGNI)。
+5. **0 supabase action(即便 config 已设)→ 整个 RLS 子区隐藏**(沿决 g 条件),不显示空态(零噪音)。
+6. test-id:`lowcode-supabase-rls-advisor`(容器)/ `lowcode-supabase-rls-table`(每表行)/ `lowcode-supabase-rls-sql`(SQL `<pre>`)/ `lowcode-supabase-rls-copy`(copy 按钮)。
+7. i18n:子区标题 + footgun 提示 + copy label + copied 反馈,**4 key × 8 文件**(messages.ts + 7 locale)。**SQL 内容本身不 i18n**(是代码)。
+8. **0 SceneNode / IR / emit / Kiwi / ActionDef 改动**;compiler 完全不碰。纯 core 校验器新文件 + app-side panel 子区 + i18n。
+
+**经验 J 三问题反向核**(强制):
+
+| ACK 项 | Q1 技术链 | Q2 UI 引导 | Q3 心智模型 |
+|---|---|---|---|
+| config 设 + 文档有 supabaseMutation(update)→ RLS 子区出现,列该表 + UPDATE policy SQL + footgun 提示 | ⚠️ `collectRlsRequirements` + panel 子区(step 1/2 新链)| ✅ 标题+chip+SQL+copy 引导 | ✅「用了这表的 update → 这是要配的 policy」匹配心智 |
+| upsert → SQL 含 INSERT+UPDATE 两条 + 明示 upsert footgun | ⚠️ 决 c upsert→{INSERT,UPDATE} | ✅ | ✅ upsert 需双 policy 是最易踩洞 |
+| 0 supabase action → 子区不显示(零噪音)| ⚠️ 决 g/次默 5 条件 | ✅(无噪音即引导)| ✅ |
+| Copy 按钮 → clipboard 拿到该表 SQL | ⚠️ clipboard API | ✅ copy 按钮+反馈 | ✅ |
+| 多 action 同表 → 合并一个 block,操作集去重 | ⚠️ 聚合逻辑(单测覆盖)| ✅ | ✅ |
+| **生成 SQL 可直接 paste 进 Supabase SQL editor 跑通**(USING/WITH CHECK 矩阵对)| ⚠️ **决 d Postgres RLS 矩阵**(经验 K,据 PG 文档锁;无 live 实例不可 probe)| n/a | ✅ |
+| 零回归:Test connection / service_role reject / RLS note 仍 work | ✅ | ✅ | ✅ |
+
+**唯一 Q3/K 风险**:生成的 SQL 能否在真 Supabase SQL editor 跑通(决 d 的 USING/WITH CHECK 命令矩阵)。我无 live Supabase 实例 → **据 Postgres RLS 官方文档锁矩阵 + 列为 Tauri ACK #6 重点验项**(用户在真实例 paste 跑)。这是诚实的「无法 probe → 用户 ACK 验」分工,符合 J 流程(把不可自验的 Q3 风险显式标到 ACK 表,而非假设)。
+
+### 3.v8.3 公开 API / Schema 改动
+
+```ts
+// @open-pencil/core/lowcode-validation/rls-advisor.ts(新)
+export type SqlCommand = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'
+
+export interface RlsTableRequirement {
+  table: string
+  commands: SqlCommand[]          // 去重 + 固定序 SELECT,INSERT,UPDATE,DELETE
+  needsWriteWarning: boolean      // 含 UPDATE/DELETE/upsert(footgun 提示触发)
+}
+
+export function collectRlsRequirements(actions: ActionDef[]): RlsTableRequirement[]
+export function buildRlsPolicySql(req: RlsTableRequirement): string  // 一表整 block SQL
+```
+
+- ➕ **新文件** `packages/core/src/lowcode-validation/rls-advisor.ts`(纯逻辑,全可单测;只 `import type { ActionDef, SupabaseQueryAction, SupabaseMutationAction } from '#core/scene-graph'`)
+- 🔁 **barrel** `lowcode-validation/index.ts` 加导出 `collectRlsRequirements` / `buildRlsPolicySql` / `RlsTableRequirement` / `SqlCommand`
+- 🔁 **UI panel** `src/components/properties/Lowcode/SupabaseConfigPanel.vue`:新折叠子区,thin walker 收集 `editor.graph` 全节点 `events` 的 action → `collectRlsRequirements` → 渲染每表 block + `buildRlsPolicySql` + Copy
+- ➕ **i18n** 4 key × 8 文件
+- 🔁 **test-id**:4 新(`lowcode-supabase-rls-advisor` / `-table` / `-sql` / `-copy`)
+- **0** SceneNode / ActionDef / IR / emit / Kiwi 改动;compiler 零改动
+
+### 3.v8.4 内部实现拆解
+
+#### `rls-advisor.ts`(新)
+
+```ts
+const COMMAND_ORDER: SqlCommand[] = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
+
+// supabaseQuery → SELECT;mutation operation → 命令集(upsert = INSERT+UPDATE,决 c)
+function commandsForAction(a: ActionDef): SqlCommand[] {
+  if (a.kind === 'supabaseQuery') return ['SELECT']
+  if (a.kind === 'supabaseMutation') {
+    switch (a.operation) {
+      case 'insert': return ['INSERT']
+      case 'update': return ['UPDATE']
+      case 'delete': return ['DELETE']
+      case 'upsert': return ['INSERT', 'UPDATE']
+    }
+  }
+  return []
+}
+
+export function collectRlsRequirements(actions: ActionDef[]): RlsTableRequirement[] {
+  const byTable = new Map<string, Set<SqlCommand>>()
+  for (const a of actions) {
+    if (a.kind !== 'supabaseQuery' && a.kind !== 'supabaseMutation') continue
+    const table = a.table.trim()
+    if (!table) continue              // 次默 2
+    const set = byTable.get(table) ?? new Set<SqlCommand>()
+    for (const c of commandsForAction(a)) set.add(c)
+    byTable.set(table, set)
+  }
+  return [...byTable.entries()].map(([table, set]) => {
+    const commands = COMMAND_ORDER.filter((c) => set.has(c))   // 次默 3 固定序
+    return {
+      table,
+      commands,
+      needsWriteWarning: commands.some((c) => c === 'UPDATE' || c === 'DELETE')
+        || set.has('INSERT') && set.has('UPDATE')   // upsert 痕迹
+    }
+  })
+}
+
+// 决 d 命令-子句矩阵 + 决 e role + 决 f (true)+注释
+export function buildRlsPolicySql(req: RlsTableRequirement): string {
+  const t = req.table
+  const lines = [
+    `-- ⚠ replace (true) with a real predicate before production (e.g. auth.uid() = user_id)`,
+    `alter table "${t}" enable row level security;`
+  ]
+  for (const cmd of req.commands) {
+    const clause =
+      cmd === 'INSERT' ? 'with check (true)'
+      : cmd === 'UPDATE' ? 'using (true) with check (true)'
+      : 'using (true)'   // SELECT / DELETE
+    lines.push(
+      `create policy "${t}_${cmd.toLowerCase()}_anon" on "${t}" for ${cmd.toLowerCase()} to anon, authenticated ${clause};`
+    )
+  }
+  return lines.join('\n')
+}
+```
+
+字符串拼接的表名/列名直接内插(table 名来自用户文档,Supabase SQL editor 手动 paste 场景,非自动执行 → 不引 SQL 注入面;identifier 用双引号包)。
+
+#### `SupabaseConfigPanel.vue`
+
+- thin walker:`useSceneComputed(() => { const acts: ActionDef[] = []; walk editor.graph 全节点; for node.events 各 EventName 各 action push; return collectRlsRequirements(acts) })`
+- 子区 `v-if="config && requirements.length"`(决 g + 次默 5):折叠区标题 `lowcodeSupabaseRlsHeading`;`v-for` 每 req:
+  - 表名 + 命令 chip 行(`lowcode-supabase-rls-table`)
+  - `needsWriteWarning` → 橙色 footgun 提示行(`lowcodeSupabaseRlsWriteWarning`)
+  - `<pre data-test-id="lowcode-supabase-rls-sql">{{ buildRlsPolicySql(req) }}</pre>`
+  - Copy 按钮(`lowcode-supabase-rls-copy`)→ `navigator.clipboard.writeText` + 短暂 copied 反馈
+- 子区挂在现有 RLS note(`lowcode-supabase-rls-note`)之后,保持 §2 安全 note 在前。
+
+### 3.v8.5 成功标准 + Tauri ACK
+
+1. `bun run check` 全绿(check:i18n 钉 4 key × 8 文件;Steiger 钉新 import / arch 边界;jscpd 0 clone)
+2. `bun test ./tests/engine/tools/lowcode/` 全绿(零回归)+ 新增 `tests/engine/lowcode-validation/rls-advisor.test.ts`(聚合 / 去重 / upsert 双命令 / 空表名跳过 / SQL 矩阵 / 固定序)
+3. **Tauri 实测(用户主导)~7 项 ACK**:
+
+| # | ACK | Q1/Q2/Q3 |
+|---|---|---|
+| 1 | config 设 + 文档有 update mutation → Properties RLS 子区出现,列该表 + `for update ... using(true) with check(true)` SQL + footgun 提示 | ⚠️✅✅ |
+| 2 | upsert action → SQL 含 INSERT + UPDATE 两条 + upsert footgun 提示 | ⚠️✅✅ |
+| 3 | 0 supabase action(纯静态文档)→ RLS 子区不显示 | ⚠️✅✅ |
+| 4 | Copy 按钮 → 粘贴到别处拿到完整 block SQL | ⚠️✅✅ |
+| 5 | 同表多 action(query + update)→ 合并一个 block,SELECT+UPDATE 两条去重 | ⚠️✅✅ |
+| 6 | **生成 SQL paste 进真 Supabase SQL editor 跑通**,跑后原本 silent-0-row 的 update 真正改到行 | ⚠️(Postgres 矩阵,决 d)✅✅ |
+| 7 | 零回归:Test connection / service_role reject / §2 RLS note 仍 work | ✅✅✅ |
+
+4. 不破坏任一 Phase 0/1/2/§2/§3/§3.x/§3.v2-v7 锁定决定(尤其 §2 SupabaseConfigPanel 既有 service_role reject + Test connection + RLS note 不动)
+
+### 3.v8.6 工作分解(建议 1 名工程师,~1 天)
+
+| Step | 任务 | 验收 / commit |
+|---|---|---|
+| 0 | §3.v8 设计 doc + commit | `docs(lowcode): §3.v8 mini-scope detailed design (RLS policy advisor)` |
+| 1 | `rls-advisor.ts`(`collectRlsRequirements` + `buildRlsPolicySql` + 类型)+ barrel + 单测 | `bun run check` + rls-advisor.test 全绿;`feat(lowcode): step 1 — shared RLS policy advisor (§3.v8)` |
+| 2 | SupabaseConfigPanel RLS 子区(walker + 渲染 + Copy)+ 4 i18n key × 8 文件 + Tauri ACK + §3.v8.8 + close | 7 ACK ✅;`docs(lowcode): §3.v8 Tauri verification + close` |
+
+(仅 2 个功能 step:core 纯函数 + app panel;无 compiler/IR/emit/tool 改动 → 比 §3.v7 的 4 step 更小。)
+
+### 3.v8.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| Postgres RLS USING/WITH CHECK 命令矩阵记错(决 d)| 中 | 据 PG 官方文档锁(SELECT/DELETE=USING、INSERT=WITH CHECK、UPDATE=两者);Tauri ACK #6 用户真实例 paste 跑验 |
+| walker 漏某 EventName 的 action(union 漏 case)| 低 | 遍历 `Object.values(node.events ?? {})` 全 ActionDef[],不按 EventName 硬编码;单测喂多 EventName |
+| `(true)` 占位让用户误以为安全(裸奔上生产)| 中 | 决 f SQL 注释 + footgun 提示双重明示「replace before production」;呼应 §2 决定 j |
+| clipboard API 在 Tauri WKWebView 不可用 | 低 | `navigator.clipboard` 在 WKWebView 可用(§3.v3 toast / 既有 copy 路径先例);失败 catch 不崩 |
+| i18n 4 key × 8 文件漏译 | 中 | check-locales 钉;step 2 单 commit 同步 |
+| 子区与 §2 既有 RLS note 视觉/语义重叠 | 低 | note=安全侧(裸奔警告)/ 顾问=功能侧(解除 silent-0-row);顾问挂 note 之后,文案区分 |
+
+### 3.v8.8 Post-mortem
+
+_(step 2 close 时回填:commit 链 / Tauri ACK 7 项结果 / surprise 列表 / 经验印证。预期延续 §3.v5/v6/v7 零-surprise 对照组 —— 两 Q3 岔口[形态 / 谓词]已在设计阶段 AskUserQuestion 锁定;唯一无法自验的 Q3/K 风险[SQL 跑通]已显式标到 ACK #6。)_
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
