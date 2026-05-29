@@ -76,6 +76,14 @@ export const PEER_COLORS: Color[] = [
   { r: 0.91, g: 0.12, b: 0.39, a: 1 }
 ]
 
+// Object-valued node fields that the collab Yjs sync stores as JSON strings.
+// The write side (`syncNodePropsToYMap`) stringifies EVERY object field, so the
+// read side (`yNodeToProps`) MUST list each one here to parse it back —
+// anything missing arrives at remote peers as a raw JSON string (silent
+// corruption). When you add a new object-valued field to SceneNode, add it
+// here too; `tests/engine/collab/yjs-roundtrip.test.ts` guards against drift.
+// Phase 3 §4.1: added the lowcode fields, which were silently corrupting in
+// multi-user editing because they were never whitelisted.
 export const YJS_JSON_FIELDS = new Set([
   'childIds',
   'fills',
@@ -83,7 +91,15 @@ export const YJS_JSON_FIELDS = new Set([
   'effects',
   'vectorNetwork',
   'boundVariables',
-  'styleRuns'
+  'styleRuns',
+  // Phase 3 §4.1 — lowcode fields (mirror update_lowcode_node patch keys).
+  'state',
+  'bindings',
+  'events',
+  'interactiveProps',
+  'renderCondition',
+  'lowcodeDocumentState',
+  'lowcodeSupabaseConfig'
 ])
 
 export {
