@@ -6,7 +6,12 @@ import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 
-import { INTERACTIVE_PROP_FIELDS, type InteractiveField } from './interactive-fields'
+import {
+  INTERACTIVE_PROP_FIELDS,
+  INTERACTIVE_PROP_VALIDATORS,
+  INTERACTIVE_WARNING_KEYS,
+  type InteractiveField
+} from './interactive-fields'
 
 // Phase 3 §3.v6 — generic interactiveProps editor. Renders the fields declared
 // for the selected node type in `interactive-fields.ts`, one editor per
@@ -32,6 +37,19 @@ const fields = computed<InteractiveField[]>(() => {
 const visibleFields = computed(() =>
   fields.value.filter((f) => (f.visibleWhen ? f.visibleWhen(ip.value) : true))
 )
+
+// Phase 3 §3.v7 — per-NodeType validation surfaced as a warning bar. Format
+// errors are also dropped from emit / rejected at the tool boundary; range
+// issues are warn-and-keep (decision §3.v7.2 h).
+const warnings = computed(() => {
+  const type = selectedNode.value?.type
+  const validate = type ? INTERACTIVE_PROP_VALIDATORS[type] : undefined
+  return validate ? validate(ip.value) : []
+})
+
+function warningText(code: string): string {
+  return t(INTERACTIVE_WARNING_KEYS[code] ?? code)
+}
 
 function t(key: string | undefined): string {
   if (!key) return ''
@@ -185,6 +203,12 @@ function updateOption(key: string, index: number, value: string): void {
         </button>
         <p v-if="field.hintKey" class="pl-0.5 text-[10px] text-muted">{{ t(field.hintKey) }}</p>
       </div>
+    </div>
+
+    <div v-if="warnings.length > 0" data-test-id="lowcode-interactive-warning" class="mt-1">
+      <p v-for="issue in warnings" :key="issue.code" class="text-[10px] text-orange-500">
+        {{ warningText(issue.code) }}
+      </p>
     </div>
   </div>
 </template>

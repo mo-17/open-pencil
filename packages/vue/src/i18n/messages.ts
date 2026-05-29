@@ -337,6 +337,13 @@ export const panelMessages = i18n('panels', {
   lowcodeInteractiveDefaultSelected: 'Default selected',
   lowcodeInteractiveDefaultSelectedNone: '(none)',
   lowcodeInteractiveDateValue: 'Default date',
+  lowcodeInteractiveMin: 'Earliest date',
+  lowcodeInteractiveMax: 'Latest date',
+  lowcodeInteractiveDateInvalidValue: 'Default date must be a valid date (YYYY-MM-DD)',
+  lowcodeInteractiveDateInvalidMin: 'Earliest date must be a valid date (YYYY-MM-DD)',
+  lowcodeInteractiveDateInvalidMax: 'Latest date must be a valid date (YYYY-MM-DD)',
+  lowcodeInteractiveDateRangeInverted: 'Earliest date is after the latest date',
+  lowcodeInteractiveDateValueOutOfRange: 'Default date is outside the earliest–latest range',
   lowcodeInteractiveOptionsHint: 'Add options to make it a multi-select group',
 
   // Lowcode (Phase 2 §3 — API fetch)

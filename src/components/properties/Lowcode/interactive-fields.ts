@@ -1,3 +1,4 @@
+import { type DatePickerIssue, validateDatePickerProps } from '@open-pencil/core/lowcode-validation'
 import type { SceneNode } from '@open-pencil/core/scene-graph'
 
 // Phase 3 §3.v6 — declarative schema for the generic InteractiveProps editor.
@@ -63,7 +64,11 @@ export const INTERACTIVE_PROP_FIELDS: Partial<Record<SceneNode['type'], Interact
     }
   ],
   SWITCH: [{ key: 'checked', kind: 'boolean', labelKey: 'lowcodeInteractiveDefaultChecked' }],
-  DATEPICKER: [{ key: 'value', kind: 'date', labelKey: 'lowcodeInteractiveDateValue' }],
+  DATEPICKER: [
+    { key: 'value', kind: 'date', labelKey: 'lowcodeInteractiveDateValue' },
+    { key: 'min', kind: 'date', labelKey: 'lowcodeInteractiveMin' },
+    { key: 'max', kind: 'date', labelKey: 'lowcodeInteractiveMax' }
+  ],
   SELECT: [{ key: 'options', kind: 'string-array', labelKey: 'lowcodeInteractiveOptions' }],
   RADIO: [
     { key: 'options', kind: 'string-array', labelKey: 'lowcodeInteractiveOptions' },
@@ -80,4 +85,25 @@ export const INTERACTIVE_PROP_FIELDS: Partial<Record<SceneNode['type'], Interact
       optionsFrom: 'options'
     }
   ]
+}
+
+// Phase 3 §3.v7 — per-NodeType interactiveProps validators. The panel runs
+// the one registered for the selected node type and renders the returned
+// issues as a warning bar (node-type-gated, so the generic field renderer
+// stays untouched). The validators live in `@open-pencil/core/lowcode-validation`
+// so the AI tool boundary and the compiler IR pass share them (经验 I).
+export const INTERACTIVE_PROP_VALIDATORS: Partial<
+  Record<SceneNode['type'], (ip: Record<string, unknown>) => DatePickerIssue[]>
+> = {
+  DATEPICKER: validateDatePickerProps
+}
+
+// Issue code → `panels` i18n key. Lives app-side because core validators are
+// i18n-agnostic (they return stable codes, not user-facing strings).
+export const INTERACTIVE_WARNING_KEYS: Record<string, string> = {
+  'datepicker-invalid-value': 'lowcodeInteractiveDateInvalidValue',
+  'datepicker-invalid-min': 'lowcodeInteractiveDateInvalidMin',
+  'datepicker-invalid-max': 'lowcodeInteractiveDateInvalidMax',
+  'datepicker-range-inverted': 'lowcodeInteractiveDateRangeInverted',
+  'datepicker-value-out-of-range': 'lowcodeInteractiveDateValueOutOfRange'
 }
