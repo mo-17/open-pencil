@@ -2760,7 +2760,36 @@ lowcode 字段 `state`/`bindings`/`events`/`interactiveProps`/`renderCondition`/
 
 #### 4.1.8 Post-mortem
 
-待 Tauri ACK 回填。
+**§4.1 closed 2026-05-30**(无 live 两-client 环境 → 用单进程两端集成测试替代验证;零回归)。修复 lowcode 字段在协作同步中的静默损坏,是 §4 协作方向的第一刀。
+
+#### Commit 链(设计 + fix + 集成测试)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `c8506dd` | 决 a 扩白名单 + guard(AskUserQuestion 锁);实测坐实 `yNodeToProps(...).bindings` 是 `string` |
+| fix | `64f068a` | `YJS_JSON_FIELDS` +7 lowcode 字段 + guard 单测(节点带全 lowcode 字段 write→read deep-equal)|
+| 集成测试 | `b8e8556` | 单进程两端模拟(两 SceneGraph 共享一 Y.Doc,A `syncNodeToYjs` → B `applyYjsToGraph` 落对象)|
+| close | _this commit_ | §4.1.8 + memory + close |
+
+#### 验证(无 live 两-client,经验 K boundary)
+
+用户两端都开不了 live client。但**本 bug 根因 100% 在读侧 `yNodeToProps` transform**(不在网络/observer 接线 —— 那是基座既有且对白名单字段一直 work 的代码)→ 用两层测试覆盖:
+1. **guard 单测**:`syncNodePropsToYMap → yNodeToProps` 往返,7 lowcode 字段每个 deep-equal + typeof==='object'(直接钉损坏点)。
+2. **两端集成测试**:两 SceneGraph 共享一 Y.Doc(Trystero 只是把同一份 CRDT update 经 WebRTC 中继,共享 doc 忠实复现 serialize→observe→apply),A 端设 binding/event/docState → B 端经真实 `observeDeep → applyYjsToGraph → updateNode` 落地为对象。覆盖整条 app 同步路径。
+
+live 多机 Tauri 留作部署/双机时验(同 §2.v4 邮件往返:能确定性单进程验的已验,跨进程网络层是 Trystero/Yjs 的保证非本 fork 代码)。
+
+#### 勘察额外发现(out of §4.1 scope,记录待后续/上游)
+
+广义 drift 检测时发现 base 还有 ~11 个非 lowcode object 字段同样往返成字符串(读侧不在白名单):`fillGeometry` / `strokeGeometry` / `dashPattern` / `gridTemplateColumns` / `gridTemplateRows` / `overrides` / `componentPropertyDefinitions` / `componentPropertyValues` / `symbolLinks` / `variantPropSpecs` / `pluginData` / `pluginRelaunchData`。这是基座既存行为(多为派生/空字段,基座 collab 容忍;`pluginData` 在 live graph 是序列化副本、保存时重生成,损坏无实际后果)→ **超出 §4.1 lowcode correctness 范围**,不在本期修(避免动基座共享编码、保持与上游可合并)。guard 测试因此收窄到 lowcode 字段,不耦合 base 决定。若后续要彻底治本(决 b/c 的结构对称编码),是独立的 base/上游议题。
+
+#### 经验印证 / 新增
+
+- **H(Tauri/真实路径照出测试漏的洞)的"前置版"**:这个洞不是 Tauri 实测照出的,是**勘察现状时静读 write/read 对称性 + 一个 5 行往返实测**照出的(经验 C/K:别基于推断,跑一遍)。比 §2.v3 的 import-gate 洞(Tauri 才暴露)更早被接住 —— 因为转入新模块(collab)时先做了「写/读对称性」的针对性勘察。**教训:接手既有子系统做 fork 适配时,先核对该子系统的「序列化/反序列化对称性」对 fork 新增字段是否成立** —— 白名单/schema 驱动的双向转换是 fork 字段最易被漏的一类。
+- **K boundary**:live 两-client 不可得 → 不假装能跑,改用「单进程共享-doc 两端模拟」做确定性验证 + 明确标注跨进程网络层留部署验。同 §3.v8(PostgREST RLS)/ §2.v4(邮件往返)。
+- **fork-vs-upstream 边界判断**:发现 base 同类隐患(11 字段)时,克制只修 lowcode scope、不动基座共享编码 —— 保持 fork 与上游可合并是 lowcode fork 的长期约束(见 §2.v3 决 a 同类考量)。
+
+---
 
 ---
 
