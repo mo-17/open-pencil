@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import { detectServiceRole } from '@open-pencil/core/lowcode-validation'
-import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
+import {
+  type RlsTableRequirement,
+  buildRlsPolicySql,
+  collectRlsRequirements,
+  detectServiceRole
+} from '@open-pencil/core/lowcode-validation'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -44,6 +49,40 @@ watch(
 
 const testStatus = ref<'idle' | 'pending' | 'ok' | 'error'>('idle')
 const testError = ref<string>('')
+
+// Phase 3 §3.v8 — RLS policy advisor. The silent-0-row footgun (§3.8
+// surprise #5) cannot be probed through the anon REST API, so instead of a
+// live check we derive the anon policies this document *needs* from every
+// Supabase action it uses. Walk the whole graph (not just the selection)
+// since actions live on any node's `events`; `collectRlsRequirements` keeps
+// the aggregation/dedup pure and unit-tested in core.
+const rlsRequirements = useSceneComputed<RlsTableRequirement[]>(() => {
+  const actions: ActionDef[] = []
+  for (const node of editor.graph.getAllNodes()) {
+    if (!node.events) continue
+    for (const list of Object.values(node.events)) {
+      if (list) actions.push(...list)
+    }
+  }
+  return collectRlsRequirements(actions)
+})
+
+// Tracks which table's SQL was just copied so the button label can flip to
+// "Copied" briefly. Keyed by table name (one button per requirement).
+const copiedTable = ref<string>('')
+async function copyRlsSql(req: RlsTableRequirement): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(buildRlsPolicySql(req))
+    copiedTable.value = req.table
+    setTimeout(() => {
+      if (copiedTable.value === req.table) copiedTable.value = ''
+    }, 1500)
+  } catch (err) {
+    // Clipboard unavailable (rare in WKWebView) — the SQL is still visible
+    // in the <pre> for manual selection, so a copy failure is non-fatal.
+    console.warn('RLS SQL copy failed', err)
+  }
+}
 
 // Toast guard: §2.2 #j — the RLS reminder fires once per editor session the
 // first time the user opens this panel with both url + anonKey filled in.
@@ -233,5 +272,46 @@ async function testConnection(): Promise<void> {
     >
       {{ panels.lowcodeSupabaseRlsNote }}
     </p>
+
+    <div
+      v-if="config && rlsRequirements.length"
+      data-test-id="lowcode-supabase-rls-advisor"
+      class="mt-2 border-t border-border pt-2"
+    >
+      <label class="text-[11px] text-muted">{{ panels.lowcodeSupabaseRlsHeading }}</label>
+      <div
+        v-for="req in rlsRequirements"
+        :key="req.table"
+        data-test-id="lowcode-supabase-rls-table"
+        class="mt-1.5 flex flex-col gap-1"
+      >
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span class="font-mono text-xs text-surface">{{ req.table }}</span>
+          <span
+            v-for="cmd in req.commands"
+            :key="cmd"
+            class="rounded bg-hover px-1 text-[9px] uppercase text-muted"
+          >{{ cmd }}</span>
+        </div>
+        <p
+          v-if="req.needsWriteWarning"
+          class="rounded border border-orange-500/40 bg-orange-500/10 px-2 py-1 text-[10px] text-orange-500"
+        >
+          {{ panels.lowcodeSupabaseRlsWriteWarning }}
+        </p>
+        <pre
+          data-test-id="lowcode-supabase-rls-sql"
+          class="overflow-x-auto rounded border border-border bg-input px-2 py-1 font-mono text-[10px] text-surface"
+        >{{ buildRlsPolicySql(req) }}</pre>
+        <button
+          type="button"
+          data-test-id="lowcode-supabase-rls-copy"
+          class="self-start rounded border border-border px-2 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+          @click="copyRlsSql(req)"
+        >
+          {{ copiedTable === req.table ? panels.lowcodeSupabaseRlsCopied : panels.lowcodeSupabaseRlsCopy }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>

@@ -373,6 +373,11 @@ export const panelMessages = i18n('panels', {
     'Reminder: configure Row Level Security in the Supabase dashboard before going live.',
   lowcodeSupabaseServiceRoleReject:
     'This is a service_role key. Never enter it here — paste the anon (public) key instead.',
+  lowcodeSupabaseRlsHeading: 'RLS policies for this document',
+  lowcodeSupabaseRlsWriteWarning:
+    'Without these policies, update/delete return HTTP 204 with 0 rows changed (looks like a missing id), and upsert silently inserts duplicate rows.',
+  lowcodeSupabaseRlsCopy: 'Copy SQL',
+  lowcodeSupabaseRlsCopied: 'Copied',
   lowcodeActionSupabaseQuery: 'Supabase query',
   lowcodeActionSupabaseMutation: 'Supabase mutation',
   lowcodeActionSupabaseOperation: 'Operation',
