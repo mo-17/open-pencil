@@ -1925,7 +1925,44 @@ export const INTERACTIVE_PROP_VALIDATORS: Partial<Record<SceneNode['type'], (ip:
 
 ### 3.v7.8 Post-mortem
 
-_(待 step 4 close 时回填:commit 链 / `bun run check` 结果 / Tauri ACK 7 项 / surprise 列表 / 经验印证 —— 重点验经验 K 第三次印证 + 决 h warn-keep 的 Q3 是否成立)_
+**§3.v7 closed 2026-05-29**(Tauri ACK 7/7 ✅,**零 surprise**)。补完 §3.v4 carry-over 的 DATEPICKER 校验洞:加 `min`/`max` range + 一个共享 ISO 校验器(tool/IR/UI 三源)。延续 §3.v5/§3.v6 的"Q3 洞已堵 → 零 surprise"对照组(连续第三个零-surprise mini-scope)。
+
+#### Commit 链(5 个,无 hotfix)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `f73ce03` | §3.v7 8 主 + 8 次默 + Q1/Q2/Q3 反向核;决 h(越界 warn+keep)对话锁 |
+| 1 | `705a9a5` | `datepicker-props.ts` 共享校验器(`isIsoDate` 严格 regex + 本地 Date round-trip / `validateDatePickerProps` 字典序 range)+ barrel + 12 单测 |
+| 2 | `04e7112` | `applyDatePickerProps` 读 min/max + 校验 + emit attr + 5 IR warning 码族(格式坏 drop、range/越界 warn-keep)+ 8 compiler 测试 |
+| 3 | `6bc65a5` | tool boundary DATEPICKER 格式 reject(`buildPatch` 收 nodeType)+ 2 tool 测试 |
+| 4 | `b6f60f6` | schema 加 min/max(纯数据,§3.v6 类型不动)+ 新同级导出 `INTERACTIVE_PROP_VALIDATORS`/`INTERACTIVE_WARNING_KEYS` + panel 警告条 + 7 i18n key × 8 文件 |
+| close | _this commit_ | §3.v7.8 回填 + memory + close |
+
+**测试**:`bun run check` 0 error / 4(type-aware)·5(structure)pre-existing max-lines / 0 clones / locales 同步 / Steiger 干净;412/412 compiler+tools 测试(原 405 + 8 IR/emit + 4→2 tool,`modify.test.ts` 因新测一度破 600,合并两 reject 测试压回 600 保持 max-lines warning 数不增 —— 沿 §3.v5/§3.v6 "0 新增 warning")。
+
+#### Tauri ACK 结果(用户主导 2026-05-29)
+
+| # | Check | Result |
+|---|---|---|
+| 1 | DATEPICKER 出 value/最早/最晚三 date 字段;min+max → Preview 日历限范围 | ✅ |
+| 2 | 只设 value 零回归 | ✅ |
+| 3 | AI/CLI 写非法 value → tool reject | ✅ |
+| 4 | min>max → 橙色警告条 + 两 attr 仍 emit(浏览器禁选)| ✅(决 h 成立)|
+| 5 | value 越界 → 警告条 + defaultValue 保留 | ✅(决 h 成立)|
+| 6 | 闰年边界 `2024-02-29` 接受 / `2026-02-30` 拒 | ✅ |
+| 7 | 其余 7 交互类型零回归 | ✅ |
+
+#### Surprise 列表(0 个)
+
+连续第三个零-Tauri-surprise mini-scope(§3.v5 / §3.v6 / §3.v7)。原因:Q1 部分新链(emit 读 min/max)但小且静测全覆盖;Q2 UI 引导(min/max 标签 + 警告条)设计阶段就位;**Q3 唯一风险(越界/反向 = warn-keep vs auto-correct)在设计阶段经 AskUserQuestion 锁定**(决 h),没留到 Tauri 才暴露。
+
+#### 经验印证
+
+- **K 第三次印证 → 升正(不再候选)**:决 c(ISO 格式判定)正确性取决于 `new Date()` round-trip 对非法历法日的行为 + ISO 字典序是否等于时序 —— 都用 `bun -e` runtime probe 实证后才落代码(`2026-02-30`→false、`2024-02-29`→true、`"2026-01-05" <= "2026-12-01"`)。3 次连续印证(§3.v5 SWITCH 默认 fill / §3.v6 emit 字段集静读 / §3.v7 日期判定 probe),**经验 K 正式升为正式经验**:依赖运行时形状/默认值/边界行为的决定必须 probe,别假设。
+- **J Q3 在设计阶段堵洞 = 零 surprise 的直接原因**:§3.v4 的 3 个 hotfix 全是 Q3 洞没在设计阶段发现;§3.v7 把唯一 Q3 fork(越界策略)在 §3.v7.2 反向核时识别 → AskUserQuestion 让用户定 → 决 h 锁 → Tauri ACK #4/#5 一次过。**证明 J 的处理流程(Q3 洞 → 升回决定表 → 用户定)能把 §3.v4 式 hotfix 成本前移到设计阶段**。
+- **I(三源同一 + scan 面)**:`validateDatePickerProps` 一处写、tool/IR/UI 三处调,check-locales 钉 7 key × 8 文件;延续 §3.v3 supabase-payload-entries 先例,0 漂移。
+- **C(no-swallow)**:格式坏 → drop attr + warn;range/越界 → keep + warn;两类都出诊断(IR warning + panel 橙条),无静默。
+- **§3.v6 通用面板保持通用**:校验是 per-type 的,用新同级导出 `INTERACTIVE_PROP_VALIDATORS` map(panel 按 node.type 查)而非 `if(type==='DATEPICKER')` 硬编码 —— 通用 kind 渲染器零改动,§3.v6 的 `InteractiveField`/5 FieldKind 锁全保持。
 
 ---
 
