@@ -76,9 +76,16 @@ function createCollabPanelContext() {
     if (!collab) return
     const { roomId, key } = parseInvite()
     if (!roomId || !nameDraft.value.trim()) return
+    // §4.2 — the room key is mandatory (overturns the legacy empty-password
+    // fallback): a bare roomId with no key must not open any room. Without it
+    // we'd silently join the unauthenticated empty-password variant.
+    if (!key) {
+      toast.error(dialogs.value.roomKeyError)
+      return
+    }
     collab.setLocalName(nameDraft.value.trim())
-    collab.connect(roomId, key || undefined, () => toast.error(dialogs.value.roomKeyError))
-    void router.push(key ? `/share/${roomId}#k=${key}` : `/share/${roomId}`)
+    collab.connect(roomId, key, () => toast.error(dialogs.value.roomKeyError))
+    void router.push(`/share/${roomId}#k=${key}`)
     popoverOpen.value = false
   }
 

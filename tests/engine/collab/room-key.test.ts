@@ -56,11 +56,14 @@ describe('invite parsing (Phase 3 §4.2)', () => {
     })
   })
 
-  test('legacy bare roomId (no key) parses with empty key', () => {
+  // A keyless invite parses with an empty key; `join()` then rejects it
+  // (§4.2 — the key is mandatory, no empty-password fallback) and toasts
+  // dialogs.roomKeyError rather than opening the unauthenticated variant.
+  test('bare roomId (no key) parses with empty key → join rejects', () => {
     expect(parseInvite('abcd1234')).toEqual({ roomId: 'abcd1234', key: '' })
   })
 
-  test('legacy keyless share URL → empty key (connects unkeyed, not crash)', () => {
+  test('keyless share URL → empty key → join rejects', () => {
     expect(parseInvite('https://openpencil.dev/share/abcd1234')).toEqual({
       roomId: 'abcd1234',
       key: ''

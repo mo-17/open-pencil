@@ -2745,7 +2745,7 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 | e | **password 透传连接链**:`connect(roomId, key?)` → `connectCollabSession` → `connectCollabRoom` → `joinTrysteroRoom({appId, password:key, rtcConfig}, roomId, onJoinError)`;`shareCurrentDoc()` 生成 `{roomId, key}` 并存 `CollabState.roomKey` | 沿现有 options-object 链路加参 |
 | f | **鉴权失败浮现(Q2)**:`joinRoom` 第 3 参 `onJoinError(details)`(incorrect password)→ 经回调冒泡到 CollabPanel → toast「房间密钥错误或缺失」+ 复位 connecting 态 | §2.v2 教训:失败不能表现成静默连不上;Trystero 原生回调 |
 | g | **0 持久化 / 0 schema**:密钥仅活在 URL/运行态(`CollabState.roomKey`,本地非广播)| **绝不写进 .fig / docState / awareness 广播**(awareness 只播 `{name,color}`)|
-| h | **旧裸-roomId 链接(无密钥)**:空 password → `genKey('',...)` → 只与其他空密码 peer 连;新链接一律带密钥 | 房间短生命周期,可接受;混版粘裸 id → onJoinError toast |
+| h | ~~旧裸-roomId 链接(无密钥)空 password 兜底~~ **→ 推翻(2026-05-30,用户 ACK)。密钥强制必需:join 解析不到 `#k=` → 拒绝连接 + toast,裸 roomId 什么都开不了**。 | **原 h(空密码兜底)是缺陷**:虽与带密钥房间密码学隔离、无数据泄露,但「裸 roomId 能开空密码房间」误导 + 削弱「房间鉴权」本意(UI 乐观置 connected,看似没密钥也进来了)。房间短生命周期、无长期裸链接 → 兼容理由弱。**「鉴权」= 没密钥进不去** |
 
 #### 4.2.3 改动
 
