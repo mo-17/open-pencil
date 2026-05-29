@@ -331,6 +331,58 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
     expect(warn?.message).toContain('signUp')
   })
 
+  test('resetPassword lowers email only (no password), Phase 3 §2.v4', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [
+        { id: 'a1', kind: 'supabaseAuth', operation: 'resetPassword', emailExpr: "'a@b.co'" }
+      ]
+    })
+    const h = firstHandler<IRSupabaseAuthHandler>(graph, pageId, 'supabaseAuth')
+    expect(h?.operation).toBe('resetPassword')
+    expect(h?.emailAst).toBeDefined()
+    expect(h?.passwordAst).toBeUndefined()
+  })
+
+  test('updatePassword lowers password only (no email), Phase 3 §2.v4', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [
+        { id: 'a1', kind: 'supabaseAuth', operation: 'updatePassword', passwordExpr: "'newpw'" }
+      ]
+    })
+    const h = firstHandler<IRSupabaseAuthHandler>(graph, pageId, 'supabaseAuth')
+    expect(h?.operation).toBe('updatePassword')
+    expect(h?.passwordAst).toBeDefined()
+    expect(h?.emailAst).toBeUndefined()
+  })
+
+  test('resetPassword with no email is dropped with a warning (Phase 3 §2.v4)', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [{ id: 'a1', kind: 'supabaseAuth', operation: 'resetPassword' }]
+    })
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    expect(button?.kind === 'element' && (button.events?.onClick?.length ?? 0)).toBe(0)
+    const warn = ir.warnings.find((w) => w.code === 'action-supabase-auth-missing-credentials')
+    expect(warn?.message).toContain('resetPassword')
+    expect(warn?.message).toContain('email')
+  })
+
+  test('updatePassword with no password is dropped with a warning (Phase 3 §2.v4)', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [{ id: 'a1', kind: 'supabaseAuth', operation: 'updatePassword' }]
+    })
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    expect(button?.kind === 'element' && (button.events?.onClick?.length ?? 0)).toBe(0)
+    const warn = ir.warnings.find((w) => w.code === 'action-supabase-auth-missing-credentials')
+    expect(warn?.message).toContain('updatePassword')
+    expect(warn?.message).toContain('password')
+  })
+
   test('signOut needs no credentials', () => {
     const { graph, pageId } = makeGraph({
       config: DEFAULT_CONFIG,

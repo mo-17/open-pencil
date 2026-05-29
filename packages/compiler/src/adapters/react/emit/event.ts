@@ -134,36 +134,53 @@ function emitSupabaseMutation(h: IRSupabaseMutationHandler): string {
   return wrapAsyncResult(chain, h.resultTarget, h.errorTarget)
 }
 
-/** Phase 3 §2.v2: signIn / signOut against Supabase auth. Phase 3 §2.v3 adds
- *  signUp. signIn emits `signInWithPassword({ email, password })`; signUp emits
- *  `signUp({ email, password })` (both { data, error }); signOut emits
- *  `signOut()` ({ error } — no data, per runtime probe). All only destructure
- *  `{ error }`: a successful auth updates `$currentUser` through the runtime's
- *  `onAuthStateChange`, so none writes a result target (decision §2.v2.2 e).
- *  signUp with email confirmation on returns no session, so `$currentUser`
- *  stays signed-out until the user confirms (decision §2.v3.2 e). `errorTarget`,
- *  when set, captures the auth error. */
+/** Phase 3 §2.v2: signIn / signOut. §2.v3 adds signUp. §2.v4 adds
+ *  resetPassword + updatePassword. Emit per operation (collect guarantees the
+ *  required ASTs are present, so the casts narrow away schema-level
+ *  `undefined`):
+ *    signIn         → signInWithPassword({ email, password })
+ *    signUp         → signUp({ email, password })
+ *    signOut        → signOut()
+ *    resetPassword  → resetPasswordForEmail(email, { redirectTo: window.location.origin })
+ *    updatePassword → updateUser({ password })
+ *  All return `{ data, error }` (runtime-probed, decision §2.v4.2 d) and all
+ *  only destructure `{ error }`: a successful auth syncs `$currentUser` through
+ *  the runtime's `onAuthStateChange`, so none writes a result target (decision
+ *  §2.v2.2 e). redirectTo = window.location.origin (decision §2.v4.2 f) so the
+ *  reset email links back to wherever the app is served. `errorTarget`, when
+ *  set, captures the auth error. */
 function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
   const errorWrite = h.errorTarget
     ? `setDocState(${JSON.stringify(h.errorTarget)}, error); `
     : ''
-  // signIn / signUp handlers always carry both ASTs (collect drops the handler
-  // otherwise), so the casts narrow away the schema-level `undefined`.
-  // signIn → signInWithPassword, signUp → signUp (decision §2.v3.2 c).
-  const method = h.operation === 'signUp' ? 'signUp' : 'signInWithPassword'
-  const call =
-    h.operation === 'signOut'
-      ? 'getSupabaseClient().auth.signOut()'
-      : `getSupabaseClient().auth.${method}({ email: ${emitExpression(
-          h.emailAst as ExprAst
-        )}, password: ${emitExpression(h.passwordAst as ExprAst)} })`
-  const label = h.operation
+  const call = emitAuthCall(h)
   return (
     `try { ` +
     `const { error } = await ${call}; ` +
-    `if (error) { ${errorWrite}console.error("${label} failed:", error) } ` +
-    `} catch (err) { console.error("${label} threw:", err) }`
+    `if (error) { ${errorWrite}console.error("${h.operation} failed:", error) } ` +
+    `} catch (err) { console.error("${h.operation} threw:", err) }`
   )
+}
+
+/** The `getSupabaseClient().auth.*` call for one auth handler. Split out of
+ *  emitSupabaseAuth to keep the per-operation dispatch a flat if-chain (oxlint
+ *  rejects nested ternaries — §2.v3 step 2 lesson). */
+function emitAuthCall(h: IRSupabaseAuthHandler): string {
+  const base = 'getSupabaseClient().auth'
+  if (h.operation === 'signOut') return `${base}.signOut()`
+  if (h.operation === 'resetPassword') {
+    return `${base}.resetPasswordForEmail(${emitExpression(
+      h.emailAst as ExprAst
+    )}, { redirectTo: window.location.origin })`
+  }
+  if (h.operation === 'updatePassword') {
+    return `${base}.updateUser({ password: ${emitExpression(h.passwordAst as ExprAst)} })`
+  }
+  const credentials = `{ email: ${emitExpression(
+    h.emailAst as ExprAst
+  )}, password: ${emitExpression(h.passwordAst as ExprAst)} }`
+  if (h.operation === 'signUp') return `${base}.signUp(${credentials})`
+  return `${base}.signInWithPassword(${credentials})`
 }
 
 /** Phase 3 §3.v2: prefer `payloadEntries` (expression-based object literal)

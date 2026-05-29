@@ -1045,12 +1045,14 @@ function resolveSupabaseMutation(
   }
 }
 
-/** Phase 3 §2.v2: validate + lower a `supabaseAuth` action. Phase 3 §2.v3 adds
- *  signUp, which parses credentials exactly like signIn. signIn / signUp parse
- *  emailExpr / passwordExpr (same sub-language as filter values, so they can
- *  read a controlled INPUT's docState); empty creds drop the handler with a
- *  warning. signOut takes no inputs. No resultTarget — `$currentUser` stays
- *  synced via the runtime's `onAuthStateChange` (decision §2.v2.2 e).
+/** Phase 3 §2.v2: validate + lower a `supabaseAuth` action. §2.v3 adds signUp;
+ *  §2.v4 adds resetPassword + updatePassword. Per-operation credential gating
+ *  (decision §2.v4.2 b): signIn / signUp need email + password; resetPassword
+ *  needs email only; updatePassword needs password only; signOut needs neither.
+ *  Each required expr (same sub-language as filter values, so it can read a
+ *  controlled INPUT's docState) is parsed; an empty / unparseable required
+ *  expr drops the handler with a warning. No resultTarget — `$currentUser`
+ *  stays synced via the runtime's `onAuthStateChange` (decision §2.v2.2 e).
  *  `errorTarget` is the only optional docState write. */
 function resolveSupabaseAuth(
   node: SceneNode,
@@ -1074,23 +1076,31 @@ function resolveSupabaseAuth(
   if (action.operation === 'signOut') {
     return { kind: 'supabaseAuth', operation: 'signOut', references: [], errorTarget }
   }
-  // signIn + signUp both take email/password credentials (§2.v3 decision f).
-  const email = resolveAuthCredential(
-    node, eventName, action.operation, 'email', action.emailExpr, states, inScope, docStates, docStateReads, warnings
-  )
-  if (email === null) return null
-  const password = resolveAuthCredential(
-    node, eventName, action.operation, 'password', action.passwordExpr, states, inScope, docStates, docStateReads, warnings
-  )
-  if (password === null) return null
-  return {
-    kind: 'supabaseAuth',
-    operation: action.operation,
-    emailAst: email.ast,
-    passwordAst: password.ast,
-    references: [...email.references, ...password.references],
-    errorTarget
+  // Per-op credential gating (§2.v4 decision b): signIn/signUp need both,
+  // resetPassword needs email only, updatePassword needs password only.
+  const op = action.operation
+  const needsEmail = op === 'signIn' || op === 'signUp' || op === 'resetPassword'
+  const needsPassword = op === 'signIn' || op === 'signUp' || op === 'updatePassword'
+  const references: string[] = []
+  let emailAst: ExprAst | undefined
+  let passwordAst: ExprAst | undefined
+  if (needsEmail) {
+    const email = resolveAuthCredential(
+      node, eventName, op, 'email', action.emailExpr, states, inScope, docStates, docStateReads, warnings
+    )
+    if (email === null) return null
+    emailAst = email.ast
+    references.push(...email.references)
   }
+  if (needsPassword) {
+    const password = resolveAuthCredential(
+      node, eventName, op, 'password', action.passwordExpr, states, inScope, docStates, docStateReads, warnings
+    )
+    if (password === null) return null
+    passwordAst = password.ast
+    references.push(...password.references)
+  }
+  return { kind: 'supabaseAuth', operation: op, emailAst, passwordAst, references, errorTarget }
 }
 
 /** Parse one signIn / signUp credential expression. Empty →
