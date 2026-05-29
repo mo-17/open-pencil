@@ -2158,7 +2158,30 @@ export function buildRlsPolicySql(req: RlsTableRequirement): string {
 
 ### 3.v8.8 Post-mortem
 
-_(step 2 close 时回填:commit 链 / Tauri ACK 7 项结果 / surprise 列表 / 经验印证。预期延续 §3.v5/v6/v7 零-surprise 对照组 —— 两 Q3 岔口[形态 / 谓词]已在设计阶段 AskUserQuestion 锁定;唯一无法自验的 Q3/K 风险[SQL 跑通]已显式标到 ACK #6。)_
+**§3.v8 closed 2026-05-29**(Tauri ACK 7/7 ✅,**零 surprise** —— 连续第四个零-Tauri-surprise mini-scope,§3.v5/v6/v7/v8)。补完 §3.8 surprise #5 的 RLS silent-0-row footgun:静态 usage-driven 策略顾问扫文档全部 Supabase action → 每表 anon 操作集 → 可 copy 的 `CREATE POLICY` SQL + footgun 提示。
+
+#### Commit 链(2 个功能 step + 设计,无 hotfix)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `6cad85b` | §3.v8 8 主 + 8 次默 + Q1/Q2/Q3 反向核;两 Q3 岔口(形态 / 谓词)经 AskUserQuestion 锁定 |
+| 1 | `ec0c952` | 共享 `rls-advisor.ts`(`collectRlsRequirements` + `buildRlsPolicySql`,upsert→{INSERT,UPDATE}、Postgres USING/WITH CHECK 矩阵、`(true)` + 生产提醒)+ barrel + 9 单测 |
+| 2 | `3a1b973` | SupabaseConfigPanel RLS 子区(graph walk + chip + SQL + Copy + 橙 footgun 条)+ 4 i18n key × 8 文件 |
+| close | _this commit_ | §3.v8.8 回填 + memory + close |
+
+#### Tauri ACK 结果(用户主导 2026-05-29)
+
+7/7 ✅。重点 #6(我无 live 实例不可自验的 Q3/K 风险):生成 SQL paste 进真 Supabase SQL editor 跑通,跑后原本 silent-0-row 的 update 真正改到行 —— **决 d 的 Postgres USING/WITH CHECK 命令矩阵实测成立**。
+
+#### Surprise 列表(0 个,但孵出一个 follow-up scope)
+
+§3.v8 顾问本身零 surprise。但 ACK #3(authenticated 角色端到端)暴露:`TO authenticated` 那半 policy 无代码路径可触达 —— 因为 §2 决定 #5 把 auth 动作 defer 了,`AuthControls` 还是 info-toast shim。用户遂挑「顺手弄 signIn/signOut」→ 孵出 **§2.v2**(见下)。这不是 §3.v8 的 bug,是它把一个既存缺口照出来了(经验 H:Tauri 实测照出设计层缺口)。
+
+#### 经验印证
+
+- **零-surprise 第四连**:两 Q3 岔口(形态 = 静态顾问 vs 实时探测;谓词 = `(true)` vs 所有权模板)在 §3.v8.2 反向核时识别 → AskUserQuestion 锁 → Tauri 一次过。诚实标注「无法自验的 SQL-跑通风险」到 ACK #6 → 用户验。
+- **C(no-swallow)**:silent-0-row footgun 本来是「看不见的 204/0 行」,顾问把它显式化成可 copy 的 SQL + 橙色提示。
+- **诚实于可探测边界**:形态选 A 而非 B,正因 PostgREST 对 RLS-拦截 / 0-行-匹配返回相同(204/`[]`)—— footgun 不可靠探测,且无 live 实例不可 probe PostgREST 语义(经验 K 的边界:probe 不了就别假装能探测,改成确定性的静态推导 + 用户 ACK 验)。
 
 ---
 
@@ -2313,7 +2336,37 @@ function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
 
 ### 2.v2.8 Post-mortem
 
-_(step 4 close 时回填。唯一 Q3/K 风险[auth 返回 shape]已 probe 堵;端到端登录 + authenticated 角色由用户 Tauri ACK 验。预期延续零-surprise 对照组。)_
+**§2.v2 closed 2026-05-29**(Tauri ACK 7/7 ✅;auth 功能本身首过零 bug,但 Tauri 找出 **1 个 Q2 可发现性洞**,mid-ACK 补掉)。从 §3.v8 ACK 孵出:加第 7 个 `ActionDef` kind `SupabaseAuthAction`(推翻 §2 决定 #5 的 6-kind 锁),补完登录闭环 → authenticated 角色端到端打通。
+
+#### Commit 链(5 step + 设计 + 1 Q2 后补 + ACK doc)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `c0190c2` | 7th ActionDef kind + Q1/Q2/Q3;auth 返回 shape `bun -e` probe |
+| 1 | `e3c4bd3` | `SupabaseAuthAction` schema + 0-Kiwi 持久化往返 + union-widening sweep(tool 构造 / EventsPanel errors stub,经验 A/G)|
+| 2 | `e5444a3` | IR collect `resolveSupabaseAuth` + emit `emitSupabaseAuth`(signIn `{data,error}` / signOut `{error}`)+ 9 测试;3 supabase emit 测试移进 `emit/supabase/` 子文件夹(Steiger domain-folder)|
+| 3 | `1b4a48a` | tool 校验(坏 expr reject / 缺失 warn)+ tool 描述 §2.v2 段 + 独立 `auth-action.test.ts`(避免 modify.test.ts 破 600)|
+| 4 | `a8954b6` | EventsPanel auth 表单(operation + email/password expr + errorTarget + 红框)+ **删 AuthControls shim** + i18n(删 5 旧 key、加 5 新 key)|
+| Q2 后补 | `47fb59a` | **`$currentUser` 可发现性提示**(auth 表单 + SupabaseConfigPanel note)+ 2 i18n key —— Tauri 实测找出的 Q2 洞 |
+| ACK doc | `862f4da` | §2.v2.5 加 ACK #7($currentUser 提示)|
+| close | _this commit_ | §2.v2.8 回填 + memory + close |
+
+#### Tauri ACK 结果(用户主导 2026-05-29)
+
+7/7 ✅:signIn 绑 INPUT → 真登录 `$currentUser.signedIn` 变 true(#1)/ signOut 清空(#2)/ **登录后 authenticated 角色访问 `TO authenticated` 表读写成功(#3,端到端闭合 §3.v8 决 e 的前向兼容)**/ 坏 emailExpr reject(#4)/ AuthControls shim 已删、EventsPanel 出真动作(#5)/ 6 既有 kind + .fig 往返零回归(#6)/ `$currentUser` 提示显示(#7)。
+
+#### Surprise 列表(1 个 Q2 可发现性洞,mid-ACK 补)
+
+1. **`$currentUser` 无可发现性**(commit `47fb59a` 补)—— auth wiring 全对(登录/登出/角色切换 ACK 一次过),但 `$currentUser` 是编译期注入、不在 DocumentState 面板、无任何提示其 `{id,email,signedIn}` shape。用户必须被告知才知道能绑 `$currentUser.signedIn/.email`。**这是 §2.v2.2 Q2 列的自漏**:设计阶段反向核了 auth 表单本身的 Q2 affordance(operation select / email-password 输入 / placeholder),但漏了下游「登录态在哪儿浮现给用户」的可发现性。补法:auth 表单下 + SupabaseConfigPanel 加上下文提示(决 A,经 AskUserQuestion)。
+   - 旁注:ACK 期间用户还活体重现了 §3.v3 的表达式引号坑(裸 `a@b.co` → `unexpected character '@'`),但 placeholder `e.g. emailInput or 'a@b.co'` 已含引号提示 → 是「校验正确 surface(经验 C)+ 提示已就位」,非新 surprise。
+
+#### 经验印证
+
+- **H(Tauri 找 UX 洞)再印证**:即便 Q1(wiring)+ Q3(心智模型)首过全绿,Tauri 仍找出 1 个 Q2 可发现性洞($currentUser)—— 同 §3.v2 ACK #1/#2(BUTTON.text 无 UI)那一类,测试不可能发现。**§2.v2 中断了 §3.v5-v8 的「零-surprise 四连」,但 surprise 是 Q2 可发现性(additive 提示),非 Q3 行为 bug**;auth 行为本身首过零 hotfix。
+- **A + G(union widening 6→7)**:`ActionDef` 加第 7 kind,tsgo `never` exhaustive 只逼出 1 处(tool buildAction),其余 emit/collect 是 IR-type 侧、EventsPanel 是 if-chain;step 1 即把强制 callsite 扫平保持 build 绿,step 2-4 补全。0 漏 case。
+- **K(运行时形状必 probe)**:决 d 的 emit 形状(signOut `{error}` 无 data / signIn `{data,error}`)`bun -e` 实证后才写 → emit 一次对,ACK 无返回-shape surprise。
+- **E(emit 内联 vs hook)**:静读 `emit/event.ts` 确认 supabase action 用 `getSupabaseClient()` 内联(非 hook),signIn/signOut 才能同模式 emit 而无需组件顶层 hoist hook —— 这是「顺手」可行的关键,设计阶段静读避免了一个潜在大坑。
+- **流程**:§2.v2 是个好样本——一个 scope(§3.v8)的 Tauri ACK 照出另一个既存缺口(auth defer),用户当场挑成新 scope,按同等设计纪律(§X.2 决定 + Q1/Q2/Q3 + probe)走完。Q2 自漏被 Tauri 接住并 mid-ACK 补 → 仍受控收尾。
 
 ---
 
