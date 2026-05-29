@@ -941,6 +941,13 @@ const actionErrors = computed(() => {
           password: {{ actionErrors.get(action.id)?.password }}
         </p>
         <p
+          v-if="action.kind === 'supabaseAuth'"
+          data-test-id="lowcode-action-auth-current-user-hint"
+          class="pl-1 text-[10px] text-muted"
+        >
+          {{ panels.lowcodeActionAuthCurrentUserHint }}
+        </p>
+        <p
           v-if="actionErrors.get(action.id)?.target"
           data-test-id="lowcode-action-target-error"
           class="pl-1 text-[10px] text-red-500"

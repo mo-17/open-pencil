@@ -371,6 +371,8 @@ export const panelMessages = i18n('panels', {
     'Authorization is enforced by Row Level Security in your Supabase project. The anon key is safe to ship.',
   lowcodeSupabaseRlsToast:
     'Reminder: configure Row Level Security in the Supabase dashboard before going live.',
+  lowcodeSupabaseCurrentUserNote:
+    '$currentUser ({ id, email, signedIn }) is auto-managed after sign-in — reference it in any binding.',
   lowcodeSupabaseServiceRoleReject:
     'This is a service_role key. Never enter it here — paste the anon (public) key instead.',
   lowcodeSupabaseRlsHeading: 'RLS policies for this document',
@@ -407,7 +409,9 @@ export const panelMessages = i18n('panels', {
   lowcodeActionAuthEmail: 'Email expression',
   lowcodeActionAuthEmailPlaceholder: "e.g. emailInput or 'a@b.co'",
   lowcodeActionAuthPassword: 'Password expression',
-  lowcodeActionAuthPasswordPlaceholder: 'e.g. passwordInput'
+  lowcodeActionAuthPasswordPlaceholder: 'e.g. passwordInput',
+  lowcodeActionAuthCurrentUserHint:
+    'After sign-in, read $currentUser.signedIn / .email / .id in any Text binding or render condition.'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

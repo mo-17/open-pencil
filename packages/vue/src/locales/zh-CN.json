@@ -316,6 +316,7 @@
     "lowcodeSupabaseTestMissing": "请先填写 URL 和匿名密钥。",
     "lowcodeSupabaseRlsNote": "授权由 Supabase 项目的行级安全(RLS)兜底,匿名密钥可以放心嵌入前端。",
     "lowcodeSupabaseRlsToast": "提醒:上线前请在 Supabase 控制台配置 Row Level Security。",
+    "lowcodeSupabaseCurrentUserNote": "$currentUser({ id, email, signedIn })登录后自动维护,可在任意绑定中引用。",
     "lowcodeSupabaseServiceRoleReject": "这是 service_role 密钥,绝对不要填入此处 —— 请改用 anon(公开)密钥。",
     "lowcodeSupabaseRlsHeading": "本文档所需的 RLS 策略",
     "lowcodeSupabaseRlsWriteWarning": "未配置这些策略时,update/delete 会返回 HTTP 204 但 0 行被修改(看起来像 id 没传),upsert 会静默插入重复行。",
@@ -347,7 +348,8 @@
     "lowcodeActionAuthEmail": "邮箱表达式",
     "lowcodeActionAuthEmailPlaceholder": "如 emailInput 或 'a@b.co'",
     "lowcodeActionAuthPassword": "密码表达式",
-    "lowcodeActionAuthPasswordPlaceholder": "如 passwordInput"
+    "lowcodeActionAuthPasswordPlaceholder": "如 passwordInput",
+    "lowcodeActionAuthCurrentUserHint": "登录后 $currentUser.signedIn / .email / .id 自动可用,直接在 Text 绑定或渲染条件里引用。"
   },
   "pages": {
     "newPage": "新建页面",

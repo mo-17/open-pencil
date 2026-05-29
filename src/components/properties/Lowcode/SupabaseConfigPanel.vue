@@ -272,6 +272,12 @@ async function testConnection(): Promise<void> {
     >
       {{ panels.lowcodeSupabaseRlsNote }}
     </p>
+    <p
+      data-test-id="lowcode-supabase-current-user-note"
+      class="mt-1 text-[10px] text-muted"
+    >
+      {{ panels.lowcodeSupabaseCurrentUserNote }}
+    </p>
 
     <div
       v-if="config && rlsRequirements.length"
