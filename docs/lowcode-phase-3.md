@@ -2162,6 +2162,160 @@ _(step 2 close 时回填:commit 链 / Tauri ACK 7 项结果 / surprise 列表 / 
 
 ---
 
+## §2.v2 Supabase auth action — signIn / signOut(设计 2026-05-29)
+
+§2 决定 #5 把 auth helper(`signIn(email,pwd)` / `signOut()`)defer 到 §2.v2:它们只活在 emit 侧 `useSupabaseAuth()` hook,`AuthControls.vue` 在 BUTTON 面板放了个 info-toast shim,无真动作。本期补齐:加**第 7 个 `ActionDef` kind** 让 signIn/signOut 成为可在 EventsPanel 配置的真动作。**用户 2026-05-29 在 §3.v8 ACK 间隙挑定「顺手弄一下 signIn/signOut」** → 经评估为完整跨 walker mini-scope(非顺手),按 §3.v8 同等纪律设计。
+
+### 2.v2.1 现状与问题
+
+1. `ActionDef` union 锁死 6 种(§2 决定 #5),auth 不在内 → 无代码路径**无法登录/登出**。emit 侧 `useSupabaseAuth().signIn/signOut` 存在,但只能在导出项目里**手写代码**调。
+2. `AuthControls.vue`(BUTTON 面板)的 signIn/signOut 按钮只 `toast.info` 提示运行时 API 名,**不是真动作**(§2 决定 #5 shim)。
+3. 直接后果:生成的 app 实际**始终跑 `anon` 角色**(除非手写 signIn)→ `TO authenticated` 那半 RLS policy(§3.v8 决 e)无代码路径触不到。补 auth action 后,登录闭环 + authenticated 角色才能端到端走通。
+
+### 2.v2.2 关键决定
+
+**8 主决定**:
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **新增第 7 个 `ActionDef` kind `SupabaseAuthAction`**(`kind:'supabaseAuth'`),**推翻 §2 决定 #5 的「ActionDef union 锁 6 种」**(用户 2026-05-29 ACK)| auth 是 Supabase 表单核心闭环;§2 defer 是体量考量,现补齐 |
+| b | **shape** `{ id, kind:'supabaseAuth', operation:'signIn'\|'signOut', emailExpr?, passwordExpr?, errorTarget? }`。signIn 的 email/password 用 §2 表达式子语言(同 `SupabaseFilter.valueExpr`/`payloadEntries.valueExpr` → 可绑 INPUT/docState);signOut 无输入 | 复用既有表达式机器(0 新 grammar);email/password 绑控件 state 是登录表单刚需 |
+| c | **emit 走 `getSupabaseClient().auth.*` 内联**(非 hook hoisting,镜像 supabaseQuery/Mutation):signIn → `signInWithPassword({ email, password })`;signOut → `signOut()`。两者进 `BLOCK_KINDS` + try/catch | `getSupabaseClient()` 是普通模块函数非 hook,handler 内可直接调 —— **无需组件顶层 hoist hook**(静读 `emit/event.ts` 确认) |
+| d | **emit 返回形状区分**(已 `bun -e` runtime probe,经验 K):signIn 返 `{ data, error }`(data=`{user,session}`);signOut 返 **`{ error }`(无 data)**。signOut 只做 error 检查,**不写 resultTarget**;signIn 同理不强制 resultTarget | probe 实证:`signOut()` 仅 `error` 键 / `signInWithPassword()` 为 `{data:{user,session},error}` |
+| e | **`$currentUser` 自动同步,不手写**:运行时 `lowcode-supabase.ts` 既有 `onAuthStateChange` 在 signIn/signOut 后自动刷新 `$currentUser` docState → 动作**不暴露 resultTarget**,登录态靠 `$currentUser` 响应式 | 避免双写 $currentUser;UI 简化(只 errorTarget) |
+| f | **删 `AuthControls.vue` shim**(用户 ACK):移除组件 + EventsPanel import/mount + 5 个 `lowcodeAuth*` i18n key + 3 个 `lowcode-auth-*` test-id。真路径 = EventsPanel supabaseAuth 动作 | 真动作上线后 shim 冗余;两入口易混淆 |
+| g | **tool 校验**:`KNOWN_ACTION_KINDS` 加 `'supabaseAuth'`;`buildActionFromValidated` 加 case(exhaustive 注释 6→7);emailExpr/passwordExpr **坏表达式 → reject**(同 payloadEntries valueExpr),**缺失 → IR warn**(同 supabaseQuery no-table,不硬 reject)| 与既有 action 校验同档:语法错即时拦,缺值留 IR 诊断 |
+| h | **0 Kiwi 改动**:ActionDef 经 `events` pluginData JSON 旁路持久化,新 kind 只是更多 JSON,零 vendored kiwi schema 改动 | 沿 §2/§3 全部先例;step 1 加往返测试钉死 |
+
+**8 次级默认**:
+
+1. signIn UI 显 email/password expr 输入 + 可选 errorTarget;signOut UI 只显 operation select(+ 可选 errorTarget)。
+2. email/password placeholder 提示(沿 §3.v3 教训:字符串要引号),通常绑 INPUT docState 标识符 → `如 emailInput 或 'a@b.com'`。
+3. **不暴露 resultTarget**(决 e:$currentUser 自动同步)。
+4. `makeAction('supabaseAuth')` 默认 `{ operation:'signIn', emailExpr:'', passwordExpr:'' }`。
+5. i18n 新增 ~6 key(action kind label `lowcodeActionSupabaseAuth` + operation signIn/signOut label + email/password label + placeholder)× 8 文件;**删 5 个 `lowcodeAuth*` key**。
+6. test-id:`lowcode-action-auth-operation` / `-email` / `-password`(沿 `lowcode-action-*` 前缀);删 `lowcode-auth-label`/`-sign-in`/`-sign-out`。
+7. errorTarget 走 docState 名校验(同 supabaseQuery errorTarget)。
+8. **0 新 npm import**(supabase-js 已 pinned);emit 产物零新依赖。
+
+**经验 J 三问题反向核**(强制):
+
+| ACK 项 | Q1 技术链 | Q2 UI 引导 | Q3 心智模型 |
+|---|---|---|---|
+| EventsPanel 加 supabaseAuth/signIn,email/password 绑 INPUT docState → 按钮点击 → 登录 → `$currentUser.signedIn` 变 true | ⚠️ 全新 kind 跨 schema/IR/emit/tool/UI(step 1-3 新链)| ✅ operation select + email/password 输入 + placeholder | ✅ "配置登录动作"匹配 Bubble 心智 |
+| signOut 动作 → 点击 → `$currentUser` 清空 | ⚠️ 决 d 无 data 分支 | ✅ operation=signOut 隐藏 email/password | ✅ |
+| signIn 后角色变 authenticated → §3.v8 `TO authenticated` policy 生效 | ⚠️ 端到端依赖 supabase-js JWT 注入 | n/a | ✅ 闭合 §3.v8 决 e 的前向兼容 |
+| 坏 email/passwordExpr → tool reject | ⚠️ 决 g 校验 | n/a(error msg)| ✅ |
+| 删 AuthControls 后 BUTTON 面板无 shim,EventsPanel 出真动作 | ⚠️ 删组件 + mount | ✅ 单一入口 | ✅ 消除"提示 vs 真动作"困惑 |
+| 零回归:既有 6 kind + .fig 往返 | ✅ | ✅ | ✅ |
+
+唯一 Q3/K 风险(supabase-js auth 返回 shape)**已 `bun -e` runtime probe 实证**(决 d)→ 设计阶段已堵。端到端登录(authenticated 角色)与 §3.v8 SQL 一并由用户 Tauri ACK 验。
+
+### 2.v2.3 公开 API / Schema 改动
+
+```ts
+// packages/core/src/scene-graph/types.ts
+export interface SupabaseAuthAction {
+  id: string
+  kind: 'supabaseAuth'
+  operation: 'signIn' | 'signOut'
+  emailExpr?: string      // signIn only; §2 表达式子语言(可绑 INPUT/docState)
+  passwordExpr?: string   // signIn only
+  errorTarget?: string    // 可选;decision e 不暴露 resultTarget
+}
+export type ActionDef = … | SupabaseAuthAction   // 6 → 7 kinds(推翻 §2 #5)
+```
+
+- 🔁 **schema** `types.ts`:新 interface + ActionDef union 第 7 kind
+- 🔁 **IR types** `ir/types.ts`:`IRSupabaseAuthHandler`(`emailAst?`/`passwordAst?`/`references`/`errorTarget?`)加进 `IREventHandler` union
+- 🔁 **IR collect** `bindings.ts`:`resolveActions` switch 加 `supabaseAuth`;新 `resolveSupabaseAuth`(parse email/password expr,镜像 `resolveSupabaseMutation`)
+- 🔁 **emit** `emit/event.ts`:`BLOCK_KINDS` 加 `supabaseAuth` + case + `emitSupabaseAuth`(signIn=`{data,error}`、signOut=`{error}`)
+- 🔁 **tool** `modify/lowcode.ts`:`KNOWN_ACTION_KINDS` + `buildActionFromValidated` case + email/password expr 校验
+- 🔁 **EventsPanel.vue**:`ACTION_KINDS`/`actionKindLabel`/`makeAction`/errors/template 加 supabaseAuth 表单;**删 `AuthControls` import + mount**
+- ➖ **删 `AuthControls.vue`** + 5 `lowcodeAuth*` i18n key + 3 `lowcode-auth-*` test-id
+- ➕ **i18n** ~6 新 key × 8 文件(净增 ~1)
+- **0** Kiwi / node-defaults / 新 npm 改动
+
+### 2.v2.4 内部实现拆解
+
+#### emit `emitSupabaseAuth`(`emit/event.ts`)
+
+```ts
+function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
+  if (h.operation === 'signOut') {
+    // 决 d:signOut 返 { error },无 data
+    const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, error); ` : ''
+    return `try { const { error } = await getSupabaseClient().auth.signOut(); ` +
+      `if (error) { ${errorWrite}console.error("signOut failed:", error) } } ` +
+      `catch (err) { console.error("signOut threw:", err) }`
+  }
+  // signIn:{ data, error };email/password expr;$currentUser 自动同步(不写 data)
+  const email = emitExpression(h.emailAst)
+  const password = emitExpression(h.passwordAst)
+  const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, error); ` : ''
+  return `try { const { error } = await getSupabaseClient().auth.signInWithPassword({ email: ${email}, password: ${password} }); ` +
+    `if (error) { ${errorWrite}console.error("signIn failed:", error) } } ` +
+    `catch (err) { console.error("signIn threw:", err) }`
+}
+```
+
+（signIn 也只解构 `{ error }`:登录成功后 `$currentUser` 靠 `onAuthStateChange` 自动同步,无需 `data`。决 e。）
+
+#### IR collect `resolveSupabaseAuth`(`bindings.ts`)
+
+镜像 `resolveSupabaseMutation`:signIn 时 parse emailExpr/passwordExpr(空 → IR warn `action-supabase-auth-missing-credentials`;坏 → 该 action drop + warn);errorTarget 校验 docState 名。signOut 时跳过 email/password。
+
+#### tool `modify/lowcode.ts`
+
+`KNOWN_ACTION_KINDS` += `'supabaseAuth'`;`buildActionFromValidated` case 构造 `SupabaseAuthAction`;signIn 的 emailExpr/passwordExpr 走 `parseExpression`,坏 → `fail(...)`。exhaustive 注释 6→7。
+
+#### EventsPanel.vue + 删 AuthControls
+
+`ACTION_KINDS` 末加 `'supabaseAuth'`;`makeAction` 默认 signIn;template 加 `v-else-if="action.kind === 'supabaseAuth'"`:operation select + (signIn 时)email/password expr 输入 + 可选 errorTarget。删 `import AuthControls` + `<AuthControls />`(行 22 / 449),删 `AuthControls.vue` 文件 + 5 i18n key。
+
+### 2.v2.5 成功标准 + Tauri ACK
+
+1. `bun run check` 全绿;`bun test ./tests/engine/compiler/` + `tools/lowcode/` + kiwi 往返全绿;新增 emit/IR/tool/cross-walker 测试
+2. **Tauri 实测(用户主导)~6 项 ACK**:
+
+| # | ACK |
+|---|---|
+| 1 | EventsPanel 选 Supabase auth → signIn,email 绑 emailInput docState、password 绑 passwordInput → 按钮点击 → 真登录,`$currentUser.signedIn` 变 true |
+| 2 | signOut 动作 → 点击 → `$currentUser` 清空(signedIn=false)|
+| 3 | 登录后访问 `TO authenticated` 的表(§3.v8 SQL 跑过)→ 读写成功(authenticated 角色端到端)|
+| 4 | 坏 emailExpr(如 `a@b.co` 不加引号)→ tool/IR 诊断 |
+| 5 | BUTTON 面板**不再有** AuthControls shim;EventsPanel 出真 auth 动作 |
+| 6 | 零回归:既有 6 kind 动作 + .fig 存读往返 |
+
+3. 不破坏 §2/§3/§3.x/§3.v2-v8 其余锁定(除明确推翻的 §2 #5 6-kind 锁)
+
+### 2.v2.6 工作分解(建议 1 名工程师,~2-3 天)
+
+| Step | 任务 | commit |
+|---|---|---|
+| 0 | §2.v2 设计 doc + commit | `docs(lowcode): §2.v2 mini-scope detailed design (Supabase auth action)` |
+| 1 | schema `SupabaseAuthAction` + ActionDef 7th kind + Kiwi 往返测试 | `feat(lowcode): step 1 — SupabaseAuthAction schema + persistence (§2.v2)` |
+| 2 | IR types + collect `resolveSupabaseAuth` + emit `emitSupabaseAuth`(signIn/signOut)+ compiler/IR 测试 | `feat(lowcode): step 2 — auth action IR collect + emit (§2.v2)` |
+| 3 | tool 校验(`KNOWN_ACTION_KINDS` + buildAction + expr 校验)+ tools 测试 | `feat(lowcode): step 3 — tool-boundary auth action validation (§2.v2)` |
+| 4 | EventsPanel supabaseAuth 表单 + 删 AuthControls + i18n × 8 + Tauri ACK + §2.v2.8 + close | `docs(lowcode): §2.v2 Tauri verification + close` |
+
+### 2.v2.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| ActionDef union widening 漏 walker case(经验 A/G)| 中 | exhaustive `never` switch(emit/tool 都有)tsgo 钉;grep `ActionKind`/`action.kind` 全 callsite;cross-walker 测试 |
+| supabase-js auth 返回 shape 记错 | 低 | 已 `bun -e` probe(决 d):signOut=`{error}`、signIn=`{data,error}` |
+| 删 AuthControls 漏清 i18n key / test-id 引用 | 中 | check-locales 钉;grep `lowcodeAuth`/`lowcode-auth-` 全仓清零 |
+| Kiwi 往返漏新 kind | 低 | events 走 JSON pluginData(决 h),step 1 往返测试钉 |
+| email/password 明文 expr 暴露 | 低(设计内)| 绑 INPUT docState(运行时值),非硬编码;placeholder 引导绑控件 |
+| EventsPanel 已 912 行,加表单更大 | 低 | .vue 非 oxlint max-lines 扫描域;表单 ~60 行,接受 |
+
+### 2.v2.8 Post-mortem
+
+_(step 4 close 时回填。唯一 Q3/K 风险[auth 返回 shape]已 probe 堵;端到端登录 + authenticated 角色由用户 Tauri ACK 验。预期延续零-surprise 对照组。)_
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
