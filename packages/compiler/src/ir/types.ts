@@ -229,16 +229,18 @@ export interface IRSupabaseMutationHandler {
   errorTarget?: string
 }
 
-/** Phase 3 §2.v2: sign a user in / out. Phase 3 §2.v3 adds signUp. Adapter
- *  emits `await getSupabaseClient().auth.signInWithPassword({ email, password })`
- *  (signIn) / `.signUp({ email, password })` (signUp) / `.signOut()`.
- *  `emailAst` / `passwordAst` (signIn + signUp) are the parsed credential
- *  expressions (same sub-language as `IRSupabaseFilter.ast`). No `resultTarget`:
- *  `$currentUser` stays synced via the runtime's `onAuthStateChange` (decision
- *  §2.v2.2 e). `errorTarget` optionally captures the auth error. */
+/** Phase 3 §2.v2: sign a user in / out. Phase 3 §2.v3 adds signUp. Phase 3
+ *  §2.v4 adds resetPassword + updatePassword. Adapter emits the matching
+ *  `await getSupabaseClient().auth.*` call: signInWithPassword / signUp /
+ *  signOut / resetPasswordForEmail(email, { redirectTo: window.location.origin })
+ *  / updateUser({ password }). `emailAst` is present for signIn / signUp /
+ *  resetPassword; `passwordAst` for signIn / signUp / updatePassword (per-op
+ *  gating, decision §2.v4.2 b). No `resultTarget`: `$currentUser` stays synced
+ *  via the runtime's `onAuthStateChange` (decision §2.v2.2 e). `errorTarget`
+ *  optionally captures the auth error. */
 export interface IRSupabaseAuthHandler {
   kind: 'supabaseAuth'
-  operation: 'signIn' | 'signOut' | 'signUp'
+  operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword'
   emailAst?: ExprAst
   passwordAst?: ExprAst
   references: string[]

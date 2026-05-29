@@ -624,21 +624,25 @@ export interface SupabaseMutationAction {
 }
 
 /** Phase 3 §2.v2: sign a user in / out against the Supabase project's auth.
- *  Phase 3 §2.v3 adds `signUp` (registration). The compiler emits
- *  `getSupabaseClient().auth.signInWithPassword({ email, password })` /
- *  `.signUp({ email, password })` / `.signOut()` inside the event handler.
- *  `emailExpr` / `passwordExpr` (signIn + signUp) use the same restricted
- *  expression sub-language as `SupabaseFilter.valueExpr`, so the credentials
- *  can come from controlled INPUT docState. There is no `resultTarget`: the
- *  emitted runtime keeps `$currentUser` in sync via `onAuthStateChange`, so
- *  login state flows back reactively (decision §2.v2.2 e). With email
- *  confirmation enabled (Supabase default), `signUp` returns no session until
- *  the user confirms, so `$currentUser.signedIn` stays false until then
+ *  Phase 3 §2.v3 adds `signUp` (registration). Phase 3 §2.v4 adds
+ *  `resetPassword` (send a reset email) + `updatePassword` (set a new password).
+ *  The compiler emits the matching `getSupabaseClient().auth.*` call inline:
+ *  signInWithPassword / signUp / signOut / resetPasswordForEmail(email,
+ *  { redirectTo: window.location.origin }) / updateUser({ password }).
+ *  Per-operation credential gating (decision §2.v4.2 b): signIn + signUp use
+ *  both `emailExpr` + `passwordExpr`; `resetPassword` uses `emailExpr` only;
+ *  `updatePassword` uses `passwordExpr` only (the new password); `signOut`
+ *  uses neither. The exprs use the same restricted expression sub-language as
+ *  `SupabaseFilter.valueExpr`, so credentials can come from controlled INPUT
+ *  docState. There is no `resultTarget`: the emitted runtime keeps
+ *  `$currentUser` in sync via `onAuthStateChange` (decision §2.v2.2 e). With
+ *  email confirmation enabled (Supabase default), `signUp` returns no session
+ *  until the user confirms, so `$currentUser.signedIn` stays false until then
  *  (decision §2.v3.2 e). `errorTarget` optionally captures the auth error. */
 export interface SupabaseAuthAction {
   id: string
   kind: 'supabaseAuth'
-  operation: 'signIn' | 'signOut' | 'signUp'
+  operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword'
   emailExpr?: string
   passwordExpr?: string
   errorTarget?: string

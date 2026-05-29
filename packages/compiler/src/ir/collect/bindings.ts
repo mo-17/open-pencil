@@ -1098,7 +1098,7 @@ function resolveSupabaseAuth(
 function resolveAuthCredential(
   node: SceneNode,
   eventName: EventName,
-  operation: 'signIn' | 'signUp',
+  operation: 'signIn' | 'signUp' | 'resetPassword' | 'updatePassword',
   which: 'email' | 'password',
   exprSrc: string | undefined,
   states: Map<string, IRStateDecl>,

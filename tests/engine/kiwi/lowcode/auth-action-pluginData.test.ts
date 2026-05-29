@@ -64,6 +64,21 @@ const SIGN_UP: SupabaseAuthAction = {
   errorTarget: 'authError'
 }
 
+const RESET_PASSWORD: SupabaseAuthAction = {
+  id: 'a4',
+  kind: 'supabaseAuth',
+  operation: 'resetPassword',
+  emailExpr: 'emailInput',
+  errorTarget: 'authError'
+}
+
+const UPDATE_PASSWORD: SupabaseAuthAction = {
+  id: 'a5',
+  kind: 'supabaseAuth',
+  operation: 'updatePassword',
+  passwordExpr: 'newPasswordInput'
+}
+
 describe('SupabaseAuthAction persistence (Phase 3 §2.v2)', () => {
   test('a signIn action serialises into a single lowcode/events entry', () => {
     const node = makeNode({ events: { onClick: [SIGN_IN] } })
@@ -85,6 +100,15 @@ describe('SupabaseAuthAction persistence (Phase 3 §2.v2)', () => {
 
   test('signUp round-trips with its email/password exprs (Phase 3 §2.v3)', () => {
     const events = { onClick: [SIGN_UP, SIGN_OUT] }
+    const [entry] = serializeLowcodeFields(makeNode({ events }))
+    const result = extractLowcodeAndPluginData(
+      makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: entry.key, value: entry.value }])
+    )
+    expect(result.events).toEqual(events)
+  })
+
+  test('resetPassword (email-only) + updatePassword (password-only) round-trip (Phase 3 §2.v4)', () => {
+    const events = { onClick: [RESET_PASSWORD], onSubmit: [UPDATE_PASSWORD] }
     const [entry] = serializeLowcodeFields(makeNode({ events }))
     const result = extractLowcodeAndPluginData(
       makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: entry.key, value: entry.value }])
