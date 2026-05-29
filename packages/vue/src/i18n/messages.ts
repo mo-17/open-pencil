@@ -413,7 +413,11 @@ export const panelMessages = i18n('panels', {
   lowcodeActionAuthCurrentUserHint:
     'After sign-in, read $currentUser.signedIn / .email / .id in any Text binding or render condition.',
   lowcodeActionAuthSignUpNote:
-    'With email confirmation on (Supabase default), sign-up does not log the user in — $currentUser.signedIn stays false until they confirm via email.'
+    'With email confirmation on (Supabase default), sign-up does not log the user in — $currentUser.signedIn stays false until they confirm via email.',
+  lowcodeActionAuthResetNote:
+    'Sends a reset email linking back to this app. The link → set-new-password flow can only be tested in a real deployment; preview just fires the request.',
+  lowcodeActionAuthUpdateNote:
+    'Sets a new password for the currently signed-in user (works after sign-in or after a reset link lands).'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

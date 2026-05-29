@@ -350,7 +350,9 @@
     "lowcodeActionAuthPassword": "密码表达式",
     "lowcodeActionAuthPasswordPlaceholder": "如 passwordInput",
     "lowcodeActionAuthCurrentUserHint": "登录后 $currentUser.signedIn / .email / .id 自动可用,直接在 Text 绑定或渲染条件里引用。",
-    "lowcodeActionAuthSignUpNote": "开启邮箱确认时(Supabase 默认),注册不会立即登录 —— $currentUser.signedIn 会保持 false,直到用户点确认邮件。"
+    "lowcodeActionAuthSignUpNote": "开启邮箱确认时(Supabase 默认),注册不会立即登录 —— $currentUser.signedIn 会保持 false,直到用户点确认邮件。",
+    "lowcodeActionAuthResetNote": "发送重置邮件,链接指回本应用。点链接→设新密码的完整流程只能在真实部署里验;preview 只能验请求发出。",
+    "lowcodeActionAuthUpdateNote": "为当前登录用户设置新密码(登录后、或重置链接落地后均可用)。"
   },
   "pages": {
     "newPage": "新建页面",
