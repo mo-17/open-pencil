@@ -2669,7 +2669,43 @@ email 输入 `v-if op∈{signIn,signUp,resetPassword}`;password 输入 `v-if op�
 
 ### 2.v4.8 Post-mortem
 
-待 Tauri ACK 回填。
+**§2.v4 closed 2026-05-30**(Tauri ACK ✅,**零 hotfix、零 surprise** —— Phase 3 又一个一次过)。补完密码找回:`resetPassword`(发重置邮件)+ `updatePassword`(设新密码),仍复用 `supabaseAuth` operation union(5 op,`ActionDef` 仍 7 kind),引入 per-operation 字段门控。
+
+#### Commit 链(设计 + 4 step,无 hotfix)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `4d1ac15` | redirectTo=`window.location.origin`(决 f,AskUserQuestion 锁)+ 两返回 shape `bun -e` probe(决 d)|
+| 1 | `86c2830` | operation union +2(schema+IR)+ Kiwi 往返 + `resolveAuthCredential` 参数 union-widening sweep(经验 A/G 保 build 绿)|
+| 2 | `d7cb483` | IR collect per-op 门控(needsEmail/needsPassword)+ emit `emitAuthCall` if-链(无嵌套三元,§2.v3 教训)|
+| 3 | `2b05bd4` | tool `SUPABASE_AUTH_OPS` set + cast + 描述 per-op + reset 邮件往返 caveat |
+| 4 | `9b1bb26` | EventsPanel email/password 独立 per-op v-if(`authNeedsEmail`/`authNeedsPassword` 镜像 collect)+ reset/update note + i18n×8 |
+| close | _this commit_ | §2.v4.8 + memory + close |
+
+#### Tauri ACK 结果(用户主导 2026-05-30)
+
+- **#1 updatePassword 端到端 ✅(preview 闭环)**:登录 → updatePassword → 登出 → 新密码登录。
+- **#2 resetPassword ✅**:点击发出 `/auth/v1/recover`。
+- **#3-#6**:per-op 表单 / note / 诊断 / 零回归随上述一并通过。
+- **邮件往返(链接→落地→改密)按决 h 延后**到真实部署期验(用户:「邮件限制,等后面完善其他功能再测」)—— **不是失败,是设计已承认的验证边界**(经验 K boundary:探不了的不假装能探,reset note 已把这层说清)。
+
+#### 为什么零 surprise
+
+- **决 h(验证边界)+ reset note 设计阶段前移**:把「resetPassword 邮件往返 preview 验不了」这个最可能被误判成 bug 的点,在设计阶段就经 Q3 反向核识别、用 reset note 铺给用户 → Tauri 实测时用户直接知道这是预期、主动延后,而非当 bug 报。**对照 §2.v3**:signUp 的 import-gate 洞是「测试绿但运行时炸」的真 bug(Tauri 才暴露);§2.v4 没有这类洞,因为唯一的运行时依赖(redirectTo / 邮件)已在设计阶段标成「部署验」,且 emit 路径与 signUp 同构、§2.v3 的 import-gate 已修。
+- **决 a(复用 operation)+ per-op 门控对齐三处**:collect 的 needsEmail/needsPassword、tool 的 present-then-parse、UI 的 authNeedsEmail/authNeedsPassword —— 三处同一套门控规则,设计阶段静读对齐(经验 E),Tauri #4(per-op 表单)一次过,零字段错配。
+- **updatePassword 选了「不限恢复会话」的语义**(决 b/h):`updateUser({password})` 任何登录态可用 → 让「改密码」在 preview 完全可闭环验,不必依赖邮件 —— 这是方向 B 当初被选中的原因(用户要 preview 能验的那半),兑现。
+
+#### 经验印证
+
+- **K boundary 再次生效**:reset 邮件往返 = 「无真邮箱/真重定向落地不可探」→ 走确定性 emit(redirectTo=origin)+ note + 部署验,不假装 preview 能端到端。同 §3.v8(PostgREST RLS 不可探)同类。
+- **J(Q3 设计阶段堵)**:reset 的 Q3 心智错位(「点完就该能改密」)在 §2.v4.2 反向核识别 → reset note → 零 Tauri surprise。延续 §2.v3 决 e 把 Q2/Q3 洞前移的做法。
+- **A/G + dedup**:operation union 第三次 widening(signUp→reset/update),`resolveAuthCredential` 参数类型 step 1 即扫平;emit 改 if-链(`emitAuthCall` 抽出)规避 §2.v3 踩过的 nested-ternary oxlint。0 漏 case、0 clone。
+
+#### 认证能力链现状(§2 → §2.v4)
+
+signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个 `supabaseAuth` ActionDef kind,5 operation)。剩余 auth 缺口:OAuth / magic link(无密码登录)/ email 确认重发 —— 体量与部署耦合更深,留后续按需。
+
+---
 
 ---
 
