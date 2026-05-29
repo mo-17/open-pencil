@@ -2728,6 +2728,68 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 
 注:base collab 还有 ~11 个非 lowcode object 字段同样在 Yjs 往返成字符串(§4.1.8 记录),属基座/上游议题,非 §4 lowcode slice。
 
+### 4.2 房间鉴权(room auth,设计 2026-05-30)
+
+#### 4.2.1 现状与问题
+
+当前任何人凭 `appId`(全局字面量 `'openpencil'`)+ 8 位随机 `roomId` 即可进同一协作房间(`room.ts` `joinTrysteroRoom({appId, rtcConfig}, roomId)`,无 password)。威胁:① roomId 仅 36^8≈2.8e12,且公共 MQTT broker 上房间话题由 `appId+roomId` 派生 → 监听 broker 可观测/枚举活跃房间;② lowcode 应用可能带 Supabase config / 业务数据。无鉴权层 = 协作房间对「知道/猜到/枚举出 roomId 的人」敞开。
+
+#### 4.2.2 关键决定
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **用 Trystero 原生 `password`**(`joinRoom` config),非 app 层 post-join gate | `genKey(password, appId, roomId)` 加密 SDP 会话描述 → 密钥不匹配的 peer **无法建立 WebRTC 连接**(密码学级);即便 broker 上看到房间也连不上。appId 仍全局(私有 appId/信令 = §4.3)|
+| b | **自动生成长随机密钥、内嵌邀请链接**(用户 2026-05-30 AskUserQuestion ACK 推荐项)| 零摩擦(UX 同今天),裸 roomId 不再够;「有完整链接即可进」= Figma/腾讯文档「知道链接的人」模型,标准做法。堵 guess/enumerate 向量 |
+| c | **密钥走 URL fragment**(`#k=<key>`),roomId 仍在路径(`/share/:roomId` 不变)| fragment 永不发服务器(隐私,不进服务器日志);标准 secure-link 模式 |
+| d | **密钥用 `crypto.getRandomValues` 生成**(禁 `Math.random`,CLAUDE.md 锁),~128 bit | 远强于 8 位 roomId;CLAUDE.md 随机源约束 |
+| e | **password 透传连接链**:`connect(roomId, key?)` → `connectCollabSession` → `connectCollabRoom` → `joinTrysteroRoom({appId, password:key, rtcConfig}, roomId, onJoinError)`;`shareCurrentDoc()` 生成 `{roomId, key}` 并存 `CollabState.roomKey` | 沿现有 options-object 链路加参 |
+| f | **鉴权失败浮现(Q2)**:`joinRoom` 第 3 参 `onJoinError(details)`(incorrect password)→ 经回调冒泡到 CollabPanel → toast「房间密钥错误或缺失」+ 复位 connecting 态 | §2.v2 教训:失败不能表现成静默连不上;Trystero 原生回调 |
+| g | **0 持久化 / 0 schema**:密钥仅活在 URL/运行态(`CollabState.roomKey`,本地非广播)| **绝不写进 .fig / docState / awareness 广播**(awareness 只播 `{name,color}`)|
+| h | **旧裸-roomId 链接(无密钥)**:空 password → `genKey('',...)` → 只与其他空密码 peer 连;新链接一律带密钥 | 房间短生命周期,可接受;混版粘裸 id → onJoinError toast |
+
+#### 4.2.3 改动
+
+- 🔁 `src/constants.ts`:`ROOM_KEY_LENGTH`(+ 复用/新 charset)
+- 🔁 `src/app/collab/awareness.ts`:`generateRoomKey()`(镜像 `generateRoomId`,长 + crypto)
+- 🔁 `src/app/collab/types.ts`:`CollabState.roomKey: string | null` + DEFAULT
+- 🔁 `src/app/collab/room.ts`:`connectCollabRoom` opts += `password?` / `onAuthError?`;config 加 `password` + `joinRoom` 第 3 参 `onJoinError`
+- 🔁 `src/app/collab/session.ts`:`connect(roomId, key?)` + `connectCollabSession` 透传 password/onAuthError;存 roomKey
+- 🔁 `src/app/collab/use.ts`:`connect(roomId, key?)`;`shareCurrentDoc()` → `{roomId, key}`;暴露 onAuthError 钩
+- 🔁 `src/components/CollabPanel/context.ts`:`shareUrl` 带 `#k=`;`share()` 复制带密钥链接;`join()` 从 `route.hash`/`joinInput` 解析密钥;onAuthError → toast
+- ➕ i18n dialogs key `roomKeyError` × 8
+- ➕ 单测:`generateRoomKey`(长度/charset/唯一)+ 邀请链接 key 解析(roomId + `#k=` 提取)
+- **0** engine/compiler / kiwi / docState 改动
+
+#### 4.2.4 成功标准 + Tauri ACK
+
+1. key-gen + URL key-parse 单测绿;`bun run check` 全绿;零回归
+2. **Tauri 实测(部分可单端,完整鉴权需两端 → 同 §4.1 留双机/部署验)**:
+   - 单端可验:share 生成的链接含 `#k=`;copy 出的链接带密钥;join 粘带密钥链接能解析 roomId+key
+   - 双端(留验):正确密钥连通;**裸 roomId / 错密钥 → 连不上 + toast「密钥错误或缺失」**(非静默)
+
+#### 4.2.5 工作分解(~1 day)
+
+| Step | 任务 | commit |
+|---|---|---|
+| 0 | §4.2 设计 doc | `docs(lowcode): §4.2 room auth — detailed design` |
+| 1 | 密钥生成 + password 透传连接链 + onJoinError + key-gen 单测 | `feat(collab): §4.2 step 1 — room key + password threading + join-error` |
+| 2 | CollabPanel shareUrl/join 密钥 + onAuthError toast + i18n×8 + key-parse 单测 + close | `feat(collab): §4.2 step 2 — keyed share link + auth-error surfacing` |
+
+#### 4.2.6 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| fragment 在 router/Tauri deep-link 丢失 | 中 | 用 `route.hash` 读(vue-router history 模式保留);join 也从粘贴的 joinInput 字符串提取 `#k=` |
+| 密钥意外进服务器/日志 | 中 | 决 c fragment 永不发服务器;决 g 绝不持久化 |
+| 完整鉴权双端验不了(单机)| 低 | 单测覆盖 key-gen/parse;Trystero crypto 是其保证;双端留部署验(经验 K boundary,同 §4.1)|
+| `Math.random` 误用 | 低 | 决 d crypto.getRandomValues;check:arch/oxlint 钉 |
+
+#### 4.2.8 Post-mortem
+
+待验证回填。
+
+---
+
 ### 4.1 lowcode 字段 Yjs 往返 correctness(设计 2026-05-30)
 
 #### 4.1.1 现状与问题(已实测坐实)
