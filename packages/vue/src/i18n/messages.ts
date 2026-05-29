@@ -509,5 +509,6 @@ export const dialogMessages = i18n('dialogs', {
   updateInstalled: params('OpenPencil {version} was installed{size}. Restarting now.'),
   updateUnavailable:
     'Updates are not available yet. Publish a signed release with latest.json first.',
-  updateCheckFailed: params('Could not check for updates: {error}')
+  updateCheckFailed: params('Could not check for updates: {error}'),
+  roomKeyError: 'Incorrect or missing room key — ask the host for the full share link.'
 })

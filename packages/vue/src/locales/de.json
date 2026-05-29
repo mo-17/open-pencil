@@ -402,6 +402,7 @@
     "updateInstalledTitle": "Update installiert",
     "updateInstalled": "OpenPencil {version} wurde installiert{size}. Neustart jetzt.",
     "updateCheckFailed": "Updates konnten nicht geprüft werden: {error}",
+    "roomKeyError": "Incorrect or missing room key — ask the host for the full share link.",
     "updateUnavailable": "Updates sind noch nicht verfügbar. Veröffentliche zuerst ein signiertes Release mit latest.json.",
     "renameCollection": "Sammlung umbenennen",
     "deleteCollection": "Sammlung loeschen",

@@ -64,6 +64,11 @@ import type { Color } from '@open-pencil/core/types'
 export const TRYSTERO_APP_ID = 'openpencil'
 export const ROOM_ID_LENGTH = 8
 export const ROOM_ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
+// Phase 3 §4.2 — room auth. The room key is a long random secret used as the
+// Trystero `password` (encrypts the WebRTC signaling SDP), so a peer without
+// it can't connect even with the right appId + roomId. 26 chars over the
+// 36-symbol alphabet ≈ 134 bits, far beyond the 8-char roomId.
+export const ROOM_KEY_LENGTH = 26
 
 export const PEER_COLORS: Color[] = [
   { r: 0.96, g: 0.26, b: 0.21, a: 1 },

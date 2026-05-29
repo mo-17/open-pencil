@@ -5,7 +5,7 @@ import { randomIndex } from '@open-pencil/core/random'
 import type { Color } from '@open-pencil/core/types'
 
 import type { EditorStore } from '@/app/editor/active-store'
-import { PEER_COLORS, ROOM_ID_CHARS, ROOM_ID_LENGTH } from '@/constants'
+import { PEER_COLORS, ROOM_ID_CHARS, ROOM_ID_LENGTH, ROOM_KEY_LENGTH } from '@/constants'
 
 import type { RemotePeer } from './types'
 
@@ -98,6 +98,16 @@ export function createFollowActions(
 export function generateRoomId(): string {
   let result = ''
   for (let i = 0; i < ROOM_ID_LENGTH; i++) {
+    result += ROOM_ID_CHARS[randomIndex(ROOM_ID_CHARS.length)]
+  }
+  return result
+}
+
+/** Phase 3 §4.2 — a long random room key used as the Trystero password.
+ *  `randomIndex` is crypto-backed (no Math.random, per repo convention). */
+export function generateRoomKey(): string {
+  let result = ''
+  for (let i = 0; i < ROOM_KEY_LENGTH; i++) {
     result += ROOM_ID_CHARS[randomIndex(ROOM_ID_CHARS.length)]
   }
   return result

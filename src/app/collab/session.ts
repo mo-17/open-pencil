@@ -38,6 +38,9 @@ type ConnectCollabSessionOptions = {
   broadcastAwareness: () => void
   applyYjsToGraph: (events: Y.YEvent<Y.Map<unknown>>[]) => void
   syncNodeToYjs: (nodeId: string) => void
+  // Phase 3 §4.2 — room auth.
+  key?: string
+  onAuthError?: () => void
 }
 
 type CollabConnectionActionsOptions = {
@@ -83,6 +86,7 @@ export function createInitialCollabState(localName: string): CollabState {
   return {
     connected: false,
     roomId: null,
+    roomKey: null,
     peers: [],
     localName,
     localColor: PEER_COLORS[randomIndex(PEER_COLORS.length)]
@@ -100,7 +104,7 @@ export function createCollabConnectionActions({
   syncNodeToYjs,
   resetFollow
 }: CollabConnectionActionsOptions) {
-  function connect(roomId: string) {
+  function connect(roomId: string, key?: string, onAuthError?: () => void) {
     connectCollabSession({
       roomId,
       runtime,
@@ -111,7 +115,9 @@ export function createCollabConnectionActions({
       tickFollow,
       broadcastAwareness,
       applyYjsToGraph,
-      syncNodeToYjs
+      syncNodeToYjs,
+      key,
+      onAuthError
     })
   }
 
@@ -157,12 +163,15 @@ export function connectCollabSession({
   tickFollow,
   broadcastAwareness,
   applyYjsToGraph,
-  syncNodeToYjs
+  syncNodeToYjs,
+  key,
+  onAuthError
 }: ConnectCollabSessionOptions) {
   if (runtime.room) disconnect()
 
   runtime.connectedStore = store
   state.value.roomId = roomId
+  state.value.roomKey = key ?? null
   runtime.ydoc = new Y.Doc()
   runtime.awareness = new awarenessProtocol.Awareness(runtime.ydoc)
   runtime.ynodes = runtime.ydoc.getMap('nodes')
@@ -192,7 +201,9 @@ export function connectCollabSession({
     setConnected: () => {
       state.value.connected = true
     },
-    updatePeersList
+    updatePeersList,
+    password: key,
+    onAuthError
   })
   runtime.room = roomConnection.room
   state.value.connected = true
@@ -227,6 +238,7 @@ export function resetCollabRuntime(runtime: CollabRuntime) {
 export function resetCollabConnectionState(state: Ref<CollabState>) {
   state.value.connected = false
   state.value.roomId = null
+  state.value.roomKey = null
   state.value.peers = []
 }
 

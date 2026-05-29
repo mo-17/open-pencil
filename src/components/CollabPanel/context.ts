@@ -24,9 +24,12 @@ function createCollabPanelContext() {
   const state = computed(() => collab?.state.value ?? DEFAULT_COLLAB_STATE)
   const peers = computed(() => collab?.remotePeers.value ?? [])
   const followingPeer = computed(() => collab?.followingPeer.value ?? null)
+  // Phase 3 §4.2 — the room key rides the URL fragment (`#k=…`) so it never
+  // reaches a server; the bare roomId alone no longer grants access.
   const shareUrl = computed(() => {
     if (!state.value.roomId) return ''
-    return `${window.location.origin}/share/${state.value.roomId}`
+    const base = `${window.location.origin}/share/${state.value.roomId}`
+    return state.value.roomKey ? `${base}#k=${state.value.roomKey}` : base
   })
   const isJoining = computed(() => !!pendingRoomId.value && !state.value.connected)
 
@@ -47,20 +50,35 @@ function createCollabPanelContext() {
   function share() {
     if (!collab || !nameDraft.value.trim()) return
     collab.setLocalName(nameDraft.value.trim())
-    const roomId = collab.shareCurrentDoc()
+    const { roomId, key } = collab.shareCurrentDoc()
     void router.push(`/share/${roomId}`)
-    void copy(`${window.location.origin}/share/${roomId}`)
+    void copy(`${window.location.origin}/share/${roomId}#k=${key}`)
     toast.info('Link copied to clipboard')
     popoverOpen.value = false
   }
 
+  // Pull the room id + key out of a pasted invite (full URL, `/share/<id>#k=<key>`,
+  // or bare id) or, for a deep-linked join, the route param + hash fragment.
+  function parseInvite(): { roomId: string; key: string } {
+    if (pendingRoomId.value) {
+      const hash = route.hash // e.g. "#k=abc123"
+      return { roomId: pendingRoomId.value, key: hash.startsWith('#k=') ? hash.slice(3) : '' }
+    }
+    const raw = joinInput.value.trim()
+    const hashIdx = raw.indexOf('#k=')
+    const key = hashIdx !== -1 ? raw.slice(hashIdx + 3) : ''
+    const beforeHash = hashIdx !== -1 ? raw.slice(0, hashIdx) : raw
+    const roomId = beforeHash.replace(/.*\/share\//, '').replace(/[#?].*$/, '')
+    return { roomId, key }
+  }
+
   function join() {
     if (!collab) return
-    const roomId = pendingRoomId.value || joinInput.value.trim().replace(/.*\/share\//, '')
+    const { roomId, key } = parseInvite()
     if (!roomId || !nameDraft.value.trim()) return
     collab.setLocalName(nameDraft.value.trim())
-    collab.connect(roomId)
-    void router.push(`/share/${roomId}`)
+    collab.connect(roomId, key || undefined, () => toast.error(dialogs.value.roomKeyError))
+    void router.push(key ? `/share/${roomId}#k=${key}` : `/share/${roomId}`)
     popoverOpen.value = false
   }
 

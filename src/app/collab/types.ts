@@ -11,6 +11,10 @@ export interface RemotePeer {
 export interface CollabState {
   connected: boolean
   roomId: string | null
+  /** Phase 3 §4.2 — room auth key (Trystero password). Runtime-only: lives in
+   *  the share-link URL fragment, never persisted to .fig / docState and never
+   *  broadcast via awareness. */
+  roomKey: string | null
   peers: RemotePeer[]
   localName: string
   localColor: Color
@@ -19,6 +23,7 @@ export interface CollabState {
 export const DEFAULT_COLLAB_STATE: CollabState = {
   connected: false,
   roomId: null,
+  roomKey: null,
   peers: [],
   localName: '',
   localColor: { r: 0.5, g: 0.5, b: 0.5, a: 1 }

@@ -1,7 +1,7 @@
 import { tryOnScopeDispose, useLocalStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 
-import { createFollowActions, generateRoomId } from '@/app/collab/awareness'
+import { createFollowActions, generateRoomId, generateRoomKey } from '@/app/collab/awareness'
 import { createLocalAwarenessActions } from '@/app/collab/local-awareness'
 import {
   createCollabConnectionActions,
@@ -58,11 +58,14 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     resetFollow
   })
 
-  function shareCurrentDoc(): string {
+  // Phase 3 §4.2 — minting a room also mints a random key (Trystero password).
+  // The key rides the share-link URL fragment; callers embed it in the invite.
+  function shareCurrentDoc(): { roomId: string; key: string } {
     const roomId = generateRoomId()
-    connect(roomId)
+    const key = generateRoomKey()
+    connect(roomId, key)
     syncAllNodesToYjs()
-    return roomId
+    return { roomId, key }
   }
 
   tryOnScopeDispose(disconnect)

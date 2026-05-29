@@ -1,9 +1,20 @@
-import type { Room } from 'trystero'
+import type { BaseRoomConfig, RelayConfig, Room } from 'trystero'
 import { joinRoom as joinTrysteroRoom } from 'trystero/mqtt'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as Y from 'yjs'
 
 import { TRYSTERO_APP_ID } from '@/constants'
+
+// `trystero/mqtt`'s .d.ts omits the optional 3rd `onJoinError` arg that the
+// underlying strategy (and the root `trystero` types) support. A two-arg
+// function is assignable to this three-arg type, so this is a plain typed
+// alias (no cast) that lets us pass the incorrect-password callback (§4.2 f).
+type JoinRoomWithError = (
+  config: BaseRoomConfig & RelayConfig,
+  roomId: string,
+  onJoinError?: (details: { error: string; appId: string; roomId: string; peerId: string }) => void
+) => Room
+const joinRoom: JoinRoomWithError = joinTrysteroRoom
 
 type CollabRoomOptions = {
   roomId: string
@@ -11,6 +22,11 @@ type CollabRoomOptions = {
   awareness: awarenessProtocol.Awareness
   setConnected: () => void
   updatePeersList: () => void
+  // Phase 3 §4.2 — room auth. `password` becomes the Trystero room key
+  // (encrypts signaling SDP); `onAuthError` fires when a peer can't join
+  // because the key is wrong/missing (joinRoom's onJoinError callback).
+  password?: string
+  onAuthError?: () => void
 }
 
 export type CollabRoomConnection = {
@@ -25,11 +41,17 @@ export function connectCollabRoom({
   ydoc,
   awareness,
   setConnected,
-  updatePeersList
+  updatePeersList,
+  password,
+  onAuthError
 }: CollabRoomOptions): CollabRoomConnection {
-  const room = joinTrysteroRoom(
+  const room = joinRoom(
     {
       appId: TRYSTERO_APP_ID,
+      // Phase 3 §4.2 — room key. Empty/undefined falls back to the unkeyed
+      // default (legacy bare-roomId links); a set key encrypts SDP so only
+      // peers with the same key connect.
+      password,
       rtcConfig: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -47,7 +69,8 @@ export function connectCollabRoom({
         ]
       }
     },
-    roomId
+    roomId,
+    onAuthError ? () => onAuthError() : undefined
   )
 
   const [sendUpdate, getUpdate] = room.makeAction<Uint8Array>('yjs-update')
