@@ -1727,6 +1727,208 @@ import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vu
 
 ---
 
+## 3.v7 §3.v7 详细设计:DATEPICKER `min`/`max` range + ISO 格式校验
+
+**Scope = §3.v7 mini-scope**(§3.v5/§3.v6 候选池 #5,~1 天)。补 §3.v4 carry-over 留的 DATEPICKER 校验洞:当前只 emit `defaultValue`,无 range 约束、无格式校验。本期加 `min`/`max` 两键 + 一个共享 ISO 校验器(tool/IR/UI 三源),让非法日期/反向 range/越界 value 全部 no-swallow 出诊断(经验 C)。
+
+**关键性质**:与 §3.v6 的"Q1 全既存"不同,本期 **emit 需新读 `min`/`max`**(Q1 部分新链),但仍是小体量 —— 一个 core 纯逻辑校验器(全可单测)+ emit 两行 attr + tool 一处校验 + UI 一个警告条。延续 §3.v6 的声明式 schema(min/max 作纯数据加进 `INTERACTIVE_PROP_FIELDS.DATEPICKER`,**不动** `InteractiveField` 类型 / 不加第 6 FieldKind —— §3.v6 锁)。
+
+§3.v7 **不做**:`step` 属性(按天步进,YAGNI);自定义显示格式(原生 `<input type=date>` 只认 ISO,显示由浏览器 locale 决定,不可改);把 range 概念推广到其它数值控件(当前无 number-range 需求);live `:min`/`:max` 跨输入约束联动(改 `InteractiveField` 跨字段引用 —— 留 warn 警告条即可)。
+
+### 3.v7.1 现状与问题
+
+§3.v6 closed 2026-05-28 后,DATEPICKER 的 interactiveProps 仍只有一个 `value`(默认日期)字段,三处缺口:
+
+1. **无 range 约束**:`applyDatePickerProps`(tree.ts:587)只 emit `type="date"` + `defaultValue`(从 `ip.value`),无 `min`/`max`。Bubble-like 表单常需"只能选未来日期 / 某区间"。
+2. **`value` 零格式校验**:AI/CLI 可写 `value:"2026-13-45"` / `"next tuesday"` → emit `defaultValue` 垃圾值 → 浏览器静默丢弃(date input 显空),**无任何诊断**(违经验 C no-swallow)。
+3. **tool boundary 不校验**:`update_lowcode_node`(lowcode.ts:468)对 `interactiveProps` 只 `isPlainObject` 检查,date 字段直接 pass-through。
+
+§3.v6 panel 已给 DATEPICKER 一个 `date` kind 的 `value` 字段(浏览器原生 ISO 输入),但无 min/max、无跨字段/AI 引入值的校验反馈。
+
+### 3.v7.2 关键决定
+
+**8 主决定**:
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | 新增 DATEPICKER `interactiveProps` 两键 **`min` / `max`**(ISO `YYYY-MM-DD` 字符串);复用既存 `value` 作默认日期。**不引 `step`**(YAGNI)| 原生 `<input type=date>` 的 `min`/`max` 是 range 的标准实现;复用 value 不新增"默认值"概念 |
+| b | 新建**共享校验器** `validateDatePickerProps(ip)` 落 `@open-pencil/core/lowcode-validation/datepicker-props.ts` + barrel 导出;**3 消费方** tool input / IR collect / UI panel 同源 | 经验 I 单源,沿 §3.v3 `supabase-payload-entries.ts` 先例;校验逻辑只写一遍,三处不漂移 |
+| c | ISO 判定 = 严格 `^\d{4}-\d{2}-\d{2}$`(零填充)+ **本地 `Date` round-trip** 拒非法历法日(`2026-02-30`/`2026-13-45`/`2026-2-3` 拒、`2024-02-29` 闰过)。**已 `bun -e` runtime probe 验证**(经验 K)| 单纯 regex 放行 `2026-13-45`;round-trip 是唯一可靠的"真历法日"判定 |
+| d | 序关系 = **ISO 字符串字典序**(== 时序,已 probe);校验 `min<=max`、`value∈[min,max]` 均纯字符串比较,**无需 Date 解析排序** | YYYY-MM-DD 零填充 → 字典序恒等于时序;最简实现 |
+| e | emit:`applyDatePickerProps` 校验后写 `attrs.min`/`attrs.max`(**合法才写**);非法 min/max/value → **跳过该 attr + push IR warning**(no-swallow)。`value` 既存逻辑保留 + 加校验 | 非法值不该污染产物 attr;但要出诊断,不静默 |
+| f | tool boundary:`update_lowcode_node` 对 DATEPICKER 的 `value`/`min`/`max` 非法 → **reject 返 `{ok:false, error}`**(不静默 pass) | 与 §3.v2 payloadEntries 校验同档;AI 错填即时反馈 |
+| g | UI:**不改** `InteractiveField` 类型 / 不加第 6 FieldKind(§3.v6 锁)。新增**同级导出** `INTERACTIVE_PROP_VALIDATORS: Partial<Record<NodeType,(ip)=>DatePickerIssue[]>>`,panel 按 `node.type` 查校验器 → 渲染警告条(node-type-gated,不脏化通用 kind 渲染)。min/max 作 `date` 字段加进 `INTERACTIVE_PROP_FIELDS.DATEPICKER`(纯数据增,合锁)| 保留 §3.v6 通用面板设计;校验是 per-type 的,用声明式 map 而非 `if (type==='DATEPICKER')` 硬编码(经验 J Q2) |
+| h | **决定 ④⑤(越界策略)= warn + 保留**(用户 2026-05-29 ACK):`min>max` → 两 attr 都 emit(浏览器 date input 自禁选)+ warn;`value∉[min,max]` → 保留 `defaultValue`(浏览器显原值+标无效)+ warn。**不 auto-correct / 不 drop** | 匹配原生 date input 行为 + no-swallow(经验 C);不静默改用户输入。auto-correct 会让 product 看似合法但丢用户意图 |
+
+**8 次级默认**:
+
+1. **空串 = 未设**:`value`/`min`/`max` 空串 → 不 emit、不校验(沿 §3.v6 清空语义)
+2. **min/max 缺一合法**:单边 range(只 min 或只 max)不报错
+3. **value 越界 → warn 保留**(决 h):`datepicker-value-out-of-range`,defaultValue 仍 emit
+4. **range 反向 → warn 保留**(决 h):`datepicker-range-inverted`,min+max 两 attr 都 emit
+5. panel min/max date 字段复用 `lowcode-interactive-{key}` test-id(`lowcode-interactive-min` / `-max`)
+6. 警告条新 test-id `lowcode-interactive-warning`;每条 issue 一行文案
+7. i18n:2 label key `lowcodeInteractiveMin` / `lowcodeInteractiveMax` + 5 warning 文案 key(每 IR code 一条人读文案),× 8 文件(messages.ts + 7 locale json)
+8. **不改 DATEPICKER node-defaults**(仍 `{ value: '' }`,不加 min/max 默认);**0 SceneNode / IR shape / Kiwi 改动**(min/max 是 interactiveProps record 内的普通 string,无 schema 升格)
+
+**经验 J 三问题反向核**(强制):
+
+| ACK 项 | Q1 技术链 | Q2 UI 引导 | Q3 心智模型 |
+|---|---|---|---|
+| panel 设 min/max → emit attrs → product 日历限可选范围 | ⚠️ emit 新读 min/max(step 2 新链)| ✅ step 4 带标签 date 输入 | ✅ "range=日历上下界"匹配原生 |
+| value 默认日期(§3.v6 既存)| ✅ 既存 | ✅ 既存 | ✅ |
+| AI 写 `value:"2026-13-45"` → tool reject | ⚠️ step 3 新校验 | n/a(error msg 即面)| ✅ 期望拒绝非静默 |
+| min>max → panel 警告条 + 两 attr 都 emit | ⚠️ validator + IR warn(step 1/2)| ✅ step 4 警告条 | ✅ **决 h 锁 warn+keep**(匹配浏览器自禁选)|
+| value∉[min,max] → 警告条 + 保留 value | ⚠️ 同上 | ✅ 警告条 | ✅ **决 h 锁 warn+keep**(浏览器显原值+标无效)|
+| IR warning no-swallow | ⚠️ step 2 新码族 | ✅ panel 警告条=授权时面 / IR warn=编译面(沿 §3.v3)| ✅ |
+| 零回归:既存 value-only + 其余 7 交互类型 | ✅ | ✅ | ✅ |
+
+Q3 唯一风险(越界/反向策略)由决 h 锁定 warn+keep,经用户 ACK。
+
+### 3.v7.3 公开 API / Schema 改动
+
+```ts
+// @open-pencil/core/lowcode-validation/datepicker-props.ts(新)
+export type DatePickerIssueCode =
+  | 'datepicker-invalid-value'
+  | 'datepicker-invalid-min'
+  | 'datepicker-invalid-max'
+  | 'datepicker-range-inverted'
+  | 'datepicker-value-out-of-range'
+
+export interface DatePickerIssue {
+  code: DatePickerIssueCode
+  key?: 'value' | 'min' | 'max'   // 哪个字段(range-inverted 无单一 key)
+}
+
+export function isIsoDate(s: string): boolean
+export function validateDatePickerProps(ip: Record<string, unknown>): DatePickerIssue[]
+```
+
+- ➕ **新文件** `packages/core/src/lowcode-validation/datepicker-props.ts`(纯逻辑,全可单测)
+- 🔁 **barrel** `lowcode-validation/index.ts` 加导出 `isIsoDate` / `validateDatePickerProps` / `DatePickerIssue` / `DatePickerIssueCode`
+- 🔁 **emit** `packages/compiler/src/ir/collect/tree.ts`:`applyDatePickerProps` 签名加 `node` + `ctx`(为 push warning);读 min/max + 校验 + emit attr + warn
+- 🔁 **tool** `packages/core/src/tools/modify/lowcode.ts`:`interactiveProps` 校验分支加 DATEPICKER date 字段校验(node.type 已知时)
+- 🔁 **UI schema** `src/components/properties/Lowcode/interactive-fields.ts`:`INTERACTIVE_PROP_FIELDS.DATEPICKER` 加 `min`/`max` date 字段 + **新同级导出** `INTERACTIVE_PROP_VALIDATORS`
+- 🔁 **UI panel** `InteractivePropsPanel.vue`:按 `INTERACTIVE_PROP_VALIDATORS[node.type]` 渲染警告条
+- ➕ **i18n** 2 label + 5 warning 文案 key × 8 文件
+- 🔁 **test-id**:复用 `lowcode-interactive-min` / `-max`;新 `lowcode-interactive-warning`
+- **0** SceneNode / ActionDef / Kiwi / `IRControlledInput` / `bindings.*` 改动;**0** node-defaults 改动;**不改** `InteractiveField` 类型 / FieldKind 字面(§3.v6 锁)
+
+### 3.v7.4 内部实现拆解
+
+#### `datepicker-props.ts`(新)
+
+```ts
+const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+export function isIsoDate(s: string): boolean {
+  const m = ISO_RE.exec(s)
+  if (!m) return false
+  const [, y, mo, d] = m
+  const dt = new Date(Number(y), Number(mo) - 1, Number(d))
+  return (
+    dt.getFullYear() === Number(y) &&
+    dt.getMonth() === Number(mo) - 1 &&
+    dt.getDate() === Number(d)
+  )
+}
+
+// 空串 = 未设(次默 1),跳过;非空非法 → invalid issue;字典序比较(决 d)
+export function validateDatePickerProps(ip: Record<string, unknown>): DatePickerIssue[] {
+  // value/min/max:typeof string && !== '' 才校验
+  //   非法 ISO → datepicker-invalid-{key}
+  // min&max 都合法 && min > max → datepicker-range-inverted
+  // value 合法 && (value < min || value > max) → datepicker-value-out-of-range
+}
+```
+
+字典序比较(决 d):`min > max`、`value < min`、`value > max` 直接用字符串 `<`/`>`(YYYY-MM-DD 零填充 == 时序,已 probe)。
+
+#### `tree.ts` `applyDatePickerProps`
+
+```ts
+function applyDatePickerProps(node: SceneNode, ip: InteractiveProps, attrs, ctx: WalkCtx): void {
+  attrs.type = 'date'
+  const issues = validateDatePickerProps(ip)
+  for (const issue of issues) ctx.warnings.push({ code: issue.code, message: ..., nodeId: node.id })
+  const badKeys = new Set(issues.filter(i => i.key && i.code.startsWith('datepicker-invalid')).map(i => i.key))
+  // value/min/max:非空 && 未被标 invalid 才 emit(决 e + h:range-inverted/out-of-range 仍 emit)
+  if (typeof ip.value === 'string' && ip.value !== '' && !badKeys.has('value')) attrs.defaultValue = ip.value
+  if (typeof ip.min === 'string' && ip.min !== '' && !badKeys.has('min')) attrs.min = ip.min
+  if (typeof ip.max === 'string' && ip.max !== '' && !badKeys.has('max')) attrs.max = ip.max
+}
+```
+
+注意决 h:`range-inverted` / `value-out-of-range` issue **不**进 `badKeys`(它们不是格式非法),故 min/max/value 仍 emit —— 只 warn。仅 `datepicker-invalid-*`(格式坏)跳过该 attr。
+
+#### `lowcode.ts` tool 校验
+
+`interactiveProps` 校验分支:已知 `node.type === 'DATEPICKER'` 时跑 `validateDatePickerProps`,有任一 `datepicker-invalid-*` issue → `fail('interactiveProps: <key> must be YYYY-MM-DD')`。range-inverted / out-of-range 走 IR warn(决 h warn 而非 reject —— tool 不拦,留给 IR/UI 警告)。
+
+#### `interactive-fields.ts`
+
+```ts
+DATEPICKER: [
+  { key: 'value', kind: 'date', labelKey: 'lowcodeInteractiveDateValue' },
+  { key: 'min', kind: 'date', labelKey: 'lowcodeInteractiveMin' },
+  { key: 'max', kind: 'date', labelKey: 'lowcodeInteractiveMax' }
+],
+// 新同级导出
+export const INTERACTIVE_PROP_VALIDATORS: Partial<Record<SceneNode['type'], (ip: Record<string, unknown>) => DatePickerIssue[]>> = {
+  DATEPICKER: validateDatePickerProps
+}
+```
+
+#### `InteractivePropsPanel.vue`
+
+`computed` 取 `INTERACTIVE_PROP_VALIDATORS[node.type]?.(ip.value) ?? []`;非空 → 渲染警告条(`data-test-id="lowcode-interactive-warning"`),每 issue 一行(按 `issue.code` 查 i18n 文案)。其余 kind 渲染不变。
+
+### 3.v7.5 成功标准 + Tauri ACK
+
+1. `bun run check` 全绿(check:i18n 钉 7 label+warning key × 8 文件;Steiger 钉新 import;jscpd 0 clone)
+2. `bun test ./tests/engine/compiler/` + `tools/lowcode/` 全绿;新增 `tests/engine/lowcode-validation/datepicker-props.test.ts`
+3. **Tauri 实测(用户主导)~7 项 ACK**:
+
+| # | ACK | Q1/Q2/Q3 |
+|---|---|---|
+| 1 | DATEPICKER 选中 → Properties 出 value/min/max 三 date 字段;设 min+max → Preview `<input type=date min= max=>` 日历限范围 | Q1 ⚠️(新 emit)/ Q2 ✅ / Q3 ✅ |
+| 2 | 只设 value(§3.v6 既存)→ Preview defaultValue 不变(零回归)| ✅✅✅ |
+| 3 | CLI/AI `update_lowcode_node` 写 `value:"2026-13-45"` → 返 `{ok:false,error}` reject | ⚠️✅(error msg)/ ✅ |
+| 4 | panel 设 min>max → 出警告条(range inverted)+ Preview 两 attr 都在(浏览器禁选)| ⚠️✅✅(决 h)|
+| 5 | value 设在 [min,max] 外 → 出警告条(out of range)+ defaultValue 保留 | ⚠️✅✅(决 h)|
+| 6 | 合法历法边界:`2024-02-29`(闰)接受、`2026-02-30` 被 IR warn + 不 emit | ⚠️✅✅ |
+| 7 | 其余 7 交互类型 Properties 零回归(§3.v6 全 ACK 仍 work)| ✅✅✅ |
+
+4. 不破坏任一 Phase 0/1/2/§2/§3/§3.x/§3.v2/§3.v3/§3.v4/§3.v5/§3.v6 锁定决定(尤其 §3.v6 `InteractiveField` 类型 / 5 FieldKind / `INTERACTIVE_PROP_FIELDS` shape 不动)
+
+### 3.v7.6 工作分解(建议 1 名工程师,~1 天)
+
+| Step | 任务 | 验收 / commit |
+|---|---|---|
+| 0 | §3.v7 设计 doc + commit | `docs(lowcode): §3.v7 mini-scope detailed design (DATEPICKER range + ISO validation)` |
+| 1 | `datepicker-props.ts` 共享校验器(`isIsoDate` + `validateDatePickerProps`)+ barrel + 单测 | `bun run check` + datepicker-props.test 全绿;`feat(lowcode): step 1 — shared validateDatePickerProps (§3.v7)` |
+| 2 | `applyDatePickerProps` 读 min/max + 校验 + emit attr + IR warning 码族;compiler/IR 测试 | compiler + IR 测试全绿;`feat(lowcode): step 2 — DATEPICKER min/max emit + IR warnings (§3.v7)` |
+| 3 | tool boundary DATEPICKER 校验;tools 测试 | tools/lowcode 测试全绿;`feat(lowcode): step 3 — tool-boundary DATEPICKER validation (§3.v7)` |
+| 4 | schema 加 min/max + `INTERACTIVE_PROP_VALIDATORS` + panel 警告条 + i18n × 8 + Tauri ACK + §3.v7.8 + close | 7 ACK ✅;`docs(lowcode): §3.v7 Tauri verification + close` |
+
+### 3.v7.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| `applyDatePickerProps` 签名改(加 node+ctx)漏改 callsite | 低 | 单一 callsite(`applyInteractiveProps` switch);tsgo 钉 |
+| ISO round-trip 判定边界错(月份/闰年)| 中 | 已 `bun -e` probe(经验 K);step 1 单测覆盖 `2026-02-30`/`2024-02-29`/`2026-13-45`/`2026-2-3` |
+| 决 h warn-keep:用户误以为越界值"生效"| 中 | 警告条文案明确"超出范围,浏览器会标无效";Tauri ACK #4/#5 专验 |
+| `INTERACTIVE_PROP_VALIDATORS` 与 schema 漂移(将来加 emit 校验忘加)| 低 | 同源校验器 + 文件头注释;经验 E |
+| i18n 7 key × 8 文件漏译 | 中 | check-locales 钉;step 4 单 commit 同步 |
+| tool 校验与 IR warn 双轨(tool reject invalid-format,IR warn range)语义不一致引困惑 | 低 | 文档明示:格式坏=两处都拦/warn,range/越界=仅 warn(决 h)|
+
+### 3.v7.8 Post-mortem
+
+_(待 step 4 close 时回填:commit 链 / `bun run check` 结果 / Tauri ACK 7 项 / surprise 列表 / 经验印证 —— 重点验经验 K 第三次印证 + 决 h warn-keep 的 Q3 是否成立)_
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
