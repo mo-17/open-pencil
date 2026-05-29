@@ -2276,7 +2276,7 @@ function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
 ### 2.v2.5 成功标准 + Tauri ACK
 
 1. `bun run check` 全绿;`bun test ./tests/engine/compiler/` + `tools/lowcode/` + kiwi 往返全绿;新增 emit/IR/tool/cross-walker 测试
-2. **Tauri 实测(用户主导)~6 项 ACK**:
+2. **Tauri 实测(用户主导)~7 项 ACK**:
 
 | # | ACK |
 |---|---|
@@ -2286,6 +2286,7 @@ function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
 | 4 | 坏 emailExpr(如 `a@b.co` 不加引号)→ tool/IR 诊断 |
 | 5 | BUTTON 面板**不再有** AuthControls shim;EventsPanel 出真 auth 动作 |
 | 6 | 零回归:既有 6 kind 动作 + .fig 存读往返 |
+| 7 | **(Q2 后补,commit `47fb59a`)** auth 表单下显示 `$currentUser` 提示 + SupabaseConfigPanel 显 `$currentUser` note —— 用户无需被告知即可发现 `$currentUser.signedIn / .email / .id`(Tauri 实测找出的 Q2 可发现性洞,经验 H/J Q2)|
 
 3. 不破坏 §2/§3/§3.x/§3.v2-v8 其余锁定(除明确推翻的 §2 #5 6-kind 锁)
 
