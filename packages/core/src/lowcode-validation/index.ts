@@ -48,3 +48,10 @@ export {
   isIsoDate,
   validateDatePickerProps
 } from './datepicker-props'
+
+export {
+  type RlsTableRequirement,
+  type SqlCommand,
+  buildRlsPolicySql,
+  collectRlsRequirements
+} from './rls-advisor'
