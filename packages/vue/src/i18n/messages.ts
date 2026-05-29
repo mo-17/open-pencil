@@ -403,13 +403,11 @@ export const panelMessages = i18n('panels', {
   lowcodeActionSupabaseFilterRemove: 'Remove filter',
   lowcodeActionSupabaseErrorTarget: 'Write error to',
   lowcodeActionSupabaseErrorTargetNone: 'no error target',
-  lowcodeAuthLabel: 'Auth',
-  lowcodeAuthSignIn: 'signIn',
-  lowcodeAuthSignOut: 'signOut',
-  lowcodeAuthSignInHint:
-    'Call useSupabaseAuth().signIn(email, password) from your button handler. Auth event wiring lands in §2.v2.',
-  lowcodeAuthSignOutHint:
-    'Call useSupabaseAuth().signOut() from your button handler. Auth event wiring lands in §2.v2.'
+  lowcodeActionSupabaseAuth: 'Supabase auth',
+  lowcodeActionAuthEmail: 'Email expression',
+  lowcodeActionAuthEmailPlaceholder: "e.g. emailInput or 'a@b.co'",
+  lowcodeActionAuthPassword: 'Password expression',
+  lowcodeActionAuthPasswordPlaceholder: 'e.g. passwordInput'
 })
 
 export const variableTypeMessages = i18n('variableTypes', {

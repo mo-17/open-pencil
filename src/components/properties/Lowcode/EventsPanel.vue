@@ -19,8 +19,6 @@ import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 
-import AuthControls from './AuthControls.vue'
-
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
@@ -68,11 +66,13 @@ const ACTION_KINDS: ActionKind[] = [
   'setVariable',
   'apiCall',
   'supabaseQuery',
-  'supabaseMutation'
+  'supabaseMutation',
+  'supabaseAuth'
 ]
 
 const API_METHODS = ['GET', 'POST'] as const
 const SUPABASE_OPS = ['insert', 'update', 'delete', 'upsert'] as const
+const SUPABASE_AUTH_OPS = ['signIn', 'signOut'] as const
 const SUPABASE_FILTER_OPS: SupabaseFilter['op'][] = [
   'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'
 ]
@@ -85,6 +85,7 @@ function actionKindLabel(kind: ActionKind): string {
   if (kind === 'apiCall') return panels.value.lowcodeActionCallApi
   if (kind === 'supabaseQuery') return panels.value.lowcodeActionSupabaseQuery
   if (kind === 'supabaseMutation') return panels.value.lowcodeActionSupabaseMutation
+  if (kind === 'supabaseAuth') return panels.value.lowcodeActionSupabaseAuth
   return kind
 }
 
@@ -138,6 +139,9 @@ function makeAction(kind: ActionKind, id: string): ActionDef {
       table: '',
       resultTarget: docTarget?.name ?? ''
     }
+  }
+  if (kind === 'supabaseAuth') {
+    return { id, kind: 'supabaseAuth', operation: 'signIn', emailExpr: '', passwordExpr: '' }
   }
   return {
     id,
@@ -270,6 +274,9 @@ interface ActionErrors {
   entries?: Map<number, PayloadEntryError>
   // Phase 3 §3.v3 — mirrors IR `action-supabase-mutation-payload-source-conflict`.
   payloadSourceConflict?: boolean
+  // Phase 3 §2.v2 — supabaseAuth signIn credential expression errors.
+  email?: string
+  password?: string
 }
 
 const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
@@ -407,6 +414,23 @@ function supabaseMutationErrors(
   return e
 }
 
+// Phase 3 §2.v2 `resolveSupabaseAuth`: signIn needs an email + password
+// expression that both parse (empty → IR warns, surfaced here as required);
+// errorTarget when set must resolve. signOut takes no inputs.
+function supabaseAuthErrors(
+  action: Extract<ActionDef, { kind: 'supabaseAuth' }>
+): ActionErrors {
+  const e: ActionErrors = {}
+  if (action.errorTarget && !validDocStateNames.value.has(action.errorTarget))
+    e.target = 'error target no longer exists'
+  if (action.operation === 'signOut') return e
+  const email = validateExpression(action.emailExpr ?? '')
+  if (!email.ok) e.email = email.reason ?? 'invalid expression'
+  const password = validateExpression(action.passwordExpr ?? '')
+  if (!password.ok) e.password = password.reason ?? 'invalid expression'
+  return e
+}
+
 function errorsFor(action: ActionDef): ActionErrors {
   if (action.kind === 'setState') return setStateErrors(action)
   if (action.kind === 'navigate') {
@@ -416,8 +440,7 @@ function errorsFor(action: ActionDef): ActionErrors {
   if (action.kind === 'apiCall') return apiCallErrors(action)
   if (action.kind === 'supabaseQuery') return supabaseQueryErrors(action)
   if (action.kind === 'supabaseMutation') return supabaseMutationErrors(action)
-  // Phase 3 §2.v2 supabaseAuth — per-field validation + form added in step 4.
-  return {}
+  return supabaseAuthErrors(action)
 }
 
 const actionErrors = computed(() => {
@@ -447,8 +470,6 @@ const actionErrors = computed(() => {
         + {{ panels.lowcodeActionAdd }}
       </button>
     </div>
-
-    <AuthControls />
 
     <p
       v-if="pageStates.length === 0 && actions.length === 0"
@@ -654,6 +675,18 @@ const actionErrors = computed(() => {
             />
           </template>
 
+          <template v-else-if="action.kind === 'supabaseAuth'">
+            <select
+              :value="action.operation"
+              :aria-label="panels.lowcodeActionSupabaseOperation"
+              data-test-id="lowcode-action-auth-operation"
+              class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+              @change="updateAction(action.id, { operation: ($event.target as HTMLSelectElement).value as 'signIn' | 'signOut' })"
+            >
+              <option v-for="op in SUPABASE_AUTH_OPS" :key="op" :value="op">{{ op }}</option>
+            </select>
+          </template>
+
           <button
             type="button"
             data-test-id="lowcode-action-remove"
@@ -677,6 +710,35 @@ const actionErrors = computed(() => {
           ]"
           @change="updateAction(action.id, { bodyJson: ($event.target as HTMLInputElement).value })"
         />
+
+        <template v-if="action.kind === 'supabaseAuth' && action.operation === 'signIn'">
+          <input
+            :value="action.emailExpr ?? ''"
+            :aria-label="panels.lowcodeActionAuthEmail"
+            :aria-invalid="actionErrors.get(action.id)?.email ? 'true' : undefined"
+            data-test-id="lowcode-action-auth-email"
+            spellcheck="false"
+            :placeholder="panels.lowcodeActionAuthEmailPlaceholder"
+            :class="[
+              'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+              actionErrors.get(action.id)?.email ? 'border-red-500' : 'border-border'
+            ]"
+            @change="updateAction(action.id, { emailExpr: ($event.target as HTMLInputElement).value })"
+          />
+          <input
+            :value="action.passwordExpr ?? ''"
+            :aria-label="panels.lowcodeActionAuthPassword"
+            :aria-invalid="actionErrors.get(action.id)?.password ? 'true' : undefined"
+            data-test-id="lowcode-action-auth-password"
+            spellcheck="false"
+            :placeholder="panels.lowcodeActionAuthPasswordPlaceholder"
+            :class="[
+              'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+              actionErrors.get(action.id)?.password ? 'border-red-500' : 'border-border'
+            ]"
+            @change="updateAction(action.id, { passwordExpr: ($event.target as HTMLInputElement).value })"
+          />
+        </template>
 
         <template v-if="action.kind === 'supabaseQuery'">
           <input
@@ -852,6 +914,32 @@ const actionErrors = computed(() => {
           </select>
         </template>
 
+        <select
+          v-if="action.kind === 'supabaseAuth'"
+          :value="action.errorTarget ?? ''"
+          :aria-label="panels.lowcodeActionSupabaseErrorTarget"
+          data-test-id="lowcode-action-supabase-error-target"
+          class="self-start rounded border border-border bg-input px-1.5 py-0.5 text-[11px] text-surface outline-none focus:border-accent"
+          @change="updateAction(action.id, { errorTarget: ($event.target as HTMLSelectElement).value || undefined })"
+        >
+          <option value="">{{ panels.lowcodeActionSupabaseErrorTargetNone }}</option>
+          <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
+        </select>
+
+        <p
+          v-if="actionErrors.get(action.id)?.email"
+          data-test-id="lowcode-action-auth-email-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          email: {{ actionErrors.get(action.id)?.email }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.password"
+          data-test-id="lowcode-action-auth-password-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          password: {{ actionErrors.get(action.id)?.password }}
+        </p>
         <p
           v-if="actionErrors.get(action.id)?.target"
           data-test-id="lowcode-action-target-error"

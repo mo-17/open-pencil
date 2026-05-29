@@ -343,11 +343,11 @@
     "lowcodeActionSupabaseFilterRemove": "删除过滤",
     "lowcodeActionSupabaseErrorTarget": "错误写入",
     "lowcodeActionSupabaseErrorTargetNone": "不写入错误",
-    "lowcodeAuthLabel": "认证",
-    "lowcodeAuthSignIn": "signIn",
-    "lowcodeAuthSignOut": "signOut",
-    "lowcodeAuthSignInHint": "在按钮处理函数中调用 useSupabaseAuth().signIn(email, password)。事件级联将在 §2.v2 上线。",
-    "lowcodeAuthSignOutHint": "在按钮处理函数中调用 useSupabaseAuth().signOut()。事件级联将在 §2.v2 上线。"
+    "lowcodeActionSupabaseAuth": "Supabase 认证",
+    "lowcodeActionAuthEmail": "邮箱表达式",
+    "lowcodeActionAuthEmailPlaceholder": "如 emailInput 或 'a@b.co'",
+    "lowcodeActionAuthPassword": "密码表达式",
+    "lowcodeActionAuthPasswordPlaceholder": "如 passwordInput"
   },
   "pages": {
     "newPage": "新建页面",
