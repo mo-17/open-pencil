@@ -2370,6 +2370,146 @@ function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
 
 ---
 
+## §2.v3 Supabase signUp action — 注册(设计 2026-05-29)
+
+§2.v2 交付登录/登出(第 7 个 `ActionDef` kind `supabaseAuth`,operation `signIn`/`signOut`)。注册缺位 → 用户必须去 Supabase Dashboard 手建测试用户才能跑 signIn,认证三件套(登录/登出/**注册**)缺一角。本期补 signUp,补完三件套。**用户 2026-05-29 在 §2.v2 close 后挑定方向 A(signUp 收尾)**。
+
+### 2.v3.1 现状与问题
+
+1. `SupabaseAuthAction.operation` 只有 `signIn`/`signOut`,无注册路径 → 生成的 app 无法在应用内创建账户,测试用户得去 Dashboard 手建。
+2. emit 侧 `supabase.auth.signUp` 早已在 SDK(supabase-js pinned),**无任何代码路径触达**——镜像 §2.v2 前 signIn/signOut 只活在 hook 的局面。
+3. signUp 与 signIn **完全同构**(email + password + 可选 errorTarget,返回 `{ data, error }`),唯一额外语义是 **email 确认门控**(见决 e)。
+
+### 2.v3.2 关键决定
+
+**8 主决定**(决 a / 决 e 经 AskUserQuestion 锁,均取推荐项):
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **复用 `supabaseAuth` kind,扩 `operation` union 为 `'signIn'\|'signOut'\|'signUp'`**,**不**加第 8 个 `ActionDef` kind(用户 2026-05-29 AskUserQuestion ACK 推荐项)| signUp shape 与 signIn 完全相同;加 8th kind 会全链重复 schema/IR/emit/tool/UI + 触发 `ActionDef` union widening(经验 A/G),零额外收益。镜像 `supabaseMutation` 用 operation 装 insert/update/delete/upsert 的先例。**`ActionDef` 仍 7 kind,§2.v2 锁不动** |
+| b | **0 schema struct 改动**:只把 `SupabaseAuthAction.operation` 字面量 union 加 `'signUp'`;emailExpr/passwordExpr/errorTarget 全复用 | signUp = signIn 的同构动作 |
+| c | **emit 走 `getSupabaseClient().auth.signUp({ email, password })` 内联**(同 §2.v2 决 c,非 hook hoist):`call` 三元从「signOut vs signIn」改为「signOut vs `auth.${op==='signUp'?'signUp':'signInWithPassword'}({email,password})`」;只解构 `{ error }`;label = operation | $currentUser 靠 onAuthStateChange 自动同步(决 e 继承),无 resultTarget |
+| d | **runtime probe(经验 K)已做**:`bun -e` 实证 `signUp({email,password})` 返 `{ data:{user,session}, error }` —— **与 `signInWithPassword` 同形**;signUp 同 signIn 只用 `{ error }` | probe 输出:`signUp keys: [data, error]`,`data={user,session}` |
+| e | **`$currentUser` email 确认门控(Q3/Q2 设计阶段堵)**:email confirmation 开(Supabase 项目默认)时 `signUp` 返回 `session:null`(无 error)→ `onAuthStateChange` 不发 SIGNED_IN → `$currentUser.signedIn` 停 false 直到用户点确认邮件;confirmation 关时 signUp 即时登录(同 signIn)。**运行时行为不改**($currentUser 已忠实跟踪 session);**通过 signUp 表单下专用 note 把门控浮现给搭建者**(用户 2026-05-29 AskUserQuestion ACK 推荐项)| §2.v2 教训:Q2 要核「结果/状态在哪浮现」,且**设计阶段就堵**(§2.v2 该洞 Tauri 才发现 → 本期前移) |
+| f | **IR collect**:`resolveSupabaseAuth` 把 signIn 分支泛化吃 signUp(同样 parse email/password);硬编码 `operation:'signIn'` 改为 `operation: action.operation`;warning 码不变(`-missing-credentials`/`-invalid-credential`,message 文案从 "signIn" 泛化)| 同构,零新诊断码 |
+| g | **tool 校验**:`validateSupabaseAuthAction` 接受 `'signUp'`;email/password 校验对 signIn + signUp 都跑(signOut 提前 return);`buildActionFromValidated` cast 加 `'signUp'`;坏 expr reject / 缺失 IR warn 不变(决 g 继承)| 与 signIn 同档 |
+| h | **0 Kiwi / 0 新 npm**:operation 只是 events pluginData JSON 里多一个字面量;supabase-js 已 pinned 且 `signUp` 早在 SDK | 沿全部先例;step 1 往返测试钉 |
+
+**8 次级默认**:
+
+1. signUp UI = signIn 表单同构(operation select 加 signUp option;email/password expr 对 signIn|signUp 显;signOut 隐藏)。
+2. `makeAction('supabaseAuth')` 默认仍 `{ operation:'signIn', emailExpr:'', passwordExpr:'' }`(signUp 经 select opt-in)。
+3. **不暴露 resultTarget**(决 e 继承)。
+4. errorTarget 对 signUp 生效(signUp 会错:弱密码 / 邮箱已注册)。
+5. i18n:复用 `lowcodeActionAuthEmail`/`lowcodeActionAuthPassword`(+Placeholder);**净增 1 key**(`lowcodeActionAuthSignUpNote` 确认门控提示)× 8 文件。
+6. test-id:复用 `lowcode-action-auth-operation`/`-email`/`-password`;operation select 只多一个 `<option>`;新增 `lowcode-action-auth-signup-note`。
+7. `SUPABASE_AUTH_OPS` 顺序 `['signIn','signUp','signOut']`(两个带凭证的相邻)。
+8. **0 新 npm import**;emit 产物零新依赖。
+
+**经验 J 三问题反向核**(强制;Q2 核「结果/状态在哪浮现」):
+
+| ACK 项 | Q1 技术链 | Q2 UI/状态浮现 | Q3 心智模型 |
+|---|---|---|---|
+| signUp 绑 email/password INPUT → 点击 → 注册 | ✅ 复用 signIn 链(无 union widening)| ✅ operation select + email/password(复用)| ✅ "注册"匹配 Bubble |
+| **signUp 后 `$currentUser` 行为(确认开/关)** | ✅ onAuthStateChange 已忠实跟踪 session | ⚠️ **确认开 → signedIn 停 false,易误判 bug → 决 e signUp note 设计阶段堵** | ⚠️ **搭建者预期 signUp 即时登录 → 心智错位 → 同 note 堵** |
+| signUp 错(弱密码/重复邮箱)→ errorTarget 捕获 | ✅ 决 g 继承 | ✅ errorTarget select | ✅ |
+| 坏 emailExpr → tool reject | ✅ 决 g | n/a | ✅ |
+| 零回归:signIn/signOut + 6 既有 kind + .fig 往返 | ✅ | ✅ | ✅ |
+
+→ 唯一真岔口是决 e/Q2/Q3 的确认门控浮现(AskUserQuestion 锁 signUp note,**设计阶段前移**,避免重演 §2.v2 的 Tauri-才发现);其余全是 signIn 同构镜像。
+
+### 2.v3.3 公开 API / Schema 改动
+
+```ts
+// packages/core/src/scene-graph/types.ts
+export interface SupabaseAuthAction {
+  id: string
+  kind: 'supabaseAuth'
+  operation: 'signIn' | 'signOut' | 'signUp'   // +signUp(决 a/b);ActionDef 仍 7 kind
+  emailExpr?: string      // signIn + signUp
+  passwordExpr?: string   // signIn + signUp
+  errorTarget?: string
+}
+```
+
+- 🔁 **schema** `types.ts`:`operation` union +`'signUp'`(无新 interface,无 ActionDef 改动)
+- 🔁 **IR types** `ir/types.ts`:`IRSupabaseAuthHandler.operation` +`'signUp'`
+- 🔁 **IR collect** `bindings.ts`:`resolveSupabaseAuth` signIn 分支泛化(`operation: action.operation`)
+- 🔁 **emit** `emit/event.ts`:`emitSupabaseAuth` call 三元加 signUp→`auth.signUp(...)`,label=operation
+- 🔁 **tool** `modify/lowcode.ts`:`validateSupabaseAuthAction` 接受 signUp、email/password 校验对 signIn+signUp 跑;`buildActionFromValidated` cast +`'signUp'`
+- 🔁 **EventsPanel.vue**:`SUPABASE_AUTH_OPS` +`'signUp'`;form v-if 吃 signUp;cast +`'signUp'`;signUp note
+- ➕ **i18n** 1 新 key `lowcodeActionAuthSignUpNote` × 8 文件
+- **0** Kiwi / node-defaults / 新 npm / 新 ActionDef kind 改动
+
+### 2.v3.4 内部实现拆解
+
+#### emit `emitSupabaseAuth`(`emit/event.ts`)— call 三元泛化
+
+```ts
+const call =
+  h.operation === 'signOut'
+    ? 'getSupabaseClient().auth.signOut()'
+    : `getSupabaseClient().auth.${h.operation === 'signUp' ? 'signUp' : 'signInWithPassword'}({ ` +
+      `email: ${emitExpression(h.emailAst as ExprAst)}, password: ${emitExpression(h.passwordAst as ExprAst)} })`
+const label = h.operation   // signIn / signOut / signUp(原来三元写死,现直接用 operation)
+```
+
+(signUp 同 signIn 只解构 `{ error }`:`$currentUser` 靠 `onAuthStateChange` 自动同步,门控由 session 真值驱动。决 c/e。)
+
+#### IR collect `resolveSupabaseAuth`(`bindings.ts`)— signIn 分支泛化
+
+signOut 提前 return 不变;其余(signIn + signUp)统一 parse email/password,返回 `operation: action.operation`(不再写死 `'signIn'`)。warning message 从 "supabaseAuth signIn …" 泛化为 "supabaseAuth ${operation} …"。
+
+#### tool `modify/lowcode.ts`
+
+`validateSupabaseAuthAction`:operation 校验放宽到 signIn/signOut/signUp;`if (operation === 'signOut') return ok` 不变 → email/password 校验对 signIn + signUp 都跑。`buildActionFromValidated` cast `'signIn' | 'signOut'` → `'signIn' | 'signOut' | 'signUp'`。
+
+#### EventsPanel.vue
+
+`SUPABASE_AUTH_OPS = ['signIn','signUp','signOut']`;email/password form 的 `v-if="...operation === 'signIn'"` → `(operation === 'signIn' || operation === 'signUp')`;`supabaseAuthErrors` 的 `if (operation === 'signOut') return e` 已天然覆盖 signUp(无需改);两处 cast 加 `'signUp'`;新增 `v-if="operation === 'signUp'"` 的确认门控 note(`lowcode-action-auth-signup-note`)。
+
+### 2.v3.5 成功标准 + Tauri ACK
+
+1. `bun run check` 全绿;`bun test ./tests/engine/compiler/` + `tools/lowcode/` + kiwi 往返全绿;新增 emit/IR/tool/cross-walker 测试
+2. **Tauri 实测(用户主导)~6 项 ACK**:
+
+| # | ACK |
+|---|---|
+| 1 | EventsPanel 选 Supabase auth → operation=signUp,email/password 绑 INPUT docState → 点击 → 真注册 |
+| 2 | 确认**关**的项目:signUp 即时登录,`$currentUser.signedIn` 变 true(同 signIn)|
+| 3 | 确认**开**的项目(默认):signUp 无 error 但 `$currentUser.signedIn` 停 false → **signUp note 已提示「需确认邮件」**,不误判 bug |
+| 4 | signUp 错(弱密码 / 邮箱已注册)→ errorTarget 捕获 |
+| 5 | 坏 emailExpr → tool/IR 诊断 |
+| 6 | 零回归:signIn/signOut + 6 既有 kind + .fig 往返 |
+
+3. 不破坏 §2/§3/§3.x/§3.v2-v8/§2.v2 锁定
+
+### 2.v3.6 工作分解(建议 1 名工程师,~1 天)
+
+| Step | 任务 | commit |
+|---|---|---|
+| 0 | §2.v3 设计 doc + commit | `docs(lowcode): §2.v3 mini-scope detailed design (Supabase signUp action)` |
+| 1 | `operation` union +signUp(schema + IR types)+ Kiwi 往返测试 | `feat(lowcode): step 1 — signUp operation union + persistence (§2.v3)` |
+| 2 | IR collect 泛化 + emit signUp + compiler/IR 测试 | `feat(lowcode): step 2 — signUp IR collect + emit (§2.v3)` |
+| 3 | tool 校验(signUp + email/password)+ tools 测试 | `feat(lowcode): step 3 — tool-boundary signUp validation (§2.v3)` |
+| 4 | EventsPanel signUp form + 确认门控 note + i18n × 8 + Tauri ACK + §2.v3.8 + close | `docs(lowcode): §2.v3 Tauri verification + close` |
+
+### 2.v3.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| signUp 确认门控被误判 bug | 中 | 决 e signUp note **设计阶段前移**(§2.v2 教训);Tauri ACK #3 验 |
+| `operation` union widening 漏 callsite(经验 A/G)| 中 | grep `operation ===`/`'signIn' \| 'signOut'` cast 全 callsite;emit/tool exhaustive;cross-walker 测试 |
+| 漏改某处 signIn/signOut cast | 低 | tsgo + grep 钉;EventsPanel 两处 cast |
+| Kiwi 往返漏 signUp operation | 低 | events 走 JSON pluginData(决 h),step 1 往返测试钉 |
+| supabase-js signUp 返回 shape 记错 | 低 | 已 `bun -e` probe(决 d):`{data:{user,session},error}` |
+
+### 2.v3.8 Post-mortem
+
+待 Tauri ACK 回填。
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
