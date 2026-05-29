@@ -2786,7 +2786,38 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 
 #### 4.2.8 Post-mortem
 
-待验证回填。
+**§4.2 closed 2026-05-30**(单端验证 ✅;双端鉴密钥留双机/部署验,经验 K boundary)。补上协作的房间鉴权层 —— §4 第二刀、最高优先安全缺口。**验证期用户照出 1 个 keyless footgun → 推翻决 h**。
+
+#### Commit 链(设计 + 代码 + 1 keyless 收紧)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `bdf3392` | Trystero password(决 a)+ 自动随机密钥内嵌 fragment(决 b/c/d,AskUserQuestion)+ onJoinError 浮现(决 f)|
+| 代码 | `5b84658` | `generateRoomKey`(crypto)+ CollabState.roomKey + room.ts password/onJoinError(typed alias 绕 mqtt .d.ts 缺第 3 参)+ connect 链透传 + CollabPanel shareUrl `#k=`/join 解析/onAuthError toast + `dialogs.roomKeyError`×8 + key-gen/parse 单测 |
+| keyless 收紧 | `39feb31` | **join 拒绝无密钥邀请(推翻决 h)** —— 用户验证照出 |
+| close | _this commit_ | §4.2.8 + memory + close |
+
+#### 验证结果(用户主导 2026-05-30,单端)
+
+- ✅ share 生成链接含 `#k=<26位密钥>`;复制链接带密钥
+- ✅ 粘带密钥完整链接 → 正常解析 roomId+key
+- ✅ **粘裸 roomId/无 `#k=` 链接 → toast「房间密钥错误或缺失」、不开房间**(收紧后)
+- 双端(正确密钥连通 / 错密钥 onJoinError toast)留双机/部署验 —— Trystero crypto 是其保证,单进程验不了真 WebRTC(同 §4.1 boundary)
+
+#### Surprise(1,用户验证照出 → 推翻决 h)
+
+1. **keyless 裸链接「能开房间」**(commit `39feb31` 收紧)—— 决 h 原设计:无密钥降级空密码房间(向后兼容)。用户单端验证时发现粘裸链接仍「开了房间」,质疑是否正确。分析:空密码房间与带密钥房间**密码学隔离、无数据泄露**(`genKey('',...)` ≠ `genKey(key,...)`,SDP 互解不开;房主在场广播时 keyless 反收 onJoinError),但 **UI 乐观置 `connected` + 「裸 roomId 能开房」误导,削弱「房间鉴权」本意**。推翻决 h 为「密钥强制必需,无密钥 join 直接拒」。**根因:决 h 把「向后兼容」凌驾于「鉴权语义一致性」之上 —— 安全功能里,降级路径(empty-password fallback)本身就是个口子,即便密码学上隔离也不该留**。
+
+#### 经验印证 / 新增
+
+- **H(实测照洞)再印证,且这次是「用户语义直觉」照出的**:不是 wiring bug、不是 crypto 漏洞(隔离成立),是**设计决定与功能本意的语义错位**(决 h 的兼容兜底 vs「鉴权=进不去」)。单元/集成测试都不会报(keyless 房间技术上工作正常)—— 只有人「这对吗?」的直觉能接住。**同 §3.v4 的 Q3 心智模型类,但对象是安全语义**。
+- **新增:安全功能里慎留「降级/兼容兜底」路径**。empty-password fallback 即便密码学隔离、无泄露,也是个削弱保证的口子;鉴权类功能的默认姿态应是「缺凭证 = 拒绝」,而非「缺凭证 = 降级到无鉴权变体」。把向后兼容让位于鉴权语义一致性。
+- **K boundary**:双端真鉴权(WebRTC SDP 加解密)单进程验不了 → 单端验 key-gen/parse/UI-reject + 明确双端留部署验。同 §4.1 / §2.v4。
+
+#### §4 进度
+§4.1(lowcode 字段同步 correctness)+ §4.2(房间鉴权)闭。剩 §4.3 自建信令+TURN(耦合 §5)/ §4.4 lowcode-aware presence / §4.5 docState 冲突 / §4.6 preview 协作。
+
+---
 
 ---
 
