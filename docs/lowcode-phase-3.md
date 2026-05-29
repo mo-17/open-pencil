@@ -2711,7 +2711,22 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 
 ## §4 协作 — lowcode-aware collaboration(设计 2026-05-30)
 
-转产品级方向。基座 OpenPencil 的协作链已完整:Trystero MQTT(WebRTC P2P 无 relay)+ Yjs CRDT + y-indexeddb 持久化 + graph↔Yjs 双向同步 + awareness(远端光标/选区/follow/peer 颜色),代码在 `src/app/collab/`。但它**对 lowcode 不感知**。§4 分多刀打磨;**§4.1 先修最高优先的 correctness 缺口**(lowcode 字段在协作同步中静默损坏),后续刀(§4.2+)为 lowcode-aware presence / docState 冲突语义 / preview 协作,均 additive。
+转产品级方向。基座 OpenPencil 的协作链已完整:Trystero MQTT(WebRTC P2P 无 relay)+ Yjs CRDT + y-indexeddb 持久化 + graph↔Yjs 双向同步 + awareness(远端光标/选区/follow/peer 颜色),代码在 `src/app/collab/`。但它**对 lowcode 不感知**。§4 分多刀打磨;**§4.1 先修最高优先的 correctness 缺口**(lowcode 字段在协作同步中静默损坏),后续刀均 additive。
+
+#### §4 候选 slice 池(2026-05-30 起,§4.1 已闭)
+
+网络架构勘察结论:协作是**公网**实现,非局域网专用。两层 —— **信令/发现**走公共 MQTT broker(`trystero/mqtt`,必须上公网);**数据**走 WebRTC P2P DataChannel(STUN 打 NAT 直连,`rtcConfig` 配了 Google/Cloudflare STUN + openrelay 免费 TURN 兜底)。同 LAN 优选局域网直连;纯内网/离线不可用(信令+STUN/TURN 都是公网)。"no relay" 准确含义 = 默认 P2P 不经自建中央服务器,但严格 NAT 下 fall back 到公共 TURN。
+
+| # | 候选 slice | 来源 | 体量估 | 优先级理由 |
+|---|---|---|---|---|
+| ~~4.1~~ | ~~lowcode 字段 Yjs 往返 correctness~~ | 勘察发现 | ~0.5 day | ✅ 闭(2026-05-30)|
+| 4.2 | **房间鉴权 / 私有信令** | 网络勘察 #3 | 中 | **安全缺口最高优先**:`appId` 全局共享 + roomId 仅 8 位随机 → 任何知 roomId 者可进同房间;lowcode 应用可能带 Supabase config / 业务数据。需房间口令/鉴权层或私有信令命名空间 |
+| 4.3 | **自建信令 + TURN** | 网络勘察 #1 | 中-大 | 生产可靠性/隐私/限流:当前依赖公共 MQTT broker + openrelay 免费 TURN(社区免费服务,无 SLA)。认真产品(尤其 §5 部署)需自建或托管;与 §5 部署管线强耦合 |
+| 4.4 | lowcode-aware presence | §4 设计 | 中 | 远端 peer 在编哪个 binding/event/docState 的可视化(扩 awareness payload,现仅 cursor+selection)|
+| 4.5 | docState 协作冲突语义 | §4 设计 | 中 | 两人同时改同一 docState 默认值 / 同一 action 的合并策略(Yjs CRDT 自动合并 node 字段,但 lowcode 语义层冲突未审视)|
+| 4.6 | preview 协作 | §4 设计 | 中-大 | 多人共享同一 lowcode preview 会话(运行态而非编辑态协作)|
+
+注:base collab 还有 ~11 个非 lowcode object 字段同样在 Yjs 往返成字符串(§4.1.8 记录),属基座/上游议题,非 §4 lowcode slice。
 
 ### 4.1 lowcode 字段 Yjs 往返 correctness(设计 2026-05-30)
 
