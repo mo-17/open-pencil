@@ -12,12 +12,15 @@ import {
 
 /**
  * Phase 3 §2.v2 step 1 — `SupabaseAuthAction` persistence.
+ * Phase 3 §2.v3 step 1 — adds the `signUp` operation (decision §2.v3.2 a:
+ * extends the operation union, no Kiwi schema change — signUp is just more
+ * JSON on the same `lowcode/events` channel).
  *
  * Decision §2.v2.2 (h): the 7th action kind rides the existing
  * `lowcode/events` pluginData channel (the events payload is schema-free
  * JSON, so a new `ActionDef` member serialises without a Kiwi schema
- * change). These pin that a signIn (with email/password exprs) and a
- * signOut survive serialize → extract unchanged.
+ * change). These pin that a signIn (with email/password exprs), a signUp,
+ * and a signOut survive serialize → extract unchanged.
  */
 function makeNode(fields: Partial<SceneNode> = {}): SceneNode {
   return {
@@ -52,6 +55,15 @@ const SIGN_OUT: SupabaseAuthAction = {
   operation: 'signOut'
 }
 
+const SIGN_UP: SupabaseAuthAction = {
+  id: 'a3',
+  kind: 'supabaseAuth',
+  operation: 'signUp',
+  emailExpr: 'emailInput',
+  passwordExpr: 'passwordInput',
+  errorTarget: 'authError'
+}
+
 describe('SupabaseAuthAction persistence (Phase 3 §2.v2)', () => {
   test('a signIn action serialises into a single lowcode/events entry', () => {
     const node = makeNode({ events: { onClick: [SIGN_IN] } })
@@ -64,6 +76,15 @@ describe('SupabaseAuthAction persistence (Phase 3 §2.v2)', () => {
 
   test('signIn + signOut round-trip through serialize → extract unchanged', () => {
     const events = { onClick: [SIGN_IN], onSubmit: [SIGN_OUT] }
+    const [entry] = serializeLowcodeFields(makeNode({ events }))
+    const result = extractLowcodeAndPluginData(
+      makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: entry.key, value: entry.value }])
+    )
+    expect(result.events).toEqual(events)
+  })
+
+  test('signUp round-trips with its email/password exprs (Phase 3 §2.v3)', () => {
+    const events = { onClick: [SIGN_UP, SIGN_OUT] }
     const [entry] = serializeLowcodeFields(makeNode({ events }))
     const result = extractLowcodeAndPluginData(
       makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: entry.key, value: entry.value }])
