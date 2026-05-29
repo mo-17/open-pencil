@@ -2709,6 +2709,61 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 
 ---
 
+## §4 协作 — lowcode-aware collaboration(设计 2026-05-30)
+
+转产品级方向。基座 OpenPencil 的协作链已完整:Trystero MQTT(WebRTC P2P 无 relay)+ Yjs CRDT + y-indexeddb 持久化 + graph↔Yjs 双向同步 + awareness(远端光标/选区/follow/peer 颜色),代码在 `src/app/collab/`。但它**对 lowcode 不感知**。§4 分多刀打磨;**§4.1 先修最高优先的 correctness 缺口**(lowcode 字段在协作同步中静默损坏),后续刀(§4.2+)为 lowcode-aware presence / docState 冲突语义 / preview 协作,均 additive。
+
+### 4.1 lowcode 字段 Yjs 往返 correctness(设计 2026-05-30)
+
+#### 4.1.1 现状与问题(已实测坐实)
+
+`src/app/collab/yjs-sync.ts` 的写/读不对称:
+- **写** `syncNodePropsToYMap`:`Object.entries(node)` 遍历**全部** key,任何 object 值 → `ynode.set(key, JSON.stringify(value))`。
+- **读** `yNodeToProps`:只对 `YJS_JSON_FIELDS`(`src/constants.ts`,7 个核心字段:childIds/fills/strokes/effects/vectorNetwork/boundVariables/styleRuns)`JSON.parse` 回来;其余 key 直接返回原值(即仍是 JSON 字符串)。
+
+lowcode 字段 `state`/`bindings`/`events`/`interactiveProps`/`renderCondition`/`lowcodeDocumentState`/`lowcodeSupabaseConfig` **全是 object、全不在白名单** → 协作时远端经 `applyYnodeToGraph → yNodeToProps → updateNode` 收到的是 **JSON 字符串**而非对象。后果:远端编辑器读 `node.bindings`(期望对象)崩、保存损坏、该端下次 `syncNodeToYjs` 再 stringify 一次 → 双重编码累积。**白名单当初加 lowcode 字段时漏了同步更新,静默损坏无报错**。实测确认:`yNodeToProps(syncNodePropsToYMap(node)).bindings` 返回 `typeof === 'string'`。
+
+#### 4.1.2 关键决定
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **扩 `YJS_JSON_FIELDS` 白名单 +7 lowcode object 字段 + guard 测试**(用户 2026-05-30 AskUserQuestion ACK 推荐项)| 改动最小、贴基座惯例、对上游 collab 编码 0 冲突(fork 要保持可与上游合并);guard 测试把「静默损坏」变「响亮的测试失败」,治根因(白名单漂移)|
+| b | 加入的 7 字段:`state` / `bindings` / `events` / `interactiveProps` / `renderCondition` / `lowcodeDocumentState` / `lowcodeSupabaseConfig`(对齐 `update_lowcode_node` 的 patch keys + `serializeLowcodeFields`)| 这是当前 schema 下全部 object 值 lowcode 字段 |
+| c | **修复仅读侧生效,写侧不变**(写早已 stringify)→ **向后兼容**已持久化的 Yjs 状态(之前存的就是 stringify 后的字符串,修复后读时正确 parse)| 无 IndexedDB 迁移负担 |
+| d | guard 测试**从测试节点自身推导 object 字段集**(不硬编码列表):round-trip 后遍历原节点每个 object 值 key,断言往返值仍是 object 且 deep-equal | 未来新增 object 字段忘了加白名单 → 只要测试节点填了该字段就响亮失败(治 a 的残留脆弱) |
+
+#### 4.1.3 改动
+
+- 🔁 `src/constants.ts` `YJS_JSON_FIELDS` += 7 lowcode 字段(注释说明:写/读必须对称,新增 object 字段必须进此集)
+- ➕ `tests/engine/collab/yjs-roundtrip.test.ts`(新):guard —— 带全 lowcode 字段的节点 `syncNodePropsToYMap → yNodeToProps` deep-equal + 每个 object 字段 typeof==='object' 断言
+- **0** 写侧 / awareness / room / session 改动
+
+#### 4.1.4 成功标准 + Tauri ACK
+
+1. guard 单测绿;`bun run check` 全绿;零回归
+2. **Tauri 实测(用户主导)**:两端(两窗口/两机)加入同一 room,A 端给节点配 binding/event/docState/supabaseConfig → B 端实时收到且**是对象**(binding 面板正常显示、保存 .fig 正确、preview 编译正常),非字符串损坏
+
+#### 4.1.5 工作分解(~0.5 day)
+
+| Step | 任务 | commit |
+|---|---|---|
+| 0 | §4.1 设计 doc | `docs(lowcode): §4.1 lowcode-aware collab sync — detailed design` |
+| 1 | YJS_JSON_FIELDS +7 + guard 测试 + Tauri ACK + §4.1.8 + close | `fix(lowcode): §4.1 round-trip lowcode fields through Yjs collab sync` |
+
+#### 4.1.6 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 漏某个 object 字段 | 中 | guard 测试从节点自身推导 object 字段(决 d),非硬编码 |
+| 已双重编码的旧 IndexedDB 数据 | 低 | collab room 短生命周期 + IndexedDB 是本地缓存;新 room 不受影响 |
+| 改 base 共享常量影响非 lowcode 文档 | 低 | 只**增**白名单成员,非 lowcode 文档不带这些字段 → `Object.entries` 不产出 → 无行为变化 |
+
+#### 4.1.8 Post-mortem
+
+待 Tauri ACK 回填。
+
+---
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
