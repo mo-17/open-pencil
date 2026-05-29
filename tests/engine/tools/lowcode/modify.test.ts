@@ -183,6 +183,41 @@ describe('update_lowcode_node', () => {
     if (!result.ok) return
     expect(graph.getNode(txt.id)?.bindings?.text).toEqual({ kind: 'expr', expr: 'count + 1' })
   })
+
+  // Phase 3 §3.v7 — DATEPICKER date-field format validation at the tool
+  // boundary (decision f: malformed dates hard-fail; range = warn-and-keep at IR).
+  test('rejects a DATEPICKER with a malformed value or min/max', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const dp = graph.createNode('DATEPICKER', pageId)
+    const run = (ip: Record<string, unknown>) =>
+      getTool('update_lowcode_node').execute(figma, {
+        id: dp.id,
+        patch_json: JSON.stringify({ interactiveProps: ip })
+      }) as Result<{ id: string; updated: string[] }>
+    expect((run({ value: '2026-13-45' }) as Err).error).toContain('value')
+    expect((run({ min: 'soon' }) as Err).error).toContain('min')
+    expect((run({ max: '2026-02-30' }) as Err).error).toContain('max')
+  })
+
+  test('accepts valid value + min + max; inverted range is warn-and-keep (not a tool error)', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const dp = graph.createNode('DATEPICKER', pageId)
+    const run = (ip: Record<string, unknown>) =>
+      getTool('update_lowcode_node').execute(figma, {
+        id: dp.id,
+        patch_json: JSON.stringify({ interactiveProps: ip })
+      }) as Result<{ id: string; updated: string[] }>
+    expect(run({ value: '2026-06-15', min: '2026-01-01', max: '2026-12-31' }).ok).toBe(true)
+    expect(graph.getNode(dp.id)?.interactiveProps).toEqual({
+      value: '2026-06-15',
+      min: '2026-01-01',
+      max: '2026-12-31'
+    })
+    // decision f: range relationships don't hard-fail at the tool boundary
+    expect(run({ min: '2026-12-31', max: '2026-01-01' }).ok).toBe(true)
+  })
 })
 
 describe('set_doc_states', () => {

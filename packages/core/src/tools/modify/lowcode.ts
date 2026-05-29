@@ -29,6 +29,7 @@
 import type { FigmaAPI } from '#core/figma-api'
 import {
   normalizeSupabaseMutationPayloadJson,
+  validateDatePickerProps,
   validateExpression,
   validateStateName,
   validateSupabaseConfig,
@@ -535,12 +536,30 @@ const FIELD_APPLIERS = [
   applySupabaseConfigField
 ]
 
+// Phase 3 §3.v7 — reject a DATEPICKER whose interactiveProps carry a
+// malformed date (decision §3.v7.2 f: format errors hard-fail at the tool
+// boundary, same as payloadEntries). Range-inverted / value-out-of-range are
+// NOT rejected here — they're warn-and-keep (decision h), surfaced as IR
+// warnings at compile time, not tool errors.
+function checkDatePickerFields(ip: Record<string, unknown>): FieldResult {
+  for (const issue of validateDatePickerProps(ip)) {
+    if (issue.code.startsWith('datepicker-invalid') && issue.key) {
+      return fail(`interactiveProps.${issue.key} must be a valid YYYY-MM-DD date`)
+    }
+  }
+  return { ok: true }
+}
+
 /**
  * Validate a partial lowcode patch and build the `Partial<SceneNode>`
  * payload to hand to `graph.updateNode`. Unknown keys are rejected
  * (rather than silently dropped) so AI typos surface as clear errors.
+ * `nodeType` enables per-type interactiveProps checks (§3.v7 DATEPICKER).
  */
-function buildPatch(raw: Record<string, unknown>): ModifyResult<Partial<SceneNode>> {
+function buildPatch(
+  raw: Record<string, unknown>,
+  nodeType: SceneNode['type']
+): ModifyResult<Partial<SceneNode>> {
   for (const key of Object.keys(raw)) {
     if (!PATCH_KEYS.has(key)) {
       return fail(`unknown patch field "${key}" — allowed: ${[...PATCH_KEYS].join(', ')}`)
@@ -549,6 +568,10 @@ function buildPatch(raw: Record<string, unknown>): ModifyResult<Partial<SceneNod
   const patch: Partial<SceneNode> = {}
   for (const apply of FIELD_APPLIERS) {
     const r = apply(raw, patch)
+    if (!r.ok) return r
+  }
+  if (nodeType === 'DATEPICKER' && isPlainObject(patch.interactiveProps)) {
+    const r = checkDatePickerFields(patch.interactiveProps)
     if (!r.ok) return r
   }
   return { ok: true, data: patch }
@@ -610,7 +633,7 @@ export const updateLowcodeNode = defineTool({
     const parsed = parseJson(args.patch_json, 'patch_json')
     if (!parsed.ok) return fail(parsed.error)
     if (!isPlainObject(parsed.value)) return fail('patch_json must be a JSON object')
-    const built = buildPatch(parsed.value)
+    const built = buildPatch(parsed.value, node.type)
     if (!built.ok) return built
     const patch = built.data ?? {}
     applyPatchWithUndo(figma, args.id, patch, 'AI: update_lowcode_node', ctx)
