@@ -184,6 +184,43 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
     expect(stateRuntime).toContain('$currentUser:')
   })
 
+  test('auth-only page imports getSupabaseClient (Phase 3 §2.v3 regression)', () => {
+    // An auth-only page (no query / mutation) calls getSupabaseClient().auth.*
+    // inline. The import gate (pageUsesSupabase) omitted supabaseAuth until
+    // §2.v3, so this page ReferenceError'd at runtime — Tauri surfaced it on
+    // the first signUp-only page. Each auth operation must wire the import.
+    for (const operation of ['signIn', 'signOut', 'signUp'] as const) {
+      const graph = new SceneGraph()
+      graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SAMPLE_CONFIG })
+      const pageId = graph.getPages()[0].id
+      const action: ActionDef =
+        operation === 'signOut'
+          ? { id: 'a-1', kind: 'supabaseAuth', operation }
+          : {
+              id: 'a-1',
+              kind: 'supabaseAuth',
+              operation,
+              emailExpr: "'a@b.co'",
+              passwordExpr: "'secret'"
+            }
+      graph.createNode('BUTTON', pageId, {
+        interactiveProps: { text: operation },
+        events: { onClick: [action] }
+      })
+
+      const out = compile({
+        graph,
+        pageIds: [pageId],
+        options: withDefaults({ packageName: `auth-only-${operation}` })
+      })
+
+      const app = out.files.get('src/App.tsx') as string
+      expect(app).toContain("import { getSupabaseClient } from './_lowcode_supabase'")
+      expect(app).toContain('getSupabaseClient().auth.')
+      expect(out.files.has('src/_lowcode_supabase.ts')).toBe(true)
+    }
+  })
+
   test('mixed handler list: setVariable + supabaseQuery + supabaseMutation + apiCall all emit under one async arrow', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {

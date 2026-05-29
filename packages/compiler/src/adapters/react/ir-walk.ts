@@ -13,51 +13,58 @@
 import type { IREventHandler, IRNode, IRTree } from '#compiler/ir/types'
 import type { CompileWarning } from '#compiler/types'
 
-export function pageHasNavigateHandler(ir: IRTree): boolean {
-  return ir.children.some(nodeHasNavigate)
-}
-
-function nodeHasNavigate(node: IRNode): boolean {
-  // Phase 2 §9: navigate handlers can live inside an IRConditional consequent
-  // or an IRList template. Without descending here the scaffolder skips the
-  // `useNavigate` import + hook and the emitted JSX calls `navigate(...)`
-  // against an undefined identifier at runtime.
-  if (node.kind === 'conditional') return nodeHasNavigate(node.consequent)
-  if (node.kind === 'list') return nodeHasNavigate(node.template)
+/**
+ * Does any handler anywhere in `node`'s subtree match `pred`? Descends through
+ * IRConditional consequents and IRList templates (Phase 2 §9) so handlers
+ * nested inside wrapper kinds are found — missing that descent silently skips
+ * the matching import / hook and the emitted JSX references an undefined
+ * identifier at runtime. Shared by the navigate + supabase import gates.
+ */
+function treeHasHandler(node: IRNode, pred: (h: IREventHandler) => boolean): boolean {
+  if (node.kind === 'conditional') return treeHasHandler(node.consequent, pred)
+  if (node.kind === 'list') return treeHasHandler(node.template, pred)
   if (node.kind !== 'element') return false
   if (node.events) {
     for (const handlers of Object.values(node.events)) {
-      if (handlers.some((h) => h.kind === 'navigate')) return true
+      if (handlers.some(pred)) return true
     }
   }
-  return node.children.some(nodeHasNavigate)
+  return node.children.some((c) => treeHasHandler(c, pred))
+}
+
+export function pageHasNavigateHandler(ir: IRTree): boolean {
+  return ir.children.some((c) => treeHasHandler(c, (h) => h.kind === 'navigate'))
 }
 
 /**
  * Phase 3 §2: a page uses supabase when any handler in its tree is a
- * `supabaseQuery` or `supabaseMutation`. The scaffolder consults this to
- * decide whether to emit `import { getSupabaseClient } from '<path>'` —
- * step 3's runtime template exports the symbol, but step 3 forgot the
- * page-side import wiring, so emitted pages threw ReferenceError at
- * runtime even though every emit-level test passed (they checked the
- * call site string, not module resolution).
+ * `supabaseQuery`, `supabaseMutation`, or `supabaseAuth`. The scaffolder
+ * consults this to decide whether to emit
+ * `import { getSupabaseClient } from '<path>'` — step 3's runtime template
+ * exports the symbol, but step 3 forgot the page-side import wiring, so
+ * emitted pages threw ReferenceError at runtime even though every
+ * emit-level test passed (they checked the call site string, not module
+ * resolution).
+ *
+ * Phase 3 §2.v3: `supabaseAuth` was missing from this check — §2.v2 added
+ * the auth handler (which also calls `getSupabaseClient().auth.*` inline)
+ * but never widened the import gate, so an auth-only page (no query /
+ * mutation) threw `ReferenceError: getSupabaseClient is not defined` at
+ * runtime. Tauri surfaced this on the first signUp-only page (the §2.v2
+ * test pages happened to also carry a query, masking the hole). The
+ * emit-level auth tests asserted the call string, repeating the exact trap
+ * this comment warns about.
  */
 export function pageUsesSupabase(ir: IRTree): boolean {
-  return ir.children.some(nodeUsesSupabase)
-}
-
-function nodeUsesSupabase(node: IRNode): boolean {
-  if (node.kind === 'conditional') return nodeUsesSupabase(node.consequent)
-  if (node.kind === 'list') return nodeUsesSupabase(node.template)
-  if (node.kind !== 'element') return false
-  if (node.events) {
-    for (const handlers of Object.values(node.events)) {
-      if (handlers.some((h) => h.kind === 'supabaseQuery' || h.kind === 'supabaseMutation')) {
-        return true
-      }
-    }
-  }
-  return node.children.some(nodeUsesSupabase)
+  return ir.children.some((c) =>
+    treeHasHandler(
+      c,
+      (h) =>
+        h.kind === 'supabaseQuery' ||
+        h.kind === 'supabaseMutation' ||
+        h.kind === 'supabaseAuth'
+    )
+  )
 }
 
 /**
