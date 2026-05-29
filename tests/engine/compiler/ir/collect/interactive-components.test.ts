@@ -61,6 +61,83 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     expect(dp.attrs.defaultValue).toBeUndefined()
   })
 
+  // Phase 3 §3.v7 — min/max range + ISO format validation.
+  test('DATEPICKER min/max → emits min + max attrs, no warnings', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('DATEPICKER', pageId, {
+      interactiveProps: { value: '2026-06-15', min: '2026-01-01', max: '2026-12-31' }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const dp = ir.children[0] as IRElement
+    expect(dp.attrs.defaultValue).toBe('2026-06-15')
+    expect(dp.attrs.min).toBe('2026-01-01')
+    expect(dp.attrs.max).toBe('2026-12-31')
+    expect(ir.warnings).toEqual([])
+  })
+
+  test('DATEPICKER single-sided range emits only the set bound', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('DATEPICKER', pageId, { interactiveProps: { min: '2026-01-01' } })
+
+    const ir = collectTree(graph, pageId)
+    const dp = ir.children[0] as IRElement
+    expect(dp.attrs.min).toBe('2026-01-01')
+    expect(dp.attrs.max).toBeUndefined()
+    expect(ir.warnings).toEqual([])
+  })
+
+  test('DATEPICKER invalid value → dropped from emit + warning (no-swallow)', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('DATEPICKER', pageId, { interactiveProps: { value: '2026-13-45' } })
+
+    const ir = collectTree(graph, pageId)
+    const dp = ir.children[0] as IRElement
+    expect(dp.attrs.defaultValue).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'datepicker-invalid-value')).toBe(true)
+  })
+
+  test('DATEPICKER invalid min → dropped from emit + warning', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('DATEPICKER', pageId, { interactiveProps: { min: 'soon' } })
+
+    const ir = collectTree(graph, pageId)
+    const dp = ir.children[0] as IRElement
+    expect(dp.attrs.min).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'datepicker-invalid-min')).toBe(true)
+  })
+
+  test('DATEPICKER inverted range → both attrs still emitted + warning (decision §3.v7.2 h)', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('DATEPICKER', pageId, {
+      interactiveProps: { min: '2026-12-31', max: '2026-01-01' }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const dp = ir.children[0] as IRElement
+    expect(dp.attrs.min).toBe('2026-12-31')
+    expect(dp.attrs.max).toBe('2026-01-01')
+    expect(ir.warnings.some((w) => w.code === 'datepicker-range-inverted')).toBe(true)
+  })
+
+  test('DATEPICKER value out of range → kept + warning (decision §3.v7.2 h)', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('DATEPICKER', pageId, {
+      interactiveProps: { value: '2025-06-15', min: '2026-01-01' }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const dp = ir.children[0] as IRElement
+    expect(dp.attrs.defaultValue).toBe('2025-06-15')
+    expect(ir.warnings.some((w) => w.code === 'datepicker-value-out-of-range')).toBe(true)
+  })
+
   test('SWITCH → <input type="checkbox" role="switch">', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

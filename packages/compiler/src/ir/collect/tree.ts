@@ -1,5 +1,10 @@
 import type { NodeType, SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
-import { parseExpression, PREV_IDENT } from '@open-pencil/core/lowcode-validation'
+import {
+  type DatePickerIssueCode,
+  parseExpression,
+  PREV_IDENT,
+  validateDatePickerProps
+} from '@open-pencil/core/lowcode-validation'
 
 import { tailwindClassName } from '../style'
 import type {
@@ -583,10 +588,45 @@ function applyToggleProps(
   if (ip.checked === true) attrs.defaultChecked = true
 }
 
-/** DATEPICKER — a native `<input type="date">` (Phase 2 §8). */
-function applyDatePickerProps(ip: InteractiveProps, attrs: Record<string, IRAttrValue>): void {
+// Phase 3 §3.v7 — human-readable IRWarning suffix per DATEPICKER issue
+// (no-swallow, 经验 C). Keyed by code so the union stays exhaustive.
+const DATEPICKER_WARNING: Record<DatePickerIssueCode, string> = {
+  'datepicker-invalid-value':
+    'interactiveProps.value is not a valid YYYY-MM-DD date; default date dropped',
+  'datepicker-invalid-min': 'interactiveProps.min is not a valid YYYY-MM-DD date; min dropped',
+  'datepicker-invalid-max': 'interactiveProps.max is not a valid YYYY-MM-DD date; max dropped',
+  'datepicker-range-inverted':
+    'interactiveProps.min is after max; the date input will allow no selection',
+  'datepicker-value-out-of-range':
+    'interactiveProps.value is outside [min, max]; kept but the browser will flag it invalid'
+}
+
+/** DATEPICKER — a native `<input type="date">` (Phase 2 §8). Phase 3 §3.v7
+ *  adds `min`/`max` range attrs + ISO format validation: a format-invalid
+ *  value/min/max is dropped from emit (decision §3.v7.2 e); range-inverted
+ *  and out-of-range are warn-and-keep (decision §3.v7.2 h — the browser
+ *  disables the invalid selection). Every issue surfaces an IRWarning. */
+function applyDatePickerProps(
+  node: SceneNode,
+  ip: InteractiveProps,
+  attrs: Record<string, IRAttrValue>,
+  ctx: WalkCtx
+): void {
   attrs.type = 'date'
-  if (typeof ip.value === 'string' && ip.value !== '') attrs.defaultValue = ip.value
+  const badFormat = new Set<'value' | 'min' | 'max'>()
+  for (const issue of validateDatePickerProps(ip)) {
+    ctx.warnings.push({
+      code: issue.code,
+      message: `DATEPICKER ${node.id} ${DATEPICKER_WARNING[issue.code]}`,
+      nodeId: node.id
+    })
+    if (issue.key && issue.code.startsWith('datepicker-invalid')) badFormat.add(issue.key)
+  }
+  if (typeof ip.value === 'string' && ip.value !== '' && !badFormat.has('value')) {
+    attrs.defaultValue = ip.value
+  }
+  if (typeof ip.min === 'string' && ip.min !== '' && !badFormat.has('min')) attrs.min = ip.min
+  if (typeof ip.max === 'string' && ip.max !== '' && !badFormat.has('max')) attrs.max = ip.max
 }
 
 /** BUTTON — `type="button"` plus a text child from a binding or the literal. */
@@ -725,7 +765,7 @@ function applyInteractiveProps(
       applyToggleProps(ip, attrs, 'switch')
       return
     case 'DATEPICKER':
-      applyDatePickerProps(ip, attrs)
+      applyDatePickerProps(node, ip, attrs, ctx)
       return
     case 'BUTTON':
       applyButtonProps(node, ip, attrs, children, ctx)
