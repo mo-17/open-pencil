@@ -134,25 +134,30 @@ function emitSupabaseMutation(h: IRSupabaseMutationHandler): string {
   return wrapAsyncResult(chain, h.resultTarget, h.errorTarget)
 }
 
-/** Phase 3 §2.v2: signIn / signOut against Supabase auth. signIn emits
- *  `signInWithPassword({ email, password })` ({ data, error }); signOut emits
- *  `signOut()` ({ error } — no data, per runtime probe). Both only destructure
+/** Phase 3 §2.v2: signIn / signOut against Supabase auth. Phase 3 §2.v3 adds
+ *  signUp. signIn emits `signInWithPassword({ email, password })`; signUp emits
+ *  `signUp({ email, password })` (both { data, error }); signOut emits
+ *  `signOut()` ({ error } — no data, per runtime probe). All only destructure
  *  `{ error }`: a successful auth updates `$currentUser` through the runtime's
- *  `onAuthStateChange`, so neither writes a result target (decision §2.v2.2 e).
- *  `errorTarget`, when set, captures the auth error. */
+ *  `onAuthStateChange`, so none writes a result target (decision §2.v2.2 e).
+ *  signUp with email confirmation on returns no session, so `$currentUser`
+ *  stays signed-out until the user confirms (decision §2.v3.2 e). `errorTarget`,
+ *  when set, captures the auth error. */
 function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
   const errorWrite = h.errorTarget
     ? `setDocState(${JSON.stringify(h.errorTarget)}, error); `
     : ''
-  // signIn handlers always carry both ASTs (collect drops the handler
+  // signIn / signUp handlers always carry both ASTs (collect drops the handler
   // otherwise), so the casts narrow away the schema-level `undefined`.
+  // signIn → signInWithPassword, signUp → signUp (decision §2.v3.2 c).
+  const method = h.operation === 'signUp' ? 'signUp' : 'signInWithPassword'
   const call =
     h.operation === 'signOut'
       ? 'getSupabaseClient().auth.signOut()'
-      : `getSupabaseClient().auth.signInWithPassword({ email: ${emitExpression(
+      : `getSupabaseClient().auth.${method}({ email: ${emitExpression(
           h.emailAst as ExprAst
         )}, password: ${emitExpression(h.passwordAst as ExprAst)} })`
-  const label = h.operation === 'signOut' ? 'signOut' : 'signIn'
+  const label = h.operation
   return (
     `try { ` +
     `const { error } = await ${call}; ` +

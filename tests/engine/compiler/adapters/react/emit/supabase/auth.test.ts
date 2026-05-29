@@ -10,6 +10,10 @@ import type { IREventHandler } from '@open-pencil/compiler/ir/types'
  * emits `signOut()`. Both destructure only `{ error }` (no result target —
  * `$currentUser` syncs via the runtime onAuthStateChange). errorTarget, when
  * set, routes the auth error to setDocState.
+ *
+ * Phase 3 §2.v3 step 2 — signUp emits `signUp({ email, password })` from the
+ * same credential ASTs (decision §2.v3.2 c), also destructuring only
+ * `{ error }`.
  */
 function ident(name: string): ExprAst {
   return { kind: 'ident', name }
@@ -42,6 +46,23 @@ describe('emit supabaseAuth handler (Phase 3 §2.v2)', () => {
     expect(out).toContain('const { error } = await getSupabaseClient().auth.signOut();')
     expect(out).toContain('console.error("signOut failed:", error)')
     expect(out).not.toContain('signInWithPassword')
+  })
+
+  test('signUp emits signUp() with email/password exprs (not signInWithPassword)', () => {
+    const handler: IREventHandler = {
+      kind: 'supabaseAuth',
+      operation: 'signUp',
+      emailAst: ident('emailInput'),
+      passwordAst: ident('passwordInput'),
+      references: ['emailInput', 'passwordInput']
+    }
+    const out = emitEventHandler([handler])
+    expect(out).toContain(
+      'const { error } = await getSupabaseClient().auth.signUp({ email: emailInput, password: passwordInput });'
+    )
+    expect(out).toContain('console.error("signUp failed:", error)')
+    expect(out).not.toContain('signInWithPassword')
+    expect(out.startsWith('async () =>')).toBe(true)
   })
 
   test('errorTarget routes the auth error to setDocState', () => {

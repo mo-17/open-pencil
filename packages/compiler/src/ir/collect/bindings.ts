@@ -1045,7 +1045,8 @@ function resolveSupabaseMutation(
   }
 }
 
-/** Phase 3 §2.v2: validate + lower a `supabaseAuth` action. signIn parses
+/** Phase 3 §2.v2: validate + lower a `supabaseAuth` action. Phase 3 §2.v3 adds
+ *  signUp, which parses credentials exactly like signIn. signIn / signUp parse
  *  emailExpr / passwordExpr (same sub-language as filter values, so they can
  *  read a controlled INPUT's docState); empty creds drop the handler with a
  *  warning. signOut takes no inputs. No resultTarget — `$currentUser` stays
@@ -1073,17 +1074,18 @@ function resolveSupabaseAuth(
   if (action.operation === 'signOut') {
     return { kind: 'supabaseAuth', operation: 'signOut', references: [], errorTarget }
   }
+  // signIn + signUp both take email/password credentials (§2.v3 decision f).
   const email = resolveAuthCredential(
-    node, eventName, 'email', action.emailExpr, states, inScope, docStates, docStateReads, warnings
+    node, eventName, action.operation, 'email', action.emailExpr, states, inScope, docStates, docStateReads, warnings
   )
   if (email === null) return null
   const password = resolveAuthCredential(
-    node, eventName, 'password', action.passwordExpr, states, inScope, docStates, docStateReads, warnings
+    node, eventName, action.operation, 'password', action.passwordExpr, states, inScope, docStates, docStateReads, warnings
   )
   if (password === null) return null
   return {
     kind: 'supabaseAuth',
-    operation: 'signIn',
+    operation: action.operation,
     emailAst: email.ast,
     passwordAst: password.ast,
     references: [...email.references, ...password.references],
@@ -1091,11 +1093,12 @@ function resolveSupabaseAuth(
   }
 }
 
-/** Parse one signIn credential expression. Empty → missing-credentials warn;
- *  bad parse / unknown reference → drop the handler. */
+/** Parse one signIn / signUp credential expression. Empty →
+ *  missing-credentials warn; bad parse / unknown reference → drop the handler. */
 function resolveAuthCredential(
   node: SceneNode,
   eventName: EventName,
+  operation: 'signIn' | 'signUp',
   which: 'email' | 'password',
   exprSrc: string | undefined,
   states: Map<string, IRStateDecl>,
@@ -1108,7 +1111,7 @@ function resolveAuthCredential(
   if (src === '') {
     warnings.push({
       code: 'action-supabase-auth-missing-credentials',
-      message: `node ${node.id} ${eventName} supabaseAuth signIn has no ${which} expression`,
+      message: `node ${node.id} ${eventName} supabaseAuth ${operation} has no ${which} expression`,
       nodeId: node.id
     })
     return null
@@ -1117,7 +1120,7 @@ function resolveAuthCredential(
   if (!parsed.ok) {
     warnings.push({
       code: 'action-supabase-auth-invalid-credential',
-      message: `node ${node.id} ${eventName} supabaseAuth signIn ${which} "${src}" → ${parsed.error}`,
+      message: `node ${node.id} ${eventName} supabaseAuth ${operation} ${which} "${src}" → ${parsed.error}`,
       nodeId: node.id
     })
     return null

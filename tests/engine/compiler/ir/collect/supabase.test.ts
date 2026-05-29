@@ -298,6 +298,39 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
     expect(h?.passwordAst).toBeDefined()
   })
 
+  test('signUp lowers email/password exprs like signIn (Phase 3 §2.v3)', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [
+        {
+          id: 'a1',
+          kind: 'supabaseAuth',
+          operation: 'signUp',
+          emailExpr: "'a@b.co'",
+          passwordExpr: "'secret'"
+        }
+      ]
+    })
+    const h = firstHandler<IRSupabaseAuthHandler>(graph, pageId, 'supabaseAuth')
+    expect(h?.operation).toBe('signUp')
+    expect(h?.emailAst).toBeDefined()
+    expect(h?.passwordAst).toBeDefined()
+  })
+
+  test('signUp with a missing credential is dropped with a warning (Phase 3 §2.v3)', () => {
+    const { graph, pageId } = makeGraph({
+      config: DEFAULT_CONFIG,
+      onClick: [
+        { id: 'a1', kind: 'supabaseAuth', operation: 'signUp', emailExpr: "'a@b.co'" }
+      ]
+    })
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    expect(button?.kind === 'element' && (button.events?.onClick?.length ?? 0)).toBe(0)
+    const warn = ir.warnings.find((w) => w.code === 'action-supabase-auth-missing-credentials')
+    expect(warn?.message).toContain('signUp')
+  })
+
   test('signOut needs no credentials', () => {
     const { graph, pageId } = makeGraph({
       config: DEFAULT_CONFIG,
