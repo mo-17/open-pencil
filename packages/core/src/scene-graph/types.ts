@@ -623,9 +623,29 @@ export interface SupabaseMutationAction {
   errorTarget?: string
 }
 
+/** Phase 3 §2.v2: sign a user in / out against the Supabase project's auth.
+ *  The compiler emits `getSupabaseClient().auth.signInWithPassword({ email,
+ *  password })` / `.signOut()` inside the event handler. `emailExpr` /
+ *  `passwordExpr` (signIn only) use the same restricted expression
+ *  sub-language as `SupabaseFilter.valueExpr`, so the credentials can come
+ *  from controlled INPUT docState. There is no `resultTarget`: the emitted
+ *  runtime keeps `$currentUser` in sync via `onAuthStateChange`, so login
+ *  state flows back reactively (decision §2.v2.2 e). `errorTarget` optionally
+ *  captures the auth error. */
+export interface SupabaseAuthAction {
+  id: string
+  kind: 'supabaseAuth'
+  operation: 'signIn' | 'signOut'
+  emailExpr?: string
+  passwordExpr?: string
+  errorTarget?: string
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
- *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation}. */
+ *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
+ *  Phase 3 §2.v2 adds `SupabaseAuthAction` (overturns §2 decision #5's
+ *  6-kind lock). */
 export type ActionDef =
   | SetStateAction
   | NavigateAction
@@ -633,6 +653,7 @@ export type ActionDef =
   | ApiCallAction
   | SupabaseQueryAction
   | SupabaseMutationAction
+  | SupabaseAuthAction
 
 export type ActionKind = ActionDef['kind']
 

@@ -415,7 +415,9 @@ function errorsFor(action: ActionDef): ActionErrors {
   if (action.kind === 'setVariable') return setVariableErrors(action)
   if (action.kind === 'apiCall') return apiCallErrors(action)
   if (action.kind === 'supabaseQuery') return supabaseQueryErrors(action)
-  return supabaseMutationErrors(action)
+  if (action.kind === 'supabaseMutation') return supabaseMutationErrors(action)
+  // Phase 3 §2.v2 supabaseAuth — per-field validation + form added in step 4.
+  return {}
 }
 
 const actionErrors = computed(() => {

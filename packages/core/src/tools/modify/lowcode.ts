@@ -66,7 +66,8 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'setVariable',
   'apiCall',
   'supabaseQuery',
-  'supabaseMutation'
+  'supabaseMutation',
+  'supabaseAuth'
 ])
 
 const KNOWN_BINDING_KINDS = new Set<BindingKind>(['literal', 'ref', 'expr', 'docState'])
@@ -328,8 +329,19 @@ function buildActionFromValidated(
         resultTarget: raw.resultTarget as string | undefined,
         errorTarget: raw.errorTarget as string | undefined
       }
+    case 'supabaseAuth':
+      // Phase 3 §2.v2: signIn/signOut. emailExpr/passwordExpr (signIn only)
+      // carry through verbatim; expression validation happens in step 3.
+      return {
+        id,
+        kind,
+        operation: raw.operation as 'signIn' | 'signOut',
+        emailExpr: raw.emailExpr as string | undefined,
+        passwordExpr: raw.passwordExpr as string | undefined,
+        errorTarget: raw.errorTarget as string | undefined
+      }
     default: {
-      // Exhaustive — ActionKind has exactly the 6 variants above. The
+      // Exhaustive — ActionKind has exactly the 7 variants above. The
       // assignment proves it to TypeScript and the throw matches the
       // ts-eslint(consistent-return) rule for switch-based dispatch.
       const _exhaustive: never = kind
