@@ -2506,7 +2506,37 @@ signOut 提前 return 不变;其余(signIn + signUp)统一 parse email/password,
 
 ### 2.v3.8 Post-mortem
 
-待 Tauri ACK 回填。
+**§2.v3 closed 2026-05-30**(Tauri ACK ✅ after 1 hotfix;signUp 功能本身首过零 bug,但 Tauri 照出 **1 个 §2.v2 遗留的 import-gate 洞**,mid-ACK 修掉)。补完认证三件套(登录/登出/**注册**),做法是复用 `supabaseAuth` kind 扩 operation(决 a),**不动 ActionDef 7-kind 锁**。
+
+#### Commit 链(设计 + 4 step + 1 mid-ACK hotfix)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `ce750e0` | 复用 operation(决 a)+ email 确认门控 note(决 e),两 AskUserQuestion 锁;signUp 返回 `{data:{user,session},error}` `bun -e` probed(决 d)|
+| 1 | `203212a` | `operation` union +`'signUp'`(schema + IR types)+ 0-Kiwi 往返测试 |
+| 2 | `bc217cf` | IR collect signIn 分支泛化吃 signUp(`operation: action.operation`)+ emit `auth.signUp(...)`(method 选择)+ emit/IR 测试 |
+| 3 | `8dac295` | tool validate/build +signUp + 描述段 + auth-action.test.ts signUp 用例 |
+| 4 | `837c004` | EventsPanel signUp form(email/password 表单 signIn∨signUp 显)+ 确认门控 note + i18n×8 |
+| **hotfix** | `2312cca` | **`pageUsesSupabase` import-gate 加 `supabaseAuth`** + 抽共享 `treeHasHandler` walker + auth-only 页回归测试 |
+| close | _this commit_ | §2.v3.8 回填 + memory + close |
+
+#### Tauri ACK 结果(用户主导 2026-05-30）
+
+signUp 按钮初次点击 **无 network 无报错** → 逐层排查(确认门控 → 空 expr → 最终 console `ReferenceError: getSupabaseClient is not defined`)定位为 import-gate 洞;hotfix 后**重点 ACK #1 通过**(signUp 真发 `/auth/v1/signup` 请求)。hotfix 同时修好 signIn/signOut 在 auth-only 页上的同一问题。
+
+#### Surprise 列表(1 个 §2.v2 遗留 import-gate 洞,mid-ACK hotfix)
+
+1. **auth-only 页缺 `getSupabaseClient` import**(commit `2312cca` 修)—— `pageUsesSupabase`(决定页面是否 emit `import { getSupabaseClient }` 的闸)自 §2 起只匹配 `supabaseQuery` / `supabaseMutation`,**从未含 `supabaseAuth`**。§2.v2 加 auth handler(emit `getSupabaseClient().auth.*` 内联)时未同步扩这道闸 → **只用 auth 的页面**(signIn/signOut/signUp,无 query/mutation)emit 出 `getSupabaseClient()` 却不 import → 运行时 `ReferenceError`。**§2.v2 ACK 时 signIn「能用」是因为测试页恰好还挂了一个 supabaseQuery,把闸撑成 true 掩盖了洞**;signUp 的独立注册页只有 auth,首次把它照出来。
+   - 讽刺点:`ir-walk.ts` 该函数注释**早就警告过**这类「emit 测试只验调用串、不验模块解析 → ReferenceError」的坑(navigate import 有过同款),而 §2.v2 的 auth emit 测试正好又踩了一遍(只断言 `getSupabaseClient().auth.signUp(...)` 字符串)。
+
+#### 经验印证 / 演化
+
+- **H(Tauri 找 wiring 洞)再印证 + 升级**:本期 surprise 不是 §2.v2 那种 Q2 可发现性洞(additive 提示),而是一个**真运行时 ReferenceError**——但同样是「全 step 测试绿 + Tauri 才暴露」。关键教训:**emit 层测试断言调用串 ≠ 断言模块可解析**;auth-only 页这种「最小组合」是 import-gate 的边界用例,query/mutation 同页会掩盖。**新增防线**:任何「emit 出某 runtime 符号」的 handler,回归必须有一个**只含该 handler、不含其它同 runtime handler 的页面**断言 import 在场(本期 `auth-only page` 测试)。
+- **A + dedup**:hotfix 把 `nodeHasNavigate` / `nodeUsesSupabase` 两个同构递归 walker 抽成 `treeHasHandler(node, pred)` —— union-widening 类改动顺手 dedup,jscpd 钉零 clone(本期改 supabase 闸谓词为多行恰好撞出与 navigate walker 的 clone,正好触发抽取)。
+- **决 a(复用 operation 而非第 8 kind)回报**:signUp 与 signIn 完全同构 → 全程零 ActionDef union widening,emit/collect/tool 仅 operation 分支微调;唯一 bug 还是出在**跨 walker 的 import-gate**(handler-kind 层面,与 operation 无关),印证「同构复用把改动面压到最小,残留风险集中在跨 §X 的 wiring」(经验 E/H)。
+- **决 e(确认门控 note)有效**:虽然本次 surprise 是 import bug 不是门控,但排查过程中「确认门控」作为首个假设被快速排除(network 无请求 → 不是门控,门控会有请求)——note 把这层语义前置说清,缩短了排查路径。
+
+---
 
 ---
 
