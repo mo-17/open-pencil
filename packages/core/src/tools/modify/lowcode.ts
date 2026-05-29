@@ -236,20 +236,28 @@ function validateSupabaseAction(
   return { ok: true }
 }
 
+const SUPABASE_AUTH_OPS = new Set([
+  'signIn',
+  'signOut',
+  'signUp',
+  'resetPassword',
+  'updatePassword'
+])
+
 /** Phase 3 §2.v2: a `supabaseAuth` action. `operation` must be signIn /
- *  signOut. Phase 3 §2.v3 adds signUp. For signIn / signUp, when an
- *  `emailExpr` / `passwordExpr` is present it must be a parseable expression
- *  (bad → reject, decision §2.v2.2 g); a missing credential is left for IR
- *  collect to warn on, not rejected here, so the tool boundary mirrors the
- *  §3.v2 "malformed = reject, missing = warn" split. */
+ *  signOut. §2.v3 adds signUp; §2.v4 adds resetPassword / updatePassword.
+ *  Whichever of `emailExpr` / `passwordExpr` is present must be a parseable
+ *  expression (bad → reject, decision §2.v2.2 g); a missing credential is left
+ *  for IR collect to warn on per-operation, not rejected here, so the tool
+ *  boundary mirrors the §3.v2 "malformed = reject, missing = warn" split. */
 function validateSupabaseAuthAction(
   where: string,
   raw: Record<string, unknown>
 ): { ok: true } | { ok: false; error: string } {
-  if (raw.operation !== 'signIn' && raw.operation !== 'signOut' && raw.operation !== 'signUp') {
+  if (typeof raw.operation !== 'string' || !SUPABASE_AUTH_OPS.has(raw.operation)) {
     return failAt(
       where,
-      `.operation must be signIn / signOut / signUp (got ${JSON.stringify(raw.operation)})`
+      `.operation must be one of ${[...SUPABASE_AUTH_OPS].join(' / ')} (got ${JSON.stringify(raw.operation)})`
     )
   }
   if (raw.operation === 'signOut') return { ok: true }
@@ -361,13 +369,18 @@ function buildActionFromValidated(
         errorTarget: raw.errorTarget as string | undefined
       }
     case 'supabaseAuth':
-      // Phase 3 §2.v2: signIn/signOut. Phase 3 §2.v3 adds signUp.
-      // emailExpr/passwordExpr (signIn + signUp) carry through verbatim;
-      // expression validation happens in validateSupabaseAuthAction.
+      // Phase 3 §2.v2: signIn/signOut. §2.v3 adds signUp; §2.v4 adds
+      // resetPassword / updatePassword. emailExpr/passwordExpr carry through
+      // verbatim; expression validation happens in validateSupabaseAuthAction.
       return {
         id,
         kind,
-        operation: raw.operation as 'signIn' | 'signOut' | 'signUp',
+        operation: raw.operation as
+          | 'signIn'
+          | 'signOut'
+          | 'signUp'
+          | 'resetPassword'
+          | 'updatePassword',
         emailExpr: raw.emailExpr as string | undefined,
         passwordExpr: raw.passwordExpr as string | undefined,
         errorTarget: raw.errorTarget as string | undefined
@@ -661,7 +674,7 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
-    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object) and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is dropped (with an `input-controlled-onchange-conflict` warning) so the synthesized writer stays the single source of truth. This is the only path for capturing runtime input values into state today — other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) have no controlled binding yet. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3): a `supabaseAuth` action signs the user in / out / up — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp', emailExpr?, passwordExpr?, errorTarget? }`. For `signIn` and `signUp` (registration), `emailExpr` / `passwordExpr` use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing one warns at IR collect. `signOut` takes no credentials. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then. `errorTarget` optionally captures the auth error. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
+    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object) and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is dropped (with an `input-controlled-onchange-conflict` warning) so the synthesized writer stays the single source of truth. This is the only path for capturing runtime input values into state today — other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) have no controlled binding yet. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },
     patch_json: {
