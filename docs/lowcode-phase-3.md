@@ -2728,6 +2728,95 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 
 注:base collab 还有 ~11 个非 lowcode object 字段同样在 Yjs 往返成字符串(§4.1.8 记录),属基座/上游议题,非 §4 lowcode slice。
 
+### 4.4 lowcode-aware presence(协作在编什么,设计 2026-05-30)
+
+#### 4.4.1 现状与问题
+
+基座 awareness 广播三类本地状态(`local-awareness.ts` `setLocalStateField`):`user`{name,color}、`cursor`{x,y,pageId,zoom}、`selection`[nodeId…]。远端 peer 因此已可见「谁选了哪个节点」(`selection` 驱动画布远端选区高亮 + avatar follow)。
+
+缺口:**lowcode 编辑发生在右侧属性面板**(`src/components/properties/Lowcode/` 9 个面板),协作时这层完全不可见 ——
+- **节点级**:两人都选中同一 BUTTON,一个在编 `bindings`(TextBindingPanel)、一个在编 `events`(EventsPanel)→ 双方只看到对方「选了同一节点」,看不到「在编不同的子配置」,无冲突预警。
+- **文档级最严重**:`StatePanel`(page state)/ `SupabaseConfigPanel` / `DocumentStatePanel`(`lowcodeDocumentState`)三个**无节点选择**的面板 —— 两人同改 docState 默认值时,双方的 `selection` 都是空,presence 上表现成「都没在干活」,而这恰是 §4.5 docState 冲突最易撞车处。`selection` 信号对文档级编辑零覆盖。
+
+§4.4 补这层:扩 awareness payload 加一个 `editing` 字段,广播「本地正在编哪个 lowcode 面板 / 子目标」,远端浮现。**纯 additive**:不动 cursor/selection/user 三条既有通道,不动 engine/kiwi/docState 编码;0 持久化、0 广播敏感值。
+
+#### 4.4.2 关键决定(8 主 + 次默)
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | **新增第 4 条 awareness 字段 `editing`**(`setLocalStateField('editing', …)`),与 cursor/selection 并列,**不挤进 selection** | selection 是 nodeId 数组、语义是「画布选区」,塞 lowcode 面板状态会污染既有远端选区渲染。独立字段 = 0 回归、清晰拆分(经验「additive 不动既有通道」) |
+| b | **payload = `{ kind, nodeId? }`**(`PresenceEditingTarget`,**AskUserQuestion 锁 2026-05-30 = kind+nodeId 面板级,不带 detail**):`kind` ∈ 9 面板枚举(`textBinding`/`valueBinding`/`interactiveProps`/`state`/`events`/`list`/`renderCondition`/`docState`/`supabaseConfig`);`nodeId` 仅节点级面板带,文档级缺省 | 最小载荷;**只播结构性标识(kind + nodeId,二者皆非敏感:nodeId 已在 selection 通道存在),绝不播字段名/值/序号/表达式**。行级 detail 经评估接线成本高且非首刀必需 → 留 follow-up |
+| c | **label 在渲染端派生,不进 payload**(远端用本地 graph 把 `nodeId`→节点名,kind→i18n 文案,拼「在编 Button1 的事件」/「在编文档状态」)| 节点经 Yjs 同步在两端同 id → 远端可解析名;payload 保持 tiny + 不冗余(镜像 `remoteCursors` 的 selection 派生法,经验 E 对齐既有惯例) |
+| d | **focus 驱动 set / blur(+ 选区变 / 断连)驱动 clear**:面板根 `@focusin` 设 editing、`@focusout`(焦点离开面板子树)清;`selection:changed`、`disconnect` 也清 | 「在编」= 该面板内有输入聚焦,符合直觉;focusin/out 冒泡天然覆盖面板内全部 input,无需逐 input 接线(DRY) |
+| e | **单一共享 composable `usePresenceTarget(kind, getNodeId?)`** 封装 focusin/focusout→collab 调用,每个 lowcode 面板根 div 用 `v-on` 绑两个 handler;`getNodeId` 节点级面板传 `() => node.value?.id`,文档级面板省略 | 9 面板复用一个 helper,杜绝 jscpd clone(经验 A dedup helper);面板只多两行模板属性(.vue 非 oxlint/jscpd 扫描重灾,但仍单点收口) |
+| f | **collab 出口加 `updateEditingTarget(target \| null)`**,镜像 `updateSelection`;`buildRemotePeers` 读 `peerState.editing` 填 `RemotePeer.editing` | 沿现成 local-awareness / use.ts / RemotePeer 链加一参,0 新链路 |
+| g | **隐私:payload 仅 kind + nodeId,零业务值**(无 docState key 名、无表达式、无凭证)| kind+nodeId 是「在编哪个面板/节点」的最小必要信息,nodeId 既有 selection 通道已播 → 0 新增暴露面。沿 §4.2「房间内也不过度广播」姿态。行级 detail 留 follow-up 时须重审隐私(决 b) |
+| h | **surfacing = 集中式(α,AskUserQuestion 锁 2026-05-30)**:`ConnectedRoom.vue` peer-list 每行派生 label(「Alice · 在编文档状态」),`CollabAvatarStack.vue` avatar tooltip 同文案;**不动 9 面板渲染**(面板头内联徽标 β 留 follow-up)| 低风险、单端可验(喂假 peerState)、0 面板侵入;承接 §4.1/§4.2「最小可验刀」节奏 |
+
+**次默(8,沿用未单列)**:① 文档级面板(无 nodeId)editing.nodeId=undefined,label 走「文档状态/Supabase 配置/页面状态」文案;② 远端 peer 离页(pageId≠本地)其 editing 仍可在 peer-list 显示(不依赖同页,区别于 cursor);③ editing 不写 IndexedDB、不进 .fig(运行态,同 cursor);④ 同一 peer 同时只有一个 editing(后聚焦覆盖前);⑤ kind 枚举集中在 `collab/types.ts`,与面板一一对应;⑥ nodeId 解析不到节点名(远端尚未同步到该节点)→ label 回落「在编某节点的事件」泛称,不崩;⑦ 本地自身 editing 不渲染(buildRemotePeers 已跳 localClientId);⑧ 无 editing 的 peer(未在编 lowcode)payload 该字段缺省,UI 回落到「在线」。
+
+#### 4.4.3 三问题反向核(经验 J,每决必走)
+
+- **Q1 技术链**:`usePresenceTarget` → `collab.updateEditingTarget` → `setLocalStateField('editing',…)` → Yjs awareness 广播 → 远端 `awareness 'change'` → `updatePeersList` → `buildRemotePeers` 读 `editing` → `RemotePeer.editing` → UI 派生 label。**全程复用既有 awareness 'change' 监听**(updatePeersList 已挂),无新订阅。✅ 链路闭合。
+- **Q2 UI 与状态浮现**:editing 设了但**哪儿看得见?** → 这正是决 h 的岔口,**AskUserQuestion 锁 = 集中式 α**(ConnectedRoom peer-list 行 + avatar tooltip),不动面板。若只加 payload 不加可见出口 = 白做(同 §2.v2 Q2 可发现性洞)→ 已堵。另:focus→set 的**清除时机**若漏(切面板没 focusout?)→ editing 残留误导 → 决 d 补 `selection:changed`/disconnect 兜底清。
+- **Q3 心智模型**:用户看到「Alice 在编 Button1 的事件」期望什么?→ 期望「别去抢编同一处」的软提示,**非锁**(Yjs CRDT 仍自动合并,§4.5 才谈冲突语义)。文案须传达「提示性 presence」而非「已锁定」,避免误以为被阻止(决 c label 用「在编」非「锁定」)。文档级 label 须明确指向「文档状态/Supabase 配置/页面状态」让无选区的撞车可见(§4.4.1 核心动机)。
+
+#### 4.4.4 API / 类型
+
+```ts
+// collab/types.ts
+export type PresenceEditingKind =
+  | 'textBinding' | 'valueBinding' | 'interactiveProps' | 'state'
+  | 'events' | 'list' | 'renderCondition' | 'docState' | 'supabaseConfig'
+
+export interface PresenceEditingTarget {
+  kind: PresenceEditingKind
+  nodeId?: string          // 节点级面板带;文档级缺省(行级 detail 留 follow-up)
+}
+
+export interface RemotePeer {
+  /* …既有 cursor/selection… */
+  editing?: PresenceEditingTarget
+}
+```
+
+#### 4.4.5 改动清单
+
+- 🔁 `src/app/collab/types.ts`:`PresenceEditingKind` / `PresenceEditingTarget` + `RemotePeer.editing`
+- 🔁 `src/app/collab/awareness.ts` `buildRemotePeers`:读 `peerState.editing` → `RemotePeer.editing`
+- 🔁 `src/app/collab/local-awareness.ts`:`updateEditingTarget(target | null)`(set/clear `setLocalStateField('editing', …)`);`updateSelection` 顺带 clear editing(决 d 兜底,选区变即清)
+- 🔁 `src/app/collab/use.ts`:暴露 `updateEditingTarget`
+- ➕ `src/app/editor/presence/use-presence-target.ts`(新,共享 composable):`usePresenceTarget(kind, getNodeId?)` → `{ onFocusIn, onFocusOut }`;节点级面板传 `() => node.value?.id`,文档级省略
+- 🔁 9 个 `Lowcode/*.vue` 面板根:`@focusin`/`@focusout` 接 composable(仅 kind+nodeId,无 detail)
+- 🔁 surfacing UI(集中式 α):`ConnectedRoom.vue` peer-list 每行派生 editing label;`CollabAvatarStack.vue` tooltip 追加 label;`MobileHud/MobilePresencePopover.vue` 若有同款 peer 列表则复用同一 label helper(否则记 follow-up,不强塞)
+- ➕ label 派生 helper(`presenceEditingLabel(peer, getNodeName, i18n)`),ConnectedRoom + AvatarStack(+ MobileHud)共用,杜绝 clone
+- ➕ i18n:`presenceEditing{TextBinding,ValueBinding,InteractiveProps,State,Events,List,RenderCondition,DocState,SupabaseConfig}` label 模板 × 8 locale(节点级带 `{node}` 占位)
+- ➕ 单测 `tests/engine/collab/presence-editing.test.ts`:`buildRemotePeers` 带 editing 的 peerState → `RemotePeer.editing` round-trip;localClientId 自身跳过;无 editing 缺省
+- **0** engine/compiler/kiwi/docState 改动
+
+#### 4.4.6 工作分解(~中,3-4 step)
+
+| Step | 任务 | commit 前缀 |
+|---|---|---|
+| 0 | §4.4 设计 doc + Q1/Q2 AskUserQuestion 锁 | `docs(lowcode): §4.4 presence — detailed design` |
+| 1 | payload 类型 + buildRemotePeers + updateEditingTarget + use.ts 出口 + buildRemotePeers 单测 | `feat(collab): §4.4 step 1 — editing-target awareness payload` |
+| 2 | `usePresenceTarget` composable + 9 面板根接线(focusin/out,kind+nodeId) | `feat(collab): §4.4 step 2 — panel focus → presence target` |
+| 3 | 集中式 surfacing(ConnectedRoom peer-list + avatar tooltip)+ label helper + i18n×8 + close | `feat(collab): §4.4 step 3 — remote editing surfacing` |
+
+#### 4.4.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| focusout 时机:面板内 popover/portal(VariablePickerPopover)聚焦 → 误判离开 | 中 | focusout 用 `relatedTarget` 判是否仍在面板子树;portal 元素加 data 标记或容忍短暂 clear(presence 非关键态) |
+| editing 残留(切走没清) | 中 | 决 d 三重清:focusout + selection:changed + disconnect |
+| 9 面板接线产生 jscpd clone | 低 | 决 e 单一 composable,面板只调用不复制逻辑 |
+| 真双端 presence 单进程验不了 | 低 | 同 §4.1/§4.2 boundary:单端验 payload build/parse + UI(喂假 peerState)+ 本地 focus→updateEditingTarget 调用;真双端留双机(经验 K) |
+| payload 泄露业务值 | 低 | 决 b/g payload 仅 kind+nodeId,零业务值;nodeId 既有 selection 通道已播 → 0 新增暴露面 |
+
+#### 4.4.8 Post-mortem(stub)
+
+_(close 时补:Tauri/单端 ACK 结果、surprise 列表、经验印证/新增、§4 进度更新。)_
+
 ### 4.2 房间鉴权(room auth,设计 2026-05-30)
 
 #### 4.2.1 现状与问题
