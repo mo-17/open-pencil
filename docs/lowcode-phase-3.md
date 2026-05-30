@@ -3789,6 +3789,24 @@ export interface DeployTarget {
 
 - ~~Vercel~~(✅ `c987114`→`10ccb7f`);CF Pages 直传(account_id + 预存 project + upload-JWT + multipart);Vercel team/scope(`--team`/`VERCEL_TEAM_ID`);并发上传;site/project 列表选择 UI;自定义域名;部署历史;token keychain。
 
+### Bug 修复 — 矢量图标在 preview 里成方块(2026-05-31)
+
+用户报:编辑器里的图标在 preview 网页变成好几个实心方块。
+
+**根因(勘察 + headless probe 坐实,经验 C/K):** `TAG_BY_TYPE[VECTOR]='div'`(`ir/collect/tree.ts`)—— `VECTOR`/`BOOLEAN_OPERATION`/`STAR`/`POLYGON`/`LINE` 一律 emit 成 `<div>`,只带尺寸 + fill→`bg-[色]`,**路径几何(`fillGeometry`/`strokeGeometry` 的 `commandsBlob`)从不 emit** → 图标 = 一个带背景色的方块。编辑器画布是用 `getFillGeometry` 画路径的,这条信息编译期被丢。
+
+**2 岔口 AskUserQuestion 锁:** ① 节点范围 = **全部纯矢量形状**(上述 5 类;RECTANGLE/ELLIPSE/ROUNDED_RECTANGLE/FRAME 保持 CSS div,本就正确);② 生成方式 = **复用 core `renderNodesToSVG` 内联原始 SVG**(非自建)。
+
+**实现(复用既有 headless SVG 导出,经验 A;`@open-pencil/core/io/formats/svg`,与编译器已用的 `…/jsx` 同源):**
+- `IRElement.rawHtml?` 新字段;`emit/element.ts` 在其在场时 emit `<tag … dangerouslySetInnerHTML={{__html: <json>}} />`(自闭合、无 children;React 禁止二者并存)。
+- `tree.ts`:`SVG_SHAPE_TYPES` 的节点 → `buildVectorSvg`(`renderNodesToSVG(graph,'',[id],{xmlDeclaration:false})` 拿到 `viewBox=0 0 w h` 自含 SVG,正则把固定 px `width/height` 换 `100%` 以填满布局盒、viewBox 保宽高比)→ 设 `rawHtml`;并 `stripPaintClasses` 去掉 `bg-*`/`border*`/`ring*`/`shadow*`(**关键**:不去的话纯色图标盖在同色 `bg-[…]` 盒子上仍是方块)。布局/尺寸/定位/`rounded`/`opacity` 类保留。
+- `data-node-id`(devMode 预览点选)仍打在 wrapper 上 → preview ↔ canvas 映射不受影响。
+- **fork 可合并(经验 新-4):** `collectTailwindClasses` 是 core 共享 `…/jsx` 模块,不动它 —— paint 剥离在编译器本地做(`stripPaintClasses`),零 core 改动。
+
+**验证:** `tests/engine/compiler/vector-svg.test.ts`(VECTOR → 输出含 `<svg`/`<path`/`dangerouslySetInnerHTML`/`100%`、无 `bg-[`;FRAME 对照仍是 CSS div);compiler 423 测零回归;主 checkout 全 `bun run check` 0 error/0 clone。**真观感(图标可见、不再方块)留 Tauri/preview ACK**(emit 契约单测能钉,真渲染靠预览)。
+
+**follow-up:** GROUP 内多 VECTOR 现各自一个内联 SVG(视觉正确,可优化成整组一个 SVG);渐变/图像填充由 `renderNodesToSVG` 原样保真(已覆盖)。
+
 ---
 
 ---
