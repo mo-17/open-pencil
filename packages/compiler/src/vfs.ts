@@ -12,11 +12,68 @@
 // `configureServer` hook is a dev-only Vite lifecycle hook; it's a no-op during
 // `vite build`, so the same plugin instance serves both paths.
 
-import { dirname, posix } from 'node:path'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, posix } from 'node:path'
 
-import type { Plugin } from 'vite'
+import type { ESBuildOptions, Plugin } from 'vite'
 
 export type PreviewFiles = Map<string, string | Uint8Array>
+
+/**
+ * The Vite `esbuild` JSX override shared by the dev-server and the static
+ * build. Vite's import-analysis / TS-strip stage reads tsconfig from disk
+ * before plugin-react's transform runs; the workspace root tsconfig sets
+ * `jsx: "preserve"` (for Vue), which makes esbuild reject the React TSX as
+ * invalid JS. This forces the React automatic runtime regardless.
+ */
+export const VITE_JSX_ESBUILD: ESBuildOptions = {
+  jsx: 'automatic',
+  jsxImportSource: 'react',
+  tsconfigRaw: {
+    compilerOptions: {
+      jsx: 'react-jsx',
+      jsxImportSource: 'react',
+      target: 'esnext',
+      useDefineForClassFields: true
+    }
+  }
+}
+
+/**
+ * Prepare the Vite `root` both pipelines share: a quiet sub-dir of the
+ * workspace whose default html/dep scan finds nothing on disk (the VFS plugin
+ * supplies everything) but whose ancestor chain reaches the workspace's hoisted
+ * node_modules. The VFS prefix sits *inside* scanRoot so npm-package resolution
+ * from any virtual file walks up to that node_modules chain (trailing + leading
+ * slash make the prefix look like an absolute directory path). Plants the
+ * JSX-mode tsconfig that wins the upward search Vite/esbuild does (the workspace
+ * root sets jsx:preserve for Vue — see VITE_JSX_ESBUILD).
+ */
+export function prepareVfsRoot(workspaceRoot: string): { scanRoot: string; vfsPrefix: string } {
+  const scanRoot = join(workspaceRoot, 'packages/compiler/.preview-root')
+  mkdirSync(scanRoot, { recursive: true })
+  writeFileSync(
+    join(scanRoot, 'tsconfig.json'),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'ESNext',
+          moduleResolution: 'bundler',
+          jsx: 'react-jsx',
+          allowImportingTsExtensions: false,
+          isolatedModules: true,
+          strict: true,
+          skipLibCheck: true,
+          useDefineForClassFields: true
+        }
+      },
+      null,
+      2
+    )
+  )
+  return { scanRoot, vfsPrefix: `${scanRoot}/` }
+}
 
 /**
  * Resolve a path relative to an importer. Both are project-rooted (no leading

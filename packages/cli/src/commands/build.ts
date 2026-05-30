@@ -1,0 +1,85 @@
+import { resolve } from 'node:path'
+
+import { defineCommand } from 'citty'
+
+import { buildPreviewProject } from '@open-pencil/compiler/build'
+import type { BuildResult } from '@open-pencil/compiler/build'
+
+import { loadAndCompile, reportCodegenResult } from '#cli/codegen'
+import { printError } from '#cli/format'
+
+interface BuildArgs {
+  file?: string
+  out: string
+  'package-name'?: string
+  page?: string
+  base?: string
+  json?: boolean
+}
+
+export default defineCommand({
+  meta: {
+    description: 'Build a .pen document into a deployable static SPA bundle (Vite + React)'
+  },
+  args: {
+    file: {
+      type: 'positional',
+      description: 'Path to a .pen / .fig document',
+      required: true
+    },
+    out: {
+      type: 'string',
+      alias: 'o',
+      description: 'Output directory for the static bundle (default: ./dist)',
+      default: 'dist'
+    },
+    'package-name': {
+      type: 'string',
+      description: 'package.json name (default: sanitized from input file basename)',
+      required: false
+    },
+    page: {
+      type: 'string',
+      description:
+        'Restrict output to a single page by name. Default: all pages built (multi-page projects use react-router-dom — host with an SPA fallback).',
+      required: false
+    },
+    base: {
+      type: 'string',
+      description: 'Public base path for assets (default: /). Set e.g. /app/ for sub-path hosting.',
+      required: false
+    },
+    json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
+  },
+  async run({ args }) {
+    const { file, out, page, base } = args as BuildArgs
+    const outDir = resolve(out)
+
+    const { compiled, packageName } = await loadAndCompile({
+      file,
+      page,
+      packageName: (args as BuildArgs)['package-name'],
+      outDir,
+      json: args.json
+    })
+
+    let result: BuildResult
+    try {
+      result = await buildPreviewProject({ files: compiled.files, outDir, base })
+    } catch (e) {
+      // Surface the Vite/build failure rather than swallowing it (经验 C).
+      printError(e)
+      process.exit(1)
+    }
+
+    reportCodegenResult({
+      json: args.json,
+      outDir,
+      packageName,
+      files: result.files,
+      warnings: compiled.warnings,
+      verb: 'Built',
+      nextLine: `Done. Deploy ${outDir} to any static host (multi-page apps need an SPA fallback to index.html).`
+    })
+  }
+})

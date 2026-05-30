@@ -10,7 +10,7 @@
 // zero `npm install`. Unlike the dev-server (Vite `createServer` + HMR), this
 // runs Vite `build` once and writes a hashed static SPA bundle to a real dir.
 
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import process from 'node:process'
 
@@ -18,7 +18,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { build } from 'vite'
 
-import { inMemoryVFS, type PreviewFiles } from './vfs'
+import { inMemoryVFS, prepareVfsRoot, VITE_JSX_ESBUILD, type PreviewFiles } from './vfs'
 
 export interface BuildOptions {
   /** Compiled project files — `CompilerOutput.files` (emit with devMode:false
@@ -67,39 +67,11 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
   const workspaceRoot = opts.fsRoot ?? process.cwd()
   const base = opts.base ?? '/'
 
-  // Mirror dev-server: a quiet sub-directory is Vite's root so its dep
-  // resolution walks up to the workspace's hoisted node_modules, but its
-  // default html/dep scan finds nothing on disk (the VFS plugin supplies
-  // everything). The VFS prefix sits inside scanRoot so npm-package
-  // resolution from any virtual file reaches scanRoot's node_modules chain.
-  const scanRoot = join(workspaceRoot, 'packages/compiler/.preview-root')
-  mkdirSync(scanRoot, { recursive: true })
-  const vfsPrefix = `${scanRoot}/`
+  // Shared with the dev-server: a quiet workspace sub-dir as Vite's root (deps
+  // resolve up to the hoisted node_modules; the VFS plugin supplies all source)
+  // plus the planted JSX-mode tsconfig.
+  const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot)
   const vfs = inMemoryVFS({ files }, vfsPrefix)
-
-  // Plant a tsconfig.json that wins the upward search Vite/esbuild does for
-  // JSX mode. The workspace root tsconfig sets `jsx: "preserve"` (for Vue);
-  // if that wins, esbuild's TS strip rejects the React TSX as invalid JS.
-  writeFileSync(
-    join(scanRoot, 'tsconfig.json'),
-    JSON.stringify(
-      {
-        compilerOptions: {
-          target: 'ES2022',
-          module: 'ESNext',
-          moduleResolution: 'bundler',
-          jsx: 'react-jsx',
-          allowImportingTsExtensions: false,
-          isolatedModules: true,
-          strict: true,
-          skipLibCheck: true,
-          useDefineForClassFields: true
-        }
-      },
-      null,
-      2
-    )
-  )
 
   await build({
     root: scanRoot,
@@ -110,19 +82,7 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
     // the CLI owns the human-facing output.
     logLevel: 'warn',
     plugins: [vfs, react(), tailwindcss()],
-    // Same hard JSX override as the dev-server — see scanRoot tsconfig note.
-    esbuild: {
-      jsx: 'automatic',
-      jsxImportSource: 'react',
-      tsconfigRaw: {
-        compilerOptions: {
-          jsx: 'react-jsx',
-          jsxImportSource: 'react',
-          target: 'esnext',
-          useDefineForClassFields: true
-        }
-      }
-    },
+    esbuild: VITE_JSX_ESBUILD,
     build: {
       outDir,
       emptyOutDir: true,

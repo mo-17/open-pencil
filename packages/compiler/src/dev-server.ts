@@ -8,16 +8,14 @@
 //   - CLI/sidecar: `bun packages/compiler/src/dev-server.ts [--port N]`
 //     stdin reads newline-delimited JSON commands; stdout emits NDJSON events.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
-import { join } from 'node:path'
 import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { createServer, type Update, type ViteDevServer } from 'vite'
 
-import { inMemoryVFS, type PreviewFiles } from './vfs'
+import { inMemoryVFS, prepareVfsRoot, VITE_JSX_ESBUILD, type PreviewFiles } from './vfs'
 
 export type { PreviewFiles }
 
@@ -97,38 +95,11 @@ export async function createPreviewServer(
   // scan and dep discovery don't crawl the editor's source tree. Node
   // module resolution still walks up from this dir to the workspace's
   // hoisted `node_modules`, so react / tailwind resolve cleanly.
-  const scanRoot = join(workspaceRoot, 'packages/compiler/.preview-root')
-  mkdirSync(scanRoot, { recursive: true })
-  // VFS prefix sits *inside* scanRoot so that npm-package resolution from
-  // any virtual file walks up to scanRoot's `node_modules` chain (which
-  // ultimately reaches the workspace root). Trailing slash + leading slash
-  // matter — they make the prefix look like an absolute directory path.
-  const vfsPrefix = `${scanRoot}/`
+  // Shared with the static build: scanRoot for dep resolution + the planted
+  // JSX-mode tsconfig (the VFS prefix sits inside scanRoot so npm resolution
+  // walks up to the workspace's hoisted node_modules).
+  const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot)
   const vfs = inMemoryVFS(state, vfsPrefix)
-  // Plant a tsconfig.json that wins the upward search Vite/esbuild does for
-  // JSX mode. The workspace root tsconfig sets `jsx: "preserve"` (for Vue);
-  // if we let that win, esbuild's import-analysis rejects the React TSX as
-  // invalid JS. This local tsconfig forces the React transform instead.
-  writeFileSync(
-    join(scanRoot, 'tsconfig.json'),
-    JSON.stringify(
-      {
-        compilerOptions: {
-          target: 'ES2022',
-          module: 'ESNext',
-          moduleResolution: 'bundler',
-          jsx: 'react-jsx',
-          allowImportingTsExtensions: false,
-          isolatedModules: true,
-          strict: true,
-          skipLibCheck: true,
-          useDefineForClassFields: true
-        }
-      },
-      null,
-      2
-    )
-  )
   // Pre-pick a free port instead of letting Vite scan 5173 → 5174 → … when
   // its defaults clash with zombie preview servers from prior sessions.
   const chosenPort = opts.port && opts.port > 0 ? opts.port : await pickFreePort()
@@ -151,23 +122,9 @@ export async function createPreviewServer(
       entries: [],
       include: ['react', 'react-dom', 'react-dom/client']
     },
-    // Vite's import-analysis stage runs its built-in TS-strip transformer
-    // before plugin-react's babel transform gets a chance, and it reads
-    // tsconfig from disk. The workspace root tsconfig sets `jsx: "preserve"`
-    // (for Vue) which makes esbuild reject the React TSX as invalid JS.
-    // Hard-override `jsx` here so the in-memory tsx parses cleanly.
-    esbuild: {
-      jsx: 'automatic',
-      jsxImportSource: 'react',
-      tsconfigRaw: {
-        compilerOptions: {
-          jsx: 'react-jsx',
-          jsxImportSource: 'react',
-          target: 'esnext',
-          useDefineForClassFields: true
-        }
-      }
-    },
+    // Hard-override JSX so the in-memory tsx parses cleanly (shared with the
+    // static build — see VITE_JSX_ESBUILD).
+    esbuild: VITE_JSX_ESBUILD,
     plugins: [vfs, react(), tailwindcss()]
   })
 
