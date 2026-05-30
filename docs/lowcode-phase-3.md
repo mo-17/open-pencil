@@ -3634,7 +3634,20 @@ export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkCo
 | 自建端点真连不验单端 | 低 | 经验 K:纯函数单端可验;真传播留双机 ACK(同 §4.x)|
 | 用户以为未配也走自建(Q3)| 低 | 决 a② + Q3 文案:未配 = 公共回落 |
 
-#### 4.3.8 Post-mortem(设计阶段 — stub,close 时补)
+#### 4.3.8 Post-mortem(进行中 — 代码完成,待双机 ACK)
+
+**§4.3 代码完成 2026-05-31**(单端检查全绿:`bun run check` 0 error / 0 clone / locale 同步 / Steiger;`network-config.test.ts` 7 纯函数测;collab 30 测零回归)。**两岔口 AskUserQuestion 锁 = MQTT relay 可配 / 保留公共回落**。1 step 收尾(设计 `<前一 commit>` → feat `afc16ea` → close 本 commit)。
+
+**Surprise / 经验印证:**
+- **§5.3 模式直接复用(经验 E/复用)**:`import.meta.env.VITE_* ?? 公共默认` 与 §5.3 Supabase 注入同构 —— 同一会话内第二次用此模式,零新设计风险;probe 不需(§5.3 已坐实 import.meta.env 行为,且本刀值在编辑器侧 Vite,非 emit 产物)。
+- **类型安全(经验 决 f)**:`import.meta.env.VITE_COLLAB_*` 默认 `any`(vite/client `[key:string]:any`)→ augment `ImportMetaEnv`(`src/env.d.ts`)给 5 键 `string|undefined`,避免 no-unsafe lint;纯函数取 `CollabNetworkEnv` 参数(非直读 import.meta.env)→ 单端可测。
+- **正交于 §4.2(次默⑧)**:信令端点(broker/TURN/appId)与房间口令(password 加密 SDP)是两条独立轴,本刀只动前者,§4.2 锁不变。
+- **transport 不动(决 g)**:保留 `trystero/mqtt`,只换 relayUrls/iceServers/appId → 零 transport 回归;Supabase 策略(换 transport)明确留 follow-up。
+
+**单端可验 / 双机 ACK(经验 K boundary):**
+- **单端可验(已绿)**:`buildCollabNetworkConfig` 正负例(空→公共默认 4 iceServers + 无 relayUrls + 'openpencil';relayUrls 逗号 trim/去空;TURN 替换 + STUN 留 + creds;appId 覆盖;脏值回落);room.ts 接入编译通过;collab 全套零回归。
+- **双机 ACK(留)**:设 `VITE_COLLAB_RELAY_URLS` 指向自建 mosquitto/emqx + `VITE_COLLAB_TURN_URL` 指 coturn → 两端经自建端点连通协作(不碰公共)。单进程/无自建 broker 验不了真信令传播(同 §4.1/§4.2/§4.4/§4.6 边界)。
+- **诚实边界**:① 是 editor build-time env(运维设在跑/构建编辑器处,非 per-doc);② 未配 = 公共回落(决 a②,非强制自建);③ relayUrls 须 wss MQTT broker(transport 仍 mqtt);④ 真自建可靠性/隐私收益靠运维跑对端点 + 双机验。
 
 #### §4.3 follow-up(派生)
 
