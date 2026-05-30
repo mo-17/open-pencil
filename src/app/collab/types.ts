@@ -1,11 +1,35 @@
 import type { Color } from '@open-pencil/core/types'
 
+/** Phase 3 §4.4 — the lowcode property panel a peer is actively editing.
+ *  One per Lowcode/*.vue panel. Drives "who's editing what" presence. */
+export type PresenceEditingKind =
+  | 'textBinding'
+  | 'valueBinding'
+  | 'interactiveProps'
+  | 'state'
+  | 'events'
+  | 'list'
+  | 'renderCondition'
+  | 'docState'
+  | 'supabaseConfig'
+
+/** Phase 3 §4.4 — broadcast over awareness as the `editing` field. Carries only
+ *  structural identifiers (which panel + which node); never field values. The
+ *  human label is derived on the render side from the local graph. */
+export interface PresenceEditingTarget {
+  kind: PresenceEditingKind
+  /** Node-scoped panels carry the selected node id; document-level panels omit. */
+  nodeId?: string
+}
+
 export interface RemotePeer {
   clientId: number
   name: string
   color: Color
   cursor?: { x: number; y: number; pageId: string }
   selection?: string[]
+  /** Phase 3 §4.4 — the lowcode panel this peer is editing, if any. */
+  editing?: PresenceEditingTarget
 }
 
 export interface CollabState {

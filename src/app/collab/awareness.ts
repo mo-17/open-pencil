@@ -9,6 +9,8 @@ import { PEER_COLORS, ROOM_ID_CHARS, ROOM_ID_LENGTH, ROOM_KEY_LENGTH } from '@/c
 
 import type { RemotePeer } from './types'
 
+type PeerEditing = RemotePeer['editing']
+
 type Awareness = awarenessProtocol.Awareness
 
 type CursorState = {
@@ -33,7 +35,8 @@ export function buildRemotePeers(
       name: user.name || 'Anonymous',
       color: user.color || PEER_COLORS[clientId % PEER_COLORS.length],
       cursor: peerState.cursor as RemotePeer['cursor'],
-      selection: peerState.selection as string[]
+      selection: peerState.selection as string[],
+      editing: peerState.editing as PeerEditing
     })
   })
 

@@ -8,13 +8,19 @@ import {
   createCollabRuntime,
   createInitialCollabState
 } from '@/app/collab/session'
-import { DEFAULT_COLLAB_STATE, type CollabState, type RemotePeer } from '@/app/collab/types'
+import {
+  DEFAULT_COLLAB_STATE,
+  type CollabState,
+  type PresenceEditingKind,
+  type PresenceEditingTarget,
+  type RemotePeer
+} from '@/app/collab/types'
 import { createYjsGraphSync } from '@/app/collab/yjs-sync'
 import type { EditorStore } from '@/app/editor/active-store'
 
 export { COLLAB_KEY, useCollabInjected } from '@/app/collab/context'
 export { DEFAULT_COLLAB_STATE }
-export type { CollabState, RemotePeer }
+export type { CollabState, PresenceEditingKind, PresenceEditingTarget, RemotePeer }
 
 export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
   const getStore = () =>
@@ -29,8 +35,14 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     getActiveStore,
     () => runtime.awareness
   )
-  const { broadcastAwareness, updateCursor, updateSelection, updatePeersList, setLocalName } =
-    createLocalAwarenessActions({
+  const {
+    broadcastAwareness,
+    updateCursor,
+    updateSelection,
+    updateEditingTarget,
+    updatePeersList,
+    setLocalName
+  } = createLocalAwarenessActions({
       state,
       storedName,
       getStore: getActiveStore,
@@ -79,6 +91,7 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     shareCurrentDoc,
     updateCursor,
     updateSelection,
+    updateEditingTarget,
     setLocalName,
     followPeer,
     tickFollow
