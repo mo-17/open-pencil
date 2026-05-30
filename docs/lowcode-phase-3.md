@@ -3651,7 +3651,28 @@ export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkCo
 
 #### §4.3 follow-up(派生)
 
-- Trystero **Supabase 信令策略**切换(无公共 broker,复用 Supabase Realtime);自建模式可见指示(roster/状态栏「信令:自建」);relayRedundancy 可配;TURN 多组;editor 设置 UI 暴露(目前仅 build-time env);与 §5 部署联动(部署产物的协作?——注:emit 产物**不含**编辑器协作,此刀纯 editor-side)。
+- ~~Trystero **Supabase 信令策略**~~(✅ 起,见 §4.3-S);自建模式可见指示(roster/状态栏「信令:自建」);relayRedundancy 可配;TURN 多组;editor 设置 UI 暴露(目前仅 build-time env);与 §5 部署联动(部署产物的协作?——注:emit 产物**不含**编辑器协作,此刀纯 editor-side)。
+
+### §4.3-S Trystero Supabase 信令策略(§4.3 follow-up,设计 2026-05-31)
+
+无公共 broker 选项:信令改走 **Supabase Realtime**(`trystero/supabase`,复用 §2 已在的 `@supabase/supabase-js`),而非公共 MQTT。
+
+#### 勘察 + 决定(经验 C/E)
+
+- `trystero/supabase` 自带类型:`joinRoom(config: BaseRoomConfig & {supabaseKey}, roomId)` —— **2 参、无 `onJoinError`**(§4.2 错误口令 toast 是 mqtt-only;**口令仍加密 SDP**,strategy-agnostic 层 `genKey`,错口令端静默不连)。`init: createClient(config.appId=SupabaseURL, config.supabaseKey)`。
+- **加载岔口 AskUserQuestion 锁 = 静态 import 两策略**(`trystero/mqtt` + `trystero/supabase` 都 top-import,按 `VITE_COLLAB_STRATEGY` 选)→ connectCollabRoom 保持同步、零 call-chain 改;代价 = 编辑器 bundle 多 `@supabase/supabase-js`(与 mqtt 的 `mqtt` 库对称)。动态 import(code-split)需整条 connect 链改 async,否决。
+- **策略 = `VITE_COLLAB_STRATEGY=mqtt|supabase`**(默认 mqtt);supabase 走 **editor 级** `VITE_COLLAB_SUPABASE_URL`+`_KEY`(区别于 §5.3 emit 产物的 `VITE_SUPABASE_*` 与文档的 `lowcodeSupabaseConfig`)。
+- **不全则回落 mqtt**:`strategy=supabase` 但 URL/KEY 缺 → 有效 strategy = mqtt(协作仍可用,transport 非 auth);`buildCollabNetworkConfig` 纯函数返回**有效** strategy,room.ts 检测 intent≠effective 时 `console.warn`(no-swallow,经验 C)。
+- iceServers(STUN+TURN,§4.3)两策略共用(WebRTC 数据面);relayUrls 仅 mqtt。**transport 切换不动 §4.2 口令/§4.3 TURN/scene-graph/kiwi/emit**。
+
+#### 改动 + 验证
+
+- 🔁 `network-config.ts`:`CollabStrategy='mqtt'|'supabase'`;env += `VITE_COLLAB_STRATEGY`/`_SUPABASE_URL`/`_SUPABASE_KEY`;config += `strategy` + `supabaseKey?`;supabase 分支(URL+KEY 全 → strategy='supabase', appId=URL)。
+- 🔁 `room.ts`:静态 import 两 joinRoom;按 `network.strategy` 分支(supabase 2 参无 onAuthError / mqtt 3 参);intent≠effective warn。
+- 🔁 `src/env.d.ts`:+3 `VITE_COLLAB_*` 键。
+- ➕ 单测:`network-config.test.ts` += supabase 路径(全配→strategy=supabase+appId=URL+supabaseKey;缺 KEY→回落 mqtt;strategy 大小写;默认 mqtt + strategy 字段)。
+- **单端可验**:纯函数策略解析;room.ts 编译通过 + collab 零回归。**双机 ACK(留)**:设 supabase env → 两端经 Supabase Realtime 连通(无公共 broker)。经验 K:真 Realtime 传播单进程验不了。
+- **1 step**;commit 前缀 `feat(collab): §4.3-S — Trystero Supabase signaling strategy`。
 
 ---
 
