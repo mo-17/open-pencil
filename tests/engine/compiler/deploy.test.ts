@@ -200,3 +200,133 @@ describe('deployFiles — Netlify (Phase 3 §5)', () => {
     expect(stages[stages.length - 1]).toBe('done')
   })
 })
+
+describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
+  test('uploads every file to /v2/files with x-vercel-digest + octet-stream raw bytes', async () => {
+    const calls = mockFetch((call) => {
+      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_1', url: 'app-x.vercel.app' })
+      return jsonResponse({})
+    })
+
+    await deployFiles(fixture(), { provider: 'vercel', token: 't', site: 'app' })
+
+    const uploads = calls.filter((c) => c.url.endsWith('/v2/files') && c.method === 'POST')
+    // 2 fixture files + injected vercel.json.
+    expect(uploads).toHaveLength(3)
+    const html = uploads.find((c) => c.headers['x-vercel-digest'] === HTML_SHA1)
+    expect(html).toBeDefined()
+    expect(html?.body).toBeInstanceOf(Uint8Array)
+    expect(html?.headers['Content-Type']).toBe('application/octet-stream')
+    expect(uploads.some((c) => c.headers['x-vercel-digest'] === CSS_SHA1)).toBe(true)
+  })
+
+  test('creates a deployment with a /-less files manifest incl. injected vercel.json', async () => {
+    let body: { name: string; files: { file: string; sha: string; size: number }[] } = { name: '', files: [] }
+    mockFetch((call) => {
+      if (call.url.endsWith('/v13/deployments')) {
+        body = JSON.parse(call.body as string) as typeof body
+        return jsonResponse({ id: 'dpl_2', url: 'app-y.vercel.app' })
+      }
+      return jsonResponse({})
+    })
+
+    await deployFiles(fixture(), { provider: 'vercel', token: 't', site: 'my-app' })
+
+    expect(body.name).toBe('my-app')
+    const index = body.files.find((f) => f.file === 'index.html')
+    expect(index?.sha).toBe(HTML_SHA1)
+    // Manifest paths carry no leading slash (unlike Netlify).
+    expect(body.files.every((f) => !f.file.startsWith('/'))).toBe(true)
+    // vercel.json SPA rewrite is injected when absent.
+    const vjson = body.files.find((f) => f.file === 'vercel.json')
+    expect(vjson).toBeDefined()
+    expect(vjson?.size).toBeGreaterThan(0)
+  })
+
+  test('does not overwrite a caller-provided vercel.json', async () => {
+    let body: { files: { file: string; sha: string }[] } = { files: [] }
+    mockFetch((call) => {
+      if (call.url.endsWith('/v13/deployments')) {
+        body = JSON.parse(call.body as string) as typeof body
+        return jsonResponse({ id: 'dpl_3', url: 'app-z.vercel.app' })
+      }
+      return jsonResponse({})
+    })
+
+    const files = fixture()
+    const custom = '{"rewrites":[{"source":"/api/(.*)","destination":"/api/$1"}]}\n'
+    files.set('vercel.json', custom)
+    const result = await deployFiles(files, { provider: 'vercel', token: 't', site: 'app' })
+
+    const vjson = body.files.find((f) => f.file === 'vercel.json')
+    expect(vjson?.sha).toBe(await sha1HexOf(custom))
+    // 2 fixture files + the caller's vercel.json — not double-counted.
+    expect(result.fileCount).toBe(3)
+  })
+
+  test('returns the deployment hostname as an https URL', async () => {
+    mockFetch((call) => {
+      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_4', url: 'app-q.vercel.app' })
+      return jsonResponse({})
+    })
+
+    const result = await deployFiles(fixture(), { provider: 'vercel', token: 't', site: 'app' })
+
+    expect(result.provider).toBe('vercel')
+    expect(result.deployId).toBe('dpl_4')
+    expect(result.url).toBe('https://app-q.vercel.app')
+  })
+
+  test('surfaces a 401 as a structured error mentioning the token', async () => {
+    mockFetch(() => new Response('Unauthorized', { status: 401 }))
+
+    await expect(deployFiles(fixture(), { provider: 'vercel', token: 'bad', site: 'app' })).rejects.toThrow(
+      /401.*token/i
+    )
+  })
+
+  test('rejects a missing token before any network call (names VERCEL_TOKEN)', async () => {
+    const calls = mockFetch(() => jsonResponse({}))
+    await expect(deployFiles(fixture(), { provider: 'vercel', token: '', site: 'app' })).rejects.toThrow(
+      /VERCEL_TOKEN/
+    )
+    expect(calls).toHaveLength(0)
+  })
+
+  test('emits the digest → upload → create → done progress sequence', async () => {
+    mockFetch((call) => {
+      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_5', url: 'app-p.vercel.app' })
+      return jsonResponse({})
+    })
+
+    const stages: DeployProgress['stage'][] = []
+    await deployFiles(
+      fixture(),
+      { provider: 'vercel', token: 't', site: 'app' },
+      { onProgress: (p) => stages.push(p.stage) }
+    )
+
+    expect(stages[0]).toBe('digest')
+    // Vercel is upload-then-create (Netlify is create-then-upload).
+    expect(stages.indexOf('upload')).toBeLessThan(stages.indexOf('create'))
+    expect(stages[stages.length - 1]).toBe('done')
+  })
+
+  test('hits only Vercel endpoints — never the Netlify API', async () => {
+    const calls = mockFetch((call) => {
+      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_6', url: 'app-w.vercel.app' })
+      return jsonResponse({})
+    })
+
+    await deployFiles(fixture(), { provider: 'vercel', token: 't', site: 'app' })
+
+    expect(calls.every((c) => c.url.startsWith('https://api.vercel.com'))).toBe(true)
+    expect(calls.some((c) => c.url.includes('netlify.com'))).toBe(false)
+  })
+})
+
+/** Mirror of deploy.ts sha1Hex — for asserting a caller-provided file's digest. */
+async function sha1HexOf(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text))
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
