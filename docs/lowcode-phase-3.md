@@ -2812,9 +2812,25 @@ export function docStateApplyLosesLocal(
 | 横幅 3 面板 clone | 低 | 共享 composable(经验 A) |
 | 用户误以为已自动合并(Q3) | 中 | 决 g 文案诚实「末次保存胜出」 |
 
-#### 4.5.8 Post-mortem(stub)
+#### 4.5.8 Post-mortem(进行中 — 代码完成,待 Tauri/双机 ACK)
 
-_(close 时补:深度 AskUserQuestion 结果、Tauri/单端 ACK、surprise、经验印证/新增、§4 进度。)_
+**§4.5 代码完成 2026-05-30**(单端检查全绿:`bun run check` 0 error / 0 clone / 8 locale 同步;`conflict.test.ts` 7 纯函数 + 1 apply-path 集成测试 + collab 全套 23 测;零回归)。**深度岔口 AskUserQuestion 锁 = γ 冲突浮现**(保留 LWW、不自动合并、不碰 base 编码;真逐项 CRDT α 留后续刀)。**关键:bug 由 two-doc probe 实测坐实**(并发加不同 state 项 → 整块 LWW、一方静默丢;经验 C/K)——不是基于推断。
+
+#### Commit 链(设计 + 2 step;close 待 ACK)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `860d9fb` | §4.5 全文(含 probe 发现)+ 深度 α/β/γ AskUserQuestion 锁 = γ |
+| step 1 | `beee2ec` | `docStateApplyLosesLocal`(本地⊄远端纯函数)+ apply 路径接入(conflictHandler 经 createYjsGraphSync→useCollab→EditorView 透传)+ toast + 纯函数单测 + two-doc apply-path 集成测试 |
+| step 2 | `0519e5c` | `usePresenceConflictBanner(kind)` 共享 composable + 3 文档级面板 amber 横幅(顺带落地 §4.4 deferred 的内联 β)+ banner/target i18n × 8 |
+| close | _待 Tauri ACK_ | post-mortem 补 surprise/经验 + memory + §4 进度 |
+
+#### 单端可验 / 双机留验(经验 K boundary)
+
+- **单端可验(待 Tauri ACK)**:`docStateApplyLosesLocal` 正负例(纯函数);apply-path 集成测试断言 handler 触发;横幅喂假 remotePeer.editing 渲染。
+- **双机留验**:真两端并发改同一 docState → 被动 toast「文档状态被协作者改动」(收到方丢失时);两端同 kind 编辑 → 主动横幅。单进程验不了真 WebRTC 传播(同 §4.1/§4.2/§4.4)。
+- **诚实边界(决 g Q3)**:γ **不防丢失、不合并**,只让丢失可见 + 编辑前预警。文案明确「末次保存胜出」。真零丢失要 α(嵌套 Y.Map 逐项 CRDT)—— 已记为后续刀。
+- **Tauri 留意点**:被动 toast 仅 `state`/`docState` 两数组(`supabaseConfig` 单对象无 entry 粒度 → 仅主动横幅,决 d);横幅依赖 §4.4 presence,需 §4.4 也在场(已 code complete)。
 
 ### 4.4 lowcode-aware presence(协作在编什么,设计 2026-05-30)
 
