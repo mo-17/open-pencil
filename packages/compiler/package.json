@@ -48,6 +48,11 @@
       "types": "./src/build.ts",
       "bun": "./src/build.ts",
       "default": "./dist/build.js"
+    },
+    "./deploy": {
+      "types": "./src/deploy.ts",
+      "bun": "./src/deploy.ts",
+      "default": "./dist/deploy.js"
     }
   },
   "files": [
