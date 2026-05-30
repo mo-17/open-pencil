@@ -3415,7 +3415,29 @@ export async function deployFiles(
 | 多页刷新 404(无 fallback)| 中 | 决 e:deploy 注入 `_redirects`;deploy ACK 验刷新 |
 | 上传慢测/网络进 CI | 低 | 单测全 mock fetch;无真网络;真上传仅 deploy ACK 手动 |
 
-#### Post-mortem(设计阶段 — stub,close 时补)
+#### Post-mortem(进行中 — 代码完成,待 deploy/Tauri ACK)
+
+**托管集成代码完成 2026-05-30**(单端检查全绿:`bun run check` 0 error / **0 clone** / locale 同步 / Steiger 通过;`deploy.test.ts` 8 mock-fetch 测;compiler 409 测零回归)。**三岔口 AskUserQuestion 锁 = Netlify / 直连 HTTP API / CLI + editor UI 都做**。
+
+**Commit 链(设计 + 3 step + close):**
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `c39c42b` | §5 托管全文 + 三岔口锁 |
+| step 4 | `692bdf3` | `deploy.ts`:Netlify 摘要上传(SHA1 清单→`required`→PUT 缺失)+ `_redirects` 注入 + 建站回落 + onProgress;`./deploy` export;8 mock-fetch 单测 |
+| step 5 | `1ad2cd4` | CLI `deploy` 命令(`loadAndCompile`→`buildPreviewProject`→读 dist→`deployFiles`);`--token`/env/`--site`/`--json`;临时 dir `finally` 清 |
+| step 6 | `7fb5b2a` | editor 一键部署(`DeployControls.vue` + `use-deploy.ts` spawn 同一 CLI;token 经 spawn env;`getDocumentPath()` 暴露)|
+| close | _本 commit_ | post-mortem + CHANGELOG |
+
+**Surprise / 经验印证:**
+- **单一 deploy 管线落地(经验 A 升级)**:本欲 editor 侧另写 build+upload,但 build 是 bun-only(vite)→ 浏览器跑不了。改为 **editor spawn 同一个 `open-pencil deploy` CLI**(与 preview sidecar 同 spawn 模式)→ 一条 deploy 实现、零重复、editor 仅 token 弹窗 + spawn + 结果。**Tauri 复用坐实:`shell:allow-spawn` 的 `lowcode-preview`(`cmd:bun, args:true`)可直接跑 CLI,零新 capability。**
+- **complexity 阈值(本地内修)**:`deployFiles` 初版 cyclomatic 23>20 → 抽 `digestFiles`/`resolveSite`/`createDeploy`/`uploadRequired` 四 phase helper;单成员 `provider` union 守卫触发 `no-unnecessary-condition` → 移除(多 provider follow-up 再 dispatch)。同 §5.1 经验:每 step 前跑全 `check`(本 step 一次性照出,未漏到下一 step)。
+- **i18n 对齐既有(经验 E)**:设计写「+ i18n」,但静读 PreviewPane 发现**整个 preview pane 用硬编码英文、无 i18n**;deploy UI 随之用 plain 英文(match 兄弟代码),省掉 8-locale churn —— 代码现实覆盖设计假设(同 §5.1「勘察先于推断」)。
+- **安全:token 不落盘/不入 arg(经验 新-3 同源)**:token 仅 component 内存 + spawn env(非 `--token` arg,避免 `ps`/日志泄露),CLI 侧也不打印。
+
+**单端可验 / ACK 留验(经验 K boundary):**
+- **单端可验(已绿)**:`deploy.test.ts` mock-fetch 全流程(SHA1/清单/required-PUT/`_redirects`/401/缺 token/进度);CLI `deploy` 端到端真跑(build→读 dist→Netlify API,bogus token→结构化 401,exit 1);no-token 路径报错指引;`bun run check` 0 error/clone。
+- **Deploy ACK(留)**:真 Netlify token → `open-pencil deploy <fixture>` → live URL,app 跑、Supabase 可用、多页刷新不 404(`_redirects` 生效);**editor 一键部署按钮(Tauri ACK)**。这步同时是 §5.1 + §4.x 双机的真部署验证场。
+- **诚实边界**:① Netlify 真实 API 形状(`required` 语义/PUT 路径/`ssl_url` 字段)按文档,留 ACK 核;② editor 部署 Tauri-only(同 preview sidecar,需 bun + repo 在场)且需已保存 .fig 路径;③ Netlify 之外 provider + 并发上传 + token keychain 留 follow-up。
 
 #### §5 托管 follow-up(派生)
 
