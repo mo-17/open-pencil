@@ -13,6 +13,7 @@ import { bold, ok, printError } from '#cli/format'
 
 interface DeployArgs {
   file?: string
+  provider?: string
   token?: string
   site?: string
   page?: string
@@ -20,6 +21,14 @@ interface DeployArgs {
   'supabase-url'?: string
   'supabase-anon-key'?: string
   json?: boolean
+}
+
+const PROVIDERS = ['netlify', 'vercel'] as const
+type DeployProvider = (typeof PROVIDERS)[number]
+const TOKEN_ENV: Record<DeployProvider, string> = { netlify: 'NETLIFY_AUTH_TOKEN', vercel: 'VERCEL_TOKEN' }
+const TOKEN_HELP: Record<DeployProvider, string> = {
+  netlify: 'https://app.netlify.com/user/applications#personal-access-tokens',
+  vercel: 'https://vercel.com/account/tokens'
 }
 
 /** Read a built dist directory back into a path → bytes map for upload. */
@@ -31,14 +40,14 @@ function readDist(outDir: string, relPaths: readonly string[]): Map<string, Uint
   return files
 }
 
-function logProgress(p: DeployProgress): void {
-  if (p.stage === 'create') console.log('  Uploading to Netlify…')
+function logProgress(p: DeployProgress, provider: string): void {
+  if (p.stage === 'upload' && p.done === 0) console.log(`  Uploading to ${provider}…`)
   else if (p.stage === 'done') console.log('  Finalizing…')
 }
 
 export default defineCommand({
   meta: {
-    description: 'Build a .pen document and deploy it to Netlify (static SPA hosting)'
+    description: 'Build a .pen document and deploy it to a static host (Netlify or Vercel)'
   },
   args: {
     file: {
@@ -46,14 +55,19 @@ export default defineCommand({
       description: 'Path to a .pen / .fig document',
       required: true
     },
+    provider: {
+      type: 'string',
+      description: 'Hosting provider: netlify (default) or vercel.',
+      required: false
+    },
     token: {
       type: 'string',
-      description: 'Netlify personal access token (falls back to NETLIFY_AUTH_TOKEN)',
+      description: 'Provider access token (falls back to NETLIFY_AUTH_TOKEN / VERCEL_TOKEN).',
       required: false
     },
     site: {
       type: 'string',
-      description: 'Existing Netlify site id or *.netlify.app subdomain (default: create a new site)',
+      description: 'Existing target — Netlify site id/subdomain or Vercel project name (default: create new).',
       required: false
     },
     page: {
@@ -80,11 +94,17 @@ export default defineCommand({
   },
   async run({ args }) {
     const { file, page, base } = args as DeployArgs
-    const token = (args as DeployArgs).token ?? process.env.NETLIFY_AUTH_TOKEN
+    const providerArg = ((args as DeployArgs).provider ?? 'netlify').toLowerCase()
+    if (providerArg !== 'netlify' && providerArg !== 'vercel') {
+      printError(`Unknown --provider '${providerArg}'. Supported: ${PROVIDERS.join(', ')}.`)
+      process.exit(1)
+    }
+    const provider: DeployProvider = providerArg
+    const token = (args as DeployArgs).token ?? process.env[TOKEN_ENV[provider]]
     if (!token) {
       printError(
-        'A Netlify token is required. Pass --token <token> or set NETLIFY_AUTH_TOKEN.\n' +
-          'Create one at https://app.netlify.com/user/applications#personal-access-tokens'
+        `A ${provider} token is required. Pass --token <token> or set ${TOKEN_ENV[provider]}.\n` +
+          `Create one at ${TOKEN_HELP[provider]}`
       )
       process.exit(1)
     }
@@ -111,8 +131,8 @@ export default defineCommand({
       try {
         result = await deployFiles(
           dist,
-          { provider: 'netlify', token, site: (args as DeployArgs).site },
-          { onProgress: args.json ? undefined : logProgress }
+          { provider, token, site: (args as DeployArgs).site },
+          { onProgress: args.json ? undefined : (p) => logProgress(p, provider) }
         )
       } catch (e) {
         // Surface the deploy/API failure rather than swallowing it (经验 C).
