@@ -2728,6 +2728,62 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 
 注:base collab 还有 ~11 个非 lowcode object 字段同样在 Yjs 往返成字符串(§4.1.8 记录),属基座/上游议题,非 §4 lowcode slice。
 
+### 4.6 preview 协作(运行态共享会话,设计 2026-05-30)
+
+#### 4.6.1 现状与架构勘察(静读真源,经验 E)
+
+§4.1–§4.5 协作的全是**编辑态**(scene graph / lowcode 定义)。§4.6 是**运行态**:多人共享同一个正在跑的 lowcode preview 会话(候选池原话「运行态而非编辑态」)。
+
+**preview 架构(实读 `PreviewPane.vue` + `preview-bridge.ts` + `lowcode-state.ts`):**
+- preview = **每端各自的 `<iframe>`**,加载**本端 sidecar dev-server URL**(`http://localhost:PORT/`),iframe 里跑编译出的 React app。两端**不共享** iframe(各自 localhost)。
+- 编辑器 ↔ iframe 走 **postMessage 桥**(`preview-bridge.ts`,编译期注入 iframe),现有两类消息:`select`(覆盖高亮 / Alt-click 回程)+ `navigate`(页面同步,双向,`pushState` monkeypatch + `suppressOutbound` 破 echo)。源标记 `op-lowcode-editor`(出)/ `op-lowcode-preview`(入)。
+- **运行态 docState = iframe 里的 zustand vanilla store**(`_lowcode_state.ts`:`useDocState`/`setDocState`/`getDocStateSnapshot`,`createStore`)。`store.subscribe`/`store.setState` 是干净的 observe/apply 钩——**运行态同步技术上可行**。
+- 编辑态文档已由 §4.1 同步 → 两端编译出的 app **docState schema 相同** → 共享运行态值是自洽的。
+
+**缺口:** 运行态(docState 值、当前路由、表单输入)只活在各自 iframe 的内存里,协作时完全不共享。A 在 preview 里填表单/改运行 docState/导航,B 的 preview 毫无感知。
+
+#### 4.6.2 关键决定 —— **决定 a = 范围,是真岔口 → AskUserQuestion 锁**
+
+跨 **iframe runtime + 编译 emit + 新 collab 传输** 三层,体量与验证性差异巨大,且 emit 改动碰 React adapter(fork 可合并性,经验新-4)、iframe runtime 难单端验(经验 K boundary)。三选:
+
+| 方案 | 做法 | 体量 | 验证性 | 备注 |
+|---|---|---|---|---|
+| **A 预览在场/跟随** | 扩 §4.4 awareness 加「peer 当前 preview 路由」,preview header / roster 显示 + 「在预览里跟随」(本端 iframe 跟着导航)| 小 | 高(纯编辑器侧 + awareness,单端可验) | **但**:preview 路由 ↔ `currentPageId` 已双向同步,与 §4.4 page-presence **高度重叠**,价值偏薄 |
+| **B 运行态 docState 同步** ⭐推荐 | 共享 iframe 的 zustand docState 值:桥加 `docState` 消息(`store.subscribe`→出站 / 入站→`store.setState`+suppress)+ 编辑器经新 collab 通道中继到对端 iframe | 中-大 | 中(中继/传输纯逻辑 + 桥 emit 契约可单端;真跨 iframe 双端留双机)| **运行态协作的核心价值**;碰 `_lowcode_state.ts` + `preview-bridge.ts` emit(scoped,类 §4.1 扩 base collab);传输见决 c |
+| **C presenter 全镜像** | 一端 presenter 驱动,其余镜像路由+docState+表单输入+滚动(类屏幕共享,presenter 拓扑)| 大 | 低(几乎全靠双机) | 最重;输入/滚动镜像需更深 iframe 注入 |
+
+**推荐 B(运行态 docState 同步,对称)**:这是 §4.6 区别于 §4.4 的**实质价值**(A 太薄、与 §4.4 重叠;C 过重)。用户明确挑了「中-大」的 §4.6 → B 量级匹配。诚实边界:B 的 iframe-runtime 部分真双端验(经验 K),单端只能覆盖中继/传输逻辑 + 桥消息契约 snapshot;emit 改动 scoped 在 docState runtime + bridge(同 §4.1「lowcode-aware 扩 base collab」姿态,保持可合并)。**最终 A/B/C 由 AskUserQuestion 定**,下表 b–h 按 B 展开(选 A/C 改写)。
+
+| # | 决定(B 下) | 理由 |
+|---|---|---|
+| b | **桥加第 3 类消息 `docState`**:iframe→editor `{type:'docState', name, value}`(某 key 变);editor→iframe `{type:'docState', name, value}`(应用远端)| 沿现成 select/navigate 双向 + source-tag + suppressOutbound 破 echo 的成熟模式 |
+| c | **传输 = Trystero room action(临时广播),非 Yjs/非持久化**(**probe 坐实**:`makeAction<T extends DataPayload>('doc-state')`→`[send,get]`,payload `{name,value:JsonValue}` 合规,namespace 9B<12B 限;已在 room.ts 用 4 次同模式)| 运行态是**会话临时态**,不该进 .fig / IndexedDB / scene-graph;Trystero room action 临时 P2P 广播语义最贴。**Yjs Y.Map 会持久化运行值**(不合适)。docState 值类型全 JSON(string/number/boolean/array/object)→ JsonValue 兼容 |
+| d | **桥访问 zustand store**:`_lowcode_state.ts` 把 store 挂 `window.__opDocStore`(emit 增几行),桥读它 `subscribe`/`setState`;桥不直接 import 状态模块(保持桥通用)| 最小耦合;桥仍是通用模板,状态模块只多暴露一个 window 句柄 |
+| e | **suppressInbound 破 echo**:应用入站 `setDocState` 时置标志,阻止 `store.subscribe` 回播出站(镜像 navigate 的 suppressOutbound)| 否则 A→B→A 无限回播 |
+| f | **对称、per-key LWW**:任一端改某 docState key 都广播,后到覆盖该 key;无 presenter | 运行态值冲突可接受 LWW(同 §4.5 决,运行态比编辑态更短命);对称无角色管理负担 |
+| g | **仅连接态 + preview 就绪时启用**;未协作/无 preview = 零行为(运行态不广播)| 单机零噪;preview 关着不挂 subscribe |
+| h | **0 scene-graph / 0 .fig / 0 Yjs-ynodes 改动**;新增仅 bridge emit + `_lowcode_state` emit(几行)+ PreviewPane 中继 + room action wiring | 运行态是独立于编辑态文档的旁路通道 |
+
+**次默(8)**:① 远端应用 docState 不触发本端业务副作用循环(suppress);② docState key 名两端同(schema 由 §4.1 同步)→ 直接按 name 应用;③ 值用 structured-clone 安全的 JSON(zustand 值本就可序列化);④ 新 peer 加入时可选「快照拉取」(留 follow-up,首刀只同步增量变更);⑤ preview 重载(iframe reload)后桥重挂 subscribe,运行态从本地 initial 起(不强拉远端,除非 ④);⑥ room action 在断连/换房时解绑;⑦ 消息体限 `{name,value}` 结构,不含编辑态;⑧ navigate 运行态同步(peer 导航联动)可顺带纳入或留 A-scope,首刀聚焦 docState。
+
+#### 4.6.3 三问题反向核(经验 J,B 下)
+
+- **Q1 技术链**:iframe `store.subscribe` → 出站 postMessage `docState` → PreviewPane onMessage → Trystero `sendDocState` action → 对端 `getDocState` 回调 → 对端 PreviewPane postIframe → 对端桥 inbound → `setDocState`(suppress)。**新增一条独立旁路链**(不碰 ynodes/yjs-sync)。需 probe:Trystero `makeAction` 的 API 形状 + payload 限制(经验 K)。
+- **Q2 浮现**:运行态变化本身就是可见 UI(对端 preview 里值变了)。可选加「运行态协作中」指示(留次默)。关键 Q2 风险:**桥 echo / 副作用循环**(决 e suppress)。
+- **Q3 心智模型**:用户期望「共享同一个跑起来的 app」。LWW 运行值(决 f)= 末次胜出,符合「多人同操作一个会话」直觉;但要明确这是**运行态镜像、非编辑态**(改 docState 默认值要去编辑态面板,§4.5)。preview reload 后从 initial 起(次默⑤)需文案/行为不误导。
+
+#### 4.6.4–4.6.8(B 下,AskUserQuestion 锁定后细化)
+
+- **API**:`preview-bridge.ts` 加 `docState` inbound/outbound 类型;`_lowcode_state.ts` emit `window.__opDocStore = store`;PreviewPane `postIframe` 扩 `docState` + onMessage 分支;collab `use.ts` 加 `sendPreviewDocState`/`onPreviewDocState`(Trystero action 封装,room.ts)。
+- **改动**:`preview-bridge.ts`(桥)、`lowcode-state.ts`(emit window 句柄)、`PreviewPane.vue`(中继)、`room.ts`/`use.ts`(room action 通道)、可能 i18n(协作中指示)。**0 ynodes/scene-graph**。
+- **step**(~中-大,3-4 step):设计 → step1 桥 `docState` 消息 + `_lowcode_state` window 句柄 + 出/入站 + suppress(emit 契约 snapshot 测)→ step2 PreviewPane 中继 + Trystero room action 通道(`makeAction` probe 先行)→ step3 启用门控/指示 + close。
+- **风险**:Trystero action API/payload 形状(决 K-probe);桥 echo(决 e);iframe runtime 真双端验(K boundary);emit 改动 fork 可合并性(scoped,克制)。
+- **post-mortem**:close 时补。
+
+#### 4.6.x Post-mortem(stub)
+
+_(scope AskUserQuestion 结果 + Tauri/双机 ACK + surprise + 经验 + §4 进度。)_
+
 ### 4.5 docState 协作冲突语义(设计 2026-05-30)
 
 #### 4.5.1 现状与问题(已实测坐实 — 经验 C/K)
