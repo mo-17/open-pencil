@@ -3676,6 +3676,99 @@ export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkCo
 
 **代码完成 2026-05-31**(设计 → feat `e00fd0d` → close):`bun run check` 0 error / 0 clone;`network-config.test.ts` 11 测(+5 supabase 路径:全配→supabase / 缺 key→回落 mqtt / 大小写 / 无 strategy 默认 mqtt);collab 34 测零回归。静态 import 两策略坐实(编辑器 bundle 进 @supabase,connectCollabRoom 仍同步)。**双机 ACK 留**:设 `VITE_COLLAB_STRATEGY=supabase`+URL/KEY → 两端经 Supabase Realtime 连通(无公共 broker)——单进程验不了真 Realtime 传播(经验 K,同 §4.3)。
 
+### §5 第四刀 — 多 provider 部署(Vercel,设计 2026-05-31)
+
+接 §5 托管 follow-up「多 provider(CF Pages / Vercel)」。§5.2 给了 Netlify 单一部署管线,`deploy.ts` 注释 + follow-up 都预留了 per-provider dispatch。本刀把 **Vercel** 接上(CF Pages 因 JWT+multipart+预存 project 流程重、待验面大,留 follow-up)。**真岔口 AskUserQuestion 锁 2026-05-31 = 仅 Vercel / CLI + editor 都做。**
+
+#### §5.4.1 现状勘察(经验 C/E,静读真源 + recon)
+
+- `deployFiles(files, target, {onProgress})`(`packages/compiler/src/deploy.ts`)现 Netlify-only:`DeployTarget.provider` 单成员 union(§5.2 因 `no-unnecessary-condition` 移除了 provider 守卫);流程 = `digestFiles`(SHA1 hex + `/`-前缀 manifest + `_redirects` 注入)→ `resolveSite`(缺 `--site` 则 `POST /sites` 建站)→ `createDeploy`(`POST /sites/{id}/deploys` 带 `{files:{"/p":sha}}` → 拿 `required` 缺失摘要集)→ `uploadRequired`(对 required∋ 的文件 `PUT /deploys/{id}/files{path}` 原始字节)。
+- 浏览器安全(决 §5.2 c):仅 `fetch` + Web Crypto `crypto.subtle.digest('SHA-1')`,无 vite/node-only import。`sha1Hex`/`encodeFilePath`/`netlifyFetch`/`pickUrl` 私有 helper。
+- CLI `deploy`(`packages/cli/src/commands/deploy.ts`):`--token`(回落 `NETLIFY_AUTH_TOKEN` env)/`--site`/`--page`/`--base`/`--supabase-*`/`--json`;`logProgress` 现硬编码「Uploading to Netlify…」。
+- editor `use-deploy.ts` + `DeployControls.vue`:spawn 同一 `open-pencil deploy <file> --json [--site]`(经验 A 单管线),token 经 `NETLIFY_AUTH_TOKEN` spawn env(非 arg,不落盘);DeployControls plain 英文(无 i18n,经验 E)、token + site 两输入。
+- **Vercel REST 形状(recon 确认,留 deploy ACK 核,经验 K)**:① 上传 = 对每文件 `POST https://api.vercel.com/v2/files`,headers `{Authorization: Bearer, x-vercel-digest:<sha1>, Content-Type: application/octet-stream}`,body = 原始字节(按摘要**幂等去重**,已存在秒回);② 建部署 = `POST https://api.vercel.com/v13/deployments`(可选 `?teamId=`),JSON `{name, files:[{file:"index.html", sha, size}], projectSettings:{framework:null}, target:"production"}` → 返回 `{id, url, readyState, alias?}`,`url` 是**无 scheme 的 hostname** → 公开 URL = `https://${url}`;③ project 不存在时 deploy 自动建(`name` 字段)→ 首次零预备,契合决 §5.2 g;④ SPA 回落 = `vercel.json` 含 `{"rewrites":[{"source":"/(.*)","destination":"/index.html"}]}`(等价 Netlify `_redirects` 的 `/* /index.html 200`)。**结构 = upload-then-create**(Netlify 是 create-then-upload-required),摘要计算共享、清单/端点 per-provider。
+
+#### §5.4.2 关键决定(8 主 + 次默)
+
+**决定 a = 真岔口,AskUserQuestion 锁 2026-05-31**:① 本刀 provider = **仅 Vercel**(干净契合 fetch+SHA1,自动建 project,可全 mock 单测;CF Pages 留 follow-up);② 暴露面 = **CLI `--provider` + editor 选择器都做**(镜像 §5.2 决 a③)。
+
+| # | 决定 | 理由 |
+|---|---|---|
+| b | **per-provider dispatch**:`DeployTarget.provider: 'netlify' \| 'vercel'`;`deployFiles` 顶层按 `provider` 分派到内部 `deployNetlify`/`deployVercel`;现有 Netlify 流程整体下沉为 `deployNetlify`,**行为零变**(Netlify 8 测须全绿) | `deploy.ts` 注释 + follow-up 早预留;dispatch 是最小侵入扩展 |
+| c | **抽中性共享层防 jscpd**:`sha1Hex`(已共享)+ 新 `digestFiles` 返回**中性** `Array<{rel, bytes, sha}>`(`rel` 无前导斜杠)+ 泛化 `apiFetch(url,{method,token,jsonBody?,rawBody?,extraHeaders?})`(bearer + 结构化 401/网络错误,no-swallow)。两 provider 函数只放各自端点/清单形态 | 两 provider digest/upload/create 结构相似 → 不抽必触发 clone(§5.1/§5.2 教训:每 step 前跑全 `check`,jscpd 只在全 check 跑,经验 A) |
+| d | **SPA 回落 per-provider 注入**(决 §5.2 e 边界延续):Netlify 注 `_redirects`(`/* /index.html 200`)、Vercel 注 `vercel.json`(rewrites);各自在 provider 函数内对 payload 副本注入,**已存在则不覆盖**(次默④);**不进 build**(build 保持 provider-agnostic,决 §5.1 h) | provider-specific 配置归 provider 路径 |
+| e | **`provider` 选择**:CLI 加 `--provider <netlify\|vercel>`(**默认 `netlify`,向后兼容**);editor DeployControls 加 `<select>` provider(无 i18n,plain 英文 match 兄弟代码,经验 E) | 默认不变 = 现有命令/按钮零行为变 |
+| f | **token 来源 per-provider env 回落**:`--token` 通用(flag 优先);env 回落 Netlify=`NETLIFY_AUTH_TOKEN`、Vercel=`VERCEL_TOKEN`;token 永不落盘/不进 arg/不打印(决 §5.2 f + 经验新-3);editor 经对应 env 名 spawn 透传 | 沿 §5.2 安全语义;Vercel CLI 惯例 env 名 |
+| g | **`--site` 复用为通用「目标标识」**:Netlify=site id/subdomain、Vercel=project name;help 文案说明 per-provider 含义(不新增 flag,最小改动);缺省两 provider 皆「自动建」 | 语义统一一个旋钮,UI 仅 label 随 provider 变 |
+| h | **0 scene-graph / kiwi / emit-内容 / build 改动**;新增仅 `deploy.ts`(dispatch + Vercel)+ CLI `--provider`/env/文案 + editor 选择器 + 单测 | 同 §5.1/§5.2:聚焦「dist → 托管」段,fork 可合并(经验新-4) |
+
+**次默(8)**:① Vercel 失败(401/网络/必填缺)结构化抛、CLI 非零退出 + 信息,不静吞(经验 C);② `--json` 输出不变 `{provider, url, deployId, fileCount}`(Vercel `deployId`=deployment id,`fileCount`=清单文件数含注入的 `vercel.json`);③ `onProgress` 复用 `stage:'digest'|'create'|'upload'|'done'`,Vercel 自然序 digest→upload→create→done(stage 名复用,顺序略不同,进度提示非契约);④ SPA 配置文件已存在(用户自带)则不覆盖;⑤ Vercel 上传**串行 POST**(首刀简单,并发化留 follow-up,同 Netlify PUT);⑥ editor 部署需已保存文档路径(脏/未存先走保存流,同 §5.2 次默⑥);⑦ 仅上传 dist 静态文件,不传源码/node_modules;⑧ token 优先级 flag > env,皆无 → 明确报错指引 provider 对应 env 名(不静默)。
+
+#### §5.4.3 三问题反向核(经验 J)
+
+- **Q1 技术链**:`deployFiles` → 按 `target.provider` 分派。Vercel 链 = 注 `vercel.json` → `digestFiles`(中性 entries,共享)→ 对每 entry `POST /v2/files`(`x-vercel-digest`,`apiFetch` rawBody,共享 wrapper)→ `POST /v13/deployments`(`files:[{file:rel,sha,size}]`)→ `url`→`https://${url}`。CLI 链不变(`loadAndCompile`→`buildPreviewProject`→读 dist→`deployFiles`),仅多传 `provider` + provider-aware token env。editor 链 = spawn `open-pencil deploy <file> --provider <p> --json [--site]`,token 经对应 env。**复用 §5.1 build + §5.2 单管线/spawn 模式 + 共享 digest/fetch**,无新链路类型。Vercel 真实 API 形状按文档,留 deploy ACK 核(经验 K)。
+- **Q2 浮现**:CLI 打印 `Uploading to ${provider}…` + 最终 URL + `--json`;editor provider `<select>` + token/target label 随 provider 变 + 进度/完成链接/结构化错误(同 §5.2)。失败结构化浮现(次默①⑧)。
+- **Q3 心智模型**:用户期望「选 provider + token → 公开 URL」。须明确:(a) 默认 Netlify、`--provider vercel` 切换(决 e);(b) 首次自动建站/建 project、重部署指 `--site`(决 g);(c) 多页 SPA 回落自动注入(Netlify `_redirects` / Vercel `vercel.json`),刷新不 404(决 d);(d) token 用对应 env 名(`VERCEL_TOKEN`,决 f 报错指引);(e) Supabase config 已内联/可经 §5.3 env 注入(provider 无关)。
+
+#### §5.4.4 公开 API / 类型
+
+```ts
+// packages/compiler/src/deploy.ts(改)
+export interface DeployTarget {
+  provider: 'netlify' | 'vercel'   // 单成员 → 二成员 union;dispatch 重新成立
+  token: string
+  /** Netlify: site id/subdomain;Vercel: project name。缺省 = 自动建。 */
+  site?: string
+}
+// DeployResult / DeployProgress / DeployOptions 不变;deployFiles 签名不变(仅 provider 多一值)
+```
+
+- `packages/cli/src/commands/deploy.ts`:`--provider <netlify|vercel>`(默认 netlify);token env 回落 per-provider;`logProgress` 文案 provider-aware。
+- `src/app/lowcode/preview-pane/use-deploy.ts`:`deploy(token, provider, site?)`;spawn args += `--provider`;env 名按 provider。
+- `src/app/lowcode/preview-pane/DeployControls.vue`:provider `<select>` + label 随 provider。
+
+#### §5.4.5 改动清单
+
+- 🔁 `packages/compiler/src/deploy.ts`:`provider` union 加 `'vercel'`;`deployFiles` 顶层 dispatch;现 Netlify 流程 → `deployNetlify`;`digestFiles` 改返回中性 `entries`;泛化 `apiFetch`;新 `deployVercel`(注 `vercel.json` → 中性 digest → `POST /v2/files` 摘要上传 → `POST /v13/deployments` 清单 → `https://${url}`)
+- 🔁 `packages/cli/src/commands/deploy.ts`:`--provider` arg(默认 netlify);token env 回落 `provider==='vercel'?VERCEL_TOKEN:NETLIFY_AUTH_TOKEN`;`logProgress(p, provider)` 文案;`deployFiles({provider,...})`
+- 🔁 `src/app/lowcode/preview-pane/use-deploy.ts`:`deploy(token, provider, site?)`;spawn `--provider`;env 名 per-provider
+- 🔁 `src/app/lowcode/preview-pane/DeployControls.vue`:provider `<select>`(netlify/vercel)+ token/target label 随 provider;`title` 改通用「Deploy」
+- ➕ 单测 `tests/engine/compiler/deploy.test.ts` += Vercel describe:`POST /v2/files` 带 `x-vercel-digest`=SHA1 + octet-stream + raw bytes;`POST /v13/deployments` body `files:[{file(无前导斜杠),sha,size}]`;`vercel.json` rewrites 注入(缺补/有不覆盖);`url`→`https://${url}`;401 结构化(检 token);缺 token 报错;onProgress 序列;dispatch(provider:'vercel' 不碰 Netlify 端点 / provider:'netlify' 零回归)
+- **0** scene-graph / kiwi / emit-内容 / build
+
+#### §5.4.6 成功标准 + ACK(经验 K boundary)
+
+- **单端可验**:`deploy.test.ts` Vercel 路径全 mock-fetch(上传/建部署/`vercel.json`/url/401/缺 token/进度/dispatch);Netlify 8 测零回归;CLI `--provider` 解析 + provider-aware env;`bun run check` 0 error/clone/locale 同步。
+- **Deploy ACK(留)**:真 Vercel token → `open-pencil deploy <fixture> --provider vercel --token …` → live URL,app 跑、Supabase 可用、多页刷新不 404(`vercel.json` rewrites 生效);**editor 选 Vercel 一键(Tauri ACK)**。同时复用为 §5.1/§5.3/§4.x 真部署场。
+- **诚实边界**:① Vercel 真实 API 形状(`v2/files` digest header / `v13/deployments` files 数组 / `url` 无 scheme / 自动建 project)按文档,留 ACK 核(经验 K,无 token/单进程探不了);② editor Tauri-only(同 preview sidecar);③ CF Pages + team/scope + 并发上传 + token keychain 留 follow-up。
+
+#### §5.4.7 工作分解(~中,3 step + 设计 + close)
+
+| Step | 任务 | commit 前缀 |
+|---|---|---|
+| 0 | §5 第四刀设计 + 真岔口 AskUserQuestion 锁 | `docs(lowcode): §5 multi-provider deploy (Vercel) — detailed design` |
+| 1 | `deploy.ts` dispatch + 中性 digest + 泛化 apiFetch + `deployVercel` + Vercel mock 单测 | `feat(compiler): §5 step 7 — Vercel deploy provider` |
+| 2 | CLI `--provider` + provider-aware token env/文案 | `feat(cli): §5 step 8 — \`deploy --provider\` (netlify\|vercel)` |
+| 3 | editor provider 选择器 + use-deploy provider 参数 + close | `feat(app): §5 step 9 — provider picker in one-click deploy` |
+
+#### §5.4.8 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| Vercel 真实 API 形状与文档偏差(digest header/files 数组/url 字段/自动建 project) | 中 | mock 单测钉请求构造;真形状留 deploy ACK 核(经验 K);结构化错误不静吞 |
+| 两 provider 函数结构相似触发 jscpd clone | 中 | 决 c:抽中性 `digestFiles`/`apiFetch`/`sha1Hex` 共享;每 step 前跑全 `check`(经验 A) |
+| Netlify 行为回归(digest 签名改 / dispatch) | 中 | Netlify 8 测全绿门;`deployNetlify` 行为零变;中性 entries 仅改内部清单映射 |
+| `vercel.json` rewrites 静态 SPA 不生效 | 中 | deploy ACK 验多页刷新不 404 |
+| token 泄露(落盘/arg/日志) | 高 | 决 f:flag/env-only,spawn env,不打印(继承 §5.2) |
+
+#### §5.4.9 Post-mortem(stub — 待代码完成填)
+
+> 代码完成后填:commit 链、Surprise/经验印证、单端可验/ACK 留验、诚实边界。
+
+#### §5 多 provider follow-up(派生)
+
+- CF Pages 直传(account_id + 预存 project + upload-JWT + multipart);Vercel team/scope(`--team`/`VERCEL_TEAM_ID`);并发上传;site/project 列表选择 UI;自定义域名;部署历史;token keychain。
+
 ---
 
 ---
