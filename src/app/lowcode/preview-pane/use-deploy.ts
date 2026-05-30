@@ -7,9 +7,9 @@
 // CLI runs with `--json` so stdout is a single machine-readable result object.
 //
 // Tauri-only (needs a real `bun` + the repo on disk, like the preview sidecar).
-// The Netlify token is passed via the spawned process's env (NETLIFY_AUTH_TOKEN)
-// — never as a CLI arg (stays out of any process/arg listing) and never
-// persisted.
+// The provider token is passed via the spawned process's env (NETLIFY_AUTH_TOKEN
+// / VERCEL_TOKEN) — never as a CLI arg (stays out of any process/arg listing)
+// and never persisted.
 
 import { ref, type Ref } from 'vue'
 
@@ -19,6 +19,10 @@ import { isTauri } from '@/app/tauri/env'
 
 const DEPLOY_COMMAND = 'lowcode-preview' // shell-allowlisted `bun` (args:true)
 const CLI_ENTRY = 'packages/cli/src/index.ts'
+
+export type DeployProvider = 'netlify' | 'vercel'
+// The CLI reads the token from the matching env var (never an arg / never persisted).
+const TOKEN_ENV: Record<DeployProvider, string> = { netlify: 'NETLIFY_AUTH_TOKEN', vercel: 'VERCEL_TOKEN' }
 
 interface DeployCliResult {
   provider: string
@@ -35,9 +39,9 @@ export type DeployStatus =
 
 interface UseDeployResult {
   status: Ref<DeployStatus>
-  /** Build + deploy the current document to Netlify with `token`. No-op while
-   *  already deploying or outside Tauri. */
-  deploy: (token: string, site?: string) => Promise<void>
+  /** Build + deploy the current document to `provider` with `token`. No-op
+   *  while already deploying or outside Tauri. */
+  deploy: (token: string, provider: DeployProvider, site?: string) => Promise<void>
   reset: () => void
 }
 
@@ -49,7 +53,7 @@ export function useDeploy(): UseDeployResult {
     status.value = { kind: 'idle' }
   }
 
-  async function deploy(token: string, site?: string): Promise<void> {
+  async function deploy(token: string, provider: DeployProvider, site?: string): Promise<void> {
     if (status.value.kind === 'deploying') return
     if (!isTauri()) {
       status.value = { kind: 'error', message: 'Deploy is only available in the desktop app.' }
@@ -57,7 +61,7 @@ export function useDeploy(): UseDeployResult {
     }
     const trimmed = token.trim()
     if (!trimmed) {
-      status.value = { kind: 'error', message: 'Enter a Netlify token.' }
+      status.value = { kind: 'error', message: `Enter a ${provider} token.` }
       return
     }
     const path = store.getDocumentPath()
@@ -68,7 +72,7 @@ export function useDeploy(): UseDeployResult {
 
     status.value = { kind: 'deploying' }
     try {
-      const result = await runDeployCli(path, trimmed, site)
+      const result = await runDeployCli(path, trimmed, provider, site)
       status.value = { kind: 'done', url: result.url }
     } catch (e) {
       status.value = { kind: 'error', message: e instanceof Error ? e.message : String(e) }
@@ -81,16 +85,17 @@ export function useDeploy(): UseDeployResult {
 async function runDeployCli(
   filePath: string,
   token: string,
+  provider: DeployProvider,
   site?: string
 ): Promise<DeployCliResult> {
   const { Command } = await import('@tauri-apps/plugin-shell')
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
-  const args = [CLI_ENTRY, 'deploy', filePath, '--json']
+  const args = [CLI_ENTRY, 'deploy', filePath, '--provider', provider, '--json']
   if (site) args.push('--site', site)
 
   const command = Command.create(DEPLOY_COMMAND, args, {
     cwd: projectRoot,
-    env: { NETLIFY_AUTH_TOKEN: token }
+    env: { [TOKEN_ENV[provider]]: token }
   })
 
   let stdout = ''
