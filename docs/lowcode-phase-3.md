@@ -3761,13 +3761,33 @@ export interface DeployTarget {
 | `vercel.json` rewrites 静态 SPA 不生效 | 中 | deploy ACK 验多页刷新不 404 |
 | token 泄露(落盘/arg/日志) | 高 | 决 f:flag/env-only,spawn env,不打印(继承 §5.2) |
 
-#### §5.4.9 Post-mortem(stub — 待代码完成填)
+#### §5.4.9 Post-mortem(代码完成 2026-05-31,待 deploy/Tauri ACK)
 
-> 代码完成后填:commit 链、Surprise/经验印证、单端可验/ACK 留验、诚实边界。
+**多 provider(Vercel)代码完成**(worktree 单端检查全绿:`deploy.test.ts` 16 测 = Netlify 8 零回归 + Vercel 8;`test:dupes` **0 clone**;`check:i18n` sync;`check:arch` Steiger 通过;tsgo/vue-tsc 对 deploy 文件零 error)。**真岔口 AskUserQuestion 锁 = 仅 Vercel / CLI + editor 都做**。
+
+**Commit 链(设计 + 3 step + close):**
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `e55bd7c` | §5 第四刀全文 + 真岔口锁 |
+| step 7 | `c987114` | `deploy.ts` per-provider dispatch;Netlify 流程下沉 `deployNetlify`(行为零变);`deployVercel`(`/v2/files` 摘要上传 → `/v13/deployments` 清单 → `https://${host}`);中性 `digestPayload`(`{rel,bytes,sha}`)+ 泛化 `apiFetch`;SPA 回落 per-provider(`_redirects`/`vercel.json`);16 mock-fetch 单测 |
+| step 8 | `3c8c2e1` | CLI `--provider`(默认 netlify);token env 回落 per-provider(`NETLIFY_AUTH_TOKEN`/`VERCEL_TOKEN`)+ 报错指引;`--site` per-provider 含义;`logProgress` provider-aware;未知 provider 拒 |
+| step 9 | `10ccb7f` | editor `DeployControls` provider `<select>` + token/target label 随 provider;`use-deploy` 加 `provider` 参 + `--provider` spawn arg + 对应 env 名透传 |
+| close | _本 commit_ | post-mortem + CHANGELOG |
+
+**Surprise / 经验印证:**
+- **共享中性层一次抽对(经验 A,jscpd 0 clone)**:两 provider digest/upload/create 结构高度相似,设计期(决 c)预判 clone 风险 → 抽 `sha1Hex`/中性 `digestPayload`(返 `/`-less `{rel,bytes,sha}`,各 provider 自映射清单形态)/ 泛化 `apiFetch`。结果 `test:dupes` 0 clone 一次过,未触发 §5.1/§5.2 那种「per-step 子集测漏跨文件 clone」回炉。
+- **dispatch 行为零变(决 b)**:`DeployTarget.provider` 单成员 → 二成员 union 重新使 dispatch 守卫成立(§5.2 曾因单成员触发 `no-unnecessary-condition` 移除);Netlify 流程整体下沉 `deployNetlify` + `digestPayload` 内部从中性 entries 重建 `/`-prefixed manifest → Netlify 8 测零回归。
+- **upload-then-create vs create-then-upload(API 形状差异)**:Netlify = 先 `POST /deploys` 拿 `required` 缺失集再 `PUT` 缺失;Vercel = 先逐个 `POST /v2/files`(`x-vercel-digest` 幂等去重)再 `POST /v13/deployments` 引用全清单。`onProgress` stage 名复用(`digest/upload/create/done`),Vercel 自然序 digest→upload→create→done(单测断言 `upload` 早于 `create`),CLI `logProgress` 移到 `upload` stage 打印「Uploading to ${provider}…」。
+- **worktree 环境噪音(本会话流程教训)**:本刀在 git worktree 内做(背景隔离守卫强制)。worktree 无独立 `node_modules` → type-aware lint/tsgo/vue-tsc 对第三方 `tinykeys` 报 3 个 `TS7016`/`TS18046`(`keyboard/registry.ts`,与 deploy 零关),主 checkout 同命令 **0 error**。判定为环境性假 error(同 prompt「`Cannot find module '@open-pencil/...'` LSP 派生无视」类),**真权威门 = 主 checkout 合并后跑全 `bun run check`**。
+
+**单端可验 / ACK 留验(经验 K boundary):**
+- **单端可验(已绿)**:`deploy.test.ts` Vercel mock-fetch(上传 header/清单形态/`vercel.json` 注入/url/401/缺 token/进度序/dispatch 不碰 Netlify);Netlify 8 零回归;CLI `--provider` 解析 + bad-provider 拒 + per-provider no-token 报错(端到端真跑,exit 1);`test:dupes` 0 clone。
+- **Deploy ACK(留)**:真 Vercel token → `open-pencil deploy <fixture> --provider vercel --token …` → live URL,app 跑、Supabase 可用、多页刷新不 404(`vercel.json` rewrites 生效);**editor 选 Vercel 一键(Tauri ACK)**。同时复用为 §5.1/§5.3/§4.x 真部署场。
+- **诚实边界**:① Vercel 真实 API 形状(`v2/files` digest header / `v13/deployments` files 数组 / `url` 无 scheme / 自动建 project / `projectSettings.framework=null` 纯静态 serve)按文档,留 ACK 核(经验 K,无 token/单进程探不了);② editor Tauri-only(同 preview sidecar);③ CF Pages + team/scope + 并发上传 + token keychain 留 follow-up。
 
 #### §5 多 provider follow-up(派生)
 
-- CF Pages 直传(account_id + 预存 project + upload-JWT + multipart);Vercel team/scope(`--team`/`VERCEL_TEAM_ID`);并发上传;site/project 列表选择 UI;自定义域名;部署历史;token keychain。
+- ~~Vercel~~(✅ `c987114`→`10ccb7f`);CF Pages 直传(account_id + 预存 project + upload-JWT + multipart);Vercel team/scope(`--team`/`VERCEL_TEAM_ID`);并发上传;site/project 列表选择 UI;自定义域名;部署历史;token keychain。
 
 ---
 
