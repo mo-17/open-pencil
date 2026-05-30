@@ -14,6 +14,7 @@ import {
   type CollabState,
   type PresenceEditingKind,
   type PresenceEditingTarget,
+  type PreviewDocStatePayload,
   type RemotePeer
 } from '@/app/collab/types'
 import { createYjsGraphSync } from '@/app/collab/yjs-sync'
@@ -21,7 +22,13 @@ import type { EditorStore } from '@/app/editor/active-store'
 
 export { COLLAB_KEY, useCollabInjected } from '@/app/collab/context'
 export { DEFAULT_COLLAB_STATE }
-export type { CollabState, PresenceEditingKind, PresenceEditingTarget, RemotePeer }
+export type {
+  CollabState,
+  PresenceEditingKind,
+  PresenceEditingTarget,
+  PreviewDocStatePayload,
+  RemotePeer
+}
 
 export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
   const getStore = () =>
@@ -55,6 +62,17 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
   let conflictHandler: ((kind: DocStateConflictKind) => void) | undefined
   function onDocStateConflict(handler: ((kind: DocStateConflictKind) => void) | null) {
     conflictHandler = handler ?? undefined
+  }
+
+  // Phase 3 §4.6 — preview runtime docState collaboration. The PreviewPane
+  // relays bridge messages both ways: `sendPreviewDocState` broadcasts a local
+  // change (no-op when disconnected); `onPreviewDocState` registers the receiver
+  // that posts remote changes back into the local iframe.
+  function sendPreviewDocState(payload: PreviewDocStatePayload) {
+    runtime.sendPreviewDocState?.(payload)
+  }
+  function onPreviewDocState(handler: ((payload: PreviewDocStatePayload) => void) | null) {
+    runtime.previewDocStateHandler = handler
   }
 
   const { syncNodeToYjs, syncAllNodesToYjs, applyYjsToGraph } = createYjsGraphSync({
@@ -102,6 +120,8 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     updateSelection,
     updateEditingTarget,
     onDocStateConflict,
+    sendPreviewDocState,
+    onPreviewDocState,
     setLocalName,
     followPeer,
     tickFollow

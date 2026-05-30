@@ -5,19 +5,23 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { derivePagePaths, type PagePathInfo } from '@open-pencil/compiler'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 
+import { useCollabInjected } from '@/app/collab/use'
+import type { PreviewDocStatePayload } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 
 import { useCompileOnChange } from './use-compile-on-change'
 
 // docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
-// Two message kinds: 'select' (overlay highlight, Alt/Option-click round-trip)
-// and 'navigate' (editor↔iframe page sync). The compiled iframe ships the
-// other side in packages/compiler/src/adapters/react/preview-bridge.ts.
+// Message kinds: 'select' (overlay highlight, Alt/Option-click round-trip),
+// 'navigate' (editor↔iframe page sync), and Phase 3 §4.6 'docState' (runtime
+// state mirrored across collaborators). The compiled iframe ships the other
+// side in packages/compiler/src/adapters/react/preview-bridge.ts.
 const INBOUND_SOURCE = 'op-lowcode-preview'
 const OUTBOUND_SOURCE = 'op-lowcode-editor'
 
 const { status, forceRecompile } = useCompileOnChange()
 const store = useEditorStore()
+const collab = useCollabInjected()
 
 const iframeKey = ref(0)
 const iframeEl = ref<HTMLIFrameElement | null>(null)
@@ -109,11 +113,13 @@ function currentSelectionId(): string | null {
   return ids.length === 1 ? ids[0] : null
 }
 
-function postIframe(payload: { type: 'select'; id: string | null } | { type: 'navigate'; route: string }): void {
-  iframeEl.value?.contentWindow?.postMessage(
-    { source: OUTBOUND_SOURCE, ...payload },
-    '*'
-  )
+function postIframe(
+  payload:
+    | { type: 'select'; id: string | null }
+    | { type: 'navigate'; route: string }
+    | ({ type: 'docState' } & PreviewDocStatePayload)
+): void {
+  iframeEl.value?.contentWindow?.postMessage({ source: OUTBOUND_SOURCE, ...payload }, '*')
 }
 
 function postNavigateToCurrent(): void {
@@ -153,6 +159,8 @@ useEventListener(window, 'message', (event: MessageEvent) => {
     type?: unknown
     id?: unknown
     route?: unknown
+    name?: unknown
+    value?: unknown
   } | null
   if (!data || data.source !== INBOUND_SOURCE) return
 
@@ -175,6 +183,17 @@ useEventListener(window, 'message', (event: MessageEvent) => {
     void store.switchPage(targetPageId).finally(() => {
       suppressOutboundNavigate = false
     })
+    return
+  }
+
+  // §4.6: a runtime docState change in this peer's iframe → broadcast to the
+  // room (no-op when not in a collab session).
+  if (data.type === 'docState') {
+    if (typeof data.name !== 'string') return
+    collab?.sendPreviewDocState({
+      name: data.name,
+      value: data.value as PreviewDocStatePayload['value']
+    })
   }
 })
 
@@ -193,11 +212,15 @@ onMounted(() => {
   unsubscribeSelection = store.onEditorEvent('selection:changed', () => {
     postSelection()
   })
+  // §4.6: a remote peer's runtime docState change → push it into this iframe.
+  // The bridge applies it with its own suppress flag so it doesn't echo back.
+  collab?.onPreviewDocState((payload) => postIframe({ type: 'docState', ...payload }))
 })
 
 onBeforeUnmount(() => {
   unsubscribeSelection?.()
   unsubscribeSelection = null
+  collab?.onPreviewDocState(null)
 })
 </script>
 

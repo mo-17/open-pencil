@@ -8,7 +8,7 @@ import * as Y from 'yjs'
 import { randomIndex } from '@open-pencil/core/random'
 
 import { connectCollabRoom } from '@/app/collab/room'
-import type { CollabState } from '@/app/collab/types'
+import type { CollabState, PreviewDocStatePayload } from '@/app/collab/types'
 import { bindCollabGraphEvents, registerYjsObservers } from '@/app/collab/yjs-sync'
 import type { EditorStore } from '@/app/editor/active-store'
 import { PEER_COLORS } from '@/constants'
@@ -25,6 +25,11 @@ export type CollabRuntime = {
   suppressYjsEvents: boolean
   unbindGraphEvents: (() => void) | null
   stopZoomWatch: (() => void) | null
+  // Phase 3 §4.6 — preview runtime docState channel. `send` is the room
+  // action (null when disconnected); `handler` is the PreviewPane's receiver,
+  // registered after connect and resolved lazily by the room.
+  sendPreviewDocState: ((payload: PreviewDocStatePayload) => void) | null
+  previewDocStateHandler: ((payload: PreviewDocStatePayload) => void) | null
 }
 
 type ConnectCollabSessionOptions = {
@@ -78,7 +83,9 @@ export function createCollabRuntime(): CollabRuntime {
     suppressGraphSync: false,
     suppressYjsEvents: false,
     unbindGraphEvents: null,
-    stopZoomWatch: null
+    stopZoomWatch: null,
+    sendPreviewDocState: null,
+    previewDocStateHandler: null
   }
 }
 
@@ -203,9 +210,11 @@ export function connectCollabSession({
     },
     updatePeersList,
     password: key,
-    onAuthError
+    onAuthError,
+    getPreviewDocStateHandler: () => runtime.previewDocStateHandler ?? undefined
   })
   runtime.room = roomConnection.room
+  runtime.sendPreviewDocState = roomConnection.sendPreviewDocState
   state.value.connected = true
   broadcastAwareness()
 
@@ -233,6 +242,9 @@ export function resetCollabRuntime(runtime: CollabRuntime) {
   runtime.ynodes = null
   runtime.yimages = null
   runtime.connectedStore = null
+  runtime.sendPreviewDocState = null
+  // Keep previewDocStateHandler — the PreviewPane registers it once and it is
+  // valid across reconnects; only the room-bound sender is per-connection.
 }
 
 export function resetCollabConnectionState(state: Ref<CollabState>) {

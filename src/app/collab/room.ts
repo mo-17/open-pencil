@@ -3,6 +3,7 @@ import { joinRoom as joinTrysteroRoom } from 'trystero/mqtt'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as Y from 'yjs'
 
+import type { PreviewDocStatePayload } from '@/app/collab/types'
 import { TRYSTERO_APP_ID } from '@/constants'
 
 // `trystero/mqtt`'s .d.ts omits the optional 3rd `onJoinError` arg that the
@@ -27,6 +28,9 @@ type CollabRoomOptions = {
   // because the key is wrong/missing (joinRoom's onJoinError callback).
   password?: string
   onAuthError?: () => void
+  // Phase 3 §4.6 — preview runtime docState. The receiver is resolved lazily so
+  // the PreviewPane can register its handler after the room is already up.
+  getPreviewDocStateHandler?: () => ((payload: PreviewDocStatePayload) => void) | undefined
 }
 
 export type CollabRoomConnection = {
@@ -34,6 +38,8 @@ export type CollabRoomConnection = {
   sendYjsUpdate: (data: Uint8Array, peerId?: string) => void
   sendAwareness: (data: Uint8Array, peerId?: string) => void
   sendSyncStep1: (data: Uint8Array, peerId?: string) => void
+  // Phase 3 §4.6 — broadcast a local runtime docState change to all peers.
+  sendPreviewDocState: (payload: PreviewDocStatePayload) => void
 }
 
 export function connectCollabRoom({
@@ -43,7 +49,8 @@ export function connectCollabRoom({
   setConnected,
   updatePeersList,
   password,
-  onAuthError
+  onAuthError,
+  getPreviewDocStateHandler
 }: CollabRoomOptions): CollabRoomConnection {
   const room = joinRoom(
     {
@@ -77,6 +84,9 @@ export function connectCollabRoom({
   const [sendAw, getAw] = room.makeAction<Uint8Array>('awareness')
   const [sendSync, getSync] = room.makeAction<Uint8Array>('sync-step1')
   const [sendSyncReply, getSyncReply] = room.makeAction<Uint8Array>('sync-reply')
+  // Phase 3 §4.6 — preview runtime docState (ephemeral P2P broadcast, never
+  // persisted; namespace ≤12 bytes per Trystero).
+  const [sendDocState, getDocState] = room.makeAction<PreviewDocStatePayload>('doc-state')
 
   const sendYjsUpdate = (data: Uint8Array, peerId?: string) =>
     void (peerId ? sendUpdate(data, peerId) : sendUpdate(data))
@@ -84,6 +94,11 @@ export function connectCollabRoom({
     void (peerId ? sendAw(data, peerId) : sendAw(data))
   const sendSyncStep1 = (data: Uint8Array, peerId?: string) =>
     void (peerId ? sendSync(data, peerId) : sendSync(data))
+  const sendPreviewDocState = (payload: PreviewDocStatePayload) => void sendDocState(payload)
+
+  getDocState((payload) => {
+    getPreviewDocStateHandler?.()?.(payload)
+  })
 
   getUpdate((data) => {
     Y.applyUpdate(ydoc, new Uint8Array(data), 'remote')
@@ -134,5 +149,5 @@ export function connectCollabRoom({
     updatePeersList()
   })
 
-  return { room, sendYjsUpdate, sendAwareness, sendSyncStep1 }
+  return { room, sendYjsUpdate, sendAwareness, sendSyncStep1, sendPreviewDocState }
 }
