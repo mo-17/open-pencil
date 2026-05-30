@@ -251,14 +251,42 @@ const SVG_SHAPE_TYPES: ReadonlySet<NodeType> = new Set([
   'LINE'
 ])
 
+// Container types that fold into a single inline SVG when their whole visible
+// subtree is vectors — i.e. a multi-path icon. `import_svg` wraps a multi-path
+// icon in a FRAME of full-size VECTOR children (each path is a separate node at
+// 0,0 spanning the frame). Emitting each child as its own SVG div left them
+// unpositioned, so they stacked / overlapped (icon paths misaligned). Folding
+// the container to one `renderNodesToSVG([containerId])` puts every path in one
+// shared viewBox at its true coordinates. RECTANGLE / ELLIPSE / FORM are
+// excluded — they carry their own CSS-box / form semantics.
+const VECTOR_FOLDABLE_CONTAINERS: ReadonlySet<NodeType> = new Set([
+  'FRAME',
+  'GROUP',
+  'SECTION',
+  'COMPONENT',
+  'INSTANCE'
+])
+
 /**
- * Render a vector-shape node to a self-contained inline `<svg>` string, or
- * undefined when it has no renderable geometry (falls back to the plain div).
- * `renderNodesToSVG` normalizes the node to the origin with a `0 0 w h`
- * viewBox; we drop its `<?xml?>` prelude (`xmlDeclaration: false`) and swap the
- * fixed pixel width/height for 100% so the SVG fills the layout wrapper (whose
- * Tailwind size classes already carry the node's dimensions) while the viewBox
- * preserves the aspect ratio.
+ * A node is an "icon" emittable as one inline SVG when it is a vector shape, or
+ * a foldable container whose every visible child is itself such a node
+ * (recursively). Empty containers don't qualify (nothing to render).
+ */
+function isVectorIcon(node: SceneNode, graph: SceneGraph): boolean {
+  if (SVG_SHAPE_TYPES.has(node.type)) return true
+  if (!VECTOR_FOLDABLE_CONTAINERS.has(node.type)) return false
+  const visibleChildren = graph.getChildren(node.id).filter((c) => c.visible)
+  return visibleChildren.length > 0 && visibleChildren.every((c) => isVectorIcon(c, graph))
+}
+
+/**
+ * Render a vector node (or an all-vector container — `renderNodesToSVG` walks
+ * descendants) to a self-contained inline `<svg>` string, or undefined when
+ * there's no renderable geometry (falls back to the plain div). It normalizes
+ * to a `0 0 w h` viewBox; we drop the `<?xml?>` prelude (`xmlDeclaration:
+ * false`) and swap the fixed pixel width/height for 100% so the SVG fills the
+ * layout wrapper (whose Tailwind size classes already carry the node's
+ * dimensions) while the viewBox preserves the aspect ratio.
  */
 function buildVectorSvg(node: SceneNode, graph: SceneGraph): string | undefined {
   const svg = renderNodesToSVG(graph, '', [node.id], { xmlDeclaration: false })
@@ -281,17 +309,18 @@ function stripPaintClasses(className: string): string {
 }
 
 /**
- * For a vector-shape node, build its inline SVG and strip paint classes from
- * the wrapper; for everything else (or a vector with no renderable geometry)
- * pass the className through unchanged. Returns `extra` to spread onto the
- * IRElement (`{ rawHtml }` or `{}`) so the caller adds no extra branches.
+ * For an icon node (a vector shape or an all-vector container, see
+ * isVectorIcon), build its inline SVG and strip paint classes from the wrapper;
+ * for everything else (or a node with no renderable geometry) pass the className
+ * through unchanged. Returns `extra` to spread onto the IRElement (`{ rawHtml }`
+ * or `{}`) so the caller adds no extra branches.
  */
 function resolveVectorSvg(
   node: SceneNode,
   graph: SceneGraph,
   className: string
 ): { className: string; extra: { rawHtml?: string } } {
-  if (!SVG_SHAPE_TYPES.has(node.type)) return { className, extra: {} }
+  if (!isVectorIcon(node, graph)) return { className, extra: {} }
   const svg = buildVectorSvg(node, graph)
   if (svg === undefined) return { className, extra: {} }
   return { className: stripPaintClasses(className), extra: { rawHtml: svg } }
@@ -322,14 +351,49 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
 
   applyInteractiveProps(node, attrs, children, ctx)
 
-  // Vector-shape nodes emit their geometry as inline SVG (see SVG_SHAPE_TYPES);
-  // the wrapper keeps layout/size classes but sheds paint classes, and no
-  // children are collected (these types aren't containers / TEXT anyway). The
-  // branching lives in resolveVectorSvg so nodeToIR stays under the complexity
+  // Icon nodes (a vector shape, or an all-vector container — see isVectorIcon)
+  // emit their geometry as one inline SVG; the wrapper keeps layout/size classes
+  // but sheds paint classes, and no children are collected (a folded container
+  // is rendered whole by renderNodesToSVG). The branching lives in
+  // resolveVectorSvg / collectChildNodes so nodeToIR stays under the complexity
   // gate.
   const vector = resolveVectorSvg(node, ctx.graph, className)
   className = vector.className
+  if (vector.extra.rawHtml === undefined) collectChildNodes(node, ctx, children)
 
+  const events = resolveEvents(
+    node,
+    ctx.states,
+    ctx.warnings,
+    ctx.docStates,
+    ctx.docStateWrites,
+    ctx.inScope,
+    ctx.docStateReads
+  )
+
+  const controlled = applyControlledInput(node, ctx, attrs, children, events)
+
+  const element: IRElement = {
+    kind: 'element',
+    sourceId: node.id,
+    tag,
+    className,
+    attrs,
+    children,
+    ...(events && Object.keys(events).length > 0 ? { events } : {}),
+    ...(controlled ? { controlled } : {}),
+    ...vector.extra
+  }
+  return wrapConditional(node, element, ctx)
+}
+
+/**
+ * Collect an element's children: TEXT bindings/literals, a LIST directive, or
+ * the recursive container children. Extracted from nodeToIR so the icon-fold
+ * path can skip it (a folded icon renders its whole subtree as one SVG) and to
+ * keep nodeToIR under the cyclomatic-complexity gate.
+ */
+function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): void {
   if (node.type === 'TEXT') {
     const binding = resolveTextBinding(
       node,
@@ -356,31 +420,6 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
       if (ir) children.push(ir)
     }
   }
-
-  const events = resolveEvents(
-    node,
-    ctx.states,
-    ctx.warnings,
-    ctx.docStates,
-    ctx.docStateWrites,
-    ctx.inScope,
-    ctx.docStateReads
-  )
-
-  const controlled = applyControlledInput(node, ctx, attrs, children, events)
-
-  const element: IRElement = {
-    kind: 'element',
-    sourceId: node.id,
-    tag,
-    className,
-    attrs,
-    children,
-    ...(events && Object.keys(events).length > 0 ? { events } : {}),
-    ...(controlled ? { controlled } : {}),
-    ...vector.extra
-  }
-  return wrapConditional(node, element, ctx)
 }
 
 // Phase 3 §3.v4: form-control types eligible for `bindings.value` controlled

@@ -88,4 +88,42 @@ describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
     expect(app).not.toContain('dangerouslySetInnerHTML')
     expect(app).toContain('bg-[')
   })
+
+  test('a multi-path icon (FRAME of vector children) folds into ONE aligned svg', () => {
+    // import_svg shape: a FRAME of full-size VECTOR children, one per path.
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const fill = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+    const frame = graph.createNode('FRAME', pageId, { x: 0, y: 0, width: 24, height: 24, fills: [] })
+    graph.createNode('VECTOR', frame.id, {
+      x: 0,
+      y: 0,
+      width: 24,
+      height: 24,
+      fillGeometry: [{ windingRule: 'NONZERO', commandsBlob: rectangleCommandsBlob(2, 2, 8, 8) }],
+      fills: fill
+    })
+    graph.createNode('VECTOR', frame.id, {
+      x: 0,
+      y: 0,
+      width: 24,
+      height: 24,
+      fillGeometry: [{ windingRule: 'NONZERO', commandsBlob: rectangleCommandsBlob(14, 14, 8, 8) }],
+      fills: fill
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'icon-multi' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+
+    // Exactly ONE inline svg (the frame folded) — not one-per-child, which is
+    // what made the paths stack/misalign.
+    expect((app.match(/dangerouslySetInnerHTML/g) ?? []).length).toBe(1)
+    // Both paths live in that single svg, at their true shared-viewBox coords.
+    expect(app).toContain('M2 2')
+    expect(app).toContain('M14 14')
+  })
 })
