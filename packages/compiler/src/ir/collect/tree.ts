@@ -280,6 +280,23 @@ function stripPaintClasses(className: string): string {
     .join(' ')
 }
 
+/**
+ * For a vector-shape node, build its inline SVG and strip paint classes from
+ * the wrapper; for everything else (or a vector with no renderable geometry)
+ * pass the className through unchanged. Returns `extra` to spread onto the
+ * IRElement (`{ rawHtml }` or `{}`) so the caller adds no extra branches.
+ */
+function resolveVectorSvg(
+  node: SceneNode,
+  graph: SceneGraph,
+  className: string
+): { className: string; extra: { rawHtml?: string } } {
+  if (!SVG_SHAPE_TYPES.has(node.type)) return { className, extra: {} }
+  const svg = buildVectorSvg(node, graph)
+  if (svg === undefined) return { className, extra: {} }
+  return { className: stripPaintClasses(className), extra: { rawHtml: svg } }
+}
+
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // Phase 3 §3.v4 step 8 — CHECKBOX with options[] becomes a multi-select
   // group: render as a <div> wrapper with N child <input type="checkbox">
@@ -305,11 +322,13 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
 
   applyInteractiveProps(node, attrs, children, ctx)
 
-  // Vector-shape nodes emit their geometry as inline SVG (see SVG_SHAPE_TYPES).
-  // The wrapper keeps layout/size classes but sheds paint classes, and no
-  // children are collected (these types aren't containers / TEXT anyway).
-  const rawHtml = SVG_SHAPE_TYPES.has(node.type) ? buildVectorSvg(node, ctx.graph) : undefined
-  if (rawHtml !== undefined) className = stripPaintClasses(className)
+  // Vector-shape nodes emit their geometry as inline SVG (see SVG_SHAPE_TYPES);
+  // the wrapper keeps layout/size classes but sheds paint classes, and no
+  // children are collected (these types aren't containers / TEXT anyway). The
+  // branching lives in resolveVectorSvg so nodeToIR stays under the complexity
+  // gate.
+  const vector = resolveVectorSvg(node, ctx.graph, className)
+  className = vector.className
 
   if (node.type === 'TEXT') {
     const binding = resolveTextBinding(
@@ -359,7 +378,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     ...(controlled ? { controlled } : {}),
-    ...(rawHtml !== undefined ? { rawHtml } : {})
+    ...vector.extra
   }
   return wrapConditional(node, element, ctx)
 }
