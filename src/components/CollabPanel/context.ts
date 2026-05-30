@@ -5,13 +5,17 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useI18n } from '@open-pencil/vue'
 
+import { presenceEditingLabel } from '@/app/collab/presence-label'
 import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
+import type { RemotePeer } from '@/app/collab/use'
+import { useEditorStore } from '@/app/editor/active-store'
 import { toast } from '@/app/shell/ui'
 
 function createCollabPanelContext() {
   const route = useRoute()
   const router = useRouter()
   const collab = useCollabInjected()
+  const editor = useEditorStore()
   const { copy, copied } = useClipboard({ copiedDuring: 2000 })
   const { dialogs } = useI18n()
 
@@ -100,6 +104,12 @@ function createCollabPanelContext() {
     collab?.followPeer(followingPeer.value === clientId ? null : clientId)
   }
 
+  // §4.4 — "Editing events of Button1" / "Editing document state", or null when
+  // the peer isn't editing a lowcode panel.
+  function peerEditingLabel(peer: RemotePeer): string | null {
+    return presenceEditingLabel(peer, dialogs.value, (id) => editor.graph.getNode(id)?.name)
+  }
+
   return {
     dialogs,
     copied,
@@ -115,7 +125,8 @@ function createCollabPanelContext() {
     share,
     join,
     disconnect,
-    toggleFollowPeer
+    toggleFollowPeer,
+    peerEditingLabel
   }
 }
 

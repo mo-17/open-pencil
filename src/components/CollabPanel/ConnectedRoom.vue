@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { colorToCSS } from '@open-pencil/core/color'
 import { selectTarget } from '@open-pencil/vue'
+
 import { useCollabPanelContext } from '@/components/CollabPanel/context'
 
 const collab = useCollabPanelContext()
@@ -28,6 +30,37 @@ const collab = useCollabPanelContext()
 
   <div class="mb-2 text-xs font-medium text-surface">
     {{ collab.peers.length + 1 }} {{ collab.peers.length === 0 ? 'person' : 'people' }} in this room
+  </div>
+
+  <!-- §4.4 — per-peer roster with what each collaborator is editing. -->
+  <div class="mb-3 flex flex-col gap-1.5">
+    <div class="flex items-center gap-2">
+      <span
+        class="size-2 shrink-0 rounded-full"
+        :style="{ background: colorToCSS(collab.state.localColor) }"
+      />
+      <span class="min-w-0 flex-1 truncate text-xs text-surface">
+        {{ collab.state.localName || 'You' }}
+      </span>
+      <span class="shrink-0 text-[10px] text-muted">you</span>
+    </div>
+
+    <div
+      v-for="peer in collab.peers"
+      :key="peer.clientId"
+      data-test-id="collab-peer-row"
+      class="flex items-center gap-2"
+    >
+      <span class="size-2 shrink-0 rounded-full" :style="{ background: colorToCSS(peer.color) }" />
+      <span class="min-w-0 flex-1 truncate text-xs text-surface">{{ peer.name }}</span>
+      <span
+        v-if="collab.peerEditingLabel(peer)"
+        data-test-id="collab-peer-editing"
+        class="min-w-0 max-w-[55%] shrink truncate text-[10px] text-muted"
+      >
+        {{ collab.peerEditingLabel(peer) }}
+      </span>
+    </div>
   </div>
 
   <button

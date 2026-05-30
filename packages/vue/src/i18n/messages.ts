@@ -510,5 +510,19 @@ export const dialogMessages = i18n('dialogs', {
   updateUnavailable:
     'Updates are not available yet. Publish a signed release with latest.json first.',
   updateCheckFailed: params('Could not check for updates: {error}'),
-  roomKeyError: 'Incorrect or missing room key — ask the host for the full share link.'
+  roomKeyError: 'Incorrect or missing room key — ask the host for the full share link.',
+  // Phase 3 §4.4 — lowcode-aware presence: which lowcode panel a collaborator is
+  // editing. Node-scoped panels interpolate the node name; document/page-level
+  // panels stand alone. `presenceEditingNodeFallback` is used when the node name
+  // hasn't synced to this peer yet.
+  presenceEditingTextBinding: params('Editing the text of {node}'),
+  presenceEditingValueBinding: params('Editing the value of {node}'),
+  presenceEditingInteractiveProps: params('Editing properties of {node}'),
+  presenceEditingEvents: params('Editing events of {node}'),
+  presenceEditingList: params('Editing the list of {node}'),
+  presenceEditingRenderCondition: params('Editing the render condition of {node}'),
+  presenceEditingState: 'Editing page state',
+  presenceEditingDocState: 'Editing document state',
+  presenceEditingSupabaseConfig: 'Editing the Supabase config',
+  presenceEditingNodeFallback: 'an element'
 })
