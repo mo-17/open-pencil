@@ -58,7 +58,7 @@ function openDeployed(url: string): void {
       <select
         v-model="provider"
         data-test-id="lowcode-deploy-provider"
-        class="mb-2 w-full rounded border border-border bg-surface px-2 py-1 text-xs"
+        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
         :disabled="status.kind === 'deploying'"
       >
         <option value="netlify">Netlify</option>
@@ -71,7 +71,7 @@ function openDeployed(url: string): void {
         type="password"
         data-test-id="lowcode-deploy-token"
         placeholder="Personal access token"
-        class="mb-2 w-full rounded border border-border bg-surface px-2 py-1 text-xs"
+        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
         :disabled="status.kind === 'deploying'"
         @keydown.enter="submit"
       />
@@ -81,7 +81,7 @@ function openDeployed(url: string): void {
         type="text"
         data-test-id="lowcode-deploy-site"
         :placeholder="targetPlaceholder"
-        class="mb-2 w-full rounded border border-border bg-surface px-2 py-1 text-xs"
+        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
         :disabled="status.kind === 'deploying'"
         @keydown.enter="submit"
       />
