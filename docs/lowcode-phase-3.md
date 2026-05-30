@@ -2813,9 +2813,25 @@ export interface RemotePeer {
 | 真双端 presence 单进程验不了 | 低 | 同 §4.1/§4.2 boundary:单端验 payload build/parse + UI(喂假 peerState)+ 本地 focus→updateEditingTarget 调用;真双端留双机(经验 K) |
 | payload 泄露业务值 | 低 | 决 b/g payload 仅 kind+nodeId,零业务值;nodeId 既有 selection 通道已播 → 0 新增暴露面 |
 
-#### 4.4.8 Post-mortem(stub)
+#### 4.4.8 Post-mortem(进行中 — 代码完成,待 Tauri/双机 ACK)
 
-_(close 时补:Tauri/单端 ACK 结果、surprise 列表、经验印证/新增、§4 进度更新。)_
+**§4.4 代码完成 2026-05-30**(单端检查全绿:`bun run check` 0 error / 0 clone / 8 locale 同步;`presence-editing.test.ts` 4 测 + collab 全套 15 测绿;compiler+tools+collab 457 测零回归)。**形态/粒度两岔口设计阶段经 AskUserQuestion 锁**(粒度 = kind+nodeId 面板级;浮现 = 集中式 peer-list + avatar tooltip),无 detail / 不动面板渲染。**正式 close 留用户主导 Tauri ACK 之后**(经验 H:Tauri/真实路径照 wiring/UX/心智模型洞;§4.2 即 Tauri 验照出 keyless footgun)。
+
+#### Commit 链(设计 + 3 step;close 待 ACK)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `1f1d2ec` | §4.4 全文 + 两岔口 AskUserQuestion 锁(粒度 kind+nodeId / 浮现集中式)|
+| step 1 | `3cfd386` | `editing` awareness 字段(additive,{kind,nodeId?})+ `buildRemotePeers` 读 + `updateEditingTarget`(选区变即清)+ `RemotePeer.editing` + guard 单测 |
+| step 2 | `6a0e0e3` | `usePresenceTarget(kind, getNodeId?)` composable(focusin set / focusout subtree-leave clear)+ 9 面板根接线(6 节点级 + 3 文档/页面级)|
+| step 3 | `2ec0f0e` | 共享 `presenceEditingLabel` helper(穷举 Record over kind)+ CollabPanel peer-roster(ConnectedRoom)+ avatar tooltip + MobilePresencePopover + 10 i18n key × 8 locale |
+| close | _待 Tauri ACK_ | post-mortem 补 surprise/经验 + memory |
+
+#### 单端可验 / 双机留验(经验 K boundary)
+
+- **单端可验(待 Tauri ACK)**:聚焦各 lowcode 面板 → `updateEditingTarget` 调用(payload {kind,nodeId?});peer-roster + tooltip 喂假 peerState 渲染 label;切面板/换选区 → editing 清;label 节点名解析 + fallback。
+- **双机留验**:两端真 WebRTC awareness 传播(A 编 events → B 的 roster 显示「Editing events of <A 选中节点>」);文档级(A 编 docState → B 显「Editing document state」,即便 A 无画布选区)。单进程验不了真 WebRTC,同 §4.1/§4.2。
+- **已知待 Tauri 留意点**:focusout 遇 teleport 弹层(VariablePickerPopover)会误清 editing(决 e 注释 + §4.4.7 风险已记;非关键态,回焦即复);MobileHud `share()` 把 `shareCurrentDoc()` 返回的 `{roomId,key}` 当字符串用(§4.2 carry-over 既有 lint warning,非 §4.4 引入,留上游/§4.x)。
 
 ### 4.2 房间鉴权(room auth,设计 2026-05-30)
 
