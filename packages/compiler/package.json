@@ -43,6 +43,11 @@
       "types": "./src/vfs.ts",
       "bun": "./src/vfs.ts",
       "default": "./dist/vfs.js"
+    },
+    "./build": {
+      "types": "./src/build.ts",
+      "bun": "./src/build.ts",
+      "default": "./dist/build.js"
     }
   },
   "files": [
