@@ -9,7 +9,7 @@ import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { deployFiles, type DeployProgress, type DeployResult } from '@open-pencil/compiler/deploy'
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
-import { bold, ok, printError } from '#cli/format'
+import { bold, dim, ok, printError } from '#cli/format'
 
 interface DeployArgs {
   file?: string
@@ -41,7 +41,7 @@ function readDist(outDir: string, relPaths: readonly string[]): Map<string, Uint
 }
 
 function logProgress(p: DeployProgress, provider: string): void {
-  if (p.stage === 'upload' && p.done === 0) console.log(`  Uploading to ${provider}…`)
+  if (p.stage === 'upload' && p.done === 0) console.log(dim(`  Uploading to ${provider}…`))
   else if (p.stage === 'done') console.log('  Finalizing…')
 }
 
