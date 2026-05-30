@@ -4,6 +4,7 @@ import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import {
   STATE_VALUE_TYPES,
   defaultAsString,
@@ -13,6 +14,7 @@ import {
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
+const presence = usePresenceTarget('docState')
 
 // Phase 2 §2 #c — document-level "Document State" lives on the root node
 // (`graph.rootId`) only, distinct from page-scoped `state`. Shown in the
@@ -45,7 +47,12 @@ const {
 </script>
 
 <template>
-  <div data-test-id="lowcode-document-state-section" :class="sectionCls.wrapper">
+  <div
+    data-test-id="lowcode-document-state-section"
+    :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
+  >
     <div class="mb-1.5 flex items-center justify-between">
       <label class="text-[11px] text-muted">{{ panels.lowcodeDocumentState }}</label>
       <button

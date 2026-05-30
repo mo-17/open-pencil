@@ -5,6 +5,7 @@ import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 
 import {
   INTERACTIVE_PROP_FIELDS,
@@ -24,6 +25,7 @@ const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
+const presence = usePresenceTarget('interactiveProps', () => selectedNode.value?.id)
 
 const ip = useSceneComputed<Props>(
   () => (selectedNode.value?.interactiveProps ?? {}) as Props
@@ -121,6 +123,8 @@ function updateOption(key: string, index: number, value: string): void {
     v-if="visibleFields.length > 0"
     data-test-id="lowcode-interactive-props"
     :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
   >
     <label class="mb-1.5 block text-[11px] text-muted">{{ t('lowcodeInteractiveProps') }}</label>
 

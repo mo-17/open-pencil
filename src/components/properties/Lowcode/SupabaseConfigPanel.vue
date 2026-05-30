@@ -12,11 +12,13 @@ import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import { toast } from '@/app/shell/ui'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
+const presence = usePresenceTarget('supabaseConfig')
 
 // Phase 3 §2 #2 — connection config lives on the root node only, persisted
 // via `lowcode/supabaseConfig` pluginData. This panel is shown in the
@@ -185,7 +187,12 @@ async function testConnection(): Promise<void> {
 </script>
 
 <template>
-  <div data-test-id="lowcode-supabase-config-section" :class="sectionCls.wrapper">
+  <div
+    data-test-id="lowcode-supabase-config-section"
+    :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
+  >
     <div class="mb-1.5 flex items-center justify-between">
       <label class="text-[11px] text-muted">{{ panels.lowcodeSupabaseConfig }}</label>
       <span

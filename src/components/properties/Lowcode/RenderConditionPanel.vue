@@ -6,11 +6,13 @@ import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
+const presence = usePresenceTarget('renderCondition', () => selectedNode.value?.id)
 
 const renderCondition = useSceneComputed<string>(() => selectedNode.value?.renderCondition ?? '')
 
@@ -36,7 +38,12 @@ function onChange(event: Event): void {
 </script>
 
 <template>
-  <div data-test-id="lowcode-render-condition" :class="sectionCls.wrapper">
+  <div
+    data-test-id="lowcode-render-condition"
+    :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
+  >
     <label class="mb-1.5 block text-[11px] text-muted">{{ panels.lowcodeRenderCondition }}</label>
     <input
       :value="renderCondition"

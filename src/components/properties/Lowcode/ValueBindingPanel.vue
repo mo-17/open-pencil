@@ -6,6 +6,7 @@ import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 
 // Phase 3 §3.x + §3.v4 — controlled form-control value binding. IR collect
 // only accepts `kind: 'ref'` (page-state) or `kind: 'docState'`, and per
@@ -25,6 +26,7 @@ const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
+const presence = usePresenceTarget('valueBinding', () => selectedNode.value?.id)
 
 function checkboxHasOptions(): boolean {
   const raw = selectedNode.value?.interactiveProps?.options
@@ -111,7 +113,12 @@ function onSourceChange(event: Event): void {
 </script>
 
 <template>
-  <div data-test-id="lowcode-value-binding" :class="sectionCls.wrapper">
+  <div
+    data-test-id="lowcode-value-binding"
+    :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
+  >
     <label class="mb-1.5 block text-[11px] text-muted">{{ panels.lowcodeValueBinding }}</label>
     <select
       :value="selectedValue"

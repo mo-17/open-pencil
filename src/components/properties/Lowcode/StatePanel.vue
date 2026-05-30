@@ -6,6 +6,7 @@ import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import {
   STATE_VALUE_TYPES,
   defaultAsString,
@@ -15,6 +16,8 @@ import {
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
+// Page-scoped state — presence target carries no node id (label = "page state").
+const presence = usePresenceTarget('state')
 
 const pageId = computed(() => editor.state.currentPageId)
 const states = useSceneComputed<StateDef[]>(() => {
@@ -41,7 +44,12 @@ const {
 </script>
 
 <template>
-  <div data-test-id="lowcode-state-section" :class="sectionCls.wrapper">
+  <div
+    data-test-id="lowcode-state-section"
+    :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
+  >
     <div class="mb-1.5 flex items-center justify-between">
       <label class="text-[11px] text-muted">{{ panels.lowcodeState }}</label>
       <button

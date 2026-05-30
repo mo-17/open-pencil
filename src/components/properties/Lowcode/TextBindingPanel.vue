@@ -7,11 +7,13 @@ import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
+const presence = usePresenceTarget('textBinding', () => selectedNode.value?.id)
 
 const pageStates = useSceneComputed(() => {
   const page = editor.graph.getNode(editor.state.currentPageId)
@@ -127,7 +129,12 @@ function onDocStateChange(event: Event): void {
 </script>
 
 <template>
-  <div data-test-id="lowcode-text-binding" :class="sectionCls.wrapper">
+  <div
+    data-test-id="lowcode-text-binding"
+    :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
+  >
     <label class="mb-1.5 block text-[11px] text-muted">{{ panels.lowcodeTextSource }}</label>
     <select
       :value="selectedValue"

@@ -18,11 +18,13 @@ import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
+const presence = usePresenceTarget('events', () => selectedNode.value?.id)
 
 // Phase 0 surfaces exactly one event slot per supported node type:
 //   BUTTON → onClick, FORM → onSubmit. Other interactive types come later.
@@ -479,6 +481,8 @@ const actionErrors = computed(() => {
     v-if="eventName"
     data-test-id="lowcode-events-section"
     :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
   >
     <div class="mb-1.5 flex items-center justify-between">
       <label class="text-[11px] text-muted">{{ eventLabel }}</label>

@@ -7,11 +7,13 @@ import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
+const presence = usePresenceTarget('list', () => selectedNode.value?.id)
 
 // Phase 2 §3: a LIST can iterate either a page-scoped array state
 // (`stateRef`) or a document-level array Document State (`docStateRef`) —
@@ -103,7 +105,12 @@ function onIndexNameChange(event: Event): void {
 </script>
 
 <template>
-  <div data-test-id="lowcode-list-section" :class="sectionCls.wrapper">
+  <div
+    data-test-id="lowcode-list-section"
+    :class="sectionCls.wrapper"
+    @focusin="presence.onFocusIn"
+    @focusout="presence.onFocusOut"
+  >
     <label class="mb-1.5 block text-[11px] text-muted">{{ panels.lowcodeList }}</label>
 
     <div class="flex flex-col gap-1.5">
