@@ -5,6 +5,8 @@ import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
 import { reactAdapter } from '@open-pencil/compiler/adapters/react'
 import {
   buildLowcodeSupabaseRuntime,
+  buildSupabaseEnvExample,
+  buildViteEnvDts,
   SUPABASE_JS_VERSION
 } from '@open-pencil/compiler/adapters/react/lowcode-supabase'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
@@ -85,20 +87,25 @@ describe('buildLowcodeSupabaseRuntime (Phase 3 §2)', () => {
       anonKey: 'a\\b"c'
     }
     const out = buildLowcodeSupabaseRuntime(tricky)
-    // JSON.stringify escapes both — the emitted call site stays a single
-    // valid string literal.
+    // JSON.stringify escapes both — the values stay single valid string
+    // literals in the import.meta.env fallback (§5).
     expect(out).toContain('"https://a\\"b.supabase.co"')
     expect(out).toContain('"a\\\\b\\"c"')
     expect(out).toContain(
-      'createClient("https://a\\"b.supabase.co", "a\\\\b\\"c")'
+      'import.meta.env.VITE_SUPABASE_URL ?? "https://a\\"b.supabase.co"'
     )
   })
 
-  test('plain url + anonKey land as double-quoted literals at the createClient call site', () => {
+  test('§5: connection reads import.meta.env with the design-time values as fallback', () => {
     const out = buildLowcodeSupabaseRuntime(SAMPLE_CONFIG)
     expect(out).toContain(
-      'createClient("https://example.supabase.co", "eyJhbGciOiJIUzI1NiJ9.anon.sig")'
+      'const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? "https://example.supabase.co"'
     )
+    expect(out).toContain(
+      'const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiJ9.anon.sig"'
+    )
+    // createClient now takes the resolved consts, not inline literals.
+    expect(out).toContain('createClient(SUPABASE_URL, SUPABASE_ANON_KEY)')
   })
 })
 
@@ -126,6 +133,33 @@ describe('React adapter — emit lowcode Supabase runtime + dep inject (Phase 3 
 
     const pkg = JSON.parse(out.files.get('package.json') as string)
     expect(pkg.dependencies['@supabase/supabase-js']).toBe(SUPABASE_JS_VERSION)
+  })
+
+  test('§5: supabaseConfig → emits vite-env.d.ts + .env.example (env override scaffold)', () => {
+    const graph = new SceneGraph()
+    graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SAMPLE_CONFIG })
+    const pageId = graph.getPages()[0].id
+    const out = reactAdapter.emit([collectTree(graph, pageId)], BASE_OPTIONS)
+
+    expect(out.files.get('src/vite-env.d.ts')).toContain('vite/client')
+    const envExample = out.files.get('.env.example') as string
+    expect(envExample).toContain('VITE_SUPABASE_URL=https://example.supabase.co')
+    expect(envExample).toContain('VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiJ9.anon.sig')
+  })
+
+  test('§5: no supabaseConfig → no vite-env.d.ts / .env.example (scaffold gated on config)', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    const out = reactAdapter.emit([collectTree(graph, pageId)], BASE_OPTIONS)
+    expect(out.files.has('src/vite-env.d.ts')).toBe(false)
+    expect(out.files.has('.env.example')).toBe(false)
+  })
+
+  test('§5: scaffold builders produce vite/client ref + a copy-to-.env template', () => {
+    expect(buildViteEnvDts()).toContain('/// <reference types="vite/client" />')
+    const example = buildSupabaseEnvExample(SAMPLE_CONFIG)
+    expect(example).toContain('VITE_SUPABASE_URL=https://example.supabase.co')
+    expect(example).toContain('Copy this file to .env')
   })
 
   test('supabaseConfig auto-prepends $currentUser → _lowcode_state.ts is also emitted (zustand chained in)', () => {

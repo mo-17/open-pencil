@@ -16,6 +16,8 @@ import { stripNavigateForSinglePage } from './ir-walk'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode-state'
 import {
   buildLowcodeSupabaseRuntime,
+  buildSupabaseEnvExample,
+  buildViteEnvDts,
   SUPABASE_JS_VERSION
 } from './lowcode-supabase'
 import { buildPreviewBridge } from './preview-bridge'
@@ -128,6 +130,10 @@ function maybeEmitLowcodeSupabaseRuntime(
 ): void {
   if (!config) return
   files.set(LOWCODE_SUPABASE_FILE, buildLowcodeSupabaseRuntime(config))
+  // §5: the runtime reads import.meta.env — ship the Vite client types (for the
+  // standalone `tsc --noEmit`) and a copy-to-.env override template.
+  files.set('src/vite-env.d.ts', buildViteEnvDts())
+  files.set('.env.example', buildSupabaseEnvExample(config))
 }
 
 /**

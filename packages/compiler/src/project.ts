@@ -127,11 +127,16 @@ createRoot(root).render(
 }
 
 export function buildGitignore(): string {
+  // `.env*.local` + `.env` keep per-environment Supabase overrides out of git;
+  // `.env.example` (the committed template) is not matched by either pattern.
   return `node_modules
 dist
 .vite
 *.log
 .DS_Store
+.env
+.env.local
+.env.*.local
 `
 }
 
