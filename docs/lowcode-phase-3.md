@@ -3316,6 +3316,111 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
 
 - **托管集成**(CF Pages/Netlify/Vercel API 一键推);**Supabase env 注入**(③ 解锁多环境);**§4.3 自建信令+TURN**(④);**`--base` 子路径托管**;**SPA fallback 配置生成**(`_redirects`/`vercel.json`);**`--sourcemap` flag**;**editor 侧「导出已构建 app」UI**(读回 Map → 下载/保存)。
 
+### §5 第二刀 — 托管集成(Netlify direct-upload,设计 2026-05-30)
+
+§5.1 给了可部署静态 dist;第二刀把「dist → 上线 URL」这段接上。**接 §5.1 follow-up「托管一键推」+「SPA fallback 配置生成」两条。**
+
+#### 现状勘察(经验 C/E,静读真源)
+
+- **零既有部署代码**;CLI deps 极简,**Bun 有全局 `fetch`**(`packages/cli/src/app-client.ts` 已用 `fetch` + `Authorization: Bearer` 模式 RPC),无需引 HTTP 库;CLI 目前不读 env。
+- **§5.1 `buildPreviewProject` 已产出真实 dist 目录**(`index.html` + hashed `assets`)→ 部署 = build + 把目录文件推到 provider。
+- **lowcode app = 纯静态 SPA**(零服务端,Supabase 直连)→ 任一静态托管可用;**多页 = client-side BrowserRouter → 需 provider SPA fallback**(Netlify `_redirects` 的 `/* /index.html 200`)。
+- **Netlify Deploy API = 最简纯 HTTP 摘要上传流**(无需装 CLI):① (可选)`POST /api/v1/sites` 建站 → `{id}`;② `POST /api/v1/sites/{site}/deploys` 带 `{files:{"/path":sha1,…}}` → 响应 `{id, required:[sha1…]}`(服务端缺失的摘要集);③ 对每个 sha1∈required 的文件 `PUT /api/v1/deploys/{deploy}/files/{path}` 原始字节;④ URL = `deploy.ssl_url`。摘要/清单/上传循环**可 mock fetch 确定性单测**;真上传留 deploy ACK(经验 K)。
+
+#### 关键决定(8 主 + 次默)
+
+**决定 a = 三个真岔口,AskUserQuestion 锁定 2026-05-30**:① provider 首target = **Netlify**(Deploy API 最简纯 HTTP,其它 provider 留 follow-up);② 上传机制 = **直连 provider HTTP API**(fetch + bearer,零外部 CLI 依赖,请求构造可 mock 单测);③ 暴露面 = **CLI `deploy` 命令 + editor UI 都做**。
+
+| # | 决定 | 理由 |
+|---|---|---|
+| b | **单一 deploy 实现**:共享 `packages/compiler/src/deploy.ts`(`deployFiles(files, target, {onProgress})`,Netlify 摘要上传),CLI `deploy` 命令消费它;**editor UI 经 plugin-shell spawn 同一个 `open-pencil deploy` 命令**(同 preview sidecar 模式),不复制 deploy 逻辑 | 经验 A:一条 deploy 管线、零 clone;editor 复用整条 CLI build+deploy,UI 仅 token 弹窗 + spawn + 进度流 + 结果链接 |
+| c | **`deploy.ts` 浏览器安全**:只用 `fetch` + Web Crypto `crypto.subtle.digest('SHA-1')`(Bun+浏览器皆有),不 import vite/node-only | 保持可在 editor 直连复用的余地(虽首刀 editor 走 spawn);SHA1 hex 跨端一致 |
+| d | **CLI `deploy` = build(§5.1)→ 读 dist 回 Map → `deployFiles`**;build 到临时目录 → 读回字节 | 复用 §5.1 `buildPreviewProject` 整条;dist 含 binary → 从目录读回 `Uint8Array` |
+| e | **SPA fallback `_redirects` 在 deploy 时注入**(Netlify 路径若 dist 无 `_redirects` 则补 `/* /index.html 200`),**不进 build** | provider-specific 配置归 provider deploy 路径;build 保持 provider-agnostic(决 §5.1 h 边界) |
+| f | **auth = `--token` flag 或 `NETLIFY_AUTH_TOKEN` env**(flag 优先);token 永不落盘/不进产物 | 沿 app-client.ts bearer 模式;CLI 惯例;editor 弹窗输入 token 透传给 spawn 的 env(不写文件)|
+| g | **site:`--site <id\|name>` 指定已有站;缺省则建新站**(`POST /sites`,可带 name)| 首次部署零预备(自动建站);重部署指 `--site` 复用 |
+| h | **0 scene-graph / kiwi / emit-内容改动**;新增仅 `deploy.ts` + CLI `deploy` 命令 + editor 部署 UI(spawn 封装) | 同 §5.1:聚焦「dist → 托管」这段,不碰已闭的 emit/build scope;保持 fork 可合并(经验新-4)|
+
+**次默(8)**:① 部署失败(401/网络/必填缺)→ 结构化错误回传,CLI 非零退出 + 信息,不静吞(经验 C);② `--json` 输出 `{url, deployId, provider, fileCount}`(CLI 惯例);③ 进度经 `onProgress(stage, done/total)` 回调,CLI 打印阶段、editor 显进度条;④ `_redirects` 已存在(用户自带或将来 build 生成)则不覆盖;⑤ 大文件/多文件上传**串行 PUT**(首刀简单,可并发化留 follow-up);⑥ editor 部署需已保存文档路径(脏/未存 → 先走现有保存流);⑦ deploy 仅上传 dist 静态文件,不上传源码/node_modules;⑧ token 来源优先级 flag > env,二者皆无 → 明确报错指引(不静默)。
+
+#### 三问题反向核(经验 J)
+
+- **Q1 技术链**:CLI `deploy` → `loadAndCompile`(复用)→ `buildPreviewProject`(§5.1,临时 dir)→ 读 dist 回 Map → `deployFiles`(注 `_redirects` → SHA1 清单 → POST deploy → PUT required → 返 URL)。editor → plugin-shell spawn `open-pencil deploy <file> --token … --json` → 解析 NDJSON/JSON 进度+结果。**复用 §5.1 build + app-client bearer 模式 + preview sidecar spawn 模式**,无新链路类型。Netlify 请求构造按文档,真 API 形状留 deploy ACK 核(经验 K)。
+- **Q2 浮现**:CLI 打印 build→upload 阶段 + 最终 URL + `--json`;editor 进度条 + 部署完成 toast/链接(可复制/打开)。失败结构化浮现(次默 ①⑧)。
+- **Q3 心智模型**:用户期望「点一下/一条命令 → 拿到公开 URL」。须明确:(a) 首次自动建站、重部署指 `--site`(决 g);(b) 多页 SPA fallback 自动注入(决 e),刷新不 404;(c) 需 Netlify token(决 f 报错指引);(d) Supabase config 已内联在产物(§5.1 Q3,anonKey public);(e) editor 部署用当前已保存文档(次默 ⑥)。
+
+#### 公开 API / 类型
+
+```ts
+// packages/compiler/src/deploy.ts(新,fetch + Web Crypto,浏览器安全)
+export interface DeployTarget {
+  provider: 'netlify'
+  token: string
+  /** existing site id or name; omit to create a new site. */
+  site?: string
+}
+export interface DeployResult {
+  provider: string
+  url: string
+  deployId: string
+  fileCount: number
+}
+export interface DeployProgress {
+  stage: 'digest' | 'create' | 'upload' | 'done'
+  done?: number
+  total?: number
+}
+export async function deployFiles(
+  files: Map<string, string | Uint8Array>,
+  target: DeployTarget,
+  opts?: { onProgress?: (p: DeployProgress) => void }
+): Promise<DeployResult>
+```
+
+- `packages/compiler/package.json` exports 加 `./deploy`(镜像 `./build`)。
+- `packages/cli/src/commands/deploy.ts`(新):`deploy` 命令(`--token`/`--site`/`--page`/`--base`/`--json`)。
+- editor:部署按钮 + token 弹窗 + plugin-shell spawn `open-pencil deploy`(`src/app/lowcode/` 下,Tauri-only)。
+
+#### 改动清单
+
+- ➕ `packages/compiler/src/deploy.ts`:`deployFiles`(Netlify 摘要上传 + `_redirects` 注入 + SHA1 + onProgress)
+- 🔁 `packages/compiler/package.json`:exports 加 `./deploy`
+- ➕ `packages/cli/src/commands/deploy.ts`:`deploy` 命令(build → 读 dist → deployFiles)
+- 🔁 CLI 注册 `deploy`(`packages/cli/src/index.ts`)
+- ➕ editor 部署 UI + spawn 封装(Tauri-only,复用 preview sidecar spawn 模式)+ i18n
+- ➕ 单测 `tests/engine/compiler/deploy.test.ts`:mock fetch —— SHA1 hex 正确;清单 `{files:{"/p":sha}}` 形状;`required` → PUT 循环只传缺失;`_redirects` 注入(缺则补/有则不覆盖);401/网络错误结构化抛;onProgress 阶段序列
+- **0** scene-graph / kiwi / emit-内容
+
+#### 成功标准 + ACK(经验 K boundary)
+
+- **单端可验**:`deploy.test.ts`(mock fetch 全流程 + SHA1 + `_redirects` + 错误);CLI `deploy --json` 形状(mock/dry-run);`bun run check` 0 error/clone/locale 同步。
+- **Deploy ACK(留)**:真 Netlify token → `open-pencil deploy <fixture> --token …` → 拿到 live URL,app 跑、Supabase 可用、多页刷新不 404(`_redirects` 生效);**editor UI 一键部署(Tauri ACK)**。这步同时是 §5.1 + §4.x 双机的真部署验证场。
+
+#### 工作分解(~中-大,3 step + 设计 + close)
+
+| Step | 任务 | commit 前缀 |
+|---|---|---|
+| 0 | §5 托管集成设计 + 三岔口 AskUserQuestion 锁 | `docs(lowcode): §5 hosting integration — detailed design` |
+| 1 | `deploy.ts`(Netlify 摘要上传 + `_redirects` + SHA1 + onProgress)+ `./deploy` export + mock-fetch 单测 | `feat(compiler): §5 step 4 — Netlify direct-upload deploy core` |
+| 2 | CLI `deploy` 命令(build → 读 dist → deployFiles,token/site/json)+ 注册 | `feat(cli): §5 step 5 — `deploy` command (build + push to Netlify)` |
+| 3 | editor 部署 UI(token 弹窗 + plugin-shell spawn `deploy` + 进度/结果)+ i18n + close | `feat(app): §5 step 6 — one-click deploy from the editor` |
+
+#### 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| Netlify API 真实形状与文档偏差(required 语义/PUT 路径/URL 字段) | 中 | mock 单测钉请求构造;真形状留 deploy ACK 核(经验 K,无 token 单进程探不了);结构化错误不静吞 |
+| token 泄露(落盘/进产物/日志) | 高 | 决 f:flag/env-only,永不写文件;editor 经 spawn env 透传不持久化;不打印 token |
+| editor build 子进程(vite 仅 bun)| 中 | 决 b:editor spawn 整条 CLI `deploy`(CLI 内跑 build),不在浏览器建;同 preview sidecar 已验模式 |
+| 多页刷新 404(无 fallback)| 中 | 决 e:deploy 注入 `_redirects`;deploy ACK 验刷新 |
+| 上传慢测/网络进 CI | 低 | 单测全 mock fetch;无真网络;真上传仅 deploy ACK 手动 |
+
+#### Post-mortem(设计阶段 — stub,close 时补)
+
+#### §5 托管 follow-up(派生)
+
+- 多 provider(CF Pages / Vercel,各自 fallback 配置);并发上传;site 列表/选择 UI;自定义域名;部署历史;deploy hooks/CI;Supabase env 注入与多环境部署联动;editor 内置 token 安全存储(keychain)。
+
 ---
 
 ---
