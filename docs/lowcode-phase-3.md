@@ -3528,7 +3528,33 @@ export interface BuildOptions {
 | 误以为运行时可换 env(Q3)| 中 | 决 Q3 文案:静态 SPA env 是 build 期烤进,换环境=换 build |
 | service_role 误注入 | 中 | 次默 ⑤:只注 anon key(public);flag 命名 `--supabase-anon-key` 明示 |
 
-#### Post-mortem(设计阶段 — stub,close 时补)
+#### Post-mortem(进行中 — 代码完成,待 deploy ACK)
+
+**Supabase env 注入代码完成 2026-05-30**(单端检查全绿:`bun run check` 0 error / **0 clone** / locale 同步 / Steiger 通过;`supabase-auth-emit.test.ts` +4(env 回落 + scaffold + gate)+ `build.test.ts` +1 define-override;compiler 412 测零回归)。**模式 probe 定死(非 AskUserQuestion 岔口)= `import.meta.env.* ?? 设计期回落`**。
+
+**Commit 链(设计 + 2 step + close):**
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `c39c42b` 后续 | §5 env 注入全文 + probe(回落+define)|
+| step 7 | `5912e25` | emit `import.meta.env.VITE_SUPABASE_* ?? <json>` + `vite-env.d.ts` + `.env.example`(supabase 在场)+ gitignore `.env*` + emit-契约测 |
+| step 8 | `f4bd32b` | `BuildOptions.env`→Vite `define`(仅在场 key)+ CLI build/deploy `--supabase-url`/`--supabase-anon-key`(+ `process.env` 回落,共享 `resolveBuildEnv`)+ define-override 测 |
+| close | _本 commit_ | post-mortem + CHANGELOG |
+
+**Surprise / 经验印证:**
+- **probe 先于设计定死模式(经验 K)**:`import.meta.env.X ?? fallback` 的 no-define→回落 / define→override 两路在写设计前 `bun -e` 实测坐实 → 模式不再是"岔口"(纯 env 破 preview、opt-in 双路违克制,皆被 probe 排除)→ 本刀无 AskUserQuestion(决定由约束 + probe 定死)。
+- **改动碰既有 emit 测(经验 A/I)**:emit 从 `createClient("url","key")` 改为 `?? 回落` + `createClient(SUPABASE_URL, SUPABASE_ANON_KEY)` → 既有两条断言失效,同 commit 更新(没漏到下一 step,全 `check` 在 step 7 跑)。
+- **VFS 不读磁盘 env(经验 C 勘察)**:静读坐实 Vite `loadEnv` 读磁盘 `envDir`、不读 VFS 也不读 `process.env` 的 VITE_* → 我方 build override 只能 `define`;独立导出走原生 `.env`。两路分明。
+- **dedup 收口(经验 A)**:build/deploy 两命令的 env 解析(flag>env>设计期)抽 `resolveBuildEnv`(codegen.ts,type-only import `BuildOptions['env']` 不引 vite 运行时)→ jscpd 0。
+- **安全(次默⑤)**:只注 anon key(public);flag 名 `--supabase-anon-key` 明示;绝不碰 service_role。
+
+**单端可验 / Deploy ACK(经验 K boundary):**
+- **单端可验(已绿)**:emit-契约(`import.meta.env.* ?? 设计期`、`vite-env.d.ts`、`.env.example`、gate)、`build.test.ts` define-override(override 烤进 + 回落 DCE / 无 override 回落存活)、CLI `--supabase-url` 端到端接受、preview/dev-server 回归(回落,行为不变)。
+- **Deploy ACK(留)**:`open-pencil deploy <file> --supabase-url <prod> --supabase-anon-key <prod>` → 产物连 prod 库(≠ 设计期库);独立项目改 `.env` → `npm run build` → 连指定库。
+- **诚实边界**:① 静态 SPA 的 env 是 **build 期**烤进,换环境 = 换 build(非一包通吃运行时切换);② 我方 VFS build 经 `define` override,独立导出经原生 `.env`;③ multi-env 真效果(连不同库)需 deploy ACK 实证。
+
+#### §5 env 注入 follow-up(派生)
+
+- service_role / 服务端密钥的安全注入(绝不入 client bundle);per-deploy 多套 Supabase 预设管理;editor UI 暴露 env override(目前仅 CLI);其它 `VITE_*` 自定义 env 透传(目前仅两 Supabase key)。
 
 ---
 
