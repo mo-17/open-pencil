@@ -8,7 +8,7 @@ import { defineCommand } from 'citty'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { deployFiles, type DeployProgress, type DeployResult } from '@open-pencil/compiler/deploy'
 
-import { loadAndCompile } from '#cli/codegen'
+import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { bold, ok, printError } from '#cli/format'
 
 interface DeployArgs {
@@ -17,6 +17,8 @@ interface DeployArgs {
   site?: string
   page?: string
   base?: string
+  'supabase-url'?: string
+  'supabase-anon-key'?: string
   json?: boolean
 }
 
@@ -64,6 +66,16 @@ export default defineCommand({
       description: 'Public base path for assets (default: /).',
       required: false
     },
+    'supabase-url': {
+      type: 'string',
+      description: 'Override the Supabase URL for this deploy (else VITE_SUPABASE_URL, else design-time).',
+      required: false
+    },
+    'supabase-anon-key': {
+      type: 'string',
+      description: 'Override the Supabase anon key for this deploy (else VITE_SUPABASE_ANON_KEY, else design-time).',
+      required: false
+    },
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
@@ -86,8 +98,13 @@ export default defineCommand({
         json: args.json
       })
 
+      const env = resolveBuildEnv({
+        supabaseUrl: (args as DeployArgs)['supabase-url'],
+        supabaseAnonKey: (args as DeployArgs)['supabase-anon-key']
+      })
+
       if (!args.json) console.log('  Building…')
-      const built = await buildPreviewProject({ files: compiled.files, outDir: buildDir, base })
+      const built = await buildPreviewProject({ files: compiled.files, outDir: buildDir, base, env })
       const dist = readDist(built.outDir, built.files)
 
       let result: DeployResult

@@ -5,7 +5,7 @@ import { defineCommand } from 'citty'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import type { BuildResult } from '@open-pencil/compiler/build'
 
-import { loadAndCompile, reportCodegenResult } from '#cli/codegen'
+import { loadAndCompile, reportCodegenResult, resolveBuildEnv } from '#cli/codegen'
 import { printError } from '#cli/format'
 
 interface BuildArgs {
@@ -14,6 +14,8 @@ interface BuildArgs {
   'package-name'?: string
   page?: string
   base?: string
+  'supabase-url'?: string
+  'supabase-anon-key'?: string
   json?: boolean
 }
 
@@ -49,6 +51,16 @@ export default defineCommand({
       description: 'Public base path for assets (default: /). Set e.g. /app/ for sub-path hosting.',
       required: false
     },
+    'supabase-url': {
+      type: 'string',
+      description: 'Override the Supabase URL for this build (else VITE_SUPABASE_URL, else design-time).',
+      required: false
+    },
+    'supabase-anon-key': {
+      type: 'string',
+      description: 'Override the Supabase anon key for this build (else VITE_SUPABASE_ANON_KEY, else design-time).',
+      required: false
+    },
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
@@ -63,9 +75,14 @@ export default defineCommand({
       json: args.json
     })
 
+    const env = resolveBuildEnv({
+      supabaseUrl: (args as BuildArgs)['supabase-url'],
+      supabaseAnonKey: (args as BuildArgs)['supabase-anon-key']
+    })
+
     let result: BuildResult
     try {
-      result = await buildPreviewProject({ files: compiled.files, outDir, base })
+      result = await buildPreviewProject({ files: compiled.files, outDir, base, env })
     } catch (e) {
       // Surface the Vite/build failure rather than swallowing it (经验 C).
       printError(e)

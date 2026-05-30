@@ -34,6 +34,13 @@ export interface BuildOptions {
   fsRoot?: string
   /** Public base path for assets. Defaults to '/' (root hosting). */
   base?: string
+  /**
+   * Build-time Supabase env override (§5). Each present key is fed to Vite as a
+   * `define` for `import.meta.env.VITE_SUPABASE_*`; omitted keys fall back to
+   * the design-time values baked into the emitted runtime. The VFS build can't
+   * read a disk `.env`, so this is the override channel for our pipeline.
+   */
+  env?: { VITE_SUPABASE_URL?: string; VITE_SUPABASE_ANON_KEY?: string }
 }
 
 export interface BuildResult {
@@ -73,11 +80,23 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
   const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot)
   const vfs = inMemoryVFS({ files }, vfsPrefix)
 
+  // §5: override the emitted import.meta.env.VITE_SUPABASE_* fallbacks per
+  // environment. Only present keys are defined — omitted ones keep the
+  // design-time fallback baked into the runtime.
+  const define: Record<string, string> = {}
+  if (opts.env?.VITE_SUPABASE_URL !== undefined) {
+    define['import.meta.env.VITE_SUPABASE_URL'] = JSON.stringify(opts.env.VITE_SUPABASE_URL)
+  }
+  if (opts.env?.VITE_SUPABASE_ANON_KEY !== undefined) {
+    define['import.meta.env.VITE_SUPABASE_ANON_KEY'] = JSON.stringify(opts.env.VITE_SUPABASE_ANON_KEY)
+  }
+
   await build({
     root: scanRoot,
     base,
     configFile: false,
     envFile: false,
+    define,
     // Surface real build problems (no-swallow, 经验 C); suppress info spam so
     // the CLI owns the human-facing output.
     logLevel: 'warn',

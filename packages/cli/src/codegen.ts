@@ -6,9 +6,11 @@
 // files vs run a Vite build.
 
 import { basename, extname } from 'node:path'
+import process from 'node:process'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import type { CompileWarning, CompilerOutput } from '@open-pencil/compiler'
+import type { BuildOptions } from '@open-pencil/compiler/build'
 import type { SceneNode } from '@open-pencil/core/scene-graph'
 
 import { bold, fmtList, ok, printError } from '#cli/format'
@@ -27,6 +29,25 @@ export function sanitizePackageName(input: string): string {
 export function formatWarning(w: CompileWarning): string {
   const id = w.nodeId ? ` (node ${w.nodeId})` : ''
   return `[${w.code}] ${w.message}${id}`
+}
+
+/**
+ * Resolve the per-environment Supabase override for `build` / `deploy` (§5):
+ * explicit flags win over `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in the
+ * environment; returns undefined when neither is set so the build keeps the
+ * design-time fallback baked into the emitted runtime.
+ */
+export function resolveBuildEnv(flags: {
+  supabaseUrl?: string
+  supabaseAnonKey?: string
+}): BuildOptions['env'] {
+  const url = flags.supabaseUrl ?? process.env.VITE_SUPABASE_URL
+  const anonKey = flags.supabaseAnonKey ?? process.env.VITE_SUPABASE_ANON_KEY
+  if (url === undefined && anonKey === undefined) return undefined
+  const env: NonNullable<BuildOptions['env']> = {}
+  if (url !== undefined) env.VITE_SUPABASE_URL = url
+  if (anonKey !== undefined) env.VITE_SUPABASE_ANON_KEY = anonKey
+  return env
 }
 
 export type PageResolution =
