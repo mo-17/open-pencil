@@ -3651,7 +3651,7 @@ export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkCo
 
 #### §4.3 follow-up(派生)
 
-- ~~Trystero **Supabase 信令策略**~~(✅ 起,见 §4.3-S);自建模式可见指示(roster/状态栏「信令:自建」);relayRedundancy 可配;TURN 多组;editor 设置 UI 暴露(目前仅 build-time env);与 §5 部署联动(部署产物的协作?——注:emit 产物**不含**编辑器协作,此刀纯 editor-side)。
+- ~~Trystero **Supabase 信令策略**~~(✅ §4.3-S);~~自建模式可见指示~~(✅ `0589986`:ConnectedRoom 「Self-hosted signaling」/「Supabase Realtime signaling」行,`describeCollabSignaling` 纯函数派生,公共默认不显;2 i18n×8);relayRedundancy 可配;TURN 多组;editor 设置 UI 暴露(目前仅 build-time env);与 §5 部署联动(部署产物的协作?——注:emit 产物**不含**编辑器协作,此刀纯 editor-side)。
 
 ### §4.3-S Trystero Supabase 信令策略(§4.3 follow-up,设计 2026-05-31)
 
