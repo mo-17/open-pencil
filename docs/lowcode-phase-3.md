@@ -2728,6 +2728,94 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 
 注:base collab 还有 ~11 个非 lowcode object 字段同样在 Yjs 往返成字符串(§4.1.8 记录),属基座/上游议题,非 §4 lowcode slice。
 
+### 4.5 docState 协作冲突语义(设计 2026-05-30)
+
+#### 4.5.1 现状与问题(已实测坐实 — 经验 C/K)
+
+**核心发现(probe 坐实,非推断):** §4.1 的同步机制把节点存成 `Y.Map<字段名→值>`,**每个 object/array 字段经 `JSON.stringify` 存成一个不透明字符串**(`yjs-sync.ts:38-44`)。Yjs 只在「字段名」这一粒度合并 → **整个 `state` / `lowcodeDocumentState` 数组是单个 CRDT 寄存器 = 整块 last-write-wins**,无逐项合并。
+
+两-doc 并发 probe(各自 doc,交换 update):两端**并发**给同一节点的 `state` 各加一项(A 加 `count` / B 加 `name`)→ 交换后两端都收敛成 `[count]`,**`name` 被静默丢失**(converged=true 但数据丢)。`bun -e`/two-peer harness 实测,非假设。
+
+**这就是 §4.5:** 「Yjs 自动合并 node 字段」只在字段级成立(不同字段互不干扰);**同一 lowcode 集合字段内部并发编辑 = 整块覆盖,一方的并发改动静默丢失**。最高冲突面是**文档级集合**——
+- 页面 `state`(`StatePanel`,`StateDef[]`)+ 文档 `lowcodeDocumentState`(`DocumentStatePanel`,`DocumentStateDef[]`)+ `lowcodeSupabaseConfig`(`SupabaseConfigPanel`):**共享、多人、追加型**,且 §4.4 已点出它们**无画布选区信号**(两人同改 docState,presence 都显示「没选东西」)。
+- `bindings`/`events`/`interactiveProps`:单节点、通常单人编,冲突面低(§4.4 presence 已覆盖 awareness)。
+
+「Yjs CRDT 自动合并」对这些**不**成立 —— 这是 §4.1 把 object 字段当黑盒 blob 存的直接后果(§4.1 修了「往返成字符串」的 correctness,但没碰「整块寄存器无逐项 CRDT」的并发语义)。
+
+#### 4.5.2 关键决定(8 主 + 次默)
+
+**决定 a = 修复深度,是真岔口 → AskUserQuestion 锁**(经验 J/H;三选,trade-off 见下):
+
+| 方案 | 做法 | 正确性 | 风险 / 可合并性 | 体量 |
+|---|---|---|---|---|
+| **α 真逐项 CRDT** | `state`/`lowcodeDocumentState` 改存**嵌套 `Y.Map<entryId→JSON>`**(非 blob)→ Yjs 原生收敛:并发加不同项都活、同项改 = 逐项 LWW | 最强(零丢失) | **碰 base 同步热路径**(`syncNodePropsToYMap`/`yNodeToProps`/`applyYnodeToGraph` 须按字段名 carve-out + 跳过 blob 化 + observeDeep 嵌套事件);偏离 base 统一「object→stringify」编码 → fork 可合并性代价(经验新-4);中-大 | 中-大 |
+| **β apply 时合并** | 保留 blob 存储;apply 远端 docState 时按 entry name/id **并集合并**远端+本地再回播 | 中(并集存活,但同项冲突需规则 + 回播经 suppress flag 有 echo 风险,probe 显示朴素 merge 不回播会发散) | 不碰 base 编码(可合并),但收敛正确性靠手写易错 | 中 |
+| **γ 冲突浮现(不自动合并)** ⭐推荐 | 保留 LWW;**借 §4.4 presence 主动预警**「另一 peer 也在编文档状态 → 末次保存胜出、改动可能丢失」横幅(就是 §4.4 deferred 的面板内联 β)+ 远端 docState 到达且与本地发散时 no-swallow 提示;**诚实标注这些字段是整块 LWW** | 不防丢失,但**让丢失可见**(经验 C no-swallow) | 纯 additive、不碰 base 编码、可合并、低风险、承接 §4.4 节奏、单端可验检测逻辑 | 小-中 |
+
+**推荐 γ:** 与本 fork 一贯的「最小可验 additive 刀 + 保持上游可合并」(§4.1/§4.4)一致;真 CRDT 重构(α)风险/体量更大、碰 base 热路径,留作「true-merge」后续刀。γ 同时把 §4.4 deferred 的面板内联 presence 徽标顺势补上,且诚实呈现冲突语义(候选池原话 = 「冲突语义未审视」→ 审视 + 浮现)。**最终 α/β/γ 由用户 AskUserQuestion 定**,下表 b–h 按 γ 展开(选 α/β 则相应改写)。
+
+| # | 决定(γ 下) | 理由 |
+|---|---|---|
+| b | **冲突面限定文档级集合 3 字段**:页面 `state` / `lowcodeDocumentState` / `lowcodeSupabaseConfig` | 多人共享 + 无选区信号的高冲突面;单节点 bindings/events 冲突面低,不纳入(克制,经验新-4) |
+| c | **主动预警靠 §4.4 presence**:面板检测「有远端 peer 的 `editing.kind` ∈ {state,docState,supabaseConfig} 且与本面板同 kind」→ 面板头横幅「⚠ 协作者也在编辑此处,末次保存胜出」| 复用 §4.4 awareness,零新广播;这正是 §4.4 decision h deferred 的内联 β 形态,§4.5 顺势落地 |
+| d | **被动提示(no-swallow,经验 C)**:远端 `state`/`lowcodeDocumentState`(两个**数组**集合)到达 `applyYnodeToGraph`,若**本地 pre-apply 值 ⊄ 远端**(本地有项远端缺/同 id 异值 → 应用远端会丢本地信息)→ toast「文档状态被协作者改动,请检查」。**`supabaseConfig`(单对象、无 entry 粒度)不做被动检测**(纯顺序改也会整体≠ → 噪声),仅靠决 c 主动横幅 | 「本地⊄远端」精确捕捉「应用远端会丢本地改动」且对纯顺序追加(本地⊆远端)不报;单对象无法在不追踪 dirty 态下区分「并发改」vs「落后」→ 不被动报,避免误报 |
+| e | **不自动合并、不改存储编码**(γ 的边界)| 保持 base 同步路径与 §4.1 blob 编码不动 → 上游可合并;真合并是 α(后续刀) |
+| f | **检测纯函数 `docStateApplyLosesLocal(local, remote)`** 放 app 层,单测可验(喂「本地⊄远端」断言检出) | 经验 K:能确定性单测的就单测(检测逻辑单端可验,真双端传播留双机) |
+| g | **横幅/toast 文案传达「提示性、末次保存胜出」非「已锁/已合并」**(经验 J Q3 心智模型) | 用户须知道这是 LWW 软预警,不是被阻止、也不是自动 merge 了;避免误以为安全 |
+| h | **0 engine/kiwi/compiler/docState 编码改动**;纯 collab 读侧检测 + app UI + i18n | γ 是上层 additive 层,同 §4.4 |
+
+**次默(8)**:① 横幅只在面板可见(连接态 + 有同 kind 远端 editing);② 文案区分页面状态/文档状态/Supabase 配置(同 §4.4 label 三分);③ 检测函数按 entry `id` 优先、回落 `name` 比对;④ toast 去重(同字段短时间内只提示一次);⑤ 未连接协作 = 无横幅无 toast(单机零噪);⑥ 被动检测仅 `state`/`docState` 两数组(决 d);`supabaseConfig` 主动横幅(决 c)有、被动 toast 无;⑦ 不持久化任何冲突态(运行态);⑧ 比对 entry 值用 `JSON.stringify`(这些字段本就 JSON blob,足够)。
+
+#### 4.5.3 三问题反向核(经验 J)
+
+- **Q1 技术链**(γ):面板读 `useCollabInjected().remotePeers` → filter editing.kind 同 kind → 横幅;`applyYnodeToGraph` 旁路调 `docStateApplyLosesLocal(localPre, remoteProps)`(仅 state/docState 两数组)→ toast。**复用 §4.4 presence + §4.1 apply 路径**,无新订阅/无新广播。✅
+- **Q2 浮现**:主动横幅(编辑前/中)+ 被动 toast(覆盖已发生)双层 —— 编辑时就看到「有人也在编」,事后看到「被改了」。避免 §2.v2 类「只加状态不浮现」。
+- **Q3 心智模型**:用户看到横幅期望什么?→ 期望「知道有并发风险」,**不是**期望「系统帮我合并好了」(γ 不 merge)。文案必须诚实:LWW、末次胜出、请协调/复查。若选 α 则 Q3 反过来——用户期望「都不丢」,α 满足但要确认同项冲突 = 逐项 LWW(默认值并发改仍单赢,可接受)。
+
+#### 4.5.4 API / 类型(γ)
+
+```ts
+// src/app/collab/conflict.ts (新)
+/** 应用远端数组集合(state / lowcodeDocumentState)是否会丢失本地信息 =
+ *  「本地 ⊄ 远端」:本地有 entry 远端缺,或同 id 值不同。纯函数,单测可验。
+ *  本地 ⊆ 远端(纯顺序追加 / 完全相同)→ false(无丢失,不报)。 */
+export function docStateApplyLosesLocal(
+  local: unknown,
+  remote: unknown
+): boolean
+```
+
+#### 4.5.5 改动清单(γ)
+
+- ➕ `src/app/collab/conflict.ts`:`docStateApplyLosesLocal` 纯函数(本地⊄远端,entry id/name 比对)
+- 🔁 `applyYnodeToGraph`(或其 lowcode-aware 包装):apply `state`/`lowcodeDocumentState` 前抓 local pre-apply 值,若 `docStateApplyLosesLocal` → 经回调冒泡 toast(连接态才提示)
+- 🔁 `StatePanel.vue` / `DocumentStatePanel.vue` / `SupabaseConfigPanel.vue`:头部并发横幅(读 §4.4 `remotePeers` 同 kind editing)—— 抽共享小组件/composable `usePresenceConflictBanner(kind)` 杜绝 3 份 clone(经验 A)
+- ➕ i18n:`presenceConflictBanner`(横幅,带 {target} 占位)+ `presenceConflictToast`(被动提示)× 8 locale
+- ➕ 单测 `tests/engine/collab/conflict.test.ts`:`docStateApplyLosesLocal` 正负例(本地有项远端缺=true / 同 id 异值=true / 本地⊆远端纯追加=false / 完全相同=false / 空=false)
+- **0** engine/compiler/kiwi/docState 编码改动
+
+#### 4.5.6 工作分解(γ,~小-中,2-3 step)
+
+| Step | 任务 | commit 前缀 |
+|---|---|---|
+| 0 | §4.5 设计 doc + 深度 AskUserQuestion 锁 | `docs(lowcode): §4.5 docState conflict — detailed design` |
+| 1 | `docStateApplyLosesLocal` 纯函数 + apply 路径接入 + onConflict 回调 + toast + 单测 | `feat(collab): §4.5 step 1 — docState conflict detection` |
+| 2 | `usePresenceConflictBanner(kind)` + 3 文档级面板横幅 + i18n×8 + close | `feat(collab): §4.5 step 2 — concurrent-edit banner` |
+
+#### 4.5.7 风险(γ)
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 检测误报(正常顺序编辑也判发散) | 中 | 只在「双方各有独有项 / 同 id 异值」判冲突;纯顺序追加(远端是本地超集)不报;单测钉正负例 |
+| toast 噪声 | 低 | 次默 ④ 去重;次默 ⑤ 未连接零提示 |
+| 真双端检测单进程验不了 | 低 | 经验 K:检测纯函数单端可验;真双端传播留双机(同 §4.1/§4.2/§4.4) |
+| 横幅 3 面板 clone | 低 | 共享 composable(经验 A) |
+| 用户误以为已自动合并(Q3) | 中 | 决 g 文案诚实「末次保存胜出」 |
+
+#### 4.5.8 Post-mortem(stub)
+
+_(close 时补:深度 AskUserQuestion 结果、Tauri/单端 ACK、surprise、经验印证/新增、§4 进度。)_
+
 ### 4.4 lowcode-aware presence(协作在编什么,设计 2026-05-30)
 
 #### 4.4.1 现状与问题
