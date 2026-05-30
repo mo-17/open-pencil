@@ -3443,6 +3443,93 @@ export async function deployFiles(
 
 - 多 provider(CF Pages / Vercel,各自 fallback 配置);并发上传;site 列表/选择 UI;自定义域名;部署历史;deploy hooks/CI;Supabase env 注入与多环境部署联动;editor 内置 token 安全存储(keychain)。
 
+### §5 第三刀 — Supabase env 注入(设计 2026-05-30)
+
+接 §5.1 fork ③(当时 deferred)。托管做完后暴露:Supabase config 编译期内联进产物 → 一份 build 没法切 preview/staging/prod 库。本刀让 emit 走 `import.meta.env`,产物可按环境注入。
+
+#### 现状勘察(经验 C/E + probe 坐实)
+
+- `buildLowcodeSupabaseRuntime`(`lowcode-supabase.ts`)现 emit `createClient(JSON.stringify(url), JSON.stringify(anonKey))` —— 设计期值**硬编码**进 `src/_lowcode_supabase.ts`。
+- 该文件仅在 `maybeEmitLowcodeSupabaseRuntime`(`adapters/react/index.ts`)`config` 在场时 emit(`pageUsesSupabase` 门控)。
+- preview dev-server `envFile:false`(不读 `.env`);我方 build(`buildPreviewProject`)用 VFS,Vite 的 `loadEnv` 读磁盘 `envDir`、不读 VFS 里的 `.env`,也不读 `process.env` 的 `VITE_*` → **env 必须经 Vite `define` 注入**才能进我方 build/preview。
+- **probe 坐实(经验 K)**:emit `import.meta.env.VITE_SUPABASE_URL ?? 'FALLBACK'`,(a) 无 define → 产物含 `FALLBACK`(回落,preview/build 行为不变);(b) `define:{'import.meta.env.VITE_SUPABASE_URL':'"OVERRIDE"'}` → 产物含 `OVERRIDE`、回落被 DCE。两路皆验。
+- 标准独立导出(CLI `compile` → 用户自己 `npm run build`):Vite 原生读 `.env` → `import.meta.env.VITE_*` 生效(无需 define)。`tsc --noEmit`(独立 build 脚本)需 `import.meta.env` 类型 → 须 emit `src/vite-env.d.ts`(`/// <reference types="vite/client" />`)。
+
+#### 关键决定(8 主 + 次默)
+
+**模式非真岔口(probe 定死)**:`import.meta.env.VITE_SUPABASE_*` **带设计期回落**(`?? <inline>`)。**纯 env(无回落)被否**(破 preview,除非额外注入);**opt-in flag(inline|env 双路)被否**(双码路、违 fork 可合并克制)。回落 = preview/build 零注入照跑 + anonKey 本就 public,设计期值作默认无泄露。
+
+| # | 决定 | 理由 |
+|---|---|---|
+| a | emit `createClient(import.meta.env.VITE_SUPABASE_URL ?? <json url>, import.meta.env.VITE_SUPABASE_ANON_KEY ?? <json anonKey>)` | probe 坐实回落 + override 双路;设计期值留作默认 |
+| b | **设计期值烤进回落**(非省略) | preview/我方 build 零注入照跑(回落);anonKey public,无泄露 |
+| c | emit `src/vite-env.d.ts`(`vite/client` 引用),仅 supabase 在场时 | 独立 `tsc --noEmit && vite build` 需 `import.meta.env` 类型 |
+| d | emit `.env.example`(`VITE_SUPABASE_URL=`/`VITE_SUPABASE_ANON_KEY=`),仅 supabase 在场时 | 文档化两 env;独立用户 copy 成 `.env` 即多环境(Vite 原生读)|
+| e | 我方 build/deploy override 经 Vite **`define`**(probe 坐实);`BuildOptions.env?:{VITE_SUPABASE_URL?;VITE_SUPABASE_ANON_KEY?}` | VFS 不读磁盘 `.env`/`process.env` VITE_*,只能 define 注入 |
+| f | CLI `build`/`deploy` 加 `--supabase-url`/`--supabase-anon-key`,并回落读 `process.env.VITE_SUPABASE_URL`/`_ANON_KEY` → 传 `BuildOptions.env` | 我方管线多环境入口;flag 优先 env |
+| g | **preview/dev-server 不动**(走回落,不传 define)→ 运行态与今日完全一致 | 零 preview 回归;emit 改动 scoped 在 supabase 运行时 + scaffold |
+| h | 0 scene-graph / kiwi / docState 编码改动;改动仅 supabase 运行时 emit + 2 scaffold 文件 + build env + CLI flag | 同 §5.1/§5.2:scoped、保持 fork 可合并(经验新-4)|
+
+**次默(8)**:① 无 supabase config 的文档不 emit(`vite-env.d.ts`/`.env.example` 也不出);② override 缺省(无 flag/env)→ 回落设计期值(等价今日);③ `--supabase-url` 与 `--supabase-anon-key` 可分别给(只给一个 → 另一个回落);④ `define` 仅当值在场才注入对应 key(避免误把 undefined 烤进);⑤ token/anonKey 仍是 public anonKey(非 service_role,绝不注入服务端密钥);⑥ `.env.example` 非 `.env`(不覆盖用户 `.env`,`.gitignore` 已含 `*.local`/`.env` 习惯——确认 emit gitignore 含 `.env`);⑦ build env 透传只认两 VITE_ key(不泛化任意 env,克制);⑧ deploy 复用 build 的 env 透传(deploy 内部调 build)。
+
+#### 三问题反向核(经验 J)
+
+- **Q1 技术链**:`buildLowcodeSupabaseRuntime(config)` → `import.meta.env.* ?? json(config.*)`;`maybeEmitLowcodeSupabaseRuntime` 顺带 emit `vite-env.d.ts`+`.env.example`;`buildPreviewProject({env})` → Vite `define`(仅在场 key);CLI build/deploy flag/env → `BuildOptions.env`。**probe 坐实回落 + define**(经验 K)。
+- **Q2 浮现**:独立用户 → `.env.example` 指明两 env;CLI → `--supabase-url`/`--supabase-anon-key` help + 缺省回落(无声但符合预期=用设计期库);override 生效与否 = 部署后 app 连的库(deploy ACK 可见)。
+- **Q3 心智模型**:用户期望「一份设计/build,按环境换库」。须明确:(a) 静态 SPA 的 env 是**build 期**烤进(非运行时),换环境 = 换 build 的 env,非一包通吃;(b) 不设 env → 回落设计期库(preview/默认部署照常,符合直觉);(c) 注入的是 **anon key**(public),不是 service_role;(d) 独立项目走 `.env`,我方 CLI 走 flag/env。
+
+#### 公开 API / 类型
+
+```ts
+// buildPreviewProject (build.ts) — 加可选 env override
+export interface BuildOptions {
+  files: PreviewFiles
+  outDir: string
+  fsRoot?: string
+  base?: string
+  /** Build-time Supabase env override → Vite define. Omitted keys fall back to
+   *  the design-time values baked into the emitted runtime. */
+  env?: { VITE_SUPABASE_URL?: string; VITE_SUPABASE_ANON_KEY?: string }
+}
+```
+- `lowcode-supabase.ts`:emit `import.meta.env.VITE_SUPABASE_* ?? <json>`。
+- `adapters/react/index.ts`:`maybeEmitLowcodeSupabaseRuntime` 加 `src/vite-env.d.ts` + `.env.example`(supabase 在场)。
+- CLI `build`/`deploy`:`--supabase-url` / `--supabase-anon-key`(+ `process.env.VITE_SUPABASE_URL`/`_ANON_KEY` 回落)。
+
+#### 改动清单
+
+- 🔁 `packages/compiler/src/adapters/react/lowcode-supabase.ts`:emit `import.meta.env.* ?? <json>`
+- 🔁 `packages/compiler/src/adapters/react/index.ts`:`maybeEmitLowcodeSupabaseRuntime` emit `vite-env.d.ts` + `.env.example`
+- 🔁 `packages/compiler/src/build.ts`:`BuildOptions.env` → Vite `define`(仅在场 key)
+- 🔁 `packages/cli/src/commands/build.ts` + `deploy.ts`:`--supabase-url`/`--supabase-anon-key` + `process.env` 回落 → `BuildOptions.env`(deploy 透传 build)
+- ➕ 测:`lowcode-supabase` emit-契约(`import.meta.env` + 回落含设计期值 + `vite-env.d.ts`/`.env.example` 在场);`build.test.ts` define-override(env 注入 → 产物含 override、回落 DCE — probe 已验,补固化测)
+- **0** scene-graph / kiwi / docState 编码
+
+#### 成功标准 + ACK(经验 K)
+
+- **单端可验**:emit-契约测(`import.meta.env.VITE_SUPABASE_URL ?? "<设计期>"` 串 + 两 scaffold 文件);build define-override 测(env → 产物含 override);CLI build/deploy `--supabase-url` 透传(`--json`/dry 或 mock);`bun run check` 0 error/clone;preview/dev-server 回归(回落,行为不变)。
+- **Deploy ACK(留)**:`open-pencil deploy <file> --supabase-url <prod> --supabase-anon-key <prod>` → 部署产物连 prod 库(≠ 设计期库);独立 `.env` 路径(用户改 `.env` → `npm run build` → 连指定库)。
+
+#### 工作分解(~小-中,2 step + 设计 + close)
+
+| Step | 任务 | commit 前缀 |
+|---|---|---|
+| 0 | §5 env 注入设计(probe 坐实回落+define)| `docs(lowcode): §5 Supabase env injection — detailed design` |
+| 1 | emit `import.meta.env.* ?? 回落` + `vite-env.d.ts` + `.env.example` + emit-契约测 | `feat(compiler): §5 step 7 — Supabase config via import.meta.env` |
+| 2 | `BuildOptions.env`→define + CLI build/deploy `--supabase-*`/env + define-override 测 + close | `feat(cli): §5 step 8 — per-environment Supabase override on build/deploy` |
+
+#### 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| emit `import.meta.env` 破 preview/build(值丢)| 中 | 决 b 回落 + probe 坐实无 define 走回落;preview/dev-server 不传 define(决 g)|
+| 独立 `tsc --noEmit` 缺 `import.meta.env` 类型报错 | 中 | 决 c emit `vite-env.d.ts`(`vite/client`)|
+| 误注入 undefined(只给一个 flag)| 低 | 次默 ④:define 仅在场 key,另一个走回落 |
+| 误以为运行时可换 env(Q3)| 中 | 决 Q3 文案:静态 SPA env 是 build 期烤进,换环境=换 build |
+| service_role 误注入 | 中 | 次默 ⑤:只注 anon key(public);flag 命名 `--supabase-anon-key` 明示 |
+
+#### Post-mortem(设计阶段 — stub,close 时补)
+
 ---
 
 ---
