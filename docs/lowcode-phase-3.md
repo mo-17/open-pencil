@@ -2780,9 +2780,31 @@ signIn / signOut / signUp / resetPassword / updatePassword 五动作齐备(1 个
 - **风险**:Trystero action API/payload 形状(决 K-probe);桥 echo(决 e);iframe runtime 真双端验(K boundary);emit 改动 fork 可合并性(scoped,克制)。
 - **post-mortem**:close 时补。
 
-#### 4.6.x Post-mortem(stub)
+#### 4.6.x Post-mortem(进行中 — 代码完成,待 Tauri/双机 ACK)
 
-_(scope AskUserQuestion 结果 + Tauri/双机 ACK + surprise + 经验 + §4 进度。)_
+**§4.6 代码完成 2026-05-30**(单端检查全绿:`bun run check` 0 error / 0 clone / locale 同步;`bridge.test.ts` +5 + `document-state.test.ts` +1 emit-契约测;collab + compiler 410 测零回归)。**scope 岔口 AskUserQuestion 锁 = B 运行态 docState 同步**(对称、per-key LWW、临时广播)。**传输 probe 坐实**(Trystero `makeAction`,经验 K)。
+
+**step 3 并入 close:** 决 g「仅连接态启用」是**隐式门控**——`sendPreviewDocState` 在未连接时 no-op(`runtime.sendPreviewDocState=null`),桥只在 store 在场时挂 subscribe;「运行态协作中」可见指示是次默④/可选,**留 follow-up**。功能层 step 2 即完整。
+
+#### Commit 链(设计 + 2 step;close 待 ACK)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `9f42af8` | §4.6 全文(架构勘察)+ scope A/B/C AskUserQuestion 锁 = B + 传输 probe |
+| step 1 | `a3d7a6c` | 桥第 3 类消息 `docState`(emit 层):`window.__opDocStore` 句柄(`_lowcode_state.ts`,+ `op-docstore-ready` 事件覆盖两 eval 顺序)+ `store.subscribe` diff 出站 + `setState` 入站 + `suppressDocStateOutbound` 破 echo;两模板 emit-契约测 |
+| step 2 | `5b78a73` | 编辑器中继:Trystero `doc-state` room action(临时、不持久化)+ `connectCollabRoom` 返回 sender / 惰性 receiver handler + `use.ts` `sendPreviewDocState`/`onPreviewDocState` + PreviewPane 双向中继(入站 iframe→广播 / 远端→postIframe) |
+| close | _待 Tauri ACK_ | post-mortem 补 surprise/经验 + memory + §4 进度 |
+
+#### 单端可验 / 双机留验(经验 K boundary)
+
+- **单端可验**:桥 emit 契约(docState 消息/句柄/suppress)snapshot 测;`makeAction` API probe;桥/中继 wiring 编译通过。
+- **双机留验(经验 K)**:真跨 iframe 运行态镜像 —— A 在 preview 改 docState(zustand)→ B 的 preview 同步变化。单进程无信令 broker、且运行态活在 iframe React 内存里,验不了真传播(同 §4.1/§4.2/§4.4/§4.5 live 路径)。
+- **诚实边界**:① 运行态 LWW(决 f),并发同 key 改末次胜出(可接受,运行态短命);② preview reload 后从本地 initial 起(次默⑤,不强拉远端快照——新 peer 快照拉取留 follow-up ④);③ emit 改动 scoped 在 bridge + `_lowcode_state`(类 §4.1 扩 base collab,保持可合并);④ prod 也 emit `window.__opDocStore` 句柄(无桥读取,无害,但暴露内部 store ref——可接受,已注释)。
+- **Tauri 留意点**:桥 echo(决 e suppress 双向);store 句柄 eval 顺序(`op-docstore-ready` 兜底);无 docState 的文档不 emit `_lowcode_state`(无句柄,无运行态同步——符合预期)。
+
+#### follow-up(§4.6 衍生)
+
+- **§4.6-A 预览在场/跟随**(awareness +previewRoute);**§4.6-C presenter 全镜像**(+表单输入/滚动);**新 peer docState 快照拉取**(onPeerJoin 时同步当前运行态,次默④);**运行态协作中可见指示**(次默,UI)。
 
 ### 4.5 docState 协作冲突语义(设计 2026-05-30)
 
