@@ -3556,6 +3556,90 @@ export interface BuildOptions {
 
 - service_role / 服务端密钥的安全注入(绝不入 client bundle);per-deploy 多套 Supabase 预设管理;editor UI 暴露 env override(目前仅 CLI);其它 `VITE_*` 自定义 env 透传(目前仅两 Supabase key)。
 
+### §4.3 自建信令 + TURN(可配端点,设计 2026-05-31)
+
+§4 候选池 #4.3(耦合 §5)。生产可靠性/隐私:协作信令现走公共 MQTT broker(`trystero/mqtt` 默认 `test.mosquitto.org`/`broker.emqx.io`/`broker.hivemq.com`)+ openrelay 免费 TURN —— 社区服务、无 SLA。本刀让这些**端点可配**,指向自建 broker/coturn。
+
+#### 4.3.1 现状勘察(经验 C/E)
+
+- 信令/TURN **全硬编码在 `room.ts`**:`appId: TRYSTERO_APP_ID('openpencil')` + `joinRoom from 'trystero/mqtt'` + 写死 openrelay iceServers;**零注入点**。配置链 `session.ts connect()` → `connectCollabSession` → `connectCollabRoom`。
+- **Trystero 0.22**:mqtt 策略 `RelayConfig.relayUrls?: string[]` 可覆盖默认公共 broker;`rtcConfig: RTCConfiguration`(现用 iceServers)。
+- **编辑器是 Vite app**(`src/env.d.ts` 已 `/// <reference types="vite/client" />`)→ 配置走 `import.meta.env.VITE_COLLAB_*`,**完全镜像 §5.3 的 `import.meta.env + 回落` 模式**。
+
+#### 4.3.2 关键决定(8 主 + 次默)
+
+**决定 a = 两岔口 AskUserQuestion 锁 2026-05-31**:① 信令 = **MQTT relay 可配**(保留 `trystero/mqtt`,`relayUrls`+TURN 走 `import.meta.env.VITE_COLLAB_*`;Supabase 策略切换留 follow-up);② **保留公共默认回落**(env 未配 = 同今日,零回归;自建 = 设 env 覆盖)。
+
+| # | 决定 | 理由 |
+|---|---|---|
+| b | 配置走 `import.meta.env.VITE_COLLAB_*`(editor build-time env),纯函数 `buildCollabNetworkConfig(env)` 解析 → `{appId, relayUrls?, iceServers}` | 镜像 §5.3;editor 级配置(非 per-doc,不碰文档 Supabase),单端可验 |
+| c | `VITE_COLLAB_RELAY_URLS` 逗号分隔 wss URLs → `relayUrls`;未配 → 省略(trystero 用其公共默认)| 自建 broker 列表;回落公共(决 a②)|
+| d | `VITE_COLLAB_TURN_URL`(+`_USERNAME`/`_CREDENTIAL`)→ 自定义 TURN iceServer 替 openrelay;未配 → openrelay(同今日)。STUN(Google/Cloudflare)恒含 | 自建 coturn;TURN 是 NAT 兜底,STUN 免费保留 |
+| e | `VITE_COLLAB_APP_ID ?? TRYSTERO_APP_ID('openpencil')` | 自建 broker 上隔离命名空间;回落现值 |
+| f | `ImportMetaEnv` 在 `src/env.d.ts` 增 5 个 `VITE_COLLAB_*` 可选 string 键(避免 any-access)| Vite 惯例;类型安全(无 `any` 违 lint)|
+| g | 纯 additive、保留 `trystero/mqtt` transport、保留公共回落 | 零回归、可合并(经验新-4);自建是 opt-in |
+| h | 0 scene-graph/kiwi/emit;editor-side collab only(`room.ts` + 新 `network-config.ts` + `env.d.ts`)| 同 §4.x additive 姿态 |
+
+**次默(8)**:① relayUrls 逗号项 trim + 去空;② 只设 TURN_URL 无 username/credential 也接受(开放 TURN);③ STUN 永含(免费、NAT 发现);④ env 全空 = 当前行为(public broker + openrelay + 'openpencil');⑤ 配置只读一次(连接时),不热更;⑥ 不持久化、不广播(运行态,同 §4.x);⑦ 解析失败/空串当未配(回落,不抛);⑧ §4.2 房间口令(password)与本刀正交(信令端点 vs 房间加密),两者独立。
+
+#### 4.3.3 三问题反向核(经验 J)
+
+- **Q1 技术链**:`buildCollabNetworkConfig(import.meta.env)` → `{appId, relayUrls?, iceServers}` → 传 `connectCollabRoom` → `joinRoom({appId, password, relayUrls?, rtcConfig:{iceServers}}, roomId, onErr)`。**纯函数单端可验**;真自建 broker/TURN 留双机 ACK(经验 K)。
+- **Q2 浮现**:配置是运维侧(env),无 UI;但**诚实**:未配 = 公共 broker(决 a② 接受)。「自建已生效」可日后加指示(follow-up)。
+- **Q3 心智模型**:用户期望「设 env → 协作走我的 broker/TURN」。须明确:(a) 是 **editor build-time** env(设在跑/构建编辑器处,非 per-doc);(b) 未配仍用公共(决 a②,非强制自建);(c) relayUrls 是 wss MQTT broker(非任意 URL);(d) 与 §4.2 房间口令正交。
+
+#### 4.3.4 公开 API / 类型
+
+```ts
+// src/app/collab/network-config.ts(新,纯函数)
+export interface CollabNetworkEnv {
+  VITE_COLLAB_APP_ID?: string
+  VITE_COLLAB_RELAY_URLS?: string
+  VITE_COLLAB_TURN_URL?: string
+  VITE_COLLAB_TURN_USERNAME?: string
+  VITE_COLLAB_TURN_CREDENTIAL?: string
+}
+export interface CollabNetworkConfig {
+  appId: string
+  relayUrls?: string[]
+  iceServers: RTCIceServer[]
+}
+export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkConfig
+```
+- `src/env.d.ts`:`interface ImportMetaEnv` 增 5 个 `VITE_COLLAB_*` 可选 string。
+- `room.ts`:`connectCollabRoom` 用 `buildCollabNetworkConfig(import.meta.env)` 取代硬编码 appId/iceServers,relayUrls 透传 joinRoom config。
+
+#### 4.3.5 改动清单
+
+- ➕ `src/app/collab/network-config.ts`:`buildCollabNetworkConfig` 纯函数(relayUrls 逗号解析 / TURN 替换 + STUN 恒含 / appId 回落)
+- 🔁 `src/app/collab/room.ts`:调 `buildCollabNetworkConfig(import.meta.env)`;`relayUrls` 进 joinRoom config(`BaseRoomConfig & RelayConfig`)
+- 🔁 `src/env.d.ts`:`ImportMetaEnv` 增 5 `VITE_COLLAB_*`
+- ➕ 单测 `tests/engine/collab/network-config.test.ts`:env 全空 → 公共默认(openrelay + 无 relayUrls + 'openpencil');设 relayUrls → 数组解析;设 TURN → 替 openrelay + STUN 仍在;appId 覆盖;空串/脏值当未配
+- **0** scene-graph/kiwi/emit
+
+#### 4.3.6 工作分解(~小,1-2 step + 设计 + close)
+
+| Step | 任务 | commit 前缀 |
+|---|---|---|
+| 0 | §4.3 设计 + 两岔口 AskUserQuestion 锁 | `docs(lowcode): §4.3 self-host signaling+TURN — detailed design` |
+| 1 | `buildCollabNetworkConfig` 纯函数 + `env.d.ts` 类型 + room.ts 接入 + relayUrls 透传 + 单测 + close | `feat(collab): §4.3 — configurable signaling relays + TURN via env` |
+
+#### 4.3.7 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| relayUrls 透传破 joinRoom 类型(`RelayConfig`)| 中 | trystero 类型 `BaseRoomConfig & RelayConfig` 已含 `relayUrls?`;tsgo 钉 |
+| `import.meta.env.VITE_COLLAB_*` any-access lint | 中 | 决 f:`env.d.ts` augment ImportMetaEnv → `string|undefined` |
+| 误配空 relayUrls 数组 → 无 broker 连不上 | 中 | 次默 ①⑦:trim+去空,全空当未配回落公共 |
+| 自建端点真连不验单端 | 低 | 经验 K:纯函数单端可验;真传播留双机 ACK(同 §4.x)|
+| 用户以为未配也走自建(Q3)| 低 | 决 a② + Q3 文案:未配 = 公共回落 |
+
+#### 4.3.8 Post-mortem(设计阶段 — stub,close 时补)
+
+#### §4.3 follow-up(派生)
+
+- Trystero **Supabase 信令策略**切换(无公共 broker,复用 Supabase Realtime);自建模式可见指示(roster/状态栏「信令:自建」);relayRedundancy 可配;TURN 多组;editor 设置 UI 暴露(目前仅 build-time env);与 §5 部署联动(部署产物的协作?——注:emit 产物**不含**编辑器协作,此刀纯 editor-side)。
+
 ---
 
 ---
