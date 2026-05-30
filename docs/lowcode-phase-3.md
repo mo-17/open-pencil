@@ -3186,6 +3186,115 @@ live 多机 Tauri 留作部署/双机时验(同 §2.v4 邮件往返:能确定性
 
 ---
 
+## §5 部署管线(设计 2026-05-30)
+
+转产品级方向第二刀。§4 协作给了「多人编辑/运行同一 lowcode app」,但 app 始终活在编辑器 preview 的 iframe 里(本端 sidecar dev-server)。§5 把 compiler emit 的项目变成**可上线的部署产物 + 托管**。**双赢**:§4.x 的真双端/运行态验证本就需真部署 → §5 解锁全部 §4.x 双机 ACK。依赖 §2 Supabase(已就位)。**吸收 §4.3**(自建信令+TURN)作为 follow-up(本刀公共 broker 已够双机 ACK)。
+
+#### §5.1 现状勘察(静读真源 + probe 坐实,经验 C/E/K)
+
+1. **可构建产物已存在。** `compile()`(`packages/compiler/src/index.ts`)产出 `Map<path, content>` = 完整 Vite+React+TS 项目;`buildPackageJson`(`project.ts`)写的 `package.json` 已带 `dev`/`build`(`tsc --noEmit && vite build`)/`preview` 脚本。CLI `compile` 命令(`packages/cli/src/commands/compile.ts`)`devMode:false`(干净无 canvas↔preview bridge)把它写盘 → 用户手动 `npm install && npm run build` 即得 static `dist/`。**§5 不是从零做构建,是补「源码 → 可部署产物 + 托管」这两段。**
+2. **lowcode app = 纯 client SPA + Supabase 后端**(emit 零服务端;数据/认证全走 `@supabase/supabase-js` 直连)→ **天然静态可托管**。
+3. **Supabase config 编译期内联进源码**(`lowcode-supabase.ts`:`createClient(${JSON.stringify(url)}, ${JSON.stringify(anonKey)})`),非 env。anonKey 本就 public(Supabase 设计)→ 内联可接受;多环境 env 注入 = follow-up。
+4. **preview sidecar = Vite `createServer`(dev/HMR,in-memory VFS,Tauri plugin-shell 起 `dev-server.ts`)**。**无 `vite build` 路径** → 这是 §5.1 要补的核心。
+5. **§4.3 信令/TURN**(`src/app/collab/room.ts`):`TRYSTERO_APP_ID='openpencil'` + 公共 MQTT broker(`trystero/mqtt`)+ openrelay 免费 TURN。**编辑器侧链,不进 emit 产物**;双机 ACK 用公共 broker 已可跑 → 自建留 follow-up。
+6. **VFS build probe 坐实(经验 K)**:编程式 Vite `build()` + 复用 dev-server 的 in-memory VFS plugin + workspace hoisted `node_modules` → **零 npm install** 产 static dist(`index.html` + hashed `assets/*.js`/`*.css`)。Tailwind `@tailwindcss/vite` 在 build 路径正常(CSS 含 `@source inline` utilities)。build 须显式 `rollupOptions.input` 指 VFS-prefixed `index.html`(无盘上 html 可自动发现)。
+
+#### §5.2 关键决定(8 主 + 次默)
+
+**决定 a = 四个真岔口,AskUserQuestion 锁定 2026-05-30**:
+- ① §5.1 首刀范围 = **构建产物路径**(`vite build` → static dist;托管/PaaS 集成留下一刀,同 §4 最小可验节奏)。
+- ② 部署目标形态 = **静态 SPA 托管**(匹配 emit 零服务端产物,最简可验)。
+- ③ Supabase config 注入 = **首刀保持内联**(anonKey public、零新工作、当前行为),env-based 留 follow-up(碰 emit 热路径,fork 可合并性,经验新-4)。
+- ④ §4.3 信令/TURN = **暂用公共 broker**(已能跑双机 ACK),自建/托管留 follow-up(解耦首刀)。
+
+下表 b–h 在锁定的「构建产物路径 / 静态 SPA」范围内展开。
+
+| # | 决定(首刀) | 理由 |
+|---|---|---|
+| b | **build = 编程式 Vite `build()` + 复用 VFS plugin(probe 坐实),非写盘+npm install** | 与 dev-server 架构对称(经验 E);零网络/零 install 延迟;同源依赖解析(workspace hoisted node_modules)|
+| c | **抽共享 VFS module** `packages/compiler/src/vfs.ts`:`inMemoryVFS` + `lookupFile`/`stripQuery`/`resolveRelative` + `PreviewFiles` 类型,dev-server + build 共享 import | 经验 A(dedup helper,jscpd 零 clone):build 复制 VFS 逻辑必撞 jscpd;单点收口 |
+| d | **build 入口 = `rollupOptions.input` 指 VFS-prefixed `index.html`**(probe 坐实) | build 无盘上 html 可发现,须显式 input |
+| e | **输出 = 写真实 `outDir`(磁盘),CLI 首消费者** | dist 含 hashed binary assets → 真实目录比 Map 自然;与 CLI compile「写盘」一致;editor 侧「导出已构建 app」按需读回(follow-up)|
+| f | **CLI 新增独立 `build` 命令**(`bun open-pencil build <file> -o <dir>`),非 `compile --build` flag | 语义清晰:`compile`=源码、`build`=可部署产物;沿 `compile.ts` 结构(citty + agentfmt + `--json`)|
+| g | **`devMode:false` 强制**(同 CLI compile) | 部署产物不带编辑器 canvas↔preview bridge(干净分发物)|
+| h | **0 scene-graph / 0 kiwi / 0 emit-内容改动**;首刀纯加 build 路径(VFS 抽离 + build wrapper + CLI 命令) | emit 内容是已闭 §1-§4 scope;首刀聚焦「源码→产物」编译步;保持 fork 可合并(经验新-4)|
+
+**次默(8)**:① build 失败(类型错/缺依赖)→ 结构化错误回传,CLI 非零退出 + stderr 尾,不静吞(经验 C no-swallow);② CLI `-o` 指项目根,Vite 默认 `dist/` 落其下;③ base path 默认 `/`(根托管),子路径(`--base /app/`)留 follow-up;④ Tailwind:emit 的 `@source inline(...)` 已含全部用到 class(probe 坐实 build 下 utilities 正常)→ 无需额外 safelist;⑤ sourcemap 默认关(分发物精简),`--sourcemap` 留 follow-up;⑥ 多页 = client-side BrowserRouter → 静态托管需 SPA fallback(所有路径回 `index.html`)→ 文档注明,`_redirects`/`vercel.json` 生成留 follow-up;⑦ build 复用 dev-server 的 `.preview-root` scanRoot(deps 解析),但一次性、无 watcher;⑧ 产物纯 static dist(无 node_modules/package.json),可直接丢 CDN。
+
+#### §5.2 三问题反向核(经验 J)
+
+- **Q1 技术链**:`compile(graph, {devMode:false})` → `Map` → `buildPreviewProject({files, outDir})` 内 Vite `build()`(input=VFS html,plugins=[vfs, react, tailwind])→ static dist 写 `outDir` → CLI 报告文件清单。**新增一条独立编译步**,不碰 emit 内容 / dev-server HMR 路径。已 probe 坐实(经验 K)。
+- **Q2 浮现**:CLI 输出 build 后 dist 文件清单 + 大小(沿 compile 的 `fmtList`)+「Next: 部署 `dist/` 到静态托管」提示;失败 → 结构化错误浮现(次默 ①)。`--json` 支持(CLI 惯例)。
+- **Q3 心智模型**:用户期望「一条命令把设计变成可上线的网站文件夹」。产物 = 纯 static dist,可直接拖到 Netlify/CF Pages。须明确:(a) 多页是 client-side 路由 → 托管需 SPA fallback(次默 ⑥ 文档);(b) Supabase 配置内联在产物里(anonKey public 可接受,Q3 文案点明);(c) 这是「**构建**」非「**托管**」—— 上线仍需用户自行推到托管(首刀边界,托管集成 = follow-up)。
+
+#### §5.3 公开 API / 类型(首刀)
+
+```ts
+// packages/compiler/src/vfs.ts(新,抽自 dev-server)
+export type PreviewFiles = Map<string, string | Uint8Array>
+export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin
+// + lookupFile / stripQuery / resolveRelative(纯函数,单测可验)
+
+// packages/compiler/src/build.ts(新)
+export interface BuildOptions {
+  files: PreviewFiles      // CompilerOutput.files(devMode:false)
+  outDir: string           // 真实目录,写 static dist
+  fsRoot?: string          // workspace root,npm 解析,默认 process.cwd()
+  base?: string            // public base path,默认 '/'
+}
+export interface BuildResult {
+  outDir: string
+  files: string[]          // dist-relative 写出路径
+}
+export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResult>
+```
+
+- `packages/compiler/package.json` exports 加 `./build`(镜像 `./dev-server`)。
+- `packages/cli/src/commands/build.ts`(新):`build` 命令,`-o`/`--package-name`/`--page`/`--json`(沿 compile)。
+
+#### §5.4 改动清单(首刀)
+
+- ➕ `packages/compiler/src/vfs.ts`:抽共享 VFS plugin + helpers
+- 🔁 `packages/compiler/src/dev-server.ts`:改 import 共享 VFS(删本地副本,emit 字节零变)
+- ➕ `packages/compiler/src/build.ts`:`buildPreviewProject`(Vite `build()` + VFS)
+- 🔁 `packages/compiler/package.json`:exports 加 `./build`
+- ➕ `packages/cli/src/commands/build.ts`:`build` 命令
+- 🔁 CLI 命令注册(`packages/cli/src/` main/registry)
+- ➕ 单测 `tests/engine/compiler/vfs.test.ts`:`lookupFile`/`resolveRelative`/`stripQuery` 正负例(经验 K:纯函数确定性单测);可选 smoke build 测(最小 Map → dist 存在,标注慢)
+- **0** scene-graph / kiwi / emit-内容
+
+#### §5.5 成功标准 + ACK(经验 K boundary)
+
+- **单端可验**:`vfs.ts` 纯函数正负例单测;`bun open-pencil build <fixture> -o /tmp/out` → `dist/index.html` + `assets/*.{js,css}` 存在 + CLI 文件清单;`bun run check` 0 error / 0 clone;dev-server preview 单端仍 ready(VFS 抽离零回归)。
+- **部署 ACK(留)**:dist 推静态托管(CF Pages/Netlify)→ app 跑起来,Supabase 数据/认证可用,多页 SPA fallback 工作。**这一步同时解锁 §4.x 双机 ACK**(真部署/真双端)。
+
+#### §5.6 工作分解(~中,3 step)
+
+| Step | 任务 | commit 前缀 |
+|---|---|---|
+| 0 | §5 设计 doc + 四岔口 AskUserQuestion 锁 + VFS build probe | `docs(lowcode): §5 deployment pipeline — detailed design` |
+| 1 | 抽共享 `vfs.ts`(dev-server 改 import)+ 纯函数单测 | `refactor(compiler): §5 step 1 — extract shared in-memory VFS` |
+| 2 | `buildPreviewProject`(Vite build wrapper)+ `./build` export + smoke 测 | `feat(compiler): §5 step 2 — static build via in-memory VFS` |
+| 3 | CLI `build` 命令(citty + agentfmt + --json)+ close | `feat(cli): §5 step 3 — `build` command emits deployable dist` |
+
+#### §5.7 风险(首刀)
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| Vite/Tailwind 版本漂移致 build 失败 | 中 | probe 已坐实当前版本可用;CLI 端到端 smoke 接住;失败结构化浮现(次默 ①)|
+| 抽 VFS 重构破 dev-server | 中 | 纯函数单测 + dev-server preview 单端仍验;emit 字节零变 |
+| 多页 SPA fallback 托管配置缺失 → 刷新 404 | 中 | 文档注明(次默 ⑥);fallback 配置生成留 follow-up |
+| build 慢测拖 CI | 低 | 纯函数单测为主;smoke build 最小化/标注;不进 `bun test ./tests/engine/` 全跑 |
+| Supabase 内联进产物(Q3) | 低 | anonKey public 可接受;Q3 文案点明,敏感配置勿放 |
+
+#### §5.8 Post-mortem(设计阶段 — stub,close 时补)
+
+#### §5 follow-up(派生)
+
+- **托管集成**(CF Pages/Netlify/Vercel API 一键推);**Supabase env 注入**(③ 解锁多环境);**§4.3 自建信令+TURN**(④);**`--base` 子路径托管**;**SPA fallback 配置生成**(`_redirects`/`vercel.json`);**`--sourcemap` flag**;**editor 侧「导出已构建 app」UI**(读回 Map → 下载/保存)。
+
+---
+
 ---
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
