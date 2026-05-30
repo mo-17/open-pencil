@@ -9,6 +9,7 @@ import { useCollabInjected } from '@/app/collab/use'
 import type { PreviewDocStatePayload } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 
+import DeployControls from './DeployControls.vue'
 import { useCompileOnChange } from './use-compile-on-change'
 
 // docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
@@ -233,15 +234,18 @@ onBeforeUnmount(() => {
       class="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-2"
     >
       <span class="truncate text-xs text-muted">Preview · {{ statusLabel }}</span>
-      <button
-        v-if="url"
-        type="button"
-        class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
-        :title="`Reload (${url})`"
-        @click="reload"
-      >
-        ↻
-      </button>
+      <div class="flex shrink-0 items-center gap-1">
+        <DeployControls />
+        <button
+          v-if="url"
+          type="button"
+          class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
+          :title="`Reload (${url})`"
+          @click="reload"
+        >
+          ↻
+        </button>
+      </div>
     </div>
     <div class="relative flex-1 bg-white">
       <iframe

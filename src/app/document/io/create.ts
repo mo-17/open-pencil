@@ -64,6 +64,9 @@ export function createDocumentIOActions(
     downloadBlob,
     setViewportSize,
     fitCurrentPageToViewport,
+    // Phase 3 §5: the lowcode deploy flow needs the on-disk path of the saved
+    // .fig so it can hand it to the `open-pencil deploy` CLI.
+    getDocumentPath: sourceState.getFilePath,
     setDocumentSource: sourceActions.setDocumentSource,
     setPlannedFilePath: sourceActions.setPlannedFilePath,
     startWatchingCurrentFile: sourceActions.startWatchingCurrentFile,
