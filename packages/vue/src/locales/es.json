@@ -403,6 +403,8 @@
     "updateInstalled": "OpenPencil {version} se instaló{size}. Reiniciando ahora.",
     "updateCheckFailed": "No se pudo buscar actualizaciones: {error}",
     "roomKeyError": "Incorrect or missing room key — ask the host for the full share link.",
+    "collabSignalingSelfHosted": "Self-hosted signaling",
+    "collabSignalingSupabase": "Supabase Realtime signaling",
     "presenceEditingTextBinding": "Editing the text of {node}",
     "presenceEditingValueBinding": "Editing the value of {node}",
     "presenceEditingInteractiveProps": "Editing properties of {node}",

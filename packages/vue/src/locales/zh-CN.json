@@ -403,6 +403,8 @@
     "updateInstalled": "OpenPencil {version} 已安装{size}。正在重启。",
     "updateCheckFailed": "无法检查更新：{error}",
     "roomKeyError": "房间密钥错误或缺失 —— 向房主索取完整分享链接。",
+    "collabSignalingSelfHosted": "自建信令",
+    "collabSignalingSupabase": "Supabase Realtime 信令",
     "presenceEditingTextBinding": "正在编辑 {node} 的文本",
     "presenceEditingValueBinding": "正在编辑 {node} 的值",
     "presenceEditingInteractiveProps": "正在编辑 {node} 的属性",

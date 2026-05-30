@@ -32,6 +32,16 @@ const collab = useCollabPanelContext()
     {{ collab.peers.length + 1 }} {{ collab.peers.length === 0 ? 'person' : 'people' }} in this room
   </div>
 
+  <!-- §4.3 — self-host signaling indicator (only when not on the public broker). -->
+  <div
+    v-if="collab.signalingLabel"
+    data-test-id="collab-signaling"
+    class="mb-3 flex items-center gap-1 text-[10px] text-muted"
+  >
+    <icon-lucide-server class="size-3 shrink-0" />
+    {{ collab.signalingLabel }}
+  </div>
+
   <!-- §4.4 — per-peer roster with what each collaborator is editing. -->
   <div class="mb-3 flex flex-col gap-1.5">
     <div class="flex items-center gap-2">

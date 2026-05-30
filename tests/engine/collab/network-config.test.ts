@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { buildCollabNetworkConfig } from '@/app/collab/network-config'
+import { buildCollabNetworkConfig, describeCollabSignaling } from '@/app/collab/network-config'
 import { TRYSTERO_APP_ID } from '@/constants'
 
 /**
@@ -101,5 +101,30 @@ describe('buildCollabNetworkConfig (Phase 3 §4.3)', () => {
       VITE_COLLAB_SUPABASE_KEY: 'k'
     })
     expect(c.strategy).toBe('mqtt')
+  })
+})
+
+describe('describeCollabSignaling (Phase 3 §4.3 indicator)', () => {
+  test('default mqtt → public (no indicator)', () => {
+    expect(describeCollabSignaling(buildCollabNetworkConfig({}))).toBe('public')
+  })
+
+  test('custom relay URLs → self-hosted', () => {
+    const c = buildCollabNetworkConfig({ VITE_COLLAB_RELAY_URLS: 'wss://b.example/mqtt' })
+    expect(describeCollabSignaling(c)).toBe('self-hosted')
+  })
+
+  test('appId override alone (still public brokers) → public', () => {
+    const c = buildCollabNetworkConfig({ VITE_COLLAB_APP_ID: 'acme' })
+    expect(describeCollabSignaling(c)).toBe('public')
+  })
+
+  test('supabase strategy → supabase', () => {
+    const c = buildCollabNetworkConfig({
+      VITE_COLLAB_STRATEGY: 'supabase',
+      VITE_COLLAB_SUPABASE_URL: 'https://proj.supabase.co',
+      VITE_COLLAB_SUPABASE_KEY: 'k'
+    })
+    expect(describeCollabSignaling(c)).toBe('supabase')
   })
 })

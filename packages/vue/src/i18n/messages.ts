@@ -534,5 +534,9 @@ export const dialogMessages = i18n('dialogs', {
   presenceConflictToast: params(
     'A collaborator changed {target} — last save wins, review for lost changes.'
   ),
-  presenceConflictBanner: params('A collaborator is also editing {target} — last save wins.')
+  presenceConflictBanner: params('A collaborator is also editing {target} — last save wins.'),
+  // Phase 3 §4.3 — self-host signaling indicator: shown in the connected room
+  // when collaboration isn't using the default public MQTT brokers.
+  collabSignalingSelfHosted: 'Self-hosted signaling',
+  collabSignalingSupabase: 'Supabase Realtime signaling'
 })

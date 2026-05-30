@@ -88,6 +88,18 @@ function resolveTurnServers(env: CollabNetworkEnv): readonly RTCIceServer[] {
   return [server]
 }
 
+/** How collab signaling is reaching peers, for the §4.3 self-host indicator.
+ *  `public` = Trystero's default public MQTT brokers (no indicator shown). */
+export type CollabSignalingKind = 'public' | 'self-hosted' | 'supabase'
+
+/** Classify a resolved config's signaling path (not the data-plane TURN). */
+export function describeCollabSignaling(config: CollabNetworkConfig): CollabSignalingKind {
+  if (config.strategy === 'supabase') return 'supabase'
+  // mqtt with custom broker URLs = self-hosted; a bare appId override on the
+  // public brokers is not surfaced (still public infrastructure).
+  return config.relayUrls && config.relayUrls.length > 0 ? 'self-hosted' : 'public'
+}
+
 export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkConfig {
   const iceServers = [...STUN_SERVERS, ...resolveTurnServers(env)]
 

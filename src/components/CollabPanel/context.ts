@@ -5,6 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { useI18n } from '@open-pencil/vue'
 
+import { buildCollabNetworkConfig, describeCollabSignaling } from '@/app/collab/network-config'
 import { presenceEditingLabel } from '@/app/collab/presence-label'
 import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
 import type { RemotePeer } from '@/app/collab/use'
@@ -110,6 +111,17 @@ function createCollabPanelContext() {
     return presenceEditingLabel(peer, dialogs.value, (id) => editor.graph.getNode(id)?.name)
   }
 
+  // §4.3 — signaling path is fixed at editor build time (VITE_COLLAB_*), so
+  // resolve it once. Surface a label only while connected and only when it's
+  // not the default public broker.
+  const signalingKind = describeCollabSignaling(buildCollabNetworkConfig(import.meta.env))
+  const signalingLabel = computed(() => {
+    if (!state.value.connected || signalingKind === 'public') return null
+    return signalingKind === 'supabase'
+      ? dialogs.value.collabSignalingSupabase
+      : dialogs.value.collabSignalingSelfHosted
+  })
+
   return {
     dialogs,
     copied,
@@ -126,7 +138,8 @@ function createCollabPanelContext() {
     join,
     disconnect,
     toggleFollowPeer,
-    peerEditingLabel
+    peerEditingLabel,
+    signalingLabel
   }
 }
 
