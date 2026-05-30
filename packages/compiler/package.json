@@ -38,6 +38,11 @@
       "types": "./src/dev-server.ts",
       "bun": "./src/dev-server.ts",
       "default": "./dist/dev-server.js"
+    },
+    "./vfs": {
+      "types": "./src/vfs.ts",
+      "bun": "./src/vfs.ts",
+      "default": "./dist/vfs.js"
     }
   },
   "files": [

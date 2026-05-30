@@ -10,14 +10,16 @@
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { createServer as createNetServer } from 'node:net'
-import { dirname, join, posix } from 'node:path'
+import { join } from 'node:path'
 import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { createServer, type Plugin, type Update, type ViteDevServer } from 'vite'
+import { createServer, type Update, type ViteDevServer } from 'vite'
 
-export type PreviewFiles = Map<string, string | Uint8Array>
+import { inMemoryVFS, type PreviewFiles } from './vfs'
+
+export type { PreviewFiles }
 
 export type UpdateMode = 'full-reload' | 'hmr' | 'noop'
 
@@ -84,109 +86,6 @@ function pickFreePort(): Promise<number> {
       probe.close((err) => (err ? reject(err) : resolve(port)))
     })
   })
-}
-
-/**
- * Resolve a path relative to an importer. Both are project-rooted (no leading
- * slash) — e.g. importer `src/main.tsx`, source `./App` → `src/App`.
- */
-function resolveRelative(source: string, importerRel: string): string {
-  if (!source.startsWith('.')) return source
-  const dir = dirname(importerRel)
-  return posix.normalize(posix.join(dir, source))
-}
-
-/**
- * Look up a file by stem — tries `.tsx`, `.ts`, `.jsx`, `.js`, `.css`,
- * then `${stem}/index.{tsx,ts,jsx,js}`. Mirrors Vite's default extension
- * resolution so import statements without extensions work.
- */
-function lookupFile(files: PreviewFiles, stem: string): string | null {
-  if (files.has(stem)) return stem
-  const exts = ['.tsx', '.ts', '.jsx', '.js', '.css']
-  for (const ext of exts) {
-    if (files.has(stem + ext)) return stem + ext
-  }
-  for (const ext of exts) {
-    const idx = `${stem}/index${ext}`
-    if (files.has(idx)) return idx
-  }
-  return null
-}
-
-/** Drop any `?…` suffix Vite appends for HMR cache-busting or asset hints. */
-function stripQuery(s: string): string {
-  const i = s.indexOf('?')
-  return i === -1 ? s : s.slice(0, i)
-}
-
-function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin {
-  return {
-    name: 'openpencil-lowcode-vfs',
-    enforce: 'pre',
-
-    resolveId(source, importer) {
-      if (source.startsWith(vfsPrefix)) return source
-
-      // Absolute-path imports (`/src/main.tsx` from index.html, or any URL
-      // route the iframe fetches). These come in two flavours:
-      //   - source has no importer → first-load from index.html
-      //   - source has importer == VFS html → same, after Vite re-resolves
-      // Vite's CSS HMR appends `?t=<ts>` to bust the browser cache when it
-      // sends a `css-update` event; strip that (and any other query) so the
-      // VFS lookup still resolves.
-      if (source.startsWith('/') && !source.startsWith('//')) {
-        const rel = stripQuery(source.slice(1))
-        const found = lookupFile(state.files, rel)
-        if (found) return vfsPrefix + found
-        // Fall through — could be `/@vite/client`, `/@react-refresh`, etc.
-        return null
-      }
-
-      // Relative imports from inside a VFS module: `./App`, `./index.css`.
-      if (importer?.startsWith(vfsPrefix) && source.startsWith('.')) {
-        const importerRel = stripQuery(importer.slice(vfsPrefix.length))
-        const rel = stripQuery(resolveRelative(source, importerRel))
-        const found = lookupFile(state.files, rel)
-        return found ? vfsPrefix + found : null
-      }
-
-      // Bare imports (`react`, `react-dom/client`, …) fall through to Vite's
-      // standard resolver, which walks node_modules from scanRoot upwards.
-      return null
-    },
-
-    load(id) {
-      if (!id.startsWith(vfsPrefix)) return null
-      // Strip any HMR / asset-hint query so the VFS lookup matches the keys
-      // emitted by the compiler (`src/App.tsx`, not `src/App.tsx?t=12345`).
-      const rel = stripQuery(id.slice(vfsPrefix.length))
-      const content = state.files.get(rel)
-      if (content === undefined) return null
-      if (typeof content === 'string') return content
-      // Binary content for VFS isn't supported in Phase 0; skip silently
-      return null
-    },
-
-    configureServer(server) {
-      // Intercept `/` and `/index.html` from the VFS instead of Vite's
-      // default disk-based html-fallback middleware.
-      server.middlewares.use((req, res, next) => {
-        const url = (req.url ?? '/').split('?')[0]
-        if (url !== '/' && url !== '/index.html') return next()
-        const html = state.files.get('index.html')
-        if (typeof html !== 'string') return next()
-        server
-          .transformIndexHtml(req.originalUrl ?? '/', html)
-          .then((transformed) => {
-            res.setHeader('Content-Type', 'text/html')
-            res.statusCode = 200
-            res.end(transformed)
-          })
-          .catch(next)
-      })
-    }
-  }
 }
 
 export async function createPreviewServer(
