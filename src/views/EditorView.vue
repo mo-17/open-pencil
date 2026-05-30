@@ -5,7 +5,7 @@ import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 
-import { useViewportKind, formatShortcut } from '@open-pencil/vue'
+import { useI18n, useViewportKind, formatShortcut } from '@open-pencil/vue'
 import { useKeyboard } from '@/app/shell/keyboard/use'
 import {
   loadEditorLayout,
@@ -13,6 +13,7 @@ import {
   saveEditorLayout
 } from '@/app/shell/layout-storage'
 import { openFileFromPath, useMenu } from '@/app/shell/menu/use'
+import { toast } from '@/app/shell/ui'
 import { useCollab, COLLAB_KEY } from '@/app/collab/use'
 import { connectAutomation } from '@/app/automation/bridge/server'
 import { spawnMCPIfNeeded } from '@/app/automation/mcp/spawn'
@@ -52,6 +53,16 @@ useMenu()
 
 const collab = useCollab(getActiveStore)
 provide(COLLAB_KEY, collab)
+
+// Phase 3 §4.5 — docState/page-state collections are whole-field last-write-wins
+// (no auto-merge); warn when an incoming remote update would drop a concurrent
+// local edit so the user can review for lost changes.
+const { dialogs } = useI18n()
+collab.onDocStateConflict((kind) => {
+  const target =
+    kind === 'state' ? dialogs.value.presenceTargetState : dialogs.value.presenceTargetDocState
+  toast.warning(dialogs.value.presenceConflictToast({ target }))
+})
 
 useEventListener(
   document,

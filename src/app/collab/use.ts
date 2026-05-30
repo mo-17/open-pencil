@@ -2,6 +2,7 @@ import { tryOnScopeDispose, useLocalStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 
 import { createFollowActions, generateRoomId, generateRoomKey } from '@/app/collab/awareness'
+import type { DocStateConflictKind } from '@/app/collab/conflict'
 import { createLocalAwarenessActions } from '@/app/collab/local-awareness'
 import {
   createCollabConnectionActions,
@@ -49,6 +50,13 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
       getAwareness: () => runtime.awareness
     })
 
+  // Phase 3 §4.5 — the app registers a handler that toasts when a remote
+  // docState/page-state update would overwrite a concurrent local edit.
+  let conflictHandler: ((kind: DocStateConflictKind) => void) | undefined
+  function onDocStateConflict(handler: ((kind: DocStateConflictKind) => void) | null) {
+    conflictHandler = handler ?? undefined
+  }
+
   const { syncNodeToYjs, syncAllNodesToYjs, applyYjsToGraph } = createYjsGraphSync({
     getStore: getActiveStore,
     getYdoc: () => runtime.ydoc,
@@ -56,7 +64,8 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     getYimages: () => runtime.yimages,
     setSuppressYjsEvents: (value) => {
       runtime.suppressYjsEvents = value
-    }
+    },
+    getConflictHandler: () => conflictHandler
   })
   const { connect, disconnect } = createCollabConnectionActions({
     runtime,
@@ -92,6 +101,7 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     updateCursor,
     updateSelection,
     updateEditingTarget,
+    onDocStateConflict,
     setLocalName,
     followPeer,
     tickFollow

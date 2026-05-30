@@ -524,5 +524,13 @@ export const dialogMessages = i18n('dialogs', {
   presenceEditingState: 'Editing page state',
   presenceEditingDocState: 'Editing document state',
   presenceEditingSupabaseConfig: 'Editing the Supabase config',
-  presenceEditingNodeFallback: 'an element'
+  presenceEditingNodeFallback: 'an element',
+  // Phase 3 §4.5 — docState collaboration conflict (whole-field last-write-wins,
+  // no auto-merge). Target nouns are shared by the passive toast and the active
+  // banner; {target} is one of them.
+  presenceTargetState: 'page state',
+  presenceTargetDocState: 'document state',
+  presenceConflictToast: params(
+    'A collaborator changed {target} — last save wins, review for lost changes.'
+  )
 })
