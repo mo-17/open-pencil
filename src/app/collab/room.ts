@@ -3,8 +3,8 @@ import { joinRoom as joinTrysteroRoom } from 'trystero/mqtt'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as Y from 'yjs'
 
+import { buildCollabNetworkConfig } from '@/app/collab/network-config'
 import type { PreviewDocStatePayload } from '@/app/collab/types'
-import { TRYSTERO_APP_ID } from '@/constants'
 
 // `trystero/mqtt`'s .d.ts omits the optional 3rd `onJoinError` arg that the
 // underlying strategy (and the root `trystero` types) support. A two-arg
@@ -52,29 +52,21 @@ export function connectCollabRoom({
   onAuthError,
   getPreviewDocStateHandler
 }: CollabRoomOptions): CollabRoomConnection {
+  // Phase 3 §4.3 — signaling broker(s) + TURN come from the editor's build-time
+  // env (VITE_COLLAB_*), falling back to the public broker + openrelay when
+  // unset. `relayUrls`, when present, points Trystero at self-hosted MQTT
+  // brokers instead of its public defaults.
+  const network = buildCollabNetworkConfig(import.meta.env)
+
   const room = joinRoom(
     {
-      appId: TRYSTERO_APP_ID,
+      appId: network.appId,
       // Phase 3 §4.2 — room key. Empty/undefined falls back to the unkeyed
       // default (legacy bare-roomId links); a set key encrypts SDP so only
       // peers with the same key connect.
       password,
-      rtcConfig: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun.cloudflare.com:3478' },
-          {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          },
-          {
-            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          }
-        ]
-      }
+      relayUrls: network.relayUrls,
+      rtcConfig: { iceServers: network.iceServers }
     },
     roomId,
     onAuthError ? () => onAuthError() : undefined
