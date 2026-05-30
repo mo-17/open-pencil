@@ -31,9 +31,20 @@ export function buildPreviewBridge(): string {
 const INBOUND_SOURCE = 'op-lowcode-editor'
 const OUTBOUND_SOURCE = 'op-lowcode-preview'
 
+interface DocStore {
+  getState: () => Record<string, unknown>
+  setState: (partial: Record<string, unknown>) => void
+  subscribe: (
+    listener: (state: Record<string, unknown>, prev: Record<string, unknown>) => void
+  ) => () => void
+}
+
 declare global {
   interface Window {
     __openPencilPreviewBridge?: boolean
+    // Phase 3 §4.6 — the lowcode docState zustand store, exposed by
+    // _lowcode_state.ts so the bridge can mirror runtime state across peers.
+    __opDocStore?: DocStore
   }
 }
 
@@ -47,7 +58,13 @@ interface InboundNavigate {
   type: 'navigate'
   route: string
 }
-type Inbound = InboundSelect | InboundNavigate
+interface InboundDocState {
+  source: typeof INBOUND_SOURCE
+  type: 'docState'
+  name: string
+  value: unknown
+}
+type Inbound = InboundSelect | InboundNavigate | InboundDocState
 
 if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
   window.__openPencilPreviewBridge = true
@@ -121,6 +138,39 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
     postOutboundNavigate(location.pathname)
   })
 
+  // Phase 3 §4.6 — runtime docState collaboration. Mirror the lowcode zustand
+  // store's per-key changes across peers. suppressDocStateOutbound breaks the
+  // remote→setState→subscribe→outbound echo, mirroring suppressOutbound above.
+  let suppressDocStateOutbound = false
+
+  function wireDocStore(store: DocStore): void {
+    store.subscribe((state, prev) => {
+      if (suppressDocStateOutbound) return
+      for (const name of Object.keys(state)) {
+        if (state[name] !== prev[name]) {
+          window.parent?.postMessage(
+            { source: OUTBOUND_SOURCE, type: 'docState', name: name, value: state[name] },
+            '*'
+          )
+        }
+      }
+    })
+  }
+
+  // _lowcode_state.ts may evaluate before or after this bridge; cover both —
+  // wire now if the store is already up, else wait for its ready event.
+  if (window.__opDocStore) {
+    wireDocStore(window.__opDocStore)
+  } else {
+    window.addEventListener(
+      'op-docstore-ready',
+      () => {
+        if (window.__opDocStore) wireDocStore(window.__opDocStore)
+      },
+      { once: true }
+    )
+  }
+
   window.addEventListener('message', (event: MessageEvent) => {
     const data = event.data as Partial<Inbound> | null
     if (!data || data.source !== INBOUND_SOURCE) return
@@ -141,6 +191,18 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
         window.dispatchEvent(new PopStateEvent('popstate'))
       } finally {
         suppressOutbound = false
+      }
+      return
+    }
+    if (data.type === 'docState') {
+      const store = window.__opDocStore
+      if (!store || typeof data.name !== 'string') return
+      // Apply the remote value without re-broadcasting it back out.
+      suppressDocStateOutbound = true
+      try {
+        store.setState({ [data.name]: data.value })
+      } finally {
+        suppressDocStateOutbound = false
       }
     }
   })

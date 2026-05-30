@@ -90,3 +90,33 @@ describe('preview-bridge — navigate channel (Phase 2 §7)', () => {
     expect(bridge).toContain('if (suppressOutbound) return')
   })
 })
+
+describe('preview-bridge — runtime docState channel (Phase 3 §4.6)', () => {
+  test('inbound union is widened with a docState member', () => {
+    expect(bridge).toContain('interface InboundDocState')
+    expect(bridge).toContain('type Inbound = InboundSelect | InboundNavigate | InboundDocState')
+  })
+
+  test('reads the zustand store from the window handle exposed by _lowcode_state', () => {
+    expect(bridge).toContain('window.__opDocStore')
+    // Both eval orders covered: wire now, or on the ready event.
+    expect(bridge).toContain("'op-docstore-ready'")
+  })
+
+  test('outbound posts per-key changes via a store.subscribe diff', () => {
+    expect(bridge).toContain('store.subscribe(')
+    expect(bridge).toContain('if (state[name] !== prev[name])')
+    expect(bridge).toMatch(/source: OUTBOUND_SOURCE,\s*type: 'docState',\s*name: name,\s*value:/)
+  })
+
+  test('inbound docState applies via setState', () => {
+    expect(bridge).toContain("if (data.type === 'docState')")
+    expect(bridge).toContain('store.setState({ [data.name]: data.value })')
+  })
+
+  test('echo loop is broken by a dedicated suppressDocStateOutbound flag', () => {
+    expect(bridge).toContain('let suppressDocStateOutbound = false')
+    expect(bridge).toContain('if (suppressDocStateOutbound) return')
+    expect(bridge).toContain('suppressDocStateOutbound = true')
+  })
+})

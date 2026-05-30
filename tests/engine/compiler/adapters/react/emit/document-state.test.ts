@@ -92,6 +92,17 @@ describe('buildLowcodeStateRuntime (Phase 2 §2)', () => {
     const out = buildLowcodeStateRuntime(decls)
     expect(out).toContain('(prev: DocState[K]) => DocState[K]')
   })
+
+  test('§4.6 — exposes the store on window.__opDocStore + dispatches the ready event', () => {
+    const decls: IRDocStateDecl[] = [
+      { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
+    ]
+    const out = buildLowcodeStateRuntime(decls)
+    // The preview bridge reads this handle to mirror runtime docState across peers.
+    expect(out).toContain('__opDocStore = store')
+    expect(out).toContain("new Event('op-docstore-ready')")
+    expect(out).toContain("typeof window !== 'undefined'")
+  })
 })
 
 describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)', () => {

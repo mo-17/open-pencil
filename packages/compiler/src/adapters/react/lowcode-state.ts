@@ -57,6 +57,14 @@ ${initialFields}
 
 const store = createStore<DocState>(() => initial)
 
+// Phase 3 §4.6 — expose the store so the dev-mode preview bridge can mirror
+// runtime docState across collaborators. Harmless in prod (no bridge reads it).
+// The ready event lets the bridge wire up regardless of module eval order.
+if (typeof window !== 'undefined') {
+  ;(window as unknown as { __opDocStore?: unknown }).__opDocStore = store
+  window.dispatchEvent(new Event('op-docstore-ready'))
+}
+
 export function useDocState<K extends keyof DocState>(name: K): DocState[K] {
   return useStore(store, (s) => s[name])
 }
