@@ -12,6 +12,7 @@ import { TRYSTERO_APP_ID } from '@/constants'
 describe('buildCollabNetworkConfig (Phase 3 §4.3)', () => {
   test('empty env → public defaults (no custom relays, openrelay TURN, default appId)', () => {
     const c = buildCollabNetworkConfig({})
+    expect(c.strategy).toBe('mqtt')
     expect(c.appId).toBe(TRYSTERO_APP_ID)
     expect(c.relayUrls).toBeUndefined()
     // 2 STUN + 2 openrelay TURN entries.
@@ -58,5 +59,47 @@ describe('buildCollabNetworkConfig (Phase 3 §4.3)', () => {
 
   test('blank app id → falls back to the default', () => {
     expect(buildCollabNetworkConfig({ VITE_COLLAB_APP_ID: '  ' }).appId).toBe(TRYSTERO_APP_ID)
+  })
+
+  test('§4.3-S: strategy=supabase with URL+key → supabase, appId=URL, key carried, TURN kept', () => {
+    const c = buildCollabNetworkConfig({
+      VITE_COLLAB_STRATEGY: 'supabase',
+      VITE_COLLAB_SUPABASE_URL: 'https://proj.supabase.co',
+      VITE_COLLAB_SUPABASE_KEY: 'anon-key'
+    })
+    expect(c.strategy).toBe('supabase')
+    expect(c.appId).toBe('https://proj.supabase.co')
+    expect(c.supabaseKey).toBe('anon-key')
+    // WebRTC data-plane still uses STUN/TURN regardless of strategy.
+    expect(c.iceServers.some((s) => String(s.urls).startsWith('stun:'))).toBe(true)
+    // relayUrls is mqtt-only.
+    expect(c.relayUrls).toBeUndefined()
+  })
+
+  test('§4.3-S: strategy=supabase but key missing → falls back to mqtt', () => {
+    const c = buildCollabNetworkConfig({
+      VITE_COLLAB_STRATEGY: 'supabase',
+      VITE_COLLAB_SUPABASE_URL: 'https://proj.supabase.co'
+    })
+    expect(c.strategy).toBe('mqtt')
+    expect(c.appId).toBe(TRYSTERO_APP_ID)
+    expect(c.supabaseKey).toBeUndefined()
+  })
+
+  test('§4.3-S: strategy is case-insensitive', () => {
+    const c = buildCollabNetworkConfig({
+      VITE_COLLAB_STRATEGY: 'SUPABASE',
+      VITE_COLLAB_SUPABASE_URL: 'https://proj.supabase.co',
+      VITE_COLLAB_SUPABASE_KEY: 'k'
+    })
+    expect(c.strategy).toBe('supabase')
+  })
+
+  test('§4.3-S: no strategy set → mqtt even if supabase creds present', () => {
+    const c = buildCollabNetworkConfig({
+      VITE_COLLAB_SUPABASE_URL: 'https://proj.supabase.co',
+      VITE_COLLAB_SUPABASE_KEY: 'k'
+    })
+    expect(c.strategy).toBe('mqtt')
   })
 })

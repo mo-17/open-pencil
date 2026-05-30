@@ -9,18 +9,34 @@
 
 import { TRYSTERO_APP_ID } from '@/constants'
 
+/** Signaling transport. `mqtt` = public/self-hosted MQTT broker (default);
+ *  `supabase` = Supabase Realtime (no public broker), §4.3-S. */
+export type CollabStrategy = 'mqtt' | 'supabase'
+
 export interface CollabNetworkEnv {
+  /** `mqtt` (default) | `supabase`. */
+  VITE_COLLAB_STRATEGY?: string
   VITE_COLLAB_APP_ID?: string
   /** Comma-separated `wss://…` MQTT broker URLs. */
   VITE_COLLAB_RELAY_URLS?: string
+  /** Supabase project URL — required for the `supabase` strategy. */
+  VITE_COLLAB_SUPABASE_URL?: string
+  /** Supabase anon key — required for the `supabase` strategy. */
+  VITE_COLLAB_SUPABASE_KEY?: string
   VITE_COLLAB_TURN_URL?: string
   VITE_COLLAB_TURN_USERNAME?: string
   VITE_COLLAB_TURN_CREDENTIAL?: string
 }
 
 export interface CollabNetworkConfig {
+  /** The *effective* strategy — `supabase` only when explicitly selected AND
+   *  both URL+key are present; otherwise `mqtt` (transport stays usable). */
+  strategy: CollabStrategy
+  /** mqtt: the namespace appId; supabase: the Supabase project URL. */
   appId: string
-  /** Custom MQTT brokers; omitted → Trystero's public defaults. */
+  /** Supabase anon key — present only for the `supabase` strategy. */
+  supabaseKey?: string
+  /** Custom MQTT brokers; omitted → Trystero's public defaults (mqtt only). */
   relayUrls?: string[]
   iceServers: RTCIceServer[]
 }
@@ -73,8 +89,21 @@ function resolveTurnServers(env: CollabNetworkEnv): readonly RTCIceServer[] {
 }
 
 export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkConfig {
+  const iceServers = [...STUN_SERVERS, ...resolveTurnServers(env)]
+
+  // Supabase signaling (§4.3-S) only when explicitly selected AND fully
+  // configured; an incomplete selection falls back to mqtt so collab still
+  // works (transport, not auth — room.ts warns about the mismatch).
+  const wantsSupabase = nonEmpty(env.VITE_COLLAB_STRATEGY)?.toLowerCase() === 'supabase'
+  const supabaseUrl = nonEmpty(env.VITE_COLLAB_SUPABASE_URL)
+  const supabaseKey = nonEmpty(env.VITE_COLLAB_SUPABASE_KEY)
+  if (wantsSupabase && supabaseUrl && supabaseKey) {
+    return { strategy: 'supabase', appId: supabaseUrl, supabaseKey, iceServers }
+  }
+
   const appId = nonEmpty(env.VITE_COLLAB_APP_ID) ?? TRYSTERO_APP_ID
   const relayUrls = parseRelayUrls(env.VITE_COLLAB_RELAY_URLS)
-  const iceServers = [...STUN_SERVERS, ...resolveTurnServers(env)]
-  return relayUrls ? { appId, relayUrls, iceServers } : { appId, iceServers }
+  return relayUrls
+    ? { strategy: 'mqtt', appId, relayUrls, iceServers }
+    : { strategy: 'mqtt', appId, iceServers }
 }

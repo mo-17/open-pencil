@@ -1,5 +1,6 @@
 import type { BaseRoomConfig, RelayConfig, Room } from 'trystero'
-import { joinRoom as joinTrysteroRoom } from 'trystero/mqtt'
+import { joinRoom as joinMqttRoom } from 'trystero/mqtt'
+import { joinRoom as joinSupabaseRoom } from 'trystero/supabase'
 import * as awarenessProtocol from 'y-protocols/awareness'
 import * as Y from 'yjs'
 
@@ -15,7 +16,7 @@ type JoinRoomWithError = (
   roomId: string,
   onJoinError?: (details: { error: string; appId: string; roomId: string; peerId: string }) => void
 ) => Room
-const joinRoom: JoinRoomWithError = joinTrysteroRoom
+const joinMqtt: JoinRoomWithError = joinMqttRoom
 
 type CollabRoomOptions = {
   roomId: string
@@ -54,23 +55,38 @@ export function connectCollabRoom({
 }: CollabRoomOptions): CollabRoomConnection {
   // Phase 3 §4.3 — signaling broker(s) + TURN come from the editor's build-time
   // env (VITE_COLLAB_*), falling back to the public broker + openrelay when
-  // unset. `relayUrls`, when present, points Trystero at self-hosted MQTT
-  // brokers instead of its public defaults.
+  // unset. §4.3-S adds a Supabase Realtime strategy (no public broker).
   const network = buildCollabNetworkConfig(import.meta.env)
+  // No-swallow (经验 C): if Supabase signaling was requested but its URL/key
+  // were incomplete, buildCollabNetworkConfig falls back to mqtt — surface it.
+  if (import.meta.env.VITE_COLLAB_STRATEGY?.toLowerCase() === 'supabase' && network.strategy !== 'supabase') {
+    console.warn('[collab] VITE_COLLAB_STRATEGY=supabase but URL/key incomplete — falling back to MQTT.')
+  }
 
-  const room = joinRoom(
-    {
-      appId: network.appId,
-      // Phase 3 §4.2 — room key. Empty/undefined falls back to the unkeyed
-      // default (legacy bare-roomId links); a set key encrypts SDP so only
-      // peers with the same key connect.
-      password,
-      relayUrls: network.relayUrls,
-      rtcConfig: { iceServers: network.iceServers }
-    },
-    roomId,
-    onAuthError ? () => onAuthError() : undefined
-  )
+  // Phase 3 §4.2 — `password` is the room key (encrypts SDP) regardless of
+  // strategy. The Supabase strategy's joinRoom is 2-arg (no onJoinError), so
+  // §4.2's wrong-key toast is mqtt-only; a wrong key there just fails to connect.
+  const room =
+    network.strategy === 'supabase' && network.supabaseKey
+      ? joinSupabaseRoom(
+          {
+            appId: network.appId,
+            supabaseKey: network.supabaseKey,
+            password,
+            rtcConfig: { iceServers: network.iceServers }
+          },
+          roomId
+        )
+      : joinMqtt(
+          {
+            appId: network.appId,
+            password,
+            relayUrls: network.relayUrls,
+            rtcConfig: { iceServers: network.iceServers }
+          },
+          roomId,
+          onAuthError ? () => onAuthError() : undefined
+        )
 
   const [sendUpdate, getUpdate] = room.makeAction<Uint8Array>('yjs-update')
   const [sendAw, getAw] = room.makeAction<Uint8Array>('awareness')
