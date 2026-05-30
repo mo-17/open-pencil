@@ -3805,7 +3805,9 @@ export interface DeployTarget {
 
 **验证:** `tests/engine/compiler/vector-svg.test.ts`(VECTOR → 输出含 `<svg`/`<path`/`dangerouslySetInnerHTML`/`100%`、无 `bg-[`;FRAME 对照仍是 CSS div);compiler 423 测零回归;主 checkout 全 `bun run check` 0 error/0 clone。**真观感(图标可见、不再方块)留 Tauri/preview ACK**(emit 契约单测能钉,真渲染靠预览)。
 
-**follow-up:** GROUP 内多 VECTOR 现各自一个内联 SVG(视觉正确,可优化成整组一个 SVG);渐变/图像填充由 `renderNodesToSVG` 原样保真(已覆盖)。
+**后续修(2026-05-31,多 path 错位):** 单 path 图标 OK,但多 path 错位。勘察坐实:`import_svg` 把多 path 图标做成 **FRAME + N 个满尺寸 VECTOR 子**(每 path 一个子节点,`x=0,y=0,w=h=` 帧尺寸,几何在共享 viewBox 坐标系)。初版按叶子逐个 emit SVG → 每个子 `<div>` 无定位类(GROUP/FRAME 子节点不带 absolute/left/top,core 共享定位逻辑的既有空缺),于是 block 流**纵向堆叠/重叠** → path 错位(单 path 因只有一个子、无堆叠对象才看着对)。**修:把"全矢量容器"折叠成一个 SVG** —— `isVectorIcon`(节点是矢量形状,或 `VECTOR_FOLDABLE_CONTAINERS`={FRAME,GROUP,SECTION,COMPONENT,INSTANCE} 且可见子树全是 icon)为真时,`renderNodesToSVG([容器id])` 把整棵子树画进**一个**共享 viewBox(各 path 在真实坐标)→ 一个 wrapper(容器自身定位正确)、零逐子定位 → 对齐。叶子矢量仍各自成 SVG。子节点递归抽到 `collectChildNodes`,折叠时跳过(并降低 `nodeToIR` 复杂度)。`vector-svg.test.ts` 加多 path FRAME → 恰好一个 `dangerouslySetInnerHTML`、两 path 都在内。RECTANGLE/ELLIPSE/FORM 不折叠(各自 CSS/表单语义)。
+
+**遗留 follow-up:** 折叠容器丢弃子节点各自的事件(图标子一般无事件;真有需求再说);渐变/图像填充由 `renderNodesToSVG` 原样保真(已覆盖)。
 
 ---
 
