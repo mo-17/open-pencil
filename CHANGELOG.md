@@ -4,6 +4,7 @@
 
 ### Added
 
+- CLI `build` command — compile a document and produce a deployable static SPA bundle (Vite build over an in-memory VFS, zero `npm install`); supports `--base` for sub-path hosting and `--json`.
 - Assets panel — browse, search, and insert document components directly from the left sidebar.
 - Component variants — switch instance variants from the right inspector; default variant respects property definitions.
 - Figma library metadata — component keys, source libraries, version IDs, descriptions, and docs links are preserved on import/export.

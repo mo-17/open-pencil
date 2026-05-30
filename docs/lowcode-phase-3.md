@@ -3287,7 +3287,30 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
 | build 慢测拖 CI | 低 | 纯函数单测为主;smoke build 最小化/标注;不进 `bun test ./tests/engine/` 全跑 |
 | Supabase 内联进产物(Q3) | 低 | anonKey public 可接受;Q3 文案点明,敏感配置勿放 |
 
-#### §5.8 Post-mortem(设计阶段 — stub,close 时补)
+#### §5.8 Post-mortem(进行中 — 代码完成,待部署 ACK)
+
+**§5.1 首刀代码完成 2026-05-30**(单端检查全绿:`bun run check` 0 error / **0 clone** / 8 locale 同步 / Steiger 通过;`vfs.test.ts` 14 纯函数测 + `build.test.ts` 1 端到端 smoke;compiler 401 测零回归)。**四岔口 AskUserQuestion 锁 = 构建产物路径 / 静态 SPA / Supabase 内联 / 公共 broker**。**VFS build probe 坐实**(经验 K):编程式 Vite `build()` + 复用 VFS plugin + workspace hoisted deps → static dist,零 npm install。CLI `build` 端到端验过真 fixture(`lowcode-v6-test.fig` → `index.html` + hashed `assets/*.{js,css}`,exit 0,`--json` stdout 纯净)。
+
+**Surprise / 经验印证:**
+- **经验 A 钉子打晚了**:step 2 commit 时只跑了 `bun test compiler` + `tsgo`(没跑全 `bun run check`)→ 漏了 `build.ts`↔`dev-server.ts` 的 scanRoot/tsconfig-plant clone(jscpd 只在全 `check` 跑)。step 3 加 CLI 命令时又引入 `build.ts`↔`compile.ts` clone,全 `check` 一次性照出两处。**教训:每个 step commit 前跑全 `bun run check`(含 jscpd),别用「per-step 子集测」替代** —— 跨文件 clone 子集测看不见。dedup 收口:`vfs.ts` 加 `prepareVfsRoot`/`VITE_JSX_ESBUILD`(compiler 侧)+ `cli/codegen.ts` 加 `loadAndCompile`/`reportCodegenResult`(CLI 侧)。
+- **经验 C 印证(勘察先于推断)**:勘察坐实 emit 产物**已可构建**(CLI compile + package.json build 脚本),§5.1 不是从零做构建,只补「编程式 build 路径」——避免了「重造 emit/build」的过度设计。
+- **经验 E 印证**:build 路径完全镜像 dev-server 架构(同 VFS plugin / 同 scanRoot / 同 JSX 覆盖)→ 抽共享模块天然,且坐实「dev `createServer` 与 `build` 共用一个 VFS plugin」可行(`configureServer` 在 build 下是 no-op)。
+- **build vs dev-server stderr 不对称(记录)**:dev-server `createServer` 路径有 vite-v8/rolldown 的 `Invalid key: jsx` / `Rolldown panicked` optimizeDeps 噪声(**pre-existing**,esbuild 配置抽离前后字节相同,preview 由 §4.x Tauri 实测覆盖);**build 路径 stderr 全净**(`vite build` 不走 optimizeDeps depscan)→ 我的 §5 deliverable 路径干净,非回归。
+
+#### Commit 链(设计 + 3 step;close 待部署 ACK)
+
+| Step | Commit | 内容 |
+|---|---|---|
+| 设计 | `462a749` | §5 全文(§5.1 勘察 + 四岔口 AskUserQuestion 锁 + VFS build probe)|
+| step 1 | `f9a08f5` | 抽共享 `vfs.ts`(`inMemoryVFS` + `lookupFile`/`resolveRelative`/`stripQuery`,dev-server 改 import,emit 字节零变)+ `./vfs` export + 纯函数单测 |
+| step 2 | `dbfb346` | `buildPreviewProject`(Vite `build()` + VFS,probe 坐实)+ `./build` export + 端到端 smoke 测 |
+| step 3 | `dd2d58e` | CLI `build` 命令(citty + agentfmt + `--json` + `--base`)+ dedup 收口(`cli/codegen.ts` + `vfs.ts` 共享 `prepareVfsRoot`/`VITE_JSX_ESBUILD`)+ close |
+
+#### 单端可验 / 部署留验(经验 K boundary)
+
+- **单端可验(已绿)**:`vfs.ts` 纯函数正负例(14 测);`buildPreviewProject` smoke(最小 Map → dist:`index.html` + hashed `assets`);CLI `build` 端到端真 fixture(human + `--json`);dev-server CLI 仍 `ready`(VFS/scanRoot 抽离零回归)。
+- **部署留验(经验 K)**:dist 推真实静态托管(CF Pages/Netlify)→ app 跑起来,Supabase 数据/认证可用,多页 client-side 路由配 SPA fallback 工作。单进程/单端验不了真托管 HTTP/路由 fallback。**这步同时解锁全部 §4.x 双机 ACK**(真部署/真双端)。
+- **诚实边界**:① Supabase config 内联进产物(anonKey public 可接受,Q3 文案点明);② 多页需托管侧 SPA fallback(次默 ⑥,fallback 配置生成留 follow-up);③ base 默认 `/`(子路径 `--base` 已留 flag);④ build 复用 workspace hoisted deps(零 npm install)—— 产物本身纯静态,但 build 步依赖编辑器 workspace 在场(CLI 是 workspace 内消费者,符合预期)。
 
 #### §5 follow-up(派生)
 
