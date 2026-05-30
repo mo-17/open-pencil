@@ -4,6 +4,7 @@ import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceConflictBanner } from '@/app/editor/presence/use-presence-conflict-banner'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import {
   STATE_VALUE_TYPES,
@@ -15,6 +16,7 @@ const editor = useEditorStore()
 const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const presence = usePresenceTarget('docState')
+const conflictBanner = usePresenceConflictBanner('docState')
 
 // Phase 2 §2 #c — document-level "Document State" lives on the root node
 // (`graph.rootId`) only, distinct from page-scoped `state`. Shown in the
@@ -53,6 +55,13 @@ const {
     @focusin="presence.onFocusIn"
     @focusout="presence.onFocusOut"
   >
+    <p
+      v-if="conflictBanner"
+      data-test-id="lowcode-document-state-conflict"
+      class="mb-1.5 text-[10px] text-amber-500"
+    >
+      {{ conflictBanner }}
+    </p>
     <div class="mb-1.5 flex items-center justify-between">
       <label class="text-[11px] text-muted">{{ panels.lowcodeDocumentState }}</label>
       <button

@@ -6,6 +6,7 @@ import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { usePresenceConflictBanner } from '@/app/editor/presence/use-presence-conflict-banner'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import {
   STATE_VALUE_TYPES,
@@ -18,6 +19,7 @@ const sectionCls = useSectionUI()
 const { panels } = useI18n()
 // Page-scoped state — presence target carries no node id (label = "page state").
 const presence = usePresenceTarget('state')
+const conflictBanner = usePresenceConflictBanner('state')
 
 const pageId = computed(() => editor.state.currentPageId)
 const states = useSceneComputed<StateDef[]>(() => {
@@ -50,6 +52,13 @@ const {
     @focusin="presence.onFocusIn"
     @focusout="presence.onFocusOut"
   >
+    <p
+      v-if="conflictBanner"
+      data-test-id="lowcode-state-conflict"
+      class="mb-1.5 text-[10px] text-amber-500"
+    >
+      {{ conflictBanner }}
+    </p>
     <div class="mb-1.5 flex items-center justify-between">
       <label class="text-[11px] text-muted">{{ panels.lowcodeState }}</label>
       <button

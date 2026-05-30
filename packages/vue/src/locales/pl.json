@@ -416,6 +416,8 @@
     "presenceTargetState": "page state",
     "presenceTargetDocState": "document state",
     "presenceConflictToast": "A collaborator changed {target} — last save wins, review for lost changes.",
+    "presenceTargetSupabaseConfig": "the Supabase config",
+    "presenceConflictBanner": "A collaborator is also editing {target} — last save wins.",
     "updateUnavailable": "Aktualizacje nie są jeszcze dostępne. Najpierw opublikuj podpisane wydanie z latest.json.",
     "renameCollection": "Zmien nazwe kolekcji",
     "deleteCollection": "Usun kolekcje",

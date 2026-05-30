@@ -530,7 +530,9 @@ export const dialogMessages = i18n('dialogs', {
   // banner; {target} is one of them.
   presenceTargetState: 'page state',
   presenceTargetDocState: 'document state',
+  presenceTargetSupabaseConfig: 'the Supabase config',
   presenceConflictToast: params(
     'A collaborator changed {target} — last save wins, review for lost changes.'
-  )
+  ),
+  presenceConflictBanner: params('A collaborator is also editing {target} — last save wins.')
 })
