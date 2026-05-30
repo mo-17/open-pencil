@@ -594,7 +594,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 1. ToolDef.execute 入参加 Editor + `beginUndoGroup`/`endUndoGroup` 合并 mega 调用为 1 undo entry(surprise #2)
 2. `supabaseMutation.payloadJson` 升级为 / 并存 `payloadEntries: { key, valueExpr }[]`,支持 docState / page-state 引用(surprise #3)
 3. CHECKBOX / TEXTAREA / DATEPICKER / SELECT / RADIO / SWITCH 的 controlled binding(扩 §3.x 模式)
-4. expression grammar 加 `$event` / `$value` token(若需要,可能避开 §4.2 FROZEN 走 token 后置注入路径)
+4. ~~expression grammar 加 `$event` / `$value` token~~ **→ SHELVED 2026-05-30(用户 ACK)**。勘察坐实(经验 C):① `$event`/`$value` 早已 parse(`IDENT_RE` 含 `$`,同 `$prev`/`$currentUser`)→ 零文法改动、「§4.2 FROZEN」非难点;② **但无活用例** —— onChange/onFocus/onBlur 无 authoring 入口(EventsPanel 仅 onClick/onSubmit),controlled 输入的 user onChange 被 IR 主动丢弃(`input-controlled-onchange-conflict`「binding.value owns onChange」);③ **原动机(onChange 读 `e.target.value`)已被 §3.x/§3.v4 的 controlled `bindings.value`→docState 通道取代**(表单值走 docState,action 引用 docState 名)。单做 token = 造无消费者的语法。**真要做须先重框为「可编 onChange/Focus/Blur handler」(扩 EventsPanel + handler emit 带 event 参),那是更大的独立 scope,非本 token follow-up。**
 5. INPUT controlled boolean / date 类型支持
 6. SupabaseConfigPanel 加 RLS policy 健康检查(可选 nice-to-have,surprise #5)
 7. `payloadJson === '{}'` 按 empty 处理消歧义(surprise #6 防呆)
