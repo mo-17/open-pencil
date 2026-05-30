@@ -1,4 +1,5 @@
 import type { NodeType, SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
+import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
   parseExpression,
@@ -236,6 +237,49 @@ function isCheckboxGroup(node: SceneNode): boolean {
   return Array.isArray(raw) && raw.length > 0
 }
 
+// Pure-vector shape types whose appearance IS the path geometry. As plain
+// `<div>`s they emit only size + fill→bg, i.e. a solid colored box (icons show
+// up as squares in the preview). Instead we emit the node's geometry as inline
+// SVG (reusing core's headless SVG exporter) inside the layout wrapper.
+// RECTANGLE / ELLIPSE / ROUNDED_RECTANGLE / FRAME stay CSS boxes — a div with a
+// background / border-radius is the faithful (and lighter) representation.
+const SVG_SHAPE_TYPES: ReadonlySet<NodeType> = new Set([
+  'VECTOR',
+  'BOOLEAN_OPERATION',
+  'STAR',
+  'POLYGON',
+  'LINE'
+])
+
+/**
+ * Render a vector-shape node to a self-contained inline `<svg>` string, or
+ * undefined when it has no renderable geometry (falls back to the plain div).
+ * `renderNodesToSVG` normalizes the node to the origin with a `0 0 w h`
+ * viewBox; we drop its `<?xml?>` prelude (`xmlDeclaration: false`) and swap the
+ * fixed pixel width/height for 100% so the SVG fills the layout wrapper (whose
+ * Tailwind size classes already carry the node's dimensions) while the viewBox
+ * preserves the aspect ratio.
+ */
+function buildVectorSvg(node: SceneNode, graph: SceneGraph): string | undefined {
+  const svg = renderNodesToSVG(graph, '', [node.id], { xmlDeclaration: false })
+  if (!svg) return undefined
+  return svg.replace(/(<svg\b[^>]*?)\swidth="[^"]*"\sheight="[^"]*"/, '$1 width="100%" height="100%"')
+}
+
+/**
+ * Drop paint-derived Tailwind classes (fill→`bg-*`, stroke→`border*`, plus
+ * `ring-*`/`shadow-*`) from a vector-shape wrapper. The fill/stroke/effects now
+ * live in the inline SVG; leaving `bg-[<fill>]` on the wrapper would paint a
+ * solid box of the icon's own color behind it — i.e. the square would persist.
+ * Layout/size/position/opacity/`rounded-*` classes are kept.
+ */
+function stripPaintClasses(className: string): string {
+  return className
+    .split(/\s+/)
+    .filter((c) => c !== '' && !/^(bg-|border(-|$)|ring(-|$)|shadow(-|$))/.test(c))
+    .join(' ')
+}
+
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // Phase 3 §3.v4 step 8 — CHECKBOX with options[] becomes a multi-select
   // group: render as a <div> wrapper with N child <input type="checkbox">
@@ -260,6 +304,12 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const children: IRNode[] = []
 
   applyInteractiveProps(node, attrs, children, ctx)
+
+  // Vector-shape nodes emit their geometry as inline SVG (see SVG_SHAPE_TYPES).
+  // The wrapper keeps layout/size classes but sheds paint classes, and no
+  // children are collected (these types aren't containers / TEXT anyway).
+  const rawHtml = SVG_SHAPE_TYPES.has(node.type) ? buildVectorSvg(node, ctx.graph) : undefined
+  if (rawHtml !== undefined) className = stripPaintClasses(className)
 
   if (node.type === 'TEXT') {
     const binding = resolveTextBinding(
@@ -308,7 +358,8 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     attrs,
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
-    ...(controlled ? { controlled } : {})
+    ...(controlled ? { controlled } : {}),
+    ...(rawHtml !== undefined ? { rawHtml } : {})
   }
   return wrapConditional(node, element, ctx)
 }

@@ -64,6 +64,13 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
   )
   const opening = attrsStr ? `<${node.tag} ${attrsStr}` : `<${node.tag}`
 
+  // Vector-shape nodes carry their geometry as inline SVG via
+  // dangerouslySetInnerHTML (React forbids combining it with children, so the
+  // collect pass leaves `children` empty when `rawHtml` is set).
+  if (node.rawHtml !== undefined) {
+    return `${pad}${opening} dangerouslySetInnerHTML={{ __html: ${JSON.stringify(node.rawHtml)} }} />`
+  }
+
   if (VOID_TAGS.has(node.tag) || node.children.length === 0) {
     return `${pad}${opening} />`
   }

@@ -27,6 +27,13 @@ export interface IRElement {
    *  `defaultValue` and any user-defined `onChange` are dropped (the latter
    *  with an `input-controlled-onchange-conflict` warning at collect time). */
   controlled?: IRControlledInput
+  /** Raw inner HTML to emit verbatim via `dangerouslySetInnerHTML` instead of
+   *  `children`. Set for vector-shape nodes (VECTOR / BOOLEAN_OPERATION / STAR /
+   *  POLYGON / LINE) whose appearance IS the path geometry: the wrapper keeps
+   *  its layout/size classes and this holds the inline `<svg>` rendered from the
+   *  node's geometry. Mutually exclusive with `children` (emit ignores children
+   *  when set). */
+  rawHtml?: string
 }
 
 /** Phase 3 §3.x + §3.v4: descriptor for a controlled form control — both
