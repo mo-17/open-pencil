@@ -3674,6 +3674,8 @@ export function buildCollabNetworkConfig(env: CollabNetworkEnv): CollabNetworkCo
 - **单端可验**:纯函数策略解析;room.ts 编译通过 + collab 零回归。**双机 ACK(留)**:设 supabase env → 两端经 Supabase Realtime 连通(无公共 broker)。经验 K:真 Realtime 传播单进程验不了。
 - **1 step**;commit 前缀 `feat(collab): §4.3-S — Trystero Supabase signaling strategy`。
 
+**代码完成 2026-05-31**(设计 → feat `e00fd0d` → close):`bun run check` 0 error / 0 clone;`network-config.test.ts` 11 测(+5 supabase 路径:全配→supabase / 缺 key→回落 mqtt / 大小写 / 无 strategy 默认 mqtt);collab 34 测零回归。静态 import 两策略坐实(编辑器 bundle 进 @supabase,connectCollabRoom 仍同步)。**双机 ACK 留**:设 `VITE_COLLAB_STRATEGY=supabase`+URL/KEY → 两端经 Supabase Realtime 连通(无公共 broker)——单进程验不了真 Realtime 传播(经验 K,同 §4.3)。
+
 ---
 
 ---
