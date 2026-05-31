@@ -5,6 +5,7 @@ import type { NodeChange, VariableDataValuesEntry, Color, GUID } from '#core/kiw
 import { populateAndApplyOverrides } from '#core/kiwi/fig/instance-overrides'
 import type { InstanceNodeChange } from '#core/kiwi/fig/instance-overrides'
 import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
+import { extractLowcodeAndPluginData } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import {
   guidToString,
   nodeChangeToProps,
@@ -14,15 +15,30 @@ import {
 } from '#core/kiwi/fig/node-change/convert'
 import { applyStyleRefsToFields } from '#core/kiwi/fig/node-change/style-refs'
 import { SceneGraph } from '#core/scene-graph'
-import type { VariableType, VariableValue } from '#core/scene-graph'
+import type { SceneNode, VariableType, VariableValue } from '#core/scene-graph'
 
 type AssetRef = { key: string; version?: string }
 type AliasRef = { guid?: GUID; assetRef?: AssetRef }
+
+/** Pages (CANVAS) and the root (DOCUMENT) bypass `nodeChangeToProps`, so their
+ *  lowcode pluginData (page state / documentState / supabaseConfig) is absorbed
+ *  here. Mirrors the export-side hook in io/formats/fig/export.ts. */
+function assignImportedLowcodeFields(node: SceneNode, nc: NodeChange): void {
+  const ex = extractLowcodeAndPluginData(nc)
+  if (ex.state) node.state = ex.state
+  if (ex.bindings) node.bindings = ex.bindings
+  if (ex.events) node.events = ex.events
+  if (ex.interactiveProps) node.interactiveProps = ex.interactiveProps
+  if (ex.renderCondition !== undefined) node.renderCondition = ex.renderCondition
+  if (ex.lowcodeDocumentState) node.lowcodeDocumentState = ex.lowcodeDocumentState
+  if (ex.lowcodeSupabaseConfig) node.lowcodeSupabaseConfig = ex.lowcodeSupabaseConfig
+}
 
 function applyImportedCanvasMetadata(
   page: ReturnType<SceneGraph['addPage']>,
   canvasNc: NodeChange
 ) {
+  assignImportedLowcodeFields(page, canvasNc)
   page.source.format = 'fig'
   page.source.orderKey = canvasNc.parentIndex?.position ?? null
   if (canvasNc.backgroundColor)
@@ -41,6 +57,7 @@ function applyImportedDocumentMetadata(graph: SceneGraph, docNc: NodeChange | un
   rootNode.source.format = 'fig'
   rootNode.source.fig.rawNodeFields.strokeJoin = docNc.strokeJoin
   rootNode.source.fig.rawNodeFields.strokeWeight = docNc.strokeWeight
+  assignImportedLowcodeFields(rootNode, docNc)
 }
 
 function assetRefKey(assetRef: AssetRef): string {

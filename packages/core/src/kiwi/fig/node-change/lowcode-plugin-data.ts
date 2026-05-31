@@ -12,7 +12,7 @@
 // Step 1 (this file's serialize side) wires the save path; step 2 adds the
 // read side in convert.ts.
 
-import type { NodeChange } from '#core/kiwi/binary/codec'
+import type { NodeChange } from '#core/kiwi/fig/codec'
 import type {
   ActionDef,
   BindingExpr,

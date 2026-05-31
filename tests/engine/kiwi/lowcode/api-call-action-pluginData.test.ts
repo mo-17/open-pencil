@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { PluginData } from '#core/kiwi/binary/codec'
+import type { PluginData } from '#core/kiwi/fig/codec'
 import type { ApiCallAction, PluginDataEntry, SceneNode } from '#core/scene-graph'
 
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/node-change/plugin-data'
+import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 import {
   extractLowcodeAndPluginData,
   LOWCODE_EVENTS_KEY,
   serializeLowcodeFields
-} from '#core/kiwi/node-change/lowcode-plugin-data'
+} from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
 /**
  * Phase 2 §3 step 1 — `ApiCallAction` persistence.

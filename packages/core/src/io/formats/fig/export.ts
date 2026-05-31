@@ -8,6 +8,8 @@ import { initCodec, getCompiledSchema, getSchemaBytes } from '#core/kiwi/fig/cod
 import type { NodeChange } from '#core/kiwi/fig/codec'
 import { populateAllLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
 import { stringToGuid } from '#core/kiwi/fig/node-change/convert'
+import { serializeLowcodeFields } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import { mergePluginData } from '#core/kiwi/fig/node-change/plugin-data'
 import {
   sceneNodeToKiwi,
   fractionalPosition,
@@ -260,6 +262,12 @@ function buildCanvasEntries(
     )
     applyImportedCanvasFields(page, canvasNc)
     if (page.internalOnly) canvasNc.internalOnly = true
+    // Phase 1 §12: pages bypass sceneNodeToKiwi, so page-scoped lowcode state
+    // (the common case) is attached here.
+    const pageLowcode = serializeLowcodeFields(page)
+    if (pageLowcode.length > 0) {
+      canvasNc.pluginData = mergePluginData([...page.pluginData, ...pageLowcode])
+    }
     canvasEntries.push({ page, canvasGuid, canvasNc })
   }
 
@@ -314,7 +322,16 @@ export async function exportFigFile(
 
   const documentNc = makeDocumentNodeChange(docGuid, graph.documentColorSpace)
   const rootNode = graph.getNode(graph.rootId)
-  if (rootNode) Object.assign(documentNc, rootNode.source.fig.rawNodeFields)
+  if (rootNode) {
+    Object.assign(documentNc, rootNode.source.fig.rawNodeFields)
+    // Phase 2 §2 / §3 §2: document-level lowcode fields (lowcodeDocumentState,
+    // lowcodeSupabaseConfig) live on the root SceneNode but the DOCUMENT change
+    // bypasses sceneNodeToKiwi, so attach the pluginData here.
+    const rootLowcode = serializeLowcodeFields(rootNode)
+    if (rootLowcode.length > 0) {
+      documentNc.pluginData = mergePluginData([...rootNode.pluginData, ...rootLowcode])
+    }
+  }
   const nodeChanges: KiwiNodeChange[] = [documentNc]
 
   const blobs: Uint8Array[] = []

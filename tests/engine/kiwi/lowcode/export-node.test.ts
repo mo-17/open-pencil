@@ -3,13 +3,13 @@ import { beforeAll, describe, expect, test } from 'bun:test'
 import { initCodec, SceneGraph, sceneNodeToKiwi } from '@open-pencil/core'
 import type { StateDef } from '#core/scene-graph'
 
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/node-change/plugin-data'
+import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 import {
   LOWCODE_BINDINGS_KEY,
   LOWCODE_EVENTS_KEY,
   LOWCODE_INTERACTIVE_PROPS_KEY,
   LOWCODE_STATE_KEY
-} from '#core/kiwi/node-change/lowcode-plugin-data'
+} from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
 beforeAll(async () => {
   await initCodec()

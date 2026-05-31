@@ -15,7 +15,6 @@ export { convertEffects, convertFills, convertStrokes, setVariableColorResolver 
 export { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
 import {
   extractBoundVariables,
-  extractPluginData,
   extractPluginRelaunchData,
   getOpenPencilPluginValue,
   LAYOUT_DIRECTION_PLUGIN_KEY,
@@ -24,6 +23,10 @@ import {
 } from './plugin-data'
 import { resolveGeometryPaths, resolveVectorNetwork } from './vector-geometry'
 export { resolveGeometryPaths } from './vector-geometry'
+import {
+  extractLowcodeAndPluginData,
+  type ExtractedLowcodeAndPluginData
+} from './lowcode-plugin-data'
 
 import type { NodeChange } from '#core/kiwi/fig/codec'
 import type {
@@ -496,11 +499,56 @@ function convertVectorAndStrokeProps(nc: NodeChange, blobs: Uint8Array[]) {
   }
 }
 
+/** Apply the layout values that ride pluginData because the vendored Figma
+ *  schema can't represent them (FREE layoutMode, FILL sizing, SPACE_BETWEEN wrap
+ *  distribution, GRID child placement). Applied AFTER `convertLayoutProps`. */
+function pluginDataLayoutOverrides(
+  ex: Pick<
+    ExtractedLowcodeAndPluginData,
+    | 'freeLayoutOverride'
+    | 'primaryAxisSizingOverride'
+    | 'counterAxisSizingOverride'
+    | 'counterAxisAlignContentOverride'
+    | 'gridPositionOverride'
+  >
+): Partial<SceneNode> {
+  const out: Partial<SceneNode> = {}
+  if (ex.freeLayoutOverride === true) out.layoutMode = 'FREE'
+  if (ex.primaryAxisSizingOverride) out.primaryAxisSizing = ex.primaryAxisSizingOverride
+  if (ex.counterAxisSizingOverride) out.counterAxisSizing = ex.counterAxisSizingOverride
+  if (ex.counterAxisAlignContentOverride) {
+    out.counterAxisAlignContent = ex.counterAxisAlignContentOverride
+  }
+  if (ex.gridPositionOverride) out.gridPosition = ex.gridPositionOverride
+  return out
+}
+
 export function nodeChangeToProps(
   nc: NodeChange,
   blobs: Uint8Array[]
 ): Partial<SceneNode> & { nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' } {
-  let nodeType = mapNodeType(nc.type)
+  // Phase 1 §12: lowcode pluginData entries are absorbed into structured fields
+  // here and stripped from the returned pluginData[] so the in-memory SceneNode
+  // keeps a single source of truth. nodeType / FREE / FILL sizing / GRID
+  // placement are applied separately (they feed dedicated fields).
+  const {
+    nodeTypeOverride,
+    freeLayoutOverride,
+    primaryAxisSizingOverride,
+    counterAxisSizingOverride,
+    counterAxisAlignContentOverride,
+    gridPositionOverride,
+    ...lowcodeRest
+  } = extractLowcodeAndPluginData(nc)
+  const layoutOverrides = pluginDataLayoutOverrides({
+    freeLayoutOverride,
+    primaryAxisSizingOverride,
+    counterAxisSizingOverride,
+    counterAxisAlignContentOverride,
+    gridPositionOverride
+  })
+
+  let nodeType = nodeTypeOverride ?? mapNodeType(nc.type)
   if (
     (nodeType === 'FRAME' && isComponentSet(nc)) ||
     getOpenPencilPluginValue(nc, NODE_TYPE_PLUGIN_KEY) === 'COMPONENT_SET'
@@ -535,6 +583,7 @@ export function nodeChangeToProps(
     horizontalConstraint: mapConstraint(nc.horizontalConstraint as string),
     verticalConstraint: mapConstraint(nc.verticalConstraint as string),
     ...convertLayoutProps(nc),
+    ...layoutOverrides,
     ...vectorAndStrokeProps,
     minWidth: (nc.minWidth ?? null) as number | null,
     maxWidth: (nc.maxWidth ?? null) as number | null,
@@ -546,7 +595,11 @@ export function nodeChangeToProps(
     expanded: true,
     autoRename: (nc.autoRename ?? true) as boolean,
     boundVariables: extractBoundVariables(nc),
-    pluginData: extractPluginData(nc),
+    // Lowcode structured fields (state / bindings / events / interactiveProps /
+    // renderCondition / documentState / supabaseConfig) + the lowcode-stripped
+    // pluginData[] are absorbed here so the in-memory SceneNode keeps a single
+    // source of truth; other plugins' entries pass through unchanged.
+    ...lowcodeRest,
     pluginRelaunchData: extractPluginRelaunchData(nc),
     clipsContent: nc.frameMaskDisabled === false && nc.resizeToFit !== true,
     componentId: extractSymbolId(nc),
