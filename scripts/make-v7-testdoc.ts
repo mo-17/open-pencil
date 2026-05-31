@@ -1,19 +1,24 @@
-// v7 — Figma-compat FILL verification. Generates a .fig whose layout is correct
+// v7 -- Figma-compat FILL verification. Generates a .fig whose layout is correct
 // ONLY if the new Figma-native child-fill emit (commit 30a2d81) works: cross-axis
 // FILL must serialize as native `stackChildAlignSelf=STRETCH` so an external
 // reader (Figma / app.openpencil.dev, which ignore our `lowcode/*` pluginData)
 // stretches the element. Open this file in Figma (or app.openpencil.dev) and
 // check each labeled region:
-//   A — fill-width buttons in a column: the blue buttons span the full card
+//   A -- fill-width buttons in a column: the blue buttons span the full card
 //       width; only the gray "FIXED 120" button stays narrow. If the fix were
 //       missing, every blue button would collapse to 120px (THE bug).
-//   B — fill-main button in a row: the blue button grows to eat the leftover
-//       width beside the fixed gray one (control — already worked via layoutGrow).
+//   B -- fill-main button in a row: the blue button grows to eat the leftover
+//       width beside the fixed gray one (control: already worked via layoutGrow).
+//
+// Text is rendered by loading the real Inter outlines before export so the .fig
+// carries glyph geometry + fontDigest -- otherwise headless Bun emits empty
+// glyphs and Figma shows no text.
 //
 //   bun scripts/make-v7-testdoc.ts
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/core/scene-graph'
+import { fontManager } from '@open-pencil/core/text'
 import type { Color, Fill, Stroke, SceneGraph as Graph } from '@open-pencil/core/scene-graph'
 
 const graph = new SceneGraph()
@@ -45,7 +50,7 @@ function label(text: string, x: number, y: number): void {
 
 // A button = a HORIZONTAL auto-layout (so it's a container child, the case the
 // fix targets) with a centered text label. `fillWidth` => primaryAxisSizing=FILL,
-// which for a row child in a column parent is the CROSS (width) axis → must emit
+// which for a row child in a column parent is the CROSS (width) axis: must emit
 // native STRETCH. Otherwise a fixed 120px width.
 function button(parent: string, g: Graph, name: string, text: string, fillWidth: boolean) {
   const btn = g.createNode('FRAME', parent, {
@@ -100,6 +105,11 @@ const rowB = graph.createNode('FRAME', pageId, {
 const grow = button(rowB.id, graph, 'B-Btn-Grow', 'Search', true)
 grow.layoutGrow = 1
 button(rowB.id, graph, 'B-Btn-Fixed', 'Go', false)
+
+// Load the real Inter outlines (weight 600 = Semi Bold; Regular for safety) from
+// the bundled package assets so the export embeds glyph geometry + fontDigest.
+await fontManager.loadFont('Inter', 'Regular')
+await fontManager.loadFont('Inter', 'SemiBold')
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const result = await io.writeDocument('fig', graph)
