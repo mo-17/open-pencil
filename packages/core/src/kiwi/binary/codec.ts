@@ -281,7 +281,7 @@ export interface NodeChange {
   dashPattern?: number[]
   effects?: Effect[]
   // Layout
-  stackMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL'
+  stackMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL' | 'GRID'
   stackSpacing?: number
   stackPadding?: number
   stackPaddingRight?: number

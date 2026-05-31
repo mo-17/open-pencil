@@ -38,6 +38,7 @@ import {
   type LayoutAlign,
   type LayoutAlignSelf,
   type LayoutCounterAlign,
+  type GridTrack,
   type ConstraintType,
   type TextAutoResize,
   type TextAlignVertical,
@@ -114,6 +115,8 @@ function mapStackMode(mode?: string): LayoutMode {
       return 'HORIZONTAL'
     case 'VERTICAL':
       return 'VERTICAL'
+    case 'GRID':
+      return 'GRID'
     default:
       return 'NONE'
   }
@@ -380,6 +383,10 @@ function convertLayoutProps(nc: NodeChange): Pick<
   | 'itemReverseZIndex'
   | 'strokesIncludedInLayout'
   | 'layoutDirection'
+  | 'gridTemplateColumns'
+  | 'gridTemplateRows'
+  | 'gridColumnGap'
+  | 'gridRowGap'
 > &
   Partial<Pick<SceneNode, 'figmaDerivedLayout'>> {
   const layoutMode = mapStackMode(nc.stackMode)
@@ -416,7 +423,32 @@ function convertLayoutProps(nc: NodeChange): Pick<
       (getOpenPencilPluginValue(nc, LAYOUT_DIRECTION_PLUGIN_KEY) as
         | SceneNode['layoutDirection']
         | null) || 'AUTO',
+    ...convertGridProps(nc),
     ...(figmaDerivedLayout ? { figmaDerivedLayout } : {})
+  }
+}
+
+/** Inverse of serialize's `gridTrackToKiwi`: FLEX→FR, HUG→AUTO, FIXED→FIXED. */
+function gridTrackFromKiwi(track: { type?: string; value?: number }): GridTrack {
+  let sizing: GridTrack['sizing'] = 'FIXED'
+  if (track.type === 'FLEX') sizing = 'FR'
+  else if (track.type === 'HUG') sizing = 'AUTO'
+  return { sizing, value: track.value ?? 0 }
+}
+
+/** Restore the GRID container fields written by `serializeGridProps`. Absent
+ *  fields (non-grid nodes, or legacy .fig saved before GRID serialization
+ *  landed) fall back to the empty/zero node defaults. */
+function convertGridProps(
+  nc: NodeChange
+): Pick<SceneNode, 'gridTemplateColumns' | 'gridTemplateRows' | 'gridColumnGap' | 'gridRowGap'> {
+  const cols = (nc.gridColumnSizes as Array<{ type?: string; value?: number }> | undefined) ?? []
+  const rows = (nc.gridRowSizes as Array<{ type?: string; value?: number }> | undefined) ?? []
+  return {
+    gridTemplateColumns: cols.map(gridTrackFromKiwi),
+    gridTemplateRows: rows.map(gridTrackFromKiwi),
+    gridColumnGap: (nc.gridColumnGap as number | undefined) ?? 0,
+    gridRowGap: (nc.gridRowGap as number | undefined) ?? 0
   }
 }
 
@@ -454,7 +486,8 @@ function convertVectorAndStrokeProps(nc: NodeChange, blobs: Uint8Array[]) {
 }
 
 /** Apply the layout values that ride pluginData because the vendored Figma
- *  schema can't represent them (FREE, FILL sizing, SPACE_BETWEEN wrap). */
+ *  schema can't represent them (FREE, FILL sizing, SPACE_BETWEEN wrap, GRID
+ *  child placement). */
 function pluginDataLayoutOverrides(
   ex: Pick<
     ExtractedLowcodeAndPluginData,
@@ -462,6 +495,7 @@ function pluginDataLayoutOverrides(
     | 'primaryAxisSizingOverride'
     | 'counterAxisSizingOverride'
     | 'counterAxisAlignContentOverride'
+    | 'gridPositionOverride'
   >
 ): Partial<SceneNode> {
   const out: Partial<SceneNode> = {}
@@ -471,6 +505,7 @@ function pluginDataLayoutOverrides(
   if (ex.counterAxisAlignContentOverride) {
     out.counterAxisAlignContent = ex.counterAxisAlignContentOverride
   }
+  if (ex.gridPositionOverride) out.gridPosition = ex.gridPositionOverride
   return out
 }
 
@@ -489,6 +524,7 @@ export function nodeChangeToProps(
     primaryAxisSizingOverride,
     counterAxisSizingOverride,
     counterAxisAlignContentOverride,
+    gridPositionOverride,
     ...lowcodeRest
   } = extractLowcodeAndPluginData(nc)
   // Layout values the vendored Figma schema can't represent (FREE layoutMode,
@@ -500,7 +536,8 @@ export function nodeChangeToProps(
     freeLayoutOverride,
     primaryAxisSizingOverride,
     counterAxisSizingOverride,
-    counterAxisAlignContentOverride
+    counterAxisAlignContentOverride,
+    gridPositionOverride
   })
   let nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' =
     nodeTypeOverride ?? mapNodeType(nc.type)

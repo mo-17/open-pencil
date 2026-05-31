@@ -130,4 +130,46 @@ describe('.fig layout round-trip', () => {
     // figmaDerivedLayout still preserves the HUG-derived size, just not x/y
     expect(child.figmaDerivedLayout?.x).toBeUndefined()
   })
+
+  test('C3: GRID container tracks/gaps and child placement survive (was degraded to NONE)', async () => {
+    const graph = new SceneGraph()
+    const grid = graph.createNode('FRAME', pageId(graph), {
+      name: 'GridFrame',
+      width: 300,
+      height: 200,
+      layoutMode: 'GRID',
+      gridTemplateColumns: [
+        { sizing: 'FR', value: 1 },
+        { sizing: 'FIXED', value: 80 },
+        { sizing: 'AUTO', value: 0 }
+      ],
+      gridTemplateRows: [{ sizing: 'FR', value: 1 }],
+      gridColumnGap: 12,
+      gridRowGap: 8,
+      paddingTop: 4,
+      paddingLeft: 6,
+      paddingBottom: 4,
+      paddingRight: 6
+    })
+    graph.createNode('FRAME', grid.id, {
+      name: 'PlacedCell',
+      width: 80,
+      height: 40,
+      gridPosition: { column: 2, row: 1, columnSpan: 1, rowSpan: 1 }
+    })
+    const re = await roundtrip(graph)
+    const n = findByName(re, 'GridFrame')
+    expect(n.layoutMode).toBe('GRID')
+    expect(n.gridTemplateColumns).toEqual([
+      { sizing: 'FR', value: 1 },
+      { sizing: 'FIXED', value: 80 },
+      { sizing: 'AUTO', value: 0 }
+    ])
+    expect(n.gridTemplateRows).toEqual([{ sizing: 'FR', value: 1 }])
+    expect(n.gridColumnGap).toBe(12)
+    expect(n.gridRowGap).toBe(8)
+    expect(n.paddingLeft).toBe(6)
+    const cell = findByName(re, 'PlacedCell')
+    expect(cell.gridPosition).toEqual({ column: 2, row: 1, columnSpan: 1, rowSpan: 1 })
+  })
 })

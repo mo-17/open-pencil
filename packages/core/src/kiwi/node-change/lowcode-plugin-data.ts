@@ -18,6 +18,7 @@ import type {
   BindingExpr,
   DocumentStateDef,
   EventName,
+  GridPosition,
   NodeType,
   PluginDataEntry,
   SceneNode,
@@ -65,6 +66,12 @@ export const LOWCODE_AXIS_SIZING_KEY = 'lowcode/axisSizing'
  *  reset it to 'AUTO', shifting WRAP rows. Value is the literal string
  *  `'SPACE_BETWEEN'`; absent ≡ 'AUTO'. */
 export const LOWCODE_COUNTER_ALIGN_CONTENT_KEY = 'lowcode/counterAxisAlignContent'
+/** Round-trip fix: a GRID child's `gridPosition` (column/row + spans) has no
+ *  per-child field in the vendored schema (only container-level grid tracks /
+ *  gaps / counts exist), so explicit placements were dropped and children
+ *  re-flowed into auto-placement on reopen. Value is the JSON-encoded
+ *  GridPosition; absent ≡ auto-placed (`gridPosition: null`). */
+export const LOWCODE_GRID_POSITION_KEY = 'lowcode/gridPosition'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -93,7 +100,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_FREE_LAYOUT_KEY,
   LOWCODE_SUPABASE_CONFIG_KEY,
   LOWCODE_AXIS_SIZING_KEY,
-  LOWCODE_COUNTER_ALIGN_CONTENT_KEY
+  LOWCODE_COUNTER_ALIGN_CONTENT_KEY,
+  LOWCODE_GRID_POSITION_KEY
 ])
 
 /**
@@ -143,6 +151,9 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (node.counterAxisAlignContent === 'SPACE_BETWEEN') {
     entries.push(makeEntry(LOWCODE_COUNTER_ALIGN_CONTENT_KEY, 'SPACE_BETWEEN'))
   }
+  // Round-trip fix: persist an explicit GRID child placement (no per-child
+  // schema field). `null` (auto-placed) writes nothing.
+  if (node.gridPosition) entries.push(makeEntry(LOWCODE_GRID_POSITION_KEY, node.gridPosition))
   return entries
 }
 
@@ -218,6 +229,10 @@ export interface ExtractedLowcodeAndPluginData {
   /** Round-trip fix: present (always `'SPACE_BETWEEN'`) when the saved node had
    *  that wrap distribution; callers override the kiwi-restored 'AUTO'. */
   counterAxisAlignContentOverride?: 'SPACE_BETWEEN'
+  /** Round-trip fix: explicit GRID child placement restored from
+   *  `lowcode/gridPosition`. Present only when the saved value had the four
+   *  numeric placement fields. */
+  gridPositionOverride?: GridPosition
 }
 
 export function extractLowcodeAndPluginData(
@@ -294,7 +309,23 @@ function assignLowcodeField(
     case LOWCODE_COUNTER_ALIGN_CONTENT_KEY:
       if (value === 'SPACE_BETWEEN') target.counterAxisAlignContentOverride = 'SPACE_BETWEEN'
       return
+    case LOWCODE_GRID_POSITION_KEY:
+      if (isGridPosition(value)) target.gridPositionOverride = value
+      return
   }
+}
+
+/** Strict guard: all four placement fields must be finite numbers, else the
+ *  malformed value is treated as absent (child stays auto-placed). */
+function isGridPosition(value: unknown): value is GridPosition {
+  if (value === null || typeof value !== 'object') return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v.column === 'number' &&
+    typeof v.row === 'number' &&
+    typeof v.columnSpan === 'number' &&
+    typeof v.rowSpan === 'number'
+  )
 }
 
 /** Read side of {@link fillAxisSizing}. Strict guard: only the literal 'FILL'

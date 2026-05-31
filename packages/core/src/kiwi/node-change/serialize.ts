@@ -14,7 +14,7 @@ export {
 export { buildFontDigestMap } from './font-digests'
 
 import type { NodeChange, Paint, VariableConsumptionEntry } from '#core/kiwi/binary/codec'
-import type { SceneGraph, SceneNode, CharacterStyleOverride } from '#core/scene-graph'
+import type { SceneGraph, SceneNode, CharacterStyleOverride, GridTrack } from '#core/scene-graph'
 import type { Color, GUID, Matrix } from '#core/types'
 
 import { stringToGuid, VARIABLE_BINDING_FIELDS } from './convert'
@@ -286,17 +286,14 @@ function serializeTextProps(
 
 function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange): void {
   upsertPluginData(node, LAYOUT_DIRECTION_PLUGIN_KEY, node.layoutDirection)
-  // Phase 2 §6: explicit HORIZONTAL/VERTICAL guard — the vendored
-  // `KiwiNodeChange.stackMode` schema only carries those two. `'NONE'` /
-  // `'GRID'` / `'FREE'` all skip stack serialization (FREE rides the
-  // `lowcode/freeLayout` pluginData bypass, persisted in step 3).
+  // Phase 2 §6: explicit HORIZONTAL/VERTICAL guard. `'NONE'` / `'FREE'` skip
+  // stack serialization (FREE rides the `lowcode/freeLayout` pluginData
+  // bypass). `'GRID'` is handled below — the vendored `stackMode` enum does
+  // carry GRID (=3) plus native grid track/gap/count fields.
   if (node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL') {
     nc.stackMode = node.layoutMode
     nc.stackSpacing = node.itemSpacing
-    nc.stackVerticalPadding = node.paddingTop
-    nc.stackHorizontalPadding = node.paddingLeft
-    nc.stackPaddingBottom = node.paddingBottom
-    nc.stackPaddingRight = node.paddingRight
+    serializeStackPadding(node, nc)
     nc.stackPrimarySizing = node.primaryAxisSizing === 'HUG' ? 'RESIZE_TO_FIT' : 'FIXED'
     nc.stackCounterSizing = node.counterAxisSizing === 'HUG' ? 'RESIZE_TO_FIT' : 'FIXED'
     nc.stackPrimaryAlignItems = node.primaryAxisAlign
@@ -304,11 +301,47 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange): void {
     if (node.layoutWrap === 'WRAP') nc.stackWrap = 'WRAP'
     if (node.counterAxisSpacing > 0) nc.stackCounterSpacing = node.counterAxisSpacing
     nc.bordersTakeSpace = node.strokesIncludedInLayout
+  } else if (node.layoutMode === 'GRID') {
+    serializeGridProps(node, nc)
   }
   if (node.layoutPositioning === 'ABSOLUTE') nc.stackPositioning = 'ABSOLUTE'
   if (node.layoutGrow > 0) nc.stackChildPrimaryGrow = node.layoutGrow
   if (node.layoutAlignSelf !== 'AUTO') {
     nc.stackChildAlignSelf = node.layoutAlignSelf
+  }
+}
+
+function serializeStackPadding(node: SceneNode, nc: KiwiNodeChange): void {
+  nc.stackVerticalPadding = node.paddingTop
+  nc.stackHorizontalPadding = node.paddingLeft
+  nc.stackPaddingBottom = node.paddingBottom
+  nc.stackPaddingRight = node.paddingRight
+}
+
+/** Map an OpenPencil GridTrack to the vendored Kiwi `GridTrackSize` enum:
+ *  FR→FLEX, AUTO→HUG, FIXED→FIXED. Mirrored by `gridTrackFromKiwi` in convert. */
+function gridTrackToKiwi(track: GridTrack): { type: string; value: number } {
+  let type = 'FIXED'
+  if (track.sizing === 'FR') type = 'FLEX'
+  else if (track.sizing === 'AUTO') type = 'HUG'
+  return { type, value: track.value }
+}
+
+/** Serialize a GRID container via the native schema fields (stackMode GRID,
+ *  track sizes, gaps, counts) plus shared stack padding. Per-child placement
+ *  (`gridPosition`) has no schema field — it rides `lowcode/gridPosition`. */
+function serializeGridProps(node: SceneNode, nc: KiwiNodeChange): void {
+  nc.stackMode = 'GRID'
+  serializeStackPadding(node, nc)
+  nc.gridColumnCount = node.gridTemplateColumns.length
+  nc.gridRowCount = node.gridTemplateRows.length
+  nc.gridColumnGap = node.gridColumnGap
+  nc.gridRowGap = node.gridRowGap
+  if (node.gridTemplateColumns.length > 0) {
+    nc.gridColumnSizes = node.gridTemplateColumns.map(gridTrackToKiwi)
+  }
+  if (node.gridTemplateRows.length > 0) {
+    nc.gridRowSizes = node.gridTemplateRows.map(gridTrackToKiwi)
   }
 }
 
