@@ -50,6 +50,21 @@ export const LOWCODE_FREE_LAYOUT_KEY = 'lowcode/freeLayout'
  *  Absent ≡ no Supabase wiring → compiler skips the `_lowcode_supabase.ts`
  *  emit and `$currentUser` auto-registration. */
 export const LOWCODE_SUPABASE_CONFIG_KEY = 'lowcode/supabaseConfig'
+/** Round-trip fix: `LayoutSizing` carries `'FILL'`, but the vendored Figma
+ *  `StackSize` enum only has FIXED / RESIZE_TO_FIT(+implicit) — so on save
+ *  `serialize.ts` collapses HUG→RESIZE_TO_FIT and **everything else (incl.
+ *  FILL) → FIXED**, silently dropping FILL on every reload. Same bypass as
+ *  `lowcode/freeLayout`: persist the FILL axes out-of-band. Value is a JSON
+ *  object `{ primary?: 'FILL', counter?: 'FILL' }` carrying only the FILL axes;
+ *  absent ≡ neither axis is FILL → legacy .fig files stay byte-identical. */
+export const LOWCODE_AXIS_SIZING_KEY = 'lowcode/axisSizing'
+/** Round-trip fix: `counterAxisAlignContent: 'SPACE_BETWEEN'` (wrap cross-axis
+ *  distribution) has no representable field in the vendored schema
+ *  (`StackCounterAlign` lacks SPACE_BETWEEN and there is no
+ *  `stackCounterAlignContent`), so it was never serialized and every reload
+ *  reset it to 'AUTO', shifting WRAP rows. Value is the literal string
+ *  `'SPACE_BETWEEN'`; absent ≡ 'AUTO'. */
+export const LOWCODE_COUNTER_ALIGN_CONTENT_KEY = 'lowcode/counterAxisAlignContent'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -76,7 +91,9 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_DOCUMENT_STATE_KEY,
   LOWCODE_NODE_TYPE_KEY,
   LOWCODE_FREE_LAYOUT_KEY,
-  LOWCODE_SUPABASE_CONFIG_KEY
+  LOWCODE_SUPABASE_CONFIG_KEY,
+  LOWCODE_AXIS_SIZING_KEY,
+  LOWCODE_COUNTER_ALIGN_CONTENT_KEY
 ])
 
 /**
@@ -116,7 +133,26 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (isSupabaseConfig(node.lowcodeSupabaseConfig)) {
     entries.push(makeEntry(LOWCODE_SUPABASE_CONFIG_KEY, node.lowcodeSupabaseConfig))
   }
+  // Round-trip fix: persist FILL axis sizing the vendored StackSize enum can't
+  // hold. Only the FILL axes are written; if neither is FILL no entry is
+  // emitted, keeping legacy .fig output byte-identical.
+  const axisSizing = fillAxisSizing(node)
+  if (axisSizing) entries.push(makeEntry(LOWCODE_AXIS_SIZING_KEY, axisSizing))
+  // Round-trip fix: persist counterAxisAlignContent SPACE_BETWEEN (no schema
+  // field). 'AUTO' (the default) writes nothing.
+  if (node.counterAxisAlignContent === 'SPACE_BETWEEN') {
+    entries.push(makeEntry(LOWCODE_COUNTER_ALIGN_CONTENT_KEY, 'SPACE_BETWEEN'))
+  }
   return entries
+}
+
+/** Returns the FILL axes of an auto-layout node as `{ primary?, counter? }`,
+ *  or `undefined` when neither axis is FILL (so no pluginData is emitted). */
+function fillAxisSizing(node: SceneNode): { primary?: 'FILL'; counter?: 'FILL' } | undefined {
+  const out: { primary?: 'FILL'; counter?: 'FILL' } = {}
+  if (node.primaryAxisSizing === 'FILL') out.primary = 'FILL'
+  if (node.counterAxisSizing === 'FILL') out.counter = 'FILL'
+  return out.primary || out.counter ? out : undefined
 }
 
 function isSupabaseConfig(value: unknown): value is SupabaseConfig {
@@ -175,6 +211,13 @@ export interface ExtractedLowcodeAndPluginData {
    *  `lowcode/supabaseConfig`. Present only when the saved value passed
    *  the type guard (object with non-empty `url` and `anonKey`). */
   lowcodeSupabaseConfig?: SupabaseConfig
+  /** Round-trip fix: FILL axes restored from `lowcode/axisSizing`. Callers
+   *  override the kiwi-restored (FIXED) sizing for whichever axis is present. */
+  primaryAxisSizingOverride?: 'FILL'
+  counterAxisSizingOverride?: 'FILL'
+  /** Round-trip fix: present (always `'SPACE_BETWEEN'`) when the saved node had
+   *  that wrap distribution; callers override the kiwi-restored 'AUTO'. */
+  counterAxisAlignContentOverride?: 'SPACE_BETWEEN'
 }
 
 export function extractLowcodeAndPluginData(
@@ -245,5 +288,21 @@ function assignLowcodeField(
       // JSON.parse already logged a warn for true parse failures.
       if (isSupabaseConfig(value)) target.lowcodeSupabaseConfig = value
       return
+    case LOWCODE_AXIS_SIZING_KEY:
+      assignFillAxisSizing(target, value)
+      return
+    case LOWCODE_COUNTER_ALIGN_CONTENT_KEY:
+      if (value === 'SPACE_BETWEEN') target.counterAxisAlignContentOverride = 'SPACE_BETWEEN'
+      return
   }
+}
+
+/** Read side of {@link fillAxisSizing}. Strict guard: only the literal 'FILL'
+ *  per axis is honored — a malformed value leaves the kiwi-restored (FIXED)
+ *  sizing untouched. */
+function assignFillAxisSizing(target: ExtractedLowcodeAndPluginData, value: unknown): void {
+  if (value === null || typeof value !== 'object') return
+  const v = value as Record<string, unknown>
+  if (v.primary === 'FILL') target.primaryAxisSizingOverride = 'FILL'
+  if (v.counter === 'FILL') target.counterAxisSizingOverride = 'FILL'
 }

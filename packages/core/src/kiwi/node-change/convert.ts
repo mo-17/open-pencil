@@ -11,7 +11,10 @@ import { convertFigmaDerivedTextGlyphs } from './derived-text-glyphs'
 import { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
 export { convertEffects, convertFills, convertStrokes, setVariableColorResolver } from './paint'
 export { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
-import { extractLowcodeAndPluginData } from './lowcode-plugin-data'
+import {
+  extractLowcodeAndPluginData,
+  type ExtractedLowcodeAndPluginData
+} from './lowcode-plugin-data'
 import {
   extractBoundVariables,
   extractPluginRelaunchData,
@@ -343,9 +346,14 @@ function visibleContainerDerivedLayout(
   // (HUG sizing on FREE/NONE has no flex axis to derive from).
   if (!isAutoLayoutMode(layoutMode) || !hasHugAxis || !hasVisiblePaint) return undefined
 
+  // Round-trip fix: persist only the HUG-derived SIZE, never x/y. The point of
+  // `figmaDerivedLayout` here is to stop a HUG container collapsing on reimport
+  // (see imported-derived-layout.test). Position must come from Yoga: for an
+  // auto-layout CHILD `computeExportTransform` deliberately zeroes m02/m12, so
+  // rebuilding x/y from the transform yields a bogus {x:0,y:0} that
+  // `apply.ts updateChildFromYoga` then pins the child to (`derived?.x ?? computedLeft`
+  // — 0 is not nullish), shifting every nested auto-layout child to the origin.
   return {
-    x: nc.transform?.m02 ?? 0,
-    y: nc.transform?.m12 ?? 0,
     width: nc.size?.x ?? 100,
     height: nc.size?.y ?? 100
   }
@@ -400,7 +408,10 @@ function convertLayoutProps(nc: NodeChange): Pick<
     counterAxisAlignContent:
       (nc.stackCounterAlignContent as string) === 'SPACE_BETWEEN' ? 'SPACE_BETWEEN' : 'AUTO',
     itemReverseZIndex: (nc.stackReverseZIndex ?? false) as boolean,
-    strokesIncludedInLayout: (nc.strokesIncludedInLayout ?? false) as boolean,
+    // Round-trip fix: serialize.ts writes the real schema field `bordersTakeSpace`
+    // (294); `nc.strokesIncludedInLayout` is not in the vendored schema, so it
+    // decoded to `undefined` and every reload reset the flag to false.
+    strokesIncludedInLayout: (nc.bordersTakeSpace ?? false) as boolean,
     layoutDirection:
       (getOpenPencilPluginValue(nc, LAYOUT_DIRECTION_PLUGIN_KEY) as
         | SceneNode['layoutDirection']
@@ -442,6 +453,27 @@ function convertVectorAndStrokeProps(nc: NodeChange, blobs: Uint8Array[]) {
   }
 }
 
+/** Apply the layout values that ride pluginData because the vendored Figma
+ *  schema can't represent them (FREE, FILL sizing, SPACE_BETWEEN wrap). */
+function pluginDataLayoutOverrides(
+  ex: Pick<
+    ExtractedLowcodeAndPluginData,
+    | 'freeLayoutOverride'
+    | 'primaryAxisSizingOverride'
+    | 'counterAxisSizingOverride'
+    | 'counterAxisAlignContentOverride'
+  >
+): Partial<SceneNode> {
+  const out: Partial<SceneNode> = {}
+  if (ex.freeLayoutOverride === true) out.layoutMode = 'FREE'
+  if (ex.primaryAxisSizingOverride) out.primaryAxisSizing = ex.primaryAxisSizingOverride
+  if (ex.counterAxisSizingOverride) out.counterAxisSizing = ex.counterAxisSizingOverride
+  if (ex.counterAxisAlignContentOverride) {
+    out.counterAxisAlignContent = ex.counterAxisAlignContentOverride
+  }
+  return out
+}
+
 export function nodeChangeToProps(
   nc: NodeChange,
   blobs: Uint8Array[]
@@ -451,8 +483,25 @@ export function nodeChangeToProps(
   // fallback for the 6 lowcode NodeTypes (kiwi has no schema for them).
   // Phase 2 §6: `freeLayoutOverride` peels off the same way so we can
   // override `layoutMode` to `'FREE'` after `convertLayoutProps`.
-  const { nodeTypeOverride, freeLayoutOverride, ...lowcodeRest } =
-    extractLowcodeAndPluginData(nc)
+  const {
+    nodeTypeOverride,
+    freeLayoutOverride,
+    primaryAxisSizingOverride,
+    counterAxisSizingOverride,
+    counterAxisAlignContentOverride,
+    ...lowcodeRest
+  } = extractLowcodeAndPluginData(nc)
+  // Layout values the vendored Figma schema can't represent (FREE layoutMode,
+  // FILL sizing, SPACE_BETWEEN wrap distribution) ride pluginData and are
+  // applied AFTER `convertLayoutProps`, which only ever restored the
+  // schema-representable variants. Collected here to keep nodeChangeToProps
+  // under the complexity gate.
+  const layoutOverrides = pluginDataLayoutOverrides({
+    freeLayoutOverride,
+    primaryAxisSizingOverride,
+    counterAxisSizingOverride,
+    counterAxisAlignContentOverride
+  })
   let nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' =
     nodeTypeOverride ?? mapNodeType(nc.type)
   if (nodeType === 'FRAME' && isComponentSet(nc)) nodeType = 'COMPONENT_SET'
@@ -482,11 +531,7 @@ export function nodeChangeToProps(
     horizontalConstraint: mapConstraint(nc.horizontalConstraint as string),
     verticalConstraint: mapConstraint(nc.verticalConstraint as string),
     ...convertLayoutProps(nc),
-    // Phase 2 §6: `convertLayoutProps` restored `layoutMode` from kiwi's
-    // `stackMode` (HORIZONTAL/VERTICAL/undefined → NONE). The
-    // `lowcode/freeLayout` pluginData flag is the only signal that the
-    // user actually picked FREE, so apply it AFTER the convert spread.
-    ...(freeLayoutOverride === true ? { layoutMode: 'FREE' as const } : {}),
+    ...layoutOverrides,
     ...vectorAndStrokeProps,
     minWidth: (nc.minWidth ?? null) as number | null,
     maxWidth: (nc.maxWidth ?? null) as number | null,
