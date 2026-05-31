@@ -351,4 +351,45 @@ describe('.fig FILL → Figma-native child fill (read symmetry)', () => {
     const child = findByName(await roundtrip(graph), 'Child')
     expect(child.layoutAlignSelf).toBe('STRETCH')
   })
+
+  // The editor canvas re-runs Yoga (computeAllLayouts) on load. `figmaDerivedLayout`
+  // (reconstructed at import for HUG-axis containers with visible paint) used to
+  // pin BOTH width and height, so a HUG-height / FILL-width button got its width
+  // pinned to the authored value and never filled on the canvas — even though the
+  // preview (reads primaryAxisSizing=FILL) filled correctly. Only the HUG axis
+  // must be pinned; the FILL axis is left to Yoga.
+  test('fill-width HUG-height button actually fills parent width after computeAllLayouts', async () => {
+    const graph = new SceneGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), {
+      name: 'Card',
+      width: 320,
+      height: 200,
+      layoutMode: 'VERTICAL',
+      paddingTop: 16,
+      paddingRight: 16,
+      paddingBottom: 16,
+      paddingLeft: 16,
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED'
+    })
+    const btn = graph.createNode('FRAME', parent.id, {
+      name: 'FillBtn',
+      width: 120,
+      height: 44,
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'HUG',
+      fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 }, opacity: 1, visible: true }]
+    })
+    graph.createNode('TEXT', btn.id, { name: 'BtnLabel', width: 60, height: 20, text: 'Go' })
+
+    const re = await roundtrip(graph)
+    computeAllLayouts(re)
+    const child = findByName(re, 'FillBtn')
+    // Card is 320 wide with 16px side padding → fill-width content is 288, not 120
+    expect(child.width).toBe(288)
+    // HUG height still pinned via the derived layout (anti-collapse); width is not
+    expect(child.figmaDerivedLayout?.width).toBeUndefined()
+    expect(child.figmaDerivedLayout?.height).toBe(44)
+  })
 })

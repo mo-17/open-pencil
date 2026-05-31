@@ -356,10 +356,23 @@ function visibleContainerDerivedLayout(
   // rebuilding x/y from the transform yields a bogus {x:0,y:0} that
   // `apply.ts updateChildFromYoga` then pins the child to (`derived?.x ?? computedLeft`
   // — 0 is not nullish), shifting every nested auto-layout child to the origin.
-  return {
-    width: nc.size?.x ?? 100,
-    height: nc.size?.y ?? 100
-  }
+  //
+  // Fill fix: persist ONLY the dimension whose axis actually HUGs. `apply.ts
+  // updateChildFromYoga` pins `derived?.width ?? computed` unconditionally, so a
+  // HUG-height / FILL-width button (the common fill-width case) would otherwise
+  // pin its width to the authored value and defeat the cross-axis fill Yoga
+  // computed — leaving it narrow on the canvas while the preview (which reads
+  // primaryAxisSizing=FILL directly) fills correctly. The non-HUG axis must be
+  // left for Yoga; only the HUG axis needs the anti-collapse pin.
+  const isRow = layoutMode === 'HORIZONTAL'
+  const widthIsHug = isRow ? primaryAxisSizing === 'HUG' : counterAxisSizing === 'HUG'
+  const heightIsHug = isRow ? counterAxisSizing === 'HUG' : primaryAxisSizing === 'HUG'
+  const derived: NonNullable<SceneNode['figmaDerivedLayout']> = {}
+  // GRID (the third auto-layout mode) keeps both dims — its track sizing isn't a
+  // simple primary/counter HUG and the fill-width case doesn't apply.
+  if (layoutMode === 'GRID' || widthIsHug) derived.width = nc.size?.x ?? 100
+  if (layoutMode === 'GRID' || heightIsHug) derived.height = nc.size?.y ?? 100
+  return derived
 }
 
 function convertLayoutProps(nc: NodeChange): Pick<
