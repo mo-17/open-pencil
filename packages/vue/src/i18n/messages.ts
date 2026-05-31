@@ -123,7 +123,17 @@ export const toolMessages = i18n('tools', {
   star: 'Star',
   pen: 'Pen',
   text: 'Text',
-  hand: 'Hand'
+  hand: 'Hand',
+  input: 'Input',
+  button: 'Button',
+  selectField: 'Select',
+  checkbox: 'Checkbox',
+  form: 'Form',
+  list: 'List',
+  textarea: 'Textarea',
+  radio: 'Radio',
+  switch: 'Switch',
+  datepicker: 'Date picker'
 })
 
 export const panelMessages = i18n('panels', {
@@ -206,6 +216,7 @@ export const panelMessages = i18n('panels', {
   noVariablesFound: 'No variables found',
   addAutoLayout: 'Add auto layout',
   removeAutoLayout: 'Remove auto layout',
+  freeLayout: 'Free layout',
   alignLeft: 'Align left',
   alignCenterHorizontally: 'Align center horizontally',
   alignRight: 'Align right',
@@ -289,6 +300,153 @@ export const panelMessages = i18n('panels', {
   setToCurrentHeight: 'Set to current height',
   sizingFillFr: 'Fill (fr)',
   sizingFixedPx: 'Fixed (px)',
+
+  // Lowcode (Phase 0)
+  lowcodeState: 'State',
+  lowcodeStateAdd: 'Add state',
+  lowcodeStateName: 'Name',
+  lowcodeStateType: 'Type',
+  lowcodeStateDefault: 'Default',
+  lowcodeStateEmpty: 'No state variables yet',
+  lowcodeEvents: 'Events',
+  lowcodeEventOnClick: 'On click',
+  lowcodeEventOnSubmit: 'On submit',
+  lowcodeActionAdd: 'Add action',
+  lowcodeActionSet: 'Set',
+  lowcodeActionValue: 'Value',
+  lowcodeActionNoStates: 'Define a state first to wire an action',
+  lowcodeTextSource: 'Text',
+  lowcodeTextSourceLiteral: 'Literal',
+  lowcodeTextSourceBound: 'Bind to',
+  lowcodeTextSourceExpression: 'Expression',
+  lowcodeTextSourceExprLabel: 'Expression',
+  lowcodeTextSourceExprPlaceholder: 'e.g. item.name',
+  // Lowcode (Phase 3 §3.v3 — BUTTON interactiveProps.text manual editor)
+  lowcodeButtonText: 'Button label',
+  lowcodeButtonTextPlaceholder: 'Button',
+  lowcodeRenderCondition: 'Render condition',
+  lowcodeRenderConditionPlaceholder: 'e.g. count > 0',
+  lowcodeRenderConditionHint: 'Renders only when the expression is truthy',
+  lowcodeList: 'List',
+  lowcodeListDataSource: 'Data source',
+  lowcodeListDataSourcePlaceholder: 'Pick an array state',
+  lowcodeListItemName: 'Item name',
+  lowcodeListIndexName: 'Index name',
+  lowcodeListTemplateHint: 'The first visible child of the LIST is rendered once per item',
+  lowcodeListNoArrayStates: 'Define an array state first to drive this list',
+
+  // Lowcode (Phase 2 §2 — Document State)
+  lowcodeDocumentState: 'Document State',
+  lowcodeDocumentStateAdd: 'Add state',
+  lowcodeDocumentStateEmpty: 'No document state yet',
+  lowcodeActionSetDocument: 'Set Document State',
+  lowcodeActionNoDocumentState: 'No document state',
+  lowcodeTextSourceDocState: 'Document State',
+
+  // Lowcode (Phase 3 §3.x + §3.v4 — controlled value binding for 7 form controls)
+  lowcodeValueBinding: 'Value',
+  lowcodeValueBindingUncontrolled: 'Uncontrolled',
+  lowcodeValueBindingHint: 'Bind to a state for a controlled form control',
+  lowcodeValueBindingBooleanHint: 'Bind to a boolean state for a controlled checkbox/switch',
+  lowcodeValueBindingArrayHint: 'Bind to an array state for a multi-select checkbox group',
+  lowcodeValueBindingNoStates: 'No matching state type available',
+  // Lowcode (Phase 3 §3.v4 step 7 — SELECT / RADIO options + groupName editor)
+  lowcodeInteractiveOptions: 'Options',
+  lowcodeInteractiveOptionAdd: 'Add option',
+  lowcodeInteractiveOptionRemove: 'Remove option',
+  lowcodeInteractiveOptionValue: 'Option',
+  lowcodeInteractiveOptionPlaceholder: 'e.g. US',
+  lowcodeInteractiveGroupName: 'Group name',
+  lowcodeInteractiveGroupNamePlaceholder: 'shared name for radio inputs',
+  // Lowcode (Phase 3 §3.v6 — generic InteractiveProps editor)
+  lowcodeInteractiveProps: 'Properties',
+  lowcodeInteractivePlaceholder: 'Placeholder',
+  lowcodeInteractiveValue: 'Default value',
+  lowcodeInteractiveDefaultChecked: 'Default checked',
+  lowcodeInteractiveDefaultSelected: 'Default selected',
+  lowcodeInteractiveDefaultSelectedNone: '(none)',
+  lowcodeInteractiveDateValue: 'Default date',
+  lowcodeInteractiveMin: 'Earliest date',
+  lowcodeInteractiveMax: 'Latest date',
+  lowcodeInteractiveDateInvalidValue: 'Default date must be a valid date (YYYY-MM-DD)',
+  lowcodeInteractiveDateInvalidMin: 'Earliest date must be a valid date (YYYY-MM-DD)',
+  lowcodeInteractiveDateInvalidMax: 'Latest date must be a valid date (YYYY-MM-DD)',
+  lowcodeInteractiveDateRangeInverted: 'Earliest date is after the latest date',
+  lowcodeInteractiveDateValueOutOfRange: 'Default date is outside the earliest–latest range',
+  lowcodeInteractiveOptionsHint: 'Add options to make it a multi-select group',
+
+  // Lowcode (Phase 2 §3 — API fetch)
+  lowcodeActionCallApi: 'Call API',
+  lowcodeActionApiUrl: 'URL',
+  lowcodeActionApiMethod: 'Method',
+  lowcodeActionApiBody: 'Body (JSON)',
+  lowcodeActionApiTarget: 'Write response to',
+  // Lowcode (Phase 2 §4 — expression sub-language: URL templating)
+  lowcodeActionApiUrlHint: 'URL supports ${expr} interpolation',
+
+  // Lowcode (Phase 3 §2 — Supabase)
+  lowcodeSupabaseConfig: 'Supabase',
+  lowcodeSupabaseUrl: 'Project URL',
+  lowcodeSupabaseUrlPlaceholder: 'https://xxx.supabase.co',
+  lowcodeSupabaseAnonKey: 'Anon (public) key',
+  lowcodeSupabaseAnonKeyPlaceholder: 'eyJhbGciOi…',
+  lowcodeSupabaseSchema: 'Schema',
+  lowcodeSupabaseSchemaPlaceholder: 'public',
+  lowcodeSupabaseTest: 'Test connection',
+  lowcodeSupabaseTesting: 'Testing…',
+  lowcodeSupabaseTestOk: 'Connected.',
+  lowcodeSupabaseTestMissing: 'Fill in URL and anon key first.',
+  lowcodeSupabaseRlsNote:
+    'Authorization is enforced by Row Level Security in your Supabase project. The anon key is safe to ship.',
+  lowcodeSupabaseRlsToast:
+    'Reminder: configure Row Level Security in the Supabase dashboard before going live.',
+  lowcodeSupabaseCurrentUserNote:
+    '$currentUser ({ id, email, signedIn }) is auto-managed after sign-in — reference it in any binding.',
+  lowcodeSupabaseServiceRoleReject:
+    'This is a service_role key. Never enter it here — paste the anon (public) key instead.',
+  lowcodeSupabaseRlsHeading: 'RLS policies for this document',
+  lowcodeSupabaseRlsWriteWarning:
+    'Without these policies, update/delete return HTTP 204 with 0 rows changed (looks like a missing id), and upsert silently inserts duplicate rows.',
+  lowcodeSupabaseRlsCopy: 'Copy SQL',
+  lowcodeSupabaseRlsCopied: 'Copied',
+  lowcodeActionSupabaseQuery: 'Supabase query',
+  lowcodeActionSupabaseMutation: 'Supabase mutation',
+  lowcodeActionSupabaseOperation: 'Operation',
+  lowcodeActionSupabaseTable: 'Table',
+  lowcodeActionSupabaseTablePlaceholder: 'table_name',
+  lowcodeActionSupabaseColumns: 'Columns',
+  lowcodeActionSupabaseColumnsPlaceholder: 'id, name, email',
+  lowcodeActionSupabaseSingle: 'single row',
+  lowcodeActionSupabasePayload: 'Payload (JSON)',
+  // Lowcode (Phase 3 §3.v3 — supabaseMutation payloadEntries editor)
+  lowcodeActionSupabasePayloadEntries: 'Entries',
+  lowcodeActionSupabasePayloadAddEntry: 'Add entry',
+  lowcodeActionSupabasePayloadEntryKey: 'Column',
+  lowcodeActionSupabasePayloadEntryValue: 'Value expression',
+  lowcodeActionSupabasePayloadEntryValuePlaceholder: "e.g. formName or 'static'",
+  lowcodeActionSupabasePayloadEntryRemove: 'Remove entry',
+  lowcodeActionSupabasePayloadSourceConflict:
+    'Both payloadJson and entries are set — entries win, payloadJson dropped.',
+  lowcodeActionSupabaseFilterColumn: 'Column',
+  // Lowcode (Phase 3 §3.v4 — filters valueExpr placeholder hint)
+  lowcodeActionSupabaseFilterValuePlaceholder: "e.g. id, count, 'static'",
+  lowcodeActionSupabaseFilterAdd: 'Add filter',
+  lowcodeActionSupabaseFilterRemove: 'Remove filter',
+  lowcodeActionSupabaseErrorTarget: 'Write error to',
+  lowcodeActionSupabaseErrorTargetNone: 'no error target',
+  lowcodeActionSupabaseAuth: 'Supabase auth',
+  lowcodeActionAuthEmail: 'Email expression',
+  lowcodeActionAuthEmailPlaceholder: "e.g. emailInput or 'a@b.co'",
+  lowcodeActionAuthPassword: 'Password expression',
+  lowcodeActionAuthPasswordPlaceholder: 'e.g. passwordInput',
+  lowcodeActionAuthCurrentUserHint:
+    'After sign-in, read $currentUser.signedIn / .email / .id in any Text binding or render condition.',
+  lowcodeActionAuthSignUpNote:
+    'With email confirmation on (Supabase default), sign-up does not log the user in — $currentUser.signedIn stays false until they confirm via email.',
+  lowcodeActionAuthResetNote:
+    'Sends a reset email linking back to this app. The link → set-new-password flow can only be tested in a real deployment; preview just fires the request.',
+  lowcodeActionAuthUpdateNote:
+    'Sets a new password for the currently signed-in user (works after sign-in or after a reset link lands).',
   searchFonts: 'Search fonts...'
 })
 
@@ -392,5 +550,34 @@ export const dialogMessages = i18n('dialogs', {
   updateInstalled: params('OpenPencil {version} was installed{size}. Restarting now.'),
   updateUnavailable:
     'Updates are not available yet. Publish a signed release with latest.json first.',
-  updateCheckFailed: params('Could not check for updates: {error}')
+  updateCheckFailed: params('Could not check for updates: {error}'),
+  roomKeyError: 'Incorrect or missing room key — ask the host for the full share link.',
+  // Phase 3 §4.4 — lowcode-aware presence: which lowcode panel a collaborator is
+  // editing. Node-scoped panels interpolate the node name; document/page-level
+  // panels stand alone. `presenceEditingNodeFallback` is used when the node name
+  // hasn't synced to this peer yet.
+  presenceEditingTextBinding: params('Editing the text of {node}'),
+  presenceEditingValueBinding: params('Editing the value of {node}'),
+  presenceEditingInteractiveProps: params('Editing properties of {node}'),
+  presenceEditingEvents: params('Editing events of {node}'),
+  presenceEditingList: params('Editing the list of {node}'),
+  presenceEditingRenderCondition: params('Editing the render condition of {node}'),
+  presenceEditingState: 'Editing page state',
+  presenceEditingDocState: 'Editing document state',
+  presenceEditingSupabaseConfig: 'Editing the Supabase config',
+  presenceEditingNodeFallback: 'an element',
+  // Phase 3 §4.5 — docState collaboration conflict (whole-field last-write-wins,
+  // no auto-merge). Target nouns are shared by the passive toast and the active
+  // banner; {target} is one of them.
+  presenceTargetState: 'page state',
+  presenceTargetDocState: 'document state',
+  presenceTargetSupabaseConfig: 'the Supabase config',
+  presenceConflictToast: params(
+    'A collaborator changed {target} — last save wins, review for lost changes.'
+  ),
+  presenceConflictBanner: params('A collaborator is also editing {target} — last save wins.'),
+  // Phase 3 §4.3 — self-host signaling indicator: shown in the connected room
+  // when collaboration isn't using the default public MQTT brokers.
+  collabSignalingSelfHosted: 'Self-hosted signaling',
+  collabSignalingSupabase: 'Supabase Realtime signaling'
 })

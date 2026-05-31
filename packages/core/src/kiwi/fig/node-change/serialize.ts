@@ -381,7 +381,7 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange): void {
     if (figLayout.stackReverseZIndex) nc.stackReverseZIndex = true
     return
   }
-  if (node.layoutMode !== 'NONE' && node.layoutMode !== 'GRID') {
+  if (node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL') {
     nc.stackMode = node.layoutMode
     nc.stackSpacing = node.itemSpacing
     nc.stackVerticalPadding = node.paddingTop
