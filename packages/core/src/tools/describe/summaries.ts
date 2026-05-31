@@ -1,5 +1,5 @@
 import { colorToHex } from '#core/color'
-import type { SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneNode } from '#core/scene-graph'
 
 export function describeVisual(node: SceneNode): string {
   const parts: string[] = []
@@ -35,7 +35,7 @@ const ITEMS_LABELS: Record<string, string> = {
 }
 
 export function describeLayout(node: SceneNode): string | null {
-  if (node.layoutMode === 'NONE') return null
+  if (!isAutoLayoutMode(node.layoutMode)) return null
   const direction = node.layoutMode === 'HORIZONTAL' ? 'horizontal' : 'vertical'
   const parts = [direction]
   if (node.primaryAxisAlign !== 'MIN') {

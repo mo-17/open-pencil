@@ -1,12 +1,13 @@
 import { colorToHex8 } from '#core/color'
-import type {
-  SceneGraph,
-  SceneNode,
-  Fill,
-  Stroke,
-  Effect,
-  Color,
-  GridTrack
+import {
+  isAutoLayoutMode,
+  type SceneGraph,
+  type SceneNode,
+  type Fill,
+  type Stroke,
+  type Effect,
+  type Color,
+  type GridTrack
 } from '#core/scene-graph'
 
 export function formatColor(color: Color, opacity = 1): string {
@@ -59,11 +60,19 @@ export function formatProp(key: string, value: unknown): string {
 export function getNodeContext(node: SceneNode, graph: SceneGraph) {
   const parent = node.parentId ? graph.getNode(node.parentId) : null
   return {
-    isAutoLayout: node.layoutMode !== 'NONE',
+    isAutoLayout: isAutoLayoutMode(node.layoutMode),
     isGrid: node.layoutMode === 'GRID',
     isFlex: node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL',
-    parentIsAutoLayout: parent ? parent.layoutMode !== 'NONE' : false,
-    parentIsGrid: parent ? parent.layoutMode === 'GRID' : false
+    parentIsAutoLayout: parent ? isAutoLayoutMode(parent.layoutMode) : false,
+    parentIsGrid: parent ? parent.layoutMode === 'GRID' : false,
+    // Phase 2 §6: renamed from `parentIsCanvas` and widened.
+    // CANVAS is implicitly FREE (free positioning at the page root); any
+    // FRAME with `layoutMode === 'FREE'` opts into the same semantic for
+    // its children. The absolute-positioning emit branch (tailwind-classes
+    // `applyLayoutStyle`) keys off this single predicate.
+    parentIsFreeLayout: parent
+      ? parent.type === 'CANVAS' || parent.layoutMode === 'FREE'
+      : false
   }
 }
 

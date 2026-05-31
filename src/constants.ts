@@ -64,6 +64,11 @@ import type { Color } from '@open-pencil/core/types'
 export const TRYSTERO_APP_ID = 'openpencil'
 export const ROOM_ID_LENGTH = 8
 export const ROOM_ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
+// Phase 3 §4.2 — room auth. The room key is a long random secret used as the
+// Trystero `password` (encrypts the WebRTC signaling SDP), so a peer without
+// it can't connect even with the right appId + roomId. 26 chars over the
+// 36-symbol alphabet ≈ 134 bits, far beyond the 8-char roomId.
+export const ROOM_KEY_LENGTH = 26
 
 export const PEER_COLORS: Color[] = [
   { r: 0.96, g: 0.26, b: 0.21, a: 1 },
@@ -76,6 +81,14 @@ export const PEER_COLORS: Color[] = [
   { r: 0.91, g: 0.12, b: 0.39, a: 1 }
 ]
 
+// Object-valued node fields that the collab Yjs sync stores as JSON strings.
+// The write side (`syncNodePropsToYMap`) stringifies EVERY object field, so the
+// read side (`yNodeToProps`) MUST list each one here to parse it back —
+// anything missing arrives at remote peers as a raw JSON string (silent
+// corruption). When you add a new object-valued field to SceneNode, add it
+// here too; `tests/engine/collab/yjs-roundtrip.test.ts` guards against drift.
+// Phase 3 §4.1: added the lowcode fields, which were silently corrupting in
+// multi-user editing because they were never whitelisted.
 export const YJS_JSON_FIELDS = new Set([
   'childIds',
   'fills',
@@ -83,7 +96,15 @@ export const YJS_JSON_FIELDS = new Set([
   'effects',
   'vectorNetwork',
   'boundVariables',
-  'styleRuns'
+  'styleRuns',
+  // Phase 3 §4.1 — lowcode fields (mirror update_lowcode_node patch keys).
+  'state',
+  'bindings',
+  'events',
+  'interactiveProps',
+  'renderCondition',
+  'lowcodeDocumentState',
+  'lowcodeSupabaseConfig'
 ])
 
 export {

@@ -1,0 +1,128 @@
+import { describe, expect, test } from 'bun:test'
+
+import type { ActionDef } from '@open-pencil/core/scene-graph'
+
+import {
+  type RlsTableRequirement,
+  buildRlsPolicySql,
+  collectRlsRequirements
+} from '@open-pencil/core/lowcode-validation'
+
+/**
+ * Phase 3 §3.v8 step 1 — direct unit coverage for the RLS policy advisor.
+ * The editor panel (`SupabaseConfigPanel`) walks the scene graph and feeds
+ * the collected actions in; these exercise the pure logic in isolation.
+ */
+
+function query(table: string): ActionDef {
+  return { id: 'a', kind: 'supabaseQuery', table, resultTarget: 'rows' }
+}
+
+function mutation(
+  table: string,
+  operation: 'insert' | 'update' | 'delete' | 'upsert'
+): ActionDef {
+  return { id: 'm', kind: 'supabaseMutation', operation, table }
+}
+
+function req(reqs: RlsTableRequirement[], table: string): RlsTableRequirement {
+  const found = reqs.find((r) => r.table === table)
+  if (!found) throw new Error(`no requirement for ${table}`)
+  return found
+}
+
+describe('collectRlsRequirements', () => {
+  test('maps query → SELECT and mutation operations → commands', () => {
+    const reqs = collectRlsRequirements([
+      query('posts'),
+      mutation('comments', 'insert'),
+      mutation('likes', 'delete')
+    ])
+    expect(req(reqs, 'posts').commands).toEqual(['SELECT'])
+    expect(req(reqs, 'comments').commands).toEqual(['INSERT'])
+    expect(req(reqs, 'likes').commands).toEqual(['DELETE'])
+  })
+
+  test('upsert needs both INSERT and UPDATE (footgun)', () => {
+    const reqs = collectRlsRequirements([mutation('profiles', 'upsert')])
+    expect(req(reqs, 'profiles').commands).toEqual(['INSERT', 'UPDATE'])
+    expect(req(reqs, 'profiles').needsWriteWarning).toBe(true)
+  })
+
+  test('merges multiple actions on the same table and dedupes commands', () => {
+    const reqs = collectRlsRequirements([
+      query('orders'),
+      mutation('orders', 'update'),
+      query('orders'),
+      mutation('orders', 'update')
+    ])
+    expect(reqs).toHaveLength(1)
+    expect(req(reqs, 'orders').commands).toEqual(['SELECT', 'UPDATE'])
+  })
+
+  test('emits commands in fixed SELECT, INSERT, UPDATE, DELETE order', () => {
+    const reqs = collectRlsRequirements([
+      mutation('t', 'delete'),
+      mutation('t', 'update'),
+      mutation('t', 'insert'),
+      query('t')
+    ])
+    expect(req(reqs, 't').commands).toEqual(['SELECT', 'INSERT', 'UPDATE', 'DELETE'])
+  })
+
+  test('needsWriteWarning is true for UPDATE/DELETE, false for read-only or pure insert', () => {
+    expect(collectRlsRequirements([query('t')])[0].needsWriteWarning).toBe(false)
+    expect(collectRlsRequirements([mutation('t', 'insert')])[0].needsWriteWarning).toBe(false)
+    expect(collectRlsRequirements([mutation('t', 'update')])[0].needsWriteWarning).toBe(true)
+    expect(collectRlsRequirements([mutation('t', 'delete')])[0].needsWriteWarning).toBe(true)
+  })
+
+  test('skips blank table names and trims', () => {
+    const reqs = collectRlsRequirements([
+      query('   '),
+      query(''),
+      mutation('  spaced  ', 'insert')
+    ])
+    expect(reqs.map((r) => r.table)).toEqual(['spaced'])
+  })
+
+  test('ignores non-Supabase actions', () => {
+    const setState: ActionDef = {
+      id: 's',
+      kind: 'setState',
+      targetStateId: 'x',
+      valueExpr: '1'
+    }
+    expect(collectRlsRequirements([setState])).toEqual([])
+  })
+})
+
+describe('buildRlsPolicySql', () => {
+  test('enables RLS and emits one permissive anon policy per command with correct clause matrix', () => {
+    const sql = buildRlsPolicySql({
+      table: 'orders',
+      commands: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+      needsWriteWarning: true
+    })
+    expect(sql).toContain('alter table "orders" enable row level security;')
+    expect(sql).toContain('-- ⚠ replace (true) with a real predicate before production')
+    // Postgres RLS clause matrix (decision §3.v8.2 d)
+    expect(sql).toContain(
+      'create policy "orders_select_anon" on "orders" for select to anon, authenticated using (true);'
+    )
+    expect(sql).toContain(
+      'create policy "orders_insert_anon" on "orders" for insert to anon, authenticated with check (true);'
+    )
+    expect(sql).toContain(
+      'create policy "orders_update_anon" on "orders" for update to anon, authenticated using (true) with check (true);'
+    )
+    expect(sql).toContain(
+      'create policy "orders_delete_anon" on "orders" for delete to anon, authenticated using (true);'
+    )
+  })
+
+  test('reminder comment is the first line', () => {
+    const sql = buildRlsPolicySql({ table: 't', commands: ['SELECT'], needsWriteWarning: false })
+    expect(sql.split('\n')[0]).toContain('replace (true) with a real predicate')
+  })
+})

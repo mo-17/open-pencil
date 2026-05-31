@@ -1,5 +1,5 @@
 import type { Editor } from '@open-pencil/core/editor'
-import type { SceneNode } from '@open-pencil/core/scene-graph'
+import { isAutoLayoutMode, type SceneNode } from '@open-pencil/core/scene-graph'
 import { resolveNodeLayoutDirection } from '@open-pencil/core/text'
 import type { Vector } from '@open-pencil/core/types'
 
@@ -150,6 +150,6 @@ export function computeAutoLayoutIndicatorForFrame(
 export function computeAutoLayoutIndicator(d: DragMove, cx: number, cy: number, editor: Editor) {
   if (!d.autoLayoutParentId) return
   const parent = editor.graph.getNode(d.autoLayoutParentId)
-  if (!parent || parent.layoutMode === 'NONE') return
+  if (!parent || !isAutoLayoutMode(parent.layoutMode)) return
   computeAutoLayoutIndicatorForFrame(parent, cx, cy, editor, new Set(d.originals.keys()))
 }

@@ -48,3 +48,9 @@ vue-stream-markdown/
 
 # Agent scratch space (reviews, test artifacts)
 scratch/
+
+# Lowcode preview dev-server scan root (always empty placeholder)
+/packages/compiler/.preview-root/
+
+# Ad-hoc compile-demo output
+/.compiler-output/

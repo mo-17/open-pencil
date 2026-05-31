@@ -36,7 +36,17 @@ const toolLabels = computed<Record<Tool, string>>(() => ({
   STAR: toolTexts.value.star,
   PEN: toolTexts.value.pen,
   TEXT: toolTexts.value.text,
-  HAND: toolTexts.value.hand
+  HAND: toolTexts.value.hand,
+  INPUT: toolTexts.value.input,
+  BUTTON: toolTexts.value.button,
+  SELECT_FIELD: toolTexts.value.selectField,
+  CHECKBOX: toolTexts.value.checkbox,
+  FORM: toolTexts.value.form,
+  LIST: toolTexts.value.list,
+  RADIO: toolTexts.value.radio,
+  TEXTAREA: toolTexts.value.textarea,
+  DATEPICKER: toolTexts.value.datepicker,
+  SWITCH: toolTexts.value.switch
 }))
 
 const toolShortcuts: Record<Tool, string> = {
@@ -50,7 +60,17 @@ const toolShortcuts: Record<Tool, string> = {
   STAR: '',
   PEN: 'P',
   TEXT: 'T',
-  HAND: 'H'
+  HAND: 'H',
+  INPUT: '',
+  BUTTON: 'I',
+  SELECT_FIELD: '',
+  CHECKBOX: '',
+  FORM: '',
+  LIST: '',
+  RADIO: '',
+  TEXTAREA: '',
+  DATEPICKER: '',
+  SWITCH: ''
 }
 
 const flyoutMenuCls = useMenuUI({ content: 'min-w-32' })

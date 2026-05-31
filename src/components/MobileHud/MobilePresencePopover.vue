@@ -54,7 +54,12 @@ const hud = useMobileHudContext()
             >
               {{ initials(peer.name) }}
             </div>
-            <span class="min-w-0 flex-1 truncate text-xs text-surface">{{ peer.name }}</span>
+            <div class="flex min-w-0 flex-1 flex-col">
+              <span class="truncate text-xs text-surface">{{ peer.name }}</span>
+              <span v-if="hud.peerEditingLabel(peer)" class="truncate text-[10px] text-muted">
+                {{ hud.peerEditingLabel(peer) }}
+              </span>
+            </div>
             <span v-if="hud.followingPeer === peer.clientId" class="text-[10px] text-accent">
               following
             </span>

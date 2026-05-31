@@ -1,20 +1,34 @@
 import { tryOnScopeDispose, useLocalStorage } from '@vueuse/core'
 import { computed, ref } from 'vue'
 
-import { createFollowActions, generateRoomId } from '@/app/collab/awareness'
+import { createFollowActions, generateRoomId, generateRoomKey } from '@/app/collab/awareness'
+import type { DocStateConflictKind } from '@/app/collab/conflict'
 import { createLocalAwarenessActions } from '@/app/collab/local-awareness'
 import {
   createCollabConnectionActions,
   createCollabRuntime,
   createInitialCollabState
 } from '@/app/collab/session'
-import { DEFAULT_COLLAB_STATE, type CollabState, type RemotePeer } from '@/app/collab/types'
+import {
+  DEFAULT_COLLAB_STATE,
+  type CollabState,
+  type PresenceEditingKind,
+  type PresenceEditingTarget,
+  type PreviewDocStatePayload,
+  type RemotePeer
+} from '@/app/collab/types'
 import { createYjsGraphSync } from '@/app/collab/yjs-sync'
 import type { EditorStore } from '@/app/editor/active-store'
 
 export { COLLAB_KEY, useCollabInjected } from '@/app/collab/context'
 export { DEFAULT_COLLAB_STATE }
-export type { CollabState, RemotePeer }
+export type {
+  CollabState,
+  PresenceEditingKind,
+  PresenceEditingTarget,
+  PreviewDocStatePayload,
+  RemotePeer
+}
 
 export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
   const getStore = () =>
@@ -29,13 +43,37 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     getActiveStore,
     () => runtime.awareness
   )
-  const { broadcastAwareness, updateCursor, updateSelection, updatePeersList, setLocalName } =
-    createLocalAwarenessActions({
+  const {
+    broadcastAwareness,
+    updateCursor,
+    updateSelection,
+    updateEditingTarget,
+    updatePeersList,
+    setLocalName
+  } = createLocalAwarenessActions({
       state,
       storedName,
       getStore: getActiveStore,
       getAwareness: () => runtime.awareness
     })
+
+  // Phase 3 §4.5 — the app registers a handler that toasts when a remote
+  // docState/page-state update would overwrite a concurrent local edit.
+  let conflictHandler: ((kind: DocStateConflictKind) => void) | undefined
+  function onDocStateConflict(handler: ((kind: DocStateConflictKind) => void) | null) {
+    conflictHandler = handler ?? undefined
+  }
+
+  // Phase 3 §4.6 — preview runtime docState collaboration. The PreviewPane
+  // relays bridge messages both ways: `sendPreviewDocState` broadcasts a local
+  // change (no-op when disconnected); `onPreviewDocState` registers the receiver
+  // that posts remote changes back into the local iframe.
+  function sendPreviewDocState(payload: PreviewDocStatePayload) {
+    runtime.sendPreviewDocState?.(payload)
+  }
+  function onPreviewDocState(handler: ((payload: PreviewDocStatePayload) => void) | null) {
+    runtime.previewDocStateHandler = handler
+  }
 
   const { syncNodeToYjs, syncAllNodesToYjs, applyYjsToGraph } = createYjsGraphSync({
     getStore: getActiveStore,
@@ -44,7 +82,8 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     getYimages: () => runtime.yimages,
     setSuppressYjsEvents: (value) => {
       runtime.suppressYjsEvents = value
-    }
+    },
+    getConflictHandler: () => conflictHandler
   })
   const { connect, disconnect } = createCollabConnectionActions({
     runtime,
@@ -58,11 +97,14 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     resetFollow
   })
 
-  function shareCurrentDoc(): string {
+  // Phase 3 §4.2 — minting a room also mints a random key (Trystero password).
+  // The key rides the share-link URL fragment; callers embed it in the invite.
+  function shareCurrentDoc(): { roomId: string; key: string } {
     const roomId = generateRoomId()
-    connect(roomId)
+    const key = generateRoomKey()
+    connect(roomId, key)
     syncAllNodesToYjs()
-    return roomId
+    return { roomId, key }
   }
 
   tryOnScopeDispose(disconnect)
@@ -76,6 +118,10 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     shareCurrentDoc,
     updateCursor,
     updateSelection,
+    updateEditingTarget,
+    onDocStateConflict,
+    sendPreviewDocState,
+    onPreviewDocState,
     setLocalName,
     followPeer,
     tickFollow

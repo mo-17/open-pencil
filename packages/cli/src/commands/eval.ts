@@ -1,3 +1,11 @@
+// eval injects only `figma` (FigmaAPI) into the wrapped async function;
+// `tools` is NOT a global. To invoke a ToolDef from a CLI eval script:
+//   const { ALL_TOOLS } = await import('@open-pencil/core/tools')
+//   const t = ALL_TOOLS.find(x => x.name === 'update_lowcode_node')
+//   return t.execute(figma, args)
+// (lowcode mutate tools intentionally hit the no-undo fallback path here
+// because the editor is not injected outside `src/app/ai/**` — §3.v2.2 #b.)
+
 import { defineCommand } from 'citty'
 
 import { FigmaAPI } from '@open-pencil/core/figma-api'

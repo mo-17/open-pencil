@@ -2,8 +2,11 @@ import * as Y from 'yjs'
 
 import type { SceneNode } from '@open-pencil/core/scene-graph'
 
+import { docStateApplyLosesLocal, type DocStateConflictKind } from '@/app/collab/conflict'
 import type { EditorStore } from '@/app/editor/active-store'
 import { YJS_JSON_FIELDS } from '@/constants'
+
+type ConflictHandler = (kind: DocStateConflictKind) => void
 
 type YNodes = Y.Map<Y.Map<unknown>>
 type YImages = Y.Map<Uint8Array>
@@ -32,6 +35,9 @@ type YjsGraphSyncOptions = {
   getYnodes: () => YNodes | null
   getYimages: () => YImages | null
   setSuppressYjsEvents: (value: boolean) => void
+  // Phase 3 §4.5 — reported when applying a remote docState/page-state update
+  // would overwrite a concurrent local edit (whole-field LWW, no auto-merge).
+  getConflictHandler?: () => ConflictHandler | undefined
 }
 
 export function syncNodePropsToYMap(node: SceneNode, ynode: Y.Map<unknown>) {
@@ -136,7 +142,8 @@ export function createYjsGraphSync({
   getYdoc,
   getYnodes,
   getYimages,
-  setSuppressYjsEvents
+  setSuppressYjsEvents,
+  getConflictHandler
 }: YjsGraphSyncOptions) {
   function syncNodeToYjs(nodeId: string) {
     const store = getStore()
@@ -230,12 +237,29 @@ export function createYjsGraphSync({
     return null
   }
 
+  function reportDocStateConflicts(existing: SceneNode, props: Record<string, unknown>) {
+    const handler = getConflictHandler?.()
+    if (!handler) return
+    // §4.5 — these two array collections are whole-field LWW; if applying the
+    // remote value would drop a concurrent local entry, surface it (no auto-merge).
+    if ('state' in props && docStateApplyLosesLocal(existing.state, props.state)) {
+      handler('state')
+    }
+    if (
+      'lowcodeDocumentState' in props &&
+      docStateApplyLosesLocal(existing.lowcodeDocumentState, props.lowcodeDocumentState)
+    ) {
+      handler('docState')
+    }
+  }
+
   function applyYnodeToGraph(nodeId: string, ynode: Y.Map<unknown>) {
     const store = getStore()
     const existing = store.graph.getNode(nodeId)
     const props = yNodeToProps(ynode)
 
     if (existing) {
+      reportDocStateConflicts(existing, props)
       store.graph.updateNode(nodeId, props as Partial<SceneNode>)
       return
     }

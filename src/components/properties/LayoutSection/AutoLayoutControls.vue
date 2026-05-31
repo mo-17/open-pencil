@@ -8,10 +8,16 @@ const ctx = useLayoutControlsContext()
 
 const { panels } = useI18n()
 
+// Phase 2 §6 decision #h: FREE goes at the end of the strip so the
+// existing 3 buttons keep their position; FREE only shows when the user
+// has already entered some non-NONE mode (consistent with the existing
+// "click + to add auto-layout" gate). From a FREE state the user can
+// switch to any auto-layout mode, or click − to return to NONE.
 const layoutModes: { mode: LayoutMode; test: string }[] = [
   { mode: 'HORIZONTAL', test: 'horizontal' },
   { mode: 'VERTICAL', test: 'vertical' },
-  { mode: 'GRID', test: 'grid' }
+  { mode: 'GRID', test: 'grid' },
+  { mode: 'FREE', test: 'free' }
 ]
 </script>
 
@@ -53,7 +59,8 @@ const layoutModes: { mode: LayoutMode; test: string }[] = [
     >
       <icon-lucide-arrow-right v-if="dir.mode === 'HORIZONTAL'" class="size-3.5" />
       <icon-lucide-arrow-down v-else-if="dir.mode === 'VERTICAL'" class="size-3.5" />
-      <icon-lucide-layout-grid v-else class="size-3.5" />
+      <icon-lucide-layout-grid v-else-if="dir.mode === 'GRID'" class="size-3.5" />
+      <icon-lucide-move v-else class="size-3.5" />
     </button>
     <button
       v-if="ctx.isFlex"

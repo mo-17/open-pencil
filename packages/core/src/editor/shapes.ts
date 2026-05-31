@@ -30,6 +30,21 @@ const DEFAULT_FILLS: Record<string, Fill> = {
   TEXT: BLACK_FILL
 }
 
+// Interactive node types own their visual defaults via node-defaults.ts —
+// createShape must not stamp a generic fill over the type-specific defaults.
+const INTERACTIVE_TYPES = new Set<NodeType>([
+  'INPUT',
+  'BUTTON',
+  'SELECT',
+  'CHECKBOX',
+  'FORM',
+  'LIST',
+  'RADIO',
+  'TEXTAREA',
+  'DATEPICKER',
+  'SWITCH'
+])
+
 export function createShapeActions(ctx: EditorContext) {
   function createShape(
     type: NodeType,
@@ -39,14 +54,11 @@ export function createShapeActions(ctx: EditorContext) {
     h: number,
     parentId?: string
   ): string {
-    const fill = DEFAULT_FILLS[type] ?? DEFAULT_FILLS.RECTANGLE
     const pid = parentId ?? ctx.state.currentPageId
-    const overrides: Partial<SceneNode> = {
-      x,
-      y,
-      width: w,
-      height: h,
-      fills: [{ ...fill }]
+    const overrides: Partial<SceneNode> = { x, y, width: w, height: h }
+    if (!INTERACTIVE_TYPES.has(type)) {
+      const fill = DEFAULT_FILLS[type] ?? DEFAULT_FILLS.RECTANGLE
+      overrides.fills = [{ ...fill }]
     }
     if (type === 'SECTION') {
       overrides.strokes = [{ ...SECTION_DEFAULT_STROKE }]

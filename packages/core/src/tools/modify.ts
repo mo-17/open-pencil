@@ -1,6 +1,11 @@
 export { setEffects } from './modify/effects'
 export { setMinMax, setOpacity, setRadius, setRotation } from './modify/geometry'
 export { setConstraints, setLayout, setLayoutChild } from './modify/layout'
+export {
+  setDocStates,
+  setSupabaseConfig,
+  updateLowcodeNode
+} from './modify/lowcode'
 export { setFill, setImageFill, setStroke } from './modify/paint'
 export { setBlend, setLocked, setStrokeAlign, setVisible } from './modify/state'
 export { setFont, setFontRange, setText, setTextProperties, setTextResize } from './modify/text'

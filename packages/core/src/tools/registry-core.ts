@@ -3,16 +3,27 @@ import { calc } from './calc'
 import { render } from './create'
 import { describe } from './describe'
 import {
+  setDocStates,
   setFill,
   setLayout,
   setLayoutChild,
   setRadius,
   setStroke,
+  setSupabaseConfig,
   setText,
   setTextProperties,
+  updateLowcodeNode,
   updateNode
 } from './modify'
-import { findNodes, getJsx, getNode, getSelection } from './read'
+import {
+  findNodes,
+  getJsx,
+  getNode,
+  getSelection,
+  readDocStates,
+  readLowcodeNode,
+  readSupabaseConfig
+} from './read'
 import type { ToolDef } from './schema'
 import { stockPhoto } from './stock-photo'
 import { batchUpdate, deleteNode, nodeResize, reparentNode } from './structure'
@@ -28,6 +39,10 @@ export const CORE_TOOLS: ToolDef[] = [
   getNode,
   findNodes,
   getJsx,
+  // Read — lowcode (Phase 3 §3)
+  readLowcodeNode,
+  readDocStates,
+  readSupabaseConfig,
   // Create
   render,
   // Modify
@@ -39,6 +54,10 @@ export const CORE_TOOLS: ToolDef[] = [
   setStroke,
   setText,
   setTextProperties,
+  // Modify — lowcode (Phase 3 §3)
+  updateLowcodeNode,
+  setDocStates,
+  setSupabaseConfig,
   // Structure
   deleteNode,
   reparentNode,

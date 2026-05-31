@@ -37,7 +37,8 @@ export default defineConfig([
       'open-pencil/no-non-ui-imports-in-shared-ui': 'error',
       'open-pencil/no-app-imports-in-shared-ui': 'error',
       'open-pencil/no-property-panel-internals-outside-panel': 'error',
-      'open-pencil/no-ui-imports-in-core': 'error'
+      'open-pencil/no-ui-imports-in-core': 'error',
+      'open-pencil/no-cross-layer-in-compiler': 'error'
     }
   }
 ])

@@ -1,3 +1,5 @@
+import type { LayoutMode } from '#core/scene-graph'
+
 export type Severity = 'error' | 'warning' | 'info' | 'off'
 
 export type Category =
@@ -49,7 +51,11 @@ export interface LintNode {
   rotation: number
   visible: boolean
   locked: boolean
-  layoutMode: string
+  // Phase 2 §6 — tightened from `string` to `LayoutMode` so the `'FREE'`
+  // variant's `isAutoLayoutMode` callsites in lint rules type-check.
+  // LintNode is constructed in `linter.ts:81` from `raw.layoutMode`
+  // (already `LayoutMode`), so this is a no-runtime-change tightening.
+  layoutMode: LayoutMode
   itemSpacing: number
   paddingTop: number
   paddingRight: number

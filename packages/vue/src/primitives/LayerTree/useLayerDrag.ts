@@ -24,6 +24,11 @@ interface DragItem {
 
 type TreeInstruction = LayerDragInstruction
 
+function pickItemMode(isContainer: boolean, isLastSibling: boolean): ItemMode {
+  if (!isContainer) return 'standard'
+  return isLastSibling ? 'last-in-group' : 'expanded'
+}
+
 export function useLayerDrag(
   editor: Editor,
   indentPerLevel = 16,
@@ -41,7 +46,24 @@ export function useLayerDrag(
       const data = item()
 
       const isContainer = editor.graph.isContainer(data.id)
-      const mode: ItemMode = data.hasChildren ? 'expanded' : 'standard'
+      // Atlaskit's tree-item modes:
+      //   standard      → top¼ above, mid½ make-child, bottom¼ below
+      //   expanded      → top¼ above, rest make-child  (no reorder-below!)
+      //   last-in-group → standard hitbox + reparent zone in the indent gutter
+      //
+      // An expanded container that's the LAST sibling at its level has no way
+      // to drop a node BELOW it (the bottom is always make-child), trapping
+      // anything dragged past it. `last-in-group` restores reorder-below for
+      // these tail-position containers. Leaves stay on `standard`; containers
+      // that aren't last stay on `expanded` so their middle band still grabs
+      // make-child.
+      const owningNode = editor.graph.getNode(data.id)
+      const parentId = owningNode?.parentId ?? editor.state.currentPageId
+      const parent = editor.graph.getNode(parentId)
+      const isLastSibling = parent
+        ? parent.childIds[parent.childIds.length - 1] === data.id
+        : false
+      const mode: ItemMode = pickItemMode(isContainer, isLastSibling)
 
       const cleanup = combine(
         draggable({
@@ -120,12 +142,16 @@ export function useLayerDrag(
         editor.reorderChildWithUndo(sourceId, targetParentId, targetIndex)
       } else if (inst.type === 'reorder-below') {
         editor.reorderChildWithUndo(sourceId, targetParentId, targetIndex + 1)
-      } else {
+      } else if (inst.type === 'make-child') {
         const container = editor.graph.getNode(targetId)
         if (!container || !editor.graph.isContainer(targetId)) return
         editor.reorderChildWithUndo(sourceId, targetId, container.childIds.length)
         onMakeChildDrop?.(targetId)
       }
+      // `reparent` (indent-gutter drop): no-op for now. Falling through to
+      // make-child would silently drop the source INTO `targetId`, which is
+      // the opposite of what the user is asking for when they drag past a
+      // last-in-group container.
 
       draggingId.value = null
       instruction.value = null

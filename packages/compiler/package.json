@@ -1,0 +1,80 @@
+{
+  "name": "@open-pencil/compiler",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "imports": {
+    "#compiler/*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./ir/*": {
+      "types": "./src/ir/*.ts",
+      "bun": "./src/ir/*.ts",
+      "default": "./dist/ir/*.js"
+    },
+    "./adapters/react": {
+      "types": "./src/adapters/react/index.ts",
+      "bun": "./src/adapters/react/index.ts",
+      "default": "./dist/adapters/react/index.js"
+    },
+    "./adapters/react/*": {
+      "types": "./src/adapters/react/*.ts",
+      "bun": "./src/adapters/react/*.ts",
+      "default": "./dist/adapters/react/*.js"
+    },
+    "./dev-server": {
+      "types": "./src/dev-server.ts",
+      "bun": "./src/dev-server.ts",
+      "default": "./dist/dev-server.js"
+    },
+    "./vfs": {
+      "types": "./src/vfs.ts",
+      "bun": "./src/vfs.ts",
+      "default": "./dist/vfs.js"
+    },
+    "./build": {
+      "types": "./src/build.ts",
+      "bun": "./src/build.ts",
+      "default": "./dist/build.js"
+    },
+    "./deploy": {
+      "types": "./src/deploy.ts",
+      "bun": "./src/deploy.ts",
+      "default": "./dist/deploy.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "bunx tsgo"
+  },
+  "dependencies": {
+    "@open-pencil/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.100.0",
+    "@tailwindcss/vite": "^4.2.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite": "^8.0.0",
+    "zustand": "^5.0.0"
+  }
+}

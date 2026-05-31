@@ -10,6 +10,16 @@ import EffectsSection from './properties/EffectsSection.vue'
 import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
+import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
+import EventsPanel from './properties/Lowcode/EventsPanel.vue'
+import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
+import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
+import ValueBindingPanel from './properties/Lowcode/ValueBindingPanel.vue'
+import ListPanel from './properties/Lowcode/ListPanel.vue'
+import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
+import StatePanel from './properties/Lowcode/StatePanel.vue'
+import SupabaseConfigPanel from './properties/Lowcode/SupabaseConfigPanel.vue'
+import TextBindingPanel from './properties/Lowcode/TextBindingPanel.vue'
 import PageSection from './properties/PageSection.vue'
 import PositionSection from './properties/PositionSection.vue'
 import StrokeSection from './properties/StrokeSection.vue'
@@ -102,6 +112,25 @@ const { panels } = useI18n()
     <FillSection />
     <StrokeSection />
     <EffectsSection />
+    <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
+    <ValueBindingPanel
+      v-if="
+        node.type === 'INPUT' ||
+        node.type === 'TEXTAREA' ||
+        node.type === 'CHECKBOX' ||
+        node.type === 'SWITCH' ||
+        node.type === 'SELECT' ||
+        node.type === 'RADIO' ||
+        node.type === 'DATEPICKER'
+      "
+    />
+    <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
+    <StatePanel
+      v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'"
+    />
+    <EventsPanel v-if="node.type === 'BUTTON' || node.type === 'FORM'" />
+    <ListPanel v-if="node.type === 'LIST'" />
+    <RenderConditionPanel />
 
     <ExportSection />
   </div>
@@ -112,6 +141,9 @@ const { panels } = useI18n()
     class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
   >
     <PageSection />
+    <StatePanel />
+    <SupabaseConfigPanel />
+    <DocumentStatePanel />
     <VariablesSection @open-dialog="variablesOpen = true" />
     <ExportSection />
   </div>

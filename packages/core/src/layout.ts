@@ -31,11 +31,11 @@ import {
   mapGridTrack,
   mapJustify
 } from './layout/yoga-helpers'
-import type { SceneGraph, SceneNode } from './scene-graph'
+import { isAutoLayoutMode, type SceneGraph, type SceneNode } from './scene-graph'
 
 export function computeLayout(graph: SceneGraph, frameId: string): void {
   const frame = graph.getNode(frameId)
-  if (!frame || frame.layoutMode === 'NONE') return
+  if (!frame || !isAutoLayoutMode(frame.layoutMode)) return
 
   const rootDirection = resolveComputedLayoutDirection(graph, frame)
   const yogaRoot =
@@ -74,7 +74,7 @@ function computeLayoutsBottomUp(graph: SceneGraph, nodeId: string, visited: Set<
     computeLayoutsBottomUp(graph, childId, visited)
   }
 
-  if (node.layoutMode !== 'NONE' && node.type !== 'INSTANCE') {
+  if (isAutoLayoutMode(node.layoutMode) && node.type !== 'INSTANCE') {
     computeLayout(graph, nodeId)
   }
 }
@@ -110,7 +110,7 @@ function buildYogaTree(
       yogaChild.setDisplay(Display.None)
     } else if (child.layoutMode === 'GRID') {
       configureChildAsGrid(yogaChild, child, frame, graph, direction)
-    } else if (child.layoutMode !== 'NONE') {
+    } else if (isAutoLayoutMode(child.layoutMode)) {
       configureChildAsAutoLayout(yogaChild, child, frame, graph, direction)
     } else {
       configureChildAsLeaf(yogaChild, child, frame)
@@ -262,7 +262,7 @@ function configureChildAsAutoLayout(
       yogaGC.setDisplay(Display.None)
     } else if (gc.layoutMode === 'GRID') {
       configureChildAsGrid(yogaGC, gc, child, graph, direction)
-    } else if (gc.layoutMode !== 'NONE') {
+    } else if (isAutoLayoutMode(gc.layoutMode)) {
       configureChildAsAutoLayout(yogaGC, gc, child, graph, direction)
     } else {
       configureChildAsLeaf(yogaGC, gc, child)
