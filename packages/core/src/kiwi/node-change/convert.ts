@@ -496,7 +496,8 @@ function pluginDataLayoutOverrides(
     | 'counterAxisSizingOverride'
     | 'counterAxisAlignContentOverride'
     | 'gridPositionOverride'
-  >
+  >,
+  nc: NodeChange
 ): Partial<SceneNode> {
   const out: Partial<SceneNode> = {}
   if (ex.freeLayoutOverride === true) out.layoutMode = 'FREE'
@@ -506,6 +507,20 @@ function pluginDataLayoutOverrides(
     out.counterAxisAlignContent = ex.counterAxisAlignContentOverride
   }
   if (ex.gridPositionOverride) out.gridPosition = ex.gridPositionOverride
+  // Figma-compat FILL (serialize.ts `serializeChildFillSizing`): when a FILL
+  // axis was restored from pluginData, neutralize the native fill fields the
+  // writer synthesized for external readers. They are the sentinel values
+  // `stackChildPrimaryGrow === 1` (main) / `stackChildAlignSelf === 'STRETCH'`
+  // (cross); resetting them keeps `layoutGrow` / `layoutAlignSelf` from
+  // drifting away from how the editor represents FILL (sizing field only).
+  // Gated on a FILL override being present so legacy / Figma-imported nodes
+  // (no `lowcode/axisSizing`) keep their genuine grow / stretch — and on the
+  // sentinel value so a genuine non-fill align (e.g. CENTER) or grow factor is
+  // preserved.
+  if (ex.primaryAxisSizingOverride === 'FILL' || ex.counterAxisSizingOverride === 'FILL') {
+    if (nc.stackChildPrimaryGrow === 1) out.layoutGrow = 0
+    if (nc.stackChildAlignSelf === 'STRETCH') out.layoutAlignSelf = 'AUTO'
+  }
   return out
 }
 
@@ -532,13 +547,16 @@ export function nodeChangeToProps(
   // applied AFTER `convertLayoutProps`, which only ever restored the
   // schema-representable variants. Collected here to keep nodeChangeToProps
   // under the complexity gate.
-  const layoutOverrides = pluginDataLayoutOverrides({
-    freeLayoutOverride,
-    primaryAxisSizingOverride,
-    counterAxisSizingOverride,
-    counterAxisAlignContentOverride,
-    gridPositionOverride
-  })
+  const layoutOverrides = pluginDataLayoutOverrides(
+    {
+      freeLayoutOverride,
+      primaryAxisSizingOverride,
+      counterAxisSizingOverride,
+      counterAxisAlignContentOverride,
+      gridPositionOverride
+    },
+    nc
+  )
   let nodeType: NodeType | 'DOCUMENT' | 'VARIABLE' =
     nodeTypeOverride ?? mapNodeType(nc.type)
   if (nodeType === 'FRAME' && isComponentSet(nc)) nodeType = 'COMPONENT_SET'

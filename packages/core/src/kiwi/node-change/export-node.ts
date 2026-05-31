@@ -27,7 +27,7 @@ interface SceneNodeToKiwiContext {
     fontDigestMap: Map<string, Uint8Array> | undefined,
     blobs: Uint8Array[]
   ) => void
-  serializeLayoutProps: (node: SceneNode, nc: KiwiNodeChange) => void
+  serializeLayoutProps: (node: SceneNode, nc: KiwiNodeChange, graph: SceneGraph) => void
   serializeGeometry: (node: SceneNode, nc: KiwiNodeChange, blobs: Uint8Array[]) => void
   serializeVariableBindings: (
     node: SceneNode,
@@ -187,7 +187,7 @@ export function sceneNodeToKiwiWithContext(
   applyComponentMetadata(node, nc)
   if (strokePaints.length > 0) nc.strokePaints = strokePaints
 
-  context.serializeLayoutProps(node, nc)
+  context.serializeLayoutProps(node, nc, context.graph)
   context.serializeGeometry(node, nc, context.blobs)
   context.serializeVariableBindings(node, nc, context.graph, context.varIdToGuid)
 

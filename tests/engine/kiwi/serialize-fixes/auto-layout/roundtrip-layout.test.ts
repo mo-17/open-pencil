@@ -5,6 +5,7 @@ import {
   exportFigFile,
   initCodec,
   parseFigFile,
+  sceneNodeToKiwi,
   SceneGraph
 } from '@open-pencil/core'
 
@@ -171,5 +172,183 @@ describe('.fig layout round-trip', () => {
     expect(n.paddingLeft).toBe(6)
     const cell = findByName(re, 'PlacedCell')
     expect(cell.gridPosition).toEqual({ column: 2, row: 1, columnSpan: 1, rowSpan: 1 })
+  })
+})
+
+// Figma-compat SAVE: FILL must be emitted as Figma-NATIVE child fill so external
+// readers (Figma, app.openpencil.dev without our `lowcode/*` pluginData) lay out
+// fill correctly. Cross-axis FILL previously emitted nothing native (figma-api
+// leaves layoutGrow=0 for cross fill), so a fill-width button collapsed to its
+// fixed width outside our patched reader. Dual-write: native + pluginData; our
+// own reader neutralizes the synthesized native fields to stay drift-free.
+
+function childKiwi(graph: SceneGraph, parentId: string, childName: string) {
+  const blobs: Uint8Array[] = []
+  const changes = sceneNodeToKiwi(
+    expectDefined(graph.getNode(parentId), 'parent'),
+    { sessionID: 1, localID: 0 },
+    0,
+    { value: 100 },
+    graph,
+    blobs
+  ) as Record<string, unknown>[]
+  return expectDefined(
+    changes.find((nc) => nc.name === childName),
+    `${childName} node change`
+  )
+}
+
+describe('.fig FILL → Figma-native child fill (write side)', () => {
+  test('cross-axis FILL (fill-width row-button in column parent) → stackChildAlignSelf=STRETCH, no grow', () => {
+    const graph = new SceneGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), {
+      name: 'ColParent',
+      width: 300,
+      height: 400,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('FRAME', parent.id, {
+      name: 'FillWidthBtn',
+      width: 120,
+      height: 40,
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'HUG'
+    })
+    const nc = childKiwi(graph, parent.id, 'FillWidthBtn')
+    expect(nc.stackChildAlignSelf).toBe('STRETCH')
+    expect(nc.stackChildPrimaryGrow).toBeUndefined()
+  })
+
+  test('main-axis FILL (fill-width container in row parent) → stackChildPrimaryGrow=1', () => {
+    const graph = new SceneGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), {
+      name: 'RowParent',
+      width: 400,
+      height: 100,
+      layoutMode: 'HORIZONTAL'
+    })
+    graph.createNode('FRAME', parent.id, {
+      name: 'FillMainBtn',
+      width: 120,
+      height: 40,
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'HUG'
+    })
+    const nc = childKiwi(graph, parent.id, 'FillMainBtn')
+    expect(nc.stackChildPrimaryGrow).toBe(1)
+    expect(nc.stackChildAlignSelf).toBeUndefined()
+  })
+
+  test('both axes FILL → grow=1 and STRETCH together', () => {
+    const graph = new SceneGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), {
+      name: 'ColParentB',
+      width: 300,
+      height: 400,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('FRAME', parent.id, {
+      name: 'FillBoth',
+      width: 120,
+      height: 40,
+      layoutMode: 'VERTICAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'FILL'
+    })
+    const nc = childKiwi(graph, parent.id, 'FillBoth')
+    expect(nc.stackChildPrimaryGrow).toBe(1)
+    expect(nc.stackChildAlignSelf).toBe('STRETCH')
+  })
+
+  test('non-auto-layout parent → FILL writes no native fill (sizing has no flex meaning)', () => {
+    const graph = new SceneGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), {
+      name: 'PlainParent',
+      width: 300,
+      height: 400
+      // layoutMode defaults to 'NONE'
+    })
+    graph.createNode('FRAME', parent.id, {
+      name: 'FillInPlain',
+      width: 120,
+      height: 40,
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'FILL'
+    })
+    const nc = childKiwi(graph, parent.id, 'FillInPlain')
+    expect(nc.stackChildPrimaryGrow).toBeUndefined()
+    expect(nc.stackChildAlignSelf).toBeUndefined()
+  })
+
+  test('genuine layoutAlignSelf=CENTER is not overwritten by FILL synthesis', () => {
+    const graph = new SceneGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), {
+      name: 'RowParentC',
+      width: 400,
+      height: 100,
+      layoutMode: 'HORIZONTAL'
+    })
+    graph.createNode('FRAME', parent.id, {
+      name: 'FillMainCenter',
+      width: 120,
+      height: 40,
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'HUG',
+      layoutAlignSelf: 'CENTER'
+    })
+    const nc = childKiwi(graph, parent.id, 'FillMainCenter')
+    expect(nc.stackChildPrimaryGrow).toBe(1)
+    expect(nc.stackChildAlignSelf).toBe('CENTER')
+  })
+})
+
+describe('.fig FILL → Figma-native child fill (read symmetry)', () => {
+  function fillChildGraph(
+    parentMode: 'HORIZONTAL' | 'VERTICAL',
+    childProps: Record<string, unknown>
+  ) {
+    const graph = new SceneGraph()
+    const parent = graph.createNode('FRAME', pageId(graph), {
+      name: 'P',
+      width: 400,
+      height: 400,
+      layoutMode: parentMode
+    })
+    graph.createNode('FRAME', parent.id, { name: 'Child', width: 100, height: 40, ...childProps })
+    return graph
+  }
+
+  test('cross-axis FILL round-trips: sizing=FILL restored, layoutAlignSelf NOT drifted to STRETCH', async () => {
+    const graph = fillChildGraph('VERTICAL', {
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'HUG'
+    })
+    const child = findByName(await roundtrip(graph), 'Child')
+    expect(child.primaryAxisSizing).toBe('FILL')
+    expect(child.layoutAlignSelf).toBe('AUTO')
+    expect(child.layoutGrow).toBe(0)
+  })
+
+  test('main-axis FILL round-trips: sizing=FILL restored, layoutGrow NOT drifted to 1', async () => {
+    const graph = fillChildGraph('HORIZONTAL', {
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FILL',
+      counterAxisSizing: 'HUG'
+    })
+    const child = findByName(await roundtrip(graph), 'Child')
+    expect(child.primaryAxisSizing).toBe('FILL')
+    expect(child.layoutGrow).toBe(0)
+    expect(child.layoutAlignSelf).toBe('AUTO')
+  })
+
+  test('genuine STRETCH without any FILL (legacy/Figma import) is preserved on reopen', async () => {
+    const graph = fillChildGraph('HORIZONTAL', { layoutAlignSelf: 'STRETCH' })
+    const child = findByName(await roundtrip(graph), 'Child')
+    expect(child.layoutAlignSelf).toBe('STRETCH')
   })
 })

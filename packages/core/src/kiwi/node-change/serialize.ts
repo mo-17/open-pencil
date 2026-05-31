@@ -284,7 +284,7 @@ function serializeTextProps(
   }
 }
 
-function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange): void {
+function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneGraph): void {
   upsertPluginData(node, LAYOUT_DIRECTION_PLUGIN_KEY, node.layoutDirection)
   // Phase 2 §6: explicit HORIZONTAL/VERTICAL guard. `'NONE'` / `'FREE'` skip
   // stack serialization (FREE rides the `lowcode/freeLayout` pluginData
@@ -305,10 +305,41 @@ function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange): void {
     serializeGridProps(node, nc)
   }
   if (node.layoutPositioning === 'ABSOLUTE') nc.stackPositioning = 'ABSOLUTE'
-  if (node.layoutGrow > 0) nc.stackChildPrimaryGrow = node.layoutGrow
-  if (node.layoutAlignSelf !== 'AUTO') {
-    nc.stackChildAlignSelf = node.layoutAlignSelf
+  serializeChildFillSizing(node, nc, graph)
+}
+
+/** Emit the Figma-native child fill encoding alongside the existing
+ *  `lowcode/axisSizing` pluginData (dual-write). External readers (Figma,
+ *  app.openpencil.dev without our pluginData) only honor the native fields
+ *  `stackChildPrimaryGrow` (parent main axis) / `stackChildAlignSelf=STRETCH`
+ *  (parent cross axis), so a child whose FILL lives only in
+ *  `primary/counterAxisSizing` (e.g. a fill-width button — figma-api leaves
+ *  layoutGrow=0 for cross-axis fill) laid out wrong externally.
+ *
+ *  Only auto-layout-container children of an auto-layout parent carry FILL in
+ *  the sizing fields (leaves express fill via layoutGrow / layoutAlignSelf,
+ *  which already serialize below). The sizing→main/cross mapping mirrors
+ *  layout.ts `configureChildAsAutoLayout`. The reader neutralizes these
+ *  synthesized values (see convert.ts `pluginDataLayoutOverrides`) so our own
+ *  FILL round-trip (restored from pluginData) stays drift-free. */
+function serializeChildFillSizing(node: SceneNode, nc: KiwiNodeChange, graph: SceneGraph): void {
+  let grow = node.layoutGrow
+  let alignSelf = node.layoutAlignSelf
+  const parent = node.parentId ? graph.getNode(node.parentId) : undefined
+  const parentIsStack = parent?.layoutMode === 'HORIZONTAL' || parent?.layoutMode === 'VERTICAL'
+  const childIsStack = node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL'
+  if (parent && parentIsStack && childIsStack && node.layoutPositioning !== 'ABSOLUTE') {
+    const isParentRow = parent.layoutMode === 'HORIZONTAL'
+    const isChildRow = node.layoutMode === 'HORIZONTAL'
+    const widthSizing = isChildRow ? node.primaryAxisSizing : node.counterAxisSizing
+    const heightSizing = isChildRow ? node.counterAxisSizing : node.primaryAxisSizing
+    const mainSizing = isParentRow ? widthSizing : heightSizing
+    const crossSizing = isParentRow ? heightSizing : widthSizing
+    if (mainSizing === 'FILL' && grow === 0) grow = 1
+    if (crossSizing === 'FILL' && alignSelf === 'AUTO') alignSelf = 'STRETCH'
   }
+  if (grow > 0) nc.stackChildPrimaryGrow = grow
+  if (alignSelf !== 'AUTO') nc.stackChildAlignSelf = alignSelf
 }
 
 function serializeStackPadding(node: SceneNode, nc: KiwiNodeChange): void {
