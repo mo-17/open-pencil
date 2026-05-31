@@ -167,7 +167,11 @@ function renderChildren(
 ): void {
   if (node.type === 'BOOLEAN_OPERATION') return
   const isClippableContainer =
-    node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE'
+    node.type === 'FRAME' ||
+    node.type === 'COMPONENT' ||
+    node.type === 'INSTANCE' ||
+    node.type === 'FORM' ||
+    node.type === 'LIST'
   if (isClippableContainer && node.clipsContent && node.childIds.length > 0) {
     canvas.save()
     if (nodeHasSmoothCorners(node)) {

@@ -372,7 +372,17 @@ export class SkiaRenderer {
       type === 'COMPONENT' ||
       type === 'INSTANCE' ||
       type === 'SECTION' ||
-      type === 'GROUP'
+      type === 'GROUP' ||
+      type === 'INPUT' ||
+      type === 'BUTTON' ||
+      type === 'SELECT' ||
+      type === 'CHECKBOX' ||
+      type === 'FORM' ||
+      type === 'LIST' ||
+      type === 'RADIO' ||
+      type === 'TEXTAREA' ||
+      type === 'DATEPICKER' ||
+      type === 'SWITCH'
     )
   }
 

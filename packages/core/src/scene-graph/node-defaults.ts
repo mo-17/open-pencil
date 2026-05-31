@@ -1,6 +1,30 @@
 import { BLACK, DEFAULT_FONT_FAMILY, DEFAULT_STROKE_MITER_LIMIT } from '#core/constants'
 
-import type { NodeType, SceneNode } from './types'
+import type { Color } from '#core/types'
+
+import type { Fill, NodeType, SceneNode, Stroke } from './types'
+
+// Lowcode (Phase 0) visual defaults — make interactive nodes visible on canvas
+// without depending on theme tokens. Roughly Tailwind gray-100/300, blue-500.
+const LIGHT_GRAY: Color = { r: 0.949, g: 0.949, b: 0.957, a: 1 }
+const BORDER_GRAY: Color = { r: 0.82, g: 0.835, b: 0.859, a: 1 }
+const PRIMARY_BLUE: Color = { r: 0.231, g: 0.51, b: 0.965, a: 1 }
+const WHITE: Color = { r: 1, g: 1, b: 1, a: 1 }
+
+const fillSolid = (color: Color): Fill => ({
+  type: 'SOLID',
+  color,
+  opacity: 1,
+  visible: true
+})
+
+const strokeSolid = (color: Color, weight = 1): Stroke => ({
+  color,
+  weight,
+  opacity: 1,
+  visible: true,
+  align: 'INSIDE'
+})
 
 export function createDefaultNode(
   generateId: () => string,
@@ -148,7 +172,122 @@ export function createDefaultNode(
     flipY: false,
     textPicture: null,
     figmaDerivedTextGlyphs: null,
+    ...interactiveDefaults(type),
     ...overrides
+  }
+}
+
+function interactiveDefaults(type: NodeType): Partial<SceneNode> {
+  switch (type) {
+    case 'INPUT':
+      return {
+        width: 200,
+        height: 36,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { placeholder: 'Enter text', value: '' }
+      }
+    case 'BUTTON':
+      return {
+        width: 100,
+        height: 36,
+        cornerRadius: 6,
+        fills: [fillSolid(PRIMARY_BLUE)],
+        interactiveProps: { text: 'Button' }
+      }
+    case 'SELECT':
+      return {
+        width: 200,
+        height: 36,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { options: [], value: '' }
+      }
+    case 'CHECKBOX':
+      return {
+        width: 20,
+        height: 20,
+        cornerRadius: 4,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY, 1.5)],
+        interactiveProps: { checked: false }
+      }
+    // Phase 2 §8 — four more interactive components. All emit native HTML.
+    case 'RADIO':
+      return {
+        width: 200,
+        height: 96,
+        cornerRadius: 6,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { options: [], value: '', groupName: 'radio-group' }
+      }
+    case 'TEXTAREA':
+      return {
+        width: 200,
+        height: 80,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { placeholder: 'Enter text', value: '' }
+      }
+    case 'DATEPICKER':
+      return {
+        width: 200,
+        height: 36,
+        cornerRadius: 6,
+        paddingLeft: 12,
+        paddingRight: 12,
+        fills: [fillSolid(WHITE)],
+        strokes: [strokeSolid(BORDER_GRAY)],
+        interactiveProps: { value: '' }
+      }
+    case 'SWITCH':
+      return {
+        width: 44,
+        height: 24,
+        cornerRadius: 12,
+        fills: [fillSolid(BORDER_GRAY)],
+        interactiveProps: { checked: false }
+      }
+    case 'FORM':
+      return {
+        width: 320,
+        height: 200,
+        layoutMode: 'VERTICAL',
+        primaryAxisSizing: 'FIXED',
+        counterAxisSizing: 'FIXED',
+        itemSpacing: 12,
+        paddingTop: 16,
+        paddingRight: 16,
+        paddingBottom: 16,
+        paddingLeft: 16,
+        cornerRadius: 8,
+        fills: [fillSolid(LIGHT_GRAY)]
+      }
+    case 'LIST':
+      return {
+        width: 320,
+        height: 200,
+        layoutMode: 'VERTICAL',
+        primaryAxisSizing: 'FIXED',
+        counterAxisSizing: 'FIXED',
+        itemSpacing: 8,
+        cornerRadius: 8,
+        fills: [fillSolid(LIGHT_GRAY)],
+        clipsContent: true,
+        interactiveProps: { dataSourceRef: null }
+      }
+    default:
+      return {}
   }
 }
 
@@ -160,5 +299,7 @@ export const CONTAINER_TYPES = new Set<NodeType>([
   'SECTION',
   'COMPONENT',
   'COMPONENT_SET',
-  'INSTANCE'
+  'INSTANCE',
+  'FORM',
+  'LIST'
 ])

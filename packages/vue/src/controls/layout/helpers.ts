@@ -2,12 +2,13 @@ import { computed, ref } from 'vue'
 import type { ComputedRef } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
-import type {
-  GridTrack,
-  LayoutAlign,
-  LayoutCounterAlign,
-  LayoutSizing,
-  SceneNode
+import {
+  isAutoLayoutMode,
+  type GridTrack,
+  type LayoutAlign,
+  type LayoutCounterAlign,
+  type LayoutSizing,
+  type SceneNode
 } from '@open-pencil/core/scene-graph'
 
 import type { useI18n } from '#vue/i18n'
@@ -346,7 +347,7 @@ export function createLayoutSizingState(
     const n = node.value
     if (!n?.parentId) return false
     const parent = editor.getNode(n.parentId)
-    return parent ? parent.layoutMode !== 'NONE' : false
+    return parent ? isAutoLayoutMode(parent.layoutMode) : false
   })
 
   const isGrid = computed(() => node.value?.layoutMode === 'GRID')

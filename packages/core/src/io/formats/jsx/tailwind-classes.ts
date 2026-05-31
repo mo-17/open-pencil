@@ -96,6 +96,23 @@ function applyLayoutStyle(style: Record<string, string>, node: SceneNode, graph:
 
   if (ctx.parentIsAutoLayout && node.layoutGrow > 0) style.flexGrow = '1'
   if (ctx.isAutoLayout) applyPadding(style, node)
+
+  // Phase 2 §6: free positioning fires for two cases that share the same
+  // CSS shape — parent opts the whole container into free layout (CANVAS
+  // implicitly, or any FRAME with `layoutMode === 'FREE'`), OR a single
+  // child opts itself out of the parent's auto-layout via Figma's existing
+  // `layoutPositioning: 'ABSOLUTE'` field (canvas-side Yoga + drag/snap
+  // honored it before; this is the emit honor that closes the gap).
+  if (ctx.parentIsFreeLayout || node.layoutPositioning === 'ABSOLUTE') {
+    style.position = 'absolute'
+    style.left = px(node.x)
+    style.top = px(node.y)
+    // §6 decision #g: sizing fallback for both code paths — HUG-sized
+    // children would otherwise collapse once `position: absolute` removes
+    // them from the parent's flow.
+    if (!style.width) style.width = px(node.width)
+    if (!style.height) style.height = px(node.height)
+  }
 }
 
 function applyAppearanceStyle(style: Record<string, string>, node: SceneNode): void {
@@ -136,6 +153,132 @@ function applyAppearanceStyle(style: Record<string, string>, node: SceneNode): v
   }
 }
 
+/**
+ * Round to 3 decimals; trailing zeros stripped. Keeps clip-path values
+ * stable and short in the emitted Tailwind class.
+ */
+function roundPct(n: number): string {
+  return Number(n.toFixed(3)).toString()
+}
+
+/**
+ * Tailwind v4 silently drops `clip-path-[polygon(...)]` (the value the v3
+ * `clip-path-*` utility expects); only the arbitrary-property form
+ * `[clip-path:polygon(...)]` survives `@source inline(...)`. We bypass
+ * twirl for this CSS prop and emit the class directly. Inside the brackets
+ * Tailwind reads `_` as a space, so we never emit literal whitespace there.
+ */
+function polygonClipPathClass(pointCount: number): string {
+  const n = pointCount >= 3 ? pointCount : 3
+  const points: string[] = []
+  for (let i = 0; i < n; i++) {
+    const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n
+    points.push(`${roundPct(50 + 50 * Math.cos(angle))}%_${roundPct(50 + 50 * Math.sin(angle))}%`)
+  }
+  return `[clip-path:polygon(${points.join(',_')})]`
+}
+
+function starClipPathClass(pointCount: number, innerRatio: number): string {
+  const n = pointCount >= 3 ? pointCount : 5
+  const inner = innerRatio > 0 && innerRatio < 1 ? innerRatio : 0.38
+  const points: string[] = []
+  for (let i = 0; i < 2 * n; i++) {
+    const r = i % 2 === 0 ? 50 : 50 * inner
+    const angle = -Math.PI / 2 + (i * Math.PI) / n
+    points.push(`${roundPct(50 + r * Math.cos(angle))}%_${roundPct(50 + r * Math.sin(angle))}%`)
+  }
+  return `[clip-path:polygon(${points.join(',_')})]`
+}
+
+/**
+ * Vector shapes (ELLIPSE / LINE / POLYGON / STAR) need overrides on top
+ * of the generic <div> styling because Figma represents them geometrically,
+ * not via CSS box properties. Runs after `applyAppearanceStyle` so it can
+ * supersede the border / radius emit when needed.
+ *
+ *   ELLIPSE  → border-radius: 50%
+ *   LINE     → stroke becomes background; height becomes stroke weight
+ *   POLYGON  → clip-path: regular polygon with `pointCount` vertices
+ *   STAR     → clip-path: star with `pointCount` outer points
+ *
+ * Stroke→border emit is suppressed for clip-pathed shapes because a CSS
+ * border on the bounding box would be clipped to the polygon shape and
+ * read as a thick fill, not an outline. A true outline would require SVG.
+ */
+function applyShapeStyle(style: Record<string, string>, node: SceneNode): void {
+  if (node.type === 'ELLIPSE') {
+    // ELLIPSE is intrinsically round in Figma; cornerRadius doesn't apply.
+    // '50%' (not '9999px') so width≠height nodes become true ellipses, not
+    // pill shapes.
+    style.borderRadius = '50%'
+    return
+  }
+
+  if (node.type === 'LINE') {
+    // OpenPencil stores LINE as the diagonal vector from (0, 0) to
+    // (width, height) in local coords (canvas renders it via
+    // `canvas.drawLine(0, 0, node.width, node.height, r.fillPaint)`).
+    // The diagonal angle is encoded into the bounding box geometry — not
+    // into `node.rotation` — so we have to convert (w, h) into
+    //   length = sqrt(w² + h²)
+    //   angle  = atan2(h, w)
+    // and render a thin horizontal bar of that length, rotated around the
+    // first endpoint.
+    //
+    // Colour: canvas uses `fillPaint` (default 1px hairline) — fill drives
+    // the visible line. If a real stroke is present, it takes precedence
+    // (Figma-imported files store the colour there). `applyAppearanceStyle`
+    // has already pushed the fill colour onto backgroundColor, so we only
+    // override when a stroke is present.
+    delete style.borderWidth
+    delete style.borderColor
+    delete style.borderStyle
+
+    const stroke = solidStroke(node.strokes)
+    if (stroke) style.backgroundColor = stroke.color
+    if (!style.backgroundColor) return
+
+    const weight = stroke?.weight ?? 1
+    const length = Math.sqrt(node.width * node.width + node.height * node.height)
+    const angleDeg = (Math.atan2(node.height, node.width) * 180) / Math.PI
+    const totalRotation = node.rotation + angleDeg
+
+    style.width = px(length)
+    style.height = px(weight)
+    // Centreline alignment: lift `top` by half the line weight so the
+    // visible centreline coincides with node.y. Only fires when canvas-
+    // direct positioning is in effect.
+    if (style.top) style.top = px(node.y - weight / 2)
+    // Pivot at the first endpoint on the centreline; combine the diagonal-
+    // encoded angle with any user-applied rotation. Override the rotation
+    // value that `applyAppearanceStyle` may have already written for plain
+    // `node.rotation`.
+    if (totalRotation !== 0) {
+      style.transform = `rotate(${totalRotation}deg)`
+    } else {
+      delete style.transform
+    }
+    style.transformOrigin = '0 50%'
+    return
+  }
+
+  if (node.type === 'POLYGON' || node.type === 'STAR') {
+    // The clip-path class itself is appended later in
+    // `collectTailwindClasses` (see `collectShapeExtraClasses`) so it
+    // bypasses twirl. Here we only suppress the box-model border, which
+    // would otherwise be clipped to the polygon and read as a thick fill.
+    delete style.borderWidth
+    delete style.borderColor
+    delete style.borderStyle
+  }
+}
+
+function collectShapeExtraClasses(node: SceneNode): string[] {
+  if (node.type === 'POLYGON') return [polygonClipPathClass(node.pointCount)]
+  if (node.type === 'STAR') return [starClipPathClass(node.pointCount, node.starInnerRadius)]
+  return []
+}
+
 function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
   if (node.type !== 'TEXT') return
   style.fontSize = px(node.fontSize)
@@ -150,6 +293,7 @@ function nodeToStyle(node: SceneNode, graph: SceneGraph): Record<string, string>
   const style: Record<string, string> = {}
   applyLayoutStyle(style, node, graph)
   applyAppearanceStyle(style, node)
+  applyShapeStyle(style, node)
   applyTextStyle(style, node)
   return style
 }
@@ -165,6 +309,7 @@ export function collectTailwindClasses(node: SceneNode, graph: SceneGraph): stri
   if (node.layoutDirection === 'RTL') extraClasses.push('[direction:rtl]')
   if (node.type === 'TEXT' && resolveNodeTextDirection(node) === 'RTL')
     extraClasses.push('[direction:rtl]')
+  extraClasses.push(...collectShapeExtraClasses(node))
 
   const twirlClasses = twirl(style)
   const combined = twirlClasses ? twirlClasses.split(' ') : []

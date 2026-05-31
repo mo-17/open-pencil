@@ -2,7 +2,10 @@
 import { defineCommand, runMain } from 'citty'
 
 import analyze from './commands/analyze'
+import build from './commands/build'
+import compile from './commands/compile'
 import convert from './commands/convert'
+import deploy from './commands/deploy'
 import evalCmd from './commands/eval'
 import exportCmd from './commands/export'
 import find from './commands/find'
@@ -26,7 +29,10 @@ const main = defineCommand({
   },
   subCommands: {
     analyze,
+    build,
+    compile,
     convert,
+    deploy,
     eval: evalCmd,
     export: exportCmd,
     find,

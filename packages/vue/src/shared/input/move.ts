@@ -6,6 +6,7 @@ import { findMoveDropTarget, reparentOutsideNodes } from '#vue/shared/input/drop
 export { duplicateAndDrag } from '#vue/shared/input/duplicate-drag'
 import { AUTO_LAYOUT_BREAK_THRESHOLD } from '@open-pencil/core/constants'
 import type { Editor } from '@open-pencil/core/editor'
+import { isAutoLayoutMode } from '@open-pencil/core/scene-graph'
 
 import { applyMoveSnap } from '#vue/shared/input/move-snap'
 import type { DragMove } from '#vue/shared/input/types'
@@ -39,7 +40,7 @@ export function detectAutoLayoutParent(editor: Editor): string | undefined {
   const selectedNode = editor.graph.getNode(selectedId)
   if (!selectedNode?.parentId) return undefined
   const parent = editor.graph.getNode(selectedNode.parentId)
-  if (parent && parent.layoutMode !== 'NONE' && selectedNode.layoutPositioning !== 'ABSOLUTE') {
+  if (parent && isAutoLayoutMode(parent.layoutMode) && selectedNode.layoutPositioning !== 'ABSOLUTE') {
     return parent.id
   }
   return undefined
@@ -82,7 +83,7 @@ export function handleMoveMove(
   const dropTarget = findMoveDropTarget(cx, cy, editor)
   const dropParent = dropTarget ? editor.graph.getNode(dropTarget.id) : null
 
-  if (dropParent && dropParent.layoutMode !== 'NONE') {
+  if (dropParent && isAutoLayoutMode(dropParent.layoutMode)) {
     computeAutoLayoutIndicatorForFrame(dropParent, cx, cy, editor)
     editor.setDropTarget(dropParent.id)
     for (const [id, orig] of d.originals) {

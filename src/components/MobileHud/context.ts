@@ -10,7 +10,9 @@ import IconZoomIn from '~icons/lucide/zoom-in'
 
 import { useEditorCommands, useI18n } from '@open-pencil/vue'
 
+import { presenceEditingLabel } from '@/app/collab/presence-label'
 import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
+import type { RemotePeer } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { toolIcons } from '@/app/editor/icons'
 import { openFileDialog } from '@/app/shell/menu/use'
@@ -72,6 +74,11 @@ function createMobileHudContext() {
     collab?.followPeer(followingPeer.value === clientId ? null : clientId)
   }
 
+  // §4.4 — which lowcode panel a peer is editing (null when none).
+  function peerEditingLabel(peer: RemotePeer): string | null {
+    return presenceEditingLabel(peer, dialogs.value, (id) => store.graph.getNode(id)?.name)
+  }
+
   return {
     store,
     dialogs,
@@ -86,7 +93,8 @@ function createMobileHudContext() {
     redo,
     share,
     disconnect,
-    toggleFollowPeer
+    toggleFollowPeer,
+    peerEditingLabel
   }
 }
 

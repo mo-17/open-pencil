@@ -94,6 +94,10 @@
 
 ### Added
 
+- CLI `build` command — compile a document and produce a deployable static SPA bundle (Vite build over an in-memory VFS, zero `npm install`); supports `--base` for sub-path hosting and `--json`.
+- One-click deployment — `open-pencil deploy <file>` builds and pushes the static bundle to Netlify or Vercel (`--provider netlify|vercel`, direct-upload APIs, SPA fallback config injected automatically), and a Deploy control with a provider picker in the desktop preview pane; token via `--token` or `NETLIFY_AUTH_TOKEN` / `VERCEL_TOKEN`.
+- Per-environment Supabase config — emitted apps read `import.meta.env.VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` (design-time values as fallback), so one design deploys to preview/staging/prod. Override via a `.env` file (standalone export) or `build`/`deploy` `--supabase-url`/`--supabase-anon-key` flags.
+- Self-hostable collaboration signaling — point editor collaboration at your own MQTT broker(s) and TURN server via `VITE_COLLAB_RELAY_URLS` / `VITE_COLLAB_TURN_URL` (+ `_USERNAME`/`_CREDENTIAL`) / `VITE_COLLAB_APP_ID`; or route signaling through Supabase Realtime (no public broker) with `VITE_COLLAB_STRATEGY=supabase` + `VITE_COLLAB_SUPABASE_URL`/`_KEY`. Unset falls back to the public broker + STUN/TURN defaults.
 - Assets panel — browse, search, and insert document components directly from the left sidebar.
 - Component variants — switch instance variants from the right inspector; default variant respects property definitions.
 - Figma library metadata — component keys, source libraries, version IDs, descriptions, and docs links are preserved on import/export.

@@ -41,6 +41,7 @@ export {
   type ImageScaleMode,
   type GradientStop,
   type GradientTransform,
+  isAutoLayoutMode,
   type LayoutMode,
   type LayoutSizing,
   type LayoutAlign,

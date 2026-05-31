@@ -45,14 +45,16 @@ const PACKAGE_ALIASES: Record<string, string> = {
   '#core/': 'packages/core/src/',
   '#vue/': 'packages/vue/src/',
   '#cli/': 'packages/cli/src/',
-  '#mcp/': 'packages/mcp/src/'
+  '#mcp/': 'packages/mcp/src/',
+  '#compiler/': 'packages/compiler/src/'
 }
 
 const PACKAGE_ALIAS_OWNERS: Record<string, string> = {
   '#core/': 'packages/core/src/',
   '#vue/': 'packages/vue/src/',
   '#cli/': 'packages/cli/src/',
-  '#mcp/': 'packages/mcp/src/'
+  '#mcp/': 'packages/mcp/src/',
+  '#compiler/': 'packages/compiler/src/'
 }
 
 function normalizePath(filePath: string) {
@@ -545,6 +547,31 @@ const noUiImportsInCore = createImportRule(
   }
 )
 
+// Phase 0 compiler layering (docs/lowcode-phase-0.md §4.1) — one-way: SceneGraph → IR → adapters.
+const noCrossLayerInCompiler = createImportRule(
+  'open-pencil/no-cross-layer-in-compiler',
+  (sourceRel, specifier, resolved) => {
+    if (
+      sourceRel.startsWith('packages/compiler/src/ir/') &&
+      (resolved?.startsWith('packages/compiler/src/adapters/') ||
+        specifier.startsWith('#compiler/adapters/') ||
+        specifier.startsWith('@open-pencil/compiler/adapters'))
+    ) {
+      return 'compiler/ir/** must not import compiler/adapters/**. Adapters consume IR; the data flow is one-way.'
+    }
+    if (
+      sourceRel.startsWith('packages/compiler/src/adapters/') &&
+      (specifier === '@open-pencil/core/scene-graph' ||
+        specifier.startsWith('@open-pencil/core/scene-graph/') ||
+        resolved === 'packages/core/src/scene-graph' ||
+        resolved?.startsWith('packages/core/src/scene-graph/'))
+    ) {
+      return 'compiler/adapters/** must not import @open-pencil/core/scene-graph. Adapters depend only on the IR types in compiler/ir/types.ts.'
+    }
+    return null
+  }
+)
+
 export const openPencilArchitecturePlugin = {
   meta: { name: 'open-pencil-architecture', version: '0.0.0' },
   ruleDefinitions: [
@@ -568,6 +595,7 @@ export const openPencilArchitecturePlugin = {
     noPropertyPanelInternalsOutsidePanel,
     noShortcutTextInLabels,
     noHardcodedMacOSShortcutGlyphs,
-    noUiImportsInCore
+    noUiImportsInCore,
+    noCrossLayerInCompiler
   ]
 }

@@ -21,12 +21,15 @@
       "#vue/*": ["./packages/vue/src/*", "./packages/vue/src/*.vue"],
       "#core/*": ["./packages/core/src/*"],
       "#cli/*": ["./packages/cli/src/*"],
+      "#compiler/*": ["./packages/compiler/src/*"],
       "#mcp/*": ["./packages/mcp/src/*"],
       "#tests/*": ["./tests/*"],
       "tinykeys": ["./node_modules/tinykeys/dist/tinykeys.d.ts"],
       "@open-pencil/vue": ["./packages/vue/src/index.ts"],
       "@open-pencil/core": ["./packages/core/src/index.ts"],
-      "@open-pencil/core/*": ["./packages/core/src/*"]
+      "@open-pencil/core/*": ["./packages/core/src/*"],
+      "@open-pencil/compiler": ["./packages/compiler/src/index.ts"],
+      "@open-pencil/compiler/*": ["./packages/compiler/src/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.vue"],
