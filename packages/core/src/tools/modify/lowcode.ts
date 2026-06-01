@@ -648,26 +648,45 @@ function applyPatchWithUndo(
   label: string,
   ctx: ToolCtx | undefined
 ): void {
-  if (!ctx?.editor) {
-    figma.graph.updateNode(nodeId, patch)
+  // A patch value of `undefined` means "clear this field" (the tool maps an
+  // explicit `null` to `undefined`). `graph.updateNode` skips undefined-valued
+  // entries, so set and clear must take separate paths: `updateNode` for the
+  // defined fields, `clearNodeFields` for the cleared ones.
+  const graph = ctx?.editor?.graph ?? figma.graph
+  const keys = Object.keys(patch) as (keyof SceneNode)[]
+  const clearKeys = keys.filter((key) => patch[key] === undefined)
+  const setPatch = Object.fromEntries(
+    keys.filter((key) => patch[key] !== undefined).map((key) => [key, patch[key]])
+  ) as Partial<SceneNode>
+  const applyForward = (): void => {
+    if (Object.keys(setPatch).length > 0) graph.updateNode(nodeId, setPatch)
+    if (clearKeys.length > 0) graph.clearNodeFields(nodeId, clearKeys)
+  }
+
+  const node = graph.getNode(nodeId)
+  if (!ctx?.editor || !node) {
+    applyForward()
     return
   }
   const editor = ctx.editor
-  const node = editor.graph.getNode(nodeId)
-  if (!node) {
-    figma.graph.updateNode(nodeId, patch)
-    return
-  }
-  const keys = Object.keys(patch) as (keyof SceneNode)[]
+
+  // Snapshot the prior values so a single undo entry reverts the whole patch.
+  // Keys that were previously absent must be re-cleared on undo (updateNode
+  // alone can't restore them to absent, since it skips the undefined value).
   const previous = Object.fromEntries(
     keys.map((key) => [key, structuredClone(node[key])])
   ) as Partial<SceneNode>
-  editor.graph.updateNode(nodeId, patch)
-  editor.undo.push({
-    label,
-    forward: () => editor.graph.updateNode(nodeId, patch),
-    inverse: () => editor.graph.updateNode(nodeId, previous)
-  })
+  const restorePatch = Object.fromEntries(
+    keys.filter((key) => previous[key] !== undefined).map((key) => [key, previous[key]])
+  ) as Partial<SceneNode>
+  const restoreClearKeys = keys.filter((key) => previous[key] === undefined)
+  const applyInverse = (): void => {
+    if (Object.keys(restorePatch).length > 0) editor.graph.updateNode(nodeId, restorePatch)
+    if (restoreClearKeys.length > 0) editor.graph.clearNodeFields(nodeId, restoreClearKeys)
+  }
+
+  applyForward()
+  editor.undo.push({ label, forward: applyForward, inverse: applyInverse })
 }
 
 export const updateLowcodeNode = defineTool({

@@ -7,7 +7,10 @@
     "skipLibCheck": true,
     "declaration": true,
     "paths": {
-      "#cli/*": ["./src/*"]
+      "#cli/*": ["./src/*"],
+      "#core/*": ["../core/src/*"],
+      "@open-pencil/core": ["../core/src/index.ts"],
+      "@open-pencil/core/*": ["../core/src/*"]
     },
     "outDir": "dist",
     "rootDir": "src"

@@ -396,6 +396,32 @@ export class SceneGraph {
     this.emitter.emit('node:updated', id, changes)
   }
 
+  /**
+   * Delete the given keys from a node. `updateNode` skips `undefined`-valued
+   * patch entries (so a partial patch never clobbers fields it omits), which
+   * means a field can no longer be cleared by assigning `undefined`. Callers
+   * that need true clearing (e.g. the lowcode mutation tools, where a `null`
+   * patch value means "remove this field") route deletions here. Emits
+   * `node:updated` with the cleared keys mapped to `undefined` so incremental
+   * consumers (preview / collab) drop the field from their mirror too.
+   */
+  clearNodeFields(id: string, keys: readonly (keyof SceneNode)[]): void {
+    const node = this.nodes.get(id)
+    if (!node || keys.length === 0) return
+    const affectsLayout = keys.some((k) => SceneGraph.LAYOUT_AFFECTING_KEYS.has(k as string))
+    if (affectsLayout) this.absPosCache.clear()
+    const mutable = node as unknown as Record<string, unknown>
+    const changes: Record<string, undefined> = {}
+    for (const key of keys) {
+      delete mutable[key as string]
+      changes[key as string] = undefined
+    }
+    if (this.sourceMetadataPreservationDepth === 0) {
+      clearEditedSourceMetadata(node, Object.keys(changes))
+    }
+    this.emitter.emit('node:updated', id, changes as Partial<SceneNode>)
+  }
+
   reparentNode(nodeId: string, newParentId: string): void {
     const node = this.nodes.get(nodeId)
     if (!node || nodeId === this.rootId) return
