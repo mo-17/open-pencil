@@ -60,7 +60,7 @@
     "src"
   ],
   "scripts": {
-    "build": "bunx tsgo"
+    "build": "bunx tsgo -p tsconfig.build.json"
   },
   "dependencies": {
     "@open-pencil/core": "workspace:*"
