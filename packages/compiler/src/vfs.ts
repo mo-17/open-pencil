@@ -12,7 +12,7 @@
 // `configureServer` hook is a dev-only Vite lifecycle hook; it's a no-op during
 // `vite build`, so the same plugin instance serves both paths.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 
 import type { ESBuildOptions, Plugin } from 'vite'
@@ -49,29 +49,40 @@ export const VITE_JSX_ESBUILD: ESBuildOptions = {
  * JSX-mode tsconfig that wins the upward search Vite/esbuild does (the workspace
  * root sets jsx:preserve for Vue — see VITE_JSX_ESBUILD).
  */
+const PREVIEW_TSCONFIG = JSON.stringify(
+  {
+    compilerOptions: {
+      target: 'ES2022',
+      module: 'ESNext',
+      moduleResolution: 'bundler',
+      jsx: 'react-jsx',
+      allowImportingTsExtensions: false,
+      isolatedModules: true,
+      strict: true,
+      skipLibCheck: true,
+      useDefineForClassFields: true
+    }
+  },
+  null,
+  2
+)
+
 export function prepareVfsRoot(workspaceRoot: string): { scanRoot: string; vfsPrefix: string } {
   const scanRoot = join(workspaceRoot, 'packages/compiler/.preview-root')
   mkdirSync(scanRoot, { recursive: true })
-  writeFileSync(
-    join(scanRoot, 'tsconfig.json'),
-    JSON.stringify(
-      {
-        compilerOptions: {
-          target: 'ES2022',
-          module: 'ESNext',
-          moduleResolution: 'bundler',
-          jsx: 'react-jsx',
-          allowImportingTsExtensions: false,
-          isolatedModules: true,
-          strict: true,
-          skipLibCheck: true,
-          useDefineForClassFields: true
-        }
-      },
-      null,
-      2
-    )
-  )
+  // Idempotent write: this tsconfig lives inside the host app's Vite root, so
+  // rewriting it (even with identical content, since mtime changes) trips
+  // Vite's tsconfig watcher into a forced full reload. That reload re-creates
+  // the preview dev server, which calls prepareVfsRoot again — an infinite
+  // reload loop. Only touch the file when its content actually differs.
+  const tsconfigPath = join(scanRoot, 'tsconfig.json')
+  let current: string | null = null
+  try {
+    current = readFileSync(tsconfigPath, 'utf8')
+  } catch {
+    current = null
+  }
+  if (current !== PREVIEW_TSCONFIG) writeFileSync(tsconfigPath, PREVIEW_TSCONFIG)
   return { scanRoot, vfsPrefix: `${scanRoot}/` }
 }
 
