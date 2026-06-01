@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { colorToCSS } from '@open-pencil/core/color'
 
+import type { RemotePeer } from '@/app/collab/use'
 import Tip from '@/components/ui/Tip.vue'
 import { initials } from '@/app/shell/ui'
 import { useCollabPanelContext } from '@/components/CollabPanel/context'
@@ -8,6 +9,16 @@ import { useI18n } from '@open-pencil/vue'
 
 const collab = useCollabPanelContext()
 const { dialogs } = useI18n()
+
+// §4.4 — show the follow affordance plus, when present, what the peer is editing.
+function peerTip(peer: RemotePeer): string {
+  const base =
+    collab.followingPeer === peer.clientId
+      ? dialogs.value.followingPeerStop({ name: peer.name })
+      : dialogs.value.clickToFollowPeer({ name: peer.name })
+  const editing = collab.peerEditingLabel(peer)
+  return editing ? `${base} — ${editing}` : base
+}
 </script>
 
 <template>
@@ -22,15 +33,7 @@ const { dialogs } = useI18n()
       </div>
     </Tip>
 
-    <Tip
-      v-for="peer in collab.peers"
-      :key="peer.clientId"
-      :label="
-        collab.followingPeer === peer.clientId
-          ? dialogs.followingPeerStop({ name: peer.name })
-          : dialogs.clickToFollowPeer({ name: peer.name })
-      "
-    >
+    <Tip v-for="peer in collab.peers" :key="peer.clientId" :label="peerTip(peer)">
       <div
         data-test-id="collab-peer-avatar"
         class="flex size-6 cursor-pointer items-center justify-center rounded-full border-2 text-[10px] font-semibold text-white transition-all"

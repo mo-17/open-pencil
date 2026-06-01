@@ -1,5 +1,6 @@
 import { orderBy } from 'es-toolkit/array'
 
+import { isAutoLayoutMode } from '#core/scene-graph'
 import { defineTool } from '#core/tools/schema'
 
 export const analyzeSpacing = defineTool({
@@ -21,7 +22,7 @@ export const analyzeSpacing = defineTool({
       const raw = figma.graph.getNode(node.id)
       if (!raw) return false
 
-      if (raw.layoutMode !== 'NONE' && raw.itemSpacing > 0) {
+      if (isAutoLayoutMode(raw.layoutMode) && raw.itemSpacing > 0) {
         gapMap.set(raw.itemSpacing, (gapMap.get(raw.itemSpacing) ?? 0) + 1)
       }
 

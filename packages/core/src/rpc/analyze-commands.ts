@@ -2,7 +2,7 @@ import { orderBy, sortBy } from 'es-toolkit/array'
 
 import { colorToHex, colorDistance as colorDist } from '#core/color'
 import type { ColorUsageEntry } from '#core/color/analysis'
-import type { SceneGraph, SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '#core/scene-graph'
 import type { Color } from '#core/types'
 
 import type { RpcCommand } from './types'
@@ -189,7 +189,7 @@ export const analyzeSpacingCommand: RpcCommand<void, AnalyzeSpacingResult> = {
     let totalNodes = 0
 
     for (const node of graph.getAllNodes()) {
-      if (node.type === 'CANVAS' || node.layoutMode === 'NONE') continue
+      if (node.type === 'CANVAS' || !isAutoLayoutMode(node.layoutMode)) continue
       totalNodes++
 
       if (node.itemSpacing > 0)
