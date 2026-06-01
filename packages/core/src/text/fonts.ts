@@ -69,7 +69,13 @@ const BUNDLED_FONTS: Record<string, string> = {
   'Inter|SemiBold': '/Inter-SemiBold.ttf',
   'Inter|Bold': '/Inter-Bold.ttf',
   'Inter|ExtraBold': '/Inter-ExtraBold.ttf',
-  'Noto Naskh Arabic|Regular': '/NotoNaskhArabic-Regular.ttf'
+  'Noto Naskh Arabic|Regular': '/NotoNaskhArabic-Regular.ttf',
+  // Offline CJK fallback. 'Noto Sans SC' is already the first entry in
+  // CJK_GOOGLE_FONTS, so when local system CJK fonts can't be reached
+  // (Tauri WKWebView has no Local Font Access API; browsers need a permission
+  // grant), the fallback loader resolves this bundled copy before hitting the
+  // network — guaranteeing Chinese renders without connectivity or permission.
+  'Noto Sans SC|Regular': '/NotoSansSC-Regular.ttf'
 }
 
 export const FONT_WEIGHT_NAMES: Record<number, string> = {
