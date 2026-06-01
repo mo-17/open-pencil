@@ -9,7 +9,10 @@
     "allowSyntheticDefaultImports": true,
     "types": ["node", "bun"],
     "paths": {
-      "#compiler/*": ["./src/*"]
+      "#compiler/*": ["./src/*"],
+      "#core/*": ["../core/src/*"],
+      "@open-pencil/core": ["../core/src/index.ts"],
+      "@open-pencil/core/*": ["../core/src/*"]
     },
     "noCheck": true,
     "outDir": "dist",
