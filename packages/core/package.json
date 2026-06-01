@@ -79,9 +79,9 @@
       "import": "./dist/lint/index.js"
     },
     "./lowcode-validation": {
-      "types": "./src/lowcode-validation/index.ts",
-      "bun": "./src/lowcode-validation/index.ts",
-      "default": "./src/lowcode-validation/index.ts"
+      "types": "./dist/lowcode-validation/index.d.ts",
+      "default": "./dist/lowcode-validation/index.js",
+      "import": "./dist/lowcode-validation/index.js"
     },
     "./io": {
       "types": "./dist/io/index.d.ts",
