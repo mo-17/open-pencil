@@ -7,9 +7,7 @@ import type { JsonObject } from '@open-pencil/core/types'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
-type Ok<T = undefined> = { ok: true; data?: T }
-type Err = { ok: false; error: string }
-type Result<T = undefined> = Ok<T> | Err
+type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string }
 
 const FAKE_ANON_JWT =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.fake'
@@ -196,9 +194,9 @@ describe('update_lowcode_node', () => {
         id: dp.id,
         patch_json: JSON.stringify({ interactiveProps: ip })
       }) as Result<{ id: string; updated: string[] }>
-    expect((run({ value: '2026-13-45' }) as Err).error).toContain('value')
-    expect((run({ min: 'soon' }) as Err).error).toContain('min')
-    expect((run({ max: '2026-02-30' }) as Err).error).toContain('max')
+    expect((run({ value: '2026-13-45' }) as { ok: false; error: string }).error).toContain('value')
+    expect((run({ min: 'soon' }) as { ok: false; error: string }).error).toContain('min')
+    expect((run({ max: '2026-02-30' }) as { ok: false; error: string }).error).toContain('max')
   })
 
   test('accepts valid value + min + max; inverted range is warn-and-keep (not a tool error)', () => {

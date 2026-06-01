@@ -6,9 +6,7 @@ import { getTool, setupToolTest } from '#tests/helpers/tools'
 
 import type { LowcodeNodeRead } from '@open-pencil/core/tools'
 
-type Ok<T> = { ok: true; data: T }
-type Err = { ok: false; error: string }
-type Result<T> = Ok<T> | Err
+type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 
 /**
  * Phase 3 §3 step 2 — lowcode read tools surface the SceneNode lowcode

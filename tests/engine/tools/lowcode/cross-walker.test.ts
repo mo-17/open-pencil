@@ -13,9 +13,7 @@ import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 
 import { ALL_TOOLS, getTool, setupToolTest } from '#tests/helpers/tools'
 
-type Ok<T = undefined> = { ok: true; data?: T }
-type Err = { ok: false; error: string }
-type Result<T = undefined> = Ok<T> | Err
+type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string }
 
 /**
  * Phase 3 §3 step 4 — cross-walker for the lowcode AI tool surface.
