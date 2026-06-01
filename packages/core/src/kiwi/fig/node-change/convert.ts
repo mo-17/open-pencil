@@ -398,9 +398,18 @@ function visibleContainerDerivedLayout(
     (nc.strokePaints?.some((paint) => paint.visible !== false) ?? false)
   if (layoutMode === 'NONE' || !hasHugAxis || !hasVisiblePaint) return undefined
 
+  // Older OpenPencil exports (pre-rebaseline) zeroed the transform of
+  // auto-layout children. apply.ts pins a child to `derived.x/y` when present,
+  // so a zeroed (0,0) derived position snaps every such child to the origin —
+  // the layout-distortion symptom when reopening old .fig files. Real Figma
+  // files keep genuine child offsets (upstream 1c655f34), so only carry x/y
+  // when the transform is actually non-zero; a zeroed transform falls back to
+  // the Yoga-computed position, which faithfully re-derives the placement.
+  const x = nc.transform?.m02 ?? 0
+  const y = nc.transform?.m12 ?? 0
+  const hasOffset = x !== 0 || y !== 0
   return {
-    x: nc.transform?.m02 ?? 0,
-    y: nc.transform?.m12 ?? 0,
+    ...(hasOffset ? { x, y } : {}),
     width: nc.size?.x ?? 100,
     height: nc.size?.y ?? 100
   }
