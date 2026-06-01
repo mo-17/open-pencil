@@ -97,6 +97,25 @@ export function fontHasGlyphSync(family: string, style: string, char: string): b
   return font.charToGlyphIndex(char) !== 0
 }
 
+/**
+ * True only when the font has a real glyph for every glyph-bearing character of
+ * `text`. Control characters (newlines, tabs) are skipped — they carry no glyph.
+ * A char the font lacks maps to `.notdef` (glyph index 0), whose outline is an
+ * empty/box shape; baking those into derivedTextData renders as tofu on reopen
+ * (e.g. CJK text in a Latin-only font). Callers use this to skip the bake and
+ * fall back to live shaping (which has script-aware font fallback) instead.
+ */
+export function fontCoversTextSync(family: string, style: string, text: string): boolean {
+  const font = getParsedFont(family, style)
+  if (!font) return false
+  for (const ch of text) {
+    const code = ch.codePointAt(0) ?? 0
+    if (code < 0x20) continue
+    if (font.charToGlyphIndex(ch) === 0) return false
+  }
+  return true
+}
+
 export function getGlyphOutlineMetricsSync(
   family: string,
   style: string,

@@ -2,7 +2,7 @@ import { bytesToHex, hexToBytes } from '#core/bytes/hex'
 import { encodePathCommandsBlob } from '#core/kiwi/fig/node-change/path-commands'
 import { buildDerivedTextData as buildSharedDerivedTextData } from '#core/text/derived-text/data'
 import { normalizeFontFamily, weightToFigmaStyle, weightToStyle } from '#core/text/fonts'
-import { getGlyphOutlineMetricsSync } from '#core/text/opentype'
+import { fontCoversTextSync, getGlyphOutlineMetricsSync } from '#core/text/opentype'
 import { encodeVectorNetworkBlob, buildStyleOverrideTable } from '#core/vector'
 
 export {
@@ -162,12 +162,22 @@ function buildDerivedTextData(
           rotation: 0
         }))
       : (
-          getGlyphOutlineMetricsSync(
+          // Only bake fresh outlines when the font actually covers every
+          // character. A font missing a glyph (e.g. CJK text in a Latin-only
+          // font) returns `.notdef` boxes here, which reopen would render as
+          // tofu; skip the bake so the reader falls back to live shaping.
+          (fontCoversTextSync(
             node.fontFamily,
             weightToStyle(node.fontWeight, node.italic),
-            node.text,
-            node.fontSize
-          ) ?? []
+            node.text
+          )
+            ? getGlyphOutlineMetricsSync(
+                node.fontFamily,
+                weightToStyle(node.fontWeight, node.italic),
+                node.text,
+                node.fontSize
+              )
+            : null) ?? []
         ).map((glyph, index) => ({
           commandsBlob: appendGlyphBlob(
             blobs,
