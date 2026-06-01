@@ -9,6 +9,7 @@
  * one source.
  */
 import type { SupabaseConfig } from '#core/scene-graph'
+import type { JsonObject } from '#core/types'
 
 import type { ValidationResult } from './validate'
 
@@ -26,7 +27,7 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   try {
     const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/')
     const json = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4))
-    return JSON.parse(json) as Record<string, unknown>
+    return JSON.parse(json) as JsonObject
   } catch {
     return null
   }

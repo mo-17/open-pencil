@@ -7,6 +7,8 @@
 // built-ins — so the editor could call this directly in future (the first
 // editor surface shells out to the CLI instead, keeping one deploy pipeline).
 
+import type { JsonObject } from '@open-pencil/core/types'
+
 export interface DeployTarget {
   provider: 'netlify' | 'vercel'
   /** Personal access token. Never persisted (passed via --token / env). */
@@ -95,7 +97,7 @@ async function apiFetch(
   // These endpoints return JSON; tolerate an empty body.
   const text = await res.text()
   if (!text) return {}
-  return JSON.parse(text) as Record<string, unknown>
+  return JSON.parse(text) as JsonObject
 }
 
 type ProgressFn = ((p: DeployProgress) => void) | undefined

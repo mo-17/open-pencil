@@ -418,6 +418,17 @@
     },
     {
       "files": [
+        "packages/compiler/src/**",
+        "tests/engine/compiler/**",
+        "tests/engine/lowcode-validation/**",
+        "src/components/properties/Lowcode/**"
+      ],
+      "rules": {
+        "no-template-curly-in-string": "off"
+      }
+    },
+    {
+      "files": [
         "**/kiwi/schema-runtime/**"
       ],
       "rules": {

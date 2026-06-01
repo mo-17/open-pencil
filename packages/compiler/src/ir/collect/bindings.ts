@@ -489,7 +489,7 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
       return
     case 'setState':
     case 'navigate':
-      return
+      break
   }
 }
 

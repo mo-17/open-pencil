@@ -81,7 +81,9 @@ function pickFreePort(): Promise<number> {
     probe.listen(0, '127.0.0.1', () => {
       const addr = probe.address()
       const port = typeof addr === 'object' && addr ? addr.port : 0
-      probe.close((err) => (err ? reject(err) : resolve(port)))
+      probe.close(() => {
+        resolve(port)
+      })
     })
   })
 }

@@ -166,14 +166,16 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
         if (url !== '/' && url !== '/index.html') return next()
         const html = state.files.get('index.html')
         if (typeof html !== 'string') return next()
-        server
-          .transformIndexHtml(req.originalUrl ?? '/', html)
-          .then((transformed) => {
+        void (async () => {
+          try {
+            const transformed = await server.transformIndexHtml(req.originalUrl ?? '/', html)
             res.setHeader('Content-Type', 'text/html')
             res.statusCode = 200
             res.end(transformed)
-          })
-          .catch(next)
+          } catch (err) {
+            next(err)
+          }
+        })()
       })
     }
   }

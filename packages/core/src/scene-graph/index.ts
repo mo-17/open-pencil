@@ -410,11 +410,10 @@ export class SceneGraph {
     if (!node || keys.length === 0) return
     const affectsLayout = keys.some((k) => SceneGraph.LAYOUT_AFFECTING_KEYS.has(k as string))
     if (affectsLayout) this.absPosCache.clear()
-    const mutable = node as unknown as Record<string, unknown>
-    const changes: Record<string, undefined> = {}
+    const changes: Partial<Record<keyof SceneNode, undefined>> = {}
     for (const key of keys) {
-      delete mutable[key as string]
-      changes[key as string] = undefined
+      Reflect.deleteProperty(node, key)
+      changes[key] = undefined
     }
     if (this.sourceMetadataPreservationDepth === 0) {
       clearEditedSourceMetadata(node, Object.keys(changes))

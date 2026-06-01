@@ -239,7 +239,7 @@ function applyShapeStyle(style: Record<string, string>, node: SceneNode): void {
     if (!style.backgroundColor) return
 
     const weight = stroke?.weight ?? 1
-    const length = Math.sqrt(node.width * node.width + node.height * node.height)
+    const length = Math.hypot(node.width, node.height)
     const angleDeg = (Math.atan2(node.height, node.width) * 180) / Math.PI
     const totalRotation = node.rotation + angleDeg
 

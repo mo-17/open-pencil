@@ -13,6 +13,7 @@
 // read side in convert.ts.
 
 import type { NodeChange } from '#core/kiwi/fig/codec'
+import type { JsonObject } from '#core/types'
 import type {
   ActionDef,
   BindingExpr,
@@ -168,7 +169,7 @@ function fillAxisSizing(node: SceneNode): { primary?: 'FILL'; counter?: 'FILL' }
 
 function isSupabaseConfig(value: unknown): value is SupabaseConfig {
   if (value === null || typeof value !== 'object') return false
-  const v = value as Record<string, unknown>
+  const v = value as JsonObject
   return typeof v.url === 'string' && v.url !== '' && typeof v.anonKey === 'string' && v.anonKey !== ''
 }
 
@@ -283,7 +284,7 @@ function assignLowcodeField(
       target.events = value as Partial<Record<EventName, ActionDef[]>>
       return
     case LOWCODE_INTERACTIVE_PROPS_KEY:
-      target.interactiveProps = value as Record<string, unknown>
+      target.interactiveProps = value as JsonObject
       return
     case LOWCODE_RENDER_CONDITION_KEY:
       if (typeof value === 'string') target.renderCondition = value
@@ -311,7 +312,7 @@ function assignLowcodeField(
       return
     case LOWCODE_GRID_POSITION_KEY:
       if (isGridPosition(value)) target.gridPositionOverride = value
-      return
+      break
   }
 }
 
@@ -319,7 +320,7 @@ function assignLowcodeField(
  *  malformed value is treated as absent (child stays auto-placed). */
 function isGridPosition(value: unknown): value is GridPosition {
   if (value === null || typeof value !== 'object') return false
-  const v = value as Record<string, unknown>
+  const v = value as JsonObject
   return (
     typeof v.column === 'number' &&
     typeof v.row === 'number' &&
@@ -333,7 +334,7 @@ function isGridPosition(value: unknown): value is GridPosition {
  *  sizing untouched. */
 function assignFillAxisSizing(target: ExtractedLowcodeAndPluginData, value: unknown): void {
   if (value === null || typeof value !== 'object') return
-  const v = value as Record<string, unknown>
+  const v = value as JsonObject
   if (v.primary === 'FILL') target.primaryAxisSizingOverride = 'FILL'
   if (v.counter === 'FILL') target.counterAxisSizingOverride = 'FILL'
 }

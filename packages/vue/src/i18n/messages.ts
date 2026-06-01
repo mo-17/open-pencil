@@ -382,6 +382,7 @@ export const panelMessages = i18n('panels', {
   lowcodeActionApiBody: 'Body (JSON)',
   lowcodeActionApiTarget: 'Write response to',
   // Lowcode (Phase 2 §4 — expression sub-language: URL templating)
+  // oxlint-disable-next-line eslint(no-template-curly-in-string)
   lowcodeActionApiUrlHint: 'URL supports ${expr} interpolation',
 
   // Lowcode (Phase 3 §2 — Supabase)

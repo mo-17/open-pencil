@@ -82,7 +82,7 @@ async function runWithUndoBatch<T>(
   toolName: string,
   fn: () => T | Promise<T>
 ): Promise<T> {
-  if (!EDITOR_UNDO_TOOLS.has(toolName)) return await fn()
+  if (!EDITOR_UNDO_TOOLS.has(toolName)) return fn()
   store.undo.beginBatch(`AI: ${toolName}`)
   try {
     const result = await fn()

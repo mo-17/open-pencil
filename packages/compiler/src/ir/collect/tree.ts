@@ -884,8 +884,6 @@ function applyInteractiveProps(
       return
     case 'RADIO':
       applyRadioOptions(node, ip, children)
-      return
-    default:
-      return
+      break
   }
 }

@@ -114,7 +114,7 @@ async function runDeployCli(
     throw new Error(`${e instanceof Error ? e.message : String(e)} — ${hint}`)
   })
 
-  return await new Promise<DeployCliResult>((resolve, reject) => {
+  return new Promise<DeployCliResult>((resolve, reject) => {
     command.on('close', (data: { code: number | null }) => {
       if (data.code !== 0) {
         const detail = stderrTail.join('').trim()

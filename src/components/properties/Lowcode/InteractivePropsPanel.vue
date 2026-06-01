@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import type { JsonObject } from '@open-pencil/core/types'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -65,7 +66,7 @@ function commit(patch: Props): void {
   const merged: Props = { ...ip.value, ...patch }
   editor.updateNodeWithUndo(
     node.id,
-    { interactiveProps: merged as Record<string, unknown> },
+    { interactiveProps: merged as JsonObject },
     'Update properties'
   )
 }
@@ -89,7 +90,7 @@ function arrayValue(key: string): string[] {
 // to match the compiler's `ip.checked === true` read.
 function onTextInput(key: string, value: string): void {
   const next: Props = { ...ip.value }
-  if (value === '') delete next[key]
+  if (value === '') Reflect.deleteProperty(next, key)
   else next[key] = value
   commit(next)
 }
@@ -97,7 +98,7 @@ function onTextInput(key: string, value: string): void {
 function onBoolInput(key: string, checked: boolean): void {
   const next: Props = { ...ip.value }
   if (checked) next[key] = true
-  else delete next[key]
+  else Reflect.deleteProperty(next, key)
   commit(next)
 }
 

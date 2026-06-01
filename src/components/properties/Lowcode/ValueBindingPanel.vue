@@ -107,7 +107,6 @@ function onSourceChange(event: Event): void {
   }
   if (value.startsWith(STATE_PREFIX)) {
     commitBinding({ kind: 'ref', stateId: value.slice(STATE_PREFIX.length) })
-    return
   }
 }
 </script>

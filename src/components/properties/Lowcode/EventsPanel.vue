@@ -111,7 +111,7 @@ function actionKindLabel(kind: ActionKind): string {
 function commitActions(node: SceneNode, name: EventName, next: ActionDef[]): void {
   const eventsCopy = { ...node.events }
   if (next.length === 0) {
-    delete eventsCopy[name]
+    Reflect.deleteProperty(eventsCopy, name)
   } else {
     eventsCopy[name] = next
   }

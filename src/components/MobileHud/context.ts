@@ -58,9 +58,10 @@ function createMobileHudContext() {
 
   function share() {
     if (!collab) return
-    const roomId = collab.shareCurrentDoc()
-    void router.push(`/share/${roomId}`)
-    void copy(`${window.location.origin}/share/${roomId}`)
+    const { roomId, key } = collab.shareCurrentDoc()
+    const path = key ? `/share/${roomId}#k=${key}` : `/share/${roomId}`
+    void router.push(path)
+    void copy(`${window.location.origin}${path}`)
     toast.info('Link copied to clipboard')
   }
 

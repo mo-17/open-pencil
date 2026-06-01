@@ -265,15 +265,10 @@ export interface IRStateDecl {
   defaultValue: unknown
 }
 
-/** Phase 2 §2: a document-level state declaration. Same shape as
- *  `IRStateDecl`, but adapter emits these into the lowcode runtime store
+/** Phase 2 §2: a document-level state declaration. Structurally identical to
+ *  `IRStateDecl`, but the adapter emits these into the lowcode runtime store
  *  (`src/_lowcode_state.ts`) rather than into per-page `useState` calls. */
-export interface IRDocStateDecl {
-  id: string
-  name: string
-  type: 'string' | 'number' | 'boolean' | 'object' | 'array'
-  defaultValue: unknown
-}
+export type IRDocStateDecl = IRStateDecl
 
 export interface IRTree {
   /** SceneNode id of the page (CANVAS) this tree was derived from. */
