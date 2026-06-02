@@ -198,7 +198,19 @@ export interface IRExpression {
   fallback?: string
 }
 
-export type IRAttrValue = string | number | boolean
+/** Phase 3 §9 v3 — an i18n-externalized attribute value (e.g. an INPUT's
+ *  `placeholder`). `<FormattedMessage>` is a JSX element and can't sit in an
+ *  attribute, so the adapter emits `attr={intl.formatMessage({ id, defaultMessage })}`
+ *  and the enclosing function gets a `const intl = useIntl()` hook. `messageId`
+ *  is the same content-hash as visible text (`IRText.messageId`) so an identical
+ *  string shares one catalog entry. Only produced when i18n is enabled. */
+export interface IRIntlAttr {
+  kind: 'intlMessage'
+  messageId: string
+  defaultMessage: string
+}
+
+export type IRAttrValue = string | number | boolean | IRIntlAttr
 
 /** Phase 2 §9: conditional render wrapper. Adapter emits
  *  `{(<expr>) && (<consequent>)}`. Only present when the source node's

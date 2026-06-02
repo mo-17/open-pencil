@@ -26,6 +26,21 @@ export const SOURCE_LOCALE = 'en'
 /** Relative path (from `src/`) of the source-locale catalog the runtime imports. */
 export const SOURCE_CATALOG_FILE = `locales/${SOURCE_LOCALE}.json`
 
+/** Phase 3 §9 — the `import { ... } from 'react-intl'` line for a page/component
+ *  file, listing only the symbols it uses: `FormattedMessage` for visible text
+ *  (§9 v1), `useIntl` for translated attributes like placeholder (§9 v3).
+ *  Returns '' when neither is needed (so non-i18n files stay byte-identical). */
+export function buildReactIntlImport(needs: {
+  formattedMessage: boolean
+  intl: boolean
+}): string {
+  const names: string[] = []
+  if (needs.formattedMessage) names.push('FormattedMessage')
+  if (needs.intl) names.push('useIntl')
+  if (names.length === 0) return ''
+  return `import { ${names.join(', ')} } from 'react-intl'\n`
+}
+
 /**
  * Build `src/locales/<source>.json` — the id→source-string map. Keys are sorted
  * for a stable, diff-friendly file across re-compiles.

@@ -4268,6 +4268,75 @@ CODE COMPLETE 2026-06-03。完全符合设计,零意外:
 
 **§9 v3 follow-ups:** 属性串(placeholder)i18n via useIntl;翻译授权数据模型(编辑器填译文,非开发者填 JSON);ICU 复数/插值;`sourceLocale` 可配。
 
+## §9 v3 属性串 i18n — placeholder via useIntl()(设计 2026-06-03)
+
+> §9 v2 follow-up。用户 2026-06-03 挑定方向 = **属性串 i18n**(否决 §10 v2 toast / 更多 deploy provider / §8 v7 componentProps 默认)。
+
+### 9v3.1 现状与问题
+
+§9 v1/v2 只翻译**可见 JSX 子文本**(TEXT 内容、BUTTON 文案、SELECT/RADIO/CHECKBOX option 标签),emit `<FormattedMessage>`。但 `<FormattedMessage>` 是 JSX **元素**,不能放进属性值(`placeholder={<FormattedMessage/>}` 非法)→ 面向用户的**属性串**仍硬编码字面,切换语言时不译。
+
+Recon 坐实(经验 E,读 `ir/collect/tree.ts` + `emit/element.ts`):当前 emit 中**唯一面向用户的属性串 = `placeholder`**(`applyTextInputProps`,INPUT/TEXTAREA)。`value`/`defaultValue` 是用户数据、`min`/`max` 是日期 → 不译;SELECT/RADIO/CHECKBOX 的 `value=` 已锁定为表单值不译;`name`/`type`/`role` 非面向用户;**无 `aria-label`/`title`/`alt` emit**(grep 零命中)。所以 v3 范围 = `placeholder`,用 `useIntl().formatMessage()`(属性能放函数调用)。
+
+### 9v3.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **范围仅 `placeholder`** | 当前 emit 唯一现存属性串。aria/title/alt 不在 emit,留待将来加节点属性时复用同基建(本期不臆造)。 |
+| 2 | **新 `IRIntlAttr` attr-value 形 `{kind:'intlMessage',messageId,defaultMessage}`** | `IRAttrValue` 加这一支(原 `string\|number\|boolean`)。**通用基建**(任何属性可外置),但本期只 wire placeholder。 |
+| 3 | **可见文本保留 `<FormattedMessage>`,属性用 `useIntl`(混合)** | 否决全量改 `useIntl().formatMessage`(重写 v1/v2 全部 emit + 测试)。JSX 子用 FormattedMessage(惯用)、属性用 intl —— 零回归 v1/v2。 |
+| 4 | **复用 v1 `messageKey` 内容 hash → 与可见文本同串合并** | placeholder 与某可见文本字面相同 → 同 hash → 共享一条 catalog 条目(与 v1 dedup 语义一致)。 |
+| 5 | **仅非空 placeholder 外置** | 空 placeholder(`''`)保持字面、不进 catalog(翻译空串无意义);与 displayText 一致地按内容打 key。 |
+| 6 | **`useIntl` hook 注入:含属性串的 page/component 函数顶注入 `const intl = useIntl()`** | import 按需合并 `{ FormattedMessage, useIntl }`(不重复 import react-intl)。plain 组件原是表达式 return,需改语句体注入 hook。 |
+
+### 9v3.3 公开 API / Schema 改动(零 scene-graph / round-trip)
+
+- `ir/types.ts`:新 `IRIntlAttr {kind:'intlMessage'; messageId; defaultMessage}`;`IRAttrValue = string | number | boolean | IRIntlAttr`。
+- `ir/collect/tree.ts`:新 `displayAttr(value, ctx)`(镜像 `displayText`,返回字面或 intlMessage 对象);`applyTextInputProps(ip, attrs, ctx)` 加 `ctx`。
+- `adapters/react/ir-walk.ts`:新 `hasIntlAttr(nodes)`(驱动 useIntl import + hook 注入)。
+- `adapters/react/index.ts`:`collectMessages`/`collectText` 也收 element 的 intlMessage 属性入 catalog。
+- 无 `CompilerOptions` 改动(沿用 `i18n` flag);产物无新文件(placeholder 串进既有 `locales/<src>.json`)。
+
+### 9v3.4 内部实现拆解
+
+1. **collect**(tree.ts):`displayAttr(value, ctx)` = `!ctx.i18n || value===''` → 原字面;否则 `{kind:'intlMessage', messageId: messageKey(value), defaultMessage: value}`。`applyTextInputProps` 接 `ctx`,`attrs.placeholder = displayAttr(ip.placeholder, ctx)`;`applyInteractiveProps` 的 INPUT/TEXTAREA 分支传 `ctx`。
+2. **emit**(element.ts):`formatAttr(key,value)` 加分支 —— value 是 `intlMessage` → `${key}={intl.formatMessage({ id: "${messageId}", defaultMessage: ${JSON.stringify(defaultMessage)} })}`。
+3. **import + hook 注入**:`ir-walk.ts hasIntlAttr(nodes)`(降 conditional/list/element children,检查 `element.attrs` 任一 value 是 intlMessage)。scaffold.ts `buildPageFile`:react-intl import 名集合 = `{FormattedMessage if hasTranslatableText} ∪ {useIntl if hasIntlAttr}`;`hasIntlAttr` → hookLines 加 `const intl = useIntl()`。component.ts:`buildComponentModule` import 合并;`buildComponentBody`/`buildVariantModule` 当组件体含 intlAttr → 注入 `const intl = useIntl()`(plain 组件从表达式 return 改语句体 `{ const intl = useIntl(); return (...) }`)。
+4. **catalog**(index.ts):`collectText` 对 element 节点遍历 `attrs`,intlMessage → `acc.set(messageId, defaultMessage)`。
+
+### 9v3.5 成功标准
+
+- i18n 开 + 非空 placeholder → emit `placeholder={intl.formatMessage({ id, defaultMessage })}` + 函数顶 `const intl = useIntl()` + `import { useIntl }`(或合并 `{ FormattedMessage, useIntl }`)。
+- placeholder 串进 `locales/en.json`;与同字面可见文本共享一条目(同 hash)。
+- 组件体内 INPUT 的 placeholder 同样译(组件文件注入 useIntl + hook)。
+- i18n 关 → placeholder 仍字面、产物 byte-identical(零回归,既有 481 测试不动)。
+- 空 placeholder 不进 catalog、保持字面。
+- `bun run check` exit 0。
+
+### 9v3.6 工作分解(~0.5 day)
+
+types(IRIntlAttr)→ tree.ts(displayAttr + applyTextInputProps ctx)→ element.ts(formatAttr 分支)→ ir-walk.ts(hasIntlAttr)→ scaffold.ts + component.ts(import 合并 + intl hook 注入)→ index.ts(collectText 收属性)→ i18n.test.ts 扩 v3 用例 → `build:packages` → `bun run check`。
+
+### 9v3.7 风险
+
+- **component intl hook 注入**改函数体结构(plain 组件需从表达式 return 改语句体)→ 小心 variant/empty 分支都注入;jscpd 别拷贝 import-合并逻辑(抽 helper)。
+- `formatAttr` 加分支 → 看 complexity 闸(必要时抽 helper,经验)。
+- import 合并别漏 v1 的 FormattedMessage-only 旧路径(hasTranslatableText 但无 intlAttr 时仍只 import FormattedMessage = byte-identical)。
+
+### 9v3.8 Post-mortem
+
+CODE COMPLETE 2026-06-03。完全符合设计,零意外、零 hotfix:
+
+- **唯一属性串 = placeholder 坐实**(经验 E):grep 全 compiler emit,面向用户的属性串只 `placeholder`(INPUT/TEXTAREA);`value`/`min`/`max`=用户数据/日期、option `value=` 已锁、无 aria/title/alt emit → 范围天然收敛到 placeholder。
+- **通用基建 + 单点 wire**:`IRIntlAttr {kind:'intlMessage',messageId,defaultMessage}` 并入 `IRAttrValue`(原 `string|number|boolean`);`displayAttr(value,ctx)`(镜像 `displayText`,i18n 关或空串→字面);`formatAttr` 加 `typeof value==='object'` 分支 → `attr={intl.formatMessage({ id, defaultMessage })}`。将来加 aria/title/alt 复用同形,无新路径。
+- **混合策略零回归**:可见文本仍 `<FormattedMessage>`(v1),属性走 `useIntl`(v3)→ 既有 481 测试一字未改即 byte-identical 通过(= i18n-off 与 v1/v2 路径全保真)。
+- **import 合并抽 helper(避 jscpd)**:`buildReactIntlImport({formattedMessage,intl})`(lowcode/i18n.ts)按需列 `{ FormattedMessage, useIntl }`,page(scaffold.ts)+ component(component.ts)共用;`FormattedMessage`-only 旧路径输出不变。
+- **hook 注入**:`hasIntlAttr(nodes)`(ir-walk.ts,降 conditional/list/element children)驱动 `const intl = useIntl()`。page 进 hookLines;component 体须从表达式 return 改语句体 `${intlHook}  return (...)`(plain+empty+variant 三分支都注入,`intlHook=''` 时 byte-identical)。
+- **catalog**:collectText 对 element 遍历 attrs,intlMessage→`acc.set(messageId,defaultMessage)`;与同字面可见文本共享一条目(同 hash dedup)。
+- **测试**:i18n.test.ts +6 v3(off 字面 / on formatMessage+useIntl+hook+catalog / placeholder+text 合并单 import / 同串共享条目 / 空 placeholder 不外置 / 组件体内 useIntl)= compiler 487/0;`bun run check` exit 0,tsgo 0。
+
+**§9 v4 follow-ups:** 翻译授权数据模型(编辑器填译文,非开发者填 JSON);ICU 复数/插值(绑定值进消息);`sourceLocale` 可配;将来若新增 aria-label/title/alt 节点属性 → 复用 displayAttr/IRIntlAttr 直接覆盖。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

@@ -85,6 +85,27 @@ function nodeHasTranslatableText(node: IRNode): boolean {
 }
 
 /**
+ * Phase 3 §9 v3 — does any element in `nodes` carry an i18n-externalized
+ * attribute (an `intlMessage` attr value, e.g. a translated placeholder)? Drives
+ * the `useIntl` import + the `const intl = useIntl()` hook in the enclosing
+ * page / component function. ComponentRefs are leaves — a referenced component's
+ * own file imports useIntl independently.
+ */
+export function hasIntlAttr(nodes: readonly IRNode[]): boolean {
+  return nodes.some(nodeHasIntlAttr)
+}
+
+function nodeHasIntlAttr(node: IRNode): boolean {
+  if (node.kind === 'conditional') return nodeHasIntlAttr(node.consequent)
+  if (node.kind === 'list') return nodeHasIntlAttr(node.template)
+  if (node.kind !== 'element') return false
+  for (const value of Object.values(node.attrs)) {
+    if (typeof value === 'object') return true
+  }
+  return node.children.some(nodeHasIntlAttr)
+}
+
+/**
  * Phase 3 §2: a page uses supabase when any handler in its tree is a
  * `supabaseQuery`, `supabaseMutation`, or `supabaseAuth`. The scaffolder
  * consults this to decide whether to emit

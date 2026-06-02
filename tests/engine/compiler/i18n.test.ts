@@ -181,3 +181,132 @@ describe('compile — i18n target locales + switcher (Phase 3 §9 v2)', () => {
     expect(runtime).toContain('{ en, "zh-CN": zhCN }')
   })
 })
+
+/**
+ * Phase 3 §9 v3 — attribute-string i18n. A `<FormattedMessage>` is a JSX element
+ * and can't sit in an attribute, so a user-facing attribute (an INPUT's
+ * `placeholder`) is emitted as `placeholder={intl.formatMessage({ id, defaultMessage })}`
+ * and the enclosing function gets a `const intl = useIntl()` hook. Off, or an
+ * empty placeholder, → the plain literal (byte-identical to pre-§9-v3).
+ */
+describe('compile — attribute-string i18n (Phase 3 §9 v3)', () => {
+  function pageWithPlaceholder(placeholder: string): { graph: SceneGraph; pageId: string } {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const frame = graph.createNode('FRAME', pageId, {
+      width: 200,
+      height: 100,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('INPUT', frame.id, {
+      width: 160,
+      height: 32,
+      interactiveProps: { placeholder }
+    })
+    return { graph, pageId }
+  }
+
+  test('i18n off: placeholder stays a literal, no useIntl', () => {
+    const { graph, pageId } = pageWithPlaceholder('Email')
+    const app = compileI18n(graph, pageId, false).files.get('src/App.tsx') as string
+    expect(app).toContain('placeholder="Email"')
+    expect(app).not.toContain('useIntl')
+    expect(app).not.toContain('intl.formatMessage')
+  })
+
+  test('i18n on: placeholder → intl.formatMessage + useIntl import + hook + catalog', () => {
+    const { graph, pageId } = pageWithPlaceholder('Email')
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toMatch(
+      /placeholder=\{intl\.formatMessage\(\{ id: "m[a-z0-9]+", defaultMessage: "Email" \}\)\}/
+    )
+    expect(app).toContain("import { useIntl } from 'react-intl'")
+    expect(app).toContain('const intl = useIntl()')
+    expect(app).not.toContain('placeholder="Email"') // literal no longer emitted
+    // placeholder string lands in the catalog like visible text
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
+    expect(Object.values(catalog)).toContain('Email')
+  })
+
+  test('placeholder + visible text → one combined react-intl import', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const frame = graph.createNode('FRAME', pageId, {
+      width: 200,
+      height: 100,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('TEXT', frame.id, { text: 'Sign in', width: 120, height: 20 })
+    graph.createNode('INPUT', frame.id, {
+      width: 160,
+      height: 32,
+      interactiveProps: { placeholder: 'Email' }
+    })
+    const app = compileI18n(graph, pageId, true).files.get('src/App.tsx') as string
+    // both symbols, one import line (not two separate react-intl imports)
+    expect(app).toContain("import { FormattedMessage, useIntl } from 'react-intl'")
+    expect(app.match(/from 'react-intl'/g)?.length).toBe(1)
+  })
+
+  test('a placeholder identical to visible text shares one catalog entry', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const frame = graph.createNode('FRAME', pageId, {
+      width: 200,
+      height: 100,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('TEXT', frame.id, { text: 'Search', width: 120, height: 20 })
+    graph.createNode('INPUT', frame.id, {
+      width: 160,
+      height: 32,
+      interactiveProps: { placeholder: 'Search' }
+    })
+    const out = compileI18n(graph, pageId, true)
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
+    // same content-hash → one entry shared by the text and the placeholder
+    expect(Object.keys(catalog).length).toBe(1)
+    expect(Object.values(catalog)).toEqual(['Search'])
+  })
+
+  test('an empty placeholder is not externalized (stays literal, off the catalog)', () => {
+    const { graph, pageId } = pageWithPlaceholder('')
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('placeholder=""')
+    expect(app).not.toContain('intl.formatMessage')
+    // no translatable string at all → no i18n runtime emitted
+    expect(out.files.has('src/locales/en.json')).toBe(false)
+  })
+
+  test('a placeholder inside a component body gets useIntl in the component file', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const master = graph.createNode('COMPONENT', pageId, {
+      name: 'Search Box',
+      width: 160,
+      height: 40,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('INPUT', master.id, {
+      width: 140,
+      height: 32,
+      interactiveProps: { placeholder: 'Find…' }
+    })
+    graph.createInstance(master.id, pageId)
+
+    const out = compileI18n(graph, pageId, true)
+    const comp = out.files.get('src/components/SearchBox.tsx') as string
+    expect(comp).toBeDefined()
+    expect(comp).toContain("import { useIntl } from 'react-intl'")
+    expect(comp).toContain('const intl = useIntl()')
+    expect(comp).toMatch(/placeholder=\{intl\.formatMessage\(\{ id: "m[a-z0-9]+", defaultMessage: "Find…" \}\)\}/)
+  })
+})

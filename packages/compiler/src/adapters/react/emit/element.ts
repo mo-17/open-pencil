@@ -249,6 +249,12 @@ function arrayCheckboxOnChangeBody(c: IRControlledInput, optLiteral: string): st
 function formatAttr(key: string, value: IRAttrValue): string {
   if (typeof value === 'string') return `${key}="${escapeAttr(value)}"`
   if (typeof value === 'number') return `${key}={${value}}`
+  // Phase 3 §9 v3: an i18n-externalized attribute (e.g. placeholder) →
+  // `attr={intl.formatMessage({ id, defaultMessage })}`. The enclosing function
+  // gets a `const intl = useIntl()` hook from the scaffold (driven by hasIntlAttr).
+  if (typeof value === 'object') {
+    return `${key}={intl.formatMessage({ id: "${value.messageId}", defaultMessage: ${JSON.stringify(value.defaultMessage)} })}`
+  }
   return value ? key : `${key}={false}`
 }
 

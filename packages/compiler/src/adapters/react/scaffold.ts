@@ -4,11 +4,13 @@ import { buildComponentImports } from './emit/component'
 import { emitElement } from './emit/element'
 import { emitStateDecl } from './emit/state'
 import {
+  hasIntlAttr,
   hasTranslatableText,
   pageHasNavigateHandler,
   pageUsesSupabase,
   referencedComponentNames
 } from './ir-walk'
+import { buildReactIntlImport } from './lowcode/i18n'
 import type { PagePathInfo } from './route-paths'
 
 /**
@@ -146,10 +148,13 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const componentNames = referencedComponentNames(ir.children)
   const componentImports = buildComponentImports(componentNames, componentImportPrefix)
   const componentImportBlock = componentImports ? `${componentImports}\n` : ''
-  // Phase 3 §9: import FormattedMessage when the page has i18n-tagged text.
-  const i18nImport = hasTranslatableText(ir.children)
-    ? `import { FormattedMessage } from 'react-intl'\n`
-    : ''
+  // Phase 3 §9: import FormattedMessage for visible text, useIntl for
+  // translated attributes (§9 v3, e.g. placeholder).
+  const usesIntlAttr = hasIntlAttr(ir.children)
+  const i18nImport = buildReactIntlImport({
+    formattedMessage: hasTranslatableText(ir.children),
+    intl: usesIntlAttr
+  })
   const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + componentImportBlock + i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
@@ -157,8 +162,12 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const docStateReadLines = ir.docStateReads
     .map((name) => `  const ${name} = useDocState(${JSON.stringify(name)})`)
     .join('\n')
+  // §9 v3: a `const intl = useIntl()` hook for any translated attribute.
+  const intlHookLine = usesIntlAttr ? '  const intl = useIntl()' : ''
 
-  const hookLines = [stateLines, docStateReadLines, navigateLine].filter((l) => l !== '').join('\n')
+  const hookLines = [stateLines, docStateReadLines, navigateLine, intlHookLine]
+    .filter((l) => l !== '')
+    .join('\n')
 
   const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}">`
 

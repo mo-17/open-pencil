@@ -570,6 +570,16 @@ function displayText(value: string, ctx: WalkCtx): IRText {
   return { kind: 'text', value, messageId: messageKey(value) }
 }
 
+/** Phase 3 §9 v3 — externalize a user-facing *attribute* string (an INPUT's
+ *  `placeholder`). Unlike `displayText` (visible JSX children → `<FormattedMessage>`),
+ *  an attribute can't hold a JSX element, so this returns an `intlMessage`
+ *  attr-value the adapter emits via `intl.formatMessage(...)`. i18n off, or an
+ *  empty string (nothing to translate), → the plain literal. */
+function displayAttr(value: string, ctx: WalkCtx): IRAttrValue {
+  if (!ctx.i18n || value === '') return value
+  return { kind: 'intlMessage', messageId: messageKey(value), defaultMessage: value }
+}
+
 /** Stable, deterministic message id for a source string: fnv-1a hash → base36.
  *  Same string → same id (dedupes identical copy + keeps keys churn-free across
  *  re-compiles). No `Math.random` (CLAUDE.md). */
@@ -967,9 +977,15 @@ function wrapConditional(node: SceneNode, element: IRElement, ctx: WalkCtx): IRN
 
 type InteractiveProps = Record<string, unknown>
 
-/** INPUT / TEXTAREA — a text-entry field carrying placeholder + value. */
-function applyTextInputProps(ip: InteractiveProps, attrs: Record<string, IRAttrValue>): void {
-  if (typeof ip.placeholder === 'string') attrs.placeholder = ip.placeholder
+/** INPUT / TEXTAREA — a text-entry field carrying placeholder + value. Phase 3
+ *  §9 v3: the placeholder is a user-facing label → externalized to i18n when
+ *  enabled (the `value`/defaultValue is user data, kept literal). */
+function applyTextInputProps(
+  ip: InteractiveProps,
+  attrs: Record<string, IRAttrValue>,
+  ctx: WalkCtx
+): void {
+  if (typeof ip.placeholder === 'string') attrs.placeholder = displayAttr(ip.placeholder, ctx)
   if (typeof ip.value === 'string' && ip.value !== '') attrs.defaultValue = ip.value
 }
 
@@ -1170,7 +1186,7 @@ function applyInteractiveProps(
   switch (node.type) {
     case 'INPUT':
     case 'TEXTAREA':
-      applyTextInputProps(ip, attrs)
+      applyTextInputProps(ip, attrs, ctx)
       return
     case 'CHECKBOX':
       // Phase 3 §3.v4 step 8 — options[] → multi-select group (mirrors
