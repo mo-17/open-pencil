@@ -44,9 +44,13 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
   if (node.kind === 'componentRef') {
     // Phase 3 §8: `<Name className="..." />`. The shared subtree lives in the
     // emitted component file; the usage site supplies its own root classes.
+    // Phase 3 §8 v2: text-only instances pass their overridden text as props.
     const classAttr = node.className ? ` className="${escapeAttr(node.className)}"` : ''
+    const propAttrs = node.props
+      .map((p) => ` ${p.name}="${escapeAttr(p.value)}"`)
+      .join('')
     const idAttr = devMode ? ` data-node-id="${node.sourceId}"` : ''
-    return `${pad}<${node.name}${classAttr}${idAttr} />`
+    return `${pad}<${node.name}${classAttr}${propAttrs}${idAttr} />`
   }
 
   if (node.kind === 'list') {

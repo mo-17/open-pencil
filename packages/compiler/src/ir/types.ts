@@ -24,6 +24,28 @@ export interface IRComponentRef {
   name: string
   /** Space-separated Tailwind classes for this usage's root (empty when none). */
   className: string
+  /** Phase 3 §8 v2 — text-override prop values this usage passes
+   *  (`<Name title="new" />`). Empty for the master and clean instances (they
+   *  fall back to the component's per-prop defaults). */
+  props: ComponentRefProp[]
+}
+
+/** Phase 3 §8 v2 — one text-override value passed at a component usage site. */
+export interface ComponentRefProp {
+  /** Prop name on the component (matches a `ComponentDef.props[].name`). */
+  name: string
+  /** The overridden text value (emitted as a string literal). */
+  value: string
+}
+
+/** Phase 3 §8 v2 — a text prop slot on a reusable component. Derived from a
+ *  `:text` override that at least one instance carries; the master child's own
+ *  text is the default so clean usages render unchanged. */
+export interface ComponentProp {
+  /** Prop name (camel-ish, derived from the master child's layer name). */
+  name: string
+  /** Default value = the master child's text. */
+  defaultValue: string
 }
 
 /**
@@ -38,6 +60,10 @@ export interface ComponentDef {
   name: string
   /** The master's child subtrees (the shared body). */
   children: IRNode[]
+  /** Phase 3 §8 v2 — text prop slots (union of `:text` overrides across all
+   *  instances). The adapter emits one optional prop per entry, defaulting to
+   *  the master child's text. Empty when no instance overrides text. */
+  props: ComponentProp[]
 }
 
 export interface IRElement {

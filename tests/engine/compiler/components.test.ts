@@ -78,15 +78,15 @@ describe('compile — components / instances (Phase 3 §8)', () => {
     expect(relocated).toContain('top-20') // 80px → 20
   })
 
-  test('an instance with overrides falls back to inline emission', () => {
+  test('an instance with a non-text override falls back to inline emission', () => {
     const { graph, pageId, master } = makeComponentGraph()
     graph.createInstance(master.id, pageId) // clean → ref
     const dirty = graph.createInstance(master.id, pageId)
     if (dirty) {
-      // Mark a per-child property override (`<childId>:<prop>` key) so the
-      // instance diverges from the master → inline fallback.
+      // A non-text override (Phase 3 §8 v2 only maps `:text` to props) keeps
+      // the v1 behaviour: the instance diverges → inline fallback.
       const childId = graph.getChildren(dirty.id)[0]?.id ?? 'x'
-      dirty.overrides = { [`${childId}:text`]: 'Custom' }
+      dirty.overrides = { [`${childId}:fills`]: 'x' }
     }
 
     const out = compile({

@@ -3863,6 +3863,60 @@ CODE COMPLETE 2026-06-02。实现完全符合设计,1 个非预期 + 2 个经验
 
 **§10 follow-ups:** 编辑器授权面板(GUI:condition 分支编辑器 + delay 输入 + stop)—— EventsPanel `ACTION_KINDS` 暂未加 3 新 kind(GUI 授权延后,沿用 §7/§8);named WorkflowDef(可复用命名工作流)v2;`toast`/notify action(需 runtime toast surface)v2;condition 表达式的 GUI 校验红框。
 
+## §8 v2 override→props — text-override 映射成组件 props(设计 2026-06-02)
+
+> §8 v1 follow-up。用户 2026-06-02 挑定。scope fork AskUserQuestion 锁定 = **仅 text override**。
+
+### 8v2.1 现状与问题
+
+§8 v1:clean INSTANCE(`overrides` 空)→ `<Card/>`;**dirty INSTANCE(任一 override)→ 整棵子树内联**(忠实但失去复用,同一组件改一处文案就退化成重复子树)。Bubble/Figma 的真实用法是 instance 改子节点文案 → 应映射成组件 prop `<Card title="新文案"/>`。
+
+### 8v2.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **仅 text override → string prop** | `:text` 是干净的内容槽(TEXT 的 `{kind:'text',value}` → `{propName}`,复用 IRExpression `{ident}` emit)。fill/size/font override → className 驱动,要参数化 className + safelist 交织,过重 → **保留 v1 内联回退**。 |
+| 2 | **instance 资格 = all-or-nothing** | 一个 instance 要么是 `<Card .../>` ref 要么整棵内联,不能半。dirty instance **当且仅当所有 override key 都是 `:text`** 才转 ref;含任一非-text override(`:fills`/`:name`/...)→ 内联(v1)。 |
+| 3 | **prop 槽 = 跨实例 union** | 一个组件模块服务 master + 所有 clean + 合格 dirty 实例 → prop 集 = 该 master 所有实例 `:text` override 槽的并集(按 master-child-id 去重,`instChild.componentId` 映射回 master child)。每个 prop **默认值 = master child 的 text** → clean 实例 `<Card/>` 渲染 master 文案,零行为回归。 |
+| 4 | **override 值取自 instance child 节点**(非 overrides map 值) | syncChildren 只看 `overrideKey in overrides`(presence,跳过 sync);**diverged 值 materialized 在 instance 自己的 clone child 上**(`instChild.text`)。overrides map 用于(a)资格判定 + (b)知道传哪些槽;值从 `graph.getNode(instChildId).text` 读。 |
+| 5 | **prop 命名 = master child name → camel-ish,组件内去重** | child "Title" → `title`;空/非法名 → `text1` 兜底;同组件内冲突加数字。 |
+| 6 | **GUI 授权面板仍延后** | 沿用 §7/§8 v1/§10 先例,纯 compiler-emit 增量,无编辑器面板。 |
+
+### 8v2.3 公开 API / Schema 改动
+
+零 scene-graph / round-trip 改动(COMPONENT/INSTANCE schema-native,overrides 已存在)。仅 IR + emit:
+- `ir/types.ts`:`ComponentDef` 加 `props: ComponentProp[]`(`{name; defaultValue}` 签名用);`IRComponentRef` 加 `props: ComponentRefProp[]`(`{name; value}` 实例传值,master/clean = `[]`)。
+- `ir/collect/components.ts`:`ComponentRegistry` 升格 `Map<masterId, ComponentMeta{name; propSlots: Map<masterChildId, ComponentProp>}>`。
+
+### 8v2.4 内部实现拆解
+
+1. **components.ts**:`buildComponentRegistry` 同时算 `propSlots` —— 扫每个 registered master 的所有 instance,收 `:text` override key,`instChildId→componentId`(master child id)union,master child 的 `name`→propName(去重)、`text`→defaultValue。
+2. **tree.ts collect**:`WalkCtx` 加 `componentPropSlots?: Map<masterChildId, ComponentProp>`;collectComponents 每个 master 设 `ctx.componentPropSlots = meta.propSlots`;TEXT 分支:binding 优先,否则**若 `node.id` 命中 propSlot → emit `IRExpression{ast:{kind:'ident',name:propName}, references:[propName]}`**(而非 literal),否则 literal。`resolveComponentRef`:COMPONENT → props `[]`;INSTANCE → `resolveInstanceProps`(任一非-text override key → null 内联;否则逐 `:text` key 取 `instChild.text` + map componentId→propName 出 `{name,value}[]`)。registry `.get(id)` → `.get(id)?.name`。
+3. **emit/component.ts**:签名 `function Name({ className, title = "默认", ... }: NameProps)` + interface `{ className?: string; title?: string; ... }`(default + 值 escape)。
+4. **emit/element.ts** componentRef arm:`<Name className=".." title="新文案" ... />`(props attr escape)。
+5. **react index.ts**:`registry.get().name`/`.propSlots` 解构处适配;collectClassNames 不受影响(text prop 无 class)。
+
+### 8v2.5 成功标准
+
+- master + clean instance 仍 `<Card/>`(默认 = master 文案),组件签名带 `title?` 默认值。
+- 单 text-override dirty instance → `<Card title="新文案"/>`,子树 NOT 内联。
+- 多实例不同 text 槽 → 组件 prop = union,各传各的;未覆盖槽 → 默认。
+- 含非-text override(fill)→ 仍内联(v1 回归保留)。
+- 跨页:master page1 / dirty instance page2 共用一个组件文件 + props。
+- `bun run check` exit 0。
+
+### 8v2.6 Post-mortem
+
+CODE COMPLETE 2026-06-02。完全符合设计,零非预期架构问题:
+
+- **override 值来源坐实 = instance child 节点**(非 overrides map 值):canvas 渲染的是 child 节点,syncChildren 只用 overrides 做 presence-marker(跳过 sync),diverged 值 materialized 在 `instChild.text`。v1 旧测试 `overrides={'childId:text':'Custom'}` 是退化构造(marker 在但 child.text 没改)→ 改成正经构造(`updateNode(child,{text}) + 标 marker`),并把旧的「override→inline」测试改用**非-text override(`:fills`)**保留 v1 回归。
+- **ComponentRegistry 升格** `Map<id,name>`→`Map<id,ComponentMeta{name,propSlots}>`:`.get(id)` 全改 `.get(id)?.name`;index.ts/ir-walk 不直接碰 registry(只过 ComponentDef/IRComponentRef),改动局限 components.ts + tree.ts。
+- **prop 槽 = master-descendant-id 键**:跨实例并集靠 `instChild.componentId→master child id`;component body collect 时 TEXT node 的 `node.id`(= master child id)命中 propSlots → emit `IRExpression{ident}`(复用既有 `{expr}` emit,零新 emit 路径);default = master child text → clean `<Card/>` 零回归。
+- **lint:** `masterChild.text ?? ''` 被 no-unnecessary-condition 拦(text 类型 `string` 非空)→ 去 `?? ''`;`instChild?.text ?? ''`(instChild 可空)保留。**改 src 后必 `build:packages` 再 lint**(否则 dist-vs-src 假错)——§10 同款教训。
+- **测试:** v2 新 5 个(prop 默认/传值不内联/master+clean 不传/跨实例 union/跨页)+ v1 旧 6 个(改 1 个为非-text)= 11/11;`bun run check` exit 0;断言用 `/<Card[^>]*title="X"/` 不假设 className/prop attr 顺序。
+
+**§8 v3 follow-ups:** fill/size/font override → props(className 参数化 + safelist);COMPONENT_SET variants;编辑器组件 props 面板(GUI)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

@@ -10,6 +10,8 @@ import {
 import { tailwindClassName } from '../style'
 import type {
   ComponentDef,
+  ComponentProp,
+  ComponentRefProp,
   IRAttrValue,
   IRComponentRef,
   IRConditional,
@@ -32,7 +34,7 @@ import {
   resolveValueBinding,
   unknownIdentifiers
 } from './bindings'
-import { type ComponentRegistry, isCleanInstance } from './components'
+import { type ComponentRegistry, isTextOnlyInstance } from './components'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -126,7 +128,7 @@ export function collectComponents(
   // Discard doc-state warnings here — they're already surfaced per page.
   const docStates = indexDocStatesByName(collectDocStates(graph, []))
   const defs: ComponentDef[] = []
-  for (const [componentId, name] of components) {
+  for (const [componentId, meta] of components) {
     const master = graph.getNode(componentId)
     if (!master) continue
     const ctx: WalkCtx = {
@@ -137,7 +139,9 @@ export function collectComponents(
       docStateWrites: new Set(),
       warnings,
       inScope: new Set(),
-      components
+      components,
+      // Phase 3 §8 v2: parameterize the master's overridden TEXT children.
+      componentPropSlots: meta.propSlots
     }
     const children: IRNode[] = []
     for (const child of graph.getChildren(componentId)) {
@@ -145,19 +149,64 @@ export function collectComponents(
       const ir = nodeToIR(child, ctx)
       if (ir) children.push(ir)
     }
-    defs.push({ componentId, name, children })
+    defs.push({ componentId, name: meta.name, children, props: [...meta.propSlots.values()] })
   }
   return { defs, warnings }
 }
 
 /** Phase 3 §8 — emit a `<Name />` ref for a registered COMPONENT master or a
- *  clean INSTANCE of one; null for everything else (normal inline emit). */
+ *  clean / text-only INSTANCE of one; null for everything else (normal inline
+ *  emit). Phase 3 §8 v2: a text-only INSTANCE passes its overridden text as
+ *  props; an INSTANCE with any non-text override returns null → inline fallback. */
 function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | null {
-  let name: string | undefined
-  if (node.type === 'COMPONENT') name = ctx.components.get(node.id)
-  else if (isCleanInstance(node) && node.componentId) name = ctx.components.get(node.componentId)
-  if (name === undefined) return null
-  return { kind: 'componentRef', sourceId: node.id, name, className: tailwindClassName(node, ctx.graph) }
+  if (node.type === 'COMPONENT') {
+    const meta = ctx.components.get(node.id)
+    if (!meta) return null
+    return refOf(node, meta.name, [], ctx)
+  }
+  if (node.type !== 'INSTANCE' || !node.componentId) return null
+  const meta = ctx.components.get(node.componentId)
+  if (!meta) return null
+  // Any non-text override → fall back to inlining (§8 v2 decision #2).
+  if (!isTextOnlyInstance(node)) return null
+  return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
+}
+
+function refOf(
+  node: SceneNode,
+  name: string,
+  props: ComponentRefProp[],
+  ctx: WalkCtx
+): IRComponentRef {
+  return {
+    kind: 'componentRef',
+    sourceId: node.id,
+    name,
+    className: tailwindClassName(node, ctx.graph),
+    props
+  }
+}
+
+/** Phase 3 §8 v2 — the text-override values a text-only instance passes. For
+ *  each `:text` override, map the instance child back to the master descendant
+ *  (its `componentId`) to find the prop slot, and read the diverged value off
+ *  the instance child itself. Overrides whose target isn't a known slot are
+ *  skipped (defensive — the registry built slots from these same overrides). */
+function resolveInstanceProps(
+  node: SceneNode,
+  propSlots: Map<string, ComponentProp>,
+  graph: WalkCtx['graph']
+): ComponentRefProp[] {
+  const props: ComponentRefProp[] = []
+  for (const key of Object.keys(node.overrides)) {
+    if (!key.endsWith(':text')) continue
+    const instChildId = key.slice(0, -':text'.length)
+    const instChild = graph.getNode(instChildId)
+    const slot = instChild?.componentId ? propSlots.get(instChild.componentId) : undefined
+    if (!slot) continue
+    props.push({ name: slot.name, value: instChild?.text ?? '' })
+  }
+  return props
 }
 
 interface WalkCtx {
@@ -176,10 +225,15 @@ interface WalkCtx {
    *  (`itemName` / `indexName`), popped when leaving. Used by expression
    *  validation in bindings + renderCondition. */
   inScope: Set<string>
-  /** Phase 3 §8: master-id → component-name registry. A registered COMPONENT
-   *  master, and every clean INSTANCE of one, emit an IRComponentRef instead of
-   *  being inlined. Empty map ≡ no component extraction. */
+  /** Phase 3 §8: master-id → component metadata registry. A registered
+   *  COMPONENT master, and every clean / text-only INSTANCE of one, emit an
+   *  IRComponentRef instead of being inlined. Empty map ≡ no component
+   *  extraction. */
   components: ComponentRegistry
+  /** Phase 3 §8 v2: when collecting a component body, the master-descendant
+   *  node id → text prop slot map for that component. A TEXT node whose id is a
+   *  key emits `{prop}` instead of its literal. Undefined during page walks. */
+  componentPropSlots?: Map<string, ComponentProp>
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -472,8 +526,15 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
       ctx.docStates,
       ctx.docStateReads
     )
+    // Phase 3 §8 v2: inside a component body, a TEXT node that an instance
+    // overrides becomes a `{prop}` slot instead of a literal, so each usage
+    // can pass its own text. A real binding still wins (component bodies have
+    // empty page-state, so this only matters if a docState binding exists).
+    const slot = ctx.componentPropSlots?.get(node.id)
     if (binding) {
       children.push(binding)
+    } else if (slot) {
+      children.push({ kind: 'expression', ast: { kind: 'ident', name: slot.name }, references: [slot.name] })
     } else if (node.text) {
       children.push({ kind: 'text', value: node.text })
     }

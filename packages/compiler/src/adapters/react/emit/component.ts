@@ -15,15 +15,23 @@ import { emitElement } from './element'
  * site's ref carries the instance's sourceId in the page emit).
  */
 export function buildComponentModule(def: ComponentDef, devMode: boolean): string {
-  const header = `interface ${def.name}Props {\n  className?: string\n}\n\n`
+  // Phase 3 §8 v2: one optional string prop per text-override slot, each
+  // defaulting to the master child's text so clean usages (`<Name />`) render
+  // unchanged. The body's matching TEXT nodes were collected as `{prop}`.
+  const propLines = def.props.map((p) => `\n  ${p.name}?: string`).join('')
+  const header = `interface ${def.name}Props {\n  className?: string${propLines}\n}\n\n`
+  const destructure = [
+    'className',
+    ...def.props.map((p) => `${p.name} = ${JSON.stringify(p.defaultValue)}`)
+  ].join(', ')
   if (def.children.length === 0) {
-    return `${header}export default function ${def.name}({ className }: ${def.name}Props) {
+    return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
   return <div className={className} />
 }
 `
   }
   const body = def.children.map((c) => emitElement(c, 3, devMode)).join('\n')
-  return `${header}export default function ${def.name}({ className }: ${def.name}Props) {
+  return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
   return (
     <div className={className}>
 ${body}
