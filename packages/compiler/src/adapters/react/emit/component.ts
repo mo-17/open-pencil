@@ -1,6 +1,7 @@
 import type { ComponentDef, VariantCase } from '#compiler/ir/types'
 
 import { emitElement } from './element'
+import { hasTranslatableText } from '../ir-walk'
 
 /**
  * Phase 3 §8 — build `src/components/<Name>.tsx` for one reusable component.
@@ -15,6 +16,21 @@ import { emitElement } from './element'
  * site's ref carries the instance's sourceId in the page emit).
  */
 export function buildComponentModule(def: ComponentDef, devMode: boolean): string {
+  // Phase 3 §9: a component body with i18n-tagged text needs FormattedMessage.
+  const i18nImport = componentHasTranslatableText(def)
+    ? `import { FormattedMessage } from 'react-intl'\n\n`
+    : ''
+  return i18nImport + buildComponentBody(def, devMode)
+}
+
+/** True when any node in the component's body (plain children or any variant
+ *  subtree) carries an i18n message — drives the FormattedMessage import. */
+function componentHasTranslatableText(def: ComponentDef): boolean {
+  if (hasTranslatableText(def.children)) return true
+  return (def.variants ?? []).some((v) => hasTranslatableText(v.children))
+}
+
+function buildComponentBody(def: ComponentDef, devMode: boolean): string {
   // Phase 3 §8 v4: a COMPONENT_SET emits per-axis variant props + a subtree
   // switch instead of the single shared body.
   if (def.variantAxes && def.variants) return buildVariantModule(def, devMode)

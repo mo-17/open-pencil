@@ -174,6 +174,11 @@ export interface IRText {
   kind: 'text'
   /** Literal text content. Adapters apply framework-specific escaping. */
   value: string
+  /** Phase 3 §9 — when i18n is enabled, the stable message id this string was
+   *  externalized under. The adapter emits `<FormattedMessage id defaultMessage/>`
+   *  (with `value` as the default) instead of the literal, and `value` is added
+   *  to the locale catalog under this id. Unset when i18n is off. */
+  messageId?: string
 }
 
 /** A dynamic text node — the adapter emits this as `{<expr>}` rather than a

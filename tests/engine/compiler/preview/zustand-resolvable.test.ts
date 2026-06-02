@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { describe, expect, test } from 'bun:test'
 
-import { ZUSTAND_VERSION } from '@open-pencil/compiler/adapters/react/lowcode-state'
+import { ZUSTAND_VERSION } from '@open-pencil/compiler/adapters/react/lowcode/state'
 
 /**
  * Phase 2 §2 — Tauri-test regression.

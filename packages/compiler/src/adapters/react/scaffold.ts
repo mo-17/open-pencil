@@ -3,7 +3,12 @@ import type { IRTree } from '#compiler/ir/types'
 import { buildComponentImports } from './emit/component'
 import { emitElement } from './emit/element'
 import { emitStateDecl } from './emit/state'
-import { pageHasNavigateHandler, pageUsesSupabase, referencedComponentNames } from './ir-walk'
+import {
+  hasTranslatableText,
+  pageHasNavigateHandler,
+  pageUsesSupabase,
+  referencedComponentNames
+} from './ir-walk'
 import type { PagePathInfo } from './route-paths'
 
 /**
@@ -141,7 +146,11 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const componentNames = referencedComponentNames(ir.children)
   const componentImports = buildComponentImports(componentNames, componentImportPrefix)
   const componentImportBlock = componentImports ? `${componentImports}\n` : ''
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + componentImportBlock
+  // Phase 3 §9: import FormattedMessage when the page has i18n-tagged text.
+  const i18nImport = hasTranslatableText(ir.children)
+    ? `import { FormattedMessage } from 'react-intl'\n`
+    : ''
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + componentImportBlock + i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''

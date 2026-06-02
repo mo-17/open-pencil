@@ -35,6 +35,16 @@ export interface CompilerOptions {
    * clean. See docs/lowcode-phase-0.md §5.4.
    */
   devMode: boolean
+  /**
+   * Phase 3 §9 — emit an i18n runtime (react-intl). When true, every visible
+   * design string (TEXT content, BUTTON text, SELECT/RADIO/CHECKBOX option
+   * labels) is externalized into `src/locales/<source>.json` and rendered via
+   * `<FormattedMessage>`, the app is wrapped in an `<I18nProvider>`, and
+   * `react-intl` is added to the emitted `package.json`. Default false → output
+   * is byte-identical to a non-i18n compile. Optional so existing call sites
+   * (and `withDefaults`) stay unbroken.
+   */
+  i18n?: boolean
 }
 
 export interface CompileWarning {

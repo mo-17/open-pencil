@@ -5,7 +5,8 @@ import type {
   IREventHandler,
   IREventName,
   IRExpression,
-  IRNode
+  IRNode,
+  IRText
 } from '#compiler/ir/types'
 
 import { emitEventHandler } from './event'
@@ -28,7 +29,7 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
   const pad = '  '.repeat(indent)
 
   if (node.kind === 'text') {
-    return `${pad}${escapeJSXText(node.value)}`
+    return `${pad}${emitText(node)}`
   }
 
   if (node.kind === 'expression') {
@@ -114,13 +115,28 @@ function tryInlineSingleChild(
 ): string | undefined {
   if (children.length !== 1) return undefined
   const only = children[0]
-  if (only.kind === 'text' && !only.value.includes('\n')) {
-    return `${pad}${opening}>${escapeJSXText(only.value)}</${tag}>`
+  if (only.kind === 'text') {
+    // §9: a translatable text always inlines (`<FormattedMessage/>` is one
+    // tag); a plain literal inlines only when single-line.
+    if (only.messageId !== undefined || !only.value.includes('\n')) {
+      return `${pad}${opening}>${emitText(only)}</${tag}>`
+    }
+    return undefined
   }
   if (only.kind === 'expression') {
     return `${pad}${opening}>{${emitExpressionWithFallback(only)}}</${tag}>`
   }
   return undefined
+}
+
+/** Phase 3 §9 — render a text node: a `<FormattedMessage>` when i18n tagged it
+ *  with a `messageId`, otherwise the escaped literal. `defaultMessage` uses the
+ *  JS-expression form so newlines/quotes in the source string stay valid. */
+function emitText(node: IRText): string {
+  if (node.messageId !== undefined) {
+    return `<FormattedMessage id="${node.messageId}" defaultMessage={${JSON.stringify(node.value)}} />`
+  }
+  return escapeJSXText(node.value)
 }
 
 /** Phase 3 §8 v5: an expression's JS source, with a `?? "literal"` tail when it

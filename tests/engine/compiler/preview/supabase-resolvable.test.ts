@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { describe, expect, test } from 'bun:test'
 
-import { SUPABASE_JS_VERSION } from '@open-pencil/compiler/adapters/react/lowcode-supabase'
+import { SUPABASE_JS_VERSION } from '@open-pencil/compiler/adapters/react/lowcode/supabase'
 
 /**
  * Phase 3 §2 — preview iframe regression (experience D).

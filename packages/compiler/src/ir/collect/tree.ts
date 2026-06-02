@@ -30,6 +30,7 @@ import type {
   IRList,
   IRNode,
   IRStateDecl,
+  IRText,
   IRTree,
   IRWarning
 } from '../types'
@@ -53,7 +54,8 @@ import { collectPageStates, indexStatesById } from './state'
 export function collectTree(
   graph: SceneGraph,
   pageId: string,
-  components: ComponentRegistry = new Map()
+  components: ComponentRegistry = new Map(),
+  i18n = false
 ): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
@@ -97,7 +99,8 @@ export function collectTree(
     docStateWrites,
     warnings,
     inScope: new Set(),
-    components
+    components,
+    i18n
   }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
@@ -129,7 +132,8 @@ export function collectTree(
  */
 export function collectComponents(
   graph: SceneGraph,
-  components: ComponentRegistry
+  components: ComponentRegistry,
+  i18n = false
 ): { defs: ComponentDef[]; warnings: IRWarning[] } {
   const warnings: IRWarning[] = []
   // Discard doc-state warnings here — they're already surfaced per page.
@@ -146,7 +150,8 @@ export function collectComponents(
       docStateWrites: new Set(),
       warnings,
       inScope: new Set(),
-      components
+      components,
+      i18n
     }
     const variantMeta = meta.variants
     if (variantMeta) {
@@ -340,6 +345,10 @@ interface WalkCtx {
    *  key emits `className={prop}` (className slot). Undefined during page
    *  walks. */
   componentPropSlots?: Map<string, ComponentSlot>
+  /** Phase 3 §9: externalize visible display strings into i18n messages. When
+   *  true, `displayText` tags each literal with a content-hash `messageId` so
+   *  the adapter emits `<FormattedMessage>` + a locale catalog. */
+  i18n?: boolean
   /** Phase 3 §8 v5: true while collecting a COMPONENT_SET variant subtree. A
    *  prop here spans multiple variant subtrees with different static defaults,
    *  so a parameterized node emits `{prop ?? ownLiteral}` / `className={prop ??
@@ -553,6 +562,26 @@ function resolveVectorSvg(
   return { className: stripPaintClasses(className), extra: { rawHtml: svg } }
 }
 
+/** Phase 3 §9 — build a text IR node, tagged with a content-hash `messageId`
+ *  when i18n is enabled so the adapter externalizes it into a locale message
+ *  (`<FormattedMessage>`). Off → a plain literal `{kind:'text', value}`. */
+function displayText(value: string, ctx: WalkCtx): IRText {
+  if (!ctx.i18n) return { kind: 'text', value }
+  return { kind: 'text', value, messageId: messageKey(value) }
+}
+
+/** Stable, deterministic message id for a source string: fnv-1a hash → base36.
+ *  Same string → same id (dedupes identical copy + keeps keys churn-free across
+ *  re-compiles). No `Math.random` (CLAUDE.md). */
+function messageKey(value: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return `m${(h >>> 0).toString(36)}`
+}
+
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // Phase 3 §8 — a registered COMPONENT master, or a clean INSTANCE of one,
   // renders as `<Name className="..." />` (the shared subtree lives in the
@@ -665,7 +694,7 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
         ...(ctx.variantBody ? { fallback: node.text } : {})
       })
     } else if (node.text) {
-      children.push({ kind: 'text', value: node.text })
+      children.push(displayText(node.text, ctx))
     }
   }
 
@@ -1018,7 +1047,7 @@ function applyButtonProps(
     children.push(binding)
   } else {
     const text = typeof ip.text === 'string' ? ip.text : 'Button'
-    children.push({ kind: 'text', value: text })
+    children.push(displayText(text, ctx))
   }
 }
 
@@ -1029,8 +1058,15 @@ function optionStrings(ip: InteractiveProps): string[] {
   return raw.filter((o): o is string => typeof o === 'string')
 }
 
-/** SELECT — one `<option>` child per string in `interactiveProps.options`. */
-function applySelectOptions(node: SceneNode, ip: InteractiveProps, children: IRNode[]): void {
+/** SELECT — one `<option>` child per string in `interactiveProps.options`. The
+ *  option's display label is translatable (§9); its `value=` attr stays the
+ *  literal form value. */
+function applySelectOptions(
+  node: SceneNode,
+  ip: InteractiveProps,
+  children: IRNode[],
+  ctx: WalkCtx
+): void {
   for (const opt of optionStrings(ip)) {
     children.push({
       kind: 'element',
@@ -1038,7 +1074,7 @@ function applySelectOptions(node: SceneNode, ip: InteractiveProps, children: IRN
       tag: 'option',
       className: '',
       attrs: { value: opt },
-      children: [{ kind: 'text', value: opt }]
+      children: [displayText(opt, ctx)]
     })
   }
 }
@@ -1059,7 +1095,8 @@ function appendOptionInputs(
   node: SceneNode,
   ip: InteractiveProps,
   children: IRNode[],
-  makeInputAttrs: (opt: string) => Record<string, IRAttrValue>
+  makeInputAttrs: (opt: string) => Record<string, IRAttrValue>,
+  ctx: WalkCtx
 ): void {
   for (const opt of optionStrings(ip)) {
     children.push({
@@ -1077,7 +1114,7 @@ function appendOptionInputs(
           attrs: makeInputAttrs(opt),
           children: []
         },
-        { kind: 'text', value: opt }
+        displayText(opt, ctx)
       ]
     })
   }
@@ -1092,23 +1129,35 @@ function appendOptionInputs(
 function applyCheckboxGroupOptions(
   node: SceneNode,
   ip: InteractiveProps,
-  children: IRNode[]
+  children: IRNode[],
+  ctx: WalkCtx
 ): void {
-  appendOptionInputs(node, ip, children, (opt) => ({ type: 'checkbox', value: opt }))
+  appendOptionInputs(node, ip, children, (opt) => ({ type: 'checkbox', value: opt }), ctx)
 }
 
 /** RADIO — a radio-group div (Phase 2 §8). Each option becomes a
  *  `<label><input type="radio" name={groupName} value={opt}/> opt</label>`;
  *  the option matching `interactiveProps.value` is `defaultChecked`. */
-function applyRadioOptions(node: SceneNode, ip: InteractiveProps, children: IRNode[]): void {
+function applyRadioOptions(
+  node: SceneNode,
+  ip: InteractiveProps,
+  children: IRNode[],
+  ctx: WalkCtx
+): void {
   const groupName = typeof ip.groupName === 'string' ? ip.groupName : ''
   const selected = typeof ip.value === 'string' ? ip.value : ''
-  appendOptionInputs(node, ip, children, (opt) => {
-    const inputAttrs: Record<string, IRAttrValue> = { type: 'radio', value: opt }
-    if (groupName !== '') inputAttrs.name = groupName
-    if (opt === selected) inputAttrs.defaultChecked = true
-    return inputAttrs
-  })
+  appendOptionInputs(
+    node,
+    ip,
+    children,
+    (opt) => {
+      const inputAttrs: Record<string, IRAttrValue> = { type: 'radio', value: opt }
+      if (groupName !== '') inputAttrs.name = groupName
+      if (opt === selected) inputAttrs.defaultChecked = true
+      return inputAttrs
+    },
+    ctx
+  )
 }
 
 function applyInteractiveProps(
@@ -1126,7 +1175,7 @@ function applyInteractiveProps(
     case 'CHECKBOX':
       // Phase 3 §3.v4 step 8 — options[] → multi-select group (mirrors
       // RADIO); no options → single boolean toggle (back-compat).
-      if (isCheckboxGroup(node)) applyCheckboxGroupOptions(node, ip, children)
+      if (isCheckboxGroup(node)) applyCheckboxGroupOptions(node, ip, children, ctx)
       else applyToggleProps(ip, attrs)
       return
     case 'SWITCH':
@@ -1139,10 +1188,10 @@ function applyInteractiveProps(
       applyButtonProps(node, ip, attrs, children, ctx)
       return
     case 'SELECT':
-      applySelectOptions(node, ip, children)
+      applySelectOptions(node, ip, children, ctx)
       return
     case 'RADIO':
-      applyRadioOptions(node, ip, children)
+      applyRadioOptions(node, ip, children, ctx)
       break
   }
 }

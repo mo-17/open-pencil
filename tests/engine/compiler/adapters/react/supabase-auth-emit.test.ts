@@ -8,7 +8,7 @@ import {
   buildSupabaseEnvExample,
   buildViteEnvDts,
   SUPABASE_JS_VERSION
-} from '@open-pencil/compiler/adapters/react/lowcode-supabase'
+} from '@open-pencil/compiler/adapters/react/lowcode/supabase'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRSupabaseConfig } from '@open-pencil/compiler/ir/types'
 import type { CompilerOptions } from '@open-pencil/compiler'

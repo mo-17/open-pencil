@@ -5,7 +5,7 @@ import { reactAdapter } from '@open-pencil/compiler/adapters/react'
 import {
   buildLowcodeStateRuntime,
   ZUSTAND_VERSION
-} from '@open-pencil/compiler/adapters/react/lowcode-state'
+} from '@open-pencil/compiler/adapters/react/lowcode/state'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { CompilerOptions } from '@open-pencil/compiler'
 import type { IRDocStateDecl } from '@open-pencil/compiler/ir/types'

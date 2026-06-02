@@ -109,18 +109,23 @@ export function buildIndexHtml(packageName: string): string {
 `
 }
 
-export function buildMainTsx(): string {
+/** Phase 3 §9: when `i18n` is true, wrap `<App/>` in the `<I18nProvider>` the
+ *  react-intl runtime (`_lowcode_i18n.tsx`) exports so `<FormattedMessage>` has
+ *  an IntlProvider in scope. */
+export function buildMainTsx(i18n = false): string {
+  const i18nImport = i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
+  const app = i18n ? `<I18nProvider>\n      <App />\n    </I18nProvider>` : '<App />'
   return `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import './index.css'
+${i18nImport}import './index.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
 
 createRoot(root).render(
   <StrictMode>
-    <App />
+    ${app}
   </StrictMode>
 )
 `

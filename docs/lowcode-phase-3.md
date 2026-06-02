@@ -4143,6 +4143,76 @@ CODE COMPLETE 2026-06-02。完全符合设计,零意外:
 
 **§8 v7 follow-ups:** componentPropertyDefinitions 显式默认;component props 编辑器面板(GUI);nested-instance / boolean(visible)override(目前 `:visible` 不映射,collectTailwindClasses 忽略 visible)。
 
+## §9 编译产物 i18n 运行时 — 设计字符串外置 + react-intl runtime(设计 2026-06-02)
+
+> 用户 2026-06-02 挑定(§8 链 v1–v6 收尾后转新领域)。三 fork AskUserQuestion 锁定 = **react-intl(FormatJS)** + **内容 hash key** + **仅可见文本**(否决 lingui 需 build-step 插件、节点 id key 不去重、含属性串需 useIntl 面大)。
+
+### 9.1 现状与问题
+
+编译产物的文本要么是字面(`<p>Badge</p>`),要么是绑定(`{count}`)。无多语言:字面文案硬编码,无法切换 locale。诉求 = 生成的 React 应用带**真 i18n 运行时**(react-intl IntlProvider + 消息目录),设计文案外置成默认 locale catalog,加一份 `<locale>.json` 即可多语言。Phase 0 无 i18n 授权数据模型 → v1 = **抽取式**(externalize):默认 locale = 设计文案,其余 locale 由开发者填(运行时已就位)。
+
+### 9.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **flag-gated:`CompilerOptions.i18n`(默认 false)** | 关 → 现有 emit/测试 byte-identical(零回归);开 → 文本走 i18n。否决 always-on(改全部 emit + 测试,且非 i18n 项目无谓引 react-intl)。编辑器/CLI 设此 flag;headless 测试传 option。 |
+| 2 | **react-intl(FormatJS),纯 runtime 库** | `<FormattedMessage id defaultMessage/>` + IntlProvider,零 build-step 插件 → 适配我们的 VFS Vite build(不 emit 额外插件,经验 K)。否决 lingui(需 babel/swc macro + vite 插件,VFS build 没有)。 |
+| 3 | **message id = 源文本内容 hash**(短 base36 fnv) | 相同文案去重合一条目录;文本不变则 key 稳定(重编译不漂移)。否决节点 id(不去重→重复条目)、递增序号(增删漂移)。`defaultMessage` 也 emit → 无 catalog 命中也渲染源文本。 |
+| 4 | **v1 仅可见文本**:TEXT 内容 + BUTTON 文案 + SELECT/RADIO/CHECKBOX option 标签 | 都是 JSX children → 用 `<FormattedMessage>` 零 hook。placeholder/aria/title 等**属性串**留 v2(需每组件顶 `useIntl()` + `intl.formatMessage`,emit 面大)。option 的 `value=` 属性留字面(表单值非展示)。 |
+| 5 | **抽取式 v1:源 locale only** | catalog = `src/locales/en.json`(源 locale = `'en'` 常量);runtime CATALOGS 仅一条;`useLocale().setLocale` + IntlProvider 已就位,加 `fr.json` + 注册即多语言。多 locale 授权 / 切换 UI 留 v2(无编辑器授权)。 |
+| 6 | **经验 D:react-intl 入 compiler devDeps** | VFS preview/build 从 workspace hoisted node_modules 解析产物依赖(§5.1 zero-install)→ 产物 `import 'react-intl'` 要求 react-intl 装进 workspace。`packages/compiler/package.json` devDeps + `bun install`。 |
+
+### 9.3 公开 API / Schema 改动(零 scene-graph / round-trip)
+
+- `types.ts`:`CompilerOptions.i18n?: boolean`;`index.ts` DEFAULT_OPTIONS `i18n: false`。
+- `ir/types.ts`:`IRText.messageId?: string`(set 时 emit `<FormattedMessage>`,源文本进 catalog)。
+- 产物新增文件(i18n 开时):`src/locales/en.json`、`src/_lowcode_i18n.tsx`;`package.json` +`react-intl`;`main.tsx` 包 `<I18nProvider>`。
+
+### 9.4 内部实现拆解
+
+1. **collect**:`collectTree`/`collectComponents` 加 `i18n` 参(compile() 传 `input.options.i18n`)→ WalkCtx.i18n。helper `displayText(value, ctx)` → `{kind:'text', value, ...(ctx.i18n ? {messageId: messageKey(value)} : {})}`,用在 collectChildNodes TEXT 字面、applyButtonProps fallback、applySelectOptions、appendOptionInputs 的标签文本(option `value` attr 不动)。`messageKey(s)` = fnv-1a → base36(纯函数,无 Math.random)。
+2. **adapter catalog**:`collectMessages(irs, components)` walk 全 IRText.messageId → 排序 Map<id, defaultMessage>(同 collectClassNames 模式,descend conditional/list/element/component bodies + variants)。emit `src/locales/en.json`。
+3. **runtime** `_lowcode_i18n.tsx`:`I18nProvider`(IntlProvider + `useState(locale)` + LocaleContext 暴露 useLocale/setLocale + CATALOGS 注册表,源 locale 载 en.json)。
+4. **emit/element.ts**:IRText.messageId → `<FormattedMessage id={JSON.stringify} defaultMessage={JSON.stringify} />`(standalone text arm + inline single-child text 分支都处理;helper `emitText(node)`)。
+5. **import 注入**:含可见文本的文件加 `import { FormattedMessage } from 'react-intl'`——buildPageFile importBlock、buildComponentModule、(router shell 无文本不加)。新 ir-walk `hasTranslatableText(nodes)`(walk messageId)。
+6. **main.tsx**:`buildMainTsx(i18n)` → i18n 时 `import { I18nProvider }` + 包 `<App/>`。
+7. **package.json**:`reactIntlExtraDeps(i18n)` → `{ 'react-intl': REACT_INTL_VERSION }`,merge 进 emit 的 extraDeps。
+8. **经验 D**:`packages/compiler/package.json` devDeps +`react-intl` + `bun install`。
+
+### 9.5 成功标准
+
+- `i18n:false`(默认)→ 产物与现状 byte-identical(零回归,全测试不动)。
+- `i18n:true` → 可见文本 emit `<FormattedMessage id="<hash>" defaultMessage="源文本"/>`;`src/locales/en.json` = id→源文本;相同文案合一条(hash 去重)。
+- `src/_lowcode_i18n.tsx` IntlProvider runtime;`main.tsx` 包 `<I18nProvider>`;`package.json` 含 react-intl;含文本的页/组件文件 import FormattedMessage。
+- react-intl 在 workspace 可解析(经验 D,preview/build 不报 module-not-found)。
+- BUTTON / SELECT option / 组件体 / 多页 page 文本都覆盖。
+- `bun run check` exit 0。
+
+### 9.6 工作分解(~1 day)
+
+types(2 flag/字段)→ collect(thread + displayText + messageKey)→ adapter(collectMessages + locales/en.json + _lowcode_i18n.tsx + element emit + import 注入 + main.tsx 包 + dep)→ 经验 D devDep + bun install → i18n.test.ts → `bun run check`。
+
+### 9.7 风险
+
+- react-intl 版本与 React 18/19 peer 兼容(选 7.x,peer react ≥18)——bun install 验证。
+- VFS build 解析 react-intl(经验 D)——真机/preview 验证(headless 测仅断言字符串)。
+- FormattedMessage 在 `<p>` 单子内联位置的 JSX 合法性(self-closing component 作 children,OK)。
+
+### 9.8 Post-mortem
+
+CODE COMPLETE 2026-06-03。完全符合设计,几处机械修正:
+
+- **flag-gated 零回归坐实**:`i18n:false`(默认)→ 既有 472 compiler 测试不动一行(byte-identical),证明 off 路径无副作用。
+- **collect 三处 ctx 穿线**:`displayText(value, ctx)` 在 i18n 开时给文本打 `messageId = messageKey(value)`(fnv-1a→base36,纯函数无 Math.random)。用在 TEXT 字面、BUTTON fallback、SELECT/RADIO/CHECKBOX option 标签 —— 后三个的 `applySelectOptions`/`appendOptionInputs`/`applyCheckboxGroupOptions`/`applyRadioOptions` 原无 ctx 参,逐个穿线(option 的 `value=` attr 不译,留表单值)。
+- **emit 复用单 helper**:`emitText(node)` 在 standalone text arm + inline single-child 两处共用;messageId→`<FormattedMessage id="<hash>" defaultMessage={JSON.stringify(value)} />`(defaultMessage 用 JS-表达式形,换行/引号安全),否则 escapeJSXText。
+- **runtime + provider**:`_lowcode_i18n.tsx`(IntlProvider + useState(locale) + LocaleContext/useLocale + CATALOGS 注册表,源 locale 载 en.json);`buildMainTsx(i18n)` 包 `<I18nProvider>`;`collectMessages(irs, components)` 出排序 catalog(componentRef 是叶,组件文本经 ComponentDef 走)。
+- **import 注入**:`hasTranslatableText(nodes)`(ir-walk,componentRef 叶)驱动 page/component 文件加 `import { FormattedMessage } from 'react-intl'`;component.ts 抽 `buildComponentBody` 让 `buildComponentModule` 前置 import。
+- **经验 D 兑现**:`react-intl ^7.1.0` 入 `packages/compiler` devDeps + `bun install`(VFS preview/build 从 workspace hoisted 解析,§5.1 zero-install)。
+- **steiger prefer-domain-folders**:新 `lowcode-i18n.ts` 使 `adapters/react/` 的 `lowcode-` 前缀兄弟达 3 个(state/supabase/i18n)→ 触发规则。**全部移进 `adapters/react/lowcode/`(`state.ts`/`supabase.ts`/`i18n.ts`,git mv)**,更新 index.ts 3 import + 4 个测试的 `@open-pencil/compiler/adapters/react/lowcode/*` subpath import。**经验(再次印证 §8 v4):同前缀兄弟 ≥3 触发 steiger —— 新增第 3 个同前缀文件时直接建 domain 子目录。**
+- **测试**:i18n.test.ts 5 新(off byte-identical / on FormattedMessage+catalog+provider+dep / hash 去重 / BUTTON+SELECT option / 组件体跨文件 import+catalog)= compiler 477/0;`bun run check` exit 0(steiger、jscpd 0、tsgo 0、check:packages)。
+
+**§9 v2 follow-ups:** 属性串(placeholder/aria/title)i18n(需 useIntl hook);locale 切换 UI / 多 locale 授权数据模型;`sourceLocale` 可配;ICU 复数/插值(react-intl 原生支持,需绑定值)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

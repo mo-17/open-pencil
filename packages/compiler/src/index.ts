@@ -30,7 +30,8 @@ const DEFAULT_OPTIONS: CompilerOptions = {
   reactVersion: '19',
   router: 'none',
   typescript: true,
-  devMode: true
+  devMode: true,
+  i18n: false
 }
 
 /**
@@ -55,8 +56,15 @@ export function compile(input: CompilerInput): CompilerOutput {
   // instance) once, then walk each page with the registry so masters + clean
   // instances emit `<Name />` refs instead of inlining the subtree.
   const registry = buildComponentRegistry(input.graph)
-  const { defs: components, warnings: componentWarnings } = collectComponents(input.graph, registry)
-  const irs = input.pageIds.map((id) => collectTree(input.graph, id, registry))
+  // Phase 3 §9: i18n externalizes display strings at collect time, so the flag
+  // threads into both page walks and component-body walks.
+  const i18n = input.options.i18n === true
+  const { defs: components, warnings: componentWarnings } = collectComponents(
+    input.graph,
+    registry,
+    i18n
+  )
+  const irs = input.pageIds.map((id) => collectTree(input.graph, id, registry, i18n))
   const { files, warnings: adapterWarnings } = adapter.emit(irs, input.options, components)
   return {
     files,

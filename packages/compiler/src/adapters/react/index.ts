@@ -13,14 +13,20 @@ import type { CompilerOptions, CompileWarning } from '#compiler/types'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
 import { buildComponentModule } from './emit/component'
+import {
+  buildLocaleCatalog,
+  buildLowcodeI18nRuntime,
+  REACT_INTL_VERSION,
+  SOURCE_CATALOG_FILE
+} from './lowcode/i18n'
 import { stripNavigateForSinglePage } from './ir-walk'
-import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode-state'
+import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode/state'
 import {
   buildLowcodeSupabaseRuntime,
   buildSupabaseEnvExample,
   buildViteEnvDts,
   SUPABASE_JS_VERSION
-} from './lowcode-supabase'
+} from './lowcode/supabase'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import {
@@ -39,6 +45,7 @@ const REACT_ROUTER_DOM_VERSION = '^6.27.0'
 
 const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
 const LOWCODE_SUPABASE_FILE = 'src/_lowcode_supabase.ts'
+const LOWCODE_I18N_FILE = 'src/_lowcode_i18n.tsx'
 
 export const reactAdapter: FrameworkAdapter = {
   emit(
@@ -75,9 +82,14 @@ function emitSinglePage(
   // warn — the page body emit then proceeds as if they were never collected.
   const { ir: cleaned, warnings } = stripNavigateForSinglePage(ir)
   const files = new Map<string, string | Uint8Array>()
+  // Phase 3 §9: i18n is active only when the flag is on AND there is text to
+  // translate (an empty doc gets no runtime/dep/provider).
+  const messages = collectMessages([cleaned], components)
+  const i18nActive = options.i18n === true && messages.size > 0
   const extraDeps: Record<string, string> = {
     ...lowcodeStateExtraDeps(cleaned.docStates),
-    ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig)
+    ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig),
+    ...i18nExtraDeps(i18nActive)
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
   // Phase 2 §2: emit the lowcode runtime alongside App.tsx when any
@@ -85,6 +97,7 @@ function emitSinglePage(
   // `setDocState` from `./` (single-page) or `../` (multi-page).
   maybeEmitLowcodeRuntime(files, cleaned.docStates)
   maybeEmitLowcodeSupabaseRuntime(files, cleaned.supabaseConfig)
+  maybeEmitI18n(files, i18nActive, messages)
   emitComponentFiles(files, components, options.devMode)
   files.set(
     'src/App.tsx',
@@ -95,7 +108,7 @@ function emitSinglePage(
       componentImportPrefix: './components/'
     })
   )
-  setSharedProjectFiles(files, options, collectClassNames([cleaned], components))
+  setSharedProjectFiles(files, options, collectClassNames([cleaned], components), i18nActive)
   return { files, warnings }
 }
 
@@ -108,14 +121,18 @@ function emitMultiPage(
   const files = new Map<string, string | Uint8Array>()
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
+  const messages = collectMessages(irs, components)
+  const i18nActive = options.i18n === true && messages.size > 0
   const extraDeps: Record<string, string> = {
     'react-router-dom': REACT_ROUTER_DOM_VERSION,
     ...lowcodeStateExtraDeps(docStates),
-    ...lowcodeSupabaseExtraDeps(supabaseConfig)
+    ...lowcodeSupabaseExtraDeps(supabaseConfig),
+    ...i18nExtraDeps(i18nActive)
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
   maybeEmitLowcodeRuntime(files, docStates)
   maybeEmitLowcodeSupabaseRuntime(files, supabaseConfig)
+  maybeEmitI18n(files, i18nActive, messages)
   emitComponentFiles(files, components, options.devMode)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
@@ -129,7 +146,7 @@ function emitMultiPage(
       })
     )
   }
-  setSharedProjectFiles(files, options, collectClassNames(irs, components))
+  setSharedProjectFiles(files, options, collectClassNames(irs, components), i18nActive)
   return { files, warnings: collectSlugWarnings(infos) }
 }
 
@@ -143,6 +160,23 @@ function lowcodeSupabaseExtraDeps(
   config: IRSupabaseConfig | undefined
 ): Record<string, string> {
   return config ? { '@supabase/supabase-js': SUPABASE_JS_VERSION } : {}
+}
+
+function i18nExtraDeps(active: boolean): Record<string, string> {
+  return active ? { 'react-intl': REACT_INTL_VERSION } : {}
+}
+
+/** Phase 3 §9: emit the i18n runtime + source-locale catalog when i18n is
+ *  active. The app body's `<FormattedMessage>` calls come from the IR
+ *  (`IRText.messageId`); main.tsx wraps `<App/>` in `<I18nProvider>`. */
+function maybeEmitI18n(
+  files: Map<string, string | Uint8Array>,
+  active: boolean,
+  messages: ReadonlyMap<string, string>
+): void {
+  if (!active) return
+  files.set(`src/${SOURCE_CATALOG_FILE}`, buildLocaleCatalog(messages))
+  files.set(LOWCODE_I18N_FILE, buildLowcodeI18nRuntime())
 }
 
 function maybeEmitLowcodeRuntime(
@@ -173,12 +207,13 @@ function maybeEmitLowcodeSupabaseRuntime(
 function setSharedProjectFiles(
   files: Map<string, string | Uint8Array>,
   options: CompilerOptions,
-  classNames: string[]
+  classNames: string[],
+  i18n: boolean
 ): void {
   files.set('vite.config.ts', buildViteConfig())
   files.set('tsconfig.json', buildTsConfig())
   files.set('index.html', buildIndexHtml(options.packageName))
-  files.set('src/main.tsx', buildMainTsx())
+  files.set('src/main.tsx', buildMainTsx(i18n))
   files.set('src/index.css', buildIndexCss(classNames))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
@@ -261,4 +296,44 @@ function addClasses(className: string, acc: Set<string>): void {
   for (const cls of className.split(/\s+/)) {
     if (cls) acc.add(cls)
   }
+}
+
+/**
+ * Phase 3 §9 — the i18n message catalog (id → source string) across every page
+ * and component body. Identical strings share one id (the collect-time
+ * content-hash), so they collapse onto one entry. ComponentRefs are leaves —
+ * a referenced component's text is walked via its own ComponentDef.
+ */
+function collectMessages(
+  irs: readonly IRTree[],
+  components: readonly ComponentDef[]
+): Map<string, string> {
+  const acc = new Map<string, string>()
+  for (const ir of irs) {
+    for (const child of ir.children) collectText(child, acc)
+  }
+  for (const def of components) {
+    for (const child of def.children) collectText(child, acc)
+    for (const variant of def.variants ?? []) {
+      for (const child of variant.children) collectText(child, acc)
+    }
+  }
+  return acc
+}
+
+function collectText(node: IRNode, acc: Map<string, string>): void {
+  if (node.kind === 'text') {
+    if (node.messageId !== undefined) acc.set(node.messageId, node.value)
+    return
+  }
+  if (node.kind === 'conditional') {
+    collectText(node.consequent, acc)
+    return
+  }
+  if (node.kind === 'list') {
+    collectText(node.template, acc)
+    return
+  }
+  if (node.kind !== 'element') return
+  for (const child of node.children) collectText(child, acc)
 }

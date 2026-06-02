@@ -66,6 +66,25 @@ function collectRefNames(node: IRNode, acc: Set<string>): void {
 }
 
 /**
+ * Phase 3 §9 — does any node in `nodes` carry an i18n-tagged text (a
+ * `<FormattedMessage>`)? The scaffold uses this to decide whether a page /
+ * component file imports `FormattedMessage` from react-intl. ComponentRefs are
+ * leaves here — a referenced component's translatable text lives in that
+ * component's own file, which imports FormattedMessage independently.
+ */
+export function hasTranslatableText(nodes: readonly IRNode[]): boolean {
+  return nodes.some(nodeHasTranslatableText)
+}
+
+function nodeHasTranslatableText(node: IRNode): boolean {
+  if (node.kind === 'text') return node.messageId !== undefined
+  if (node.kind === 'conditional') return nodeHasTranslatableText(node.consequent)
+  if (node.kind === 'list') return nodeHasTranslatableText(node.template)
+  if (node.kind === 'element') return node.children.some(nodeHasTranslatableText)
+  return false
+}
+
+/**
  * Phase 3 §2: a page uses supabase when any handler in its tree is a
  * `supabaseQuery`, `supabaseMutation`, or `supabaseAuth`. The scaffolder
  * consults this to decide whether to emit
