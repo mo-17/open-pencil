@@ -4143,6 +4143,65 @@ CODE COMPLETE 2026-06-02。完全符合设计,零意外:
 
 **§8 v7 follow-ups:** componentPropertyDefinitions 显式默认;component props 编辑器面板(GUI);nested-instance / boolean(visible)override(目前 `:visible` 不映射,collectTailwindClasses 忽略 visible)。
 
+## §8 v7 组件链收尾 — `:visible`→hidden + componentPropertyDefinitions 默认(设计 2026-06-03)
+
+> §8 v6 follow-up。用户 2026-06-03 挑定 = **§8 v7 组件链收尾**(否决 §10 v2 toast / §9 v4 i18n 进阶 / 更多 deploy provider)。两个真实缺口,均纯 compiler-emit / headless。
+
+### 8v7.1 现状与问题
+
+**v7a `:visible` 静默无效**:§8 v6 把所有非-text override 归 className(`overrideKind` → 'className')。`<childId>:visible` 也走 className 槽,值 = `tailwindClassName(instChild)`,但**核心 `collectTailwindClasses` 按设计忽略 `visible`**(visible 是结构概念非样式;§7 响应式才显式翻 `${bp}:hidden`)→ 一个隐藏某 instance child 的 override 产出 className prop 却**不含 `hidden`**,运行时仍显示 = 静默正确性 gap。
+
+**v7b 默认 variant 取首子**:§8 v4 `buildVariants` 的 axis `defaultValue` = **首个 variant 子**的轴值(注释明言「independent of componentPropertyDefinitions」,图省事确定性)。但 Figma 的 COMPONENT_SET 用 `componentPropertyDefinitions`(VARIANT 类型 def 的 `defaultValue`)声明真正默认 variant;忽略它 → 默认实例渲染的可能不是设计者指定的默认。
+
+### 8v7.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **v7a 在 `tailwindClassName(node)` 单点追加 `hidden`(当 `node.visible===false`)** | 一处 DRY + 对称:实例 child 隐藏(instChild.visible=false)→ className prop 含 hidden;默认槽 = master child(可见)无变化。否决在 resolveInstanceProps 局部加(漏掉将来其他调用方)。**安全**:正常 emit 路径在到达 tailwindClassName 前已 `if(!child.visible) continue` 跳过隐藏节点 → 只有 instance child(经 override 引用、可不可见)会命中,精准锁 v7a 目标。 |
+| 2 | **v7a 复用既有 className-prop + safelist 通道** | `:visible` 已产 className 槽(v6),仅值多 `hidden`;collectClassNames 对 className-kind prop 值 addClasses → `hidden` 自动进 safelist。零新 IR / emit 路径。 |
+| 3 | **v7a 仅覆盖 forward(master 可见 / instance 隐藏)** | reverse(master 隐藏 / instance 显示)= §7 同款 re-show 问题(base-hidden 节点 emit 前已跳过,根本不在 body)→ 明确延后,不在本期。 |
+| 4 | **v7b 默认取 componentPropertyDefinitions 的 VARIANT `defaultValue`,无则回退首子** | `buildVariants(set, kids)` 读 `set.componentPropertyDefinitions`,VARIANT 类型 def `name===rawName` 的 `defaultValue` 作 axis 默认。**防御**:声明默认必须是该轴真实 option(`options.includes(declared)`)才采用,否则回退首子值(避免幽灵默认令 switch 无匹配)。 |
+| 5 | **v7b 零 component.ts 改动** | `buildVariantModule` 的 fallback 仍是 `variants[0]`(首子,catch-all);axis.defaultValue 只喂 destructure 默认 → `__variant`,声明默认正确路由到其 `if` guard。两者正交,无需动 emit。 |
+
+### 8v7.3 公开 API / Schema 改动(零 scene-graph / round-trip)
+
+- `ir/style.ts`:`tailwindClassName` 末尾按 `node.visible===false` 追加 `hidden`。
+- `ir/collect/components.ts`:`buildVariants(set, kids)` 签名加 `set`;新 `variantDefaultsFromDefinitions(set)`(VARIANT def → Map<rawName, defaultValue>)。
+- 无 IR 类型 / scene-graph / round-trip / CompilerOptions 改动。
+
+### 8v7.4 内部实现拆解
+
+1. **v7a**(style.ts):combined className 计算后 `if (node.visible === false) return combined === '' ? 'hidden' : \`${combined} hidden\``。其余调用方(可见节点)输出 byte-identical。
+2. **v7b**(components.ts):`buildVariants(set, kids)`;`variantDefaultsFromDefinitions(set)` 遍历 `set.componentPropertyDefinitions ?? []`,`type==='VARIANT'` → `out.set(def.name, def.defaultValue)`。axis `defaultValue` = `declared!==undefined && options.includes(declared) ? declared : (first[rawName] ?? options[0] ?? '')`。调用点 `buildVariants(set, kids)`。
+
+### 8v7.5 成功标准
+
+- v7a:instance 对某 child 加 `:visible=false` override → 该 child 的 className prop 含 `hidden`;`hidden` 进 safelist;master + 其他实例不受影响(默认 className 无 hidden)。
+- v7a:i18n/正常路径无回归(可见节点 tailwindClassName 输出 byte-identical)。
+- v7b:SET 的 componentPropertyDefinitions 声明 VARIANT 默认 = 非首子 → 该轴 destructure 默认 = 声明值,默认实例渲染声明的默认 variant;无 componentPropertyDefinitions → 回退首子(v4 行为不变);声明默认非真实 option → 回退首子。
+- `bun run check` exit 0;既有 components 测试不回归。
+
+### 8v7.6 工作分解(~0.4 day)
+
+style.ts(visible→hidden)→ components.ts(buildVariants 取 set + variantDefaultsFromDefinitions)→ components/variants.test.ts + 新 visible 测试 → `build:packages` → `bun run check`。
+
+### 8v7.7 风险
+
+- v7a 改 `tailwindClassName` 影响所有调用方 → 已论证仅 invisible instance child 命中(正常路径预过滤);加测试断言可见节点输出不变。
+- v7b 声明默认与 variant 子集不一致(幽灵 option)→ `options.includes` 防御回退。
+- `node.visible` 类型是非可选 `boolean`(node-defaults 恒置),故 `!node.visible` 既类型安全又正确(type-aware oxlint `no-unnecessary-boolean-literal-compare` 禁 `=== false`);`componentPropertyDefinitions` 同为非可选数组(禁 `?? []`),`options[0]`(轴恒有 ≥1 值)非空(禁尾随 `?? ''`)。
+
+### 8v7.8 Post-mortem
+
+CODE COMPLETE 2026-06-03。设计成立,1 轮 lint 收口:
+
+- **v7a 单点 DRY**:`tailwindClassName` 末尾 `if (!node.visible) ... hidden`。论证成立——正常 emit 路径预过滤隐藏节点,只有 invisible instance child(经 override 引用)命中;复用 v6 className 槽 + collectClassNames safelist(`hidden` 自动进 index.css)。零 IR/emit/scene-graph 改动。
+- **v7b**:`buildVariants(set, kids)` + `variantDefaultsFromDefinitions(set)`(VARIANT def `name→defaultValue`);axis 默认 = 声明值(须 `options.includes` 防幽灵)否则首子。零 component.ts 改动(emit fallback 仍首子,默认值只喂 destructure→`__variant` 正确路由)。
+- **GATE lint 收口(type-aware 第 2 道 oxlint,build:packages 后才跑)**:3 处「类型证明多余」——(1) `node.visible` 非可选 boolean → `=== false` 被 `no-unnecessary-boolean-literal-compare` 拦,改 `!node.visible`(类型保证无 undefined);(2) `componentPropertyDefinitions` 非可选数组 → 去 `?? []`;(3) `options[0]`(轴恒 ≥1 值)非空 → 去尾随 `?? ''`(保留 `first[rawName] ??`,index-sig 仍判可空)。另 1 处:`combined` 三元嵌套触 `no-nested-ternary` → 改 `let + if`。**经验重申:改 src 必 build:packages 再 lint,type-aware 轮才暴露这些。**
+- **测试**:override-props-general.test.ts +1(`:visible=false`→className prop 含 hidden + master 默认无 hidden + safelist)+ variants.test.ts +3(componentPropertyDefinitions 默认覆盖首子 / 幽灵默认回退首子 / 无 def 回退 v4)= compiler 491/0;`bun run check` exit 0,tsgo 0。
+
+**§8 v8 follow-ups:** component props 编辑器面板(GUI);nested-instance override(实例套实例);`:visible` 的 reverse(base-hidden→instance-show,= §7 re-show 同款,需 tree.ts emit-when-revealed)。
+
 ## §9 编译产物 i18n 运行时 — 设计字符串外置 + react-intl runtime(设计 2026-06-02)
 
 > 用户 2026-06-02 挑定(§8 链 v1–v6 收尾后转新领域)。三 fork AskUserQuestion 锁定 = **react-intl(FormatJS)** + **内容 hash key** + **仅可见文本**(否决 lingui 需 build-step 插件、节点 id key 不去重、含属性串需 useIntl 面大)。

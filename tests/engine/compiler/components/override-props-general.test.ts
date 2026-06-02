@@ -81,4 +81,29 @@ describe('compile — override→props generalized (Phase 3 §8 v6)', () => {
     expect((app.match(/<Tag\b/g) ?? []).length).toBe(3)
     expect(app).toMatch(/<Tag[^>]*\bboxClassName="[^"]+"/)
   })
+
+  // Phase 3 §8 v7 — a `:visible=false` override hides the child via `hidden` in
+  // the className prop (collectTailwindClasses ignores `visible`, so before v7
+  // this override was silently a no-op).
+  test('a :visible=false override emits `hidden` in the child className prop', () => {
+    const { graph, pageId, masterId } = makeGraph()
+    graph.createInstance(masterId, pageId) // clean — child stays visible
+    const dirty = graph.createInstance(masterId, pageId)
+    if (dirty) {
+      const child = graph.getChildren(dirty.id)[0]
+      graph.updateNode(child.id, { visible: false })
+      dirty.overrides = { [`${child.id}:visible`]: false }
+    }
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const comp = out.files.get('src/components/Tag.tsx') as string
+    // the hiding instance passes a className prop carrying `hidden`
+    expect(app).toMatch(/<Tag[^>]*\bboxClassName="[^"]*\bhidden\b/)
+    // master default (child visible) does NOT carry hidden
+    expect(comp).toMatch(/boxClassName = "[^"]*"/)
+    expect(comp).not.toMatch(/boxClassName = "[^"]*\bhidden\b/)
+    // `hidden` reaches the Tailwind safelist (index.css @source inline)
+    expect(out.files.get('src/index.css') as string).toContain('hidden')
+  })
 })

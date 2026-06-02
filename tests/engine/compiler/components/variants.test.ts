@@ -122,3 +122,56 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     expect(allSrc).toContain('flex-col')
   })
 })
+
+/**
+ * Phase 3 §8 v7 — the SET's default variant is taken from its
+ * `componentPropertyDefinitions` (VARIANT default) when present, instead of the
+ * first variant child (the v4 fallback).
+ */
+describe('compile — COMPONENT_SET variant defaults (Phase 3 §8 v7)', () => {
+  function setNode(graph: SceneGraph, setPage: string): SceneNode {
+    const set = graph.getChildren(setPage).find((n) => n.type === 'COMPONENT_SET')
+    if (!set) throw new Error('no COMPONENT_SET')
+    return set
+  }
+
+  test('componentPropertyDefinitions VARIANT defaults override the first-variant default', () => {
+    const { graph, setPage, usePage, variants } = buildSetGraph()
+    graph.updateNode(setNode(graph, setPage).id, {
+      componentPropertyDefinitions: [
+        { id: 'p1', name: 'Size', type: 'VARIANT', defaultValue: 'Small', variantOptions: ['Large', 'Small'] },
+        { id: 'p2', name: 'State', type: 'VARIANT', defaultValue: 'Hover', variantOptions: ['Default', 'Hover'] }
+      ]
+    })
+    graph.createInstance(variants[1].id, usePage)
+
+    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const comp = out.files.get('src/components/Button.tsx') as string
+    // defaults now come from componentPropertyDefinitions, not the first variant
+    expect(comp).toContain('size = "Small", state = "Hover"')
+  })
+
+  test('a declared default that is not a real option falls back to the first variant', () => {
+    const { graph, setPage, usePage, variants } = buildSetGraph()
+    graph.updateNode(setNode(graph, setPage).id, {
+      componentPropertyDefinitions: [
+        { id: 'p1', name: 'Size', type: 'VARIANT', defaultValue: 'Gigantic' } // no such option
+      ]
+    })
+    graph.createInstance(variants[1].id, usePage)
+
+    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const comp = out.files.get('src/components/Button.tsx') as string
+    // stale default ignored → the first variant's value (Large) is kept
+    expect(comp).toContain('size = "Large"')
+  })
+
+  test('no componentPropertyDefinitions → first-variant default (v4 unchanged)', () => {
+    const { graph, usePage, variants } = buildSetGraph()
+    graph.createInstance(variants[1].id, usePage)
+
+    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const comp = out.files.get('src/components/Button.tsx') as string
+    expect(comp).toContain('size = "Large", state = "Default"')
+  })
+})

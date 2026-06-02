@@ -68,6 +68,13 @@ export function tailwindClassName(node: SceneNode, graph: SceneGraph): string {
   // §7 responsive overrides re-derive a breakpoint-prefixed diff in core (same
   // SceneNode → Tailwind translation), appended after the base/SWITCH styling.
   const responsive = collectResponsiveTailwindClasses(node, graph).join(' ')
-  if (responsive === '') return styled
-  return styled === '' ? responsive : `${styled} ${responsive}`
+  let combined = styled
+  if (responsive !== '') combined = styled === '' ? responsive : `${styled} ${responsive}`
+  // §8 v7: a node hidden via an instance `:visible` override → `hidden`.
+  // `collectTailwindClasses` ignores `visible` (it's structural, not style), and
+  // base-hidden nodes are skipped before emit, so this only fires for an
+  // invisible *instance child* (referenced through its component's className
+  // prop) — making the previously-silent `:visible` override take effect.
+  if (!node.visible) return combined === '' ? 'hidden' : `${combined} hidden`
+  return combined
 }

@@ -72,12 +72,13 @@ export function isVariantChild(graph: SceneGraph, node: SceneNode): boolean {
   return graph.getNode(node.parentId)?.type === 'COMPONENT_SET'
 }
 
-/** Phase 3 §8 v4 — derive variant axes + cases from a SET's variant children.
+/** Phase 3 §8 v4/v7 — derive variant axes + cases from a SET's variant children.
  *  Axes = the union of `parseVariantName` keys across all variant children
- *  (first-seen order); each axis's options = the union of its values; the
- *  default value is the *first* variant's value for that axis (deterministic,
- *  independent of the SET's componentPropertyDefinitions). */
-function buildVariants(kids: SceneNode[]): ComponentMeta['variants'] {
+ *  (first-seen order); each axis's options = the union of its values. Phase 3 §8
+ *  v7: the default value is the SET's `componentPropertyDefinitions` VARIANT
+ *  default when it names a real option, otherwise the *first* variant's value
+ *  for that axis (the v4 fallback). */
+function buildVariants(set: SceneNode, kids: SceneNode[]): ComponentMeta['variants'] {
   const parsed = kids.map((kid) => ({ childId: kid.id, values: parseVariantName(kid.name) }))
   const axisOrder: string[] = []
   const optionsByAxis = new Map<string, string[]>()
@@ -93,13 +94,31 @@ function buildVariants(kids: SceneNode[]): ComponentMeta['variants'] {
   }
   const usedPropNames = new Set<string>()
   const first = parsed[0]?.values ?? {}
-  const axes: VariantAxis[] = axisOrder.map((rawName) => ({
-    name: uniqueName(propName(rawName), usedPropNames),
-    rawName,
-    options: optionsByAxis.get(rawName) ?? [],
-    defaultValue: first[rawName] ?? (optionsByAxis.get(rawName)?.[0] ?? '')
-  }))
+  const declaredDefaults = variantDefaultsFromDefinitions(set)
+  const axes: VariantAxis[] = axisOrder.map((rawName) => {
+    const options = optionsByAxis.get(rawName) ?? []
+    const declared = declaredDefaults.get(rawName)
+    // §8 v7: honor the declared default only when it is a real option of this
+    // axis (a stale definition default would otherwise match no variant case).
+    const defaultValue =
+      declared !== undefined && options.includes(declared)
+        ? declared
+        : (first[rawName] ?? options[0])
+    return { name: uniqueName(propName(rawName), usedPropNames), rawName, options, defaultValue }
+  })
   return { axes, cases: parsed }
+}
+
+/** Phase 3 §8 v7 — a COMPONENT_SET's VARIANT-property defaults: axis raw name →
+ *  declared default option, from `componentPropertyDefinitions`. Non-VARIANT
+ *  props (TEXT/BOOLEAN/INSTANCE_SWAP) are ignored. Empty when the SET declares
+ *  none (then `buildVariants` falls back to the first variant). */
+function variantDefaultsFromDefinitions(set: SceneNode): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const def of set.componentPropertyDefinitions) {
+    if (def.type === 'VARIANT') out.set(def.name, def.defaultValue)
+  }
+  return out
 }
 
 /**
@@ -149,7 +168,7 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
       // Phase 3 §8 v5: a SET's text/fill prop slots, merged by layer name so
       // the same logical node across variant subtrees shares one prop.
       propSlots: buildSetPropSlots(graph, kids, variantInstances),
-      variants: buildVariants(kids)
+      variants: buildVariants(set, kids)
     })
   }
   return registry
