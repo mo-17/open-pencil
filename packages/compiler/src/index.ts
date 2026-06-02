@@ -1,4 +1,5 @@
-import { collectTree } from './ir/collect/tree'
+import { buildComponentRegistry } from './ir/collect/components'
+import { collectComponents, collectTree } from './ir/collect/tree'
 import { selectAdapter } from './select-adapter'
 import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
@@ -50,12 +51,18 @@ export function compile(input: CompilerInput): CompilerOutput {
     return { files: new Map(), warnings: selectionWarnings }
   }
 
-  const irs = input.pageIds.map((id) => collectTree(input.graph, id))
-  const { files, warnings: adapterWarnings } = adapter.emit(irs, input.options)
+  // Phase 3 §8: extract reusable components (COMPONENT masters with ≥1
+  // instance) once, then walk each page with the registry so masters + clean
+  // instances emit `<Name />` refs instead of inlining the subtree.
+  const registry = buildComponentRegistry(input.graph)
+  const { defs: components, warnings: componentWarnings } = collectComponents(input.graph, registry)
+  const irs = input.pageIds.map((id) => collectTree(input.graph, id, registry))
+  const { files, warnings: adapterWarnings } = adapter.emit(irs, input.options, components)
   return {
     files,
     warnings: [
       ...selectionWarnings,
+      ...componentWarnings,
       ...irs.flatMap((ir) => ir.warnings),
       ...adapterWarnings
     ]

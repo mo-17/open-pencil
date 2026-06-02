@@ -7,11 +7,12 @@ import {
   buildTsConfig,
   buildViteConfig
 } from '#compiler/project'
-import type { IRNode, IRSupabaseConfig, IRTree } from '#compiler/ir/types'
+import type { ComponentDef, IRNode, IRSupabaseConfig, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions, CompileWarning } from '#compiler/types'
 
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 
+import { buildComponentModule } from './emit/component'
 import { stripNavigateForSinglePage } from './ir-walk'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode-state'
 import {
@@ -40,12 +41,35 @@ const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
 const LOWCODE_SUPABASE_FILE = 'src/_lowcode_supabase.ts'
 
 export const reactAdapter: FrameworkAdapter = {
-  emit(irs: readonly IRTree[], options: CompilerOptions): AdapterEmission {
-    return irs.length > 1 ? emitMultiPage(irs, options) : emitSinglePage(irs[0], options)
+  emit(
+    irs: readonly IRTree[],
+    options: CompilerOptions,
+    components: readonly ComponentDef[] = []
+  ): AdapterEmission {
+    return irs.length > 1
+      ? emitMultiPage(irs, options, components)
+      : emitSinglePage(irs[0], options, components)
   }
 }
 
-function emitSinglePage(ir: IRTree, options: CompilerOptions): AdapterEmission {
+/** Phase 3 §8: emit one `src/components/<Name>.tsx` per reusable component.
+ *  Pages reference them via the import prefix set in the scaffold options
+ *  (`./components/` single-page, `../components/` multi-page). */
+function emitComponentFiles(
+  files: Map<string, string | Uint8Array>,
+  components: readonly ComponentDef[],
+  devMode: boolean
+): void {
+  for (const def of components) {
+    files.set(`src/components/${def.name}.tsx`, buildComponentModule(def, devMode))
+  }
+}
+
+function emitSinglePage(
+  ir: IRTree,
+  options: CompilerOptions,
+  components: readonly ComponentDef[]
+): AdapterEmission {
   // Phase 1 §7.4: navigate handlers require react-router-dom's `useNavigate`,
   // which only exists in the multi-page router shell. Strip them up front and
   // warn — the page body emit then proceeds as if they were never collected.
@@ -61,21 +85,24 @@ function emitSinglePage(ir: IRTree, options: CompilerOptions): AdapterEmission {
   // `setDocState` from `./` (single-page) or `../` (multi-page).
   maybeEmitLowcodeRuntime(files, cleaned.docStates)
   maybeEmitLowcodeSupabaseRuntime(files, cleaned.supabaseConfig)
+  emitComponentFiles(files, components, options.devMode)
   files.set(
     'src/App.tsx',
     buildAppTsx(cleaned, {
       devMode: options.devMode,
       lowcodeStateImportPath: './_lowcode_state',
-      lowcodeSupabaseImportPath: './_lowcode_supabase'
+      lowcodeSupabaseImportPath: './_lowcode_supabase',
+      componentImportPrefix: './components/'
     })
   )
-  setSharedProjectFiles(files, options, collectClassNames([cleaned]))
+  setSharedProjectFiles(files, options, collectClassNames([cleaned], components))
   return { files, warnings }
 }
 
 function emitMultiPage(
   irs: readonly IRTree[],
-  options: CompilerOptions
+  options: CompilerOptions,
+  components: readonly ComponentDef[]
 ): AdapterEmission {
   const infos = derivePagePaths(irs)
   const files = new Map<string, string | Uint8Array>()
@@ -89,6 +116,7 @@ function emitMultiPage(
   files.set('package.json', buildPackageJson(options, extraDeps))
   maybeEmitLowcodeRuntime(files, docStates)
   maybeEmitLowcodeSupabaseRuntime(files, supabaseConfig)
+  emitComponentFiles(files, components, options.devMode)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
     files.set(
@@ -96,11 +124,12 @@ function emitMultiPage(
       buildPageModule(info, {
         devMode: options.devMode,
         lowcodeStateImportPath: '../_lowcode_state',
-        lowcodeSupabaseImportPath: '../_lowcode_supabase'
+        lowcodeSupabaseImportPath: '../_lowcode_supabase',
+        componentImportPrefix: '../components/'
       })
     )
   }
-  setSharedProjectFiles(files, options, collectClassNames(irs))
+  setSharedProjectFiles(files, options, collectClassNames(irs, components))
   return { files, warnings: collectSlugWarnings(infos) }
 }
 
@@ -173,7 +202,10 @@ function collectSlugWarnings(infos: readonly PagePathInfo[]): CompileWarning[] {
   return warnings
 }
 
-function collectClassNames(irs: readonly IRTree[]): string[] {
+function collectClassNames(
+  irs: readonly IRTree[],
+  components: readonly ComponentDef[] = []
+): string[] {
   // Seed with the wrapper classes scaffold.ts emits on the page <div>.
   // They never appear in the IR (the wrapper isn't an IRNode), so without
   // this seed Tailwind v4 wouldn't generate them and absolute children lose
@@ -181,6 +213,12 @@ function collectClassNames(irs: readonly IRTree[]): string[] {
   const acc = new Set<string>(PAGE_WRAPPER_CLASSES)
   for (const ir of irs) {
     for (const child of ir.children) walk(child, acc)
+  }
+  // Phase 3 §8: component bodies live in their own files, so their classes
+  // must reach the safelist too — otherwise an instanced-only component's
+  // styles get stripped in the iframe.
+  for (const def of components) {
+    for (const child of def.children) walk(child, acc)
   }
   return [...acc].sort()
 }
@@ -198,11 +236,19 @@ function walk(node: IRNode, acc: Set<string>): void {
     walk(node.template, acc)
     return
   }
-  if (node.kind !== 'element') return
-  if (node.className) {
-    for (const cls of node.className.split(/\s+/)) {
-      if (cls) acc.add(cls)
-    }
+  // Phase 3 §8: a component ref carries the usage-site root classes.
+  if (node.kind === 'componentRef') {
+    addClasses(node.className, acc)
+    return
   }
+  if (node.kind !== 'element') return
+  addClasses(node.className, acc)
   for (const child of node.children) walk(child, acc)
+}
+
+function addClasses(className: string, acc: Set<string>): void {
+  if (!className) return
+  for (const cls of className.split(/\s+/)) {
+    if (cls) acc.add(cls)
+  }
 }

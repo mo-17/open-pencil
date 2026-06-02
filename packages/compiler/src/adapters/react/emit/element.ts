@@ -41,6 +41,14 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     return `${pad}{(${emitExpression(node.ast)}) && (\n${inner}\n${pad})}`
   }
 
+  if (node.kind === 'componentRef') {
+    // Phase 3 §8: `<Name className="..." />`. The shared subtree lives in the
+    // emitted component file; the usage site supplies its own root classes.
+    const classAttr = node.className ? ` className="${escapeAttr(node.className)}"` : ''
+    const idAttr = devMode ? ` data-node-id="${node.sourceId}"` : ''
+    return `${pad}<${node.name}${classAttr}${idAttr} />`
+  }
+
   if (node.kind === 'list') {
     // Phase 2 §9: `{(<arr>).map((item, index) => (<template/>))}`. The
     // template inherits the adapter's data-node-id when devMode is on.

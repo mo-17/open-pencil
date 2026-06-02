@@ -1,0 +1,43 @@
+import type { ComponentDef } from '#compiler/ir/types'
+
+import { emitElement } from './element'
+
+/**
+ * Phase 3 §8 — build `src/components/<Name>.tsx` for one reusable component.
+ *
+ * The component takes a single optional `className` prop and applies it to its
+ * root `<div>`, so each usage site can position/size the instance in its own
+ * context while sharing the body subtree. Empty components still emit a valid
+ * (self-closing-ish) wrapper.
+ *
+ * devMode tags the body elements with `data-node-id` like pages do; the root
+ * div is the component's own boundary and intentionally untagged (the usage
+ * site's ref carries the instance's sourceId in the page emit).
+ */
+export function buildComponentModule(def: ComponentDef, devMode: boolean): string {
+  const header = `interface ${def.name}Props {\n  className?: string\n}\n\n`
+  if (def.children.length === 0) {
+    return `${header}export default function ${def.name}({ className }: ${def.name}Props) {
+  return <div className={className} />
+}
+`
+  }
+  const body = def.children.map((c) => emitElement(c, 3, devMode)).join('\n')
+  return `${header}export default function ${def.name}({ className }: ${def.name}Props) {
+  return (
+    <div className={className}>
+${body}
+    </div>
+  )
+}
+`
+}
+
+/** Phase 3 §8 — the import lines a page/component needs for the component refs
+ *  it contains. `prefix` is the relative path to `src/components/` from the
+ *  importing file (`./components/` for App.tsx, `../components/` for page
+ *  modules and sibling components). Returns '' when there are no refs. */
+export function buildComponentImports(names: readonly string[], prefix: string): string {
+  const unique = [...new Set(names)].sort()
+  return unique.map((n) => `import ${n} from '${prefix}${n}'`).join('\n')
+}

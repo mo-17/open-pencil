@@ -9,7 +9,9 @@ import {
 
 import { tailwindClassName } from '../style'
 import type {
+  ComponentDef,
   IRAttrValue,
+  IRComponentRef,
   IRConditional,
   IRControlledInput,
   IRDocStateDecl,
@@ -30,6 +32,7 @@ import {
   resolveValueBinding,
   unknownIdentifiers
 } from './bindings'
+import { type ComponentRegistry, isCleanInstance } from './components'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -38,7 +41,11 @@ import { collectPageStates, indexStatesById } from './state'
  * This module belongs to the IR layer — it MUST NOT import from
  * `adapters/**`. Adapters consume IR; IR has no awareness of adapters.
  */
-export function collectTree(graph: SceneGraph, pageId: string): IRTree {
+export function collectTree(
+  graph: SceneGraph,
+  pageId: string,
+  components: ComponentRegistry = new Map()
+): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
   const { states, invalid } = collectPageStates(page)
@@ -80,7 +87,8 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
     docStateReads,
     docStateWrites,
     warnings,
-    inScope: new Set()
+    inScope: new Set(),
+    components
   }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
@@ -102,6 +110,56 @@ export function collectTree(graph: SceneGraph, pageId: string): IRTree {
   }
 }
 
+/**
+ * Phase 3 §8 — collect a ComponentDef for every registered COMPONENT master.
+ * Each master's visible children are walked with the same `nodeToIR` pipeline
+ * (so they reuse all element/text/binding emit logic, and nested instances
+ * become refs), producing the shared subtree the adapter wraps in a component
+ * function. Page-state is out of scope for reusable components (empty `states`);
+ * doc-state is global so its index is shared.
+ */
+export function collectComponents(
+  graph: SceneGraph,
+  components: ComponentRegistry
+): { defs: ComponentDef[]; warnings: IRWarning[] } {
+  const warnings: IRWarning[] = []
+  // Discard doc-state warnings here — they're already surfaced per page.
+  const docStates = indexDocStatesByName(collectDocStates(graph, []))
+  const defs: ComponentDef[] = []
+  for (const [componentId, name] of components) {
+    const master = graph.getNode(componentId)
+    if (!master) continue
+    const ctx: WalkCtx = {
+      graph,
+      states: new Map(),
+      docStates,
+      docStateReads: new Set(),
+      docStateWrites: new Set(),
+      warnings,
+      inScope: new Set(),
+      components
+    }
+    const children: IRNode[] = []
+    for (const child of graph.getChildren(componentId)) {
+      if (!child.visible) continue
+      const ir = nodeToIR(child, ctx)
+      if (ir) children.push(ir)
+    }
+    defs.push({ componentId, name, children })
+  }
+  return { defs, warnings }
+}
+
+/** Phase 3 §8 — emit a `<Name />` ref for a registered COMPONENT master or a
+ *  clean INSTANCE of one; null for everything else (normal inline emit). */
+function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | null {
+  let name: string | undefined
+  if (node.type === 'COMPONENT') name = ctx.components.get(node.id)
+  else if (isCleanInstance(node) && node.componentId) name = ctx.components.get(node.componentId)
+  if (name === undefined) return null
+  return { kind: 'componentRef', sourceId: node.id, name, className: tailwindClassName(node, ctx.graph) }
+}
+
 interface WalkCtx {
   graph: SceneGraph
   states: Map<string, IRStateDecl>
@@ -118,6 +176,10 @@ interface WalkCtx {
    *  (`itemName` / `indexName`), popped when leaving. Used by expression
    *  validation in bindings + renderCondition. */
   inScope: Set<string>
+  /** Phase 3 §8: master-id → component-name registry. A registered COMPONENT
+   *  master, and every clean INSTANCE of one, emit an IRComponentRef instead of
+   *  being inlined. Empty map ≡ no component extraction. */
+  components: ComponentRegistry
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -327,6 +389,13 @@ function resolveVectorSvg(
 }
 
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
+  // Phase 3 §8 — a registered COMPONENT master, or a clean INSTANCE of one,
+  // renders as `<Name className="..." />` (the shared subtree lives in the
+  // emitted component file). Dirty instances (with overrides) and unregistered
+  // components fall through to normal inline emission.
+  const componentRef = resolveComponentRef(node, ctx)
+  if (componentRef) return componentRef
+
   // Phase 3 §3.v4 step 8 — CHECKBOX with options[] becomes a multi-select
   // group: render as a <div> wrapper with N child <input type="checkbox">
   // (mirrors RADIO). Without options it stays the single-input boolean

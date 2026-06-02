@@ -5,7 +5,40 @@
 
 import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
-export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList
+export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList | IRComponentRef
+
+/**
+ * Phase 3 §8 — a reference to a reusable component (a Figma COMPONENT master,
+ * emitted once as `src/components/<name>.tsx`). Replaces inlining the subtree
+ * for the master node itself and every *clean* INSTANCE (one with no overrides);
+ * instances that carry overrides fall back to inline emission to stay faithful.
+ * `className` carries the ref site's own classes (size/fill/position), which the
+ * component applies to its root — so each usage is positioned in its own
+ * context while sharing the children subtree.
+ */
+export interface IRComponentRef {
+  kind: 'componentRef'
+  /** SceneNode id of the master/instance this ref was derived from. */
+  sourceId: string
+  /** PascalCase component name (matches the emitted `src/components/<name>.tsx`). */
+  name: string
+  /** Space-separated Tailwind classes for this usage's root (empty when none). */
+  className: string
+}
+
+/**
+ * Phase 3 §8 — a reusable component definition extracted from a COMPONENT
+ * master. `children` is the master's subtree IR; the adapter wraps it in a
+ * `<div className={className}>` whose class string is supplied per usage.
+ */
+export interface ComponentDef {
+  /** Master COMPONENT node id (the registry key). */
+  componentId: string
+  /** PascalCase React component name. */
+  name: string
+  /** The master's child subtrees (the shared body). */
+  children: IRNode[]
+}
 
 export interface IRElement {
   kind: 'element'

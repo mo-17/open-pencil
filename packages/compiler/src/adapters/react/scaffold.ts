@@ -1,8 +1,9 @@
 import type { IRTree } from '#compiler/ir/types'
 
+import { buildComponentImports } from './emit/component'
 import { emitElement } from './emit/element'
 import { emitStateDecl } from './emit/state'
-import { pageHasNavigateHandler, pageUsesSupabase } from './ir-walk'
+import { pageHasNavigateHandler, pageUsesSupabase, referencedComponentNames } from './ir-walk'
 import type { PagePathInfo } from './route-paths'
 
 /**
@@ -36,6 +37,10 @@ interface BuildPageOptions {
    *  for multi-page page modules. Only consulted when the page contains
    *  a `supabaseQuery` or `supabaseMutation` handler. */
   lowcodeSupabaseImportPath: string
+  /** Phase 3 §8: relative path prefix to `src/components/` from this file —
+   *  `'./components/'` for single-page App.tsx, `'../components/'` for page
+   *  modules. Component imports are emitted only for the refs the page uses. */
+  componentImportPrefix: string
 }
 
 interface BuildAppOptions {
@@ -49,6 +54,9 @@ interface BuildAppOptions {
    *  to `'./_lowcode_supabase'` for single-page; multi-page call sites
    *  pass `'../_lowcode_supabase'` explicitly. */
   lowcodeSupabaseImportPath?: string
+  /** Phase 3 §8: see `BuildPageOptions.componentImportPrefix`. Defaults to
+   *  `'./components/'` (single-page); multi-page pages pass `'../components/'`. */
+  componentImportPrefix?: string
 }
 
 /**
@@ -62,7 +70,8 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     importPreviewBridge: options.devMode,
     exportName: 'App',
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? './_lowcode_state',
-    lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase'
+    lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase',
+    componentImportPrefix: options.componentImportPrefix ?? './components/'
   })
 }
 
@@ -76,7 +85,8 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     importPreviewBridge: false,
     exportName: info.component,
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? '../_lowcode_state',
-    lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase'
+    lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase',
+    componentImportPrefix: options.componentImportPrefix ?? '../components/'
   })
 }
 
@@ -116,7 +126,7 @@ ${routes}
  * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, componentImportPrefix } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const needsNavigate = pageHasNavigateHandler(ir)
@@ -127,7 +137,11 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const lowcodeSupabaseImport = pageUsesSupabase(ir)
     ? `import { getSupabaseClient } from '${lowcodeSupabaseImportPath}'\n`
     : ''
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport
+  // Phase 3 §8: import the components this page references.
+  const componentNames = referencedComponentNames(ir.children)
+  const componentImports = buildComponentImports(componentNames, componentImportPrefix)
+  const componentImportBlock = componentImports ? `${componentImports}\n` : ''
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + componentImportBlock
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''

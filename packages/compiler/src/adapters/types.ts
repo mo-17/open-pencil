@@ -1,4 +1,4 @@
-import type { IRTree } from '../ir/types'
+import type { ComponentDef, IRTree } from '../ir/types'
 import type { CompileWarning, CompilerOptions } from '../types'
 
 /**
@@ -14,8 +14,16 @@ export interface FrameworkAdapter {
    * Emit the full project file map for the given page IRs. A single-entry
    * input keeps the legacy single-`App.tsx` shape; multi-entry input emits
    * a router shell plus per-page modules (Phase 1 §11).
+   *
+   * `components` (Phase 3 §8) are the reusable component definitions referenced
+   * by `IRComponentRef` nodes; the adapter emits one file per referenced one
+   * and wires the page imports. Defaults to empty for callers that pre-date §8.
    */
-  emit(irs: readonly IRTree[], options: CompilerOptions): AdapterEmission
+  emit(
+    irs: readonly IRTree[],
+    options: CompilerOptions,
+    components?: readonly ComponentDef[]
+  ): AdapterEmission
 }
 
 export interface AdapterEmission {

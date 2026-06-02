@@ -37,6 +37,35 @@ export function pageHasNavigateHandler(ir: IRTree): boolean {
 }
 
 /**
+ * Phase 3 §8 — the distinct component names referenced (as IRComponentRef)
+ * anywhere in `nodes`. Descends conditional/list wrappers and element children
+ * so a ref nested in a conditional still gets imported. The scaffold uses this
+ * to emit `import Name from '.../components/Name'` per page/component file.
+ */
+export function referencedComponentNames(nodes: readonly IRNode[]): string[] {
+  const acc = new Set<string>()
+  for (const node of nodes) collectRefNames(node, acc)
+  return [...acc]
+}
+
+function collectRefNames(node: IRNode, acc: Set<string>): void {
+  if (node.kind === 'componentRef') {
+    acc.add(node.name)
+    return
+  }
+  if (node.kind === 'conditional') {
+    collectRefNames(node.consequent, acc)
+    return
+  }
+  if (node.kind === 'list') {
+    collectRefNames(node.template, acc)
+    return
+  }
+  if (node.kind !== 'element') return
+  for (const child of node.children) collectRefNames(child, acc)
+}
+
+/**
  * Phase 3 §2: a page uses supabase when any handler in its tree is a
  * `supabaseQuery`, `supabaseMutation`, or `supabaseAuth`. The scaffolder
  * consults this to decide whether to emit
