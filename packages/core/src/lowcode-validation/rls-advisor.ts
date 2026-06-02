@@ -63,13 +63,30 @@ function commandsForAction(action: ActionDef): SqlCommand[] {
   return []
 }
 
+/** Phase 3 §10: a `condition` action nests `consequent` / `alternate` ActionDef
+ *  chains that may themselves contain Supabase actions. Flatten the workflow
+ *  tree so RLS requirements from inside branches are not silently missed
+ *  (经验 A). */
+function flattenActions(actions: ActionDef[]): ActionDef[] {
+  const out: ActionDef[] = []
+  for (const action of actions) {
+    if (action.kind === 'condition') {
+      out.push(...flattenActions(action.consequent))
+      out.push(...flattenActions(action.alternate ?? []))
+    } else {
+      out.push(action)
+    }
+  }
+  return out
+}
+
 /** Aggregate every Supabase action into per-table anon policy requirements.
  *  Tables are keyed by their trimmed name; blank names are skipped (次默 2).
  *  Same table referenced by multiple actions merges into one entry with the
- *  union of commands (次默 3). */
+ *  union of commands (次默 3). Phase 3 §10: descends into `condition` branches. */
 export function collectRlsRequirements(actions: ActionDef[]): RlsTableRequirement[] {
   const byTable = new Map<string, Set<SqlCommand>>()
-  for (const action of actions) {
+  for (const action of flattenActions(actions)) {
     if (action.kind !== 'supabaseQuery' && action.kind !== 'supabaseMutation') continue
     const table = action.table.trim()
     if (!table) continue

@@ -463,7 +463,10 @@ function errorsFor(action: ActionDef): ActionErrors {
   if (action.kind === 'apiCall') return apiCallErrors(action)
   if (action.kind === 'supabaseQuery') return supabaseQueryErrors(action)
   if (action.kind === 'supabaseMutation') return supabaseMutationErrors(action)
-  return supabaseAuthErrors(action)
+  if (action.kind === 'supabaseAuth') return supabaseAuthErrors(action)
+  // Phase 3 §10 workflow kinds (condition / delay / stop) have no GUI
+  // authoring panel yet, so no inline per-field error surfacing.
+  return {}
 }
 
 const actionErrors = computed(() => {

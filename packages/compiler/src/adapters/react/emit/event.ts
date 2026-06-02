@@ -10,37 +10,73 @@ import type {
 
 import { setterName } from './state'
 
-/** Handler kinds whose emit body is a multi-statement block — `try`/`catch`
- *  wrapper around an `await`. These force `async () => { … }` and skip the
- *  trailing `;` that plain expression statements need. */
-const BLOCK_KINDS = new Set<IREventHandler['kind']>([
+/** Handler kinds that splice a single expression statement (eligible for the
+ *  brace-less single-handler arrow) and take a trailing `;` inside a block. */
+const SIMPLE_STATEMENT_KINDS = new Set<IREventHandler['kind']>([
+  'setState',
+  'navigate',
+  'setVariable'
+])
+
+/** Handler kinds whose emit contains an `await` — they force `async () =>`.
+ *  `condition` is async transitively when any nested branch handler is async
+ *  (handled by `handlersAreAsync`'s recursion, not this set). */
+const ASYNC_KINDS = new Set<IREventHandler['kind']>([
   'apiCall',
   'supabaseQuery',
   'supabaseMutation',
-  'supabaseAuth'
+  'supabaseAuth',
+  'delay'
 ])
+
+/** Handler kinds whose emit is an expression / `return` statement and so needs
+ *  a trailing `;`. The complete-block kinds (apiCall / supabase* try-catch,
+ *  `condition` if/else) are full statements and never get one. */
+const NEEDS_SEMICOLON = new Set<IREventHandler['kind']>([
+  'setState',
+  'navigate',
+  'setVariable',
+  'delay',
+  'stop'
+])
+
+/** Phase 3 §10: an arrow is `async` when any handler — at any nesting depth
+ *  inside `condition` branches — awaits. */
+function handlersAreAsync(handlers: IREventHandler[]): boolean {
+  return handlers.some((h) => {
+    if (ASYNC_KINDS.has(h.kind)) return true
+    if (h.kind === 'condition') {
+      return handlersAreAsync(h.consequent) || handlersAreAsync(h.alternate ?? [])
+    }
+    return false
+  })
+}
 
 /**
  * Render an event's handlers as a single arrow function body suitable for the
  * RHS of a JSX prop, e.g. `() => { setCount(count + 1) }`. The opening brace
- * is omitted when there is one plain (non-async-block) statement.
+ * is omitted when there is one plain (simple-statement) handler.
  *
  * Phase 2 §3: an `apiCall` handler `await`s `fetch`, so the arrow becomes
- * `async` whenever the list contains one. Phase 3 §2: same goes for
- * `supabaseQuery` / `supabaseMutation`. Block-shaped handlers are complete
- * statements so they are never given a trailing `;` and always force the
- * brace-wrapped form.
+ * `async` whenever the list contains one. Phase 3 §2: same for
+ * `supabaseQuery` / `supabaseMutation`. Phase 3 §10: `delay` awaits and
+ * `condition` is async whenever a nested branch awaits.
  */
 export function emitEventHandler(handlers: IREventHandler[]): string {
-  const isAsync = handlers.some((h) => BLOCK_KINDS.has(h.kind))
-  const arrow = isAsync ? 'async () =>' : '() =>'
-  if (handlers.length === 1 && !BLOCK_KINDS.has(handlers[0].kind)) {
+  const arrow = handlersAreAsync(handlers) ? 'async () =>' : '() =>'
+  if (handlers.length === 1 && SIMPLE_STATEMENT_KINDS.has(handlers[0].kind)) {
     return `${arrow} ${emitHandlerStatement(handlers[0])}`
   }
-  const body = handlers
-    .map((h) => (BLOCK_KINDS.has(h.kind) ? emitHandlerStatement(h) : `${emitHandlerStatement(h)};`))
+  return `${arrow} { ${emitStatementList(handlers)} }`
+}
+
+/** Join handlers as statements: expression / `return` statements get a
+ *  trailing `;`; complete blocks (try/catch, if/else) splice as-is. Shared by
+ *  the top-level body and `condition`'s nested `then` / `else` branches. */
+function emitStatementList(handlers: IREventHandler[]): string {
+  return handlers
+    .map((h) => (NEEDS_SEMICOLON.has(h.kind) ? `${emitHandlerStatement(h)};` : emitHandlerStatement(h)))
     .join(' ')
-  return `${arrow} { ${body} }`
 }
 
 function emitHandlerStatement(h: IREventHandler): string {
@@ -88,6 +124,23 @@ function emitHandlerStatement(h: IREventHandler): string {
       return emitSupabaseMutation(h)
     case 'supabaseAuth':
       return emitSupabaseAuth(h)
+    case 'condition': {
+      // Phase 3 §10: `if (<cond>) { <consequent> } else { <alternate> }`.
+      // Branches are emitted through the same statement-list path so they nest.
+      // The else arm is dropped when the IR carried no falsy branch.
+      const cond = emitExpression(h.condAst)
+      const elseArm =
+        h.alternate && h.alternate.length > 0
+          ? ` else { ${emitStatementList(h.alternate)} }`
+          : ''
+      return `if (${cond}) { ${emitStatementList(h.consequent)} }${elseArm}`
+    }
+    case 'delay':
+      // Phase 3 §10: timed wait. Forces the enclosing arrow async (ASYNC_KINDS).
+      return `await new Promise((resolve) => setTimeout(resolve, ${h.ms}))`
+    case 'stop':
+      // Phase 3 §10: early termination of the workflow.
+      return 'return'
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)

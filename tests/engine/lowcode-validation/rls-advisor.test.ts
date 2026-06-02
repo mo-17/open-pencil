@@ -43,6 +43,29 @@ describe('collectRlsRequirements', () => {
     expect(req(reqs, 'likes').commands).toEqual(['DELETE'])
   })
 
+  test('Phase 3 §10: descends into condition branches for nested supabase actions', () => {
+    const reqs = collectRlsRequirements([
+      {
+        id: 'c1',
+        kind: 'condition',
+        condExpr: 'flag',
+        consequent: [query('posts')],
+        alternate: [
+          {
+            id: 'c2',
+            kind: 'condition',
+            condExpr: 'other',
+            consequent: [mutation('comments', 'update')]
+          }
+        ]
+      }
+    ])
+    // both the direct then-branch query and the doubly-nested else-branch
+    // mutation must surface, or RLS policies inside workflows get missed.
+    expect(req(reqs, 'posts').commands).toEqual(['SELECT'])
+    expect(req(reqs, 'comments').commands).toEqual(['UPDATE'])
+  })
+
   test('upsert needs both INSERT and UPDATE (footgun)', () => {
     const reqs = collectRlsRequirements([mutation('profiles', 'upsert')])
     expect(req(reqs, 'profiles').commands).toEqual(['INSERT', 'UPDATE'])

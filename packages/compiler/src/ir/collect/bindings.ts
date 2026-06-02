@@ -11,7 +11,9 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import type {
   IRApiCallHandler,
+  IRConditionalHandler,
   IRControlledInput,
+  IRDelayHandler,
   IRDocStateDecl,
   IREventHandler,
   IREventName,
@@ -365,7 +367,6 @@ function resolveActions(
   inScope: ReadonlySet<string>,
   docStateReads: Set<string> | undefined
 ): IREventHandler[] {
-  const out: IREventHandler[] = []
   const ctx: ResolveCtx = {
     node,
     eventName,
@@ -376,11 +377,20 @@ function resolveActions(
     inScope,
     docStateReads
   }
+  return resolveBranch(actions, ctx)
+}
+
+/** Phase 3 §10: lower one ActionDef chain into IR handlers, dropping invalid
+ *  ones with a warning and recording the docState each writes. Used for both
+ *  the top-level event chain and the nested `then` / `else` branches of a
+ *  `condition` handler, so workflows nest through the same pipeline. */
+function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] {
+  const out: IREventHandler[] = []
   for (const action of actions) {
     const handler = dispatchAction(action, ctx)
     if (handler) {
       out.push(handler)
-      recordWrites(handler, docStateWrites)
+      recordWrites(handler, ctx.docStateWrites)
     }
   }
   return out
@@ -452,6 +462,12 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
         ctx.docStateReads,
         ctx.warnings
       )
+    case 'condition':
+      return resolveCondition(action, ctx)
+    case 'delay':
+      return resolveDelay(ctx.node, ctx.eventName, action, ctx.warnings)
+    case 'stop':
+      return { kind: 'stop' }
     default: {
       // `action satisfies never` would be ideal here, but the cast keeps
       // older .fig files (saved with an unknown future kind) loadable.
@@ -489,6 +505,11 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
       return
     case 'setState':
     case 'navigate':
+    // Phase 3 §10: condition writes are recorded per nested handler while its
+    // branches are resolved (resolveBranch); delay / stop write nothing.
+    case 'condition':
+    case 'delay':
+    case 'stop':
       break
   }
 }
@@ -754,6 +775,81 @@ function resolveNavigate(
     return null
   }
   return { kind: 'navigate', to }
+}
+
+/** Phase 3 §10: lower a `condition` action. Parses the condition expression
+ *  (read-context: page state / docState / in-scope identifiers, `$prev`
+ *  rejected) and recursively lowers the `then` / `else` branches through the
+ *  same pipeline (`resolveBranch`), so workflows nest. An empty / unparseable
+ *  condition drops the whole handler with a warning. The `else` branch is
+ *  omitted when the source had none or it resolves to no handlers. */
+function resolveCondition(
+  action: Extract<ActionDef, { kind: 'condition' }>,
+  ctx: ResolveCtx
+): IRConditionalHandler | null {
+  const src = (action.condExpr ?? '').trim()
+  if (src === '') {
+    ctx.warnings.push({
+      code: 'action-condition-missing-expression',
+      message: `node ${ctx.node.id} ${ctx.eventName} condition has no condExpr`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  const parsed = parseExpression(src)
+  if (!parsed.ok) {
+    ctx.warnings.push({
+      code: 'action-condition-invalid-expression',
+      message: `node ${ctx.node.id} ${ctx.eventName} condition condExpr "${src}" → ${parsed.error}`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  const refCtx = `${ctx.eventName} action-condition condExpr`
+  if (
+    !checkExprRefs(
+      parsed.references,
+      ctx.states,
+      ctx.inScope,
+      ctx.docStates,
+      ctx.node,
+      refCtx,
+      'action-condition',
+      ctx.warnings
+    )
+  ) {
+    return null
+  }
+  registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
+  const consequent = resolveBranch(action.consequent, ctx)
+  const alternate = resolveBranch(action.alternate ?? [], ctx)
+  return {
+    kind: 'condition',
+    condAst: parsed.ast,
+    references: [...parsed.references],
+    consequent,
+    alternate: alternate.length > 0 ? alternate : undefined
+  }
+}
+
+/** Phase 3 §10: lower a `delay` action. `ms` must be a finite, non-negative
+ *  number; anything else drops the handler with a warning. */
+function resolveDelay(
+  node: SceneNode,
+  eventName: EventName,
+  action: Extract<ActionDef, { kind: 'delay' }>,
+  warnings: IRWarning[]
+): IRDelayHandler | null {
+  const ms = action.ms
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) {
+    warnings.push({
+      code: 'action-delay-invalid-ms',
+      message: `node ${node.id} ${eventName} delay ms must be a finite non-negative number (got ${JSON.stringify(ms)})`,
+      nodeId: node.id
+    })
+    return null
+  }
+  return { kind: 'delay', ms }
 }
 
 /** Phase 3 §2: parse `SupabaseFilter[]` into `IRSupabaseFilter[]`. Returns

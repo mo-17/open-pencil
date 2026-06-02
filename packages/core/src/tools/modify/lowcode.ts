@@ -67,7 +67,11 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'apiCall',
   'supabaseQuery',
   'supabaseMutation',
-  'supabaseAuth'
+  'supabaseAuth',
+  // Phase 3 §10 workflow orchestration kinds
+  'condition',
+  'delay',
+  'stop'
 ])
 
 const KNOWN_BINDING_KINDS = new Set<BindingKind>(['literal', 'ref', 'expr', 'docState'])
@@ -277,7 +281,17 @@ function validateActionShape(
   index: number,
   value: unknown
 ): { ok: true; action: ActionDef } | { ok: false; error: string } {
-  const where = `events.${eventName}[${index}]`
+  return validateActionAt(`events.${eventName}[${index}]`, value)
+}
+
+/** Validate + build one ActionDef at a JSON path. Phase 3 §10: `condition`
+ *  recurses into its `then` / `else` branches via this same entry point, so
+ *  nested workflows are validated to arbitrary depth and the path reported on
+ *  error (`events.onClick[0].then[1]`) pinpoints the offending step. */
+function validateActionAt(
+  where: string,
+  value: unknown
+): { ok: true; action: ActionDef } | { ok: false; error: string } {
   if (!isPlainObject(value)) return failAt(where, 'must be an object')
   if (typeof value.id !== 'string' || value.id === '') {
     return failAt(where, '.id must be a non-empty string')
@@ -289,6 +303,9 @@ function validateActionShape(
       `.kind must be one of ${[...KNOWN_ACTION_KINDS].join(' / ')} (got ${JSON.stringify(kind)})`
     )
   }
+  // condition builds its nested branches recursively, so it returns directly
+  // rather than falling through to buildActionFromValidated.
+  if (kind === 'condition') return validateConditionAction(where, value.id, value)
   if (kind === 'setState' || kind === 'setVariable') {
     const r = validateValueExpr(where, value)
     if (!r.ok) return r
@@ -301,8 +318,76 @@ function validateActionShape(
   } else if (kind === 'supabaseAuth') {
     const r = validateSupabaseAuthAction(where, value)
     if (!r.ok) return r
+  } else if (kind === 'delay') {
+    const r = validateDelayAction(where, value)
+    if (!r.ok) return r
   }
   return { ok: true, action: buildActionFromValidated(value.id, kind as ActionKind, value) }
+}
+
+/** Phase 3 §10: validate a `condition` action — optional string `condExpr`,
+ *  required `consequent` array, optional `alternate` array — building each
+ *  branch's nested actions recursively. */
+function validateConditionAction(
+  where: string,
+  id: string,
+  value: Record<string, unknown>
+): { ok: true; action: ActionDef } | { ok: false; error: string } {
+  if (value.condExpr !== undefined && typeof value.condExpr !== 'string') {
+    return failAt(where, '.condExpr must be a string')
+  }
+  const consequentR = validateActionArray(`${where}.consequent`, value.consequent, true)
+  if (!consequentR.ok) return consequentR
+  let alternate: ActionDef[] | undefined
+  if (value.alternate !== undefined) {
+    const alternateR = validateActionArray(`${where}.alternate`, value.alternate, false)
+    if (!alternateR.ok) return alternateR
+    alternate = alternateR.actions
+  }
+  return {
+    ok: true,
+    action: {
+      id,
+      kind: 'condition',
+      condExpr: value.condExpr,
+      consequent: consequentR.actions,
+      alternate
+    }
+  }
+}
+
+/** Validate an array of nested actions (a `condition` branch). When `required`
+ *  is false an absent value yields an empty branch. */
+function validateActionArray(
+  where: string,
+  value: unknown,
+  required: boolean
+): { ok: true; actions: ActionDef[] } | { ok: false; error: string } {
+  if (value === undefined) {
+    if (required) return failAt(where, 'must be an array')
+    return { ok: true, actions: [] }
+  }
+  if (!Array.isArray(value)) return failAt(where, 'must be an array')
+  const actions: ActionDef[] = []
+  for (let i = 0; i < value.length; i++) {
+    const r = validateActionAt(`${where}[${i}]`, value[i])
+    if (!r.ok) return r
+    actions.push(r.action)
+  }
+  return { ok: true, actions }
+}
+
+/** Phase 3 §10: `delay.ms`, when present, must be a finite non-negative
+ *  number (collect also re-checks and drops invalid values with a warning). */
+function validateDelayAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  const ms = value.ms
+  if (ms !== undefined && (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0)) {
+    return failAt(where, '.ms must be a finite non-negative number')
+  }
+  return { ok: true }
 }
 
 /** Construct a precisely-typed `ActionDef` variant from a Record<string, unknown>
@@ -385,9 +470,17 @@ function buildActionFromValidated(
         passwordExpr: raw.passwordExpr as string | undefined,
         errorTarget: raw.errorTarget as string | undefined
       }
+    case 'condition':
+      // Phase 3 §10: built in validateConditionAction (its nested then/else
+      // branches need recursive validation), so this arm is never reached.
+      throw new Error('condition actions are built via validateConditionAction')
+    case 'delay':
+      return { id, kind, ms: raw.ms as number | undefined }
+    case 'stop':
+      return { id, kind }
     default: {
-      // Exhaustive — ActionKind has exactly the 7 variants above. The
-      // assignment proves it to TypeScript and the throw matches the
+      // Exhaustive — ActionKind covers every variant above. The assignment
+      // proves it to TypeScript and the throw matches the
       // ts-eslint(consistent-return) rule for switch-based dispatch.
       const _exhaustive: never = kind
       throw new Error(`unreachable action kind: ${String(_exhaustive)}`)

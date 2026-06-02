@@ -789,11 +789,47 @@ export interface SupabaseAuthAction {
   errorTarget?: string
 }
 
+/** Phase 3 §10: branch a workflow on a runtime condition. `condExpr` uses the
+ *  same restricted expression sub-language as `SetStateAction.valueExpr` (full
+ *  boolean / comparison / ternary / member access), evaluated for truthiness;
+ *  `then` runs when truthy, `else` (optional) when falsy. Branches are nested
+ *  ActionDef chains — the compiler emits
+ *  `if (<cond>) { <consequent> } else { <alternate> }` and lowers each branch
+ *  through the same pipeline as the top-level chain, so conditions nest
+ *  arbitrarily. `consequent` / `alternate` mirror the ternary `ExprAst` vocab.
+ *  `$prev` is rejected (not a setState context). */
+export interface ConditionalAction {
+  id: string
+  kind: 'condition'
+  condExpr?: string
+  consequent: ActionDef[]
+  alternate?: ActionDef[]
+}
+
+/** Phase 3 §10: pause the workflow for `ms` milliseconds. The compiler emits
+ *  `await new Promise((resolve) => setTimeout(resolve, ms))`, which forces the
+ *  enclosing handler to be `async`. `ms` must be a finite non-negative number;
+ *  collect drops the handler with a warning otherwise. */
+export interface DelayAction {
+  id: string
+  kind: 'delay'
+  ms?: number
+}
+
+/** Phase 3 §10: stop the workflow early. The compiler emits `return`, so any
+ *  later steps in the same chain (or enclosing branch) do not run. Carries no
+ *  payload. */
+export interface StopAction {
+  id: string
+  kind: 'stop'
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
  *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
  *  Phase 3 §2.v2 adds `SupabaseAuthAction` (overturns §2 decision #5's
- *  6-kind lock). */
+ *  6-kind lock). Phase 3 §10 adds workflow-orchestration kinds
+ *  `ConditionalAction` / `DelayAction` / `StopAction`. */
 export type ActionDef =
   | SetStateAction
   | NavigateAction
@@ -802,6 +838,9 @@ export type ActionDef =
   | SupabaseQueryAction
   | SupabaseMutationAction
   | SupabaseAuthAction
+  | ConditionalAction
+  | DelayAction
+  | StopAction
 
 export type ActionKind = ActionDef['kind']
 

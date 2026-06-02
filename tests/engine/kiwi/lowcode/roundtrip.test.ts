@@ -7,6 +7,7 @@ import {
   SceneGraph,
   type SceneNode
 } from '@open-pencil/core'
+import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 setDefaultTimeout(30_000)
 
@@ -83,6 +84,36 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
         { id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }
       ]
     })
+  })
+
+  test('Phase 3 §10 workflow: nested condition / delay / stop survive round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    // events serialize as one JSON blob (lowcode/events), so the nested
+    // then/else ActionDef chains of a `condition` round-trip with no codec
+    // change — this pins that the deep structure is preserved.
+    const onClick: ActionDef[] = [
+      { id: 'q1', kind: 'navigate', to: '/start' },
+      {
+        id: 'c1',
+        kind: 'condition',
+        condExpr: 'count > 3',
+        consequent: [{ id: 't1', kind: 'stop' }],
+        alternate: [
+          { id: 'e1', kind: 'delay', ms: 250 },
+          { id: 'e2', kind: 'navigate', to: '/end' }
+        ]
+      }
+    ]
+    graph.updateNode(page.id, {
+      state: [{ id: 's-count', name: 'count', type: 'number', defaultValue: 0 }]
+    })
+    graph.createNode('BUTTON', page.id, { name: 'wf-btn', events: { onClick } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const btn = findByName(reimported, 'wf-btn')
+    expect(btn.events).toEqual({ onClick })
   })
 
   test('all 10 lowcode NodeTypes survive round-trip (Phase 2 §8 adds 4)', async () => {

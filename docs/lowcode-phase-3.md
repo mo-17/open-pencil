@@ -3813,6 +3813,56 @@ export interface DeployTarget {
 
 ---
 
+## §10 工作流编排 — inline ActionDef 扩展(设计 2026-06-02)
+
+> 2026-06-02 用户挑定 §7 / §8 之后的第三项功能 milestone。两关键分叉用 AskUserQuestion 锁定。
+
+### 10.1 现状与问题
+
+事件模型自 Phase 1 §7.4 起是 `events: Partial<Record<EventName, ActionDef[]>>` —— 每个事件挂一条 **顺序 ActionDef 链**,编译成单个 arrow 函数,含异步 action(apiCall / supabase*)时整体变 `async` 且每步各自 `await`。所以「多步链 + 顺序等待」**已经具备**。缺的是 Bubble 风格 workflow 的另两块:**条件分支**(按运行态决定走哪条子链)和**显式异步等待**(定时 delay)。例:`onClick → supabaseQuery → if(error) navigate('/login') else { setDocState(user); delay(500); ... }`。
+
+### 10.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **inline 扩展,不新增顶层实体** | 直接给 `ActionDef` 联合加嵌套 kind,`events` 本身即 workflow。复用全部现有 collect / emit / round-trip(`lowcode/events` 整块 JSON 序列化 → 嵌套 then/else 天然往返,零 codec 改动)。对齐 §1.1 §10 原文「ActionDef 链」+ §1.2 把可视化 DAG 编辑器明确划到 Phase 4。Named WorkflowDef(可复用命名工作流)否决:要新 round-trip 通道 + 顶层实体 + 循环引用检测,过重,留 v2。 |
+| 2 | **新增三 kind:`condition` / `delay` / `stop`** | 全零 npm 依赖、全 clean recursion。condition=`if/else` 嵌套子链;delay=`await new Promise(r=>setTimeout(r,ms))` 定时等待;stop=`return` 提前终止。`+toast` 否决(需 emit 端新 runtime toast surface,留 v2;§3.x 受控输入已有 docState 反馈路径)。 |
+| 3 | **condition 表达式复用现有子语言** | `parseExpression` / `emitExpression` 已支持完整布尔 / 比较 / 三元 / 成员访问(`===` `<` `&&` `\|\|` `?:` `.`)→ 条件表达式零成本,不需 §12 表达式扩展。`$prev` 不允许(非 setState/setVariable 上下文)。引用按 read-context 校验(page state / docState / inScope),命中 docState 注册 read。 |
+| 4 | **GUI 授权面板延后**(沿用 §7 / §8 先例) | v1 = 数据模型 + tool/AI 授权(`tools/modify` 支持嵌套校验) + collect + emit + round-trip + headless 测试。EventsPanel.vue 的 `ACTION_KINDS` 下拉**不**加三新 kind(其 label/errors/makeAction 都是 if-chain 带兜底,加联合成员不破 tsgo),所以编辑器 GUI 暂不能授权 workflow,只能 AI/tool/编程构造。 |
+
+### 10.3 公开 API / Schema 改动
+
+- `scene-graph/types.ts`:新增 `ConditionalAction {id; kind:'condition'; condExpr?; consequent: ActionDef[]; alternate?: ActionDef[]}`、`DelayAction {id; kind:'delay'; ms?}`、`StopAction {id; kind:'stop'}`,并入 `ActionDef` 联合(`ActionKind` 自动扩 3)。**分支字段名用 `consequent`/`alternate`(对齐 `ExprAst` ternary 词汇),不用 `then`/`else`** —— oxlint `unicorn/no-thenable` 禁止任何对象有 `then` 属性(实现中踩到,改名而非 scope-disable correctness 规则,经验:新数据模型字段名避开 `then`)。
+- `packages/compiler/src/ir/types.ts`:新增 `IRConditionalHandler {kind:'condition'; condAst; references; consequent: IREventHandler[]; alternate?}`、`IRDelayHandler {kind:'delay'; ms}`、`IRStopHandler {kind:'stop'}`,并入 `IREventHandler` 联合。
+
+### 10.4 内部实现拆解
+
+1. **collect**(`ir/collect/bindings.ts`):`dispatchAction` 加三 case;`resolveCondition` parse condExpr + checkExprRefs(read-context、禁 $prev、注册 docState read)+ 递归 `resolveBranch(then)` / `resolveBranch(else)`;`resolveDelay` 校验 `ms` 为有限非负数;`resolveStop` trivial。`recordWrites` 对 condition/delay/stop no-op(嵌套写在 `resolveBranch` 内逐 handler 已记)。把现有 `resolveActions` 主循环抽成可复用的 `resolveBranch(actions, ctx)`。
+2. **emit**(`adapters/react/emit/event.ts`):异步判定递归(`delay` 或 任一嵌套 handler 异步 → 整体 `async`);单语句捷径仅限「简单表达式 kind」(setState/navigate/setVariable),其余(apiCall/supabase*/condition/delay/stop)强制花括号体;分号规则:setState/navigate/setVariable/delay/stop 加 `;`,apiCall/supabase*/condition 是完整块不加。`emitStatementList(handlers)` 抽出供 condition 分支递归。condition→`if (<cond>) { <then> }` + 可选 ` else { <else> }`;delay→`await new Promise((resolve) => setTimeout(resolve, <ms>))`;stop→`return`。
+3. **rls-advisor**(`lowcode-validation/rls-advisor.ts`,经验 A 嵌套漏报):`collectRlsRequirements` 须**下降进 condition.then/else** 收集嵌套 supabase action 的 RLS 需求,否则分支里的 query/mutation 被漏。
+4. **tool/AI 授权**(`tools/modify/lowcode.ts`,经验 A `never` 强制):`KNOWN_ACTION_KINDS` += 三 kind;`buildActionFromValidated` 加三 case(condition 递归校验 then/else 每个 ActionDef);validate 入口对 condition 递归。
+
+### 10.5 成功标准
+
+- collect 单测:condition then/else 递归 lower、delay ms 校验、stop;嵌套 supabase 在分支里 resolve;docState read/write 在分支里注册。
+- emit 单测:`if(...){}else{}`、`await ...setTimeout`、`return`;含嵌套异步时整体 `async`;纯同步分支不 async。
+- round-trip:嵌套 condition events 经 `exportFigFile→parseFigFile` 存活。
+- rls:分支内 supabase action 的 RLS 需求被收集。
+- tool:AI 构造 condition(嵌套)校验通过/失败路径。
+- 不破坏既有 7 kind 行为 + 全 `bun run check` exit 0。
+
+### 10.6 Post-mortem
+
+CODE COMPLETE 2026-06-02。实现完全符合设计,1 个非预期 + 2 个经验复用:
+
+- **非预期(field naming):** `ConditionalAction.then`/`else` 触发 oxlint `unicorn/no-thenable`(禁止任何对象字面量带 `then` 属性,防误 await)—— 实现/测试共 ~24 处报错。**改名 `then`→`consequent` / `else`→`alternate`(对齐 `ExprAst` ternary 既有词汇),不 scope-disable correctness 规则。** 新经验:lowcode 数据模型新字段名避开 `then`(以及任何会被 lint 当 thenable 的名字)。
+- **经验 A(union widening 双轮 sweep):** 加 3 个 `ActionDef`/`IREventHandler` kind,sweep 命中 4 个穷举点:collect `dispatchAction`、emit `emitHandlerStatement`(`never`)、tool `buildActionFromValidated`(`never`)、check:vue 的 EventsPanel `errorsFor` if-chain 末尾(narrow 后把 condition/delay/stop 喂给 `supabaseAuthErrors`,vue-tsc 才抓到 —— oxlint/tsgo 没抓,**check:vue 是第 4 道闸**)。另 `rls-advisor.collectRlsRequirements` 是 if-chain 不报错但会**漏** condition 分支里的嵌套 supabase action → 加 `flattenActions` 递归下降(经验 A 的「不报错但漏」典型)。
+- **round-trip 零改动验证:** `lowcode/events` 整块 JSON 序列化的设计假设成立 —— 嵌套 consequent/alternate 经 `exportFigFile→parseFigFile` 字段完全存活,codec 零改。
+- **GATE 流程:** 先 `build:packages` 再改 src → dist 与 src 不同步,type-aware oxlint 报 12 个 `SceneNode(src) vs SceneNode(dist)` TS2345 假错 —— **改完 src 必须重 `build:packages` 再 lint**。CLI 子进程测试(cli.test.ts)的 `invalid zip data` 是 LFS fixture 未实体化(131B stub),`git lfs pull --include="tests/fixtures/*"` 解决,非回归。
+- **测试:** emit 6 + collect 8 + tool 5 + rls(+1)+ round-trip(+1)= 21 个,全绿;`bun run check` exit 0;唯一既有 fail 仍是 §6 `frame with children renders nested`(出范围)。
+
+**§10 follow-ups:** 编辑器授权面板(GUI:condition 分支编辑器 + delay 输入 + stop)—— EventsPanel `ACTION_KINDS` 暂未加 3 新 kind(GUI 授权延后,沿用 §7/§8);named WorkflowDef(可复用命名工作流)v2;`toast`/notify action(需 runtime toast surface)v2;condition 表达式的 GUI 校验红框。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

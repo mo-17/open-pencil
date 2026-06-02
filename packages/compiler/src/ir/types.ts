@@ -150,6 +150,9 @@ export type IREventHandler =
   | IRSupabaseQueryHandler
   | IRSupabaseMutationHandler
   | IRSupabaseAuthHandler
+  | IRConditionalHandler
+  | IRDelayHandler
+  | IRStopHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector
@@ -285,6 +288,35 @@ export interface IRSupabaseAuthHandler {
   passwordAst?: ExprAst
   references: string[]
   errorTarget?: string
+}
+
+/** Phase 3 §10: branch a workflow on a runtime condition. `condAst` is the
+ *  parsed condition expression (same restricted sub-language as
+ *  `IRSetStateHandler.ast`, evaluated for truthiness); the adapter emits
+ *  `if (<cond>) { <consequent> } else { <alternate> }`. `consequent` /
+ *  `alternate` are nested handler chains lowered through the same pipeline, so
+ *  conditions nest. `alternate` is omitted when the source had no falsy branch. */
+export interface IRConditionalHandler {
+  kind: 'condition'
+  condAst: ExprAst
+  /** Identifiers referenced by the condition expression (state / docState). */
+  references: string[]
+  consequent: IREventHandler[]
+  alternate?: IREventHandler[]
+}
+
+/** Phase 3 §10: pause the workflow. Adapter emits
+ *  `await new Promise((resolve) => setTimeout(resolve, ms))`, forcing the
+ *  enclosing handler to be `async`. `ms` is validated to a finite non-negative
+ *  number at collect time. */
+export interface IRDelayHandler {
+  kind: 'delay'
+  ms: number
+}
+
+/** Phase 3 §10: stop the workflow early. Adapter emits `return`. */
+export interface IRStopHandler {
+  kind: 'stop'
 }
 
 /** A page-level state declaration. Adapter emits `useState(defaultValue)`. */
