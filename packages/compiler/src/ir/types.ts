@@ -253,6 +253,7 @@ export type IREventHandler =
   | IRConditionalHandler
   | IRDelayHandler
   | IRStopHandler
+  | IRToastHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector
@@ -417,6 +418,19 @@ export interface IRDelayHandler {
 /** Phase 3 §10: stop the workflow early. Adapter emits `return`. */
 export interface IRStopHandler {
   kind: 'stop'
+}
+
+/** Phase 3 §10 v2: show a transient toast. The adapter emits
+ *  `__opToast(<message>, <variant?>)` against the auto-mounted `<ToastHost/>`
+ *  runtime. `ast` is the parsed message expression (same restricted sub-language
+ *  as `IRSetStateHandler.ast`, evaluated to a string at runtime); `variant`
+ *  selects the severity styling (the second arg is omitted when `info`). */
+export interface IRToastHandler {
+  kind: 'toast'
+  ast: ExprAst
+  /** Identifiers the message expression depends on (state / docState). */
+  references: string[]
+  variant: 'info' | 'success' | 'error'
 }
 
 /** A page-level state declaration. Adapter emits `useState(defaultValue)`. */

@@ -824,6 +824,20 @@ export interface StopAction {
   kind: 'stop'
 }
 
+/** Phase 3 §10 v2: show a transient toast notification. `messageExpr` uses the
+ *  same restricted expression sub-language as `SetStateAction.valueExpr`, so the
+ *  message can interpolate state / docState / `$currentUser` (a static message is
+ *  a quoted-string expression). `variant` selects the toast's severity styling
+ *  (default `info`). The compiler emits `__opToast(<message>, <variant?>)` against
+ *  an auto-mounted `<ToastHost/>` runtime; an empty / unparseable `messageExpr`
+ *  drops the action with a warning at collect time. */
+export interface ToastAction {
+  id: string
+  kind: 'toast'
+  messageExpr?: string
+  variant?: 'info' | 'success' | 'error'
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
  *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
@@ -841,6 +855,7 @@ export type ActionDef =
   | ConditionalAction
   | DelayAction
   | StopAction
+  | ToastAction
 
 export type ActionKind = ActionDef['kind']
 

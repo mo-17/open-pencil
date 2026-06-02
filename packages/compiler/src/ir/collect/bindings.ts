@@ -25,6 +25,7 @@ import type {
   IRSupabaseMutationHandler,
   IRSupabasePayloadEntry,
   IRSupabaseQueryHandler,
+  IRToastHandler,
   IRWarning,
   ValueUpdateMode
 } from '../types'
@@ -468,6 +469,8 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
       return resolveDelay(ctx.node, ctx.eventName, action, ctx.warnings)
     case 'stop':
       return { kind: 'stop' }
+    case 'toast':
+      return resolveToast(action, ctx)
     default: {
       // `action satisfies never` would be ideal here, but the cast keeps
       // older .fig files (saved with an unknown future kind) loadable.
@@ -507,9 +510,11 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
     case 'navigate':
     // Phase 3 §10: condition writes are recorded per nested handler while its
     // branches are resolved (resolveBranch); delay / stop write nothing.
+    // Phase 3 §10 v2: toast reads (its message expr) but writes no docState.
     case 'condition':
     case 'delay':
     case 'stop':
+    case 'toast':
       break
   }
 }
@@ -850,6 +855,56 @@ function resolveDelay(
     return null
   }
   return { kind: 'delay', ms }
+}
+
+/** Phase 3 §10 v2: lower a `toast` action. `messageExpr` is parsed like a
+ *  setState value (read context — `$prev` is rejected) so the message can
+ *  interpolate state / docState / `$currentUser`; an empty or unparseable
+ *  expression, or an unresolved reference, drops the handler with a warning.
+ *  `variant` defaults to `info`. */
+function resolveToast(
+  action: Extract<ActionDef, { kind: 'toast' }>,
+  ctx: ResolveCtx
+): IRToastHandler | null {
+  const src = (action.messageExpr ?? '').trim()
+  if (src === '') {
+    ctx.warnings.push({
+      code: 'action-toast-missing-message',
+      message: `node ${ctx.node.id} ${ctx.eventName} toast has no messageExpr`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  const parsed = parseExpression(src)
+  if (!parsed.ok) {
+    ctx.warnings.push({
+      code: 'action-toast-invalid-message',
+      message: `node ${ctx.node.id} ${ctx.eventName} toast messageExpr "${src}" → ${parsed.error}`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  if (
+    !checkExprRefs(
+      parsed.references,
+      ctx.states,
+      ctx.inScope,
+      ctx.docStates,
+      ctx.node,
+      `${ctx.eventName} action-toast messageExpr`,
+      'action-toast',
+      ctx.warnings
+    )
+  ) {
+    return null
+  }
+  registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
+  return {
+    kind: 'toast',
+    ast: parsed.ast,
+    references: [...parsed.references],
+    variant: action.variant ?? 'info'
+  }
 }
 
 /** Phase 3 §2: parse `SupabaseFilter[]` into `IRSupabaseFilter[]`. Returns

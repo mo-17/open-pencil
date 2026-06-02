@@ -8,6 +8,7 @@ import {
   hasTranslatableText,
   pageHasNavigateHandler,
   pageUsesSupabase,
+  pageUsesToast,
   referencedComponentNames
 } from './ir-walk'
 import { buildReactIntlImport } from './lowcode/i18n'
@@ -44,6 +45,11 @@ interface BuildPageOptions {
    *  for multi-page page modules. Only consulted when the page contains
    *  a `supabaseQuery` or `supabaseMutation` handler. */
   lowcodeSupabaseImportPath: string
+  /** Phase 3 §10 v2: relative path the page module uses to reach
+   *  `src/_lowcode_toast.tsx`. `'./_lowcode_toast'` for single-page,
+   *  `'../_lowcode_toast'` for multi-page. Only consulted when the page fires
+   *  a `toast` action. */
+  lowcodeToastImportPath: string
   /** Phase 3 §8: relative path prefix to `src/components/` from this file —
    *  `'./components/'` for single-page App.tsx, `'../components/'` for page
    *  modules. Component imports are emitted only for the refs the page uses. */
@@ -61,6 +67,10 @@ interface BuildAppOptions {
    *  to `'./_lowcode_supabase'` for single-page; multi-page call sites
    *  pass `'../_lowcode_supabase'` explicitly. */
   lowcodeSupabaseImportPath?: string
+  /** Phase 3 §10 v2: see `BuildPageOptions.lowcodeToastImportPath`. Defaults to
+   *  `'./_lowcode_toast'` (single-page); multi-page pages pass
+   *  `'../_lowcode_toast'` explicitly. */
+  lowcodeToastImportPath?: string
   /** Phase 3 §8: see `BuildPageOptions.componentImportPrefix`. Defaults to
    *  `'./components/'` (single-page); multi-page pages pass `'../components/'`. */
   componentImportPrefix?: string
@@ -78,6 +88,7 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     exportName: 'App',
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? './_lowcode_state',
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase',
+    lowcodeToastImportPath: options.lowcodeToastImportPath ?? './_lowcode_toast',
     componentImportPrefix: options.componentImportPrefix ?? './components/'
   })
 }
@@ -93,6 +104,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     exportName: info.component,
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? '../_lowcode_state',
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase',
+    lowcodeToastImportPath: options.lowcodeToastImportPath ?? '../_lowcode_toast',
     componentImportPrefix: options.componentImportPrefix ?? '../components/'
   })
 }
@@ -133,7 +145,7 @@ ${routes}
  * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, componentImportPrefix } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, componentImportPrefix } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const needsNavigate = pageHasNavigateHandler(ir)
@@ -143,6 +155,10 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const lowcodeStateImport = buildLowcodeStateImport(ir, lowcodeStateImportPath)
   const lowcodeSupabaseImport = pageUsesSupabase(ir)
     ? `import { getSupabaseClient } from '${lowcodeSupabaseImportPath}'\n`
+    : ''
+  // Phase 3 §10 v2: import the toast runtime's pusher when the page fires a toast.
+  const lowcodeToastImport = pageUsesToast(ir)
+    ? `import { __opToast } from '${lowcodeToastImportPath}'\n`
     : ''
   // Phase 3 §8: import the components this page references.
   const componentNames = referencedComponentNames(ir.children)
@@ -155,7 +171,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     formattedMessage: hasTranslatableText(ir.children),
     intl: usesIntlAttr
   })
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + componentImportBlock + i18nImport
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + lowcodeToastImport + componentImportBlock + i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''

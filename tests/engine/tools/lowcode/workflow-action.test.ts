@@ -92,4 +92,38 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toContain('.ms')
   })
+
+  // Phase 3 §10 v2 — toast.
+  test('persists a toast with messageExpr + variant', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = { id: 'to-1', kind: 'toast', messageExpr: '"Saved"', variant: 'success' }
+    const result = update(btn.id, { onClick: [action] }, figma)
+    expect(result.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+  })
+
+  test('rejects a toast with an unknown variant', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const result = update(
+      btn.id,
+      { onClick: [{ id: 'to-1', kind: 'toast', messageExpr: '"x"', variant: 'warning' }] },
+      figma
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('.variant')
+  })
+
+  test('rejects a toast whose messageExpr is not a string', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const result = update(
+      btn.id,
+      { onClick: [{ id: 'to-1', kind: 'toast', messageExpr: 42 }] },
+      figma
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('.messageExpr')
+  })
 })

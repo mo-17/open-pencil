@@ -15,7 +15,8 @@ import { setterName } from './state'
 const SIMPLE_STATEMENT_KINDS = new Set<IREventHandler['kind']>([
   'setState',
   'navigate',
-  'setVariable'
+  'setVariable',
+  'toast'
 ])
 
 /** Handler kinds whose emit contains an `await` — they force `async () =>`.
@@ -37,7 +38,8 @@ const NEEDS_SEMICOLON = new Set<IREventHandler['kind']>([
   'navigate',
   'setVariable',
   'delay',
-  'stop'
+  'stop',
+  'toast'
 ])
 
 /** Phase 3 §10: an arrow is `async` when any handler — at any nesting depth
@@ -141,6 +143,14 @@ function emitHandlerStatement(h: IREventHandler): string {
     case 'stop':
       // Phase 3 §10: early termination of the workflow.
       return 'return'
+    case 'toast': {
+      // Phase 3 §10 v2: push a toast via the runtime. The second `variant`
+      // arg is omitted for the default `info` (the runtime defaults to it).
+      const message = emitExpression(h.ast)
+      return h.variant === 'info'
+        ? `__opToast(${message})`
+        : `__opToast(${message}, ${JSON.stringify(h.variant)})`
+    }
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)

@@ -137,6 +137,26 @@ export function pageUsesSupabase(ir: IRTree): boolean {
 }
 
 /**
+ * Phase 3 §10 v2: a page fires a toast when any handler in its tree is a
+ * `toast` — including one nested inside a `condition` branch (the predicate
+ * descends consequent/alternate, so a toast buried in an if/else still gates
+ * the `__opToast` import; missing that descent is the §10 "compiles but the
+ * import is silently absent" trap). Drives the page's `__opToast` import + the
+ * `_lowcode_toast` runtime emission.
+ */
+export function pageUsesToast(ir: IRTree): boolean {
+  return ir.children.some((c) => treeHasHandler(c, handlerIsOrContainsToast))
+}
+
+function handlerIsOrContainsToast(h: IREventHandler): boolean {
+  if (h.kind === 'toast') return true
+  if (h.kind === 'condition') {
+    return h.consequent.some(handlerIsOrContainsToast) || (h.alternate ?? []).some(handlerIsOrContainsToast)
+  }
+  return false
+}
+
+/**
  * Return a copy of `ir` with every `navigate` handler removed and a
  * `action-navigate-no-router` warning pushed per drop. The input tree is
  * not mutated. When the page has no navigate handlers the original tree

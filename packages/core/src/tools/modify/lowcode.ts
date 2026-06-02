@@ -71,7 +71,9 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   // Phase 3 §10 workflow orchestration kinds
   'condition',
   'delay',
-  'stop'
+  'stop',
+  // Phase 3 §10 v2 toast/notify
+  'toast'
 ])
 
 const KNOWN_BINDING_KINDS = new Set<BindingKind>(['literal', 'ref', 'expr', 'docState'])
@@ -306,23 +308,29 @@ function validateActionAt(
   // condition builds its nested branches recursively, so it returns directly
   // rather than falling through to buildActionFromValidated.
   if (kind === 'condition') return validateConditionAction(where, value.id, value)
-  if (kind === 'setState' || kind === 'setVariable') {
-    const r = validateValueExpr(where, value)
-    if (!r.ok) return r
-  } else if (kind === 'apiCall') {
-    const r = validateApiCallUrl(where, value)
-    if (!r.ok) return r
-  } else if (kind === 'supabaseQuery' || kind === 'supabaseMutation') {
-    const r = validateSupabaseAction(where, kind, value)
-    if (!r.ok) return r
-  } else if (kind === 'supabaseAuth') {
-    const r = validateSupabaseAuthAction(where, value)
-    if (!r.ok) return r
-  } else if (kind === 'delay') {
-    const r = validateDelayAction(where, value)
-    if (!r.ok) return r
-  }
+  const fieldsR = validatePerKindFields(where, kind as ActionKind, value)
+  if (!fieldsR.ok) return fieldsR
   return { ok: true, action: buildActionFromValidated(value.id, kind as ActionKind, value) }
+}
+
+/** Per-kind field validation for a non-`condition` action (condition recurses
+ *  separately). Each arm delegates to the kind's validator; kinds with no extra
+ *  fields (navigate / stop) fall through to ok. Split out of `validateActionAt`
+ *  to keep that dispatcher under the complexity cap (§10 v2 added `toast`). */
+function validatePerKindFields(
+  where: string,
+  kind: ActionKind,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (kind === 'setState' || kind === 'setVariable') return validateValueExpr(where, value)
+  if (kind === 'apiCall') return validateApiCallUrl(where, value)
+  if (kind === 'supabaseQuery' || kind === 'supabaseMutation') {
+    return validateSupabaseAction(where, kind, value)
+  }
+  if (kind === 'supabaseAuth') return validateSupabaseAuthAction(where, value)
+  if (kind === 'delay') return validateDelayAction(where, value)
+  if (kind === 'toast') return validateToastAction(where, value)
+  return { ok: true }
 }
 
 /** Phase 3 §10: validate a `condition` action — optional string `condExpr`,
@@ -386,6 +394,24 @@ function validateDelayAction(
   const ms = value.ms
   if (ms !== undefined && (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0)) {
     return failAt(where, '.ms must be a finite non-negative number')
+  }
+  return { ok: true }
+}
+
+const TOAST_VARIANTS = new Set(['info', 'success', 'error'])
+
+/** Phase 3 §10 v2: `toast.messageExpr`, when present, must be a string (collect
+ *  parses + validates it as an expression); `toast.variant`, when present, must
+ *  be one of info / success / error. */
+function validateToastAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (value.messageExpr !== undefined && typeof value.messageExpr !== 'string') {
+    return failAt(where, '.messageExpr must be a string')
+  }
+  if (value.variant !== undefined && !TOAST_VARIANTS.has(value.variant as string)) {
+    return failAt(where, '.variant must be one of info / success / error')
   }
   return { ok: true }
 }
@@ -478,6 +504,15 @@ function buildActionFromValidated(
       return { id, kind, ms: raw.ms as number | undefined }
     case 'stop':
       return { id, kind }
+    case 'toast':
+      // Phase 3 §10 v2: messageExpr + variant carry through verbatim;
+      // expression validation happens in IR collect (resolveToast).
+      return {
+        id,
+        kind,
+        messageExpr: raw.messageExpr as string | undefined,
+        variant: raw.variant as 'info' | 'success' | 'error' | undefined
+      }
     default: {
       // Exhaustive — ActionKind covers every variant above. The assignment
       // proves it to TypeScript and the throw matches the

@@ -144,4 +144,50 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     })
     expect(onClickHandlers(graph, pageId)).toEqual([{ kind: 'stop' }])
   })
+
+  // Phase 3 §10 v2 — toast.
+  test('toast lowers messageExpr to an IRToastHandler (default variant info)', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 't', kind: 'toast', messageExpr: '"Saved"' }]
+    })
+    expect(onClickHandlers(graph, pageId)).toEqual([
+      { kind: 'toast', ast: { kind: 'string', value: 'Saved' }, references: [], variant: 'info' }
+    ])
+  })
+
+  test('toast carries an explicit variant', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 't', kind: 'toast', messageExpr: '"Oops"', variant: 'error' }]
+    })
+    const handlers = onClickHandlers(graph, pageId)
+    expect(handlers[0]).toMatchObject({ kind: 'toast', variant: 'error' })
+  })
+
+  test('toast messageExpr referencing a docState registers a read', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd1', name: 'userName', type: 'string', defaultValue: '' }],
+      onClick: [{ id: 't', kind: 'toast', messageExpr: 'userName' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.docStateReads).toContain('userName')
+    const handlers = onClickHandlers(graph, pageId)
+    expect(handlers[0]).toMatchObject({ kind: 'toast', references: ['userName'] })
+  })
+
+  test('an empty messageExpr drops the toast with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 't', kind: 'toast', messageExpr: '   ' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-toast-missing-message')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([])
+  })
+
+  test('an unparseable messageExpr drops the toast with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 't', kind: 'toast', messageExpr: ')(' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-toast-invalid-message')).toBe(true)
+  })
 })

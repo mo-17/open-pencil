@@ -103,3 +103,54 @@ describe('emit workflow handlers (Phase 3 §10)', () => {
     expect(out).toContain('await new Promise((resolve) => setTimeout(resolve, 100));')
   })
 })
+
+/**
+ * Phase 3 §10 v2 — toast emit. `__opToast(<message>, <variant?>)`; the variant
+ * arg is omitted for the default `info`. A lone toast is a simple statement
+ * (brace-less arrow); toast is synchronous (never forces async).
+ */
+describe('emit toast handlers (Phase 3 §10 v2)', () => {
+  test('a lone info toast is a brace-less, synchronous arrow with no variant arg', () => {
+    const out = emitEventHandler([
+      { kind: 'toast', ast: { kind: 'string', value: 'Saved' }, references: [], variant: 'info' }
+    ])
+    expect(out).toBe('() => __opToast("Saved")')
+  })
+
+  test('a non-info toast passes the variant as the second arg', () => {
+    const out = emitEventHandler([
+      { kind: 'toast', ast: { kind: 'string', value: 'Saved' }, references: [], variant: 'success' }
+    ])
+    expect(out).toBe('() => __opToast("Saved", "success")')
+  })
+
+  test('the toast message can interpolate a state/docState expression', () => {
+    const out = emitEventHandler([
+      { kind: 'toast', ast: member('currentUser', 'name'), references: ['currentUser'], variant: 'error' }
+    ])
+    expect(out).toBe('() => __opToast(currentUser.name, "error")')
+  })
+
+  test('a toast in a block gets a trailing semicolon and stays sync', () => {
+    const out = emitEventHandler([
+      { kind: 'setVariable', docStateName: 'saved', ast: { kind: 'string', value: 'yes' }, references: [], mode: 'absolute' },
+      { kind: 'toast', ast: { kind: 'string', value: 'Done' }, references: [], variant: 'info' }
+    ])
+    expect(out).toBe('() => { setDocState("saved", "yes"); __opToast("Done"); }')
+    expect(out.startsWith('async')).toBe(false)
+  })
+
+  test('a toast nested in a condition branch still emits', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'condition',
+        condAst: member('res', 'ok'),
+        references: ['res'],
+        consequent: [
+          { kind: 'toast', ast: { kind: 'string', value: 'OK' }, references: [], variant: 'success' }
+        ]
+      }
+    ])
+    expect(out).toContain('if (res.ok) { __opToast("OK", "success"); }')
+  })
+})

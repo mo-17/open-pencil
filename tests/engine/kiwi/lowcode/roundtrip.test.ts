@@ -116,6 +116,29 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(btn.events).toEqual({ onClick })
   })
 
+  test('Phase 3 §10 v2 toast (message + variant, incl nested in condition) survives round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const onClick: ActionDef[] = [
+      { id: 'to1', kind: 'toast', messageExpr: '"Saved"', variant: 'success' },
+      {
+        id: 'c1',
+        kind: 'condition',
+        condExpr: 'count > 0',
+        consequent: [{ id: 'to2', kind: 'toast', messageExpr: '"Has items"', variant: 'info' }]
+      }
+    ]
+    graph.updateNode(page.id, {
+      state: [{ id: 's-count', name: 'count', type: 'number', defaultValue: 0 }]
+    })
+    graph.createNode('BUTTON', page.id, { name: 'toast-btn', events: { onClick } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const btn = findByName(reimported, 'toast-btn')
+    expect(btn.events).toEqual({ onClick })
+  })
+
   test('all 10 lowcode NodeTypes survive round-trip (Phase 2 §8 adds 4)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

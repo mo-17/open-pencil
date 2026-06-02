@@ -4396,6 +4396,78 @@ CODE COMPLETE 2026-06-03。完全符合设计,零意外、零 hotfix:
 
 **§9 v4 follow-ups:** 翻译授权数据模型(编辑器填译文,非开发者填 JSON);ICU 复数/插值(绑定值进消息);`sourceLocale` 可配;将来若新增 aria-label/title/alt 节点属性 → 复用 displayAttr/IRIntlAttr 直接覆盖。
 
+## §10 v2 toast/notify action — 工作流用户反馈 + 运行时 ToastHost(设计 2026-06-03)
+
+> §10 v1 follow-up。用户 2026-06-03 挑定 = **§10 v2 toast**;分叉锁定 = **表达式 message + severity variant**(否决静态串 / 无 variant)。§10 v1 曾否决 toast(「需 runtime surface」),v2 正补这个 surface。
+
+### 10v2.1 现状与问题
+
+§10 v1 给 events 加了 condition/delay/stop 三个无 surface 的纯控制流 kind。工作流缺**面向用户的反馈**:点击保存后没有「已保存」提示。toast 需要一个运行时 surface(产物内置一个 toast 容器 + 一个可从事件处理器调用的推送函数)——这正是 v1 当初否决它的原因,v2 补上。
+
+### 10v2.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **新 `ToastAction {id;kind:'toast';messageExpr?;variant?}`** 并入 ActionDef | 第 8 个 ActionDef kind(§10 v1 是 7 个)。`lowcode/events` 整块 JSON → 天然 round-trip,零 codec。 |
+| 2 | **message 走表达式子语言**(`messageExpr`,复用 `SetStateAction.valueExpr` 文法) | 可引 state/docState/$currentUser(动态 toast)。collect 同 condition:parseExpression + checkExprRefs(read ctx,禁 $prev)+ registerDocStateReads。否决静态串(过窄)。 |
+| 3 | **severity `variant: 'info'\|'success'\|'error'`(默认 info)** | success/error 区分样式是真实 UX。emit `__opToast(msg)`(info)/ `__opToast(msg, "success")`(否则)。 |
+| 4 | **运行时 = 模块级 `__opToast(message, variant)` + 自动挂载 `<ToastHost/>`** | `__opToast` 同 `setDocState`——模块级函数,事件处理器直接调;`ToastHost` 用 React 内置 `useSyncExternalStore` 订阅一个模块级 store。**零新 npm 依赖**(不用 zustand/库)。main.tsx 自动挂 `<ToastHost/>`(同 i18n 的 I18nProvider,零配置)。 |
+| 5 | **toast 是同步单语句**(SIMPLE_STATEMENT_KINDS + NEEDS_SEMICOLON) | 非 async(不进 ASYNC_KINDS);单 handler 可走无花括号箭头;块内加 `;`。 |
+| 6 | **toast id 用模块计数器,非 Math.random** | 产物 runtime `let __toastSeq = 0`(CLAUDE.md 禁 Math.random 的精神;计数器也更确定)。auto-dismiss setTimeout。 |
+
+### 10v2.3 公开 API / Schema 改动
+
+- `scene-graph/types.ts`:`ToastAction` 并入 `ActionDef`(`ActionKind` 自动含 'toast')。
+- `ir/types.ts`:`IRToastHandler {kind:'toast';ast;references;variant}` 并入 `IREventHandler`。
+- 产物新增(有 toast 时):`src/_lowcode_toast.tsx`;有 toast 的页 import `__opToast`;main.tsx 挂 `<ToastHost/>`;package.json 无新 dep。
+- 无 round-trip codec 改动(events 整块 JSON)。
+
+### 10v2.4 内部实现拆解
+
+1. **collect**(bindings.ts):`dispatchAction` case 'toast'→`resolveToast`;`resolveToast` parse `messageExpr`(空/不可解析→drop+warn)+ checkExprRefs(read ctx)+ registerDocStateReads;variant 默认 'info'。`recordWrites` case 'toast'→break(不写 docState)。
+2. **emit**(event.ts):SIMPLE_STATEMENT_KINDS/NEEDS_SEMICOLON += 'toast';`emitHandlerStatement` case 'toast'→`__opToast(${emitExpression(ast)}${variant!=='info' ? `, ${JSON.stringify(variant)}` : ''})`。
+3. **runtime**(lowcode/toast.tsx 新):`buildLowcodeToastRuntime()`——模块级 toast store(id-keyed list,subscribe/getSnapshot)+ `__opToast(message, variant='info')`(push + auto-dismiss)+ `ToastHost`(useSyncExternalStore,按 variant 上色 绿/红/蓝)。
+4. **import gate**(ir-walk.ts + scaffold.ts):`pageUsesToast(ir)`(treeHasHandler kind==='toast',含嵌套 condition 分支)→ page import `{ __opToast } from '<path>/_lowcode_toast'`。
+5. **dispatch**(index.ts):`maybeEmitLowcodeToastRuntime`(任一页有 toast)+ buildMainTsx 传 toast flag + page/App 选项加 `lowcodeToastImportPath`。
+6. **mount**(project.ts):`buildMainTsx({i18n, toast})`——toast→import ToastHost + `<App/>` 旁挂 `<ToastHost/>`。
+7. **tool**(tools/modify/lowcode.ts):KNOWN_ACTION_KINDS += 'toast';`validateToastAction`(variant 若有须三选一,messageExpr 须 string);buildActionFromValidated case 'toast'。
+8. **经验 A 双轮 sweep**:ActionDef widening 的穷举点 = dispatchAction / recordWrites / emitHandlerStatement(`never`)/ buildActionFromValidated(`never`)/ rls-advisor flattenActions(toast 是叶,非 supabase,filter 掉,无需改)/ **editor EventsPanel(check:vue 第 4 道闸,可能需 'toast' 分支)**。
+
+### 10v2.5 成功标准
+
+- `{kind:'toast', messageExpr:'"已保存"', variant:'success'}` → emit `__opToast("已保存", "success")`;有 toast 的页 import `__opToast`;产物含 `_lowcode_toast.tsx`;main.tsx 挂 `<ToastHost/>`;无新 npm dep。
+- messageExpr 引 docState → 页 `useDocState` 读入;variant 缺省 → `__opToast(msg)` 无第二参。
+- 嵌套在 condition 分支里的 toast 也触发 import + runtime emit。
+- 空/不可解析 messageExpr → drop + warn(不破坏其余链)。
+- round-trip:toast action 经 exportFigFile→parseFigFile 存活。
+- 无 toast → 产物 byte-identical(零回归,既有测试不动)。
+- `bun run check` exit 0(含 check:vue + steiger + jscpd)。
+
+### 10v2.6 工作分解(~1 day)
+
+scene-graph ToastAction → ir/types IRToastHandler → bindings resolveToast + recordWrites → event.ts emit → lowcode/toast.tsx runtime → ir-walk pageUsesToast + scaffold import → index.ts dispatch + main.tsx mount → tool 校验 → editor EventsPanel(若 vue-tsc 报)→ 测试(emit / collect / tool / round-trip)→ build:packages → `bun run check`。
+
+### 10v2.7 风险
+
+- ActionDef widening 漏穷举点 → 经验 A 双轮 grep + `never` 闸 + check:vue。
+- 新 runtime 文件写进 Vite root 须幂等(Stage 15 教训)——但 `_lowcode_toast.tsx` 是 VFS 产物文件非 preview-root 配置文件,不触发 reload loop。
+- jscpd:toast runtime 的 store 模式可能与 state.ts 撞 → 写法差异化(useSyncExternalStore vs zustand)。
+- toast 是新 runtime React 组件,真机视觉需 Tauri 验(headless 仅断言 emit 字符串 + runtime 文件内容)。
+
+### 10v2.8 Post-mortem
+
+CODE COMPLETE 2026-06-03。设计成立,2 轮 lint 收口:
+
+- **第 8 个 ActionDef kind**:`ToastAction {messageExpr?;variant?}`(scene-graph)+ `IRToastHandler {ast;references;variant}`(IR)。message 走表达式子语言(`resolveToast` 同 condition:parseExpression + checkExprRefs read ctx + registerDocStateReads),variant 默认 info。emit `__opToast(<expr>)`(info)/ `__opToast(<expr>, "variant")`(否则);toast 是同步单语句(SIMPLE_STATEMENT_KINDS + NEEDS_SEMICOLON,非 ASYNC)。
+- **运行时零新依赖**:`_lowcode_toast.tsx` 用 React 内置 `useSyncExternalStore` + 模块级 store(listeners Set + 重赋值 list 引用,getSnapshot 稳定不抖)+ `__opToast`(模块级,同 setDocState 模式)+ auto-dismiss;`ToastHost` 按 variant 上色。main.tsx 自动挂 `<ToastHost/>`(StrictMode 第二子)。toast id 用 `++seq` 计数器非 Math.random。
+- **safelist 关键**:toast runtime 的固定 Tailwind 类(fixed/bottom-4/.../bg-green-600 等)不在 IR → 必须 seed 进 `@source inline(...)`(VFS iframe 不扫盘),`TOAST_RUNTIME_CLASSES` 在 setSharedProjectFiles 并入 classNames。
+- **import gate 修了 §10 latent bug**:`pageUsesToast` 复用 treeHasHandler 但 predicate `handlerIsOrContainsToast` 递归下降 condition 分支 —— 否则嵌套在 if/else 里的 toast 不触发 `__opToast` import = 「编译过但 import 静默缺失」(经验 A「不报错但漏」,rls-advisor flattenActions 同款)。
+- **经验 A 双轮 sweep 全中**:dispatchAction(加 case)/ recordWrites(no-op group)/ emitHandlerStatement(`never` 闸,必加)/ buildActionFromValidated(`never` 闸,必加)/ tool KNOWN_ACTION_KINDS + validatePerKindFields / rls-advisor flattenActions(toast 是叶非 supabase,filter 掉无需改)/ **check:vue EventsPanel(本次无需改,vue-tsc 0)**。
+- **GATE lint 2 修**:(1) `validateActionAt` 加 toast 分支后 complexity 21>20 → 抽 `validatePerKindFields(where, kind, value)` helper(把 6 个 per-kind 分支移出 dispatcher,经验「加分支前看 complexity 闸」);(2) helper 调用处 `kind` 仍是 `string` → `kind as ActionKind` cast(同 buildActionFromValidated)。jscpd 0 clone(toast runtime store 模式在模板字符串内,不撞 state.ts)。
+- **测试**:emit workflow.test.ts +5(info 无 variant / 带 variant / 表达式 message / block+`;` / 嵌套 condition)+ collect workflow.test.ts +6(lower / variant / docState read / 空+不可解析 drop)+ toast.test.ts +3(全链 runtime+import+mount+safelist / 无 toast byte-identical / 嵌套 condition)+ tool workflow-action.test.ts +3(persist / 坏 variant / 坏 messageExpr)+ kiwi roundtrip +1 = 18 新;compiler 504/0,`bun run check` exit 0,tsgo 0,check:vue 0。
+
+**§10 v3 follow-ups:** named WorkflowDef(可复用工作流);更多 action kind(confirm 对话框 / clipboard);toast 位置/时长可配;编辑器 EventsPanel 加 toast/condition/delay/stop 授权 UI(GUI)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
