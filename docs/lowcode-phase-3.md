@@ -3917,6 +3917,61 @@ CODE COMPLETE 2026-06-02。完全符合设计,零非预期架构问题:
 
 **§8 v3 follow-ups:** fill/size/font override → props(className 参数化 + safelist);COMPONENT_SET variants;编辑器组件 props 面板(GUI)。
 
+## §8 v3 override→props — fill/color override 映射成 className prop(设计 2026-06-02)
+
+> §8 v2 follow-up。用户 2026-06-02 挑定。granularity fork AskUserQuestion 锁定 = **整个 child className 参数化**。
+
+### 8v3.1 现状与问题
+
+§8 v2 把 `:text` override 映射成 string content prop;`:fills` 等仍走 v1 内联回退。fill/color 改动是组件复用的另一常见诉求(同一卡片不同主题色)。但 fill 与 text 不同:**fill 不是内容槽,它 twirl 进 element 的 className 字符串**(`backgroundColor`→`bg-[#hex]`,TEXT→`text-[#hex]`)。
+
+### 8v3.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **fill override → 整个 child className 参数化**(string prop) | fill-override 的 child emit `className={badgeClassName}`,默认 = master child 的 `tailwindClassName`,instance 传自己计算的 className。**零 twirl 耦合 / 不拆 token**(否决「只抽 bg 色」:要从合并 className 拆 fill token + 防 base 重复叠 + TEXT→text-color 分支,脆)。prop 值含该 child 全部视觉类(fill+其他),但只在该 child 有 `:fills` override 时才参数化。 |
+| 2 | **资格扩展** = 所有 override ∈ {`:text`, `:fills`} | `isTextOnlyInstance`→`isSupportedOverrideInstance`。含 size/font/其他 override → 仍内联(v1)。一个 child 可同时有 text + fill 两个 prop。 |
+| 3 | **className prop 值取自 instance child 计算 className**(`tailwindClassName(instChild)`) | 与 v2 的「值取自 instance child 节点」一致——canvas 真值。root 自己的 fill 仍走 usage className(componentRef.className),只有 descendant fill 需 prop(同 v2 root 位置)。 |
+| 4 | **复用 IRElement.classNameProp,零新 emit 路径** | 新 `IRElement.classNameProp?: string`;set 时 emit `className={prop}`(否则静态字符串)。`node.className` 仍保留静态值作 prop 默认 + safelist。 |
+| 5 | **safelist 两边都收** | body 默认(master className)经既有 `walk(node.className)` 已收;instance 传的 className 值 → collectClassNames 对 componentRef 的 className-kind props 显式 addClasses。text-kind props NOT safelist(非 class)。 |
+
+### 8v3.3 公开 API / Schema 改动(零 scene-graph / round-trip)
+
+- `ir/types.ts`:`ComponentProp` + `ComponentRefProp` 加 `kind: 'text' | 'className'`;`IRElement` 加 `classNameProp?: string`。
+- `ir/collect/components.ts`:`ComponentMeta.propSlots` 升格 `Map<masterChildId, ComponentSlot>`,`ComponentSlot = {text?: ComponentProp; className?: ComponentProp}`(一个 child 可有两个 prop)。
+
+### 8v3.4 内部实现拆解
+
+1. **components.ts**:`buildPropSlots` → `Map<masterChildId, ComponentSlot>`;`:text`→`slot.text`(default master.text, kind text),`:fills`→`slot.className`(default `tailwindClassName(masterChild,graph)`, kind className)。prop 名 text=`<child>`、className=`<child>ClassName`,组件内统一去重。`isSupportedOverrideInstance`(所有 key ∈ {`:text`,`:fills`})。注意:components.ts 现在要 `tailwindClassName` → 从 `#compiler/ir/style` import(原只在 tree.ts 用)。
+2. **tree.ts**:`componentPropSlots: Map<string, ComponentSlot>`;TEXT 分支 `slot?.text`→IRExpression;**构造 IRElement 后**若 `slot?.className`→`classNameProp = slot.className.name`;`resolveComponentRef` 用 `isSupportedOverrideInstance`,`resolveInstanceProps` 出 text props(value=instChild.text,kind text)+ className props(value=`tailwindClassName(instChild)`,kind className);`ComponentDef.props` 扁平化 slots 的 text+className。
+3. **emit/element.ts**:IRElement emit——`classNameProp` set → `className={classNameProp}`(替静态 `className="..."`)。
+4. **emit/component.ts**:签名 props 含 className-kind(default = class 字符串,JSON.stringify escape)。
+5. **react index.ts collectClassNames**:componentRef arm 对 `node.props` 里 kind==='className' 的 value `addClasses`(body 默认经 node.className 已收)。
+
+### 8v3.5 成功标准
+
+- fill-override dirty instance → `<Card badgeClassName="bg-blue-500 .."/>`,子树 NOT 内联;组件签名 `badgeClassName = "bg-red-500 .."`(master 默认)。
+- body 该 child emit `className={badgeClassName}`。
+- text + fill 同 child → 两 prop(`title` + `titleClassName`)。
+- 含 size/font override → 仍内联(v1/v2 回归)。
+- instance 传的 className 进 safelist(iframe 不被剥)。
+- master + clean instance 仍 `<Card/>`(默认)。
+- `bun run check` exit 0。
+
+### 8v3.6 Post-mortem
+
+CODE COMPLETE 2026-06-02。完全符合设计:
+
+- **className prop = 整条 child className**(锁定 fork):`IRElement.classNameProp?`,set 时 emit `className={prop}`;`node.className` 保留静态值作默认 + safelist。零 twirl 耦合。component.ts 签名 emit **零改动**(className-kind 也是 string prop + JSON.stringify default,与 text-kind 同形)。
+- **propSlots 升格** `Map<masterChildId, ComponentProp>`→`Map<masterChildId, ComponentSlot{text?, className?}>`(一个 child 可 text+fill 两 prop);`ComponentProp`/`ComponentRefProp` 加 `kind:'text'|'className'`(driving safelist:只 className-kind 值进 collectClassNames)。
+- **safelist 两边**:body 默认经既有 `walk(node.className)` 自动收(classNameProp 不动 node.className 是关键);instance 传值经 collectClassNames componentRef arm 新增 `prop.kind==='className'→addClasses`。**probe 实测**:red→`bg-[#FF0000]`(大写 hex,full-alpha 截断),不是 `bg-[#ff0000]`——测试断言对齐。
+- **资格扩展** `isTextOnlyInstance`→`isSupportedOverrideInstance`(key ∈ {`:text`,`:fills`});v2 旧测试原用 `:fills` 断言 inline 现在变 prop → 改用真正不支持的 `:fontSize` 保 inline 回归。
+- **lint**:`colon < 0` 被 `unicorn/consistent-existence-index-check` 拦 → `=== -1`(×2)。改 src 必 `build:packages` 再 lint(§10/§8v2 同款)。
+- **override 值同 v2 取自 instance child**:fill 值 = `tailwindClassName(instChild)`(canvas 真值);editor 正经改 = `updateNode(child,{fills}) + 标 `${childId}:fills` marker`。
+- **测试**:components-fill-props.test.ts 5 新(prop 默认/传值不内联/safelist/text+fill 双 prop/fontSize 仍内联)+ v1/v2 旧 11(改 1 个 `:fills`→`:fontSize`)= 16/16;compiler 全套 457/0;`bun run check` exit 0。
+
+**§8 v4 follow-ups:** size/font override→props;COMPONENT_SET variants;编辑器组件 props 面板(GUI)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

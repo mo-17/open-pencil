@@ -236,9 +236,15 @@ function walk(node: IRNode, acc: Set<string>): void {
     walk(node.template, acc)
     return
   }
-  // Phase 3 §8: a component ref carries the usage-site root classes.
+  // Phase 3 §8: a component ref carries the usage-site root classes. Phase 3
+  // §8 v3: a className-kind prop value is a Tailwind class string the instance
+  // passes into the component body (`badgeClassName="bg-blue-500 .."`) — it
+  // never appears as a literal in any file, so it must be safelisted here.
   if (node.kind === 'componentRef') {
     addClasses(node.className, acc)
+    for (const prop of node.props) {
+      if (prop.kind === 'className') addClasses(prop.value, acc)
+    }
     return
   }
   if (node.kind !== 'element') return

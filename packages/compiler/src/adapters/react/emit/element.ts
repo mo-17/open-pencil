@@ -72,7 +72,8 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     node.attrs,
     node.events,
     devMode ? node.sourceId : undefined,
-    node.controlled
+    node.controlled,
+    node.classNameProp
   )
   const opening = attrsStr ? `<${node.tag} ${attrsStr}` : `<${node.tag}`
 
@@ -109,10 +110,14 @@ function formatAttrs(
   attrs: Record<string, IRAttrValue>,
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
   nodeId: string | undefined,
-  controlled: IRControlledInput | undefined
+  controlled: IRControlledInput | undefined,
+  classNameProp?: string
 ): string {
   const parts: string[] = []
-  if (className) parts.push(`className="${escapeAttr(className)}"`)
+  // Phase 3 §8 v3: a component-body child whose className is parameterized
+  // emits `className={prop}`; otherwise the static class string.
+  if (classNameProp) parts.push(`className={${classNameProp}}`)
+  else if (className) parts.push(`className="${escapeAttr(className)}"`)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
   for (const [key, value] of Object.entries(attrs)) {
     parts.push(formatAttr(key, value))

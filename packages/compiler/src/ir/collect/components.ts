@@ -1,41 +1,54 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
 
+import { tailwindClassName } from '#compiler/ir/style'
 import type { ComponentProp } from '#compiler/ir/types'
+
+/** Phase 3 §8 v2/v3 — the prop(s) a single master descendant is parameterized
+ *  by: `text` (`:text` override → `{prop}` content) and/or `className`
+ *  (`:fills` override → `className={prop}`). A child can carry both. */
+export interface ComponentSlot {
+  text?: ComponentProp
+  className?: ComponentProp
+}
 
 /**
  * Phase 3 §8 — per-master metadata for the components extracted from a compile.
- * `name` is the PascalCase React component name; `propSlots` (Phase 3 §8 v2)
- * maps a master *descendant* node id to the text prop it is parameterized by,
- * so the component body emits `{prop}` there and each instance passes its
- * overridden value. Built once per compile (components are page-agnostic).
+ * `name` is the PascalCase React component name; `propSlots` (Phase 3 §8 v2/v3)
+ * maps a master *descendant* node id to the prop(s) it is parameterized by, so
+ * the component body emits `{prop}` / `className={prop}` there and each instance
+ * passes its overridden value. Built once per compile (components are
+ * page-agnostic).
  */
 export interface ComponentMeta {
   name: string
-  /** master-descendant node id → text prop slot (empty when no instance
-   *  overrides text on this component). */
-  propSlots: Map<string, ComponentProp>
+  /** master-descendant node id → prop slot (empty when no instance overrides
+   *  a supported prop on this component). */
+  propSlots: Map<string, ComponentSlot>
 }
 
 /** master COMPONENT node id → its emit metadata. */
 export type ComponentRegistry = Map<string, ComponentMeta>
 
-/** The `:text` override suffix — the only override kind §8 v2 maps to a prop. */
+/** The override suffixes §8 maps to props: `:text` (v2, content) and `:fills`
+ *  (v3, className). Any other override → inline fallback. */
 const TEXT_OVERRIDE_SUFFIX = ':text'
+const FILLS_OVERRIDE_SUFFIX = ':fills'
 
 /** An INSTANCE with no overrides renders identically to its master, so it can
- *  be emitted as a bare `<Name />`. Any override means the clone diverged from
- *  the master. Phase 3 §8 v2 lifts text-only divergence into props
- *  (`isTextOnlyInstance`); other overrides still fall back to inlining. */
+ *  be emitted as a bare `<Name />`. */
 export function isCleanInstance(node: SceneNode): boolean {
   return node.type === 'INSTANCE' && Object.keys(node.overrides).length === 0
 }
 
-/** Phase 3 §8 v2 — true when every override an instance carries is a `:text`
- *  override (so the whole instance can be emitted as `<Name title=.. />`).
- *  An empty override set is trivially text-only (a clean instance). */
-export function isTextOnlyInstance(node: SceneNode): boolean {
+/** Phase 3 §8 v2/v3 — true when every override an instance carries is a
+ *  supported one (`:text` → text prop, `:fills` → className prop), so the whole
+ *  instance can be emitted as `<Name title=.. badgeClassName=.. />`. An empty
+ *  override set is trivially supported (a clean instance). */
+export function isSupportedOverrideInstance(node: SceneNode): boolean {
   if (node.type !== 'INSTANCE') return false
-  return Object.keys(node.overrides).every((key) => key.endsWith(TEXT_OVERRIDE_SUFFIX))
+  return Object.keys(node.overrides).every(
+    (key) => key.endsWith(TEXT_OVERRIDE_SUFFIX) || key.endsWith(FILLS_OVERRIDE_SUFFIX)
+  )
 }
 
 /**
@@ -72,30 +85,48 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
   return registry
 }
 
-/** Phase 3 §8 v2 — the union of text prop slots across a master's instances.
- *  Each `:text` override key (`<instChildId>:text`) is mapped to the master
- *  descendant it targets (the instance child's `componentId`), so all
- *  instances overriding the "same" child collapse onto one prop. The prop's
- *  default is the master descendant's own text. */
-function buildPropSlots(graph: SceneGraph, instances: SceneNode[]): Map<string, ComponentProp> {
-  const slots = new Map<string, ComponentProp>()
+/** Phase 3 §8 v2/v3 — the union of prop slots across a master's instances.
+ *  Each supported override key (`<instChildId>:text` / `:fills`) is mapped to
+ *  the master descendant it targets (the instance child's `componentId`), so
+ *  all instances overriding the "same" child collapse onto one slot. A `:text`
+ *  override adds a content prop (default = master text); a `:fills` override
+ *  adds a className prop (default = master child's Tailwind classes). A child
+ *  can carry both. */
+function buildPropSlots(graph: SceneGraph, instances: SceneNode[]): Map<string, ComponentSlot> {
+  const slots = new Map<string, ComponentSlot>()
   const usedPropNames = new Set<string>()
   for (const instance of instances) {
     for (const key of Object.keys(instance.overrides)) {
-      if (!key.endsWith(TEXT_OVERRIDE_SUFFIX)) continue
-      const instChildId = key.slice(0, -TEXT_OVERRIDE_SUFFIX.length)
-      const instChild = graph.getNode(instChildId)
-      const masterChildId = instChild?.componentId
-      if (!masterChildId || slots.has(masterChildId)) continue
-      const masterChild = graph.getNode(masterChildId)
+      const masterChild = resolveMasterChild(graph, key)
       if (!masterChild) continue
-      slots.set(masterChildId, {
-        name: uniqueName(propName(masterChild.name), usedPropNames),
-        defaultValue: masterChild.text
-      })
+      const slot = slots.get(masterChild.id) ?? {}
+      if (key.endsWith(TEXT_OVERRIDE_SUFFIX) && !slot.text) {
+        slot.text = {
+          name: uniqueName(propName(masterChild.name), usedPropNames),
+          defaultValue: masterChild.text,
+          kind: 'text'
+        }
+      } else if (key.endsWith(FILLS_OVERRIDE_SUFFIX) && !slot.className) {
+        slot.className = {
+          name: uniqueName(`${propName(masterChild.name)}ClassName`, usedPropNames),
+          defaultValue: tailwindClassName(masterChild, graph),
+          kind: 'className'
+        }
+      }
+      slots.set(masterChild.id, slot)
     }
   }
   return slots
+}
+
+/** Map an override key (`<instChildId>:<prop>`) to the master descendant it
+ *  targets, via the instance child's `componentId`. Null for unknown nodes. */
+function resolveMasterChild(graph: SceneGraph, overrideKey: string): SceneNode | null {
+  const colon = overrideKey.lastIndexOf(':')
+  if (colon === -1) return null
+  const instChild = graph.getNode(overrideKey.slice(0, colon))
+  const masterChildId = instChild?.componentId
+  return (masterChildId && graph.getNode(masterChildId)) || null
 }
 
 /** Turn a layer name into a valid PascalCase identifier. Non-alphanumeric runs

@@ -34,7 +34,7 @@ import {
   resolveValueBinding,
   unknownIdentifiers
 } from './bindings'
-import { type ComponentRegistry, isTextOnlyInstance } from './components'
+import { type ComponentRegistry, type ComponentSlot, isSupportedOverrideInstance } from './components'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -149,15 +149,19 @@ export function collectComponents(
       const ir = nodeToIR(child, ctx)
       if (ir) children.push(ir)
     }
-    defs.push({ componentId, name: meta.name, children, props: [...meta.propSlots.values()] })
+    const props = [...meta.propSlots.values()].flatMap((slot) =>
+      [slot.text, slot.className].filter((p): p is ComponentProp => p !== undefined)
+    )
+    defs.push({ componentId, name: meta.name, children, props })
   }
   return { defs, warnings }
 }
 
 /** Phase 3 §8 — emit a `<Name />` ref for a registered COMPONENT master or a
- *  clean / text-only INSTANCE of one; null for everything else (normal inline
- *  emit). Phase 3 §8 v2: a text-only INSTANCE passes its overridden text as
- *  props; an INSTANCE with any non-text override returns null → inline fallback. */
+ *  clean / supported-override INSTANCE of one; null for everything else (normal
+ *  inline emit). Phase 3 §8 v2/v3: a text-/fill-only INSTANCE passes its
+ *  overridden text (`title=`) and className (`badgeClassName=`) as props; an
+ *  INSTANCE with any unsupported override returns null → inline fallback. */
 function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | null {
   if (node.type === 'COMPONENT') {
     const meta = ctx.components.get(node.id)
@@ -167,8 +171,8 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   if (node.type !== 'INSTANCE' || !node.componentId) return null
   const meta = ctx.components.get(node.componentId)
   if (!meta) return null
-  // Any non-text override → fall back to inlining (§8 v2 decision #2).
-  if (!isTextOnlyInstance(node)) return null
+  // Any unsupported override → fall back to inlining (§8 v2/v3 decision).
+  if (!isSupportedOverrideInstance(node)) return null
   return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
 }
 
@@ -187,24 +191,30 @@ function refOf(
   }
 }
 
-/** Phase 3 §8 v2 — the text-override values a text-only instance passes. For
- *  each `:text` override, map the instance child back to the master descendant
- *  (its `componentId`) to find the prop slot, and read the diverged value off
- *  the instance child itself. Overrides whose target isn't a known slot are
- *  skipped (defensive — the registry built slots from these same overrides). */
+/** Phase 3 §8 v2/v3 — the override values a supported instance passes. For each
+ *  `:text` / `:fills` override, map the instance child back to the master
+ *  descendant (its `componentId`) to find the prop slot, and read the diverged
+ *  value off the instance child itself: text from `instChild.text`, className
+ *  from `tailwindClassName(instChild)`. Overrides whose target isn't a known
+ *  slot are skipped (defensive — the registry built slots from these same
+ *  overrides). */
 function resolveInstanceProps(
   node: SceneNode,
-  propSlots: Map<string, ComponentProp>,
+  propSlots: Map<string, ComponentSlot>,
   graph: WalkCtx['graph']
 ): ComponentRefProp[] {
   const props: ComponentRefProp[] = []
   for (const key of Object.keys(node.overrides)) {
-    if (!key.endsWith(':text')) continue
-    const instChildId = key.slice(0, -':text'.length)
-    const instChild = graph.getNode(instChildId)
+    const colon = key.lastIndexOf(':')
+    if (colon === -1) continue
+    const instChild = graph.getNode(key.slice(0, colon))
     const slot = instChild?.componentId ? propSlots.get(instChild.componentId) : undefined
-    if (!slot) continue
-    props.push({ name: slot.name, value: instChild?.text ?? '' })
+    if (!slot || !instChild) continue
+    if (key.endsWith(':text') && slot.text) {
+      props.push({ name: slot.text.name, value: instChild.text, kind: 'text' })
+    } else if (key.endsWith(':fills') && slot.className) {
+      props.push({ name: slot.className.name, value: tailwindClassName(instChild, graph), kind: 'className' })
+    }
   }
   return props
 }
@@ -230,10 +240,12 @@ interface WalkCtx {
    *  IRComponentRef instead of being inlined. Empty map ≡ no component
    *  extraction. */
   components: ComponentRegistry
-  /** Phase 3 §8 v2: when collecting a component body, the master-descendant
-   *  node id → text prop slot map for that component. A TEXT node whose id is a
-   *  key emits `{prop}` instead of its literal. Undefined during page walks. */
-  componentPropSlots?: Map<string, ComponentProp>
+  /** Phase 3 §8 v2/v3: when collecting a component body, the master-descendant
+   *  node id → prop slot map for that component. A TEXT node whose id is a key
+   *  emits `{prop}` instead of its literal (text slot); an element whose id is a
+   *  key emits `className={prop}` (className slot). Undefined during page
+   *  walks. */
+  componentPropSlots?: Map<string, ComponentSlot>
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -496,11 +508,17 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
 
   const controlled = applyControlledInput(node, ctx, attrs, children, events)
 
+  // Phase 3 §8 v3: inside a component body, a child with a `:fills` override
+  // slot emits `className={prop}` so an instance can re-style it; the static
+  // `className` above is the prop default (and what Tailwind safelists).
+  const classNameProp = ctx.componentPropSlots?.get(node.id)?.className?.name
+
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
     tag,
     className,
+    ...(classNameProp ? { classNameProp } : {}),
     attrs,
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
@@ -530,11 +548,15 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
     // overrides becomes a `{prop}` slot instead of a literal, so each usage
     // can pass its own text. A real binding still wins (component bodies have
     // empty page-state, so this only matters if a docState binding exists).
-    const slot = ctx.componentPropSlots?.get(node.id)
+    const textProp = ctx.componentPropSlots?.get(node.id)?.text
     if (binding) {
       children.push(binding)
-    } else if (slot) {
-      children.push({ kind: 'expression', ast: { kind: 'ident', name: slot.name }, references: [slot.name] })
+    } else if (textProp) {
+      children.push({
+        kind: 'expression',
+        ast: { kind: 'ident', name: textProp.name },
+        references: [textProp.name]
+      })
     } else if (node.text) {
       children.push({ kind: 'text', value: node.text })
     }

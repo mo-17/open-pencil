@@ -78,15 +78,16 @@ describe('compile — components / instances (Phase 3 §8)', () => {
     expect(relocated).toContain('top-20') // 80px → 20
   })
 
-  test('an instance with a non-text override falls back to inline emission', () => {
+  test('an instance with an unsupported override falls back to inline emission', () => {
     const { graph, pageId, master } = makeComponentGraph()
     graph.createInstance(master.id, pageId) // clean → ref
     const dirty = graph.createInstance(master.id, pageId)
     if (dirty) {
-      // A non-text override (Phase 3 §8 v2 only maps `:text` to props) keeps
-      // the v1 behaviour: the instance diverges → inline fallback.
+      // An override §8 maps to no prop (v2 = `:text`, v3 = `:fills`) keeps the
+      // v1 behaviour: the instance diverges → inline fallback. `:fontSize` is
+      // not mapped, so this instance inlines.
       const childId = graph.getChildren(dirty.id)[0]?.id ?? 'x'
-      dirty.overrides = { [`${childId}:fills`]: 'x' }
+      dirty.overrides = { [`${childId}:fontSize`]: 'x' }
     }
 
     const out = compile({

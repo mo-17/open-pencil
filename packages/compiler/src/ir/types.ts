@@ -30,22 +30,33 @@ export interface IRComponentRef {
   props: ComponentRefProp[]
 }
 
-/** Phase 3 §8 v2 — one text-override value passed at a component usage site. */
+/** Phase 3 §8 v2/v3 — which override a component prop carries. `text` feeds a
+ *  TEXT node's content (`{prop}`); `className` (Phase 3 §8 v3) replaces a
+ *  child's whole className (`className={prop}`), so only `className` values are
+ *  Tailwind-safelisted. */
+export type ComponentPropKind = 'text' | 'className'
+
+/** Phase 3 §8 v2 — one override value passed at a component usage site. */
 export interface ComponentRefProp {
   /** Prop name on the component (matches a `ComponentDef.props[].name`). */
   name: string
-  /** The overridden text value (emitted as a string literal). */
+  /** The overridden value (text content, or a Tailwind class string). */
   value: string
+  /** Phase 3 §8 v3 — text content vs className (drives safelisting). */
+  kind: ComponentPropKind
 }
 
-/** Phase 3 §8 v2 — a text prop slot on a reusable component. Derived from a
- *  `:text` override that at least one instance carries; the master child's own
- *  text is the default so clean usages render unchanged. */
+/** Phase 3 §8 v2/v3 — a prop slot on a reusable component. Derived from a
+ *  `:text` (content) or `:fills` (className) override that at least one
+ *  instance carries; the master child's own value is the default so clean
+ *  usages render unchanged. */
 export interface ComponentProp {
   /** Prop name (camel-ish, derived from the master child's layer name). */
   name: string
-  /** Default value = the master child's text. */
+  /** Default value = the master child's text (text) or className (className). */
   defaultValue: string
+  /** Phase 3 §8 v3 — text content vs className. */
+  kind: ComponentPropKind
 }
 
 /**
@@ -73,8 +84,15 @@ export interface IRElement {
   sourceId: string
   /** Lowercase HTML tag for the adapter to emit (e.g. 'div', 'input'). */
   tag: string
-  /** Space-separated Tailwind class string. Empty string when no classes. */
+  /** Space-separated Tailwind class string. Empty string when no classes.
+   *  Stays populated even when `classNameProp` is set — it is the prop's
+   *  default and the value Tailwind safelisting walks. */
   className: string
+  /** Phase 3 §8 v3 — when set, this element is a component-body child whose
+   *  className comes from a prop (`className={<classNameProp>}`) so a fill
+   *  override on an instance can re-style it. The static `className` above is
+   *  the default. Only set inside a component body. */
+  classNameProp?: string
   /** Static JSX attributes. Adapters quote/escape per their syntax. */
   attrs: Record<string, IRAttrValue>
   children: IRNode[]
