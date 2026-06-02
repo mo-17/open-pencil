@@ -1,4 +1,7 @@
-import { collectTailwindClasses } from '@open-pencil/core/io/formats/jsx'
+import {
+  collectResponsiveTailwindClasses,
+  collectTailwindClasses
+} from '@open-pencil/core/io/formats/jsx'
 import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
 
 /**
@@ -55,12 +58,16 @@ const SWITCH_CLASSES = [...SWITCH_TRACK, ...SWITCH_THUMB].join(' ')
  * Derive the Tailwind class string for a SceneNode. Delegates to the core
  * JSX exporter so the design canvas and the compiled output stay in sync —
  * one source of truth for SceneNode → Tailwind translation. SWITCH appends
- * the toggle-specific styling above.
+ * the toggle-specific styling above; §7 responsive overrides append the
+ * breakpoint-prefixed diff classes after that.
  */
 export function tailwindClassName(node: SceneNode, graph: SceneGraph): string {
   const base = collectTailwindClasses(node, graph).join(' ')
-  if (node.type === 'SWITCH') {
-    return base === '' ? SWITCH_CLASSES : `${base} ${SWITCH_CLASSES}`
-  }
-  return base
+  const styled =
+    node.type === 'SWITCH' ? (base === '' ? SWITCH_CLASSES : `${base} ${SWITCH_CLASSES}`) : base
+  // §7 responsive overrides re-derive a breakpoint-prefixed diff in core (same
+  // SceneNode → Tailwind translation), appended after the base/SWITCH styling.
+  const responsive = collectResponsiveTailwindClasses(node, graph).join(' ')
+  if (responsive === '') return styled
+  return styled === '' ? responsive : `${styled} ${responsive}`
 }

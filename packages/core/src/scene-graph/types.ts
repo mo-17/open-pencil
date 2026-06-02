@@ -522,7 +522,49 @@ export interface SceneNode {
   // emit + `$currentUser` auto-registration. Persisted via §12 pluginData
   // under `lowcode/supabaseConfig`.
   lowcodeSupabaseConfig?: SupabaseConfig
+  // ── Lowcode (Phase 3 §7) ──
+  // Per-breakpoint layout overrides. Bubble-style responsive design via
+  // Tailwind viewport prefixes (`md:` / `lg:` …). Only the layout-affecting
+  // props that differ at a breakpoint are stored; the compiler re-derives
+  // Tailwind classes from the overridden node and emits just the prefixed
+  // diff against the base. Absent ≡ single (base) layout. Persisted via §12
+  // pluginData under `lowcode/responsiveOverrides`.
+  responsiveOverrides?: ResponsiveOverrides
 }
+
+// ── Lowcode (Phase 3 §7) — responsive breakpoints ──────────────────
+// Tailwind's default viewport breakpoints, used as class prefixes. Ordered
+// smallest → largest; the base (un-prefixed) layout is the implicit "mobile"
+// state (min-width semantics — an override applies at its breakpoint and up).
+export type ResponsiveBreakpoint = 'sm' | 'md' | 'lg' | 'xl'
+
+// The subset of SceneNode layout props that may be overridden per breakpoint.
+// `Pick` keeps this in lockstep with SceneNode's own field types — every key
+// here is also read by `collectTailwindClasses`, so the compiler can re-derive
+// the breakpoint's classes by shallow-merging the override onto the node.
+export type ResponsiveOverride = Partial<
+  Pick<
+    SceneNode,
+    | 'layoutMode'
+    | 'layoutWrap'
+    | 'primaryAxisAlign'
+    | 'counterAxisAlign'
+    | 'primaryAxisSizing'
+    | 'counterAxisSizing'
+    | 'itemSpacing'
+    | 'counterAxisSpacing'
+    | 'paddingTop'
+    | 'paddingRight'
+    | 'paddingBottom'
+    | 'paddingLeft'
+    | 'width'
+    | 'height'
+    | 'layoutGrow'
+    | 'visible'
+  >
+>
+
+export type ResponsiveOverrides = Partial<Record<ResponsiveBreakpoint, ResponsiveOverride>>
 
 export type ComponentPropertyType = 'VARIANT' | 'TEXT' | 'BOOLEAN' | 'INSTANCE_SWAP'
 

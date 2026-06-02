@@ -360,4 +360,43 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
 
     expect(reimportedRoot?.lowcodeSupabaseConfig).toBeUndefined()
   })
+
+  test('FRAME responsiveOverrides round-trip through .fig (Phase 3 §7)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, {
+      name: 'ResponsiveStack',
+      width: 400,
+      height: 200,
+      layoutMode: 'VERTICAL',
+      itemSpacing: 8
+    })
+    const overrides = {
+      md: { layoutMode: 'HORIZONTAL' as const, itemSpacing: 24 },
+      lg: { counterAxisAlign: 'CENTER' as const, visible: false }
+    }
+    graph.updateNode(frame.id, { responsiveOverrides: overrides })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedFrame = findByName(reimported, 'ResponsiveStack')
+
+    expect(reimportedFrame.responsiveOverrides).toEqual(overrides)
+  })
+
+  test('graph without responsiveOverrides → reimported node has the field undefined (byte regression)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('FRAME', page.id, {
+      name: 'PlainStack',
+      width: 400,
+      height: 200,
+      layoutMode: 'VERTICAL'
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(findByName(reimported, 'PlainStack').responsiveOverrides).toBeUndefined()
+  })
 })

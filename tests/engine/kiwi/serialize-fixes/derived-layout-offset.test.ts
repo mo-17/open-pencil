@@ -4,7 +4,7 @@ import { SceneGraph } from '@open-pencil/core'
 
 import { expectDefined } from '#tests/helpers/assert'
 
-import { nodeChangeToProps } from '../../../../packages/core/src/kiwi/fig/node-change/convert'
+import { nodeChangeToProps } from '#core/kiwi/fig/node-change/convert'
 
 import { pageId, toKiwi } from './helpers'
 

@@ -1,2 +1,2 @@
 export { sceneNodeToJSX, selectionToJSX, type JSXFormat } from './export'
-export { collectTailwindClasses } from './tailwind-classes'
+export { collectResponsiveTailwindClasses, collectTailwindClasses } from './tailwind-classes'

@@ -2,7 +2,12 @@ import { twirl } from 'twirlwind'
 
 import { colorToCSSCompact } from '#core/color'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
-import type { GridTrack, SceneGraph, SceneNode } from '#core/scene-graph'
+import type {
+  GridTrack,
+  ResponsiveBreakpoint,
+  SceneGraph,
+  SceneNode
+} from '#core/scene-graph'
 import { resolveNodeTextDirection } from '#core/text/direction'
 
 import { formatTrack, getNodeContext, solidFillColor, solidStroke } from './helpers'
@@ -296,6 +301,82 @@ function nodeToStyle(node: SceneNode, graph: SceneGraph): Record<string, string>
   applyShapeStyle(style, node)
   applyTextStyle(style, node)
   return style
+}
+
+// Tailwind's default viewport breakpoints, smallest → largest (min-width).
+const RESPONSIVE_BREAKPOINTS: readonly ResponsiveBreakpoint[] = ['sm', 'md', 'lg', 'xl']
+
+// CSS values the canvas style object OMITS at their default — when a breakpoint
+// override clears one of these layout properties (e.g. VERTICAL→HORIZONTAL drops
+// `flexDirection`), we re-assert the default so `twirl` emits the explicit reset
+// utility. Without this, `flex-col` would linger at every breakpoint because the
+// removal of a class can't be expressed by adding one (`md:flex-row` is needed).
+const LAYOUT_STYLE_RESET: Record<string, string> = {
+  flexDirection: 'row',
+  flexWrap: 'nowrap',
+  gap: '0px',
+  rowGap: '0px',
+  justifyContent: 'flex-start',
+  alignItems: 'stretch',
+  paddingTop: '0px',
+  paddingRight: '0px',
+  paddingBottom: '0px',
+  paddingLeft: '0px',
+  width: 'auto',
+  height: 'auto',
+  flexGrow: '0',
+  display: 'block'
+}
+
+/**
+ * Phase 3 §7 — responsive (breakpoint-prefixed) Tailwind classes for a node's
+ * `responsiveOverrides`. For each breakpoint we shallow-merge the override onto
+ * the node, re-derive the FULL CSS style via the same {@link nodeToStyle} (one
+ * source of truth), diff it against the base style at the CSS-property level,
+ * and `twirl` only the changed properties — each class prefixed `md:` / `lg:`.
+ *
+ * Diffing at the style level (not the class level) is what makes column→row and
+ * other "back to default" changes work: a property the breakpoint resets to its
+ * CSS initial re-asserts that value (see LAYOUT_STYLE_RESET) so twirl emits the
+ * explicit reset utility instead of silently dropping the class.
+ *
+ * `visible: false` is handled explicitly (nodeToStyle ignores `visible`) as
+ * `${bp}:hidden`. Re-showing a base-hidden node is out of scope — the compiler
+ * skips invisible nodes before emit, so they never reach here.
+ */
+export function collectResponsiveTailwindClasses(node: SceneNode, graph: SceneGraph): string[] {
+  const overrides = node.responsiveOverrides
+  if (!overrides) return []
+  const baseStyle = nodeToStyle(node, graph)
+  const out: string[] = []
+  for (const bp of RESPONSIVE_BREAKPOINTS) {
+    const override = overrides[bp]
+    if (!override) continue
+    const bpStyle = nodeToStyle({ ...node, ...override }, graph)
+    const twirled = twirl(layoutStyleDelta(baseStyle, bpStyle))
+    if (twirled) for (const cls of twirled.split(' ')) out.push(`${bp}:${cls}`)
+    if (override.visible === false) out.push(`${bp}:hidden`)
+  }
+  return out
+}
+
+/** The CSS properties that differ between `base` and `bp`, with cleared
+ *  properties re-asserted to their default (so twirl emits an explicit reset).
+ *  Only layout props can change here — a responsive override never touches the
+ *  appearance/shape/text style, so those stay equal and drop out of the diff. */
+function layoutStyleDelta(
+  base: Record<string, string>,
+  bp: Record<string, string>
+): Record<string, string> {
+  const delta: Record<string, string> = {}
+  for (const key of new Set([...Object.keys(base), ...Object.keys(bp)])) {
+    if (base[key] === bp[key]) continue
+    // Present at the breakpoint → use its value; cleared (only in base) →
+    // re-assert the default so twirl emits an explicit reset utility.
+    if (Object.hasOwn(bp, key)) delta[key] = bp[key]
+    else if (key in LAYOUT_STYLE_RESET) delta[key] = LAYOUT_STYLE_RESET[key]
+  }
+  return delta
 }
 
 export function collectTailwindClasses(node: SceneNode, graph: SceneGraph): string[] {

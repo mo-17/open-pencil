@@ -22,6 +22,7 @@ import type {
   GridPosition,
   NodeType,
   PluginDataEntry,
+  ResponsiveOverrides,
   SceneNode,
   StateDef,
   SupabaseConfig
@@ -73,6 +74,12 @@ export const LOWCODE_COUNTER_ALIGN_CONTENT_KEY = 'lowcode/counterAxisAlignConten
  *  re-flowed into auto-placement on reopen. Value is the JSON-encoded
  *  GridPosition; absent ≡ auto-placed (`gridPosition: null`). */
 export const LOWCODE_GRID_POSITION_KEY = 'lowcode/gridPosition'
+/** Phase 3 §7: per-breakpoint layout overrides (responsive design). Value is
+ *  the JSON-encoded `ResponsiveOverrides` map (`{ md: { layoutMode, … }, … }`).
+ *  Absent ≡ single (base) layout, so .fig files that never touched the
+ *  responsive panel stay byte-identical. Structured field like state/bindings
+ *  — restored straight onto the SceneNode, no separate codec override. */
+export const LOWCODE_RESPONSIVE_OVERRIDES_KEY = 'lowcode/responsiveOverrides'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -102,7 +109,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_SUPABASE_CONFIG_KEY,
   LOWCODE_AXIS_SIZING_KEY,
   LOWCODE_COUNTER_ALIGN_CONTENT_KEY,
-  LOWCODE_GRID_POSITION_KEY
+  LOWCODE_GRID_POSITION_KEY,
+  LOWCODE_RESPONSIVE_OVERRIDES_KEY
 ])
 
 /**
@@ -155,6 +163,11 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // Round-trip fix: persist an explicit GRID child placement (no per-child
   // schema field). `null` (auto-placed) writes nothing.
   if (node.gridPosition) entries.push(makeEntry(LOWCODE_GRID_POSITION_KEY, node.gridPosition))
+  // Phase 3 §7: per-breakpoint responsive overrides. Empty/absent map writes
+  // nothing → non-responsive .fig files stay byte-identical.
+  if (isNonEmpty(node.responsiveOverrides)) {
+    entries.push(makeEntry(LOWCODE_RESPONSIVE_OVERRIDES_KEY, node.responsiveOverrides))
+  }
   return entries
 }
 
@@ -234,6 +247,9 @@ export interface ExtractedLowcodeAndPluginData {
    *  `lowcode/gridPosition`. Present only when the saved value had the four
    *  numeric placement fields. */
   gridPositionOverride?: GridPosition
+  /** Phase 3 §7: per-breakpoint responsive overrides. Structured field — flows
+   *  straight onto the SceneNode via `...lowcodeRest` (no codec override). */
+  responsiveOverrides?: ResponsiveOverrides
 }
 
 export function extractLowcodeAndPluginData(
@@ -304,16 +320,39 @@ function assignLowcodeField(
       // JSON.parse already logged a warn for true parse failures.
       if (isSupabaseConfig(value)) target.lowcodeSupabaseConfig = value
       return
+    default:
+      // Layout round-trip fixes (axis sizing / counter-align / grid placement)
+      // and §7 responsive overrides — grouped out to keep this switch under
+      // the complexity limit.
+      assignLowcodeLayoutFix(target, key, value)
+  }
+}
+
+function assignLowcodeLayoutFix(
+  target: ExtractedLowcodeAndPluginData,
+  key: string,
+  value: unknown
+): void {
+  switch (key) {
     case LOWCODE_AXIS_SIZING_KEY:
       assignFillAxisSizing(target, value)
       return
     case LOWCODE_COUNTER_ALIGN_CONTENT_KEY:
       if (value === 'SPACE_BETWEEN') target.counterAxisAlignContentOverride = 'SPACE_BETWEEN'
       return
+    case LOWCODE_RESPONSIVE_OVERRIDES_KEY:
+      if (isResponsiveOverrides(value)) target.responsiveOverrides = value
+      return
     case LOWCODE_GRID_POSITION_KEY:
       if (isGridPosition(value)) target.gridPositionOverride = value
-      break
   }
+}
+
+/** Light guard: a non-null, non-array object. The emit side only iterates the
+ *  known breakpoint keys (`sm`/`md`/`lg`/`xl`), so any stray keys are ignored
+ *  harmlessly; we just reject scalars/arrays from a corrupt .fig. */
+function isResponsiveOverrides(value: unknown): value is ResponsiveOverrides {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 /** Strict guard: all four placement fields must be finite numbers, else the
