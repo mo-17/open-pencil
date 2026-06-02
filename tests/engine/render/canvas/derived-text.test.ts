@@ -1,10 +1,12 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { renderNodesToImage, SceneGraph, SkiaRenderer } from '@open-pencil/core'
+import { fontManager } from '@open-pencil/core/text'
 
 import { initCanvasKit } from '#cli/headless'
 import {
   derivedUnderlineRect,
+  shouldLiveShapeOverDerivedGlyphs,
   shouldUseHardFigmaDerivedGlyphCoverage,
   snapFigmaDerivedGlyphBaseline
 } from '#core/canvas/text-derived'
@@ -341,5 +343,52 @@ describe('derived text rendering', () => {
     } finally {
       surface.delete()
     }
+  })
+})
+
+/**
+ * CJK old-.fig heal: old files baked `.notdef` boxes for characters their font
+ * lacks (e.g. CJK in a Latin font); those are drawn verbatim and never live-shape,
+ * so the CJK fallback never helps and Chinese shows tofu. `shouldLiveShapeOverDerivedGlyphs`
+ * tells the renderer to skip the baked glyphs and live-shape (using the fallback)
+ * when the node's font is loaded but does NOT cover its text AND the fallback face
+ * IS loaded — but to keep the baked glyphs when the font is still loading (so the
+ * text doesn't vanish) or no fallback is available (boxes are all we have).
+ */
+const HEAL_CN = '你好世界'
+// Arabic font = a Latin-style stand-in with NO CJK glyphs (like Inter).
+const healLatinBytes = await Bun.file(
+  'tests/fixtures/fonts/NotoNaskhArabic-Regular.ttf'
+).arrayBuffer()
+const healCjkBytes = await Bun.file('tests/fixtures/fonts/NotoSansSC-Regular.ttf').arrayBuffer()
+fontManager.markLoaded('HealLatin', 'Regular', healLatinBytes)
+fontManager.markLoaded('HealCJK', 'Regular', healCjkBytes)
+fontManager.setCJKFallbackFamily('HealCJK') // a CJK fallback face is loaded
+
+describe('CJK old-.fig heal — shouldLiveShapeOverDerivedGlyphs', () => {
+  function cnNode(graph: SceneGraph, fontFamily: string) {
+    return graph.createNode('TEXT', graph.getPages()[0].id, {
+      text: HEAL_CN,
+      fontFamily,
+      fontWeight: 400,
+      fontSize: 24,
+      width: 200,
+      height: 40
+    })
+  }
+
+  test('font loaded but lacking CJK + fallback loaded → skip baked glyphs (live-shape)', () => {
+    const graph = new SceneGraph()
+    expect(shouldLiveShapeOverDerivedGlyphs(cnNode(graph, 'HealLatin'))).toBe(true)
+  })
+
+  test('font that covers the CJK text → keep baked glyphs (no regression)', () => {
+    const graph = new SceneGraph()
+    expect(shouldLiveShapeOverDerivedGlyphs(cnNode(graph, 'HealCJK'))).toBe(false)
+  })
+
+  test('font not loaded yet → keep baked glyphs (text must not vanish while loading)', () => {
+    const graph = new SceneGraph()
+    expect(shouldLiveShapeOverDerivedGlyphs(cnNode(graph, 'NeverLoadedFont'))).toBe(false)
   })
 })

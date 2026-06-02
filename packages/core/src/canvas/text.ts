@@ -45,7 +45,11 @@ const ARABIC_RE = /[\u0600-\u06ff\u0750-\u077f\u08a0-\u08ff\ufb50-\ufdff\ufe70-\
 const FONT_FAMILY_CACHE_LIMIT = 256
 const fontFamilyCache = new Map<string, string[]>()
 
-function hasRequiredFallbackFonts(text: string): boolean {
+/** True when every script in `text` that needs a fallback face (CJK / Arabic)
+ *  has its fallback family loaded — i.e. live-shaping can actually render the
+ *  text. Exported so the derived-glyph renderer can decide whether to prefer
+ *  live-shaping over baked `.notdef` glyphs (§ CJK old-.fig heal). */
+export function hasRequiredFallbackFonts(text: string): boolean {
   if (CJK_RE.test(text) && fontManager.getCJKFallbackFamilies().length === 0) return false
   if (ARABIC_RE.test(text) && fontManager.getArabicFallbackFamilies().length === 0) return false
   return true

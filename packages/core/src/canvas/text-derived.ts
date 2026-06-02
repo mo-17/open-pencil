@@ -1,9 +1,13 @@
 import type { Canvas, Paint } from 'canvaskit-wasm'
 
+import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import type { Fill, SceneNode, StyleRun, TextDecorationStyle } from '#core/scene-graph'
+import { fontManager, weightToStyle } from '#core/text/fonts'
+import { fontCoversTextSync } from '#core/text/opentype'
 import { geometryBlobToPath } from '#core/vector'
 
 import type { SkiaRenderer } from './renderer'
+import { hasRequiredFallbackFonts } from './text'
 
 interface DecorationRange {
   x1: number
@@ -212,8 +216,31 @@ function drawDerivedDecorations(
   }
 }
 
+/**
+ * CJK old-.fig heal: baked derived glyphs are a "render without the font"
+ * fallback. Old files baked `.notdef` boxes for characters the node's font lacks
+ * (e.g. CJK in Inter) before the write-side fix stopped doing so; those boxes
+ * are drawn verbatim by `drawFigmaDerivedText` and never live-shape, so the CJK
+ * fallback face never helps and the text shows tofu. Return true when the node's
+ * font IS loaded but does NOT cover its text AND the needed fallback face IS
+ * loaded — then the renderer should skip the baked glyphs and live-shape (which
+ * uses the fallback) instead. Gated on the font being loaded so a node whose
+ * font is merely still downloading keeps its baked glyphs rather than vanishing;
+ * gated on the fallback being loaded so we never trade boxes for nothing.
+ */
+export function shouldLiveShapeOverDerivedGlyphs(node: SceneNode): boolean {
+  const family = node.fontFamily || DEFAULT_FONT_FAMILY
+  const style = weightToStyle(node.fontWeight, node.italic)
+  return (
+    fontManager.isStyleLoaded(family, style) &&
+    !fontCoversTextSync(family, style, node.text) &&
+    hasRequiredFallbackFonts(node.text)
+  )
+}
+
 export function drawFigmaDerivedText(r: SkiaRenderer, canvas: Canvas, node: SceneNode): boolean {
   if (!node.figmaDerivedTextGlyphs?.length) return false
+  if (shouldLiveShapeOverDerivedGlyphs(node)) return false
 
   let underlineBaselineY = 0
   for (const glyph of node.figmaDerivedTextGlyphs) {
