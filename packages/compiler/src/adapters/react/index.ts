@@ -216,9 +216,13 @@ function collectClassNames(
   }
   // Phase 3 §8: component bodies live in their own files, so their classes
   // must reach the safelist too — otherwise an instanced-only component's
-  // styles get stripped in the iframe.
+  // styles get stripped in the iframe. Phase 3 §8 v4: a COMPONENT_SET's
+  // subtrees live per-variant.
   for (const def of components) {
     for (const child of def.children) walk(child, acc)
+    for (const variant of def.variants ?? []) {
+      for (const child of variant.children) walk(child, acc)
+    }
   }
   return [...acc].sort()
 }

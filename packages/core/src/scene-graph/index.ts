@@ -33,6 +33,7 @@ import type {
 } from './types'
 
 export { cloneVectorNetwork, normalizeVectorNetwork, validateVectorNetwork } from './vector-network'
+export { parseVariantName, buildVariantName } from './variant-name'
 
 let nextLocalID = 1
 

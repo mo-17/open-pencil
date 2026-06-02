@@ -3972,6 +3972,60 @@ CODE COMPLETE 2026-06-02。完全符合设计:
 
 **§8 v4 follow-ups:** size/font override→props;COMPONENT_SET variants;编辑器组件 props 面板(GUI)。
 
+## §8 v4 COMPONENT_SET variants — 一个组件 + 每轴 variant prop(设计 2026-06-02)
+
+> §8 v3 follow-up。用户 2026-06-02 挑定。两 fork AskUserQuestion 锁定 = **每轴一个 prop** + **variant-only(有 override→内联)**。
+
+### 8v4.1 现状与问题
+
+variant 在 scene-graph = COMPONENT_SET 容器的 COMPONENT 子节点,子名形如 `"Size=Large, State=Default"`(`parseVariantName`→`{Size:'Large',State:'Default'}`);INSTANCE 经 `componentId` 指向某个 variant 子。**当前**:每个被实例化的 variant 子是独立 COMPONENT → 各自注册成 `<SizeLarge/>`,SET 容器内联成 div。丢了「一个组件 + variant prop」抽象,且同语义按钮散成 N 个组件。
+
+### 8v4.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **COMPONENT_SET → 一个组件,每 variant 轴一个 string-union prop** | `<Button size="small" state="hover"/>`,prop 名 = sanitize(轴名),类型 = 该轴 options union,默认 = 默认 variant 的轴值。组件内 join 成 key、if-chain switch 各 variant 子树。否决单 `variant` prop(多轴不友好)。 |
+| 2 | **variant-only;variant instance 带任一 override → 内联** | v4 只管 variant 选择。clean variant instance → `<Button size=.. />`;带 `:text`/`:fills` override → 整棵内联(v1 fallback)。compose(variant + v2/v3 props)留 v5,避免「跨 variant union prop 槽 + switch 每支参数化」复杂度骤增。 |
+| 3 | **轴/options/默认从 variant 子名派生**(robust,不依赖 componentPropertyDefinitions) | 轴 = 所有 variant 子 `parseVariantName` key 的并集(首见序);options = 各轴值并集;默认 = **第一个 variant 子**的轴值(确定性,不依赖 SET 可能为空的 componentPropertyDefinitions)。 |
+| 4 | **instance→SET 经 parent 走查,不另存 map** | INSTANCE.componentId → variant 子节点 → 其 `parentId` 是已注册 COMPONENT_SET → 用 SET 组件名 + `parseVariantName(子名)` 出 variant props。registry 注册 SET、**排除** variant 子的独立注册(parent 是 COMPONENT_SET 的 COMPONENT 跳过)。 |
+| 5 | **switch emit:其余 if-guard + 默认 variant 兜底 return**(不重复子树) | `if(__v===k2) return <c2>; … return <c1默认>`。未传 prop→默认轴值→落兜底;非法组合→也落兜底。 |
+
+### 8v4.3 公开 API / Schema 改动(零 scene-graph / round-trip)
+
+- `ir/types.ts`:`ComponentPropKind` 加 `'variant'`(variant prop 值不进 safelist,同 text);新 `VariantAxis {name; rawName; options; defaultValue}`、`VariantCase {key; children: IRNode[]}`;`ComponentDef` 加 `variantAxes?`、`variants?`。
+- `ir/collect/components.ts`:`ComponentMeta` 加 `variants?: { axes: VariantAxis[]; cases: {childId; values}[] }`。
+
+### 8v4.4 内部实现拆解
+
+1. **components.ts**:`buildComponentRegistry` 三类扫描——plain COMPONENT(parent 非 SET)走 v2/v3;**parent 是 COMPONENT_SET 的 COMPONENT 跳过**(variant 子);COMPONENT_SET 若任一 variant 子有实例 → 注册 `{name, propSlots: empty, variants: buildVariants(set, kids)}`。`buildVariants`:轴并集 + options + 默认(首子)+ cases `{childId, values}`。
+2. **tree.ts**:collectComponents SET 分支——每 case 走 `graph.getChildren(childId)` 出子树 IR(**不**设 componentPropSlots,variant-only),`key = axes.map(a=>values[a.rawName]).join('|')`;`ComponentDef.variants`/`variantAxes` 填充(plain 组件 children/props 照旧)。`resolveComponentRef`:INSTANCE.componentId→variant 子→parent SET 已注册→**有 override 返回 null 内联**,否则 ref(SET 名 + `parseVariantName` 出 `ComponentRefProp{kind:'variant'}`)。
+3. **emit/component.ts**:`def.variants` 在场 → 每轴 prop(union 类型 + 默认)+ `const __v = \`${a1}|${a2}\``+ if-chain(其余)+ 默认 case 兜底 return,各 case 包 `<div className={className}>`。无 variants → v2/v3 路径。
+4. **emit/element.ts** componentRef arm 不变(variant prop 同 `name="value"` attr)。
+5. **react index.ts collectClassNames**:walk `def.variants?.[].children`(SET 子树类不在 def.children);componentRef variant-kind prop **不** safelist(同 text)。
+
+### 8v4.5 成功标准
+
+- COMPONENT_SET(≥1 variant 实例)→ 一个 `src/components/<Set>.tsx`,每轴 string-union prop + 默认。
+- clean variant instance → `<Button size="small" state="hover"/>`,选对子树。
+- 未传轴 → 默认 variant;多轴 join key switch 正确。
+- variant instance 带 override → 内联(variant-only)。
+- 各 variant 子树的类进 safelist。
+- 既有 plain COMPONENT(v1/v2/v3)零回归。
+- `bun run check` exit 0。
+
+### 8v4.6 Post-mortem
+
+CODE COMPLETE 2026-06-02。符合设计,几处机械修正:
+
+- **核心公开面新增**:`parseVariantName` 原只经 `#core/scene-graph/variant-name`(package-local alias)用,compiler 够不到 → 从 `scene-graph/index.ts` barrel **re-export**(`@open-pencil/core/scene-graph`),纯 util,稳定。否决在 compiler 重写(jscpd threshold 0 会判 clone)。
+- **registry 三类扫描**:plain COMPONENT(parent 非 SET)走 v2/v3;variant 子(parent 是 COMPONENT_SET)**跳过**(经 SET 出);COMPONENT_SET 有 instanced variant → 注册 `{variants:{axes,cases}}`。instance→SET 经 `instance.componentId→variant子→parentId→已注册SET` 走查,**不另存 map**。
+- **emit switch**:`const __variant = \`${size}|${state}\``+ 其余 if-guard + 默认(首 variant)兜底 return,各 case 包 `<div className={className}>`。string-union prop 类型 `JSON.stringify`(双引号)——测试断言对齐 `"Large" | "Small"`(非单引号)。default 全 = 默认轴值的 instance → 0 props(`variantProps` 省略 == 默认的轴)。
+- **lint 两修**:`meta.variants!` non-null assertion 禁 → 闭包外 `const variantMeta = meta.variants`;`defaultCase ?`(destructure 后类型非可选)always-truthy → 加 `variants.length===0` 早返 + 直用 `defaultCase`。
+- **check:arch(steiger)**:`components-props`/`fill-props`/`variants` 三个 `components-` 前缀兄弟文件触发 prefer-domain-folders 规则 → **全部移进 `tests/engine/compiler/components/`**(`instances`/`text-props`/`fill-props`/`variants`.test.ts,git mv,import 用 `#tests`/package 别名不受位置影响)。**经验:同前缀兄弟测试文件 ≥3 触发 steiger,提前用子目录。**
+- **测试**:components/variants.test.ts 6 新(一组件每轴 prop / 实例传非默认轴值 / 默认实例 0 props / variant 子不独立注册 / 带 override 内联 / 子树类进 safelist)+ v1/v2/v3 移入子目录共 22/22;scene-graph+compiler 608/0;`bun run check` exit 0。
+
+**§8 v5 follow-ups:** variant + text/fill props compose(variant instance 也参数化子树文案/色);COMPONENT_SET 的 componentPropertyDefinitions 显式默认(当前用首子);编辑器组件 props 面板(GUI)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

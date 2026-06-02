@@ -1,4 +1,9 @@
-import type { NodeType, SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
+import {
+  parseVariantName,
+  type NodeType,
+  type SceneGraph,
+  type SceneNode
+} from '@open-pencil/core/scene-graph'
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
@@ -12,6 +17,8 @@ import type {
   ComponentDef,
   ComponentProp,
   ComponentRefProp,
+  VariantAxis,
+  VariantCase,
   IRAttrValue,
   IRComponentRef,
   IRConditional,
@@ -131,7 +138,7 @@ export function collectComponents(
   for (const [componentId, meta] of components) {
     const master = graph.getNode(componentId)
     if (!master) continue
-    const ctx: WalkCtx = {
+    const baseCtx: WalkCtx = {
       graph,
       states: new Map(),
       docStates,
@@ -139,22 +146,52 @@ export function collectComponents(
       docStateWrites: new Set(),
       warnings,
       inScope: new Set(),
-      components,
-      // Phase 3 §8 v2: parameterize the master's overridden TEXT children.
-      componentPropSlots: meta.propSlots
+      components
     }
-    const children: IRNode[] = []
-    for (const child of graph.getChildren(componentId)) {
-      if (!child.visible) continue
-      const ir = nodeToIR(child, ctx)
-      if (ir) children.push(ir)
+    const variantMeta = meta.variants
+    if (variantMeta) {
+      // Phase 3 §8 v4: a COMPONENT_SET — one ComponentDef with per-axis variant
+      // props and one VariantCase subtree per variant child (variant-only, so
+      // no prop slots inside the subtrees).
+      const variants: VariantCase[] = variantMeta.cases.map((c) => ({
+        key: variantMeta.axes.map((a) => c.values[a.rawName] ?? '').join('|'),
+        children: collectChildSubtree(graph, c.childId, baseCtx)
+      }))
+      defs.push({
+        componentId,
+        name: meta.name,
+        children: [],
+        props: [],
+        variantAxes: variantMeta.axes,
+        variants
+      })
+      continue
     }
+    // Phase 3 §8 v2/v3: parameterize the master's overridden TEXT/fill children.
+    const ctx: WalkCtx = { ...baseCtx, componentPropSlots: meta.propSlots }
     const props = [...meta.propSlots.values()].flatMap((slot) =>
       [slot.text, slot.className].filter((p): p is ComponentProp => p !== undefined)
     )
-    defs.push({ componentId, name: meta.name, children, props })
+    defs.push({
+      componentId,
+      name: meta.name,
+      children: collectChildSubtree(graph, componentId, ctx),
+      props
+    })
   }
   return { defs, warnings }
+}
+
+/** Walk a master / variant node's visible children through the shared
+ *  `nodeToIR` pipeline into a component-body subtree. */
+function collectChildSubtree(graph: SceneGraph, parentId: string, ctx: WalkCtx): IRNode[] {
+  const children: IRNode[] = []
+  for (const child of graph.getChildren(parentId)) {
+    if (!child.visible) continue
+    const ir = nodeToIR(child, ctx)
+    if (ir) children.push(ir)
+  }
+  return children
 }
 
 /** Phase 3 §8 — emit a `<Name />` ref for a registered COMPONENT master or a
@@ -170,10 +207,31 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   }
   if (node.type !== 'INSTANCE' || !node.componentId) return null
   const meta = ctx.components.get(node.componentId)
-  if (!meta) return null
-  // Any unsupported override → fall back to inlining (§8 v2/v3 decision).
-  if (!isSupportedOverrideInstance(node)) return null
-  return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
+  if (meta) {
+    // Any unsupported override → fall back to inlining (§8 v2/v3 decision).
+    if (!isSupportedOverrideInstance(node)) return null
+    return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
+  }
+  // Phase 3 §8 v4: a variant instance — componentId points to a variant child
+  // of a registered COMPONENT_SET. variant-only: any override → inline.
+  const variantChild = ctx.graph.getNode(node.componentId)
+  const setMeta = variantChild?.parentId ? ctx.components.get(variantChild.parentId) : undefined
+  if (!variantChild || !setMeta?.variants) return null
+  if (Object.keys(node.overrides).length > 0) return null
+  return refOf(node, setMeta.name, variantProps(variantChild, setMeta.variants.axes), ctx)
+}
+
+/** Phase 3 §8 v4 — the per-axis variant props a variant instance passes. The
+ *  instance's variant is the parsed name of the variant COMPONENT it points to;
+ *  an axis equal to its default is omitted (the component default covers it). */
+function variantProps(variantChild: SceneNode, axes: VariantAxis[]): ComponentRefProp[] {
+  const values = parseVariantName(variantChild.name)
+  const props: ComponentRefProp[] = []
+  for (const axis of axes) {
+    const value = values[axis.rawName] ?? axis.defaultValue
+    if (value !== axis.defaultValue) props.push({ name: axis.name, value, kind: 'variant' })
+  }
+  return props
 }
 
 function refOf(

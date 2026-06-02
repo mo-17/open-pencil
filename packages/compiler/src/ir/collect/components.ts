@@ -1,7 +1,7 @@
-import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
+import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/core/scene-graph'
 
 import { tailwindClassName } from '#compiler/ir/style'
-import type { ComponentProp } from '#compiler/ir/types'
+import type { ComponentProp, VariantAxis } from '#compiler/ir/types'
 
 /** Phase 3 §8 v2/v3 — the prop(s) a single master descendant is parameterized
  *  by: `text` (`:text` override → `{prop}` content) and/or `className`
@@ -24,6 +24,13 @@ export interface ComponentMeta {
   /** master-descendant node id → prop slot (empty when no instance overrides
    *  a supported prop on this component). */
   propSlots: Map<string, ComponentSlot>
+  /** Phase 3 §8 v4 — set when this is a COMPONENT_SET: the variant axes and the
+   *  per-variant cases (each a COMPONENT child of the SET, keyed by its
+   *  parsed variant values). Plain components leave this undefined. */
+  variants?: {
+    axes: VariantAxis[]
+    cases: { childId: string; values: Record<string, string> }[]
+  }
 }
 
 /** master COMPONENT node id → its emit metadata. */
@@ -51,6 +58,43 @@ export function isSupportedOverrideInstance(node: SceneNode): boolean {
   )
 }
 
+/** Phase 3 §8 v4 — true when a COMPONENT is a variant (its parent is a
+ *  COMPONENT_SET). Such COMPONENTs are emitted via their SET, not on their own. */
+export function isVariantChild(graph: SceneGraph, node: SceneNode): boolean {
+  if (node.type !== 'COMPONENT' || !node.parentId) return false
+  return graph.getNode(node.parentId)?.type === 'COMPONENT_SET'
+}
+
+/** Phase 3 §8 v4 — derive variant axes + cases from a SET's variant children.
+ *  Axes = the union of `parseVariantName` keys across all variant children
+ *  (first-seen order); each axis's options = the union of its values; the
+ *  default value is the *first* variant's value for that axis (deterministic,
+ *  independent of the SET's componentPropertyDefinitions). */
+function buildVariants(kids: SceneNode[]): ComponentMeta['variants'] {
+  const parsed = kids.map((kid) => ({ childId: kid.id, values: parseVariantName(kid.name) }))
+  const axisOrder: string[] = []
+  const optionsByAxis = new Map<string, string[]>()
+  for (const { values } of parsed) {
+    for (const [rawName, value] of Object.entries(values)) {
+      if (!optionsByAxis.has(rawName)) {
+        axisOrder.push(rawName)
+        optionsByAxis.set(rawName, [])
+      }
+      const opts = optionsByAxis.get(rawName)
+      if (opts && !opts.includes(value)) opts.push(value)
+    }
+  }
+  const usedPropNames = new Set<string>()
+  const first = parsed[0]?.values ?? {}
+  const axes: VariantAxis[] = axisOrder.map((rawName) => ({
+    name: uniqueName(propName(rawName), usedPropNames),
+    rawName,
+    options: optionsByAxis.get(rawName) ?? [],
+    defaultValue: first[rawName] ?? (optionsByAxis.get(rawName)?.[0] ?? '')
+  }))
+  return { axes, cases: parsed }
+}
+
 /**
  * Build the master-id → metadata registry: every COMPONENT node that has at
  * least one INSTANCE somewhere in the document. Components with no instances
@@ -62,13 +106,18 @@ export function isSupportedOverrideInstance(node: SceneNode): boolean {
 export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
   const instancesByComponent = new Map<string, SceneNode[]>()
   const masters: SceneNode[] = []
+  const sets: SceneNode[] = []
   for (const node of graph.getAllNodes()) {
     if (node.type === 'INSTANCE' && node.componentId) {
       const list = instancesByComponent.get(node.componentId) ?? []
       list.push(node)
       instancesByComponent.set(node.componentId, list)
     } else if (node.type === 'COMPONENT') {
-      masters.push(node)
+      // Phase 3 §8 v4: a variant child (parent is a COMPONENT_SET) is emitted
+      // as part of its SET's one component, not on its own.
+      if (!isVariantChild(graph, node)) masters.push(node)
+    } else if (node.type === 'COMPONENT_SET') {
+      sets.push(node)
     }
   }
 
@@ -80,6 +129,17 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
     registry.set(master.id, {
       name: uniqueName(componentName(master.name), usedNames),
       propSlots: buildPropSlots(graph, instances)
+    })
+  }
+  // Phase 3 §8 v4: a COMPONENT_SET with ≥1 instanced variant → one component
+  // with per-axis variant props.
+  for (const set of sets) {
+    const kids = graph.getChildren(set.id).filter((c) => c.type === 'COMPONENT')
+    if (!kids.some((k) => (instancesByComponent.get(k.id)?.length ?? 0) > 0)) continue
+    registry.set(set.id, {
+      name: uniqueName(componentName(set.name), usedNames),
+      propSlots: new Map(),
+      variants: buildVariants(kids)
     })
   }
   return registry

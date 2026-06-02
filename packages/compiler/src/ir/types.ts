@@ -30,11 +30,12 @@ export interface IRComponentRef {
   props: ComponentRefProp[]
 }
 
-/** Phase 3 §8 v2/v3 — which override a component prop carries. `text` feeds a
+/** Phase 3 §8 v2/v3/v4 — which override a component prop carries. `text` feeds a
  *  TEXT node's content (`{prop}`); `className` (Phase 3 §8 v3) replaces a
- *  child's whole className (`className={prop}`), so only `className` values are
+ *  child's whole className (`className={prop}`); `variant` (Phase 3 §8 v4)
+ *  selects a COMPONENT_SET variant subtree. Only `className` values are
  *  Tailwind-safelisted. */
-export type ComponentPropKind = 'text' | 'className'
+export type ComponentPropKind = 'text' | 'className' | 'variant'
 
 /** Phase 3 §8 v2 — one override value passed at a component usage site. */
 export interface ComponentRefProp {
@@ -69,12 +70,38 @@ export interface ComponentDef {
   componentId: string
   /** PascalCase React component name. */
   name: string
-  /** The master's child subtrees (the shared body). */
+  /** The master's child subtrees (the shared body). Empty for a COMPONENT_SET
+   *  (Phase 3 §8 v4) — its subtrees live per-variant in `variants`. */
   children: IRNode[]
   /** Phase 3 §8 v2 — text prop slots (union of `:text` overrides across all
    *  instances). The adapter emits one optional prop per entry, defaulting to
    *  the master child's text. Empty when no instance overrides text. */
   props: ComponentProp[]
+  /** Phase 3 §8 v4 — when set, this component is a COMPONENT_SET: it takes one
+   *  string-union prop per variant axis and switches between `variants`
+   *  subtrees. `children` / `props` are then empty. */
+  variantAxes?: VariantAxis[]
+  /** Phase 3 §8 v4 — one entry per variant (a COMPONENT child of the SET). */
+  variants?: VariantCase[]
+}
+
+/** Phase 3 §8 v4 — one variant axis of a COMPONENT_SET (e.g. `Size`). */
+export interface VariantAxis {
+  /** Sanitized prop name (camel-ish, e.g. `size`). */
+  name: string
+  /** Raw Figma axis name as it appears in variant child names (e.g. `Size`). */
+  rawName: string
+  /** All values this axis takes across the SET's variants (first-seen order). */
+  options: string[]
+  /** Default value (the first variant's value for this axis). */
+  defaultValue: string
+}
+
+/** Phase 3 §8 v4 — a single variant's subtree, keyed by its axis values joined
+ *  with `|` in `variantAxes` order (e.g. `Large|Default`). */
+export interface VariantCase {
+  key: string
+  children: IRNode[]
 }
 
 export interface IRElement {
