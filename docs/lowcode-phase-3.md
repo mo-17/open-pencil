@@ -4213,6 +4213,61 @@ CODE COMPLETE 2026-06-03。完全符合设计,几处机械修正:
 
 **§9 v2 follow-ups:** 属性串(placeholder/aria/title)i18n(需 useIntl hook);locale 切换 UI / 多 locale 授权数据模型;`sourceLocale` 可配;ICU 复数/插值(react-intl 原生支持,需绑定值)。
 
+## §9 v2 目标 locale + 切换器 — 让产物真能切换语言(设计 2026-06-03)
+
+> §9 v1 follow-up。用户 2026-06-03 挑定方向 = **目标 locale + 切换器**(否决 placeholder 属性串过窄、A+B 叠加过大、ICU 留 v3)。
+
+### 9v2.1 现状与问题
+
+§9 v1 产物已有 IntlProvider + `useLocale().setLocale` + CATALOGS 注册表,但**只 emit 源 locale(en),无切换 UI、无其他语言目录** → 运行时虽真,实际切不了语言(`setLocale('fr')` 无 fr catalog)。v2 补这两块:声明目标语言 → emit 该语言的 JSON 目录(预填源文案待译)+ 一个 `<LocaleSwitcher>` 组件,使产物真能切换。仍**纯 emit**(无翻译授权数据模型,开发者填 JSON)。
+
+### 9v2.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`CompilerOptions.locales?: string[]` 声明目标语言** | 编辑器/CLI 传额外 locale 码(源 `en` 恒在)。否决文档/scene-graph 授权数据模型(重,违「纯 emit / Tauri 靠后」)。 |
+| 2 | **目标 locale JSON = 预填源文案(translate-in-place)** | 每个目标 emit `src/locales/<loc>.json` = 与 en.json 同内容(id→英文),开发者就地译;而非空 `{}`(开发者不知 hash key)。复用 `buildLocaleCatalog`。 |
+| 3 | **`<LocaleSwitcher>` 组件,不自动挂载** | emit `src/components/LocaleSwitcher.tsx`(useLocale 的 `<select>`),开发者手动 import 放任意位置;不强插每页(非侵入)。仅当声明了 ≥1 目标语言才 emit(单 en 无意义)。 |
+| 4 | **runtime CATALOGS 注册全部 locale** | `buildLowcodeI18nRuntime(locales)` 生成每 locale 的 import + CATALOGS map;locale 码非合法标识符(`zh-CN`)→ import 绑定 sanitize(`zhCN`)、CATALOGS key 用引号码(`'zh-CN': zhCN`)。`['en']`(v1 默认)输出 byte-identical 于 v1 硬编码。 |
+| 5 | **目标 locale 去重 + 排除源 + 滤空** | `resolveTargetLocales`:去重、排除 `en`、滤掉非字符串/空串。无授权-数据模型 → 不校验 BCP-47 格式(信任调用方),仅保文件/标识符安全。 |
+
+### 9v2.3 公开 API / Schema 改动(零 scene-graph / round-trip)
+
+- `types.ts`:`CompilerOptions.locales?: string[]`(目标语言码,源 `en` 之外)。
+- `lowcode/i18n.ts`:`buildLowcodeI18nRuntime(locales)` 参数化;新 `buildLocaleSwitcher()`、`localeIdent(code)`。
+- 产物新增(i18n 开 + 有目标语言时):`src/locales/<loc>.json`(每目标,预填源)、`src/components/LocaleSwitcher.tsx`;runtime CATALOGS 含全部 locale。
+
+### 9v2.4 内部实现拆解
+
+1. **lowcode/i18n.ts**:`buildLowcodeI18nRuntime(locales: readonly string[])` —— imports = 每 locale 一行 `import <ident> from './locales/<loc>.json'`,CATALOGS entries = 合法标识符用 shorthand(`en`)、否则 `'<loc>': <ident>`。`localeIdent(code)` = 去非字母数字。`buildLocaleSwitcher()` = useLocale 的受控 `<select>`。
+2. **index.ts**:`resolveTargetLocales(options.locales)` → 去重排序的目标;`maybeEmitI18n(files, active, messages, targetLocales)` —— 源 catalog + 每目标 stub(复用 buildLocaleCatalog)+ `buildLowcodeI18nRuntime([SOURCE, ...targets])`;`targets.length>0` 时 emit `src/components/LocaleSwitcher.tsx`。两 emit 路径(single/multi)都算 targetLocales 传入。
+3. **零碰 collect / element emit**(v1 已就位;v2 纯产物文件增量)。
+
+### 9v2.5 成功标准
+
+- `locales:['fr','es']`(i18n 开)→ emit `src/locales/fr.json`+`es.json`(预填源文案)+ `LocaleSwitcher.tsx`;runtime CATALOGS 含 en/fr/es。
+- LocaleSwitcher 用 useLocale 受控 select;不自动挂载(页面不自动 import)。
+- 去重/排除源/滤空:`['en','fr','fr','']` → 仅 fr。
+- `zh-CN` → 文件 `zh-CN.json`、runtime `'zh-CN': zhCN`(标识符 sanitize)。
+- 无 `locales`(v1 默认)→ 无 stub、无 switcher、runtime `['en']` 输出 byte-identical 于 v1(零回归)。
+- `bun run check` exit 0。
+
+### 9v2.6 工作分解(~0.4 day)
+
+types(locales 字段)→ lowcode/i18n.ts(参数化 runtime + LocaleSwitcher + localeIdent)→ index.ts(resolveTargetLocales + maybeEmitI18n 增 stub/switcher)→ i18n.test.ts 扩 v2 用例 → `bun run check`。
+
+### 9v2.7 Post-mortem
+
+CODE COMPLETE 2026-06-03。完全符合设计,零意外:
+
+- **纯产物文件增量**:零碰 collect / element emit(v1 已就位)。`CompilerOptions.locales?: string[]`;`resolveTargetLocales`(去重/排除源/滤空);`maybeEmitI18n` 增 stub(每目标 = 源 catalog 内容,复用 `buildLocaleCatalog`)+ `buildLowcodeI18nRuntime([SOURCE, ...targets])` + `LocaleSwitcher`(仅 targets>0)。
+- **runtime 参数化 byte-identical**:`buildLowcodeI18nRuntime(locales)` 生成 imports + CATALOGS entries(合法标识符 shorthand `en`、否则 `'zh-CN': zhCN`);`['en']` 输出与 v1 硬编码完全一致 → v1 测试 5/5 不动。
+- **`localeIdent`**:`zh-CN`→`zhCN`(去非字母数字),首字符非字母兜底 `loc<...>`;CATALOGS key 用引号原码。
+- **测试坑(自身)**:dedup 测试原用 `/from '.\/locales\/fr.json'/g` 计数 fr import,但 runtime **注释里有示例** `import fr from './locales/fr.json'` → 撞 2 次(测试 'fr' 与注释示例同名巧合)。改为只断言 `{ en, fr }`(CATALOGS 已证 dedup),弃脆弱计数。**经验:断言 emit 字符串别用易撞注释/示例的宽 regex 计数。**
+- **测试**:i18n.test.ts +4 v2(目标 locale 预填 stub+runtime 注册+switcher / 无目标无 switcher v1 一致 / dedup-排除源-滤空 / `zh-CN` 标识符 sanitize)= compiler 481/0;`bun run check` exit 0。
+
+**§9 v3 follow-ups:** 属性串(placeholder)i18n via useIntl;翻译授权数据模型(编辑器填译文,非开发者填 JSON);ICU 复数/插值;`sourceLocale` 可配。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

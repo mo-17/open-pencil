@@ -121,3 +121,63 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     expect(Object.values(catalog)).toContain('Badge')
   })
 })
+
+/**
+ * Phase 3 §9 v2 — target locales + LocaleSwitcher. `options.locales` declares
+ * extra languages: each gets a `src/locales/<code>.json` stub (pre-filled with
+ * the source strings) registered in the runtime, plus a `<LocaleSwitcher>`.
+ */
+function compileLocales(locales: string[]) {
+  const graph = makeSceneGraph()
+  const pageId = firstPageId(graph)
+  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  graph.createNode('TEXT', frame.id, { text: 'Hello', width: 80, height: 20 })
+  return compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp', i18n: true, locales }) })
+}
+
+describe('compile — i18n target locales + switcher (Phase 3 §9 v2)', () => {
+  test('target locales emit pre-filled stubs + a registered runtime + a switcher', () => {
+    const out = compileLocales(['fr', 'es'])
+    // pre-filled stubs (same content as the source catalog)
+    const en = out.files.get('src/locales/en.json') as string
+    expect(out.files.get('src/locales/fr.json')).toBe(en)
+    expect(out.files.get('src/locales/es.json')).toBe(en)
+    // runtime imports + registers all three
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain("import en from './locales/en.json'")
+    expect(runtime).toContain("import fr from './locales/fr.json'")
+    expect(runtime).toContain("import es from './locales/es.json'")
+    expect(runtime).toContain('{ en, fr, es }')
+    // switcher
+    const switcher = out.files.get('src/components/LocaleSwitcher.tsx') as string
+    expect(switcher).toContain("import { useLocale } from '../_lowcode_i18n'")
+    expect(switcher).toContain('export function LocaleSwitcher()')
+    expect(switcher).toContain('onChange={(e) => setLocale(e.target.value)}')
+  })
+
+  test('no target locales → no switcher, single-locale runtime (v1 byte-identical)', () => {
+    const out = compileLocales([])
+    expect(out.files.has('src/components/LocaleSwitcher.tsx')).toBe(false)
+    expect(out.files.has('src/locales/fr.json')).toBe(false)
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain('{ en }')
+  })
+
+  test('duplicates, the source locale, and empties are dropped', () => {
+    const out = compileLocales(['en', 'fr', 'fr', ''])
+    // only one fr stub; en is the source (not a re-emitted target); no '' file
+    expect(out.files.has('src/locales/fr.json')).toBe(true)
+    expect(out.files.has('src/locales/.json')).toBe(false)
+    // CATALOGS registers en + fr exactly once each (no duplicate fr, no empty)
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain('{ en, fr }')
+  })
+
+  test('a locale code with non-identifier chars sanitizes its import binding', () => {
+    const out = compileLocales(['zh-CN'])
+    expect(out.files.has('src/locales/zh-CN.json')).toBe(true)
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain("import zhCN from './locales/zh-CN.json'")
+    expect(runtime).toContain('{ en, "zh-CN": zhCN }')
+  })
+})

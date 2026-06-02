@@ -45,6 +45,14 @@ export interface CompilerOptions {
    * (and `withDefaults`) stay unbroken.
    */
   i18n?: boolean
+  /**
+   * Phase 3 §9 v2 — extra target locale codes (beyond the source `en`). For
+   * each, the emit ships a `src/locales/<code>.json` stub (pre-filled with the
+   * source strings to translate in place) and registers it in the i18n runtime,
+   * plus a `src/components/LocaleSwitcher.tsx`. Only consulted when `i18n` is on
+   * and there is text. Empty / unset → source locale only (v1 behavior).
+   */
+  locales?: string[]
 }
 
 export interface CompileWarning {

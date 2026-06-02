@@ -15,9 +15,11 @@ import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
 import {
   buildLocaleCatalog,
+  buildLocaleSwitcher,
   buildLowcodeI18nRuntime,
   REACT_INTL_VERSION,
-  SOURCE_CATALOG_FILE
+  SOURCE_CATALOG_FILE,
+  SOURCE_LOCALE
 } from './lowcode/i18n'
 import { stripNavigateForSinglePage } from './ir-walk'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode/state'
@@ -86,6 +88,7 @@ function emitSinglePage(
   // translate (an empty doc gets no runtime/dep/provider).
   const messages = collectMessages([cleaned], components)
   const i18nActive = options.i18n === true && messages.size > 0
+  const targetLocales = resolveTargetLocales(options.locales)
   const extraDeps: Record<string, string> = {
     ...lowcodeStateExtraDeps(cleaned.docStates),
     ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig),
@@ -97,7 +100,7 @@ function emitSinglePage(
   // `setDocState` from `./` (single-page) or `../` (multi-page).
   maybeEmitLowcodeRuntime(files, cleaned.docStates)
   maybeEmitLowcodeSupabaseRuntime(files, cleaned.supabaseConfig)
-  maybeEmitI18n(files, i18nActive, messages)
+  maybeEmitI18n(files, i18nActive, messages, targetLocales)
   emitComponentFiles(files, components, options.devMode)
   files.set(
     'src/App.tsx',
@@ -123,6 +126,7 @@ function emitMultiPage(
   const supabaseConfig = irs[0]?.supabaseConfig
   const messages = collectMessages(irs, components)
   const i18nActive = options.i18n === true && messages.size > 0
+  const targetLocales = resolveTargetLocales(options.locales)
   const extraDeps: Record<string, string> = {
     'react-router-dom': REACT_ROUTER_DOM_VERSION,
     ...lowcodeStateExtraDeps(docStates),
@@ -132,7 +136,7 @@ function emitMultiPage(
   files.set('package.json', buildPackageJson(options, extraDeps))
   maybeEmitLowcodeRuntime(files, docStates)
   maybeEmitLowcodeSupabaseRuntime(files, supabaseConfig)
-  maybeEmitI18n(files, i18nActive, messages)
+  maybeEmitI18n(files, i18nActive, messages, targetLocales)
   emitComponentFiles(files, components, options.devMode)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
@@ -168,15 +172,41 @@ function i18nExtraDeps(active: boolean): Record<string, string> {
 
 /** Phase 3 §9: emit the i18n runtime + source-locale catalog when i18n is
  *  active. The app body's `<FormattedMessage>` calls come from the IR
- *  (`IRText.messageId`); main.tsx wraps `<App/>` in `<I18nProvider>`. */
+ *  (`IRText.messageId`); main.tsx wraps `<App/>` in `<I18nProvider>`.
+ *
+ *  Phase 3 §9 v2: each declared target locale gets a `src/locales/<loc>.json`
+ *  stub (pre-filled with the source strings to translate in place) registered
+ *  in the runtime, plus a `LocaleSwitcher` component (emitted only when ≥1
+ *  target exists — a switcher with just the source locale is pointless). */
 function maybeEmitI18n(
   files: Map<string, string | Uint8Array>,
   active: boolean,
-  messages: ReadonlyMap<string, string>
+  messages: ReadonlyMap<string, string>,
+  targetLocales: readonly string[]
 ): void {
   if (!active) return
-  files.set(`src/${SOURCE_CATALOG_FILE}`, buildLocaleCatalog(messages))
-  files.set(LOWCODE_I18N_FILE, buildLowcodeI18nRuntime())
+  const catalog = buildLocaleCatalog(messages)
+  files.set(`src/${SOURCE_CATALOG_FILE}`, catalog)
+  for (const loc of targetLocales) {
+    files.set(`src/locales/${loc}.json`, catalog)
+  }
+  files.set(LOWCODE_I18N_FILE, buildLowcodeI18nRuntime([SOURCE_LOCALE, ...targetLocales]))
+  if (targetLocales.length > 0) {
+    files.set('src/components/LocaleSwitcher.tsx', buildLocaleSwitcher())
+  }
+}
+
+/** Phase 3 §9 v2: normalize the declared target locales — drop empties, the
+ *  source locale, and duplicates (order preserved). */
+function resolveTargetLocales(raw: readonly string[] | undefined): string[] {
+  const seen = new Set<string>([SOURCE_LOCALE])
+  const out: string[] = []
+  for (const code of raw ?? []) {
+    if (typeof code !== 'string' || code === '' || seen.has(code)) continue
+    seen.add(code)
+    out.push(code)
+  }
+  return out
 }
 
 function maybeEmitLowcodeRuntime(
