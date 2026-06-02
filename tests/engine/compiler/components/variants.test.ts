@@ -92,22 +92,22 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     ])
   })
 
-  test('a variant instance with an UNSUPPORTED override falls back to inline', () => {
-    // §8 v5 turns `:text` / `:fills` overrides into composed props (see
-    // variants-compose.test.ts); a still-unsupported override (`:fontSize`)
-    // keeps the v4 inline fallback.
+  test('a variant instance with any visible override composes (§8 v6)', () => {
+    // §8 v5 composes `:text` / `:fills`; §8 v6 generalizes to all visual
+    // overrides (here `:fontSize`) — the variant instance still emits a ref
+    // (no inline), passing its recomputed child className.
     const { graph, usePage, variants } = buildSetGraph()
     const inst = graph.createInstance(variants[1].id, usePage)
     if (inst) {
-      const childId = graph.getChildren(inst.id)[0]?.id ?? 'x'
-      inst.overrides = { [`${childId}:fontSize`]: 24 }
+      const child = graph.getChildren(inst.id)[0]
+      graph.updateNode(child.id, { fontSize: 24 })
+      inst.overrides = { [`${child.id}:fontSize`]: 24 }
     }
 
     const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
     const app = out.files.get('src/App.tsx') as string
-    // inlined: the variant subtree renders directly, no <Button ref
-    expect(app).not.toContain('<Button')
-    expect(app).toContain('>SmBtn</p>')
+    expect(app).toContain('<Button')
+    expect(app).not.toContain('>SmBtn</p>') // subtree lives in the component file, not inlined
   })
 
   test('variant subtree classes reach the Tailwind safelist', () => {

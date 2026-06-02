@@ -41,7 +41,7 @@ import {
   resolveValueBinding,
   unknownIdentifiers
 } from './bindings'
-import { type ComponentRegistry, type ComponentSlot, isSupportedOverrideInstance } from './components'
+import { type ComponentRegistry, type ComponentSlot, overrideKind } from './components'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -215,11 +215,13 @@ function collectChildSubtree(graph: SceneGraph, parentId: string, ctx: WalkCtx):
   return children
 }
 
-/** Phase 3 §8 — emit a `<Name />` ref for a registered COMPONENT master or a
- *  clean / supported-override INSTANCE of one; null for everything else (normal
- *  inline emit). Phase 3 §8 v2/v3: a text-/fill-only INSTANCE passes its
- *  overridden text (`title=`) and className (`badgeClassName=`) as props; an
- *  INSTANCE with any unsupported override returns null → inline fallback. */
+/** Phase 3 §8 — emit a `<Name />` ref for a registered COMPONENT master or an
+ *  INSTANCE of one; null for everything else (normal inline emit). Phase 3 §8
+ *  v6: every instance composes — `:text` overrides pass as content props
+ *  (`title=`), every other visual override passes as a className prop
+ *  (`badgeClassName=`, the whole recomputed child className). There is no longer
+ *  an inline fallback for property overrides (the suffix universe is all
+ *  property-level, so nothing is unsupported). */
 function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | null {
   if (node.type === 'COMPONENT') {
     const meta = ctx.components.get(node.id)
@@ -229,8 +231,6 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   if (node.type !== 'INSTANCE' || !node.componentId) return null
   const meta = ctx.components.get(node.componentId)
   if (meta) {
-    // Any unsupported override → fall back to inlining (§8 v2/v3 decision).
-    if (!isSupportedOverrideInstance(node)) return null
     return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
   }
   // Phase 3 §8 v4: a variant instance — componentId points to a variant child
@@ -238,10 +238,8 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   const variantChild = ctx.graph.getNode(node.componentId)
   const setMeta = variantChild?.parentId ? ctx.components.get(variantChild.parentId) : undefined
   if (!variantChild || !setMeta?.variants) return null
-  // Phase 3 §8 v5: a variant instance may now ALSO carry `:text` / `:fills`
-  // overrides — emit the variant prop plus the text/className props, composing
-  // v4 with v2/v3. Any unsupported override still falls back to inlining.
-  if (!isSupportedOverrideInstance(node)) return null
+  // Phase 3 §8 v5/v6: a variant instance composes its variant prop with any
+  // text/className override props.
   const props = [
     ...variantProps(variantChild, setMeta.variants.axes),
     ...resolveInstanceProps(node, setMeta.propSlots, ctx.graph)
@@ -277,29 +275,39 @@ function refOf(
   }
 }
 
-/** Phase 3 §8 v2/v3 — the override values a supported instance passes. For each
- *  `:text` / `:fills` override, map the instance child back to the master
- *  descendant (its `componentId`) to find the prop slot, and read the diverged
- *  value off the instance child itself: text from `instChild.text`, className
- *  from `tailwindClassName(instChild)`. Overrides whose target isn't a known
- *  slot are skipped (defensive — the registry built slots from these same
- *  overrides). */
+/** Phase 3 §8 v2/v3/v6 — the override values an instance passes. For each
+ *  override, map the instance child back to the master descendant (its
+ *  `componentId`) to find the prop slot, then read the diverged value off the
+ *  instance child: text from `instChild.text`, className from
+ *  `tailwindClassName(instChild)` (the whole recomputed appearance, so a single
+ *  className prop covers fills + font + size + … on that child). Multiple
+ *  non-text overrides on one child collapse onto its single className prop, so
+ *  it is emitted once (`seen` dedup). Overrides whose target isn't a known slot
+ *  are skipped (defensive). */
 function resolveInstanceProps(
   node: SceneNode,
   propSlots: Map<string, ComponentSlot>,
   graph: WalkCtx['graph']
 ): ComponentRefProp[] {
   const props: ComponentRefProp[] = []
+  const seen = new Set<string>()
   for (const key of Object.keys(node.overrides)) {
     const colon = key.lastIndexOf(':')
     if (colon === -1) continue
     const instChild = graph.getNode(key.slice(0, colon))
     const slot = instChild?.componentId ? propSlots.get(instChild.componentId) : undefined
     if (!slot || !instChild) continue
-    if (key.endsWith(':text') && slot.text) {
+    const kind = overrideKind(key)
+    if (kind === 'text' && slot.text && !seen.has(slot.text.name)) {
+      seen.add(slot.text.name)
       props.push({ name: slot.text.name, value: instChild.text, kind: 'text' })
-    } else if (key.endsWith(':fills') && slot.className) {
-      props.push({ name: slot.className.name, value: tailwindClassName(instChild, graph), kind: 'className' })
+    } else if (kind === 'className' && slot.className && !seen.has(slot.className.name)) {
+      seen.add(slot.className.name)
+      props.push({
+        name: slot.className.name,
+        value: tailwindClassName(instChild, graph),
+        kind: 'className'
+      })
     }
   }
   return props

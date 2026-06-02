@@ -116,18 +116,23 @@ describe('compile — components fill-override props (Phase 3 §8 v3)', () => {
     expect(app).toMatch(/<Tag[^>]*\blabelClassName="/)
   })
 
-  test('an unsupported override (fontSize) still inlines', () => {
+  test('§8 v6: a fontSize override also composes to the className prop', () => {
+    // §8 v6: a non-fill visual override (`:fontSize`) routes through the same
+    // child className prop — the recomputed className carries the new font size,
+    // so the instance composes instead of inlining (v3 used to inline this).
     const { graph, pageId, masterId } = makeGraph()
     graph.createInstance(masterId, pageId) // clean
     const dirty = graph.createInstance(masterId, pageId)
     if (dirty) {
-      const childId = graph.getChildren(dirty.id)[0]?.id ?? 'x'
-      dirty.overrides = { [`${childId}:fontSize`]: 24 }
+      const child = graph.getChildren(dirty.id)[0]
+      graph.updateNode(child.id, { fontSize: 24 })
+      dirty.overrides = { [`${child.id}:fontSize`]: 24 }
     }
 
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
     const app = out.files.get('src/App.tsx') as string
-    // master + clean = 2 refs; the fontSize-override instance inlines.
-    expect((app.match(/<Card\b/g) ?? []).length).toBe(2)
+    // master + clean + dirty = 3 refs; nothing inlines.
+    expect((app.match(/<Card\b/g) ?? []).length).toBe(3)
+    expect(app).toMatch(/<Card[^>]*\bbadgeClassName="[^"]+"/)
   })
 })

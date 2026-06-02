@@ -8,7 +8,9 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * Phase 3 §8 — custom components / Symbol cross-page reuse. A Figma COMPONENT
  * master with ≥1 INSTANCE is extracted to `src/components/<Name>.tsx`; the
  * master and every clean instance (no overrides) emit `<Name />` instead of
- * inlining the subtree. Instances carrying overrides fall back to inline emit.
+ * inlining the subtree. Phase 3 §8 v6: instances carrying overrides compose —
+ * `:text` → content prop, every other visual override → a className prop — so
+ * there is no inline fallback for property overrides anymore.
  */
 describe('compile — components / instances (Phase 3 §8)', () => {
   function makeComponentGraph() {
@@ -78,16 +80,17 @@ describe('compile — components / instances (Phase 3 §8)', () => {
     expect(relocated).toContain('top-20') // 80px → 20
   })
 
-  test('an instance with an unsupported override falls back to inline emission', () => {
+  test('§8 v6: a non-text override composes to a className prop (no inline fallback)', () => {
+    // §8 v6 generalized override→props: any non-text visual override (here
+    // `:fontSize`) routes through the child's className prop (whole-className
+    // recompute), so the instance composes instead of inlining.
     const { graph, pageId, master } = makeComponentGraph()
     graph.createInstance(master.id, pageId) // clean → ref
     const dirty = graph.createInstance(master.id, pageId)
     if (dirty) {
-      // An override §8 maps to no prop (v2 = `:text`, v3 = `:fills`) keeps the
-      // v1 behaviour: the instance diverges → inline fallback. `:fontSize` is
-      // not mapped, so this instance inlines.
-      const childId = graph.getChildren(dirty.id)[0]?.id ?? 'x'
-      dirty.overrides = { [`${childId}:fontSize`]: 'x' }
+      const child = graph.getChildren(dirty.id)[0]
+      graph.updateNode(child.id, { fontSize: 24 })
+      dirty.overrides = { [`${child.id}:fontSize`]: 24 }
     }
 
     const out = compile({
@@ -96,11 +99,11 @@ describe('compile — components / instances (Phase 3 §8)', () => {
       options: withDefaults({ packageName: 'comp' })
     })
     const app = out.files.get('src/App.tsx') as string
-    // master + clean instance = 2 refs; the dirty instance is inlined instead.
-    const refs = app.match(/<CardBadge\b/g) ?? []
-    expect(refs.length).toBe(2)
-    // The dirty instance's subtree IS inlined on the page (its own <p>Badge).
-    expect(app).toContain('>Badge</p>')
+    // master + clean + dirty = 3 refs; nothing inlines now.
+    expect((app.match(/<CardBadge\b/g) ?? []).length).toBe(3)
+    expect(app).not.toContain('>Badge</p>')
+    // the dirty instance passes its recomputed child className via the prop
+    expect(app).toMatch(/<CardBadge[^>]*ClassName="[^"]+"/)
   })
 
   test('an instance reuses a master defined on another page (cross-page reuse)', () => {

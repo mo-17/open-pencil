@@ -4089,6 +4089,60 @@ CODE COMPLETE 2026-06-02。完全符合设计,无意外,几处机械修正:
 
 **§8 v6 follow-ups:** COMPONENT_SET 的 componentPropertyDefinitions 显式默认(当前用首子);component props 编辑器面板(GUI);size/font 等非 fill/text override → props。
 
+## §8 v6 override→props 全推广 — 所有非-text 视觉 override 都映射成 className prop(设计 2026-06-02)
+
+> §8 v5 follow-up。用户 2026-06-02 挑定。一 fork AskUserQuestion 锁定 = **A 全推广**(否决 B 白名单 font/size,冗长且要随 INSTANCE_SYNC_PROPS 维护;否决 C componentPropertyDefinitions 默认,窄+依赖可能为空字段)。
+
+### 8v6.1 现状与问题
+
+§8 v2 把 `:text` override 映射成 content prop,v3 把 `:fills` 映射成整条 className prop;**其余 override(`:fontSize`/`:strokes`/`:opacity`/`:cornerRadius`/`:width`/layout/padding/…)仍走内联回退**——instance 改个字号就退化成重复子树。Recon 坐实(经验 E):override key 宇宙 = `${childId}:${prop}`,`prop` ∈ INSTANCE_SYNC_PROPS(width/height/fills/strokes/effects/opacity/cornerRadius/layout/padding/grid/border…)∪ {name,text,fontSize,fontWeight,fontFamily,textDirection}(instances.ts)——**全是属性级,无结构级 override(无子节点增删/swap)**。而 v3 的 className prop 取的是 `tailwindClassName(instChild)` = child 整条重算 className → **天然囊括 fill+font+size+stroke+opacity+corner+… 一切视觉发散**。所以「只 fills 支持」是人为限制:任何非-text 视觉 override 都能走同一条 className prop。
+
+### 8v6.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **override 三分类:text / ignore / className**(锁定 A) | `overrideKind(key)`:`:text`→content prop;`:name`→ignore(非视觉改名,不出 prop 也不内联);**其余一律 className**(整条 className 重算)。否决白名单(B):无结构 override → 无需枚举,默认 className 即正确。 |
+| 2 | **取消 property override 的内联回退** | suffix 宇宙全属性级 → 所有 instance 都 compose。`isSupportedOverrideInstance` 闸删除,`resolveComponentRef` instance 永远出 ref(plain + variant 一致)。faithfulness 不丢(text content prop + 整条 className 重算覆盖一切视觉)。 |
+| 3 | **同 child 多个非-text override 合一个 className prop** | accumulateSlots 已是 `!slot.className` 一次性建槽;resolveInstanceProps 加 `seen` Set 去重(多 key→一次 push),避免 `boxClassName=` 重复 attr。 |
+| 4 | **零新 emit / 零 IR 改动** | 复用 v3 的 `IRElement.classNameProp` + v5 的 `classNamePropFallback`(variant 子树仍 per-variant 回退);ComponentPropKind 不变(className 已涵盖)。 |
+| 5 | **GUI 面板仍延后** | 沿用 §7/§8/§10 先例。 |
+
+### 8v6.3 公开 API / Schema 改动(零 scene-graph / round-trip / IR)
+
+- `ir/collect/components.ts`:删 `FILLS_OVERRIDE_SUFFIX`、`isSupportedOverrideInstance`;新 `overrideKind(key): 'text'|'className'|'ignore'`(导出,tree.ts 复用)+ `NAME_OVERRIDE_SUFFIX`。
+- 无 ir/types.ts 改动(className prop 机制 v3/v5 已就位)。
+
+### 8v6.4 内部实现拆解
+
+1. **components.ts**:`overrideKind` 三分类替代 `:text`/`:fills` 判定;`accumulateSlots`(v5 抽的共享累加器)`:text`→text 槽、`className`-kind→className 槽(整条重算默认)、`ignore`→跳过。`buildSetPropSlots`(v5)无改动——经 accumulateSlots 自动覆盖所有视觉 override。
+2. **tree.ts**:`resolveComponentRef` 删两处 `isSupportedOverrideInstance` 闸(plain + SET),instance 永远出 ref;`resolveInstanceProps` 用 `overrideKind` 分类 + `seen` Set 去重 className(同 child 多视觉 override→一次 push,值=整条 `tailwindClassName(instChild)`)。body 的 classNameProp 注入(v3/v5)无改动。
+3. **emit**:零改动(className prop + 回退 emit v3/v5 已就位)。
+4. **safelist**:零改动(className-kind prop 值进 safelist 是 v3 路径;现所有视觉 override 都产 className prop,其重算 className 串自动进)。
+
+### 8v6.5 成功标准
+
+- instance 任一非-text 视觉 override(fontSize/strokes/opacity/cornerRadius/size/…)→ compose 成 `className={prop}` + 实例传整条重算 className(不再内联)。
+- 同 child 多个非-text override → 一个 className prop(不重复 attr / 不 label2)。
+- `:text` 仍 content prop;`:name` 忽略(不出 prop、不内联)。
+- variant instance 同样(v5 compose 推广到所有视觉 override)。
+- clean instance / 纯 master 零回归;v2/v3/v4/v5 既有行为(text content prop、fills className、variant prop)零回归。
+- `bun run check` exit 0。
+
+### 8v6.6 工作分解(~0.3 day)
+
+`overrideKind` 三分类(components.ts)→ 删 isSupportedOverrideInstance + 两处闸(tree.ts resolveComponentRef)→ resolveInstanceProps 分类 + seen 去重 → 改 3 个旧「unsupported→inline」测试为 compose + 新 override-props-general.test.ts → `bun run check`。
+
+### 8v6.7 Post-mortem
+
+CODE COMPLETE 2026-06-02。完全符合设计,零意外:
+
+- **核心 = 一个三分类器**:`overrideKind(key)` text/ignore/className,默认 className(整条 `tailwindClassName(instChild)` 重算囊括一切视觉)。删 `isSupportedOverrideInstance`(suffix 宇宙全属性级 → 无「不支持」可言,instance 永远 compose);resolveComponentRef 两处闸删除。`resolveInstanceProps` 加 `seen` Set 防同 child 多视觉 override 重复 push 同名 className prop。
+- **block-comment 坑**:JSDoc 里写 `font*/layout` 的 `*/` 提前闭合块注释 → tsgo 一串 syntax error;去掉 `*` 即解(**经验:注释里别写裸 `*/`**)。
+- **3 个旧测试改判**:v1 instances / v3 fill-props / v4 variants 各有一个「`:fontSize`(unsupported)→inline」测试,v6 后 fontSize 也 compose → 全改为断言 className prop compose(给 instChild 真改 fontSize 再断言 `ClassName="..."` 传值 + 3 refs 不内联)。+ override-props-general.test.ts 2 新(同 child 三 override 合一 prop / stroke-only compose)。
+- **零 emit / 零 IR / 零 scene-graph 改动**:全靠 v3 className prop + v5 fallback 既有机制;safelist 零改动。compiler 472/0(+2),components 29→已含;`bun run check` exit 0。
+
+**§8 v7 follow-ups:** componentPropertyDefinitions 显式默认;component props 编辑器面板(GUI);nested-instance / boolean(visible)override(目前 `:visible` 不映射,collectTailwindClasses 忽略 visible)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

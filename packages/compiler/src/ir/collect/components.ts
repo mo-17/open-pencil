@@ -36,26 +36,33 @@ export interface ComponentMeta {
 /** master COMPONENT node id → its emit metadata. */
 export type ComponentRegistry = Map<string, ComponentMeta>
 
-/** The override suffixes §8 maps to props: `:text` (v2, content) and `:fills`
- *  (v3, className). Any other override → inline fallback. */
+/**
+ * Phase 3 §8 v6 — classify an override key (`<childId>:<prop>`) into the prop
+ * channel it feeds:
+ *   - `text`     — `:text`, the only *content* override → a `{prop}` slot.
+ *   - `ignore`   — `:name`, a non-visual layer rename → no prop, no inline.
+ *   - `className`— EVERYTHING else (fills/strokes/effects/opacity/cornerRadius/
+ *                  size/font/layout/padding/grid/borders/…). Every such
+ *                  override is fully captured by `tailwindClassName(instChild)`
+ *                  (the whole-className recompute v3 introduced), so it routes
+ *                  through one `className={prop}` slot.
+ * v2 supported only `:text`, v3 added `:fills`; v6 generalizes to all visual
+ * overrides — there are no structural overrides (the suffix universe is exactly
+ * the per-prop INSTANCE_SYNC keys + the text group), so every instance composes
+ * and the old inline fallback for property overrides is gone.
+ */
 const TEXT_OVERRIDE_SUFFIX = ':text'
-const FILLS_OVERRIDE_SUFFIX = ':fills'
+const NAME_OVERRIDE_SUFFIX = ':name'
+export function overrideKind(key: string): 'text' | 'className' | 'ignore' {
+  if (key.endsWith(TEXT_OVERRIDE_SUFFIX)) return 'text'
+  if (key.endsWith(NAME_OVERRIDE_SUFFIX)) return 'ignore'
+  return 'className'
+}
 
 /** An INSTANCE with no overrides renders identically to its master, so it can
  *  be emitted as a bare `<Name />`. */
 export function isCleanInstance(node: SceneNode): boolean {
   return node.type === 'INSTANCE' && Object.keys(node.overrides).length === 0
-}
-
-/** Phase 3 §8 v2/v3 — true when every override an instance carries is a
- *  supported one (`:text` → text prop, `:fills` → className prop), so the whole
- *  instance can be emitted as `<Name title=.. badgeClassName=.. />`. An empty
- *  override set is trivially supported (a clean instance). */
-export function isSupportedOverrideInstance(node: SceneNode): boolean {
-  if (node.type !== 'INSTANCE') return false
-  return Object.keys(node.overrides).every(
-    (key) => key.endsWith(TEXT_OVERRIDE_SUFFIX) || key.endsWith(FILLS_OVERRIDE_SUFFIX)
-  )
 }
 
 /** Phase 3 §8 v4 — true when a COMPONENT is a variant (its parent is a
@@ -219,15 +226,19 @@ function accumulateSlots(
     for (const key of Object.keys(instance.overrides)) {
       const masterChild = resolveMasterChild(graph, key)
       if (!masterChild) continue
+      const kind = overrideKind(key)
       const slotKey = keyOf(masterChild)
       const slot = slots.get(slotKey) ?? {}
-      if (key.endsWith(TEXT_OVERRIDE_SUFFIX) && !slot.text) {
+      if (kind === 'text' && !slot.text) {
         slot.text = {
           name: uniqueName(propName(masterChild.name), usedPropNames),
           defaultValue: masterChild.text,
           kind: 'text'
         }
-      } else if (key.endsWith(FILLS_OVERRIDE_SUFFIX) && !slot.className) {
+      } else if (kind === 'className' && !slot.className) {
+        // Phase 3 §8 v6: any non-text visual override (fills/font/size/…) feeds
+        // the one className prop — its value is the child's whole recomputed
+        // className, so a single slot captures every visual divergence.
         slot.className = {
           name: uniqueName(`${propName(masterChild.name)}ClassName`, usedPropNames),
           defaultValue: tailwindClassName(masterChild, graph),
