@@ -4026,6 +4026,69 @@ CODE COMPLETE 2026-06-02。符合设计,几处机械修正:
 
 **§8 v5 follow-ups:** variant + text/fill props compose(variant instance 也参数化子树文案/色);COMPONENT_SET 的 componentPropertyDefinitions 显式默认(当前用首子);编辑器组件 props 面板(GUI)。
 
+## §8 v5 variant + text/fill props compose — COMPONENT_SET 变体也能参数化子树文案/色(设计 2026-06-02)
+
+> §8 v4 follow-up。用户 2026-06-02 挑定。一 fork AskUserQuestion 锁定 = **B 按 name 合并 prop + per-variant 回退**(否决 A 每节点一 prop:同名节点跨 variant 会得 `label`/`label2` 冗余 prop)。
+
+### 8v5.1 现状与问题
+
+§8 v4:COMPONENT_SET → 一个组件 + 每轴 variant prop,但 **variant instance 带任一 override → 整棵内联**(`resolveComponentRef` SET 分支 `Object.keys(node.overrides).length > 0 → return null`)。真实用法是「同一 Button SET,Large/Small 两变体,每个实例还改自己的 label 文案/badge 颜色」—— v4 一旦改文案就退回重复子树,丢了 SET 复用 + v2/v3 的 prop 化。v5 让 variant instance **同时** 传 variant prop 和 text/fill prop:`<Button size="Small" label="点我" badgeClassName="bg-red-500"/>`。
+
+难点 = **跨 variant 的默认值**:同一逻辑 prop(如 `label`)的字面默认在不同 variant 子树里可能不同(Large 的 label 节点 vs Small 的 label 节点是不同 node id、可不同文案),但一个 prop 只能一个签名默认。
+
+### 8v5.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **variant instance 支持 override 复用 v2/v3 判据** | variant instance 的 override 全 ∈ {`:text`,`:fills`}(`isSupportedOverrideInstance`)→ 不内联,compose;含任一不支持 override → 仍内联(v1 fallback)。与 plain 组件同一条 `isSupportedOverrideInstance` 闸,零新判据。 |
+| 2 | **prop 按 name 合并跨 variant(锁定 B)** | 同名 master 后代(各 variant 子树里 name 相同的节点,Figma variant 本就结构平行)合成**一个** prop。prop 名 = sanitize(layer name),跨 variant 去重。否决 A(每被 override 节点一 prop → 同名节点得 `label`/`label2` 冗余)。 |
+| 3 | **per-variant 回退 emit**`{prop ?? 该variant自己字面}` | 一个 prop 多个默认 → 签名里 **不给** 默认(`label?: string`),每个 variant 子树节点 emit `{label ?? "该节点自己文案"}` / `className={cls ?? "该节点静态类"}`。clean / 未传 prop 的实例 → 各 variant 保留自己默认;传了 → 跨所有 variant 生效。 |
+| 4 | **fallback emit 落 JSX 层,不动 core ExprAst** | 表达式子语言无 `??`(BinaryOp 无),加它要改 core lowcode-validation 跨包。改为:text prop 的 `IRExpression` 加可选 `fallback?: string`,className 走 `IRElement.classNameProp` + 既有静态 `className` 当回退,emit 时拼 `?? "<literal>"`。本地化 2~3 行 emit 改动。 |
+| 5 | **回退只在 SET(variant)子树用;plain 组件 v2/v3 emit 零改动** | plain 组件单子树单默认,`{prop}`+签名默认正确,保持不动(不碰 v2/v3 测试)。SET 子树才走 fallback 形。由 `componentPropSlots` 的来源(SET vs plain)区分:SET 注入 `slot` 时带 fallback 标记。 |
+| 6 | **GUI 授权面板仍延后** | 沿用 §7/§8/§10 先例,纯 compiler-emit 增量。 |
+
+### 8v5.3 公开 API / Schema 改动(零 scene-graph / round-trip)
+
+- `ir/types.ts`:`IRExpression` 加可选 `fallback?: string`(§8 v5 variant text prop 的 per-variant 字面回退,emit `{<expr> ?? "<fallback>"}`);`IRElement` 加可选 `classNamePropFallback?: true`(set 时 className prop emit `className={<prop> ?? "<静态className>"}`)。两者都只在 SET variant 子树里出现。
+- `ir/collect/components.ts`:`ComponentSlot` 字段语义不变;`buildSetPropSlots` 新内部函数(按 name 合并 → 回填每 variant 子后代 node id),`ComponentMeta.propSlots` 对 SET 也填充(v4 是 empty)。
+
+### 8v5.4 内部实现拆解
+
+1. **components.ts**:`buildComponentRegistry` SET 分支——除 `buildVariants` 外,收集**所有** variant 子的实例(`kids.flatMap(k => instancesByComponent.get(k.id) ?? [])`)→ `buildSetPropSlots(graph, kids, instances)`。`buildSetPropSlots`:(a) 扫 override → `resolveMasterChild` → 后代 D(在某 variant)→ 按 D.name 建 `byName: Map<name, ComponentSlot>`(prop 名/默认从 D 派生,name 去重);(b) 遍历**每个** variant 子的全部后代,name 命中 byName → `slots.set(descendant.id, byName.get(name))`(同名节点跨 variant 共享同一 slot 对象 = 同 prop)。
+2. **tree.ts**:`collectComponents` SET 分支——`collectChildSubtree(graph, c.childId, { ...baseCtx, componentPropSlots: meta.propSlots, variantBody: true })`(v4 不传 propSlots);`def.props` = `[...propSlots.values()]` 去重(同一 slot 对象多 node id 共享 → 用 Set 去重 prop 名)。`WalkCtx` 加 `variantBody?: boolean`。`collectChildNodes` TEXT prop 分支:`variantBody` 时 emit `{kind:'expression', ast:{ident:prop}, fallback: node.text}`(否则照旧无 fallback);`nodeToIR` className prop:`variantBody && classNameProp` 时置 `classNamePropFallback: true`。
+3. **`resolveComponentRef` SET 分支**:去掉 `overrides.length > 0 → null`;改为 `isSupportedOverrideInstance(node)` 不通过才 null;通过则 `refOf(node, setMeta.name, [...variantProps(...), ...resolveInstanceProps(node, setMeta.propSlots, ctx.graph)], ctx)`。`resolveInstanceProps` 复用(instChild.componentId → variant 后代 → slot,读 instChild.text / `tailwindClassName`)。
+4. **emit/component.ts** `buildVariantModule`:header/destructure 并入 `def.props`(text/className kind,**无签名默认**:`label?: string`,destructure 不给 `= ...`),variant 子树经 element emit 已带 `{prop ?? literal}`。
+5. **emit/element.ts**:expression arm `node.fallback` 在场 → `{${emitExpression(ast)} ?? ${JSON.stringify(fallback)}}`;`formatAttrs` className prop:`classNamePropFallback` 时 `className={${prop} ?? "${escapeAttr(className)}"}`。
+6. **react index.ts collectClassNames**:已 walk `def.variants[].children`(v4),variant 子树里 classNameProp 节点的静态 `className` 仍是默认 → 自动进 safelist;componentRef className-kind prop 值照 v3 进 safelist。
+
+### 8v5.5 成功标准
+
+- variant instance 带 `:text`/`:fills` override → `<Button size="Small" label=".." badgeClassName=".." />`(不内联)。
+- 组件签名:variant 轴 union prop + text/className prop(后者 `?: string` 无默认);variant 子树节点 emit `{label ?? "本变体文案"}` / `className={cls ?? "本变体类"}`。
+- clean / 未传文案的 variant instance → 各 variant 保留自己字面默认(零回归)。
+- 同名后代跨 variant 合一个 prop(无 `label`/`label2` 冗余)。
+- variant instance 含不支持 override(如 `:fontSize`)→ 内联。
+- plain COMPONENT(v1/v2/v3)+ clean variant(v4)零回归;classNameProp 静态默认仍进 safelist。
+- `bun run check` exit 0。
+
+### 8v5.6 工作分解(~0.5–1 day)
+
+types(2 可选字段)→ components.ts `buildSetPropSlots` → tree.ts(`variantBody` ctx + resolveComponentRef 放开 + fallback 注入)→ component.ts buildVariantModule 并入 props → element.ts fallback emit → 测试(components/variants-compose.test.ts)→ `bun run check`。
+
+### 8v5.7 Post-mortem
+
+CODE COMPLETE 2026-06-02。完全符合设计,无意外,几处机械修正:
+
+- **跨 variant 默认走 name-merge + `??` 回退(锁定 B)**:`buildSetPropSlots` 用 `accumulateSlots(…, c=>c.name)` 按 name 聚合槽(同名跨 variant 合一 prop),再 `descendantsOf` 把 name-keyed 槽**扇出**到每个 variant 子的全部后代 node id(walker 按 id 查)。`resolveComponentRef` SET 分支去掉 v4 的 `overrides.length>0→null`,改判 `isSupportedOverrideInstance`(复用 v2/v3 闸):支持 → `[...variantProps, ...resolveInstanceProps(node, setMeta.propSlots, graph)]` compose;不支持(如 `:fontSize`)→ 仍内联。
+- **回退 emit 落 JSX 层,零碰 core ExprAst**(决定 #4 兑现):`IRExpression.fallback?`(emit `{<expr> ?? "literal"}`)+ `IRElement.classNamePropFallback?`(emit `className={prop ?? "literal"}`)。两者只在 `ctx.variantBody` 为 true 时由 tree.ts 注入,plain 组件 v2/v3 emit(`{prop}`+签名默认)**零改动**。
+- **lint 复杂度闸**:加两条 fallback 分支后 `emitElement` cyclomatic complexity 21 > 20 → 抽出 `tryInlineSingleChild` + `emitExpressionWithFallback` 两 helper(单子内联 + 表达式回退拼接),降回 < 20。**经验:emit 函数加分支前先看它离 complexity-20 闸多近。**
+- **jscpd 0-clone 闸**:`buildSetPropSlots` 的「override→槽」内循环与 `buildPropSlots` 6+14 行重复(只差 map key = node id vs name)→ 抽 `accumulateSlots(graph, instances, keyOf)`,两者各传 `c=>c.id` / `c=>c.name`。**经验:新函数若复用既有循环只改一个 key,优先抽参数化 helper,别拷贝(jscpd threshold 0)。**
+- **v4 测试改判**:原 v4「variant instance 带 override → 内联」用的是 `:text` override(v5 现 compose)→ 改用真正不支持的 `:fontSize`(对齐 v2→v3 先例),保 inline 回退回归。
+- **safelist 零改动**:react index.ts `collectClassNames` v4 已 walk `def.variants[].children`,variant 子 classNameProp 节点的静态 `className`(回退默认)自动进 safelist;componentRef className-kind prop 值照 v3 进。variant-kind prop 不 safelist(对)。
+- **测试**:components/variants-compose.test.ts 7 新(`:text` compose 不内联 / text prop 无签名默认 + 每 variant body `{label ?? 本变体文案}` / 同名跨 variant 合一 prop 无 label2 / clean 实例保自己默认 / `:fills`→className prop 带回退 / text+fill 同传 / 默认 variant + text override)+ v4 改 1 = 29/29;compiler 470/0;`bun run check` exit 0(jscpd 0 clones、complexity < 20、tsgo 0)。
+
+**§8 v6 follow-ups:** COMPONENT_SET 的 componentPropertyDefinitions 显式默认(当前用首子);component props 编辑器面板(GUI);size/font 等非 fill/text override → props。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

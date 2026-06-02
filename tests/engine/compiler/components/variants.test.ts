@@ -92,12 +92,15 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     ])
   })
 
-  test('a variant instance with an override falls back to inline (variant-only)', () => {
+  test('a variant instance with an UNSUPPORTED override falls back to inline', () => {
+    // §8 v5 turns `:text` / `:fills` overrides into composed props (see
+    // variants-compose.test.ts); a still-unsupported override (`:fontSize`)
+    // keeps the v4 inline fallback.
     const { graph, usePage, variants } = buildSetGraph()
     const inst = graph.createInstance(variants[1].id, usePage)
     if (inst) {
       const childId = graph.getChildren(inst.id)[0]?.id ?? 'x'
-      inst.overrides = { [`${childId}:text`]: 'X' }
+      inst.overrides = { [`${childId}:fontSize`]: 24 }
     }
 
     const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })

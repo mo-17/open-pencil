@@ -120,6 +120,12 @@ export interface IRElement {
    *  override on an instance can re-style it. The static `className` above is
    *  the default. Only set inside a component body. */
   classNameProp?: string
+  /** Phase 3 §8 v5 — inside a COMPONENT_SET variant subtree, a single
+   *  className prop spans multiple variant subtrees with different static
+   *  defaults, so the adapter emits `className={<classNameProp> ?? "<className>"}`
+   *  (the static `className` is this variant's own fallback). Set only
+   *  alongside `classNameProp` in a variant body. */
+  classNamePropFallback?: true
   /** Static JSX attributes. Adapters quote/escape per their syntax. */
   attrs: Record<string, IRAttrValue>
   children: IRNode[]
@@ -179,6 +185,12 @@ export interface IRExpression {
   ast: ExprAst
   /** Identifier names this expression depends on (state variables). */
   references: string[]
+  /** Phase 3 §8 v5 — per-variant default literal for a COMPONENT_SET text
+   *  prop. When set, the adapter emits `{<expr> ?? "<fallback>"}` so an
+   *  un-passed prop falls back to *this* variant subtree's own text (a single
+   *  prop spans multiple variant subtrees that may each have a different
+   *  default). Unset for normal bindings / plain-component props. */
+  fallback?: string
 }
 
 export type IRAttrValue = string | number | boolean

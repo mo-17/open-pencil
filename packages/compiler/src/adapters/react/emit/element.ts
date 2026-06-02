@@ -4,6 +4,7 @@ import type {
   IRControlledInput,
   IREventHandler,
   IREventName,
+  IRExpression,
   IRNode
 } from '#compiler/ir/types'
 
@@ -31,7 +32,9 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
   }
 
   if (node.kind === 'expression') {
-    return `${pad}{${emitExpression(node.ast)}}`
+    // Phase 3 §8 v5: a COMPONENT_SET variant text prop carries a per-variant
+    // fallback → `{prop ?? "thisVariantsOwnText"}`.
+    return `${pad}{${emitExpressionWithFallback(node)}}`
   }
 
   if (node.kind === 'conditional') {
@@ -73,7 +76,8 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     node.events,
     devMode ? node.sourceId : undefined,
     node.controlled,
-    node.classNameProp
+    node.classNameProp,
+    node.classNamePropFallback
   )
   const opening = attrsStr ? `<${node.tag} ${attrsStr}` : `<${node.tag}`
 
@@ -88,21 +92,42 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     return `${pad}${opening} />`
   }
 
-  // Inline single-child expressions for compactness: <p>{count}</p>.
-  if (node.children.length === 1) {
-    const only = node.children[0]
-    if (only.kind === 'text' && !only.value.includes('\n')) {
-      return `${pad}${opening}>${escapeJSXText(only.value)}</${node.tag}>`
-    }
-    if (only.kind === 'expression') {
-      return `${pad}${opening}>{${emitExpression(only.ast)}}</${node.tag}>`
-    }
-  }
+  // Inline single-child text/expression for compactness: <p>{count}</p>.
+  const inlined = tryInlineSingleChild(node.children, opening, pad, node.tag)
+  if (inlined !== undefined) return inlined
 
   const lines = [`${pad}${opening}>`]
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode))
   lines.push(`${pad}</${node.tag}>`)
   return lines.join('\n')
+}
+
+/** Compact a single text/expression child onto the element's own line
+ *  (`<p>{count}</p>`). Returns undefined when the children don't qualify, so
+ *  the caller falls back to the multi-line form. Phase 3 §8 v5: an expression
+ *  child keeps its per-variant `?? fallback`. */
+function tryInlineSingleChild(
+  children: IRNode[],
+  opening: string,
+  pad: string,
+  tag: string
+): string | undefined {
+  if (children.length !== 1) return undefined
+  const only = children[0]
+  if (only.kind === 'text' && !only.value.includes('\n')) {
+    return `${pad}${opening}>${escapeJSXText(only.value)}</${tag}>`
+  }
+  if (only.kind === 'expression') {
+    return `${pad}${opening}>{${emitExpressionWithFallback(only)}}</${tag}>`
+  }
+  return undefined
+}
+
+/** Phase 3 §8 v5: an expression's JS source, with a `?? "literal"` tail when it
+ *  carries a per-variant default (COMPONENT_SET text prop). */
+function emitExpressionWithFallback(node: IRExpression): string {
+  const expr = emitExpression(node.ast)
+  return node.fallback !== undefined ? `${expr} ?? ${JSON.stringify(node.fallback)}` : expr
 }
 
 function formatAttrs(
@@ -111,12 +136,17 @@ function formatAttrs(
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
   nodeId: string | undefined,
   controlled: IRControlledInput | undefined,
-  classNameProp?: string
+  classNameProp?: string,
+  classNamePropFallback?: boolean
 ): string {
   const parts: string[] = []
   // Phase 3 §8 v3: a component-body child whose className is parameterized
-  // emits `className={prop}`; otherwise the static class string.
-  if (classNameProp) parts.push(`className={${classNameProp}}`)
+  // emits `className={prop}`; otherwise the static class string. Phase 3 §8 v5:
+  // inside a COMPONENT_SET variant subtree the prop spans variants with
+  // different static defaults → `className={prop ?? "thisVariantsClasses"}`.
+  if (classNameProp && classNamePropFallback) {
+    parts.push(`className={${classNameProp} ?? "${escapeAttr(className)}"}`)
+  } else if (classNameProp) parts.push(`className={${classNameProp}}`)
   else if (className) parts.push(`className="${escapeAttr(className)}"`)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
   for (const [key, value] of Object.entries(attrs)) {

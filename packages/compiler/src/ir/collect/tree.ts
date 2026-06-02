@@ -151,17 +151,24 @@ export function collectComponents(
     const variantMeta = meta.variants
     if (variantMeta) {
       // Phase 3 §8 v4: a COMPONENT_SET — one ComponentDef with per-axis variant
-      // props and one VariantCase subtree per variant child (variant-only, so
-      // no prop slots inside the subtrees).
+      // props. Phase 3 §8 v5: variant subtrees are now also collected with the
+      // SET's `propSlots`, so a `:text` / `:fills` override on a variant
+      // instance parameterizes the matching node in every variant subtree (each
+      // emitting `{prop ?? ownLiteral}` — see `variantBody`).
+      const variantCtx: WalkCtx = {
+        ...baseCtx,
+        componentPropSlots: meta.propSlots,
+        variantBody: true
+      }
       const variants: VariantCase[] = variantMeta.cases.map((c) => ({
         key: variantMeta.axes.map((a) => c.values[a.rawName] ?? '').join('|'),
-        children: collectChildSubtree(graph, c.childId, baseCtx)
+        children: collectChildSubtree(graph, c.childId, variantCtx)
       }))
       defs.push({
         componentId,
         name: meta.name,
         children: [],
-        props: [],
+        props: dedupeProps(meta.propSlots),
         variantAxes: variantMeta.axes,
         variants
       })
@@ -180,6 +187,20 @@ export function collectComponents(
     })
   }
   return { defs, warnings }
+}
+
+/** Phase 3 §8 v5 — flatten a propSlots map to the component's prop list,
+ *  de-duplicated by prop name. A COMPONENT_SET name-merges slots (many variant
+ *  descendant ids → one shared slot object), so the same prop appears under
+ *  several keys; dedupe so the emitted signature declares it once. */
+function dedupeProps(propSlots: Map<string, ComponentSlot>): ComponentProp[] {
+  const byName = new Map<string, ComponentProp>()
+  for (const slot of propSlots.values()) {
+    for (const prop of [slot.text, slot.className]) {
+      if (prop && !byName.has(prop.name)) byName.set(prop.name, prop)
+    }
+  }
+  return [...byName.values()]
 }
 
 /** Walk a master / variant node's visible children through the shared
@@ -213,12 +234,19 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
     return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
   }
   // Phase 3 §8 v4: a variant instance — componentId points to a variant child
-  // of a registered COMPONENT_SET. variant-only: any override → inline.
+  // of a registered COMPONENT_SET.
   const variantChild = ctx.graph.getNode(node.componentId)
   const setMeta = variantChild?.parentId ? ctx.components.get(variantChild.parentId) : undefined
   if (!variantChild || !setMeta?.variants) return null
-  if (Object.keys(node.overrides).length > 0) return null
-  return refOf(node, setMeta.name, variantProps(variantChild, setMeta.variants.axes), ctx)
+  // Phase 3 §8 v5: a variant instance may now ALSO carry `:text` / `:fills`
+  // overrides — emit the variant prop plus the text/className props, composing
+  // v4 with v2/v3. Any unsupported override still falls back to inlining.
+  if (!isSupportedOverrideInstance(node)) return null
+  const props = [
+    ...variantProps(variantChild, setMeta.variants.axes),
+    ...resolveInstanceProps(node, setMeta.propSlots, ctx.graph)
+  ]
+  return refOf(node, setMeta.name, props, ctx)
 }
 
 /** Phase 3 §8 v4 — the per-axis variant props a variant instance passes. The
@@ -304,6 +332,11 @@ interface WalkCtx {
    *  key emits `className={prop}` (className slot). Undefined during page
    *  walks. */
   componentPropSlots?: Map<string, ComponentSlot>
+  /** Phase 3 §8 v5: true while collecting a COMPONENT_SET variant subtree. A
+   *  prop here spans multiple variant subtrees with different static defaults,
+   *  so a parameterized node emits `{prop ?? ownLiteral}` / `className={prop ??
+   *  "ownClasses"}` (per-variant fallback) instead of plain `{prop}`. */
+  variantBody?: boolean
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -577,6 +610,9 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     tag,
     className,
     ...(classNameProp ? { classNameProp } : {}),
+    // Phase 3 §8 v5: in a variant subtree the prop spans variants with
+    // different static defaults → emit `className={prop ?? "ownClasses"}`.
+    ...(classNameProp && ctx.variantBody ? { classNamePropFallback: true } : {}),
     attrs,
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
@@ -610,10 +646,15 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
     if (binding) {
       children.push(binding)
     } else if (textProp) {
+      // Phase 3 §8 v5: in a COMPONENT_SET variant subtree, emit
+      // `{prop ?? "thisVariantsOwnText"}` so an un-passed prop keeps each
+      // variant's own default; a plain component (single body) emits `{prop}`
+      // and defaults via the signature.
       children.push({
         kind: 'expression',
         ast: { kind: 'ident', name: textProp.name },
-        references: [textProp.name]
+        references: [textProp.name],
+        ...(ctx.variantBody ? { fallback: node.text } : {})
       })
     } else if (node.text) {
       children.push({ kind: 'text', value: node.text })

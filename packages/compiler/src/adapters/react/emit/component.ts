@@ -53,13 +53,19 @@ ${body}
 function buildVariantModule(def: ComponentDef, devMode: boolean): string {
   const axes = def.variantAxes ?? []
   const variants = def.variants ?? []
-  const propLines = axes
+  // Phase 3 §8 v5: one string-union prop per variant axis, plus (composed from
+  // v2/v3) one optional text/className prop per name-merged override slot. The
+  // text/className props get NO destructure default — each variant subtree
+  // falls back to its own literal via `{prop ?? ownLiteral}`.
+  const axisLines = axes
     .map((a) => `\n  ${a.name}?: ${a.options.map((o) => JSON.stringify(o)).join(' | ')}`)
     .join('')
+  const propLines = axisLines + def.props.map((p) => `\n  ${p.name}?: string`).join('')
   const header = `interface ${def.name}Props {\n  className?: string${propLines}\n}\n\n`
   const destructure = [
     'className',
-    ...axes.map((a) => `${a.name} = ${JSON.stringify(a.defaultValue)}`)
+    ...axes.map((a) => `${a.name} = ${JSON.stringify(a.defaultValue)}`),
+    ...def.props.map((p) => p.name)
   ].join(', ')
   // A registered SET always has ≥1 variant, but guard so the slice below is
   // sound and the fallback never references an undefined case.

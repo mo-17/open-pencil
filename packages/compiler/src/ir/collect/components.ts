@@ -136,13 +136,58 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
   for (const set of sets) {
     const kids = graph.getChildren(set.id).filter((c) => c.type === 'COMPONENT')
     if (!kids.some((k) => (instancesByComponent.get(k.id)?.length ?? 0) > 0)) continue
+    const variantInstances = kids.flatMap((k) => instancesByComponent.get(k.id) ?? [])
     registry.set(set.id, {
       name: uniqueName(componentName(set.name), usedNames),
-      propSlots: new Map(),
+      // Phase 3 §8 v5: a SET's text/fill prop slots, merged by layer name so
+      // the same logical node across variant subtrees shares one prop.
+      propSlots: buildSetPropSlots(graph, kids, variantInstances),
       variants: buildVariants(kids)
     })
   }
   return registry
+}
+
+/** Phase 3 §8 v5 — prop slots for a COMPONENT_SET. Unlike a plain component
+ *  (one body, node-id-keyed), a SET has one body per variant child, and the
+ *  same logical node (same layer name) recurs across them. So slots are merged
+ *  by *name*: each `:text` / `:fills` override across all variant instances
+ *  contributes one prop (named from the layer), then every variant
+ *  descendant with that name is keyed onto the shared slot, so each variant
+ *  subtree emits `{prop ?? ownLiteral}` at its corresponding node. */
+function buildSetPropSlots(
+  graph: SceneGraph,
+  variantKids: SceneNode[],
+  instances: SceneNode[]
+): Map<string, ComponentSlot> {
+  // Same override→slot accumulation as a plain component, but keyed by layer
+  // name so the same logical node across variant subtrees shares one prop.
+  const byName = accumulateSlots(graph, instances, (masterChild) => masterChild.name)
+  // Fan the name-keyed slots back out to every variant descendant id so the
+  // walker (which looks up by node id) parameterizes the matching node in
+  // every variant subtree, not just the one an instance happened to override.
+  const slots = new Map<string, ComponentSlot>()
+  if (byName.size === 0) return slots
+  for (const kid of variantKids) {
+    for (const descendant of descendantsOf(graph, kid.id)) {
+      const slot = byName.get(descendant.name)
+      if (slot) slots.set(descendant.id, slot)
+    }
+  }
+  return slots
+}
+
+/** Every descendant of `parentId` (excluding the parent itself), depth-first. */
+function descendantsOf(graph: SceneGraph, parentId: string): SceneNode[] {
+  const out: SceneNode[] = []
+  const stack = [...graph.getChildren(parentId)]
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (!node) continue
+    out.push(node)
+    stack.push(...graph.getChildren(node.id))
+  }
+  return out
 }
 
 /** Phase 3 §8 v2/v3 — the union of prop slots across a master's instances.
@@ -153,13 +198,29 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
  *  adds a className prop (default = master child's Tailwind classes). A child
  *  can carry both. */
 function buildPropSlots(graph: SceneGraph, instances: SceneNode[]): Map<string, ComponentSlot> {
+  // Plain component: one body, so slots are keyed by the master child's node id.
+  return accumulateSlots(graph, instances, (masterChild) => masterChild.id)
+}
+
+/** The shared slot accumulator for §8 v2/v3 (and v5). Walks every supported
+ *  override across `instances`, resolves the master descendant it targets, and
+ *  builds a `:text` (content) / `:fills` (className) prop slot keyed by
+ *  `keyOf(masterChild)` — the node id for a plain component (one body) or the
+ *  layer name for a COMPONENT_SET (one shared prop across variant subtrees).
+ *  Prop names are derived from the layer name and de-duplicated. */
+function accumulateSlots(
+  graph: SceneGraph,
+  instances: SceneNode[],
+  keyOf: (masterChild: SceneNode) => string
+): Map<string, ComponentSlot> {
   const slots = new Map<string, ComponentSlot>()
   const usedPropNames = new Set<string>()
   for (const instance of instances) {
     for (const key of Object.keys(instance.overrides)) {
       const masterChild = resolveMasterChild(graph, key)
       if (!masterChild) continue
-      const slot = slots.get(masterChild.id) ?? {}
+      const slotKey = keyOf(masterChild)
+      const slot = slots.get(slotKey) ?? {}
       if (key.endsWith(TEXT_OVERRIDE_SUFFIX) && !slot.text) {
         slot.text = {
           name: uniqueName(propName(masterChild.name), usedPropNames),
@@ -173,7 +234,7 @@ function buildPropSlots(graph: SceneGraph, instances: SceneNode[]): Map<string, 
           kind: 'className'
         }
       }
-      slots.set(masterChild.id, slot)
+      slots.set(slotKey, slot)
     }
   }
   return slots
