@@ -4531,7 +4531,18 @@ scene-graph ConfirmAction + ClipboardAction → ir/types IRConfirmHandler + IRCl
 
 ### 10v3.8 Post-mortem
 
-(待 CODE COMPLETE 后回填)
+CODE COMPLETE 2026-06-03(commit `bd7aa1df`,pushed upstream)。设计成立,1 处 GATE complexity 收口,零意外。
+
+- **第 9/10 个 ActionDef kind**:`ConfirmAction {messageExpr?;consequent;alternate?}` + `ClipboardAction {valueExpr?}`(scene-graph)→ `IRConfirmHandler {ast;references;consequent;alternate?}` + `IRClipboardHandler {ast;references}`(IR)。
+- **collect DRY**:抽 `lowerActionExpr(raw, ctx, desc)`(描述符 `ExprActionDesc {label,field,code,missingCode,invalidCode}` 保 condition/toast 原警告码精确不变)+ `lowerActionBranches`(consequent/alternate),**refactor resolveCondition + resolveToast 复用**,resolveConfirm/resolveClipboard 新写 —— 四者零 jscpd clone(否则 confirm≈condition、clipboard≈toast 必撞)。
+- **emit**:confirm 入 ASYNC_KINDS(恒 `await __opConfirm`,不靠 handlersAreAsync 递归);clipboard 入 SIMPLE_STATEMENT_KINDS+NEEDS_SEMICOLON(`navigator.clipboard.writeText`,fire-and-forget 不 await,与 apiCall 显式 await 区分)。**GATE:emitHandlerStatement complexity 23>20** → 抽 `emitIfElse`(condition+confirm 共享 if/else,顺带 DRY 掉两处 elseArm 三元)+ `emitApiCall`(把内联 apiCall 块移出,-2 三元)→ 降到 <20。经验重申:emit 加分支前看离 complexity-20 闸多近。
+- **import gate latent 修**:`handlerTreeHasKind(h, kind)` + `handlerBranches`(descend condition **AND** confirm)统一替换原 `handlerIsOrContainsToast`(只降 condition)→ 顺手修「toast 嵌在 confirm 分支里不触发 import」的同类 §10 latent gap。pageUsesConfirm 同款。
+- **经验 A 双轮 sweep 全中**:dispatchAction(2 case)/ recordWrites(confirm/clipboard no-op group)/ emitHandlerStatement(`never`,2 case)/ buildActionFromValidated(`never`,clipboard arm + confirm throw)/ tool KNOWN_ACTION_KINDS+2 + validateActionAt confirm 早返 + validatePerKindFields clipboard / **rls-advisor flattenActions 下降 confirm 分支**(嵌套 supabase RLS,经验 A)/ **check:vue EventsPanel**(errorsFor 末尾 `return {}` fallback、ACTION_KINDS 不含 workflow kind → 无需改,vue-tsc 0)。
+- **tool DRY**:抽 `validateActionBranches`(consequent 必/alternate 可选),validateConditionAction + validateConfirmAction 复用(jscpd 0)。
+- **runtime 安全**:`__opConfirm` 单 pending(新 confirm 打断旧的 resolve(false));id 无关(Promise resolve 不用计数器);CONFIRM_RUNTIME_CLASSES safelist 含 `bg-black/40` 遮罩。
+- **测试 +21**:emit workflow.test +6 / collect workflow.test +8 / confirm.test +4(全链 / clipboard inline / 嵌套 condition)/ tool +4 / kiwi roundtrip +1。compiler 522/0,tools 73/0,kiwi 77/0,`bun run check` exit 0,tsgo 0。**真机 Tauri 验 pending**(模态视觉 + WKWebView clipboard 权限,headless 仅断言 emit 字符串 + runtime 文件)。
+
+**§10 v4 follow-ups:** named WorkflowDef(可复用工作流);toast 位置/时长可配;confirm 文案/按钮标签可配;编辑器 EventsPanel 加 toast/confirm/clipboard/condition/delay/stop 授权 GUI。
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
