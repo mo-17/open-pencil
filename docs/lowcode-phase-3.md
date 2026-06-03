@@ -4238,7 +4238,11 @@ CODE COMPLETE 2026-06-03。设计成立,1 轮 lint 收口:
 
 ### 8v8.6 Post-mortem
 
-(回填)
+CODE COMPLETE 2026-06-03(commit `90bb5f24`,pushed upstream)。**史上最小的一个 feature**:零 hotfix,唯一改动 = 一个 3 行谓词 helper + 三处 `if(!child.visible) continue` 替换。recon 坐实揭示链**全部已就位**(§8 v6 className 槽 + §8 v7a `hidden` append + `resolveInstanceProps` 从 instChild 重算 + §8 v5 SET 槽 `descendantsOf` 扇出**不过滤 visible**)——所谓「reverse 做不到」纯粹是 emit 前的 visible-skip 把有槽的隐藏 master child 丢了。
+
+**关键坐实**:① 槽存在性 = `ctx.componentPropSlots?.has(child.id)`,plain(`accumulateSlots(keyOf=id)`)+ SET(`buildSetPropSlots` 经 `descendantsOf` 扇出到后代 id)两路均 id-keyed → 一个谓词通吃。② page walk 的 ctx 无 `componentPropSlots`(undefined)→ helper 退化为 `child.visible`,base-hidden page 节点仍跳过 = **零回归**(responsive re-show 是另一机制,留 §7 v2)。③ `:visible` override → `overrideKind` 落 'className'(非 `:text`/`:name`)→ 槽默认 = `tailwindClassName(hidden master)` 含 `hidden`;揭示实例传 `tailwindClassName(instChild=visible)` 无 hidden。
+
+**edge(已测+标注)**:隐藏 master child 若被某实例**任意** override(非只 `:visible`)即得槽 → 纳入 body 为 inert `hidden` 元素(视觉等价原「省略」,只多一个不渲染节点);无任何 override 的隐藏 child 仍省略(byte 回归测试 pin)。**测试**:override-props-general +2(plain 揭示:body 含 child + 默认 className 有 hidden + 揭示实例 prop 无 hidden / 无 override 仍省略)+ variants +1(SET variant 子树扇出槽揭示)= compiler 546/0;`bun run check` exit 0,tsgo 0。**真机验**:揭示实例在 preview/build 实际显示(headless 仅断言 emit 串)。
 
 **§8 v9 follow-ups:** nested-instance override(实例套实例);responsive `:visible` re-show(page/容器 base-hidden→`bp:block`,= §7 v2,改 collectResponsiveTailwindClasses + page-walk skip);component props 编辑器面板(GUI)。
 
