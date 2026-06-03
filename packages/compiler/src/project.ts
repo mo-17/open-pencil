@@ -113,23 +113,27 @@ export function buildIndexHtml(packageName: string): string {
  *  react-intl runtime (`_lowcode_i18n.tsx`) exports so `<FormattedMessage>` has
  *  an IntlProvider in scope. Phase 3 §10 v2: when `toast` is true, auto-mount
  *  `<ToastHost/>` (from `_lowcode_toast.tsx`) as a sibling of `<App/>` so the
- *  `__opToast` runtime has somewhere to render. */
-export function buildMainTsx(i18n = false, toast = false): string {
+ *  `__opToast` runtime has somewhere to render. Phase 3 §10 v3: when `confirm`
+ *  is true, likewise auto-mount `<ConfirmHost/>` (from `_lowcode_confirm.tsx`)
+ *  so `__opConfirm` can render its modal. */
+export function buildMainTsx(i18n = false, toast = false, confirm = false): string {
   const i18nImport = i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
   const toastImport = toast ? `import { ToastHost } from './_lowcode_toast'\n` : ''
+  const confirmImport = confirm ? `import { ConfirmHost } from './_lowcode_confirm'\n` : ''
   const app = i18n ? `<I18nProvider>\n      <App />\n    </I18nProvider>` : '<App />'
   const toastChild = toast ? `\n    <ToastHost />` : ''
+  const confirmChild = confirm ? `\n    <ConfirmHost />` : ''
   return `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-${i18nImport}${toastImport}import './index.css'
+${i18nImport}${toastImport}${confirmImport}import './index.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
 
 createRoot(root).render(
   <StrictMode>
-    ${app}${toastChild}
+    ${app}${toastChild}${confirmChild}
   </StrictMode>
 )
 `

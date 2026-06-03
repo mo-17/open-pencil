@@ -11,7 +11,9 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import type {
   IRApiCallHandler,
+  IRClipboardHandler,
   IRConditionalHandler,
+  IRConfirmHandler,
   IRControlledInput,
   IRDelayHandler,
   IRDocStateDecl,
@@ -471,6 +473,10 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
       return { kind: 'stop' }
     case 'toast':
       return resolveToast(action, ctx)
+    case 'confirm':
+      return resolveConfirm(action, ctx)
+    case 'clipboard':
+      return resolveClipboard(action, ctx)
     default: {
       // `action satisfies never` would be ideal here, but the cast keeps
       // older .fig files (saved with an unknown future kind) loadable.
@@ -511,10 +517,14 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
     // Phase 3 §10: condition writes are recorded per nested handler while its
     // branches are resolved (resolveBranch); delay / stop write nothing.
     // Phase 3 §10 v2: toast reads (its message expr) but writes no docState.
+    // Phase 3 §10 v3: confirm's nested branches are recorded per handler while
+    // its branches resolve (resolveBranch); clipboard reads but writes nothing.
     case 'condition':
     case 'delay':
     case 'stop':
     case 'toast':
+    case 'confirm':
+    case 'clipboard':
       break
   }
 }
@@ -788,15 +798,70 @@ function resolveNavigate(
  *  same pipeline (`resolveBranch`), so workflows nest. An empty / unparseable
  *  condition drops the whole handler with a warning. The `else` branch is
  *  omitted when the source had none or it resolves to no handlers. */
-function resolveCondition(
-  action: Extract<ActionDef, { kind: 'condition' }>,
-  ctx: ResolveCtx
-): IRConditionalHandler | null {
-  const src = (action.condExpr ?? '').trim()
+/** Describes one expression-bearing action kind so `lowerActionExpr` can parse
+ *  + validate its expression while keeping each kind's exact warning codes /
+ *  messages (the IR-collect tests pin them). Shared by condition / toast /
+ *  confirm / clipboard so resolveX stay clone-free (jscpd 0). */
+interface ExprActionDesc {
+  /** Short label in human messages, e.g. 'toast' / 'condition'. */
+  label: string
+  /** Source field name, e.g. 'messageExpr' / 'condExpr'. */
+  field: string
+  /** Warning-code stem passed to checkExprRefs + the ref context, e.g. 'action-toast'. */
+  code: string
+  /** Warning code when the expression is empty. */
+  missingCode: string
+  /** Warning code when the expression fails to parse. */
+  invalidCode: string
+}
+
+const CONDITION_DESC: ExprActionDesc = {
+  label: 'condition',
+  field: 'condExpr',
+  code: 'action-condition',
+  missingCode: 'action-condition-missing-expression',
+  invalidCode: 'action-condition-invalid-expression'
+}
+
+const TOAST_DESC: ExprActionDesc = {
+  label: 'toast',
+  field: 'messageExpr',
+  code: 'action-toast',
+  missingCode: 'action-toast-missing-message',
+  invalidCode: 'action-toast-invalid-message'
+}
+
+const CONFIRM_DESC: ExprActionDesc = {
+  label: 'confirm',
+  field: 'messageExpr',
+  code: 'action-confirm',
+  missingCode: 'action-confirm-missing-message',
+  invalidCode: 'action-confirm-invalid-message'
+}
+
+const CLIPBOARD_DESC: ExprActionDesc = {
+  label: 'clipboard',
+  field: 'valueExpr',
+  code: 'action-clipboard',
+  missingCode: 'action-clipboard-missing-value',
+  invalidCode: 'action-clipboard-invalid-value'
+}
+
+/** Parse + validate the read-context expression carried by an
+ *  expression-bearing action (condition condExpr / toast messageExpr / confirm
+ *  messageExpr / clipboard valueExpr) and register its docState reads. Returns
+ *  the parsed AST + references, or null (after pushing the kind's matching
+ *  warning) when empty / unparseable / referencing an unresolved name. */
+function lowerActionExpr(
+  raw: string | undefined,
+  ctx: ResolveCtx,
+  desc: ExprActionDesc
+): { ast: ExprAst; references: string[] } | null {
+  const src = (raw ?? '').trim()
   if (src === '') {
     ctx.warnings.push({
-      code: 'action-condition-missing-expression',
-      message: `node ${ctx.node.id} ${ctx.eventName} condition has no condExpr`,
+      code: desc.missingCode,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${desc.label} has no ${desc.field}`,
       nodeId: ctx.node.id
     })
     return null
@@ -804,13 +869,12 @@ function resolveCondition(
   const parsed = parseExpression(src)
   if (!parsed.ok) {
     ctx.warnings.push({
-      code: 'action-condition-invalid-expression',
-      message: `node ${ctx.node.id} ${ctx.eventName} condition condExpr "${src}" → ${parsed.error}`,
+      code: desc.invalidCode,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${desc.label} ${desc.field} "${src}" → ${parsed.error}`,
       nodeId: ctx.node.id
     })
     return null
   }
-  const refCtx = `${ctx.eventName} action-condition condExpr`
   if (
     !checkExprRefs(
       parsed.references,
@@ -818,22 +882,43 @@ function resolveCondition(
       ctx.inScope,
       ctx.docStates,
       ctx.node,
-      refCtx,
-      'action-condition',
+      `${ctx.eventName} ${desc.code} ${desc.field}`,
+      desc.code,
       ctx.warnings
     )
   ) {
     return null
   }
   registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
-  const consequent = resolveBranch(action.consequent, ctx)
-  const alternate = resolveBranch(action.alternate ?? [], ctx)
+  return { ast: parsed.ast, references: [...parsed.references] }
+}
+
+/** Lower a branching action's `consequent` / `alternate` chains through the
+ *  same pipeline (`resolveBranch`), so condition / confirm nest identically.
+ *  The `alternate` is dropped when the source had none or it resolves empty. */
+function lowerActionBranches(
+  consequentActions: ActionDef[],
+  alternateActions: ActionDef[] | undefined,
+  ctx: ResolveCtx
+): { consequent: IREventHandler[]; alternate: IREventHandler[] | undefined } {
+  const consequent = resolveBranch(consequentActions, ctx)
+  const alternate = resolveBranch(alternateActions ?? [], ctx)
+  return { consequent, alternate: alternate.length > 0 ? alternate : undefined }
+}
+
+function resolveCondition(
+  action: Extract<ActionDef, { kind: 'condition' }>,
+  ctx: ResolveCtx
+): IRConditionalHandler | null {
+  const lowered = lowerActionExpr(action.condExpr, ctx, CONDITION_DESC)
+  if (!lowered) return null
+  const { consequent, alternate } = lowerActionBranches(action.consequent, action.alternate, ctx)
   return {
     kind: 'condition',
-    condAst: parsed.ast,
-    references: [...parsed.references],
+    condAst: lowered.ast,
+    references: lowered.references,
     consequent,
-    alternate: alternate.length > 0 ? alternate : undefined
+    alternate
   }
 }
 
@@ -866,44 +951,51 @@ function resolveToast(
   action: Extract<ActionDef, { kind: 'toast' }>,
   ctx: ResolveCtx
 ): IRToastHandler | null {
-  const src = (action.messageExpr ?? '').trim()
-  if (src === '') {
-    ctx.warnings.push({
-      code: 'action-toast-missing-message',
-      message: `node ${ctx.node.id} ${ctx.eventName} toast has no messageExpr`,
-      nodeId: ctx.node.id
-    })
-    return null
-  }
-  const parsed = parseExpression(src)
-  if (!parsed.ok) {
-    ctx.warnings.push({
-      code: 'action-toast-invalid-message',
-      message: `node ${ctx.node.id} ${ctx.eventName} toast messageExpr "${src}" → ${parsed.error}`,
-      nodeId: ctx.node.id
-    })
-    return null
-  }
-  if (
-    !checkExprRefs(
-      parsed.references,
-      ctx.states,
-      ctx.inScope,
-      ctx.docStates,
-      ctx.node,
-      `${ctx.eventName} action-toast messageExpr`,
-      'action-toast',
-      ctx.warnings
-    )
-  ) {
-    return null
-  }
-  registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
+  const lowered = lowerActionExpr(action.messageExpr, ctx, TOAST_DESC)
+  if (!lowered) return null
   return {
     kind: 'toast',
-    ast: parsed.ast,
-    references: [...parsed.references],
+    ast: lowered.ast,
+    references: lowered.references,
     variant: action.variant ?? 'info'
+  }
+}
+
+/** Phase 3 §10 v3: lower a `confirm` action — a `condition` whose predicate is
+ *  a runtime user choice. The prompt `messageExpr` is parsed like a toast
+ *  message (read context); `consequent` / `alternate` lower through the same
+ *  branch pipeline so confirms nest. An empty / unparseable message drops the
+ *  whole handler with a warning. */
+function resolveConfirm(
+  action: Extract<ActionDef, { kind: 'confirm' }>,
+  ctx: ResolveCtx
+): IRConfirmHandler | null {
+  const lowered = lowerActionExpr(action.messageExpr, ctx, CONFIRM_DESC)
+  if (!lowered) return null
+  const { consequent, alternate } = lowerActionBranches(action.consequent, action.alternate, ctx)
+  return {
+    kind: 'confirm',
+    ast: lowered.ast,
+    references: lowered.references,
+    consequent,
+    alternate
+  }
+}
+
+/** Phase 3 §10 v3: lower a `clipboard` action. `valueExpr` is parsed like a
+ *  toast message (read context) so the copied text can interpolate state /
+ *  docState / `$currentUser`; an empty / unparseable value drops the handler
+ *  with a warning. */
+function resolveClipboard(
+  action: Extract<ActionDef, { kind: 'clipboard' }>,
+  ctx: ResolveCtx
+): IRClipboardHandler | null {
+  const lowered = lowerActionExpr(action.valueExpr, ctx, CLIPBOARD_DESC)
+  if (!lowered) return null
+  return {
+    kind: 'clipboard',
+    ast: lowered.ast,
+    references: lowered.references
   }
 }
 

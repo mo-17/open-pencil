@@ -4,7 +4,12 @@ import { SceneGraph, initCodec } from '@open-pencil/core'
 import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 import { collectTree } from '#compiler/ir/collect/tree'
-import type { IRConditionalHandler, IREventHandler } from '#compiler/ir/types'
+import type {
+  IRClipboardHandler,
+  IRConditionalHandler,
+  IRConfirmHandler,
+  IREventHandler
+} from '#compiler/ir/types'
 
 /**
  * Phase 3 §10 — workflow-orchestration collect: `condition` (recursive
@@ -189,5 +194,112 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(ir.warnings.some((w) => w.code === 'action-toast-invalid-message')).toBe(true)
+  })
+
+  // Phase 3 §10 v3 — confirm + clipboard.
+  test('confirm lowers messageExpr + recursive then/else branches', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [
+        {
+          id: 'cf',
+          kind: 'confirm',
+          messageExpr: '"Delete?"',
+          consequent: [{ id: 'n1', kind: 'navigate', to: '/gone' }],
+          alternate: [{ id: 't1', kind: 'toast', messageExpr: '"Kept"' }]
+        }
+      ]
+    })
+    const handlers = onClickHandlers(graph, pageId)
+    expect(handlers).toHaveLength(1)
+    const confirm = handlers[0] as IRConfirmHandler
+    expect(confirm.kind).toBe('confirm')
+    expect(confirm.ast).toEqual({ kind: 'string', value: 'Delete?' })
+    expect(confirm.consequent).toEqual([{ kind: 'navigate', to: '/gone' }])
+    expect(confirm.alternate?.[0].kind).toBe('toast')
+  })
+
+  test('confirm with no cancel branch leaves alternate undefined', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [
+        { id: 'cf', kind: 'confirm', messageExpr: '"Sure?"', consequent: [{ id: 's', kind: 'stop' }] }
+      ]
+    })
+    const confirm = onClickHandlers(graph, pageId)[0] as IRConfirmHandler
+    expect(confirm.consequent).toEqual([{ kind: 'stop' }])
+    expect(confirm.alternate).toBeUndefined()
+  })
+
+  test('confirm messageExpr referencing a docState registers a read', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd1', name: 'rowName', type: 'string', defaultValue: '' }],
+      onClick: [
+        { id: 'cf', kind: 'confirm', messageExpr: 'rowName', consequent: [{ id: 's', kind: 'stop' }] }
+      ]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.docStateReads).toContain('rowName')
+  })
+
+  test('nested supabaseMutation inside a confirm registers its result write (rls descent)', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd2', name: 'res', type: 'object', defaultValue: null }],
+      onClick: [
+        {
+          id: 'cf',
+          kind: 'confirm',
+          messageExpr: '"Insert?"',
+          consequent: [
+            {
+              id: 'm1',
+              kind: 'supabaseMutation',
+              operation: 'insert',
+              table: 'logs',
+              payloadJson: '{"event":"x"}',
+              resultTarget: 'res'
+            }
+          ]
+        }
+      ]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.docStateWrites).toContain('res')
+  })
+
+  test('an empty confirm messageExpr drops the confirm with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 'cf', kind: 'confirm', messageExpr: '   ', consequent: [] }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-confirm-missing-message')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([])
+  })
+
+  test('clipboard lowers valueExpr to an IRClipboardHandler', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 'cb', kind: 'clipboard', valueExpr: '"link"' }]
+    })
+    expect(onClickHandlers(graph, pageId)).toEqual([
+      { kind: 'clipboard', ast: { kind: 'string', value: 'link' }, references: [] }
+    ])
+  })
+
+  test('clipboard valueExpr referencing a docState registers a read', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd1', name: 'shareUrl', type: 'string', defaultValue: '' }],
+      onClick: [{ id: 'cb', kind: 'clipboard', valueExpr: 'shareUrl' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.docStateReads).toContain('shareUrl')
+    const clip = onClickHandlers(graph, pageId)[0] as IRClipboardHandler
+    expect(clip.references).toEqual(['shareUrl'])
+  })
+
+  test('an empty clipboard valueExpr drops the action with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 'cb', kind: 'clipboard', valueExpr: '  ' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-clipboard-missing-value')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([])
   })
 })

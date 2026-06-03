@@ -73,7 +73,10 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'delay',
   'stop',
   // Phase 3 §10 v2 toast/notify
-  'toast'
+  'toast',
+  // Phase 3 §10 v3 confirm dialog + clipboard
+  'confirm',
+  'clipboard'
 ])
 
 const KNOWN_BINDING_KINDS = new Set<BindingKind>(['literal', 'ref', 'expr', 'docState'])
@@ -305,9 +308,10 @@ function validateActionAt(
       `.kind must be one of ${[...KNOWN_ACTION_KINDS].join(' / ')} (got ${JSON.stringify(kind)})`
     )
   }
-  // condition builds its nested branches recursively, so it returns directly
-  // rather than falling through to buildActionFromValidated.
+  // condition / confirm build their nested branches recursively, so they return
+  // directly rather than falling through to buildActionFromValidated.
   if (kind === 'condition') return validateConditionAction(where, value.id, value)
+  if (kind === 'confirm') return validateConfirmAction(where, value.id, value)
   const fieldsR = validatePerKindFields(where, kind as ActionKind, value)
   if (!fieldsR.ok) return fieldsR
   return { ok: true, action: buildActionFromValidated(value.id, kind as ActionKind, value) }
@@ -330,7 +334,26 @@ function validatePerKindFields(
   if (kind === 'supabaseAuth') return validateSupabaseAuthAction(where, value)
   if (kind === 'delay') return validateDelayAction(where, value)
   if (kind === 'toast') return validateToastAction(where, value)
+  if (kind === 'clipboard') return validateClipboardAction(where, value)
   return { ok: true }
+}
+
+/** Validate the `consequent` (required) / `alternate` (optional) branch arrays
+ *  shared by `condition` and `confirm`, building each branch's nested actions
+ *  recursively. Split out so the two validators stay clone-free (jscpd 0). */
+function validateActionBranches(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true; consequent: ActionDef[]; alternate: ActionDef[] | undefined } | { ok: false; error: string } {
+  const consequentR = validateActionArray(`${where}.consequent`, value.consequent, true)
+  if (!consequentR.ok) return consequentR
+  let alternate: ActionDef[] | undefined
+  if (value.alternate !== undefined) {
+    const alternateR = validateActionArray(`${where}.alternate`, value.alternate, false)
+    if (!alternateR.ok) return alternateR
+    alternate = alternateR.actions
+  }
+  return { ok: true, consequent: consequentR.actions, alternate }
 }
 
 /** Phase 3 §10: validate a `condition` action — optional string `condExpr`,
@@ -344,24 +367,55 @@ function validateConditionAction(
   if (value.condExpr !== undefined && typeof value.condExpr !== 'string') {
     return failAt(where, '.condExpr must be a string')
   }
-  const consequentR = validateActionArray(`${where}.consequent`, value.consequent, true)
-  if (!consequentR.ok) return consequentR
-  let alternate: ActionDef[] | undefined
-  if (value.alternate !== undefined) {
-    const alternateR = validateActionArray(`${where}.alternate`, value.alternate, false)
-    if (!alternateR.ok) return alternateR
-    alternate = alternateR.actions
-  }
+  const branchesR = validateActionBranches(where, value)
+  if (!branchesR.ok) return branchesR
   return {
     ok: true,
     action: {
       id,
       kind: 'condition',
       condExpr: value.condExpr,
-      consequent: consequentR.actions,
-      alternate
+      consequent: branchesR.consequent,
+      alternate: branchesR.alternate
     }
   }
+}
+
+/** Phase 3 §10 v3: validate a `confirm` action — optional string `messageExpr`,
+ *  required `consequent` array, optional `alternate` array — building each
+ *  branch's nested actions recursively (a `condition` gated on a user choice). */
+function validateConfirmAction(
+  where: string,
+  id: string,
+  value: Record<string, unknown>
+): { ok: true; action: ActionDef } | { ok: false; error: string } {
+  if (value.messageExpr !== undefined && typeof value.messageExpr !== 'string') {
+    return failAt(where, '.messageExpr must be a string')
+  }
+  const branchesR = validateActionBranches(where, value)
+  if (!branchesR.ok) return branchesR
+  return {
+    ok: true,
+    action: {
+      id,
+      kind: 'confirm',
+      messageExpr: value.messageExpr,
+      consequent: branchesR.consequent,
+      alternate: branchesR.alternate
+    }
+  }
+}
+
+/** Phase 3 §10 v3: `clipboard.valueExpr`, when present, must be a string
+ *  (collect parses + validates it as an expression). */
+function validateClipboardAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (value.valueExpr !== undefined && typeof value.valueExpr !== 'string') {
+    return failAt(where, '.valueExpr must be a string')
+  }
+  return { ok: true }
 }
 
 /** Validate an array of nested actions (a `condition` branch). When `required`
@@ -513,6 +567,15 @@ function buildActionFromValidated(
         messageExpr: raw.messageExpr as string | undefined,
         variant: raw.variant as 'info' | 'success' | 'error' | undefined
       }
+    case 'confirm':
+      // Phase 3 §10 v3: built in validateConfirmAction (its nested consequent /
+      // alternate branches need recursive validation), so this arm is never
+      // reached.
+      throw new Error('confirm actions are built via validateConfirmAction')
+    case 'clipboard':
+      // Phase 3 §10 v3: valueExpr carries through verbatim; expression
+      // validation happens in IR collect (resolveClipboard).
+      return { id, kind, valueExpr: raw.valueExpr as string | undefined }
     default: {
       // Exhaustive — ActionKind covers every variant above. The assignment
       // proves it to TypeScript and the throw matches the

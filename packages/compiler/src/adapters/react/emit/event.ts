@@ -1,6 +1,7 @@
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
 import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type {
+  IRApiCallHandler,
   IREventHandler,
   IRSupabaseAuthHandler,
   IRSupabaseFilter,
@@ -16,18 +17,21 @@ const SIMPLE_STATEMENT_KINDS = new Set<IREventHandler['kind']>([
   'setState',
   'navigate',
   'setVariable',
-  'toast'
+  'toast',
+  'clipboard'
 ])
 
 /** Handler kinds whose emit contains an `await` — they force `async () =>`.
  *  `condition` is async transitively when any nested branch handler is async
- *  (handled by `handlersAreAsync`'s recursion, not this set). */
+ *  (handled by `handlersAreAsync`'s recursion, not this set); `confirm`
+ *  unconditionally awaits `__opConfirm`, so it sits in this set directly. */
 const ASYNC_KINDS = new Set<IREventHandler['kind']>([
   'apiCall',
   'supabaseQuery',
   'supabaseMutation',
   'supabaseAuth',
-  'delay'
+  'delay',
+  'confirm'
 ])
 
 /** Handler kinds whose emit is an expression / `return` statement and so needs
@@ -39,7 +43,8 @@ const NEEDS_SEMICOLON = new Set<IREventHandler['kind']>([
   'setVariable',
   'delay',
   'stop',
-  'toast'
+  'toast',
+  'clipboard'
 ])
 
 /** Phase 3 §10: an arrow is `async` when any handler — at any nesting depth
@@ -81,6 +86,40 @@ function emitStatementList(handlers: IREventHandler[]): string {
     .join(' ')
 }
 
+/** Emit `if (<cond>) { <consequent> } else { <alternate> }`, dropping the else
+ *  arm when there is no alternate. Shared by `condition` (a static predicate)
+ *  and `confirm` (an awaited user choice) so the two stay clone-free. */
+function emitIfElse(
+  cond: string,
+  consequent: IREventHandler[],
+  alternate: IREventHandler[] | undefined
+): string {
+  const elseArm =
+    alternate && alternate.length > 0 ? ` else { ${emitStatementList(alternate)} }` : ''
+  return `if (${cond}) { ${emitStatementList(consequent)} }${elseArm}`
+}
+
+/** Phase 2 §3 / §4: emit an `apiCall` handler. GET → `fetch(url)`; POST →
+ *  `fetch(url, { method, headers, body })`. `h.body` is compact, validated JSON
+ *  spliced verbatim inside `JSON.stringify(...)`; `h.url` is a template AST (a
+ *  static URL emits as a double-quoted string, an interpolated one as a
+ *  backtick template). Result goes to `setDocState`; errors are logged. */
+function emitApiCall(h: IRApiCallHandler): string {
+  const url = emitExpression(h.url)
+  const fetchCall =
+    h.method === 'POST'
+      ? `fetch(${url}, { method: "POST", headers: { "Content-Type": "application/json" }` +
+        (h.body === undefined ? ' })' : `, body: JSON.stringify(${h.body}) })`)
+      : `fetch(${url})`
+  return (
+    `try { ` +
+    `const res = await ${fetchCall}; ` +
+    `const data = await res.json(); ` +
+    `setDocState(${JSON.stringify(h.docStateName)}, data) ` +
+    `} catch (err) { console.error("apiCall failed:", err) }`
+  )
+}
+
 function emitHandlerStatement(h: IREventHandler): string {
   // Exhaustive switch over IREventHandler — the `never` assertion below
   // makes tsgo flag any new kind added to ir/types.ts that misses a case
@@ -100,43 +139,18 @@ function emitHandlerStatement(h: IREventHandler): string {
         ? `setDocState(${JSON.stringify(h.docStateName)}, (prev) => ${inner})`
         : `setDocState(${JSON.stringify(h.docStateName)}, ${inner})`
     }
-    case 'apiCall': {
-      // GET → `fetch(url)`; POST → `fetch(url, { method, headers, body })`.
-      // `h.body` is compact, validated JSON, so it splices verbatim as a JS
-      // literal inside `JSON.stringify(...)`. Phase 2 §4: `h.url` is a
-      // template AST — a static URL emits as a double-quoted string, an
-      // interpolated one as a backtick template.
-      const url = emitExpression(h.url)
-      const fetchCall =
-        h.method === 'POST'
-          ? `fetch(${url}, { method: "POST", headers: { "Content-Type": "application/json" }` +
-            (h.body === undefined ? ' })' : `, body: JSON.stringify(${h.body}) })`)
-          : `fetch(${url})`
-      return (
-        `try { ` +
-        `const res = await ${fetchCall}; ` +
-        `const data = await res.json(); ` +
-        `setDocState(${JSON.stringify(h.docStateName)}, data) ` +
-        `} catch (err) { console.error("apiCall failed:", err) }`
-      )
-    }
+    case 'apiCall':
+      return emitApiCall(h)
     case 'supabaseQuery':
       return emitSupabaseQuery(h)
     case 'supabaseMutation':
       return emitSupabaseMutation(h)
     case 'supabaseAuth':
       return emitSupabaseAuth(h)
-    case 'condition': {
-      // Phase 3 §10: `if (<cond>) { <consequent> } else { <alternate> }`.
-      // Branches are emitted through the same statement-list path so they nest.
-      // The else arm is dropped when the IR carried no falsy branch.
-      const cond = emitExpression(h.condAst)
-      const elseArm =
-        h.alternate && h.alternate.length > 0
-          ? ` else { ${emitStatementList(h.alternate)} }`
-          : ''
-      return `if (${cond}) { ${emitStatementList(h.consequent)} }${elseArm}`
-    }
+    case 'condition':
+      // Phase 3 §10: `if (<cond>) { <consequent> } else { <alternate> }` over a
+      // static predicate. Branches nest through the shared statement-list path.
+      return emitIfElse(emitExpression(h.condAst), h.consequent, h.alternate)
     case 'delay':
       // Phase 3 §10: timed wait. Forces the enclosing arrow async (ASYNC_KINDS).
       return `await new Promise((resolve) => setTimeout(resolve, ${h.ms}))`
@@ -151,6 +165,15 @@ function emitHandlerStatement(h: IREventHandler): string {
         ? `__opToast(${message})`
         : `__opToast(${message}, ${JSON.stringify(h.variant)})`
     }
+    case 'confirm':
+      // Phase 3 §10 v3: same if/else shape as `condition`, but the predicate is
+      // an awaited runtime user choice (`await __opConfirm`), which forces the
+      // enclosing arrow async (ASYNC_KINDS).
+      return emitIfElse(`await __opConfirm(${emitExpression(h.ast)})`, h.consequent, h.alternate)
+    case 'clipboard':
+      // Phase 3 §10 v3: copy to the clipboard, fire-and-forget (the returned
+      // promise is intentionally not awaited — no runtime surface).
+      return `navigator.clipboard.writeText(${emitExpression(h.ast)})`
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)

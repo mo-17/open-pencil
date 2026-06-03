@@ -254,6 +254,8 @@ export type IREventHandler =
   | IRDelayHandler
   | IRStopHandler
   | IRToastHandler
+  | IRConfirmHandler
+  | IRClipboardHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector
@@ -431,6 +433,34 @@ export interface IRToastHandler {
   /** Identifiers the message expression depends on (state / docState). */
   references: string[]
   variant: 'info' | 'success' | 'error'
+}
+
+/** Phase 3 §10 v3: gate a workflow on a runtime user confirmation. The adapter
+ *  emits `if (await __opConfirm(<message>)) { <consequent> } else { <alternate> }`
+ *  against the auto-mounted `<ConfirmHost/>` runtime, so confirm is a
+ *  `condition` whose predicate is a user choice (the `await` forces the
+ *  enclosing handler async). `ast` is the parsed prompt-message expression
+ *  (same restricted sub-language as `IRSetStateHandler.ast`); `consequent` /
+ *  `alternate` are nested handler chains lowered through the same pipeline, so
+ *  confirms nest. `alternate` is omitted when the source had no cancel branch. */
+export interface IRConfirmHandler {
+  kind: 'confirm'
+  ast: ExprAst
+  /** Identifiers the message expression depends on (state / docState). */
+  references: string[]
+  consequent: IREventHandler[]
+  alternate?: IREventHandler[]
+}
+
+/** Phase 3 §10 v3: copy a value to the clipboard. The adapter emits
+ *  `navigator.clipboard.writeText(<value>)` (fire-and-forget, not awaited).
+ *  `ast` is the parsed value expression (same restricted sub-language as
+ *  `IRSetStateHandler.ast`, evaluated to a string at runtime). */
+export interface IRClipboardHandler {
+  kind: 'clipboard'
+  ast: ExprAst
+  /** Identifiers the value expression depends on (state / docState). */
+  references: string[]
 }
 
 /** A page-level state declaration. Adapter emits `useState(defaultValue)`. */

@@ -138,22 +138,42 @@ export function pageUsesSupabase(ir: IRTree): boolean {
 
 /**
  * Phase 3 §10 v2: a page fires a toast when any handler in its tree is a
- * `toast` — including one nested inside a `condition` branch (the predicate
- * descends consequent/alternate, so a toast buried in an if/else still gates
- * the `__opToast` import; missing that descent is the §10 "compiles but the
- * import is silently absent" trap). Drives the page's `__opToast` import + the
- * `_lowcode_toast` runtime emission.
+ * `toast` — including one nested inside a `condition` / `confirm` branch (the
+ * predicate descends consequent/alternate, so a toast buried in an if/else
+ * still gates the `__opToast` import; missing that descent is the §10
+ * "compiles but the import is silently absent" trap). Drives the page's
+ * `__opToast` import + the `_lowcode_toast` runtime emission.
  */
 export function pageUsesToast(ir: IRTree): boolean {
-  return ir.children.some((c) => treeHasHandler(c, handlerIsOrContainsToast))
+  return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'toast')))
 }
 
-function handlerIsOrContainsToast(h: IREventHandler): boolean {
-  if (h.kind === 'toast') return true
-  if (h.kind === 'condition') {
-    return h.consequent.some(handlerIsOrContainsToast) || (h.alternate ?? []).some(handlerIsOrContainsToast)
+/**
+ * Phase 3 §10 v3: a page shows a confirm modal when any handler in its tree is
+ * a `confirm` (descending `condition` / `confirm` branches identically). Drives
+ * the page's `__opConfirm` import + the `_lowcode_confirm` runtime emission.
+ */
+export function pageUsesConfirm(ir: IRTree): boolean {
+  return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'confirm')))
+}
+
+/** The nested handler chains of a branch-carrying handler (`condition` /
+ *  `confirm`), or null for leaf handlers — lets predicates descend both
+ *  branch kinds uniformly. */
+function handlerBranches(h: IREventHandler): IREventHandler[] | null {
+  if (h.kind === 'condition' || h.kind === 'confirm') {
+    return [...h.consequent, ...(h.alternate ?? [])]
   }
-  return false
+  return null
+}
+
+/** True when `h` is `kind`, or contains one in a nested `condition` / `confirm`
+ *  branch. The branch descent is what closes the §10 "compiles but the import
+ *  is silently absent" gap for actions buried inside an if/else. */
+function handlerTreeHasKind(h: IREventHandler, kind: IREventHandler['kind']): boolean {
+  if (h.kind === kind) return true
+  const branches = handlerBranches(h)
+  return branches ? branches.some((b) => handlerTreeHasKind(b, kind)) : false
 }
 
 /**

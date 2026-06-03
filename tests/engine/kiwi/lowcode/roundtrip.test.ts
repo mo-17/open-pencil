@@ -139,6 +139,26 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(btn.events).toEqual({ onClick })
   })
 
+  test('Phase 3 §10 v3 confirm (nested then/else) + clipboard survive round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const onClick: ActionDef[] = [
+      {
+        id: 'cf1',
+        kind: 'confirm',
+        messageExpr: '"Delete?"',
+        consequent: [{ id: 'cb1', kind: 'clipboard', valueExpr: '"copied"' }],
+        alternate: [{ id: 'to1', kind: 'toast', messageExpr: '"Cancelled"', variant: 'info' }]
+      }
+    ]
+    graph.createNode('BUTTON', page.id, { name: 'confirm-btn', events: { onClick } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const btn = findByName(reimported, 'confirm-btn')
+    expect(btn.events).toEqual({ onClick })
+  })
+
   test('all 10 lowcode NodeTypes survive round-trip (Phase 2 §8 adds 4)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

@@ -4468,6 +4468,71 @@ CODE COMPLETE 2026-06-03。设计成立,2 轮 lint 收口:
 
 **§10 v3 follow-ups:** named WorkflowDef(可复用工作流);更多 action kind(confirm 对话框 / clipboard);toast 位置/时长可配;编辑器 EventsPanel 加 toast/condition/delay/stop 授权 UI(GUI)。
 
+## §10 v3 — confirm 对话框 + clipboard 两个 action kind
+
+> §10 v2 follow-up。用户 2026-06-03 挑定 = **§10 v3 confirm + clipboard**(否决 §9 v4 ICU / named WorkflowDef / 更多 deploy provider)。两 fork 锁定:**confirm = 分支式**(consequent/alternate,复用 condition 嵌套分支 + toast 的 runtime surface 模式)、**clipboard = 仅复制 writeText**(纯 inline emit,零 runtime 文件)。
+
+### 10v3.1 现状与问题
+
+§10 v2 给工作流加了 toast(第一个面向用户的反馈)。还缺两个常见交互原语:
+
+1. **confirm 对话框** —— 危险操作(删除、登出)前的「确定吗?」二次确认。本质 = 在运行时**阻塞**工作流、由用户选择决定走哪条分支 —— 这正是 condition 的分支结构 + 一个 toast 式的 runtime surface(模态框)的组合。
+2. **clipboard** —— 「复制链接 / 复制 SQL」式的复制到剪贴板。`navigator.clipboard.writeText` 在 Tauri WKWebView 可用(§3.v3 toast / §2 rls-copy 先例)。纯单语句,无 runtime surface。
+
+### 10v3.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`ConfirmAction {id;kind:'confirm';messageExpr?;consequent;alternate?}`** 第 9 个 ActionDef kind | 分支式(fork 锁定):confirm = 「gate 在运行时用户选择上的 condition」。复用 `resolveBranch`(condition 同款嵌套 lowering)→ consequent/alternate 是嵌套 handler 链,天然 round-trip(events 整块 JSON)。否决守卫式(取消→stop,耦合 stop、取消分支不能做事)。 |
+| 2 | **`ClipboardAction {id;kind:'clipboard';valueExpr?}`** 第 10 个 ActionDef kind | 仅复制(fork 锁定):`navigator.clipboard.writeText(<expr>)`。value 走表达式子语言(复用 `SetStateAction.valueExpr` 文法,可引 state/docState/$currentUser)。否决 +readText(需权限提示、罕用)。 |
+| 3 | **confirm message 走表达式子语言**(`messageExpr`) | 同 toast:可引 state/docState/$currentUser(动态「删除 X 吗?」)。collect 同 condition/toast:parseExpression + checkExprRefs(read ctx,禁 $prev)+ registerDocStateReads。 |
+| 4 | **confirm 运行时 = 模块级 `__opConfirm(message): Promise<boolean>` + 自动挂载 `<ConfirmHost/>`** | 同 toast runtime 模式:`_lowcode_confirm.tsx` 用 React 内置 `useSyncExternalStore` 订阅模块级 store(单 pending confirm `{message, resolve}`)。OK→resolve(true)、Cancel→resolve(false)、各清 pending。**零新 npm 依赖**。main.tsx 自动挂 `<ConfirmHost/>`(同 ToastHost / I18nProvider)。 |
+| 5 | **confirm emit = `if (await __opConfirm(<msg>)) { <consequent> } else { <alternate> }`** | await → 强制 enclosing arrow `async`(ASYNC_KINDS,同 delay);嵌套分支经 `emitStatementList` 递归(同 condition)。else arm 在无 alternate 时省略。 |
+| 6 | **clipboard emit = `navigator.clipboard.writeText(<expr>)`** | 同步单语句(SIMPLE_STATEMENT_KINDS + NEEDS_SEMICOLON,**非** ASYNC —— writeText 返 Promise 但 fire-and-forget 不 await,与 apiCall 的显式 await 区分)。零 runtime 文件、零 import gate。 |
+
+### 10v3.3 公开 API / Schema 改动
+
+- `scene-graph/types.ts`:`ConfirmAction` + `ClipboardAction` 并入 `ActionDef`(`ActionKind` 自动含 'confirm' / 'clipboard')。
+- `ir/types.ts`:`IRConfirmHandler {kind:'confirm';ast;references;consequent;alternate?}` + `IRClipboardHandler {kind:'clipboard';ast;references}` 并入 `IREventHandler`。
+- 产物新增(有 confirm 时):`src/_lowcode_confirm.tsx`;有 confirm 的页 import `__opConfirm`;main.tsx 挂 `<ConfirmHost/>`。clipboard 零产物文件、零 import、零 dep。
+- 无 round-trip codec 改动(events 整块 JSON)。
+
+### 10v3.4 内部实现拆解
+
+1. **collect**(bindings.ts):`dispatchAction` += case 'confirm'→`resolveConfirm`、case 'clipboard'→`resolveClipboard`。`resolveConfirm`(同 resolveCondition + resolveToast 合体):parse `messageExpr`(空/不可解析→drop+warn)+ checkExprRefs(read ctx)+ registerDocStateReads + `resolveBranch(consequent)` / `resolveBranch(alternate ?? [])`。`resolveClipboard`(同 resolveToast 形):parse `valueExpr` + checkExprRefs + registerDocStateReads。`recordWrites`:confirm/clipboard 都不写 docState(confirm 嵌套写在 resolveBranch 内逐 handler 已记)。
+2. **emit**(event.ts):`handlersAreAsync` confirm 分支递归(confirm 永远 async:await __opConfirm)。`emitHandlerStatement` case 'confirm'→ if/else(同 condition 但 `await __opConfirm(...)` 当条件)、case 'clipboard'→`navigator.clipboard.writeText(<expr>)`。`SIMPLE_STATEMENT_KINDS` += 'clipboard'、`NEEDS_SEMICOLON` += 'clipboard'(confirm 是完整 if/else 块,不进两 set,同 condition)。
+3. **confirm runtime**(lowcode/confirm.tsx 新):`buildLowcodeConfirmRuntime()` 产 `_lowcode_confirm.tsx` —— 模块级 pending store(`{message, resolve} | null`,subscribe/getSnapshot)+ `__opConfirm(message): Promise<boolean>`(set pending + emitChange,返回 Promise)+ `ConfirmHost`(useSyncExternalStore,渲染模态遮罩 + message + 取消/确定按钮,点击 resolve + 清 pending)。`CONFIRM_RUNTIME_CLASSES` safelist。
+4. **import gate**(ir-walk.ts + scaffold.ts):`pageUsesConfirm(ir)`(treeHasHandler kind==='confirm',predicate 递归下降 condition **与 confirm** 的嵌套分支)→ page import `{ __opConfirm } from '<path>/_lowcode_confirm'`。clipboard 无 import gate(navigator 全局)。
+5. **dispatch**(index.ts):`maybeEmitLowcodeConfirmRuntime`(任一页有 confirm)+ buildMainTsx 传 confirm flag + page/App 选项加 `lowcodeConfirmImportPath` + setSharedProjectFiles 并入 confirm safelist。
+6. **mount**(project.ts buildMainTsx):`buildMainTsx({i18n, toast, confirm})`——confirm→import ConfirmHost + `<App/>` 旁挂 `<ConfirmHost/>`。
+7. **tool**(tools/modify/lowcode.ts):KNOWN_ACTION_KINDS += 'confirm' + 'clipboard';confirm 同 condition **递归构建**(`validateConfirmAction`,messageExpr + consequent/alternate 递归 validateActionArray)→ 在 validateActionAt 早返(同 condition,不落 buildActionFromValidated);clipboard 走 validatePerKindFields(`validateClipboardAction`:valueExpr 须 string)+ buildActionFromValidated case 'clipboard'。
+8. **经验 A 双轮 sweep**:ActionDef widening 穷举点 = dispatchAction(2 case)/ recordWrites(confirm/clipboard no-op group)/ emitHandlerStatement(`never` 闸,2 case)/ buildActionFromValidated(`never` 闸,clipboard;confirm 同 condition throw)/ tool KNOWN_ACTION_KINDS + validatePerKindFields + validateActionAt 早返 / rls-advisor flattenActions(**confirm 有嵌套分支 → 必须递归下降**,同 condition;clipboard 叶非 supabase filter 掉)/ **check:vue EventsPanel(第 4 道闸,可能需 confirm/clipboard 分支)**。
+
+### 10v3.5 成功标准
+
+- `{kind:'confirm', messageExpr:'"确定删除?"', consequent:[...], alternate:[...]}` → emit `if (await __opConfirm("确定删除?")) { ... } else { ... }`;有 confirm 的页 import `__opConfirm`;产物含 `_lowcode_confirm.tsx`;main.tsx 挂 `<ConfirmHost/>`;无新 npm dep。
+- `{kind:'clipboard', valueExpr:'$currentUser.email'}` → emit `navigator.clipboard.writeText(currentUser.email)`;无 runtime 文件、无 import。
+- confirm 无 alternate → 无 else arm。confirm/clipboard message/value 引 docState → 页 `useDocState` 读入。
+- 嵌套在 condition 或 confirm 分支里的 confirm 也触发 `__opConfirm` import + runtime emit;嵌套 supabase action 触发 rls 需求收集。
+- 空/不可解析 messageExpr/valueExpr → drop + warn(不破坏其余链)。
+- round-trip:confirm(含嵌套分支)+ clipboard 经 exportFigFile→parseFigFile 存活。
+- 无 confirm/clipboard → 产物 byte-identical(零回归,既有 504 测试不动)。
+- `bun run check` exit 0(含 check:vue + steiger + jscpd)。
+
+### 10v3.6 工作分解(~1 day)
+
+scene-graph ConfirmAction + ClipboardAction → ir/types IRConfirmHandler + IRClipboardHandler → bindings resolveConfirm + resolveClipboard + recordWrites → event.ts emit(if/await + writeText)→ lowcode/confirm.tsx runtime → ir-walk pageUsesConfirm + scaffold import → index.ts dispatch + main.tsx mount → tool 校验(confirm 递归 + clipboard)→ rls-advisor flattenActions confirm 下降 → editor EventsPanel(若 vue-tsc 报)→ 测试(emit / collect / tool / runtime / round-trip)→ build:packages → `bun run check`。
+
+### 10v3.7 风险
+
+- ActionDef widening 漏穷举点 → 经验 A 双轮 grep + `never` 闸 + check:vue。confirm 有嵌套分支 → rls-advisor flattenActions **必须**像 condition 一样下降(否则嵌套 supabase 的 RLS 需求漏)。
+- confirm runtime 的 pending-Promise 模式与 toast store 形似 → jscpd 可能撞 → 写法差异化(单 pending 对象 vs toast 数组;Promise resolve vs auto-dismiss)。
+- confirm/clipboard 是新 runtime/浏览器 API,真机视觉 + WKWebView clipboard 权限需 Tauri 验(headless 仅断言 emit 字符串 + runtime 文件内容)。
+
+### 10v3.8 Post-mortem
+
+(待 CODE COMPLETE 后回填)
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

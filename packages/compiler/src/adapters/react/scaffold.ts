@@ -7,6 +7,7 @@ import {
   hasIntlAttr,
   hasTranslatableText,
   pageHasNavigateHandler,
+  pageUsesConfirm,
   pageUsesSupabase,
   pageUsesToast,
   referencedComponentNames
@@ -50,6 +51,11 @@ interface BuildPageOptions {
    *  `'../_lowcode_toast'` for multi-page. Only consulted when the page fires
    *  a `toast` action. */
   lowcodeToastImportPath: string
+  /** Phase 3 §10 v3: relative path the page module uses to reach
+   *  `src/_lowcode_confirm.tsx`. `'./_lowcode_confirm'` for single-page,
+   *  `'../_lowcode_confirm'` for multi-page. Only consulted when the page fires
+   *  a `confirm` action. */
+  lowcodeConfirmImportPath: string
   /** Phase 3 §8: relative path prefix to `src/components/` from this file —
    *  `'./components/'` for single-page App.tsx, `'../components/'` for page
    *  modules. Component imports are emitted only for the refs the page uses. */
@@ -71,6 +77,10 @@ interface BuildAppOptions {
    *  `'./_lowcode_toast'` (single-page); multi-page pages pass
    *  `'../_lowcode_toast'` explicitly. */
   lowcodeToastImportPath?: string
+  /** Phase 3 §10 v3: see `BuildPageOptions.lowcodeConfirmImportPath`. Defaults
+   *  to `'./_lowcode_confirm'` (single-page); multi-page pages pass
+   *  `'../_lowcode_confirm'` explicitly. */
+  lowcodeConfirmImportPath?: string
   /** Phase 3 §8: see `BuildPageOptions.componentImportPrefix`. Defaults to
    *  `'./components/'` (single-page); multi-page pages pass `'../components/'`. */
   componentImportPrefix?: string
@@ -89,6 +99,7 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? './_lowcode_state',
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? './_lowcode_toast',
+    lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? './_lowcode_confirm',
     componentImportPrefix: options.componentImportPrefix ?? './components/'
   })
 }
@@ -105,6 +116,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? '../_lowcode_state',
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? '../_lowcode_toast',
+    lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? '../_lowcode_confirm',
     componentImportPrefix: options.componentImportPrefix ?? '../components/'
   })
 }
@@ -145,7 +157,7 @@ ${routes}
  * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, componentImportPrefix } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const needsNavigate = pageHasNavigateHandler(ir)
@@ -160,6 +172,10 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const lowcodeToastImport = pageUsesToast(ir)
     ? `import { __opToast } from '${lowcodeToastImportPath}'\n`
     : ''
+  // Phase 3 §10 v3: import the confirm runtime's prompter when the page fires a confirm.
+  const lowcodeConfirmImport = pageUsesConfirm(ir)
+    ? `import { __opConfirm } from '${lowcodeConfirmImportPath}'\n`
+    : ''
   // Phase 3 §8: import the components this page references.
   const componentNames = referencedComponentNames(ir.children)
   const componentImports = buildComponentImports(componentNames, componentImportPrefix)
@@ -171,7 +187,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     formattedMessage: hasTranslatableText(ir.children),
     intl: usesIntlAttr
   })
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + lowcodeToastImport + componentImportBlock + i18nImport
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + lowcodeToastImport + lowcodeConfirmImport + componentImportBlock + i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''

@@ -838,12 +838,43 @@ export interface ToastAction {
   variant?: 'info' | 'success' | 'error'
 }
 
+/** Phase 3 §10 v3: ask the user to confirm before running the consequent chain.
+ *  `messageExpr` uses the same restricted expression sub-language as
+ *  `SetStateAction.valueExpr` (the prompt can interpolate state / docState /
+ *  `$currentUser`). The compiler emits
+ *  `if (await __opConfirm(<message>)) { <consequent> } else { <alternate> }`
+ *  against an auto-mounted `<ConfirmHost/>` runtime — so confirm is a
+ *  `condition` whose predicate is a runtime user choice. `consequent` /
+ *  `alternate` are nested action chains lowered through the same pipeline, so
+ *  confirms nest. An empty / unparseable `messageExpr` drops the action with a
+ *  warning at collect time. */
+export interface ConfirmAction {
+  id: string
+  kind: 'confirm'
+  messageExpr?: string
+  consequent: ActionDef[]
+  alternate?: ActionDef[]
+}
+
+/** Phase 3 §10 v3: copy a value to the clipboard. `valueExpr` uses the same
+ *  restricted expression sub-language as `SetStateAction.valueExpr`, so the
+ *  copied text can interpolate state / docState / `$currentUser`. The compiler
+ *  emits `navigator.clipboard.writeText(<value>)` (fire-and-forget, not
+ *  awaited); an empty / unparseable `valueExpr` drops the action with a warning
+ *  at collect time. No runtime surface — pair with a `toast` for feedback. */
+export interface ClipboardAction {
+  id: string
+  kind: 'clipboard'
+  valueExpr?: string
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
  *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
  *  Phase 3 §2.v2 adds `SupabaseAuthAction` (overturns §2 decision #5's
  *  6-kind lock). Phase 3 §10 adds workflow-orchestration kinds
- *  `ConditionalAction` / `DelayAction` / `StopAction`. */
+ *  `ConditionalAction` / `DelayAction` / `StopAction`; §10 v2 adds
+ *  `ToastAction`; §10 v3 adds `ConfirmAction` / `ClipboardAction`. */
 export type ActionDef =
   | SetStateAction
   | NavigateAction
@@ -856,6 +887,8 @@ export type ActionDef =
   | DelayAction
   | StopAction
   | ToastAction
+  | ConfirmAction
+  | ClipboardAction
 
 export type ActionKind = ActionDef['kind']
 

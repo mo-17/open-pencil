@@ -21,9 +21,10 @@ import {
   SOURCE_CATALOG_FILE,
   SOURCE_LOCALE
 } from './lowcode/i18n'
-import { pageUsesToast, stripNavigateForSinglePage } from './ir-walk'
+import { pageUsesConfirm, pageUsesToast, stripNavigateForSinglePage } from './ir-walk'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode/state'
 import { buildLowcodeToastRuntime, TOAST_RUNTIME_CLASSES } from './lowcode/toast'
+import { buildLowcodeConfirmRuntime, CONFIRM_RUNTIME_CLASSES } from './lowcode/confirm'
 import {
   buildLowcodeSupabaseRuntime,
   buildSupabaseEnvExample,
@@ -50,6 +51,7 @@ const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
 const LOWCODE_SUPABASE_FILE = 'src/_lowcode_supabase.ts'
 const LOWCODE_I18N_FILE = 'src/_lowcode_i18n.tsx'
 const LOWCODE_TOAST_FILE = 'src/_lowcode_toast.tsx'
+const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
 
 export const reactAdapter: FrameworkAdapter = {
   emit(
@@ -91,6 +93,7 @@ function emitSinglePage(
   const messages = collectMessages([cleaned], components)
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = pageUsesToast(cleaned)
+  const confirmActive = pageUsesConfirm(cleaned)
   const targetLocales = resolveTargetLocales(options.locales)
   const extraDeps: Record<string, string> = {
     ...lowcodeStateExtraDeps(cleaned.docStates),
@@ -105,6 +108,7 @@ function emitSinglePage(
   maybeEmitLowcodeSupabaseRuntime(files, cleaned.supabaseConfig)
   maybeEmitI18n(files, i18nActive, messages, targetLocales)
   maybeEmitLowcodeToastRuntime(files, toastActive)
+  maybeEmitLowcodeConfirmRuntime(files, confirmActive)
   emitComponentFiles(files, components, options.devMode)
   files.set(
     'src/App.tsx',
@@ -113,10 +117,18 @@ function emitSinglePage(
       lowcodeStateImportPath: './_lowcode_state',
       lowcodeSupabaseImportPath: './_lowcode_supabase',
       lowcodeToastImportPath: './_lowcode_toast',
+      lowcodeConfirmImportPath: './_lowcode_confirm',
       componentImportPrefix: './components/'
     })
   )
-  setSharedProjectFiles(files, options, collectClassNames([cleaned], components), i18nActive, toastActive)
+  setSharedProjectFiles(
+    files,
+    options,
+    collectClassNames([cleaned], components),
+    i18nActive,
+    toastActive,
+    confirmActive
+  )
   return { files, warnings }
 }
 
@@ -132,6 +144,7 @@ function emitMultiPage(
   const messages = collectMessages(irs, components)
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = irs.some((ir) => pageUsesToast(ir))
+  const confirmActive = irs.some((ir) => pageUsesConfirm(ir))
   const targetLocales = resolveTargetLocales(options.locales)
   const extraDeps: Record<string, string> = {
     'react-router-dom': REACT_ROUTER_DOM_VERSION,
@@ -144,6 +157,7 @@ function emitMultiPage(
   maybeEmitLowcodeSupabaseRuntime(files, supabaseConfig)
   maybeEmitI18n(files, i18nActive, messages, targetLocales)
   maybeEmitLowcodeToastRuntime(files, toastActive)
+  maybeEmitLowcodeConfirmRuntime(files, confirmActive)
   emitComponentFiles(files, components, options.devMode)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
@@ -154,11 +168,19 @@ function emitMultiPage(
         lowcodeStateImportPath: '../_lowcode_state',
         lowcodeSupabaseImportPath: '../_lowcode_supabase',
         lowcodeToastImportPath: '../_lowcode_toast',
+        lowcodeConfirmImportPath: '../_lowcode_confirm',
         componentImportPrefix: '../components/'
       })
     )
   }
-  setSharedProjectFiles(files, options, collectClassNames(irs, components), i18nActive, toastActive)
+  setSharedProjectFiles(
+    files,
+    options,
+    collectClassNames(irs, components),
+    i18nActive,
+    toastActive,
+    confirmActive
+  )
   return { files, warnings: collectSlugWarnings(infos) }
 }
 
@@ -236,6 +258,17 @@ function maybeEmitLowcodeToastRuntime(
   files.set(LOWCODE_TOAST_FILE, buildLowcodeToastRuntime())
 }
 
+/** Phase 3 §10 v3: emit the confirm runtime (`_lowcode_confirm.tsx`) when any
+ *  page fires a `confirm` action. main.tsx mounts `<ConfirmHost/>`; pages
+ *  import `__opConfirm`. */
+function maybeEmitLowcodeConfirmRuntime(
+  files: Map<string, string | Uint8Array>,
+  confirmActive: boolean
+): void {
+  if (!confirmActive) return
+  files.set(LOWCODE_CONFIRM_FILE, buildLowcodeConfirmRuntime())
+}
+
 function maybeEmitLowcodeSupabaseRuntime(
   files: Map<string, string | Uint8Array>,
   config: IRSupabaseConfig | undefined
@@ -258,17 +291,23 @@ function setSharedProjectFiles(
   options: CompilerOptions,
   classNames: string[],
   i18n: boolean,
-  toast: boolean
+  toast: boolean,
+  confirm: boolean
 ): void {
-  // Phase 3 §10 v2: the toast runtime's classes never appear in the IR, so seed
-  // them into the Tailwind safelist (the VFS iframe finds no classes on disk).
-  const safelist = toast
-    ? [...new Set([...classNames, ...TOAST_RUNTIME_CLASSES])].sort()
-    : classNames
+  // Phase 3 §10 v2 / v3: the toast + confirm runtimes' classes never appear in
+  // the IR, so seed them into the Tailwind safelist (the VFS iframe finds no
+  // classes on disk). Only seed the runtimes a page actually uses so projects
+  // without them stay byte-identical.
+  const runtimeClasses = [
+    ...(toast ? TOAST_RUNTIME_CLASSES : []),
+    ...(confirm ? CONFIRM_RUNTIME_CLASSES : [])
+  ]
+  const safelist =
+    runtimeClasses.length > 0 ? [...new Set([...classNames, ...runtimeClasses])].sort() : classNames
   files.set('vite.config.ts', buildViteConfig())
   files.set('tsconfig.json', buildTsConfig())
   files.set('index.html', buildIndexHtml(options.packageName))
-  files.set('src/main.tsx', buildMainTsx(i18n, toast))
+  files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm))
   files.set('src/index.css', buildIndexCss(safelist))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {

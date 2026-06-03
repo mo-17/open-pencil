@@ -63,14 +63,14 @@ function commandsForAction(action: ActionDef): SqlCommand[] {
   return []
 }
 
-/** Phase 3 §10: a `condition` action nests `consequent` / `alternate` ActionDef
- *  chains that may themselves contain Supabase actions. Flatten the workflow
- *  tree so RLS requirements from inside branches are not silently missed
- *  (经验 A). */
+/** Phase 3 §10 / §10 v3: a `condition` or `confirm` action nests `consequent` /
+ *  `alternate` ActionDef chains that may themselves contain Supabase actions.
+ *  Flatten the workflow tree so RLS requirements from inside branches are not
+ *  silently missed (经验 A). */
 function flattenActions(actions: ActionDef[]): ActionDef[] {
   const out: ActionDef[] = []
   for (const action of actions) {
-    if (action.kind === 'condition') {
+    if (action.kind === 'condition' || action.kind === 'confirm') {
       out.push(...flattenActions(action.consequent))
       out.push(...flattenActions(action.alternate ?? []))
     } else {

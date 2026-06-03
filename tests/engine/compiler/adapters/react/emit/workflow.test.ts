@@ -154,3 +154,83 @@ describe('emit toast handlers (Phase 3 §10 v2)', () => {
     expect(out).toContain('if (res.ok) { __opToast("OK", "success"); }')
   })
 })
+
+/**
+ * Phase 3 §10 v3 — confirm + clipboard emit. `confirm` is a `condition` whose
+ * predicate is `await __opConfirm(<msg>)`, so it always forces `async` and
+ * lowers its branches like condition. `clipboard` is a synchronous,
+ * fire-and-forget `navigator.clipboard.writeText(<value>)`.
+ */
+describe('emit confirm + clipboard handlers (Phase 3 §10 v3)', () => {
+  test('confirm emits an awaited __opConfirm guard with both branches and forces async', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'confirm',
+        ast: { kind: 'string', value: 'Delete?' },
+        references: [],
+        consequent: [{ kind: 'navigate', to: '/gone' }],
+        alternate: [{ kind: 'toast', ast: { kind: 'string', value: 'Kept' }, references: [], variant: 'info' }]
+      }
+    ])
+    expect(out).toBe(
+      'async () => { if (await __opConfirm("Delete?")) { navigate("/gone"); } else { __opToast("Kept"); } }'
+    )
+  })
+
+  test('confirm with no cancel branch omits the else arm', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'confirm',
+        ast: { kind: 'string', value: 'Sure?' },
+        references: [],
+        consequent: [{ kind: 'stop' }]
+      }
+    ])
+    expect(out).toBe('async () => { if (await __opConfirm("Sure?")) { return; } }')
+    expect(out).not.toContain('else')
+  })
+
+  test('confirm message can interpolate a state/docState expression', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'confirm',
+        ast: member('row', 'name'),
+        references: ['row'],
+        consequent: [{ kind: 'navigate', to: '/x' }]
+      }
+    ])
+    expect(out).toContain('if (await __opConfirm(row.name)) {')
+  })
+
+  test('a lone clipboard copy is a brace-less, synchronous arrow', () => {
+    const out = emitEventHandler([
+      { kind: 'clipboard', ast: { kind: 'string', value: 'hello' }, references: [] }
+    ])
+    expect(out).toBe('() => navigator.clipboard.writeText("hello")')
+  })
+
+  test('clipboard value can interpolate an expression and stays sync in a block', () => {
+    const out = emitEventHandler([
+      { kind: 'clipboard', ast: member('currentUser', 'email'), references: ['currentUser'] },
+      { kind: 'toast', ast: { kind: 'string', value: 'Copied' }, references: [], variant: 'success' }
+    ])
+    expect(out).toBe(
+      '() => { navigator.clipboard.writeText(currentUser.email); __opToast("Copied", "success"); }'
+    )
+    expect(out.startsWith('async')).toBe(false)
+  })
+
+  test('a clipboard nested in a confirm branch still emits and forces async', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'confirm',
+        ast: { kind: 'string', value: 'Copy?' },
+        references: [],
+        consequent: [{ kind: 'clipboard', ast: { kind: 'string', value: 'x' }, references: [] }]
+      }
+    ])
+    expect(out).toBe(
+      'async () => { if (await __opConfirm("Copy?")) { navigator.clipboard.writeText("x"); } }'
+    )
+  })
+})

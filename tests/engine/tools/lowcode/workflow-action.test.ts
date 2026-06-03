@@ -126,4 +126,66 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toContain('.messageExpr')
   })
+
+  // Phase 3 §10 v3 — confirm + clipboard.
+  test('persists a confirm with messageExpr + recursive then / else branches', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = {
+      id: 'cf-1',
+      kind: 'confirm',
+      messageExpr: '"Delete?"',
+      consequent: [{ id: 'n-1', kind: 'navigate', to: '/gone' }],
+      alternate: [{ id: 'cb-1', kind: 'clipboard', valueExpr: '"x"' }]
+    }
+    const result = update(btn.id, { onClick: [action] }, figma)
+    expect(result.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+  })
+
+  test('rejects a confirm whose consequent is not an array, reporting the path', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const result = update(
+      btn.id,
+      { onClick: [{ id: 'cf-1', kind: 'confirm', messageExpr: '"x"', consequent: 'nope' }] },
+      figma
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('.consequent')
+  })
+
+  test('rejects a confirm action nested in another confirm with a bad kind, reporting the JSON path', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const result = update(
+      btn.id,
+      {
+        onClick: [
+          {
+            id: 'cf-1',
+            kind: 'confirm',
+            messageExpr: '"x"',
+            consequent: [{ id: 'bad', kind: 'frobnicate' }]
+          }
+        ]
+      },
+      figma
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('.consequent[0]')
+  })
+
+  test('persists a clipboard action and rejects a non-string valueExpr', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = { id: 'cb-1', kind: 'clipboard', valueExpr: '"https://x.y"' }
+    const ok = update(btn.id, { onClick: [action] }, figma)
+    expect(ok.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+
+    const bad = update(btn.id, { onClick: [{ id: 'cb-2', kind: 'clipboard', valueExpr: 7 }] }, figma)
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.error).toContain('.valueExpr')
+  })
 })
