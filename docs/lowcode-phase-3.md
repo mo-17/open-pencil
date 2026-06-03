@@ -4559,7 +4559,11 @@ CODE COMPLETE 2026-06-03。B 方案成立,零 hotfix,零 core 改动。**关键*
 
 ### 9v7.6 Post-mortem
 
-(回填)
+CODE COMPLETE 2026-06-03(commit `26bc31c9`,pushed upstream)。设计一次成立,零 hotfix,唯一 GATE 收口 = `validateTranslations` 里两个 `as Record<string, unknown>` 撞自定义规则 `no-broad-unknown-type-assertions`(禁宽 cast,要命名域类型/type guard)→ 因前置 `typeof === 'object' && !Array.isArray` 守卫已窄化,直接去掉 cast 让 `Object.entries` 推断即可(`messages` 推成 `any`,inferred-any 不触 `no-explicit-any`)。**经验:`Record<string, unknown>` cast 被 lint 禁,守卫窄化后去 cast / 或 cast 成 `JsonObject`(`isSupabaseConfig` 先例)。**
+
+**关键决定坐实**:① 按**源串**(= `messages` map 的 value / ICU 规范串)keying,不按编译期 fnv-1a `messageId` —— 编辑器/工具够不到 hash,源串是搭建者可见文本;emit 时 `(id, source)` → `translations[loc]?.[source] ?? source` 桥接,output 仍按 id keying(FormattedMessage 用 id 查)。② target locale = `options.locales` ∪ `translations` 的 locale 键(「填了就生效」,不必再 `options.locales` 重复声明);源 locale 排除。③ 缺译回退源串(不 drop 不 warn,react-intl defaultMessage 一致行为)。④ root-only 字段走 `assignImportedLowcodeFields`(import.ts root/page bypass nodeChangeToProps),regular node 经 `...lowcodeRest` 顺带(无害)。
+
+**`supabaseConfig` 是完美先例**:document 级字段从 root lift 进每个 IRTree(`IRTree.translations` 镜像 `IRTranslations` 避 IR 层碰 core),adapter 从 irs 读、零额外 emit 参数。复用既有参数化 `buildLowcodeI18nRuntime(locales)` / `LocaleSwitcher` → 并集 target 列表零额外改。**真机验**:react-intl 按 locale 用授权译文渲染(headless 仅断言 catalog JSON 内容 + 并集 wiring)。
 
 **§9 v8 follow-ups:** GUI 填译文面板(真机);`sourceLocale` 可配(源语言非 en);plural body 内 `${}` 插值;译文覆盖率/缺译高亮。
 
