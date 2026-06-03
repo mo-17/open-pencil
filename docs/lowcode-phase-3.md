@@ -4476,6 +4476,46 @@ CODE COMPLETE 2026-06-03。设计一次成立,零 hotfix(唯一改动 = v4 自�
 
 **§9 v6 follow-ups:** ICU 复数/select;翻译授权数据模型(编辑器填译文);`sourceLocale` 可配;text template 的 GUI 提示(`${}` 语法高亮 / 校验红框)。
 
+## §9 v6 — ICU 复数/select(react-intl 原生 plural/select)
+
+> §9 v5 follow-up。用户 2026-06-03 挑定 = **§9 v6 ICU 复数/select**;授权语法 fork 锁定 = **B 原生 ICU 直写**(否决 A 扩展 `${}` 需改 core scanInterpolation 嵌套花括号,高风险)。CODE COMPLETE 2026-06-03(commit 见下)。
+
+### 9v6.1 现状与问题
+
+§9 v4/v5 解决了「字面 + 单值」插值。还缺**复数/性别**等形态:「1 item / 3 items」「He / She / They」。react-intl 的 FormattedMessage `defaultMessage` 原生支持 ICU `{count, plural, …}` / `{gender, select, …}`,只要 `values` 提供对应实参。v6 让搭建者直写 ICU,编译器自动把实参喂进 values。
+
+### 9v6.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **B 原生 ICU 直写**:搭建者写 `You have {count, plural, one {# item} other {# items}}` | react-intl 原生解析 ICU。**零 core 改动**(否决 A 扩展 `${}` 需改 frozen 的 parseTemplate/scanInterpolation 支持嵌套花括号 + ICU 分支,高风险)。简单插值仍用 `${name}`(v4)共存。 |
+| 2 | **编译器正则扫 `{arg, plural\|select\|selectordinal, …}`** 提 arg + 校验在作用域 + 进 values | 不解析 ICU body(react-intl 干)——只要顶层实参名。select/selectordinal 与 plural 同一检测机制 → **免费**。 |
+| 3 | **i18n-only**:plural 需 react-intl | i18n 关 + plural → warn `text-plural-requires-i18n` + 留字面(react-intl 不加载)。 |
+| 4 | **未知实参 → 退字面 + warn**`i18n-plural-unknown-identifier` | 缺失 react-intl value 运行时**抛**(`intl-messageformat` 报「context variable not provided」)→ 不能半externalize;退纯字面(转义花括号)安全,同 v4/v5 未知-ref 退字面。 |
+
+### 9v6.3 公开 API / Schema 改动
+
+无新类型 / 无 scene-graph / round-trip / CompilerOptions 改动(沿用 §9 `i18n` flag + v4 的 `IRText.values`)。
+
+### 9v6.4 内部实现拆解
+
+1. **collect**(tree.ts):`displayText` i18n 分支 → `buildI18nText(value, ctx)` = v4 `resolveTextTemplate`/`buildIcuMessage`(`${}`→`{name}` + values)得 base IRText,再 `augmentWithPluralArgs(base, value, ctx)`。
+2. **augmentWithPluralArgs**:`scanPluralSelectArgs(node.value)` 正则 `PLURAL_SELECT_RE = /\{\s*([A-Za-z_$][\w$]*)\s*,\s*(?:plural|selectordinal|select)\s*,/g`(扫 node.value = ICU defaultMessage,plural 块在 `${}` 替换后逐字保留;`{name}` 简单占位无逗号不匹配)→ 去掉已是 `${}` placeholder 的名 → `unknownIdentifiers` 校验(未知 → warn + 退 `{kind:'text', value:sourceValue}` 纯字面)→ `registerDocStateReads` → 追加 `{name:arg, ast:{kind:'ident',name:arg}}` 进 values。
+3. **emit**:零改动 —— emitText 既有 `values={{ name: <emitExpression(ast)> }}`,plural arg 的 ident ast → `count: count`。defaultMessage 含 ICU plural 逐字,react-intl 渲染。catalog(collectText)`acc.set(messageId, node.value)` = ICU plural 串(译者得完整 ICU)。
+4. **i18n-off**:displayText 非-i18n 分支先 `scanPluralSelectArgs(value)`>0 → warn `text-plural-requires-i18n`,然后走 v5 模板逻辑(plural 块无 `${}` → 纯字面)。
+
+### 9v6.5 成功标准 / 测试
+
+- `{count, plural, one {# item} other {# items}}`(docState count)→ FormattedMessage defaultMessage 含 plural 逐字 + `values={{ count: count }}` + useDocState read + catalog 含 ICU 串。
+- plural + `${name}`(v4)同消息组合 → `values={{ name: name, count: count }}`;select 同款;未知实参 → 退字面 + `i18n-plural-unknown-identifier` warn;i18n-off + plural → 字面 + `text-plural-requires-i18n` warn。
+- i18n.test +5;compiler **539/0**,`bun run check` exit 0,tsgo 0。
+
+### 9v6.6 Post-mortem
+
+CODE COMPLETE 2026-06-03。B 方案成立,零 hotfix,零 core 改动。**关键**:扫 node.value(已 `${}`→`{name}` 替换的 ICU defaultMessage)而非 raw value —— plural 块逐字保留、简单 `{name}` 占位无逗号不误匹配。**已知边界**:① 别在 ICU plural 块**内**嵌 `${}`(parseTemplate 会拆坏花括号配对)—— plural body 里要值用 ICU `#` 或顶层实参;② 未知实参退纯字面会连同有效 `${}` 一起降级(罕见组合,已 warn)。**真机验**:react-intl plural 在 preview/build 按 locale 渲染正确复数形(headless 仅断言 emit 串 + values)。
+
+**§9 v7 follow-ups:** 翻译授权数据模型(编辑器填译文);`sourceLocale` 可配;plural body 内插值(`${}` in ICU);GUI ICU 校验。
+
 ## §10 v2 toast/notify action — 工作流用户反馈 + 运行时 ToastHost(设计 2026-06-03)
 
 > §10 v1 follow-up。用户 2026-06-03 挑定 = **§10 v2 toast**;分叉锁定 = **表达式 message + severity variant**(否决静态串 / 无 variant)。§10 v1 曾否决 toast(「需 runtime surface」),v2 正补这个 surface。

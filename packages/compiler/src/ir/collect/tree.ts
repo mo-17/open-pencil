@@ -573,15 +573,22 @@ function resolveVectorSvg(
  *  §9 v4/v5 — when the literal carries `${expr}` interpolations, externalize
  *  them: with i18n on → an ICU message with `values` (`Welcome, {name}!`); with
  *  i18n off → a JSX template expression (`{`Welcome, ${name}!`}`). A parse
- *  failure or unknown reference falls back to the plain literal. */
+ *  failure or unknown reference falls back to the plain literal.
+ *
+ *  §9 v6 — with i18n on, raw ICU plural/select blocks (`{count, plural, …}`)
+ *  pass their argument through `values` so react-intl can resolve the form. */
 function displayText(value: string, ctx: WalkCtx): IRText | IRExpression {
-  if (ctx.i18n) {
-    const tpl = resolveTextTemplate(value, ctx, 'i18n-interpolation-unknown-identifier')
-    return tpl ? buildIcuMessage(tpl) : { kind: 'text', value, messageId: messageKey(value) }
-  }
+  if (ctx.i18n) return buildI18nText(value, ctx)
   // §9 v5 — non-i18n interpolation becomes a JSX template expression; emit wraps
   // it as `{`…`}` (emitExpression renders a `template` AST as a JS template
   // literal). No interpolation / invalid → plain literal text.
+  if (scanPluralSelectArgs(value).length > 0) {
+    ctx.warnings.push({
+      code: 'text-plural-requires-i18n',
+      message: `text "${value}" uses ICU plural/select but i18n is off; rendering as a literal`,
+      nodeId: ''
+    })
+  }
   const tpl = resolveTextTemplate(value, ctx, 'text-interpolation-unknown-identifier')
   if (!tpl) return { kind: 'text', value }
   return {
@@ -590,6 +597,61 @@ function displayText(value: string, ctx: WalkCtx): IRText | IRExpression {
     references: tpl.references
   }
 }
+
+/** §9 v4/v6 — externalize a visible text literal into an i18n message: `${expr}`
+ *  interpolations become `{name}` placeholders + values (v4), and raw ICU
+ *  plural/select blocks pass their argument through values (v6). */
+function buildI18nText(value: string, ctx: WalkCtx): IRText {
+  const tpl = resolveTextTemplate(value, ctx, 'i18n-interpolation-unknown-identifier')
+  const base: IRText = tpl ? buildIcuMessage(tpl) : { kind: 'text', value, messageId: messageKey(value) }
+  return augmentWithPluralArgs(base, value, ctx)
+}
+
+/** §9 v6 — a raw ICU `{arg, plural|select|selectordinal, …}` block in the
+ *  message references `arg` (a state / docState identifier), which react-intl
+ *  needs in `values`. Detect each such argument, validate it is in scope, and
+ *  append it as an identifier value. An unknown argument can't be satisfied (a
+ *  missing react-intl value throws at runtime), so the message degrades to a
+ *  plain literal with a warning — consistent with `${}` unknown-ref fallback. */
+function augmentWithPluralArgs(node: IRText, sourceValue: string, ctx: WalkCtx): IRText {
+  const existing = new Set((node.values ?? []).map((v) => v.name))
+  const args = scanPluralSelectArgs(node.value).filter((a) => !existing.has(a))
+  if (args.length === 0) return node
+  const unknown = unknownIdentifiers(new Set(args), ctx.states, ctx.inScope, ctx.docStates)
+  if (unknown.length > 0) {
+    ctx.warnings.push({
+      code: 'i18n-plural-unknown-identifier',
+      message: `text "${sourceValue}" plural/select references unknown identifier(s): ${unknown.join(', ')}`,
+      nodeId: ''
+    })
+    return { kind: 'text', value: sourceValue }
+  }
+  registerDocStateReads(args, ctx.docStates, ctx.docStateReads)
+  const values: IRMessageValue[] = [
+    ...(node.values ?? []),
+    ...args.map((name) => ({ name, ast: { kind: 'ident', name } as ExprAst }))
+  ]
+  return { ...node, values }
+}
+
+/** §9 v6 — the distinct argument names of every top-level ICU plural / select /
+ *  selectordinal block in a message (`{count, plural, …}` → `count`), in
+ *  first-seen order. Nested blocks match too (the regex finds every `{ident,
+ *  plural,` regardless of depth), so each referenced argument is collected. */
+function scanPluralSelectArgs(message: string): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const match of message.matchAll(PLURAL_SELECT_RE)) {
+    const arg = match[1]
+    if (!seen.has(arg)) {
+      seen.add(arg)
+      out.push(arg)
+    }
+  }
+  return out
+}
+
+const PLURAL_SELECT_RE = /\{\s*([A-Za-z_$][\w$]*)\s*,\s*(?:plural|selectordinal|select)\s*,/g
 
 /** §9 v4/v5 — parse a visible text literal's `${expr}` interpolations, validate
  *  every reference is in scope (state / docState / list item) and register

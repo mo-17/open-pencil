@@ -398,3 +398,69 @@ describe('compile — i18n ICU interpolation (Phase 3 §9 v4)', () => {
     expect(app).not.toContain('FormattedMessage')
   })
 })
+
+/**
+ * Phase 3 §9 v6 — ICU plural / select. A visible text written with raw ICU
+ * (`{count, plural, one {# item} other {# items}}`) is externalized as a
+ * `<FormattedMessage>` whose `values` carries the plural/select argument (a
+ * state / docState identifier). An unknown argument can't be satisfied at
+ * runtime, so the message degrades to a plain literal with a warning; with i18n
+ * off, plural syntax warns and stays literal (it needs react-intl).
+ */
+describe('compile — i18n ICU plural / select (Phase 3 §9 v6)', () => {
+  test('a plural block passes its argument through values + keeps the ICU defaultMessage', () => {
+    const { graph, pageId } = pageWithInterpolation(
+      'You have {count, plural, one {# item} other {# items}}',
+      { docState: 'count' }
+    )
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('const count = useDocState("count")')
+    expect(app).toContain(
+      'defaultMessage={"You have {count, plural, one {# item} other {# items}}"}'
+    )
+    expect(app).toContain('values={{ count: count }}')
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    expect(Object.values(catalog)).toContain('You have {count, plural, one {# item} other {# items}}')
+  })
+
+  test('plural composes with a §9 v4 ${} interpolation in the same message', () => {
+    const { graph, pageId } = pageWithInterpolation(
+      '${name}: {count, plural, one {# task} other {# tasks}}',
+      { state: 'name', docState: 'count' }
+    )
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('defaultMessage={"{name}: {count, plural, one {# task} other {# tasks}}"}')
+    expect(app).toContain('values={{ name: name, count: count }}')
+  })
+
+  test('a select block is handled the same way', () => {
+    const { graph, pageId } = pageWithInterpolation(
+      '{gender, select, male {He} female {She} other {They}} replied',
+      { docState: 'gender' }
+    )
+    const app = compileI18n(graph, pageId, true).files.get('src/App.tsx') as string
+    expect(app).toContain('values={{ gender: gender }}')
+    expect(app).toContain('{gender, select, male {He} female {She} other {They}}')
+  })
+
+  test('an unknown plural argument degrades to a literal + warns', () => {
+    const { graph, pageId } = pageWithInterpolation('{qty, plural, one {#} other {#}}')
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('values={{')
+    expect(out.warnings.some((w) => w.code === 'i18n-plural-unknown-identifier')).toBe(true)
+  })
+
+  test('i18n off: plural syntax warns and stays a plain literal', () => {
+    const { graph, pageId } = pageWithInterpolation(
+      '{count, plural, one {# item} other {# items}}',
+      { docState: 'count' }
+    )
+    const out = compileI18n(graph, pageId, false)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('FormattedMessage')
+    expect(out.warnings.some((w) => w.code === 'text-plural-requires-i18n')).toBe(true)
+  })
+})
