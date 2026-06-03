@@ -4895,7 +4895,17 @@ scene-graph ToastPosition + 4 字段 → ir/types 4 字段 → bindings resolveT
 
 ### 10v5.8 Post-mortem
 
-(实现后回填)
+CODE COMPLETE 2026-06-04(commit `d3e96ccb`,pushed upstream)。设计成立,1 处 GATE lint 收口,零意外。
+
+- **无新 ActionDef kind = 最大的低风险来源**:只给 `ToastAction`/`ConfirmAction` 加可选字段 → `ActionKind` 不变 → **经验 A 双轮 sweep 完全不涉及**(无 dispatchAction/emit-never/buildActionFromValidated-never/check:vue 穷举点要扫),无表达式层改动(position/duration/labels 全是静态值非表达式)。这是选它而非 workflow 参数的核心理由。
+- **emit「仅设置时追加 opts」实现 byte-identical 零回归**:`objectLiteral(entries)` 共享 helper(toast {position,durationMs} / confirm {confirmLabel,cancelLabel} 两处复用,避 jscpd)只在有 defined 字段时产 `{ k: v }` 否则 ''。plain toast/confirm 走原路径 → 既有 §10 v2/v3 测试**一字未改通过**。顺带抽 `emitToast`/`emitConfirm` 把逻辑移出 emitHandlerStatement(降 complexity,同 §10 v3 emitIfElse/emitApiCall 先例)。
+- **toast runtime per-toast position 分组**:`ToastHost` 用 `[...new Set(active.map(t=>t.position))]` 取出现的 position,每个渲一个 `fixed {POSITION_CLASSES[pos]}` 容器(JSX fragment 包裹多容器)。`__opToast(message, variant, options)` 第三参向后兼容(默认 `{}`),duration `options.durationMs ?? 3000`、position `?? 'bottom-right'`。
+- **非法 duration 不 drop**:`resolveToastDuration` finite≥0 校验,非法 → warn `action-toast-invalid-duration` + 回退默认(runtime 的 `?? 3000`),**不像 delay 把 ms 当整个 action**。
+- **safelist**:position 用到的 `top-4`/`left-4`/`left-1/2`/`-translate-x-1/2` 入 `TOAST_RUNTIME_CLASSES`(VFS iframe 不扫盘,bottom-4/right-4 既有)。confirm labels 无新类。
+- **唯一 GATE 收口(lint)**:`validateConfirmAction` 里 `value.confirmLabel as string | undefined` / `cancelLabel` 撞 `no-unnecessary-type-assertion` —— `if (... typeof !== 'string') return fail` 守卫已把类型从 `unknown` 窄化到 `string | undefined`,cast 多余 → 去掉。**经验:`Record<string,unknown>` 索引值经 `typeof !== 'string'` 守卫后已窄化,赋值给 `string|undefined` 字段无需 cast(但 `buildActionFromValidated` 里 raw.position/durationMs 无守卫,cast 必要——区别在有无前置 typeof 守卫)。** type-aware 轮(build:packages 后)才暴露。
+- 测试 +10(emit 5 / collect 3 / 集成 2 / tool 3 / round-trip 1)。compiler **567/0**,lowcode 289/0,`bun run check` exit 0,tsgo 0。**真机验 pending**(toast 各角落 + 时长 + confirm 中文按钮在 preview/build 实际渲染,headless 仅断言 emit 串 + runtime 文件内容)。
+
+**§10 v6 follow-ups:** workflow 参数(callWorkflow 传参 → 8 个表达式 parse 点 substitution + references 重算,需专门一轮);toast 持久化(durationMs=0 不自动消失)+ 手动关闭按钮;编辑器 EventsPanel 加 toast/confirm/condition/delay/stop 授权 GUI(真机)。
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
