@@ -47,7 +47,8 @@ import type {
   StateValueType,
   SupabaseConfig,
   SupabaseFilter,
-  SupabasePayloadEntry
+  SupabasePayloadEntry,
+  WorkflowDef
 } from '#core/scene-graph'
 
 type BindingKind = BindingExpr['kind']
@@ -77,7 +78,9 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'toast',
   // Phase 3 §10 v3 confirm dialog + clipboard
   'confirm',
-  'clipboard'
+  'clipboard',
+  // Phase 3 §10 v4 named workflow invocation
+  'callWorkflow'
 ])
 
 const KNOWN_BINDING_KINDS = new Set<BindingKind>(['literal', 'ref', 'expr', 'docState'])
@@ -336,6 +339,20 @@ function validatePerKindFields(
   if (kind === 'delay') return validateDelayAction(where, value)
   if (kind === 'toast') return validateToastAction(where, value)
   if (kind === 'clipboard') return validateClipboardAction(where, value)
+  if (kind === 'callWorkflow') return validateCallWorkflowAction(where, value)
+  return { ok: true }
+}
+
+/** Phase 3 §10 v4: `callWorkflow.workflowId`, when present, must be a string.
+ *  Existence + cycle checks happen at IR collect (which holds the workflow map
+ *  and the call site together), so the tool only validates the shape. */
+function validateCallWorkflowAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (value.workflowId !== undefined && typeof value.workflowId !== 'string') {
+    return failAt(where, '.workflowId must be a string')
+  }
   return { ok: true }
 }
 
@@ -577,6 +594,10 @@ function buildActionFromValidated(
       // Phase 3 §10 v3: valueExpr carries through verbatim; expression
       // validation happens in IR collect (resolveClipboard).
       return { id, kind, valueExpr: raw.valueExpr as string | undefined }
+    case 'callWorkflow':
+      // Phase 3 §10 v4: workflowId carries through verbatim; existence + cycle
+      // checks happen at IR collect (expandWorkflow).
+      return { id, kind, workflowId: raw.workflowId as string | undefined }
     default: {
       // Exhaustive — ActionKind covers every variant above. The assignment
       // proves it to TypeScript and the throw matches the
@@ -1047,5 +1068,74 @@ export const setTranslations = defineTool({
       ctx
     )
     return { ok: true, data: { locales: locales.length, entries } }
+  }
+})
+
+/** Phase 3 §10 v4: validate a named-workflow list — an array of
+ *  `{ id, name, actions }` where `id` is a non-empty unique string, `name` a
+ *  string, and `actions` a (possibly empty) ActionDef array validated through
+ *  the same recursive pipeline as event chains. Rejects duplicate ids and any
+ *  malformed action so a broken workflow never persists. */
+function validateWorkflows(
+  what: string,
+  raw: unknown
+): { ok: true; workflows: WorkflowDef[] } | { ok: false; error: string } {
+  if (!Array.isArray(raw)) return failAt(what, 'must be a JSON array of { id, name, actions }')
+  const out: WorkflowDef[] = []
+  const seenIds = new Set<string>()
+  for (let i = 0; i < raw.length; i++) {
+    const wf = raw[i]
+    const where = `${what}[${i}]`
+    if (!isPlainObject(wf)) return failAt(where, 'must be an object')
+    if (typeof wf.id !== 'string' || wf.id === '') return failAt(where, '.id must be a non-empty string')
+    if (seenIds.has(wf.id)) return failAt(where, `.id "${wf.id}" is duplicated`)
+    if (typeof wf.name !== 'string') return failAt(where, '.name must be a string')
+    const actionsR = validateActionArray(`${where}.actions`, wf.actions, true)
+    if (!actionsR.ok) return actionsR
+    seenIds.add(wf.id)
+    out.push({ id: wf.id, name: wf.name, actions: actionsR.actions })
+  }
+  return { ok: true, workflows: out }
+}
+
+export const setWorkflows = defineTool({
+  name: 'set_workflows',
+  mutates: true,
+  description:
+    "Replace the root node's lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node's event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component's scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string \"null\" or '[]' to clear all workflows. Shape: [{ id, name, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), and actions is an ActionDef array (same shape as a node's event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). Every action is validated recursively; a malformed action or a duplicate id is rejected (no silent drops). Workflow existence + cycle (A→B→A) checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: '[{\"id\":\"wf-save\",\"name\":\"Save & toast\",\"actions\":[{\"id\":\"a1\",\"kind\":\"toast\",\"messageExpr\":\"\\\"Saved\\\"\",\"variant\":\"success\"}]}]' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: 'null' }) → { ok: true, data: { workflows: 0, actions: 0 } }.",
+  params: {
+    workflows_json: {
+      type: 'string',
+      description:
+        'JSON array [{ id, name, actions }], OR the literal string "null" / "[]" to clear.',
+      required: true
+    }
+  },
+  execute: (figma, args, ctx): ModifyResult<{ workflows: number; actions: number }> => {
+    const parsed = parseJson(args.workflows_json, 'workflows_json')
+    if (!parsed.ok) return fail(parsed.error)
+    if (parsed.value === null) {
+      applyPatchWithUndo(
+        figma,
+        figma.graph.rootId,
+        { lowcodeWorkflows: undefined },
+        'AI: set_workflows',
+        ctx
+      )
+      return { ok: true, data: { workflows: 0, actions: 0 } }
+    }
+    const r = validateWorkflows('workflows_json', parsed.value)
+    if (!r.ok) return r
+    const actions = r.workflows.reduce((n, wf) => n + wf.actions.length, 0)
+    // An empty list ([]) clears the field — keep absent ≡ no workflows so .fig
+    // output stays byte-identical (isNonEmpty gate on the serialize side).
+    applyPatchWithUndo(
+      figma,
+      figma.graph.rootId,
+      { lowcodeWorkflows: r.workflows.length > 0 ? r.workflows : undefined },
+      'AI: set_workflows',
+      ctx
+    )
+    return { ok: true, data: { workflows: r.workflows.length, actions } }
   }
 })

@@ -499,4 +499,42 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeTranslations).toBeUndefined()
   })
+
+  test('root lowcodeWorkflows round-trips through .fig (Phase 3 §10 v4)', async () => {
+    const graph = new SceneGraph()
+    const workflows = [
+      {
+        id: 'wf-save',
+        name: 'Save & toast',
+        actions: [
+          { id: 'a1', kind: 'toast' as const, messageExpr: '"Saved"', variant: 'success' as const },
+          {
+            id: 'a2',
+            kind: 'condition' as const,
+            condExpr: 'count > 0',
+            consequent: [{ id: 'a3', kind: 'callWorkflow' as const, workflowId: 'wf-other' }]
+          }
+        ]
+      },
+      { id: 'wf-other', name: 'Other', actions: [{ id: 'b1', kind: 'navigate' as const, to: '/x' }] }
+    ]
+    graph.updateNode(graph.rootId, { lowcodeWorkflows: workflows })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedRoot = reimported.getNode(reimported.rootId)
+
+    expect(reimportedRoot?.lowcodeWorkflows).toEqual(workflows)
+  })
+
+  test('graph without lowcodeWorkflows → reimported root has the field undefined (byte regression)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('RECTANGLE', page.id, { name: 'Plain', width: 80, height: 60 })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toBeUndefined()
+  })
 })

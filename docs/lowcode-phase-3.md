@@ -4759,6 +4759,73 @@ CODE COMPLETE 2026-06-03(commit `bd7aa1df`,pushed upstream)。设计成立,1 处
 
 **§10 v4 follow-ups:** named WorkflowDef(可复用工作流);toast 位置/时长可配;confirm 文案/按钮标签可配;编辑器 EventsPanel 加 toast/confirm/clipboard/condition/delay/stop 授权 GUI。
 
+## §10 v4 — named WorkflowDef(可复用命名工作流)
+
+> §10 v3 follow-up。助手推荐(用户「一个一个来,直接干推荐项」未走 AskUserQuestion)= **named WorkflowDef**(否决 toast/confirm 配置 polish、更多 deploy provider、§9 v8)。它是 §10 链反复列为最高产品价值的项 —— Bubble 风格「可复用工作流」的真正落地。架构 fork 锁定 = **inline 展开**(callWorkflow 在 collect 期把工作流 actions 用调用方 ctx `resolveBranch` 内联,否决 named-function emit:文档级工作流不能引页面局部 `setState`/`navigate` hook,函数化要 getDocStateSnapshot 重写读路径 + 限制 action 集,过重且偏离零回归)。
+
+### 10v4.1 现状与问题
+
+§10 v1-v3 把工作流原语补齐(condition/delay/stop/toast/confirm/clipboard),但**每个 event 的 ActionDef 链是一次性的**:同一段「保存并提示」逻辑在 10 个按钮上要复制 10 遍 ActionDef 数组,改一处要改十处。Bubble 的核心生产力来自**命名工作流**:定义一次 `保存草稿`,在任意按钮/任意页 `callWorkflow` 引用。这是搭建者(非开发者)复用逻辑的唯一抓手。
+
+### 10v4.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **文档级 `SceneNode.lowcodeWorkflows?: WorkflowDef[]`**(root-only)`WorkflowDef {id;name;actions:ActionDef[]}` | 同 `lowcodeDocumentState`/`lowcodeTranslations` 文档级字段模式(root 节点承载,其余 undefined)。`name` 仅给编辑器/调试,inline 展开不入 emit。 |
+| 2 | **新 `CallWorkflowAction {id;kind:'callWorkflow';workflowId?}`** 第 11 个 ActionDef kind | 按 id 引用(非 name,name 可改)。可出现在任意节点 events **或**工作流自身 actions 内(嵌套工作流调用)。 |
+| 3 | **架构 = inline 展开,非 named-function emit**(fork 锁定) | callWorkflow 在 collect 期被拦截,把目标工作流 actions 用**调用方 ctx** `resolveBranch` 内联 → setState 引调用方页面局部 setter、navigate 用调用方 hook、docState 读注册进调用方 `docStateReads`,**全部在调用组件作用域自然解析**。零 emit 路径 / 零 runtime 文件 / 零 IRTree 字段 / 零 adapter 改动。代价:调用点代码膨胀(可接受)+ `stop` 语义随内联泄漏到调用方(见 #6)。否决 named-function:文档级函数引不到页面局部 `setState`/`useNavigate`/`useDocState` hook,要把读路径改 `getDocStateSnapshot` + 禁 setState/navigate,过重且破坏「复用既有机制」。 |
+| 4 | **循环引用检测**(collect 期) | `ResolveCtx.workflowStack: string[]`;callWorkflow 展开前若 workflowId 已在栈中 → warn `action-call-workflow-cycle` + drop(不展开,其余链继续)。push→resolveBranch→pop。A→B→A 安全。 |
+| 5 | **未知 / 空 workflowId** → warn + drop | `action-call-workflow-unknown`(引用不存在的工作流)/ `action-call-workflow-missing-id`(空)。不崩,展开成空。存在性校验在 collect(同时握有 workflows map + 调用点),**非**工具(set_workflows 看不到节点 events、节点 events 工具看不到 workflows)。 |
+| 6 | **`stop` 内联语义 = 终止整个当前 handler**(已知边界) | inline 后工作流里的 `stop`→`return` 退出**调用方** handler 而非仅子工作流(named-function 才能仅退子程序)。文档化为预期:`stop` = 「停止当前工作流运行」,内联使其停止宿主链。罕见组合,可接受。 |
+| 7 | **工具 `set_workflows`/`read_workflows`**(整体替换) | 同 `set_translations`/`set_supabase_config`:`set_workflows(JSON)` 整体替换 root.lowcodeWorkflows,每 WorkflowDef 经既有 `validateActionArray`/`validateActionAt` 递归校验 actions,id 非空 + name string + id 去重,非法整体 reject;`null`/`[]` 清空。`read_workflows` canonical 读。**非 ActionDef → 无经验 A union widening**,只 4 处注册点(registry + barrel)。callWorkflow kind 本身**是** ActionDef → 走经验 A 双轮。 |
+| 8 | **RLS advisor 跟随 callWorkflow**(经验 A「不报错但漏」) | `collectRlsRequirements(actions, workflows?)` 加可选 workflows 参 + `flattenActions(actions, workflows, seen)` 对 callWorkflow 下降到 workflow.actions(cycle guard `seen`)→ 工作流内的 supabase mutation RLS 需求不漏。可选参默认空 = 现行为零回归。 |
+
+### 10v4.3 公开 API / Schema 改动
+
+- `scene-graph/types.ts`:`WorkflowDef` interface + `CallWorkflowAction` 并入 `ActionDef`(`ActionKind` 自动含 'callWorkflow')+ `SceneNode.lowcodeWorkflows?: WorkflowDef[]`。
+- `kiwi/fig/node-change/lowcode-plugin-data.ts`:`LOWCODE_WORKFLOWS_KEY='lowcode/workflows'` 入 `LOWCODE_PLUGIN_KEYS`;serialize `isNonEmpty` gate;extract + `isLowcodeWorkflows` light guard + assignLowcodeField case。`kiwi/fig/import.ts`:assignImportedLowcodeFields +1 行。
+- 工具:`set_workflows` / `read_workflows` 注册进 registry-core CORE_TOOLS + modify.ts/read.ts barrel;read_lowcode_node 透出 `lowcodeWorkflows`。
+- **零 IR/emit/runtime/adapter/CompilerOptions 改动**(inline 展开在 collect 期消费工作流)。
+- 无 IRTree 字段、无产物文件增量。无 workflow/callWorkflow → 产物 byte-identical(零回归)。
+
+### 10v4.4 内部实现拆解
+
+1. **collect lift**(ir/collect/tree.ts):从 `graph.getNode(graph.rootId)?.lowcodeWorkflows` 建 `Map<id, WorkflowDef>`(同 supabaseConfig/translations lift),threaded 进每节点 `resolveEvents(...)`。
+2. **collect 展开**(ir/collect/bindings.ts):`resolveEvents`/`resolveActions` +`workflows` 参 → `ResolveCtx.workflows` + `ResolveCtx.workflowStack`。`resolveBranch` 主循环**拦截** `action.kind==='callWorkflow'`(在 dispatchAction 之前):`expandWorkflow(action, ctx)` = 查 workflows map(未知/空→warn+空)+ cycle 检查(在栈→warn+空)+ push id + `resolveBranch(wf.actions, ctx)` + pop → 返回展开 handler 列表,`out.push(...expanded)`(**不**再 recordWrites,内层 resolveBranch 同 ctx 已记)。`dispatchAction` +`case 'callWorkflow': return null`(防御性,实际被 resolveBranch 拦截,纯为 exhaustiveness)。
+3. **emit**:**无改动** —— callWorkflow 不产 IREventHandler(展开成其它 kind 的 handler),IREventHandler union 不变,emitHandlerStatement `never` 闸不需新 case。
+4. **tool**(tools/modify/lowcode.ts):KNOWN_ACTION_KINDS += 'callWorkflow';`validatePerKindFields` callWorkflow → `validateCallWorkflowAction`(workflowId 须 string-or-undefined,存在性/cycle 在 collect);`buildActionFromValidated` case 'callWorkflow' → `{id,kind,workflowId}`。新 `set_workflows`(parse + 每 WorkflowDef 校验:id 非空 string + name string + id 去重 + `validateActionArray(actions)` 递归)+ `read_workflows`。
+5. **rls-advisor**(lowcode-validation/rls-advisor.ts):`flattenActions(actions, workflows?, seen?)` callWorkflow 下降 + `collectRlsRequirements(actions, workflows?)` 可选参传递(默认空 = 零回归)。
+6. **round-trip**(lowcode-plugin-data.ts + import.ts):`lowcode/workflows` 通道,root-only,同 lowcodeTranslations。
+
+### 10v4.5 成功标准
+
+- root.lowcodeWorkflows=[{id:'wf1',name:'保存',actions:[toast,navigate]}];某按钮 onClick=[{kind:'callWorkflow',workflowId:'wf1'}] → emit 等价于把 toast+navigate 内联进该 onClick handler(`__opToast(...)` + `navigate(...)`),有 toast 的页 import `__opToast` + 挂 ToastHost(经既有 import gate,因展开后是真 toast handler)。
+- 工作流引页面局部 setState → 内联进调用方组件,引调用方 setter;引 docState → 调用方页 `useDocState` 读入。
+- 嵌套工作流(wf1 callWorkflow wf2)正常多层内联;A→B→A 循环 → warn + drop,不死循环。
+- 未知/空 workflowId → warn + drop,其余链不破。
+- callWorkflow 在 condition/confirm 分支内 → 分支里内联展开。
+- 工作流含 supabase mutation,从节点 callWorkflow → RLS 需求收集到该表(rls-advisor 跟随)。
+- set_workflows 校验每工作流 actions(非法 action → 整体 reject + JSON-path);null/[] 清空;id 重复 reject。read_workflows canonical。
+- 无 workflow/callWorkflow → 产物 byte-identical(零回归,既有 522 测试不动)。
+- round-trip:lowcodeWorkflows 经 exportFigFile→parseFigFile 存活。
+- `bun run check` exit 0(含 check:vue + steiger + jscpd)。
+
+### 10v4.6 工作分解(~1 day)
+
+scene-graph WorkflowDef + CallWorkflowAction + lowcodeWorkflows → lowcode-plugin-data round-trip + import.ts → tree.ts lift + thread workflows → bindings ResolveCtx workflows/workflowStack + resolveBranch 拦截 expandWorkflow + dispatchAction case → tool set_workflows/read_workflows + validateCallWorkflowAction + buildActionFromValidated + registry/barrel → read_lowcode_node 透出 → rls-advisor flattenActions callWorkflow 下降 → 测试(collect 内联/cycle/unknown / tool / round-trip / rls)→ build:packages → `bun run check` → commit + push。
+
+### 10v4.7 风险
+
+- ActionDef widening 漏穷举点 → 经验 A 双轮 grep + `never` 闸 + check:vue。但 callWorkflow **无** IREventHandler(内联展开)→ emit 侧 `never` 闸不涉及,sweep 点比 toast/confirm 少:collect dispatchAction(防御 case)/ tool KNOWN_ACTION_KINDS + validatePerKindFields + buildActionFromValidated `never` / rls-advisor flattenActions。
+- cycle/unknown 必在 collect 处理(robust,不依赖授权路径);忘了 cycle guard → 编译期死循环 / 栈溢出。
+- inline 多调用点 → 同工作流 actions 多次校验可能重复 warn(可接受,或后续 dedup)。
+- `stop` 内联泄漏到调用方(#6)—— 文档化的已知边界,非 bug。
+- 真机 Tauri 验:callWorkflow 内联后 preview/build 行为 = 直接写在 handler 里等价(headless 仅断言 emit 串)。
+
+### 10v4.8 Post-mortem
+
+(实现后回填)
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

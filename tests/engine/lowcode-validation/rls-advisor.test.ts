@@ -66,6 +66,37 @@ describe('collectRlsRequirements', () => {
     expect(req(reqs, 'comments').commands).toEqual(['UPDATE'])
   })
 
+  test('Phase 3 §10 v4: descends into callWorkflow targets when workflows supplied', () => {
+    const workflows = new Map<string, { id: string; name: string; actions: ActionDef[] }>([
+      ['wf', { id: 'wf', name: 'w', actions: [mutation('audit', 'insert')] }]
+    ])
+    const actions: ActionDef[] = [
+      query('posts'),
+      { id: 'cw', kind: 'callWorkflow', workflowId: 'wf' }
+    ]
+    // without the workflow map, callWorkflow is opaque → only `posts` surfaces.
+    expect(collectRlsRequirements(actions).find((r) => r.table === 'audit')).toBeUndefined()
+    // with it, the workflow's nested mutation surfaces too.
+    const reqs = collectRlsRequirements(actions, workflows)
+    expect(req(reqs, 'posts').commands).toEqual(['SELECT'])
+    expect(req(reqs, 'audit').commands).toEqual(['INSERT'])
+  })
+
+  test('Phase 3 §10 v4: a callWorkflow cycle does not infinite-loop the advisor', () => {
+    const workflows = new Map<string, { id: string; name: string; actions: ActionDef[] }>([
+      [
+        'a',
+        { id: 'a', name: 'a', actions: [mutation('t', 'insert'), { id: 'cb', kind: 'callWorkflow', workflowId: 'b' }] }
+      ],
+      ['b', { id: 'b', name: 'b', actions: [{ id: 'ca', kind: 'callWorkflow', workflowId: 'a' }] }]
+    ])
+    const reqs = collectRlsRequirements(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'a' }],
+      workflows
+    )
+    expect(req(reqs, 't').commands).toEqual(['INSERT'])
+  })
+
   test('upsert needs both INSERT and UPDATE (footgun)', () => {
     const reqs = collectRlsRequirements([mutation('profiles', 'upsert')])
     expect(req(reqs, 'profiles').commands).toEqual(['INSERT', 'UPDATE'])

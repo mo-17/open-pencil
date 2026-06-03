@@ -25,9 +25,13 @@ describe('collect workflow IR (Phase 3 §10)', () => {
   function makeGraph(opts: {
     docStates?: { id: string; name: string; type: 'string' | 'object'; defaultValue: unknown }[]
     onClick?: ActionDef[]
+    workflows?: { id: string; name: string; actions: ActionDef[] }[]
   }): { graph: SceneGraph; pageId: string } {
     const graph = new SceneGraph()
-    graph.updateNode(graph.rootId, { lowcodeDocumentState: opts.docStates ?? [] })
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: opts.docStates ?? [],
+      ...(opts.workflows ? { lowcodeWorkflows: opts.workflows } : {})
+    })
     const page = graph.getPages()[0]
     if (opts.onClick) graph.createNode('BUTTON', page.id, { events: { onClick: opts.onClick } })
     return { graph, pageId: page.id }
@@ -301,5 +305,148 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     const ir = collectTree(graph, pageId)
     expect(ir.warnings.some((w) => w.code === 'action-clipboard-missing-value')).toBe(true)
     expect(onClickHandlers(graph, pageId)).toEqual([])
+  })
+
+  // ── Phase 3 §10 v4: named WorkflowDef (inline callWorkflow expansion) ──
+
+  test('callWorkflow expands the workflow chain inline at the call site', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [
+        {
+          id: 'wf1',
+          name: 'Notify & go',
+          actions: [
+            { id: 't1', kind: 'toast', messageExpr: '"Saved"', variant: 'success' },
+            { id: 'n1', kind: 'navigate', to: '/done' }
+          ]
+        }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'wf1' }]
+    })
+    // The single callWorkflow becomes the workflow's two handlers spliced in.
+    expect(onClickHandlers(graph, pageId)).toEqual([
+      { kind: 'toast', ast: { kind: 'string', value: 'Saved' }, references: [], variant: 'success' },
+      { kind: 'navigate', to: '/done' }
+    ])
+  })
+
+  test('callWorkflow splices around sibling actions in chain order', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [{ id: 'wf1', name: 'mid', actions: [{ id: 'n', kind: 'navigate', to: '/mid' }] }],
+      onClick: [
+        { id: 'a', kind: 'navigate', to: '/a' },
+        { id: 'cw', kind: 'callWorkflow', workflowId: 'wf1' },
+        { id: 'b', kind: 'navigate', to: '/b' }
+      ]
+    })
+    expect(onClickHandlers(graph, pageId)).toEqual([
+      { kind: 'navigate', to: '/a' },
+      { kind: 'navigate', to: '/mid' },
+      { kind: 'navigate', to: '/b' }
+    ])
+  })
+
+  test('a workflow docState write registers through the caller context', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd1', name: 'count', type: 'string', defaultValue: '' }],
+      workflows: [
+        {
+          id: 'wf1',
+          name: 'bump',
+          actions: [{ id: 's', kind: 'setVariable', targetName: 'count', valueExpr: '"x"' }]
+        }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'wf1' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.docStateWrites).toContain('count')
+  })
+
+  test('nested callWorkflow (wf calls wf) expands across levels', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [
+        { id: 'wf2', name: 'inner', actions: [{ id: 'n2', kind: 'navigate', to: '/inner' }] },
+        {
+          id: 'wf1',
+          name: 'outer',
+          actions: [
+            { id: 'n1', kind: 'navigate', to: '/outer' },
+            { id: 'cw2', kind: 'callWorkflow', workflowId: 'wf2' }
+          ]
+        }
+      ],
+      onClick: [{ id: 'cw1', kind: 'callWorkflow', workflowId: 'wf1' }]
+    })
+    expect(onClickHandlers(graph, pageId)).toEqual([
+      { kind: 'navigate', to: '/outer' },
+      { kind: 'navigate', to: '/inner' }
+    ])
+  })
+
+  test('a workflow cycle (A → B → A) is detected and dropped with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [
+        {
+          id: 'wfA',
+          name: 'A',
+          actions: [
+            { id: 'na', kind: 'navigate', to: '/a' },
+            { id: 'cwb', kind: 'callWorkflow', workflowId: 'wfB' }
+          ]
+        },
+        {
+          id: 'wfB',
+          name: 'B',
+          actions: [
+            { id: 'nb', kind: 'navigate', to: '/b' },
+            { id: 'cwa', kind: 'callWorkflow', workflowId: 'wfA' }
+          ]
+        }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'wfA' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-cycle')).toBe(true)
+    // The cycle is cut, but the non-recursive prefix still expands.
+    expect(onClickHandlers(graph, pageId)).toEqual([
+      { kind: 'navigate', to: '/a' },
+      { kind: 'navigate', to: '/b' }
+    ])
+  })
+
+  test('an unknown workflowId is dropped with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'ghost' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-unknown')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([])
+  })
+
+  test('a missing workflowId is dropped with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 'cw', kind: 'callWorkflow' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-missing-id')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([])
+  })
+
+  test('callWorkflow nested inside a condition branch expands within the branch', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd1', name: 'ok', type: 'string', defaultValue: '' }],
+      workflows: [{ id: 'wf1', name: 'go', actions: [{ id: 'n', kind: 'navigate', to: '/go' }] }],
+      onClick: [
+        {
+          id: 'c1',
+          kind: 'condition',
+          condExpr: 'ok',
+          consequent: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'wf1' }]
+        }
+      ]
+    })
+    const cond = onClickHandlers(graph, pageId)[0] as IRConditionalHandler
+    expect(cond.kind).toBe('condition')
+    expect(cond.consequent).toEqual([{ kind: 'navigate', to: '/go' }])
   })
 })

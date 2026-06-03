@@ -538,6 +538,13 @@ export interface SceneNode {
   // string). Authored via the `set_translations` tool (GUI panel deferred).
   // Persisted via §12 pluginData under `lowcode/translations`.
   lowcodeTranslations?: LowcodeTranslations
+  // ── Lowcode (Phase 3 §10 v4) ──
+  // Document-level named, reusable workflows. Like `lowcodeDocumentState`, only
+  // the root node carries this in practice. Each `WorkflowDef` is a labelled
+  // ActionDef chain that any node's event handler (or another workflow) invokes
+  // by id via a `CallWorkflowAction`; the compiler expands the chain inline at
+  // each call site. Persisted via §12 pluginData under `lowcode/workflows`.
+  lowcodeWorkflows?: WorkflowDef[]
 }
 
 // ── Lowcode (Phase 3 §9 v7) ──
@@ -884,13 +891,29 @@ export interface ClipboardAction {
   valueExpr?: string
 }
 
+/** Phase 3 §10 v4: invoke a named, reusable workflow (`WorkflowDef`) by id. The
+ *  referenced workflow's action chain is expanded **inline** at the call site by
+ *  the IR collect pass (`resolveBranch` with the caller's context), so a workflow
+ *  that does `setState` / `navigate` resolves against the calling component's
+ *  page-local hooks naturally — there is no emitted function, no runtime surface.
+ *  Workflows may call other workflows; a cycle (A → B → A) is detected at collect
+ *  and dropped with a warning. An unknown / empty `workflowId` is likewise dropped
+ *  with a warning. NOTE: a `stop` inside a called workflow terminates the entire
+ *  enclosing handler (an inline-expansion consequence, documented as intended). */
+export interface CallWorkflowAction {
+  id: string
+  kind: 'callWorkflow'
+  workflowId?: string
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
  *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
  *  Phase 3 §2.v2 adds `SupabaseAuthAction` (overturns §2 decision #5's
  *  6-kind lock). Phase 3 §10 adds workflow-orchestration kinds
  *  `ConditionalAction` / `DelayAction` / `StopAction`; §10 v2 adds
- *  `ToastAction`; §10 v3 adds `ConfirmAction` / `ClipboardAction`. */
+ *  `ToastAction`; §10 v3 adds `ConfirmAction` / `ClipboardAction`; §10 v4 adds
+ *  `CallWorkflowAction`. */
 export type ActionDef =
   | SetStateAction
   | NavigateAction
@@ -905,8 +928,21 @@ export type ActionDef =
   | ToastAction
   | ConfirmAction
   | ClipboardAction
+  | CallWorkflowAction
 
 export type ActionKind = ActionDef['kind']
+
+/** Phase 3 §10 v4: a named, reusable workflow — a labelled `ActionDef` chain
+ *  that any node's event handler (or another workflow) can invoke by id via a
+ *  `CallWorkflowAction`. Stored document-level on the root node
+ *  (`SceneNode.lowcodeWorkflows`), like `lowcodeDocumentState`. `name` is a
+ *  human label for the editor / debugging; the compiler inlines the chain at
+ *  each call site, so `name` never reaches the emitted code. */
+export interface WorkflowDef {
+  id: string
+  name: string
+  actions: ActionDef[]
+}
 
 /** Phase 3 §2: connection settings for a Supabase project. Persisted on the
  *  root node via `lowcode/supabaseConfig` pluginData. `anonKey` is the

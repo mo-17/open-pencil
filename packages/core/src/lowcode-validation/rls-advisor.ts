@@ -24,7 +24,7 @@
  * does NOT auto-generate ownership predicates; see §2 decision (j) for the
  * "no RLS = wide open" security warning this comment echoes.
  */
-import type { ActionDef } from '#core/scene-graph'
+import type { ActionDef, WorkflowDef } from '#core/scene-graph'
 
 /** The four Postgres RLS-relevant SQL commands a policy can target. */
 export type SqlCommand = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'
@@ -66,13 +66,27 @@ function commandsForAction(action: ActionDef): SqlCommand[] {
 /** Phase 3 §10 / §10 v3: a `condition` or `confirm` action nests `consequent` /
  *  `alternate` ActionDef chains that may themselves contain Supabase actions.
  *  Flatten the workflow tree so RLS requirements from inside branches are not
- *  silently missed (经验 A). */
-function flattenActions(actions: ActionDef[]): ActionDef[] {
+ *  silently missed (经验 A). Phase 3 §10 v4: a `callWorkflow` action descends
+ *  into its referenced workflow's chain (when `workflows` is supplied), guarded
+ *  by `seen` against cycles. */
+function flattenActions(
+  actions: ActionDef[],
+  workflows: ReadonlyMap<string, WorkflowDef>,
+  seen: Set<string>
+): ActionDef[] {
   const out: ActionDef[] = []
   for (const action of actions) {
     if (action.kind === 'condition' || action.kind === 'confirm') {
-      out.push(...flattenActions(action.consequent))
-      out.push(...flattenActions(action.alternate ?? []))
+      out.push(...flattenActions(action.consequent, workflows, seen))
+      out.push(...flattenActions(action.alternate ?? [], workflows, seen))
+    } else if (action.kind === 'callWorkflow') {
+      const id = action.workflowId
+      const wf = typeof id === 'string' ? workflows.get(id) : undefined
+      if (wf && !seen.has(wf.id)) {
+        seen.add(wf.id)
+        out.push(...flattenActions(wf.actions, workflows, seen))
+        seen.delete(wf.id)
+      }
     } else {
       out.push(action)
     }
@@ -80,13 +94,20 @@ function flattenActions(actions: ActionDef[]): ActionDef[] {
   return out
 }
 
+const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
+
 /** Aggregate every Supabase action into per-table anon policy requirements.
  *  Tables are keyed by their trimmed name; blank names are skipped (次默 2).
  *  Same table referenced by multiple actions merges into one entry with the
- *  union of commands (次默 3). Phase 3 §10: descends into `condition` branches. */
-export function collectRlsRequirements(actions: ActionDef[]): RlsTableRequirement[] {
+ *  union of commands (次默 3). Phase 3 §10: descends into `condition` branches.
+ *  Phase 3 §10 v4: pass `workflows` to also descend into `callWorkflow` targets
+ *  (default empty = legacy behaviour, no descent). */
+export function collectRlsRequirements(
+  actions: ActionDef[],
+  workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS
+): RlsTableRequirement[] {
   const byTable = new Map<string, Set<SqlCommand>>()
-  for (const action of flattenActions(actions)) {
+  for (const action of flattenActions(actions, workflows, new Set())) {
     if (action.kind !== 'supabaseQuery' && action.kind !== 'supabaseMutation') continue
     const table = action.table.trim()
     if (!table) continue

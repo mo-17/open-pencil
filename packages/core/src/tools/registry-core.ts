@@ -13,6 +13,7 @@ import {
   setText,
   setTextProperties,
   setTranslations,
+  setWorkflows,
   updateLowcodeNode,
   updateNode
 } from './modify'
@@ -24,7 +25,8 @@ import {
   readDocStates,
   readLowcodeNode,
   readSupabaseConfig,
-  readTranslations
+  readTranslations,
+  readWorkflows
 } from './read'
 import type { ToolDef } from './schema'
 import { stockPhoto } from './stock-photo'
@@ -46,6 +48,7 @@ export const CORE_TOOLS: ToolDef[] = [
   readDocStates,
   readSupabaseConfig,
   readTranslations,
+  readWorkflows,
   // Create
   render,
   // Modify
@@ -62,6 +65,7 @@ export const CORE_TOOLS: ToolDef[] = [
   setDocStates,
   setSupabaseConfig,
   setTranslations,
+  setWorkflows,
   // Structure
   deleteNode,
   reparentNode,

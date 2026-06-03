@@ -26,7 +26,8 @@ import type {
   ResponsiveOverrides,
   SceneNode,
   StateDef,
-  SupabaseConfig
+  SupabaseConfig,
+  WorkflowDef
 } from '#core/scene-graph'
 
 import { OPEN_PENCIL_PLUGIN_ID } from './plugin-data'
@@ -86,6 +87,10 @@ export const LOWCODE_RESPONSIVE_OVERRIDES_KEY = 'lowcode/responsiveOverrides'
  *  <sourceMessage>: <translated> } }`). Absent ≡ no authored translations, so
  *  .fig files that never touched the i18n panel stay byte-identical. */
 export const LOWCODE_TRANSLATIONS_KEY = 'lowcode/translations'
+/** Phase 3 §10 v4: document-level named workflows, attached to the root node
+ *  only. Value is the JSON-encoded `WorkflowDef[]` array. Absent ≡ no authored
+ *  workflows, so .fig files that never defined a workflow stay byte-identical. */
+export const LOWCODE_WORKFLOWS_KEY = 'lowcode/workflows'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -117,7 +122,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_COUNTER_ALIGN_CONTENT_KEY,
   LOWCODE_GRID_POSITION_KEY,
   LOWCODE_RESPONSIVE_OVERRIDES_KEY,
-  LOWCODE_TRANSLATIONS_KEY
+  LOWCODE_TRANSLATIONS_KEY,
+  LOWCODE_WORKFLOWS_KEY
 ])
 
 /**
@@ -179,6 +185,12 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // absent map writes nothing → non-translated .fig files stay byte-identical.
   if (isNonEmpty(node.lowcodeTranslations)) {
     entries.push(makeEntry(LOWCODE_TRANSLATIONS_KEY, node.lowcodeTranslations))
+  }
+  // Phase 3 §10 v4: document-level named workflows (root node only). Empty/
+  // absent array writes nothing → .fig files without workflows stay
+  // byte-identical.
+  if (isNonEmpty(node.lowcodeWorkflows)) {
+    entries.push(makeEntry(LOWCODE_WORKFLOWS_KEY, node.lowcodeWorkflows))
   }
   return entries
 }
@@ -266,6 +278,10 @@ export interface ExtractedLowcodeAndPluginData {
    *  Restored onto the root via `assignImportedLowcodeFields`; on regular nodes
    *  it flows through `...lowcodeRest` (harmless — root-only in practice). */
   lowcodeTranslations?: LowcodeTranslations
+  /** Phase 3 §10 v4: document-level named workflows (root node only). Restored
+   *  onto the root via `assignImportedLowcodeFields`; on regular nodes it flows
+   *  through `...lowcodeRest` (harmless — root-only in practice). */
+  lowcodeWorkflows?: WorkflowDef[]
 }
 
 export function extractLowcodeAndPluginData(
@@ -343,6 +359,12 @@ function assignLowcodeField(
       // harmless. The write path (`set_translations`) validates strictly.
       if (isLowcodeTranslations(value)) target.lowcodeTranslations = value
       return
+    case LOWCODE_WORKFLOWS_KEY:
+      // Light guard: an array of plain objects. Per-action shape isn't strictly
+      // validated here — the IR collect pass drops malformed actions with a
+      // warning. The write path (`set_workflows`) validates strictly.
+      if (isLowcodeWorkflows(value)) target.lowcodeWorkflows = value
+      return
     default:
       // Layout round-trip fixes (axis sizing / counter-align / grid placement)
       // and §7 responsive overrides — grouped out to keep this switch under
@@ -383,6 +405,14 @@ function isResponsiveOverrides(value: unknown): value is ResponsiveOverrides {
  *  strict per-message validation lives on the write path (`set_translations`). */
 function isLowcodeTranslations(value: unknown): value is LowcodeTranslations {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/** Light guard: an array of plain objects (`WorkflowDef[]`). Per-workflow /
+ *  per-action shape isn't validated here — the IR collect pass drops malformed
+ *  actions with a warning, and the write path (`set_workflows`) validates
+ *  strictly. We only reject non-arrays from a corrupt .fig. */
+function isLowcodeWorkflows(value: unknown): value is WorkflowDef[] {
+  return Array.isArray(value) && value.every((w) => w !== null && typeof w === 'object')
 }
 
 /** Strict guard: all four placement fields must be finite numbers, else the

@@ -21,7 +21,8 @@ import type {
   LayoutMode,
   LowcodeTranslations,
   StateDef,
-  SupabaseConfig
+  SupabaseConfig,
+  WorkflowDef
 } from '#core/scene-graph'
 import { defineTool } from '#core/tools/schema'
 
@@ -66,6 +67,10 @@ export interface LowcodeNodeRead {
    *  undefined on non-root nodes; use `readTranslations` for the canonical
    *  access. */
   lowcodeTranslations?: LowcodeTranslations
+  /** Root-only: document-level named workflows (Phase 3 §10 v4). Always
+   *  undefined on non-root nodes; use `readWorkflows` for the canonical
+   *  access. */
+  lowcodeWorkflows?: WorkflowDef[]
 }
 
 type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -83,6 +88,7 @@ function buildLowcodeRead(node: {
   lowcodeDocumentState?: DocumentStateDef[]
   lowcodeSupabaseConfig?: SupabaseConfig
   lowcodeTranslations?: LowcodeTranslations
+  lowcodeWorkflows?: WorkflowDef[]
 }): LowcodeNodeRead {
   const out: LowcodeNodeRead = {
     id: node.id,
@@ -98,6 +104,7 @@ function buildLowcodeRead(node: {
   if (node.lowcodeDocumentState !== undefined) out.lowcodeDocumentState = node.lowcodeDocumentState
   if (node.lowcodeSupabaseConfig !== undefined) out.lowcodeSupabaseConfig = node.lowcodeSupabaseConfig
   if (node.lowcodeTranslations !== undefined) out.lowcodeTranslations = node.lowcodeTranslations
+  if (node.lowcodeWorkflows !== undefined) out.lowcodeWorkflows = node.lowcodeWorkflows
   return out
 }
 
@@ -149,5 +156,16 @@ export const readTranslations = defineTool({
   execute: (figma): ReadResult<LowcodeTranslations> => {
     const root = getRoot(figma)
     return { ok: true, data: root?.lowcodeTranslations ?? {} }
+  }
+})
+
+export const readWorkflows = defineTool({
+  name: 'read_workflows',
+  description:
+    "Read the document-level named workflows stored on the root node (`root.lowcodeWorkflows`, Phase 3 §10 v4). Shape: [{ id, name, actions }] — reusable action chains invoked by id from any node's event handler (or another workflow) via a `callWorkflow` action; the compiler expands each chain inline at the call site. Use this to see which workflows exist (and their action chains) before authoring a `callWorkflow` reference. Always returns { ok: true, data: [...] }; data is [] when no workflows are authored so AI prompts can branch on a single property. Example: read_workflows() → { ok: true, data: [{ id: 'wf-save', name: 'Save & toast', actions: [{ id: 'a1', kind: 'toast', messageExpr: '\"Saved\"', variant: 'success' }] }] } or { ok: true, data: [] }.",
+  params: {},
+  execute: (figma): ReadResult<WorkflowDef[]> => {
+    const root = getRoot(figma)
+    return { ok: true, data: root?.lowcodeWorkflows ?? [] }
   }
 })

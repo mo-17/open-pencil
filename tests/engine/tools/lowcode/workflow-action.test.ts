@@ -188,4 +188,109 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.error).toContain('.valueExpr')
   })
+
+  test('persists a callWorkflow action and rejects a non-string workflowId', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = { id: 'cw-1', kind: 'callWorkflow', workflowId: 'wf-1' }
+    const ok = update(btn.id, { onClick: [action] }, figma)
+    expect(ok.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+
+    const bad = update(btn.id, { onClick: [{ id: 'cw-2', kind: 'callWorkflow', workflowId: 9 }] }, figma)
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.error).toContain('.workflowId')
+  })
+})
+
+/** Phase 3 §10 v4: the `set_workflows` / `read_workflows` document-level tools
+ *  that author named, reusable workflows on the root node. */
+function setWorkflows(
+  json: string,
+  figma: ReturnType<typeof setupToolTest>['figma']
+): Result<{ workflows: number; actions: number }> {
+  return getTool('set_workflows').execute(figma, { workflows_json: json }) as Result<{
+    workflows: number
+    actions: number
+  }>
+}
+
+describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
+  test('persists workflows on the root and reads them back', () => {
+    const { figma, graph } = setupToolTest()
+    const workflows = [
+      {
+        id: 'wf-1',
+        name: 'Save',
+        actions: [
+          { id: 'a1', kind: 'toast', messageExpr: '"Saved"', variant: 'success' },
+          { id: 'a2', kind: 'navigate', to: '/done' }
+        ]
+      }
+    ]
+    const r = setWorkflows(JSON.stringify(workflows), figma)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data).toEqual({ workflows: 1, actions: 2 })
+    expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
+
+    const read = getTool('read_workflows').execute(figma, {}) as Result<typeof workflows>
+    expect(read.ok).toBe(true)
+    if (read.ok) expect(read.data).toEqual(workflows)
+  })
+
+  test('validates nested actions recursively, reporting the JSON path', () => {
+    const { figma } = setupToolTest()
+    const r = setWorkflows(
+      JSON.stringify([
+        { id: 'wf-1', name: 'x', actions: [{ id: 'bad', kind: 'frobnicate' }] }
+      ]),
+      figma
+    )
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('workflows_json[0].actions[0]')
+  })
+
+  test('rejects a duplicate workflow id', () => {
+    const { figma } = setupToolTest()
+    const r = setWorkflows(
+      JSON.stringify([
+        { id: 'dup', name: 'a', actions: [] },
+        { id: 'dup', name: 'b', actions: [] }
+      ]),
+      figma
+    )
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('duplicated')
+  })
+
+  test('rejects a missing id / non-string name', () => {
+    const { figma } = setupToolTest()
+    const noId = setWorkflows(JSON.stringify([{ name: 'a', actions: [] }]), figma)
+    expect(noId.ok).toBe(false)
+    if (!noId.ok) expect(noId.error).toContain('.id')
+
+    const badName = setWorkflows(JSON.stringify([{ id: 'w', name: 7, actions: [] }]), figma)
+    expect(badName.ok).toBe(false)
+    if (!badName.ok) expect(badName.error).toContain('.name')
+  })
+
+  test('null and [] both clear all workflows', () => {
+    const { figma, graph } = setupToolTest()
+    setWorkflows(JSON.stringify([{ id: 'w', name: 'a', actions: [] }]), figma)
+    const cleared = setWorkflows('null', figma)
+    expect(cleared.ok).toBe(true)
+    if (cleared.ok) expect(cleared.data).toEqual({ workflows: 0, actions: 0 })
+    expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toBeUndefined()
+
+    setWorkflows(JSON.stringify([{ id: 'w', name: 'a', actions: [] }]), figma)
+    setWorkflows('[]', figma)
+    expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toBeUndefined()
+  })
+
+  test('read_workflows returns [] when none authored', () => {
+    const { figma } = setupToolTest()
+    const read = getTool('read_workflows').execute(figma, {}) as Result<unknown[]>
+    expect(read.ok).toBe(true)
+    if (read.ok) expect(read.data).toEqual([])
+  })
 })

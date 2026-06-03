@@ -1,4 +1,10 @@
-import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
+import type {
+  ActionDef,
+  CallWorkflowAction,
+  EventName,
+  SceneNode,
+  WorkflowDef
+} from '@open-pencil/core/scene-graph'
 import {
   type ExprAst,
   hasPrevReference,
@@ -276,6 +282,7 @@ export function resolveValueBinding(
 
 const EMPTY_SCOPE: ReadonlySet<string> = new Set()
 const EMPTY_DOCSTATES: ReadonlyMap<string, IRDocStateDecl> = new Map()
+const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
 
 /** Identifiers referenced by an expression that match neither a declared
  *  page state, an in-scope identifier, nor a Document State. Used by
@@ -336,7 +343,8 @@ export function resolveEvents(
   docStates: ReadonlyMap<string, IRDocStateDecl> = EMPTY_DOCSTATES,
   docStateWrites?: Set<string>,
   inScope: ReadonlySet<string> = EMPTY_SCOPE,
-  docStateReads?: Set<string>
+  docStateReads?: Set<string>,
+  workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS
 ): Partial<Record<IREventName, IREventHandler[]>> | undefined {
   if (!node.events) return undefined
   const out: Partial<Record<IREventName, IREventHandler[]>> = {}
@@ -352,7 +360,8 @@ export function resolveEvents(
       docStates,
       docStateWrites,
       inScope,
-      docStateReads
+      docStateReads,
+      workflows
     )
     if (handlers.length > 0) out[name] = handlers
   }
@@ -368,7 +377,8 @@ function resolveActions(
   docStates: ReadonlyMap<string, IRDocStateDecl>,
   docStateWrites: Set<string> | undefined,
   inScope: ReadonlySet<string>,
-  docStateReads: Set<string> | undefined
+  docStateReads: Set<string> | undefined,
+  workflows: ReadonlyMap<string, WorkflowDef>
 ): IREventHandler[] {
   const ctx: ResolveCtx = {
     node,
@@ -378,7 +388,11 @@ function resolveActions(
     docStates,
     docStateWrites,
     inScope,
-    docStateReads
+    docStateReads,
+    workflows,
+    // Phase 3 §10 v4: the call stack of currently-expanding workflow ids, for
+    // cycle detection. Fresh per top-level event chain.
+    workflowStack: []
   }
   return resolveBranch(actions, ctx)
 }
@@ -386,10 +400,19 @@ function resolveActions(
 /** Phase 3 §10: lower one ActionDef chain into IR handlers, dropping invalid
  *  ones with a warning and recording the docState each writes. Used for both
  *  the top-level event chain and the nested `then` / `else` branches of a
- *  `condition` handler, so workflows nest through the same pipeline. */
+ *  `condition` handler, so workflows nest through the same pipeline. Phase 3
+ *  §10 v4: a `callWorkflow` action is expanded **inline** here — the referenced
+ *  workflow's chain is lowered through this same pipeline with the caller's
+ *  context, so its handlers splice into the current chain (and their docState
+ *  writes are recorded by the recursive call, hence no re-record on the outer
+ *  push). */
 function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] {
   const out: IREventHandler[] = []
   for (const action of actions) {
+    if (action.kind === 'callWorkflow') {
+      out.push(...expandWorkflow(action, ctx))
+      continue
+    }
     const handler = dispatchAction(action, ctx)
     if (handler) {
       out.push(handler)
@@ -397,6 +420,44 @@ function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] 
     }
   }
   return out
+}
+
+/** Phase 3 §10 v4: expand a `callWorkflow` inline. Looks the workflow up by id,
+ *  rejecting (with a warning, returning no handlers) when the id is missing /
+ *  unknown / already on the expansion stack (a cycle). Otherwise lowers the
+ *  workflow's actions through `resolveBranch` with the caller's ctx, pushing /
+ *  popping the id so nested calls and cycles are tracked. */
+function expandWorkflow(action: CallWorkflowAction, ctx: ResolveCtx): IREventHandler[] {
+  const id = action.workflowId
+  if (typeof id !== 'string' || id === '') {
+    ctx.warnings.push({
+      code: 'action-call-workflow-missing-id',
+      message: `node ${ctx.node.id} ${ctx.eventName} callWorkflow action has no workflowId`,
+      nodeId: ctx.node.id
+    })
+    return []
+  }
+  const workflow = ctx.workflows.get(id)
+  if (!workflow) {
+    ctx.warnings.push({
+      code: 'action-call-workflow-unknown',
+      message: `node ${ctx.node.id} ${ctx.eventName} callWorkflow references unknown workflow "${id}"`,
+      nodeId: ctx.node.id
+    })
+    return []
+  }
+  if (ctx.workflowStack.includes(id)) {
+    ctx.warnings.push({
+      code: 'action-call-workflow-cycle',
+      message: `workflow cycle detected: ${[...ctx.workflowStack, id].join(' → ')}`,
+      nodeId: ctx.node.id
+    })
+    return []
+  }
+  ctx.workflowStack.push(id)
+  const expanded = resolveBranch(workflow.actions, ctx)
+  ctx.workflowStack.pop()
+  return expanded
 }
 
 interface ResolveCtx {
@@ -408,6 +469,10 @@ interface ResolveCtx {
   docStateWrites: Set<string> | undefined
   inScope: ReadonlySet<string>
   docStateReads: Set<string> | undefined
+  /** Phase 3 §10 v4: document-level named workflows, for `callWorkflow`. */
+  workflows: ReadonlyMap<string, WorkflowDef>
+  /** Phase 3 §10 v4: ids of workflows currently being expanded (cycle guard). */
+  workflowStack: string[]
 }
 
 /** Exhaustive dispatch on the discriminated union (Phase 1 §7.4). Adding a
@@ -477,6 +542,11 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
       return resolveConfirm(action, ctx)
     case 'clipboard':
       return resolveClipboard(action, ctx)
+    case 'callWorkflow':
+      // Phase 3 §10 v4: expanded inline by resolveBranch before it reaches
+      // dispatchAction, so this arm is unreachable — present only to keep the
+      // switch total over the ActionDef union.
+      return null
     default: {
       // `action satisfies never` would be ideal here, but the cast keeps
       // older .fig files (saved with an unknown future kind) loadable.

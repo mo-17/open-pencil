@@ -5,6 +5,7 @@ export {
   setDocStates,
   setSupabaseConfig,
   setTranslations,
+  setWorkflows,
   updateLowcodeNode
 } from './modify/lowcode'
 export { setFill, setImageFill, setStroke } from './modify/paint'

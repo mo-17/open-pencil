@@ -2,7 +2,8 @@ import {
   parseVariantName,
   type NodeType,
   type SceneGraph,
-  type SceneNode
+  type SceneNode,
+  type WorkflowDef
 } from '@open-pencil/core/scene-graph'
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
@@ -83,6 +84,9 @@ export function collectTree(
   // Phase 3 §9 v7: lift root-level translation catalog onto the tree so the
   // adapter pre-fills `locales/<code>.json` from authored translations.
   const translations = graph.getNode(graph.rootId)?.lowcodeTranslations
+  // Phase 3 §10 v4: index root-level named workflows by id for inline
+  // `callWorkflow` expansion in the bindings pass.
+  const workflows = liftWorkflows(graph)
 
   if (!page) {
     return {
@@ -108,6 +112,7 @@ export function collectTree(
     warnings,
     inScope: new Set(),
     components,
+    workflows,
     i18n
   }
   const children: IRNode[] = []
@@ -147,6 +152,7 @@ export function collectComponents(
   const warnings: IRWarning[] = []
   // Discard doc-state warnings here — they're already surfaced per page.
   const docStates = indexDocStatesByName(collectDocStates(graph, []))
+  const workflows = liftWorkflows(graph)
   const defs: ComponentDef[] = []
   for (const [componentId, meta] of components) {
     const master = graph.getNode(componentId)
@@ -160,6 +166,7 @@ export function collectComponents(
       warnings,
       inScope: new Set(),
       components,
+      workflows,
       i18n
     }
     const variantMeta = meta.variants
@@ -360,6 +367,10 @@ interface WalkCtx {
    *  IRComponentRef instead of being inlined. Empty map ≡ no component
    *  extraction. */
   components: ComponentRegistry
+  /** Phase 3 §10 v4: document-level named workflows keyed by id, for inline
+   *  `callWorkflow` expansion (the same map for every page / component in a
+   *  compile). Empty map ≡ no workflows authored. */
+  workflows: ReadonlyMap<string, WorkflowDef>
   /** Phase 3 §8 v2/v3: when collecting a component body, the master-descendant
    *  node id → prop slot map for that component. A TEXT node whose id is a key
    *  emits `{prop}` instead of its literal (text slot); an element whose id is a
@@ -436,6 +447,18 @@ function currentUserBuiltIn(): IRDocStateDecl {
 function indexDocStatesByName(decls: IRDocStateDecl[]): Map<string, IRDocStateDecl> {
   const m = new Map<string, IRDocStateDecl>()
   for (const d of decls) m.set(d.name, d)
+  return m
+}
+
+/** Phase 3 §10 v4: index the root node's named workflows by id for inline
+ *  `callWorkflow` expansion. A later duplicate id wins (the write path
+ *  `set_workflows` rejects duplicates, so this only matters for hand-edited
+ *  .fig files). Empty map when no workflows are authored. */
+function liftWorkflows(graph: SceneGraph): ReadonlyMap<string, WorkflowDef> {
+  const m = new Map<string, WorkflowDef>()
+  for (const wf of graph.getNode(graph.rootId)?.lowcodeWorkflows ?? []) {
+    if (typeof wf.id === 'string' && wf.id !== '') m.set(wf.id, wf)
+  }
   return m
 }
 
@@ -812,7 +835,8 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.docStates,
     ctx.docStateWrites,
     ctx.inScope,
-    ctx.docStateReads
+    ctx.docStateReads,
+    ctx.workflows
   )
 
   const controlled = applyControlledInput(node, ctx, attrs, children, events)
