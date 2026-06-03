@@ -7,7 +7,9 @@ import {
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
+  type ExprAst,
   parseExpression,
+  parseTemplate,
   PREV_IDENT,
   validateDatePickerProps
 } from '@open-pencil/core/lowcode-validation'
@@ -28,6 +30,7 @@ import type {
   IREventHandler,
   IREventName,
   IRList,
+  IRMessageValue,
   IRNode,
   IRStateDecl,
   IRText,
@@ -564,10 +567,72 @@ function resolveVectorSvg(
 
 /** Phase 3 §9 — build a text IR node, tagged with a content-hash `messageId`
  *  when i18n is enabled so the adapter externalizes it into a locale message
- *  (`<FormattedMessage>`). Off → a plain literal `{kind:'text', value}`. */
+ *  (`<FormattedMessage>`). Off → a plain literal `{kind:'text', value}`.
+ *
+ *  §9 v4 — when the literal carries `${expr}` interpolations, externalize it as
+ *  an ICU message with `values` instead (e.g. `Welcome, {name}!`); a parse
+ *  failure or unknown reference falls back to the plain static message. */
 function displayText(value: string, ctx: WalkCtx): IRText {
   if (!ctx.i18n) return { kind: 'text', value }
+  const interpolated = buildInterpolatedText(value, ctx)
+  if (interpolated) return interpolated
   return { kind: 'text', value, messageId: messageKey(value) }
+}
+
+/** §9 v4 — lower a visible text literal containing `${expr}` interpolations into
+ *  an ICU message: the literal segments stay verbatim and each `${expr}` becomes
+ *  a named ICU placeholder (`{name}`) backed by the expression in `values`.
+ *  Returns null (caller falls back to a static message) when there are no
+ *  interpolations, the template is unparseable, or any expression references an
+ *  identifier not in scope (state / docState / list item). */
+function buildInterpolatedText(value: string, ctx: WalkCtx): IRText | null {
+  if (!value.includes('${')) return null
+  const parsed = parseTemplate(value)
+  if (!parsed.ok || parsed.ast.kind !== 'template' || parsed.ast.expressions.length === 0) {
+    return null
+  }
+  const unknown = unknownIdentifiers(parsed.references, ctx.states, ctx.inScope, ctx.docStates)
+  if (unknown.length > 0) {
+    ctx.warnings.push({
+      code: 'i18n-interpolation-unknown-identifier',
+      message: `i18n text "${value}" interpolates unknown identifier(s): ${unknown.join(', ')}`,
+      nodeId: ''
+    })
+    return null
+  }
+  registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
+  const { quasis, expressions } = parsed.ast
+  const usedNames = new Set<string>()
+  const values: IRMessageValue[] = expressions.map((ast) => ({
+    name: uniquePlaceholderName(ast, usedNames),
+    ast
+  }))
+  // ICU form: literal quasis interleaved with `{name}` placeholders (invariant
+  // quasis.length === expressions.length + 1).
+  const defaultMessage = quasis
+    .map((q, i) => (i < values.length ? `${q}{${values[i].name}}` : q))
+    .join('')
+  return { kind: 'text', value: defaultMessage, messageId: messageKey(defaultMessage), values }
+}
+
+/** §9 v4 — a stable, readable ICU placeholder name for an interpolation
+ *  expression: an identifier / member's leaf name (`$currentUser.email` → `email`),
+ *  else `value`. Sanitized to a legal ICU argument name and de-duplicated with a
+ *  numeric suffix so two placeholders in one message never collide. */
+function uniquePlaceholderName(ast: ExprAst, used: Set<string>): string {
+  let base = 'value'
+  if (ast.kind === 'ident') base = ast.name
+  else if (ast.kind === 'member') base = ast.property
+  base = base.replace(/[^A-Za-z0-9_]/g, '').replace(/^[0-9]+/, '')
+  if (base === '') base = 'value'
+  let name = base
+  let n = 2
+  while (used.has(name)) {
+    name = `${base}${n}`
+    n++
+  }
+  used.add(name)
+  return name
 }
 
 /** Phase 3 §9 v3 — externalize a user-facing *attribute* string (an INPUT's

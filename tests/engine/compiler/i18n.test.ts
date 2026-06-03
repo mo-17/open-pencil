@@ -310,3 +310,92 @@ describe('compile — attribute-string i18n (Phase 3 §9 v3)', () => {
     expect(comp).toMatch(/placeholder=\{intl\.formatMessage\(\{ id: "m[a-z0-9]+", defaultMessage: "Find…" \}\)\}/)
   })
 })
+
+/**
+ * Phase 3 §9 v4 — ICU interpolation: a visible text literal with `${expr}`
+ * placeholders is externalized as an ICU message (`Welcome, {name}!`) plus a
+ * `values={{ name: <expr> }}` prop on `<FormattedMessage>`. Interpolation is
+ * gated on i18n; a parse failure / unknown reference falls back to a static
+ * message; no `${}` → byte-identical to §9 v1.
+ */
+function pageWithInterpolation(
+  text: string,
+  opts: { state?: string; docState?: string } = {}
+): { graph: SceneGraph; pageId: string } {
+  const graph = makeSceneGraph()
+  const pageId = firstPageId(graph)
+  if (opts.state) {
+    graph.updateNode(pageId, {
+      state: [{ id: 's1', name: opts.state, type: 'string', defaultValue: '' }]
+    })
+  }
+  if (opts.docState) {
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'd1', name: opts.docState, type: 'string', defaultValue: '' }]
+    })
+  }
+  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  graph.createNode('TEXT', frame.id, { text, width: 160, height: 20 })
+  return { graph, pageId }
+}
+
+describe('compile — i18n ICU interpolation (Phase 3 §9 v4)', () => {
+  test('a state-interpolated text → ICU message + values prop + ICU catalog entry', () => {
+    const { graph, pageId } = pageWithInterpolation('Welcome, ${userName}!', { state: 'userName' })
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toMatch(
+      /<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"Welcome, \{userName\}!"\} values=\{\{ userName: userName \}\} \/>/
+    )
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    expect(Object.values(catalog)).toContain('Welcome, {userName}!')
+  })
+
+  test('a docState interpolation registers a useDocState read', () => {
+    const { graph, pageId } = pageWithInterpolation('Hi ${name}', { docState: 'name' })
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('const name = useDocState("name")')
+    expect(app).toContain('values={{ name: name }}')
+  })
+
+  test('multiple interpolations: member leaf name + numeric de-dup', () => {
+    const { graph, pageId } = pageWithInterpolation('${greeting} ${greeting} for ${name}', {
+      state: 'greeting',
+      docState: 'name'
+    })
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    // two `greeting` placeholders dedupe to {greeting} / {greeting2}
+    expect(app).toContain('defaultMessage={"{greeting} {greeting2} for {name}"}')
+    expect(app).toContain('values={{ greeting: greeting, greeting2: greeting, name: name }}')
+  })
+
+  test('an unknown interpolation identifier falls back to a static literal message + warns', () => {
+    const { graph, pageId } = pageWithInterpolation('Hi ${mystery}')
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    // no values prop; the raw `${mystery}` survives as the static defaultMessage
+    expect(app).not.toContain('values={{')
+    expect(app).toContain('defaultMessage={"Hi ${mystery}"}')
+    expect(out.warnings.some((w) => w.code === 'i18n-interpolation-unknown-identifier')).toBe(true)
+  })
+
+  test('plain text without ${} stays a static §9 v1 message (no values)', () => {
+    const { graph, pageId } = pageWithInterpolation('No placeholders here')
+    const out = compileI18n(graph, pageId, true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toMatch(/<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"No placeholders here"\} \/>/)
+    expect(app).not.toContain('values={{')
+  })
+
+  test('i18n off: interpolation text stays a plain literal (zero regression)', () => {
+    const { graph, pageId } = pageWithInterpolation('Welcome, ${userName}!', { state: 'userName' })
+    const out = compileI18n(graph, pageId, false)
+    const app = out.files.get('src/App.tsx') as string
+    // i18n off → no interpolation; the literal renders verbatim (JSX-escaped braces).
+    expect(app).toContain('Welcome, $&#123;userName&#125;!')
+    expect(app).not.toContain('FormattedMessage')
+    expect(app).not.toContain('values={{')
+  })
+})

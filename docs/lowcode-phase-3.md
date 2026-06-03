@@ -4396,6 +4396,47 @@ CODE COMPLETE 2026-06-03。完全符合设计,零意外、零 hotfix:
 
 **§9 v4 follow-ups:** 翻译授权数据模型(编辑器填译文,非开发者填 JSON);ICU 复数/插值(绑定值进消息);`sourceLocale` 可配;将来若新增 aria-label/title/alt 节点属性 → 复用 displayAttr/IRIntlAttr 直接覆盖。
 
+## §9 v4 — ICU 插值(可见文本绑定值进可翻译消息)
+
+> §9 v3 follow-up。用户 2026-06-03 挑定 = **§9 v4 ICU 插值**(否决更多 deploy provider / §10 v4 配置 / §8 v8 visible-reverse);范围 fork 锁定 = **仅插值**(否决 +ICU 复数,复数授权模型 + 花括号冲突/转义过重,留 v5)。CODE COMPLETE 2026-06-03(commit 见下)。
+
+### 9v4.1 现状与问题
+
+§9 i18n 此前两端:**静态**可见文本→`<FormattedMessage>`(无 values),**全动态**绑定文本(`bindings.text`→ref/expr/docState)→裸 `{expr}`(不翻译)。中间缺口 = 「Welcome, ${name}!」这类**字面 + 运行时值混合**的可翻译消息无法表达。react-intl 原生支持 ICU `<FormattedMessage defaultMessage="Welcome, {name}!" values={{name}}/>`,v4 补上。
+
+### 9v4.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **复用 `parseTemplate`**(§2.4 apiCall URL 同款 `${expr}` 扫描器,产 `{kind:'template',quasis,expressions}`) | 文法已 frozen、`${}` 内走 parseExpression 全子语言。零新 parser。授权 = 在文本里打 `${expr}`。 |
+| 2 | **i18n-gated**:i18n 关 → 文本字面不解析(`${}` 原样,JSX 转义花括号) | 插值是 i18n 特性。非-i18n 文本模板留作独立 v5「text templates」。i18n-off **byte-identical 零回归**(既有 522 测试不动)。 |
+| 3 | **ICU 占位名 = 表达式叶名**(ident→名、member→末属性 `$currentUser.email`→`email`),sanitize 合法 ICU 参数名 + 数字后缀去重 | 译者看 `{email}` 比 `{var0}` 友好。纯函数确定性。 |
+| 4 | **hash key 取 ICU 规范串**(`Welcome, {name}!`),非原始 `${}` 串 | 同消息去重(两处不同表达式填同一 `Hello {name}` 共享一条译文,各传各 values —— 正是 i18n 正确语义)。 |
+| 5 | **未知标识符 / parse 失败 → 回退静态字面 + warn**(不 drop、不崩) | 安全降级;`i18n-interpolation-unknown-identifier` 警告浮现。 |
+
+### 9v4.3 公开 API / Schema 改动
+
+- `ir/types.ts`:`IRText.values?: IRMessageValue[]`(新);`IRMessageValue {name; ast}`(新)。无 scene-graph / round-trip / CompilerOptions 改动(沿用 §9 `i18n` flag;文本仍存 `node.text` 字面,`${}` collect 时解析)。
+
+### 9v4.4 内部实现拆解
+
+1. **collect**(tree.ts `displayText`):i18n 开 → 先试 `buildInterpolatedText(value, ctx)`,null 则回退原静态 messageKey 路径(零回归)。`buildInterpolatedText`:`value.includes('${')` 闸 → `parseTemplate` → 须 template kind 且 `expressions.length>0`(否则 null);`unknownIdentifiers(parsed.references, states, inScope, docStates)`(复用既有导出)非空 → warn + null;`registerDocStateReads`(既有,docState 进 useDocState);`uniquePlaceholderName(ast, usedSet)` 每表达式取名;ICU defaultMessage = quasis 交织 `{name}`;返 `{kind:'text', value:ICU串, messageId:messageKey(ICU串), values}`。
+2. **emit**(element.ts `emitText`):messageId 在场时,values 非空 → 追加 ` values={{ name: <emitExpression(ast)> }}`;否则同 §9 v1。
+3. **catalog**(index.ts `collectText`):`acc.set(node.messageId, node.value)` —— `node.value` 已是 ICU 串 → catalog 自动收 ICU 形,零改动。
+4. **import gate**:messageId 在场 → `hasTranslatableText` 已驱动 `FormattedMessage` import(零改);docState 引用经 registerDocStateReads → 页 emit useDocState(零改)。
+
+### 9v4.5 成功标准 / 测试
+
+- `Welcome, ${userName}!`(state)→ `<FormattedMessage … defaultMessage={"Welcome, {userName}!"} values={{ userName: userName }} />`;catalog 含 `Welcome, {userName}!`。
+- docState 插值 → 页 `const name = useDocState("name")`;多插值同名去重 `{greeting}`/`{greeting2}`;member 取叶名;未知标识符 → 回退静态 + `i18n-interpolation-unknown-identifier` warn;无 `${}` → 静态 v1 不变;i18n-off → 字面(转义花括号)零回归。
+- i18n.test.ts +6;compiler **528/0**;`bun run check` exit 0,tsgo 0。
+
+### 9v4.6 Post-mortem
+
+CODE COMPLETE 2026-06-03。设计一次成立,零 hotfix,唯一测试自纠 = i18n-off 字面的 JSX 花括号转义(`${userName}`→`$&#123;userName&#125;`,既有 escapeJSXText 行为,断言对齐而非改码)。**已知边界(留作 v5/文档)**:文本含**非插值的**字面 `{`/`}`(如 `Set {x}`)在 i18n-on 时 react-intl 会当 ICU 占位 → 需 `'{'` 转义,这是 §9 v1 既有行为非 v4 引入(v4 只碰 `${}` 文本);复数/select 留 v5。**真机验**:react-intl FormattedMessage values 在 VFS preview/build 解析(headless 仅断言 emit 串)。
+
+**§9 v5 follow-ups:** ICU 复数/select(`{count, plural, …}` 授权 + 花括号转义);非-i18n text templates(`${}` 不开 i18n 也插值);翻译授权数据模型;`sourceLocale` 可配。
+
 ## §10 v2 toast/notify action — 工作流用户反馈 + 运行时 ToastHost(设计 2026-06-03)
 
 > §10 v1 follow-up。用户 2026-06-03 挑定 = **§10 v2 toast**;分叉锁定 = **表达式 message + severity variant**(否决静态串 / 无 variant)。§10 v1 曾否决 toast(「需 runtime surface」),v2 正补这个 surface。

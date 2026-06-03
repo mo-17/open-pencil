@@ -172,13 +172,29 @@ export interface IRControlledInput {
 
 export interface IRText {
   kind: 'text'
-  /** Literal text content. Adapters apply framework-specific escaping. */
+  /** Literal text content. Adapters apply framework-specific escaping. When
+   *  `values` is set (§9 v4 interpolation) this is the ICU message form, e.g.
+   *  `Welcome, {name}!`, with `value` doubling as the `defaultMessage`. */
   value: string
   /** Phase 3 §9 — when i18n is enabled, the stable message id this string was
    *  externalized under. The adapter emits `<FormattedMessage id defaultMessage/>`
    *  (with `value` as the default) instead of the literal, and `value` is added
    *  to the locale catalog under this id. Unset when i18n is off. */
   messageId?: string
+  /** Phase 3 §9 v4 — interpolation arguments for an ICU message. When the
+   *  source text contained `${expr}` placeholders, each is lowered to a named
+   *  ICU argument (`{name}` in `value`) plus the expression that fills it. The
+   *  adapter emits `<FormattedMessage … values={{ name: <expr> }} />`. Unset for
+   *  plain (non-interpolated) messages and when i18n is off. */
+  values?: IRMessageValue[]
+}
+
+/** Phase 3 §9 v4 — one ICU interpolation argument: the placeholder `name` used
+ *  in the message (`{name}`) and the `ast` whose emitted expression fills it at
+ *  runtime. */
+export interface IRMessageValue {
+  name: string
+  ast: ExprAst
 }
 
 /** A dynamic text node — the adapter emits this as `{<expr>}` rather than a

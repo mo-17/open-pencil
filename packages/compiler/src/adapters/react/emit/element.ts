@@ -131,10 +131,16 @@ function tryInlineSingleChild(
 
 /** Phase 3 §9 — render a text node: a `<FormattedMessage>` when i18n tagged it
  *  with a `messageId`, otherwise the escaped literal. `defaultMessage` uses the
- *  JS-expression form so newlines/quotes in the source string stay valid. */
+ *  JS-expression form so newlines/quotes in the source string stay valid.
+ *  §9 v4 — when the message carries interpolation `values`, append a
+ *  `values={{ name: <expr> }}` prop so ICU placeholders resolve at runtime. */
 function emitText(node: IRText): string {
   if (node.messageId !== undefined) {
-    return `<FormattedMessage id="${node.messageId}" defaultMessage={${JSON.stringify(node.value)}} />`
+    const valuesAttr =
+      node.values && node.values.length > 0
+        ? ` values={{ ${node.values.map((v) => `${v.name}: ${emitExpression(v.ast)}`).join(', ')} }}`
+        : ''
+    return `<FormattedMessage id="${node.messageId}" defaultMessage={${JSON.stringify(node.value)}}${valuesAttr} />`
   }
   return escapeJSXText(node.value)
 }
