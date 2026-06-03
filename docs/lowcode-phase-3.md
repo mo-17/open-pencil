@@ -4837,6 +4837,66 @@ CODE COMPLETE 2026-06-04(commit `6651b241`,pushed upstream)。设计完全成立
 
 **§10 v5 follow-ups:** toast 位置/时长可配 + confirm 文案/按钮标签可配(纯 emit 配置 polish);workflow 参数(callWorkflow 传参 → 工作流内引用);编辑器 EventsPanel + 工作流管理面板授权 GUI(真机)。
 
+## §10 v5 — toast/confirm 配置 polish(位置/时长/按钮标签)
+
+> §10 v4 follow-up。助手推荐(用户「继续下一个 milestone」未走 AskUserQuestion)= **toast/confirm 配置 polish**(否决 workflow 参数:recon 坐实其要在 inline 展开期对 8 个表达式 parse 点做参数标识符替换 + 替换后 references/docState-reads 重算,任一策略都侵入表达式层,**太大不宜快速做**,留专门一轮;否决更多 deploy provider / §9 v8)。延续 §10 链,给 toast/confirm 运行时补真实可用性配置。**纯 emit + runtime,无新 ActionDef kind → 无经验 A union widening,无表达式层改动 → 低风险。**
+
+### 10v5.1 现状与问题
+
+§10 v2/v3 的 toast/confirm 运行时位置/时长/按钮文案全**硬编码**:toast 固定 `fixed bottom-4 right-4` + 3000ms 自动消失;confirm 按钮固定 "Cancel"/"OK"。真实 app 需要:顶部居中的成功提示、停留更久的错误提示、危险操作用 "删除"/"保留" 而非泛化的 OK/Cancel。这些是 action 级配置,自然挂在 `ToastAction`/`ConfirmAction` 上。
+
+### 10v5.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`ToastAction` 加 `position?: ToastPosition` + `durationMs?: number`** | `ToastPosition = 'top-left'|'top-center'|'top-right'|'bottom-left'|'bottom-center'|'bottom-right'`(6 角),默认 `bottom-right`(= 现行为);durationMs 默认 3000。可选字段,**非新 kind**。 |
+| 2 | **`ConfirmAction` 加 `confirmLabel?` + `cancelLabel?`(静态串)** | 默认 "OK"/"Cancel"(= 现行为)。**静态串非表达式**——按钮文案极少动态,静态避免引表达式层(message 仍是表达式)。 |
+| 3 | **emit 仅在设置时追加 opts 对象 → plain toast/confirm byte-identical** | toast:未设 position/duration → emit 不变(`__opToast(msg)` / `__opToast(msg, "success")`);设了 → `__opToast(msg, variant, { position, durationMs })`(variant 此时必显式)。confirm:未设 → `__opConfirm(msg)`;设了 → `__opConfirm(msg, { confirmLabel, cancelLabel })`。既有 toast/confirm 测试**一字不改通过** = 零回归证明。 |
+| 4 | **runtime per-toast position/duration**:`__opToast(message, variant='info', opts?)` | 每 Toast 携 position+duration;`ToastHost` 按 position **分组**渲染——出现的每个 position 一个 fixed 容器(`POSITION_CLASSES` record),duration 进各自 setTimeout(`opts?.durationMs ?? 3000`)。 |
+| 5 | **runtime confirm labels**:`__opConfirm(message, opts?)` | `PendingConfirm` 携 confirmLabel/cancelLabel;`ConfirmHost` 渲染 `active.cancelLabel ?? 'Cancel'` / `active.confirmLabel ?? 'OK'`。 |
+| 6 | **position 新 Tailwind 类进 safelist** | `top-4`/`left-4`/`left-1/2`/`-translate-x-1/2`(已有 bottom-4/right-4)入 `TOAST_RUNTIME_CLASSES`(VFS iframe 不扫盘)。confirm 无新类。 |
+
+### 10v5.3 公开 API / Schema 改动
+
+- `scene-graph/types.ts`:`ToastPosition` type + `ToastAction.position?`/`.durationMs?` + `ConfirmAction.confirmLabel?`/`.cancelLabel?`。**无新 ActionDef kind**。
+- `ir/types.ts`:`IRToastHandler.position?`/`.durationMs?` + `IRConfirmHandler.confirmLabel?`/`.cancelLabel?`。
+- runtime `_lowcode_toast.tsx`/`_lowcode_confirm.tsx` 签名 + 渲染增量(`__opToast`/`__opConfirm` opts 参向后兼容)。
+- 无 round-trip codec 改动(events 整块 JSON);无新 npm 依赖;无新工具。无配置 → 产物 byte-identical(零回归)。
+
+### 10v5.4 内部实现拆解
+
+1. **collect**(bindings.ts):`resolveToast` 携 `position`(直拷,枚举值)+ `durationMs`(校验 finite ≥ 0,非法 warn `action-toast-invalid-duration` 但**不 drop 整 toast**,回退默认);`resolveConfirm` 携 `confirmLabel`/`cancelLabel`(string-or-undefined 直拷)。
+2. **emit**(event.ts):`emitToast` 在 position/durationMs 任一存在时拼 opts 对象字面量 + variant 显式;`emitConfirm`(if/else `await __opConfirm(msg, opts?)`)labels 任一存在时拼 opts。两者无配置时走原路径(byte-identical)。
+3. **runtime toast.ts**:`ToastOptions {position?; durationMs?}`;Toast += position;`__opToast` 第三参 opts;`POSITION_CLASSES: Record<ToastPosition,string>`;`ToastHost` 按出现的 position 分组渲染容器;safelist += 4 类。
+4. **runtime confirm.ts**:`ConfirmOptions {confirmLabel?; cancelLabel?}`;PendingConfirm += labels;`__opConfirm` 第二参 opts;ConfirmHost 渲染 `?? 'Cancel'`/`?? 'OK'`。
+5. **tool**(modify/lowcode.ts):`validateToastAction` += position(∈ 6 枚举)+ durationMs(finite ≥ 0)校验;`buildActionFromValidated` toast arm 透传两字段;`validateConfirmAction`(递归构建)+ confirmLabel/cancelLabel(string)校验 + 透传。
+6. **测试**:emit(toast 位置+时长 opts / 无配置 byte-identical / confirm labels / 无 labels 不变)+ collect(position/duration 携带 + 非法 duration warn 回退 + labels)+ runtime(POSITION_CLASSES / ToastHost 分组 / ConfirmHost labels)+ tool(校验 + 透传 + 非法 reject)+ round-trip(+1)。
+
+### 10v5.5 成功标准
+
+- `{kind:'toast', messageExpr:'"Saved"', variant:'success', position:'top-center', durationMs:5000}` → emit `__opToast("Saved", "success", { position: "top-center", durationMs: 5000 })`;runtime 顶部居中渲染、5s 消失。
+- `{kind:'confirm', messageExpr:'"删除?"', confirmLabel:'删除', cancelLabel:'保留', consequent:[...]}` → emit `__opConfirm("删除?", { confirmLabel: "删除", cancelLabel: "保留" })`;模态按钮显示中文。
+- 无 position/duration 的 toast emit `__opToast(msg[, variant])` 不变;无 labels 的 confirm emit `__opConfirm(msg)` 不变 → **既有 §10 v2/v3 测试零改通过**。
+- 非法 durationMs(负/NaN)→ warn + 回退 3000(不 drop toast);非法 position 枚举值 → 工具 reject。
+- round-trip:position/duration/labels 经 .fig 存活。
+- 无配置 → 产物 byte-identical(零回归,既有 557 compiler 测试不动)。
+- `bun run check` exit 0(含 check:vue + steiger + jscpd)。
+
+### 10v5.6 工作分解(~0.5 day)
+
+scene-graph ToastPosition + 4 字段 → ir/types 4 字段 → bindings resolveToast/resolveConfirm 携带 + duration 校验 → event.ts emitToast/emitConfirm opts 拼装 → runtime toast.ts(POSITION_CLASSES + 分组 + safelist)+ confirm.ts(labels)→ tool validateToast/validateConfirm + buildActionFromValidated → 测试 → build:packages → `bun run check`。**无经验 A 双轮(无新 kind)**,但 emit 加分支看 complexity 闸 + jscpd(opts 拼装两处避免 clone)。
+
+### 10v5.7 风险
+
+- toast position 分组使 ToastHost runtime 变复杂 → 保持有界(Map<position,toasts> 渲染每非空组);per-toast position 是正确模型(action 级配置)。
+- emit 加 opts 分支可能撞 complexity-20 闸(emitHandlerStatement 已近)→ 抽 emitToast/emitConfirm helper(如 §10 v3 emitIfElse/emitApiCall 先例)。
+- opts 拼装 toast/confirm 两处形似 → jscpd 可能撞 → 差异化或抽 helper。
+- 真机验:toast 各角落位置 + 时长 + confirm 中文按钮在 preview/build 实际渲染(headless 仅断言 emit 串 + runtime 文件内容)。
+
+### 10v5.8 Post-mortem
+
+(实现后回填)
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

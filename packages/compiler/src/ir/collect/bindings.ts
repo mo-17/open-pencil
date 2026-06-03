@@ -1027,8 +1027,28 @@ function resolveToast(
     kind: 'toast',
     ast: lowered.ast,
     references: lowered.references,
-    variant: action.variant ?? 'info'
+    variant: action.variant ?? 'info',
+    position: action.position,
+    // Phase 3 §10 v5: an invalid duration warns but keeps the toast (the runtime
+    // falls back to its default), unlike `delay` where ms is the whole action.
+    durationMs: resolveToastDuration(action.durationMs, ctx)
   }
+}
+
+/** Phase 3 §10 v5: validate a toast's optional `durationMs`. Returns the value
+ *  when it's a finite non-negative number, else `undefined` (the runtime
+ *  applies its 3000ms default) after a warning. */
+function resolveToastDuration(durationMs: number | undefined, ctx: ResolveCtx): number | undefined {
+  if (durationMs === undefined) return undefined
+  if (!Number.isFinite(durationMs) || durationMs < 0) {
+    ctx.warnings.push({
+      code: 'action-toast-invalid-duration',
+      message: `node ${ctx.node.id} ${ctx.eventName} toast durationMs must be a finite non-negative number (got ${JSON.stringify(durationMs)}); using the default`,
+      nodeId: ctx.node.id
+    })
+    return undefined
+  }
+  return durationMs
 }
 
 /** Phase 3 §10 v3: lower a `confirm` action — a `condition` whose predicate is
@@ -1048,7 +1068,9 @@ function resolveConfirm(
     ast: lowered.ast,
     references: lowered.references,
     consequent,
-    alternate
+    alternate,
+    confirmLabel: action.confirmLabel,
+    cancelLabel: action.cancelLabel
   }
 }
 

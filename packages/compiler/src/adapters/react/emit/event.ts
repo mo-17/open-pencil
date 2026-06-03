@@ -2,11 +2,13 @@ import { emitExpression } from '@open-pencil/core/lowcode-validation'
 import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type {
   IRApiCallHandler,
+  IRConfirmHandler,
   IREventHandler,
   IRSupabaseAuthHandler,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
-  IRSupabaseQueryHandler
+  IRSupabaseQueryHandler,
+  IRToastHandler
 } from '#compiler/ir/types'
 
 import { setterName } from './state'
@@ -99,6 +101,46 @@ function emitIfElse(
   return `if (${cond}) { ${emitStatementList(consequent)} }${elseArm}`
 }
 
+/** Build a `{ k: v, ... }` object-literal string from the entries whose value is
+ *  defined, or '' when none are. Shared by the toast / confirm option emitters
+ *  (Phase 3 §10 v5) so the two stay clone-free. Values are pre-serialized. */
+function objectLiteral(entries: readonly [string, string | undefined][]): string {
+  const present = entries.filter((e): e is [string, string] => e[1] !== undefined)
+  if (present.length === 0) return ''
+  return `{ ${present.map(([k, v]) => `${k}: ${v}`).join(', ')} }`
+}
+
+/** Phase 3 §10 v2 / v5: emit a `toast` handler. The `variant` arg is omitted for
+ *  the default `info` UNLESS an options object (position / durationMs, §10 v5) is
+ *  present — then the variant must be explicit so the options land in the third
+ *  arg. A plain toast (no options) stays byte-identical to the §10 v2 output. */
+function emitToast(h: IRToastHandler): string {
+  const message = emitExpression(h.ast)
+  const opts = objectLiteral([
+    ['position', h.position === undefined ? undefined : JSON.stringify(h.position)],
+    ['durationMs', h.durationMs === undefined ? undefined : String(h.durationMs)]
+  ])
+  if (opts === '') {
+    return h.variant === 'info'
+      ? `__opToast(${message})`
+      : `__opToast(${message}, ${JSON.stringify(h.variant)})`
+  }
+  return `__opToast(${message}, ${JSON.stringify(h.variant)}, ${opts})`
+}
+
+/** Phase 3 §10 v3 / v5: emit a `confirm` handler as an `if (await __opConfirm(…))`
+ *  block. Custom button labels (§10 v5) ride in an options object; a confirm
+ *  with no labels stays byte-identical to the §10 v3 output. */
+function emitConfirm(h: IRConfirmHandler): string {
+  const message = emitExpression(h.ast)
+  const opts = objectLiteral([
+    ['confirmLabel', h.confirmLabel === undefined ? undefined : JSON.stringify(h.confirmLabel)],
+    ['cancelLabel', h.cancelLabel === undefined ? undefined : JSON.stringify(h.cancelLabel)]
+  ])
+  const arg = opts === '' ? message : `${message}, ${opts}`
+  return emitIfElse(`await __opConfirm(${arg})`, h.consequent, h.alternate)
+}
+
 /** Phase 2 §3 / §4: emit an `apiCall` handler. GET → `fetch(url)`; POST →
  *  `fetch(url, { method, headers, body })`. `h.body` is compact, validated JSON
  *  spliced verbatim inside `JSON.stringify(...)`; `h.url` is a template AST (a
@@ -157,19 +199,15 @@ function emitHandlerStatement(h: IREventHandler): string {
     case 'stop':
       // Phase 3 §10: early termination of the workflow.
       return 'return'
-    case 'toast': {
-      // Phase 3 §10 v2: push a toast via the runtime. The second `variant`
-      // arg is omitted for the default `info` (the runtime defaults to it).
-      const message = emitExpression(h.ast)
-      return h.variant === 'info'
-        ? `__opToast(${message})`
-        : `__opToast(${message}, ${JSON.stringify(h.variant)})`
-    }
+    case 'toast':
+      // Phase 3 §10 v2 / v5: push a toast via the runtime (optional position /
+      // duration options ride in a third arg).
+      return emitToast(h)
     case 'confirm':
-      // Phase 3 §10 v3: same if/else shape as `condition`, but the predicate is
-      // an awaited runtime user choice (`await __opConfirm`), which forces the
-      // enclosing arrow async (ASYNC_KINDS).
-      return emitIfElse(`await __opConfirm(${emitExpression(h.ast)})`, h.consequent, h.alternate)
+      // Phase 3 §10 v3 / v5: `if (await __opConfirm(<msg>[, opts])) {…} else {…}`
+      // — the awaited user choice forces the enclosing arrow async (ASYNC_KINDS);
+      // optional button labels ride in an options object.
+      return emitConfirm(h)
     case 'clipboard':
       // Phase 3 §10 v3: copy to the clipboard, fire-and-forget (the returned
       // promise is intentionally not awaited — no runtime surface).

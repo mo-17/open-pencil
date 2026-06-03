@@ -201,6 +201,68 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.error).toContain('.workflowId')
   })
+
+  // ── Phase 3 §10 v5: toast position/duration + confirm labels ──
+
+  test('persists a toast with position + durationMs', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = {
+      id: 't-1',
+      kind: 'toast',
+      messageExpr: '"Saved"',
+      variant: 'success',
+      position: 'top-center',
+      durationMs: 5000
+    }
+    const ok = update(btn.id, { onClick: [action] }, figma)
+    expect(ok.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+  })
+
+  test('rejects an invalid toast position and an invalid durationMs', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const badPos = update(
+      btn.id,
+      { onClick: [{ id: 't', kind: 'toast', messageExpr: '"x"', position: 'middle' }] },
+      figma
+    )
+    expect(badPos.ok).toBe(false)
+    if (!badPos.ok) expect(badPos.error).toContain('.position')
+
+    const badMs = update(
+      btn.id,
+      { onClick: [{ id: 't', kind: 'toast', messageExpr: '"x"', durationMs: -1 }] },
+      figma
+    )
+    expect(badMs.ok).toBe(false)
+    if (!badMs.ok) expect(badMs.error).toContain('.durationMs')
+  })
+
+  test('persists confirm custom labels and rejects a non-string label', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = {
+      id: 'cf-1',
+      kind: 'confirm',
+      messageExpr: '"Delete?"',
+      consequent: [{ id: 's', kind: 'stop' }],
+      confirmLabel: 'Delete',
+      cancelLabel: 'Keep'
+    }
+    const ok = update(btn.id, { onClick: [action] }, figma)
+    expect(ok.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+
+    const bad = update(
+      btn.id,
+      { onClick: [{ id: 'cf-2', kind: 'confirm', messageExpr: '"x"', consequent: [], confirmLabel: 7 }] },
+      figma
+    )
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.error).toContain('.confirmLabel')
+  })
 })
 
 /** Phase 3 §10 v4: the `set_workflows` / `read_workflows` document-level tools

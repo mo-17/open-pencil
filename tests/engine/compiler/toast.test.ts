@@ -76,4 +76,33 @@ describe('compile — toast runtime wiring (Phase 3 §10 v2)', () => {
     expect(app).toContain("import { __opToast } from './_lowcode_toast'")
     expect(app).toContain('__opToast("Hi")') // default info → no second arg
   })
+
+  // ── Phase 3 §10 v5: configurable position + duration ──
+
+  test('a positioned toast emits options + the runtime maps every position + seeds the safelist', () => {
+    const out = compileWithClick([
+      {
+        id: 't',
+        kind: 'toast',
+        messageExpr: '"Saved"',
+        variant: 'success',
+        position: 'top-center',
+        durationMs: 5000
+      }
+    ])
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('__opToast("Saved", "success", { position: "top-center", durationMs: 5000 })')
+
+    const runtime = out.files.get('src/_lowcode_toast.tsx') as string
+    expect(runtime).toContain('POSITION_CLASSES')
+    expect(runtime).toContain("'top-center': 'top-4 left-1/2 -translate-x-1/2'")
+    expect(runtime).toContain('options.durationMs ?? 3000')
+    // grouped rendering — one fixed container per active position
+    expect(runtime).toContain('new Set(active.map((t) => t.position))')
+
+    // position classes reach the Tailwind safelist
+    const css = out.files.get('src/index.css') as string
+    expect(css).toContain('top-4')
+    expect(css).toContain('-translate-x-1/2')
+  })
 })

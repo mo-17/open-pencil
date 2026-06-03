@@ -48,6 +48,7 @@ import type {
   SupabaseConfig,
   SupabaseFilter,
   SupabasePayloadEntry,
+  ToastAction,
   WorkflowDef
 } from '#core/scene-graph'
 
@@ -410,6 +411,13 @@ function validateConfirmAction(
   if (value.messageExpr !== undefined && typeof value.messageExpr !== 'string') {
     return failAt(where, '.messageExpr must be a string')
   }
+  // Phase 3 §10 v5: optional static button labels.
+  if (value.confirmLabel !== undefined && typeof value.confirmLabel !== 'string') {
+    return failAt(where, '.confirmLabel must be a string')
+  }
+  if (value.cancelLabel !== undefined && typeof value.cancelLabel !== 'string') {
+    return failAt(where, '.cancelLabel must be a string')
+  }
   const branchesR = validateActionBranches(where, value)
   if (!branchesR.ok) return branchesR
   return {
@@ -419,7 +427,9 @@ function validateConfirmAction(
       kind: 'confirm',
       messageExpr: value.messageExpr,
       consequent: branchesR.consequent,
-      alternate: branchesR.alternate
+      alternate: branchesR.alternate,
+      confirmLabel: value.confirmLabel,
+      cancelLabel: value.cancelLabel
     }
   }
 }
@@ -471,10 +481,20 @@ function validateDelayAction(
 }
 
 const TOAST_VARIANTS = new Set(['info', 'success', 'error'])
+const TOAST_POSITIONS = new Set([
+  'top-left',
+  'top-center',
+  'top-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right'
+])
 
-/** Phase 3 §10 v2: `toast.messageExpr`, when present, must be a string (collect
- *  parses + validates it as an expression); `toast.variant`, when present, must
- *  be one of info / success / error. */
+/** Phase 3 §10 v2 / v5: `toast.messageExpr`, when present, must be a string
+ *  (collect parses + validates it as an expression); `toast.variant`, when
+ *  present, must be one of info / success / error; `toast.position` (§10 v5) must
+ *  be one of the six corners; `toast.durationMs` must be a finite non-negative
+ *  number (collect re-checks and falls back to the default on a bad value). */
 function validateToastAction(
   where: string,
   value: Record<string, unknown>
@@ -484,6 +504,13 @@ function validateToastAction(
   }
   if (value.variant !== undefined && !TOAST_VARIANTS.has(value.variant as string)) {
     return failAt(where, '.variant must be one of info / success / error')
+  }
+  if (value.position !== undefined && !TOAST_POSITIONS.has(value.position as string)) {
+    return failAt(where, '.position must be one of ' + [...TOAST_POSITIONS].join(' / '))
+  }
+  const ms = value.durationMs
+  if (ms !== undefined && (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0)) {
+    return failAt(where, '.durationMs must be a finite non-negative number')
   }
   return { ok: true }
 }
@@ -577,13 +604,16 @@ function buildActionFromValidated(
     case 'stop':
       return { id, kind }
     case 'toast':
-      // Phase 3 §10 v2: messageExpr + variant carry through verbatim;
-      // expression validation happens in IR collect (resolveToast).
+      // Phase 3 §10 v2 / v5: messageExpr + variant + position + durationMs carry
+      // through verbatim; expression validation happens in IR collect
+      // (resolveToast).
       return {
         id,
         kind,
         messageExpr: raw.messageExpr as string | undefined,
-        variant: raw.variant as 'info' | 'success' | 'error' | undefined
+        variant: raw.variant as 'info' | 'success' | 'error' | undefined,
+        position: raw.position as ToastAction['position'],
+        durationMs: raw.durationMs as number | undefined
       }
     case 'confirm':
       // Phase 3 §10 v3: built in validateConfirmAction (its nested consequent /

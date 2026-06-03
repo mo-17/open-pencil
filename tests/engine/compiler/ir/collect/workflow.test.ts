@@ -8,7 +8,8 @@ import type {
   IRClipboardHandler,
   IRConditionalHandler,
   IRConfirmHandler,
-  IREventHandler
+  IREventHandler,
+  IRToastHandler
 } from '#compiler/ir/types'
 
 /**
@@ -448,5 +449,54 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     const cond = onClickHandlers(graph, pageId)[0] as IRConditionalHandler
     expect(cond.kind).toBe('condition')
     expect(cond.consequent).toEqual([{ kind: 'navigate', to: '/go' }])
+  })
+
+  // ── Phase 3 §10 v5: toast position/duration + confirm labels carry to IR ──
+
+  test('toast position + durationMs carry to the IR handler', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [
+        {
+          id: 't',
+          kind: 'toast',
+          messageExpr: '"Saved"',
+          variant: 'success',
+          position: 'top-center',
+          durationMs: 5000
+        }
+      ]
+    })
+    const toast = onClickHandlers(graph, pageId)[0] as IRToastHandler
+    expect(toast.position).toBe('top-center')
+    expect(toast.durationMs).toBe(5000)
+  })
+
+  test('an invalid toast durationMs warns but keeps the toast (default applied)', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [{ id: 't', kind: 'toast', messageExpr: '"Hi"', durationMs: -5 }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-toast-invalid-duration')).toBe(true)
+    const toast = onClickHandlers(graph, pageId)[0] as IRToastHandler
+    expect(toast.kind).toBe('toast')
+    expect(toast.durationMs).toBeUndefined()
+  })
+
+  test('confirm custom labels carry to the IR handler', () => {
+    const { graph, pageId } = makeGraph({
+      onClick: [
+        {
+          id: 'cf',
+          kind: 'confirm',
+          messageExpr: '"Delete?"',
+          consequent: [{ id: 's', kind: 'stop' }],
+          confirmLabel: 'Delete',
+          cancelLabel: 'Keep'
+        }
+      ]
+    })
+    const confirm = onClickHandlers(graph, pageId)[0] as IRConfirmHandler
+    expect(confirm.confirmLabel).toBe('Delete')
+    expect(confirm.cancelLabel).toBe('Keep')
   })
 })

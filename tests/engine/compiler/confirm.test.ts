@@ -96,4 +96,28 @@ describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
     expect(app).toContain("import { __opConfirm } from './_lowcode_confirm'")
     expect(app).toContain('if (await __opConfirm("Sure?")) { return; }')
   })
+
+  // ── Phase 3 §10 v5: custom button labels ──
+
+  test('custom confirm labels emit options + the runtime renders them', () => {
+    const out = compileWithClick([
+      {
+        id: 'cf',
+        kind: 'confirm',
+        messageExpr: '"删除?"',
+        consequent: [{ id: 's', kind: 'stop' }],
+        confirmLabel: '删除',
+        cancelLabel: '保留'
+      }
+    ])
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('await __opConfirm("删除?", { confirmLabel: "删除", cancelLabel: "保留" })')
+
+    const runtime = out.files.get('src/_lowcode_confirm.tsx') as string
+    // runtime renders the per-confirm labels (default 'OK' / 'Cancel' when absent)
+    expect(runtime).toContain('{active.confirmLabel}')
+    expect(runtime).toContain('{active.cancelLabel}')
+    expect(runtime).toContain("options.confirmLabel ?? 'OK'")
+    expect(runtime).toContain("options.cancelLabel ?? 'Cancel'")
+  })
 })

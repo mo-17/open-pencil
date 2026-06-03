@@ -859,7 +859,23 @@ export interface ToastAction {
   kind: 'toast'
   messageExpr?: string
   variant?: 'info' | 'success' | 'error'
+  // Phase 3 §10 v5: screen corner the toast renders in (default 'bottom-right',
+  // = the v2 fixed position). Per-toast, so different actions can target
+  // different corners.
+  position?: ToastPosition
+  // Phase 3 §10 v5: auto-dismiss delay in milliseconds (default 3000). A finite
+  // non-negative number; collect falls back to the default on an invalid value.
+  durationMs?: number
 }
+
+/** Phase 3 §10 v5: the six screen corners a toast can render in. */
+export type ToastPosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
 
 /** Phase 3 §10 v3: ask the user to confirm before running the consequent chain.
  *  `messageExpr` uses the same restricted expression sub-language as
@@ -877,6 +893,11 @@ export interface ConfirmAction {
   messageExpr?: string
   consequent: ActionDef[]
   alternate?: ActionDef[]
+  // Phase 3 §10 v5: custom button labels (static strings, default 'OK' /
+  // 'Cancel'). Static — not the expression sub-language — since button labels
+  // are rarely dynamic; the prompt message stays an expression.
+  confirmLabel?: string
+  cancelLabel?: string
 }
 
 /** Phase 3 §10 v3: copy a value to the clipboard. `valueExpr` uses the same

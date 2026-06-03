@@ -153,6 +153,42 @@ describe('emit toast handlers (Phase 3 §10 v2)', () => {
     ])
     expect(out).toContain('if (res.ok) { __opToast("OK", "success"); }')
   })
+
+  // ── Phase 3 §10 v5: position + duration options ──
+
+  test('a position/duration toast passes an options object (variant explicit)', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'toast',
+        ast: { kind: 'string', value: 'Saved' },
+        references: [],
+        variant: 'info',
+        position: 'top-center',
+        durationMs: 5000
+      }
+    ])
+    expect(out).toBe('() => __opToast("Saved", "info", { position: "top-center", durationMs: 5000 })')
+  })
+
+  test('only position set → options object omits durationMs', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'toast',
+        ast: { kind: 'string', value: 'Hi' },
+        references: [],
+        variant: 'success',
+        position: 'bottom-left'
+      }
+    ])
+    expect(out).toBe('() => __opToast("Hi", "success", { position: "bottom-left" })')
+  })
+
+  test('only duration set → options object omits position', () => {
+    const out = emitEventHandler([
+      { kind: 'toast', ast: { kind: 'string', value: 'Hi' }, references: [], variant: 'info', durationMs: 1000 }
+    ])
+    expect(out).toBe('() => __opToast("Hi", "info", { durationMs: 1000 })')
+  })
 })
 
 /**
@@ -232,5 +268,36 @@ describe('emit confirm + clipboard handlers (Phase 3 §10 v3)', () => {
     expect(out).toBe(
       'async () => { if (await __opConfirm("Copy?")) { navigator.clipboard.writeText("x"); } }'
     )
+  })
+
+  // ── Phase 3 §10 v5: custom confirm button labels ──
+
+  test('confirm with custom labels passes an options object', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'confirm',
+        ast: { kind: 'string', value: 'Delete?' },
+        references: [],
+        consequent: [{ kind: 'stop' }],
+        confirmLabel: 'Delete',
+        cancelLabel: 'Keep'
+      }
+    ])
+    expect(out).toBe(
+      'async () => { if (await __opConfirm("Delete?", { confirmLabel: "Delete", cancelLabel: "Keep" })) { return; } }'
+    )
+  })
+
+  test('confirm with only one custom label omits the other from the options', () => {
+    const out = emitEventHandler([
+      {
+        kind: 'confirm',
+        ast: { kind: 'string', value: 'Sure?' },
+        references: [],
+        consequent: [{ kind: 'stop' }],
+        confirmLabel: 'Yes'
+      }
+    ])
+    expect(out).toContain('await __opConfirm("Sure?", { confirmLabel: "Yes" })')
   })
 })

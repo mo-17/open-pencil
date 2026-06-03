@@ -449,6 +449,19 @@ export interface IRToastHandler {
   /** Identifiers the message expression depends on (state / docState). */
   references: string[]
   variant: 'info' | 'success' | 'error'
+  /** Phase 3 §10 v5: screen corner (default 'bottom-right' applied at runtime
+   *  when absent). Mirrors `ToastPosition` from scene-graph, inlined like
+   *  `variant` to keep the IR free of a scene-graph import. */
+  position?:
+    | 'top-left'
+    | 'top-center'
+    | 'top-right'
+    | 'bottom-left'
+    | 'bottom-center'
+    | 'bottom-right'
+  /** Phase 3 §10 v5: auto-dismiss delay in ms (default 3000 applied at runtime
+   *  when absent). */
+  durationMs?: number
 }
 
 /** Phase 3 §10 v3: gate a workflow on a runtime user confirmation. The adapter
@@ -466,6 +479,10 @@ export interface IRConfirmHandler {
   references: string[]
   consequent: IREventHandler[]
   alternate?: IREventHandler[]
+  /** Phase 3 §10 v5: custom button labels (default 'OK' / 'Cancel' applied at
+   *  runtime when absent). Static strings. */
+  confirmLabel?: string
+  cancelLabel?: string
 }
 
 /** Phase 3 §10 v3: copy a value to the clipboard. The adapter emits
