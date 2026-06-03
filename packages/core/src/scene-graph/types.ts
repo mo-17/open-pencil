@@ -530,7 +530,23 @@ export interface SceneNode {
   // diff against the base. Absent ≡ single (base) layout. Persisted via §12
   // pluginData under `lowcode/responsiveOverrides`.
   responsiveOverrides?: ResponsiveOverrides
+  // ── Lowcode (Phase 3 §9 v7) ──
+  // Document-level translation catalog. Like `lowcodeDocumentState`, only the
+  // root node carries this in practice. Keyed by locale code → source message
+  // string → translated string. The compiler pre-fills each target
+  // `locales/<code>.json` from this (missing entries fall back to the source
+  // string). Authored via the `set_translations` tool (GUI panel deferred).
+  // Persisted via §12 pluginData under `lowcode/translations`.
+  lowcodeTranslations?: LowcodeTranslations
 }
+
+// ── Lowcode (Phase 3 §9 v7) ──
+// Document-level translation catalog: locale code → (source message string →
+// translated string). Keyed by the *source* string (what the builder sees on
+// the canvas / the ICU canonical message), NOT the compiler's content-hash
+// messageId — so the data model is decoupled from the hashing implementation
+// and editor-authorable. Only the root node populates this in practice.
+export type LowcodeTranslations = Record<string, Record<string, string>>
 
 // ── Lowcode (Phase 3 §7) — responsive breakpoints ──────────────────
 // Tailwind's default viewport breakpoints, used as class prefixes. Ordered

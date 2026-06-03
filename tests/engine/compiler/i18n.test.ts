@@ -464,3 +464,75 @@ describe('compile — i18n ICU plural / select (Phase 3 §9 v6)', () => {
     expect(out.warnings.some((w) => w.code === 'text-plural-requires-i18n')).toBe(true)
   })
 })
+
+/**
+ * Phase 3 §9 v7 — translation authoring data model. The document carries a
+ * root-level `lowcodeTranslations` catalog (locale → source message → translated
+ * string). The compiler pre-fills each target `locales/<code>.json` from it,
+ * falling back to the source string for missing entries; authoring a translation
+ * for a locale auto-wires its catalog + runtime + switcher even when the locale
+ * is not listed in `options.locales`.
+ */
+function compileWithTranslations(
+  translations: Record<string, Record<string, string>>,
+  locales: string[] = []
+) {
+  const graph = makeSceneGraph()
+  const pageId = firstPageId(graph)
+  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  graph.createNode('TEXT', frame.id, { text: 'Hello', width: 80, height: 20 })
+  graph.createNode('BUTTON', frame.id, { width: 100, height: 32, interactiveProps: { text: 'Submit' } })
+  graph.updateNode(graph.rootId, { lowcodeTranslations: translations })
+  return compile({
+    graph,
+    pageIds: [pageId],
+    options: withDefaults({ packageName: 'comp', i18n: true, locales })
+  })
+}
+
+describe('compile — translation authoring data model (Phase 3 §9 v7)', () => {
+  test('target stub uses authored translations; missing entries fall back to source', () => {
+    const out = compileWithTranslations({ fr: { Hello: 'Bonjour' } }, ['fr'])
+    const en = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    const fr = JSON.parse(out.files.get('src/locales/fr.json') as string) as Record<string, string>
+    // source catalog is unchanged (always the source strings)
+    expect(Object.values(en).sort()).toEqual(['Hello', 'Submit'])
+    // fr: Hello → translated, Submit → falls back to source
+    expect(Object.values(fr).sort()).toEqual(['Bonjour', 'Submit'])
+    expect(Object.values(fr)).not.toContain('Hello')
+    // same id keys across catalogs (output is keyed by content-hash id)
+    expect(Object.keys(fr).sort()).toEqual(Object.keys(en).sort())
+  })
+
+  test('a translation-only locale (not in options.locales) is still wired', () => {
+    const out = compileWithTranslations({ es: { Hello: 'Hola', Submit: 'Enviar' } }, [])
+    // es stub emitted from the union of options.locales + translation locales
+    expect(out.files.has('src/locales/es.json')).toBe(true)
+    const es = JSON.parse(out.files.get('src/locales/es.json') as string) as Record<string, string>
+    expect(Object.values(es).sort()).toEqual(['Enviar', 'Hola'])
+    // registered in the runtime + a switcher is emitted
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain("import es from './locales/es.json'")
+    expect(runtime).toContain('{ en, es }')
+    expect(out.files.has('src/components/LocaleSwitcher.tsx')).toBe(true)
+  })
+
+  test('options.locales ∪ translation locales (deduped, source excluded)', () => {
+    const out = compileWithTranslations({ fr: { Hello: 'Bonjour' }, en: { Hello: 'IGNORED' } }, ['fr', 'de'])
+    // fr (both), de (declared only), NOT en (source) → never re-emitted as a target
+    expect(out.files.has('src/locales/fr.json')).toBe(true)
+    expect(out.files.has('src/locales/de.json')).toBe(true)
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain('{ en, fr, de }')
+    // de has no authored translations → all entries fall back to source
+    const de = JSON.parse(out.files.get('src/locales/de.json') as string) as Record<string, string>
+    expect(Object.values(de).sort()).toEqual(['Hello', 'Submit'])
+  })
+
+  test('no translations + declared locales → §9 v2 byte-identical (stub = source)', () => {
+    const out = compileWithTranslations({}, ['fr'])
+    const en = out.files.get('src/locales/en.json') as string
+    // v2 behavior: target stub equals the source catalog verbatim
+    expect(out.files.get('src/locales/fr.json')).toBe(en)
+  })
+})

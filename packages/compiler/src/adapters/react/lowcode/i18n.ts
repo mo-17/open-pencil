@@ -53,6 +53,28 @@ export function buildLocaleCatalog(messages: ReadonlyMap<string, string>): strin
   return JSON.stringify(sorted, null, 2) + '\n'
 }
 
+/**
+ * Phase 3 §9 v7 — build a target locale catalog (`locales/<code>.json`)
+ * pre-filled with authored translations. For each message `id`, the value is
+ * `translations[sourceString]` when the document carries a translation for that
+ * source message, else the source string itself (so the app always renders and
+ * react-intl's `defaultMessage` stays consistent). `translations` maps the
+ * SOURCE message string → translated string (see `LowcodeTranslations`); we
+ * resolve through the `messages` map's `id → source` to land on a translation.
+ * Keys are sorted for a stable, diff-friendly file.
+ */
+export function buildTranslatedCatalog(
+  messages: ReadonlyMap<string, string>,
+  translations: Readonly<Record<string, string>> | undefined
+): string {
+  const sorted: Record<string, string> = {}
+  for (const id of [...messages.keys()].sort()) {
+    const source = messages.get(id) ?? ''
+    sorted[id] = translations?.[source] ?? source
+  }
+  return JSON.stringify(sorted, null, 2) + '\n'
+}
+
 /** Phase 3 §9 v2 — a locale code's JS import binding (codes like `zh-CN` are
  *  not valid identifiers, so strip non-alphanumerics → `zhCN`). */
 export function localeIdent(code: string): string {

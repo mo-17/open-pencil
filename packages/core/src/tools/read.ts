@@ -5,6 +5,7 @@ export {
   readDocStates,
   readLowcodeNode,
   readSupabaseConfig,
+  readTranslations,
   type LowcodeNodeRead
 } from './read/lowcode'
 export { findNodes, getNode, getPageTree } from './read/nodes'

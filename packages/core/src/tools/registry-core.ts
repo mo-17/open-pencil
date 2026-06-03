@@ -12,6 +12,7 @@ import {
   setSupabaseConfig,
   setText,
   setTextProperties,
+  setTranslations,
   updateLowcodeNode,
   updateNode
 } from './modify'
@@ -22,7 +23,8 @@ import {
   getSelection,
   readDocStates,
   readLowcodeNode,
-  readSupabaseConfig
+  readSupabaseConfig,
+  readTranslations
 } from './read'
 import type { ToolDef } from './schema'
 import { stockPhoto } from './stock-photo'
@@ -43,6 +45,7 @@ export const CORE_TOOLS: ToolDef[] = [
   readLowcodeNode,
   readDocStates,
   readSupabaseConfig,
+  readTranslations,
   // Create
   render,
   // Modify
@@ -58,6 +61,7 @@ export const CORE_TOOLS: ToolDef[] = [
   updateLowcodeNode,
   setDocStates,
   setSupabaseConfig,
+  setTranslations,
   // Structure
   deleteNode,
   reparentNode,

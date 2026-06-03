@@ -7,7 +7,7 @@ import {
   buildTsConfig,
   buildViteConfig
 } from '#compiler/project'
-import type { ComponentDef, IRNode, IRSupabaseConfig, IRTree } from '#compiler/ir/types'
+import type { ComponentDef, IRNode, IRSupabaseConfig, IRTranslations, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions, CompileWarning } from '#compiler/types'
 
 import type { AdapterEmission, FrameworkAdapter } from '../types'
@@ -17,6 +17,7 @@ import {
   buildLocaleCatalog,
   buildLocaleSwitcher,
   buildLowcodeI18nRuntime,
+  buildTranslatedCatalog,
   REACT_INTL_VERSION,
   SOURCE_CATALOG_FILE,
   SOURCE_LOCALE
@@ -94,7 +95,8 @@ function emitSinglePage(
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = pageUsesToast(cleaned)
   const confirmActive = pageUsesConfirm(cleaned)
-  const targetLocales = resolveTargetLocales(options.locales)
+  const translations = cleaned.translations
+  const targetLocales = resolveTargetLocales(options.locales, translations)
   const extraDeps: Record<string, string> = {
     ...lowcodeStateExtraDeps(cleaned.docStates),
     ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig),
@@ -106,7 +108,7 @@ function emitSinglePage(
   // `setDocState` from `./` (single-page) or `../` (multi-page).
   maybeEmitLowcodeRuntime(files, cleaned.docStates)
   maybeEmitLowcodeSupabaseRuntime(files, cleaned.supabaseConfig)
-  maybeEmitI18n(files, i18nActive, messages, targetLocales)
+  maybeEmitI18n(files, i18nActive, messages, targetLocales, translations)
   maybeEmitLowcodeToastRuntime(files, toastActive)
   maybeEmitLowcodeConfirmRuntime(files, confirmActive)
   emitComponentFiles(files, components, options.devMode)
@@ -141,11 +143,12 @@ function emitMultiPage(
   const files = new Map<string, string | Uint8Array>()
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
+  const translations = irs.find((ir) => ir.translations)?.translations
   const messages = collectMessages(irs, components)
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = irs.some((ir) => pageUsesToast(ir))
   const confirmActive = irs.some((ir) => pageUsesConfirm(ir))
-  const targetLocales = resolveTargetLocales(options.locales)
+  const targetLocales = resolveTargetLocales(options.locales, translations)
   const extraDeps: Record<string, string> = {
     'react-router-dom': REACT_ROUTER_DOM_VERSION,
     ...lowcodeStateExtraDeps(docStates),
@@ -155,7 +158,7 @@ function emitMultiPage(
   files.set('package.json', buildPackageJson(options, extraDeps))
   maybeEmitLowcodeRuntime(files, docStates)
   maybeEmitLowcodeSupabaseRuntime(files, supabaseConfig)
-  maybeEmitI18n(files, i18nActive, messages, targetLocales)
+  maybeEmitI18n(files, i18nActive, messages, targetLocales, translations)
   maybeEmitLowcodeToastRuntime(files, toastActive)
   maybeEmitLowcodeConfirmRuntime(files, confirmActive)
   emitComponentFiles(files, components, options.devMode)
@@ -212,13 +215,16 @@ function maybeEmitI18n(
   files: Map<string, string | Uint8Array>,
   active: boolean,
   messages: ReadonlyMap<string, string>,
-  targetLocales: readonly string[]
+  targetLocales: readonly string[],
+  translations: IRTranslations | undefined
 ): void {
   if (!active) return
-  const catalog = buildLocaleCatalog(messages)
-  files.set(`src/${SOURCE_CATALOG_FILE}`, catalog)
+  // Source locale catalog is always the source strings (it IS the source).
+  files.set(`src/${SOURCE_CATALOG_FILE}`, buildLocaleCatalog(messages))
+  // Phase 3 §9 v7: each target locale catalog is pre-filled from authored
+  // translations (missing entries fall back to the source string).
   for (const loc of targetLocales) {
-    files.set(`src/locales/${loc}.json`, catalog)
+    files.set(`src/locales/${loc}.json`, buildTranslatedCatalog(messages, translations?.[loc]))
   }
   files.set(LOWCODE_I18N_FILE, buildLowcodeI18nRuntime([SOURCE_LOCALE, ...targetLocales]))
   if (targetLocales.length > 0) {
@@ -226,12 +232,18 @@ function maybeEmitI18n(
   }
 }
 
-/** Phase 3 §9 v2: normalize the declared target locales — drop empties, the
- *  source locale, and duplicates (order preserved). */
-function resolveTargetLocales(raw: readonly string[] | undefined): string[] {
+/** Phase 3 §9 v2/v7: normalize the target locales — the union of the declared
+ *  `options.locales` and any locale that carries authored translations (so
+ *  authoring a translation is sufficient to wire its catalog + switcher entry).
+ *  Drops empties, the source locale, and duplicates (declared order first, then
+ *  translation-only locales in catalog order). */
+function resolveTargetLocales(
+  raw: readonly string[] | undefined,
+  translations: IRTranslations | undefined
+): string[] {
   const seen = new Set<string>([SOURCE_LOCALE])
   const out: string[] = []
-  for (const code of raw ?? []) {
+  for (const code of [...(raw ?? []), ...Object.keys(translations ?? {})]) {
     if (typeof code !== 'string' || code === '' || seen.has(code)) continue
     seen.add(code)
     out.push(code)

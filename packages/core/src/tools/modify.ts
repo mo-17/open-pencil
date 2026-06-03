@@ -4,6 +4,7 @@ export { setConstraints, setLayout, setLayoutChild } from './modify/layout'
 export {
   setDocStates,
   setSupabaseConfig,
+  setTranslations,
   updateLowcodeNode
 } from './modify/lowcode'
 export { setFill, setImageFill, setStroke } from './modify/paint'

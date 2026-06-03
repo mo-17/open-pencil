@@ -19,6 +19,7 @@ import type {
   DocumentStateDef,
   EventName,
   LayoutMode,
+  LowcodeTranslations,
   StateDef,
   SupabaseConfig
 } from '#core/scene-graph'
@@ -61,6 +62,10 @@ export interface LowcodeNodeRead {
   /** Root-only: Supabase connection config. Always undefined on
    *  non-root nodes; use `readSupabaseConfig` for the canonical access. */
   lowcodeSupabaseConfig?: SupabaseConfig
+  /** Root-only: document-level translation catalog (Phase 3 §9 v7). Always
+   *  undefined on non-root nodes; use `readTranslations` for the canonical
+   *  access. */
+  lowcodeTranslations?: LowcodeTranslations
 }
 
 type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -77,6 +82,7 @@ function buildLowcodeRead(node: {
   renderCondition?: string
   lowcodeDocumentState?: DocumentStateDef[]
   lowcodeSupabaseConfig?: SupabaseConfig
+  lowcodeTranslations?: LowcodeTranslations
 }): LowcodeNodeRead {
   const out: LowcodeNodeRead = {
     id: node.id,
@@ -91,6 +97,7 @@ function buildLowcodeRead(node: {
   if (node.renderCondition !== undefined) out.renderCondition = node.renderCondition
   if (node.lowcodeDocumentState !== undefined) out.lowcodeDocumentState = node.lowcodeDocumentState
   if (node.lowcodeSupabaseConfig !== undefined) out.lowcodeSupabaseConfig = node.lowcodeSupabaseConfig
+  if (node.lowcodeTranslations !== undefined) out.lowcodeTranslations = node.lowcodeTranslations
   return out
 }
 
@@ -131,5 +138,16 @@ export const readSupabaseConfig = defineTool({
   execute: (figma): ReadResult<SupabaseConfig | null> => {
     const root = getRoot(figma)
     return { ok: true, data: root?.lowcodeSupabaseConfig ?? null }
+  }
+})
+
+export const readTranslations = defineTool({
+  name: 'read_translations',
+  description:
+    "Read the document-level translation catalog stored on the root node (`root.lowcodeTranslations`, Phase 3 §9 v7). Shape: { <localeCode>: { <sourceMessage>: <translatedString> } } — keyed by the SOURCE message string (the visible canvas text / ICU canonical message), which is what `set_translations` accepts and what the compiler matches against to pre-fill each target `src/locales/<locale>.json` (missing entries fall back to the source string). Use this to see which locales have authored translations and how complete each is before a compile with i18n enabled. Always returns { ok: true, data: ... }; data is {} when no translations are authored so AI prompts can branch on a single property. Example: read_translations() → { ok: true, data: { fr: { 'Submit': 'Envoyer' } } } or { ok: true, data: {} }.",
+  params: {},
+  execute: (figma): ReadResult<LowcodeTranslations> => {
+    const root = getRoot(figma)
+    return { ok: true, data: root?.lowcodeTranslations ?? {} }
   }
 })

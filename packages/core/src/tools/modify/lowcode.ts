@@ -41,6 +41,7 @@ import type {
   ActionKind,
   BindingExpr,
   EventName,
+  LowcodeTranslations,
   SceneNode,
   StateDef,
   StateValueType,
@@ -974,5 +975,77 @@ export const setSupabaseConfig = defineTool({
       ctx
     )
     return { ok: true, data: { cleared: false } }
+  }
+})
+
+/** Phase 3 §9 v7: validate a translation catalog — a plain object mapping each
+ *  locale code (non-empty string) to a `Record<sourceMessage, translated>`
+ *  where every value is a string. Rejects scalars/arrays and non-string
+ *  entries so a malformed catalog never persists. */
+function validateTranslations(
+  what: string,
+  raw: unknown
+): { ok: true; translations: LowcodeTranslations } | { ok: false; error: string } {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return failAt(what, 'must be a JSON object { <locale>: { <source>: <translated> } }')
+  }
+  const out: LowcodeTranslations = {}
+  for (const [locale, messages] of Object.entries(raw)) {
+    if (locale === '') return failAt(what, 'locale code must be a non-empty string')
+    if (messages === null || typeof messages !== 'object' || Array.isArray(messages)) {
+      return failAt(what, `locale "${locale}" must map to an object of source→translated strings`)
+    }
+    const map: Record<string, string> = {}
+    for (const [source, translated] of Object.entries(messages)) {
+      if (typeof translated !== 'string') {
+        return failAt(what, `translation for "${source}" in locale "${locale}" must be a string`)
+      }
+      map[source] = translated
+    }
+    out[locale] = map
+  }
+  return { ok: true, translations: out }
+}
+
+export const setTranslations = defineTool({
+  name: 'set_translations',
+  mutates: true,
+  description:
+    "Replace the root node's lowcodeTranslations catalog wholesale (Phase 3 §9 v7). Pass the FULL catalog — locales / entries omitted from the JSON are deleted (no per-entry diff; include existing entries again to preserve them). Pass the literal string \"null\" or '{}' to clear all translations. Shape: { <localeCode>: { <sourceMessage>: <translatedString> } } — keyed by the SOURCE message string (the visible canvas text / ICU canonical message the builder authored, NOT the compiler's content-hash id). The compiler pre-fills each target `src/locales/<locale>.json` from this; a missing entry falls back to the source string (so the app always renders). Authoring a translation for a locale auto-emits that locale's JSON + registers it in the i18n runtime + LocaleSwitcher even if it is not listed in CompilerOptions.locales. Only consulted when the compile runs with i18n enabled. Every locale code must be a non-empty string and every translated value must be a string; malformed input is rejected (no silent drops). One call → one undo entry. Example: set_translations({ translations_json: '{\"fr\":{\"Submit\":\"Envoyer\",\"Welcome, {name}!\":\"Bienvenue, {name} !\"}}' }) → { ok: true, data: { locales: 1, entries: 2 } }. Clear example: set_translations({ translations_json: 'null' }) → { ok: true, data: { locales: 0, entries: 0 } }.",
+  params: {
+    translations_json: {
+      type: 'string',
+      description:
+        'JSON object { <locale>: { <source>: <translated> } }, OR the literal string "null" / "{}" to clear.',
+      required: true
+    }
+  },
+  execute: (figma, args, ctx): ModifyResult<{ locales: number; entries: number }> => {
+    const parsed = parseJson(args.translations_json, 'translations_json')
+    if (!parsed.ok) return fail(parsed.error)
+    if (parsed.value === null) {
+      applyPatchWithUndo(
+        figma,
+        figma.graph.rootId,
+        { lowcodeTranslations: undefined },
+        'AI: set_translations',
+        ctx
+      )
+      return { ok: true, data: { locales: 0, entries: 0 } }
+    }
+    const r = validateTranslations('translations_json', parsed.value)
+    if (!r.ok) return r
+    const locales = Object.keys(r.translations)
+    const entries = locales.reduce((n, loc) => n + Object.keys(r.translations[loc] ?? {}).length, 0)
+    // An empty catalog ({}) clears the field — keep absent ≡ no translations so
+    // .fig output stays byte-identical (isNonEmpty gate on the serialize side).
+    applyPatchWithUndo(
+      figma,
+      figma.graph.rootId,
+      { lowcodeTranslations: locales.length > 0 ? r.translations : undefined },
+      'AI: set_translations',
+      ctx
+    )
+    return { ok: true, data: { locales: locales.length, entries } }
   }
 })

@@ -4516,6 +4516,53 @@ CODE COMPLETE 2026-06-03。B 方案成立,零 hotfix,零 core 改动。**关键*
 
 **§9 v7 follow-ups:** 翻译授权数据模型(编辑器填译文);`sourceLocale` 可配;plural body 内插值(`${}` in ICU);GUI ICU 校验。
 
+## §9 v7 — 翻译授权数据模型(document 级译文 catalog + emit 预填)
+
+> §9 v6 follow-up。2026-06-03 挑定 = **§9 v7**;scope fork(助手推荐,用户偏「全做」但本条选 A 收敛)= **A 数据模型 + round-trip + `set_translations` tool + emit 预填 locale JSON**(GUI 填译文面板延后真机;`sourceLocale` 可配 + plural-body 插值留 v8)。CODE COMPLETE 2026-06-03(commit 见下)。
+
+### 9v7.1 现状与问题
+
+§9 v1–v6 把可见文本 externalize 成 `<FormattedMessage id defaultMessage/>` + 源 catalog `locales/en.json`,§9 v2 还能为每个目标 locale emit `locales/<code>.json` 桩。但**桩里预填的是源串**(`buildLocaleCatalog(messages)`)—— 译文存在哪里?此前**无处可存**:开发者只能手改导出后的 JSON。这违背 lowcode「非开发者搭应用」的前提——搭建者应该在编辑器/工具里填译文,编译器据此 emit 预填的 `locales/<code>.json`。v7 补这一层:**译文进文档**(document 级 catalog,走既有 pluginData 安全通道,同 documentState/supabaseConfig),`set_translations` 工具授权(AI/CLI 可填),编译器 emit 时用授权译文预填、缺译回退源串。
+
+### 9v7.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **译文存 document 级**(root SceneNode 的 `lowcodeTranslations`)| 同 `lowcodeDocumentState`/`lowcodeSupabaseConfig`——root-only,走 `lowcode/translations` pluginData 通道。非 per-node(译文跨页共享、按消息内容去重,per-node 会割裂 §9 的 hash-key 去重语义)。 |
+| 2 | **按「源串」keying,不按 messageId** `Record<localeCode, Record<sourceMessage, translated>>` | messageId 是编译期 fnv-1a hash,编辑器不知道;源串是搭建者在 canvas 上看见的文本(ICU 规范串,= `messages` map 的 value)。编译器 emit 时 `messages` 的每个 `(id, source)` 用 `translations[loc]?.[source] ?? source` 解析 → output 仍按 id keying(FormattedMessage 用 id 查)。decouple 数据模型与 hash 实现。 |
+| 3 | **缺译回退源串**(不 drop、不 warn)| 译文 catalog 是渐进填充;某 locale 缺某条 → 该条 emit 源串(= react-intl `defaultMessage` 行为一致),应用永远可渲染。 |
+| 4 | **target locale = `options.locales` ∪ `translations` 的 locale 键** | 授权一条 `fr` 译文即足以让 `locales/fr.json` + runtime CATALOGS + LocaleSwitcher 出现(「填了就生效」),不必再在 `options.locales` 重复声明。源 locale 排除、去重。 |
+| 5 | **`set_translations` 工具整体替换**(wholesale,同 `set_doc_states`/`set_supabase_config`)| 传完整 `{locale: {source: translated}}`;`null`/`{}` 清空。每 locale 码非空串、每 message map 是 `Record<string,string>`;非法整体 reject(不静默丢)。一次调用 = 一次 undo。 |
+
+### 9v7.3 公开 API / Schema 改动
+
+- **scene-graph/types.ts**:`SceneNode.lowcodeTranslations?: LowcodeTranslations`,新类型 `LowcodeTranslations = Record<string /*localeCode*/, Record<string /*sourceMessage*/, string /*translated*/>>`(root-only in practice)。
+- **新工具 `set_translations`**(tools/modify/lowcode.ts + registry-core.ts + modify.ts re-export):替换 `root.lowcodeTranslations`。
+- **read 侧**:`read_lowcode_node` 加 `lowcodeTranslations` 字段透出;新增 `read_translations`(canonical read,同 `read_doc_states`/`read_supabase_config`)。
+- **compiler**:`IRTree.translations?: IRTranslations`(IR-local mirror,同 `IRSupabaseConfig`);零 `CompilerOptions` 改动(沿用 `i18n` flag + `locales`)。
+
+### 9v7.4 内部实现拆解
+
+1. **数据模型**(scene-graph/types.ts):`LowcodeTranslations` 类型 + `SceneNode.lowcodeTranslations?`。
+2. **round-trip**(kiwi/fig/node-change/lowcode-plugin-data.ts):`LOWCODE_TRANSLATIONS_KEY='lowcode/translations'` 入 `LOWCODE_PLUGIN_KEYS`;`serializeLowcodeFields` 末尾 `isNonEmpty(node.lowcodeTranslations)` → makeEntry;`ExtractedLowcodeAndPluginData.lowcodeTranslations` + `assignLowcodeField` case(light guard:非 null 非 array 对象);`assignImportedLowcodeFields`(import.ts root/page)加 `if (ex.lowcodeTranslations) node.lowcodeTranslations = …`。regular node 经 `...lowcodeRest` 自动流(root-only 实际只走 import.ts)。
+3. **工具**(tools/modify/lowcode.ts):`validateTranslations(raw)`(每 locale 码 string + 非空,每 value 是 string→string map)→ `setTranslations` defineTool 整体替换(mirror `setSupabaseConfig`:`null`→clear);`updateLowcodeNode` 不收 translations(root-only 专用工具,避免 per-node 误写)。
+4. **read**(tools/read/lowcode.ts):readLowcodeNode 出参加 `lowcodeTranslations`;新 `readTranslations` ToolDef。
+5. **compiler lift**(ir/collect/tree.ts):`collectTree` 读 `graph.getNode(graph.rootId)?.lowcodeTranslations` → `IRTree.translations`(同 supabaseConfig lift,line ~82)。
+6. **compiler emit**(adapters/react/index.ts + lowcode/i18n.ts):新 `buildTranslatedCatalog(messages, translationsForLocale)`(每 `(id, source)` → `translationsForLocale?.[source] ?? source`,排序);`resolveTargetLocales(options.locales, translations)` 改取并集;`maybeEmitI18n` 每 target locale 用 `buildTranslatedCatalog(messages, translations?.[loc])` 而非源 catalog;源 `en.json` 仍 `buildLocaleCatalog`(源串)。runtime CATALOGS + LocaleSwitcher 用并集 target 列表(既有参数化,零额外改)。
+
+### 9v7.5 成功标准 / 测试
+
+- round-trip:`lowcodeTranslations` 经 exportFigFile→parseFigFile 存活(kiwi lowcode/roundtrip +1)。
+- 工具:`set_translations` 写入 + `read_translations` 读回 + 清空 + 非法 reject(workflow 外的新 translations-tool.test +N)。
+- compiler:i18n 开 + 目标 `fr` 有部分译文 → `locales/fr.json` 用译文预填、缺译回退源串;`locales/en.json` 仍源串;只授权译文(`options.locales` 不含 `fr`)→ `fr` 仍 emit + 进 CATALOGS + LocaleSwitcher;无译文 → §9 v2 行为 byte-identical(i18n.test +N)。
+- compiler 全绿(目标 ≥ 545/0),`bun run check` exit 0,tsgo 0。
+
+### 9v7.6 Post-mortem
+
+(回填)
+
+**§9 v8 follow-ups:** GUI 填译文面板(真机);`sourceLocale` 可配(源语言非 en);plural body 内 `${}` 插值;译文覆盖率/缺译高亮。
+
 ## §10 v2 toast/notify action — 工作流用户反馈 + 运行时 ToastHost(设计 2026-06-03)
 
 > §10 v1 follow-up。用户 2026-06-03 挑定 = **§10 v2 toast**;分叉锁定 = **表达式 message + severity variant**(否决静态串 / 无 variant)。§10 v1 曾否决 toast(「需 runtime surface」),v2 正补这个 surface。

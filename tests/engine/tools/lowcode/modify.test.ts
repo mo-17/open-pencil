@@ -353,6 +353,84 @@ describe('set_supabase_config', () => {
   })
 })
 
+describe('set_translations / read_translations (§9 v7)', () => {
+  test('sets a translation catalog and reads it back', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('set_translations').execute(figma, {
+      translations_json: JSON.stringify({
+        fr: { Submit: 'Envoyer', 'Welcome, {name}!': 'Bienvenue, {name} !' },
+        'zh-CN': { Submit: '提交' }
+      })
+    }) as Result<{ locales: number; entries: number }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data?.locales).toBe(2)
+    expect(result.data?.entries).toBe(3)
+    const stored = graph.getNode(graph.rootId)?.lowcodeTranslations
+    expect(stored?.fr?.Submit).toBe('Envoyer')
+    expect(stored?.['zh-CN']?.Submit).toBe('提交')
+    const read = getTool('read_translations').execute(figma, {}) as Result<
+      Record<string, Record<string, string>>
+    >
+    expect(read.ok).toBe(true)
+    if (!read.ok) return
+    expect(read.data?.fr?.['Welcome, {name}!']).toBe('Bienvenue, {name} !')
+  })
+
+  test('clears via JSON null', () => {
+    const { figma, graph } = setupToolTest()
+    graph.updateNode(graph.rootId, { lowcodeTranslations: { fr: { Submit: 'Envoyer' } } })
+    const result = getTool('set_translations').execute(figma, {
+      translations_json: 'null'
+    }) as Result<{ locales: number; entries: number }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data?.locales).toBe(0)
+    expect(graph.getNode(graph.rootId)?.lowcodeTranslations).toBeUndefined()
+  })
+
+  test('an empty object clears the field (absent ≡ no translations)', () => {
+    const { figma, graph } = setupToolTest()
+    graph.updateNode(graph.rootId, { lowcodeTranslations: { fr: { Submit: 'Envoyer' } } })
+    const result = getTool('set_translations').execute(figma, {
+      translations_json: '{}'
+    }) as Result<{ locales: number; entries: number }>
+    expect(result.ok).toBe(true)
+    expect(graph.getNode(graph.rootId)?.lowcodeTranslations).toBeUndefined()
+  })
+
+  test('rejects a non-string translation value', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('set_translations').execute(figma, {
+      translations_json: JSON.stringify({ fr: { Submit: 42 } })
+    }) as Result<{ locales: number; entries: number }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('must be a string')
+    expect(graph.getNode(graph.rootId)?.lowcodeTranslations).toBeUndefined()
+  })
+
+  test('rejects a locale mapping that is not an object', () => {
+    const { figma } = setupToolTest()
+    const result = getTool('set_translations').execute(figma, {
+      translations_json: JSON.stringify({ fr: 'nope' })
+    }) as Result<{ locales: number; entries: number }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('source→translated')
+  })
+
+  test('read_translations returns {} when none authored', () => {
+    const { figma } = setupToolTest()
+    const read = getTool('read_translations').execute(figma, {}) as Result<
+      Record<string, Record<string, string>>
+    >
+    expect(read.ok).toBe(true)
+    if (!read.ok) return
+    expect(read.data).toEqual({})
+  })
+})
+
 /**
  * Phase 3 §3.v2 step 1 — editor ctx undo path. With `ctx.editor` present
  * the mega tools push one `UndoEntry` per dispatch, so Cmd+Z restores

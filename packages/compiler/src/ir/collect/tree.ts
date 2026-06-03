@@ -80,6 +80,9 @@ export function collectTree(
   // adapter can decide to emit `_lowcode_supabase.ts` without re-reading
   // the SceneGraph (which it doesn't have access to from `emit(irs, opts)`).
   const supabaseConfig = graph.getNode(graph.rootId)?.lowcodeSupabaseConfig
+  // Phase 3 §9 v7: lift root-level translation catalog onto the tree so the
+  // adapter pre-fills `locales/<code>.json` from authored translations.
+  const translations = graph.getNode(graph.rootId)?.lowcodeTranslations
 
   if (!page) {
     return {
@@ -91,6 +94,7 @@ export function collectTree(
       docStateReads: [],
       docStateWrites: [],
       supabaseConfig,
+      translations,
       warnings
     }
   }
@@ -122,6 +126,7 @@ export function collectTree(
     docStateReads: [...docStateReads],
     docStateWrites: [...docStateWrites],
     supabaseConfig,
+    translations,
     warnings
   }
 }

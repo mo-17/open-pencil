@@ -20,6 +20,7 @@ import type {
   DocumentStateDef,
   EventName,
   GridPosition,
+  LowcodeTranslations,
   NodeType,
   PluginDataEntry,
   ResponsiveOverrides,
@@ -80,6 +81,11 @@ export const LOWCODE_GRID_POSITION_KEY = 'lowcode/gridPosition'
  *  responsive panel stay byte-identical. Structured field like state/bindings
  *  — restored straight onto the SceneNode, no separate codec override. */
 export const LOWCODE_RESPONSIVE_OVERRIDES_KEY = 'lowcode/responsiveOverrides'
+/** Phase 3 §9 v7: document-level translation catalog, attached to the root node
+ *  only. Value is the JSON-encoded `LowcodeTranslations` map (`{ <locale>: {
+ *  <sourceMessage>: <translated> } }`). Absent ≡ no authored translations, so
+ *  .fig files that never touched the i18n panel stay byte-identical. */
+export const LOWCODE_TRANSLATIONS_KEY = 'lowcode/translations'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -110,7 +116,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_AXIS_SIZING_KEY,
   LOWCODE_COUNTER_ALIGN_CONTENT_KEY,
   LOWCODE_GRID_POSITION_KEY,
-  LOWCODE_RESPONSIVE_OVERRIDES_KEY
+  LOWCODE_RESPONSIVE_OVERRIDES_KEY,
+  LOWCODE_TRANSLATIONS_KEY
 ])
 
 /**
@@ -167,6 +174,11 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // nothing → non-responsive .fig files stay byte-identical.
   if (isNonEmpty(node.responsiveOverrides)) {
     entries.push(makeEntry(LOWCODE_RESPONSIVE_OVERRIDES_KEY, node.responsiveOverrides))
+  }
+  // Phase 3 §9 v7: document-level translation catalog (root node only). Empty/
+  // absent map writes nothing → non-translated .fig files stay byte-identical.
+  if (isNonEmpty(node.lowcodeTranslations)) {
+    entries.push(makeEntry(LOWCODE_TRANSLATIONS_KEY, node.lowcodeTranslations))
   }
   return entries
 }
@@ -250,6 +262,10 @@ export interface ExtractedLowcodeAndPluginData {
   /** Phase 3 §7: per-breakpoint responsive overrides. Structured field — flows
    *  straight onto the SceneNode via `...lowcodeRest` (no codec override). */
   responsiveOverrides?: ResponsiveOverrides
+  /** Phase 3 §9 v7: document-level translation catalog (root node only).
+   *  Restored onto the root via `assignImportedLowcodeFields`; on regular nodes
+   *  it flows through `...lowcodeRest` (harmless — root-only in practice). */
+  lowcodeTranslations?: LowcodeTranslations
 }
 
 export function extractLowcodeAndPluginData(
@@ -320,6 +336,13 @@ function assignLowcodeField(
       // JSON.parse already logged a warn for true parse failures.
       if (isSupabaseConfig(value)) target.lowcodeSupabaseConfig = value
       return
+    case LOWCODE_TRANSLATIONS_KEY:
+      // Light guard: a non-null, non-array object. Per-locale / per-message
+      // shape isn't strictly validated here — the compiler emit only reads
+      // string values via `?? source` fallback, so a stray non-string is
+      // harmless. The write path (`set_translations`) validates strictly.
+      if (isLowcodeTranslations(value)) target.lowcodeTranslations = value
+      return
     default:
       // Layout round-trip fixes (axis sizing / counter-align / grid placement)
       // and §7 responsive overrides — grouped out to keep this switch under
@@ -352,6 +375,13 @@ function assignLowcodeLayoutFix(
  *  known breakpoint keys (`sm`/`md`/`lg`/`xl`), so any stray keys are ignored
  *  harmlessly; we just reject scalars/arrays from a corrupt .fig. */
 function isResponsiveOverrides(value: unknown): value is ResponsiveOverrides {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/** Light guard: a non-null, non-array object (locale → message map). The emit
+ *  side reads string values defensively (`?? source`), so loose shape is safe;
+ *  strict per-message validation lives on the write path (`set_translations`). */
+function isLowcodeTranslations(value: unknown): value is LowcodeTranslations {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 

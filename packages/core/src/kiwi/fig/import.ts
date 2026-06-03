@@ -32,6 +32,7 @@ function assignImportedLowcodeFields(node: SceneNode, nc: NodeChange): void {
   if (ex.renderCondition !== undefined) node.renderCondition = ex.renderCondition
   if (ex.lowcodeDocumentState) node.lowcodeDocumentState = ex.lowcodeDocumentState
   if (ex.lowcodeSupabaseConfig) node.lowcodeSupabaseConfig = ex.lowcodeSupabaseConfig
+  if (ex.lowcodeTranslations) node.lowcodeTranslations = ex.lowcodeTranslations
 }
 
 function applyImportedCanvasMetadata(

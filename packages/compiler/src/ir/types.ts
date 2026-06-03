@@ -523,9 +523,20 @@ export interface IRTree {
    *  whether to emit `_lowcode_supabase.ts` and inject the supabase-js
    *  dependency. Undefined when the document has no Supabase wiring. */
   supabaseConfig?: IRSupabaseConfig
+  /** Phase 3 §9 v7: document-level translation catalog from the root SceneNode,
+   *  lifted into every IRTree from the same compile. The adapter pre-fills each
+   *  target `locales/<code>.json` from this (missing entries fall back to the
+   *  source string). Keyed by locale code → source message → translated string.
+   *  Undefined when the document has no authored translations. */
+  translations?: IRTranslations
   /** Warnings raised while collecting the IR (invalid bindings, expressions, etc.). */
   warnings: IRWarning[]
 }
+
+/** Phase 3 §9 v7: IR-local mirror of `LowcodeTranslations` from scene-graph, so
+ *  the adapter layer never reaches into core. Locale code → (source message
+ *  string → translated string). */
+export type IRTranslations = Record<string, Record<string, string>>
 
 /** Phase 3 §2: IR-local mirror of `SupabaseConfig` from scene-graph, so the
  *  adapter layer never has to reach into core. Same shape — anonKey is the

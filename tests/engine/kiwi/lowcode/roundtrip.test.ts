@@ -473,4 +473,30 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
 
     expect(findByName(reimported, 'PlainStack').responsiveOverrides).toBeUndefined()
   })
+
+  test('root lowcodeTranslations catalog round-trips through .fig (Phase 3 §9 v7)', async () => {
+    const graph = new SceneGraph()
+    const translations = {
+      fr: { Submit: 'Envoyer', 'Welcome, {name}!': 'Bienvenue, {name} !' },
+      'zh-CN': { Submit: '提交' }
+    }
+    graph.updateNode(graph.rootId, { lowcodeTranslations: translations })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedRoot = reimported.getNode(reimported.rootId)
+
+    expect(reimportedRoot?.lowcodeTranslations).toEqual(translations)
+  })
+
+  test('graph without lowcodeTranslations → reimported root has the field undefined (byte regression)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('RECTANGLE', page.id, { name: 'Plain', width: 80, height: 60 })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(reimported.getNode(reimported.rootId)?.lowcodeTranslations).toBeUndefined()
+  })
 })
