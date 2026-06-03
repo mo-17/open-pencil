@@ -112,7 +112,7 @@ export function collectTree(
   }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
-    if (!child.visible) continue
+    if (!shouldEmitChild(child, ctx)) continue
     const ir = nodeToIR(child, ctx)
     if (ir) children.push(ir)
   }
@@ -217,12 +217,24 @@ function dedupeProps(propSlots: Map<string, ComponentSlot>): ComponentProp[] {
   return [...byName.values()]
 }
 
+/** Phase 3 §8 v8 — whether a child reaches emit. Visible children always do;
+ *  an invisible child is kept ONLY when it carries a component prop slot — i.e.
+ *  some instance overrides it (a `:visible=true` reverse override, or any other
+ *  override on a base-hidden child). Such a child emits with `hidden` in its
+ *  base className (§8 v7a) so clean / non-revealing instances stay hidden, while
+ *  a revealing instance drops `hidden` via the className prop. Page walks have
+ *  no `componentPropSlots`, so this collapses to plain `child.visible` there
+ *  (base-hidden page nodes are still skipped — that re-show is §7 v2). */
+function shouldEmitChild(child: SceneNode, ctx: WalkCtx): boolean {
+  return child.visible || (ctx.componentPropSlots?.has(child.id) ?? false)
+}
+
 /** Walk a master / variant node's visible children through the shared
  *  `nodeToIR` pipeline into a component-body subtree. */
 function collectChildSubtree(graph: SceneGraph, parentId: string, ctx: WalkCtx): IRNode[] {
   const children: IRNode[] = []
   for (const child of graph.getChildren(parentId)) {
-    if (!child.visible) continue
+    if (!shouldEmitChild(child, ctx)) continue
     const ir = nodeToIR(child, ctx)
     if (ir) children.push(ir)
   }
@@ -872,7 +884,7 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
     if (irList) children.push(irList)
   } else if (CONTAINER_TYPES_FOR_RECURSION.has(node.type)) {
     for (const child of ctx.graph.getChildren(node.id)) {
-      if (!child.visible) continue
+      if (!shouldEmitChild(child, ctx)) continue
       const ir = nodeToIR(child, ctx)
       if (ir) children.push(ir)
     }

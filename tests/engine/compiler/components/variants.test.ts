@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
+import type { Fill, SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
+
+const GREEN: Fill = { type: 'SOLID', color: { r: 0, g: 1, b: 0, a: 1 }, opacity: 1, visible: true }
 
 /**
  * Phase 3 §8 v4 — COMPONENT_SET variants. A SET (with ≥1 instanced variant)
@@ -173,5 +175,48 @@ describe('compile — COMPONENT_SET variant defaults (Phase 3 §8 v7)', () => {
     const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
     const comp = out.files.get('src/components/Button.tsx') as string
     expect(comp).toContain('size = "Large", state = "Default"')
+  })
+})
+
+describe('compile — COMPONENT_SET instance :visible reverse (Phase 3 §8 v8)', () => {
+  test('a :visible=true override reveals a base-hidden child inside a variant subtree', () => {
+    const graph = makeSceneGraph()
+    const setPage = firstPageId(graph)
+    const usePage = graph.addPage('Use').id
+    const set = graph.createNode('COMPONENT_SET', setPage, { name: 'Card', width: 200, height: 100 })
+    // both variants carry a base-hidden 'Badge' (same name → one shared SET slot,
+    // fanned out to both variant descendant ids by `descendantsOf`).
+    const large = graph.createNode('COMPONENT', set.id, {
+      name: 'Size=Large, State=Default',
+      width: 120,
+      height: 40,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('RECTANGLE', large.id, { name: 'Badge', width: 20, height: 20, fills: [GREEN], visible: false })
+    const small = graph.createNode('COMPONENT', set.id, {
+      name: 'Size=Small, State=Hover',
+      width: 80,
+      height: 28,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('RECTANGLE', small.id, { name: 'Badge', width: 20, height: 20, fills: [GREEN], visible: false })
+
+    const inst = graph.createInstance(small.id, usePage)
+    if (inst) {
+      const child = graph.getChildren(inst.id)[0] // the Badge clone
+      graph.updateNode(child.id, { visible: true })
+      inst.overrides = { [`${child.id}:visible`]: true }
+    }
+
+    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const comp = out.files.get('src/components/Card.tsx') as string
+    // the hidden Badge is now in the variant body, parameterized via a shared prop
+    expect(comp).toContain('bg-[#00FF00]')
+    expect(comp).toContain('badgeClassName')
+    // the revealing instance drops `hidden`
+    const app = out.files.get('src/App.tsx') as string
+    const passed = app.match(/<Card[^>]*\bbadgeClassName="([^"]*)"/)
+    expect(passed).not.toBeNull()
+    expect(passed?.[1]).not.toContain('hidden')
   })
 })

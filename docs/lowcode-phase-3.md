@@ -4202,6 +4202,46 @@ CODE COMPLETE 2026-06-03。设计成立,1 轮 lint 收口:
 
 **§8 v8 follow-ups:** component props 编辑器面板(GUI);nested-instance override(实例套实例);`:visible` 的 reverse(base-hidden→instance-show,= §7 re-show 同款,需 tree.ts emit-when-revealed)。
 
+## §8 v8 — instance `:visible` reverse(base-hidden child 被实例揭示)
+
+> §8 v7 follow-up。2026-06-03 挑定 = **§8 v8**;scope(助手推荐,用户「一个一个来 / 继续」未走 AskUserQuestion)= **instance `:visible` reverse**(component 链最连贯;nested-instance override + responsive re-show + GUI props 面板留 v9/§7 v2/真机)。CODE COMPLETE 2026-06-03(commit 见下)。
+
+### 8v8.1 现状与问题
+
+§8 v7a 做了 `:visible` **forward**(master 可见 child,instance `:visible=false` 隐藏它):instance 经 className prop 传 `tailwindClassName(instChild)`,§8 v7a 在 `!node.visible` 时给 className 追加 `hidden`。但 **reverse**(master/base child 本身 `visible:false`,某 instance `:visible=true` 想揭示它)做不到:tree.ts 的三个 walk 点(page `:115`、master body `collectChildSubtree :225`、嵌套容器递归 `:875`)都 `if(!child.visible) continue` —— **隐藏的 master child 在 emit 前就被丢弃**,component body 里根本没有这个元素,prop 槽声明了却没人用,实例无从揭示。这也是 §7 / §8 v7 都延后的「re-show」同款 gap(本次只做 component 实例侧)。
+
+### 8v8.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **唯一改动 = walk 的 skip 条件**:隐藏 child 若有 prop 槽则不跳过 | 揭示机制**全部已就位**:`:visible` override→`overrideKind`='className'→accumulateSlots 建 className 槽(default = `tailwindClassName(hidden master)` 含 `hidden`,§8 v7a);`resolveInstanceProps` 揭示实例传 `tailwindClassName(instChild=visible)`(无 hidden)。所以只差「别在 emit 前丢掉有槽的隐藏 master child」。零 IR / scene-graph / round-trip / emit 模板改动。 |
+| 2 | **槽存在性判定 = `ctx.componentPropSlots?.has(child.id)`** | 槽在 plain + SET 两路均 **id-keyed**(plain `accumulateSlots(keyOf=id)`;SET `buildSetPropSlots` 经 `descendantsOf` 扇出到每后代 id —— `descendantsOf` 不过滤 visible,隐藏后代也得槽)。page walk 无 `componentPropSlots`(undefined)→ 退化为原行为(照常跳过隐藏)。 |
+| 3 | **抽 `keepHiddenChild(child, ctx)` 三点共用** | 三 walk 点同一谓词;DRY 避 jscpd。`!child.visible && !ctx.componentPropSlots?.has(child.id)` → 跳过。 |
+| 4 | **edge:有槽但无人揭示的隐藏 child 仍会被纳入 body(渲染为 inert `hidden` 元素)** | 仅当某实例对该隐藏 child 有**任意** override(非只 `:visible`)时才有槽;纳入后默认 className 含 `hidden` → 视觉等价于原「省略」,只多一个不渲染的隐藏元素。可接受(更如实表达 override),post-mortem 标注。 |
+
+### 8v8.3 公开 API / Schema 改动
+
+无。纯 collect-walk 改动(tree.ts 一个谓词 helper + 三处调用点替换)。
+
+### 8v8.4 内部实现拆解
+
+1. **helper**(tree.ts):`keepHiddenChild` 反义 —— 直接写 `shouldEmitChild(child, ctx): boolean = child.visible || (ctx.componentPropSlots?.has(child.id) ?? false)`。
+2. **三 walk 点**:`:115` page、`:225` collectChildSubtree、`:875` 嵌套容器递归,`if (!child.visible) continue` → `if (!shouldEmitChild(child, ctx)) continue`。page ctx 无 slots → 行为不变(零回归)。
+3. 揭示链(已有,零改):隐藏 master child 现进 body → `nodeToIR`→`buildElement` 见 `classNameProp`(§8 v6)→ emit `className={boxClassName}`(plain 默认 `= "...hidden"` / variant `?? "...hidden"`);clean / 不揭示实例用默认(hidden)→ 维持隐藏;揭示实例传无-hidden className → 显示。
+
+### 8v8.5 成功标准 / 测试
+
+- 隐藏 master child + 实例 `:visible=true` override → component body 含该 child(默认 className 有 `hidden`)、揭示实例 ref 传无 hidden 的 className prop、clean 实例维持 hidden。
+- 隐藏 master child **无任何 override** → 仍省略(byte-identical 回归);可见 child 不受影响。
+- SET variant 子树里的隐藏 child 经扇出槽同样可揭示。
+- compiler 全绿(目标 ≥ 545/0),`bun run check` exit 0,tsgo 0。
+
+### 8v8.6 Post-mortem
+
+(回填)
+
+**§8 v9 follow-ups:** nested-instance override(实例套实例);responsive `:visible` re-show(page/容器 base-hidden→`bp:block`,= §7 v2,改 collectResponsiveTailwindClasses + page-walk skip);component props 编辑器面板(GUI)。
+
 ## §9 编译产物 i18n 运行时 — 设计字符串外置 + react-intl runtime(设计 2026-06-02)
 
 > 用户 2026-06-02 挑定(§8 链 v1–v6 收尾后转新领域)。三 fork AskUserQuestion 锁定 = **react-intl(FormatJS)** + **内容 hash key** + **仅可见文本**(否决 lingui 需 build-step 插件、节点 id key 不去重、含属性串需 useIntl 面大)。

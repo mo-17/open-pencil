@@ -107,3 +107,74 @@ describe('compile — override→props generalized (Phase 3 §8 v6)', () => {
     expect(out.files.get('src/index.css') as string).toContain('hidden')
   })
 })
+
+const GREEN = solid(0, 1, 0)
+
+/** Master 'Tag' whose 'Box' child is base-HIDDEN (visible:false). The reverse of
+ *  §8 v7: an instance reveals it via a `:visible=true` override. */
+function makeHiddenChildGraph(): { graph: SceneGraph; pageId: string; masterId: string } {
+  const graph = makeSceneGraph()
+  const pageId = firstPageId(graph)
+  const master = graph.createNode('COMPONENT', pageId, {
+    name: 'Tag',
+    width: 120,
+    height: 40,
+    layoutMode: 'VERTICAL'
+  })
+  graph.createNode('RECTANGLE', master.id, {
+    name: 'Box',
+    width: 100,
+    height: 20,
+    fills: [GREEN],
+    visible: false
+  })
+  return { graph, pageId, masterId: master.id }
+}
+
+/**
+ * Phase 3 §8 v8 — instance `:visible` reverse. A base-hidden master child is
+ * dropped before emit by every walk's `if(!child.visible) continue`, so an
+ * instance could never reveal it. v8 keeps a hidden child that carries a prop
+ * slot (some instance overrides it): it emits with `hidden` in its base
+ * className (§8 v7a), and a revealing instance drops `hidden` via the className
+ * prop. Without any override the hidden child is still omitted (byte regression).
+ */
+describe('compile — instance :visible reverse (Phase 3 §8 v8)', () => {
+  test('a :visible=true override reveals a base-hidden master child', () => {
+    const { graph, pageId, masterId } = makeHiddenChildGraph()
+    graph.createInstance(masterId, pageId) // clean — box stays hidden
+    const reveal = graph.createInstance(masterId, pageId)
+    if (reveal) {
+      const child = graph.getChildren(reveal.id)[0]
+      graph.updateNode(child.id, { visible: true })
+      reveal.overrides = { [`${child.id}:visible`]: true }
+    }
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const comp = out.files.get('src/components/Tag.tsx') as string
+    const app = out.files.get('src/App.tsx') as string
+    // the hidden child is now IN the component body, parameterized by a prop
+    expect(comp).toContain('className={boxClassName}')
+    // master default carries `hidden` (the base child is hidden) + the green fill
+    expect(comp).toMatch(/boxClassName = "[^"]*\bhidden\b/)
+    expect(comp).toContain('bg-[#00FF00]')
+    // the revealing instance passes a className WITHOUT hidden → shown
+    const passed = app.match(/<Tag[^>]*\bboxClassName="([^"]*)"/)
+    expect(passed).not.toBeNull()
+    expect(passed?.[1]).not.toContain('hidden')
+    expect(passed?.[1]).toContain('bg-[#00FF00]')
+    // `hidden` reaches the Tailwind safelist
+    expect(out.files.get('src/index.css') as string).toContain('hidden')
+  })
+
+  test('a base-hidden child with NO override is still omitted (byte regression)', () => {
+    const { graph, pageId, masterId } = makeHiddenChildGraph()
+    graph.createInstance(masterId, pageId) // clean — no override touches the box
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const comp = out.files.get('src/components/Tag.tsx') as string
+    // no slot → the hidden child never reaches emit
+    expect(comp).not.toContain('bg-[#00FF00]')
+    expect(comp).not.toContain('boxClassName')
+  })
+})
