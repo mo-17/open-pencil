@@ -4824,7 +4824,18 @@ scene-graph WorkflowDef + CallWorkflowAction + lowcodeWorkflows → lowcode-plug
 
 ### 10v4.8 Post-mortem
 
-(实现后回填)
+CODE COMPLETE 2026-06-04(commit `6651b241`,pushed upstream)。设计完全成立,**零 hotfix、零 GATE 收口、零意外**——inline 展开是正确的低风险选择,把一个本可很重的 milestone(新顶层实体 + 新 round-trip + 新 action kind + 循环检测)压成纯 collect-期增量。
+
+- **inline 展开兑现承诺**:callWorkflow 在 `resolveBranch` 主循环拦截(dispatchAction 之前)→ `expandWorkflow` 用**调用方 ctx** `resolveBranch(wf.actions)` 内联,handler 直接 splice 进当前链(内层 resolveBranch 已 recordWrites,外层 `out.push(...expanded)` 不重记)。**零 emit / 零 IR 类型 / 零 runtime 文件 / 零 adapter / 零 IRTree 字段**——工作流在 collect 期被完全消费。setState/navigate/docState 读全在调用组件作用域自然解析(集成测试坐实:workflow 里的 setVariable→调用方 `setDocState("count",(prev)=>prev+1)`,toast→调用方 `__opToast` import + ToastHost mount)。
+- **callWorkflow 是 ActionDef kind 但无 IREventHandler**:展开成其它 kind 的 handler,IREventHandler union 不变 → **emit 侧 `never` 闸完全不涉及**,经验 A sweep 点比 toast/confirm 少。dispatchAction 加防御 `case 'callWorkflow': return null`(resolveBranch 拦截后实际不可达,纯为 switch 总性;注意 dispatchAction 的 default 是 graceful fallback 非 `never` 断言,所以不加 case 也不报错,但会误 warn「unsupported kind」——故加)。
+- **文档级字段 = lowcodeTranslations 模式照搬**:types.ts root 字段 → lowcode-plugin-data.ts(KEY + LOWCODE_PLUGIN_KEYS + serialize isNonEmpty gate + `isLowcodeWorkflows` light guard + assignLowcodeField case)→ import.ts 一行 → compiler 双 ctx(collectTree + collectComponents)各 `liftWorkflows(graph)` 建 `Map<id,WorkflowDef>` 进 WalkCtx → resolveEvents 透传。**WalkCtx 有两个构造点(collectTree ctx + collectComponents baseCtx),都要加 workflows**(variantCtx 经 `...baseCtx` 继承)。
+- **新工具非 ActionDef → 无经验 A union widening**:set_workflows/read_workflows 只 4 处注册(registry-core import+CORE_TOOLS×2、modify/read barrel)+ read_lowcode_node 透出。set_workflows 整体替换同 set_translations:每 WorkflowDef 校验 id 非空 string + name string + id 去重 + `validateActionArray(actions)` **复用既有递归 action 校验**(嵌套 condition/confirm 分支天然递归),null/`[]` 清空,JSON-path 报错。
+- **rls-advisor 跟随 callWorkflow(经验 A「不报错但漏」)**:`flattenActions(actions, workflows, seen)` callWorkflow 下降到 wf.actions(`seen` cycle guard)+ `collectRlsRequirements(actions, workflows?)` 可选参默认空 = 零回归。editor 面板暂不授权工作流故 latent,但 closes the gap(测试坐实:不传 map→callWorkflow opaque 只见 posts;传 map→工作流内 mutation 的 audit 表浮现;cycle 不死循环)。
+- **`stop` 内联语义边界**(#6):工作流里的 `stop`→`return` 退出调用方整个 handler(inline 后果),文档化为预期非 bug。
+- **唯一波折**(非 §10v4 bug):集成测试初版断言 workflow 里的 `navigate("/done")` emit,失败——查实 = **单页 Phase 0 无 router,authored 直接的 navigate 也被 emit 丢弃**(预存行为,与 callWorkflow 无关);改测试用双 toast 证明整链 splice(非只首 action)+ setVariable 证 setDocState 经调用方解析。**经验:验证 inline 展开的集成测试要用产物里真会 emit 的 action(toast/setVariable),别用 navigate(无 router 单页被丢)。**
+- **测试 +29**:collect workflow.test +8(内联/链序/docState写/嵌套wf/cycle/unknown/missing/condition-branch)+ tool workflow-action.test +7(set_workflows 6 + callWorkflow validate 1)+ 新 call-workflow.test +3(集成:整链内联+wiring / setDocState / 无工作流零产物)+ kiwi roundtrip +2 + rls-advisor +2(descent + cycle)。compiler **557/0**,kiwi+tools+rls 285/0,`bun run check` exit 0,tsgo 0。**真机验**:callWorkflow 内联后 preview/build 行为 = 等价直写(headless 仅断言 emit 串)。
+
+**§10 v5 follow-ups:** toast 位置/时长可配 + confirm 文案/按钮标签可配(纯 emit 配置 polish);workflow 参数(callWorkflow 传参 → 工作流内引用);编辑器 EventsPanel + 工作流管理面板授权 GUI(真机)。
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
