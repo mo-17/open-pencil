@@ -29,6 +29,7 @@ import type {
   IRElement,
   IREventHandler,
   IREventName,
+  IRExpression,
   IRList,
   IRMessageValue,
   IRNode,
@@ -569,23 +570,37 @@ function resolveVectorSvg(
  *  when i18n is enabled so the adapter externalizes it into a locale message
  *  (`<FormattedMessage>`). Off → a plain literal `{kind:'text', value}`.
  *
- *  §9 v4 — when the literal carries `${expr}` interpolations, externalize it as
- *  an ICU message with `values` instead (e.g. `Welcome, {name}!`); a parse
- *  failure or unknown reference falls back to the plain static message. */
-function displayText(value: string, ctx: WalkCtx): IRText {
-  if (!ctx.i18n) return { kind: 'text', value }
-  const interpolated = buildInterpolatedText(value, ctx)
-  if (interpolated) return interpolated
-  return { kind: 'text', value, messageId: messageKey(value) }
+ *  §9 v4/v5 — when the literal carries `${expr}` interpolations, externalize
+ *  them: with i18n on → an ICU message with `values` (`Welcome, {name}!`); with
+ *  i18n off → a JSX template expression (`{`Welcome, ${name}!`}`). A parse
+ *  failure or unknown reference falls back to the plain literal. */
+function displayText(value: string, ctx: WalkCtx): IRText | IRExpression {
+  if (ctx.i18n) {
+    const tpl = resolveTextTemplate(value, ctx, 'i18n-interpolation-unknown-identifier')
+    return tpl ? buildIcuMessage(tpl) : { kind: 'text', value, messageId: messageKey(value) }
+  }
+  // §9 v5 — non-i18n interpolation becomes a JSX template expression; emit wraps
+  // it as `{`…`}` (emitExpression renders a `template` AST as a JS template
+  // literal). No interpolation / invalid → plain literal text.
+  const tpl = resolveTextTemplate(value, ctx, 'text-interpolation-unknown-identifier')
+  if (!tpl) return { kind: 'text', value }
+  return {
+    kind: 'expression',
+    ast: { kind: 'template', quasis: tpl.quasis, expressions: tpl.expressions },
+    references: tpl.references
+  }
 }
 
-/** §9 v4 — lower a visible text literal containing `${expr}` interpolations into
- *  an ICU message: the literal segments stay verbatim and each `${expr}` becomes
- *  a named ICU placeholder (`{name}`) backed by the expression in `values`.
- *  Returns null (caller falls back to a static message) when there are no
- *  interpolations, the template is unparseable, or any expression references an
- *  identifier not in scope (state / docState / list item). */
-function buildInterpolatedText(value: string, ctx: WalkCtx): IRText | null {
+/** §9 v4/v5 — parse a visible text literal's `${expr}` interpolations, validate
+ *  every reference is in scope (state / docState / list item) and register
+ *  reachable docStates as reads. Returns the template parts, or null when there
+ *  is no interpolation, the template is unparseable, or a reference is unknown
+ *  (caller falls back to a plain literal; `warnCode` labels the warning). */
+function resolveTextTemplate(
+  value: string,
+  ctx: WalkCtx,
+  warnCode: string
+): { quasis: string[]; expressions: ExprAst[]; references: string[] } | null {
   if (!value.includes('${')) return null
   const parsed = parseTemplate(value)
   if (!parsed.ok || parsed.ast.kind !== 'template' || parsed.ast.expressions.length === 0) {
@@ -594,22 +609,34 @@ function buildInterpolatedText(value: string, ctx: WalkCtx): IRText | null {
   const unknown = unknownIdentifiers(parsed.references, ctx.states, ctx.inScope, ctx.docStates)
   if (unknown.length > 0) {
     ctx.warnings.push({
-      code: 'i18n-interpolation-unknown-identifier',
-      message: `i18n text "${value}" interpolates unknown identifier(s): ${unknown.join(', ')}`,
+      code: warnCode,
+      message: `text "${value}" interpolates unknown identifier(s): ${unknown.join(', ')}`,
       nodeId: ''
     })
     return null
   }
   registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
-  const { quasis, expressions } = parsed.ast
+  return {
+    quasis: parsed.ast.quasis,
+    expressions: parsed.ast.expressions,
+    references: [...parsed.references]
+  }
+}
+
+/** §9 v4 — build an ICU `<FormattedMessage>` text node from parsed template
+ *  parts: literal quasis interleaved with `{name}` placeholders (invariant
+ *  `quasis.length === expressions.length + 1`), each backed by its expression in
+ *  `values`. The hash key is the ICU form so identical messages dedupe. */
+function buildIcuMessage(tpl: {
+  quasis: string[]
+  expressions: ExprAst[]
+}): IRText {
   const usedNames = new Set<string>()
-  const values: IRMessageValue[] = expressions.map((ast) => ({
+  const values: IRMessageValue[] = tpl.expressions.map((ast) => ({
     name: uniquePlaceholderName(ast, usedNames),
     ast
   }))
-  // ICU form: literal quasis interleaved with `{name}` placeholders (invariant
-  // quasis.length === expressions.length + 1).
-  const defaultMessage = quasis
+  const defaultMessage = tpl.quasis
     .map((q, i) => (i < values.length ? `${q}{${values[i].name}}` : q))
     .join('')
   return { kind: 'text', value: defaultMessage, messageId: messageKey(defaultMessage), values }

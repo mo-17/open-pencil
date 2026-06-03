@@ -389,13 +389,12 @@ describe('compile — i18n ICU interpolation (Phase 3 §9 v4)', () => {
     expect(app).not.toContain('values={{')
   })
 
-  test('i18n off: interpolation text stays a plain literal (zero regression)', () => {
+  test('i18n off: interpolation lowers to a JSX template expression (§9 v5)', () => {
     const { graph, pageId } = pageWithInterpolation('Welcome, ${userName}!', { state: 'userName' })
     const out = compileI18n(graph, pageId, false)
     const app = out.files.get('src/App.tsx') as string
-    // i18n off → no interpolation; the literal renders verbatim (JSX-escaped braces).
-    expect(app).toContain('Welcome, $&#123;userName&#125;!')
+    // §9 v5 — non-i18n interpolation emits `{`Welcome, ${userName}!`}` (no FormattedMessage).
+    expect(app).toContain('{`Welcome, ${userName}!`}')
     expect(app).not.toContain('FormattedMessage')
-    expect(app).not.toContain('values={{')
   })
 })

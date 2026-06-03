@@ -4437,6 +4437,45 @@ CODE COMPLETE 2026-06-03。设计一次成立,零 hotfix,唯一测试自纠 = i1
 
 **§9 v5 follow-ups:** ICU 复数/select(`{count, plural, …}` 授权 + 花括号转义);非-i18n text templates(`${}` 不开 i18n 也插值);翻译授权数据模型;`sourceLocale` 可配。
 
+## §9 v5 — 非-i18n text templates(可见文本 `${}` 插值不开 i18n 也工作)
+
+> §9 v4 follow-up。用户 2026-06-03 挑定 = **§9 v5 非-i18n text templates**(否决 ICU 复数 / 更多 deploy provider / §8 v8 visible-reverse)。CODE COMPLETE 2026-06-03(commit 见下)。
+
+### 9v5.1 现状与问题
+
+§9 v4 只在 **i18n 开**时解析可见文本的 `${expr}`(→ FormattedMessage values)。不做 i18n 的搭建者写 `Total: ${count}` 仍想插值,但目前可见文本只有两态:纯静态字面、或整条 `bindings.text` 表达式绑定 —— 无法「字面 + 值」混合而不开 i18n。v5 把 v4 的 parseTemplate 路径推广到 i18n 关时 emit 一个 JSX 模板表达式。
+
+### 9v5.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **i18n 关 + 有效 `${}` → IRExpression(template AST)**,emit `{`Total: ${count}`}` | 复用既有 `IRExpression`(零新 IR 类型)+ `emitExpression`(template AST 已 emit JS 模板字面量,§2 apiCall URL 同款)。emit 天然 `{<expr>}` 包裹 → JSX 模板表达式。 |
+| 2 | **共享 v4 的 parse+validate+register**(抽 `resolveTextTemplate(value, ctx, warnCode)`) | parseTemplate + unknownIdentifiers(复用导出)+ registerDocStateReads 一处;v4 ICU 与 v5 模板各自 warnCode(`i18n-interpolation-*` vs `text-interpolation-unknown-identifier`)+ 各自 build。jscpd 0。 |
+| 3 | **未知标识符 / parse 失败 → 回退纯字面**(同 v4)+ warn | 安全降级;`text-interpolation-unknown-identifier`。 |
+| 4 | **两路径互斥**:i18n 开走 ICU(v4)、关走模板(v5) | displayText `if (ctx.i18n) {…v4…}` else `{…v5…}`,永不双发。 |
+
+### 9v5.3 公开 API / Schema 改动
+
+- `tree.ts displayText` 返回类型 `IRText` → **`IRText | IRExpression`**(所有调用点都 push 进 `IRNode[]` children,IRExpression 是 IRNode → 安全)。无新 IR 类型 / scene-graph / round-trip / CompilerOptions 改动。
+
+### 9v5.4 内部实现拆解
+
+1. **collect**(tree.ts):重构 displayText —— i18n 开:`resolveTextTemplate(…, 'i18n-interpolation-unknown-identifier')` → `buildIcuMessage`(v4 ICU 抽出)否则静态 messageKey;i18n 关:`resolveTextTemplate(…, 'text-interpolation-unknown-identifier')` → IRExpression `{kind:'expression', ast:{kind:'template',quasis,expressions}, references}` 否则纯字面 `{kind:'text',value}`。`resolveTextTemplate` = 共享 parse(`value.includes('${')` 闸 + parseTemplate + ≥1 expression)+ unknownIdentifiers 校验(warn+null)+ registerDocStateReads;返 `{quasis, expressions, references}`。
+2. **emit**:零改动 —— element.ts 既有把 IRExpression 子节点 emit 成 `{emitExpressionWithFallback}`,emitExpression 对 template AST 产 `` `…${expr}…` ``。
+3. **import gate**:docState 引用经 registerDocStateReads → useDocState(零改);非 i18n 不引 react-intl。
+
+### 9v5.5 成功标准 / 测试
+
+- i18n 关:`Total: ${count}`(state)→ `{`Total: ${count}`}`;docState 插值 → useDocState read;member/算术原样;多插值;未知标识符 → 回退字面(`$&#123;…&#125;`)+ `text-interpolation-unknown-identifier` warn;无 `${}` → 纯字面无 warn。
+- i18n 开:仍 FormattedMessage(v4 不变,互斥)。
+- 新 text-template.test.ts +6;v4 i18n.test 的「i18n-off 字面」用例改判为 v5 模板表达式;compiler **534/0**,`bun run check` exit 0,tsgo 0。
+
+### 9v5.6 Post-mortem
+
+CODE COMPLETE 2026-06-03。设计一次成立,零 hotfix(唯一改动 = v4 自带的「i18n-off 字面零回归」测试**前提被 v5 推翻** → 改判为模板表达式,这是预期的行为变更)。**真机验**:模板表达式在 preview/build 运行(headless 仅断言 emit 串)。**已知边界**:模板表达式的引用须在作用域(state/docState/list item);未知 → 回退字面(不崩)。button 文案 / select·radio·checkbox option 标签同走 displayText → 也支持 `${}`(一致)。
+
+**§9 v6 follow-ups:** ICU 复数/select;翻译授权数据模型(编辑器填译文);`sourceLocale` 可配;text template 的 GUI 提示(`${}` 语法高亮 / 校验红框)。
+
 ## §10 v2 toast/notify action — 工作流用户反馈 + 运行时 ToastHost(设计 2026-06-03)
 
 > §10 v1 follow-up。用户 2026-06-03 挑定 = **§10 v2 toast**;分叉锁定 = **表达式 message + severity variant**(否决静态串 / 无 variant)。§10 v1 曾否决 toast(「需 runtime surface」),v2 正补这个 surface。
