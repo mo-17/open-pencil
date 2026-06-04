@@ -13,6 +13,8 @@
  * text rendering even before a translation exists.
  */
 
+import type { CompileWarning } from '#compiler/types'
+
 /** react-intl pin for emitted projects. Mirrors the `packages/compiler`
  *  devDependency (经验 D) so the preview/build VFS resolves the same copy from
  *  the monorepo's hoisted `node_modules` and the exported project never
@@ -131,6 +133,17 @@ export function buildI18nCoverageReport(
   targetLocales: readonly string[],
   translations: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
 ): string {
+  return JSON.stringify(computeI18nCoverage(messages, sourceLocale, targetLocales, translations), null, 2) + '\n'
+}
+
+/** Phase 3 §9 v10/v14 — per-target-locale coverage data (shared by the JSON
+ *  report and the build warnings). */
+export function computeI18nCoverage(
+  messages: ReadonlyMap<string, string>,
+  sourceLocale: string,
+  targetLocales: readonly string[],
+  translations: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
+): { sourceLocale: string; locales: Record<string, LocaleCoverage> } {
   const sources = [...new Set(messages.values())].sort()
   const locales: Record<string, LocaleCoverage> = {}
   for (const loc of targetLocales) {
@@ -142,7 +155,32 @@ export function buildI18nCoverageReport(
     }
     locales[loc] = { total: sources.length, translated: sources.length - missing.length, missing }
   }
-  return JSON.stringify({ sourceLocale, locales }, null, 2) + '\n'
+  return { sourceLocale, locales }
+}
+
+/**
+ * Phase 3 §9 v14 — one warning per target locale that still has untranslated
+ * source strings, so `open-pencil build --i18n` surfaces the gaps (the §9 v10
+ * `_coverage.json` is otherwise silent in the build/CLI flow). Empty when every
+ * target is fully translated.
+ */
+export function i18nCoverageWarnings(
+  messages: ReadonlyMap<string, string>,
+  sourceLocale: string,
+  targetLocales: readonly string[],
+  translations: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
+): CompileWarning[] {
+  const { locales } = computeI18nCoverage(messages, sourceLocale, targetLocales, translations)
+  const warnings: CompileWarning[] = []
+  for (const code of Object.keys(locales)) {
+    const cov = locales[code]
+    if (cov.missing.length === 0) continue
+    warnings.push({
+      code: 'i18n-untranslated',
+      message: `locale "${code}": ${cov.missing.length} of ${cov.total} string(s) untranslated — ${cov.missing.join(', ')}`
+    })
+  }
+  return warnings
 }
 
 /** Phase 3 §9 v2 — a locale code's JS import binding (codes like `zh-CN` are

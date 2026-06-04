@@ -5576,6 +5576,31 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**真 bug 修复,3 处
 - **e2e 实跑坐实**:text override + deep nested override 经 exportFigFile→parseFigFile 存活,compile 后产物含 override 值;真机测试文档 `lowcode-realmachine-test.fig` §8 节恢复 override demo(DEEP OVERRIDE ✓ / Text override ✓ 编译产物可见)。
 - 测试 +3(text override 存活 / clean 实例空 overrides 回归 / deep nested override 存活)。kiwi+compiler+tools **920/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(保存含 override 的实例→重开→定制仍在)。**§8 v12 follow-ups:** .pen 格式同样的 override round-trip(pen read 路径独立,未接);component props GUI 面板(真机)。
 
+## §9 v14 — 缺译编译警告(build/CLI 暴露未译串)
+
+> §9 v10 follow-up,小件。recon 先排除 §8 v12(.pen override round-trip)—— probe 坐实 **.pen 是只读格式**(`writeDocument` 不支持 pen),存不进 override → 无平行 bug,moot。转 §9 v14。
+
+### 9v14.1 现状与问题
+- §9 v10 产 `_coverage.json`,但 `open-pencil build --i18n` 的 CLI 流程对缺译**静默**(要打开 dist 里的 JSON 才知道)。搭建者需要在构建时直接看到「locale ar 还有 N 串没译」。
+
+### 9v14.2 关键决定
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **adapter emit 返回 i18n 缺译 warning**(每目标 locale 一条) | adapter.emit 本就返回 `{files, warnings}` → compile 合并 → CLI `reportCodegenResult` 已打印;零新管道。 |
+| 2 | **每 locale 一条 summary**(`locale "ar": 1 of 2 untranslated — Submit`) | 比每串一条少噪声,且列出具体源串可操作。 |
+| 3 | **抽 `computeI18nCoverage` 共享**(JSON 报告 + warnings 同源) | 避 buildI18nCoverageReport 与 warnings 重复缺译计算(jscpd)。 |
+
+### 9v14.3 改动
+- `adapters/react/lowcode/i18n.ts`:抽 `computeI18nCoverage(...)`(buildI18nCoverageReport 改为 JSON.stringify 它)+ 新 `i18nCoverageWarnings(...): CompileWarning[]`(每有缺的 locale 一条 `i18n-untranslated`)。
+- `adapters/react/index.ts`:emitSinglePage/emitMultiPage i18nActive 时把 coverage warnings 并入返回 warnings。
+- 零 scene-graph/IR/round-trip/CompilerOptions 改动;i18n 关 / 全译 → 无 warning(零回归)。
+
+### 9v14.4 Post-mortem
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GATE 收口。**
+- recon 排除 §8 v12:**.pen 只读**(`Format does not support writeDocument: pen`)→ 无 override 存盘场景,moot(同 §9 v9/§8 v9 recon-saves-work)。
+- `computeI18nCoverage` 共享给 JSON 报告 + warnings;`i18nCoverageWarnings` 每缺译 locale 一条 summary(列源串)。adapter.emit 既有 warnings 通道 → compile 合并 → CLI 自动打印,零新管道。
+- 测试 +3(部分译→warning 含缺串/全译→无 warning/无目标→无 warning)。compiler **612/0**(+3),`bun run check` exit 0,tsgo 0。**真机验**:`open-pencil build app.fig --i18n --locale ar` 终端打印缺译清单。**§9 v15 follow-ups:** RTL 感知逻辑属性(margin/padding→`ms-`/`me-`,需 core collectTailwindClasses 改,有回归面);editor preview i18n toggle(真机)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

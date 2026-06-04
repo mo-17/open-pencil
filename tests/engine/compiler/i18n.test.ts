@@ -725,3 +725,27 @@ describe('compile — translation coverage report (Phase 3 §9 v10)', () => {
     expect(out.files.has('src/locales/_coverage.json')).toBe(false)
   })
 })
+
+describe('compile — untranslated-string warnings (Phase 3 §9 v14)', () => {
+  test('a partially-translated locale produces an i18n-untranslated warning', () => {
+    const out = compileWithTranslations({ fr: { Hello: 'Bonjour' } }, ['fr', 'de'])
+    const warns = out.warnings.filter((w) => w.code === 'i18n-untranslated')
+    // fr is missing 'Submit'; de is missing both
+    const fr = warns.find((w) => w.message.includes('"fr"'))
+    const de = warns.find((w) => w.message.includes('"de"'))
+    expect(fr?.message).toContain('Submit')
+    expect(fr?.message).not.toContain('Hello')
+    expect(de?.message).toContain('Hello')
+    expect(de?.message).toContain('Submit')
+  })
+
+  test('a fully-translated locale produces no warning', () => {
+    const out = compileWithTranslations({ es: { Hello: 'Hola', Submit: 'Enviar' } }, ['es'])
+    expect(out.warnings.filter((w) => w.code === 'i18n-untranslated')).toEqual([])
+  })
+
+  test('no target locales → no untranslated warnings', () => {
+    const out = compileWithTranslations({}, [])
+    expect(out.warnings.filter((w) => w.code === 'i18n-untranslated')).toEqual([])
+  })
+})

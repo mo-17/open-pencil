@@ -15,6 +15,7 @@ import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
 import {
   buildI18nCoverageReport,
+  i18nCoverageWarnings,
   buildLocaleCatalog,
   buildLocaleSwitcher,
   buildLowcodeI18nRuntime,
@@ -176,7 +177,9 @@ function emitSinglePage(
     toastActive,
     confirmActive
   )
-  return { files, warnings }
+  // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
+  const coverage = i18nActive ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations) : []
+  return { files, warnings: [...warnings, ...coverage] }
 }
 
 function emitMultiPage(
@@ -232,7 +235,9 @@ function emitMultiPage(
     toastActive,
     confirmActive
   )
-  return { files, warnings: collectSlugWarnings(infos) }
+  // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
+  const coverage = i18nActive ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations) : []
+  return { files, warnings: [...collectSlugWarnings(infos), ...coverage] }
 }
 
 function lowcodeStateExtraDeps(
