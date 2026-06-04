@@ -5382,6 +5382,64 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**零 hot
 - **不碰 context 形状**:只设 `document.documentElement.dir`(驱动布局足够),`isRtl` 导出供组件按需读,避免 RTL/非-RTL 两套 LocaleContextValue 接口分叉。
 - 测试 +3(RTL 源注入 / RTL 目标注入 / LTR-only 无机制 v8 一致)。compiler **601/0**(+3),`bun run check` exit 0,tsgo 0。**真机验 pending**(切 ar/he → 整页 RTL 镜像布局;首帧 LTR 闪烁观察)。**§9 v12 follow-ups:** index.html 预置 dir 消除首帧闪;RTL 感知的逻辑属性 emit(margin/padding 改 logical);§8 v9 nested-instance override(独立大坑,需策略决定 + 真机)。
 
+## §8 v9 — nested-instance override 传播(内联降级)
+
+> §8 v8 follow-up,§8 组件链收尾。**架构 fork 经 AskUserQuestion 锁定 = B 内联降级**(否决 A 真·prop-threading:跨组件边界递归穿线、任意嵌套深度、改动大且 subtle、headless 难充分验证)。封 §8 组件链最后一个真实缺口:外层实例 override 内层 `<Inner/>` ref 子树里的节点。
+
+### 8v9.1 现状与问题
+
+- §8 v1 起 clean 嵌套实例已 emit `<Inner/>`(collectChildSubtree→nodeToIR→resolveComponentRef 已处理)。但**外层实例 override 一个内层组件子树里的节点**时:`resolveInstanceProps` 在用例点查到了 slot(产出一个 prop 值),但 Outer 的**组件体**永不消费它——目标节点在 `<Inner/>` ref 内部、Outer body 走到 ref 就停(叶子),never 访问该节点 → override 静默丢失(`<Outer someProp="Bye"/>` emit 了但 Outer 不用、不渲染)。
+
+### 8v9.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **B 内联降级**(deep override 实例 → 不 emit `<Outer/>`,改内联整棵子树) | 内联时 walker 递归实例真实 children(深 clone 已带 materialized override 值)→ 直接正确渲染;其余 clean 实例仍复用 `<Outer/>`。改动小(1 helper + 三处过滤),纯 compiler-emit,零 hotfix 风险。代价:deep override 那个实例失去组件复用(一次性内联)。 |
+| 2 | **deep override 检测 = ancestor walk**(`instanceHasDeepOverride`) | override→`resolveMasterChild` 得 master 节点 M,从 M 的**父链**走到 component root;跨到 INSTANCE → deep(目标在嵌套实例内)。override **ON** 嵌套实例节点本身(其 className/text)→ M=该嵌套实例、父链直达 root 不跨 INSTANCE → **非 deep**,仍走 §8 v6 className prop。 |
+| 3 | **deep override 实例不参与注册/propSlots** | buildComponentRegistry 只数「ref-able」实例(无 deep override)决定是否注册 master + 喂 propSlots;全 deep → master 不注册(连 master 自身也内联)。非嵌套场景 `instanceHasDeepOverride` 恒 false → **byte-identical 零回归**。 |
+| 4 | **统一在 resolveComponentRef 入口拦截** | deep-override 检查放在 meta 查找**之前** → 一处通吃 plain + SET(variant)两路径,return null → 落到既有 INSTANCE→div 内联路径。 |
+
+### 8v9.3 公开 API / Schema 改动
+
+- `instanceHasDeepOverride(graph, instance): boolean`(components.ts,导出)。
+- buildComponentRegistry plain + SET 两处:`refable = instances.filter(i => !instanceHasDeepOverride(...))`,注册 + propSlots 只用 refable,refable 空则不注册。
+- resolveComponentRef(tree.ts):INSTANCE 分支开头 `if (instanceHasDeepOverride(ctx.graph, node)) return null`。
+- 零 scene-graph / IR / emit-模板 / round-trip / CompilerOptions 改动。
+
+### 8v9.4 内部实现拆解
+
+1. **instanceHasDeepOverride**:`rootId = instance.componentId`;每 override key → `resolveMasterChild`(既有 private,复用)得 M;`cur = M.parentId`,while `cur && cur.id !== rootId`:`cur.type==='INSTANCE'` → true,else 上溯。
+2. **registry 过滤**:plain `refable.length===0 → continue`;SET `variantInstances.filter(...)`,空则 continue。
+3. **inline 拦截**:resolveComponentRef INSTANCE 分支首行 return null on deep。
+
+### 8v9.5 成功标准
+
+- 外层实例 deep override(内层节点)→ 该实例内联、override 值渲染(`>Bye</p>`);clean 外层实例仍 `<Outer/>`(master ref + clean = 2,deep 内联不计第 3)。
+- override ON 嵌套实例节点本身 → 仍 ref(非 deep,§8 v6 className prop)。
+- 全 deep → master 不 extract(无 Outer.tsx、无 `<Outer`),内联子树仍渲染。
+- 非嵌套既有 §8 测试 byte-identical 零回归。
+- `bun run check` exit 0;tsgo 0;compiler 全绿。
+
+### 8v9.6 工作分解(~0.4 day)
+
+components.ts(instanceHasDeepOverride + registry 两处过滤)→ tree.ts(resolveComponentRef inline 拦截 + import)→ 测试(deep 内联+clean 复用 / ON-嵌套-节点仍 ref / 全 deep 不 extract)→ build:packages → `bun run check`。
+
+### 8v9.7 风险
+
+- 全 deep + 嵌套组件:Inner 仍注册但无人引用 → orphan Inner.tsx(Vite tree-shake 出 bundle,无害;穷举 referenced-component 剪枝留后续)。
+- 内联降级是 correctness-over-reuse 取舍:deep override 实例不复用(用户已 ACK B);真·prop-threading(A)留 §8 v10 若有需。
+- 真机验:deep override 实例 preview/build 实际渲染 override 值 + clean 实例仍复用。
+
+### 8v9.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**recon 把「大坑」reframe 成小改动**(同 §9 v9 经验),设计成立,**零 hotfix、零 GATE 收口**。
+
+- **recon 坐实机制 = reframe 关键**:`cloneChildrenWithMapping` 设 `componentId = childId`(直接来源,非终极 master)→ deep override 一跳 `resolveMasterChild` 落到嵌套实例内部节点。真缺口 = 该节点在 `<Inner/>` ref 内、Outer body 不 emit。A(prop-threading)需跨边界递归穿线=大;B(内联)= walker 既有 INSTANCE→div 内联路径已能递归 emit 深 clone 的 materialized 值 → **只需在 deep override 时让 resolveComponentRef return null**。AskUserQuestion 锁 B。
+- **检测精准**:`instanceHasDeepOverride` 从 master 节点**父链**上溯到 component root,跨 INSTANCE 才算 deep → override ON 嵌套实例节点本身(父链直达 root)正确判为非-deep(仍走 §8 v6 className prop,测试坐实)。
+- **零回归靠 false-on-non-nested**:非嵌套实例的 override 父链直达 root,`instanceHasDeepOverride` 恒 false → registry/propSlots/resolveComponentRef 三处行为不变 → 既有 §8 全部测试 byte-identical(compiler 601→604 仅 +3 新测试,旧测试零改)。
+- **一处拦截通吃两路径**:deep 检查放 meta 查找前 → plain + SET(variant)统一 return null 落内联。
+- 测试 +3(deep 内联+clean 复用[master ref+clean=2,deep 不计第 3]/ ON-嵌套-节点仍 ref / 全 deep 不 extract+内联渲染)。compiler **604/0**(+3),kiwi+tools 308/0,`bun run check` exit 0,tsgo 0。**真机验 pending**(deep override 实例 preview 渲染 override 值)。**§8 v10 follow-ups:** 真·prop-threading(若需 deep override 复用);orphan registered-but-unreferenced 组件剪枝;component props GUI 面板(真机)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

@@ -152,17 +152,25 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
   for (const master of masters) {
     const instances = instancesByComponent.get(master.id)
     if (!instances || instances.length === 0) continue
+    // Phase 3 §8 v9: instances with a deep override are inlined, not emitted as a
+    // ref, so they neither keep the master ref-able nor contribute prop slots.
+    const refable = instances.filter((i) => !instanceHasDeepOverride(graph, i))
+    if (refable.length === 0) continue
     registry.set(master.id, {
       name: uniqueName(componentName(master.name), usedNames),
-      propSlots: buildPropSlots(graph, instances)
+      propSlots: buildPropSlots(graph, refable)
     })
   }
   // Phase 3 §8 v4: a COMPONENT_SET with ≥1 instanced variant → one component
   // with per-axis variant props.
   for (const set of sets) {
     const kids = graph.getChildren(set.id).filter((c) => c.type === 'COMPONENT')
-    if (!kids.some((k) => (instancesByComponent.get(k.id)?.length ?? 0) > 0)) continue
-    const variantInstances = kids.flatMap((k) => instancesByComponent.get(k.id) ?? [])
+    // Phase 3 §8 v9: a deep-override variant instance is inlined, so only ref-able
+    // instances keep the SET ref-able + feed its prop slots.
+    const variantInstances = kids
+      .flatMap((k) => instancesByComponent.get(k.id) ?? [])
+      .filter((i) => !instanceHasDeepOverride(graph, i))
+    if (variantInstances.length === 0) continue
     registry.set(set.id, {
       name: uniqueName(componentName(set.name), usedNames),
       // Phase 3 §8 v5: a SET's text/fill prop slots, merged by layer name so
@@ -278,6 +286,34 @@ function resolveMasterChild(graph: SceneGraph, overrideKey: string): SceneNode |
   const instChild = graph.getNode(overrideKey.slice(0, colon))
   const masterChildId = instChild?.componentId
   return (masterChildId && graph.getNode(masterChildId)) || null
+}
+
+/**
+ * Phase 3 §8 v9 — true when an instance overrides a node that lives INSIDE a
+ * nested instance of its component (a "deep" override). The component body emits
+ * that nested instance only as a `<Nested/>` ref (a leaf), so a deep override
+ * can't be threaded through a usage-site prop — it would be silently dropped.
+ * Such an instance is inlined instead (its own clone subtree carries the
+ * materialized override values, so it renders correctly), trading reuse for
+ * correctness. An override ON the nested instance node itself (its
+ * className/text) is NOT deep: it resolves to a node directly in the body and is
+ * handled by the normal §8 v2/v3/v6 prop slot.
+ */
+export function instanceHasDeepOverride(graph: SceneGraph, instance: SceneNode): boolean {
+  const rootId = instance.componentId
+  if (!rootId) return false
+  for (const key of Object.keys(instance.overrides)) {
+    const masterChild = resolveMasterChild(graph, key)
+    if (!masterChild) continue
+    // Walk the master child's ancestors up to the component root; crossing an
+    // INSTANCE means the target sits inside a nested instance subtree.
+    let cur = masterChild.parentId ? graph.getNode(masterChild.parentId) : undefined
+    while (cur && cur.id !== rootId) {
+      if (cur.type === 'INSTANCE') return true
+      cur = cur.parentId ? graph.getNode(cur.parentId) : undefined
+    }
+  }
+  return false
 }
 
 /** Turn a layer name into a valid PascalCase identifier. Non-alphanumeric runs

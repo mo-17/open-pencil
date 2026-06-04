@@ -48,7 +48,7 @@ import {
   resolveValueBinding,
   unknownIdentifiers
 } from './bindings'
-import { type ComponentRegistry, type ComponentSlot, overrideKind } from './components'
+import { type ComponentRegistry, type ComponentSlot, instanceHasDeepOverride, overrideKind } from './components'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -271,6 +271,10 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
     return refOf(node, meta.name, [], ctx)
   }
   if (node.type !== 'INSTANCE' || !node.componentId) return null
+  // Phase 3 §8 v9: an instance that overrides a node inside a nested instance
+  // can't thread that override through the `<Nested/>` ref, so it falls back to
+  // inlining (return null) — its own clone subtree carries the override values.
+  if (instanceHasDeepOverride(ctx.graph, node)) return null
   const meta = ctx.components.get(node.componentId)
   if (meta) {
     return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
