@@ -24,7 +24,7 @@ import {
   sourceCatalogPath,
   SOURCE_LOCALE
 } from './lowcode/i18n'
-import { pageUsesConfirm, pageUsesToast, stripNavigateForSinglePage } from './ir-walk'
+import { pageUsesConfirm, pageUsesToast, referencedComponentNames, stripNavigateForSinglePage } from './ir-walk'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode/state'
 import { buildLowcodeToastRuntime, TOAST_RUNTIME_CLASSES } from './lowcode/toast'
 import { buildLowcodeConfirmRuntime, CONFIRM_RUNTIME_CLASSES } from './lowcode/confirm'
@@ -81,16 +81,58 @@ function emitComponentFiles(
   }
 }
 
+/** Phase 3 §8 v10 — all body nodes of a component def. A COMPONENT_SET's body
+ *  lives in its variant subtrees (`children` is empty for a SET), so refs nested
+ *  inside variants are missed unless those subtrees are walked too. */
+function componentBodyNodes(def: ComponentDef): IRNode[] {
+  return def.variants ? [...def.children, ...def.variants.flatMap((v) => v.children)] : def.children
+}
+
+/**
+ * Phase 3 §8 v10 — the components actually reachable from the pages, transitively
+ * through component bodies. A registered component whose every usage was inlined
+ * (e.g. a §8 v9 deep-override instance) is referenced by no page or component
+ * body, so it is pruned — no orphan `src/components/<Name>.tsx` is emitted, and
+ * its classes/messages don't bloat the safelist/catalog. Order-preserving.
+ */
+function reachableComponents(
+  irs: readonly IRTree[],
+  components: readonly ComponentDef[]
+): ComponentDef[] {
+  if (components.length === 0) return []
+  const byName = new Map(components.map((d) => [d.name, d]))
+  const reachable = new Set<string>()
+  const queue: string[] = []
+  const seed = (names: readonly string[]): void => {
+    for (const name of names) {
+      if (byName.has(name) && !reachable.has(name)) {
+        reachable.add(name)
+        queue.push(name)
+      }
+    }
+  }
+  for (const ir of irs) seed(referencedComponentNames(ir.children))
+  while (queue.length > 0) {
+    const name = queue.pop()
+    const def = name === undefined ? undefined : byName.get(name)
+    if (def) seed(referencedComponentNames(componentBodyNodes(def)))
+  }
+  return components.filter((d) => reachable.has(d.name))
+}
+
 function emitSinglePage(
   ir: IRTree,
   options: CompilerOptions,
-  components: readonly ComponentDef[]
+  allComponents: readonly ComponentDef[]
 ): AdapterEmission {
   // Phase 1 §7.4: navigate handlers require react-router-dom's `useNavigate`,
   // which only exists in the multi-page router shell. Strip them up front and
   // warn — the page body emit then proceeds as if they were never collected.
   const { ir: cleaned, warnings } = stripNavigateForSinglePage(ir)
   const files = new Map<string, string | Uint8Array>()
+  // Phase 3 §8 v10: drop components no page (transitively) references, so an
+  // all-inlined master (e.g. §8 v9 deep-override) leaves no orphan module/class.
+  const components = reachableComponents([cleaned], allComponents)
   // Phase 3 §9: i18n is active only when the flag is on AND there is text to
   // translate (an empty doc gets no runtime/dep/provider).
   const messages = collectMessages([cleaned], components)
@@ -140,10 +182,12 @@ function emitSinglePage(
 function emitMultiPage(
   irs: readonly IRTree[],
   options: CompilerOptions,
-  components: readonly ComponentDef[]
+  allComponents: readonly ComponentDef[]
 ): AdapterEmission {
   const infos = derivePagePaths(irs)
   const files = new Map<string, string | Uint8Array>()
+  // Phase 3 §8 v10: prune components unreferenced across all pages (see emitSinglePage).
+  const components = reachableComponents(irs, allComponents)
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
   const translations = irs.find((ir) => ir.translations)?.translations

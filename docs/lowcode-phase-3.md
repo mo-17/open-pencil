@@ -5469,6 +5469,41 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GAT
 - **recon 副产**:坐实多页路由(BrowserRouter + derivePagePaths + per-page Route + useNavigate)早已完整、navigate 仅单页被 strip → 路由非缺口,无需做。
 - 测试 +3(RTL 源 lang+dir / 非 en LTR 仅 lang / 默认 en byte-identical)。compiler **607/0**(+3),`bun run check` exit 0,tsgo 0。**真机验 pending**(ar 源页面初始即 RTL 无闪;lang 在 devtools 正确)。**§9 v13 follow-ups:** RTL 感知逻辑属性 emit(margin/padding→logical);§8 v10 orphan 组件剪枝;GUI 译文/组件面板(真机)。
 
+## §8 v10 — orphan 组件剪枝(registered-but-unreferenced 不 emit)
+
+> §8 v9 follow-up,小件(用户指定 §8 v10)。scope = **剪枝未被引用的已注册组件**(否决另一 §8 v10 候选「真·prop-threading」—— 用户在 §8 v9 已选 B 内联,不再要 A)。纯 compiler-emit,零 hotfix/零 GATE 收口/零意外。
+
+### 8v10.1 现状与问题
+- `collectComponents` 为**每个已注册组件**(有 ≥1 实例)产 ComponentDef,`emitComponentFiles` 逐个 emit `src/components/<Name>.tsx`。但若编译的页面(`pageIds` 子集)从不引用某组件,其模块就是死重(还连带把它的 class/message 计进 safelist/catalog)。典型:多页文档只编译一部分页 → 仅出现在未编译页的组件成 orphan。
+- recon 修正一个误判:**§8 v9「全 deep」场景并不产 orphan** —— Outer master 在 page 上、未注册时被内联,其 body 仍 emit `<Inner/>` → Inner 合法被引用。真正的 orphan = 组件实例只在**未编译的页**上。
+
+### 8v10.2 关键决定
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **emit 前按页面可达性剪枝**(`reachableComponents(irs, components)`) | 从页面 IR 的 componentRef 出发,经组件体**传递闭包**(Outer body→Inner)收集可达名,过滤 ComponentDef。一处剪枝,downstream(emitComponentFiles/collectClassNames/collectMessages)全用剪后列表。 |
+| 2 | **SET body 走 variant 子树**(`componentBodyNodes`) | COMPONENT_SET 的 `children` 为空、body 在 `variants[].children` → 闭包须并入,否则漏 variant 子树里的嵌套 ref。 |
+| 3 | **零回归 = 可达集恒含所有被引用组件** | 非 orphan 场景剪枝是恒等(所有被引用组件都可达)→ 既有组件测试 byte-identical。 |
+
+### 8v10.3 公开 API / Schema 改动
+- adapters/react/index.ts:新 `reachableComponents` + `componentBodyNodes`(module-private);emitSinglePage/emitMultiPage 参数 `components`→`allComponents`,开头 `const components = reachableComponents([cleaned]/irs, allComponents)`(+ import `referencedComponentNames`)。
+- 零 scene-graph / IR / collect / round-trip / CompilerOptions 改动。
+
+### 8v10.4 内部实现拆解
+1. **reachableComponents**:`byName` Map;seed = 各页 `referencedComponentNames(ir.children)`;BFS/DFS 闭包:出队组件名→`referencedComponentNames(componentBodyNodes(def))` 续 seed;`components.filter(reachable)`(order-preserving)。
+2. **componentBodyNodes**:`def.variants ? [...children, ...variants.flatMap(v=>v.children)] : children`。
+
+### 8v10.5 成功标准
+- 组件仅在未编译页用 → `src/components/<Name>.tsx` 不 emit;编译其页(control)→ emit。
+- 既有组件测试 byte-identical 零回归。
+- `bun run check` exit 0;tsgo 0;compiler 全绿。
+
+### 8v10.6 Post-mortem
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GATE 收口**。
+- **recon 修正 orphan 触发条件**:初版测试想用 §8 v9 全-deep 场景造 orphan,实测 Inner.tsx 仍 emit —— 因 Outer master 在 page 上未注册时被内联、其 body 仍 emit `<Inner/>`、Inner 合法可达。真 orphan = 实例只在**未编译页**(`pageIds` 子集)→ 改用两页图、只编译一页坐实。**经验:masters 在 page 上会被内联-带-ref,组件几乎总可达;orphan 只在编译页子集时出现。**
+- **一处剪枝通吃**:emit 入口 `components = reachableComponents(...)` shadow 参数(参数改名 `allComponents`)→ emitComponentFiles/collectClassNames/collectMessages 自动用剪后列表,无散点改动。
+- **闭包正确性**:seed 页面 ref + 传递经组件体(`componentBodyNodes` 含 SET variant 子树)→ Outer 引用 Inner 时两者都保留;非 orphan 恒等剪枝 → 既有测试零改。
+- 测试 +2(仅未编译页用→剪 / 编译其页→保留 control)。compiler **609/0**(+2),`bun run check` exit 0,tsgo 0。**真机验**:无需(产物文件集变化,headless 完全可验)。**§8 v11 follow-ups:** 真·prop-threading(若需 deep override 复用);component props GUI 面板(真机)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
