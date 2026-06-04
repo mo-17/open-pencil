@@ -499,7 +499,13 @@ function bindWorkflowArgs(
   }
   const bindings = new Map<string, ExprAst>()
   for (const param of params) {
-    const src = args[param]
+    // Phase 3 §10 v7: an omitted / blank arg falls back to the workflow's
+    // `paramDefaults` expression for that parameter (parsed in the caller scope,
+    // same path as an explicit arg). Only when neither exists is the call dropped.
+    let src: string | undefined = args[param]
+    if (typeof src !== 'string' || src.trim() === '') {
+      src = workflow.paramDefaults?.[param]
+    }
     if (typeof src !== 'string' || src.trim() === '') {
       ctx.warnings.push({
         code: 'action-call-workflow-missing-arg',

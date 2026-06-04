@@ -33,7 +33,14 @@ export const TOAST_RUNTIME_CLASSES: readonly string[] = [
   'shadow-lg',
   'bg-blue-600',
   'bg-green-600',
-  'bg-red-600'
+  'bg-red-600',
+  // Phase 3 §10 v7: the per-toast row layout + manual close (×) button.
+  'items-center',
+  'ml-auto',
+  'opacity-70',
+  'hover:opacity-100',
+  'cursor-pointer',
+  'leading-none'
 ]
 
 /** Build the contents of `src/_lowcode_toast.tsx`. */
@@ -84,9 +91,17 @@ function getSnapshot(): Toast[] {
   return toasts
 }
 
+/** Remove a toast by id. Shared by the auto-dismiss timer and the manual
+ *  close (×) button. */
+function dismiss(id: number): void {
+  toasts = toasts.filter((t) => t.id !== id)
+  emitChange()
+}
+
 /** Show a transient toast. Called by compiled event handlers. Auto-dismisses
- *  after \`options.durationMs\` (default 3000ms); \`options.position\` picks the
- *  screen corner (default 'bottom-right'). */
+ *  after \`options.durationMs\` (default 3000ms); pass \`durationMs: 0\` for a
+ *  persistent toast that only closes when the user clicks ×. \`options.position\`
+ *  picks the screen corner (default 'bottom-right'). */
 export function __opToast(
   message: string,
   variant: ToastVariant = 'info',
@@ -94,12 +109,14 @@ export function __opToast(
 ): void {
   const id = ++seq
   const position = options.position ?? 'bottom-right'
+  const duration = options.durationMs ?? 3000
   toasts = [...toasts, { id, message, variant, position }]
   emitChange()
-  setTimeout(() => {
-    toasts = toasts.filter((t) => t.id !== id)
-    emitChange()
-  }, options.durationMs ?? 3000)
+  if (duration > 0) {
+    setTimeout(() => {
+      dismiss(id)
+    }, duration)
+  }
 }
 
 const VARIANT_CLASSES: Record<ToastVariant, string> = {
@@ -131,9 +148,17 @@ export function ToastHost() {
             .map((t) => (
               <div
                 key={t.id}
-                className={'rounded px-4 py-2 text-sm text-white shadow-lg ' + VARIANT_CLASSES[t.variant]}
+                className={'flex items-center gap-2 rounded px-4 py-2 text-sm text-white shadow-lg ' + VARIANT_CLASSES[t.variant]}
               >
-                {t.message}
+                <span>{t.message}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => dismiss(t.id)}
+                  className="ml-auto cursor-pointer leading-none opacity-70 hover:opacity-100"
+                >
+                  ×
+                </button>
               </div>
             ))}
         </div>

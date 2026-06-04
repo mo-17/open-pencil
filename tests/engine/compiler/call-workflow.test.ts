@@ -123,3 +123,48 @@ describe('compile — workflow parameters (Phase 3 §10 v6)', () => {
     expect(app).not.toContain('__opToast')
   })
 })
+
+describe('compile — workflow default arguments (Phase 3 §10 v7)', () => {
+  const notify: WorkflowDef = {
+    id: 'notify',
+    name: 'Notify',
+    params: ['msg'],
+    paramDefaults: { msg: '"Done"' },
+    actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+  }
+
+  test('an omitted arg falls back to the workflow default expression', () => {
+    const out = compileWithWorkflows([{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }], [notify])
+    const app = out.files.get('src/App.tsx') as string
+    // no longer dropped — the default `"Done"` is substituted for `msg`
+    expect(app).toContain('__opToast("Done")')
+    expect(app).not.toContain('__opToast(msg)')
+  })
+
+  test('an explicit arg overrides the default', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: '"Custom"' } }],
+      [notify]
+    )
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('__opToast("Custom")')
+    expect(app).not.toContain('__opToast("Done")')
+  })
+
+  test('a parameter with neither arg nor default still drops the callWorkflow', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }],
+      [
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg', 'extra'],
+          paramDefaults: { msg: '"Done"' },
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
+      ]
+    )
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('__opToast')
+  })
+})

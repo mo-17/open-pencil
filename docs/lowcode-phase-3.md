@@ -5099,6 +5099,68 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**零 GAT
 - **零 collect/IR/round-trip/scene-graph 改动**:messageKey hash 本就 locale-agnostic,sourceLocale 纯 adapter-emit 配置 → 只 2 文件。默认路径 byte-identical = 既有 30 i18n 测试一字未改通过。
 - 测试 +3(zh 源 catalog+runtime / 目标排除源 + en 成 target / unset+空白默认 en byte-identical)。compiler **583/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(非 en 源 react-intl defaultLocale 渲染)。**§9 v9 follow-ups:** plural-body 内 `${}` 插值(ICU 花括号 vs `${}` scanner 冲突);译文覆盖率/缺译高亮(GUI);RTL 源语言布局。
 
+## §10 v7 — toast 持久化 + workflow 默认实参(两小件收尾 §10 链)
+
+> §10 v6 / §10 v5 follow-up。助手推荐 §10 v7(用户「继续下一个 milestone」未走 AskUserQuestion;否决 §9 v9 plural-body `${}` 插值——ICU 花括号 vs `${}` scanner 冲突中等风险;否决 §8 v9 nested-instance——recon 坐实是 prop-threading 大坑;否决 CF Pages——需 blake3 依赖违背零依赖约束需先问)。两个小件、低风险、直接接 §10 v5 toast runtime + §10 v6 workflow substitution。
+
+### 10v7.1 现状与问题
+
+1. **toast `durationMs=0` 无意义**:§10 v5 给 `ToastAction.durationMs?`(默认 3000),collect 只校验「有限非负」→ `0` 合法直通,emit 直通,但 runtime `setTimeout(dismiss, options.durationMs ?? 3000)` 对 `0` 退化成「下一 tick 立即消失」=toast 一闪即逝、毫无用处。搭建者要的「常驻提示直到用户手动关」做不到,且任何 toast 都没有手动关闭手段。
+2. **workflow 形参无默认值**:§10 v6 给 `WorkflowDef.params` + callWorkflow `args`,但**每个形参都必须在调用点传 arg**——缺一个 → `bindWorkflowArgs` warn `missing-arg` + drop 整个 callWorkflow。常见的「大多数调用走同一默认、个别调用覆盖」(Bubble 可选参数)做不到。
+
+### 10v7.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **toast `durationMs=0` → 不自动消失**(runtime 跳过 setTimeout) | runtime `const duration = options.durationMs ?? 3000; if (duration > 0) setTimeout(...)`。保留 `options.durationMs ?? 3000` 子串(toast.test.ts:99 pin 不破)。零 collect/emit/数据模型改动(0 本就合法直通)。 |
+| 2 | **每个 toast 渲染 × 手动关闭按钮**(不止 durationMs=0) | 全 toast 可手动关 = 更好 UX + 更简单逻辑(无需按 duration 分支渲染);抽 `dismiss(id)` 供 timer + 按钮共用。 |
+| 3 | **`WorkflowDef.paramDefaults?: Record<string,string>`**(并行 `params`,非改 `params` 成对象) | 加平行字段(默认表达式串,按形参名 keying)而非把 `params: string[]` 升成 `{name; defaultExpr?}[]`——后者破 §10 v6 既有 workflow + tool schema;平行字段纯增量,unset → §10 v6 byte-identical。 |
+| 4 | **缺 arg 时回退 default**(在 `bindWorkflowArgs`,parse 在调用方作用域) | 形参无显式 arg(缺/空)→ 取 `paramDefaults?.[param]` 作 src,走与显式 arg 完全相同的 parse + checkExprRefs + registerDocStateReads + substitute 路径;default 也缺 → 维持 §10 v6 missing-arg warn + drop。default 在调用方作用域 parse(workflow 本就内联进调用方,体内 state 引用本就解析到调用方,default 一致)。 |
+| 5 | **零新 ActionDef kind / 零 runtime npm 依赖 / 零 round-trip codec 改动** | paramDefaults 是 WorkflowDef 增量字段→**经验 A union widening 完全不涉及**(同 §10 v5/v6 args/params);随 `lowcode/workflows` JSON blob 自由 round-trip;toast × 按钮用 React 原生 onClick,无新依赖。 |
+
+### 10v7.3 公开 API / Schema 改动
+
+- `WorkflowDef.paramDefaults?: Record<string, string>`(scene-graph/types.ts)。
+- `set_workflows` 工具:接受 + 校验 `paramDefaults`(键须 ∈ params,值须非空串),descr 补 §10 v7 说明。
+- toast runtime(`adapters/react/lowcode/toast.ts`):`ToastHost` 每 toast 加 × 按钮;`__opToast` duration=0 跳 timer;新增 dismiss + 安全列 class。
+- 零 `CompilerOptions` / `ActionDef` / IR / emit-event / round-trip 改动。
+
+### 10v7.4 内部实现拆解
+
+1. **toast runtime**(toast.ts buildLowcodeToastRuntime):① `__opToast` 内 `const duration = options.durationMs ?? 3000` + `if (duration > 0) setTimeout(() => dismiss(id), duration)`;② 抽模块级 `dismiss(id)`(filter + emitChange);③ Toast item 改 flex 行布局 `<span>{message}</span>` + `<button onClick={() => dismiss(t.id)}>×</button>`;④ `TOAST_RUNTIME_CLASSES` 补 button/行布局 class(`items-center` `ml-auto` `opacity-70` `hover:opacity-100` `cursor-pointer` `leading-none`)。
+2. **workflow default**(bindings.ts bindWorkflowArgs):`let src = args[param]; if (空) src = workflow.paramDefaults?.[param]; if (仍空) → missing warn + return null`。其余 parse/校验/substitute 路径不动。
+3. **tool 校验**(lowcode.ts):新 `validateWorkflowParamDefaults(where, raw, params)`——plain object、键 ∈ params、值非空串;`validateWorkflows` 调它(threading 已校验的 params)→ WorkflowDef.paramDefaults。
+
+### 10v7.5 成功标准
+
+- toast `durationMs:0` → emit `{ durationMs: 0 }`,runtime 该 toast 不自动消失;ToastHost 渲染 × 按钮。
+- toast 默认 / `durationMs:5000` → byte-identical 既有(setTimeout 仍 5000;× 按钮为唯一 runtime 增量,既有 §10 v2/v5 emit 测试 toContain 子串不破)。
+- workflow 形参有 `paramDefaults` 且 callWorkflow 省略该 arg → 用 default 表达式内联;显式传 arg → 覆盖 default。
+- 无 paramDefaults 的 workflow → §10 v6 byte-identical。
+- `set_workflows` 拒非法 paramDefaults(键非形参 / 值空串)。
+- `bun run check` exit 0;tsgo 0;compiler 全绿。
+
+### 10v7.6 工作分解(~0.4 day)
+
+types.ts(WorkflowDef.paramDefaults)→ toast.ts(runtime duration=0 + × 按钮 + safelist)→ bindings.ts(bindWorkflowArgs 缺 arg 回退 default)→ lowcode.ts(validateWorkflowParamDefaults + threading + descr)→ 测试(toast 持久化 runtime + workflow default 用/覆盖/缺 + tool 校验)→ build:packages → `bun run check`。
+
+### 10v7.7 风险
+
+- toast runtime 字符串变(加 × 按钮)→ 既有 toast 测试若 pin 完整 runtime 串会破;实测仅 pin `options.durationMs ?? 3000` 子串(保留)。
+- paramDefaults 与显式 arg 优先级:显式 arg 非空 → 覆盖 default;arg 缺/空 → 回退;两者皆无 → drop(§10 v6 行为)。
+- 真机验:durationMs=0 toast 常驻 + 点 × 消失;workflow 省略带默认的 arg → 默认表达式生效。
+
+### 10v7.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。两件设计均成立,**零意外**,仅 1 处 tsgo 收口。
+
+- **toast 持久化纯 runtime 改动**:`durationMs=0` 一路畅通到 runtime(collect 早接受 0 为有限非负、emit 早直通),所以 v7 piece 1 只动 `toast.ts` 的 `buildLowcodeToastRuntime()` 字符串——`const duration = options.durationMs ?? 3000; if (duration > 0) setTimeout(...)` 跳过自动消失 + 抽 `dismiss(id)` 供 timer/按钮共用 + 每 toast 渲 × 按钮 + 6 个安全列 class。保留 `options.durationMs ?? 3000` 子串 → toast.test.ts:99 不破;既有 §10 v2/v5 emit 测试只 `toContain` 子串、× 按钮是纯增量 → 零回归。
+- **workflow 默认实参=平行字段 + 单点回退**:决定加 `WorkflowDef.paramDefaults?: Record<string,string>`(平行 `params`)而非把 `params: string[]` 升成对象数组——后者会破 §10 v6 既有 workflow JSON + tool schema;平行字段纯增量,随 `lowcode/workflows` JSON blob 自由 round-trip,unset → §10 v6 byte-identical。回退逻辑只在 `bindWorkflowArgs` 一点:缺/空 arg → `src = workflow.paramDefaults?.[param]`,其余 parse/checkExprRefs/registerDocStateReads/substitute 路径**完全复用**(default 与显式 arg 同样在调用方作用域解析,因 workflow 本就内联进调用方)。
+- **新字段加到已有结构(WorkflowDef)= 经验 A union widening 完全不涉及**(同 §10 v5/v6 args/params):无新 ActionDef kind → dispatchAction/emit-never/tool-buildActionFromValidated/check:vue 四个穷举点全不动。
+- **唯一 GATE 收口(tsgo 1 处)**:`let src = args[param]` 从 `Record<string,string>` 索引推断成 `string`(非 nullish,§7v2/§9v8 同源教训),给它赋 `string | undefined`(`paramDefaults?.[param]`)→ TS2322。改 `let src: string | undefined = args[param]` 显式拓宽。`build:packages` 后 type-aware 轮才报(编辑器 moduleResolution 假错无关)。
+- **tool 校验** `validateWorkflowParamDefaults(where, raw, params)`:plain object、键 ∈ 已校验 params、值非空串;`validateWorkflows` threading 已校验的 `paramsR.params ?? []`。
+- 测试 +6(toast 持久化 runtime+×+safelist / workflow default 用·覆盖·缺无默认 drop / tool paramDefaults 校验)。compiler **587/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(durationMs=0 toast 常驻 + 点 × 消失;workflow 省略带默认 arg → 默认表达式生效)。**§10 v8 follow-ups:** toast 动作堆叠上限/去重;EventsPanel + 工作流管理面板 GUI(真机,含 paramDefaults 编辑);workflow 可选形参(无默认也允许省略 → 形参解析为 `undefined`)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

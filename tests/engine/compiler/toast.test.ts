@@ -105,4 +105,27 @@ describe('compile — toast runtime wiring (Phase 3 §10 v2)', () => {
     expect(css).toContain('top-4')
     expect(css).toContain('-translate-x-1/2')
   })
+
+  // ── Phase 3 §10 v7: persistent toast (durationMs: 0) + manual close button ──
+
+  test('durationMs: 0 emits a persistent toast; the runtime skips the timer and renders a × button', () => {
+    const out = compileWithClick([
+      { id: 't', kind: 'toast', messageExpr: '"Heads up"', variant: 'error', durationMs: 0 }
+    ])
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('__opToast("Heads up", "error", { durationMs: 0 })')
+
+    const runtime = out.files.get('src/_lowcode_toast.tsx') as string
+    // a duration of 0 falls through the `duration > 0` guard → no auto-dismiss
+    expect(runtime).toContain('if (duration > 0)')
+    expect(runtime).toContain('options.durationMs ?? 3000')
+    // shared dismiss + manual close button wired into every toast
+    expect(runtime).toContain('function dismiss(id: number)')
+    expect(runtime).toContain('onClick={() => dismiss(t.id)}')
+
+    // the × button's classes reach the safelist
+    const css = out.files.get('src/index.css') as string
+    expect(css).toContain('opacity-70')
+    expect(css).toContain('ml-auto')
+  })
 })

@@ -975,6 +975,15 @@ export interface WorkflowDef {
    *  call site the matching `args` expression (caller scope) is substituted in.
    *  Absent / empty = a parameterless workflow (§10 v4 behaviour). */
   params?: string[]
+  /** Phase 3 §10 v7: default argument expressions, keyed by formal parameter
+   *  name (a subset of `params`). When a `CallWorkflowAction` omits the `arg`
+   *  for a parameter that has a default, the default expression is used instead
+   *  of dropping the call — parsed + validated in the **caller's** scope, the
+   *  same path an explicit `arg` takes (workflows expand inline, so the body's
+   *  state references already resolve against the caller). A parameter with
+   *  neither an arg nor a default still drops the `callWorkflow` with a warning
+   *  (§10 v6 behaviour). Absent = every parameter is required. */
+  paramDefaults?: Record<string, string>
   actions: ActionDef[]
 }
 

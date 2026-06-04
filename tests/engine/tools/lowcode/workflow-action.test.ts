@@ -339,6 +339,30 @@ describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
     if (!dupParam.ok) expect(dupParam.error).toContain('duplicated')
   })
 
+  test('persists workflow paramDefaults and rejects non-param keys / empty values (§10 v7)', () => {
+    const { figma, graph } = setupToolTest()
+    const workflows = [
+      { id: 'wf-1', name: 'Notify', params: ['msg'], paramDefaults: { msg: '"Done"' }, actions: [] }
+    ]
+    const r = setWorkflows(JSON.stringify(workflows), figma)
+    expect(r.ok).toBe(true)
+    expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
+
+    const notParam = setWorkflows(
+      JSON.stringify([{ id: 'w', name: 'a', params: ['msg'], paramDefaults: { other: '"x"' }, actions: [] }]),
+      figma
+    )
+    expect(notParam.ok).toBe(false)
+    if (!notParam.ok) expect(notParam.error).toContain('.paramDefaults.other')
+
+    const emptyVal = setWorkflows(
+      JSON.stringify([{ id: 'w', name: 'a', params: ['msg'], paramDefaults: { msg: '  ' }, actions: [] }]),
+      figma
+    )
+    expect(emptyVal.ok).toBe(false)
+    if (!emptyVal.ok) expect(emptyVal.error).toContain('.paramDefaults.msg')
+  })
+
   test('validates nested actions recursively, reporting the JSON path', () => {
     const { figma } = setupToolTest()
     const r = setWorkflows(
