@@ -1176,6 +1176,31 @@ function validateWorkflowParamDefaults(
   return { ok: true, paramDefaults }
 }
 
+/** Phase 3 §10 v8: validate a workflow's optional `optionalParams` — an array of
+ *  declared parameter names that may be omitted at a callWorkflow even without a
+ *  default (resolving to `undefined` in the body). Each must be a unique declared
+ *  parameter. Returns the validated list (or undefined when absent). */
+function validateWorkflowOptionalParams(
+  where: string,
+  raw: unknown,
+  params: readonly string[]
+): { ok: true; optionalParams: string[] | undefined } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, optionalParams: undefined }
+  if (!Array.isArray(raw)) return failAt(where, 'must be an array of declared parameter names')
+  const optionalParams: string[] = []
+  const seen = new Set<string>()
+  for (let j = 0; j < raw.length; j++) {
+    const p = raw[j]
+    if (typeof p !== 'string' || !params.includes(p)) {
+      return failAt(`${where}[${j}]`, 'must be a declared workflow parameter')
+    }
+    if (seen.has(p)) return failAt(`${where}[${j}]`, `parameter "${p}" is duplicated`)
+    seen.add(p)
+    optionalParams.push(p)
+  }
+  return { ok: true, optionalParams }
+}
+
 function validateWorkflows(
   what: string,
   raw: unknown
@@ -1194,6 +1219,8 @@ function validateWorkflows(
     if (!paramsR.ok) return paramsR
     const defaultsR = validateWorkflowParamDefaults(`${where}.paramDefaults`, wf.paramDefaults, paramsR.params ?? [])
     if (!defaultsR.ok) return defaultsR
+    const optionalR = validateWorkflowOptionalParams(`${where}.optionalParams`, wf.optionalParams, paramsR.params ?? [])
+    if (!optionalR.ok) return optionalR
     const actionsR = validateActionArray(`${where}.actions`, wf.actions, true)
     if (!actionsR.ok) return actionsR
     seenIds.add(wf.id)
@@ -1202,6 +1229,7 @@ function validateWorkflows(
       name: wf.name,
       params: paramsR.params,
       paramDefaults: defaultsR.paramDefaults,
+      optionalParams: optionalR.optionalParams,
       actions: actionsR.actions
     })
   }
@@ -1212,7 +1240,7 @@ export const setWorkflows = defineTool({
   name: 'set_workflows',
   mutates: true,
   description:
-    "Replace the root node's lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node's event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component's scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string \"null\" or '[]' to clear all workflows. Shape: [{ id, name, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow's expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, and actions is an ActionDef array (same shape as a node's event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: '[{\"id\":\"wf-notify\",\"name\":\"Notify\",\"params\":[\"msg\"],\"actions\":[{\"id\":\"a1\",\"kind\":\"toast\",\"messageExpr\":\"msg\",\"variant\":\"success\"}]}]' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: 'null' }) → { ok: true, data: { workflows: 0, actions: 0 } }.",
+    "Replace the root node's lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node's event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component's scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string \"null\" or '[]' to clear all workflows. Shape: [{ id, name, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow's expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, optionalParams (Phase 3 §10 v8, optional) is an array of declared parameter names that may be omitted even without a default (each resolves to the literal `undefined` in the body rather than dropping the call), and actions is an ActionDef array (same shape as a node's event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: '[{\"id\":\"wf-notify\",\"name\":\"Notify\",\"params\":[\"msg\"],\"actions\":[{\"id\":\"a1\",\"kind\":\"toast\",\"messageExpr\":\"msg\",\"variant\":\"success\"}]}]' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: 'null' }) → { ok: true, data: { workflows: 0, actions: 0 } }.",
   params: {
     workflows_json: {
       type: 'string',

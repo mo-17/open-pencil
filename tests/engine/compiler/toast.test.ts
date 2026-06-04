@@ -128,4 +128,22 @@ describe('compile — toast runtime wiring (Phase 3 §10 v2)', () => {
     expect(css).toContain('opacity-70')
     expect(css).toContain('ml-auto')
   })
+
+  // ── Phase 3 §10 v8: stack cap + duplicate suppression ──
+
+  test('the runtime caps the toast stack and suppresses duplicate message+variant', () => {
+    const out = compileWithClick([
+      { id: 't', kind: 'toast', messageExpr: '"Hi"', variant: 'info' }
+    ])
+    const runtime = out.files.get('src/_lowcode_toast.tsx') as string
+    // stack cap: a MAX_TOASTS constant + an oldest-drop slice
+    expect(runtime).toContain('const MAX_TOASTS = 5')
+    expect(runtime).toContain('next.length > MAX_TOASTS')
+    expect(runtime).toContain('next.slice(next.length - MAX_TOASTS)')
+    // dedup: skip a toast already on screen with the same message + variant
+    expect(runtime).toContain('t.message === message && t.variant === variant')
+    // existing §10 v7 behaviour preserved (no regression to the timer / × button)
+    expect(runtime).toContain('options.durationMs ?? 3000')
+    expect(runtime).toContain('onClick={() => dismiss(t.id)}')
+  })
 })

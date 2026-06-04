@@ -76,6 +76,11 @@ let toasts: Toast[] = []
 let seq = 0
 const listeners = new Set<() => void>()
 
+// Phase 3 §10 v8: cap the number of simultaneously stacked toasts; when a new
+// toast pushes past the cap the oldest is dropped so the stack can't grow
+// without bound (e.g. a toast fired in a loop / on every keystroke).
+const MAX_TOASTS = 5
+
 function emitChange(): void {
   for (const listener of listeners) listener()
 }
@@ -107,10 +112,16 @@ export function __opToast(
   variant: ToastVariant = 'info',
   options: ToastOptions = {}
 ): void {
-  const id = ++seq
   const position = options.position ?? 'bottom-right'
   const duration = options.durationMs ?? 3000
-  toasts = [...toasts, { id, message, variant, position }]
+  // Phase 3 §10 v8: skip a toast whose message + variant duplicates one already
+  // on screen, so a repeatedly-fired action doesn't stack identical copies.
+  if (toasts.some((t) => t.message === message && t.variant === variant)) return
+  const id = ++seq
+  let next = [...toasts, { id, message, variant, position }]
+  // Phase 3 §10 v8: enforce the stack cap by dropping the oldest toasts.
+  if (next.length > MAX_TOASTS) next = next.slice(next.length - MAX_TOASTS)
+  toasts = next
   emitChange()
   if (duration > 0) {
     setTimeout(() => {

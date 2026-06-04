@@ -474,6 +474,10 @@ function expandWorkflow(action: CallWorkflowAction, ctx: ResolveCtx): IREventHan
   return bindings.size === 0 ? expanded : expanded.map((handler) => substituteHandler(handler, bindings))
 }
 
+/** Phase 3 §10 v8: the AST an omitted optional parameter binds to — the literal
+ *  `undefined` identifier, which `emitExpression` renders verbatim. */
+const UNDEFINED_AST: ExprAst = { kind: 'ident', name: 'undefined' }
+
 /** Phase 3 §10 v6: bind a workflow's formal `params` to the call-site `args`
  *  expressions, parsed + validated in the caller's scope. Returns the binding
  *  map (empty for a parameterless workflow, preserving §10 v4 behaviour), or
@@ -507,6 +511,14 @@ function bindWorkflowArgs(
       src = workflow.paramDefaults?.[param]
     }
     if (typeof src !== 'string' || src.trim() === '') {
+      // Phase 3 §10 v8: a parameter listed in `optionalParams` may be omitted
+      // even without a default — it resolves to the literal `undefined` in the
+      // inlined body instead of dropping the whole call (§10 v6 behaviour for a
+      // required parameter).
+      if (workflow.optionalParams?.includes(param) === true) {
+        bindings.set(param, UNDEFINED_AST)
+        continue
+      }
       ctx.warnings.push({
         code: 'action-call-workflow-missing-arg',
         message: `node ${ctx.node.id} ${ctx.eventName} callWorkflow "${workflow.id}" missing arg for parameter "${param}"`,

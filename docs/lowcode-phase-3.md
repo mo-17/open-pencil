@@ -5214,6 +5214,67 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**recon 反转 roadmap
 - **augmentWithPluralArgs 自然协同**:plural 选择子 arg(`count`)若也被插值,buildIcuMessage 已入 values→augment 的 existing 命中→不重复(probe 路径已验)。
 - 测试 +3(plural-body 重复变量去重 / 同 member 表达式去重 / 不同对象同叶名仍分离 suffix 保留)+ 改 1 个 v4 期望。compiler **590/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(plural 复数分支插值在 preview/build 渲染)。**§9 v10 follow-ups:** 译文覆盖率/缺译高亮(GUI);RTL 源语言布局;非-i18n template(§9 v5)同样的占位符去重(目前 §9 v5 走 IRExpression template AST,无占位符概念,天然无此问题)。
 
+## §10 v8 — toast 堆叠上限/去重 + workflow 可选形参(两小件续 §10 链)
+
+> §10 v7 follow-up。助手推荐 §10 v8(用户「根据 prompt.md 执行任务」= 续做功能首选;否决 §9 v10 译文覆盖率高亮——偏 GUI 真机;否决 §8 v9 nested-instance prop-threading 大坑;否决 CF Pages——需 blake3 依赖违背零依赖约束需先问)。两个小件、低风险,直接接 §10 v7 toast runtime + §10 v7 workflow paramDefaults。
+
+### 10v8.1 现状与问题
+
+1. **toast 无限堆叠 + 重复消息各弹一条**:§10 v2/v5/v7 runtime 的 `__opToast` 每调用一次就 `toasts = [...toasts, ...]` 无上限堆叠;循环里 / 每次按键触发同一 toast → 屏幕被同一条消息淹没,且无任何上限。
+2. **workflow 形参必须有 arg 或 default**:§10 v6 给 `params` + `args`,§10 v7 给 `paramDefaults`,但形参缺 arg **且**缺 default → `bindWorkflowArgs` warn `missing-arg` + drop 整个 callWorkflow。Bubble 风「可选参数」(省略即视为 `undefined`、由 body 自行 `?:` 兜底)做不到。
+
+### 10v8.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **toast 堆叠上限 `MAX_TOASTS = 5`**(runtime 常量,超出弹最旧) | runtime 侧行为,非 per-action 配置(prompt 明确「加 runtime 侧 max-stack」)→ 零数据模型/collect/emit 改动。`next.slice(next.length - MAX_TOASTS)` 丢最旧。 |
+| 2 | **同 message+variant 去重**(已在屏则跳过) | `__opToast` 开头 `if (toasts.some(t => t.message === message && t.variant === variant)) return`。简单且对持久 toast 也正确(同条不重复;消失后可再弹)。 |
+| 3 | **`WorkflowDef.optionalParams?: string[]`**(并行 `params`,subset) | 平行字段(同 §10 v7 paramDefaults 模式),非把 `params` 升对象;unset → §10 v7 byte-identical;随 `lowcode/workflows` JSON blob 自由 round-trip。 |
+| 4 | **缺 arg 且缺 default 且 ∈ optionalParams → 绑 `undefined` ident**(在 `bindWorkflowArgs`) | bind `{kind:'ident', name:'undefined'}`(emitExpression 渲染为字面 `undefined`)→ substituteHandler 把 body 内 param 引用换成 `undefined`,不 drop。非 optional 仍 §10 v6 missing-arg drop。 |
+| 5 | **零新 ActionDef kind / 零 runtime npm 依赖 / 零 round-trip codec 改动** | optionalParams 是 WorkflowDef 增量字段→**经验 A union widening 完全不涉及**;toast 改动纯 runtime 字符串。 |
+
+### 10v8.3 公开 API / Schema 改动
+
+- `WorkflowDef.optionalParams?: string[]`(scene-graph/types.ts)。
+- `set_workflows` 工具:接受 + 校验 `optionalParams`(每项须 ∈ 已校验 params、去重),descr 补 §10 v8 说明。
+- toast runtime(`adapters/react/lowcode/toast.ts`):`MAX_TOASTS` 常量 + 堆叠裁剪 + 去重 early-return。
+- 零 `CompilerOptions` / `ActionDef` / IR / emit-event / round-trip codec 改动。
+
+### 10v8.4 内部实现拆解
+
+1. **toast runtime**(toast.ts buildLowcodeToastRuntime):`const MAX_TOASTS = 5`;`__opToast` 内:dedup early-return → `let next = [...toasts, {...}]` → `if (next.length > MAX_TOASTS) next = next.slice(next.length - MAX_TOASTS)` → `toasts = next`。保留 `options.durationMs ?? 3000` + × 按钮(§10 v7)不破。
+2. **workflow optional**(bindings.ts bindWorkflowArgs):缺 src(无 arg 无 default)分支前置 `if (workflow.optionalParams?.includes(param) === true) { bindings.set(param, UNDEFINED_AST); continue }`;`const UNDEFINED_AST: ExprAst = { kind: 'ident', name: 'undefined' }`。
+3. **tool 校验**(lowcode.ts):新 `validateWorkflowOptionalParams(where, raw, params)`——数组、每项 ∈ params、去重;`validateWorkflows` 调它(threading 已校验 params)→ WorkflowDef.optionalParams。
+
+### 10v8.5 成功标准
+
+- 同 message+variant 短时多次 `__opToast` → 屏幕只一条;堆叠超 5 条 → 丢最旧。
+- toast 默认 / durationMs / × 按钮 → §10 v7 行为不变(既有 toast 测试 toContain 子串不破)。
+- workflow 形参 ∈ optionalParams 且 callWorkflow 省略该 arg → body 内 param 解析成 `undefined`(不 drop);显式 arg → 覆盖。
+- 非 optional 形参缺 arg/default → 仍 drop(§10 v6 行为)。
+- `set_workflows` 拒非法 optionalParams(非形参 / 重复)。
+- `bun run check` exit 0;tsgo 0;compiler 全绿。
+
+### 10v8.6 工作分解(~0.3 day)
+
+types.ts(WorkflowDef.optionalParams)→ toast.ts(MAX_TOASTS + dedup)→ bindings.ts(optional → UNDEFINED_AST)→ lowcode.ts(validateWorkflowOptionalParams + threading + descr)→ 测试(toast runtime cap/dedup / workflow optional 用·覆盖·required-still-drop / tool 校验 / round-trip)→ build:packages → `bun run check`。
+
+### 10v8.7 风险
+
+- toast 去重对持久 toast(durationMs=0):同条不重复弹,符合预期(消失后可再弹)。
+- 绑 `undefined` ident:若 body 对可选 param 做 `param.foo` 成员访问而省略它 → 运行时 `undefined.foo` 抛(搭建者自己 `?:` 兜底,文档化边界)。
+- 真机验:同 toast 不重复 + 堆叠裁剪;workflow 省略可选 arg → body `undefined` 路径生效。
+
+### 10v8.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。两件设计均成立,**零 hotfix、零 GATE 收口、零意外**。
+
+- **toast 堆叠上限/去重纯 runtime 改动**:只动 `toast.ts` 的 `buildLowcodeToastRuntime()` 字符串——`const MAX_TOASTS = 5` + `__opToast` 开头 message+variant 去重 early-return + 添加后 `next.slice(next.length - MAX_TOASTS)` 丢最旧。保留 `options.durationMs ?? 3000` 子串 + × 按钮 → 既有 §10 v2/v5/v7 toast 测试只 `toContain` 子串、纯增量 → 零回归。`TOAST_RUNTIME_CLASSES` safelist 零改(无新 class)。
+- **workflow 可选形参=平行字段 + UNDEFINED_AST 单点**:`WorkflowDef.optionalParams?: string[]`(平行 `params`/`paramDefaults`)。回退逻辑只在 `bindWorkflowArgs` 一点:缺 arg+缺 default+∈optionalParams → `bindings.set(param, UNDEFINED_AST)` + continue,其余 substituteHandler walk 路径**完全复用**(把 body 内 param 引用换成 `undefined` ident,emitExpression 渲染字面 `undefined`)。param 仍在 `params` → 已加入 bodyCtx.inScope → body 引用过校验;非 substitute 则会 emit 裸 `param` 变量→ ReferenceError,故必须 bind。
+- **新字段加到已有结构(WorkflowDef)= 经验 A union widening 完全不涉及**(同 §10 v5/v6/v7):无新 ActionDef kind → dispatchAction/emit-never/buildActionFromValidated/check:vue 四穷举点全不动;substituteHandler total-function walk 也不变(绑 ident AST,既有 substituteIdents 直接处理)。
+- **tool 校验** `validateWorkflowOptionalParams(where, raw, params)`:数组、每项 ∈ 已校验 params、去重;`validateWorkflows` threading 已校验的 `paramsR.params ?? []`。read_workflows 整体回读 → optionalParams 自动透出。
+- 测试 +6(toast runtime cap+dedup 1 / workflow optional 用·覆盖·required-still-drop 3 / tool 校验 1 / kiwi roundtrip paramDefaults+optionalParams 1)。compiler **594/0**(+4),kiwi+tools+rls 308/0,`bun run check` exit 0,tsgo 0。**真机验 pending**(同 toast 去重 + 堆叠裁剪;workflow 省略可选 arg → body `undefined`)。**§10 v9 follow-ups:** EventsPanel + 工作流管理面板 GUI(真机,含 params/args/paramDefaults/optionalParams 编辑);toast 去重窗口可配 / 堆叠上限可配。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

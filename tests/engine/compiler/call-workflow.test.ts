@@ -168,3 +168,60 @@ describe('compile — workflow default arguments (Phase 3 §10 v7)', () => {
     expect(app).not.toContain('__opToast')
   })
 })
+
+describe('compile — workflow optional parameters (Phase 3 §10 v8)', () => {
+  test('an omitted optional parameter resolves to undefined (not dropped)', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }],
+      [
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          optionalParams: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
+      ]
+    )
+    const app = out.files.get('src/App.tsx') as string
+    // not dropped — the omitted optional `msg` is substituted with `undefined`
+    expect(app).toContain('__opToast(undefined)')
+    expect(app).not.toContain('__opToast(msg)')
+  })
+
+  test('an explicit arg still wins over an optional parameter', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: '"Hi"' } }],
+      [
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          optionalParams: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
+      ]
+    )
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('__opToast("Hi")')
+    expect(app).not.toContain('__opToast(undefined)')
+  })
+
+  test('a required parameter still drops the call even when another is optional', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }],
+      [
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg', 'other'],
+          optionalParams: ['other'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
+      ]
+    )
+    const app = out.files.get('src/App.tsx') as string
+    // `msg` is required (not in optionalParams, no default) → whole call dropped
+    expect(app).not.toContain('__opToast')
+  })
+})

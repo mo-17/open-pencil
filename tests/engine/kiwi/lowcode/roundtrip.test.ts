@@ -591,4 +591,24 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     const btn = [...reimported.getAllNodes()].find((n) => n.name === 'arg-btn')
     expect(btn?.events).toEqual({ onClick })
   })
+
+  test('workflow paramDefaults + optionalParams round-trip through .fig (Phase 3 §10 v7/v8)', async () => {
+    const graph = new SceneGraph()
+    const workflows = [
+      {
+        id: 'notify',
+        name: 'Notify',
+        params: ['msg', 'detail'],
+        paramDefaults: { msg: '"Done"' },
+        optionalParams: ['detail'],
+        actions: [{ id: 't', kind: 'toast' as const, messageExpr: 'msg' }]
+      }
+    ]
+    graph.updateNode(graph.rootId, { lowcodeWorkflows: workflows })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toEqual(workflows)
+  })
 })

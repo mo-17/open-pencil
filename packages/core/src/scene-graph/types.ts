@@ -984,6 +984,14 @@ export interface WorkflowDef {
    *  neither an arg nor a default still drops the `callWorkflow` with a warning
    *  (§10 v6 behaviour). Absent = every parameter is required. */
   paramDefaults?: Record<string, string>
+  /** Phase 3 §10 v8: parameter names (a subset of `params`) that may be omitted
+   *  at a `CallWorkflowAction` even without a `paramDefaults` entry. When such a
+   *  parameter has neither an explicit `arg` nor a default, it resolves to the
+   *  literal `undefined` in the inlined body (rather than dropping the whole
+   *  `callWorkflow` as §10 v6 does for a required parameter). A parameter with a
+   *  `paramDefaults` entry never reaches this case (the default wins). Absent =
+   *  every parameter without a default is required. */
+  optionalParams?: string[]
   actions: ActionDef[]
 }
 
