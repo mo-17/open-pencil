@@ -5601,6 +5601,110 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GAT
 - `computeI18nCoverage` 共享给 JSON 报告 + warnings;`i18nCoverageWarnings` 每缺译 locale 一条 summary(列源串)。adapter.emit 既有 warnings 通道 → compile 合并 → CLI 自动打印,零新管道。
 - 测试 +3(部分译→warning 含缺串/全译→无 warning/无目标→无 warning)。compiler **612/0**(+3),`bun run check` exit 0,tsgo 0。**真机验**:`open-pencil build app.fig --i18n --locale ar` 终端打印缺译清单。**§9 v15 follow-ups:** RTL 感知逻辑属性(margin/padding→`ms-`/`me-`,需 core collectTailwindClasses 改,有回归面);editor preview i18n toggle(真机)。
 
+## §14 — 跨文件组件库 / 团队库（Team Library）〔未实现·设计〕
+
+> 用户 2026-06-05 要求写入后续设计。目标:把 §8 的「单文档内组件复用」扩成「跨文件发布 + 消费 + 更新传播」——即 Figma「团队库」语义。**状态:未实现,关键决定为待锁 fork(挑定时走 AskUserQuestion)。**
+
+### 14.1 现状与问题
+- §8 的 COMPONENT/INSTANCE 只在**单文档**内复用(跨页 OK,§8 v9/v11 override + 存盘已就位)。没有「把一个组件发布到共享库、在别的文档里实例化、库更新后消费方收到更新」的机制。
+- **已有地基**:SceneNode 已有 `componentKey: string | null`(types.ts:483)—— Figma 库组件正是用全局 `componentKey`(GUID)做跨文件身份。目前我们没用它做跨文件,但它是天然锚点。`componentId`(:471)是文档内 master 链接。
+
+### 14.2 关键决定(待锁 fork)
+| # | 决定点 | 选项 | 推荐 |
+|---|---|---|---|
+| 1 | 库的存储/分发 | (a) 库=普通 .fig,其 COMPONENT 主件被「发布」标记 + 稳定 componentKey;(b) 专用库 bundle 格式(`.penlib` JSON,只抽组件子树+资源) | **(a)** —— 复用 .fig,摩擦最低;发布=给主件打标 + 分配稳定 componentKey + 生成库清单(manifest)。`.penlib` 留后续优化。 |
+| 2 | 消费方如何引用库组件 | (a) 实例只存 componentKey + libraryId,打开时远程拉 master 填充;(b) **把库 master 子树 import 进消费文档做本地缓存**(标 readonly + {componentKey, libraryId, version}),实例指向本地缓存 master | **(b)** —— 消费文档自包含/离线可用;更新=重拉替换缓存 master + syncInstances(复用既有机制)。 |
+| 3 | 更新传播 | (a) 手动「检查更新」对比 version 后接受;(b) 自动推送 | **(a) 先做手动**;每发布组件带 `version`=子树 hash,消费方缓存 {componentKey, version},对比→提示→接受→替换缓存 master + syncInstances。 |
+| 4 | 库解析来源 | (a) 本地文件/工作区目录的 .fig 库;(b) 远程库注册表(URL + manifest,类似 §4/§5 的 broker/Netlify infra) | **(a) 本地文件先做**(无后端);远程注册表作 Phase B。 |
+| 5 | 编译器交互 | 库组件在消费文档内仍是本地(缓存)COMPONENT master | **零编译器改动** —— §8 已能提取/复用本地 master;团队库纯 scene-graph + import + round-trip + 编辑器面板。 |
+
+### 14.3 公开 API / Schema 改动
+- **scene-graph/types.ts**:COMPONENT 主件加 `libraryComponentKey?: string`、`libraryId?: string`、`libraryVersion?: string`、`libraryReadonly?: boolean`(复用既有 `componentKey`);root 加 `lowcodeLibraries?: LibraryRef[]`(`{ libraryId; name; source: {kind:'file'|'url'; ref:string}; importedComponents: { key; version }[] }`)。
+- **round-trip**(kiwi/fig/node-change/lowcode-plugin-data.ts):新 `lowcode/libraryComponent`(每 master:key/libraryId/version/readonly)+ `lowcode/libraries`(root 的 LibraryRef 列表)——照 §8 v11 / §9 v7 既有 serialize/extract/assign 模式;缓存 master 子树作普通节点 round-trip(打 readonly 标)。
+- **工具**(tools/):`publish_component`(库文档侧:打发布标 + 分配 componentKey + 算 version + 写 manifest)、`list_libraries` / `import_library_component`(消费侧:读 manifest → 克隆 master 子树进文档打标 → 注册 lowcodeLibraries)、`check_library_updates` / `accept_library_update`(对比 version → 重拉 + syncInstances)。**非 ActionDef kind → 无经验 A union widening**,registry 注册点同 set_translations/set_workflows。
+- **编辑器**:「Libraries」面板(浏览/导入/更新角标)——真机 Vue GUI。
+- **CLI**:`open-pencil library publish <lib.fig>` / `library import <consumer.fig> --from <lib.fig> --component <key>`。
+
+### 14.4 内部实现拆解
+1. **发布**(库文档):`publish_component(masterId)` → 若无 componentKey 则 `crypto.getRandomValues` 生成 GUID,`libraryVersion`=子树规范化 hash(节点结构+样式,排除 id);生成/更新库 manifest(`<lib>.manifest.json`:`[{ key, name, version, thumbnailRef }]`)。
+2. **导入**(消费文档):读库 manifest → 选组件 → 克隆该 master 子树进消费文档(`cloneSubtreeInto`,新 id),master 打 `{libraryComponentKey, libraryId, libraryVersion, libraryReadonly:true}`;`lowcodeLibraries` 追加/更新 LibraryRef 的 importedComponents。实例走普通 `createInstance`(本地缓存 master)。
+3. **更新**:`check_library_updates` 重读 manifest → 按 componentKey 对比 version → 列出 stale;`accept_library_update` 重拉 master 子树、**保留缓存 master 的 id**(实例 componentId 不变)替换其子树、`syncInstances(componentId)`。override 经 §8 v11 reapply —— **风险:若新版 master 子结构变了,index-path keyed override 可能错位**(见 14.7)。
+4. **round-trip**:同 §8 v11 pluginData 模式;readonly 缓存 master 子树正常序列化。
+5. **编辑器**:Libraries 面板列已连库 + 各组件「最新/有更新」状态;拖入=createInstance。
+
+### 14.5 成功标准
+- 库 .fig 发布组件 → 生成 manifest(componentKey + version)。
+- 消费 .fig 导入该组件 → 本地缓存 master + 实例渲染;消费文档存盘/重开自包含(离线可用)。
+- 库改组件 + 重发布 → 消费方 check 出更新 → 接受 → 实例同步新版,未改的 override 保留。
+- 编译器零改动:库实例 = 本地 master 实例 → §8 既有提取/复用产物正确。
+- 既有单文档组件零回归。
+
+### 14.6 工作分解 / 分期
+- **Phase A(无后端)**:数据模型 + round-trip + publish/import/update 工具 + CLI + 本地文件库解析。手动更新。
+- **Phase B**:远程库注册表(URL manifest)+ 更新角标推送 + Libraries 编辑器面板(真机)。
+- 量级:**大**(尤其更新传播 + override 跨版本存活)。
+
+### 14.7 风险
+- **override 跨版本存活**:§8 v11 override 按 child index-path keyed;库新版若增删/重排 master 子节点 → path 错位 → override 落到错节点或丢。需:更新时按 name/稳定锚 re-map override,或检测结构变更时提示用户复核(类似 Figma「override 冲突」)。
+- 缓存 master 与库源**版本漂移**:消费方手改了 readonly 缓存 master → 与库冲突;需 readonly 守卫 + 「分离/detach」语义。
+- componentKey 唯一性 / 冲突(两库同 key)。
+
+### 14.8 实现状态
+**未实现。** 设计待用户挑定;挑定后走 AskUserQuestion 锁 14.2 的 5 个 fork(尤其库存储 a/b、解析来源本地/远程),先 Phase A headless(数据模型+round-trip+工具+CLI),编辑器面板与远程注册表留真机/Phase B。
+
+## §15 — 产物代码 UI 库适配（Code UI Kit Adapter，如 shadcn/ui）〔未实现·设计〕
+
+> 用户 2026-06-05 要求写入后续设计。目标:让编译产物用**现成代码 UI 库**(shadcn/ui 等)的组件,而非全套自绘 Tailwind `<button className>`。**状态:未实现,关键决定为待锁 fork。** 助手判断:这是「生成真·生产代码」的最高价值差异化项。
+
+### 15.1 现状与问题
+- 编译器从 scene graph 产**自包含 React + Tailwind**(emit/element.ts `emitElement`:BUTTON→`<button className=...>`,INPUT→`<input>`,等 6 个交互 NodeType + applyButtonProps/applyTextInputProps)。从不 import 真实代码 UI 库。
+- 搭建者想让导出 app 用成熟、可访问(a11y)、可主题化的组件库(shadcn/MUI/antd)做不到 → 产物是手绘 div/button,a11y 与可维护性弱。
+- **已有地基**:产物依赖注入机制 `extraDeps`(adapters/react/index.ts:146,`lowcodeStateExtraDeps`/`i18nExtraDeps` 模式 → 进 package.json);组件文件 emit 机制(emitComponentFiles + buildComponentImports + componentImportPrefix);§5.1 zero-install 约束(VFS 从 workspace hoisted 解析,产物不需 `npm install` 即可 preview)。
+
+### 15.2 关键决定(待锁 fork)
+| # | 决定点 | 选项 | 推荐 |
+|---|---|---|---|
+| 1 | 首个目标库 | (a) **shadcn/ui**(Tailwind-native、复制式源码、MIT、无 runtime 版本锁);(b) MUI/antd(runtime 依赖、自带样式与现 Tailwind emit 冲突) | **(a) shadcn 先做** —— 与现 Tailwind emit 同源,无 runtime 锁,生态最大。 |
+| 2 | 架构 | (a) 直接写死 shadcn;(b) **可插拔 UI-kit adapter 接口**,shadcn 作首个实现 | **(b) 设计 adapter 接口 + 先发 shadcn 实现** —— 后续 MUI/antd 可加。 |
+| 3 | 映射哪些节点 | 6 个交互 NodeType(BUTTON/INPUT/SELECT/CHECKBOX/RADIO/SWITCH)→ shadcn `<Button>/<Input>/<Select>/<Checkbox>/<RadioGroup>/<Switch>`;FRAME 打标→`<Card>`(可选) | 先做 6 个交互类型;Card 等容器映射作 Phase B。 |
+| 4 | 样式/prop 如何映射 | (a) **把算好的 Tailwind className 透传给 kit 组件**(`<Button className={tw} variant="...">`:kit 给行为+a11y,设计给外观);(b) 从节点样式反推 kit variant(脆) | **(a) className 透传** —— 保视觉保真 + 拿 kit 行为/a11y。 |
+| 5 | kit 怎么进产物 | (a) **emit 内联 shadcn 组件源**(`src/components/ui/*.tsx` + `lib/utils.ts` cn + `components.json`)+ extraDeps 注入(cva/clsx/tailwind-merge/radix);(b) emit `npx shadcn add` 指令(非自包含) | **(a) 内联 emit** —— 零 post-install,合 §5.1 zero-install 精神;只 emit 实际用到的组件。 |
+| 6 | 开关 | `CompilerOptions.uiKit?: 'shadcn'`(+ CLI `--ui-kit shadcn`,同 §9 v13 i18n flags);off → 现自包含 emit byte-identical | 是。 |
+
+### 15.3 公开 API / Schema 改动
+- `CompilerOptions.uiKit?: 'shadcn'`(默认 undefined → 现产物零变化)。
+- CLI `compile`/`build`:`--ui-kit shadcn`(经 §9 v13 同款 i18n-args 模式接线进 loadAndCompile)。
+- 新 `adapters/react/ui-kit/`:adapter 接口 `UiKitAdapter`(`mapInteractive(node) → { jsx; imports: {name,from}[] }`、`files(): Map<path,content>`(内联组件源 + lib/utils + components.json)、`deps(): Record<string,string>`、`tailwindTheme(): {config, globalsCss}`)+ `shadcn/` 实现(各组件模板 + radix dep 表)。
+- 零 scene-graph / round-trip 改动(纯产物侧;uiKit 是 build-time 选项)。
+
+### 15.4 内部实现拆解
+1. **adapter 接口** + shadcn 实现:每交互类型一个映射(BUTTON→import `Button` from `@/components/ui/button` + `<Button className={tw}>{text}</Button>`);内联模板(button.tsx/input.tsx/…,来自 shadcn 源)+ `lib/utils.ts`(`cn` = clsx + tailwind-merge)+ `components.json`。
+2. **emit/element.ts**:`uiKit` 在场时,交互节点经 kit adapter 产 JSX + 收集 import;否则现路径。**只 emit 实际出现的交互类型对应的 kit 组件**(按 IR 里出现的 NodeType tree-shake)。
+3. **index.ts**:emit 用到的 kit 组件文件 + lib/utils + components.json;kit deps 并入 extraDeps(cva/clsx/tailwind-merge + 每组件用到的 `@radix-ui/react-*`);emit shadcn 主题(`tailwind` theme tokens / CSS 变量 + `globals.css`)。
+4. **Tailwind v4 对齐**:本项目用 Tailwind v4(`@source inline` safelist)。shadcn 的 config/theme(CSS 变量主题)须适配 v4 写法;className 透传值仍走既有 safelist 机制。
+5. **经验 D**:kit 的 npm 依赖(cva/clsx/tailwind-merge/radix)入 `packages/compiler` devDeps + bun install,VFS preview/build 从 workspace hoisted 解析(§5.1 zero-install)。
+
+### 15.5 成功标准
+- `compile --ui-kit shadcn` → 交互节点 emit `<Button>/<Input>/…`(import 自 `@/components/ui/*`),内联 shadcn 组件源 + lib/utils + components.json + deps + 主题 CSS 齐全。
+- className 透传 → 视觉与设计一致 + 拿 shadcn 行为/a11y。
+- 只 emit 用到的 kit 组件(无用不 emit)。
+- 无 `--ui-kit` → 现自包含 Tailwind 产物 byte-identical(零回归)。
+- preview/build 可跑(VFS 解析 kit deps,zero-install)。
+
+### 15.6 工作分解 / 分期
+- **Phase A**:adapter 接口 + shadcn(Button + Input + 2~3 核心组件)+ className 透传 + 内联 emit + `--ui-kit` flag + 主题 CSS。
+- **Phase B**:6 交互类型全 + Card/容器映射 + variant 反推 + 可插拔 MUI/antd adapter。
+- 量级:**中-大**(内联 shadcn 模板 + radix deps + 主题 CSS + Tailwind v4 对齐是大头)。
+
+### 15.7 风险
+- **Tailwind v4 vs shadcn**:shadcn 官方模板偏 v3 config;v4 的 `@theme`/CSS 变量主题需手工对齐,否则主题色失效。
+- **radix peer deps**:每组件不同 radix 包,dep 表要准;VFS 解析须有这些 hoisted。
+- variant/prop 保真:className 透传保外观,但 kit 自身默认样式可能与设计冲突(padding/radius)——需 `cn()` 合并优先级验证。
+- 产物体积:内联多个 kit 组件 + radix → bundle 变大(只 emit 用到的可缓解)。
+
+### 15.8 实现状态
+**未实现。** 设计待用户挑定;挑定后走 AskUserQuestion 锁 15.2 的 fork(尤其首库 shadcn、内联 emit vs npx、className 透传)。Phase A 纯 headless 可验(compile 产物断言 + VFS build),组件视觉保真留真机。**助手评估:这是把 lowcode 产物从「能跑的自绘代码」升级成「生产级可维护代码」的最高杠杆项,建议优先于纯 §X v-bump。**
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
