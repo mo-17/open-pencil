@@ -11,6 +11,7 @@ export type {
 } from './types'
 
 import { guidToString } from '#core/kiwi/fig/node-change/convert'
+import { reapplyInstanceOverrides } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import type { SceneGraph, SceneNode } from '#core/scene-graph'
 import { copyFills, copyStyleRuns } from '#core/scene-graph/copy'
 import type { JsonObject } from '#core/types'
@@ -279,4 +280,7 @@ export function populateAndApplyOverrides(
   propagateResolvedTextClones(graph)
   applyConstraintScaling(ctx)
   applyComponentProperties(ctx)
+  // Phase 3 §8 v11: re-apply lowcode instance overrides last (after children are
+  // populated + native sync ran), so saved instance customizations survive load.
+  reapplyInstanceOverrides(graph)
 }

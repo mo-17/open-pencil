@@ -24,6 +24,7 @@ import type {
   NodeType,
   PluginDataEntry,
   ResponsiveOverrides,
+  SceneGraph,
   SceneNode,
   StateDef,
   SupabaseConfig,
@@ -91,6 +92,11 @@ export const LOWCODE_TRANSLATIONS_KEY = 'lowcode/translations'
  *  only. Value is the JSON-encoded `WorkflowDef[]` array. Absent ≡ no authored
  *  workflows, so .fig files that never defined a workflow stay byte-identical. */
 export const LOWCODE_WORKFLOWS_KEY = 'lowcode/workflows'
+/** Phase 3 §8 v11: per-INSTANCE override table. Value is a JSON object keyed by
+ *  the STABLE master-child id (`<masterChildId>:<prop>` → snapshot value), since
+ *  instance child ids are reassigned on load. Restored via
+ *  `reapplyInstanceOverrides` after `populateInstances`. */
+export const LOWCODE_OVERRIDES_KEY = 'lowcode/overrides'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -123,7 +129,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_GRID_POSITION_KEY,
   LOWCODE_RESPONSIVE_OVERRIDES_KEY,
   LOWCODE_TRANSLATIONS_KEY,
-  LOWCODE_WORKFLOWS_KEY
+  LOWCODE_WORKFLOWS_KEY,
+  LOWCODE_OVERRIDES_KEY
 ])
 
 /**
@@ -193,6 +200,95 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
     entries.push(makeEntry(LOWCODE_WORKFLOWS_KEY, node.lowcodeWorkflows))
   }
   return entries
+}
+
+/**
+ * Phase 3 §8 v11: serialize an INSTANCE's `overrides` table for round-trip.
+ * `node.overrides` is keyed by the (unstable) instance-child id; we resolve each
+ * to its master-child id (`componentId`, stable) and snapshot the child's CURRENT
+ * value for that prop, so on load we can re-apply it onto the freshly cloned
+ * child. Returns null for non-instances / empty overrides (legacy .fig stays
+ * byte-identical). Needs the graph to resolve child ids, so it's separate from
+ * `serializeLowcodeFields`. */
+export function serializeInstanceOverrides(node: SceneNode, graph: SceneGraph): PluginDataEntry | null {
+  if (node.type !== 'INSTANCE') return null
+  const keys = Object.keys(node.overrides)
+  if (keys.length === 0) return null
+  const table: Record<string, unknown> = {}
+  for (const key of keys) {
+    const colon = key.lastIndexOf(':')
+    if (colon === -1) continue
+    const instChild = graph.getNode(key.slice(0, colon))
+    if (!instChild) continue
+    // Key by the descendant's index-path within the instance (stable across
+    // save/load: node ids are remapped, but `populateInstances` re-clones the
+    // master structure in the same order). value = the child's current value.
+    const path = childIndexPath(graph, node.id, instChild.id)
+    if (!path) continue
+    const prop = key.slice(colon + 1)
+    table[`${path.join('.')}:${prop}`] = instChild[prop as keyof SceneNode]
+  }
+  if (Object.keys(table).length === 0) return null
+  return makeEntry(LOWCODE_OVERRIDES_KEY, table)
+}
+
+/** The child-index path from `ancestorId` down to `descendantId` (e.g. [0,2] =
+ *  first child's third child), or null if not a descendant. Empty array when
+ *  they are the same node. */
+function childIndexPath(graph: SceneGraph, ancestorId: string, descendantId: string): number[] | null {
+  const path: number[] = []
+  let cur = graph.getNode(descendantId)
+  while (cur && cur.id !== ancestorId) {
+    const parent = cur.parentId ? graph.getNode(cur.parentId) : undefined
+    if (!parent) return null
+    const idx = parent.childIds.indexOf(cur.id)
+    if (idx === -1) return null
+    path.unshift(idx)
+    cur = parent
+  }
+  return cur ? path : null
+}
+
+/**
+ * Phase 3 §8 v11: re-apply instance overrides restored from `lowcode/overrides`,
+ * AFTER `populateInstances` has re-cloned each instance's children from its
+ * master (which resets them to master values + new ids). For every instance
+ * carrying a `pendingInstanceOverrides` snapshot, map each `<masterChildId>:<prop>`
+ * entry to the freshly cloned descendant whose `componentId === masterChildId`,
+ * set that child's prop to the snapshot value, and rebuild `node.overrides` keyed
+ * by the new child id. Clears the pending field so it is idempotent. */
+export function reapplyInstanceOverrides(graph: SceneGraph): void {
+  for (const node of graph.getAllNodes()) {
+    const pending = node.pendingInstanceOverrides
+    if (node.type !== 'INSTANCE' || !pending) continue
+    const remapped: Record<string, unknown> = {}
+    for (const key of Object.keys(pending)) {
+      const colon = key.lastIndexOf(':')
+      if (colon === -1) continue
+      const child = resolveChildByPath(graph, node.id, key.slice(0, colon))
+      if (!child) continue
+      const prop = key.slice(colon + 1)
+      const value = pending[key]
+      graph.updateNode(child.id, { [prop]: value } as Partial<SceneNode>)
+      remapped[`${child.id}:${prop}`] = value
+    }
+    node.overrides = remapped
+    delete node.pendingInstanceOverrides
+  }
+}
+
+/** Walk a dot-separated child-index path (`"0.2"`) from `rootId` to the target
+ *  descendant. Returns undefined if any index is out of range. */
+function resolveChildByPath(graph: SceneGraph, rootId: string, path: string): SceneNode | undefined {
+  let cur = graph.getNode(rootId)
+  if (path === '') return cur
+  for (const part of path.split('.')) {
+    if (!cur) return undefined
+    const idx = Number(part)
+    const childId = cur.childIds[idx]
+    cur = childId ? graph.getNode(childId) : undefined
+  }
+  return cur
 }
 
 /** Returns the FILL axes of an auto-layout node as `{ primary?, counter? }`,
@@ -282,6 +378,10 @@ export interface ExtractedLowcodeAndPluginData {
    *  onto the root via `assignImportedLowcodeFields`; on regular nodes it flows
    *  through `...lowcodeRest` (harmless — root-only in practice). */
   lowcodeWorkflows?: WorkflowDef[]
+  /** Phase 3 §8 v11: per-instance override snapshot (keyed by master-child id).
+   *  Flows onto the node via `...lowcodeRest` as `pendingInstanceOverrides`, then
+   *  `reapplyInstanceOverrides` remaps it after populate. */
+  pendingInstanceOverrides?: Record<string, unknown>
 }
 
 export function extractLowcodeAndPluginData(
@@ -390,7 +490,18 @@ function assignLowcodeLayoutFix(
       return
     case LOWCODE_GRID_POSITION_KEY:
       if (isGridPosition(value)) target.gridPositionOverride = value
+      return
+    case LOWCODE_OVERRIDES_KEY:
+      // Phase 3 §8 v11: per-instance override snapshot (`<path>:<prop>` → value).
+      // Light guard (non-null, non-array object); remapped onto cloned children by
+      // `reapplyInstanceOverrides` after populate, where unknown paths just no-op.
+      if (isPlainRecord(value)) target.pendingInstanceOverrides = value
   }
+}
+
+/** Light guard: a non-null, non-array object. */
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 /** Light guard: a non-null, non-array object. The emit side only iterates the

@@ -5539,6 +5539,43 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GAT
 - **入口仍缺的一半(诚实记录)**:**编辑器 preview 仍 i18n:false** → 在 app 里看不到 i18n,需 `open-pencil build --i18n` 导出后 serve 验证;§10 events 仍无 GUI 授权 → 工作流/condition/toast 仍需程序化构造文档。两者都是 GUI 真机活。
 - 测试 +3(CLI heavy:`--i18n --locale ar` 全产物 / `--source-locale` lang+dir / 无 flag byte-identical)。`bun run check` exit 0,tsgo 0。**§9 入口闭合(CLI 侧);editor preview i18n toggle + §10 EventsPanel GUI 留真机。**
 
+## §8 v11 — INSTANCE.overrides round-trip(实例 override 存盘)
+
+> §8 v9/v10 follow-up + **真实数据丢失 bug 修复**。生成真机测试文档时 probe 坐实:`SceneNode.overrides`(`<childId>:<prop>` 表)从不被序列化进 .fig → **§8 override→props 全链(v2/v3/v6 + v9 deep override)只在 live 编辑器 session 有效,save/reload 后全丢**(保存的 lowcode app 静默丢失实例定制)。§8 的 kiwi round-trip 测试全是 in-process compile,从未验 override 经 .fig 存活,故没抓到。
+
+### 8v11.1 现状与问题
+- probe(exportFigFile→parseFigFile):`overrides={...}`→reparse 后 `{}`,child 值回退 master 默认。根因:**实例序列化为空**(childIds 不存),load 时 `populateInstances` 对空实例从 master 重克隆 children(Figma 模型:实例存 componentId+overrides,children 派生),而我们的 `overrides` map + diverged child 值**从不持久化**。
+- **节点 id 不稳定**:.fig load 重映射所有 id(实例 child id + master child id 都变)→ 不能按 id 或 componentId keying override。
+
+### 8v11.2 关键决定
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`lowcode/overrides` pluginData round-trip**(同 state/bindings 模式) | 复用既有 lowcode pluginData 机制;空 overrides 不写 → 非组件 .fig byte-identical。 |
+| 2 | **按 child 的 index-path keying**(`"0.2":<prop>` → 快照值),非 id/componentId | id 全部重映射、不稳定;但 `populateInstances` 按相同顺序重克隆 master 结构 → **index-path 跨存盘稳定**,且 instance↔master 子树同构。 |
+| 3 | **快照 child 当前值**(`instChild[prop]`) | children load 时从 master 重克隆=master 值;唯有快照存下、load 后重应用才能恢复 diverged 值。 |
+| 4 | **load 时 transient `pendingInstanceOverrides` 字段 + populate 后 `reapplyInstanceOverrides`** | convert 把快照落到 `node.pendingInstanceOverrides`(经 `...lowcodeRest`),populate 重克隆后 walk path 找 child→set 值+重建 `node.overrides`(新 id keying)+清 pending。**transient 字段令 reapply 幂等**(二次跑 pending 已清→no-op,避免误清 overrides)。 |
+| 5 | **reapply 挂 `populateAndApplyOverrides` 末尾**(.fig + clipboard paste 共用) | 在 native override 解析之后跑,我们的 lowcode override 最后落地不被覆盖;顺带修 copy/paste 实例 override。 |
+
+### 8v11.3 公开 API / Schema 改动
+- `SceneNode.pendingInstanceOverrides?: Record<string,unknown>`(transient,load-only,不序列化)。
+- lowcode-plugin-data.ts:`LOWCODE_OVERRIDES_KEY` + `serializeInstanceOverrides(node, graph)`(needs graph 解析 child id→index-path + 快照)+ extract case(`pendingInstanceOverrides`)+ `reapplyInstanceOverrides(graph)` + childIndexPath/resolveChildByPath helpers。
+- export-node.ts:append `serializeInstanceOverrides(node, context.graph)`。
+- instance-overrides/index.ts:`populateAndApplyOverrides` 末尾调 `reapplyInstanceOverrides`。
+- 零 compiler/IR 改动(compiler 读 `node.overrides` 不变,只是现在 load 后非空)。
+
+### 8v11.4 成功标准
+- text override 实例 .fig round-trip → child 值 + overrides(remapped 新 id)存活;clean 实例 round-trip → overrides 空(byte 回归)。
+- deep override(嵌套实例内节点)round-trip → 值存活 + compile 内联渲染。
+- `bun run check` exit 0;tsgo 0;kiwi+compiler+tools 全绿。
+
+### 8v11.5 Post-mortem
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**真 bug 修复,3 处 lint 收口。**
+- **两次 probe 才定位 keying**:① 初版按 componentId keying → FAIL(master child id 也随 .fig load 重映射);② 改 **index-path**(`childIndexPath` 从实例根到 child 的子索引链,populate 同序重克隆 → 稳定)→ PASS。**经验:.fig round-trip 任何跨节点引用都不能用 node id / componentId(全重映射),只能用结构路径(index-path)或 name。**
+- **transient 字段保幂等**:snapshot 落 `pendingInstanceOverrides`(非直接 `node.overrides`),reapply 消费后清空 → 二次跑安全(若落 overrides 直接重用,reapply 非幂等会误清=数据丢失)。
+- **3 lint 收口**:① snapshot `instChild[prop as keyof SceneNode]`(去 `as unknown as Record` 双 cast);② extract 用 `isPlainRecord` 守卫(去 `as Record<string,unknown>` 宽 cast);③ overrides case 移进 `assignLowcodeLayoutFix` 溢出组(assignLowcodeField complexity 23→<20)。
+- **e2e 实跑坐实**:text override + deep nested override 经 exportFigFile→parseFigFile 存活,compile 后产物含 override 值;真机测试文档 `lowcode-realmachine-test.fig` §8 节恢复 override demo(DEEP OVERRIDE ✓ / Text override ✓ 编译产物可见)。
+- 测试 +3(text override 存活 / clean 实例空 overrides 回归 / deep nested override 存活)。kiwi+compiler+tools **920/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(保存含 override 的实例→重开→定制仍在)。**§8 v12 follow-ups:** .pen 格式同样的 override round-trip(pen read 路径独立,未接);component props GUI 面板(真机)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

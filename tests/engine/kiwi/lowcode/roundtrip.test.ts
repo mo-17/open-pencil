@@ -592,6 +592,99 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(btn?.events).toEqual({ onClick })
   })
 
+  test('instance overrides round-trip through .fig (Phase 3 §8 v11)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const comp = graph.createNode('COMPONENT', page.id, {
+      name: 'Card',
+      width: 100,
+      height: 30,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('TEXT', comp.id, { name: 'Label', text: 'orig', width: 80, height: 20 })
+    const inst = graph.createInstance(comp.id, page.id)
+    if (!inst) throw new Error('instance failed')
+    const child = graph.getChildren(inst.id)[0]
+    graph.updateNode(child.id, { text: 'OVERRIDDEN' })
+    inst.overrides = { [`${child.id}:text`]: 'OVERRIDDEN' }
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    const inst2 = [...reimported.getAllNodes()].find((n) => n.type === 'INSTANCE')
+    expect(inst2).toBeDefined()
+    const child2 = inst2 ? reimported.getChildren(inst2.id)[0] : undefined
+    // the diverged child value survives (was reverting to the master default)
+    expect(child2?.text).toBe('OVERRIDDEN')
+    // the override marker survives, remapped to the reimported child's id
+    expect(Object.keys(inst2?.overrides ?? {})).toEqual([`${child2?.id}:text`])
+    // and the pending snapshot was consumed
+    expect(inst2?.pendingInstanceOverrides).toBeUndefined()
+  })
+
+  test('a clean instance has no overrides after .fig round-trip (byte regression)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const comp = graph.createNode('COMPONENT', page.id, {
+      name: 'Card',
+      width: 100,
+      height: 30,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('TEXT', comp.id, { name: 'Label', text: 'orig', width: 80, height: 20 })
+    graph.createInstance(comp.id, page.id) // clean
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const inst2 = [...reimported.getAllNodes()].find((n) => n.type === 'INSTANCE')
+    expect(Object.keys(inst2?.overrides ?? {})).toEqual([])
+    expect(inst2?.pendingInstanceOverrides).toBeUndefined()
+  })
+
+  test('a deep override (node inside a nested instance) round-trips (§8 v9 + v11)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const inner = graph.createNode('COMPONENT', page.id, {
+      name: 'Card',
+      width: 100,
+      height: 30,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createNode('TEXT', inner.id, { name: 'Label', text: 'orig', width: 80, height: 20 })
+    const outer = graph.createNode('COMPONENT', page.id, {
+      name: 'Panel',
+      width: 120,
+      height: 50,
+      layoutMode: 'VERTICAL'
+    })
+    graph.createInstance(inner.id, outer.id) // nested clean instance
+    const deep = graph.createInstance(outer.id, page.id)
+    if (!deep) throw new Error('instance failed')
+    // find the deep Label clone inside the nested instance
+    const stack = [...graph.getChildren(deep.id)]
+    let deepLabel: SceneNode | undefined
+    while (stack.length > 0) {
+      const n = stack.pop()
+      if (!n) continue
+      if (n.type === 'TEXT') {
+        deepLabel = n
+        break
+      }
+      stack.push(...graph.getChildren(n.id))
+    }
+    if (!deepLabel) throw new Error('no deep label')
+    graph.updateNode(deepLabel.id, { text: 'DEEP' })
+    deep.overrides = { [`${deepLabel.id}:text`]: 'DEEP' }
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    // the deep child value survives across the nested-instance re-clone
+    const deepTexts = [...reimported.getAllNodes()].filter(
+      (n) => n.type === 'TEXT' && n.text === 'DEEP'
+    )
+    expect(deepTexts.length).toBe(1)
+  })
+
   test('workflow paramDefaults + optionalParams round-trip through .fig (Phase 3 §10 v7/v8)', async () => {
     const graph = new SceneGraph()
     const workflows = [

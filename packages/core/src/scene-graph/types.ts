@@ -470,6 +470,14 @@ export interface SceneNode {
 
   componentId: string | null
   overrides: Record<string, unknown>
+  /** Phase 3 §8 v11: load-time-only carrier for instance overrides restored from
+   *  `lowcode/overrides` pluginData. Keyed by the STABLE master-child id
+   *  (`<masterChildId>:<prop>` → snapshot value) because instance child ids are
+   *  reassigned when `populateInstances` re-clones the subtree on load.
+   *  `reapplyInstanceOverrides` (run after populate) remaps these onto the freshly
+   *  cloned children — setting each child's value and rebuilding `overrides` keyed
+   *  by the new child id — then clears this field. Never serialized. */
+  pendingInstanceOverrides?: Record<string, unknown>
   componentPropertyDefinitions: ComponentPropertyDefinition[]
   componentPropertyValues: Record<string, string>
   componentKey: string | null

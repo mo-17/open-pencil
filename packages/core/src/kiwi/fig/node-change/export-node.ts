@@ -5,7 +5,7 @@ import type { SceneGraph, SceneNode } from '#core/scene-graph'
 import type { Color, GUID, Matrix, Vector } from '#core/types'
 
 import { stringToGuid } from './guid'
-import { serializeLowcodeFields } from './lowcode-plugin-data'
+import { serializeInstanceOverrides, serializeLowcodeFields } from './lowcode-plugin-data'
 import {
   mergePluginData,
   NODE_TYPE_PLUGIN_KEY,
@@ -694,6 +694,10 @@ export function sceneNodeToKiwiWithContext(
   // supabaseConfig) before merge so they ride through the Kiwi codec. node.pluginData
   // is never mutated — a freshly concatenated array is handed to mergePluginData.
   const lowcodeEntries = serializeLowcodeFields(node)
+  // Phase 3 §8 v11: per-instance override table (needs the graph to resolve child
+  // ids → stable master-child ids), appended alongside the other lowcode fields.
+  const overrideEntry = serializeInstanceOverrides(node, context.graph)
+  if (overrideEntry) lowcodeEntries.push(overrideEntry)
   const pluginDataSource =
     lowcodeEntries.length === 0 ? node.pluginData : [...node.pluginData, ...lowcodeEntries]
   const pluginData = mergePluginData(pluginDataSource)
