@@ -5275,6 +5275,60 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。两件设计均成立,
 - **tool 校验** `validateWorkflowOptionalParams(where, raw, params)`:数组、每项 ∈ 已校验 params、去重;`validateWorkflows` threading 已校验的 `paramsR.params ?? []`。read_workflows 整体回读 → optionalParams 自动透出。
 - 测试 +6(toast runtime cap+dedup 1 / workflow optional 用·覆盖·required-still-drop 3 / tool 校验 1 / kiwi roundtrip paramDefaults+optionalParams 1)。compiler **594/0**(+4),kiwi+tools+rls 308/0,`bun run check` exit 0,tsgo 0。**真机验 pending**(同 toast 去重 + 堆叠裁剪;workflow 省略可选 arg → body `undefined`)。**§10 v9 follow-ups:** EventsPanel + 工作流管理面板 GUI(真机,含 params/args/paramDefaults/optionalParams 编辑);toast 去重窗口可配 / 堆叠上限可配。
 
+## §9 v10 — 译文覆盖率报告(编译期缺译报告,headless 部分)
+
+> §9 v7 / §9 v9 follow-up。助手推荐 §9 v10(用户「继续下一个 milestone」未走 AskUserQuestion;否决 §10 v9 toast 配置可配——边际价值低;否决 §8 v9 nested-instance prop-threading 大坑;否决 CF Pages 需 blake3 依赖)。封 §9 i18n 链的数据闭环:§9 v7 给了译文数据模型(`lowcodeTranslations`),但搭建者无从知道每个目标 locale 还缺哪些源串。scope = **编译期产出缺译报告 JSON(headless)**;覆盖率高亮 GUI 面板(读 in-graph 译文)+ RTL 源语言布局留真机/后续。
+
+### 9v10.1 现状与问题
+
+- §9 v7 让译文可存(`lowcodeTranslations: Record<locale, Record<source, translated>>`),emit 时 `buildTranslatedCatalog` 缺译回退源串。但**没有任何地方告诉搭建者「locale fr 还有 7 条没译」**——目标 locale 的 catalog 里缺译条目静默回退源串,看不出是「已译成与源相同」还是「根本没译」。非开发者搭应用需要一份明确的缺译清单。
+
+### 9v10.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **编译期 emit `src/locales/_coverage.json` 报告文件** | 自包含、可测、对 CLI/导出工程都可用;沿用既有「emit locale JSON」模式,零 CompileResult 类型 plumbing。编辑器 GUI 高亮另算(读 in-graph 译文,留真机)。 |
+| 2 | **按源串(去重)为单位统计**,非按 message id | 译者面向的是源串;message id 是内容 hash(同源串→同 id 已去重),`messages.values()` 去重即唯一源串集。 |
+| 3 | **报告 shape `{ sourceLocale, locales: { [loc]: { total, translated, missing[] } } }`** | total=唯一源串数;translated=该 locale 有非空译文的数;missing=无译文源串(sorted)。translated/missing 互补,直观。 |
+| 4 | **仅 targetLocales.length>0 时 emit** | 无目标 locale → 无可报告 → 不 emit;源-only/非-i18n 产物 byte-identical(§9 v1/v8 零回归)。 |
+| 5 | **空白译文('  ')计作缺译** | `typeof v==='string' && v.trim()!==''` 才算已译;validateTranslations 本就拒空值,但报告侧也防御。 |
+
+### 9v10.3 公开 API / Schema 改动
+
+- `buildI18nCoverageReport(messages, sourceLocale, targetLocales, translations): string` + `LocaleCoverage` interface(`adapters/react/lowcode/i18n.ts`,导出)。
+- `maybeEmitI18n`(adapters/react/index.ts):targetLocales>0 分支加 `files.set('src/locales/_coverage.json', ...)`。
+- 零 `CompilerOptions` / scene-graph / IR / collect / round-trip 改动(纯 adapter-emit,数据全来自 §9 v7 既有 `IRTree.translations` + collect 的 messages)。
+
+### 9v10.4 内部实现拆解
+
+1. **buildI18nCoverageReport**:`sources = [...new Set(messages.values())].sort()`;每 target locale 遍历 sources,`translations?.[loc]?.[source]` 非空 → 已译,否则 missing;`{ total, translated: total-missing.length, missing }`;`JSON.stringify({sourceLocale, locales}, null, 2) + '\n'`。
+2. **wire**:maybeEmitI18n 的 `if (targetLocales.length > 0)` 块内,LocaleSwitcher 之后 set `_coverage.json`。
+
+### 9v10.5 成功标准
+
+- `{fr:{Hello:'Bonjour'}}, ['fr','de']` + 源串 Hello/Submit → fr `{total:2,translated:1,missing:['Submit']}`、de `{total:2,translated:0,missing:['Hello','Submit']}`。
+- 全译 locale → missing []。空白译文计缺译。
+- 无 target locale → 无 `_coverage.json`(byte-identical 回归)。
+- `bun run check` exit 0;tsgo 0;compiler 全绿。
+
+### 9v10.6 工作分解(~0.25 day)
+
+i18n.ts(buildI18nCoverageReport + LocaleCoverage)→ index.ts(import + maybeEmitI18n wire)→ 测试(per-locale 缺译清单 / 全译 0 缺 / 空白计缺 / 无 target 无文件)→ build:packages → `bun run check`。
+
+### 9v10.7 风险
+
+- 报告文件进 `src/locales/` 但不被 import → Vite tree-shake 出 bundle,仅留源树(无害,同既有未用 locale JSON)。
+- 覆盖率仅基于「编译期 collect 到的源串集」——与运行时一致(react-intl 用同 catalog)。GUI 高亮要复制这套 collect 才能在编辑器内算,故报告文件是权威清单。
+
+### 9v10.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**零 hotfix、零 GATE 收口、零意外**。
+
+- **纯 adapter-emit,数据全现成**:§9 v7 已把 `lowcodeTranslations` lift 进 `IRTree.translations`,collect 已产 messages(id→source)。§9 v10 只加一个纯函数 `buildI18nCoverageReport`(按 `messages.values()` 去重源串集,每 target locale 算 translated/missing)+ maybeEmitI18n 一行 wire。零 scene-graph/IR/collect/round-trip/CompilerOptions 改动。
+- **gate 复用 targetLocales>0**:与 LocaleSwitcher 同闸,源-only/非-i18n 产物 byte-identical → 既有 36 i18n 测试一字未改通过。
+- **统计单位=去重源串**:message id 是内容 hash(同源串同 id),`new Set(messages.values())` 即唯一源串;按源串报告对译者最有用(译文数据模型也按源串 keying)。
+- 测试 +4(per-locale 缺译清单+counts / 全译 0 缺 / 空白译文计缺 / 无 target 无文件)。compiler **598/0**(+4),`bun run check` exit 0,tsgo 0。**真机验 pending**(编辑器读 `_coverage.json` 或 in-graph 译文做覆盖率高亮 GUI)。**§9 v11 follow-ups:** 覆盖率高亮编辑器面板(真机,读 in-graph 译文);RTL 源语言布局;缺译报告也进 CompileResult.warnings 供 CLI 直接 surface。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

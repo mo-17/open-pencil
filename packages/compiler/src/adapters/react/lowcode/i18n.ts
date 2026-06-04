@@ -78,6 +78,47 @@ export function buildTranslatedCatalog(
   return JSON.stringify(sorted, null, 2) + '\n'
 }
 
+/** Phase 3 §9 v10 — per-target-locale translation coverage. */
+export interface LocaleCoverage {
+  /** Number of distinct source strings the app externalizes for translation. */
+  total: number
+  /** How many of those have a non-empty authored translation in this locale. */
+  translated: number
+  /** The source strings with no authored translation, sorted — what a
+   *  translator still has to fill in. */
+  missing: string[]
+}
+
+/**
+ * Phase 3 §9 v10 — build `src/locales/_coverage.json`: a translation-coverage
+ * report so a builder knows which source strings each target locale still lacks
+ * (the data model from §9 v7 stores translations but surfaces no gap report).
+ * For every distinct externalized source string, a locale "has" it when its
+ * `translations[loc]` carries a non-empty entry keyed by that source; otherwise
+ * it counts as missing. Emitted only when ≥1 target locale exists (no targets →
+ * nothing to report). Keys + missing lists are sorted for a stable, diff-friendly
+ * file. Not imported by the app — a build-time artifact for tooling / the editor.
+ */
+export function buildI18nCoverageReport(
+  messages: ReadonlyMap<string, string>,
+  sourceLocale: string,
+  targetLocales: readonly string[],
+  translations: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
+): string {
+  const sources = [...new Set(messages.values())].sort()
+  const locales: Record<string, LocaleCoverage> = {}
+  for (const loc of targetLocales) {
+    const forLocale = translations?.[loc]
+    const missing: string[] = []
+    for (const source of sources) {
+      const value = forLocale?.[source]
+      if (typeof value !== 'string' || value.trim() === '') missing.push(source)
+    }
+    locales[loc] = { total: sources.length, translated: sources.length - missing.length, missing }
+  }
+  return JSON.stringify({ sourceLocale, locales }, null, 2) + '\n'
+}
+
 /** Phase 3 §9 v2 — a locale code's JS import binding (codes like `zh-CN` are
  *  not valid identifiers, so strip non-alphanumerics → `zhCN`). */
 export function localeIdent(code: string): string {

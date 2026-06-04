@@ -14,6 +14,7 @@ import type { AdapterEmission, FrameworkAdapter } from '../types'
 
 import { buildComponentModule } from './emit/component'
 import {
+  buildI18nCoverageReport,
   buildLocaleCatalog,
   buildLocaleSwitcher,
   buildLowcodeI18nRuntime,
@@ -232,6 +233,9 @@ function maybeEmitI18n(
   files.set(LOWCODE_I18N_FILE, buildLowcodeI18nRuntime(sourceLocale, targetLocales))
   if (targetLocales.length > 0) {
     files.set('src/components/LocaleSwitcher.tsx', buildLocaleSwitcher())
+    // Phase 3 §9 v10: a build-time translation-coverage report (which source
+    // strings each target locale still lacks). Not imported by the app.
+    files.set('src/locales/_coverage.json', buildI18nCoverageReport(messages, sourceLocale, targetLocales, translations))
   }
 }
 

@@ -625,3 +625,43 @@ describe('compile — translation authoring data model (Phase 3 §9 v7)', () => 
     expect(out.files.get('src/locales/fr.json')).toBe(en)
   })
 })
+
+/**
+ * Phase 3 §9 v10 — build-time translation-coverage report. `_coverage.json`
+ * lists, per target locale, how many of the externalized source strings have an
+ * authored translation and which ones are still missing. Emitted only when ≥1
+ * target locale exists.
+ */
+interface CoverageReport {
+  sourceLocale: string
+  locales: Record<string, { total: number; translated: number; missing: string[] }>
+}
+
+describe('compile — translation coverage report (Phase 3 §9 v10)', () => {
+  test('reports per-locale translated counts + the missing source strings', () => {
+    const out = compileWithTranslations({ fr: { Hello: 'Bonjour' } }, ['fr', 'de'])
+    const report = JSON.parse(out.files.get('src/locales/_coverage.json') as string) as CoverageReport
+    expect(report.sourceLocale).toBe('en')
+    // two distinct externalized sources: 'Hello' and 'Submit'
+    expect(report.locales.fr).toEqual({ total: 2, translated: 1, missing: ['Submit'] })
+    // de has no authored translations → everything missing (sorted)
+    expect(report.locales.de).toEqual({ total: 2, translated: 0, missing: ['Hello', 'Submit'] })
+  })
+
+  test('a fully-translated locale reports zero missing', () => {
+    const out = compileWithTranslations({ es: { Hello: 'Hola', Submit: 'Enviar' } }, ['es'])
+    const report = JSON.parse(out.files.get('src/locales/_coverage.json') as string) as CoverageReport
+    expect(report.locales.es).toEqual({ total: 2, translated: 2, missing: [] })
+  })
+
+  test('a blank translation entry counts as missing', () => {
+    const out = compileWithTranslations({ fr: { Hello: '   ', Submit: 'Envoyer' } }, ['fr'])
+    const report = JSON.parse(out.files.get('src/locales/_coverage.json') as string) as CoverageReport
+    expect(report.locales.fr).toEqual({ total: 2, translated: 1, missing: ['Hello'] })
+  })
+
+  test('no coverage file when there are no target locales', () => {
+    const out = compileWithTranslations({}, [])
+    expect(out.files.has('src/locales/_coverage.json')).toBe(false)
+  })
+})
