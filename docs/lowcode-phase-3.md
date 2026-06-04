@@ -5504,6 +5504,41 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GAT
 - **闭包正确性**:seed 页面 ref + 传递经组件体(`componentBodyNodes` 含 SET variant 子树)→ Outer 引用 Inner 时两者都保留;非 orphan 恒等剪枝 → 既有测试零改。
 - 测试 +2(仅未编译页用→剪 / 编译其页→保留 control)。compiler **609/0**(+2),`bun run check` exit 0,tsgo 0。**真机验**:无需(产物文件集变化,headless 完全可验)。**§8 v11 follow-ups:** 真·prop-threading(若需 deep override 复用);component props GUI 面板(真机)。
 
+## §9 v13 — CLI i18n flags(给 §9 一个入口:`compile`/`build --i18n`)
+
+> §9 链收尾的**入口缺口修复**。recon「开真机」时坐实:编辑器 preview 调 `compile(withDefaults({packageName}))`(**i18n 默认 false**),且 `packages/cli/src` **零 i18n/locale** —— 即整个 §9 i18n 链(v1-v12,约 10 个 milestone)**在编辑器和 CLI 都没有任何开启入口**,用户根本无法验证。这是比「画面点击」更根本的阻塞。
+
+### 9v13.1 现状与问题
+- `CompilerOptions.i18n`/`locales`/`sourceLocale` 自 §9 起就有,但只有单测 `compile({options:{i18n:true}})` 触发。preview 硬编码 i18n:false,CLI `compile`/`build` 无 flag → §9 全链**不可达**(死代码风险)。
+
+### 9v13.2 关键决定
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`compile`/`build` 加 `--i18n` / `--locale`(可重复)/ `--source-locale`** | 选 CLI 入口(export→serve 验证,符合 §9 build-time i18n 设计)而非改 preview(i18n 是导出关注点,preview 保持 LTR-源 live 渲染;preview toggle 留 GUI 真机)。 |
+| 2 | **`--locale`/`--source-locale` 隐含 `--i18n`** | 否则填了 locale 却不开 i18n、catalog 是死的;`resolveI18nFlags` 统一推断。 |
+| 3 | **共享 `i18n-args.ts`(args 定义 + resolveI18nFlags)** | build/compile 两命令 args 块 + 归一逻辑完全相同 → 抽共享避 jscpd clone + 保持一致。 |
+| 4 | **无 flag → byte-identical**(i18n:false) | 既有 compile/build 输出零变化。 |
+
+### 9v13.3 公开 API / Schema 改动
+- `packages/cli/src/i18n-args.ts`(新):`i18nArgs: ArgsDef` + `resolveI18nFlags(args) → { i18n, locales, sourceLocale }`(`--locale` string|string[] 归一;locale/source-locale 隐含 i18n)。
+- `loadAndCompile`(codegen.ts)opts 加 `i18n?`/`locales?`/`sourceLocale?` → `withDefaults`(opt-in,缺省 false/不传)。
+- `compile.ts`/`build.ts`:`...i18nArgs` 并入 args + `resolveI18nFlags(args)` 传入 loadAndCompile。
+- 零 scene-graph / IR / compiler-emit / round-trip 改动(纯 CLI 接线,compile-with-i18n 行为 §9 v1-v12 早已实现+单测)。
+
+### 9v13.4 成功标准
+- `open-pencil compile doc.fig --i18n --locale ar -o out` → App.tsx 含 FormattedMessage、`src/locales/ar.json` 预填译文、`_lowcode_i18n.tsx` 含 RTL dir、`_coverage.json` 在。
+- `--source-locale ar` → `index.html` = `<html lang="ar" dir="rtl">` + 源 catalog `ar.json`。
+- 无 flag → 无 FormattedMessage / 无 i18n runtime(byte-identical)。
+- `bun run check` exit 0;tsgo 0。
+
+### 9v13.5 Post-mortem
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GATE 收口、零意外。**
+- **recon「开真机」暴露真阻塞**:不是「我点不了画面」,而是 **§9 全链没入口**(preview i18n:false + CLI 无 flag)。修入口比构造测试文档更根本。
+- **纯 CLI 接线**:`i18n-args.ts`(共享 args + resolveI18nFlags 归一,避 build/compile 的 args 块 jscpd clone)→ `loadAndCompile` opts → `withDefaults`。compile-with-i18n 行为早已 §9 v1-v12 实现+单测,本轮零碰 compiler。
+- **e2e 实跑坐实**:生成带 `lowcodeTranslations:{ar:{Hello:'مرحبا'}}` 的 .fig,真跑 `open-pencil compile --i18n --locale ar` → App.tsx 3×FormattedMessage、ar.json 预填 مرحبا、runtime RTL dir、_coverage.json ar 1/2 missing Submit;`--source-locale ar` → `<html lang="ar" dir="rtl">`;无 flag → 0 FormattedMessage。
+- **入口仍缺的一半(诚实记录)**:**编辑器 preview 仍 i18n:false** → 在 app 里看不到 i18n,需 `open-pencil build --i18n` 导出后 serve 验证;§10 events 仍无 GUI 授权 → 工作流/condition/toast 仍需程序化构造文档。两者都是 GUI 真机活。
+- 测试 +3(CLI heavy:`--i18n --locale ar` 全产物 / `--source-locale` lang+dir / 无 flag byte-identical)。`bun run check` exit 0,tsgo 0。**§9 入口闭合(CLI 侧);editor preview i18n toggle + §10 EventsPanel GUI 留真机。**
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

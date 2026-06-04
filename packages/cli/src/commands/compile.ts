@@ -3,12 +3,16 @@ import { resolve } from 'node:path'
 import { defineCommand } from 'citty'
 
 import { loadAndCompile, reportCodegenResult } from '#cli/codegen'
+import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 
 interface CompileArgs {
   file?: string
   out: string
   'package-name'?: string
   page?: string
+  i18n?: boolean
+  locale?: string | string[]
+  'source-locale'?: string
   json?: boolean
 }
 
@@ -52,18 +56,23 @@ export default defineCommand({
         'Restrict output to a single page by name. Default: all pages compiled (multi-page projects use react-router-dom).',
       required: false
     },
+    ...i18nArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
     const { file, out, page } = args as CompileArgs
     const outDir = resolve(out)
+    const { i18n, locales, sourceLocale } = resolveI18nFlags(args as CompileArgs)
 
     const { compiled, packageName } = await loadAndCompile({
       file,
       page,
       packageName: (args as CompileArgs)['package-name'],
       outDir,
-      json: args.json
+      json: args.json,
+      i18n,
+      locales,
+      sourceLocale
     })
 
     const written = await writeFiles(outDir, compiled.files)

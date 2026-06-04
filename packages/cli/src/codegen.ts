@@ -89,6 +89,13 @@ export async function loadAndCompile(opts: {
   packageName?: string
   outDir: string
   json?: boolean
+  /** Phase 3 §9 v13: enable the react-intl i18n runtime in the emitted project
+   *  (externalize display strings, emit locale catalogs + LocaleSwitcher). */
+  i18n?: boolean
+  /** Target locales beyond the source (each gets a catalog stub + switcher entry). */
+  locales?: readonly string[]
+  /** The source locale the canvas strings are authored in (default 'en'). */
+  sourceLocale?: string
 }): Promise<CompiledDocument> {
   if (!opts.file) {
     printError('A document file path is required.')
@@ -115,7 +122,14 @@ export async function loadAndCompile(opts: {
     compiled = compile({
       graph,
       pageIds: resolved.pageIds,
-      options: withDefaults({ packageName, devMode: false })
+      options: withDefaults({
+        packageName,
+        devMode: false,
+        // Phase 3 §9 v13: i18n is opt-in via CLI flags (else byte-identical to before).
+        i18n: opts.i18n === true,
+        ...(opts.locales && opts.locales.length > 0 ? { locales: [...opts.locales] } : {}),
+        ...(opts.sourceLocale ? { sourceLocale: opts.sourceLocale } : {})
+      })
     })
   } catch (e) {
     printError(e)

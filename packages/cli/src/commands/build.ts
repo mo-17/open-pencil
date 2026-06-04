@@ -7,6 +7,7 @@ import type { BuildResult } from '@open-pencil/compiler/build'
 
 import { loadAndCompile, reportCodegenResult, resolveBuildEnv } from '#cli/codegen'
 import { printError } from '#cli/format'
+import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 
 interface BuildArgs {
   file?: string
@@ -16,6 +17,9 @@ interface BuildArgs {
   base?: string
   'supabase-url'?: string
   'supabase-anon-key'?: string
+  i18n?: boolean
+  locale?: string | string[]
+  'source-locale'?: string
   json?: boolean
 }
 
@@ -61,18 +65,23 @@ export default defineCommand({
       description: 'Override the Supabase anon key for this build (else VITE_SUPABASE_ANON_KEY, else design-time).',
       required: false
     },
+    ...i18nArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
     const { file, out, page, base } = args as BuildArgs
     const outDir = resolve(out)
+    const { i18n, locales, sourceLocale } = resolveI18nFlags(args as BuildArgs)
 
     const { compiled, packageName } = await loadAndCompile({
       file,
       page,
       packageName: (args as BuildArgs)['package-name'],
       outDir,
-      json: args.json
+      json: args.json,
+      i18n,
+      locales,
+      sourceLocale
     })
 
     const env = resolveBuildEnv({
