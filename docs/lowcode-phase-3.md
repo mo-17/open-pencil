@@ -4970,7 +4970,18 @@ expression.ts substituteIdents + export collectReferences → substitute.ts subs
 
 ### 10v6.8 Post-mortem
 
-(实现后回填)
+CODE COMPLETE 2026-06-04(commit `3d8be214`,pushed upstream)。设计完全成立,**零 hotfix、零 GATE 收口、零意外**——这是被 §10 v5 判定「太大留专门一轮」的项,(b) 展开边界 walk 策略把它压成了一个干净的增量。
+
+- **策略 (b) 兑现「只碰 expandWorkflow + 新 walker 模块,8 个 parse 点零改动」**:`bindWorkflowArgs` 在 `expandWorkflow` 边界把 `WorkflowDef.params` 绑到调用方作用域 parse 的实参 AST(复用既有 `parseExpression` + `checkExprRefs` read-context + `registerDocStateReads`);body resolve 时把 params 临时塞进 `bodyCtx.inScope`(否则体内 `param` 引用被当未知标识符 drop);展开后 `expanded.map(h => substituteHandler(h, bindings))` 一次 walk 收口。bindings.ts 的 8 个表达式 parse 点(setState/setVariable/apiCall/supabase×3/condition/toast/confirm/clipboard)**一字未改** —— 这正是否决策略 (a) 的核心收益。
+- **嵌套 + 作用域由递归 expandWorkflow 天然正确(无需特判)**:替换在**每个** expandWorkflow 边界做,栈展开外→内。A(p) 调 B(q) 传 `args:{q:'p'}`、按钮调 A 传 `args:{p:'"hi"'}` → B 体 resolve 时 `p` 在 A 的 bodyCtx.inScope 过校验、B 边界把 `q`→AST(`p`),B-handlers splice 进 A 体;A 边界把 `p`→`"hi"`,连同 B 派生的 handler 一并 walk → 最终 `"hi"`。**内层 param 解析成可能仍含外层 param 的表达式,由外层边界收口**——测试坐实(nested workflow arg referencing outer parameter)。
+- **`substituteIdents` 泛化 `substitutePrev`**:后者只把单一 `$prev` 改名成 ident(string),前者 ident 命中 `Map<string,ExprAst>` 就换成整棵实参 AST(member 实参 `user.email` → `member{object: arg, property}` 正确嵌套)。`collectReferences` 原 private,改 export 供 walk 后重算 references。两者都在 core `expression.ts`(操作 ExprAst);`substituteHandler` 在 compiler(操作 IREventHandler)→ 分层干净。
+- **`substituteHandler` 是 total function over IREventHandler(经验 A)**:exhaustive switch + `never` default ——~13 kind 各替换其 AST 字段(setState/setVariable/toast/clipboard 单 ast、apiCall.url、supabase filters[]/payloadEntries[]/emailAst+passwordAst、condition/confirm 递归子链),navigate/delay/stop 无 ast 原样返回。**apiCall.body / supabaseMutation.payload 是预序列化 JSON 串(非 AST)→ 不支持 param 插值**(文档化边界,用 payloadEntries 代替)。新增 handler kind 不加 case = tsgo 报错,非静默漏。
+- **零回归 = `bindings.size===0` 跳过 substitution**:无形参 workflow + 无 args → bindings 空 → handlers 原样返回 = §10 v4 路径不变;参数化校验全在工具/collect,**callWorkflow 已是 v4 的 ActionDef kind → args/params 是字段增量,经验 A union widening 完全不涉及**(无新 kind,无 dispatchAction/emit-never/buildActionFromValidated-never sweep 点)。compiler 567→578(+11)零既有测试改动。
+- **安全降级(决定 #4)**:缺实参 / parse 失败 / 实参引未知标识符($prev / ghost)→ warn(`-missing-arg` / `-invalid-arg` / `-arg-unknown-identifier`)+ **drop 整个 callWorkflow**(不展开,避免 emit 出未定义 `param` 产坏 JS);多余 args key → warn `-extra-arg` + 忽略仍展开。集成测试坐实缺实参时 `__opToast` 完全不出现。
+- **工具校验**:`set_workflows` 的 `validateWorkflowParams`(每 param 匹配 `/^[A-Za-z_][A-Za-z0-9_]*$/`——**刻意排除 `$` 前缀**令 param 永不 shadow `$prev`/`$event`/`$currentUser` 等保留 token + 去重);`validateCallWorkflowAction` 校验 args 是 `Record<string,string>`;`buildActionFromValidated` 透传 args。round-trip:params/args 经 events/workflows 整块 JSON 自动存活,**零 codec 改动**;rls-advisor 不变(args 不改 mutation 目标表)。
+- 测试 +18(collect workflow.test +9:字面/表达式/docState实参/嵌套/缺/多/未知标识符/无形参byte-identical / 集成 call-workflow.test +3:替换/docState解析/缺实参drop / tool +2:args+params校验 / kiwi roundtrip +1)。compiler **578/0**,kiwi+tools+rls **423/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(实参替换后 preview/build 行为 = 把实参表达式直写进工作流体等价,headless 仅断言 emit 串)。
+
+**§10 v7 follow-ups:** toast 持久化(durationMs=0 不自动消失)+ 手动关闭;EventsPanel + 工作流管理面板授权 GUI(真机,含 params/args 编辑);workflow 默认实参 / 可选参数。
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
