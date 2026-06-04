@@ -37,6 +37,7 @@ import type {
   IRWarning,
   ValueUpdateMode
 } from '../types'
+import { substituteHandler } from './substitute'
 
 /** Phase 2 §2: the formal parameter the adapter binds inside a functional
  *  updater (`setX((prev) => ...)`). Collector rewrites `$prev` → this name
@@ -426,7 +427,15 @@ function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] 
  *  rejecting (with a warning, returning no handlers) when the id is missing /
  *  unknown / already on the expansion stack (a cycle). Otherwise lowers the
  *  workflow's actions through `resolveBranch` with the caller's ctx, pushing /
- *  popping the id so nested calls and cycles are tracked. */
+ *  popping the id so nested calls and cycles are tracked.
+ *
+ *  Phase 3 §10 v6: if the workflow declares `params`, the call-site `args`
+ *  expressions are parsed + validated in the **caller's** scope (`bindWorkflowArgs`),
+ *  the parameter names are added to `inScope` so the workflow-body expressions
+ *  that reference them survive validation, and the expanded handlers are walked
+ *  once (`substituteHandler`) to replace each parameter identifier with its
+ *  argument AST. Substitution at this boundary (outermost-first as the recursion
+ *  unwinds) keeps nested-workflow parameter scopes correct. */
 function expandWorkflow(action: CallWorkflowAction, ctx: ResolveCtx): IREventHandler[] {
   const id = action.workflowId
   if (typeof id !== 'string' || id === '') {
@@ -454,10 +463,79 @@ function expandWorkflow(action: CallWorkflowAction, ctx: ResolveCtx): IREventHan
     })
     return []
   }
+  const bindings = bindWorkflowArgs(action, workflow, ctx)
+  if (bindings === null) return [] // a missing / invalid argument already warned
+  const params = workflow.params ?? []
+  const bodyCtx: ResolveCtx =
+    params.length === 0 ? ctx : { ...ctx, inScope: new Set([...ctx.inScope, ...params]) }
   ctx.workflowStack.push(id)
-  const expanded = resolveBranch(workflow.actions, ctx)
+  const expanded = resolveBranch(workflow.actions, bodyCtx)
   ctx.workflowStack.pop()
-  return expanded
+  return bindings.size === 0 ? expanded : expanded.map((handler) => substituteHandler(handler, bindings))
+}
+
+/** Phase 3 §10 v6: bind a workflow's formal `params` to the call-site `args`
+ *  expressions, parsed + validated in the caller's scope. Returns the binding
+ *  map (empty for a parameterless workflow, preserving §10 v4 behaviour), or
+ *  `null` when a parameter has no argument / the argument is unparseable /
+ *  references an unknown identifier — in which case the whole `callWorkflow` is
+ *  dropped (a warning was pushed). docState reads in argument expressions are
+ *  registered against the caller so the page emits `useDocState`. */
+function bindWorkflowArgs(
+  action: CallWorkflowAction,
+  workflow: WorkflowDef,
+  ctx: ResolveCtx
+): Map<string, ExprAst> | null {
+  const params = workflow.params ?? []
+  const args = action.args ?? {}
+  for (const key of Object.keys(args)) {
+    if (!params.includes(key)) {
+      ctx.warnings.push({
+        code: 'action-call-workflow-extra-arg',
+        message: `node ${ctx.node.id} ${ctx.eventName} callWorkflow "${workflow.id}" passes arg "${key}" that is not a workflow parameter`,
+        nodeId: ctx.node.id
+      })
+    }
+  }
+  const bindings = new Map<string, ExprAst>()
+  for (const param of params) {
+    const src = args[param]
+    if (typeof src !== 'string' || src.trim() === '') {
+      ctx.warnings.push({
+        code: 'action-call-workflow-missing-arg',
+        message: `node ${ctx.node.id} ${ctx.eventName} callWorkflow "${workflow.id}" missing arg for parameter "${param}"`,
+        nodeId: ctx.node.id
+      })
+      return null
+    }
+    const parsed = parseExpression(src.trim())
+    if (!parsed.ok) {
+      ctx.warnings.push({
+        code: 'action-call-workflow-invalid-arg',
+        message: `node ${ctx.node.id} ${ctx.eventName} callWorkflow "${workflow.id}" arg "${param}" "${src}" → ${parsed.error}`,
+        nodeId: ctx.node.id
+      })
+      return null
+    }
+    const refCtx = `${ctx.eventName} callWorkflow "${workflow.id}" arg "${param}"`
+    if (
+      !checkExprRefs(
+        parsed.references,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.node,
+        refCtx,
+        'action-call-workflow-arg',
+        ctx.warnings
+      )
+    ) {
+      return null
+    }
+    registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
+    bindings.set(param, parsed.ast)
+  }
+  return bindings
 }
 
 interface ResolveCtx {

@@ -16,10 +16,12 @@ export {
   type ParseResult,
   type ParseSuccess,
   PREV_IDENT,
+  collectReferences,
   emitExpression,
   hasPrevReference,
   parseExpression,
   parseTemplate,
+  substituteIdents,
   substitutePrev
 } from './expression'
 

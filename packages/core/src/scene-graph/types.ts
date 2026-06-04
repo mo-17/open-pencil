@@ -925,6 +925,14 @@ export interface CallWorkflowAction {
   id: string
   kind: 'callWorkflow'
   workflowId?: string
+  /** Phase 3 §10 v6: argument expressions, keyed by the referenced workflow's
+   *  formal parameter name (`WorkflowDef.params`). Each value is an expression
+   *  string in the **caller's** scope (parsed + validated at collect time);
+   *  the IR collect pass substitutes the parsed argument AST for every
+   *  occurrence of the parameter identifier in the inlined workflow body. A
+   *  parameter with no matching arg (or an unparseable / invalid arg) drops the
+   *  whole `callWorkflow` with a warning. */
+  args?: Record<string, string>
 }
 
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
@@ -962,6 +970,11 @@ export type ActionKind = ActionDef['kind']
 export interface WorkflowDef {
   id: string
   name: string
+  /** Phase 3 §10 v6: formal parameter names. Each is a plain identifier the
+   *  workflow's action expressions may reference; at a `CallWorkflowAction`
+   *  call site the matching `args` expression (caller scope) is substituted in.
+   *  Absent / empty = a parameterless workflow (§10 v4 behaviour). */
+  params?: string[]
   actions: ActionDef[]
 }
 

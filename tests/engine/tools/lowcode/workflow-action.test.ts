@@ -202,6 +202,29 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     if (!bad.ok) expect(bad.error).toContain('.workflowId')
   })
 
+  // ── Phase 3 §10 v6: callWorkflow args ──
+
+  test('persists callWorkflow args and rejects malformed args', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = { id: 'cw-1', kind: 'callWorkflow', workflowId: 'wf-1', args: { msg: '"hi"' } }
+    const ok = update(btn.id, { onClick: [action] }, figma)
+    expect(ok.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+
+    const notObj = update(btn.id, { onClick: [{ id: 'c', kind: 'callWorkflow', workflowId: 'w', args: 'x' }] }, figma)
+    expect(notObj.ok).toBe(false)
+    if (!notObj.ok) expect(notObj.error).toContain('.args')
+
+    const badVal = update(
+      btn.id,
+      { onClick: [{ id: 'c', kind: 'callWorkflow', workflowId: 'w', args: { p: 5 } }] },
+      figma
+    )
+    expect(badVal.ok).toBe(false)
+    if (!badVal.ok) expect(badVal.error).toContain('.args.p')
+  })
+
   // ── Phase 3 §10 v5: toast position/duration + confirm labels ──
 
   test('persists a toast with position + durationMs', () => {
@@ -298,6 +321,22 @@ describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
     const read = getTool('read_workflows').execute(figma, {}) as Result<typeof workflows>
     expect(read.ok).toBe(true)
     if (read.ok) expect(read.data).toEqual(workflows)
+  })
+
+  test('persists workflow params and rejects bad / duplicate params (§10 v6)', () => {
+    const { figma, graph } = setupToolTest()
+    const workflows = [{ id: 'wf-1', name: 'Notify', params: ['msg', 'kind'], actions: [] }]
+    const r = setWorkflows(JSON.stringify(workflows), figma)
+    expect(r.ok).toBe(true)
+    expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
+
+    const badParam = setWorkflows(JSON.stringify([{ id: 'w', name: 'a', params: ['$prev'], actions: [] }]), figma)
+    expect(badParam.ok).toBe(false)
+    if (!badParam.ok) expect(badParam.error).toContain('.params[0]')
+
+    const dupParam = setWorkflows(JSON.stringify([{ id: 'w', name: 'a', params: ['x', 'x'], actions: [] }]), figma)
+    expect(dupParam.ok).toBe(false)
+    if (!dupParam.ok) expect(dupParam.error).toContain('duplicated')
   })
 
   test('validates nested actions recursively, reporting the JSON path', () => {

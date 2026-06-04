@@ -566,4 +566,29 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toBeUndefined()
   })
+
+  test('workflow params + callWorkflow args round-trip through .fig (Phase 3 §10 v6)', async () => {
+    const graph = new SceneGraph()
+    const workflows = [
+      {
+        id: 'notify',
+        name: 'Notify',
+        params: ['msg', 'level'],
+        actions: [{ id: 't', kind: 'toast' as const, messageExpr: 'msg' }]
+      }
+    ]
+    graph.updateNode(graph.rootId, { lowcodeWorkflows: workflows })
+    const page = graph.getPages()[0]
+    const onClick: ActionDef[] = [
+      { id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: '"hi"', level: '1' } }
+    ]
+    graph.createNode('BUTTON', page.id, { name: 'arg-btn', events: { onClick } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toEqual(workflows)
+    const btn = [...reimported.getAllNodes()].find((n) => n.name === 'arg-btn')
+    expect(btn?.events).toEqual({ onClick })
+  })
 })

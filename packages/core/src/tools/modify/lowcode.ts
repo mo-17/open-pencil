@@ -346,13 +346,23 @@ function validatePerKindFields(
 
 /** Phase 3 §10 v4: `callWorkflow.workflowId`, when present, must be a string.
  *  Existence + cycle checks happen at IR collect (which holds the workflow map
- *  and the call site together), so the tool only validates the shape. */
+ *  and the call site together), so the tool only validates the shape. Phase 3
+ *  §10 v6: `args`, when present, must be an object of `{ param: exprString }`;
+ *  argument parsing + missing/extra/unknown checks happen at IR collect. */
 function validateCallWorkflowAction(
   where: string,
   value: Record<string, unknown>
 ): { ok: true } | { ok: false; error: string } {
   if (value.workflowId !== undefined && typeof value.workflowId !== 'string') {
     return failAt(where, '.workflowId must be a string')
+  }
+  if (value.args !== undefined) {
+    if (!isPlainObject(value.args)) {
+      return failAt(`${where}.args`, 'must be an object of { param: expressionString }')
+    }
+    for (const [param, expr] of Object.entries(value.args)) {
+      if (typeof expr !== 'string') return failAt(`${where}.args.${param}`, 'must be a string expression')
+    }
   }
   return { ok: true }
 }
@@ -626,8 +636,14 @@ function buildActionFromValidated(
       return { id, kind, valueExpr: raw.valueExpr as string | undefined }
     case 'callWorkflow':
       // Phase 3 §10 v4: workflowId carries through verbatim; existence + cycle
-      // checks happen at IR collect (expandWorkflow).
-      return { id, kind, workflowId: raw.workflowId as string | undefined }
+      // checks happen at IR collect (expandWorkflow). Phase 3 §10 v6: args
+      // carry through verbatim; argument parsing / substitution is collect-side.
+      return {
+        id,
+        kind,
+        workflowId: raw.workflowId as string | undefined,
+        args: raw.args as Record<string, string> | undefined
+      }
     default: {
       // Exhaustive — ActionKind covers every variant above. The assignment
       // proves it to TypeScript and the throw matches the
@@ -1106,6 +1122,34 @@ export const setTranslations = defineTool({
  *  string, and `actions` a (possibly empty) ActionDef array validated through
  *  the same recursive pipeline as event chains. Rejects duplicate ids and any
  *  malformed action so a broken workflow never persists. */
+/** Phase 3 §10 v6: a workflow parameter name. A plain identifier (letters /
+ *  digits / underscore, not starting with a digit), deliberately excluding the
+ *  `$`-prefixed reserved tokens (`$prev` / `$event` / `$currentUser` …) so a
+ *  parameter can never shadow them. */
+const PARAM_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+/** Phase 3 §10 v6: validate a workflow's optional `params` — an array of unique
+ *  identifier strings. Returns the validated list (or undefined when absent). */
+function validateWorkflowParams(
+  where: string,
+  raw: unknown
+): { ok: true; params: string[] | undefined } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, params: undefined }
+  if (!Array.isArray(raw)) return failAt(where, 'must be an array of identifier strings')
+  const params: string[] = []
+  const seen = new Set<string>()
+  for (let j = 0; j < raw.length; j++) {
+    const p = raw[j]
+    if (typeof p !== 'string' || !PARAM_NAME_RE.test(p)) {
+      return failAt(`${where}[${j}]`, 'must be a valid identifier (letters/digits/underscore, not starting with a digit or $)')
+    }
+    if (seen.has(p)) return failAt(`${where}[${j}]`, `parameter "${p}" is duplicated`)
+    seen.add(p)
+    params.push(p)
+  }
+  return { ok: true, params }
+}
+
 function validateWorkflows(
   what: string,
   raw: unknown
@@ -1120,10 +1164,12 @@ function validateWorkflows(
     if (typeof wf.id !== 'string' || wf.id === '') return failAt(where, '.id must be a non-empty string')
     if (seenIds.has(wf.id)) return failAt(where, `.id "${wf.id}" is duplicated`)
     if (typeof wf.name !== 'string') return failAt(where, '.name must be a string')
+    const paramsR = validateWorkflowParams(`${where}.params`, wf.params)
+    if (!paramsR.ok) return paramsR
     const actionsR = validateActionArray(`${where}.actions`, wf.actions, true)
     if (!actionsR.ok) return actionsR
     seenIds.add(wf.id)
-    out.push({ id: wf.id, name: wf.name, actions: actionsR.actions })
+    out.push({ id: wf.id, name: wf.name, params: paramsR.params, actions: actionsR.actions })
   }
   return { ok: true, workflows: out }
 }
@@ -1132,7 +1178,7 @@ export const setWorkflows = defineTool({
   name: 'set_workflows',
   mutates: true,
   description:
-    "Replace the root node's lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node's event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component's scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string \"null\" or '[]' to clear all workflows. Shape: [{ id, name, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), and actions is an ActionDef array (same shape as a node's event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). Every action is validated recursively; a malformed action or a duplicate id is rejected (no silent drops). Workflow existence + cycle (A→B→A) checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: '[{\"id\":\"wf-save\",\"name\":\"Save & toast\",\"actions\":[{\"id\":\"a1\",\"kind\":\"toast\",\"messageExpr\":\"\\\"Saved\\\"\",\"variant\":\"success\"}]}]' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: 'null' }) → { ok: true, data: { workflows: 0, actions: 0 } }.",
+    "Replace the root node's lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node's event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component's scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string \"null\" or '[]' to clear all workflows. Shape: [{ id, name, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow's expressions may reference, and actions is an ActionDef array (same shape as a node's event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: '[{\"id\":\"wf-notify\",\"name\":\"Notify\",\"params\":[\"msg\"],\"actions\":[{\"id\":\"a1\",\"kind\":\"toast\",\"messageExpr\":\"msg\",\"variant\":\"success\"}]}]' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: 'null' }) → { ok: true, data: { workflows: 0, actions: 0 } }.",
   params: {
     workflows_json: {
       type: 'string',

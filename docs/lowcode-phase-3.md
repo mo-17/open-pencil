@@ -4907,6 +4907,71 @@ CODE COMPLETE 2026-06-04(commit `d3e96ccb`,pushed upstream)。设计成立,1 处
 
 **§10 v6 follow-ups:** workflow 参数(callWorkflow 传参 → 8 个表达式 parse 点 substitution + references 重算,需专门一轮);toast 持久化(durationMs=0 不自动消失)+ 手动关闭按钮;编辑器 EventsPanel 加 toast/confirm/condition/delay/stop 授权 GUI(真机)。
 
+## §10 v6 — workflow 参数(callWorkflow 传参 → 工作流体内 param 引用)
+
+> §10 v5 follow-up。助手推荐 **§10 v6 workflow 参数**(否决更多 deploy provider / §9 v8 / §8 v9)—— §10 链反复列为「最高产品价值但 recon 坐实较大」的项,这是它专门的一轮。它把 §10 v4 的「可复用命名工作流」从「固定逻辑块」升级成「可参数化的子程序」:`保存(草稿名)`、`提示(文案, 类型)` 才是 Bubble 真正的复用单元。架构 fork 经 AskUserQuestion 锁定 = **(b) 展开边界 IR-handler walk**(否决 (a) 8 个 parse 点 parse-time 替换:最脆的 bindings.ts 改 8 处、每处 template/expression 略不同、经验 A 漏点风险高)。
+
+### 10v6.1 现状与问题
+
+§10 v4 的 `callWorkflow` 是**无参**调用:工作流体只能引调用方作用域里碰巧存在的 state/docState(名字硬编码在工作流定义里)。这违背复用前提——一个「显示提示」工作流没法接收「显示什么文案」。Bubble 的命名工作流核心是**参数**:`显示提示(message, type)` 定义一次,各调用点传不同实参。v6 给 `WorkflowDef` 加形参、给 `CallWorkflowAction` 加实参表达式,在 inline 展开期把工作流体内的形参标识符替换成调用方作用域里求值的实参表达式。
+
+### 10v6.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`WorkflowDef.params?: string[]`(形参名)+ `CallWorkflowAction.args?: Record<param, exprString>`(实参表达式)** | 形参名 = 合法标识符(非 `$prev`/`$event` 等保留),工作流内去重;实参 = 调用方作用域的表达式串(走既有表达式子语言 parseExpression)。 |
+| 2 | **替换策略 = (b) 展开边界 IR-handler walk**(fork 锁定) | `expandWorkflow` 边界:① 实参在**调用方 ctx** parse + checkExprRefs(read-context 禁 $prev)+ unknownIdentifiers 校验 + `registerDocStateReads` → 得 `Map<param, argAst>`;② 工作流体经 `resolveBranch` resolve,**params 临时入 `inScope`** 让体内 `param` 引用通过校验(否则被当未知标识符 drop);③ 一个 **total-function `substituteHandler`** 走遍展开后的 IR handler ASTs,把 `param` ident 换成 argAst,并 `collectReferences` 重算每 handler 的 `references`。否决 (a) parse-time:8 个 parse 点散在 bindings.ts(最脆文件),每处要插 substitute + 重算,经验 A 漏点风险高。 |
+| 3 | **嵌套 + 作用域天然正确**(递归 expandWorkflow 自然产出) | 替换在**每个 expandWorkflow 边界**做,栈展开是外→内顺序。A 调 B 传 `p_A+1`:B 体 resolve 时 `p_A` 在 inScope(A 的 bodyCtx)→ 校验过;B 边界替换 B 形参→argB-ast(含 `p_A`);B-handlers splice 进 A 体;A 边界替换 `p_A`→argA。内层 param 解析成可能仍含外层 param 的表达式,由外层边界替换收口。**无需把 A 的 param 替进 B 的实参**——splice 进 A 体的 B-handlers 会被 A 边界一并 walk。 |
+| 4 | **缺实参 / 多实参 / 非法实参 → 安全降级** | 某形参无对应实参 → warn `action-call-workflow-missing-arg` + **drop 整个 callWorkflow**(不展开,避免 emit 出未定义 `param`);实参 key 非形参 → warn `action-call-workflow-extra-arg` + 忽略;实参 parse 失败 / 引用调用方作用域未知标识符 / 含 $prev → warn(复用既有 checkExprRefs 码 + `action-call-workflow-invalid-arg`)+ drop 整个 callWorkflow。robust,不崩、不产坏 JS。 |
+| 5 | **无形参 → §10 v4 byte-identical**(零回归) | `params` 空 + `args` 空 → bindings 空 → **跳过 substitute**(handlers 原样返回)= v4 路径不变,既有 557 测试不动。无 workflow/callWorkflow → 产物 byte-identical。 |
+| 6 | **`substituteIdents` / `collectReferences` 提进 core expression.ts** | `substituteIdents(ast, Map<string,ExprAst>)` 泛化既有 `substitutePrev`(它只把单一 `$prev` 改名成 ident);`collectReferences` 改 export(原 private)。两者操作 `ExprAst`(core),`substituteHandler` 操作 `IREventHandler`(compiler IR)→ 分层。 |
+| 7 | **`substituteHandler` 是 total function over IREventHandler**(经验 A) | ~13 kind exhaustive switch + `never` default:setState.ast / setVariable.ast / apiCall.url / supabaseQuery.filters[].ast / supabaseMutation.payloadEntries[].ast + filters[].ast / supabaseAuth.emailAst+passwordAst / condition.condAst + 递归 consequent/alternate / toast.ast / confirm.ast + 递归分支 / clipboard.ast;navigate/delay/stop 无 ast 原样返回。每个有 `references` 字段的 handler 替换后 `collectReferences` 重算。**apiCall.body / supabaseMutation.payload 是预序列化 JSON 串(非 AST)→ 不支持 param 插值**(已知边界,文档化;payloadEntries 走 AST 支持)。 |
+| 8 | **存在性/cycle 仍在 collect,形参校验在工具** | set_workflows 校验 `params` 每项合法 ident + 去重;callWorkflow 校验 `args` 是 `Record<string,string>`。缺/多/非法实参的检测在 collect(同时握 workflow 定义 + 调用点实参 + 调用方作用域),非工具。 |
+
+### 10v6.3 公开 API / Schema 改动
+
+- `scene-graph/types.ts`:`WorkflowDef.params?: string[]` + `CallWorkflowAction.args?: Record<string, string>`。
+- `core/lowcode-validation/expression.ts`:export `substituteIdents(ast, ReadonlyMap<string, ExprAst>): ExprAst`(泛化 substitutePrev)+ export 既有 `collectReferences`。
+- `compiler/ir/collect/substitute.ts`(**新**):`substituteHandler(handler, bindings): IREventHandler`(total function)。
+- `compiler/ir/collect/bindings.ts`:`expandWorkflow` 加实参 parse/校验/注册 + bodyCtx(params 入 inScope)+ substitute walk。
+- 工具:`validateCallWorkflowAction` 校验 args;set_workflows 校验 params;`buildActionFromValidated` callWorkflow arm 透传 args。
+- **零 emit / 零 runtime / 零 IRTree / 零 adapter / 零 round-trip codec 改动**(events/workflows 整块 JSON;substitution 在 collect 期消费)。无形参 → 产物 byte-identical。
+
+### 10v6.4 内部实现拆解
+
+1. **expression.ts**:`substituteIdents`(ident 命中 bindings→换 AST,否则原样;member/unary/binary/ternary/template 递归;number/string 原样)+ `collectReferences` 改 export。
+2. **substitute.ts(新)**:`substituteHandler(h, bindings)` exhaustive switch;`refsOf(...asts)` = `[...collectReferences-union]` 重算 references;condition/confirm 递归 `substituteHandler` 子链。
+3. **bindings.ts expandWorkflow**:cycle/unknown 检查后,`bindArgs(workflow, action, ctx)`:遍历 `workflow.params`,缺实参→warn+返回 null(→drop);parse `args[param]` + checkExprRefs(read-ctx)+ unknownIdentifiers + registerDocStateReads → `Map<param, ExprAst>`;多余 args key→warn。push id → bodyCtx(`inScope = new Set([...ctx.inScope, ...params])`)→ `resolveBranch(wf.actions, bodyCtx)` → bindings 非空时 `.map(h => substituteHandler(h, bindings))` → pop。
+4. **tool**:`validateCallWorkflowAction` args 校验(object,每 value string);`validateWorkflowDef`(set_workflows)params 校验(string[] 每项合法 ident + 去重);`buildActionFromValidated` callWorkflow 透传 `args`。
+5. **测试**:collect(传参替换 / member 实参 / docState 实参注册 useDocState / 嵌套 wf 传 param / 缺实参 drop+warn / 多实参 warn / 非法实参 drop / 无形参 v4 byte-identical)+ 集成(callWorkflow 传 toast 文案 → emit 实参表达式)+ tool(args/params 校验)+ round-trip(params/args 存活)+ rls(实参里的 docState)。
+
+### 10v6.5 成功标准
+
+- `WorkflowDef{id:'notify',name:'提示',params:['msg'],actions:[{kind:'toast',messageExpr:'msg'}]}` + 按钮 `callWorkflow{workflowId:'notify',args:{msg:'"Saved!"'}}` → emit `__opToast("Saved!")`(形参 `msg` 替换成实参字面量)。
+- 实参引调用方 docState:`args:{msg:'$status'}` → emit `__opToast($status)` + 调用方页 `useDocState("status")` 读入(arg refs 经 registerDocStateReads)。
+- 实参含表达式:`args:{count:'items.length + 1'}` → 工作流体内 `count` → emit `items.length + 1`(整 AST 替换)。
+- 嵌套:A(p) 调 B(q) 传 `args:{q:'p'}`,A 从按钮调 `args:{p:'1'}` → B 体内 `q` 最终 emit `1`。
+- 缺实参 → warn + drop callWorkflow(不 emit 未定义 ident);非法实参(未知标识符/$prev/parse 失败)→ warn + drop。
+- 无形参的 workflow + 无 args 的 callWorkflow → §10 v4 byte-identical(既有 557 测试不动)。
+- round-trip:params/args 经 .fig 存活;set_workflows 校验非法 params reject。
+- `bun run check` exit 0(含 check:vue + steiger + jscpd);tsgo 0。
+
+### 10v6.6 工作分解(~1 day)
+
+expression.ts substituteIdents + export collectReferences → substitute.ts substituteHandler(total function)→ scene-graph WorkflowDef.params + CallWorkflowAction.args → bindings expandWorkflow bindArgs + bodyCtx inScope + substitute walk → tool validateCallWorkflowAction args + validateWorkflowDef params + buildActionFromValidated → 测试 → build:packages → `bun run check`。**callWorkflow 已是 ActionDef(v4),args/params 是字段增量 → 经验 A union widening 不涉及**(无新 kind);但 `substituteHandler` 是经验 A total-function 点(exhaustive + never)。emit 加分支看 complexity(expandWorkflow 已有逻辑)+ jscpd。
+
+### 10v6.7 风险
+
+- `substituteHandler` 漏 handler kind → 经验 A:exhaustive switch + `never` default(编译器强校验)。
+- 嵌套作用域错位 → 替换在每边界做、外→内收口(决定 #3);测试坐实 A→B 传 param。
+- 缺实参产坏 JS(未定义 `param`)→ 决定 #4 drop 整 callWorkflow 防御。
+- references 重算遗漏 → 每替换后 collectReferences 重算;但 docState 读已在边界注册(arg refs),references 字段主要驱动 import gate,重算保正确。
+- 真机验:实参替换后 preview/build 行为 = 把实参表达式直写进工作流体等价(headless 仅断言 emit 串)。
+
+### 10v6.8 Post-mortem
+
+(实现后回填)
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

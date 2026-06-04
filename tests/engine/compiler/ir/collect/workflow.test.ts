@@ -26,7 +26,7 @@ describe('collect workflow IR (Phase 3 §10)', () => {
   function makeGraph(opts: {
     docStates?: { id: string; name: string; type: 'string' | 'object'; defaultValue: unknown }[]
     onClick?: ActionDef[]
-    workflows?: { id: string; name: string; actions: ActionDef[] }[]
+    workflows?: { id: string; name: string; params?: string[]; actions: ActionDef[] }[]
   }): { graph: SceneGraph; pageId: string } {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
@@ -498,5 +498,105 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     const confirm = onClickHandlers(graph, pageId)[0] as IRConfirmHandler
     expect(confirm.confirmLabel).toBe('Delete')
     expect(confirm.cancelLabel).toBe('Keep')
+  })
+
+  // ── Phase 3 §10 v6: workflow parameters — callWorkflow args substitution ──
+
+  test('a literal arg is substituted for the parameter identifier in the body', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [
+        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: '"Saved!"' } }]
+    })
+    const toast = onClickHandlers(graph, pageId)[0] as IRToastHandler
+    expect(toast.kind).toBe('toast')
+    expect(toast.ast).toEqual({ kind: 'string', value: 'Saved!' })
+    expect(toast.references).toEqual([])
+  })
+
+  test('an expression arg is substituted whole (member/binary)', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd1', name: 'user', type: 'object', defaultValue: {} }],
+      workflows: [
+        { id: 'greet', name: 'Greet', params: ['who'], actions: [{ id: 't', kind: 'toast', messageExpr: 'who' }] }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'greet', args: { who: 'user.email' } }]
+    })
+    const toast = onClickHandlers(graph, pageId)[0] as IRToastHandler
+    expect(toast.ast).toEqual({ kind: 'member', object: { kind: 'ident', name: 'user' }, property: 'email' })
+    expect(toast.references).toEqual(['user'])
+  })
+
+  test('a docState referenced by an arg registers a read through the caller', () => {
+    const { graph, pageId } = makeGraph({
+      docStates: [{ id: 'd1', name: 'status', type: 'string', defaultValue: '' }],
+      workflows: [
+        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: 'status' } }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.docStateReads).toContain('status')
+  })
+
+  test('nested workflow arg referencing the outer parameter resolves at the outer boundary', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [
+        { id: 'inner', name: 'inner', params: ['q'], actions: [{ id: 't', kind: 'toast', messageExpr: 'q' }] },
+        {
+          id: 'outer',
+          name: 'outer',
+          params: ['p'],
+          actions: [{ id: 'cw2', kind: 'callWorkflow', workflowId: 'inner', args: { q: 'p' } }]
+        }
+      ],
+      onClick: [{ id: 'cw1', kind: 'callWorkflow', workflowId: 'outer', args: { p: '"hi"' } }]
+    })
+    const toast = onClickHandlers(graph, pageId)[0] as IRToastHandler
+    // inner's `q` → outer's `p` → caller's "hi" — outermost boundary collapses it.
+    expect(toast.ast).toEqual({ kind: 'string', value: 'hi' })
+  })
+
+  test('a missing argument drops the whole callWorkflow with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [
+        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-missing-arg')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([])
+  })
+
+  test('an extra arg (not a parameter) warns but still expands', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [{ id: 'wf', name: 'go', params: [], actions: [{ id: 'n', kind: 'navigate', to: '/go' }] }],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'wf', args: { stray: '"x"' } }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-extra-arg')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([{ kind: 'navigate', to: '/go' }])
+  })
+
+  test('an arg referencing an unknown identifier drops the callWorkflow with a warning', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [
+        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+      ],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: 'ghost' } }]
+    })
+    const ir = collectTree(graph, pageId)
+    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-arg-unknown-identifier')).toBe(true)
+    expect(onClickHandlers(graph, pageId)).toEqual([])
+  })
+
+  test('a parameterless workflow + no args is byte-identical to §10 v4 (no substitution)', () => {
+    const { graph, pageId } = makeGraph({
+      workflows: [{ id: 'wf', name: 'go', actions: [{ id: 'n', kind: 'navigate', to: '/go' }] }],
+      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'wf' }]
+    })
+    expect(onClickHandlers(graph, pageId)).toEqual([{ kind: 'navigate', to: '/go' }])
   })
 })

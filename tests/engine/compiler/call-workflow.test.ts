@@ -89,3 +89,37 @@ describe('compile — named WorkflowDef inline expansion (Phase 3 §10 v4)', () 
     expect(out.files.get('src/App.tsx') as string).not.toContain('__opToast')
   })
 })
+
+describe('compile — workflow parameters (Phase 3 §10 v6)', () => {
+  test('a callWorkflow arg is substituted into the inlined workflow body', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: '"Saved!"' } }],
+      [{ id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }]
+    )
+    const app = out.files.get('src/App.tsx') as string
+    // the formal parameter `msg` is replaced by the caller's literal argument
+    expect(app).toContain('__opToast("Saved!")')
+    expect(app).not.toContain('__opToast(msg)')
+  })
+
+  test('an arg referencing a docState resolves against the caller runtime', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: 'status' } }],
+      [{ id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }],
+      'status'
+    )
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('__opToast(status)')
+    // the docState behind the argument is read in by the caller page
+    expect(app).toContain('useDocState("status")')
+  })
+
+  test('a missing argument drops the callWorkflow (no toast emitted)', () => {
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }],
+      [{ id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }]
+    )
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('__opToast')
+  })
+})

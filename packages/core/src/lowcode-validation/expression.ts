@@ -402,7 +402,7 @@ function scanInterpolation(raw: string, start: number): { exprSrc: string; next:
   return 'unterminated ${ in template'
 }
 
-function collectReferences(ast: ExprAst, acc = new Set<string>()): Set<string> {
+export function collectReferences(ast: ExprAst, acc = new Set<string>()): Set<string> {
   switch (ast.kind) {
     case 'ident':
       acc.add(ast.name)
@@ -584,6 +584,48 @@ export function substitutePrev(ast: ExprAst, replacement: string): ExprAst {
         expressions: ast.expressions.map((expr) => substitutePrev(expr, replacement))
       }
     default:
+      return ast
+  }
+}
+
+/**
+ * Phase 3 §10 v6: return a new AST with every identifier whose name is a key of
+ * `bindings` replaced by the bound replacement AST. The input AST is not
+ * mutated. Generalises `substitutePrev` (single `$prev` → ident) to arbitrary
+ * identifier → expression substitution — used by `callWorkflow` parameter
+ * passing to splice the caller-scope argument expressions into a workflow body
+ * in place of its formal-parameter identifiers.
+ */
+export function substituteIdents(ast: ExprAst, bindings: ReadonlyMap<string, ExprAst>): ExprAst {
+  switch (ast.kind) {
+    case 'ident':
+      return bindings.get(ast.name) ?? ast
+    case 'member':
+      return { kind: 'member', object: substituteIdents(ast.object, bindings), property: ast.property }
+    case 'unary':
+      return { kind: 'unary', op: ast.op, arg: substituteIdents(ast.arg, bindings) }
+    case 'binary':
+      return {
+        kind: 'binary',
+        op: ast.op,
+        left: substituteIdents(ast.left, bindings),
+        right: substituteIdents(ast.right, bindings)
+      }
+    case 'ternary':
+      return {
+        kind: 'ternary',
+        test: substituteIdents(ast.test, bindings),
+        consequent: substituteIdents(ast.consequent, bindings),
+        alternate: substituteIdents(ast.alternate, bindings)
+      }
+    case 'template':
+      return {
+        kind: 'template',
+        quasis: ast.quasis,
+        expressions: ast.expressions.map((expr) => substituteIdents(expr, bindings))
+      }
+    default:
+      // number / string — no identifiers to substitute.
       return ast
   }
 }
