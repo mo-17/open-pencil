@@ -183,6 +183,54 @@ describe('compile — i18n target locales + switcher (Phase 3 §9 v2)', () => {
 })
 
 /**
+ * Phase 3 §9 v8 — configurable source locale. `CompilerOptions.sourceLocale`
+ * selects the language the canvas strings are authored in; it drives the source
+ * catalog filename, the runtime default locale, and the target-exclusion seed.
+ */
+function compileWithSource(sourceLocale: string | undefined, locales: string[] = []) {
+  const graph = makeSceneGraph()
+  const pageId = firstPageId(graph)
+  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  graph.createNode('TEXT', frame.id, { text: 'Hello', width: 80, height: 20 })
+  return compile({
+    graph,
+    pageIds: [pageId],
+    options: withDefaults({ packageName: 'comp', i18n: true, sourceLocale, locales })
+  })
+}
+
+describe('compile — configurable source locale (Phase 3 §9 v8)', () => {
+  test('sourceLocale changes the source catalog filename + runtime default locale', () => {
+    const out = compileWithSource('zh')
+    expect(out.files.has('src/locales/zh.json')).toBe(true)
+    expect(out.files.has('src/locales/en.json')).toBe(false)
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain("import zh from './locales/zh.json'")
+    expect(runtime).toContain('export const SOURCE_LOCALE = "zh"')
+    expect(runtime).toContain('{ zh }')
+  })
+
+  test('a target equal to the new sourceLocale is dropped; other targets become catalogs', () => {
+    const out = compileWithSource('zh', ['zh', 'en'])
+    expect(out.files.has('src/locales/zh.json')).toBe(true)
+    expect(out.files.has('src/locales/en.json')).toBe(true)
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain('{ zh, en }')
+    expect(out.files.has('src/components/LocaleSwitcher.tsx')).toBe(true)
+  })
+
+  test('unset / blank sourceLocale defaults to en (v7 byte-identical)', () => {
+    const out = compileWithSource(undefined)
+    expect(out.files.has('src/locales/en.json')).toBe(true)
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain('export const SOURCE_LOCALE = "en"')
+    const blank = compileWithSource('   ')
+    const blankRuntime = blank.files.get('src/_lowcode_i18n.tsx') as string
+    expect(blankRuntime).toContain('export const SOURCE_LOCALE = "en"')
+  })
+})
+
+/**
  * Phase 3 §9 v3 — attribute-string i18n. A `<FormattedMessage>` is a JSX element
  * and can't sit in an attribute, so a user-facing attribute (an INPUT's
  * `placeholder`) is emitted as `placeholder={intl.formatMessage({ id, defaultMessage })}`

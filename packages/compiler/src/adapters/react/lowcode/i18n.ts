@@ -19,12 +19,15 @@
  *  diverges. react-intl 7.x peers React 18 || 19 — both our targets. */
 export const REACT_INTL_VERSION = '^7.1.0'
 
-/** The design (source) locale: the language the canvas strings are authored in.
- *  v1 fixed to English; a future option can make this configurable. */
+/** The DEFAULT design (source) locale: the language the canvas strings are
+ *  authored in. Phase 3 §9 v8 makes it configurable via `CompilerOptions.
+ *  sourceLocale`; this is the fallback when unset. */
 export const SOURCE_LOCALE = 'en'
 
-/** Relative path (from `src/`) of the source-locale catalog the runtime imports. */
-export const SOURCE_CATALOG_FILE = `locales/${SOURCE_LOCALE}.json`
+/** Relative path (from `src/`) of a source-locale catalog the runtime imports. */
+export function sourceCatalogPath(sourceLocale: string): string {
+  return `locales/${sourceLocale}.json`
+}
 
 /** Phase 3 §9 — the `import { ... } from 'react-intl'` line for a page/component
  *  file, listing only the symbols it uses: `FormattedMessage` for visible text
@@ -85,11 +88,13 @@ export function localeIdent(code: string): string {
 /**
  * Build `src/_lowcode_i18n.tsx`: the `<I18nProvider>` (IntlProvider + locale
  * state + a `useLocale` context) the app root is wrapped in. Phase 3 §9 v2:
- * `locales` (source first, then targets) drives the catalog imports +
- * registry, so `setLocale('<target>')` resolves a real catalog. With just
- * `['en']` the output is byte-identical to the v1 single-locale runtime.
+ * `targetLocales` (after the source) drives the catalog imports + registry, so
+ * `setLocale('<target>')` resolves a real catalog. Phase 3 §9 v8: `sourceLocale`
+ * is the runtime's default locale (was fixed to `'en'`). With source `'en'` and
+ * no targets the output is byte-identical to the v1 single-locale runtime.
  */
-export function buildLowcodeI18nRuntime(locales: readonly string[]): string {
+export function buildLowcodeI18nRuntime(sourceLocale: string, targetLocales: readonly string[]): string {
+  const locales = [sourceLocale, ...targetLocales]
   const imports = locales
     .map((code) => `import ${localeIdent(code)} from './locales/${code}.json'`)
     .join('\n')
@@ -102,7 +107,7 @@ import { IntlProvider } from 'react-intl'
 ${imports}
 
 /** The design (source) locale — the language the canvas strings were authored in. */
-export const SOURCE_LOCALE = ${JSON.stringify(SOURCE_LOCALE)}
+export const SOURCE_LOCALE = ${JSON.stringify(sourceLocale)}
 
 /** Locale code → message catalog. Add a language by importing its JSON and
  *  registering it here (e.g. \`import fr from './locales/fr.json'\` → \`fr\`). */

@@ -5042,6 +5042,63 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**1 处 G
 
 **§7 v3 / §8 v9 follow-ups:** nested-instance override(实例套实例);响应式 re-show 的 GUI 授权面板(真机);per-breakpoint 容器嵌套显隐组合。
 
+## §9 v8 — 可配置 sourceLocale(源语言非 en)
+
+> §9 v7 follow-up。助手推荐 §9 v8(否决 §8 v9 nested-instance —— recon 坐实 clean 嵌套实例已 emit `<Inner/>`,真缺口=override 跨组件边界传播,需 prop-threading 进 `<C/>` ref,subtle 大坑;否决 §10 v7)。scope = **仅 sourceLocale 可配**(plural-body `${}` 插值因 ICU 花括号 vs `${}` scanner 冲突留 §9 v9;译文覆盖率高亮偏 GUI 真机)。
+
+### 9v8.1 现状与问题
+
+§9 v1-v7 把源语言**硬编码为 `'en'`**(`SOURCE_LOCALE` 模块常量):源 catalog 永远是 `src/locales/en.json`,runtime 默认 locale 永远 en,`resolveTargetLocales` 永远排除 'en'。母语非英语的搭建者(中文/日文 app)只能先用英文写、再全部当"翻译",违背"用源语言搭应用"。
+
+### 9v8.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`CompilerOptions.sourceLocale?: string`**(默认 'en') | 可选字段,unset/空白 → `SOURCE_LOCALE`('en')→ §9 v7 byte-identical。 |
+| 2 | **三处消费 sourceLocale**:源 catalog 文件名 / runtime 默认 locale / 目标排除 seed | `src/locales/<sourceLocale>.json`(源串);runtime `SOURCE_LOCALE = <配置>` + `useState`/`defaultLocale`;`resolveTargetLocales` seed `new Set([sourceLocale])`(等于源的 target 被丢)。 |
+| 3 | **`buildLowcodeI18nRuntime(sourceLocale, targetLocales)`** 改签名(原 `(locales)`) | 内部 `locales = [sourceLocale, ...targetLocales]`,runtime 源 = 显式 `sourceLocale` 参(非模块常量,且避开 `locales[0] ??` 的 no-unnecessary-condition lint)。`('en', [])` → byte-identical v1。 |
+| 4 | **零 collect/IR/round-trip/scene-graph 改动** | sourceLocale 纯 adapter-emit 配置(messageKey hash 本就 locale-agnostic);只 `lowcode/i18n.ts` + `adapters/react/index.ts` 两文件。 |
+
+### 9v8.3 公开 API / Schema 改动
+
+- `CompilerOptions.sourceLocale?: string`。
+- `lowcode/i18n.ts`:`SOURCE_LOCALE` 降级为默认常量;`SOURCE_CATALOG_FILE` 常量 → `sourceCatalogPath(locale)` 函数;`buildLowcodeI18nRuntime(sourceLocale, targetLocales)` 改签名。
+- `adapters/react/index.ts`:`resolveSourceLocale(options)` 新 helper;`resolveTargetLocales(raw, translations, sourceLocale)` + `maybeEmitI18n(..., sourceLocale, ...)` 加参。
+
+### 9v8.4 内部实现拆解
+
+1. `resolveSourceLocale(options)` = `options.sourceLocale?.trim()` 非空 → 用之,否则 `SOURCE_LOCALE`。
+2. 两个 emit 函数(single/multi-page)各 `const sourceLocale = resolveSourceLocale(options)`,透传 `resolveTargetLocales(..., sourceLocale)` + `maybeEmitI18n(..., sourceLocale, ...)`。
+3. `maybeEmitI18n`:源 catalog `src/${sourceCatalogPath(sourceLocale)}`;runtime `buildLowcodeI18nRuntime(sourceLocale, targetLocales)`。
+4. `resolveTargetLocales` seed `new Set([sourceLocale])`。
+
+### 9v8.5 成功标准
+
+- `sourceLocale:'zh'` → `src/locales/zh.json`(无 en.json)+ runtime `SOURCE_LOCALE = "zh"` + CATALOGS `{ zh }`。
+- `sourceLocale:'zh'`, `locales:['zh','en']` → 'zh' 是源被排除,'en' 成目标 catalog;CATALOGS `{ zh, en }` + switcher。
+- unset/空白 sourceLocale → en.json + `SOURCE_LOCALE = "en"`(§9 v7 byte-identical)。
+- `bun run check` exit 0;tsgo 0。
+
+### 9v8.6 工作分解(~0.3 day)
+
+CompilerOptions.sourceLocale → i18n.ts(SOURCE_LOCALE 注释 + sourceCatalogPath + buildLowcodeI18nRuntime 签名)→ index.ts(resolveSourceLocale + resolveTargetLocales/maybeEmitI18n 加参 + 两 call site 透传)→ 测试(zh 源 / 目标排除源 / 默认 byte-identical)→ build:packages → `bun run check`。
+
+### 9v8.7 风险
+
+- 改 i18n emit 影响全 §9 链 → 全 compiler 套件回归(583/0)+ 默认路径 byte-identical(既有 30 i18n 测试不动)。
+- `sourceLocale` 与某 target 相同 → resolveTargetLocales 排除(seed)。
+- 真机验:非 en 源 + react-intl `defaultLocale` 在 preview/build 正确渲染。
+
+### 9v8.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**零 GATE 收口,零意外**。
+
+- **三处 'en' 硬编码 → 一个 `resolveSourceLocale(options)` + 三处透传**:源 catalog 文件名(`sourceCatalogPath`)/ runtime 默认 locale(`buildLowcodeI18nRuntime` 第一参)/ 目标排除 seed(`resolveTargetLocales` 第三参)。`SOURCE_LOCALE` 从"唯一真相"降级为"默认值"。
+- **`buildLowcodeI18nRuntime(sourceLocale, targetLocales)` 显式拆参避 lint 陷阱**:本可让 runtime 取 `locales[0]`,但 `locales[0] ??` 会撞 `no-unnecessary-condition`(数组索引 TS 判 `string` 非 nullish,§7 v2 同款教训)→ 改成显式 `sourceLocale: string` 参 + 内部 `[sourceLocale, ...targetLocales]`,既清晰又 lint-clean。`('en', [])` → byte-identical v1。
+- **`resolveSourceLocale` 用 `options.sourceLocale?.trim()` ternary 而非 `??`/`||`**:optional 字段 `?.` 是真 nullable(不触 no-unnecessary),`trim()` 后空串经 truthy ternary 退默认,空白输入安全。
+- **零 collect/IR/round-trip/scene-graph 改动**:messageKey hash 本就 locale-agnostic,sourceLocale 纯 adapter-emit 配置 → 只 2 文件。默认路径 byte-identical = 既有 30 i18n 测试一字未改通过。
+- 测试 +3(zh 源 catalog+runtime / 目标排除源 + en 成 target / unset+空白默认 en byte-identical)。compiler **583/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(非 en 源 react-intl defaultLocale 渲染)。**§9 v9 follow-ups:** plural-body 内 `${}` 插值(ICU 花括号 vs `${}` scanner 冲突);译文覆盖率/缺译高亮(GUI);RTL 源语言布局。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

@@ -53,6 +53,15 @@ export interface CompilerOptions {
    * and there is text. Empty / unset → source locale only (v1 behavior).
    */
   locales?: string[]
+  /**
+   * Phase 3 §9 v8 — the design (source) locale: the language the canvas strings
+   * are authored in. Defaults to `'en'` when unset/empty. Drives the source
+   * catalog filename (`src/locales/<sourceLocale>.json`), the runtime's default
+   * locale, and the exclusion seed for `locales` (a target equal to the source
+   * is dropped). Only consulted when `i18n` is on. Unset → `'en'` (v7 behavior,
+   * byte-identical).
+   */
+  sourceLocale?: string
 }
 
 export interface CompileWarning {
