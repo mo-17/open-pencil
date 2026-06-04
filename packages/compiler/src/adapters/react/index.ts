@@ -19,6 +19,7 @@ import {
   buildLocaleSwitcher,
   buildLowcodeI18nRuntime,
   buildTranslatedCatalog,
+  isRtlLocale,
   REACT_INTL_VERSION,
   sourceCatalogPath,
   SOURCE_LOCALE
@@ -333,7 +334,9 @@ function setSharedProjectFiles(
     runtimeClasses.length > 0 ? [...new Set([...classNames, ...runtimeClasses])].sort() : classNames
   files.set('vite.config.ts', buildViteConfig())
   files.set('tsconfig.json', buildTsConfig())
-  files.set('index.html', buildIndexHtml(options.packageName))
+  // Phase 3 §9 v12: <html lang>/dir from the configured source locale.
+  const htmlLang = resolveSourceLocale(options)
+  files.set('index.html', buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang)))
   files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm))
   files.set('src/index.css', buildIndexCss(safelist))
   files.set('.gitignore', buildGitignore())

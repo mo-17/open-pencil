@@ -5440,6 +5440,35 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**recon 把「大坑�
 - **一处拦截通吃两路径**:deep 检查放 meta 查找前 → plain + SET(variant)统一 return null 落内联。
 - 测试 +3(deep 内联+clean 复用[master ref+clean=2,deep 不计第 3]/ ON-嵌套-节点仍 ref / 全 deep 不 extract+内联渲染)。compiler **604/0**(+3),kiwi+tools 308/0,`bun run check` exit 0,tsgo 0。**真机验 pending**(deep override 实例 preview 渲染 override 值)。**§8 v10 follow-ups:** 真·prop-threading(若需 deep override 复用);orphan registered-but-unreferenced 组件剪枝;component props GUI 面板(真机)。
 
+## §9 v12 — index.html lang/dir(源 locale 上 <html>)
+
+> §9 v8 / §9 v11 follow-up,小件。助手推荐 §9 v12(用户「继续下一个 milestone」未走 AskUserQuestion;recon 坐实多页路由[BrowserRouter+per-page route+navigate]已完整、非缺口;否决 §8 v10 orphan 剪枝边际低 / §10 v9 toast 配置)。合并 §9 v8(可配源 locale)+ §9 v11(RTL)的产物末梢:`buildIndexHtml` 此前硬编码 `<html lang="en">`,无 dir、lang 不随源 locale。
+
+### 9v12.1 现状与问题
+- `project.ts buildIndexHtml(packageName)` 恒 `<html lang="en">`:① 非 en 源(zh/ar)应反映在 lang(a11y/SEO);② RTL 源 §9 v11 靠运行时 useEffect 设 dir → 首帧 LTR 闪一下,index.html 预置 `dir="rtl"` 可消除。
+
+### 9v12.2 关键决定
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`buildIndexHtml(packageName, lang='en', rtl=false)`** | 默认参 → en/LTR byte-identical(其余 caller 无,单 caller index.ts 显式传)。lang/dir 计算在 adapter 层(`isRtlLocale` 同 adapters/react 树),不让 project.ts 反向 import adapter。 |
+| 2 | **lang = `resolveSourceLocale(options)`,dir = `isRtlLocale(src)`** | 复用 §9 v8 源 locale 解析 + §9 v11 RTL 判定;无关 i18n flag(文档语言独立于切换能力),源 locale 默认 en → 绝大多数零变化。 |
+
+### 9v12.3 公开 API / Schema 改动
+- `buildIndexHtml(packageName, lang?, rtl?)`(project.ts,默认参向后兼容)。
+- adapters/react/index.ts:`const htmlLang = resolveSourceLocale(options); buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang))`(+ import isRtlLocale)。
+- 零 scene-graph / IR / collect / round-trip / CompilerOptions 改动。
+
+### 9v12.4 成功标准
+- 源 ar → `<html lang="ar" dir="rtl">`;源 zh → `<html lang="zh">` 无 dir;默认 en → `<html lang="en">` 无 dir(byte-identical)。
+- `bun run check` exit 0;tsgo 0;compiler 全绿。
+
+### 9v12.5 Post-mortem
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GATE 收口、零意外。**
+- **合并 §9 v8 + v11 末梢**:`buildIndexHtml` 加 `lang`/`rtl` 默认参(en/false → byte-identical),adapter 传 `resolveSourceLocale(options)` + `isRtlLocale(它)`。RTL 源现 index.html 预置 `dir="rtl"` 消首帧闪;非 en 源现 lang 正确(a11y/SEO)。
+- **layering**:lang/dir 在 adapter 层算(isRtlLocale 同树),project.ts 只收两个原始参 → 不反向依赖 adapter。
+- **recon 副产**:坐实多页路由(BrowserRouter + derivePagePaths + per-page Route + useNavigate)早已完整、navigate 仅单页被 strip → 路由非缺口,无需做。
+- 测试 +3(RTL 源 lang+dir / 非 en LTR 仅 lang / 默认 en byte-identical)。compiler **607/0**(+3),`bun run check` exit 0,tsgo 0。**真机验 pending**(ar 源页面初始即 RTL 无闪;lang 在 devtools 正确)。**§9 v13 follow-ups:** RTL 感知逻辑属性 emit(margin/padding→logical);§8 v10 orphan 组件剪枝;GUI 译文/组件面板(真机)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

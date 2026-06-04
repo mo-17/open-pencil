@@ -267,6 +267,30 @@ describe('compile — RTL direction (Phase 3 §9 v11)', () => {
 })
 
 /**
+ * Phase 3 §9 v12 — index.html reflects the source locale on `<html lang>` (a11y /
+ * SEO) and pre-sets `dir="rtl"` for an RTL source so the page doesn't flash LTR
+ * before the runtime effect runs. Default ('en', LTR) stays byte-identical.
+ */
+describe('compile — index.html lang/dir (Phase 3 §9 v12)', () => {
+  test('an RTL source locale sets lang + dir="rtl" on <html>', () => {
+    const html = compileWithSource('ar').files.get('index.html') as string
+    expect(html).toContain('<html lang="ar" dir="rtl">')
+  })
+
+  test('a non-en LTR source sets lang only (no dir)', () => {
+    const html = compileWithSource('zh').files.get('index.html') as string
+    expect(html).toContain('<html lang="zh">')
+    expect(html).not.toContain('dir=')
+  })
+
+  test('the default (en) source is byte-identical (lang="en", no dir)', () => {
+    const html = compileWithSource(undefined).files.get('index.html') as string
+    expect(html).toContain('<html lang="en">')
+    expect(html).not.toContain('dir=')
+  })
+})
+
+/**
  * Phase 3 §9 v3 — attribute-string i18n. A `<FormattedMessage>` is a JSX element
  * and can't sit in an attribute, so a user-facing attribute (an INPUT's
  * `placeholder`) is emitted as `placeholder={intl.formatMessage({ id, defaultMessage })}`

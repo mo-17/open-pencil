@@ -93,9 +93,12 @@ export function buildTsConfig(): string {
   return JSON.stringify(config, null, 2) + '\n'
 }
 
-export function buildIndexHtml(packageName: string): string {
+export function buildIndexHtml(packageName: string, lang = 'en', rtl = false): string {
+  // Phase 3 §9 v12: reflect the source locale on <html lang> (a11y / SEO) and
+  // pre-set dir="rtl" for an RTL source so the page doesn't flash LTR before the
+  // runtime's useEffect runs. Defaults ('en', false) keep the LTR output byte-identical.
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeHtml(lang)}"${rtl ? ' dir="rtl"' : ''}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
