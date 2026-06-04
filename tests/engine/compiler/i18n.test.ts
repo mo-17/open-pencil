@@ -231,6 +231,42 @@ describe('compile — configurable source locale (Phase 3 §9 v8)', () => {
 })
 
 /**
+ * Phase 3 §9 v11 — RTL direction. When an RTL locale (Arabic, Hebrew, …) is the
+ * source or any target, the i18n runtime reflects the active locale's writing
+ * direction onto `document.documentElement.dir`. LTR-only apps stay byte-identical
+ * to v8 (no dir machinery emitted).
+ */
+describe('compile — RTL direction (Phase 3 §9 v11)', () => {
+  test('an RTL source locale wires document direction', () => {
+    const out = compileWithSource('ar')
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain('useEffect')
+    expect(runtime).toContain("document.documentElement.dir = isRtl(locale) ? 'rtl' : 'ltr'")
+    expect(runtime).toContain('export function isRtl(locale: string)')
+    expect(runtime).toContain('const RTL_LOCALES = new Set([')
+    expect(runtime).toContain('"ar"')
+  })
+
+  test('an RTL target locale (LTR source) also wires direction', () => {
+    const out = compileWithSource('en', ['he'])
+    const runtime = out.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).toContain('document.documentElement.dir')
+    expect(runtime).toContain('useEffect')
+  })
+
+  test('LTR-only locales emit no direction machinery (v8 byte-identical)', () => {
+    const ltr = compileWithSource('en', ['fr', 'de'])
+    const runtime = ltr.files.get('src/_lowcode_i18n.tsx') as string
+    expect(runtime).not.toContain('document.documentElement.dir')
+    expect(runtime).not.toContain('useEffect')
+    expect(runtime).not.toContain('isRtl')
+    // identical to the same compile through the v8 path (no targets) for the
+    // shared header — the React import line is unchanged
+    expect(runtime).toContain('import { createContext, useContext, useMemo, useState, type ReactNode }')
+  })
+})
+
+/**
  * Phase 3 §9 v3 — attribute-string i18n. A `<FormattedMessage>` is a JSX element
  * and can't sit in an attribute, so a user-facing attribute (an INPUT's
  * `placeholder`) is emitted as `placeholder={intl.formatMessage({ id, defaultMessage })}`

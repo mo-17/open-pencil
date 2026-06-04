@@ -5329,6 +5329,59 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**零 hot
 - **统计单位=去重源串**:message id 是内容 hash(同源串同 id),`new Set(messages.values())` 即唯一源串;按源串报告对译者最有用(译文数据模型也按源串 keying)。
 - 测试 +4(per-locale 缺译清单+counts / 全译 0 缺 / 空白译文计缺 / 无 target 无文件)。compiler **598/0**(+4),`bun run check` exit 0,tsgo 0。**真机验 pending**(编辑器读 `_coverage.json` 或 in-graph 译文做覆盖率高亮 GUI)。**§9 v11 follow-ups:** 覆盖率高亮编辑器面板(真机,读 in-graph 译文);RTL 源语言布局;缺译报告也进 CompileResult.warnings 供 CLI 直接 surface。
 
+## §9 v11 — RTL 方向支持(RTL locale → document.dir 翻转)
+
+> §9 v8 / §9 v10 follow-up。助手推荐 §9 v11(用户「继续下一个 milestone」未走 AskUserQuestion;否决 §8 v9 nested-instance override 传播——recon 再次坐实是多层 prop-threading 大坑[嵌套 override 用扁平 clone-node-id key,但 override 落到 `<Inner/>` ref 内部、Outer 体不直接 emit,需跨组件边界递归 prop-thread + 策略决定 + 宜真机验],不适合 headless bg;否决 §10 v9 toast 配置可配边际低 / CF Pages blake3 依赖)。封 §9 i18n 链方向缺口:阿语/希伯来语等 RTL 语言需整体右到左布局,此前产物无任何 `dir` 处理。
+
+### 9v11.1 现状与问题
+
+- §9 v8 让源语言可配、v2 让目标 locale 可切,但切到 RTL 语言(ar/he/fa/…)时产物 `<html>` 仍 `dir="ltr"` → 文字右对齐、镜像布局全失效。RTL 是 i18n 的硬需求。
+
+### 9v11.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **runtime `useEffect` 把 `document.documentElement.dir` 设为活动 locale 的方向** | 标准 SPA 做法,影响全局 CSS/布局(`dir` 属性驱动 `rtl:`/逻辑属性);切语言即翻转。 |
+| 2 | **方向从 locale code 自动推断**(`RTL_LOCALES` 主子标签集) | 零新 CompilerOptions;`isRtlLocale(code)` 比对主子标签(`ar-EG`→`ar`),region/script 变体全覆盖;含 legacy `iw`/`ji`。 |
+| 3 | **仅当源或任一目标是 RTL 时才注入 dir 机制** | LTR-only 产物 byte-identical v8(零回归);RTL 不在场不加 `useEffect`/`isRtl`/`RTL_LOCALES`。 |
+| 4 | **不改 LocaleContext value 形状** | 只设 document.dir(足够驱动布局),避免 RTL/非-RTL 两套 context 接口分叉;`isRtl` 导出供组件按需用。 |
+
+### 9v11.3 公开 API / Schema 改动
+
+- `RTL_LOCALES: ReadonlySet<string>` + `isRtlLocale(code): boolean`(`adapters/react/lowcode/i18n.ts`,导出)。
+- `buildLowcodeI18nRuntime` 条件注入:RTL 在场 → `useEffect` import + `RTL_LOCALES`/`isRtl` 运行时 + I18nProvider 内 dir effect;否则 v8 byte-identical。
+- 零 `CompilerOptions` / scene-graph / IR / collect / round-trip 改动。
+
+### 9v11.4 内部实现拆解
+
+1. **i18n.ts**:`RTL_LOCALES`(ar/he/iw/fa/ur/ps/sd/ug/yi/ji/dv/ckb/nqo/syr)+ `isRtlLocale`(`code.split('-')[0].toLowerCase()` ∈ 集合)。
+2. **buildLowcodeI18nRuntime**:`const rtl = isRtlLocale(sourceLocale) || targetLocales.some(isRtlLocale)`;`reactImport`(条件含 `useEffect`)/`rtlHelper`(RTL_LOCALES+isRtl,或 '')/`dirEffect`(useEffect 块,或 '')三段拼接。空段落点保证 LTR byte-identical(`${rtlHelper}` 空 → 还原原空行;`${dirEffect}` 空 → 还原 messages→value 邻接)。
+
+### 9v11.5 成功标准
+
+- 源 `ar` → runtime 含 `useEffect` + `document.documentElement.dir = isRtl(locale) ? 'rtl':'ltr'` + `isRtl` + `RTL_LOCALES`。
+- 源 en + 目标 `he` → 同样注入。
+- LTR-only(en + fr/de)→ runtime 无 dir/useEffect/isRtl(v8 byte-identical)。
+- `bun run check` exit 0;tsgo 0;compiler 全绿。
+
+### 9v11.6 工作分解(~0.25 day)
+
+i18n.ts(RTL_LOCALES + isRtlLocale + buildLowcodeI18nRuntime 条件注入)→ 测试(RTL 源/RTL 目标/LTR-only 无机制)→ build:packages → `bun run check`。
+
+### 9v11.7 风险
+
+- `useEffect` 客户端挂载后设 dir → 首帧可能 LTR 闪一下(SPA 可接受;要消除可在 index.html 预置,留后续)。
+- RTL_LOCALES 列表非穷举(覆盖常见);新语言可加。
+
+### 9v11.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**零 hotfix、零 GATE 收口、零意外**。
+
+- **纯 adapter-emit + 自动推断**:RTL 从 locale code 推断(`RTL_LOCALES` 主子标签集 + `isRtlLocale`),零新 CompilerOptions。`buildLowcodeI18nRuntime` 条件三段拼接(reactImport / rtlHelper / dirEffect),`const rtl = isRtlLocale(sourceLocale) || targetLocales.some(isRtlLocale)` 门控。零 scene-graph/IR/collect/round-trip 改动。
+- **LTR byte-identical 靠空段落点**:`${rtlHelper}` 为 '' 时还原 CATALOGS→interface 间原空行;`${dirEffect}` 为 '' 时还原 messages→value 邻接 → LTR-only runtime 与 v8 逐字节相同 → 既有 36+ i18n 测试(toContain)全过,新增 LTR-only 断言显式 not.toContain dir/useEffect/isRtl。
+- **不碰 context 形状**:只设 `document.documentElement.dir`(驱动布局足够),`isRtl` 导出供组件按需读,避免 RTL/非-RTL 两套 LocaleContextValue 接口分叉。
+- 测试 +3(RTL 源注入 / RTL 目标注入 / LTR-only 无机制 v8 一致)。compiler **601/0**(+3),`bun run check` exit 0,tsgo 0。**真机验 pending**(切 ar/he → 整页 RTL 镜像布局;首帧 LTR 闪烁观察)。**§9 v12 follow-ups:** index.html 预置 dir 消除首帧闪;RTL 感知的逻辑属性 emit(margin/padding 改 logical);§8 v9 nested-instance override(独立大坑,需策略决定 + 真机)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
