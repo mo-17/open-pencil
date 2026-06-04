@@ -5161,6 +5161,59 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。两件设计均成立,
 - **tool 校验** `validateWorkflowParamDefaults(where, raw, params)`:plain object、键 ∈ 已校验 params、值非空串;`validateWorkflows` threading 已校验的 `paramsR.params ?? []`。
 - 测试 +6(toast 持久化 runtime+×+safelist / workflow default 用·覆盖·缺无默认 drop / tool paramDefaults 校验)。compiler **587/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(durationMs=0 toast 常驻 + 点 × 消失;workflow 省略带默认 arg → 默认表达式生效)。**§10 v8 follow-ups:** toast 动作堆叠上限/去重;EventsPanel + 工作流管理面板 GUI(真机,含 paramDefaults 编辑);workflow 可选形参(无默认也允许省略 → 形参解析为 `undefined`)。
 
+## §9 v9 — 插值占位符按表达式去重(解锁 plural-body `${}` 插值)
+
+> §9 v6 follow-up + §10 v7 后续。助手推荐 §9 v9(用户「继续下一个 milestone」未走 AskUserQuestion;否决 §8 v9 nested-instance prop-threading 大坑;否决 CF Pages 需 blake3 依赖)。**recon 反转了 roadmap 的「ICU 花括号 vs `${}` scanner 冲突」假设**:probe 坐实 `${}` 在 plural body 内**已经能用**(parseTemplate 只特判 `${`,纯 ICU `{` `}` 是字面 quasi,不冲突),真缺口=**同一插值表达式多次出现被逐次编号**(`${name} ... ${name}` → `{name}` `{name2}` 两个占位符都绑同一个 `name`)。plural 的每个分支天然重复同一变量 → 编号占位符让目录消息对译者非常混乱。
+
+### 9v9.1 现状与问题
+
+§9 v4 的 `uniquePlaceholderName` 对每个插值表达式**逐个**编号去重(`base`/`base2`/`base3`),保证一条消息里两个占位符名不撞。但它不认「同一个表达式」——`${greeting} ${greeting}` 产出 `{greeting} {greeting2}` + `values={{ greeting: greeting, greeting2: greeting }}`(probe 实测)。运行时渲染正确(两者都绑 `greeting`),但:① 目录消息含 `{greeting2}`,译者看到两个占位符指同一变量,翻译/调序极易出错;② 冗余 value。plural body(`{count, plural, one {Hi ${name}, # item} other {Hi ${name}, # items}}`)每个复数分支都重复 `${name}` → 必然触发,产出 `{name}`/`{name2}` 脏目录。
+
+### 9v9.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`buildIcuMessage` 按规范化表达式串去重占位符** | 同一表达式(`emitExpression(ast)` 相同)→ 同一占位符名 + `values` 里一个条目;`${greeting} ${greeting}` → `{greeting} {greeting}` + `values={{ greeting }}`。 |
+| 2 | **保留 `uniquePlaceholderName` 数字后缀**(只为**不同**表达式撞叶名) | `${a.name} ${b.name}` 是两个不同值 → 仍须 `{name}`/`{name2}`;后缀逻辑不删,只在其上加「表达式级去重」。 |
+| 3 | **覆写 §9 v4 既有「numeric de-dup」测试** | i18n.test.ts:410 `${greeting} ${greeting}`→`{greeting2}` 是 v4 权宜行为;v9 是**有意 supersede** → 改测试期望为去重后的 `{greeting} {greeting}` + `values={{ greeting, name }}`。 |
+| 4 | **零数据模型 / round-trip / emit / collect 改动** | 纯 `buildIcuMessage`(tree.ts)一函数 + import `emitExpression`;`#`(ICU 复数数字占位)无 `$` 前缀不受影响;`augmentWithPluralArgs` 因占位符已去重、plural 选择子 arg 若与插值同名自然命中 existing→不重复加。 |
+
+### 9v9.3 公开 API / Schema 改动
+
+- 无 public API / schema 改动。纯编译产物质量改进(ICU 目录消息去重)。
+
+### 9v9.4 内部实现拆解
+
+1. tree.ts import `emitExpression`(同 `@open-pencil/core/lowcode-validation` barrel,parseExpression/parseTemplate 邻居)。
+2. `buildIcuMessage`:`const byExpr = new Map<string, IRMessageValue>()`(键=`emitExpression(ast)`)+ `names: string[]`(逐表达式位置占位符名)。每个 ast:`key=emitExpression(ast)`,`byExpr.get(key)` 有则复用其 name、无则 `uniquePlaceholderName(ast, usedNames)` 新建并存;`names.push(value.name)`。`defaultMessage` 用 `names[i]` 插值;`values = [...byExpr.values()]`(首现序)。
+
+### 9v9.5 成功标准
+
+- `${greeting} ${greeting} for ${name}` → `{greeting} {greeting} for {name}` + `values={{ greeting: greeting, name: name }}`(无 `greeting2`)。
+- plural body `{count, plural, one {Hi ${name}, # item} other {Hi ${name}, # items}}` → `{count, plural, one {Hi {name}, # item} other {Hi {name}, # items}}` + `values={{ name: name, count: count }}`(无 `name2`)。
+- `${a.name} ${b.name}`(不同对象同叶名)→ 仍 `{name} {name2}`(两不同值,后缀保留)。
+- 单次插值 / §9 v4 单 `${name}` → byte-identical(map 命中一次,无后缀)。
+- `bun run check` exit 0;tsgo 0;compiler 全绿(改 1 个 v4 测试期望 + 新增 v9 测试)。
+
+### 9v9.6 工作分解(~0.3 day)
+
+tree.ts(import emitExpression + buildIcuMessage 表达式级去重)→ 覆写 i18n.test.ts:410 v4 numeric-dedup 期望 → 新增 §9 v9 测试(plural-body 插值去重 / 同变量重复去重 / 不同对象同叶名仍分离)→ build:packages → `bun run check`。
+
+### 9v9.7 风险
+
+- 改 ICU 消息生成 → 消息 hash 变(`{greeting2}`→`{greeting}` 改了规范串)→ 含重复插值的消息 catalog key 变;不含重复插值的消息 byte-identical(单次插值不经去重分支)。可接受(catalog 是编译产物,无外部契约)。
+- augmentWithPluralArgs 与去重协同:plural 选择子 arg(如 `count`)若也被 `${count}` 插值 → buildIcuMessage 已把 `count` 入 values,augment 的 existing 命中 → 不重复(probe 已验路径)。
+
+### 9v9.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**recon 反转 roadmap 假设是本 milestone 最大收获**,设计成立、零 GATE 收口、零意外。
+
+- **probe 推翻「scanner 冲突」前提**:roadmap 把 §9 v9 标成「ICU 花括号 vs `${}` scanner 冲突,中等风险」。动手前先写一次性 probe 编译 `{count, plural, one {Hi ${name}, # item} other {...}}` → 实测**已经能编译且渲染正确**,parseTemplate 只特判 `${`、纯 ICU `{}` 是字面 quasi、根本不冲突。真缺口被坐实成「同表达式逐次编号」(`{name}`/`{name2}` 都绑 `name`)——纯目录质量问题,不是 break。**经验:roadmap 标注的难点假设要 probe 验,可能整个 reframe 成更小更清晰的改动**(同 §8 v9 recon 改主意)。
+- **改动锁到一个函数**:`buildIcuMessage` 从「逐表达式 `uniquePlaceholderName`」改成「先按 `emitExpression(ast)` 规范串去重→同表达式复用同占位符+一个 values 条目,新表达式才 mint」。`uniquePlaceholderName` 数字后缀**保留**(只为不同表达式撞叶名,`${greeting.name} ${title.name}`→`{name}`/`{name2}` 测试坐实)。import `emitExpression`(core lowcode-validation barrel,parseTemplate 邻居)。
+- **有意 supersede 一个 §9 v4 测试**:i18n.test.ts:410 `${greeting} ${greeting}`→`{greeting2}` 是 v4 权宜行为,v9 改期望为去重后 `{greeting} {greeting}` + `values={{ greeting, name }}`。catalog 是编译产物无外部契约,消息 hash 变(仅含重复插值的消息)可接受;单次插值消息 byte-identical。
+- **augmentWithPluralArgs 自然协同**:plural 选择子 arg(`count`)若也被插值,buildIcuMessage 已入 values→augment 的 existing 命中→不重复(probe 路径已验)。
+- 测试 +3(plural-body 重复变量去重 / 同 member 表达式去重 / 不同对象同叶名仍分离 suffix 保留)+ 改 1 个 v4 期望。compiler **590/0**,`bun run check` exit 0,tsgo 0。**真机验 pending**(plural 复数分支插值在 preview/build 渲染)。**§9 v10 follow-ups:** 译文覆盖率/缺译高亮(GUI);RTL 源语言布局;非-i18n template(§9 v5)同样的占位符去重(目前 §9 v5 走 IRExpression template AST,无占位符概念,天然无此问题)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

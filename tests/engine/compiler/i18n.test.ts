@@ -407,16 +407,17 @@ describe('compile — i18n ICU interpolation (Phase 3 §9 v4)', () => {
     expect(app).toContain('values={{ name: name }}')
   })
 
-  test('multiple interpolations: member leaf name + numeric de-dup', () => {
+  test('multiple interpolations: member leaf name + numeric de-dup (§9 v9: same expr shares one placeholder)', () => {
     const { graph, pageId } = pageWithInterpolation('${greeting} ${greeting} for ${name}', {
       state: 'greeting',
       docState: 'name'
     })
     const out = compileI18n(graph, pageId, true)
     const app = out.files.get('src/App.tsx') as string
-    // two `greeting` placeholders dedupe to {greeting} / {greeting2}
-    expect(app).toContain('defaultMessage={"{greeting} {greeting2} for {name}"}')
-    expect(app).toContain('values={{ greeting: greeting, greeting2: greeting, name: name }}')
+    // §9 v9 — the two identical `${greeting}` interpolations now collapse onto
+    // ONE placeholder (was `{greeting} {greeting2}` in v4) + one values entry
+    expect(app).toContain('defaultMessage={"{greeting} {greeting} for {name}"}')
+    expect(app).toContain('values={{ greeting: greeting, name: name }}')
   })
 
   test('an unknown interpolation identifier falls back to a static literal message + warns', () => {
@@ -510,6 +511,46 @@ describe('compile — i18n ICU plural / select (Phase 3 §9 v6)', () => {
     const app = out.files.get('src/App.tsx') as string
     expect(app).not.toContain('FormattedMessage')
     expect(out.warnings.some((w) => w.code === 'text-plural-requires-i18n')).toBe(true)
+  })
+})
+
+/**
+ * Phase 3 §9 v9 — interpolation placeholders dedupe by expression, so a variable
+ * that repeats (most notably across every branch of a plural body) maps to ONE
+ * ICU placeholder + one `values` entry instead of `{name} {name2}`. The numeric
+ * suffix still separates *different* expressions whose leaf names collide.
+ */
+describe('compile — i18n placeholder de-dup by expression (Phase 3 §9 v9)', () => {
+  test('a variable repeated across plural branches collapses to one placeholder', () => {
+    const { graph, pageId } = pageWithInterpolation(
+      '{count, plural, one {Hi ${name}, # item} other {Hi ${name}, # items}}',
+      { state: 'name', docState: 'count' }
+    )
+    const app = compileI18n(graph, pageId, true).files.get('src/App.tsx') as string
+    expect(app).toContain(
+      'defaultMessage={"{count, plural, one {Hi {name}, # item} other {Hi {name}, # items}}"}'
+    )
+    expect(app).toContain('values={{ name: name, count: count }}')
+    expect(app).not.toContain('name2')
+  })
+
+  test('the same member expression repeated shares one placeholder', () => {
+    const { graph, pageId } = pageWithInterpolation('${greeting.first} hi ${greeting.first}', {
+      state: 'greeting'
+    })
+    const app = compileI18n(graph, pageId, true).files.get('src/App.tsx') as string
+    expect(app).toContain('defaultMessage={"{first} hi {first}"}')
+    expect(app).toContain('values={{ first: greeting.first }}')
+  })
+
+  test('different expressions with the same leaf name stay distinct (suffix preserved)', () => {
+    const { graph, pageId } = pageWithInterpolation('${greeting.name} / ${title.name}', {
+      state: 'greeting',
+      docState: 'title'
+    })
+    const app = compileI18n(graph, pageId, true).files.get('src/App.tsx') as string
+    expect(app).toContain('defaultMessage={"{name} / {name2}"}')
+    expect(app).toContain('values={{ name: greeting.name, name2: title.name }}')
   })
 })
 

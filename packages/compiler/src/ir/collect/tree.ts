@@ -8,6 +8,7 @@ import {
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
+  emitExpression,
   type ExprAst,
   parseExpression,
   parseTemplate,
@@ -733,23 +734,40 @@ function resolveTextTemplate(
   }
 }
 
-/** §9 v4 — build an ICU `<FormattedMessage>` text node from parsed template
+/** §9 v4/v9 — build an ICU `<FormattedMessage>` text node from parsed template
  *  parts: literal quasis interleaved with `{name}` placeholders (invariant
  *  `quasis.length === expressions.length + 1`), each backed by its expression in
- *  `values`. The hash key is the ICU form so identical messages dedupe. */
+ *  `values`. The hash key is the ICU form so identical messages dedupe.
+ *
+ *  §9 v9 — placeholders dedupe by expression: every occurrence of the *same*
+ *  interpolation (`emitExpression(ast)` equal) maps to one placeholder name and
+ *  one `values` entry, so `${name} … ${name}` (and the repeated variable in
+ *  every branch of a plural body) emits `{name} … {name}` not `{name} {name2}`.
+ *  `uniquePlaceholderName`'s numeric suffix still separates *different*
+ *  expressions whose leaf names collide (`${a.name} ${b.name}` → `{name}`/`{name2}`). */
 function buildIcuMessage(tpl: {
   quasis: string[]
   expressions: ExprAst[]
 }): IRText {
   const usedNames = new Set<string>()
-  const values: IRMessageValue[] = tpl.expressions.map((ast) => ({
-    name: uniquePlaceholderName(ast, usedNames),
-    ast
-  }))
-  const defaultMessage = tpl.quasis
-    .map((q, i) => (i < values.length ? `${q}{${values[i].name}}` : q))
-    .join('')
-  return { kind: 'text', value: defaultMessage, messageId: messageKey(defaultMessage), values }
+  const byExpr = new Map<string, IRMessageValue>()
+  const names: string[] = []
+  for (const ast of tpl.expressions) {
+    const key = emitExpression(ast)
+    let value = byExpr.get(key)
+    if (!value) {
+      value = { name: uniquePlaceholderName(ast, usedNames), ast }
+      byExpr.set(key, value)
+    }
+    names.push(value.name)
+  }
+  const defaultMessage = tpl.quasis.map((q, i) => (i < names.length ? `${q}{${names[i]}}` : q)).join('')
+  return {
+    kind: 'text',
+    value: defaultMessage,
+    messageId: messageKey(defaultMessage),
+    values: [...byExpr.values()]
+  }
 }
 
 /** §9 v4 — a stable, readable ICU placeholder name for an interpolation
