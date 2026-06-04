@@ -224,16 +224,24 @@ function dedupeProps(propSlots: Map<string, ComponentSlot>): ComponentProp[] {
   return [...byName.values()]
 }
 
-/** Phase 3 §8 v8 — whether a child reaches emit. Visible children always do;
- *  an invisible child is kept ONLY when it carries a component prop slot — i.e.
- *  some instance overrides it (a `:visible=true` reverse override, or any other
- *  override on a base-hidden child). Such a child emits with `hidden` in its
- *  base className (§8 v7a) so clean / non-revealing instances stay hidden, while
- *  a revealing instance drops `hidden` via the className prop. Page walks have
- *  no `componentPropSlots`, so this collapses to plain `child.visible` there
- *  (base-hidden page nodes are still skipped — that re-show is §7 v2). */
+/** Phase 3 §8 v8 / §7 v2 — whether a child reaches emit. Visible children
+ *  always do. An invisible child is kept when EITHER (a) it carries a component
+ *  prop slot — some instance overrides it (a `:visible=true` reverse override,
+ *  or any other override on a base-hidden child, §8 v8); OR (b) it carries a
+ *  responsive re-show (a breakpoint override sets `visible:true`, §7 v2). Such a
+ *  child emits with `hidden` in its base className (§8 v7a) so it stays hidden
+ *  at base, while the instance className prop / `${bp}:<display>` re-show class
+ *  un-hides it. */
 function shouldEmitChild(child: SceneNode, ctx: WalkCtx): boolean {
-  return child.visible || (ctx.componentPropSlots?.has(child.id) ?? false)
+  return child.visible || (ctx.componentPropSlots?.has(child.id) ?? false) || hasResponsiveReshow(child)
+}
+
+/** Phase 3 §7 v2 — true when a base-hidden node is re-shown at some breakpoint
+ *  (a `responsiveOverrides[bp].visible === true`), so the tree walk keeps it. */
+function hasResponsiveReshow(node: SceneNode): boolean {
+  const overrides = node.responsiveOverrides
+  if (!overrides) return false
+  return Object.values(overrides).some((o) => o.visible === true)
 }
 
 /** Walk a master / variant node's visible children through the shared

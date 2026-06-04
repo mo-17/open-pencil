@@ -72,6 +72,24 @@ describe('collectResponsiveTailwindClasses (Phase 3 §7)', () => {
     expect(collectResponsiveTailwindClasses(node, graph)).toContain('lg:hidden')
   })
 
+  test('§7 v2 re-show: base-hidden + md visible:true emits `md:flex` (auto-layout display)', () => {
+    const graph = new SceneGraph()
+    const node = autoLayoutFrame(graph, { md: { visible: true } })
+    graph.updateNode(node.id, { visible: false })
+    const hidden = graph.getNode(node.id) as SceneNode
+    const out = collectResponsiveTailwindClasses(hidden, graph)
+    expect(out).toContain('md:flex')
+    expect(out).not.toContain('md:hidden')
+  })
+
+  test('§7 v2: a redundant override (base-hidden + visible:false) emits no hide/show class', () => {
+    const graph = new SceneGraph()
+    const node = autoLayoutFrame(graph, { lg: { visible: false } })
+    graph.updateNode(node.id, { visible: false })
+    const hidden = graph.getNode(node.id) as SceneNode
+    expect(collectResponsiveTailwindClasses(hidden, graph)).not.toContain('lg:hidden')
+  })
+
   test('multiple breakpoints emit independently, in sm→md→lg→xl order', () => {
     const graph = new SceneGraph()
     const node = autoLayoutFrame(graph, {

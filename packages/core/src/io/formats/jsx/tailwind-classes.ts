@@ -340,9 +340,13 @@ const LAYOUT_STYLE_RESET: Record<string, string> = {
  * CSS initial re-asserts that value (see LAYOUT_STYLE_RESET) so twirl emits the
  * explicit reset utility instead of silently dropping the class.
  *
- * `visible: false` is handled explicitly (nodeToStyle ignores `visible`) as
- * `${bp}:hidden`. Re-showing a base-hidden node is out of scope — the compiler
- * skips invisible nodes before emit, so they never reach here.
+ * Visibility is handled explicitly (nodeToStyle ignores `visible`): a
+ * base-visible node hidden at a breakpoint emits `${bp}:hidden`; a base-hidden
+ * node re-shown at a breakpoint (§7 v2) emits `${bp}:<display>` to re-assert its
+ * display, overriding the base `hidden` (the compiler's `tailwindClassName`
+ * appends `hidden` for an invisible node, and the tree walk now keeps a
+ * base-hidden node that carries a responsive re-show). Tailwind orders
+ * breakpoint variants after base utilities, so `hidden md:flex` shows at ≥md.
  */
 export function collectResponsiveTailwindClasses(node: SceneNode, graph: SceneGraph): string[] {
   const overrides = node.responsiveOverrides
@@ -355,7 +359,13 @@ export function collectResponsiveTailwindClasses(node: SceneNode, graph: SceneGr
     const bpStyle = nodeToStyle({ ...node, ...override }, graph)
     const twirled = twirl(layoutStyleDelta(baseStyle, bpStyle))
     if (twirled) for (const cls of twirled.split(' ')) out.push(`${bp}:${cls}`)
-    if (override.visible === false) out.push(`${bp}:hidden`)
+    if (override.visible === false && node.visible) out.push(`${bp}:hidden`)
+    else if (override.visible === true && !node.visible) {
+      // Re-assert the node's (breakpoint-effective) display so it un-hides;
+      // fall back to `block` when the node carries no explicit display.
+      const show = twirl({ display: bpStyle.display }) || 'block'
+      out.push(`${bp}:${show}`)
+    }
   }
   return out
 }

@@ -65,6 +65,50 @@ describe('compile — responsive breakpoints (Phase 3 §7)', () => {
     expect(app).toMatch(/<div className="[^"]*\blg:hidden\b[^"]*"/)
   })
 
+  test('§7 v2 re-show: a base-hidden node with `md` visible:true emits `hidden` + `md:flex`', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const desktopOnly = graph.createNode('FRAME', pageId, {
+      name: 'DesktopOnly',
+      width: 400,
+      height: 60,
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED'
+    })
+    graph.updateNode(desktopOnly.id, { visible: false, responsiveOverrides: { md: { visible: true } } })
+    graph.createNode('BUTTON', desktopOnly.id, { interactiveProps: { text: 'X' } })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'responsive-reshow' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    // The base-hidden frame is emitted (not skipped) — hidden at base, shown at md.
+    const div = (app.match(/<div className="[^"]*\bhidden\b[^"]*"/) ?? [])[0] ?? ''
+    expect(div).toContain('hidden')
+    expect(div).toContain('md:flex')
+    // its child still renders inside the re-shown frame
+    expect(app).toContain('data-node-id')
+  })
+
+  test('§7 v2: a base-hidden node WITHOUT a re-show override is still skipped (regression)', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const gone = graph.createNode('FRAME', pageId, { name: 'Gone', width: 100, height: 40 })
+    graph.updateNode(gone.id, { visible: false })
+    graph.createNode('BUTTON', gone.id, { interactiveProps: { text: 'SKIPPED_MARKER' } })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'still-skipped' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('SKIPPED_MARKER')
+  })
+
   test('no overrides → no breakpoint-prefixed classes in the output (regression)', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

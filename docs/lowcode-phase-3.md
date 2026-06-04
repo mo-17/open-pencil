@@ -4983,6 +4983,65 @@ CODE COMPLETE 2026-06-04(commit `3d8be214`,pushed upstream)。设计完全成立
 
 **§10 v7 follow-ups:** toast 持久化(durationMs=0 不自动消失)+ 手动关闭;EventsPanel + 工作流管理面板授权 GUI(真机,含 params/args 编辑);workflow 默认实参 / 可选参数。
 
+## §7 v2 — responsive `:visible` re-show(base-hidden → 断点显示)
+
+> §7 v1 / §8 v8 follow-up。助手推荐(用户「继续下一个 milestone」未走 AskUserQuestion)= **§7 v2 responsive `:visible` re-show**(否决更多 deploy provider —— Netlify §5.2 + Vercel §5.4 已就位,仅 Cloudflare Pages 剩,而 CF 直传需 blake3 哈希=违背 browser-safe/Web-Crypto-only/零依赖约束;否决 §9 v8 / §10 v7)。封 §7 响应式链的另一半缺口。
+
+### 7v2.1 现状与问题
+
+§7 v1 响应式只做了 **hide-direction**:base 可见的节点在某断点 `visible:false` → `${bp}:hidden`。reverse(base 隐藏 → 某断点 `visible:true` 揭示)做不到 —— compiler 在 emit 前 `shouldEmitChild`(tree.ts)对 base-hidden 的 page/容器节点直接 `continue` 跳过,节点根本到不了 emit。但「桌面才显示、移动端隐藏」(base 隐藏 + `lg:block`)是响应式设计的核心一半。§8 v8 刚把 instance child 侧的 `:visible` reverse 做了(`shouldEmitChild` 留 base-hidden 有槽的 instance child);§7 v2 = page/容器侧的对称补全。
+
+### 7v2.2 关键决定
+
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | **`shouldEmitChild` 加 `hasResponsiveReshow(child)` 第三个保留条件** | §8 v8 已是 `child.visible \|\| componentPropSlots?.has(id)`;v2 加 `\|\| hasResponsiveReshow(child)`(某断点 override `visible===true`)。三 walk 点(page/master-body/嵌套容器)统一经此谓词 → 一处改动通吃。 |
+| 2 | **base `hidden` 复用 §8 v7a 的 `tailwindClassName` 末尾追加** | base-hidden 节点到达 emit 时,`tailwindClassName(node)` 已对 `!node.visible` 追加 `hidden`(§8 v7a)→ base 隐藏,无需新逻辑。 |
+| 3 | **re-show class = `${bp}:<display>`,re-assert 节点断点-有效 display** | core `collectResponsiveTailwindClasses`:base `!visible` + `override.visible===true` → `twirl({display: bpStyle.display}) \|\| 'block'` → `${bp}:flex`(auto-layout)/`${bp}:block`。Tailwind 断点变体排在 base 之后 → `hidden md:flex` 在 ≥md 显示。复用 twirl(单一 SceneNode→Tailwind 翻译源)。 |
+| 4 | **hide 分支收紧为 `override.visible===false && node.visible`** | 原 `if(override.visible===false)` 无条件;v2 区分 base 可见性:base 可见→hide、base 隐藏→re-show、冗余组合(base 隐藏+visible:false / base 可见+visible:true)→不产类。 |
+| 5 | **零数据模型 / round-trip / IR / emit-模板 改动** | `ResponsiveOverride.visible` §7 v1 已有,round-trip 已就位;v2 纯 emit-逻辑扩展(core collectResponsiveTailwindClasses + compiler shouldEmitChild 两点)。 |
+
+### 7v2.3 公开 API / Schema 改动
+
+- 无 schema 改动(沿用 §7 v1 `responsiveOverrides` + `visible`)。
+- `core/io/formats/jsx/tailwind-classes.ts collectResponsiveTailwindClasses`:re-show 分支。
+- `compiler/ir/collect/tree.ts`:`shouldEmitChild` += `hasResponsiveReshow` + 新 `hasResponsiveReshow(node)` helper。
+
+### 7v2.4 内部实现拆解
+
+1. **core**:`collectResponsiveTailwindClasses` 的 visibility 分支拆成 hide(`override.visible===false && node.visible` → `${bp}:hidden`)/ re-show(`override.visible===true && !node.visible` → `${bp}:${twirl({display:bpStyle.display})||'block'}`)。
+2. **compiler**:`hasResponsiveReshow(node)` = `Object.values(node.responsiveOverrides ?? {}).some(o => o.visible === true)`;`shouldEmitChild` 三条件。base-hidden re-show 节点到达 emit → nodeToIR 产元素,`tailwindClassName` 含 base `hidden`(§8 v7a)+ 响应式 `${bp}:<display>`。
+
+### 7v2.5 成功标准
+
+- base-hidden FRAME(HORIZONTAL auto-layout)+ `{md:{visible:true}}` → className 含 `hidden` + `md:flex`;节点被 emit(不跳过),其可见子节点正常渲染。
+- base-hidden 节点**无** re-show override → 仍跳过(零回归,`SKIPPED_MARKER` 子文案不出现)。
+- 冗余 override(base 隐藏 + visible:false)→ 不产 `${bp}:hidden`。
+- §7 v1 hide-direction(base 可见 + `lg:visible:false` → `lg:hidden`)零回归。
+- `bun run check` exit 0;tsgo 0。
+
+### 7v2.6 工作分解(~0.3 day)
+
+core collectResponsiveTailwindClasses re-show 分支 → compiler shouldEmitChild + hasResponsiveReshow → 测试(core unit re-show/冗余 + compiler base-hidden 揭示/仍跳过回归)→ build:packages → `bun run check`。**纯 emit-逻辑,无新 kind/数据模型/round-trip。**
+
+### 7v2.7 风险
+
+- `shouldEmitChild` 改动影响所有 page/容器 walk → 全 compiler+render/jsx 套件回归跑(726/1,仅既有 §6 frame-nested 出范围 fail)。
+- re-show display class 取错(应 re-assert 节点自身 display,非默认 block)→ `twirl({display: bpStyle.display}) || 'block'` 取断点-有效 display,auto-layout→flex,兜底 block。
+- 真机验:base-hidden + `bp:flex` 在 preview/build 实际按视口显隐(headless 仅断言 emit 串)。
+
+### 7v2.8 Post-mortem
+
+CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。设计成立,**1 处 GATE lint 收口**(type-aware 轮),零意外。
+
+- **§8 v8 的 `shouldEmitChild` 谓词架构让 §7 v2 变成「加一个 OR 条件」**:三 walk 点(page `:120`、master-body `collectChildSubtree :244`、嵌套容器 `:911`)早已统一经 `shouldEmitChild`,v2 只加 `|| hasResponsiveReshow(child)` 一项 + 一个 helper。base `hidden` 复用 §8 v7a 的 `tailwindClassName` 追加 —— **两个先行 feature(§8 v7a hidden 追加 + §8 v8 shouldEmitChild 谓词)正好铺好了 §7 v2 的全部地基**,re-show 只需补 core 的 `${bp}:<display>` 一类。
+- **re-show class 复用 twirl 保持单一翻译源**:`twirl({display: bpStyle.display}) || 'block'` —— auto-layout→`md:flex`,兜底 `block`。Tailwind 断点变体排 base 后 → `hidden md:flex` 在 ≥md 覆盖 `hidden`。
+- **hide 分支收紧 `&& node.visible`**:区分 base 可见性四象限(可见+false→hide / 隐藏+true→show / 两冗余→无类),§7 v1 hide 测试零回归。
+- **唯一 GATE 收口(lint type-aware 轮,build:packages 后才暴露,经验重申)**:(1) `bpStyle.display ?? 'block'` —— `bpStyle` 是 `Record<string,string>`,索引访问类型 `string`(非 nullish)→ `??` 撞 `no-unnecessary-condition`,去掉(`|| 'block'` 兜底足够)。(2) `Object.values(overrides).some(o => o?.visible)` —— `Object.values(Partial<Record<...>>)` 元素类型 `ResponsiveOverride`(TS 不建模 undefined)→ `o?.` 撞同规则,改 `o.visible`。**经验:`Record<K,V>` 索引访问 + `Object.values` 元素 TS 都判非 nullish,`??`/`?.` 多余被 no-unnecessary-condition 拦(build:packages 后 type-aware 轮才报)。**
+- 测试 +4(core unit re-show flex + 冗余无类 / compiler base-hidden 揭示 hidden+md:flex + 无 override 仍跳过回归)。compiler **580/0**(+2),render/jsx re-show 全绿(仅既有 §6 frame-nested 出范围 fail),`bun run check` exit 0,tsgo 0。**真机验 pending**(base-hidden+`bp:flex` 在 preview/build 按视口显隐)。
+
+**§7 v3 / §8 v9 follow-ups:** nested-instance override(实例套实例);响应式 re-show 的 GUI 授权面板(真机);per-breakpoint 容器嵌套显隐组合。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
