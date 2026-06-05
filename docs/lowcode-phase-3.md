@@ -5752,6 +5752,8 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GAT
 
 **风险**:option 标签复用 emitChild 与 collect 子结构耦合(同包内紧约定,文档化);RadioGroupItem id 唯一性(sourceId+index);Tailwind v4 下 radix 组件类(data-state 等)主题 token 须在 SHADCN_THEME_CSS 内已覆盖(Phase A 已铺 --primary 等)。
 
+**实现状态:CODE COMPLETE 2026-06-05(`078d0eb8`,lowcode-rebaseline)。** 零意外按设计落地;2 处 GATE 收口(emitElement complexity → 抽 `emitTagElement` dispatcher;shadcn/index 跨目录 import 用 `#compiler/*` 别名避 steiger no-deep-parent-relative-imports)。测试 `tests/engine/compiler/ui-kit-controls.test.ts` 9/9,compiler 632/0,`bun run check` exit 0,jscpd 0。**e2e 实跑** `build --ui-kit shadcn`(VFS)真解析 4 个新 Radix dep 并 bundle(JS 含 radix runtime/onValueChange/SelectTrigger,CSS 含主题)。延后 array checkbox-group → Phase C;真机视觉 ACK + editor preview shadcn toggle 待真人。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。
