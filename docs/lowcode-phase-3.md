@@ -5301,6 +5301,24 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。两件设计均成立,
 ### 10v9.4 实现状态 / Post-mortem
 **CODE COMPLETE 2026-06-05(`10ab74b8`,lowcode-rebaseline,pushed)。** e2e 实跑:`onClick={async () => { try { ...fetch...; if (!res.ok) throw data; setDocState("result", data); __opToast("保存成功", "success"); } catch (err) { setDocState("lastError", err); console.error("apiCall failed:", err); __opToast("保存失败", "error"); } }}` = 完整闭环。测试 +10(emit 6 / collect 2 / rls 1 / round-trip 1),全套 940/0,`bun run check` exit 0,tsgo 0,jscpd 0。**延后**:EventsPanel GUI 授权 onSuccess/onError(递归 action-row,同 condition/confirm)→ 现仅 CLI/程序化/MCP tool 可编。**经验**:lowcode「按外部结果分支」必须 emit 进结果仍在局部作用域的位置(try/catch 臂),不能靠「写 docState→下个 action 读」(渲染快照同 handler 内陈旧);加结果分支后所有遍历 action 树处都要下降(emit/collect/rls/tool 四处)。
 
+## §10 v10 — 工作流可视化:EventsPanel 递归嵌套编辑器〔设计+实现 2026-06-05〕
+
+> 用户指令:「继续可视化,可视化是让用户知道整套项目逻辑的方式,并且可以微调。但大体方向还是要 MCP 兜底。」即 GUI = 看懂逻辑 + 微调,MCP = 权威 bulk/深层授权兜底。fork AskUserQuestion 锁 = **递归编辑器**(否决「只读逻辑树+顶层编辑」「分支摘要行」)。
+
+### 10v10.1 现状与问题
+EventsPanel 是 1182 行扁平 monolith(id-keyed flat mutators over 顶层单层 actions 数组),condition/confirm 控制流连 ACTION_KINDS 都没有、§10 v9 的 onSuccess/onError 零 UI → 嵌套工作流逻辑 GUI 完全不可见,用户无法看懂或微调「按钮→调 API→按结果分支→toast」这类逻辑。
+
+### 10v10.2 实现拆解(拆 monolith 成递归组件,全在 `src/components/properties/Lowcode/`)
+- `action-factory.ts` — `makeAction(kind,id,ctx)` 改 Record 查表 `FACTORIES`(零 cyclomatic)+ `ACTION_KINDS`(新增 condition/confirm)。
+- `action-errors.ts` — 全部 per-kind 校验抽成纯函数 `computeActionErrors(action,{validStateIds,validDocStateNames})`(镜像 IR collect)。
+- `ActionRow.vue`(递归)— 单 action 编辑器(kind 选择 + 全字段编辑器 + 行内报错)+ 递归分支子列表:apiCall/supabase 的 on success/on error(§10 v9)、condition then/else + confirm on confirm/on cancel(§10 v10)。
+- `ActionList.vue` — 受控递归列表(v-for ActionRow + add,emit update:actions)。ActionRow↔ActionList 互递归。
+- `EventsPanel.vue` — 瘦身成 thin host(事件槽 + state 列表 + updateNodeWithUndo 提交)。
+- **mutation = 受控 v-model 链**:不可变更新逐层上抛;可选分支空时收敛 undefined → emit/round-trip 字节等价。
+
+### 10v10.3 实现状态 / Post-mortem
+**CODE COMPLETE 2026-06-05(`873fc615`,lowcode-rebaseline,pushed)。** GATE 收口 4 处:makeAction 复杂度→查表;ActionRow↔ActionList import cycle = Vue 递归组件惯例(2 处 surgical eslint-disable import/no-cycle);props 改 reactive 解构(define-props-destructuring);`.ts` type-aware lint 比 `.vue` 严(no-unnecessary-condition)→ `first()` helper 显式 T|undefined + 去多余 `?? ''`。全部 data-test-id 保留,无 E2E spec 依赖 → 零 E2E 回归。check:vue 0、`bun run check` exit 0、tsgo 0、jscpd 0。**真机画面 ACK 待用户**(bg job 驱动不了 GUI;vue-tsc 过=结构正确)。callWorkflow 仍 MCP-only(需工作流注册表面板);MCP 工具保持 bulk/深层授权权威兜底。**经验**:巨型 monolith Vue 面板拆递归=受控 v-model 链 + 纯函数抽 validation/factory;Vue 互递归 import/no-cycle 是合法域固有环;GUI 可视化哲学=看懂逻辑+微调,深层让 MCP 兜底,不必 100% 覆盖。
+
 ## §9 v10 — 译文覆盖率报告(编译期缺译报告,headless 部分)
 
 > §9 v7 / §9 v9 follow-up。助手推荐 §9 v10(用户「继续下一个 milestone」未走 AskUserQuestion;否决 §10 v9 toast 配置可配——边际价值低;否决 §8 v9 nested-instance prop-threading 大坑;否决 CF Pages 需 blake3 依赖)。封 §9 i18n 链的数据闭环:§9 v7 给了译文数据模型(`lowcodeTranslations`),但搭建者无从知道每个目标 locale 还缺哪些源串。scope = **编译期产出缺译报告 JSON(headless)**;覆盖率高亮 GUI 面板(读 in-graph 译文)+ RTL 源语言布局留真机/后续。
