@@ -1,8 +1,10 @@
-import type { ComponentDef, VariantCase } from '#compiler/ir/types'
+import type { ComponentDef, IRNode, VariantCase } from '#compiler/ir/types'
 
 import { emitElement } from './element'
 import { hasIntlAttr, hasTranslatableText } from '../ir-walk'
 import { buildReactIntlImport } from '../lowcode/i18n'
+import { collectKitImports } from '../ui-kit/registry'
+import type { UiKitAdapter } from '../ui-kit/types'
 
 /**
  * Phase 3 §8 — build `src/components/<Name>.tsx` for one reusable component.
@@ -16,7 +18,11 @@ import { buildReactIntlImport } from '../lowcode/i18n'
  * div is the component's own boundary and intentionally untagged (the usage
  * site's ref carries the instance's sourceId in the page emit).
  */
-export function buildComponentModule(def: ComponentDef, devMode: boolean): string {
+export function buildComponentModule(
+  def: ComponentDef,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null = null
+): string {
   // Phase 3 §9: a component body with i18n-tagged visible text needs
   // FormattedMessage; §9 v3: a translated attribute (placeholder) needs useIntl.
   const usesIntl = componentHasIntlAttr(def)
@@ -24,8 +30,21 @@ export function buildComponentModule(def: ComponentDef, devMode: boolean): strin
     formattedMessage: componentHasTranslatableText(def),
     intl: usesIntl
   })
-  const importBlock = i18nImport ? `${i18nImport}\n` : ''
-  return importBlock + buildComponentBody(def, devMode, usesIntl)
+  // Phase 3 §15: a component body can render interactive nodes too, so it needs
+  // its own kit imports.
+  const kitImports = uiKit ? collectKitImports(componentBodyNodes(def), uiKit) : []
+  const kitImportBlock =
+    kitImports.length > 0
+      ? kitImports.map((m) => `import { ${m.component} } from '${m.from}'`).join('\n') + '\n'
+      : ''
+  const importBlock = i18nImport || kitImportBlock ? `${i18nImport}${kitImportBlock}\n` : ''
+  return importBlock + buildComponentBody(def, devMode, usesIntl, uiKit)
+}
+
+/** All body nodes of a component def (plain children + every variant subtree).
+ *  Mirrors index.ts `componentBodyNodes`; kept local to avoid a cross-import. */
+function componentBodyNodes(def: ComponentDef): readonly IRNode[] {
+  return def.variants ? [...def.children, ...def.variants.flatMap((v) => v.children)] : def.children
 }
 
 /** True when any node in the component's body (plain children or any variant
@@ -42,13 +61,18 @@ function componentHasIntlAttr(def: ComponentDef): boolean {
   return (def.variants ?? []).some((v) => hasIntlAttr(v.children))
 }
 
-function buildComponentBody(def: ComponentDef, devMode: boolean, usesIntl: boolean): string {
+function buildComponentBody(
+  def: ComponentDef,
+  devMode: boolean,
+  usesIntl: boolean,
+  uiKit: UiKitAdapter | null
+): string {
   // Phase 3 §9 v3: the `const intl = useIntl()` hook line (empty when the body
   // has no translated attribute → byte-identical to the pre-§9-v3 output).
   const intlHook = usesIntl ? '  const intl = useIntl()\n' : ''
   // Phase 3 §8 v4: a COMPONENT_SET emits per-axis variant props + a subtree
   // switch instead of the single shared body.
-  if (def.variantAxes && def.variants) return buildVariantModule(def, devMode, intlHook)
+  if (def.variantAxes && def.variants) return buildVariantModule(def, devMode, intlHook, uiKit)
   // Phase 3 §8 v2: one optional string prop per text-override slot, each
   // defaulting to the master child's text so clean usages (`<Name />`) render
   // unchanged. The body's matching TEXT nodes were collected as `{prop}`.
@@ -64,7 +88,7 @@ ${intlHook}  return <div className={className} />
 }
 `
   }
-  const body = def.children.map((c) => emitElement(c, 3, devMode)).join('\n')
+  const body = def.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
 ${intlHook}  return (
     <div className={className}>
@@ -81,7 +105,12 @@ ${body}
  * axis key returning each variant's subtree. The default variant (the first) is
  * the unconditional fallback so un-passed / unknown combinations still render.
  */
-function buildVariantModule(def: ComponentDef, devMode: boolean, intlHook: string): string {
+function buildVariantModule(
+  def: ComponentDef,
+  devMode: boolean,
+  intlHook: string,
+  uiKit: UiKitAdapter | null
+): string {
   const axes = def.variantAxes ?? []
   const variants = def.variants ?? []
   // Phase 3 §8 v5: one string-union prop per variant axis, plus (composed from
@@ -111,22 +140,22 @@ function buildVariantModule(def: ComponentDef, devMode: boolean, intlHook: strin
   const guards = rest
     .map(
       (v) => `  if (__variant === ${JSON.stringify(v.key)}) {
-    return ${variantBody(v, devMode)}
+    return ${variantBody(v, devMode, uiKit)}
   }
 `
     )
     .join('')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
 ${intlHook}  const __variant = ${key}
-${guards}  return ${variantBody(defaultCase, devMode)}
+${guards}  return ${variantBody(defaultCase, devMode, uiKit)}
 }
 `
 }
 
 /** Render one variant's `<div className={className}>…</div>` return value. */
-function variantBody(variant: VariantCase, devMode: boolean): string {
+function variantBody(variant: VariantCase, devMode: boolean, uiKit: UiKitAdapter | null): string {
   if (variant.children.length === 0) return '<div className={className} />'
-  const body = variant.children.map((c) => emitElement(c, 3, devMode)).join('\n')
+  const body = variant.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `(
     <div className={className}>
 ${body}

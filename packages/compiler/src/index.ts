@@ -3,7 +3,7 @@ import { collectComponents, collectTree } from './ir/collect/tree'
 import { selectAdapter } from './select-adapter'
 import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
-export type { CompileWarning, CompilerInput, CompilerOptions, CompilerOutput } from './types'
+export type { CompileWarning, CompilerInput, CompilerOptions, CompilerOutput, UiKitName } from './types'
 // Phase 3 §3: validator + expression sublanguage live in
 // `@open-pencil/core/lowcode-validation` so the lowcode AI tool surface
 // (which sits in core) can share one source with editor + compiler.

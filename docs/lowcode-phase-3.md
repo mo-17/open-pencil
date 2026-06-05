@@ -5702,8 +5702,21 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GAT
 - variant/prop 保真:className 透传保外观,但 kit 自身默认样式可能与设计冲突(padding/radius)——需 `cn()` 合并优先级验证。
 - 产物体积:内联多个 kit 组件 + radix → bundle 变大(只 emit 用到的可缓解)。
 
-### 15.8 实现状态
-**未实现。** 设计待用户挑定;挑定后走 AskUserQuestion 锁 15.2 的 fork(尤其首库 shadcn、内联 emit vs npx、className 透传)。Phase A 纯 headless 可验(compile 产物断言 + VFS build),组件视觉保真留真机。**助手评估:这是把 lowcode 产物从「能跑的自绘代码」升级成「生产级可维护代码」的最高杠杆项,建议优先于纯 §X v-bump。**
+### 15.8 实现状态 / Post-mortem
+**Phase A CODE COMPLETE 2026-06-05**(`lowcode-rebaseline`)。fork 经 AskUserQuestion 锁定 = **Button+Input+Textarea+Label**(纯 1:1 tag 改名,否决「全 6 交互类型一次到位」[Radix 组合组件需改 controlled 事件 dispatch,大且有回归面] 与「仅 Button」[过保守]);其余 fork 设计已推荐无争议直接采纳(shadcn 首库 / 可插拔 adapter 接口 / 内联 emit / className 透传 / `--ui-kit` flag / off→byte-identical)。
+
+**recon 坐实的关键事实**:
+- 交互节点在 collect 阶段(`ir/collect/tree.ts` TAG_BY_TYPE)已被映射成 HTML `tag`(BUTTON→`button`、INPUT→`input`、SELECT→`select`、CHECKBOX/SWITCH→`input`+type、RADIO→`div`、TEXTAREA→`textarea`),IR 不再携带原 NodeType → **映射按 `tag` + `attrs.type` 做**(emit/element.ts),`button`/`textarea`/`label` 直接映射,`input` 仅当 `type∉{checkbox,radio}` 才映射(排除 CHECKBOX/SWITCH/RADIO 留 Phase B)。
+- **className/onClick/onChange/value/type 全透传不变**(shadcn 组件签名兼容 `React.*HTMLAttributes`)→ runtime `cn()`(tailwind-merge)去重时设计的 arbitrary-value 类(`bg-[#3373F2]`)覆盖 shadcn 默认 `bg-primary` = kit 给行为/a11y,设计保外观,正是 className 透传意图。
+- **shadcn 需的 clsx/cva/@radix-ui/react-slot/@radix-ui/react-label 不在仓库 node_modules**(只 tailwind-merge 在)→ VFS-build 解析不了 → **Phase A headless 验证 = compile 产物内容断言**,VFS-build 视觉保真留真机(`npm install` 后)。§15 默认 off,编辑器 preview 硬编码 `withDefaults`(无 uiKit)→ preview **不受影响、不会因缺 dep 崩**;shadcn 只走 `--ui-kit` CLI 导出(部署目标 = 真 install,deps 进 emitted package.json 即可)。
+
+**实现拆解**:新 `adapters/react/ui-kit/`(`types.ts` UiKitAdapter 接口 + `registry.ts` resolveUiKit/collectKitImports/collectUsedKitComponents + `shadcn/{index,templates}.ts`)。`emit/element.ts` 加第 4 参 `uiKit`,element 分支 `tagName = uiKit?.mapTag(tag,attrs)?.component ?? tag`(void-ness 仍按原 `node.tag` 判 → `<Input/>` 自闭合);scaffold/component 各加 kit import 块(`import { Button } from '@/components/ui/button'`);index.ts `applyUiKit` 算 used 组件(页面 + 组件体)→ emit `src/components/ui/*` + `src/lib/utils.ts` + `components.json`、merge deps、注入 theme;`project.ts` buildIndexCss 加 `themeCss`(`@theme inline` + CSS 变量,Tailwind v4 神色 token)、buildTsConfig/buildViteConfig 加 `@/`→`src` alias(固定 import specifier 跨 App/pages/components 三深度一致)。CLI `--ui-kit`(`packages/cli/src/ui-kit-args.ts`,§9 v13 同款模式)→ loadAndCompile → withDefaults。**used 空(无可映射交互节点)→ 不 emit 任何 kit 文件/deps/theme → byte-identical**(`--ui-kit` 用在无交互 doc 也零变化)。
+
+**GATE 收口 2 处**:① `no-unnecessary-condition`(`Record<string,X>` 索引被 TS 判非 nullish)→ COMPONENTS/TAG_TO_COMPONENT/ADAPTERS 改 `Partial<Record>` 让索引返 `X|undefined`,守卫即必要(经验复用);② **check:arch(steiger)把模板字符串里忠实 shadcn 的 `import { cn } from "@/lib/utils"` 用 line-start 正则当真 app-layer import 误报**(同 §10 emit-代码-存于字符串经验)→ 模板存 `__AT__/lib/utils` 占位符、adapter emit 时 `restoreAlias` 还原 `@/`(保模板忠实 + 不加 arch 碎规则豁免)。
+
+**测试** `tests/engine/compiler/ui-kit.test.ts` 7/7:BUTTON→`<Button>`+import+内联源+deps(clsx/tailwind-merge/cva/radix-slot)+theme+alias / 文本 INPUT→`<Input>`(仅 base deps) / CHECKBOX 留 `<input>` 不映射 / TEXTAREA→`<Textarea>` / 只 emit 用到的组件 / off byte-identical / `--ui-kit` 无交互 doc byte-identical。compiler **619/0**(+7),cli+kiwi 154/0,`bun run check` exit 0,tsgo 0。**CLI e2e 实跑** `compile lowcode-realmachine-test.fig --ui-kit shadcn`:页面 import `@/components/ui/button`、`<Button className="w-40 h-10 bg-[#3373F2]..." type="button" onClick=...>Save</Button>`(设计类+事件全透传)、button.tsx alias 还原、index.css theme、tsconfig paths、vite alias、package.json deps 齐全。
+
+**Phase B follow-ups**:Select/Checkbox/Switch/Radio(Radix 组合组件,需改 formatAttrs controlled dispatch 适配 `onValueChange`/`onCheckedChange` + 组合 markup);FRAME→Card 容器映射;variant 反推;可插拔 MUI/antd adapter;**组件视觉保真真机验**(需 `npm install` shadcn deps 或把 deps 加进仓库再 VFS-build);editor `--ui-kit` toggle GUI 入口(同 §9 i18n preview 入口缺口,真机)。
 
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 

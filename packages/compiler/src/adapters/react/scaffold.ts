@@ -1,4 +1,4 @@
-import type { IRTree } from '#compiler/ir/types'
+import type { IRNode, IRTree } from '#compiler/ir/types'
 
 import { buildComponentImports } from './emit/component'
 import { emitElement } from './emit/element'
@@ -14,6 +14,8 @@ import {
 } from './ir-walk'
 import { buildReactIntlImport } from './lowcode/i18n'
 import type { PagePathInfo } from './route-paths'
+import { collectKitImports } from './ui-kit/registry'
+import type { UiKitAdapter } from './ui-kit/types'
 
 /**
  * Classes the page wrapper carries on every compiled page. They never appear
@@ -60,6 +62,9 @@ interface BuildPageOptions {
    *  `'./components/'` for single-page App.tsx, `'../components/'` for page
    *  modules. Component imports are emitted only for the refs the page uses. */
   componentImportPrefix: string
+  /** Phase 3 §15: the active UI kit (or null). Rewrites interactive tags to kit
+   *  components + emits their imports. */
+  uiKit: UiKitAdapter | null
 }
 
 interface BuildAppOptions {
@@ -84,6 +89,8 @@ interface BuildAppOptions {
   /** Phase 3 §8: see `BuildPageOptions.componentImportPrefix`. Defaults to
    *  `'./components/'` (single-page); multi-page pages pass `'../components/'`. */
   componentImportPrefix?: string
+  /** Phase 3 §15: the active UI kit (or null → plain HTML, byte-identical). */
+  uiKit?: UiKitAdapter | null
 }
 
 /**
@@ -100,7 +107,8 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? './_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? './_lowcode_confirm',
-    componentImportPrefix: options.componentImportPrefix ?? './components/'
+    componentImportPrefix: options.componentImportPrefix ?? './components/',
+    uiKit: options.uiKit ?? null
   })
 }
 
@@ -117,7 +125,8 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? '../_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? '../_lowcode_confirm',
-    componentImportPrefix: options.componentImportPrefix ?? '../components/'
+    componentImportPrefix: options.componentImportPrefix ?? '../components/',
+    uiKit: options.uiKit ?? null
   })
 }
 
@@ -157,7 +166,7 @@ ${routes}
  * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix, uiKit } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const needsNavigate = pageHasNavigateHandler(ir)
@@ -180,6 +189,9 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const componentNames = referencedComponentNames(ir.children)
   const componentImports = buildComponentImports(componentNames, componentImportPrefix)
   const componentImportBlock = componentImports ? `${componentImports}\n` : ''
+  // Phase 3 §15: import the kit components this page renders (one per used
+  // component, e.g. `import { Button } from '@/components/ui/button'`).
+  const kitImportBlock = buildKitImports(ir.children, uiKit)
   // Phase 3 §9: import FormattedMessage for visible text, useIntl for
   // translated attributes (§9 v3, e.g. placeholder).
   const usesIntlAttr = hasIntlAttr(ir.children)
@@ -187,7 +199,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     formattedMessage: hasTranslatableText(ir.children),
     intl: usesIntlAttr
   })
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + lowcodeToastImport + lowcodeConfirmImport + componentImportBlock + i18nImport
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + lowcodeToastImport + lowcodeConfirmImport + componentImportBlock + kitImportBlock + i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''
@@ -217,7 +229,7 @@ ${hookLines}
 `
   }
 
-  const body = ir.children.map((c) => emitElement(c, 3, devMode)).join('\n')
+  const body = ir.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   const hookPrefix = hookLines !== '' ? `${hookLines}\n` : ''
   return `${importPrefix}export default function ${exportName}() {
 ${hookPrefix}  return (
@@ -241,4 +253,16 @@ function buildLowcodeStateImport(ir: IRTree, path: string): string {
   if (ir.docStateWrites.length > 0) names.push('setDocState')
   if (names.length === 0) return ''
   return `import { ${names.join(', ')} } from '${path}'\n`
+}
+
+/**
+ * Phase 3 §15: the `import { <Component> } from '@/components/ui/<name>'` lines
+ * for every kit component the subtree renders. Returns '' (→ byte-identical)
+ * when no kit is active or no interactive node maps.
+ */
+export function buildKitImports(nodes: readonly IRNode[], uiKit: UiKitAdapter | null): string {
+  if (!uiKit) return ''
+  const mappings = collectKitImports(nodes, uiKit)
+  if (mappings.length === 0) return ''
+  return mappings.map((m) => `import { ${m.component} } from '${m.from}'`).join('\n') + '\n'
 }

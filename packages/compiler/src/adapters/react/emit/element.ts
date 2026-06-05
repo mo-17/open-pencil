@@ -11,6 +11,7 @@ import type {
 
 import { emitEventHandler } from './event'
 import { setterName } from './state'
+import type { UiKitAdapter } from '../ui-kit/types'
 
 /** Tags that must self-close in JSX (no children). */
 const VOID_TAGS: ReadonlySet<string> = new Set(['input', 'br', 'hr', 'img', 'meta', 'link'])
@@ -24,8 +25,17 @@ const VOID_TAGS: ReadonlySet<string> = new Set(['input', 'br', 'hr', 'img', 'met
  * `devMode` toggles the canvas↔preview bridge hook: when true, every element
  * is tagged with `data-node-id="<sceneId>"` so the bridge runtime can map a
  * DOM click back to a SceneNode. Off for production / CLI export.
+ *
+ * Phase 3 §15: `uiKit`, when set, rewrites interactive element tags
+ * (`<button>` → `<Button>` etc.) to the kit's component; the design classes
+ * and event/controlled props pass straight through. Null → plain HTML tags.
  */
-export function emitElement(node: IRNode, indent: number, devMode = false): string {
+export function emitElement(
+  node: IRNode,
+  indent: number,
+  devMode = false,
+  uiKit: UiKitAdapter | null = null
+): string {
   const pad = '  '.repeat(indent)
 
   if (node.kind === 'text') {
@@ -41,7 +51,7 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
   if (node.kind === 'conditional') {
     // Phase 2 §9: `{(<expr>) && (<consequent>)}`. Trailing parens around the
     // consequent let it span multiple lines without confusing the `&&`.
-    const inner = emitElement(node.consequent, indent + 1, devMode)
+    const inner = emitElement(node.consequent, indent + 1, devMode, uiKit)
     return `${pad}{(${emitExpression(node.ast)}) && (\n${inner}\n${pad})}`
   }
 
@@ -63,7 +73,7 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     // React needs `key=` on the iterated element; we inject it into the
     // template's first JSX opening tag so even an IRConditional template
     // ends up with the key on the inner element rather than the `&&`.
-    const tpl = injectKey(emitElement(node.template, indent + 1, devMode), node.indexName)
+    const tpl = injectKey(emitElement(node.template, indent + 1, devMode, uiKit), node.indexName)
     return (
       `${pad}{(${node.arrayName}).map((${node.itemName}, ${node.indexName}) => (\n` +
       `${tpl}\n` +
@@ -80,7 +90,11 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
     node.classNameProp,
     node.classNamePropFallback
   )
-  const opening = attrsStr ? `<${node.tag} ${attrsStr}` : `<${node.tag}`
+  // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
+  // keeping the same attrs/children. The underlying tag still drives void-ness
+  // (a mapped `<input>` stays self-closing as `<Input />`).
+  const tagName = uiKit?.mapTag(node.tag, node.attrs)?.component ?? node.tag
+  const opening = attrsStr ? `<${tagName} ${attrsStr}` : `<${tagName}`
 
   // Vector-shape nodes carry their geometry as inline SVG via
   // dangerouslySetInnerHTML (React forbids combining it with children, so the
@@ -94,12 +108,12 @@ export function emitElement(node: IRNode, indent: number, devMode = false): stri
   }
 
   // Inline single-child text/expression for compactness: <p>{count}</p>.
-  const inlined = tryInlineSingleChild(node.children, opening, pad, node.tag)
+  const inlined = tryInlineSingleChild(node.children, opening, pad, tagName)
   if (inlined !== undefined) return inlined
 
   const lines = [`${pad}${opening}>`]
-  for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode))
-  lines.push(`${pad}</${node.tag}>`)
+  for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
+  lines.push(`${pad}</${tagName}>`)
   return lines.join('\n')
 }
 

@@ -8,6 +8,7 @@ import type { BuildResult } from '@open-pencil/compiler/build'
 import { loadAndCompile, reportCodegenResult, resolveBuildEnv } from '#cli/codegen'
 import { printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
+import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface BuildArgs {
   file?: string
@@ -20,6 +21,7 @@ interface BuildArgs {
   i18n?: boolean
   locale?: string | string[]
   'source-locale'?: string
+  'ui-kit'?: string
   json?: boolean
 }
 
@@ -66,12 +68,14 @@ export default defineCommand({
       required: false
     },
     ...i18nArgs,
+    ...uiKitArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
     const { file, out, page, base } = args as BuildArgs
     const outDir = resolve(out)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as BuildArgs)
+    const uiKit = resolveUiKitFlag(args as BuildArgs)
 
     const { compiled, packageName } = await loadAndCompile({
       file,
@@ -81,7 +85,8 @@ export default defineCommand({
       json: args.json,
       i18n,
       locales,
-      sourceLocale
+      sourceLocale,
+      uiKit
     })
 
     const env = resolveBuildEnv({

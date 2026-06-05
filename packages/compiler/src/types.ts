@@ -62,7 +62,20 @@ export interface CompilerOptions {
    * byte-identical).
    */
   sourceLocale?: string
+  /**
+   * Phase 3 §15 — emit interactive nodes (BUTTON/INPUT/TEXTAREA/LABEL) as a real
+   * code-UI-kit component instead of hand-rolled Tailwind HTML. `'shadcn'` inlines
+   * the shadcn/ui sources (`src/components/ui/*` + `src/lib/utils.ts` +
+   * `components.json`), adds their deps to package.json, and injects the kit's
+   * Tailwind v4 theme into `index.css`. The design's classes pass through via
+   * `className`. Default unset → output is byte-identical to the self-contained
+   * Tailwind emit. Optional so existing call sites / `withDefaults` stay unbroken.
+   */
+  uiKit?: UiKitName
 }
+
+/** Phase 3 §15 — supported code-UI-kit identifiers. */
+export type UiKitName = 'shadcn'
 
 export interface CompileWarning {
   /** Stable code so callers can suppress / categorize */

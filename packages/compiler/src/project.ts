@@ -45,18 +45,36 @@ export function buildPackageJson(
   return JSON.stringify(pkg, null, 2) + '\n'
 }
 
-export function buildViteConfig(): string {
+/** Phase 3 §15: when a UI kit is active, alias `@/` → `src/` so the inlined
+ *  shadcn imports (`@/components/ui/button`, `@/lib/utils`) resolve. `withAlias`
+ *  false → byte-identical to the pre-§15 config. */
+export function buildViteConfig(withAlias = false): string {
+  const aliasImport = withAlias ? `import { fileURLToPath } from 'node:url'\n` : ''
+  const resolveBlock = withAlias
+    ? `,
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  }`
+    : ''
   return `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-
+${aliasImport}
 export default defineConfig({
-  plugins: [react(), tailwindcss()]
+  plugins: [react(), tailwindcss()]${resolveBlock}
 })
 `
 }
 
-export function buildIndexCss(safelistClasses: readonly string[] = []): string {
+/** Phase 3 §15: `themeCss` (the UI kit's Tailwind v4 theme block) is inserted
+ *  right after the Tailwind import so the kit's semantic color utilities
+ *  (`bg-primary`, …) resolve. Empty → byte-identical. */
+export function buildIndexCss(
+  safelistClasses: readonly string[] = [],
+  themeCss = ''
+): string {
   // Tailwind v4's content auto-detection relies on Vite's module graph and a
   // filesystem glob under the project root. Our preview dev-server serves the
   // emitted project from an in-memory VFS, so the glob finds nothing on disk
@@ -66,31 +84,37 @@ export function buildIndexCss(safelistClasses: readonly string[] = []): string {
   // them via `@source inline(...)` to force Tailwind to emit those utilities
   // regardless of file discovery. Same mechanism is used by Plasmic / WeWeb
   // codegen output.
-  const head = `@import "tailwindcss";\n`
+  // Phase 3 §15: the theme block goes right after the import so its `@theme`
+  // tokens register before any `@source inline` utility generation.
+  const head = `@import "tailwindcss";\n` + (themeCss ? `\n${themeCss}` : '')
   if (safelistClasses.length === 0) return head
   const joined = safelistClasses.join(' ').replace(/"/g, '\\"')
   return `${head}@source inline("${joined}");\n`
 }
 
-export function buildTsConfig(): string {
-  const config = {
-    compilerOptions: {
-      target: 'ES2022',
-      lib: ['ES2022', 'DOM', 'DOM.Iterable'],
-      jsx: 'react-jsx',
-      module: 'ESNext',
-      moduleResolution: 'bundler',
-      strict: true,
-      skipLibCheck: true,
-      isolatedModules: true,
-      noEmit: true,
-      allowImportingTsExtensions: false,
-      resolveJsonModule: true,
-      useDefineForClassFields: true
-    },
-    include: ['src']
+/** Phase 3 §15: `withAlias` adds the `@/* → ./src/*` path mapping so the inlined
+ *  shadcn imports typecheck under the standalone `tsc --noEmit`. False →
+ *  byte-identical. */
+export function buildTsConfig(withAlias = false): string {
+  const compilerOptions: Record<string, unknown> = {
+    target: 'ES2022',
+    lib: ['ES2022', 'DOM', 'DOM.Iterable'],
+    jsx: 'react-jsx',
+    module: 'ESNext',
+    moduleResolution: 'bundler',
+    strict: true,
+    skipLibCheck: true,
+    isolatedModules: true,
+    noEmit: true,
+    allowImportingTsExtensions: false,
+    resolveJsonModule: true,
+    useDefineForClassFields: true
   }
-  return JSON.stringify(config, null, 2) + '\n'
+  if (withAlias) {
+    compilerOptions.baseUrl = '.'
+    compilerOptions.paths = { '@/*': ['./src/*'] }
+  }
+  return JSON.stringify({ compilerOptions, include: ['src'] }, null, 2) + '\n'
 }
 
 export function buildIndexHtml(packageName: string, lang = 'en', rtl = false): string {

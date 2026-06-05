@@ -9,7 +9,7 @@ import { basename, extname } from 'node:path'
 import process from 'node:process'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import type { CompileWarning, CompilerOutput } from '@open-pencil/compiler'
+import type { CompileWarning, CompilerOutput, UiKitName } from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
 import type { SceneNode } from '@open-pencil/core/scene-graph'
 
@@ -96,6 +96,9 @@ export async function loadAndCompile(opts: {
   locales?: readonly string[]
   /** The source locale the canvas strings are authored in (default 'en'). */
   sourceLocale?: string
+  /** Phase 3 §15: emit interactive nodes with a code UI kit (e.g. 'shadcn')
+   *  instead of hand-rolled Tailwind HTML. Undefined → plain HTML. */
+  uiKit?: UiKitName
 }): Promise<CompiledDocument> {
   if (!opts.file) {
     printError('A document file path is required.')
@@ -128,7 +131,9 @@ export async function loadAndCompile(opts: {
         // Phase 3 §9 v13: i18n is opt-in via CLI flags (else byte-identical to before).
         i18n: opts.i18n === true,
         ...(opts.locales && opts.locales.length > 0 ? { locales: [...opts.locales] } : {}),
-        ...(opts.sourceLocale ? { sourceLocale: opts.sourceLocale } : {})
+        ...(opts.sourceLocale ? { sourceLocale: opts.sourceLocale } : {}),
+        // Phase 3 §15: opt-in UI kit (else byte-identical to before).
+        ...(opts.uiKit ? { uiKit: opts.uiKit } : {})
       })
     })
   } catch (e) {

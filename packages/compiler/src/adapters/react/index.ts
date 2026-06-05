@@ -37,6 +37,8 @@ import {
 } from './lowcode/supabase'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
+import { collectUsedKitComponents, resolveUiKit } from './ui-kit/registry'
+import type { UiKitAdapter } from './ui-kit/types'
 import {
   buildAppTsx,
   buildPageModule,
@@ -75,11 +77,35 @@ export const reactAdapter: FrameworkAdapter = {
 function emitComponentFiles(
   files: Map<string, string | Uint8Array>,
   components: readonly ComponentDef[],
-  devMode: boolean
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
 ): void {
   for (const def of components) {
-    files.set(`src/components/${def.name}.tsx`, buildComponentModule(def, devMode))
+    files.set(`src/components/${def.name}.tsx`, buildComponentModule(def, devMode, uiKit))
   }
+}
+
+/**
+ * Phase 3 §15 — when a UI kit is active, emit its inlined component sources +
+ * shared files for the components the pages/components actually render, and
+ * return the deps + theme CSS to fold into package.json / index.css. Emits
+ * nothing (and reports inactive) when no interactive node maps, so `--ui-kit`
+ * on a kit-free doc stays byte-identical.
+ */
+function applyUiKit(
+  files: Map<string, string | Uint8Array>,
+  irs: readonly IRTree[],
+  components: readonly ComponentDef[],
+  uiKit: UiKitAdapter | null
+): { deps: Record<string, string>; themeCss: string; active: boolean } {
+  if (!uiKit) return { deps: {}, themeCss: '', active: false }
+  const used = new Set<string>()
+  for (const ir of irs) collectUsedKitComponents(ir.children, uiKit, used)
+  for (const def of components) collectUsedKitComponents(componentBodyNodes(def), uiKit, used)
+  if (used.size === 0) return { deps: {}, themeCss: '', active: false }
+  for (const [path, content] of uiKit.sharedFiles()) files.set(path, content)
+  for (const [path, content] of uiKit.componentFiles(used)) files.set(path, content)
+  return { deps: uiKit.deps(used), themeCss: uiKit.themeCss(), active: true }
 }
 
 /** Phase 3 §8 v10 — all body nodes of a component def. A COMPONENT_SET's body
@@ -134,6 +160,10 @@ function emitSinglePage(
   // Phase 3 §8 v10: drop components no page (transitively) references, so an
   // all-inlined master (e.g. §8 v9 deep-override) leaves no orphan module/class.
   const components = reachableComponents([cleaned], allComponents)
+  // Phase 3 §15: emit the UI kit's inlined sources for the components rendered
+  // here (sets files; returns deps + theme to fold in below).
+  const uiKit = resolveUiKit(options)
+  const kit = applyUiKit(files, [cleaned], components, uiKit)
   // Phase 3 §9: i18n is active only when the flag is on AND there is text to
   // translate (an empty doc gets no runtime/dep/provider).
   const messages = collectMessages([cleaned], components)
@@ -146,7 +176,8 @@ function emitSinglePage(
   const extraDeps: Record<string, string> = {
     ...lowcodeStateExtraDeps(cleaned.docStates),
     ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig),
-    ...i18nExtraDeps(i18nActive)
+    ...i18nExtraDeps(i18nActive),
+    ...kit.deps
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
   // Phase 2 §2: emit the lowcode runtime alongside App.tsx when any
@@ -157,7 +188,7 @@ function emitSinglePage(
   maybeEmitI18n(files, i18nActive, messages, sourceLocale, targetLocales, translations)
   maybeEmitLowcodeToastRuntime(files, toastActive)
   maybeEmitLowcodeConfirmRuntime(files, confirmActive)
-  emitComponentFiles(files, components, options.devMode)
+  emitComponentFiles(files, components, options.devMode, uiKit)
   files.set(
     'src/App.tsx',
     buildAppTsx(cleaned, {
@@ -166,7 +197,8 @@ function emitSinglePage(
       lowcodeSupabaseImportPath: './_lowcode_supabase',
       lowcodeToastImportPath: './_lowcode_toast',
       lowcodeConfirmImportPath: './_lowcode_confirm',
-      componentImportPrefix: './components/'
+      componentImportPrefix: './components/',
+      uiKit
     })
   )
   setSharedProjectFiles(
@@ -175,7 +207,8 @@ function emitSinglePage(
     collectClassNames([cleaned], components),
     i18nActive,
     toastActive,
-    confirmActive
+    confirmActive,
+    kit
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
   const coverage = i18nActive ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations) : []
@@ -191,6 +224,9 @@ function emitMultiPage(
   const files = new Map<string, string | Uint8Array>()
   // Phase 3 §8 v10: prune components unreferenced across all pages (see emitSinglePage).
   const components = reachableComponents(irs, allComponents)
+  // Phase 3 §15: emit the UI kit's inlined sources across all pages.
+  const uiKit = resolveUiKit(options)
+  const kit = applyUiKit(files, irs, components, uiKit)
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
   const translations = irs.find((ir) => ir.translations)?.translations
@@ -204,7 +240,8 @@ function emitMultiPage(
     'react-router-dom': REACT_ROUTER_DOM_VERSION,
     ...lowcodeStateExtraDeps(docStates),
     ...lowcodeSupabaseExtraDeps(supabaseConfig),
-    ...i18nExtraDeps(i18nActive)
+    ...i18nExtraDeps(i18nActive),
+    ...kit.deps
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
   maybeEmitLowcodeRuntime(files, docStates)
@@ -212,7 +249,7 @@ function emitMultiPage(
   maybeEmitI18n(files, i18nActive, messages, sourceLocale, targetLocales, translations)
   maybeEmitLowcodeToastRuntime(files, toastActive)
   maybeEmitLowcodeConfirmRuntime(files, confirmActive)
-  emitComponentFiles(files, components, options.devMode)
+  emitComponentFiles(files, components, options.devMode, uiKit)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
     files.set(
@@ -223,7 +260,8 @@ function emitMultiPage(
         lowcodeSupabaseImportPath: '../_lowcode_supabase',
         lowcodeToastImportPath: '../_lowcode_toast',
         lowcodeConfirmImportPath: '../_lowcode_confirm',
-        componentImportPrefix: '../components/'
+        componentImportPrefix: '../components/',
+        uiKit
       })
     )
   }
@@ -233,7 +271,8 @@ function emitMultiPage(
     collectClassNames(irs, components),
     i18nActive,
     toastActive,
-    confirmActive
+    confirmActive,
+    kit
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
   const coverage = i18nActive ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations) : []
@@ -369,7 +408,8 @@ function setSharedProjectFiles(
   classNames: string[],
   i18n: boolean,
   toast: boolean,
-  confirm: boolean
+  confirm: boolean,
+  kit: { themeCss: string; active: boolean }
 ): void {
   // Phase 3 §10 v2 / v3: the toast + confirm runtimes' classes never appear in
   // the IR, so seed them into the Tailwind safelist (the VFS iframe finds no
@@ -381,13 +421,16 @@ function setSharedProjectFiles(
   ]
   const safelist =
     runtimeClasses.length > 0 ? [...new Set([...classNames, ...runtimeClasses])].sort() : classNames
-  files.set('vite.config.ts', buildViteConfig())
-  files.set('tsconfig.json', buildTsConfig())
+  // Phase 3 §15: when a UI kit is active, the inlined `@/`-aliased imports need
+  // the alias in both tsconfig (standalone tsc) and vite (build/dev resolution),
+  // and the kit's theme tokens go into index.css.
+  files.set('vite.config.ts', buildViteConfig(kit.active))
+  files.set('tsconfig.json', buildTsConfig(kit.active))
   // Phase 3 §9 v12: <html lang>/dir from the configured source locale.
   const htmlLang = resolveSourceLocale(options)
   files.set('index.html', buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang)))
   files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm))
-  files.set('src/index.css', buildIndexCss(safelist))
+  files.set('src/index.css', buildIndexCss(safelist, kit.themeCss))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())
