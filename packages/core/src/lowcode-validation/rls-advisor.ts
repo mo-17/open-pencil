@@ -68,7 +68,9 @@ function commandsForAction(action: ActionDef): SqlCommand[] {
  *  Flatten the workflow tree so RLS requirements from inside branches are not
  *  silently missed (经验 A). Phase 3 §10 v4: a `callWorkflow` action descends
  *  into its referenced workflow's chain (when `workflows` is supplied), guarded
- *  by `seen` against cycles. */
+ *  by `seen` against cycles. Phase 3 §10 v9: an apiCall / supabase action nests
+ *  `onSuccess` / `onError` result-branches that may also contain Supabase
+ *  actions — descend into those too (the action itself is still emitted). */
 function flattenActions(
   actions: ActionDef[],
   workflows: ReadonlyMap<string, WorkflowDef>,
@@ -89,6 +91,14 @@ function flattenActions(
       }
     } else {
       out.push(action)
+      if (
+        action.kind === 'apiCall' ||
+        action.kind === 'supabaseQuery' ||
+        action.kind === 'supabaseMutation'
+      ) {
+        out.push(...flattenActions(action.onSuccess ?? [], workflows, seen))
+        out.push(...flattenActions(action.onError ?? [], workflows, seen))
+      }
     }
   }
   return out

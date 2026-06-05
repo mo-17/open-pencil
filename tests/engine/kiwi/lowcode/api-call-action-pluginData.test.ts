@@ -93,6 +93,27 @@ describe('ApiCallAction persistence (Phase 2 §3)', () => {
     expect(result.events).toEqual(events)
   })
 
+  test('Phase 3 §10 v9: apiCall onSuccess/onError + errorTarget round-trip', () => {
+    const action: ApiCallAction = {
+      id: 'a3',
+      kind: 'apiCall',
+      method: 'POST',
+      url: 'https://example.com/save',
+      bodyJson: '{"x":1}',
+      targetName: 'result',
+      errorTarget: 'lastError',
+      onSuccess: [{ id: 't1', kind: 'toast', messageExpr: "'Saved'", variant: 'success' }],
+      onError: [{ id: 't2', kind: 'toast', messageExpr: "'Failed'", variant: 'error' }]
+    }
+    const events = { onClick: [action] }
+    const [entry] = serializeLowcodeFields(makeNode({ events }))
+    const result = extractLowcodeAndPluginData(
+      makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: entry.key, value: entry.value }])
+    )
+    // The nested result-branches ride the same JSON events blob — no codec change.
+    expect(result.events).toEqual(events)
+  })
+
   test('legacy node without events emits zero entries (byte-identity)', () => {
     expect(serializeLowcodeFields(makeNode())).toEqual([])
   })

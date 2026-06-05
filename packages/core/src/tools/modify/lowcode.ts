@@ -332,9 +332,11 @@ function validatePerKindFields(
   value: Record<string, unknown>
 ): { ok: true } | { ok: false; error: string } {
   if (kind === 'setState' || kind === 'setVariable') return validateValueExpr(where, value)
-  if (kind === 'apiCall') return validateApiCallUrl(where, value)
+  if (kind === 'apiCall') return validateApiCallAction(where, value)
   if (kind === 'supabaseQuery' || kind === 'supabaseMutation') {
-    return validateSupabaseAction(where, kind, value)
+    const r = validateSupabaseAction(where, kind, value)
+    if (!r.ok) return r
+    return validateResultBranches(where, value)
   }
   if (kind === 'supabaseAuth') return validateSupabaseAuthAction(where, value)
   if (kind === 'delay') return validateDelayAction(where, value)
@@ -477,6 +479,45 @@ function validateActionArray(
   return { ok: true, actions }
 }
 
+/** Phase 3 §10 v9: validate the optional `onSuccess` / `onError` result-branch
+ *  arrays shared by apiCall / supabaseQuery / supabaseMutation (each a recursive
+ *  ActionDef chain, like a condition branch). Absent → no branch. */
+function validateResultBranches(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  for (const key of ['onSuccess', 'onError'] as const) {
+    if (value[key] === undefined) continue
+    const r = validateActionArray(`${where}.${key}`, value[key], false)
+    if (!r.ok) return r
+  }
+  return { ok: true }
+}
+
+/** Phase 3 §10 v9: validate an `apiCall` action — its URL, optional string
+ *  `errorTarget` (error-capture docState), and `onSuccess` / `onError`
+ *  result-branches. */
+function validateApiCallAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (value.errorTarget !== undefined && typeof value.errorTarget !== 'string') {
+    return failAt(where, '.errorTarget must be a string')
+  }
+  const urlR = validateApiCallUrl(where, value)
+  if (!urlR.ok) return urlR
+  return validateResultBranches(where, value)
+}
+
+/** Phase 3 §10 v9: re-derive a validated result-branch array for building (the
+ *  shape was already checked in `validateResultBranches`, so this never errors;
+ *  undefined → branch absent). */
+function builtBranch(value: Record<string, unknown>, key: 'onSuccess' | 'onError'): ActionDef[] | undefined {
+  if (value[key] === undefined) return undefined
+  const r = validateActionArray(key, value[key], false)
+  return r.ok ? r.actions : undefined
+}
+
 /** Phase 3 §10: `delay.ms`, when present, must be a finite non-negative
  *  number (collect also re-checks and drops invalid values with a warning). */
 function validateDelayAction(
@@ -561,7 +602,10 @@ function buildActionFromValidated(
         method: raw.method as 'GET' | 'POST',
         url: raw.url as string,
         bodyJson: raw.bodyJson as string | undefined,
-        targetName: raw.targetName as string
+        targetName: raw.targetName as string,
+        errorTarget: raw.errorTarget as string | undefined,
+        onSuccess: builtBranch(raw, 'onSuccess'),
+        onError: builtBranch(raw, 'onError')
       }
     case 'supabaseQuery':
       return {
@@ -572,7 +616,9 @@ function buildActionFromValidated(
         filters: raw.filters as SupabaseFilter[] | undefined,
         single: raw.single as boolean | undefined,
         resultTarget: raw.resultTarget as string,
-        errorTarget: raw.errorTarget as string | undefined
+        errorTarget: raw.errorTarget as string | undefined,
+        onSuccess: builtBranch(raw, 'onSuccess'),
+        onError: builtBranch(raw, 'onError')
       }
     case 'supabaseMutation':
       return {
@@ -586,7 +632,9 @@ function buildActionFromValidated(
         payloadEntries: raw.payloadEntries as SupabasePayloadEntry[] | undefined,
         filters: raw.filters as SupabaseFilter[] | undefined,
         resultTarget: raw.resultTarget as string | undefined,
-        errorTarget: raw.errorTarget as string | undefined
+        errorTarget: raw.errorTarget as string | undefined,
+        onSuccess: builtBranch(raw, 'onSuccess'),
+        onError: builtBranch(raw, 'onError')
       }
     case 'supabaseAuth':
       // Phase 3 §2.v2: signIn/signOut. §2.v3 adds signUp; §2.v4 adds

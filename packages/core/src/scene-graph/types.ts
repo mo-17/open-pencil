@@ -728,6 +728,17 @@ export interface ApiCallAction {
   bodyJson?: string
   /** Name of the DocumentStateDef the parsed JSON response is written into. */
   targetName: string
+  /** Phase 3 §10 v9 — DocumentStateDef the caught error is written into (parity
+   *  with the Supabase actions); undefined → error not captured. */
+  errorTarget?: string
+  /** Phase 3 §10 v9 — result-branch sub-workflows: `onSuccess` runs after the
+   *  response is stored, `onError` on a network / non-2xx / parse failure. They
+   *  nest recursively (like {@link ConditionalAction} consequent/alternate) and
+   *  the compiler emits them where `data` / the error are fresh locals — closing
+   *  the "call API → branch on result → toast" loop without docState snapshot
+   *  staleness. */
+  onSuccess?: ActionDef[]
+  onError?: ActionDef[]
 }
 
 /** Phase 3 §2: a where-clause filter on a Supabase query or mutation.
@@ -758,6 +769,10 @@ export interface SupabaseQueryAction {
   resultTarget: string
   /** Name of the DocumentStateDef the error is written into, if any. */
   errorTarget?: string
+  /** Phase 3 §10 v9 — result-branch sub-workflows; see {@link ApiCallAction}.
+   *  `onSuccess` runs in the no-error branch, `onError` on a returned error. */
+  onSuccess?: ActionDef[]
+  onError?: ActionDef[]
 }
 
 /** Phase 3 §3.v2: a single payload field built from a value expression
@@ -793,6 +808,10 @@ export interface SupabaseMutationAction {
   filters?: SupabaseFilter[]
   resultTarget?: string
   errorTarget?: string
+  /** Phase 3 §10 v9 — result-branch sub-workflows; see {@link ApiCallAction}.
+   *  `onSuccess` runs in the no-error branch, `onError` on a returned error. */
+  onSuccess?: ActionDef[]
+  onError?: ActionDef[]
 }
 
 /** Phase 3 §2.v2: sign a user in / out against the Supabase project's auth.

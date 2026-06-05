@@ -66,6 +66,24 @@ describe('collectRlsRequirements', () => {
     expect(req(reqs, 'comments').commands).toEqual(['UPDATE'])
   })
 
+  test('Phase 3 §10 v9: descends into apiCall/supabase onSuccess + onError branches', () => {
+    const reqs = collectRlsRequirements([
+      {
+        id: 'm1',
+        kind: 'supabaseMutation',
+        operation: 'insert',
+        table: 'orders',
+        onSuccess: [query('receipts')],
+        onError: [mutation('errors', 'insert')]
+      }
+    ])
+    // the action itself + both result-branch supabase actions must surface, or
+    // RLS policies inside onSuccess/onError get silently missed (经验 A).
+    expect(req(reqs, 'orders').commands).toEqual(['INSERT'])
+    expect(req(reqs, 'receipts').commands).toEqual(['SELECT'])
+    expect(req(reqs, 'errors').commands).toEqual(['INSERT'])
+  })
+
   test('Phase 3 §10 v4: descends into callWorkflow targets when workflows supplied', () => {
     const workflows = new Map<string, { id: string; name: string; actions: ActionDef[] }>([
       ['wf', { id: 'wf', name: 'w', actions: [mutation('audit', 'insert')] }]

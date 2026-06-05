@@ -52,6 +52,34 @@ describe('resolveApiCall — apiCall IR collect (Phase 2 §3)', () => {
     })
   })
 
+  test('Phase 3 §10 v9: onSuccess/onError + errorTarget resolve onto the handler', () => {
+    const { graph, pageId } = makeGraph([
+      {
+        id: 'a1',
+        kind: 'apiCall',
+        method: 'GET',
+        url: 'https://x.test/users',
+        targetName: 'users',
+        errorTarget: 'users',
+        onSuccess: [{ id: 't1', kind: 'toast', messageExpr: "'ok'", variant: 'success' }],
+        onError: [{ id: 't2', kind: 'toast', messageExpr: "'bad'", variant: 'error' }]
+      }
+    ])
+    const handler = onlyHandler(graph, pageId)
+    expect(handler?.errorTarget).toBe('users')
+    expect(handler?.onSuccess?.[0]).toMatchObject({ kind: 'toast', variant: 'success' })
+    expect(handler?.onError?.[0]).toMatchObject({ kind: 'toast', variant: 'error' })
+  })
+
+  test('Phase 3 §10 v9: unknown errorTarget → warn + handler dropped', () => {
+    const { graph, pageId } = makeGraph([
+      { id: 'a1', kind: 'apiCall', method: 'GET', url: 'https://x.test/u', targetName: 'users', errorTarget: 'nope' }
+    ])
+    const ir = collectTree(graph, pageId)
+    expect(onlyHandler(graph, pageId)).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'action-apicall-unknown-target')).toBe(true)
+  })
+
   test('valid POST → body re-serialised to compact JSON', () => {
     const { graph, pageId } = makeGraph([
       {

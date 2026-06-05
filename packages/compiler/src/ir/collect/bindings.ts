@@ -423,6 +423,27 @@ function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] 
   return out
 }
 
+/** Phase 3 §10 v9: lower an API action's `onSuccess` / `onError` result-branch
+ *  sub-workflows (recursively, through the same `resolveBranch` pipeline, so
+ *  they nest and their docState reads/writes register as a side effect). The
+ *  resolved chains attach to the handler; the adapter emits them where `data` /
+ *  the error are fresh locals — no render-snapshot staleness. Empty / fully
+ *  dropped branches stay unset → byte-identical to a branch-less action. */
+function withResultBranches<
+  H extends IRApiCallHandler | IRSupabaseQueryHandler | IRSupabaseMutationHandler
+>(handler: H | null, action: { onSuccess?: ActionDef[]; onError?: ActionDef[] }, ctx: ResolveCtx): H | null {
+  if (!handler) return null
+  if (action.onSuccess && action.onSuccess.length > 0) {
+    const branch = resolveBranch(action.onSuccess, ctx)
+    if (branch.length > 0) handler.onSuccess = branch
+  }
+  if (action.onError && action.onError.length > 0) {
+    const branch = resolveBranch(action.onError, ctx)
+    if (branch.length > 0) handler.onError = branch
+  }
+  return handler
+}
+
 /** Phase 3 §10 v4: expand a `callWorkflow` inline. Looks the workflow up by id,
  *  rejecting (with a warning, returning no handlers) when the id is missing /
  *  unknown / already on the expansion stack (a cycle). Otherwise lowers the
@@ -583,37 +604,49 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
     case 'setVariable':
       return resolveSetVariable(ctx.node, ctx.eventName, action, ctx.states, ctx.docStates, ctx.warnings)
     case 'apiCall':
-      return resolveApiCall(
-        ctx.node,
-        ctx.eventName,
+      return withResultBranches(
+        resolveApiCall(
+          ctx.node,
+          ctx.eventName,
+          action,
+          ctx.states,
+          ctx.inScope,
+          ctx.docStates,
+          ctx.docStateReads,
+          ctx.warnings
+        ),
         action,
-        ctx.states,
-        ctx.inScope,
-        ctx.docStates,
-        ctx.docStateReads,
-        ctx.warnings
+        ctx
       )
     case 'supabaseQuery':
-      return resolveSupabaseQuery(
-        ctx.node,
-        ctx.eventName,
+      return withResultBranches(
+        resolveSupabaseQuery(
+          ctx.node,
+          ctx.eventName,
+          action,
+          ctx.states,
+          ctx.inScope,
+          ctx.docStates,
+          ctx.docStateReads,
+          ctx.warnings
+        ),
         action,
-        ctx.states,
-        ctx.inScope,
-        ctx.docStates,
-        ctx.docStateReads,
-        ctx.warnings
+        ctx
       )
     case 'supabaseMutation':
-      return resolveSupabaseMutation(
-        ctx.node,
-        ctx.eventName,
+      return withResultBranches(
+        resolveSupabaseMutation(
+          ctx.node,
+          ctx.eventName,
+          action,
+          ctx.states,
+          ctx.inScope,
+          ctx.docStates,
+          ctx.docStateReads,
+          ctx.warnings
+        ),
         action,
-        ctx.states,
-        ctx.inScope,
-        ctx.docStates,
-        ctx.docStateReads,
-        ctx.warnings
+        ctx
       )
     case 'supabaseAuth':
       return resolveSupabaseAuth(
@@ -664,8 +697,13 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
   if (!docStateWrites) return
   switch (handler.kind) {
     case 'setVariable':
+      docStateWrites.add(handler.docStateName)
+      return
     case 'apiCall':
       docStateWrites.add(handler.docStateName)
+      // Phase 3 §10 v9: error capture target (nested onSuccess/onError writes
+      // were recorded per-handler while their branches resolved).
+      if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
       return
     case 'supabaseQuery':
       docStateWrites.add(handler.resultTarget)
@@ -928,6 +966,13 @@ function resolveApiCall(
       }
     }
   }
+  // Phase 3 §10 v9: optional errorTarget (parity with the supabase actions) —
+  // a known docState the caught error is written into.
+  const errorTarget =
+    action.errorTarget === undefined
+      ? undefined
+      : resolveDocStateTarget(node, eventName, 'action-apicall', action.errorTarget, docStates, warnings, false)
+  if (errorTarget === null) return null
   // Phase 2 §4: a docState referenced inside the URL template needs a
   // `useDocState` local on the page.
   registerDocStateReads(urlTemplate.references, docStates, docStateReads)
@@ -936,7 +981,8 @@ function resolveApiCall(
     method: action.method,
     url: urlTemplate.ast,
     body,
-    docStateName: name
+    docStateName: name,
+    errorTarget
   }
 }
 

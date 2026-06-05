@@ -153,12 +153,27 @@ function emitApiCall(h: IRApiCallHandler): string {
       ? `fetch(${url}, { method: "POST", headers: { "Content-Type": "application/json" }` +
         (h.body === undefined ? ' })' : `, body: JSON.stringify(${h.body}) })`)
       : `fetch(${url})`
+  const store = `setDocState(${JSON.stringify(h.docStateName)}, data)`
+  // Phase 3 §10 v9: a branch-less / capture-less call stays byte-identical to
+  // the §2 output (no res.ok guard — a non-2xx still writes its body).
+  if (h.onSuccess === undefined && h.onError === undefined && h.errorTarget === undefined) {
+    return (
+      `try { const res = await ${fetchCall}; const data = await res.json(); ` +
+      `${store} } catch (err) { console.error("apiCall failed:", err) }`
+    )
+  }
+  // With result branches / errorTarget: a non-2xx response is a failure (throw
+  // the parsed body into the catch) so onError fires and onSuccess does not.
+  const successTail = h.onSuccess ? ` ${emitStatementList(h.onSuccess)}` : ''
+  const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, err); ` : ''
+  const errorTail = h.onError ? ` ${emitStatementList(h.onError)}` : ''
   return (
     `try { ` +
     `const res = await ${fetchCall}; ` +
     `const data = await res.json(); ` +
-    `setDocState(${JSON.stringify(h.docStateName)}, data) ` +
-    `} catch (err) { console.error("apiCall failed:", err) }`
+    `if (!res.ok) throw data; ` +
+    `${store};${successTail} ` +
+    `} catch (err) { ${errorWrite}console.error("apiCall failed:", err);${errorTail} }`
   )
 }
 
@@ -229,7 +244,7 @@ function emitSupabaseQuery(h: IRSupabaseQueryHandler): string {
     `.select(${JSON.stringify(h.columns)})` +
     emitFilterChain(h.filters) +
     (h.single ? '.single()' : '')
-  return wrapAsyncResult(chain, h.resultTarget, h.errorTarget)
+  return wrapAsyncResult(chain, h.resultTarget, h.errorTarget, h.onSuccess, h.onError)
 }
 
 /** Phase 3 §2: insert / update / delete / upsert chain. Filters become the
@@ -255,7 +270,7 @@ function emitSupabaseMutation(h: IRSupabaseMutationHandler): string {
       chain = `${base}.delete()` + emitFilterChain(h.filters)
       break
   }
-  return wrapAsyncResult(chain, h.resultTarget, h.errorTarget)
+  return wrapAsyncResult(chain, h.resultTarget, h.errorTarget, h.onSuccess, h.onError)
 }
 
 /** Phase 3 §2.v2: signIn / signOut. §2.v3 adds signUp. §2.v4 adds
@@ -334,18 +349,26 @@ function emitFilterChain(filters: readonly IRSupabaseFilter[]): string {
 function wrapAsyncResult(
   chain: string,
   resultTarget: string | undefined,
-  errorTarget: string | undefined
+  errorTarget: string | undefined,
+  onSuccess?: IREventHandler[],
+  onError?: IREventHandler[]
 ): string {
   const errorWrite = errorTarget
     ? `setDocState(${JSON.stringify(errorTarget)}, error); `
     : ''
-  const resultBranch = resultTarget
-    ? `if (error) { ${errorWrite}console.error("supabase request failed:", error) } else { setDocState(${JSON.stringify(resultTarget)}, data) }`
-    : `if (error) { ${errorWrite}console.error("supabase request failed:", error) }`
+  // Phase 3 §10 v9: append onError to the error arm, onSuccess to the success
+  // arm — both run where `data` / `error` are fresh locals. Branch-less +
+  // capture-less stays byte-identical to the §2 output.
+  const errorTail = onError ? `; ${emitStatementList(onError)}` : ''
+  const errorArm = `if (error) { ${errorWrite}console.error("supabase request failed:", error)${errorTail} }`
+  const successWrites: string[] = []
+  if (resultTarget) successWrites.push(`setDocState(${JSON.stringify(resultTarget)}, data)`)
+  if (onSuccess) successWrites.push(emitStatementList(onSuccess))
+  const elseArm = successWrites.length > 0 ? ` else { ${successWrites.join('; ')} }` : ''
   return (
     `try { ` +
     `const { data, error } = await ${chain}; ` +
-    resultBranch +
+    `${errorArm}${elseArm}` +
     ` } catch (err) { console.error("supabase request threw:", err) }`
   )
 }

@@ -340,6 +340,15 @@ export interface IRApiCallHandler {
   body?: string
   /** Name of the DocumentStateDef the response is written to. */
   docStateName: string
+  /** Phase 3 §10 v9 — name of the DocumentStateDef the caught error is written
+   *  to (parity with the supabase actions); undefined → error not captured. */
+  errorTarget?: string
+  /** Phase 3 §10 v9 — result-branch sub-handlers run after the response is
+   *  stored (success) / on failure. Nested chains lowered through the same
+   *  pipeline so they nest; emitted inside the try success path / catch arm
+   *  where `data` / `err` are fresh locals (no render-snapshot staleness). */
+  onSuccess?: IREventHandler[]
+  onError?: IREventHandler[]
 }
 
 /** Phase 3 §2: a single where-clause filter on a Supabase query / mutation.
@@ -367,6 +376,10 @@ export interface IRSupabaseQueryHandler {
   single: boolean
   resultTarget: string
   errorTarget?: string
+  /** Phase 3 §10 v9 — result-branch sub-handlers (success / error). See
+   *  `IRApiCallHandler.onSuccess`; emitted into the `else` / `if (error)` arms. */
+  onSuccess?: IREventHandler[]
+  onError?: IREventHandler[]
 }
 
 /** Phase 3 §3.v2: a single expression-driven payload column. `key` is a
@@ -399,6 +412,10 @@ export interface IRSupabaseMutationHandler {
   filters: IRSupabaseFilter[]
   resultTarget?: string
   errorTarget?: string
+  /** Phase 3 §10 v9 — result-branch sub-handlers (success / error). See
+   *  `IRApiCallHandler.onSuccess`; emitted into the `else` / `if (error)` arms. */
+  onSuccess?: IREventHandler[]
+  onError?: IREventHandler[]
 }
 
 /** Phase 3 §2.v2: sign a user in / out. Phase 3 §2.v3 adds signUp. Phase 3
