@@ -5275,6 +5275,32 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。两件设计均成立,
 - **tool 校验** `validateWorkflowOptionalParams(where, raw, params)`:数组、每项 ∈ 已校验 params、去重;`validateWorkflows` threading 已校验的 `paramsR.params ?? []`。read_workflows 整体回读 → optionalParams 自动透出。
 - 测试 +6(toast runtime cap+dedup 1 / workflow optional 用·覆盖·required-still-drop 3 / tool 校验 1 / kiwi roundtrip paramDefaults+optionalParams 1)。compiler **594/0**(+4),kiwi+tools+rls 308/0,`bun run check` exit 0,tsgo 0。**真机验 pending**(同 toast 去重 + 堆叠裁剪;workflow 省略可选 arg → body `undefined`)。**§10 v9 follow-ups:** EventsPanel + 工作流管理面板 GUI(真机,含 params/args/paramDefaults/optionalParams 编辑);toast 去重窗口可配 / 堆叠上限可配。
 
+## §10 v9 — API 结果分支 onSuccess/onError(闭合 toast 逻辑环)〔设计+实现 2026-06-05〕
+
+> 用户洞察:「toast 没有逻辑闭环——一般不都是按钮请求完 api,根据 api 结果判断显示吗?」recon 坐实其判断正确,此前真做不到。fork 经 AskUserQuestion 锁 = **onSuccess/onError 子分支**(否决「修 condition 读新鲜快照」、「两者都做」)。
+
+### 10v9.1 现状与问题(recon 坐实「为什么闭不上」)
+三因叠加:① `apiCall` 连失败信号都没有(`emit/event.ts` 错误只 `console.error`,无 errorTarget);② `supabase` 类抓了 `{data,error}` 但成功/失败分支**写死在 action 内部**,塞不进 toast,且 data/error 是该 try 块局部、下个 action 看不到;③ **就算走「action 写 docState → 下个 condition 读 docState → toast」也被 React 渲染快照坑**:condition 里 docState 引用编成页面顶部 hoist 的 `const x = useDocState('x')`(`scaffold.ts:207`)= 上次渲染快照,同 handler 内 `setDocState` 后该 const 仍旧值(zustand store 同步更新了但闭包常量不变,要等重渲染)→ condition 判错。runtime 有 `getDocStateSnapshot` 新鲜读但 emit 从不用它做读。
+
+### 10v9.2 关键决定
+| # | 决定 | 取舍 |
+|---|---|---|
+| 1 | 闭环修法 | (a) **onSuccess/onError 子分支** —— emit 进 try/catch 臂,data/error 是新鲜局部;(b) 修 condition 读新鲜快照;(c) 两者都做 | **(a)** —— 最贴合「按结果判断」,无快照问题,apiCall 同时补失败信号;(b) apiCall 仍无失败信号且语义微妙;(c) 改动最大 |
+| 2 | apiCall 失败判定 | 带分支时 `!res.ok` 视为失败(throw 进 catch) | 是 —— 非 2xx 是最常见「请求失败」,不 throw 则 onError 永不触发 |
+| 3 | 无分支时行为 | byte-identical 旧产物(`!res.ok` guard 也不加) | 是 —— 零回归,所有现有 emit 测试 toContain 不变 |
+| 4 | GUI | EventsPanel 授权延后 | 是 —— 需递归 action-row 编辑器(同 condition/confirm 嵌套);本期纯 emit+collect+round-trip+tool |
+
+### 10v9.3 实现拆解
+- **数据模型**:`ApiCallAction`/`SupabaseQueryAction`/`SupabaseMutationAction` + IR handler 加 `onSuccess?/onError?:ActionDef[]`;apiCall 补 `errorTarget?`(对齐 supabase)。
+- **emit**(event.ts):apiCall 带分支 → `try { res; data=res.json(); if(!res.ok) throw data; setDocState(target,data); <onSuccess> } catch (err) { [setDocState(errorTarget,err);] console.error(...); <onError> }`;supabase `wrapAsyncResult` 把 onSuccess 进 `else` 臂、onError 进 `if(error)` 臂。absent → 字节等价。
+- **collect**(bindings.ts):`withResultBranches` 经 `resolveBranch` 递归 lower(reads/writes/callWorkflow 展开自动登记);recordWrites 补 apiCall errorTarget;resolveApiCall 加 errorTarget 校验。
+- **rls-advisor**:`flattenActions` 下降进 onSuccess/onError(经验 A 不报错但漏)。
+- **tool**:`validateApiCallAction`+`validateResultBranches`+`builtBranch`;buildActionFromValidated 透传。
+- **round-trip**:零 codec 改动(嵌在 `lowcode/events` JSON 块)。
+
+### 10v9.4 实现状态 / Post-mortem
+**CODE COMPLETE 2026-06-05(`10ab74b8`,lowcode-rebaseline,pushed)。** e2e 实跑:`onClick={async () => { try { ...fetch...; if (!res.ok) throw data; setDocState("result", data); __opToast("保存成功", "success"); } catch (err) { setDocState("lastError", err); console.error("apiCall failed:", err); __opToast("保存失败", "error"); } }}` = 完整闭环。测试 +10(emit 6 / collect 2 / rls 1 / round-trip 1),全套 940/0,`bun run check` exit 0,tsgo 0,jscpd 0。**延后**:EventsPanel GUI 授权 onSuccess/onError(递归 action-row,同 condition/confirm)→ 现仅 CLI/程序化/MCP tool 可编。**经验**:lowcode「按外部结果分支」必须 emit 进结果仍在局部作用域的位置(try/catch 臂),不能靠「写 docState→下个 action 读」(渲染快照同 handler 内陈旧);加结果分支后所有遍历 action 树处都要下降(emit/collect/rls/tool 四处)。
+
 ## §9 v10 — 译文覆盖率报告(编译期缺译报告,headless 部分)
 
 > §9 v7 / §9 v9 follow-up。助手推荐 §9 v10(用户「继续下一个 milestone」未走 AskUserQuestion;否决 §10 v9 toast 配置可配——边际价值低;否决 §8 v9 nested-instance prop-threading 大坑;否决 CF Pages 需 blake3 依赖)。封 §9 i18n 链的数据闭环:§9 v7 给了译文数据模型(`lowcodeTranslations`),但搭建者无从知道每个目标 locale 还缺哪些源串。scope = **编译期产出缺译报告 JSON(headless)**;覆盖率高亮 GUI 面板(读 in-graph 译文)+ RTL 源语言布局留真机/后续。
