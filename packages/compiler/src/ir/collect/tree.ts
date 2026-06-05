@@ -876,6 +876,11 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // `className` above is the prop default (and what Tailwind safelists).
   const classNameProp = ctx.componentPropSlots?.get(node.id)?.className?.name
 
+  // Phase 3 §15 Phase B: tag the interactive control root so a UI-kit adapter
+  // can swap it for a composed component. Kit-agnostic — the plain emit ignores
+  // it (byte-identical). The array CHECKBOX group is excluded (deferred).
+  const controlKind = controlKindFor(node)
+
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
@@ -889,6 +894,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     ...(controlled ? { controlled } : {}),
+    ...(controlKind ? { controlKind } : {}),
     ...vector.extra
   }
   return wrapConditional(node, element, ctx)
@@ -957,6 +963,26 @@ const CONTROLLED_NODE_TYPES: ReadonlySet<SceneNode['type']> = new Set([
   'RADIO',
   'DATEPICKER'
 ])
+
+/** Phase 3 §15 Phase B — map a form-control SceneNode to its `controlKind`
+ *  hint (consumed only by a UI-kit adapter; null = no hint). SWITCH and single
+ *  CHECKBOX both emit `<input type=checkbox>` but a SWITCH carries `role=switch`
+ *  (applyToggleProps) — here we split them by node type directly. The array
+ *  multi-select CHECKBOX group is intentionally unmarked (deferred). */
+function controlKindFor(node: SceneNode): IRElement['controlKind'] {
+  switch (node.type) {
+    case 'SELECT':
+      return 'select'
+    case 'SWITCH':
+      return 'switch'
+    case 'RADIO':
+      return 'radio-group'
+    case 'CHECKBOX':
+      return isCheckboxGroup(node) ? undefined : 'checkbox'
+    default:
+      return undefined
+  }
+}
 
 function applyControlledInput(
   node: SceneNode,

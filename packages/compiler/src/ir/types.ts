@@ -137,6 +137,16 @@ export interface IRElement {
    *  `defaultValue` and any user-defined `onChange` are dropped (the latter
    *  with an `input-controlled-onchange-conflict` warning at collect time). */
   controlled?: IRControlledInput
+  /** Phase 3 §15 Phase B — semantic hint identifying an interactive form
+   *  control whose plain-HTML emit a UI-kit adapter may replace with a
+   *  composed component (shadcn `<Select>`, `<Checkbox>`, `<Switch>`,
+   *  `<RadioGroup>`). Set on the control's root element by collect; the plain
+   *  React adapter ignores it (→ byte-identical output), the kit's
+   *  `emitControl` hook consumes it. `radio-group` marks the wrapper `<div>`
+   *  whose `<input type=radio>` leaves carry the `controlled` descriptor. The
+   *  array multi-select checkbox-group is deliberately NOT marked (no native
+   *  shadcn group component — deferred to a later phase, stays plain HTML). */
+  controlKind?: 'select' | 'checkbox' | 'switch' | 'radio-group'
   /** Raw inner HTML to emit verbatim via `dangerouslySetInnerHTML` instead of
    *  `children`. Set for vector-shape nodes (VECTOR / BOOLEAN_OPERATION / STAR /
    *  POLYGON / LINE) whose appearance IS the path geometry: the wrapper keeps

@@ -5718,6 +5718,40 @@ CODE COMPLETE 2026-06-04(commit 见下,pushed upstream)。**零 hotfix、零 GAT
 
 **Phase B follow-ups**:Select/Checkbox/Switch/Radio(Radix 组合组件,需改 formatAttrs controlled dispatch 适配 `onValueChange`/`onCheckedChange` + 组合 markup);FRAME→Card 容器映射;variant 反推;可插拔 MUI/antd adapter;**组件视觉保真真机验**(需 `npm install` shadcn deps 或把 deps 加进仓库再 VFS-build);editor `--ui-kit` toggle GUI 入口(同 §9 i18n preview 入口缺口,真机)。
 
+### 15.9 Phase B 设计 — Select/Checkbox/Switch/RadioGroup 组合组件映射〔设计 2026-06-05〕
+
+> fork 经 AskUserQuestion 锁 = **四件齐**(Select + 单Checkbox + Switch + RadioGroup,单值场景),**延后 array 多选 checkbox-group**(shadcn 无原生分组件,要拆 N 个独立 Checkbox + 手动数组 toggle,最别扭,留 Phase C)。
+
+**recon 坐实(2026-06-05)**:
+- 四类控件的当前 IR 形状(受控/绑定时,emit/element.ts formatAttrs):
+  - **SELECT** `tag:'select'`:`<select value={read} onChange={e=>write(e.target.value)}>` + N 个 `<option value="opt">{label}</option>` 子;`targetType:'string'`。
+  - **单 CHECKBOX** `tag:'input'` `attrs.type:'checkbox'`(无 role):`<input type=checkbox checked={read} onChange={e=>write(e.target.checked)}>`;`targetType:'boolean'`。
+  - **SWITCH** `tag:'input'` `attrs.type:'checkbox'` **`attrs.role:'switch'`**(applyToggleProps 第 3 参,tree.ts:1225)→ 与单 Checkbox **靠 role 区分**,可行。`targetType:'boolean'`。
+  - **RADIO** `tag:'div'` wrapper + `<label class><input type=radio name value="opt" checked={read===opt} onChange/> {label}</label>` 子;`targetType:'string'`;controlled 由 patchOptionLeafControlled 拷到 leaf。
+  - **CHECKBOX-array-group** `tag:'div'` wrapper(delay 到 Phase C)。
+- **关键障碍**:RADIO/checkbox-group 的 wrapper 是**无标记 `<div>`**,tag+attrs 认不出;且 shadcn RadioGroup 要求**单一 `<RadioGroup value onValueChange>` 父**包住所有 item(不能 per-leaf 映)→ 需 IR 语义 hint。Select/单Checkbox/Switch 可由 tag+attrs+role 推出,但为统一、避免 kit 里脆弱嗅探,**全部走 controlKind hint**。
+- **事件 API 差异**:shadcn/Radix 用 `onCheckedChange(checked)`(Checkbox/Switch,收 boolean)、`onValueChange(value)`(Select/RadioGroup,收 string)——**不是 DOM event**,formatAttrs 现有 `onChange={(e)=>...e.target.checked/value}` 不适用。
+- **import**:Select 需从一个 module 引 5 个命名导出(`Select,SelectContent,SelectItem,SelectTrigger,SelectValue`),现 `UiKitMapping` 只 emit 一个名 → 需多 import 列表。
+- **deps**:新增 `@radix-ui/react-{select,checkbox,switch,radio-group}` 四个 Radix 包,**必须 `bun add` 进仓库 node_modules** 否则 build/deploy 的 VFS build 解析不了(§15 GUI-toggle 经验)。select/checkbox 的图标**内联 SVG**(不引 lucide-react,省一个 dep)。
+
+**架构(在 Phase A 之上增量,保 byte-identical-off)**:
+1. **IR 语义 hint**(kit-agnostic,plain adapter 忽略):`IRElement.controlKind?: 'select'|'checkbox'|'switch'|'radio-group'`,collect 在交互根元素上打(`<select>`/单`<input>`/wrapper`<div>`)。镜像现有 `controlled`/`classNameProp` 等「adapter 可选消费的语义注解」——plain emit 不读 → 零回归。
+2. **adapter 扩展**:`UiKitAdapter.emitControl?(node: IRElement, ctx: KitEmitCtx): string | null`,`ctx = { indent, devMode, emitChild(node,indent), escapeAttr }`。element.ts:`uiKit` 在场且 `node.controlKind` 有值 → 调 `uiKit.emitControl?.(...)`,返字符串则用、null 落回原路径。adapter 独占:组件换名 + 事件 API 翻译 + 组合 markup(SelectTrigger/SelectValue/SelectContent/SelectItem,RadioGroup/RadioGroupItem+plain`<label htmlFor>`)。
+3. **UiKitMapping 多 import**:加 `imports?: string[]`(命名导出列表,缺省 `[component]`);import 行生成改 `import { ${m.imports?.join(', ') ?? m.component} } from '${m.from}'`(scaffold.ts:267 + component.ts:38)。
+4. **collectUsedKitComponents / collectKitImports** 也要识别 `controlKind`(现只走 mapTag)→ 加 controlKind→component 解析(Select/Checkbox/Switch/RadioGroup)。
+5. **shadcn 模板** 新增 select.tsx/checkbox.tsx/switch.tsx/radio-group.tsx(Tailwind v4 风,内联 SVG,`__AT__/` alias 占位),COMPONENTS 注册 + deps 表。
+
+**emit 形状**(受控示例,read=`form.x`,docState 走 setDocState):
+- Select → `<Select value={read} onValueChange={(v) => write(v)}><SelectTrigger className="<设计类>"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="a">A</SelectItem>...</SelectContent></Select>`(className 落 SelectTrigger;option 标签复用 emitChild 保 i18n)。
+- 单 Checkbox → `<Checkbox className="<设计类>" checked={read} onCheckedChange={(c) => write(c === true)} />`('indeterminate' 收敛成 false)。
+- Switch → `<Switch className="<设计类>" checked={read} onCheckedChange={(c) => write(c)} />`。
+- RadioGroup → `<RadioGroup className="<wrapper类>" value={read} onValueChange={(v) => write(v)}><div className="flex items-center gap-2"><RadioGroupItem value="a" id="<sourceId>-0" /><label htmlFor="<sourceId>-0">A</label></div>...</RadioGroup>`。
+- **devMode** 下根组件挂 `data-node-id`。**非受控**(无 binding)控件:Checkbox/Switch 用 `defaultChecked`,Select 用 `defaultValue`,Radio 用 per-item `defaultChecked`(从 IR leaf 的 defaultChecked/option 推),保 §3 非受控回退语义。
+
+**成功标准**:`compile --ui-kit shadcn` → 四类受控控件 emit shadcn 组合 markup + onValueChange/onCheckedChange + 正确 import(Select 5 导出)+ 内联模板源 + radix deps;array checkbox-group 仍走 plain HTML(未映);off / 无可映射控件 → byte-identical;`build --ui-kit shadcn`(VFS)解析新 radix deps 成功。
+
+**风险**:option 标签复用 emitChild 与 collect 子结构耦合(同包内紧约定,文档化);RadioGroupItem id 唯一性(sourceId+index);Tailwind v4 下 radix 组件类(data-state 等)主题 token 须在 SHADCN_THEME_CSS 内已覆盖(Phase A 已铺 --primary 等)。
+
 ## 4–13. 候选 §X 详细设计(待用户挑定后扩写)
 
 > 用户挑定某条 §X → 回本 doc 把对应小节改写成「详细设计 + 锁定决定」格式(参考 Phase 2 §2 / §3 / §4 / §6 / §7 / §8 / §9 任一已收尾节 + 本期 §2 / §3 结构:§X.1 现状与问题、§X.2 关键决定表、§X.3 公开 API / Schema 改动、§X.4 内部实现拆解、§X.5 成功标准、§X.6 工作分解、§X.7 风险、§X.8 Post-mortem)→ 对话锁主决定 → 用户 ACK 次级默认 → 分 step commit + Tauri 实测。

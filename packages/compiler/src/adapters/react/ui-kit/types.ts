@@ -1,4 +1,4 @@
-import type { IRAttrValue } from '#compiler/ir/types'
+import type { IRAttrValue, IRElement, IRNode } from '#compiler/ir/types'
 
 /**
  * Phase 3 §15 — pluggable code-UI-kit adapter. When `CompilerOptions.uiKit` is
@@ -15,12 +15,35 @@ import type { IRAttrValue } from '#compiler/ir/types'
 export type UiKitName = 'shadcn'
 
 export interface UiKitMapping {
-  /** JSX component name emitted in place of the HTML tag, e.g. `Button`. */
+  /** JSX component name emitted in place of the HTML tag, e.g. `Button`. Also
+   *  the key into the kit's component-file/deps registry (drives which source
+   *  files + npm deps the kit emits). */
   component: string
   /** Module specifier it is imported from, e.g. `@/components/ui/button`. The
    *  `@/` alias maps to `src/` (added to the emitted tsconfig + vite config when
    *  a kit is active), so the specifier is the same from every importing file. */
   from: string
+  /** Phase 3 §15 Phase B — the named exports to import from `from`. A composed
+   *  control needs several (shadcn Select pulls
+   *  `Select, SelectContent, SelectItem, SelectTrigger, SelectValue` from one
+   *  module). Defaults to `[component]` when omitted (Phase A 1:1 components). */
+  imports?: readonly string[]
+}
+
+/** Phase 3 §15 Phase B — helpers a UI-kit adapter's `emitControl` uses to emit
+ *  a composed control. `emitChild` delegates to the React adapter's element
+ *  emitter (so nested i18n `<FormattedMessage>` / expression children render
+ *  correctly); `escapeAttr` quotes a `className`/attr value the kit's way. */
+export interface KitEmitCtx {
+  /** Two-space indent units for the control's root line (matches `emitElement`). */
+  indent: number
+  /** When true the root component gets `data-node-id` for the preview bridge. */
+  devMode: boolean
+  /** Emit a child IR node (text/expression/element) at `indent`, returning the
+   *  full padded JSX line(s) — used for option labels (kept i18n-aware). */
+  emitChild(node: IRNode, indent: number): string
+  /** Escape a string for a double-quoted JSX attribute value. */
+  escapeAttr(value: string): string
 }
 
 export interface UiKitAdapter {
@@ -33,6 +56,21 @@ export interface UiKitAdapter {
    * checkbox/radio inputs as plain HTML.
    */
   mapTag(tag: string, attrs: Readonly<Record<string, IRAttrValue>>): UiKitMapping | null
+  /**
+   * Phase 3 §15 Phase B — resolve a marked form control (`node.controlKind`) to
+   * its kit component mapping (for import + file/dep collection), or null to
+   * leave it as plain HTML. Distinct from `mapTag` because these controls are
+   * identified by their semantic `controlKind` (a RADIO/checkbox-group wrapper
+   * is an unmarked `<div>`), not their HTML tag.
+   */
+  mapControl?(kind: NonNullable<IRElement['controlKind']>): UiKitMapping | null
+  /**
+   * Phase 3 §15 Phase B — emit the full JSX for a marked control as a composed
+   * kit component (e.g. `<Select><SelectTrigger>…`). Returns null to fall back
+   * to the plain-HTML emit. The adapter owns the event-API translation
+   * (`onChange` → `onValueChange`/`onCheckedChange`) and composition markup.
+   */
+  emitControl?(node: IRElement, ctx: KitEmitCtx): string | null
   /**
    * Inline component-source files for the used component names (e.g. `Button`),
    * keyed by output path (`src/components/ui/button.tsx`). Only the components

@@ -3,7 +3,7 @@ import type { ComponentDef, IRNode, VariantCase } from '#compiler/ir/types'
 import { emitElement } from './element'
 import { hasIntlAttr, hasTranslatableText } from '../ir-walk'
 import { buildReactIntlImport } from '../lowcode/i18n'
-import { collectKitImports } from '../ui-kit/registry'
+import { collectKitImports, kitImportLine } from '../ui-kit/registry'
 import type { UiKitAdapter } from '../ui-kit/types'
 
 /**
@@ -35,7 +35,7 @@ export function buildComponentModule(
   const kitImports = uiKit ? collectKitImports(componentBodyNodes(def), uiKit) : []
   const kitImportBlock =
     kitImports.length > 0
-      ? kitImports.map((m) => `import { ${m.component} } from '${m.from}'`).join('\n') + '\n'
+      ? kitImports.map(kitImportLine).join('\n') + '\n'
       : ''
   const importBlock = i18nImport || kitImportBlock ? `${i18nImport}${kitImportBlock}\n` : ''
   return importBlock + buildComponentBody(def, devMode, usesIntl, uiKit)

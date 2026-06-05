@@ -40,6 +40,14 @@ export function collectUsedKitComponents(
   return acc
 }
 
+/** Phase 3 §15 — one ES import line for a kit mapping. A composed control
+ *  pulls several named exports from one module (`imports`); a Phase A 1:1
+ *  component pulls just its own name. */
+export function kitImportLine(m: UiKitMapping): string {
+  const names = m.imports ? [...m.imports].join(', ') : m.component
+  return `import { ${names} } from '${m.from}'`
+}
+
 function walkForKit(
   node: IRNode,
   kit: UiKitAdapter,
@@ -55,10 +63,19 @@ function walkForKit(
     return
   }
   if (node.kind !== 'element') return
-  const mapping = kit.mapTag(node.tag, node.attrs)
+  // Phase 3 §15 Phase B: a marked form control resolves via `mapControl`
+  // (identified by its semantic `controlKind`, not its HTML tag); everything
+  // else resolves via `mapTag` (Phase A 1:1 tags). A control's plain-HTML
+  // children (the SELECT's `<option>`s, the RADIO wrapper's `<label>`s) are
+  // subsumed by the composed component — don't also collect them.
+  const mapping =
+    node.controlKind && kit.mapControl
+      ? kit.mapControl(node.controlKind)
+      : kit.mapTag(node.tag, node.attrs)
   if (mapping) {
     imports?.set(mapping.component, mapping)
     names?.add(mapping.component)
+    if (node.controlKind) return
   }
   for (const child of node.children) walkForKit(child, kit, imports, names)
 }

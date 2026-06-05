@@ -2,6 +2,7 @@ import { emitExpression } from '@open-pencil/core/lowcode-validation'
 import type {
   IRAttrValue,
   IRControlledInput,
+  IRElement,
   IREventHandler,
   IREventName,
   IRExpression,
@@ -81,6 +82,27 @@ export function emitElement(
     )
   }
 
+  return emitTagElement(node, indent, devMode, uiKit)
+}
+
+/** Emit a plain element node (the `kind === 'element'` tail of `emitElement`):
+ *  the UI-kit composed-control path, then the standard `<tag attrs>children` /
+ *  void / inline-single-child forms. Split out to keep `emitElement` under the
+ *  complexity gate. */
+function emitTagElement(
+  node: IRElement,
+  indent: number,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
+): string {
+  const pad = '  '.repeat(indent)
+
+  // Phase 3 §15 Phase B: a marked form control (SELECT/CHECKBOX/SWITCH/RADIO)
+  // may be emitted as a composed kit component (`<Select><SelectTrigger>…`),
+  // owning its own event-API translation + markup. Null → plain-HTML fallback.
+  const kitControl = tryEmitKitControl(node, indent, devMode, uiKit)
+  if (kitControl !== null) return kitControl
+
   const attrsStr = formatAttrs(
     node.className,
     node.attrs,
@@ -115,6 +137,24 @@ export function emitElement(
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
   lines.push(`${pad}</${tagName}>`)
   return lines.join('\n')
+}
+
+/** Phase 3 §15 Phase B — emit a marked form control as a composed UI-kit
+ *  component, or null to fall back to the plain-HTML path. Extracted from
+ *  `emitElement` to keep it under the complexity gate. */
+function tryEmitKitControl(
+  node: IRElement,
+  indent: number,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
+): string | null {
+  if (!uiKit?.emitControl || !node.controlKind) return null
+  return uiKit.emitControl(node, {
+    indent,
+    devMode,
+    emitChild: (child, childIndent) => emitElement(child, childIndent, devMode, uiKit),
+    escapeAttr
+  })
 }
 
 /** Compact a single text/expression child onto the element's own line
@@ -241,7 +281,15 @@ function formatAttrs(
 function controlledOnChangeBody(c: IRControlledInput): string {
   // §3.v4: boolean writes the `checked` value of the event target; number
   // wraps `value` in Number(...); string passes value through unchanged.
-  const valueExpr = controlledEventValue(c.write.targetType)
+  return controlledWriteCall(c, controlledEventValue(c.write.targetType))
+}
+
+/** Phase 3 §3.x / §15 Phase B — the writer call for a controlled input: a
+ *  docState write goes through the runtime `setDocState('name', <value>)`, a
+ *  page-state write through the `useState` setter `setName(<value>)`. Shared by
+ *  the plain-HTML onChange emit (formatAttrs) and the UI-kit composed-control
+ *  emit (shadcn `onValueChange`/`onCheckedChange`). */
+export function controlledWriteCall(c: IRControlledInput, valueExpr: string): string {
   if (c.write.kind === 'docState') {
     return `setDocState(${JSON.stringify(c.write.name)}, ${valueExpr})`
   }
@@ -260,10 +308,7 @@ function controlledEventValue(targetType: IRControlledInput['write']['targetType
  *  re-renders. */
 function arrayCheckboxOnChangeBody(c: IRControlledInput, optLiteral: string): string {
   const next = `e.target.checked ? [...${c.read}, ${optLiteral}] : ${c.read}.filter((v) => v !== ${optLiteral})`
-  if (c.write.kind === 'docState') {
-    return `setDocState(${JSON.stringify(c.write.name)}, ${next})`
-  }
-  return `${setterName(c.write.name)}(${next})`
+  return controlledWriteCall(c, next)
 }
 
 function formatAttr(key: string, value: IRAttrValue): string {

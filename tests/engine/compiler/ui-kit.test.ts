@@ -75,15 +75,18 @@ describe('compile — shadcn UI kit (Phase 3 §15)', () => {
     expect(pkg.dependencies).not.toHaveProperty('@radix-ui/react-slot')
   })
 
-  test('CHECKBOX (type="checkbox") stays a plain <input>, no Input.tsx', () => {
+  test('single CHECKBOX maps to <Checkbox> (Phase B), not the text <Input>', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     graph.createNode('CHECKBOX', pageId, { interactiveProps: { label: 'Agree' } })
 
     const out = compileWith(graph, pageId, 'shadcn')
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('<input')
+    // Phase B: a single checkbox is now the Radix Checkbox, never the text Input.
+    expect(app).toContain('<Checkbox')
     expect(app).not.toContain('<Input')
+    expect(app).not.toContain('<input')
+    expect(out.files.has('src/components/ui/checkbox.tsx')).toBe(true)
     expect(out.files.has('src/components/ui/input.tsx')).toBe(false)
   })
 

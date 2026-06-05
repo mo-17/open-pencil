@@ -14,7 +14,7 @@ import {
 } from './ir-walk'
 import { buildReactIntlImport } from './lowcode/i18n'
 import type { PagePathInfo } from './route-paths'
-import { collectKitImports } from './ui-kit/registry'
+import { collectKitImports, kitImportLine } from './ui-kit/registry'
 import type { UiKitAdapter } from './ui-kit/types'
 
 /**
@@ -264,5 +264,5 @@ export function buildKitImports(nodes: readonly IRNode[], uiKit: UiKitAdapter | 
   if (!uiKit) return ''
   const mappings = collectKitImports(nodes, uiKit)
   if (mappings.length === 0) return ''
-  return mappings.map((m) => `import { ${m.component} } from '${m.from}'`).join('\n') + '\n'
+  return mappings.map(kitImportLine).join('\n') + '\n'
 }
