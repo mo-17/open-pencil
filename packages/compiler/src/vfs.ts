@@ -151,6 +151,17 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
         return found ? vfsPrefix + found : null
       }
 
+      // Phase 3 §15: the shadcn UI-kit emit aliases `@/` → the project's `src/`
+      // (`@/components/ui/button`, `@/lib/utils`). The emitted vite.config.ts
+      // declares this alias for the standalone build, but the VFS build runs
+      // `configFile: false`, so resolve it here too. Non-`@/` scoped packages
+      // (`@radix-ui/…`, `@supabase/…`) keep falling through to node_modules.
+      if (source.startsWith('@/')) {
+        const rel = stripQuery('src/' + source.slice(2))
+        const found = lookupFile(state.files, rel)
+        return found ? vfsPrefix + found : null
+      }
+
       // Bare imports (`react`, `react-dom/client`, …) fall through to Vite's
       // standard resolver, which walks node_modules from scanRoot upwards.
       return null

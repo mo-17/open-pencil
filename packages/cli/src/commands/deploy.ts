@@ -10,6 +10,7 @@ import { deployFiles, type DeployProgress, type DeployResult } from '@open-penci
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { bold, dim, ok, printError } from '#cli/format'
+import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface DeployArgs {
   file?: string
@@ -20,6 +21,7 @@ interface DeployArgs {
   base?: string
   'supabase-url'?: string
   'supabase-anon-key'?: string
+  'ui-kit'?: string
   json?: boolean
 }
 
@@ -90,10 +92,12 @@ export default defineCommand({
       description: 'Override the Supabase anon key for this deploy (else VITE_SUPABASE_ANON_KEY, else design-time).',
       required: false
     },
+    ...uiKitArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
     const { file, page, base } = args as DeployArgs
+    const uiKit = resolveUiKitFlag(args as DeployArgs)
     const providerArg = ((args as DeployArgs).provider ?? 'netlify').toLowerCase()
     if (providerArg !== 'netlify' && providerArg !== 'vercel') {
       printError(`Unknown --provider '${providerArg}'. Supported: ${PROVIDERS.join(', ')}.`)
@@ -115,7 +119,8 @@ export default defineCommand({
         file,
         page,
         outDir: buildDir,
-        json: args.json
+        json: args.json,
+        uiKit
       })
 
       const env = resolveBuildEnv({

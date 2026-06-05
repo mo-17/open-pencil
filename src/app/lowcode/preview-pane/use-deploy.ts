@@ -21,6 +21,9 @@ const DEPLOY_COMMAND = 'lowcode-preview' // shell-allowlisted `bun` (args:true)
 const CLI_ENTRY = 'packages/cli/src/index.ts'
 
 export type DeployProvider = 'netlify' | 'vercel'
+// Phase 3 §15: optional code UI kit for the emitted project. 'none' → the
+// self-contained Tailwind emit (default); 'shadcn' → `--ui-kit shadcn`.
+export type DeployUiKit = 'none' | 'shadcn'
 // The CLI reads the token from the matching env var (never an arg / never persisted).
 const TOKEN_ENV: Record<DeployProvider, string> = { netlify: 'NETLIFY_AUTH_TOKEN', vercel: 'VERCEL_TOKEN' }
 
@@ -40,8 +43,14 @@ export type DeployStatus =
 interface UseDeployResult {
   status: Ref<DeployStatus>
   /** Build + deploy the current document to `provider` with `token`. No-op
-   *  while already deploying or outside Tauri. */
-  deploy: (token: string, provider: DeployProvider, site?: string) => Promise<void>
+   *  while already deploying or outside Tauri. `uiKit` (§15) selects the emitted
+   *  project's code UI kit ('none' → plain Tailwind, the default). */
+  deploy: (
+    token: string,
+    provider: DeployProvider,
+    site?: string,
+    uiKit?: DeployUiKit
+  ) => Promise<void>
   reset: () => void
 }
 
@@ -53,7 +62,12 @@ export function useDeploy(): UseDeployResult {
     status.value = { kind: 'idle' }
   }
 
-  async function deploy(token: string, provider: DeployProvider, site?: string): Promise<void> {
+  async function deploy(
+    token: string,
+    provider: DeployProvider,
+    site?: string,
+    uiKit: DeployUiKit = 'none'
+  ): Promise<void> {
     if (status.value.kind === 'deploying') return
     if (!isTauri()) {
       status.value = { kind: 'error', message: 'Deploy is only available in the desktop app.' }
@@ -72,7 +86,7 @@ export function useDeploy(): UseDeployResult {
 
     status.value = { kind: 'deploying' }
     try {
-      const result = await runDeployCli(path, trimmed, provider, site)
+      const result = await runDeployCli(path, trimmed, provider, site, uiKit)
       status.value = { kind: 'done', url: result.url }
     } catch (e) {
       status.value = { kind: 'error', message: e instanceof Error ? e.message : String(e) }
@@ -86,12 +100,15 @@ async function runDeployCli(
   filePath: string,
   token: string,
   provider: DeployProvider,
-  site?: string
+  site?: string,
+  uiKit: DeployUiKit = 'none'
 ): Promise<DeployCliResult> {
   const { Command } = await import('@tauri-apps/plugin-shell')
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
   const args = [CLI_ENTRY, 'deploy', filePath, '--provider', provider, '--json']
   if (site) args.push('--site', site)
+  // Phase 3 §15: opt into a code UI kit for the emitted project.
+  if (uiKit !== 'none') args.push('--ui-kit', uiKit)
 
   const command = Command.create(DEPLOY_COMMAND, args, {
     cwd: projectRoot,

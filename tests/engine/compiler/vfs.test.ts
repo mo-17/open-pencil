@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { lookupFile, resolveRelative, stripQuery, type PreviewFiles } from '@open-pencil/compiler/vfs'
+import {
+  inMemoryVFS,
+  lookupFile,
+  resolveRelative,
+  stripQuery,
+  type PreviewFiles
+} from '@open-pencil/compiler/vfs'
 
 /**
  * Phase 3 §5 step 1: the in-memory VFS resolution helpers are shared between
@@ -72,5 +78,42 @@ describe('stripQuery (Phase 3 §5)', () => {
 
   test('leaves query-less paths unchanged', () => {
     expect(stripQuery('src/App.tsx')).toBe('src/App.tsx')
+  })
+})
+
+/**
+ * Phase 3 §15: the shadcn UI-kit emit imports via the `@/` alias
+ * (`@/components/ui/button`, `@/lib/utils`). The VFS build runs `configFile:
+ * false`, so the alias the emitted vite.config declares is ignored — the VFS
+ * plugin resolves `@/` → the project's `src/` itself. Without this the static
+ * build / preview can't resolve any kit import. Scoped npm packages
+ * (`@radix-ui/…`) must NOT be caught — they fall through to node_modules.
+ */
+describe('inMemoryVFS @/ alias (Phase 3 §15)', () => {
+  const PREFIX = '/scan-root/'
+  const files: PreviewFiles = new Map([
+    ['src/components/ui/button.tsx', 'export const Button = () => null'],
+    ['src/lib/utils.ts', 'export const cn = (...a: string[]) => a.join(" ")'],
+    ['src/pages/index.tsx', 'export default () => null']
+  ])
+  const plugin = inMemoryVFS({ files }, PREFIX)
+  const resolveId = plugin.resolveId as (source: string, importer?: string) => string | null
+
+  test('`@/components/ui/button` resolves to the VFS src module', () => {
+    expect(resolveId('@/components/ui/button', PREFIX + 'src/pages/index.tsx')).toBe(
+      PREFIX + 'src/components/ui/button.tsx'
+    )
+  })
+
+  test('`@/lib/utils` resolves to the VFS src module', () => {
+    expect(resolveId('@/lib/utils')).toBe(PREFIX + 'src/lib/utils.ts')
+  })
+
+  test('a scoped npm package (@radix-ui/react-slot) is NOT aliased', () => {
+    expect(resolveId('@radix-ui/react-slot', PREFIX + 'src/components/ui/button.tsx')).toBeNull()
+  })
+
+  test('an unknown @/ path returns null (no phantom module)', () => {
+    expect(resolveId('@/components/ui/missing')).toBeNull()
   })
 })

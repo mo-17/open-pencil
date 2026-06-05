@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 
 import { openExternalLink } from '@/app/shell/ui'
 
-import { useDeploy, type DeployProvider } from './use-deploy'
+import { useDeploy, type DeployProvider, type DeployUiKit } from './use-deploy'
 
 // Phase 3 §5: one-click deploy from the preview header. The token lives only in
 // this component's memory (never persisted) and is handed to the deploy CLI via
@@ -16,6 +16,8 @@ const open = ref(false)
 const provider = ref<DeployProvider>('netlify')
 const token = ref('')
 const site = ref('')
+// Phase 3 §15: code UI kit for the emitted project ('none' → plain Tailwind).
+const uiKit = ref<DeployUiKit>('none')
 
 const tokenLabel = computed(() => (provider.value === 'vercel' ? 'Vercel token' : 'Netlify token'))
 const targetLabel = computed(() => (provider.value === 'vercel' ? 'Project (optional)' : 'Site (optional)'))
@@ -29,7 +31,7 @@ function toggle(): void {
 }
 
 async function submit(): Promise<void> {
-  await deploy(token.value, provider.value, site.value.trim() || undefined)
+  await deploy(token.value, provider.value, site.value.trim() || undefined, uiKit.value)
 }
 
 function openDeployed(url: string): void {
@@ -63,6 +65,17 @@ function openDeployed(url: string): void {
       >
         <option value="netlify">Netlify</option>
         <option value="vercel">Vercel</option>
+      </select>
+
+      <label class="mb-1 block text-xs text-muted">UI components</label>
+      <select
+        v-model="uiKit"
+        data-test-id="lowcode-deploy-uikit"
+        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
+        :disabled="status.kind === 'deploying'"
+      >
+        <option value="none">Tailwind (self-contained)</option>
+        <option value="shadcn">shadcn/ui</option>
       </select>
 
       <label class="mb-1 block text-xs text-muted">{{ tokenLabel }}</label>
