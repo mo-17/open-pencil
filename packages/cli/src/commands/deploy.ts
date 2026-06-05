@@ -10,6 +10,7 @@ import { deployFiles, type DeployProgress, type DeployResult } from '@open-penci
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { bold, dim, ok, printError } from '#cli/format'
+import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface DeployArgs {
@@ -22,6 +23,9 @@ interface DeployArgs {
   'supabase-url'?: string
   'supabase-anon-key'?: string
   'ui-kit'?: string
+  i18n?: boolean
+  locale?: string | string[]
+  'source-locale'?: string
   json?: boolean
 }
 
@@ -93,11 +97,13 @@ export default defineCommand({
       required: false
     },
     ...uiKitArgs,
+    ...i18nArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
   },
   async run({ args }) {
     const { file, page, base } = args as DeployArgs
     const uiKit = resolveUiKitFlag(args as DeployArgs)
+    const { i18n, locales, sourceLocale } = resolveI18nFlags(args as DeployArgs)
     const providerArg = ((args as DeployArgs).provider ?? 'netlify').toLowerCase()
     if (providerArg !== 'netlify' && providerArg !== 'vercel') {
       printError(`Unknown --provider '${providerArg}'. Supported: ${PROVIDERS.join(', ')}.`)
@@ -120,7 +126,10 @@ export default defineCommand({
         page,
         outDir: buildDir,
         json: args.json,
-        uiKit
+        uiKit,
+        i18n,
+        locales,
+        sourceLocale
       })
 
       const env = resolveBuildEnv({

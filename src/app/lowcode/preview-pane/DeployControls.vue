@@ -5,6 +5,14 @@ import { openExternalLink } from '@/app/shell/ui'
 
 import { useDeploy, type DeployProvider, type DeployUiKit } from './use-deploy'
 
+/** Split the comma/space-separated locale field into clean target codes. */
+function parseLocales(raw: string): string[] {
+  return raw
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+}
+
 // Phase 3 §5: one-click deploy from the preview header. The token lives only in
 // this component's memory (never persisted) and is handed to the deploy CLI via
 // the spawned process env (see use-deploy.ts). §5.4 adds a provider picker
@@ -18,6 +26,9 @@ const token = ref('')
 const site = ref('')
 // Phase 3 §15: code UI kit for the emitted project ('none' → plain Tailwind).
 const uiKit = ref<DeployUiKit>('none')
+// Phase 3 §9: enable the i18n runtime + a comma-separated target-locale list.
+const i18nEnabled = ref(false)
+const localesInput = ref('')
 
 const tokenLabel = computed(() => (provider.value === 'vercel' ? 'Vercel token' : 'Netlify token'))
 const targetLabel = computed(() => (provider.value === 'vercel' ? 'Project (optional)' : 'Site (optional)'))
@@ -31,7 +42,10 @@ function toggle(): void {
 }
 
 async function submit(): Promise<void> {
-  await deploy(token.value, provider.value, site.value.trim() || undefined, uiKit.value)
+  await deploy(token.value, provider.value, site.value.trim() || undefined, uiKit.value, {
+    enabled: i18nEnabled.value,
+    locales: parseLocales(localesInput.value)
+  })
 }
 
 function openDeployed(url: string): void {
@@ -77,6 +91,26 @@ function openDeployed(url: string): void {
         <option value="none">Tailwind (self-contained)</option>
         <option value="shadcn">shadcn/ui</option>
       </select>
+
+      <label class="mb-2 flex items-center gap-2 text-xs text-muted">
+        <input
+          v-model="i18nEnabled"
+          type="checkbox"
+          data-test-id="lowcode-deploy-i18n"
+          :disabled="status.kind === 'deploying'"
+        />
+        Multi-language (i18n)
+      </label>
+      <input
+        v-if="i18nEnabled"
+        v-model="localesInput"
+        type="text"
+        data-test-id="lowcode-deploy-locales"
+        placeholder="target locales, e.g. ar, fr, ja"
+        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
+        :disabled="status.kind === 'deploying'"
+        @keydown.enter="submit"
+      />
 
       <label class="mb-1 block text-xs text-muted">{{ tokenLabel }}</label>
       <input

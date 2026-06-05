@@ -24,6 +24,12 @@ export type DeployProvider = 'netlify' | 'vercel'
 // Phase 3 §15: optional code UI kit for the emitted project. 'none' → the
 // self-contained Tailwind emit (default); 'shadcn' → `--ui-kit shadcn`.
 export type DeployUiKit = 'none' | 'shadcn'
+// Phase 3 §9: optional i18n for the emitted project. `enabled` → `--i18n`;
+// `locales` → one `--locale <code>` each (target languages beyond the source).
+export interface DeployI18n {
+  enabled: boolean
+  locales: string[]
+}
 // The CLI reads the token from the matching env var (never an arg / never persisted).
 const TOKEN_ENV: Record<DeployProvider, string> = { netlify: 'NETLIFY_AUTH_TOKEN', vercel: 'VERCEL_TOKEN' }
 
@@ -44,12 +50,14 @@ interface UseDeployResult {
   status: Ref<DeployStatus>
   /** Build + deploy the current document to `provider` with `token`. No-op
    *  while already deploying or outside Tauri. `uiKit` (§15) selects the emitted
-   *  project's code UI kit ('none' → plain Tailwind, the default). */
+   *  project's code UI kit ('none' → plain Tailwind, the default); `i18n` (§9)
+   *  enables the react-intl runtime + target-locale catalogs. */
   deploy: (
     token: string,
     provider: DeployProvider,
     site?: string,
-    uiKit?: DeployUiKit
+    uiKit?: DeployUiKit,
+    i18n?: DeployI18n
   ) => Promise<void>
   reset: () => void
 }
@@ -66,7 +74,8 @@ export function useDeploy(): UseDeployResult {
     token: string,
     provider: DeployProvider,
     site?: string,
-    uiKit: DeployUiKit = 'none'
+    uiKit: DeployUiKit = 'none',
+    i18n?: DeployI18n
   ): Promise<void> {
     if (status.value.kind === 'deploying') return
     if (!isTauri()) {
@@ -86,7 +95,7 @@ export function useDeploy(): UseDeployResult {
 
     status.value = { kind: 'deploying' }
     try {
-      const result = await runDeployCli(path, trimmed, provider, site, uiKit)
+      const result = await runDeployCli(path, trimmed, provider, site, uiKit, i18n)
       status.value = { kind: 'done', url: result.url }
     } catch (e) {
       status.value = { kind: 'error', message: e instanceof Error ? e.message : String(e) }
@@ -101,7 +110,8 @@ async function runDeployCli(
   token: string,
   provider: DeployProvider,
   site?: string,
-  uiKit: DeployUiKit = 'none'
+  uiKit: DeployUiKit = 'none',
+  i18n?: DeployI18n
 ): Promise<DeployCliResult> {
   const { Command } = await import('@tauri-apps/plugin-shell')
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
@@ -109,6 +119,12 @@ async function runDeployCli(
   if (site) args.push('--site', site)
   // Phase 3 §15: opt into a code UI kit for the emitted project.
   if (uiKit !== 'none') args.push('--ui-kit', uiKit)
+  // Phase 3 §9: enable i18n + declare each target locale (the CLI implies
+  // --i18n from any --locale, but pass it explicitly for the locale-less case).
+  if (i18n?.enabled) {
+    args.push('--i18n')
+    for (const loc of i18n.locales) args.push('--locale', loc)
+  }
 
   const command = Command.create(DEPLOY_COMMAND, args, {
     cwd: projectRoot,
