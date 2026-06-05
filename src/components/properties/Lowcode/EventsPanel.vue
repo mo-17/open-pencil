@@ -69,10 +69,18 @@ const ACTION_KINDS: ActionKind[] = [
   'apiCall',
   'supabaseQuery',
   'supabaseMutation',
-  'supabaseAuth'
+  'supabaseAuth',
+  // Phase 3 §10 — flat workflow kinds (the nested `condition` / `confirm` and
+  // the `callWorkflow` kinds need a recursive sub-editor / a workflow registry
+  // panel, deferred to a follow-up).
+  'toast',
+  'clipboard',
+  'delay',
+  'stop'
 ]
 
 const API_METHODS = ['GET', 'POST'] as const
+const TOAST_VARIANTS = ['info', 'success', 'error'] as const
 const SUPABASE_OPS = ['insert', 'update', 'delete', 'upsert'] as const
 const SUPABASE_AUTH_OPS = [
   'signIn',
@@ -161,6 +169,19 @@ function makeAction(kind: ActionKind, id: string): ActionDef {
   }
   if (kind === 'supabaseAuth') {
     return { id, kind: 'supabaseAuth', operation: 'signIn', emailExpr: '', passwordExpr: '' }
+  }
+  // Phase 3 §10 — flat workflow kinds.
+  if (kind === 'toast') {
+    return { id, kind: 'toast', messageExpr: '"Done"', variant: 'info' }
+  }
+  if (kind === 'clipboard') {
+    return { id, kind: 'clipboard', valueExpr: '' }
+  }
+  if (kind === 'delay') {
+    return { id, kind: 'delay', ms: 500 }
+  }
+  if (kind === 'stop') {
+    return { id, kind: 'stop' }
   }
   return {
     id,
@@ -296,6 +317,9 @@ interface ActionErrors {
   // Phase 3 §2.v2 — supabaseAuth signIn credential expression errors.
   email?: string
   password?: string
+  // Phase 3 §10 — toast `messageExpr` / delay `ms` errors (clipboard reuses `expr`).
+  message?: string
+  ms?: string
 }
 
 const validStateIds = computed(() => new Set(pageStates.value.map((s) => s.id)))
@@ -454,6 +478,23 @@ function supabaseAuthErrors(
   return e
 }
 
+// Phase 3 §10 — the flat workflow kinds' validators, grouped so `errorsFor`
+// stays a thin single-branch dispatch (complexity budget).
+function flatWorkflowErrors(
+  action: Extract<ActionDef, { kind: 'toast' | 'clipboard' | 'delay' }>
+): ActionErrors {
+  if (action.kind === 'toast') {
+    const r = validateExpression(action.messageExpr ?? '')
+    return r.ok ? {} : { message: r.reason ?? 'invalid expression' }
+  }
+  if (action.kind === 'clipboard') {
+    const r = validateExpression(action.valueExpr ?? '')
+    return r.ok ? {} : { expr: r.reason ?? 'invalid expression' }
+  }
+  const ms = action.ms
+  return ms === undefined || (Number.isFinite(ms) && ms >= 0) ? {} : { ms: 'must be ≥ 0' }
+}
+
 function errorsFor(action: ActionDef): ActionErrors {
   if (action.kind === 'setState') return setStateErrors(action)
   if (action.kind === 'navigate') {
@@ -464,8 +505,13 @@ function errorsFor(action: ActionDef): ActionErrors {
   if (action.kind === 'supabaseQuery') return supabaseQueryErrors(action)
   if (action.kind === 'supabaseMutation') return supabaseMutationErrors(action)
   if (action.kind === 'supabaseAuth') return supabaseAuthErrors(action)
-  // Phase 3 §10 workflow kinds (condition / delay / stop) have no GUI
-  // authoring panel yet, so no inline per-field error surfacing.
+  // Phase 3 §10 flat kinds: toast message + clipboard value are required,
+  // parseable expressions; delay ms is a finite non-negative number.
+  if (action.kind === 'toast' || action.kind === 'clipboard' || action.kind === 'delay') {
+    return flatWorkflowErrors(action)
+  }
+  // `stop` has no fields; nested `condition` / `confirm` and `callWorkflow`
+  // aren't authorable in the GUI yet (recursive sub-editor / workflow registry).
   return {}
 }
 
@@ -713,6 +759,70 @@ const actionErrors = computed(() => {
             >
               <option v-for="op in SUPABASE_AUTH_OPS" :key="op" :value="op">{{ op }}</option>
             </select>
+          </template>
+
+          <template v-else-if="action.kind === 'toast'">
+            <input
+              :value="action.messageExpr ?? ''"
+              aria-label="Toast message"
+              :aria-invalid="actionErrors.get(action.id)?.message ? 'true' : undefined"
+              data-test-id="lowcode-action-toast-message"
+              spellcheck="false"
+              placeholder="&quot;Saved!&quot;"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.message ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { messageExpr: ($event.target as HTMLInputElement).value })"
+            />
+            <select
+              :value="action.variant ?? 'info'"
+              aria-label="Toast variant"
+              data-test-id="lowcode-action-toast-variant"
+              class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+              @change="updateAction(action.id, { variant: ($event.target as HTMLSelectElement).value as 'info' | 'success' | 'error' })"
+            >
+              <option v-for="v in TOAST_VARIANTS" :key="v" :value="v">{{ v }}</option>
+            </select>
+          </template>
+
+          <template v-else-if="action.kind === 'clipboard'">
+            <span class="text-[11px] text-muted">copy</span>
+            <input
+              :value="action.valueExpr ?? ''"
+              aria-label="Clipboard value"
+              :aria-invalid="actionErrors.get(action.id)?.expr ? 'true' : undefined"
+              data-test-id="lowcode-action-clipboard-value"
+              spellcheck="false"
+              placeholder="email"
+              :class="[
+                'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.expr ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { valueExpr: ($event.target as HTMLInputElement).value })"
+            />
+          </template>
+
+          <template v-else-if="action.kind === 'delay'">
+            <span class="text-[11px] text-muted">wait</span>
+            <input
+              :value="action.ms ?? 0"
+              type="number"
+              min="0"
+              aria-label="Delay milliseconds"
+              :aria-invalid="actionErrors.get(action.id)?.ms ? 'true' : undefined"
+              data-test-id="lowcode-action-delay-ms"
+              :class="[
+                'w-24 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+                actionErrors.get(action.id)?.ms ? 'border-red-500' : 'border-border'
+              ]"
+              @change="updateAction(action.id, { ms: Number(($event.target as HTMLInputElement).value) })"
+            />
+            <span class="text-[11px] text-muted">ms</span>
+          </template>
+
+          <template v-else-if="action.kind === 'stop'">
+            <span class="text-[11px] text-muted">stop the chain</span>
           </template>
 
           <button
@@ -1044,6 +1154,20 @@ const actionErrors = computed(() => {
           class="pl-1 text-[10px] text-red-500"
         >
           expression: {{ actionErrors.get(action.id)?.expr }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.message"
+          data-test-id="lowcode-action-message-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          message: {{ actionErrors.get(action.id)?.message }}
+        </p>
+        <p
+          v-if="actionErrors.get(action.id)?.ms"
+          data-test-id="lowcode-action-ms-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          delay: {{ actionErrors.get(action.id)?.ms }}
         </p>
         <p
           v-if="actionErrors.get(action.id)?.to"
