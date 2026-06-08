@@ -7,6 +7,7 @@ import type { Color, GUID, Matrix, Vector } from '#core/types'
 import { stringToGuid } from './guid'
 import { serializeInstanceOverrides, serializeLowcodeFields } from './lowcode-plugin-data'
 import {
+  applyExportSettingsPluginData,
   mergePluginData,
   NODE_TYPE_PLUGIN_KEY,
   serializePluginRelaunchData,
@@ -666,6 +667,9 @@ export function sceneNodeToKiwiWithContext(
     size: exportNodeSize(node),
     transform: exportNodeTransform(context, node)
   }
+  if (node.type === 'GROUP') {
+    nc.resizeToFit = true
+  }
   // Only set strokeWeight/strokeAlign when the node has strokes in the scene
   // model. For imported nodes without strokes but with raw strokeWeight data
   // (e.g. text nodes, instance children with scaled strokes), the raw value
@@ -689,10 +693,14 @@ export function sceneNodeToKiwiWithContext(
   context.serializeVariableBindings(node, nc, context.graph, context.varIdToGuid)
   applyRawFigmaNodeFields(context, node, nc)
 
+  // Upstream §export: per-node export settings are upserted into node.pluginData
+  // in place; run it before the lowcode append so both ride the same merge.
+  applyExportSettingsPluginData(node)
   // Phase 1 §12: append lowcode pluginData entries (nodeType / state / bindings /
   // events / interactiveProps / renderCondition / documentState / freeLayout /
-  // supabaseConfig) before merge so they ride through the Kiwi codec. node.pluginData
-  // is never mutated — a freshly concatenated array is handed to mergePluginData.
+  // supabaseConfig) before merge so they ride through the Kiwi codec. The lowcode
+  // append never mutates node.pluginData — a freshly concatenated array is handed
+  // to mergePluginData.
   const lowcodeEntries = serializeLowcodeFields(node)
   // Phase 3 §8 v11: per-instance override table (needs the graph to resolve child
   // ids → stable master-child ids), appended alongside the other lowcode fields.

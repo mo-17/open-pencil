@@ -475,7 +475,8 @@
     },
     {
       "files": [
-        "scripts/**/*.ts"
+        "scripts/**/*.ts",
+        "tools/**/*.ts"
       ],
       "rules": {
         "no-console": "off"

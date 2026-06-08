@@ -15,6 +15,7 @@ export { convertEffects, convertFills, convertStrokes, setVariableColorResolver 
 export { convertLetterSpacing, convertLineHeight, mapTextDecoration } from './text-values'
 import {
   extractBoundVariables,
+  extractExportSettings,
   extractPluginRelaunchData,
   getOpenPencilPluginValue,
   LAYOUT_DIRECTION_PLUGIN_KEY,
@@ -532,6 +533,35 @@ function pluginDataLayoutOverrides(
   return out
 }
 
+/** Resolve the in-memory node type. A lowcode `nodeTypeOverride` (INPUT/BUTTON/…
+ *  from pluginData) wins; otherwise map the Figma type, classifying component
+ *  sets and plain groups. */
+function resolveNodeType(
+  nc: NodeChange,
+  nodeTypeOverride: NodeType | undefined
+): NodeType | 'DOCUMENT' | 'VARIABLE' {
+  const nodeType = nodeTypeOverride ?? mapNodeType(nc.type)
+  if (
+    (nodeType === 'FRAME' && isComponentSet(nc)) ||
+    getOpenPencilPluginValue(nc, NODE_TYPE_PLUGIN_KEY) === 'COMPONENT_SET'
+  ) {
+    return 'COMPONENT_SET'
+  }
+  // Figma stores plain groups as FRAME node-changes flagged with resizeToFit.
+  // Auto-layout "hug" frames instead use stackPrimarySizing/stackCounterSizing and
+  // always carry a stackMode, so guard on the absence of auto-layout — a real group
+  // never has one. This keeps component-sets and auto-layout frames from being
+  // misclassified as groups.
+  if (
+    nodeType === 'FRAME' &&
+    nc.resizeToFit === true &&
+    (nc.stackMode === undefined || nc.stackMode === 'NONE')
+  ) {
+    return 'GROUP'
+  }
+  return nodeType
+}
+
 export function nodeChangeToProps(
   nc: NodeChange,
   blobs: Uint8Array[]
@@ -557,13 +587,7 @@ export function nodeChangeToProps(
     gridPositionOverride
   })
 
-  let nodeType = nodeTypeOverride ?? mapNodeType(nc.type)
-  if (
-    (nodeType === 'FRAME' && isComponentSet(nc)) ||
-    getOpenPencilPluginValue(nc, NODE_TYPE_PLUGIN_KEY) === 'COMPONENT_SET'
-  ) {
-    nodeType = 'COMPONENT_SET'
-  }
+  const nodeType = resolveNodeType(nc, nodeTypeOverride)
 
   const vectorAndStrokeProps = convertVectorAndStrokeProps(nc, blobs)
 
@@ -604,6 +628,7 @@ export function nodeChangeToProps(
     expanded: true,
     autoRename: (nc.autoRename ?? true) as boolean,
     boundVariables: extractBoundVariables(nc),
+    exportSettings: extractExportSettings(nc),
     // Lowcode structured fields (state / bindings / events / interactiveProps /
     // renderCondition / documentState / supabaseConfig) + the lowcode-stripped
     // pluginData[] are absorbed here so the in-memory SceneNode keeps a single

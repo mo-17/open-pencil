@@ -54,3 +54,6 @@ scratch/
 
 # Ad-hoc compile-demo output
 /.compiler-output/
+
+# OpenCode
+.opencode/

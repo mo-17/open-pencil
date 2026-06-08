@@ -113,6 +113,6 @@ await fontManager.loadFont('Inter', 'SemiBold')
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const result = await io.writeDocument('fig', graph)
-const out = `${import.meta.dir}/../lowcode-v7-test.fig`
+const out = `${import.meta.dir}/../../../lowcode-v7-test.fig`
 await Bun.write(out, result.data as Uint8Array)
 console.log(`wrote ${out} (${(result.data as Uint8Array).byteLength} bytes)`)
