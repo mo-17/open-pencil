@@ -5319,6 +5319,43 @@ EventsPanel 是 1182 行扁平 monolith(id-keyed flat mutators over 顶层单层
 ### 10v10.3 实现状态 / Post-mortem
 **CODE COMPLETE 2026-06-05(`873fc615`,lowcode-rebaseline,pushed)。** GATE 收口 4 处:makeAction 复杂度→查表;ActionRow↔ActionList import cycle = Vue 递归组件惯例(2 处 surgical eslint-disable import/no-cycle);props 改 reactive 解构(define-props-destructuring);`.ts` type-aware lint 比 `.vue` 严(no-unnecessary-condition)→ `first()` helper 显式 T|undefined + 去多余 `?? ''`。全部 data-test-id 保留,无 E2E spec 依赖 → 零 E2E 回归。check:vue 0、`bun run check` exit 0、tsgo 0、jscpd 0。**真机画面 ACK 待用户**(bg job 驱动不了 GUI;vue-tsc 过=结构正确)。callWorkflow 仍 MCP-only(需工作流注册表面板);MCP 工具保持 bulk/深层授权权威兜底。**经验**:巨型 monolith Vue 面板拆递归=受控 v-model 链 + 纯函数抽 validation/factory;Vue 互递归 import/no-cycle 是合法域固有环;GUI 可视化哲学=看懂逻辑+微调,深层让 MCP 兜底,不必 100% 覆盖。
 
+## §10 v11 — 工作流可视化收尾:callWorkflow GUI + WorkflowsPanel 管理面板〔设计+实现 2026-06-08〕
+
+> 续 §10 v10 可视化主线,补齐工作流可视化最后一块——`callWorkflow` 是唯一仍 MCP-only 的 ActionDef kind(§10 v10 把它排除在 ACTION_KINDS 外,因「需工作流注册表面板」)。scope 按 prompt.md 候选 #1 + 用户「直接干推荐项」(未走 AskUserQuestion);**纯 GUI/app 层增量,零 core/compiler 改动**——数据模型(`WorkflowDef` params/paramDefaults/optionalParams + `CallWorkflowAction` workflowId/args)、collect inline 展开(§10 v4/v6/v7/v8)、`set_workflows`/`read_workflows` 工具全已就位,只缺 GUI 入口。
+
+### 10v11.1 现状与问题
+§10 v4-v8 把命名工作流(`root.lowcodeWorkflows`)+ 参数/默认实参/可选形参 + `callWorkflow` 传参全做进了数据模型、collect、工具,但**编辑器零入口**:工作流只能用 MCP `set_workflows` 创建,`callWorkflow` 连 ACTION_KINDS 都没有 → 用户无法在 GUI 里创建可复用工作流、也无法在事件链里调用它。可视化主线缺最后一块。
+
+### 10v11.2 关键决定
+| # | 决定 | 理由 |
+|---|---|---|
+| 1 | **根级 `WorkflowsPanel` + `WorkflowRow` 拆分**(host/row,镜像 ActionList/ActionRow) | 抄 DocumentStatePanel 的 useSceneComputed + updateNodeWithUndo 根节点模式;一工作流一 row 保各文件聚焦、避复杂度闸。 |
+| 2 | **工作流 actions 用同一递归 `ActionList` 编辑** | 工作流体就是 ActionDef 链(含嵌套 callWorkflow=工作流调工作流)→ 直接复用 §10 v10 递归编辑器,零新编辑路径。 |
+| 3 | **params + 每 param 可选 default-expr 编辑**(→ params + paramDefaults) | 让参数化工作流全 GUI 可建;default-expr 非空即进 paramDefaults。 |
+| 4 | **optionalParams 延后 MCP** | 「省略 arg → body 解析成字面 `undefined`」语义微妙,GUI 哲学=看懂逻辑+微调,深层让 MCP 兜底。 |
+| 5 | **`workflows` 串进 ActionList/ActionRow** | callWorkflow 下拉 + args 编辑器需可见工作流列表 + 选中工作流的 params;EventsPanel(节点事件)与 WorkflowsPanel(工作流体)两个根都注入 `root.lowcodeWorkflows`。 |
+
+### 10v11.3 实现拆解(全在 `src/components/properties/Lowcode/` + DesignPanel 挂载)
+- `action-factory.ts` — `callWorkflow` 进 `ACTION_KINDS`(工厂表已有该 arm,只需放进可见列表)。
+- `action-errors.ts` — `ActionValidationCtx` 加 `workflows`;`computeActionErrors` callWorkflow 臂:缺 workflowId / 未知 workflow / 必填 param(∉ paramDefaults ∧ ∉ optionalParams)缺 arg / arg 表达式非法 → `errors.workflow` + `errors.argErrors: Map<param,string>`(镜像 collect 的 missing-id/unknown/missing-arg/invalid-arg,cycle 是 collect-期全图检查,GUI 不做)。
+- `ActionRow.vue` — 新 `workflows` prop;`actionKindLabel` 加 'Call workflow';callWorkflow 臂 = 工作流 `<select>`(value=id,label=name)+ 选中工作流 params 的 args 编辑器(逐 param 一个表达式输入,必填/可选标注)。改 workflowId 时清 args(params 不同)。
+- `ActionList.vue` — 加 `workflows` prop,透传给 ActionRow。
+- `EventsPanel.vue` — `docWorkflows = root.lowcodeWorkflows`,传给 ActionList。
+- `WorkflowsPanel.vue`(新,根级)— 读 `root.lowcodeWorkflows`,渲染 WorkflowRow + add,commit 经 updateNodeWithUndo(空→undefined 保 round-trip 字节等价)。
+- `WorkflowRow.vue`(新)— 单工作流:name input + params 编辑(行:name + 可选 default-expr,param 名校验 `/^[A-Za-z_][A-Za-z0-9_]*$/` 去重 mirror 工具)+ 嵌套 ActionList(actions,带 workflows/pageStates[当前页]/docStates)+ 删除。emit update:workflow / remove。
+- `DesignPanel.vue` — empty 分支挂 `<WorkflowsPanel/>`(DocumentStatePanel 后)。
+
+### 10v11.4 成功标准
+GUI 可创建/改名/删工作流、加 params(+default)、用递归编辑器编工作流体;BUTTON/FORM 事件链可选 callWorkflow→选工作流→填 args;非法(缺工作流/必填 arg 缺/表达式错)行内红;round-trip 经 `lowcode/workflows` JSON 自动存活(零 codec)。check:vue 0 + `bun run check` exit 0 + tsgo 0 + jscpd 0。
+
+### 10v11.5 风险
+工作流体编辑器的 pageStates 取「当前页」近似(工作流被任意页调用、inline 展开按调用方作用域解析)——setState target 校验对当前页;表达式校验只查语法(params 引用天然通过),故近似无害,MCP 权威兜底。
+
+### 10v11.6 Post-mortem
+**CODE COMPLETE 2026-06-08(`a20e8989`,lowcode-rebaseline,pushed)。** 实现按设计落地,**零意外、零 hotfix、纯 GUI 零 core/compiler 改动**。新增 2 组件(WorkflowsPanel/WorkflowRow)+ 改 6 文件(ActionRow/ActionList/EventsPanel/action-factory/action-errors/DesignPanel)。GATE 收口 3 处(全 unicorn stylistic,oxlint 第 2 道 type-aware 轮抓):① `new Set(wf.optionalParams ?? [])` → `new Set(wf.optionalParams)`(`no-useless-collection-argument`——Set 构造器接受 undefined,空数组 fallback 多余,ActionRow + action-errors ×2);② `{ ...(action.args ?? {}) }` → `{ ...action.args }`(`no-useless-fallback-in-spread`——对象 spread undefined 是 no-op)。tsgo 0、check:vue 0、`bun run check` exit 0、jscpd 0。**真机画面 ACK 待用户**(bg job 驱动不了 GUI;vue-tsc 过=结构正确)。
+- **经验**:① 给递归动作编辑器加新 ActionDef kind 的「外部数据依赖」(workflows 列表)= 串 prop 进 ActionList/ActionRow 两端的**两个根**(EventsPanel 节点事件链 + WorkflowsPanel 工作流体),逐层透传,与 §10 v10 受控 v-model 链同型;② 空 fallback(`?? []` 给 `new Set`、`?? {}` 给对象 spread)被 unicorn `no-useless-*` 拦——构造器/spread 本就接受 undefined,直接去;③ **工作流体复用同一递归 `ActionList` 是最大省力点**——工作流调工作流(嵌套 callWorkflow)天然支持,零新编辑路径;④ 用 `Object.hasOwn` 判 Record 键存在(而非 `typeof x[k] === 'string'`)避开 `.ts` type-aware 的 no-unnecessary-condition(Record 索引访问 TS 判非 nullish)。
+- **§10 v12 follow-ups:** optionalParams GUI(当前 MCP-only);工作流体 pageStates 跨页精确化(当前取当前页近似);callWorkflow 直接自引用的 client-side cycle 提示(间接 cycle 仍由 collect 兜底);WorkflowsPanel collab presence target(本版省略以保零 core 改动)。
+
 ## §9 v10 — 译文覆盖率报告(编译期缺译报告,headless 部分)
 
 > §9 v7 / §9 v9 follow-up。助手推荐 §9 v10(用户「继续下一个 milestone」未走 AskUserQuestion;否决 §10 v9 toast 配置可配——边际价值低;否决 §8 v9 nested-instance prop-threading 大坑;否决 CF Pages 需 blake3 依赖)。封 §9 i18n 链的数据闭环:§9 v7 给了译文数据模型(`lowcodeTranslations`),但搭建者无从知道每个目标 locale 还缺哪些源串。scope = **编译期产出缺译报告 JSON(headless)**;覆盖率高亮 GUI 面板(读 in-graph 译文)+ RTL 源语言布局留真机/后续。
