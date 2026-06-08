@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { ActionDef, EventName, SceneNode } from '@open-pencil/core/scene-graph'
+import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -51,6 +51,13 @@ const docStates = useSceneComputed(() => {
   return root?.lowcodeDocumentState ?? []
 })
 
+// Phase 3 §10 v11 — named workflows live document-level on the root node; a
+// `callWorkflow` action row targets one by id and passes args to its params.
+const docWorkflows = useSceneComputed<WorkflowDef[]>(() => {
+  const root = editor.graph.getNode(editor.graph.rootId)
+  return root?.lowcodeWorkflows ?? []
+})
+
 const actions = useSceneComputed<ActionDef[]>(() => {
   const node = selectedNode.value
   const name = eventName.value
@@ -92,6 +99,7 @@ function commitActions(next: ActionDef[]): void {
       :actions="actions"
       :page-states="pageStates"
       :doc-states="docStates"
+      :workflows="docWorkflows"
       add-test-id="lowcode-action-add"
       @update:actions="commitActions"
     />

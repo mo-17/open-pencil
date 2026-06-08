@@ -3,7 +3,12 @@ import {
   validateExpression,
   validateUrlTemplate
 } from '@open-pencil/core/lowcode-validation'
-import type { ActionDef, SupabaseFilter, SupabasePayloadEntry } from '@open-pencil/core/scene-graph'
+import type {
+  ActionDef,
+  SupabaseFilter,
+  SupabasePayloadEntry,
+  WorkflowDef
+} from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 3 §10 v10 — pure per-action validation for the recursive workflow
@@ -35,12 +40,20 @@ export interface ActionErrors {
   message?: string
   ms?: string
   condExpr?: string
+  /** §10 v11 — the callWorkflow dropdown (missing / unknown workflow). */
+  workflow?: string
+  /** §10 v11 — per-parameter argument errors (required-missing / invalid expr),
+   *  keyed by the referenced workflow's formal parameter name. */
+  argErrors?: Map<string, string>
 }
 
 /** The valid-name sets the validators check targets against. */
 export interface ActionValidationCtx {
   validStateIds: ReadonlySet<string>
   validDocStateNames: ReadonlySet<string>
+  /** §10 v11 — document-level named workflows (`root.lowcodeWorkflows`), so a
+   *  `callWorkflow` row can validate its workflowId + required arguments. */
+  workflows: readonly WorkflowDef[]
 }
 
 type SupabaseAuthOp = Extract<ActionDef, { kind: 'supabaseAuth' }>['operation']
@@ -218,6 +231,35 @@ function controlFlowErrors(
   return r.ok ? {} : { message: r.reason ?? 'invalid expression' }
 }
 
+/** §10 v11 — `callWorkflow` leaf errors: the referenced workflow must exist and
+ *  every required parameter (one without a `paramDefaults` entry and not in
+ *  `optionalParams`) needs a non-empty, parseable argument expression. Mirrors
+ *  IR collect's missing-id / unknown / missing-arg / invalid-arg drops; the
+ *  cycle check is a collect-time whole-graph walk and stays out of the GUI. */
+function callWorkflowErrors(
+  action: Extract<ActionDef, { kind: 'callWorkflow' }>,
+  ctx: ActionValidationCtx
+): ActionErrors {
+  if (!action.workflowId) return { workflow: 'workflow required' }
+  const wf = ctx.workflows.find((w) => w.id === action.workflowId)
+  if (!wf) return { workflow: 'workflow no longer exists' }
+  const params = wf.params ?? []
+  const defaults = wf.paramDefaults ?? {}
+  const optional = new Set(wf.optionalParams)
+  const args = action.args ?? {}
+  const argErrors = new Map<string, string>()
+  for (const p of params) {
+    const raw = Object.hasOwn(args, p) ? args[p] : ''
+    if (raw.trim() !== '') {
+      const r = validateExpression(raw)
+      if (!r.ok) argErrors.set(p, r.reason ?? 'invalid expression')
+    } else if (!Object.hasOwn(defaults, p) && !optional.has(p)) {
+      argErrors.set(p, 'argument required')
+    }
+  }
+  return argErrors.size > 0 ? { argErrors } : {}
+}
+
 /** Compute the validation errors for one action (leaf-level only — branch
  *  children validate via their own rows). Mirrors `errorsFor` in IR collect. */
 export function computeActionErrors(action: ActionDef, ctx: ActionValidationCtx): ActionErrors {
@@ -234,5 +276,6 @@ export function computeActionErrors(action: ActionDef, ctx: ActionValidationCtx)
     return flatWorkflowErrors(action)
   }
   if (action.kind === 'condition' || action.kind === 'confirm') return controlFlowErrors(action)
+  if (action.kind === 'callWorkflow') return callWorkflowErrors(action, ctx)
   return {}
 }

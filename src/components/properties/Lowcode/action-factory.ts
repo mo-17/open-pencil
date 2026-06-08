@@ -24,8 +24,8 @@ export interface ActionFactoryCtx {
 }
 
 /** The kinds offered in the GUI kind selector. §10 v10 adds the `condition` /
- *  `confirm` control-flow kinds (now authorable via the recursive sub-editor).
- *  `callWorkflow` still needs a workflow-registry panel → MCP-only for now. */
+ *  `confirm` control-flow kinds; §10 v11 adds `callWorkflow` (now authorable via
+ *  the workflow dropdown + args editor, backed by the `WorkflowsPanel`). */
 export const ACTION_KINDS: ActionKind[] = [
   'setState',
   'navigate',
@@ -39,7 +39,8 @@ export const ACTION_KINDS: ActionKind[] = [
   'toast',
   'clipboard',
   'delay',
-  'stop'
+  'stop',
+  'callWorkflow'
 ]
 
 // Per-kind factory map — a lookup table (not a branch chain) so `makeAction`
@@ -73,8 +74,8 @@ const FACTORIES: Record<ActionKind, (id: string, ctx: ActionFactoryCtx) => Actio
   clipboard: (id) => ({ id, kind: 'clipboard', valueExpr: '' }),
   delay: (id) => ({ id, kind: 'delay', ms: 500 }),
   stop: (id) => ({ id, kind: 'stop' }),
-  // Not offered in ACTION_KINDS (needs a workflow-registry panel → MCP for now);
-  // present so the factory map stays total over ActionKind.
+  // §10 v11 — a fresh callWorkflow has no target yet; the row's workflow
+  // dropdown sets `workflowId` and the args editor fills `args`.
   callWorkflow: (id) => ({ id, kind: 'callWorkflow' })
 }
 

@@ -21,6 +21,7 @@ import StatePanel from './properties/Lowcode/StatePanel.vue'
 import SupabaseConfigPanel from './properties/Lowcode/SupabaseConfigPanel.vue'
 import TextBindingPanel from './properties/Lowcode/TextBindingPanel.vue'
 import TranslationsPanel from './properties/Lowcode/TranslationsPanel.vue'
+import WorkflowsPanel from './properties/Lowcode/WorkflowsPanel.vue'
 import PageSection from './properties/PageSection.vue'
 import PositionSection from './properties/PositionSection.vue'
 import StrokeSection from './properties/StrokeSection.vue'
@@ -145,6 +146,7 @@ const { panels } = useI18n()
     <StatePanel />
     <SupabaseConfigPanel />
     <DocumentStatePanel />
+    <WorkflowsPanel />
     <TranslationsPanel />
     <VariablesSection @open-dialog="variablesOpen = true" />
     <ExportSection />

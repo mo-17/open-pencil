@@ -7,7 +7,8 @@ import type {
   DocumentStateDef,
   StateDef,
   SupabaseFilter,
-  SupabasePayloadEntry
+  SupabasePayloadEntry,
+  WorkflowDef
 } from '@open-pencil/core/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
@@ -34,10 +35,12 @@ import ActionList from './ActionList.vue'
  * Controlled: takes the action via `action`, emits the edited replacement via
  * `update:action` (or `remove`). The parent list owns array identity.
  */
-const { action, pageStates, docStates } = defineProps<{
+const { action, pageStates, docStates, workflows } = defineProps<{
   action: ActionDef
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
+  /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
+  workflows: readonly WorkflowDef[]
 }>()
 
 const emit = defineEmits<{
@@ -61,7 +64,8 @@ const validDocStateNames = computed(() => new Set(docStates.map((d) => d.name)))
 const errors = computed<ActionErrors>(() =>
   computeActionErrors(action, {
     validStateIds: validStateIds.value,
-    validDocStateNames: validDocStateNames.value
+    validDocStateNames: validDocStateNames.value,
+    workflows
   })
 )
 
@@ -76,6 +80,7 @@ function actionKindLabel(kind: ActionKind): string {
   if (kind === 'supabaseAuth') return panels.value.lowcodeActionSupabaseAuth
   if (kind === 'condition') return 'If (condition)'
   if (kind === 'confirm') return 'Confirm'
+  if (kind === 'callWorkflow') return 'Call workflow'
   return kind
 }
 
@@ -127,6 +132,42 @@ function updateBranch(key: BranchKey, next: ActionDef[]): void {
     return
   }
   patch({ [key]: next.length > 0 ? next : undefined } as Partial<ActionDef>)
+}
+
+// §10 v11 — callWorkflow: the args editor renders one expression input per
+// formal parameter of the selected workflow, marking those that may be omitted
+// (a paramDefaults entry or optionalParams membership) as optional.
+interface CallWorkflowArg {
+  name: string
+  value: string
+  optional: boolean
+}
+const callWorkflowArgs = computed<CallWorkflowArg[]>(() => {
+  if (action.kind !== 'callWorkflow') return []
+  const wf = workflows.find((w) => w.id === action.workflowId)
+  if (!wf) return []
+  const defaults = wf.paramDefaults ?? {}
+  const optional = new Set(wf.optionalParams)
+  const args = action.args ?? {}
+  return (wf.params ?? []).map((name) => ({
+    name,
+    value: Object.hasOwn(args, name) ? args[name] : '',
+    optional: Object.hasOwn(defaults, name) || optional.has(name)
+  }))
+})
+
+function changeWorkflow(id: string): void {
+  // Switching workflows discards args — the previous workflow's parameter names
+  // no longer apply.
+  patch({ workflowId: id || undefined, args: undefined } as Partial<ActionDef>)
+}
+
+function setArg(param: string, value: string): void {
+  if (action.kind !== 'callWorkflow') return
+  const next: Record<string, string> = { ...action.args }
+  if (value.trim() === '') Reflect.deleteProperty(next, param)
+  else next[param] = value
+  patch({ args: Object.keys(next).length > 0 ? next : undefined } as Partial<ActionDef>)
 }
 </script>
 
@@ -431,6 +472,23 @@ function updateBranch(key: BranchKey, next: ActionDef[]): void {
         <span class="text-[11px] text-muted">stop the chain</span>
       </template>
 
+      <template v-else-if="action.kind === 'callWorkflow'">
+        <select
+          :value="action.workflowId ?? ''"
+          aria-label="Workflow"
+          :aria-invalid="errors.workflow ? 'true' : undefined"
+          data-test-id="lowcode-action-workflow"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+            errors.workflow ? 'border-red-500' : 'border-border'
+          ]"
+          @change="changeWorkflow(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">{{ workflows.length === 0 ? 'No workflows yet' : 'Select a workflow…' }}</option>
+          <option v-for="wf in workflows" :key="wf.id" :value="wf.id">{{ wf.name }}</option>
+        </select>
+      </template>
+
       <button
         type="button"
         data-test-id="lowcode-action-remove"
@@ -676,6 +734,7 @@ function updateBranch(key: BranchKey, next: ActionDef[]): void {
         :actions="action.onSuccess ?? []"
         :page-states="pageStates"
         :doc-states="docStates"
+        :workflows="workflows"
         add-test-id="lowcode-action-on-success-add"
         @update:actions="updateBranch('onSuccess', $event)"
       />
@@ -684,6 +743,7 @@ function updateBranch(key: BranchKey, next: ActionDef[]): void {
         :actions="action.onError ?? []"
         :page-states="pageStates"
         :doc-states="docStates"
+        :workflows="workflows"
         add-test-id="lowcode-action-on-error-add"
         @update:actions="updateBranch('onError', $event)"
       />
@@ -699,6 +759,7 @@ function updateBranch(key: BranchKey, next: ActionDef[]): void {
         :actions="action.consequent"
         :page-states="pageStates"
         :doc-states="docStates"
+        :workflows="workflows"
         add-test-id="lowcode-action-consequent-add"
         @update:actions="updateBranch('consequent', $event)"
       />
@@ -707,10 +768,50 @@ function updateBranch(key: BranchKey, next: ActionDef[]): void {
         :actions="action.alternate ?? []"
         :page-states="pageStates"
         :doc-states="docStates"
+        :workflows="workflows"
         add-test-id="lowcode-action-alternate-add"
         @update:actions="updateBranch('alternate', $event)"
       />
     </div>
+
+    <!-- §10 v11 callWorkflow args: one expression input per formal parameter of
+         the selected workflow (caller-scope expressions). -->
+    <div
+      v-if="action.kind === 'callWorkflow' && callWorkflowArgs.length > 0"
+      data-test-id="lowcode-action-workflow-args"
+      class="flex flex-col gap-1 border-l border-border pl-2"
+    >
+      <label class="text-[10px] text-muted">arguments</label>
+      <div v-for="arg in callWorkflowArgs" :key="arg.name" class="flex flex-col gap-0.5">
+        <div class="flex items-center gap-1">
+          <label class="w-20 shrink-0 truncate text-[11px] text-muted" :title="arg.name">{{ arg.name }}</label>
+          <input
+            :value="arg.value"
+            :aria-label="`Argument ${arg.name}`"
+            :aria-invalid="errors.argErrors?.has(arg.name) ? 'true' : undefined"
+            data-test-id="lowcode-action-workflow-arg"
+            spellcheck="false"
+            :placeholder="arg.optional ? 'optional' : 'expression'"
+            :class="[
+              'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+              errors.argErrors?.has(arg.name) ? 'border-red-500' : 'border-border'
+            ]"
+            @change="setArg(arg.name, ($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <p
+          v-if="errors.argErrors?.has(arg.name)"
+          data-test-id="lowcode-action-workflow-arg-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          {{ arg.name }}: {{ errors.argErrors?.get(arg.name) }}
+        </p>
+      </div>
+    </div>
+
+    <p v-if="errors.workflow" data-test-id="lowcode-action-workflow-error" class="pl-1 text-[10px] text-red-500">
+      workflow: {{ errors.workflow }}
+    </p>
 
     <p v-if="errors.email" data-test-id="lowcode-action-auth-email-error" class="pl-1 text-[10px] text-red-500">
       email: {{ errors.email }}
