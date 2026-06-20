@@ -65,6 +65,11 @@ interface BuildPageOptions {
   /** Phase 3 §15: the active UI kit (or null). Rewrites interactive tags to kit
    *  components + emits their imports. */
   uiKit: UiKitAdapter | null
+  /** Phase 4 §16.1: true when this page is rendered inside the multi-page
+   *  `<BrowserRouter>` (so `useParams()` has a router context). Route-param
+   *  reads (`$params`) only emit when true — single-page `App.tsx` has no
+   *  router, so it never imports `useParams`. */
+  routerAvailable: boolean
 }
 
 interface BuildAppOptions {
@@ -91,6 +96,9 @@ interface BuildAppOptions {
   componentImportPrefix?: string
   /** Phase 3 §15: the active UI kit (or null → plain HTML, byte-identical). */
   uiKit?: UiKitAdapter | null
+  /** Phase 4 §16.1: see `BuildPageOptions.routerAvailable`. Defaults to false
+   *  (single-page `App.tsx` has no router); `buildPageModule` passes true. */
+  routerAvailable?: boolean
 }
 
 /**
@@ -108,7 +116,9 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? './_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? './_lowcode_confirm',
     componentImportPrefix: options.componentImportPrefix ?? './components/',
-    uiKit: options.uiKit ?? null
+    uiKit: options.uiKit ?? null,
+    // Single-page App.tsx is not wrapped in a router → no `useParams` context.
+    routerAvailable: false
   })
 }
 
@@ -126,7 +136,9 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? '../_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? '../_lowcode_confirm',
     componentImportPrefix: options.componentImportPrefix ?? '../components/',
-    uiKit: options.uiKit ?? null
+    uiKit: options.uiKit ?? null,
+    // Multi-page modules render inside `<BrowserRouter>` → `useParams` is valid.
+    routerAvailable: true
   })
 }
 
@@ -166,12 +178,20 @@ ${routes}
  * wrapper div.
  */
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix, uiKit } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix, uiKit, routerAvailable } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
   const needsNavigate = pageHasNavigateHandler(ir)
-  const routerImport = needsNavigate
-    ? `import { useNavigate } from 'react-router-dom'\n`
+  // Phase 4 §16.1: route params (`$params`) only resolve inside the multi-page
+  // router; single-page App.tsx has no router context.
+  const usesRouteParams = routerAvailable && ir.usesRouteParams
+  // Both `useNavigate` and `useParams` come from react-router-dom — emit a
+  // single named import with whichever the page needs.
+  const routerNames: string[] = []
+  if (needsNavigate) routerNames.push('useNavigate')
+  if (usesRouteParams) routerNames.push('useParams')
+  const routerImport = routerNames.length > 0
+    ? `import { ${routerNames.join(', ')} } from 'react-router-dom'\n`
     : ''
   const lowcodeStateImport = buildLowcodeStateImport(ir, lowcodeStateImportPath)
   const lowcodeSupabaseImport = pageUsesSupabase(ir)
@@ -203,13 +223,16 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''
+  // Phase 4 §16.1: hoist `const $params = useParams()` so page expressions can
+  // read `$params.<name>`. Route params are read-only strings (or undefined).
+  const routeParamsLine = usesRouteParams ? '  const $params = useParams()' : ''
   const docStateReadLines = ir.docStateReads
     .map((name) => `  const ${name} = useDocState(${JSON.stringify(name)})`)
     .join('\n')
   // §9 v3: a `const intl = useIntl()` hook for any translated attribute.
   const intlHookLine = usesIntlAttr ? '  const intl = useIntl()' : ''
 
-  const hookLines = [stateLines, docStateReadLines, navigateLine, intlHookLine]
+  const hookLines = [stateLines, docStateReadLines, navigateLine, routeParamsLine, intlHookLine]
     .filter((l) => l !== '')
     .join('\n')
 

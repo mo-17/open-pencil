@@ -285,6 +285,19 @@ const EMPTY_SCOPE: ReadonlySet<string> = new Set()
 const EMPTY_DOCSTATES: ReadonlyMap<string, IRDocStateDecl> = new Map()
 const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
 
+/** Phase 4 §16.1: the route-params built-in. An expression may read
+ *  `$params.<name>` anywhere a docState read is allowed; the member name is not
+ *  validated (mirrors `$currentUser.email`), since `useParams()` returns
+ *  `string | undefined` per key at runtime. `$` is a reserved name prefix
+ *  (`validateStateName` rejects it) so it can't collide with a user state /
+ *  docState. */
+export const ROUTE_PARAMS_IDENT = '$params'
+
+/** Identifiers accepted by `unknownIdentifiers` without being a state / docState
+ *  / in-scope name. Currently just the route-params built-in; §16.4 will add
+ *  `$query` here in parallel. */
+const BUILTIN_READ_IDENTS: ReadonlySet<string> = new Set([ROUTE_PARAMS_IDENT])
+
 /** Identifiers referenced by an expression that match neither a declared
  *  page state, an in-scope identifier, nor a Document State. Used by
  *  `resolveTextBinding` (kind=expr), the renderCondition resolver in
@@ -307,6 +320,9 @@ export function unknownIdentifiers(
     if (stateNames.has(ref)) continue
     if (inScope.has(ref)) continue
     if (docStates.has(ref)) continue
+    // Phase 4 §16.1: route-params (`$params`) built-in — allowed everywhere a
+    // read-context expression is, resolved at emit to `useParams()`.
+    if (BUILTIN_READ_IDENTS.has(ref)) continue
     out.push(ref)
   }
   return out
@@ -314,7 +330,13 @@ export function unknownIdentifiers(
 
 /** Phase 2 §4: record every reference that resolves to a Document State into
  *  `docStateReads`, so the page component emits a `const x = useDocState('x')`
- *  local for it. A no-op when `docStateReads` is undefined. */
+ *  local for it. A no-op when `docStateReads` is undefined.
+ *
+ *  Phase 4 §16.1: this is also the single chokepoint where every accepted
+ *  expression's references flow through, so the route-params built-in
+ *  (`$params`) rides the same set. `collectTree` extracts it out into the
+ *  `usesRouteParams` flag afterwards (see `extractRouteParamsUse`), keeping
+ *  `docStateReads` itself pure doc-states for the emit consumers. */
 export function registerDocStateReads(
   references: Iterable<string>,
   docStates: ReadonlyMap<string, IRDocStateDecl>,
@@ -322,7 +344,7 @@ export function registerDocStateReads(
 ): void {
   if (!docStateReads) return
   for (const ref of references) {
-    if (docStates.has(ref)) docStateReads.add(ref)
+    if (docStates.has(ref) || ref === ROUTE_PARAMS_IDENT) docStateReads.add(ref)
   }
 }
 

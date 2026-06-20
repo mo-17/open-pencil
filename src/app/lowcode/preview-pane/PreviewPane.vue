@@ -80,6 +80,9 @@ function getPagePathInfos(): readonly PagePathInfo[] {
   const stubs: IRTree[] = store.graph.getPages().map((p) => ({
     pageId: p.id,
     pageName: p.name,
+    // §16.1: route params are irrelevant to slug derivation; dynamic-route
+    // preview navigation is a real-machine follow-up, so the stub stays minimal.
+    usesRouteParams: false,
     children: [],
     states: [],
     docStates: [],

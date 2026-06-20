@@ -54,6 +54,18 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedPage.state).toEqual(state)
   })
 
+  test('Phase 4 §16.1: page-level lowcodeRoutePattern round-trips through .fig', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(page.id, { lowcodeRoutePattern: '/product/:id' })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const reimportedPage = reimported.getPages()[0]
+
+    expect(reimportedPage.lowcodeRoutePattern).toBe('/product/:id')
+  })
+
   test('BUTTON with events + interactiveProps round-trips through .fig (including NodeType)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
@@ -272,6 +284,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedPage.events).toBeUndefined()
     expect(reimportedPage.interactiveProps).toBeUndefined()
     expect(reimportedPage.renderCondition).toBeUndefined()
+    expect(reimportedPage.lowcodeRoutePattern).toBeUndefined()
     expect(reimportedRect.state).toBeUndefined()
     expect(reimportedRect.bindings).toBeUndefined()
     expect(reimportedRect.renderCondition).toBeUndefined()

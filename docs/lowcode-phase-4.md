@@ -213,7 +213,41 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **navigate 带参**:`navigate("/product/" + id)` / `navigate({ to, params })` —— NavigateAction 扩 params 字段(emit 拼接或 generatePath)。
 - **路由守卫(auth guard)**:页面标 `requiresAuth` → emit 包一层 redirect-if-unauthed(复用 §2.v2 `useSupabaseAuth`)。
 
-**类型**:headless emit + scene-graph/round-trip(route pattern + requiresAuth 进 page-level pluginData,类比 §7 responsiveOverrides);量级**中-大**,值得单独锁设计。**待锁**:route pattern 数据归属(page node 字段 vs 文档级路由表);params 进表达式的 read-context 命名;守卫的 redirect 目标(登录页约定)。**经验 E 必用**(跨 router/IR/emit/round-trip/表达式)。
+**类型**:headless emit + scene-graph/round-trip(route pattern + requiresAuth 进 page-level pluginData,类比 §7 responsiveOverrides);量级**中-大**,值得单独锁设计。**经验 E 必用**(跨 router/IR/emit/round-trip/表达式)。
+
+### §16 拆分(连续 sub-version,契合「一个一个来」,每步 headless 验 + `bun run check` 绿)
+
+- **§16.1 动态路由段 + `useParams` 参数进表达式**(地基)—— 本节详写,下方
+- **§16.2 navigate 带参**:`NavigateAction` 扩 `params?: Record<param, exprString>` → emit `navigate(generatePath("/product/:id", { id }))`,从详情链路点入
+- **§16.3 路由守卫(auth guard)**:页 `requiresAuth` → emit 包 redirect-if-unauthed(复用 §2.v2 `useSupabaseAuth().user` / `$currentUser`);**待锁**:redirect 目标约定(登录页 slug vs 显式字段)
+- **§16.4 query string**:`useSearchParams` 读(`$query.foo`,与 §16.1 `$params` 命名空间平行)+ 写
+
+### §16.1 详细设计 + 锁定决定(2026-06-21,AskUserQuestion 锁定)
+
+> **目标**:页面可声明 `/product/:id` 动态路由,路由参数经 `$params.id` 在表达式子语言里可读(文本插值 / 绑定 / renderCondition / 未来 supabaseQuery where-clause)。把「多页静态站」升级成「能做详情页/仪表盘的真应用」的地基。
+
+**现状坐实(经验 Q/E,直接读源)**:
+- `derivePagePaths`(`adapters/react/route-paths.ts`)按 slug 派生 `route`(首页 `/`,其余 `/<slug>`);`buildRouterApp`(scaffold.ts:137)emit `<BrowserRouter><Routes><Route path={route} element={<Page/>}/></Routes>`;`buildPageFile` 按 `pageHasNavigateHandler` emit `useNavigate` + `import { useNavigate } from 'react-router-dom'`。
+- 表达式只读上下文:`unknownIdentifiers`(bindings.ts:297)对 `states`/`inScope`/`docStates` 解析;`$currentUser` 经 `currentUserBuiltIn()` 注册成 docState(emit `useDocState`)。成员访问根标识符(`$currentUser.email` 的根 `$currentUser`)走 docStates 校验。
+- 页级字段挂 CANVAS 节点(per-page `state?: StateDef[]`),round-trip = `serializeLowcodeFields(page)`(export.ts:267 序列化)+ `assignImportedLowcodeFields`(import.ts:26 吸收)+ `assignLowcodeField`(extract 分发)。
+
+**锁定决定**:
+1. **〔Fork 1 锁定〕route pattern 数据归属 = 页 CANVAS 节点字段**。新 `SceneNode.lowcodeRoutePattern?: string`(页级,镜像 per-page `state`);round-trip 走新 `lowcode/routePattern` key(`serializeLowcodeFields` + `assignLowcodeField` + `assignImportedLowcodeFields`,与 `state` 同路径)。否决文档级路由表(与 per-page state 模型分叉 + 多一层 pageId→pattern 间接)。
+2. **〔Fork 2 锁定〕路由参数命名 = `$params.<name>` 命名空间内置只读源**。`$params` 注册为内置只读标识符(镜像 `$currentUser` 但 emit 不同),`unknownIdentifiers` 经 `BUILTIN_READ_IDENTS` 接受;页用到 `$params` 时 emit `const $params = useParams()` + `import { useParams }`。成员名(`.id`)不校验(同 `$currentUser.email` 先例,运行时 `useParams()` 返回 `string|undefined`)。否决裸名 `id`(与同名 state/docState 碰撞 + 需从 pattern 抽参数名列表)。
+
+**实现(经验 E 跨 router/IR/emit/round-trip/表达式;经验 M 改 core 必 build:packages 再 lint)**:
+- **数据模型**(`scene-graph/types.ts`):`SceneNode.lowcodeRoutePattern?: string`(页级,注释类比 `state`)。
+- **round-trip**(`kiwi/fig/node-change/lowcode-plugin-data.ts`):`LOWCODE_ROUTE_PATTERN_KEY='lowcode/routePattern'` 入 `LOWCODE_PLUGIN_KEYS`;`serializeLowcodeFields` 加 `typeof===string && !==''` gate(非路由页 byte-identical);`ExtractedLowcodeAndPluginData.lowcodeRoutePattern?`;`assignLowcodeField` 加 case(string 守卫);`import.ts assignImportedLowcodeFields` 加一行(页/根经此吸收)。
+- **IR**(`ir/types.ts` + `ir/collect/tree.ts`):`IRTree.routePattern?: string`;collectTree 从 `page.lowcodeRoutePattern` lift + 校验(非空 + `/` 开头,否则 warn `route-pattern-invalid` + 回退 undefined → slug 派生)。`routeParamReads: Set<string>` 跟踪(镜像 `docStateReads`,在每个 `registerDocStateReads` 旁加 `registerRouteParamReads`,经验 A 穷举所有表达式上下文);`IRTree.usesRouteParams = routeParamReads.size > 0`。
+- **表达式校验**(`ir/collect/bindings.ts`):`ROUTE_PARAMS_IDENT='$params'` + `BUILTIN_READ_IDENTS=new Set([ROUTE_PARAMS_IDENT])`,`unknownIdentifiers` 循环加 `if (BUILTIN_READ_IDENTS.has(ref)) continue`(单点全 caller 覆盖);`registerRouteParamReads(refs, set)` helper。
+- **emit**(`adapters/react/route-paths.ts` + `scaffold.ts`):`derivePagePaths` 的 `route = ir.routePattern ?? (slug==='index'?'/':'/'+slug)`(slug/file/component 仍从 pageName,pattern 只改 route);`buildPageFile` 把 react-router 具名 import 合并(`useNavigate` if needsNavigate / `useParams` if `ir.usesRouteParams`)+ emit `const $params = useParams()` 进 hookLines。`buildRouterApp` 的 `<Route path>` 自动用 PagePathInfo.route(= pattern)。
+- **零碰**:navigate 仍字面(§16.2 才扩);单页 compile 无 router → 有 routePattern 也无意义(但 round-trip 仍存,无害)。
+
+**成功标准(headless)**:
+1. kiwi round-trip:页 `lowcodeRoutePattern` 经 exportFigFile→parseFigFile 存活;无字段时 byte-identical。
+2. compiler:页声明 `/product/:id` → `<Route path="/product/:id">`;页内 `$params.id` 文本插值 → `const $params = useParams()` + `import { useParams }` + emit `$params.id`;非法 pattern → warn + slug 回退;无 routePattern/无 `$params` → byte-identical(既有测试零改)。
+3. `bun run check` exit 0;tsgo 0;kiwi 119+ / compiler 全绿基准不回归。
+4. **真机验 pending**:`open-pencil build` 导出的多页应用在浏览器实际按 `/product/123` 路由 + `$params.id` 渲染 123(headless 仅断言 emit 串)。
 
 ## §17 列表绑真实数据源 + 分页 / 排序 / 筛选
 

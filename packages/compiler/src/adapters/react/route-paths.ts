@@ -52,7 +52,11 @@ export function derivePagePaths(irs: readonly IRTree[]): PagePathInfo[] {
       slug = `${originalSlug}-${i}`
     }
     used.add(slug)
-    const route = slug === 'index' ? '/' : `/${slug}`
+    // Phase 4 §16.1: a page may declare an explicit dynamic route pattern
+    // (`/product/:id`); it overrides the slug-derived path. The slug / file /
+    // component name still derive from the page name (the pattern only changes
+    // the `<Route path>`).
+    const route = ir.routePattern ?? (slug === 'index' ? '/' : `/${slug}`)
     out.push({
       ir,
       pageId: ir.pageId,

@@ -561,6 +561,14 @@ export interface SceneNode {
   // by id via a `CallWorkflowAction`; the compiler expands the chain inline at
   // each call site. Persisted via §12 pluginData under `lowcode/workflows`.
   lowcodeWorkflows?: WorkflowDef[]
+  // ── Lowcode (Phase 4 §16.1) — dynamic routing ──
+  // Page-level (CANVAS node) route pattern, e.g. `/product/:id`. Like per-page
+  // `state`, only a page node carries this in practice. When set, the multi-page
+  // router emits `<Route path="<pattern>">` instead of the slug-derived path, and
+  // any page expression may read `$params.<name>` (compiled to `useParams()`).
+  // Absent ≡ slug-derived route (`/` first page, `/<slug>` others). Persisted
+  // via §12 pluginData under `lowcode/routePattern`.
+  lowcodeRoutePattern?: string
 }
 
 // ── Lowcode (Phase 3 §9 v7) ──

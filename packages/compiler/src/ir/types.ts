@@ -545,6 +545,15 @@ export interface IRTree {
   /** Page name from the scene graph. Currently unused by the adapter, but
    *  reserved for multi-page routing in Phase 1. */
   pageName: string
+  /** Phase 4 §16.1: page-level dynamic route pattern (e.g. `/product/:id`),
+   *  lifted + validated from the page node's `lowcodeRoutePattern`. When set,
+   *  the multi-page router emits `<Route path="<pattern>">` instead of the
+   *  slug-derived path. Undefined ≡ slug-derived route. */
+  routePattern?: string
+  /** Phase 4 §16.1: true when any page expression reads a route parameter via
+   *  `$params.<name>`. The multi-page adapter then emits a
+   *  `const $params = useParams()` hook + the `useParams` import. */
+  usesRouteParams: boolean
   /** Top-level children of the page. */
   children: IRNode[]
   /** Page-scoped state declarations the adapter must hoist into the component. */

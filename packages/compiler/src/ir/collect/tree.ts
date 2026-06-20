@@ -46,6 +46,7 @@ import {
   resolveEvents,
   resolveTextBinding,
   resolveValueBinding,
+  ROUTE_PARAMS_IDENT,
   unknownIdentifiers
 } from './bindings'
 import { type ComponentRegistry, type ComponentSlot, instanceHasDeepOverride, overrideKind } from './components'
@@ -93,6 +94,7 @@ export function collectTree(
     return {
       pageId,
       pageName: 'Page',
+      usesRouteParams: false,
       children: [],
       states,
       docStates,
@@ -103,6 +105,8 @@ export function collectTree(
       warnings
     }
   }
+  // Phase 4 §16.1: page-level dynamic route pattern (`/product/:id`), validated.
+  const routePattern = liftRoutePattern(page, pageId, warnings)
 
   const ctx: WalkCtx = {
     graph,
@@ -123,9 +127,17 @@ export function collectTree(
     if (ir) children.push(ir)
   }
 
+  // Phase 4 §16.1: `$params` rode `docStateReads` during the walk (the single
+  // expression chokepoint). Extract it out into a flag so `docStateReads` stays
+  // pure doc-states for the emit consumers. `Set.delete` returns whether it was
+  // present.
+  const usesRouteParams = docStateReads.delete(ROUTE_PARAMS_IDENT)
+
   return {
     pageId,
     pageName: page.name || 'Page',
+    routePattern,
+    usesRouteParams,
     children,
     states,
     docStates,
@@ -135,6 +147,27 @@ export function collectTree(
     translations,
     warnings
   }
+}
+
+/** Phase 4 §16.1: lift + validate a page's dynamic route pattern. Returns the
+ *  pattern verbatim when it's a non-empty string starting with `/`; warns and
+ *  returns undefined (→ slug-derived route) otherwise. */
+function liftRoutePattern(
+  page: SceneNode,
+  pageId: string,
+  warnings: IRWarning[]
+): string | undefined {
+  const raw = page.lowcodeRoutePattern
+  if (typeof raw !== 'string' || raw === '') return undefined
+  if (!raw.startsWith('/')) {
+    warnings.push({
+      code: 'route-pattern-invalid',
+      message: `page route pattern "${raw}" must start with "/"; falling back to the slug-derived route`,
+      nodeId: pageId
+    })
+    return undefined
+  }
+  return raw
 }
 
 /**

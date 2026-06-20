@@ -98,6 +98,10 @@ export const LOWCODE_WORKFLOWS_KEY = 'lowcode/workflows'
  *  `reapplyInstanceOverrides` after `populateInstances`. */
 export const LOWCODE_OVERRIDES_KEY = 'lowcode/overrides'
 
+/** Phase 4 §16.1: page-level (CANVAS) route pattern, e.g. `/product/:id`. A
+ *  non-empty string on a page node; absent → slug-derived route. */
+export const LOWCODE_ROUTE_PATTERN_KEY = 'lowcode/routePattern'
+
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
   'INPUT',
@@ -130,7 +134,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_RESPONSIVE_OVERRIDES_KEY,
   LOWCODE_TRANSLATIONS_KEY,
   LOWCODE_WORKFLOWS_KEY,
-  LOWCODE_OVERRIDES_KEY
+  LOWCODE_OVERRIDES_KEY,
+  LOWCODE_ROUTE_PATTERN_KEY
 ])
 
 /**
@@ -198,6 +203,11 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // byte-identical.
   if (isNonEmpty(node.lowcodeWorkflows)) {
     entries.push(makeEntry(LOWCODE_WORKFLOWS_KEY, node.lowcodeWorkflows))
+  }
+  // Phase 4 §16.1: page-level route pattern (page node only). Empty/absent
+  // string writes nothing → non-routed pages stay byte-identical.
+  if (typeof node.lowcodeRoutePattern === 'string' && node.lowcodeRoutePattern !== '') {
+    entries.push(makeEntry(LOWCODE_ROUTE_PATTERN_KEY, node.lowcodeRoutePattern))
   }
   return entries
 }
@@ -378,6 +388,10 @@ export interface ExtractedLowcodeAndPluginData {
    *  onto the root via `assignImportedLowcodeFields`; on regular nodes it flows
    *  through `...lowcodeRest` (harmless — root-only in practice). */
   lowcodeWorkflows?: WorkflowDef[]
+  /** Phase 4 §16.1: page-level route pattern (page node only). Restored onto the
+   *  page via `assignImportedLowcodeFields`; on regular nodes it flows through
+   *  `...lowcodeRest` (harmless — page-only in practice). */
+  lowcodeRoutePattern?: string
   /** Phase 3 §8 v11: per-instance override snapshot (keyed by master-child id).
    *  Flows onto the node via `...lowcodeRest` as `pendingInstanceOverrides`, then
    *  `reapplyInstanceOverrides` remaps it after populate. */
@@ -466,9 +480,9 @@ function assignLowcodeField(
       if (isLowcodeWorkflows(value)) target.lowcodeWorkflows = value
       return
     default:
-      // Layout round-trip fixes (axis sizing / counter-align / grid placement)
-      // and §7 responsive overrides — grouped out to keep this switch under
-      // the complexity limit.
+      // Layout round-trip fixes (axis sizing / counter-align / grid placement),
+      // §7 responsive overrides, and the §16.1 route pattern — grouped out to
+      // keep this switch under the complexity limit.
       assignLowcodeLayoutFix(target, key, value)
   }
 }
@@ -496,6 +510,13 @@ function assignLowcodeLayoutFix(
       // Light guard (non-null, non-array object); remapped onto cloned children by
       // `reapplyInstanceOverrides` after populate, where unknown paths just no-op.
       if (isPlainRecord(value)) target.pendingInstanceOverrides = value
+      return
+    case LOWCODE_ROUTE_PATTERN_KEY:
+      // Phase 4 §16.1: page-level route pattern. Light guard (string). Pattern
+      // well-formedness (leading `/`) is checked by the compiler's collectTree,
+      // which warns + falls back to the slug route for malformed values — so a
+      // stray non-`/` string is harmless here.
+      if (typeof value === 'string') target.lowcodeRoutePattern = value
   }
 }
 
