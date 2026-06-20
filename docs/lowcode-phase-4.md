@@ -44,24 +44,34 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 
 | # | feature | 类型 | 优先级 | 简述 | 与 phase-3 关系 | 详写 |
 |---|---|---|---|---|---|---|
-| 1 | **§15 FRAME→Card 容器映射** | headless emit | **高(推荐起点)** | 容器型 FRAME(有 padding/背景/圆角)→ shadcn `Card`/`CardHeader`/`CardContent`,而非裸 `<div>` | phase-3 §15 设计标为「Phase B 可选」**但未实现**;本 phase 实现 | §15 |
-| 2 | **§15 Phase C array checkbox-group** | headless emit | **高** | array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版)| phase-3 §15 Phase A/B 后的下一档,未起头 | §15 |
-| 3 | **§9 v15 RTL 逻辑属性(ms-/me-)** | headless emit(有回归面)| 中 | margin/padding 物理方向 → `ms-`/`me-`/`ps-`/`pe-` 逻辑属性,RTL locale 自动镜像 | **§9 v11 已做 dir-flip**;v15 是逻辑属性镜像,是 v11 之上**新增**(非重复)| §9 |
-| 4 | **§14 跨文件组件库 / 团队库** | headless(大)| 中 | 组件跨 .fig 文件复用 / 团队共享库 / 更新传播(Figma Team Library 语义)| **phase-3 §14 已有完整设计但标〔未实现〕**;本 phase 才实现 | §14 |
-| 5 | **更多 deploy providers(Cloudflare Pages 等)** | headless | 中 | Netlify/Vercel 已完整;CF Pages 直传需 **blake3**(Web Crypto 只有 SHA-\*)→ 违零依赖,**开工前必须 AskUserQuestion** | phase-3 §10 v7/v8/§7 v2 多次因 blake3 否决 CF Pages,留到本 phase 决策 | §5 |
-| 6 | **编辑器实时 preview i18n / ui-kit toggle** | 真机 GUI | 高(真机)| `src/app/lowcode/preview-pane/use-compile-on-change.ts` 硬编码 `withDefaults`(无 i18n/uiKit)→ app 内 preview 看不到 i18n/shadcn。加 toggle | phase-3 §9 v13(CLI flags)修了 CLI 入口,**编辑器 preview 入口仍缺**;§15 Phase A 注明 preview 不带 uiKit | §9 / §15 |
-| 7 | **§7 / §8 / §10 编辑器授权面板(GUI)** | 真机 GUI | 中(真机)| §7 responsive overrides 编辑面板;§8 component-props 面板;§10 optionalParams GUI(当前 MCP-only)| 三条线在 phase-3 **均显式「GUI 延后」**(沿用「先 emit/headless,GUI 真机」先例)| §7 / §8 / §10 |
-| 8 | **§10 工作流体跨页 pageStates 精确** | headless | 低 | 工作流体当前取**当前页** pageStates 近似;跨页 callWorkflow 时应按目标页解析 | phase-3 §10 v11 已闭合 GUI 链,此为已知小缺口 | §10 |
-| 9 | **lowcode 字段升格 Kiwi schema** | 工程债 | 低 | pluginData 旁路通道稳定;升格成本高(fork vendored `kiwi-schema/` + 通道重写 + 老 .fig 迁移),收益仅清债 | phase-3 §1.1 候选 5 / §6 的纯 **carry-over**(继续推迟)| §6 |
+| 1 | **§15 FRAME→Card 容器映射** | headless emit | **高(最快起点)** | 容器型 FRAME(有 padding/背景/圆角)→ shadcn `Card`/`CardHeader`/`CardContent`,而非裸 `<div>` | phase-3 §15 设计标为「Phase B 可选」**但未实现**;本 phase 实现 | §15 |
+| 2 | **§16 动态路由 / 路由参数 / 路由守卫** ⭐ | headless emit(中-大)| **高(最高产品价值)** | router 现仅字面跳(`navigate("/about")`);加 `/product/:id` 动态段 + `useParams` 绑定 + query string + navigate 带参 + auth-guarded 路由 | **react-router 多页已在**(Phase 1/2);动态段/参数/守卫是新增,**做不了详情页/仪表盘的最大缺口** | §16 |
+| 3 | **§15 Phase C array checkbox-group** | headless emit | 高 | array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版)| phase-3 §15 Phase A/B 后的下一档,未起头 | §15 |
+| 4 | **§17 列表绑真实数据源 + 分页/排序/筛选** | headless emit(中)| 中-高 | repeater 直接绑 Supabase query 结果(Bubble repeating-group)+ 分页/排序/筛选 UI | LIST 现仅绑 state 本地 array(Phase 0 #7);扩到 query + 分页是新增,**当前要 supabaseQuery→setState→LIST 间接绕且无分页** | §17 |
+| 5 | **§19 表单校验** | headless emit(中)| 中 | input 节点 required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截 | FORM 节点在但**无校验**;复用 §3.v6 InteractiveProps 框架 | §19 |
+| 6 | **§18 文件 / 图片上传(Supabase Storage)** | headless emit(中,动 scene-graph)| 中 | 上传控件 + Supabase Storage `upload` + `getPublicUrl` + 进度/预览 | **app 级上传零实现**(代码只有 deploy 的 upload);可能加 node type / interactiveProp | §18 |
+| 7 | **§9 v15 RTL 逻辑属性(ms-/me-)** | headless emit(有回归面)| 中 | margin/padding 物理方向 → `ms-`/`me-`/`ps-`/`pe-` 逻辑属性,RTL locale 自动镜像 | **§9 v11 已做 dir-flip**;v15 是逻辑属性镜像,是 v11 之上**新增**(非重复)| §9 |
+| 8 | **§14 跨文件组件库 / 团队库** | headless(大)| 中 | 组件跨 .fig 文件复用 / 团队共享库 / 更新传播(Figma Team Library 语义)| **phase-3 §14 已有完整设计但标〔未实现〕**;本 phase 才实现 | §14 |
+| 9 | **更多 deploy providers(Cloudflare Pages 等)** | headless | 中 | Netlify/Vercel 已完整;CF Pages 直传需 **blake3**(Web Crypto 只有 SHA-\*)→ 违零依赖,**开工前必须 AskUserQuestion** | phase-3 §10 v7/v8/§7 v2 多次因 blake3 否决 CF Pages,留到本 phase 决策 | §5 |
+| 10 | **编辑器实时 preview i18n / ui-kit toggle** | 真机 GUI | 高(真机)| `src/app/lowcode/preview-pane/use-compile-on-change.ts` 硬编码 `withDefaults`(无 i18n/uiKit)→ app 内 preview 看不到 i18n/shadcn。加 toggle | phase-3 §9 v13(CLI flags)修了 CLI 入口,**编辑器 preview 入口仍缺**;§15 Phase A 注明 preview 不带 uiKit | §9 / §15 |
+| 11 | **§7 / §8 / §10 编辑器授权面板(GUI)** | 真机 GUI | 中(真机)| §7 responsive overrides 编辑面板;§8 component-props 面板;§10 optionalParams GUI(当前 MCP-only)| 三条线在 phase-3 **均显式「GUI 延后」**(沿用「先 emit/headless,GUI 真机」先例)| §7 / §8 / §10 |
+| 12 | **§10 工作流体跨页 pageStates 精确** | headless | 低 | 工作流体当前取**当前页** pageStates 近似;跨页 callWorkflow 时应按目标页解析 | phase-3 §10 v11 已闭合 GUI 链,此为已知小缺口 | §10 |
+| 13 | **lowcode 字段升格 Kiwi schema** | 工程债 | 低 | pluginData 旁路通道稳定;升格成本高(fork vendored `kiwi-schema/` + 通道重写 + 老 .fig 迁移),收益仅清债 | phase-3 §1.1 候选 5 / §6 的纯 **carry-over**(继续推迟)| §6 |
 
-> **优先级建议**:headless 连续增量从 **#1 §15 FRAME→Card**起手(纯 emit 最干净),
-> 接 **#2 Phase C**,再 **#4 §14**(组件能力线,量级大)。**#3 §9 RTL 逻辑属性**有
-> 回归面、**#5 CF Pages** 卡 blake3 决策,二者需先沟通。真机 GUI 类(#6 #7)价值
-> 高但靠后,攒一批一起在 Tauri session 验证。**#8/#9 低优先,随产品节奏挑。**
+> **#1–#9 = headless,#10–#11 = 真机 GUI,#12–#13 = 低优先。**
+>
+> **优先级建议**:两个高优先起手点 ——(a)**最快**:#1 §15 FRAME→Card(纯 emit
+> 最干净,接 #3 Phase C 把 §15 收尾);(b)**最高产品价值**:#2 §16 动态路由
+> ——它把「多页静态站」升级成「真应用」(详情页 `/product/:id`、仪表盘、auth-
+> guarded 路由),是 Bubble 级平台的核心缺口,吃现有 react-router 地基、可
+> headless 验。**建议先做 #1/#3 快速收一条线,再正式投 #2 §16**(量级中-大,值得
+> 单独锁设计)。#4 §17 列表绑数据源 / #5 §19 校验 / #6 §18 上传 是真应用的另外三
+> 块刚需,接在 §16 后成「真应用数据/表单链」。#7 RTL 有回归面、#9 CF Pages 卡
+> blake3,先沟通。真机 GUI(#10 #11)攒一批 Tauri session 验。
 
 ### 1.2 Phase 4 Out-of-Scope(明确推迟到 Phase 5+)
 
-(继承 Phase 3 §1.2,仍未到时候)
+**(a) 继承 Phase 3 §1.2 —— 平台/架构级,仍未到时候**:
 
 - **多租户 / 多 workspace** —— Bubble 风格 workspace + member + billing
 - **平台层付费用户系统** —— 区别于应用层 Supabase auth;平台自身订阅/计费
@@ -69,6 +79,19 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 - **可视化数据流 DAG 编辑器** —— §10 工作流编排限定 ActionDef 链 + condition/delay/stop;Bubble Flow-style 节点 DAG 编辑器留 Phase 5
 - **手机原生导出**(iOS / Android) —— 当前 emit 仅 React/Web;React Native / Capacitor / Tauri Mobile
 - **插件系统 / Marketplace** —— 自定义节点类型 / 自定义 action 动态加载
+
+**(b) Tier 2/3 真实缺口 —— 已确认代码无实现,价值高但偏架构级/外部依赖,Phase 5 预留**(2026-06-20 产品缺口盘点,grep 确认):
+
+- **应用内支付(Stripe)** —— 变现刚需(SaaS/市场类);需 Stripe SDK + 后端 webhook(Supabase Edge Function),跨「静态 SPA」边界,故 Phase 5。
+- **SEO**(per-page `<title>`/`description`/OG/sitemap/robots)—— 现仅 `<meta charset>` + `<html lang>`(§9 v12)。静态 SPA 的 SEO 弱,做全需配 **SSG/预渲染**(改 emit 架构)→ Phase 5;**轻量版**(per-page 静态 `<title>`/meta 注入 `index.html`)可作 Phase 4 末小增量再评估。
+- **应用版本管理 / staging↔prod** —— dev/live 版本、回滚、发布前预览;协作(§4)+ Yjs 给了底子,但「应用版本」是平台生命周期能力 → Phase 5。
+
+**(c) 体验/高级项 —— 随产品节奏,Phase 4 末或 Phase 5**:
+
+- **全局主题 / design tokens / 暗色模式** —— Figma variables(含本会话 `4bc1698e` 的绑定校验)是底子;缺 theme tokens→CSS 变量 + 暗色切换 emit。
+- **动画 / 交互**(hover / scroll / transition)—— Webflow 差异化点;当前无任何动效 emit。
+- **自定义代码注入**(custom JS / CSS / `<head>` embed)—— 高级用户逃生口。
+- **分析 / 埋点集成**(GA / Plausible / PostHog)—— 第三方 script 注入 + 事件埋点。
 
 ### 1.3 Phase 4 整体成功标准(粗框,逐候选细化)
 
@@ -158,6 +181,54 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **剩余 #1 FRAME → `Card`**:容器型 FRAME(尤其有 padding/背景/圆角的)映射到 shadcn `Card`/`CardHeader`/`CardContent`,而非裸 `<div>`。phase-3 §15 设计已把它列为「Phase B 可选」但未实现。需判定「哪种 FRAME 算 Card」(probe:lowcode 标记 vs 启发式,设计阶段定)。**待锁**:判定规则(显式标记 vs 启发式);Card 子结构粒度(是否拆 Header/Content)。**推荐作为 Phase 4 headless 起点**(风险低)。
 
 **剩余 #2 Phase C array checkbox-group**:array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版经验)。**待锁**:array 字段来源(已有数据模型 vs 新增);单选/多选语义。
+
+## §16 动态路由 / 路由参数 / 路由守卫 ⭐
+
+> 2026-06-20 产品缺口盘点新增。**最高产品价值 headless 候选** —— 把「多页静态站」升级成「真应用」。
+
+**现状(grep 坐实)**:react-router 多页已在(`compiler/types.ts router:'react-router-v6'`,Phase 1/2 多页 emit + `route-paths.ts` 单一 route 派生源 + preview-bridge editor↔iframe navigate 同步)。但 **navigate 是字面路由**(`emit/event.ts:192` `navigate(${JSON.stringify(h.to)})`),`NavigateAction.to` = 「已校验非空的字面 route」。**无动态段 / 参数 / 守卫**。
+
+**剩余 / 建议方向**:
+- **动态路由段**:页面可声明 `/product/:id` 形态的路由 pattern(非纯 `/about` 字面)。
+- **路由参数绑定**:emit `useParams()` → 参数进表达式子语言可读(类似 docState/pageState,新 read-context 源),供 supabaseQuery where-clause / 文本插值用。
+- **query string**:`useSearchParams` 读写。
+- **navigate 带参**:`navigate("/product/" + id)` / `navigate({ to, params })` —— NavigateAction 扩 params 字段(emit 拼接或 generatePath)。
+- **路由守卫(auth guard)**:页面标 `requiresAuth` → emit 包一层 redirect-if-unauthed(复用 §2.v2 `useSupabaseAuth`)。
+
+**类型**:headless emit + scene-graph/round-trip(route pattern + requiresAuth 进 page-level pluginData,类比 §7 responsiveOverrides);量级**中-大**,值得单独锁设计。**待锁**:route pattern 数据归属(page node 字段 vs 文档级路由表);params 进表达式的 read-context 命名;守卫的 redirect 目标(登录页约定)。**经验 E 必用**(跨 router/IR/emit/round-trip/表达式)。
+
+## §17 列表绑真实数据源 + 分页 / 排序 / 筛选
+
+> 2026-06-20 产品缺口盘点新增。Bubble「repeating group」核心。
+
+**现状(grep 坐实)**:`IRList`(ir/types.ts:256,Phase 2 §9)只对「array-typed **state** datasource」emit `.map()`。绑真实数据源要 `supabaseQuery action → setState(array) → LIST`(Phase 3 §2),**间接绕且无分页/排序/筛选**。
+
+**剩余 / 建议方向**:
+- **repeater 直接声明数据源 = Supabase query**(表/select/where/order/limit),编译期 emit 拉取 + `.map()`,免手搭 supabaseQuery→setState 链。
+- **分页**:offset/cursor 分页 + 上一页/下一页 / 加载更多控件。
+- **排序 / 筛选 UI**:绑控件值 → query order/where(复用 §3.v4 controlled bindings)。
+
+**类型**:headless emit;与 §2 Supabase + §16 路由参数(详情页 `/product/:id` 从列表点入)天然成链。**待锁**:数据源声明位置(LIST 节点新字段 vs 复用 supabaseQuery 配置);分页模型(offset vs cursor);客户端筛选 vs 服务端 query。
+
+## §18 文件 / 图片上传(Supabase Storage)
+
+> 2026-06-20 产品缺口盘点新增。头像/附件/封面近乎通用需求。
+
+**现状(grep 坐实)**:**app 级上传零实现**(代码里 `upload` 只在 deploy 路径)。
+
+**剩余 / 建议方向**:上传控件(新 NodeType 或 INPUT `type=file` interactiveProp)→ emit Supabase Storage `.from(bucket).upload()` + `getPublicUrl()` + 上传进度 / 预览;上传结果 URL 进 docState/binding(供后续表单提交/展示)。
+
+**类型**:headless emit + **可能动 scene-graph**(新交互节点或 interactiveProp)→ 比纯 emit 候选更 invasive,经验 A/G(union widening)必走。**待锁**:用新 NodeType 还是 INPUT type=file prop;bucket / 路径约定;public vs signed URL。
+
+## §19 表单校验
+
+> 2026-06-20 产品缺口盘点新增。
+
+**现状(grep 坐实)**:FORM 节点在,但 input 节点**无 required/pattern/min-max/自定义校验 + 错误提示 + 提交拦截**(代码里 validation 全是编译器内部校验,非用户表单校验)。
+
+**剩余 / 建议方向**:input 节点 interactiveProps 加校验规则(required/pattern/minLength/maxLength/min/max/自定义表达式)→ emit 客户端校验 + 错误消息显示 + FORM submit 时拦截非法 + 可绑 `:invalid` 状态。**复用 §3.v6 InteractiveProps 通用编辑器框架** + §4 表达式子语言(自定义规则)。
+
+**类型**:headless emit;无 scene-graph 改动(走 interactiveProps,schema-native pluginData)。**待锁**:校验规则数据形态(每 input 一组规则);错误显示位置(节点下方 vs FORM 级汇总);校验时机(onBlur/onChange/onSubmit)。
 
 ## §9 i18n RTL 逻辑属性(v15)
 
