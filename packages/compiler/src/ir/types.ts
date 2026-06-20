@@ -147,6 +147,13 @@ export interface IRElement {
    *  array multi-select checkbox-group is deliberately NOT marked (no native
    *  shadcn group component — deferred to a later phase, stays plain HTML). */
   controlKind?: 'select' | 'checkbox' | 'switch' | 'radio-group'
+  /** Phase 4 §15.1 — semantic hint identifying a card-like container FRAME whose
+   *  plain `<div>` emit a UI-kit adapter may replace with a `<Card>` wrapper.
+   *  Set on the element by collect via a heuristic (FRAME + visible background
+   *  fill + rounded corners). Unlike `controlKind`, a card WRAPS its children
+   *  (they emit normally inside `<Card>`); the plain React adapter ignores this
+   *  hint (→ byte-identical output). */
+  containerKind?: 'card'
   /** Raw inner HTML to emit verbatim via `dangerouslySetInnerHTML` instead of
    *  `children`. Set for vector-shape nodes (VECTOR / BOOLEAN_OPERATION / STAR /
    *  POLYGON / LINE) whose appearance IS the path geometry: the wrapper keeps

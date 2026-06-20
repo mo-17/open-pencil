@@ -72,6 +72,13 @@ export interface UiKitAdapter {
    */
   emitControl?(node: IRElement, ctx: KitEmitCtx): string | null
   /**
+   * Phase 4 §15.1 — resolve a card-like container element (`node.containerKind`)
+   * to its kit component mapping, or null to keep the plain `<div>`. Unlike
+   * `mapControl`, a container only renames the tag (`<div>` → `<Card>`) and
+   * keeps emitting its children inside — there is no composed-markup hook.
+   */
+  mapContainer?(kind: NonNullable<IRElement['containerKind']>): UiKitMapping | null
+  /**
    * Inline component-source files for the used component names (e.g. `Button`),
    * keyed by output path (`src/components/ui/button.tsx`). Only the components
    * actually rendered are emitted.

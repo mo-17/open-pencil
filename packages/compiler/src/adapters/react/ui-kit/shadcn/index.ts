@@ -5,6 +5,7 @@ import type { KitEmitCtx, UiKitAdapter, UiKitMapping } from '../types'
 
 import {
   BUTTON_TSX,
+  CARD_TSX,
   CHECKBOX_TSX,
   COMPONENTS_JSON,
   INPUT_TSX,
@@ -75,7 +76,16 @@ const COMPONENTS: Partial<Record<string, ShadcnComponent>> = {
     file: 'src/components/ui/select.tsx',
     source: SELECT_TSX,
     deps: ['@radix-ui/react-select']
-  }
+  },
+  // Phase 4 §15.1 — Card is a plain styled `<div>` (cn() only), no Radix dep.
+  Card: { file: 'src/components/ui/card.tsx', source: CARD_TSX, deps: [] }
+}
+
+/** Phase 4 §15.1 — `containerKind` → the kit mapping for a card-like container
+ *  FRAME. Card only renames the tag (`<div>` → `<Card>`) and keeps its children;
+ *  no composed markup / extra imports. */
+const CONTAINER_TO_MAPPING: Partial<Record<NonNullable<IRElement['containerKind']>, UiKitMapping>> = {
+  card: { component: 'Card', from: '@/components/ui/card' }
 }
 
 /** Phase B — `controlKind` → the kit mapping for a composed form control. The
@@ -276,6 +286,10 @@ export const shadcnAdapter: UiKitAdapter = {
 
   mapControl(kind: NonNullable<IRElement['controlKind']>): UiKitMapping | null {
     return CONTROL_TO_MAPPING[kind] ?? null
+  },
+
+  mapContainer(kind: NonNullable<IRElement['containerKind']>): UiKitMapping | null {
+    return CONTAINER_TO_MAPPING[kind] ?? null
   },
 
   emitControl(node: IRElement, ctx: KitEmitCtx): string | null {

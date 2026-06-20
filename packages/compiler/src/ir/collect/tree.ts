@@ -913,6 +913,9 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // can swap it for a composed component. Kit-agnostic — the plain emit ignores
   // it (byte-identical). The array CHECKBOX group is excluded (deferred).
   const controlKind = controlKindFor(node)
+  // Phase 4 §15.1: tag a card-like container FRAME so a UI-kit adapter can wrap
+  // it in `<Card>`. Kit-agnostic — the plain emit ignores it (byte-identical).
+  const containerKind = containerKindFor(node)
 
   const element: IRElement = {
     kind: 'element',
@@ -928,6 +931,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     ...(controlled ? { controlled } : {}),
     ...(controlKind ? { controlKind } : {}),
+    ...(containerKind ? { containerKind } : {}),
     ...vector.extra
   }
   return wrapConditional(node, element, ctx)
@@ -1015,6 +1019,18 @@ function controlKindFor(node: SceneNode): IRElement['controlKind'] {
     default:
       return undefined
   }
+}
+
+/** Phase 4 §15.1 — heuristic: a container FRAME that looks like a card surface
+ *  (visible background fill + rounded corners) gets the `card` container hint so
+ *  a UI-kit adapter can wrap it in `<Card>`. Restricted to FRAME (GROUP has no
+ *  surface; a bare rounded RECTANGLE is decorative, not a content container).
+ *  Consumed only by a UI-kit adapter — the plain emit ignores it. */
+function containerKindFor(node: SceneNode): IRElement['containerKind'] {
+  if (node.type !== 'FRAME') return undefined
+  const hasVisibleFill = node.fills.some((f) => f.visible && f.opacity > 0)
+  if (hasVisibleFill && node.cornerRadius > 0) return 'card'
+  return undefined
 }
 
 function applyControlledInput(

@@ -114,8 +114,14 @@ function emitTagElement(
   )
   // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
   // keeping the same attrs/children. The underlying tag still drives void-ness
-  // (a mapped `<input>` stays self-closing as `<Input />`).
-  const tagName = uiKit?.mapTag(node.tag, node.attrs)?.component ?? node.tag
+  // (a mapped `<input>` stays self-closing as `<Input />`). Phase 4 §15.1: a
+  // card-like container FRAME maps `<div>` → `<Card>` via `mapContainer`,
+  // keeping its children inside (unlike a composed control, which owns its
+  // markup). The container mapping takes precedence over the tag mapping.
+  const kitComponent =
+    (node.containerKind ? uiKit?.mapContainer?.(node.containerKind)?.component : undefined) ??
+    uiKit?.mapTag(node.tag, node.attrs)?.component
+  const tagName = kitComponent ?? node.tag
   const opening = attrsStr ? `<${tagName} ${attrsStr}` : `<${tagName}`
 
   // Vector-shape nodes carry their geometry as inline SVG via

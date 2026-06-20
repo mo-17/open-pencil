@@ -196,7 +196,37 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状**:§15 shadcn 导出已交付 Phase A(Button/Input/Textarea/Label)+ Phase B(Select/Checkbox/Switch/RadioGroup),由导出/部署面板 ui-kit toggle 驱动,alias + deps 就位。**纯 compiler-emit 增量,零 scene-graph/round-trip 改动**。
 
-**剩余 #1 FRAME → `Card`**:容器型 FRAME(尤其有 padding/背景/圆角的)映射到 shadcn `Card`/`CardHeader`/`CardContent`,而非裸 `<div>`。phase-3 §15 设计已把它列为「Phase B 可选」但未实现。需判定「哪种 FRAME 算 Card」(probe:lowcode 标记 vs 启发式,设计阶段定)。**待锁**:判定规则(显式标记 vs 启发式);Card 子结构粒度(是否拆 Header/Content)。**推荐作为 Phase 4 headless 起点**(风险低)。
+**剩余 #1 FRAME → `Card`**:容器型 FRAME(尤其有 padding/背景/圆角的)映射到 shadcn `Card`,而非裸 `<div>`。phase-3 §15 设计已把它列为「Phase B 可选」但未实现。**推荐作为 Phase 4 headless 起点**(风险低)。详细设计见下 §15.1。
+
+### §15.1 FRAME→Card 详细设计 + 锁定决定(2026-06-21,AskUserQuestion 锁定)
+
+> **目标**:启用 shadcn ui-kit 时,容器型 card-like FRAME emit 成 `<Card>` 而非裸 `<div>`,产物更接近手写 shadcn 项目(生产级可维护)。className passthrough → kit 给语义/结构、设计保外观。
+
+**现状坐实(经验 Q/E,直接读源)**:
+- `emit/element.ts:118` `tagName = uiKit?.mapTag(node.tag, node.attrs)?.component ?? node.tag` —— kit 映射点;但 FRAME 全 `div`(TAG_BY_TYPE tree.ts:517),不能全 div→Card,需语义 hint。
+- **`controlKind` 是现成 IR-hint 先例**(Phase B):`controlKindFor(node)`(tree.ts:1005)collect 期按 node.type 打 kit-agnostic hint;registry `walkForKit` 按 hint 解析 `mapControl`/`emitControl`,plain emit 忽略 → byte-identical-off。**但 control 的 emit 跳过子节点(`if (node.controlKind) return`),Card 要包裹子节点(子照常 emit)** —— 这是 Card vs control 的关键差异。
+- SceneNode `cornerRadius: number`(required)+ `fills: Fill[]`(`Fill.visible: boolean` + `opacity: number`)→ 启发式可读。
+- §15 全程纯 compiler-emit 零 scene-graph/round-trip。
+
+**锁定决定**:
+1. **〔Fork 1 锁定〕判定规则 = 启发式**:`node.type === 'FRAME'` && 有可见背景填充(`fills.some(f => f.visible && f.opacity > 0)`)&& `cornerRadius > 0` → card-like。纯 emit、零 scene-graph/round-trip(延续 §15 特性)。否决显式标记(需新 lowcode 字段 + round-trip + GUI,破坏纯-emit)。**className passthrough 使误判低害**(设计的 `rounded-[..] bg-[..]` 经 cn/tailwind-merge 覆盖 shadcn Card 默认 `rounded-lg border bg-card shadow-sm` → 视觉不变,只语义化成 `<Card>`)。仅限 FRAME(GROUP/ROUNDED_RECTANGLE 等不纳入:GROUP 无 surface、bare rounded-rect 是装饰非容器)。
+2. **〔Fork 2 锁定〕子结构 = 只 `<Card>` wrapper**:FRAME → `<Card className=...>`,子节点原样 emit 在内,className passthrough 保设计布局/padding。否决拆 Header/Content/Footer(shadcn CardHeader/Content 自带 padding 与设计 padding 双重冲突 + 分区启发式脆;需作者意图,留后续)。
+
+**实现(纯 compiler-emit,镜像 controlKind 但「包裹不跳子」;经验 M build:packages 再 lint)**:
+- **IR hint**(`ir/types.ts`):`IRElement.containerKind?: 'card'`(平行 controlKind,kit-agnostic;plain emit 忽略 → byte-identical-off)。
+- **detection**(`ir/collect/tree.ts`):`containerKindFor(node)` 启发式(同上),`nodeToIR` 里 `...(containerKind ? { containerKind } : {})`(镜像 controlKind 设置点)。
+- **adapter 接口**(`ui-kit/types.ts`):`mapContainer?(kind): UiKitMapping | null`(平行 mapControl,但**不带 emitControl** —— Card 不需独占 markup/事件翻译,只换 tag)。
+- **emit**(`emit/element.ts`):`emitTagElement` 的 tagName 解析扩成「containerKind→mapContainer 优先,否则 mapTag」;**子节点照常 emit(不像 control 跳子)** —— 即只改 `tagName`(`<Card>`/`</Card>`),children 走既有 `emitElement` 递归。
+- **registry**(`ui-kit/registry.ts` `walkForKit`):识别 `node.containerKind` → mapContainer 把 `Card` 加进 used names,**但继续 walk 子节点(不 return)** —— 区别于 control 分支的 `if (node.controlKind) return`。
+- **shadcn**(`shadcn/index.ts` + `templates.ts`):`Card` 模板(纯 `<div>` + `cn()`,**无 Radix dep**,只 className-merge)+ `COMPONENTS['Card']` 注册 + `CONTAINER_TO_MAPPING = { card: { component: 'Card', from: '@/components/ui/card' } }` + `mapContainer` 实现。Card 子组件(CardHeader/Content/Footer)本版不 emit(只 Card)。
+- **零碰**:off / 无 card-like FRAME → byte-identical(既有 ui-kit 测试零改);Phase A/B control 路径不动。
+
+**成功标准(headless)**:
+1. card-like FRAME(FRAME+bg+圆角)+ `--ui-kit shadcn` → `<Card className=...>` + `import { Card } from '@/components/ui/card'` + emit `src/components/ui/card.tsx`;子节点保留在内。
+2. 非-card FRAME(无 bg / 无圆角)→ 仍 `<div>`(不误判)。
+3. off(无 uiKit)→ card-like FRAME 仍 `<div>`,byte-identical。
+4. `bun run check` exit 0;tsgo 0;jscpd 0;compiler 全绿基准 + ui-kit 新测试。
+5. **真机验 pending**:部署 shadcn 产物看 `<Card>` 视觉(headless 仅断言 emit 串 + 文件)。
 
 **剩余 #2 Phase C array checkbox-group**:array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版经验)。**待锁**:array 字段来源(已有数据模型 vs 新增);单选/多选语义。
 

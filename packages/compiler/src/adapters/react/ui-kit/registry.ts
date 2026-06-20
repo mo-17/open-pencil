@@ -63,6 +63,16 @@ function walkForKit(
     return
   }
   if (node.kind !== 'element') return
+  // Phase 4 §15.1: a card-like container resolves via `mapContainer` and is
+  // collected here, but — unlike a control — it WRAPS its children, so the walk
+  // continues into them below (a card's content still renders).
+  if (node.containerKind && kit.mapContainer) {
+    const container = kit.mapContainer(node.containerKind)
+    if (container) {
+      imports?.set(container.component, container)
+      names?.add(container.component)
+    }
+  }
   // Phase 3 §15 Phase B: a marked form control resolves via `mapControl`
   // (identified by its semantic `controlKind`, not its HTML tag); everything
   // else resolves via `mapTag` (Phase A 1:1 tags). A control's plain-HTML
