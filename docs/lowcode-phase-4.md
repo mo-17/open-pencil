@@ -249,6 +249,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 3. `bun run check` exit 0;tsgo 0;kiwi 119+ / compiler 全绿基准不回归。
 4. **真机验 pending**:`open-pencil build` 导出的多页应用在浏览器实际按 `/product/123` 路由 + `$params.id` 渲染 123(headless 仅断言 emit 串)。
 
+**交付记录(CODE COMPLETE 2026-06-21,commit `0af2e765`)**:
+- 实现按设计 12 文件(scene-graph types + lowcode-plugin-data + import.ts + ir/types + bindings + tree + route-paths + scaffold + PreviewPane.vue stub + kiwi round-trip 测试 +1 + 新 routing.test.ts +10)。
+- **`$params` 实现取「sentinel-ride-docStateReads」**:`$params` 经唯一 chokepoint `registerDocStateReads` 加进 `docStateReads`,`collectTree` 末 `docStateReads.delete(ROUTE_PARAMS_IDENT)` 抽成 `usesRouteParams` 布尔(`docStateReads` 对 emit 保持纯 docState)——避开 11 个 register 点的 set 穿线,经验 A 穷举-by-construction。component-body 的 `docStateReads` 被丢弃,sentinel 落那里无害。
+- **GATE 收口 2 处**:① `assignLowcodeField` 加 ROUTE_PATTERN case → complexity 21>20 → 移进 `assignLowcodeLayoutFix` 溢出组(§8 v11 同款,经验「加分支前看 complexity 闸」);② **check:vue(第 4 道闸)抓到** `src/app/lowcode/preview-pane/PreviewPane.vue:80` 的 IRTree stub 缺新增必填 `usesRouteParams`(tsgo 不覆盖 .vue)→ 补 `usesRouteParams: false`(动态路由 preview 导航是真机 §16 follow-up,stub 保持 slug 派生不变)。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0 clones;kiwi **120/0**(+1)、scene-graph 202/0、compiler **650/0**(+10)。零 hotfix。
+- **边界(已文档化)**:单页 compile 无 router → `$params` emit 被 `routerAvailable=false` 门控丢弃(单页 route param 无意义);component-body `$params` 不 emit;同 pattern 多页冲突不去重;preview-bridge 对动态路由页导航仍走 slug(真机 §16 follow-up)。
+- **§16.2 起手**:`NavigateAction.params?: Record<param, exprString>` → emit `navigate(generatePath("/product/:id", { id }))`,详情链路点入。
+
 ## §17 列表绑真实数据源 + 分页 / 排序 / 筛选
 
 > 2026-06-20 产品缺口盘点新增。Bubble「repeating group」核心。
