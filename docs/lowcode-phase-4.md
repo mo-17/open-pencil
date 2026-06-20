@@ -133,6 +133,7 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | **O. tsconfig paths 从最近的 tsconfig 解析** | bun-test/tsgo 从 importing file 最近的 tsconfig 解析 `paths`;无匹配 key **不**回退父 tsconfig → 落到 node_modules exports。新 package 的 tsconfig 要 mirror `packages/vue/tsconfig.json` 的 `@open-pencil/core/*`→`../core/src/*` 映射 |
 | **P. 旧 .fig 中文方框 = 两层** | (1)fallback 字体没加载(Stage 14 bundled Noto Sans SC);(2)烤进文件的 `.notdef` glyph 绕过实时 shape(Stage 13 写侧门控 + Stage 16/8d 读侧 `shouldLiveShapeOverDerivedGlyphs`)。invalidateAllPictures 清不掉文件数据,必须渲染侧门控落回 buildParagraph。文本乱码 after .fig reopen = baked-glyph,不是 encoding |
 | **Q. 写 roadmap 前先核 phase-3 各 v-version 闭合状态** | phase-3 在 v-version 里把当初「首次交付时延后的 follow-up」一路关掉了(§8 v3 fill/color、§8 v4/v5 variants、§7 v2 re-show、§10 v2 toast 全已实现)。**别拿「首次交付快照的延后清单」当剩余需求** —— 以 prompt.md「入口现状矩阵」+ phase-3 各 v-section 实际状态为准,否则 roadmap 重列已交付项 |
+| **R. Phase 4 §16.1/§15.1 新增(4 条)** | ① **跨 N 个 register-chokepoint 跟踪一个新内置只读标识符**:sentinel-ride 既有已穿线的 Set + collect 末 `Set.delete` 抽布尔,比新建并行 set 穿 N 点更省、穷举-by-construction(§16.1 `$params` rode docStateReads)。② **UI-kit 容器型映射用 `mapContainer`(只换 tag、保留子)而非 `mapControl`(独占 markup、跳子)**;二者都靠 collect 期 kit-agnostic IR-hint(containerKind/controlKind),plain emit 忽略 → byte-identical-off(§15.1)。③ **`check:vue` 是真第 4 道闸**:tsgo 不覆盖 `.vue`,新增 IRTree/SceneNode 必填字段时 `.vue` 里的 stub 字面量只有 vue-tsc 抓得到 → 加必填字段后 grep 全仓字面量构造点(含 `.vue`)。④ **同前缀兄弟测试 ≥3 触发 steiger `prefer-domain-folders`** → 新增第 3 个时直接建子目录(§8 v4/§9/§15.1 印证)。 |
 
 ### 1.5 测试 / 验证命令
 
