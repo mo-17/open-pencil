@@ -228,6 +228,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 4. `bun run check` exit 0;tsgo 0;jscpd 0;compiler 全绿基准 + ui-kit 新测试。
 5. **真机验 pending**:部署 shadcn 产物看 `<Card>` 视觉(headless 仅断言 emit 串 + 文件)。
 
+**交付记录(CODE COMPLETE 2026-06-21,commit `d86489d9`)**:
+- 实现按设计 8 文件(ir/types containerKind + tree.ts containerKindFor + ui-kit/types mapContainer + emit/element.ts tag 解析 + registry walkForKit + shadcn/index COMPONENTS+CONTAINER_TO_MAPPING+mapContainer + templates CARD_TSX + doc),零 scene-graph/round-trip 改动。
+- **Card vs control 的关键差异落地干净**:emit tag 解析 `containerKind→mapContainer 优先 ?? mapTag ?? node.tag`,子节点走既有 emitElement 递归(**包裹不跳子**);walkForKit container 分支收 `Card` 进 used names **但继续 walk 子**(区别 control 的 `if(controlKind) return`)。
+- **CARD_TSX = canonical shadcn card.tsx**(Card+Header+Title+Description+Content+Footer 全导出,纯 styled `<div>` + cn(),**无 Radix dep**);FRAME→Card 只 import/用 `Card`,子组件随文件 ship 供作者后续 compose。
+- **1 处 GATE 收口(check:arch steiger)**:新增第 3 个 `ui-kit-*` 同前缀兄弟测试触发 `prefer-domain-folders`(经验:同前缀兄弟 ≥3 触发)→ 3 个 ui-kit 测试全 `git mv` 进 `tests/engine/compiler/ui-kit/`(tags/controls/card.test.ts,alias import 不受位置影响)。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0 clones;compiler **656/0**(+6 card 测试)。零 hotfix。
+- **边界(已文档化)**:仅 FRAME(GROUP/ROUNDED_RECTANGLE 不纳);只 `<Card>` wrapper 不拆 Header/Content;className passthrough 使误判低害(Card 默认 `rounded-xl border bg-card shadow` 被设计 `rounded-[..] bg-[..]` 经 cn/tailwind-merge 覆盖);可见背景判定 = `fills.some(f => f.visible && f.opacity>0)` —— **任意 FillType(SOLID/渐变/图片)只要可见即算**(非仅 SOLID),所以渐变/图片背景的圆角 FRAME 也映 Card。
+
 **剩余 #2 Phase C array checkbox-group**:array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版经验)。**待锁**:array 字段来源(已有数据模型 vs 新增);单选/多选语义。
 
 ## §16 动态路由 / 路由参数 / 路由守卫 ⭐
