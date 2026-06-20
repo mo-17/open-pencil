@@ -69,6 +69,24 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 > 块刚需,接在 §16 后成「真应用数据/表单链」。#7 RTL 有回归面、#9 CF Pages 卡
 > blake3,先沟通。真机 GUI(#10 #11)攒一批 Tauri session 验。
 
+### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
+
+> 2026-06-20 第二轮缺口盘点。**全部 grep 坐实代码无实现**,且都是**纯 emit / 复用现有机制**的小-中增量(无架构改动),用来把产物从「能跑的页面」打磨成「真应用」。优先级整体在第一波(§16–§19 数据/表单链)之后,但单条工作量小、可穿插。**避坑(经验 Q):effects 阴影已 emit(`jsx/helpers.ts formatShadow`)、EventName 联合已含 5 事件、navigate 已在,均不重列。**
+
+| # | feature | 复用 | 简述 | grep 坐实 |
+|---|---|---|---|---|
+| §20 | **交互状态样式(hover/focus/active/disabled variants)** | §7 variant-emit 机制 | 节点可声明 `hover:`/`focus:`/`active:`/`disabled:` Tailwind 变体样式(悬停变色/按下/禁用态)| 用户节点无状态变体 emit(命中全是 shadcn 模板内部 hover:)|
+| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)** | shadcn Dialog/Sheet/Popover 模板 + docState open-state | 可授权弹窗/抽屉/气泡,open 态绑 docState,触发器 action 开关 | 无用户可授权覆盖层(命中仅 preview-bridge overlay + `__opConfirm` 内部 modal)|
+| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert/Separator)** | §15 ui-kit adapter | 扩 §15 映射表到展示型组件 | §15 仅到 9 个交互组件 |
+| §23 | **图标(lucide-react)** | §15 ui-kit / 新 icon 节点或 prop | 放置 lucide 图标(shadcn 默认图标库),名称/尺寸/色可配 | 无 icon 节点(lucide 仅在 shadcn 内部注释)|
+| §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)** | jsx tailwind-classes | image fill / IMAGE 节点 → `<img src alt>` + object-cover/contain;渐变填充 → `bg-gradient-*`;宽高比 | 无 `<img>` emit、无 gradient、无 aspect/object-fit(全空)|
+| §25 | **外链 `<a href>` + target** | emit/element | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)| 无 `<a href>` emit |
+| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)** | jsx tailwind-classes | 吸顶头/侧栏、滚动容器、堆叠层级 | 无 sticky/overflow-/z-index emit |
+| §27 | **state 持久化(localStorage)+ 派生/计算 state** | docState + 表达式子语言 | docState 标记持久化→`localStorage` 读写;派生 state = 表达式从其它 state 算出(memo)| 无 localStorage/persist/computed |
+| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur 端到端 + `$event`/`$value` 复活)** | EventName 联合(已有 5)+ events emit | `EventName` 已含 onChange/onSubmit/onFocus/onBlur,但 emit 只接 onClick/onSubmit;onChange 当前**只被 controlled binding 占用**,用户授权的 onChange/onFocus/onBlur 未接 → 接通 + 复活 memory 里 shelved 的 `$event`/`$value` token(已能 parse,缺 live 用例)| `element.ts` onChange 仅 controlled,events→handler 路径无 onChange/onFocus/onBlur |
+
+> **第二波优先级建议**:**§20 交互状态样式**最值得先做(复用 §7 的 variant-emit 机制、零新概念、立刻让产物有交互质感);**§24 图片/填充** + **§25 外链** 是「真页面」基础缺(无图片是硬伤);**§21 覆盖层** + **§22 更多原语** 把 UI 表达力补齐;**§27 持久化/派生 state** + **§28 事件收尾** 补运行时逻辑短板(§28 顺带解 memory 里 shelved 的 `$event`/`$value`)。这些都可穿插在第一波 §16–§19 之间做(单条小)。
+
 ### 1.2 Phase 4 Out-of-Scope(明确推迟到 Phase 5+)
 
 **(a) 继承 Phase 3 §1.2 —— 平台/架构级,仍未到时候**:
@@ -229,6 +247,80 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **剩余 / 建议方向**:input 节点 interactiveProps 加校验规则(required/pattern/minLength/maxLength/min/max/自定义表达式)→ emit 客户端校验 + 错误消息显示 + FORM submit 时拦截非法 + 可绑 `:invalid` 状态。**复用 §3.v6 InteractiveProps 通用编辑器框架** + §4 表达式子语言(自定义规则)。
 
 **类型**:headless emit;无 scene-graph 改动(走 interactiveProps,schema-native pluginData)。**待锁**:校验规则数据形态(每 input 一组规则);错误显示位置(节点下方 vs FORM 级汇总);校验时机(onBlur/onChange/onSubmit)。
+
+---
+
+## §20 交互状态样式(hover / focus / active / disabled variants)
+
+> 第二波。**最值得先做**(复用 §7 variant-emit,零新概念,立刻给产物交互质感)。
+
+**现状(grep 坐实)**:用户节点无状态变体样式 —— `hover:` 命中全是 shadcn 模板内部,无用户可授权的 hover/focus/active 样式。
+
+**建议方向**:节点可声明各状态(hover/focus/active/disabled)的样式覆盖(同 §7 responsiveOverrides 的 `Partial<Pick<SceneNode, 样式键>>` 形态),emit 走 §7 的 **style-level diff + 前缀**机制(`hover:bg-...`/`focus:ring-...`),复用 `LAYOUT_STYLE_RESET` 思路。round-trip 走 `lowcode/stateOverrides` 通道(类比 responsiveOverrides)。**待锁**:状态集合(是否含 group-hover / focus-within);与 §7 断点的组合(`md:hover:`)。
+
+## §21 覆盖层组件(Modal / Dialog / Drawer / Popover / Tooltip)
+
+> 第二波。真应用普遍需要弹窗/抽屉。
+
+**现状(grep 坐实)**:无用户可授权覆盖层(命中仅 preview-bridge overlay + `__opConfirm` 内部 modal)。
+
+**建议方向**:覆盖层容器节点(新 NodeType 或 FRAME 标记)+ open 态绑 docState(布尔)+ 触发器 action 开/关;emit 复用 **shadcn Dialog/Sheet/Popover/Tooltip 模板**(uiKit off 时退化为自绘 portal + 遮罩)。**待锁**:用新 NodeType 还是 FRAME `overlayKind` 标记;open 态数据归属(docState key);非-shadcn 退化策略。**经验 A/G**(union widening)+ **经验 D**(radix dep 进 compiler deps)。
+
+## §22 更多 shadcn 原语(Tabs / Accordion / Avatar / Badge / Skeleton / Progress / Alert / Separator)
+
+> 第二波。扩 §15 ui-kit 映射表到展示型组件。
+
+**现状**:§15 ui-kit adapter 仅映射 9 个交互组件(Button/Input/Textarea/Label/Select/Checkbox/Switch/RadioGroup + Phase C 在做)。无展示型原语。
+
+**建议方向**:adapter 映射表加展示组件;部分需 open/active 态(Tabs/Accordion → 复用 §21 的 docState open-state 机制)。**待锁**:哪些进首批;Tabs/Accordion 的 active 态数据模型(可与 §21 共用)。
+
+## §23 图标(lucide-react)
+
+> 第二波。shadcn 默认图标库,小而通用。
+
+**现状(grep 坐实)**:无 icon 节点(lucide 仅在 shadcn 内部注释「inline SVG instead of lucide-react」)。
+
+**建议方向**:icon 节点(或 interactiveProp)→ emit `import { Name } from 'lucide-react'` + `<Name size color />`;icon 名进 Tailwind safelist 无关(走 import)。**经验 D**(lucide-react 进 compiler deps)。**待锁**:用新 NodeType 还是给 FRAME/INSTANCE 标 icon prop;图标选择 UI(GUI 延后真机)。
+
+## §24 图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)
+
+> 第二波。**无图片是真页面硬伤**。
+
+**现状(grep 坐实)**:无 `<img>` emit、无 gradient 填充、无 aspect-ratio/object-fit(全空;effects 阴影已 emit 不在此列)。
+
+**建议方向**:(a)image fill / IMAGE 节点 → `<img src alt>` + `object-cover/contain`;(b)渐变填充(`GRADIENT_LINEAR/RADIAL`)→ `bg-gradient-to-* from-* to-*`(扩 `jsx/tailwind-classes`);(c)`aspectRatio` → `aspect-[w/h]`。**待锁**:image src 来源(Figma imageRef 导出为 asset vs 用户填 URL/绑 §18 上传结果);gradient 多 stop 的 Tailwind 表达上限(arbitrary value 兜底)。
+
+## §25 外链 `<a href>` + target
+
+> 第二波。小。
+
+**现状(grep 坐实)**:无 `<a href>` emit(只有内部 navigate)。
+
+**建议方向**:节点标外链(interactiveProp `href` + `target`)→ emit `<a href target=_blank rel=noopener>`;区别于内部 `navigate`(§16)。**待锁**:外链 vs navigate 的授权区分(URL 是否 http(s) 自动判定)。
+
+## §26 布局原语(sticky / fixed 定位 + overflow scroll + z-index)
+
+> 第二波。吸顶头/侧栏/滚动容器/堆叠层级。
+
+**现状(grep 坐实)**:无 sticky/fixed/overflow-/z-index emit。
+
+**建议方向**:节点布局属性加 `position: sticky/fixed`(+ offset)、`overflow: auto/scroll/hidden`、`zIndex` → 对应 Tailwind class(`sticky top-0`/`overflow-auto`/`z-10`)。扩 `jsx/tailwind-classes`。**待锁**:与现有 FREE/ABSOLUTE 定位(§6)的关系;sticky offset 来源。
+
+## §27 state 持久化(localStorage)+ 派生 / 计算 state
+
+> 第二波。补运行时逻辑短板。
+
+**现状(grep 坐实)**:无 localStorage/persist/computed。
+
+**建议方向**:(a)docState 键标 `persist` → emit 初值读 `localStorage` + 变更写回(版本化 key);(b)派生 state = 一条表达式从其它 state/props 算出(emit `useMemo`),复用表达式子语言 + read-context 引用追踪。**待锁**:持久化范围(整 docState vs 标记键);派生 state 的循环依赖检测(collect 期静态拒)。
+
+## §28 用户事件覆盖收尾(onChange / onFocus / onBlur 端到端 + `$event`/`$value` 复活)
+
+> 第二波。接通已有但未走通的事件 + 复活 memory 里 shelved 的 token。
+
+**现状(grep 坐实)**:`EventName` 联合已含 `onClick|onChange|onSubmit|onFocus|onBlur`,但 events→handler emit 路径**只接 onClick/onSubmit**;`element.ts` 的 onChange **只被 controlled binding 占用**,用户在 events 里授权的 onChange/onFocus/onBlur **不 emit**。memory 记 `$event`/`$value` token 因「onChange 无授权入口、无 live 用例」**SHELVED**(token 本身已能 parse,IDENT_RE 含 `$`)。
+
+**建议方向**:把 events→handler emit 扩到 onChange/onFocus/onBlur(与 controlled binding 的 onChange 共存:controlled 先跑、再调用户 handler,或合成一个 onChange);**复活 `$event`/`$value`** 作为这些 handler 体内可读的 read-context token(`$value` = 当前控件值)→ 给 §3.x controlled binding 之外的「自定义 onChange 逻辑」一个真入口。**待锁**:controlled onChange 与用户 onChange 的合并策略;`$value` 的类型/来源(`e.target.value`)。**经验 A**(emit/collect/tool/check:vue 四穷举点 + event-name walker)。
 
 ## §9 i18n RTL 逻辑属性(v15)
 
