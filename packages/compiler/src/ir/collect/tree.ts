@@ -35,7 +35,6 @@ import type {
   IRList,
   IRListOrder,
   IRListQuery,
-  IRSupabaseFilter,
   IRMessageValue,
   IRNode,
   IRStateDecl,
@@ -1178,8 +1177,18 @@ interface ListSupabaseQueryConfig {
   table?: string
   columns?: string
   filters?: { column: string; op: string; valueExpr: string }[]
-  orderBy?: { column?: string; ascending?: boolean }[]
+  orderBy?: {
+    column?: string
+    ascending?: boolean
+    /** Phase 4 §17.3: reactive column / direction expressions (dynamic sort). */
+    columnExpr?: string
+    ascendingExpr?: string
+  }[]
   limit?: number
+  /** Phase 4 §17.2: reactive offset expression for pagination (e.g.
+   *  `$page * 20`). Requires `limit` (the page size); references a page-index
+   *  doc-state driven by prev/next setState handlers. */
+  offsetExpr?: string
 }
 
 /** A LIST datasource ref — a page-scoped array state (Phase 2 §9), a
@@ -1363,10 +1372,17 @@ function resolveListSupabaseQuery(
     ctx.warnings
   )
   if (filters === null) return null
+  const order = resolveListOrder(node, query?.orderBy, ctx)
+  if (order === null) return null
   const limit =
     typeof query?.limit === 'number' && Number.isFinite(query.limit) && query.limit > 0
       ? Math.floor(query.limit)
       : undefined
+  // §17.2/§17.3: offset + filter + dynamic-sort value-exprs all contribute their
+  // reactive refs to the effect deps. Offset pagination requires a page size.
+  const references: string[] = [...filters.flatMap((f) => f.references), ...order.references]
+  const offsetAst = resolveListOffset(node, query?.offsetExpr, limit, ctx, references)
+  if (offsetAst === null) return null
   const rowsName = uniqueListRowsName(node, ctx.listQueries)
   ctx.listQueries.push({
     rowsName,
@@ -1377,38 +1393,132 @@ function resolveListSupabaseQuery(
         ? query.columns.trim()
         : '*',
     filters,
-    orderBy: resolveListOrder(query?.orderBy),
+    orderBy: order.orders,
     limit,
-    deps: listQueryDeps(filters)
+    offsetAst,
+    deps: listQueryDeps(references)
   })
   return rowsName
 }
 
-/** Phase 4 §17: validate the static ORDER BY clauses (column non-empty;
- *  direction defaults ascending — only an explicit `false` flips it). */
-function resolveListOrder(raw: { column?: string; ascending?: boolean }[] | undefined): IRListOrder[] {
-  const out: IRListOrder[] = []
-  for (const o of raw ?? []) {
-    const column = typeof o.column === 'string' ? o.column.trim() : ''
-    if (column === '') continue
-    out.push({ column, ascending: o.ascending !== false })
+/** Phase 4 §17.2: resolve the optional pagination offset. Returns `undefined`
+ *  (no offset — incl. an offset with no page-size limit, which warns) so the
+ *  query still fetches, an `ExprAst` when valid (refs pushed to `references`),
+ *  or `null` on a malformed expression (drops the whole list, like filters).
+ *  Extracted to keep `resolveListSupabaseQuery` under the complexity gate. */
+function resolveListOffset(
+  node: SceneNode,
+  rawOffsetExpr: string | undefined,
+  limit: number | undefined,
+  ctx: WalkCtx,
+  references: string[]
+): ExprAst | null | undefined {
+  const src = typeof rawOffsetExpr === 'string' ? rawOffsetExpr.trim() : ''
+  if (src === '') return undefined
+  if (limit === undefined) {
+    ctx.warnings.push({
+      code: 'list-query-offset-needs-limit',
+      message: `LIST ${node.id} Supabase query has an offset but no limit (page size); pagination ignored`,
+      nodeId: node.id
+    })
+    return undefined
   }
-  return out
+  const resolved = resolveListQueryExpr(node, src, 'list-query-offset', ctx)
+  if (resolved === null) return null
+  references.push(...resolved.references)
+  return resolved.ast
 }
 
-/** Phase 4 §17: the reactive identifiers a list query's filters reference,
- *  mapped to `useEffect` dep expressions. A `$`-prefixed built-in (`$params` /
- *  `$query`) is an object whose identity changes each render, so it enters
- *  stringified — otherwise the effect would re-run forever. */
-function listQueryDeps(filters: readonly IRSupabaseFilter[]): string[] {
+/** Phase 4 §17: resolve one reactive query expression (offset / dynamic sort)
+ *  through the same read-context checks as a filter — reject `$prev`, reject
+ *  unknown identifiers, register doc-state reads. Returns the parsed AST + its
+ *  references, or null (with a warning) on failure. */
+function resolveListQueryExpr(
+  node: SceneNode,
+  src: string,
+  code: string,
+  ctx: WalkCtx
+): { ast: ExprAst; references: string[] } | null {
+  const parsed = parseExpression(src)
+  if (!parsed.ok) {
+    ctx.warnings.push({
+      code: `${code}-invalid`,
+      message: `LIST ${node.id} ${code} "${src}" → ${parsed.error}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (parsed.references.has(PREV_IDENT)) {
+    ctx.warnings.push({
+      code: `${code}-prev`,
+      message: `LIST ${node.id} ${code} references ${PREV_IDENT}, which is only valid inside setState/setVariable`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const unknown = unknownIdentifiers(parsed.references, ctx.states, ctx.inScope, ctx.docStates)
+  if (unknown.length > 0) {
+    ctx.warnings.push({
+      code: `${code}-unknown`,
+      message: `LIST ${node.id} ${code} references unknown identifier(s): ${unknown.join(', ')}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
+  return { ast: parsed.ast, references: [...parsed.references] }
+}
+
+/** Phase 4 §17: resolve the ORDER BY clauses. A clause is static (`column` +
+ *  `ascending`, §17.1) or reactive (`columnExpr` / `ascendingExpr` expressions,
+ *  §17.3 dynamic sort — binding a control to the referenced doc-state re-sorts
+ *  the list). Direction defaults ascending; only an explicit `false` flips it.
+ *  A clause with neither static nor reactive column is skipped; a malformed
+ *  reactive expression drops the whole list (consistent with the filter posture).
+ *  Returns the clauses + every reactive ref they contribute to the effect deps. */
+function resolveListOrder(
+  node: SceneNode,
+  raw: ListSupabaseQueryConfig['orderBy'],
+  ctx: WalkCtx
+): { orders: IRListOrder[]; references: string[] } | null {
+  const orders: IRListOrder[] = []
+  const references: string[] = []
+  for (const o of raw ?? []) {
+    const columnExpr = typeof o.columnExpr === 'string' ? o.columnExpr.trim() : ''
+    const column = typeof o.column === 'string' ? o.column.trim() : ''
+    let columnAst: ExprAst | undefined
+    if (columnExpr !== '') {
+      const resolved = resolveListQueryExpr(node, columnExpr, 'list-query-order', ctx)
+      if (resolved === null) return null
+      columnAst = resolved.ast
+      references.push(...resolved.references)
+    } else if (column === '') {
+      continue
+    }
+    const ascendingExpr = typeof o.ascendingExpr === 'string' ? o.ascendingExpr.trim() : ''
+    let ascendingAst: ExprAst | undefined
+    if (ascendingExpr !== '') {
+      const resolved = resolveListQueryExpr(node, ascendingExpr, 'list-query-order', ctx)
+      if (resolved === null) return null
+      ascendingAst = resolved.ast
+      references.push(...resolved.references)
+    }
+    orders.push({ column, columnAst, ascending: o.ascending !== false, ascendingAst })
+  }
+  return { orders, references }
+}
+
+/** Phase 4 §17: the reactive identifiers a list query references (across its
+ *  filters + offset), mapped to `useEffect` dep expressions. A `$`-prefixed
+ *  built-in (`$params` / `$query`) is an object whose identity changes each
+ *  render, so it enters stringified — otherwise the effect re-runs forever. */
+function listQueryDeps(references: Iterable<string>): string[] {
   const seen = new Set<string>()
   const deps: string[] = []
-  for (const f of filters) {
-    for (const ref of f.references) {
-      if (seen.has(ref)) continue
-      seen.add(ref)
-      deps.push(ref.startsWith('$') ? `JSON.stringify(${ref})` : ref)
-    }
+  for (const ref of references) {
+    if (seen.has(ref)) continue
+    seen.add(ref)
+    deps.push(ref.startsWith('$') ? `JSON.stringify(${ref})` : ref)
   }
   return deps
 }

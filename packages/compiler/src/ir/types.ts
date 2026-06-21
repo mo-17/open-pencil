@@ -271,10 +271,15 @@ export interface IRList {
 }
 
 /** Phase 4 §17: one ORDER BY clause on a LIST's Supabase query datasource.
- *  v1 is a static column + direction (dynamic sort is §17.3). */
+ *  A static column + direction (§17.1), or a reactive `columnAst` / `ascendingAst`
+ *  expression (§17.3 dynamic sort) — binding a control to the referenced
+ *  doc-state lets the user re-sort the list. `columnAst`, when set, supersedes
+ *  the static `column`; `ascendingAst` supersedes `ascending`. */
 export interface IRListOrder {
   column: string
+  columnAst?: ExprAst
   ascending: boolean
+  ascendingAst?: ExprAst
 }
 
 /** Phase 4 §17: a LIST node bound directly to a Supabase query (Bubble
@@ -293,9 +298,15 @@ export interface IRListQuery {
   filters: IRSupabaseFilter[]
   orderBy: IRListOrder[]
   limit?: number
+  /** Phase 4 §17.2: offset pagination. When set (together with `limit`), the
+   *  adapter emits `.range(<offset>, <offset> + <limit> - 1)` instead of
+   *  `.limit(<limit>)`. The expression typically references a page-index
+   *  doc-state the user drives with prev/next setState handlers, so paging
+   *  re-runs the fetch (the offset's refs join `deps`). */
+  offsetAst?: ExprAst
   /** Reactive dependency expressions for the effect's deps array (page-state /
-   *  doc-state value identifiers; `$params` / `$query` enter stringified so the
-   *  object identity doesn't re-trigger the effect every render). */
+   *  doc-state value identifiers from filters + offset; `$params` / `$query`
+   *  enter stringified so object identity doesn't re-trigger every render). */
   deps: string[]
 }
 

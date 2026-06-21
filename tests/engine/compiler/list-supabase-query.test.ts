@@ -82,4 +82,74 @@ describe('compile — LIST Supabase query datasource (Phase 4 §17.1)', () => {
     expect(app).not.toContain('useEffect')
     expect(app).not.toContain('.from(')
   })
+
+  // ── §17.2 offset pagination ──
+  const PAGE_STATE = [{ id: 'd1', name: 'page', type: 'number', defaultValue: 0 }]
+
+  test('offsetExpr + limit emit .range(offset, offset + size - 1) and a page dep', () => {
+    const app = compileList(
+      { table: 'products', limit: 20, offsetExpr: 'page * 20' },
+      { docStates: PAGE_STATE }
+    )
+    expect(app).toContain('.range(page * 20, page * 20 + 20 - 1)')
+    expect(app).not.toContain('.limit(20)')
+    expect(app).toMatch(/\}, \[page\]\)/)
+  })
+
+  test('limit without offset stays .limit(n) (no pagination)', () => {
+    const app = compileList({ table: 'products', limit: 20 })
+    expect(app).toContain('.limit(20)')
+    expect(app).not.toContain('.range(')
+  })
+
+  test('offsetExpr without limit → warn + no range/limit (pagination ignored)', () => {
+    const app = compileList(
+      { table: 'products', offsetExpr: 'page * 20' },
+      { docStates: PAGE_STATE }
+    )
+    expect(app).not.toContain('.range(')
+    expect(app).not.toContain('.limit(')
+    // the list still fetches (offset ignored, not the whole query dropped)
+    expect(app).toContain('.from("products")')
+  })
+
+  // ── §17.3 dynamic sort ──
+  const SORT_STATE = [
+    { id: 'd1', name: 'sortCol', type: 'string', defaultValue: 'name' },
+    { id: 'd2', name: 'sortAsc', type: 'boolean', defaultValue: true }
+  ]
+
+  test('reactive columnExpr / ascendingExpr emit .order(<expr>, …) + sort deps', () => {
+    const app = compileList(
+      {
+        table: 'products',
+        orderBy: [{ columnExpr: 'sortCol', ascendingExpr: 'sortAsc' }]
+      },
+      { docStates: SORT_STATE }
+    )
+    expect(app).toContain('.order(sortCol, { ascending: sortAsc })')
+    expect(app).toContain('const sortCol = useDocState("sortCol")')
+    expect(app).toMatch(/\}, \[sortCol, sortAsc\]\)/)
+  })
+
+  test('static and reactive order clauses coexist', () => {
+    const app = compileList(
+      {
+        table: 'products',
+        orderBy: [{ columnExpr: 'sortCol' }, { column: 'id', ascending: false }]
+      },
+      { docStates: SORT_STATE }
+    )
+    expect(app).toContain('.order(sortCol, { ascending: true })')
+    expect(app).toContain('.order("id", { ascending: false })')
+  })
+
+  test('a malformed sort expression drops the whole list', () => {
+    const app = compileList(
+      { table: 'products', orderBy: [{ columnExpr: 'unknownState' }] },
+      { docStates: SORT_STATE }
+    )
+    expect(app).not.toContain('.from("products")')
+    expect(app).not.toContain('useEffect')
+  })
 })

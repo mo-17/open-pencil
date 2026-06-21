@@ -1,6 +1,30 @@
-import type { IRListQuery } from '#compiler/ir/types'
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
+
+import type { IRListOrder, IRListQuery } from '#compiler/ir/types'
 
 import { emitFilterChain } from './event'
+
+/** Phase 4 §17.3: one `.order(col, { ascending })` clause. A reactive
+ *  `columnAst` / `ascendingAst` (dynamic sort bound to a control) supersedes the
+ *  static `column` / `ascending`. */
+function emitOrderClause(o: IRListOrder): string {
+  const col = o.columnAst ? emitExpression(o.columnAst) : JSON.stringify(o.column)
+  const ascending = o.ascendingAst ? emitExpression(o.ascendingAst) : String(o.ascending)
+  return `.order(${col}, { ascending: ${ascending} })`
+}
+
+/** Phase 4 §17.2: the pagination clause — `.range(offset, offset + size - 1)`
+ *  when an offset is set (paginated page), else `.limit(size)` (first N rows),
+ *  else nothing. Range needs a page size, so collect only sets `offsetAst`
+ *  alongside `limit`. */
+function emitListPaging(q: IRListQuery): string {
+  if (q.limit === undefined) return ''
+  if (q.offsetAst) {
+    const off = emitExpression(q.offsetAst)
+    return `.range(${off}, ${off} + ${q.limit} - 1)`
+  }
+  return `.limit(${q.limit})`
+}
 
 /**
  * Phase 4 §17: emit a LIST's Supabase-query fetch hook — a `useState` for the
@@ -16,10 +40,8 @@ export function emitListQueryHook(q: IRListQuery): string {
     `getSupabaseClient().from(${JSON.stringify(q.table)})` +
     `.select(${JSON.stringify(q.columns)})` +
     emitFilterChain(q.filters) +
-    q.orderBy
-      .map((o) => `.order(${JSON.stringify(o.column)}, { ascending: ${o.ascending} })`)
-      .join('') +
-    (q.limit !== undefined ? `.limit(${q.limit})` : '')
+    q.orderBy.map(emitOrderClause).join('') +
+    emitListPaging(q)
   return (
     `  const [${q.rowsName}, ${q.setterName}] = useState([])\n` +
     `  useEffect(() => {\n` +
