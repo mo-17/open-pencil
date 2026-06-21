@@ -237,7 +237,45 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0 clones;compiler **656/0**(+6 card 测试)。零 hotfix。
 - **边界(已文档化)**:仅 FRAME(GROUP/ROUNDED_RECTANGLE 不纳);只 `<Card>` wrapper 不拆 Header/Content;className passthrough 使误判低害(Card 默认 `rounded-xl border bg-card shadow` 被设计 `rounded-[..] bg-[..]` 经 cn/tailwind-merge 覆盖);可见背景判定 = `fills.some(f => f.visible && f.opacity>0)` —— **任意 FillType(SOLID/渐变/图片)只要可见即算**(非仅 SOLID),所以渐变/图片背景的圆角 FRAME 也映 Card。
 
-**剩余 #2 Phase C array checkbox-group**:array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版经验)。**待锁**:array 字段来源(已有数据模型 vs 新增);单选/多选语义。
+### §15 Phase C array checkbox-group 详细设计 + 锁定决定(2026-06-21,AskUserQuestion 锁定)
+
+> **目标**:启用 shadcn ui-kit 时,array 多选 CHECKBOX group(`CHECKBOX` + `interactiveProps.options[]`)emit 成 N 个 `<Checkbox>` 行 + 手动数组 toggle,而非现在的裸 N 个 `<input type=checkbox>`。把 §15 ui-kit 这条线收完(Phase A/B 已交付的 9 个交互组件之后的最后一档)。
+
+**现状坐实(经验 Q/E,直接读源)**:
+- `isCheckboxGroup(node)`(tree.ts:560)= `CHECKBOX` + `interactiveProps.options[]` 非空。collect 出 `<div>` wrapper(tag `div`,className = design 类 + 非 flex/grid 时补 `OPTION_GROUP_WRAPPER_CLASSES='flex flex-col gap-2'`)+ 每项 `<label class=OPTION_LABEL_CLASSES><input type=checkbox value=opt class=OPTION_INPUT_CLASSES/> opt</label>`(`applyCheckboxGroupOptions`/`appendOptionInputs`)。
+- **受控**:绑 array<string> state 时,`applyControlledInput` 走 `isCheckboxGroup` 分支调 `patchOptionLeafControlled(children,'checkbox',controlled)` 把同一 controlled 描述符贴到**每个** `<input type=checkbox>` leaf(wrapper 自身返回 undefined,无 value/onChange);plain emit(element.ts:254)出 `checked={read.includes(opt)}` + `onChange={(e)=>...spread/filter toggle}`(`arrayCheckboxOnChangeBody`)。
+- **`controlKindFor`(tree.ts:1009)对 checkbox-group 刻意返回 `undefined`**(Phase B 排除注释:「no native shadcn group component — deferred」)→ shadcn 下 checkbox-group 留 plain `<input>`。这正是 Phase C 要补的点。
+- Phase B 的 RADIO→`radio-group` 是完全对称的先例:`controlKindFor` 返回 `'radio-group'` → shadcn `CONTROL_TO_MAPPING['radio-group']` + `emitControl` case → `emitRadioGroup` 从 wrapper 的 `<label><input>` 子里抽 options(`radioOptions`)emit `<RadioGroupItem>` 行。
+
+**锁定决定(2 fork + 1 定序,AskUserQuestion)**:
+1. **〔Fork 1 锁定〕options 来源 = 仅静态 `interactiveProps.options[]`**(本次)。**动态 options 绑定(options 来自 state/query array)归 §17 数据链首片**(独立设计,含 `{value,label}` 对象选项决策)—— recon 坐实它是中等量级(scene-graph `optionsSourceRef` + 新 IR `.map()` 形态 + plain&shadcn 双 emit + round-trip),与 §17 列表绑数据源重叠。用户先选「动态」,经定序问题后改选「先静态、动态归 §17(推荐)」。
+2. **〔Fork 2 锁定〕shadcn 排版 = 镜像 radio-group 行布局**:wrapper 保持 plain `<div className=design 类>`(shadcn 无原生 group 组件),内含每项一行 `<div className="flex items-center gap-2"><Checkbox id checked onCheckedChange/><label htmlFor>opt</label></div>`。否决极简内联 `<label><Checkbox/> opt</label>`(与 shadcn radio-group 行布局不一致)。
+3. **语义本身已定死**:checkbox-group 天然多选(array<string>,每项独立 toggle);单选互斥 = RADIO(Phase B 已做)。不浪费 AskUserQuestion。
+
+**实现(纯 compiler-emit + IR-hint widening,镜像 Phase B controlKind;经验 M build:packages 再 lint;经验 A union widening sweep)**:
+- **IR-hint widening**(`ir/types.ts`):`IRElement.controlKind` 联合加 `'checkbox-group'`(可选字段,无 `.vue` stub 破坏、无 `never` 闸)。
+- **detection**(`ir/collect/tree.ts`):`controlKindFor` 的 CHECKBOX arm `isCheckboxGroup(node) ? 'checkbox-group' : 'checkbox'`(原 `undefined`)。**这是唯一 collect 改动**;`patchOptionLeafControlled` 仍贴 controlled 到 leaf(emitControl 从 leaf 读)。
+- **shadcn**(`shadcn/index.ts`):`CONTROL_TO_MAPPING['checkbox-group'] = { component:'Checkbox', from:'@/components/ui/checkbox' }`(**复用既有 Checkbox.tsx + `@radix-ui/react-checkbox`,零新模板/零新 dep**)+ `emitControl` case `'checkbox-group'` → 新 `emitCheckboxGroup`。
+- **`emitCheckboxGroup`**:从 wrapper 子抽 options(复用 `optionLeaves`,= 原 `radioOptions` 改名共享)→ wrapper `<div className=node.className>` + 每项经共享 `emitOptionRow` 出 `<div class="flex items-center gap-2">` + control 行 + `<label htmlFor>`;control = 受控时 `<Checkbox id checked={read.includes(opt)} onCheckedChange={(checked)=>write(checked===true?[...read,opt]:read.filter(v=>v!==opt))}/>`(`checkboxToggleParts`),非受控时裸 `<Checkbox id/>`。
+- **零碰 = byte-identical-off**:plain emit 忽略 controlKind(`tryEmitKitControl` 仅 uiKit 非空时触发)→ checkbox-group plain 路径不变;registry `walkForKit`/emit `tryEmitKitControl` 都是 generic(`node.controlKind && mapControl`)→ 零改;shadcn `emitControl` switch 有 `default: return null`(graceful,非 `never`)。
+- **经验 A 双轮 sweep(controlKind 全消费点)**:`controlKindFor`(producer,改)/ `IRElement.controlKind` union(widen)/ registry walkForKit(generic 不动)/ emit tryEmitKitControl(generic 不动)/ shadcn CONTROL_TO_MAPPING(加 arm)/ shadcn emitControl switch(加 arm)。`src/`+`packages/vue/src/` 零 controlKind 消费 → check:vue 不涉及。**无新 ActionDef kind / 无 round-trip / 无 scene-graph 改动**。
+
+**成功标准(headless)**:
+1. array checkbox-group(`options[]`)+ array state 绑定 + `--ui-kit shadcn` → N 个 `<Checkbox>` 行 + `checked={sel.includes(opt)}` + `onCheckedChange` spread/filter toggle + `<label htmlFor>` + `import { Checkbox }` + emit `checkbox.tsx` + `@radix-ui/react-checkbox` dep。
+2. 受控(docState array → `setDocState`;page-state array → `setX` setter)+ 非受控(裸 `<Checkbox>`,无 checked/onCheckedChange)。
+3. option label i18n-aware(`emitChild` → `<FormattedMessage>`)。
+4. off(无 uiKit)→ checkbox-group 仍 plain `<input type=checkbox>` + plain onChange,byte-identical。
+5. `bun run check` exit 0;tsgo 0;jscpd 0;compiler 全绿基准 + ui-kit 新测试;kiwi/scene-graph 零回归。
+6. **真机验 pending**:部署 shadcn 产物看 `<Checkbox>` 复选框视觉 + 多选 toggle 行为。
+
+**交付记录(CODE COMPLETE 2026-06-21,feat `1e4e4db5`)**:
+- 实现按设计 4 文件(ir/types controlKind union + tree.ts controlKindFor + shadcn/index CONTROL_TO_MAPPING+emitControl+emitCheckboxGroup+checkboxToggleParts+optionGroupBase + ui-kit/controls.test),**零 scene-graph/round-trip/scene-graph types 改动**。
+- **共享重构(消 jscpd clone)**:`radioOptions`→`optionLeaves`(radio+checkbox 共享抽 option leaf);新 `emitOptionRow`(共享行布局,radio/checkbox 各传 control 行);新 `optionGroupBase`(共享 pad/i1/i2 + options + controlled + rootParts 前导,radio 再 append valueBindingParts、checkbox 直接用)—— emitRadioGroup 一并改用,零行为变化。
+- **GATE 收口 1 处(jscpd)**:`emitCheckboxGroup` 的前导(pad/i1/i2+options+controlled+rootParts)与 `emitRadioGroup` 6 行 116 token 重复 → 抽 `optionGroupBase` 消重(0 clones)。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0 clones;compiler **660/0**(+4 net:新增受控-docState/受控-pageState/非受控/i18n/byte-identical-off 5 条 - 改写 1 条 deferred);kiwi 120/0、scene-graph 202/0 零回归;check:vue 0。零 hotfix。
+- **e2e 实跑**:scratch `.fig`(3-option checkbox-group 绑 docState array)经 `exportFigFile`→CLI `parseFigFile`→`compile --ui-kit shadcn` 真落盘 3 个 `<Checkbox>` 行 + includes/toggle + `<label htmlFor>` + `src/components/ui/checkbox.tsx` + package.json `@radix-ui/react-checkbox`(options 经 .fig round-trip 存活)。
+- **边界(已文档化)**:仅静态 `options[]`(动态 options 绑数据源 → §17 首片);多选 array 语义(单选 = RADIO);wrapper 保 plain `<div>`(shadcn 无原生 CheckboxGroup);复用 Phase B 的 Checkbox.tsx/dep(无新增);`{value,label}` 对象选项延后(同 static options 的 `string[]` 假设)。
+- **新经验**:UI-kit「无原生分组件」的多选场景 —— 不造自定义 group 组件,而是 wrapper 保 plain `<div>` + 复用单组件(Checkbox)按 option `.flatMap` 拆行 + 手动 array toggle;与 radio-group(有原生 RadioGroup)的关键区别是 wrapper tag(`<div>` vs `<RadioGroup>`)+ control 的事件 API(`onCheckedChange` array spread/filter vs `onValueChange` 单值)。共享 `optionGroupBase`/`emitOptionRow`/`optionLeaves` 三 helper 让 radio/checkbox 两路零 jscpd clone。
 
 ## §16 动态路由 / 路由参数 / 路由守卫 ⭐
 
