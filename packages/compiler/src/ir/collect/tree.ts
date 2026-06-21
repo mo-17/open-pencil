@@ -33,6 +33,9 @@ import type {
   IREventName,
   IRExpression,
   IRList,
+  IRListOrder,
+  IRListQuery,
+  IRSupabaseFilter,
   IRMessageValue,
   IRNode,
   IRStateDecl,
@@ -44,6 +47,7 @@ import type {
 import {
   registerDocStateReads,
   resolveEvents,
+  resolveSupabaseFilters,
   resolveTextBinding,
   resolveValueBinding,
   QUERY_PARAMS_IDENT,
@@ -109,6 +113,7 @@ export function collectTree(
   // Phase 4 §16.1: page-level dynamic route pattern (`/product/:id`), validated.
   const routePattern = liftRoutePattern(page, pageId, warnings)
 
+  const listQueries: IRListQuery[] = []
   const ctx: WalkCtx = {
     graph,
     states: stateById,
@@ -119,7 +124,8 @@ export function collectTree(
     inScope: new Set(),
     components,
     workflows,
-    i18n
+    i18n,
+    listQueries
   }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
@@ -161,6 +167,7 @@ export function collectTree(
     docStates,
     docStateReads: [...docStateReads],
     docStateWrites: [...docStateWrites],
+    listQueries: listQueries.length > 0 ? listQueries : undefined,
     supabaseConfig,
     translations,
     warnings
@@ -482,6 +489,12 @@ interface WalkCtx {
    *  so a parameterized node emits `{prop ?? ownLiteral}` / `className={prop ??
    *  "ownClasses"}` (per-variant fallback) instead of plain `{prop}`. */
   variantBody?: boolean
+  /** Phase 4 §17: accumulator for LIST nodes bound to a Supabase query
+   *  datasource — present only during a PAGE walk (the adapter emits the fetch
+   *  hooks at the page-component level). Undefined during a component-body walk,
+   *  which signals `collectListDirective` to reject a supabase-backed LIST there
+   *  (a component has no page-level hook slot). */
+  listQueries?: IRListQuery[]
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -1157,12 +1170,26 @@ function patchOptionLeafControlled(
   }
 }
 
-/** A LIST datasource ref — either a page-scoped array state (Phase 2 §9) or
- *  a document-level array Document State (Phase 2 §3). */
+/** Phase 4 §17: an inline Supabase query config a LIST may carry as its
+ *  datasource (`kind: 'supabaseQuery'`). Lives in the interactiveProps JSON blob
+ *  (rides round-trip, zero codec). Filter `valueExpr` / order columns reuse the
+ *  §2 expression sub-language, so filters can reference reactive doc-state. */
+interface ListSupabaseQueryConfig {
+  table?: string
+  columns?: string
+  filters?: { column: string; op: string; valueExpr: string }[]
+  orderBy?: { column?: string; ascending?: boolean }[]
+  limit?: number
+}
+
+/** A LIST datasource ref — a page-scoped array state (Phase 2 §9), a
+ *  document-level array Document State (Phase 2 §3), or an inline Supabase query
+ *  (Phase 4 §17, `kind: 'supabaseQuery'` + `query`). */
 interface ListDataSourceRef {
   kind?: string
   stateId?: string
   docStateName?: string
+  query?: ListSupabaseQueryConfig
 }
 
 /**
@@ -1238,7 +1265,12 @@ function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
     itemName?: string
     indexName?: string
   }
-  const arrayName = resolveListArrayName(node, ip.dataSourceRef, ctx)
+  // Phase 4 §17: a Supabase query datasource emits its own fetch hook and the
+  // `.map()` iterates the hook's rows; everything else resolves a named array.
+  const arrayName =
+    ip.dataSourceRef?.kind === 'supabaseQuery'
+      ? resolveListSupabaseQuery(node, ip.dataSourceRef.query, ctx)
+      : resolveListArrayName(node, ip.dataSourceRef, ctx)
   if (arrayName === null) return null
 
   const itemName = typeof ip.itemName === 'string' && ip.itemName !== '' ? ip.itemName : 'item'
@@ -1278,6 +1310,124 @@ function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
     indexName,
     template
   }
+}
+
+/**
+ * Phase 4 §17: resolve a LIST's inline Supabase query datasource into an
+ * `IRListQuery` (pushed onto the page's `listQueries`) and return the rows
+ * variable the emitted `.map()` iterates. Requires Supabase to be configured
+ * (the `$currentUser` doc-state — same proxy the §16.3 auth guard uses) and a
+ * non-empty table. Filters reuse the §2 resolver, so their `valueExpr` may
+ * reference reactive doc-state (live filtering). Returns null (with a warning)
+ * on any failure → the caller emits no list.
+ */
+function resolveListSupabaseQuery(
+  node: SceneNode,
+  query: ListSupabaseQueryConfig | undefined,
+  ctx: WalkCtx
+): string | null {
+  if (!ctx.listQueries) {
+    ctx.warnings.push({
+      code: 'list-query-unsupported-here',
+      message: `LIST ${node.id} Supabase query datasource is only supported on a page, not inside a reusable component`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (!ctx.docStates.has(CURRENT_USER_IDENT)) {
+    ctx.warnings.push({
+      code: 'list-query-no-supabase',
+      message: `LIST ${node.id} has a Supabase query datasource but the document has no Supabase config; nothing will render`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const table = typeof query?.table === 'string' ? query.table.trim() : ''
+  if (table === '') {
+    ctx.warnings.push({
+      code: 'list-query-missing-table',
+      message: `LIST ${node.id} Supabase query datasource has no table`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const filters = resolveSupabaseFilters(
+    node,
+    'list-datasource',
+    query,
+    'list-query',
+    ctx.states,
+    ctx.inScope,
+    ctx.docStates,
+    ctx.docStateReads,
+    ctx.warnings
+  )
+  if (filters === null) return null
+  const limit =
+    typeof query?.limit === 'number' && Number.isFinite(query.limit) && query.limit > 0
+      ? Math.floor(query.limit)
+      : undefined
+  const rowsName = uniqueListRowsName(node, ctx.listQueries)
+  ctx.listQueries.push({
+    rowsName,
+    setterName: `set${rowsName[0].toUpperCase()}${rowsName.slice(1)}`,
+    table,
+    columns:
+      typeof query?.columns === 'string' && query.columns.trim() !== ''
+        ? query.columns.trim()
+        : '*',
+    filters,
+    orderBy: resolveListOrder(query?.orderBy),
+    limit,
+    deps: listQueryDeps(filters)
+  })
+  return rowsName
+}
+
+/** Phase 4 §17: validate the static ORDER BY clauses (column non-empty;
+ *  direction defaults ascending — only an explicit `false` flips it). */
+function resolveListOrder(raw: { column?: string; ascending?: boolean }[] | undefined): IRListOrder[] {
+  const out: IRListOrder[] = []
+  for (const o of raw ?? []) {
+    const column = typeof o.column === 'string' ? o.column.trim() : ''
+    if (column === '') continue
+    out.push({ column, ascending: o.ascending !== false })
+  }
+  return out
+}
+
+/** Phase 4 §17: the reactive identifiers a list query's filters reference,
+ *  mapped to `useEffect` dep expressions. A `$`-prefixed built-in (`$params` /
+ *  `$query`) is an object whose identity changes each render, so it enters
+ *  stringified — otherwise the effect would re-run forever. */
+function listQueryDeps(filters: readonly IRSupabaseFilter[]): string[] {
+  const seen = new Set<string>()
+  const deps: string[] = []
+  for (const f of filters) {
+    for (const ref of f.references) {
+      if (seen.has(ref)) continue
+      seen.add(ref)
+      deps.push(ref.startsWith('$') ? `JSON.stringify(${ref})` : ref)
+    }
+  }
+  return deps
+}
+
+/** Phase 4 §17: a unique camelCase rows variable for a list query, derived from
+ *  the LIST node name (`Products` → `productsRows`), de-duplicated against the
+ *  page's other list queries. */
+function uniqueListRowsName(node: SceneNode, existing: readonly IRListQuery[]): string {
+  const words = (node.name || 'list').replace(/[^a-zA-Z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean)
+  const camel = words
+    .map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()))
+    .join('')
+  const ident = /^[a-zA-Z]/.test(camel) ? camel : `list${camel}`
+  const base = `${ident || 'list'}Rows`
+  const used = new Set(existing.map((q) => q.rowsName))
+  if (!used.has(base)) return base
+  let i = 2
+  while (used.has(`${base}${i}`)) i++
+  return `${base}${i}`
 }
 
 /**

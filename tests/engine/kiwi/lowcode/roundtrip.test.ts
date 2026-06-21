@@ -277,6 +277,28 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(radio.interactiveProps).toEqual({ options: ['a', 'b'], value: 'b', groupName: 'choice' })
   })
 
+  test('LIST supabaseQuery dataSourceRef round-trips through .fig (Phase 4 §17)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const dataSourceRef = {
+      kind: 'supabaseQuery',
+      query: {
+        table: 'products',
+        columns: 'id,name,price',
+        filters: [{ column: 'category', op: 'eq', valueExpr: 'category' }],
+        orderBy: [{ column: 'price', ascending: true }],
+        limit: 20
+      }
+    }
+    graph.createNode('LIST', page.id, { name: 'Products', interactiveProps: { dataSourceRef } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const list = findFirst(reimported, 'LIST')
+
+    expect(list.interactiveProps).toEqual({ dataSourceRef })
+  })
+
   test('TEXT with bindings.text → ref(stateId) round-trips through .fig', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

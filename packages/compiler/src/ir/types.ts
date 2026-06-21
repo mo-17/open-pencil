@@ -270,6 +270,35 @@ export interface IRList {
   template: IRNode
 }
 
+/** Phase 4 §17: one ORDER BY clause on a LIST's Supabase query datasource.
+ *  v1 is a static column + direction (dynamic sort is §17.3). */
+export interface IRListOrder {
+  column: string
+  ascending: boolean
+}
+
+/** Phase 4 §17: a LIST node bound directly to a Supabase query (Bubble
+ *  "repeating group"). The adapter emits a `const [<rowsName>, <setterName>] =
+ *  useState([])` + a `useEffect` that runs
+ *  `getSupabaseClient().from(table).select(columns)<filters><order><limit>` and
+ *  stores the rows; the LIST's `.map()` then iterates `<rowsName>`. The effect
+ *  re-runs whenever a reactive value referenced by a filter changes (`deps`),
+ *  so binding a control to a filter's doc-state gives live filtering with no
+ *  extra wiring. */
+export interface IRListQuery {
+  rowsName: string
+  setterName: string
+  table: string
+  columns: string
+  filters: IRSupabaseFilter[]
+  orderBy: IRListOrder[]
+  limit?: number
+  /** Reactive dependency expressions for the effect's deps array (page-state /
+   *  doc-state value identifiers; `$params` / `$query` enter stringified so the
+   *  object identity doesn't re-trigger the effect every render). */
+  deps: string[]
+}
+
 export type IREventName = 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'
 
 /** A statement that runs when an event fires. Phase 1 §7.4 widens this
@@ -604,6 +633,11 @@ export interface IRTree {
    *  action. Adapter imports `setDocState` when this list is non-empty;
    *  no hook declaration is needed (setDocState is a plain function). */
   docStateWrites: string[]
+  /** Phase 4 §17: LIST nodes on this page bound to a Supabase query datasource.
+   *  The adapter emits one fetch hook (useState + useEffect) per entry, then the
+   *  LIST `.map()` iterates the hook's rows. Empty / absent ≡ no data-bound
+   *  lists (every LIST still binds local array state as before). */
+  listQueries?: IRListQuery[]
   /** Phase 3 §2: connection settings from the root SceneNode, lifted into
    *  every IRTree from the same compile. Adapter uses this to decide
    *  whether to emit `_lowcode_supabase.ts` and inject the supabase-js

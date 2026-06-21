@@ -348,7 +348,7 @@ function emitMutationPayload(h: IRSupabaseMutationHandler): string {
   return h.payload ?? '{}'
 }
 
-function emitFilterChain(filters: readonly IRSupabaseFilter[]): string {
+export function emitFilterChain(filters: readonly IRSupabaseFilter[]): string {
   return filters
     .map((f) => `.${f.op}(${JSON.stringify(f.column)}, ${emitExpression(f.ast)})`)
     .join('')

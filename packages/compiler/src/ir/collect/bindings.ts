@@ -1308,9 +1308,9 @@ function resolveClipboard(
  *  rather than silently emitting a partial chain. Validates each value
  *  expression against state / inScope / docState — same allow-set as
  *  apiCall URL templates — and records reachable docStates as reads. */
-function resolveSupabaseFilters(
+export function resolveSupabaseFilters(
   node: SceneNode,
-  eventName: EventName,
+  eventName: string,
   source: { filters?: { column: string; op: string; valueExpr: string }[] } | undefined,
   code: string,
   states: Map<string, IRStateDecl>,

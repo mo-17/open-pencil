@@ -2,6 +2,7 @@ import type { IRNode, IRTree } from '#compiler/ir/types'
 
 import { buildComponentImports } from './emit/component'
 import { emitElement } from './emit/element'
+import { emitListQueryHook } from './emit/list-query'
 import { emitStateDecl } from './emit/state'
 import {
   hasIntlAttr,
@@ -215,10 +216,21 @@ function buildRouterHookLines(u: RouterUsage): string[] {
   return lines
 }
 
+/** §17: the single `react` named import a page needs — `useState` for page
+ *  state and/or a Supabase-query LIST's rows, `useEffect` for the LIST fetch
+ *  hook. Extracted to keep `buildPageFile` under the complexity limit. */
+function buildReactImport(ir: IRTree): string {
+  const hasListQueries = (ir.listQueries?.length ?? 0) > 0
+  const hooks: string[] = []
+  if (ir.states.length > 0 || hasListQueries) hooks.push('useState')
+  if (hasListQueries) hooks.push('useEffect')
+  return hooks.length > 0 ? `import { ${hooks.join(', ')} } from 'react'\n` : ''
+}
+
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix, uiKit, routerAvailable } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
-  const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
+  const reactImport = buildReactImport(ir)
   // Phase 4 §16.1/§16.3/§16.4: the route-bound built-ins (`$params`, `$query`)
   // and the auth guard only resolve inside the multi-page router; single-page
   // App.tsx has no router context (guard is warned + dropped in emitSinglePage).
@@ -263,6 +275,10 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const docStateReadLines = ir.docStateReads
     .map((name) => `  const ${name} = useDocState(${JSON.stringify(name)})`)
     .join('\n')
+  // §17: per-LIST Supabase fetch hooks. Emitted after the state / docState /
+  // router hooks above so their effect deps (page-state, doc-state, `$params`)
+  // reference locals already declared.
+  const listQueryLines = (ir.listQueries ?? []).map(emitListQueryHook).join('\n')
   // §9 v3: a `const intl = useIntl()` hook for any translated attribute.
   const intlHookLine = usesIntlAttr ? '  const intl = useIntl()' : ''
   // Phase 4 §16.3: redirect-if-unauthenticated guard. Comes after the hooks (it
@@ -272,7 +288,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     ? `  if (!$currentUser.signedIn) return <Navigate to="${ir.authRedirect ?? '/login'}" replace />`
     : ''
 
-  const hookLines = [stateLines, docStateReadLines, routerHookLines, intlHookLine, guardLine]
+  const hookLines = [stateLines, docStateReadLines, routerHookLines, listQueryLines, intlHookLine, guardLine]
     .filter((l) => l !== '')
     .join('\n')
 

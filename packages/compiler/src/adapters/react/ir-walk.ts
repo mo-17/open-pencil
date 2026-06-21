@@ -137,6 +137,9 @@ function nodeHasIntlAttr(node: IRNode): boolean {
  * this comment warns about.
  */
 export function pageUsesSupabase(ir: IRTree): boolean {
+  // §17: a LIST bound to a Supabase query datasource calls getSupabaseClient()
+  // in its fetch hook, so it needs the import + runtime just like an action does.
+  if ((ir.listQueries?.length ?? 0) > 0) return true
   return ir.children.some((c) =>
     treeHasHandler(
       c,
