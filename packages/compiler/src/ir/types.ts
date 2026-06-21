@@ -142,11 +142,13 @@ export interface IRElement {
    *  composed component (shadcn `<Select>`, `<Checkbox>`, `<Switch>`,
    *  `<RadioGroup>`). Set on the control's root element by collect; the plain
    *  React adapter ignores it (→ byte-identical output), the kit's
-   *  `emitControl` hook consumes it. `radio-group` marks the wrapper `<div>`
-   *  whose `<input type=radio>` leaves carry the `controlled` descriptor. The
-   *  array multi-select checkbox-group is deliberately NOT marked (no native
-   *  shadcn group component — deferred to a later phase, stays plain HTML). */
-  controlKind?: 'select' | 'checkbox' | 'switch' | 'radio-group'
+   *  `emitControl` hook consumes it. `radio-group` / `checkbox-group` mark the
+   *  wrapper `<div>` whose `<input type=radio>` / `<input type=checkbox>` leaves
+   *  carry the `controlled` descriptor. Phase 4 §15 Phase C: the array
+   *  multi-select checkbox-group is `checkbox-group` (shadcn has no native group
+   *  component, so the adapter emits N `<Checkbox>` rows + manual array toggle).
+   *  Dynamic (data-bound) option lists are deferred to §17. */
+  controlKind?: 'select' | 'checkbox' | 'switch' | 'radio-group' | 'checkbox-group'
   /** Phase 4 §15.1 — semantic hint identifying a card-like container FRAME whose
    *  plain `<div>` emit a UI-kit adapter may replace with a `<Card>` wrapper.
    *  Set on the element by collect via a heuristic (FRAME + visible background

@@ -92,6 +92,9 @@ const CONTAINER_TO_MAPPING: Partial<Record<NonNullable<IRElement['containerKind'
  *  composed Select/RadioGroup pull several named exports from one module. */
 const CONTROL_TO_MAPPING: Partial<Record<NonNullable<IRElement['controlKind']>, UiKitMapping>> = {
   checkbox: { component: 'Checkbox', from: '@/components/ui/checkbox' },
+  // Phase 4 §15 Phase C — the array multi-select group reuses the single
+  // Checkbox component (one `<Checkbox>` per option); no native group component.
+  'checkbox-group': { component: 'Checkbox', from: '@/components/ui/checkbox' },
   switch: { component: 'Switch', from: '@/components/ui/switch' },
   'radio-group': {
     component: 'RadioGroup',
@@ -150,16 +153,18 @@ function selectOptions(children: readonly IRNode[]): SelectOption[] {
   return out
 }
 
-interface RadioOption extends SelectOption {
+interface OptionLeaf extends SelectOption {
   defaultChecked: boolean
   controlled: IRControlledInput | undefined
 }
 
-/** RADIO wrapper children are `<label><input type=radio value/> {label}</label>` —
- *  extract the per-option value, label, default-selection and controlled wiring
- *  (the collect pass copies the descriptor onto the radio leaf, not the wrapper). */
-function radioOptions(children: readonly IRNode[]): RadioOption[] {
-  const out: RadioOption[] = []
+/** RADIO / CHECKBOX-group wrapper children are
+ *  `<label><input type=radio|checkbox value/> {label}</label>` — extract the
+ *  per-option value, label, default-selection and controlled wiring (the collect
+ *  pass copies the descriptor onto the option leaf, not the wrapper). Shared by
+ *  `emitRadioGroup` (§15 Phase B) and `emitCheckboxGroup` (§15 Phase C). */
+function optionLeaves(children: readonly IRNode[]): OptionLeaf[] {
+  const out: OptionLeaf[] = []
   for (const label of children) {
     if (label.kind !== 'element' || label.tag !== 'label') continue
     const input = label.children.find(
@@ -174,6 +179,25 @@ function radioOptions(children: readonly IRNode[]): RadioOption[] {
     })
   }
   return out
+}
+
+/** A composed option row shared by RADIO + CHECKBOX-group:
+ *  `<div className="flex items-center gap-2">{control}<label htmlFor>label</label></div>`.
+ *  `controlLine` is the already-padded `<RadioGroupItem>` / `<Checkbox>` line. */
+function emitOptionRow(
+  controlLine: string,
+  id: string,
+  labelNode: IRNode | undefined,
+  i1: string,
+  i2: string,
+  ctx: KitEmitCtx
+): string[] {
+  return [
+    `${i1}<div className="flex items-center gap-2">`,
+    controlLine,
+    `${i2}<label htmlFor="${ctx.escapeAttr(id)}">${labelNode ? ctx.emitChild(labelNode, 0) : ''}</label>`,
+    `${i1}</div>`
+  ]
 }
 
 /** Inline a controlled `string` two-way binding as shadcn's `value` +
@@ -238,36 +262,85 @@ function emitSelect(node: IRElement, ctx: KitEmitCtx): string {
   ].join('\n')
 }
 
-/** Emit a shadcn `<RadioGroup>`; the controlled descriptor lives on the radio
- *  leaves, each option becomes a `<RadioGroupItem>` + `<label htmlFor>`. */
-function emitRadioGroup(node: IRElement, ctx: KitEmitCtx): string {
-  const pad = '  '.repeat(ctx.indent)
-  const i1 = '  '.repeat(ctx.indent + 1)
-  const i2 = '  '.repeat(ctx.indent + 2)
-  const options = radioOptions(node.children)
-  const controlled = options.find((o) => o.controlled)?.controlled
-  const defaultValue = controlled ? undefined : options.find((o) => o.defaultChecked)?.value
+/** Shared opening for the two composed option-group controls (RadioGroup +
+ *  checkbox-group): indent units, the parsed option leaves + their shared
+ *  controlled descriptor, and the root attrs common to both (the design
+ *  `className` + dev-mode `data-node-id`). RadioGroup additionally appends the
+ *  value binding; the checkbox-group uses `rootParts` as-is. */
+interface OptionGroupBase {
+  pad: string
+  i1: string
+  i2: string
+  options: OptionLeaf[]
+  controlled: IRControlledInput | undefined
+  rootParts: string[]
+}
+
+function optionGroupBase(node: IRElement, ctx: KitEmitCtx): OptionGroupBase {
   const rootParts: string[] = []
   if (node.className) rootParts.push(`className="${ctx.escapeAttr(node.className)}"`)
   if (ctx.devMode) rootParts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  const options = optionLeaves(node.children)
+  return {
+    pad: '  '.repeat(ctx.indent),
+    i1: '  '.repeat(ctx.indent + 1),
+    i2: '  '.repeat(ctx.indent + 2),
+    options,
+    controlled: options.find((o) => o.controlled)?.controlled,
+    rootParts
+  }
+}
+
+/** Emit a shadcn `<RadioGroup>`; the controlled descriptor lives on the radio
+ *  leaves, each option becomes a `<RadioGroupItem>` + `<label htmlFor>`. */
+function emitRadioGroup(node: IRElement, ctx: KitEmitCtx): string {
+  const { pad, i1, i2, options, controlled, rootParts } = optionGroupBase(node, ctx)
+  const defaultValue = controlled ? undefined : options.find((o) => o.defaultChecked)?.value
   rootParts.push(...valueBindingParts(controlled, defaultValue, ctx))
   const rows = options.flatMap((o, i) => {
     const id = `${node.sourceId}-${i}`
-    return [
-      `${i1}<div className="flex items-center gap-2">`,
-      `${i2}<RadioGroupItem value="${ctx.escapeAttr(o.value)}" id="${ctx.escapeAttr(id)}" />`,
-      `${i2}<label htmlFor="${ctx.escapeAttr(id)}">${o.labelNode ? ctx.emitChild(o.labelNode, 0) : ''}</label>`,
-      `${i1}</div>`
-    ]
+    const control = `${i2}<RadioGroupItem value="${ctx.escapeAttr(o.value)}" id="${ctx.escapeAttr(id)}" />`
+    return emitOptionRow(control, id, o.labelNode, i1, i2, ctx)
   })
   return [`${pad}<RadioGroup${attrSuffix(rootParts)}>`, ...rows, `${pad}</RadioGroup>`].join('\n')
+}
+
+/** Phase 4 §15 Phase C — emit an array multi-select CHECKBOX group. shadcn has
+ *  no native group component, so the wrapper stays a plain `<div>` (keeping the
+ *  design's layout className) holding one `<Checkbox>` row per option. Each
+ *  option's checked state is `selected.includes(opt)`; toggling spreads/filters
+ *  the bound array (mirrors the plain-HTML `arrayCheckboxOnChangeBody`, adapted
+ *  to shadcn's `onCheckedChange` whose arg is `boolean | 'indeterminate'`).
+ *  Uncontrolled (no value binding) → bare `<Checkbox>` (multi-select has no
+ *  single default-checked concept). */
+function emitCheckboxGroup(node: IRElement, ctx: KitEmitCtx): string {
+  const { pad, i1, i2, options, controlled, rootParts } = optionGroupBase(node, ctx)
+  const rows = options.flatMap((o, i) => {
+    const id = `${node.sourceId}-${i}`
+    const idAttr = `id="${ctx.escapeAttr(id)}"`
+    const control = controlled
+      ? `${i2}<Checkbox ${idAttr} ${checkboxToggleParts(controlled, o.value)} />`
+      : `${i2}<Checkbox ${idAttr} />`
+    return emitOptionRow(control, id, o.labelNode, i1, i2, ctx)
+  })
+  return [`${pad}<div${attrSuffix(rootParts)}>`, ...rows, `${pad}</div>`].join('\n')
+}
+
+/** The `checked` + `onCheckedChange` props for one option of a controlled
+ *  array checkbox-group: read `selected.includes(opt)`, write the array with the
+ *  option spread in / filtered out depending on the new checked value. */
+function checkboxToggleParts(controlled: IRControlledInput, optValue: string): string {
+  const literal = JSON.stringify(optValue)
+  const next = `checked === true ? [...${controlled.read}, ${literal}] : ${controlled.read}.filter((v) => v !== ${literal})`
+  return `checked={${controlled.read}.includes(${literal})} onCheckedChange={(checked) => ${controlledWriteCall(controlled, next)}}`
 }
 
 /** Phase 3 §15 — the shadcn/ui adapter. Phase A maps BUTTON/text-INPUT/
  *  TEXTAREA/LABEL via `mapTag`; Phase B maps the Radix-composition controls
  *  (Select/Checkbox/Switch/RadioGroup) via `mapControl` + `emitControl` (their
- *  distinct event APIs + composed markup). The array multi-select
- *  checkbox-group stays plain HTML (no native shadcn group component). */
+ *  distinct event APIs + composed markup). Phase 4 §15 Phase C adds the array
+ *  multi-select checkbox-group (N `<Checkbox>` rows + manual array toggle, since
+ *  shadcn has no native group component). */
 export const shadcnAdapter: UiKitAdapter = {
   name: 'shadcn',
 
@@ -302,6 +375,8 @@ export const shadcnAdapter: UiKitAdapter = {
         return emitSelect(node, ctx)
       case 'radio-group':
         return emitRadioGroup(node, ctx)
+      case 'checkbox-group':
+        return emitCheckboxGroup(node, ctx)
       default:
         return null
     }

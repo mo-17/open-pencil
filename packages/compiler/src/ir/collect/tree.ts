@@ -1001,11 +1001,13 @@ const CONTROLLED_NODE_TYPES: ReadonlySet<SceneNode['type']> = new Set([
   'DATEPICKER'
 ])
 
-/** Phase 3 §15 Phase B — map a form-control SceneNode to its `controlKind`
- *  hint (consumed only by a UI-kit adapter; null = no hint). SWITCH and single
- *  CHECKBOX both emit `<input type=checkbox>` but a SWITCH carries `role=switch`
- *  (applyToggleProps) — here we split them by node type directly. The array
- *  multi-select CHECKBOX group is intentionally unmarked (deferred). */
+/** Phase 3 §15 Phase B / Phase 4 §15 Phase C — map a form-control SceneNode to
+ *  its `controlKind` hint (consumed only by a UI-kit adapter; null = no hint).
+ *  SWITCH and single CHECKBOX both emit `<input type=checkbox>` but a SWITCH
+ *  carries `role=switch` (applyToggleProps) — here we split them by node type
+ *  directly. The array multi-select CHECKBOX group (options[] → `checkbox-group`)
+ *  is marked since §15 Phase C; the adapter emits N `<Checkbox>` rows + manual
+ *  array toggle (no native shadcn group component). */
 function controlKindFor(node: SceneNode): IRElement['controlKind'] {
   switch (node.type) {
     case 'SELECT':
@@ -1015,7 +1017,7 @@ function controlKindFor(node: SceneNode): IRElement['controlKind'] {
     case 'RADIO':
       return 'radio-group'
     case 'CHECKBOX':
-      return isCheckboxGroup(node) ? undefined : 'checkbox'
+      return isCheckboxGroup(node) ? 'checkbox-group' : 'checkbox'
     default:
       return undefined
   }

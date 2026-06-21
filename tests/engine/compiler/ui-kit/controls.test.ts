@@ -13,7 +13,9 @@ import { compile, withDefaults } from '@open-pencil/compiler'
  *  - CHECKBOX (single boolean) → `<Checkbox checked onCheckedChange>`
  *  - SWITCH  → `<Switch checked onCheckedChange>`
  *  - RADIO   → `<RadioGroup value onValueChange>` + RadioGroupItem + label per option
- * The array multi-select CHECKBOX group is deferred → stays plain HTML.
+ * Phase 4 §15 Phase C — the array multi-select CHECKBOX group becomes N
+ * `<Checkbox>` rows + manual array toggle (shadcn has no native group component).
+ * Dynamic (data-bound) option lists stay deferred to §17.
  */
 function compileShadcn(graph: SceneGraph, pageId: string, pkg: string, i18n = false) {
   return compile({
@@ -166,7 +168,7 @@ describe('compile — shadcn Radix controls (Phase 3 §15 Phase B)', () => {
     expect(app).not.toContain('onValueChange')
   })
 
-  test('array CHECKBOX group stays plain HTML (deferred — no <Checkbox>, no checkbox dep)', () => {
+  test('array CHECKBOX group (docState array) → N <Checkbox> rows + includes/toggle + import + dep', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(graph.rootId, {
@@ -179,12 +181,94 @@ describe('compile — shadcn Radix controls (Phase 3 §15 Phase B)', () => {
 
     const out = compileShadcn(graph, page.id, 'kb-checkbox-group')
     const app = out.files.get('src/App.tsx') as string
-    // Plain-HTML group preserved (array multi-select is deferred).
+    expect(app).toContain(`import { Checkbox } from '@/components/ui/checkbox'`)
+    // One <Checkbox> per option, paired with its <label htmlFor> in a flex row.
+    expect(app).toMatch(/<Checkbox id="[^"]+" checked={fruits\.includes\("Apple"\)}/)
+    expect(app).toMatch(/<label htmlFor="[^"]+">Apple<\/label>/)
+    // shadcn event API — onCheckedChange (boolean | 'indeterminate'); array spread/filter toggle.
+    expect(app).toContain(
+      'onCheckedChange={(checked) => setDocState("fruits", checked === true ? [...fruits, "Apple"] : fruits.filter((v) => v !== "Apple"))}'
+    )
+    // The wrapper stays a plain <div> (no native group component), no plain <input>.
+    expect(app).not.toContain('<input')
+    expect(app).not.toContain('onChange={(e)')
+
+    expect(out.files.has('src/components/ui/checkbox.tsx')).toBe(true)
+    const pkg = JSON.parse(out.files.get('package.json') as string)
+    expect(pkg.dependencies).toHaveProperty('@radix-ui/react-checkbox')
+    expect(out.warnings).toEqual([])
+  })
+
+  test('array CHECKBOX group (page-state array) uses the useState setter', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(page.id, {
+      state: [{ id: 's1', name: 'tags', type: 'array', defaultValue: [] }]
+    })
+    graph.createNode('CHECKBOX', page.id, {
+      interactiveProps: { options: ['a', 'b'] },
+      bindings: { value: { kind: 'ref', stateId: 's1' } }
+    })
+
+    const out = compileShadcn(graph, page.id, 'kb-checkbox-group-state')
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain(
+      'onCheckedChange={(checked) => setTags(checked === true ? [...tags, "a"] : tags.filter((v) => v !== "a"))}'
+    )
+  })
+
+  test('uncontrolled array CHECKBOX group → bare <Checkbox> rows (no checked, no onCheckedChange)', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('CHECKBOX', page.id, {
+      interactiveProps: { options: ['Apple', 'Banana'] }
+    })
+
+    const out = compileShadcn(graph, page.id, 'kb-checkbox-group-uncontrolled')
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toMatch(/<Checkbox id="[^"]+" \/>/)
+    expect(app).toMatch(/<label htmlFor="[^"]+">Apple<\/label>/)
+    expect(app).not.toContain('checked={')
+    expect(app).not.toContain('onCheckedChange')
+    expect(out.files.has('src/components/ui/checkbox.tsx')).toBe(true)
+  })
+
+  test('array CHECKBOX group option labels stay i18n-aware (emitChild) → <FormattedMessage>', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('CHECKBOX', page.id, {
+      interactiveProps: { options: ['Apple', 'Banana'] }
+    })
+
+    const out = compileShadcn(graph, page.id, 'kb-checkbox-group-i18n', true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toMatch(/<label htmlFor="[^"]+"><FormattedMessage id="[^"]+" defaultMessage=/)
+  })
+
+  test('no uiKit → array CHECKBOX group stays plain HTML (byte-identical path)', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'd1', name: 'fruits', type: 'array', defaultValue: [] }]
+    })
+    graph.createNode('CHECKBOX', page.id, {
+      interactiveProps: { options: ['Apple', 'Banana'] },
+      bindings: { value: { kind: 'docState', docStateName: 'fruits' } }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'kb-checkbox-group-off' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('type="checkbox" value="Apple"')
     expect(app).toContain('checked={fruits.includes("Apple")}')
+    expect(app).toContain(
+      'onChange={(e) => setDocState("fruits", e.target.checked ? [...fruits, "Apple"] : fruits.filter((v) => v !== "Apple"))}'
+    )
     expect(app).not.toContain('<Checkbox')
     expect(out.files.has('src/components/ui/checkbox.tsx')).toBe(false)
-    const pkg = JSON.parse(out.files.get('package.json') as string)
-    expect(pkg.dependencies).not.toHaveProperty('@radix-ui/react-checkbox')
   })
 
   test('SELECT option labels stay i18n-aware (emitChild) → SelectItem holds <FormattedMessage>', () => {
