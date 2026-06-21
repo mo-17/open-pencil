@@ -501,6 +501,30 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **类型**:headless emit;无 scene-graph 改动(走 interactiveProps,schema-native pluginData)。**待锁**:校验规则数据形态(每 input 一组规则);错误显示位置(节点下方 vs FORM 级汇总);校验时机(onBlur/onChange/onSubmit)。
 
+### §19 详细设计 + 锁定决定(2026-06-22,3 个待锁 fork 经 AskUserQuestion 全锁推荐项)
+
+**三 fork 锁定**(全推荐项):① 校验时机 = **onSubmit 拦截 + onBlur 实时**(提交校验全部字段并拦截非法提交,字段失焦校验该字段给即时反馈,= React Hook Form 默认);② 错误显示 = **字段下方逐个显示**(每非法 input 下 emit 一条红色 `<p>` + `aria-invalid`);③ 规则集 = **核心规则 + 自定义表达式**(required/pattern/minLength/maxLength/min/max + customExpr,每规则可配自定义消息)。
+
+**前提约束**:校验只挂**受控字段**(有 `bindings.value` → docState/page-state),因为校验要读字段当前值;无值源的非受控 input 带 validation → warn `validation-not-controlled` + 跳过(留 plain input)。docState 绑定的字段值在校验时经 `getDocStateSnapshot` **新鲜读**(绕开 §10 v9 同-handler 渲染快照陈旧),page-state 绑定读其 `useState` 局部。
+
+**数据模型(零 scene-graph/codec,延续 §17/§18 的 interactiveProps blob 路径)**:受控 input `interactiveProps.validation = { required?, pattern?, minLength?, maxLength?, min?, max?, customExpr?, messages?: { required?, pattern?, minLength?, maxLength?, min?, max?, custom? } }`。随 `lowcode/interactiveProps` 整块 round-trip。
+
+**实现(纯 compiler-emit,8 文件)**:
+- `ir/types.ts`:`IRFieldValidation { key; stateName; stateKind; rules: IRValidationRules; custom?: IRValidationCustom }` + `IRValidationRules`/`IRValidationMessages`/`IRValidationCustom`;`IRElement.validation?`(字段)+ `IRElement.formValidationKeys?`(`<form>` 的受控校验后代键)+ `IRTree.validatedFields?`(页级累加,**全可选 → 不破 .vue IRTree stub**,§16.3 教训)。
+- `ir/collect/tree.ts`:`WalkCtx.validatedFields` 累加器;`applyValidation(node,ctx,controlled,events)`(读 validation 配置,parse 核心规则[pattern compile 校验、数值 finite 校验,坏规则 warn+drop]、customExpr 经共享 `resolveReactiveExpr` 解析[复用 §17,拒 `$prev`/未知标识、注册 docState read]、onBlur 冲突 warn+drop[校验占有 onBlur]),接进 `resolveControlDescriptors`(受控才解析,非受控带配置 warn);`collectValidationKeys(nodes)` 给 FORM 收后代校验键 → `element.formValidationKeys`;collectTree 末 lift `validatedFields`。
+- `adapters/react/lowcode/validation.ts`(新):`buildLowcodeValidationRuntime()`(`_lowcode_validation.tsx` 的纯 `validateValue(value, rules)` —— 核心规则求值,首条失败规则消息[自定义或默认],空可选字段跳过非 required 规则;**消息用字符串拼接非 `${}` 避 no-template-curly**)+ `buildValidationGlue(fields)`(页级 `useState` 错误存 + `__validators` map[每字段一闭包:核心规则调 `validateValue`,customExpr 内联 `emitExpression`]+ `__validateField`(onBlur)/`__validateFields`(onSubmit)) + `VALIDATION_ERROR_CLASSES` safelist。
+- `adapters/react/emit/event.ts`:`emitFormSubmitHandler(handlers, keys)` →`(e) => { e.preventDefault(); if (!__validateFields([keys])) return; <user onSubmit> }`(取 `e` 参 preventDefault;async 跟随用户 handler)。
+- `adapters/react/emit/element.ts`:`formatAttrs` 加 `validationKey`(`aria-invalid` + 验证-onBlur)+ `formValidationKeys`(包裹 onSubmit,即使无用户 onSubmit 也 emit 验证-only);`emitTagElement` 拆 dispatcher + `emitTagElementCore`,验证字段经 `wrapValidatedField` 包成 `<>{input}{__fieldErrors[k] && <p role=alert/>}</>`(内层元素 +1 缩进);`eventAttrParts`/`validationFieldParts` 抽出守 complexity。
+- `adapters/react/scaffold.ts`:`buildReactImport` 加 `useState`(验证错误存);`buildLowcodeStateImport` 加 `getDocStateSnapshot`(docState 绑定字段);`buildLowcodeRuntimeImports` 抽出(supabase/toast/confirm/validation 四 import,**守 buildPageFile complexity 24→19 闸**,§16.4 RouterUsage 先例);hookLines 插 validation glue(docState hoist 之后,customExpr 引用它们);`BuildPageOptions.lowcodeValidationImportPath`。
+- `adapters/react/index.ts`:`maybeEmitLowcodeValidationRuntime` + `validationActive` 双路径计算 + `emitLowcodeRuntimes` 抽共享(6 个 maybeEmit 调用收一处,**消 jscpd clone**)+ import 路径单/多页 + safelist 并入 VALIDATION_ERROR_CLASSES。
+
+**交付记录(CODE COMPLETE 2026-06-22,feat `e888effb`)**:实现按设计 8 src 文件 + 2 test 文件;**2 处 GATE 收口**(complexity:buildPageFile→`buildLowcodeRuntimeImports`;jscpd:双路径 maybeEmit 序列→`emitLowcodeRuntimes` 共享 helper),零 hotfix、零意外。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **715/0**(+13 form-validation.test)、kiwi **127/0**(+1 round-trip)、scene-graph 202/0、tools 196/0 零回归;check:vue 0。
+- **e2e 实跑**:scratch 多字段验证表单 .fig(required+pattern+minLength+customExpr+中文消息,FORM onSubmit setVariable)经 `exportFigFile` 写真盘 → CLI `compile` → App.tsx 出 `validateValue` import + `getDocStateSnapshot` 新鲜读 + `__validators` map(核心规则 JSON + 转义 pattern `\\.` + 中文消息)+ customExpr 内联 `if (__error === null && !(email !== "blocked@x.com")) __error = "该邮箱被禁用"` + 字段 `aria-invalid`+`onBlur` + 错误 `<p className="text-sm text-red-600 mt-1" role="alert">` + form `onSubmit={(e) => { e.preventDefault(); if (!__validateFields(["0:5"])) return; setDocState("status", "submitted"); }}` + index.css safelist 含 text-red-600 + `_lowcode_validation.tsx` 含 validateValue(scene-graph→.fig→parse→IR→emit 全链 + 真盘 round-trip)。
+- **边界 / 延后**:校验只挂受控单值字段(RADIO/CHECKBOX group 的值在 leaf 上,v1 不校验,warn);customExpr 用渲染快照读 docState(blur/submit 时已提交,正确;同-handler 程序化 setDocState 后陈旧 —— 罕见,核心规则用 getDocStateSnapshot 新鲜读不受影响);组合型 UI-kit 控件(shadcn Select 等)校验时错误 `<p>` 仍显示但无 per-field onBlur/aria(kit 自有 markup);**校验只对页面直属字段,extract 进组件的字段 v1 不校验**(组件体无页级 validator 槽);无 AI tool / GUI 授权面板(走 graph.updateNode + interactiveProps round-trip,§17/§18 先例)。**真机验积压 +1**:浏览器填表→失焦即时报错 + 非法提交被拦 + 合法提交跑 onSubmit。**§19 v2 follow-ups**:onChange 实时校验选项;FORM 级错误汇总;async/自定义校验函数;校验授权 GUI;组件内字段校验。
+
+**新经验**:① §17/§18/§19 三度印证「给现有交互节点加能力 = interactiveProps 子配置(零 codec/零 scene-graph,随 blob round-trip)」是首选路径;② 页级 emit 增量(validators map + 错误存)= 抽运行时纯函数(`validateValue` 进 `_lowcode_validation.tsx`,跨页 DRY)+ 页级 glue(`buildValidationGlue`)+ per-字段/form emit 三层;③ 「字段 emit 包错误兄弟节点」用 dispatcher 拆 core + fragment 包裹(`emitTagElement`→`emitTagElementCore` + `wrapValidatedField`),内层元素 +1 缩进,避免重排 children 数组;④ FORM 提交拦截 = 一个 `emitFormSubmitHandler` 在 event.ts 复用 `emitStatementList` 把 `preventDefault + validate-abort` 前置到用户 handler,无须改 events 解析;⑤ 加分支撞 complexity/jscpd 即时抽 helper(`buildLowcodeRuntimeImports` 守 complexity、`emitLowcodeRuntimes` 消 clone),提前看闸别等报。
+
 ---
 
 ## §20 交互状态样式(hover / focus / active / disabled variants)
