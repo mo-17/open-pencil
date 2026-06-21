@@ -479,6 +479,18 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **类型**:headless emit + **可能动 scene-graph**(新交互节点或 interactiveProp)→ 比纯 emit 候选更 invasive,经验 A/G(union widening)必走。**待锁**:用新 NodeType 还是 INPUT type=file prop;bucket / 路径约定;public vs signed URL。
 
+### §18 详细设计 + 锁定决定(2026-06-21,AskUserQuestion 锁定)
+
+**分叉锁定**:① 控件形态 = **INPUT 上 upload interactiveProp**(否决新 FILEUPLOAD NodeType —— **零 scene-graph/codec 改动,随 interactiveProps blob round-trip,延续 §17 经验**;避开经验 A/G union widening);② URL 形态 + 范围 = **public URL 核心上传**(`getPublicUrl` → resultTarget docState;单文件;否决 signed URL / 进度 / 预览 / 多文件,全延后)。
+
+**交付记录(CODE COMPLETE 2026-06-21,feat `d99ae83b`)**:
+- **数据模型**:INPUT `interactiveProps.upload = { bucket, resultTarget, pathExpr?, accept? }`(自由 blob,**零 scene-graph/codec**)。
+- **collect**(tree.ts):`applyUploadInput` 门控 supabase(`$currentUser` proxy,同 §16.3/§17)+ bucket 非空 + resultTarget 是合法 docState(注册为 write → 自动 import `setDocState`);可选 `pathExpr` 走共享 `resolveReactiveExpr`(原 §17 `resolveListQueryExpr` 改名泛化);丢弃 file input 不需要的 text 属性(placeholder/value/defaultValue/type)。`resolveControlDescriptors` 把 upload>controlled>controlKind 的互斥优先级收进一个 helper(nodeToIR complexity 闸)。
+- **emit**(element.ts):`<input type="file">` + accept + async onChange(`uploadAttrParts` + `emitUploadHandler`,formatAttrs complexity 闸):`const __file = e.target.files?.[0]; if (!__file) return; const __path = <pathExpr 前缀>/__file.name | __file.name; await getSupabaseClient().storage.from(bucket).upload(__path, __file, {upsert:true}); if (!error) setDocState(resultTarget, …getPublicUrl(__path).data.publicUrl)`。path = `` `${<pathExpr>}/${__file.name}` ``(有前缀)或裸 `__file.name`。
+- **import gate**(ir-walk):`treeHasUpload` 扩入 `pageUsesSupabase`(getSupabaseClient import)。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **702/0**(+6)、kiwi **126/0**(+1 round-trip)、scene-graph 202/0、tools 196/0 零回归。2 次 complexity 闸(nodeToIR→resolveControlDescriptors;formatAttrs→uploadAttrParts)即时收口。e2e probe 实跑输出正确。
+- **边界 / 延后**:**upload INPUT 不走 controlled**(file input 天然 uncontrolled,互斥);upsert:true(同路径覆盖);单文件(`files[0]`);**无 AI tool/无 GUI**(graph.updateNode + .fig round-trip,§7/§17 先例);signed URL / 进度条 / 本地预览 / 多文件延后。**与 §17 成链**:上传 URL 进 docState → 可作 supabaseMutation payloadEntries(存进表)或后续展示。**真机验积压 +1**:浏览器选文件 → Supabase Storage 实传 → URL 落 docState。**新经验**:延续 §17「interactiveProps 自由 blob 加结构化子配置零 codec」—— §18 给 INPUT 加 upload 子配置零 scene-graph,印证「给现有交互节点加能力」首选 interactiveProp 而非新 NodeType(避经验 A/G);多个互斥 control 描述符(upload/controlled/controlKind)收进一个 resolveControlDescriptors helper 既守 complexity 闸又表达优先级。
+
 ## §19 表单校验
 
 > 2026-06-20 产品缺口盘点新增。
