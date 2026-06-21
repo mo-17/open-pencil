@@ -416,6 +416,34 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **e2e 实跑**:scratch 多页 .fig(root supabaseConfig + `lowcodeAuthRedirect:/signin`,Dashboard 页 requiresAuth)经 CLI compile → `dashboard.tsx` 出 `import { Navigate }` + `$currentUser` read + `if (!$currentUser.signedIn) return <Navigate to="/signin" replace />`;`index.tsx`(public)0 守卫。**§16.1+§16.2+§16.3 链端到端通**(声明路由 + 带参跳 + 守卫)。
 - **边界**:守卫前提 = supabase 配置(无则 warn);单页无守卫(warn);`signedIn` 首帧 false→已登录用户可能闪一下登录页再回来(SPA auth-guard flash,runtime session 同步前;v1 接受,后续可加 loading 态);redirect 目标不与页 route 交叉校验(延续 §16.x)。**§16.4 起手**:query string `$query.foo` ← useSearchParams(BUILTIN_READ_IDENTS 加 `$query`,与 `$params` 平行)。**新经验:页级路由特性字段(routePattern/requiresAuth)走 graph.updateNode + .fig round-trip,刻意不进 update_lowcode_node PATCH_KEYS(非 AI-settable,§16.1 先例延续);新增页/根 round-trip 字段达 3+ 时把 serialize 的尾部分支抽溢出组 helper(同 assignLowcodeLayoutFix 先例)避 complexity-20 闸。**
 
+### §16.4 query string 详细设计 + 交付(2026-06-21,无分叉)
+
+> **目标**:页表达式可读 URL query 参数 `$query.foo`(`?foo=bar`),与 §16.1 `$params` 命名空间完全平行。补全 §16 路由链(声明动态路由 → 带参跳详情 → auth 守卫 → 读 query)。**读优先**(write = setSearchParams 无干净 authoring 入口,见边界,延后)。
+
+**现状坐实(经验 Q/E)**:§16.1 已把 `$params` 做成 sentinel-ride 内置只读源:`BUILTIN_READ_IDENTS`(bindings.ts)+ `unknownIdentifiers` 跳过 + `registerDocStateReads` 单 chokepoint 把 `$params` 搭车进 `docStateReads` + `collectTree` 末 `docStateReads.delete(ROUTE_PARAMS_IDENT)` 抽 `usesRouteParams` + scaffold `routerAvailable` 门控 emit `const $params = useParams()`。§16.4 完全镜像这条。
+
+**设计(无 AskUserQuestion,直接平行 §16.1)**:
+- **`$query` 内置只读源**(bindings.ts):`QUERY_PARAMS_IDENT='$query'` 入 `BUILTIN_READ_IDENTS`;`registerDocStateReads` 的 sentinel 条件从 `ref===ROUTE_PARAMS_IDENT` 收敛成 `BUILTIN_READ_IDENTS.has(ref)`(`$params`+`$query` 都搭车,单点)。
+- **collect**(tree.ts):`usesQueryParams = docStateReads.delete(QUERY_PARAMS_IDENT)`(平行 usesRouteParams),入 IRTree。
+- **IR**(ir/types.ts):`IRTree.usesQueryParams?: boolean`(**可选** → 不破 .vue IRTree stub,§16.3 教训)。
+- **emit**(scaffold.ts):`routerAvailable && ir.usesQueryParams` → routerNames push `useSearchParams` + hook line `const $query = Object.fromEntries(useSearchParams()[0])`。**关键:`useSearchParams()[0]` 是 URLSearchParams(`.get('foo')` 取值,无 `.foo`),用 `Object.fromEntries` 转 plain object → `$query.foo` 成员访问可直接用**(与 `$params`=useParams() 返回 object 不同,query 要转换)。
+- **complexity 预防(经验「加分支前看闸」)**:buildPageFile 加 query 分支会再撞 20 闸 → 主动抽 `RouterUsage` 接口 + `buildRouterHookLines`(navigate/$params/$query 三 hook 行)+ buildRouterImport 收 `RouterUsage`,把多个 ternary 移出 buildPageFile。
+- **零碰**:无新 scene-graph 字段(`$query` 在 bindings 表达式串里,随 `lowcode/bindings` 整块 round-trip)→ **零 round-trip / 零 scene-graph / 零 tool 改动**;单页无 router → 不 emit(byte-identical)。
+
+**成功标准(headless)**:
+1. 页表达式 `$query.foo` + 多页 → `import { useSearchParams }` + `const $query = Object.fromEntries(useSearchParams()[0])` + emit `$query.foo`;`$params` + `$query` 同页共一个 react-router-dom import(navigate/useParams/useSearchParams 合一)。
+2. 无 `$query` → usesQueryParams false,byte-identical;单页 → 不 emit。
+3. `bun run check` exit 0;tsgo 0;jscpd 0;compiler/kiwi/scene-graph/tools 全绿。
+4. **真机验 pending**:浏览器 `/products?sort=price` 实际 `$query.sort` 渲 `price`。
+
+**交付记录(CODE COMPLETE 2026-06-21,feat `7c315609`)**:
+- 实现按设计 4 src + 1 test(routing.test +6),**零 scene-graph / 零 round-trip / 零 tool 改动**(§16.x 最干净一片;`$query` 随 bindings 表达式 round-trip)。
+- **`$query.foo` 成员访问靠 `Object.fromEntries(useSearchParams()[0])`**(URLSearchParams→plain object;区别 §16.1 `$params`=useParams() 本就是 object)。
+- **complexity 主动收口**:抽 `RouterUsage` + `buildRouterHookLines`(把 §16.3 已抽的 buildRouterImport 一并收进 RouterUsage 入参),buildPageFile 压回 20 以下,无 GATE 报错。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **682/0**(+6)、kiwi 122/0、scene-graph 202/0、tools 196/0 零回归;check:vue 0。零 hotfix。
+- **e2e 实跑**:scratch 多页 .fig(Products 页文本绑 `$query.sort`)经 CLI compile → products.tsx 出 `import { useSearchParams }` + `const $query = Object.fromEntries(useSearchParams()[0])` + `<p>{$query.sort}</p>`。**§16 路由链(§16.1+§16.2+§16.3+§16.4)全部闭合**。
+- **边界 / 延后**:**write(setSearchParams 写 query)延后** —— 无干净 authoring 入口(需新 action kind 或扩 navigate,经验 A union widening),且 navigate-to-`/path?q=v` 已覆盖静态 query 写;`Object.fromEntries` 对重复 key(`?a=1&a=2`)取末值(数组 query 是边界,延后);`$query` 值恒为 string(URLSearchParams 语义)。**新经验:第二个 sentinel-ride 内置只读源(`$query`)零成本搭 §16.1 既有 `$params` 机制(BUILTIN_READ_IDENTS + registerDocStateReads 单 chokepoint 收敛成 `BUILTIN_READ_IDENTS.has` + collect 末 Set.delete 抽布尔)—— 印证 §16.1「sentinel-ride 穷举-by-construction」对追加内置源的可扩展性;React hook 返回值形状不同时(useParams=object vs useSearchParams=URLSearchParams),emit 端按需转换(Object.fromEntries)让表达式层成员访问统一。**
+
 ## §17 列表绑真实数据源 + 分页 / 排序 / 筛选
 
 > 2026-06-20 产品缺口盘点新增。Bubble「repeating group」核心。
