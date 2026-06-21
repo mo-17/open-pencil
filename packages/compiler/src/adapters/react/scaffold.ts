@@ -15,6 +15,7 @@ import {
   referencedComponentNames
 } from './ir-walk'
 import { buildReactIntlImport } from './lowcode/i18n'
+import { buildValidationGlue, validationUsesDocStateSnapshot } from './lowcode/validation'
 import type { PagePathInfo } from './route-paths'
 import { collectKitImports, kitImportLine } from './ui-kit/registry'
 import type { UiKitAdapter } from './ui-kit/types'
@@ -60,6 +61,11 @@ interface BuildPageOptions {
    *  `'../_lowcode_confirm'` for multi-page. Only consulted when the page fires
    *  a `confirm` action. */
   lowcodeConfirmImportPath: string
+  /** Phase 4 §19: relative path the page module uses to reach
+   *  `src/_lowcode_validation.tsx`. `'./_lowcode_validation'` for single-page,
+   *  `'../_lowcode_validation'` for multi-page. Only consulted when the page has
+   *  a validated field. */
+  lowcodeValidationImportPath: string
   /** Phase 3 §8: relative path prefix to `src/components/` from this file —
    *  `'./components/'` for single-page App.tsx, `'../components/'` for page
    *  modules. Component imports are emitted only for the refs the page uses. */
@@ -93,6 +99,10 @@ interface BuildAppOptions {
    *  to `'./_lowcode_confirm'` (single-page); multi-page pages pass
    *  `'../_lowcode_confirm'` explicitly. */
   lowcodeConfirmImportPath?: string
+  /** Phase 4 §19: see `BuildPageOptions.lowcodeValidationImportPath`. Defaults
+   *  to `'./_lowcode_validation'` (single-page); multi-page pages pass
+   *  `'../_lowcode_validation'` explicitly. */
+  lowcodeValidationImportPath?: string
   /** Phase 3 §8: see `BuildPageOptions.componentImportPrefix`. Defaults to
    *  `'./components/'` (single-page); multi-page pages pass `'../components/'`. */
   componentImportPrefix?: string
@@ -117,6 +127,7 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? './_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? './_lowcode_confirm',
+    lowcodeValidationImportPath: options.lowcodeValidationImportPath ?? './_lowcode_validation',
     componentImportPrefix: options.componentImportPrefix ?? './components/',
     uiKit: options.uiKit ?? null,
     // Single-page App.tsx is not wrapped in a router → no `useParams` context.
@@ -137,6 +148,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? '../_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? '../_lowcode_confirm',
+    lowcodeValidationImportPath: options.lowcodeValidationImportPath ?? '../_lowcode_validation',
     componentImportPrefix: options.componentImportPrefix ?? '../components/',
     uiKit: options.uiKit ?? null,
     // Multi-page modules render inside `<BrowserRouter>` → `useParams` is valid.
@@ -221,14 +233,16 @@ function buildRouterHookLines(u: RouterUsage): string[] {
  *  hook. Extracted to keep `buildPageFile` under the complexity limit. */
 function buildReactImport(ir: IRTree): string {
   const hasListQueries = (ir.listQueries?.length ?? 0) > 0
+  // Phase 4 §19: a validated page needs `useState` for its field-errors store.
+  const hasValidation = (ir.validatedFields?.length ?? 0) > 0
   const hooks: string[] = []
-  if (ir.states.length > 0 || hasListQueries) hooks.push('useState')
+  if (ir.states.length > 0 || hasListQueries || hasValidation) hooks.push('useState')
   if (hasListQueries) hooks.push('useEffect')
   return hooks.length > 0 ? `import { ${hooks.join(', ')} } from 'react'\n` : ''
 }
 
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix, uiKit, routerAvailable } = options
+  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, lowcodeValidationImportPath, componentImportPrefix, uiKit, routerAvailable } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = buildReactImport(ir)
   // Phase 4 §16.1/§16.3/§16.4: the route-bound built-ins (`$params`, `$query`)
@@ -242,17 +256,14 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   }
   const routerImport = buildRouterImport(ir, usage)
   const lowcodeStateImport = buildLowcodeStateImport(ir, lowcodeStateImportPath)
-  const lowcodeSupabaseImport = pageUsesSupabase(ir)
-    ? `import { getSupabaseClient } from '${lowcodeSupabaseImportPath}'\n`
-    : ''
-  // Phase 3 §10 v2: import the toast runtime's pusher when the page fires a toast.
-  const lowcodeToastImport = pageUsesToast(ir)
-    ? `import { __opToast } from '${lowcodeToastImportPath}'\n`
-    : ''
-  // Phase 3 §10 v3: import the confirm runtime's prompter when the page fires a confirm.
-  const lowcodeConfirmImport = pageUsesConfirm(ir)
-    ? `import { __opConfirm } from '${lowcodeConfirmImportPath}'\n`
-    : ''
+  // Phase 3 §2 / §10 + §19: the on-demand lowcode runtime imports (Supabase
+  // client, toast/confirm prompters, validation helper).
+  const lowcodeRuntimeImports = buildLowcodeRuntimeImports(ir, {
+    supabase: lowcodeSupabaseImportPath,
+    toast: lowcodeToastImportPath,
+    confirm: lowcodeConfirmImportPath,
+    validation: lowcodeValidationImportPath
+  })
   // Phase 3 §8: import the components this page references.
   const componentNames = referencedComponentNames(ir.children)
   const componentImports = buildComponentImports(componentNames, componentImportPrefix)
@@ -267,7 +278,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     formattedMessage: hasTranslatableText(ir.children),
     intl: usesIntlAttr
   })
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + lowcodeToastImport + lowcodeConfirmImport + componentImportBlock + kitImportBlock + i18nImport
+  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeRuntimeImports + componentImportBlock + kitImportBlock + i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   // Phase 4 §16.1/§16.2/§16.4: useNavigate / $params / $query hook lines.
@@ -281,6 +292,10 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const listQueryLines = (ir.listQueries ?? []).map(emitListQueryHook).join('\n')
   // §9 v3: a `const intl = useIntl()` hook for any translated attribute.
   const intlHookLine = usesIntlAttr ? '  const intl = useIntl()' : ''
+  // Phase 4 §19: the field-errors store + `__validators` map + validate
+  // helpers. After the doc-state hoists (custom-rule exprs reference them).
+  const validationGlue =
+    (ir.validatedFields?.length ?? 0) > 0 ? buildValidationGlue(ir.validatedFields ?? []) : ''
   // Phase 4 §16.3: redirect-if-unauthenticated guard. Comes after the hooks (it
   // reads the `$currentUser` doc-state declared above) and short-circuits the
   // render before the page body when the session isn't signed in.
@@ -288,7 +303,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     ? `  if (!$currentUser.signedIn) return <Navigate to="${ir.authRedirect ?? '/login'}" replace />`
     : ''
 
-  const hookLines = [stateLines, docStateReadLines, routerHookLines, listQueryLines, intlHookLine, guardLine]
+  const hookLines = [stateLines, docStateReadLines, routerHookLines, listQueryLines, validationGlue, intlHookLine, guardLine]
     .filter((l) => l !== '')
     .join('\n')
 
@@ -326,10 +341,31 @@ ${body}
  * doc-state; `setDocState` only if it writes at least one. When neither is
  * needed the function returns an empty string and the page omits the import.
  */
+/** Phase 3 §2 / §10 v2 / v3 + §19: the lowcode runtime imports a page pulls in
+ *  on demand — the Supabase client, the toast / confirm prompters, and the
+ *  validation helper. Extracted from `buildPageFile` to keep it under the
+ *  cyclomatic-complexity gate (each gate is its own branch). */
+function buildLowcodeRuntimeImports(
+  ir: IRTree,
+  paths: { supabase: string; toast: string; confirm: string; validation: string }
+): string {
+  const supabase = pageUsesSupabase(ir) ? `import { getSupabaseClient } from '${paths.supabase}'\n` : ''
+  const toast = pageUsesToast(ir) ? `import { __opToast } from '${paths.toast}'\n` : ''
+  const confirm = pageUsesConfirm(ir) ? `import { __opConfirm } from '${paths.confirm}'\n` : ''
+  const validation =
+    (ir.validatedFields?.length ?? 0) > 0
+      ? `import { validateValue } from '${paths.validation}'\n`
+      : ''
+  return supabase + toast + confirm + validation
+}
+
 function buildLowcodeStateImport(ir: IRTree, path: string): string {
   const names: string[] = []
   if (ir.docStateReads.length > 0) names.push('useDocState')
   if (ir.docStateWrites.length > 0) names.push('setDocState')
+  // Phase 4 §19: a doc-state-bound validated field reads its value fresh at
+  // validate time via `getDocStateSnapshot` (dodging the render-snapshot).
+  if (validationUsesDocStateSnapshot(ir.validatedFields ?? [])) names.push('getDocStateSnapshot')
   if (names.length === 0) return ''
   return `import { ${names.join(', ')} } from '${path}'\n`
 }

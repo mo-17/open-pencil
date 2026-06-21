@@ -162,6 +162,19 @@ export interface IRElement {
    *  (they emit normally inside `<Card>`); the plain React adapter ignores this
    *  hint (→ byte-identical output). */
   containerKind?: 'card'
+  /** Phase 4 §19 — client-side validation for a controlled form field carrying
+   *  `interactiveProps.validation`. The adapter emits `aria-invalid` + an
+   *  `onBlur` that validates the field, and wraps the input with a per-field
+   *  error `<p>`. Set only on a controlled field (the value is read fresh from
+   *  the field's doc-state at validate time); a validation config on an
+   *  uncontrolled input is skipped with a warning. */
+  validation?: IRFieldValidation
+  /** Phase 4 §19 — set on a `<form>` element with ≥1 validated descendant
+   *  field. The adapter wraps the form's `onSubmit` so it `preventDefault()`s,
+   *  validates every listed field key, and aborts (skipping the user's submit
+   *  actions) when any field is invalid. The keys are the descendant fields'
+   *  SceneNode ids. */
+  formValidationKeys?: string[]
   /** Raw inner HTML to emit verbatim via `dangerouslySetInnerHTML` instead of
    *  `children`. Set for vector-shape nodes (VECTOR / BOOLEAN_OPERATION / STAR /
    *  POLYGON / LINE) whose appearance IS the path geometry: the wrapper keeps
@@ -193,6 +206,61 @@ export interface IRControlledInput {
     name: string
     targetType: 'string' | 'number' | 'boolean' | 'array'
   }
+}
+
+/** Phase 4 §19: a controlled form field's client-side validation rules, lifted
+ *  from `interactiveProps.validation`. The data-driven core rules (required /
+ *  pattern / length / numeric range) evaluate in the `validateValue` runtime
+ *  helper; `custom` is an expression over doc-state (true ≡ valid) evaluated
+ *  inline in the page component. */
+export interface IRFieldValidation {
+  /** Error-map key + the `onBlur` / `onSubmit` validate argument — the field's
+   *  SceneNode id (unique across the page). */
+  key: string
+  /** The doc-/page-state the controlled field writes; this name is read for the
+   *  field's value at validate time. */
+  stateName: string
+  /** Whether `stateName` is a doc-state (read fresh via `getDocStateSnapshot`,
+   *  dodging the render-snapshot staleness) or a page-state (read from its
+   *  hoisted `useState` local). */
+  stateKind: 'docState' | 'state'
+  /** Data-driven core rules, JSON-serialized into the page's validators map. */
+  rules: IRValidationRules
+  /** Optional custom rule: a boolean expression (true ≡ valid) + its message. */
+  custom?: IRValidationCustom
+}
+
+/** Phase 4 §19: the data-driven core validation rules. Each present rule is
+ *  checked in order; the first failure's message (custom or default) is shown.
+ *  An empty optional field skips every rule except `required`. */
+export interface IRValidationRules {
+  required?: boolean
+  /** Regular-expression source (validated to compile at collect time). */
+  pattern?: string
+  minLength?: number
+  maxLength?: number
+  min?: number
+  max?: number
+  /** Per-rule custom messages; a missing message falls back to a default. */
+  messages?: IRValidationMessages
+}
+
+export interface IRValidationMessages {
+  required?: string
+  pattern?: string
+  minLength?: string
+  maxLength?: string
+  min?: string
+  max?: string
+}
+
+/** Phase 4 §19: a custom validation rule — a boolean expression (over the
+ *  field's bound doc-state and other page/doc state; true ≡ valid) plus the
+ *  message shown when it fails. */
+export interface IRValidationCustom {
+  ast: ExprAst
+  references: string[]
+  message: string
 }
 
 export interface IRText {
@@ -669,6 +737,12 @@ export interface IRTree {
    *  LIST `.map()` iterates the hook's rows. Empty / absent ≡ no data-bound
    *  lists (every LIST still binds local array state as before). */
   listQueries?: IRListQuery[]
+  /** Phase 4 §19: controlled form fields on this page carrying validation rules.
+   *  The adapter emits a `validateValue` import, a page-level errors `useState`,
+   *  a `__validators` map (one entry per field), and `__validateField` /
+   *  `__validateFields` helpers the field `onBlur`s and form `onSubmit`s call.
+   *  Empty / absent ≡ no validated fields (→ byte-identical output). */
+  validatedFields?: IRFieldValidation[]
   /** Phase 3 §2: connection settings from the root SceneNode, lifted into
    *  every IRTree from the same compile. Adapter uses this to decide
    *  whether to emit `_lowcode_supabase.ts` and inject the supabase-js

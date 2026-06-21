@@ -311,6 +311,24 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual({ upload })
   })
 
+  test('INPUT validation interactiveProp round-trips through .fig (Phase 4 §19)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const validation = {
+      required: true,
+      pattern: '^[^@]+@[^@]+$',
+      minLength: 5,
+      messages: { required: 'Email required', pattern: 'Bad email', custom: 'Blocked' },
+      customExpr: 'email !== "blocked@x.com"'
+    }
+    graph.createNode('INPUT', page.id, { name: 'Email', interactiveProps: { validation } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual({ validation })
+  })
+
   test('TEXT with bindings.text → ref(stateId) round-trips through .fig', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

@@ -11,8 +11,9 @@ import type {
   IRUpload
 } from '#compiler/ir/types'
 
-import { emitEventHandler } from './event'
+import { emitEventHandler, emitFormSubmitHandler } from './event'
 import { setterName } from './state'
+import { VALIDATION_ERROR_CLASS } from '../lowcode/validation'
 import type { UiKitAdapter } from '../ui-kit/types'
 
 /** Tags that must self-close in JSX (no children). */
@@ -86,11 +87,43 @@ export function emitElement(
   return emitTagElement(node, indent, devMode, uiKit)
 }
 
-/** Emit a plain element node (the `kind === 'element'` tail of `emitElement`):
- *  the UI-kit composed-control path, then the standard `<tag attrs>children` /
- *  void / inline-single-child forms. Split out to keep `emitElement` under the
- *  complexity gate. */
+/** Emit a plain element node (the `kind === 'element'` tail of `emitElement`).
+ *  Phase 4 §19: a validated field is wrapped in a fragment with a per-field
+ *  error `<p>` — the inner element is built one level deeper so it nests under
+ *  the `<>`. Split from the core builder to avoid re-wrapping on recursion. */
 function emitTagElement(
+  node: IRElement,
+  indent: number,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
+): string {
+  if (node.validation) {
+    const inner = emitTagElementCore(node, indent + 1, devMode, uiKit)
+    return wrapValidatedField(inner, node.validation.key, indent)
+  }
+  return emitTagElementCore(node, indent, devMode, uiKit)
+}
+
+/** Phase 4 §19: wrap a validated field's emitted element in a fragment that
+ *  also renders its current error message below it. */
+function wrapValidatedField(inner: string, key: string, indent: number): string {
+  const pad = '  '.repeat(indent)
+  const errPad = '  '.repeat(indent + 1)
+  const k = JSON.stringify(key)
+  return [
+    `${pad}<>`,
+    inner,
+    `${errPad}{__fieldErrors[${k}] && (`,
+    `${errPad}  <p className="${VALIDATION_ERROR_CLASS}" role="alert">{__fieldErrors[${k}]}</p>`,
+    `${errPad})}`,
+    `${pad}</>`
+  ].join('\n')
+}
+
+/** The `<tag attrs>children` / void / inline-single-child / UI-kit composed
+ *  control forms. Split out to keep `emitElement` under the complexity gate and
+ *  to let `emitTagElement` wrap a validated field without recursing. */
+function emitTagElementCore(
   node: IRElement,
   indent: number,
   devMode: boolean,
@@ -112,7 +145,9 @@ function emitTagElement(
     node.controlled,
     node.upload,
     node.classNameProp,
-    node.classNamePropFallback
+    node.classNamePropFallback,
+    node.validation?.key,
+    node.formValidationKeys
   )
   // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
   // keeping the same attrs/children. The underlying tag still drives void-ness
@@ -222,7 +257,9 @@ function formatAttrs(
   controlled: IRControlledInput | undefined,
   upload: IRUpload | undefined,
   classNameProp?: string,
-  classNamePropFallback?: boolean
+  classNamePropFallback?: boolean,
+  validationKey?: string,
+  formValidationKeys?: readonly string[]
 ): string {
   const parts: string[] = []
   // Phase 3 §8 v3: a component-body child whose className is parameterized
@@ -274,16 +311,39 @@ function formatAttrs(
       parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
     }
   }
+  // §19: a validated field gets `aria-invalid` + an `onBlur` that validates it.
+  if (validationKey !== undefined) parts.push(...validationFieldParts(validationKey))
+  parts.push(...eventAttrParts(events, formValidationKeys))
+  return parts.join(' ')
+}
+
+/** Phase 4 §19: a validated field's `aria-invalid` + validate-on-blur attrs. */
+function validationFieldParts(key: string): string[] {
+  const k = JSON.stringify(key)
+  return [`aria-invalid={__fieldErrors[${k}] != null}`, `onBlur={() => __validateField(${k})}`]
+}
+
+/** The event-handler attrs. Phase 4 §19: when `formValidationKeys` is set (a
+ *  `<form>` with validated fields), the onSubmit is emitted last as a wrapped
+ *  handler (preventDefault + validate-then-abort), even if the form had no user
+ *  onSubmit. Other events pass through unchanged. */
+function eventAttrParts(
+  events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
+  formValidationKeys: readonly string[] | undefined
+): string[] {
+  const parts: string[] = []
   if (events) {
-    for (const [name, handlers] of Object.entries(events) as [
-      IREventName,
-      IREventHandler[]
-    ][]) {
+    for (const [name, handlers] of Object.entries(events) as [IREventName, IREventHandler[]][]) {
       if (handlers.length === 0) continue
+      // The wrapped onSubmit is emitted below from the same handlers.
+      if (name === 'onSubmit' && formValidationKeys) continue
       parts.push(`${name}={${emitEventHandler(handlers)}}`)
     }
   }
-  return parts.join(' ')
+  if (formValidationKeys) {
+    parts.push(`onSubmit={${emitFormSubmitHandler(events?.onSubmit ?? [], formValidationKeys)}}`)
+  }
+  return parts
 }
 
 /** Phase 4 §18: the JSX attrs for a file-upload INPUT — `type="file"`, an

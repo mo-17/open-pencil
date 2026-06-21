@@ -80,6 +80,21 @@ export function emitEventHandler(handlers: IREventHandler[]): string {
   return `${arrow} { ${emitStatementList(handlers)} }`
 }
 
+/** Phase 4 §19: a `<form>`'s onSubmit when it has validated descendant fields —
+ *  `preventDefault()`, validate every field key, and abort (skip the user's
+ *  submit actions) when any is invalid. Takes the event arg so it can call
+ *  `e.preventDefault()`. The arrow is async whenever the user's handlers are. */
+export function emitFormSubmitHandler(
+  handlers: IREventHandler[],
+  validationKeys: readonly string[]
+): string {
+  const arrow = handlersAreAsync(handlers) ? 'async (e) =>' : '(e) =>'
+  const ids = validationKeys.map((k) => JSON.stringify(k)).join(', ')
+  const guard = `e.preventDefault(); if (!__validateFields([${ids}])) return;`
+  const body = handlers.length > 0 ? ` ${emitStatementList(handlers)}` : ''
+  return `${arrow} { ${guard}${body} }`
+}
+
 /** Join handlers as statements: expression / `return` statements get a
  *  trailing `;`; complete blocks (try/catch, if/else) splice as-is. Shared by
  *  the top-level body and `condition`'s nested `then` / `else` branches. */

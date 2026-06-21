@@ -29,6 +29,7 @@ import { pageUsesConfirm, pageUsesToast, referencedComponentNames, stripNavigate
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode/state'
 import { buildLowcodeToastRuntime, TOAST_RUNTIME_CLASSES } from './lowcode/toast'
 import { buildLowcodeConfirmRuntime, CONFIRM_RUNTIME_CLASSES } from './lowcode/confirm'
+import { buildLowcodeValidationRuntime, VALIDATION_ERROR_CLASSES } from './lowcode/validation'
 import {
   buildLowcodeSupabaseRuntime,
   buildSupabaseEnvExample,
@@ -58,6 +59,7 @@ const LOWCODE_SUPABASE_FILE = 'src/_lowcode_supabase.ts'
 const LOWCODE_I18N_FILE = 'src/_lowcode_i18n.tsx'
 const LOWCODE_TOAST_FILE = 'src/_lowcode_toast.tsx'
 const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
+const LOWCODE_VALIDATION_FILE = 'src/_lowcode_validation.tsx'
 
 export const reactAdapter: FrameworkAdapter = {
   emit(
@@ -179,6 +181,7 @@ function emitSinglePage(
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = pageUsesToast(cleaned)
   const confirmActive = pageUsesConfirm(cleaned)
+  const validationActive = (cleaned.validatedFields?.length ?? 0) > 0
   const translations = cleaned.translations
   const sourceLocale = resolveSourceLocale(options)
   const targetLocales = resolveTargetLocales(options.locales, translations, sourceLocale)
@@ -192,11 +195,18 @@ function emitSinglePage(
   // Phase 2 §2: emit the lowcode runtime alongside App.tsx when any
   // DocumentStateDef exists; the page module imports `useDocState` /
   // `setDocState` from `./` (single-page) or `../` (multi-page).
-  maybeEmitLowcodeRuntime(files, cleaned.docStates)
-  maybeEmitLowcodeSupabaseRuntime(files, cleaned.supabaseConfig)
-  maybeEmitI18n(files, i18nActive, messages, sourceLocale, targetLocales, translations)
-  maybeEmitLowcodeToastRuntime(files, toastActive)
-  maybeEmitLowcodeConfirmRuntime(files, confirmActive)
+  emitLowcodeRuntimes(files, {
+    docStates: cleaned.docStates,
+    supabaseConfig: cleaned.supabaseConfig,
+    i18nActive,
+    messages,
+    sourceLocale,
+    targetLocales,
+    translations,
+    toastActive,
+    confirmActive,
+    validationActive
+  })
   emitComponentFiles(files, components, options.devMode, uiKit)
   files.set(
     'src/App.tsx',
@@ -206,6 +216,7 @@ function emitSinglePage(
       lowcodeSupabaseImportPath: './_lowcode_supabase',
       lowcodeToastImportPath: './_lowcode_toast',
       lowcodeConfirmImportPath: './_lowcode_confirm',
+      lowcodeValidationImportPath: './_lowcode_validation',
       componentImportPrefix: './components/',
       uiKit
     })
@@ -217,6 +228,7 @@ function emitSinglePage(
     i18nActive,
     toastActive,
     confirmActive,
+    validationActive,
     kit
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
@@ -243,6 +255,7 @@ function emitMultiPage(
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = irs.some((ir) => pageUsesToast(ir))
   const confirmActive = irs.some((ir) => pageUsesConfirm(ir))
+  const validationActive = irs.some((ir) => (ir.validatedFields?.length ?? 0) > 0)
   const sourceLocale = resolveSourceLocale(options)
   const targetLocales = resolveTargetLocales(options.locales, translations, sourceLocale)
   const extraDeps: Record<string, string> = {
@@ -253,11 +266,18 @@ function emitMultiPage(
     ...kit.deps
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
-  maybeEmitLowcodeRuntime(files, docStates)
-  maybeEmitLowcodeSupabaseRuntime(files, supabaseConfig)
-  maybeEmitI18n(files, i18nActive, messages, sourceLocale, targetLocales, translations)
-  maybeEmitLowcodeToastRuntime(files, toastActive)
-  maybeEmitLowcodeConfirmRuntime(files, confirmActive)
+  emitLowcodeRuntimes(files, {
+    docStates,
+    supabaseConfig,
+    i18nActive,
+    messages,
+    sourceLocale,
+    targetLocales,
+    translations,
+    toastActive,
+    confirmActive,
+    validationActive
+  })
   emitComponentFiles(files, components, options.devMode, uiKit)
   files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
   for (const info of infos) {
@@ -269,6 +289,7 @@ function emitMultiPage(
         lowcodeSupabaseImportPath: '../_lowcode_supabase',
         lowcodeToastImportPath: '../_lowcode_toast',
         lowcodeConfirmImportPath: '../_lowcode_confirm',
+        lowcodeValidationImportPath: '../_lowcode_validation',
         componentImportPrefix: '../components/',
         uiKit
       })
@@ -281,6 +302,7 @@ function emitMultiPage(
     i18nActive,
     toastActive,
     confirmActive,
+    validationActive,
     kit
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
@@ -312,6 +334,32 @@ function i18nExtraDeps(active: boolean): Record<string, string> {
  *  stub (pre-filled with the source strings to translate in place) registered
  *  in the runtime, plus a `LocaleSwitcher` component (emitted only when ≥1
  *  target exists — a switcher with just the source locale is pointless). */
+/** The resolved per-emission inputs the on-demand lowcode runtime files need. */
+interface LowcodeRuntimeEmit {
+  docStates: readonly IRTree['docStates'][number][]
+  supabaseConfig: IRSupabaseConfig | undefined
+  i18nActive: boolean
+  messages: ReadonlyMap<string, string>
+  sourceLocale: string
+  targetLocales: readonly string[]
+  translations: IRTranslations | undefined
+  toastActive: boolean
+  confirmActive: boolean
+  validationActive: boolean
+}
+
+/** Emit every on-demand lowcode runtime file (doc-state store, Supabase client,
+ *  i18n, toast, confirm, validation). Shared by the single-page and multi-page
+ *  emitters so the identical call sequence stays in one place (and clone-free). */
+function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: LowcodeRuntimeEmit): void {
+  maybeEmitLowcodeRuntime(files, e.docStates)
+  maybeEmitLowcodeSupabaseRuntime(files, e.supabaseConfig)
+  maybeEmitI18n(files, e.i18nActive, e.messages, e.sourceLocale, e.targetLocales, e.translations)
+  maybeEmitLowcodeToastRuntime(files, e.toastActive)
+  maybeEmitLowcodeConfirmRuntime(files, e.confirmActive)
+  maybeEmitLowcodeValidationRuntime(files, e.validationActive)
+}
+
 function maybeEmitI18n(
   files: Map<string, string | Uint8Array>,
   active: boolean,
@@ -394,6 +442,17 @@ function maybeEmitLowcodeConfirmRuntime(
   files.set(LOWCODE_CONFIRM_FILE, buildLowcodeConfirmRuntime())
 }
 
+/** Phase 4 §19: emit the validation runtime (`_lowcode_validation.tsx`) when any
+ *  page has a validated field. Pages import `validateValue`; the page glue calls
+ *  it from each field's validator closure. */
+function maybeEmitLowcodeValidationRuntime(
+  files: Map<string, string | Uint8Array>,
+  validationActive: boolean
+): void {
+  if (!validationActive) return
+  files.set(LOWCODE_VALIDATION_FILE, buildLowcodeValidationRuntime())
+}
+
 function maybeEmitLowcodeSupabaseRuntime(
   files: Map<string, string | Uint8Array>,
   config: IRSupabaseConfig | undefined
@@ -418,15 +477,17 @@ function setSharedProjectFiles(
   i18n: boolean,
   toast: boolean,
   confirm: boolean,
+  validation: boolean,
   kit: { themeCss: string; active: boolean }
 ): void {
-  // Phase 3 §10 v2 / v3: the toast + confirm runtimes' classes never appear in
-  // the IR, so seed them into the Tailwind safelist (the VFS iframe finds no
-  // classes on disk). Only seed the runtimes a page actually uses so projects
-  // without them stay byte-identical.
+  // Phase 3 §10 v2 / v3 + §19: the toast / confirm / validation-error classes
+  // never appear in the IR, so seed them into the Tailwind safelist (the VFS
+  // iframe finds no classes on disk). Only seed the runtimes a page actually
+  // uses so projects without them stay byte-identical.
   const runtimeClasses = [
     ...(toast ? TOAST_RUNTIME_CLASSES : []),
-    ...(confirm ? CONFIRM_RUNTIME_CLASSES : [])
+    ...(confirm ? CONFIRM_RUNTIME_CLASSES : []),
+    ...(validation ? VALIDATION_ERROR_CLASSES : [])
   ]
   const safelist =
     runtimeClasses.length > 0 ? [...new Set([...classNames, ...runtimeClasses])].sort() : classNames

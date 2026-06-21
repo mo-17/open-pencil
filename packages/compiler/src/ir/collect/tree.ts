@@ -32,9 +32,13 @@ import type {
   IREventHandler,
   IREventName,
   IRExpression,
+  IRFieldValidation,
   IRList,
   IRListOrder,
   IRListQuery,
+  IRValidationCustom,
+  IRValidationMessages,
+  IRValidationRules,
   IRUpload,
   IRMessageValue,
   IRNode,
@@ -114,6 +118,7 @@ export function collectTree(
   const routePattern = liftRoutePattern(page, pageId, warnings)
 
   const listQueries: IRListQuery[] = []
+  const validatedFields: IRFieldValidation[] = []
   const ctx: WalkCtx = {
     graph,
     states: stateById,
@@ -125,7 +130,8 @@ export function collectTree(
     components,
     workflows,
     i18n,
-    listQueries
+    listQueries,
+    validatedFields
   }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
@@ -168,6 +174,7 @@ export function collectTree(
     docStateReads: [...docStateReads],
     docStateWrites: [...docStateWrites],
     listQueries: listQueries.length > 0 ? listQueries : undefined,
+    validatedFields: validatedFields.length > 0 ? validatedFields : undefined,
     supabaseConfig,
     translations,
     warnings
@@ -495,6 +502,12 @@ interface WalkCtx {
    *  which signals `collectListDirective` to reject a supabase-backed LIST there
    *  (a component has no page-level hook slot). */
   listQueries?: IRListQuery[]
+  /** Phase 4 §19: accumulator for controlled form fields carrying validation
+   *  rules — present only during a PAGE walk (the adapter emits the validators
+   *  map + error state at the page-component level). Undefined during a
+   *  component-body walk (a component has no page-level validator slot, so a
+   *  validated field there is left unvalidated — documented v1 boundary). */
+  validatedFields?: IRFieldValidation[]
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -995,6 +1008,12 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ...(containerKind ? { containerKind } : {}),
     ...vector.extra
   }
+  // §19: a <form> with validated descendant fields validates them at submit —
+  // the adapter wraps onSubmit to preventDefault + abort when any is invalid.
+  if (node.type === 'FORM') {
+    const validationKeys = collectValidationKeys(element.children)
+    if (validationKeys.length > 0) element.formValidationKeys = validationKeys
+  }
   return wrapConditional(node, element, ctx)
 }
 
@@ -1107,12 +1126,27 @@ function resolveControlDescriptors(
   attrs: Record<string, IRAttrValue>,
   children: IRNode[],
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined
-): Pick<IRElement, 'controlled' | 'upload' | 'controlKind'> {
+): Pick<IRElement, 'controlled' | 'upload' | 'controlKind' | 'validation'> {
   const upload = applyUploadInput(node, ctx, attrs)
   if (upload) return { upload }
-  const out: Pick<IRElement, 'controlled' | 'controlKind'> = {}
+  const out: Pick<IRElement, 'controlled' | 'controlKind' | 'validation'> = {}
   const controlled = applyControlledInput(node, ctx, attrs, children, events)
-  if (controlled) out.controlled = controlled
+  if (controlled) {
+    out.controlled = controlled
+    // §19: a controlled field may carry validation rules — its value is read
+    // fresh from `controlled.write.name` at validate time.
+    const validation = applyValidation(node, ctx, controlled, events)
+    if (validation) out.validation = validation
+  } else if (hasValidationConfig(node)) {
+    // §19: validation needs a controlled value source (the field's doc-state);
+    // an uncontrolled input (or a radio/checkbox group, whose value lives on
+    // the leaves) has none → skip with a warning. v1 boundary.
+    ctx.warnings.push({
+      code: 'validation-not-controlled',
+      message: `${node.type} ${node.id} has a validation config but is not a single controlled field (no bindings.value); validation skipped`,
+      nodeId: node.id
+    })
+  }
   const controlKind = controlKindFor(node)
   if (controlKind) out.controlKind = controlKind
   return out
@@ -1228,6 +1262,198 @@ function applyUploadInput(
     pathAst,
     accept: typeof upload.accept === 'string' && upload.accept.trim() !== '' ? upload.accept.trim() : undefined
   }
+}
+
+/** Phase 4 §19: the raw validation config a controlled input may carry on its
+ *  `interactiveProps.validation` (rides round-trip in the JSON blob, zero
+ *  codec). Values are untyped — parsed/validated by `resolveValidationRules`. */
+interface ValidationConfig {
+  required?: unknown
+  pattern?: unknown
+  minLength?: unknown
+  maxLength?: unknown
+  min?: unknown
+  max?: unknown
+  customExpr?: unknown
+  messages?: Record<string, unknown>
+}
+
+/** Phase 4 §19: true when a node declares any validation config — used to warn
+ *  when it sits on an input with no controlled value source to validate. */
+function hasValidationConfig(node: SceneNode): boolean {
+  const ip = node.interactiveProps as { validation?: unknown } | undefined
+  return ip?.validation != null && typeof ip.validation === 'object'
+}
+
+const NUMERIC_RULE_KEYS = ['minLength', 'maxLength', 'min', 'max'] as const
+type NumericRuleKey = (typeof NUMERIC_RULE_KEYS)[number]
+const MESSAGE_KEYS: (keyof IRValidationMessages)[] = [
+  'required',
+  'pattern',
+  'minLength',
+  'maxLength',
+  'min',
+  'max'
+]
+
+/** Phase 4 §19: resolve a controlled field's `interactiveProps.validation` into
+ *  an IRFieldValidation. The field's value is read fresh from its controlled
+ *  doc-/page-state at validate time; core rules JSON-serialize into the page
+ *  validators map, the optional `customExpr` parses through the shared reactive
+ *  resolver (a boolean expression over doc-state; true ≡ valid). Validation owns
+ *  the field's onBlur (the locked live-validation timing) — a user-defined
+ *  onBlur is dropped with a warning (mirrors the controlled-onChange conflict).
+ *  Returns undefined when there's no usable rule. Pushes onto the page's
+ *  `validatedFields` accumulator as a side effect. */
+function applyValidation(
+  node: SceneNode,
+  ctx: WalkCtx,
+  controlled: IRControlledInput,
+  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+): IRFieldValidation | undefined {
+  const ip = node.interactiveProps as { validation?: ValidationConfig } | undefined
+  const cfg = ip?.validation
+  if (!cfg || typeof cfg !== 'object') return undefined
+  const rules = resolveValidationRules(node, cfg, ctx)
+  const custom = resolveValidationCustom(node, cfg, ctx)
+  if (!hasAnyRule(rules) && !custom) return undefined
+  if (events?.onBlur) {
+    ctx.warnings.push({
+      code: 'validation-onblur-conflict',
+      message: `validated ${node.type} ${node.id} has a user-defined onBlur; dropped (validation owns onBlur)`,
+      nodeId: node.id
+    })
+    delete events.onBlur
+  }
+  const validation: IRFieldValidation = {
+    key: node.id,
+    stateName: controlled.write.name,
+    stateKind: controlled.write.kind,
+    rules,
+    ...(custom ? { custom } : {})
+  }
+  ctx.validatedFields?.push(validation)
+  return validation
+}
+
+/** §19: parse the data-driven core rules — `required`, a compiling `pattern`,
+ *  finite numeric length/range bounds, and per-rule custom messages. Each
+ *  malformed rule is warned + dropped (the rest survive). */
+function resolveValidationRules(
+  node: SceneNode,
+  cfg: ValidationConfig,
+  ctx: WalkCtx
+): IRValidationRules {
+  const rules: IRValidationRules = {}
+  if (cfg.required === true) rules.required = true
+  const pattern = typeof cfg.pattern === 'string' ? cfg.pattern : ''
+  if (pattern !== '') {
+    if (isValidRegex(pattern)) rules.pattern = pattern
+    else
+      ctx.warnings.push({
+        code: 'validation-invalid-pattern',
+        message: `${node.type} ${node.id} validation pattern "${pattern}" is not a valid regular expression; dropped`,
+        nodeId: node.id
+      })
+  }
+  for (const key of NUMERIC_RULE_KEYS) assignNumericRule(rules, key, cfg[key], node, ctx)
+  const messages = resolveValidationMessages(cfg.messages)
+  if (messages) rules.messages = messages
+  return rules
+}
+
+/** §19: assign a finite-number rule, warning + dropping a non-finite value. */
+function assignNumericRule(
+  rules: IRValidationRules,
+  key: NumericRuleKey,
+  raw: unknown,
+  node: SceneNode,
+  ctx: WalkCtx
+): void {
+  if (raw == null) return
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    rules[key] = raw
+    return
+  }
+  ctx.warnings.push({
+    code: 'validation-invalid-number',
+    message: `${node.type} ${node.id} validation ${key} must be a finite number; dropped`,
+    nodeId: node.id
+  })
+}
+
+/** §19: pick the per-rule custom messages (non-empty strings) for the core
+ *  rules. The `custom` rule's message lives on IRValidationCustom, not here. */
+function resolveValidationMessages(
+  raw: Record<string, unknown> | undefined
+): IRValidationMessages | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const out: IRValidationMessages = {}
+  for (const key of MESSAGE_KEYS) {
+    const value = raw[key]
+    if (typeof value === 'string' && value.trim() !== '') out[key] = value
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** §19: resolve the optional custom rule — a boolean expression over doc-state
+ *  (true ≡ valid) plus its message. Reuses the shared reactive resolver
+ *  (rejects `$prev` / unknown idents; registers doc-state reads). */
+function resolveValidationCustom(
+  node: SceneNode,
+  cfg: ValidationConfig,
+  ctx: WalkCtx
+): IRValidationCustom | undefined {
+  const src = typeof cfg.customExpr === 'string' ? cfg.customExpr.trim() : ''
+  if (src === '') return undefined
+  const resolved = resolveReactiveExpr(node, src, 'validation-custom', ctx)
+  if (resolved === null) return undefined
+  const raw = cfg.messages?.custom
+  const message = typeof raw === 'string' && raw.trim() !== '' ? raw : 'Invalid value'
+  return { ast: resolved.ast, references: resolved.references, message }
+}
+
+/** §19: true when a rule set has at least one checkable rule. */
+function hasAnyRule(rules: IRValidationRules): boolean {
+  return (
+    rules.required === true ||
+    rules.pattern !== undefined ||
+    rules.minLength !== undefined ||
+    rules.maxLength !== undefined ||
+    rules.min !== undefined ||
+    rules.max !== undefined
+  )
+}
+
+/** §19: does `src` compile as a RegExp? (Pattern rules feed `new RegExp` at
+ *  runtime, so reject an invalid one at collect time.) */
+function isValidRegex(src: string): boolean {
+  try {
+    // eslint-disable-next-line no-new
+    new RegExp(src)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** §19: collect the validation keys of every validated field in an IR subtree,
+ *  for a `<form>`'s submit-time validation. Descends element children,
+ *  conditional consequents, and list templates (componentRef bodies live in a
+ *  separate file and aren't validated — documented v1 boundary). */
+function collectValidationKeys(nodes: readonly IRNode[]): string[] {
+  const keys: string[] = []
+  for (const n of nodes) {
+    if (n.kind === 'element') {
+      if (n.validation) keys.push(n.validation.key)
+      keys.push(...collectValidationKeys(n.children))
+    } else if (n.kind === 'conditional') {
+      keys.push(...collectValidationKeys([n.consequent]))
+    } else if (n.kind === 'list') {
+      keys.push(...collectValidationKeys([n.template]))
+    }
+  }
+  return keys
 }
 
 /** Shared: walk a wrapper's `<label><input.../></label>` children, find the
