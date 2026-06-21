@@ -457,6 +457,18 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **类型**:headless emit;与 §2 Supabase + §16 路由参数(详情页 `/product/:id` 从列表点入)天然成链。**待锁**:数据源声明位置(LIST 节点新字段 vs 复用 supabaseQuery 配置);分页模型(offset vs cursor);客户端筛选 vs 服务端 query。
 
+### §17 详细设计 + 锁定决定(2026-06-21,AskUserQuestion 锁定)
+
+**分叉锁定**:① 首片范围 = **全做**(数据源 + 分页 + 排序/筛选 UI)—— 用户选最进取项;② 数据源声明形态 = **LIST 内联 query 配置**(挂在 `dataSourceRef` 上,随 interactiveProps JSON blob round-trip → 零 codec)。**统一机制**:filter/sort/pagination 全靠「query 表达式引用响应式值(docState/page-state)」+ 复用既有 §3.v4 controlled bindings / setState 驱动控件 → **无新 ActionDef kind**。体量较大,按 §16 节奏分 §17.1→.2→.3 三片交付,每片 `bun run check` 绿。
+
+**交付记录(CODE COMPLETE 2026-06-21,§17.1 `ff7ac57c` / §17.2+§17.3 `231c732d`)**:
+- **§17.1 数据源 + 响应式 filters**:LIST `dataSourceRef.kind==='supabaseQuery'` + `query{table,columns,filters,orderBy,limit}` → 编译期 emit per-LIST fetch hook(`useState` rows + `useEffect` 跑 `getSupabaseClient().from(t).select(c)<filters><order><limit>`,`active` 守卫防卸载后 setState)+ `.map()` 迭代 rows。filters 复用 §2 `resolveSupabaseFilters`(`valueExpr` 走表达式子语言)→ 引用的 docState 进 effect deps = **绑控件即实时筛选,零额外接线**。门控 = supabase 配置(`$currentUser` proxy,同 §16.3);组件内的 supabase LIST 拒绝(无 page hook 槽)。`$`-builtin($params/$query)dep 走 `JSON.stringify` 防对象身份每渲染重跑。
+- **§17.2 offset 分页**:`query.offsetExpr`(如 `$page * 20`,需 `limit` 页大小)→ emit `.range(offset, offset+size-1)` 取代 `.limit(size)`;offset 引用的 docState 进 deps → 用户自建的上一页/下一页 setState 改 page docState 即翻页。offset 无 limit → warn + 忽略分页(不丢整 list)。
+- **§17.3 动态排序**:orderBy 子句接受响应式 `columnExpr`/`ascendingExpr`(覆盖静态 `column`/`ascending`)→ `.order(<expr>, { ascending: <expr> })`;绑 select/toggle 到引用的 docState 即实时改排序列/方向。静态 + 响应式子句共存。
+- **共享机制**:泛型 `resolveListQueryExpr`(offset + sort 共用,与 filter 同一套 read-context 校验:拒 `$prev`/未知标识/注册 docState read);坏表达式丢整 list(filter posture);deps 聚合 filter+sort+offset 全部响应式 refs。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **696/0**(+11)、kiwi **125/0**(+1 round-trip)、scene-graph 202/0、tools 196/0 零回归。2 次 complexity 闸(buildPageFile→抽 buildReactImport;resolveListSupabaseQuery→抽 resolveListOffset)按规则提前/即时收口。
+- **边界 / 延后**:**纯数据层**——§17 让 LIST 数据响应控件,但**不自动生成**分页/排序/筛选控件(用户用既有 setState 按钮 + controlled bindings 自接,Bubble 模型);query 写在 interactiveProps,**无 AI tool / 无 GUI**(graph.updateNode + .fig round-trip,沿用 §7/§16.1 先例);cursor 分页延后(offset 已覆盖常见场景);columns/table 静态(schema 感知 autocomplete 出范围)。**与 §16 成链**:filter `valueExpr` 可引用 `$params.id` → 详情页 `/post/:id` 直接列出该 id 的子数据(dep 走 `JSON.stringify($params)`)。**真机验积压 +1**:浏览器实拉 Supabase 表渲染 + 改筛选/排序/翻页控件实时刷新。
+
 ## §18 文件 / 图片上传(Supabase Storage)
 
 > 2026-06-20 产品缺口盘点新增。头像/附件/封面近乎通用需求。
