@@ -66,6 +66,19 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedPage.lowcodeRoutePattern).toBe('/product/:id')
   })
 
+  test('Phase 4 §16.3: page requiresAuth + root authRedirect round-trip through .fig', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(page.id, { lowcodeRequiresAuth: true })
+    graph.updateNode(graph.rootId, { lowcodeAuthRedirect: '/signin' })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(reimported.getPages()[0].lowcodeRequiresAuth).toBe(true)
+    expect(reimported.getNode(reimported.rootId)?.lowcodeAuthRedirect).toBe('/signin')
+  })
+
   test('BUTTON with events + interactiveProps round-trips through .fig (including NodeType)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

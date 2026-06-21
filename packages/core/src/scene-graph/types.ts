@@ -569,6 +569,18 @@ export interface SceneNode {
   // Absent ≡ slug-derived route (`/` first page, `/<slug>` others). Persisted
   // via §12 pluginData under `lowcode/routePattern`.
   lowcodeRoutePattern?: string
+  // ── Lowcode (Phase 4 §16.3) — auth guard ──
+  // Page-level (CANVAS node) flag: when true the multi-page compile emits a
+  // redirect-if-unauthenticated guard (`if (!$currentUser.signedIn) return
+  // <Navigate to=… replace />`) at the top of the page module. Requires Supabase
+  // (the `$currentUser` doc-state) — otherwise the compiler warns + skips.
+  // Absent ≡ public page. Persisted via §12 pluginData under `lowcode/requiresAuth`.
+  lowcodeRequiresAuth?: boolean
+  // Document-level (root node) login route the auth guard redirects to, e.g.
+  // `/login`. Shared by every `lowcodeRequiresAuth` page (mirrors the root-only
+  // `lowcodeSupabaseConfig`). Absent ≡ the `/login` default. Persisted via §12
+  // pluginData under `lowcode/authRedirect`.
+  lowcodeAuthRedirect?: string
 }
 
 // ── Lowcode (Phase 3 §9 v7) ──

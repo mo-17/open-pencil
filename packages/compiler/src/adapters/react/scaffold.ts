@@ -178,6 +178,26 @@ ${routes}
  * present on the page (Phase 1 §7.4), then renders the IR tree inside the
  * wrapper div.
  */
+/** Build the single `react-router-dom` named import a page module needs:
+ *  `useNavigate` (navigate handlers), `generatePath` (§16.2 navigate-with-params),
+ *  `useParams` (§16.1 `$params`), `Navigate` (§16.3 auth guard). Empty when none
+ *  apply. Extracted to keep `buildPageFile` under the complexity limit. */
+function buildRouterImport(
+  ir: IRTree,
+  needsNavigate: boolean,
+  usesRouteParams: boolean,
+  guarded: boolean
+): string {
+  const routerNames: string[] = []
+  if (needsNavigate) routerNames.push('useNavigate')
+  if (needsNavigate && pageHasNavigateParams(ir)) routerNames.push('generatePath')
+  if (usesRouteParams) routerNames.push('useParams')
+  if (guarded) routerNames.push('Navigate')
+  return routerNames.length > 0
+    ? `import { ${routerNames.join(', ')} } from 'react-router-dom'\n`
+    : ''
+}
+
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix, uiKit, routerAvailable } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
@@ -186,16 +206,11 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // Phase 4 §16.1: route params (`$params`) only resolve inside the multi-page
   // router; single-page App.tsx has no router context.
   const usesRouteParams = routerAvailable && ir.usesRouteParams
-  // Both `useNavigate` and `useParams` come from react-router-dom — emit a
-  // single named import with whichever the page needs.
-  const routerNames: string[] = []
-  if (needsNavigate) routerNames.push('useNavigate')
-  // Phase 4 §16.2: a navigate with route params emits navigate(generatePath(…)).
-  if (needsNavigate && pageHasNavigateParams(ir)) routerNames.push('generatePath')
-  if (usesRouteParams) routerNames.push('useParams')
-  const routerImport = routerNames.length > 0
-    ? `import { ${routerNames.join(', ')} } from 'react-router-dom'\n`
-    : ''
+  // Phase 4 §16.3: emit the redirect-if-unauthenticated guard only inside the
+  // multi-page router (single-page App.tsx has no <Navigate> context); the
+  // single-page path warns + drops it in emitSinglePage.
+  const guarded = routerAvailable && ir.requiresAuth === true
+  const routerImport = buildRouterImport(ir, needsNavigate, usesRouteParams, guarded)
   const lowcodeStateImport = buildLowcodeStateImport(ir, lowcodeStateImportPath)
   const lowcodeSupabaseImport = pageUsesSupabase(ir)
     ? `import { getSupabaseClient } from '${lowcodeSupabaseImportPath}'\n`
@@ -234,8 +249,14 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     .join('\n')
   // §9 v3: a `const intl = useIntl()` hook for any translated attribute.
   const intlHookLine = usesIntlAttr ? '  const intl = useIntl()' : ''
+  // Phase 4 §16.3: redirect-if-unauthenticated guard. Comes after the hooks (it
+  // reads the `$currentUser` doc-state declared above) and short-circuits the
+  // render before the page body when the session isn't signed in.
+  const guardLine = guarded
+    ? `  if (!$currentUser.signedIn) return <Navigate to="${ir.authRedirect ?? '/login'}" replace />`
+    : ''
 
-  const hookLines = [stateLines, docStateReadLines, navigateLine, routeParamsLine, intlHookLine]
+  const hookLines = [stateLines, docStateReadLines, navigateLine, routeParamsLine, intlHookLine, guardLine]
     .filter((l) => l !== '')
     .join('\n')
 

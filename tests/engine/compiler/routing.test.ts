@@ -340,3 +340,104 @@ describe('Phase 4 §16.2 — emit: navigate(generatePath(...))', () => {
     expect(productPage).toContain('navigate(generatePath("/product/:id", { id: pid }))')
   })
 })
+
+/**
+ * Phase 4 §16.3 — auth guard: a page may declare `lowcodeRequiresAuth` so the
+ * multi-page compile emits a redirect-if-unauthenticated guard
+ * (`if (!$currentUser.signedIn) return <Navigate to="/login" replace />`).
+ * Needs Supabase (the `$currentUser` doc-state); the redirect route comes from
+ * the root's `lowcodeAuthRedirect` (default `/login`).
+ */
+const SUPA_CONFIG = { url: 'https://x.supabase.co', anonKey: 'eyJ.anon.sig' }
+
+describe('Phase 4 §16.3 — collect: auth guard', () => {
+  function collectGuarded(opts: { supabase?: boolean; authRedirect?: string; requiresAuth?: boolean } = {}) {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    if (opts.supabase) graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG })
+    if (opts.authRedirect !== undefined) graph.updateNode(graph.rootId, { lowcodeAuthRedirect: opts.authRedirect })
+    if (opts.requiresAuth) graph.updateNode(page.id, { lowcodeRequiresAuth: true })
+    graph.createNode('TEXT', page.id, { text: 'secret' })
+    return collectTree(graph, page.id)
+  }
+
+  test('requiresAuth + Supabase → requiresAuth flag, default /login redirect, $currentUser read', () => {
+    const ir = collectGuarded({ supabase: true, requiresAuth: true })
+    expect(ir.requiresAuth).toBe(true)
+    expect(ir.authRedirect).toBe('/login')
+    expect(ir.docStateReads).toContain('$currentUser')
+    expect(ir.warnings).toEqual([])
+  })
+
+  test('root lowcodeAuthRedirect overrides the default redirect route', () => {
+    const ir = collectGuarded({ supabase: true, requiresAuth: true, authRedirect: '/signin' })
+    expect(ir.authRedirect).toBe('/signin')
+  })
+
+  test('requiresAuth without Supabase → warns and stays public (no guard)', () => {
+    const ir = collectGuarded({ requiresAuth: true })
+    expect(ir.requiresAuth).toBeUndefined()
+    expect(ir.docStateReads).not.toContain('$currentUser')
+    expect(ir.warnings.some((w) => w.code === 'auth-guard-no-supabase')).toBe(true)
+  })
+
+  test('no requiresAuth → no guard fields (zero-regression)', () => {
+    const ir = collectGuarded({ supabase: true })
+    expect(ir.requiresAuth).toBeUndefined()
+    expect(ir.authRedirect).toBeUndefined()
+  })
+})
+
+describe('Phase 4 §16.3 — emit: <Navigate> redirect guard', () => {
+  function buildGuardedMultiPage(authRedirect?: string) {
+    const { graph, pages } = buildMultiPageGraph('Home', 'Dashboard')
+    const [home, dashboard] = pages
+    const rootPatch = authRedirect !== undefined
+      ? { lowcodeSupabaseConfig: SUPA_CONFIG, lowcodeAuthRedirect: authRedirect }
+      : { lowcodeSupabaseConfig: SUPA_CONFIG }
+    graph.updateNode(graph.rootId, rootPatch)
+    graph.updateNode(dashboard.id, { lowcodeRequiresAuth: true })
+    graph.createNode('TEXT', home.id, { text: 'Home' })
+    graph.createNode('TEXT', dashboard.id, { text: 'Secret' })
+    return compile({
+      graph,
+      pageIds: [home.id, dashboard.id],
+      options: withDefaults({ packageName: 'guarded' })
+    })
+  }
+
+  test('guarded page emits Navigate import + $currentUser read + the redirect guard', () => {
+    const out = buildGuardedMultiPage()
+    const dash = out.files.get('src/pages/dashboard.tsx') as string
+    expect(dash).toContain("import { Navigate } from 'react-router-dom'")
+    expect(dash).toContain('const $currentUser = useDocState("$currentUser")')
+    expect(dash).toContain('if (!$currentUser.signedIn) return <Navigate to="/login" replace />')
+    // The public Home page carries no guard.
+    const home = out.files.get('src/pages/index.tsx') as string
+    expect(home).not.toContain('<Navigate')
+  })
+
+  test('custom root authRedirect drives the Navigate target', () => {
+    const out = buildGuardedMultiPage('/signin')
+    const dash = out.files.get('src/pages/dashboard.tsx') as string
+    expect(dash).toContain('<Navigate to="/signin" replace />')
+  })
+
+  test('single-page compile drops the guard with a warning (no router to redirect)', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG })
+    graph.updateNode(page.id, { lowcodeRequiresAuth: true })
+    graph.createNode('TEXT', page.id, { text: 'Secret' })
+
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'guarded-single' })
+    })
+
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('<Navigate')
+    expect(out.warnings.some((w) => w.code === 'auth-guard-no-router')).toBe(true)
+  })
+})

@@ -574,6 +574,14 @@ export interface IRTree {
    *  `$params.<name>`. The multi-page adapter then emits a
    *  `const $params = useParams()` hook + the `useParams` import. */
   usesRouteParams: boolean
+  /** Phase 4 §16.3: true when the page is auth-guarded — lifted from the page
+   *  node's `lowcodeRequiresAuth` AND `$currentUser` exists (Supabase configured).
+   *  The multi-page adapter emits a redirect-if-unauthenticated `<Navigate>` at
+   *  the top of the page module. Undefined ≡ public page. */
+  requiresAuth?: boolean
+  /** Phase 4 §16.3: the login route the auth guard redirects to (from the root's
+   *  `lowcodeAuthRedirect`, default `/login`). Set only when `requiresAuth`. */
+  authRedirect?: string
   /** Top-level children of the page. */
   children: IRNode[]
   /** Page-scoped state declarations the adapter must hoist into the component. */

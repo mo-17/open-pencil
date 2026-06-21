@@ -102,6 +102,14 @@ export const LOWCODE_OVERRIDES_KEY = 'lowcode/overrides'
  *  non-empty string on a page node; absent → slug-derived route. */
 export const LOWCODE_ROUTE_PATTERN_KEY = 'lowcode/routePattern'
 
+/** Phase 4 §16.3: page-level (CANVAS) auth-guard flag. `true` on a page node
+ *  emits a redirect-if-unauthenticated guard; absent ≡ public page. */
+export const LOWCODE_REQUIRES_AUTH_KEY = 'lowcode/requiresAuth'
+
+/** Phase 4 §16.3: document-level (root) login route the auth guard redirects to
+ *  (e.g. `/login`). Absent ≡ the `/login` default. */
+export const LOWCODE_AUTH_REDIRECT_KEY = 'lowcode/authRedirect'
+
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
   'INPUT',
@@ -135,7 +143,9 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_TRANSLATIONS_KEY,
   LOWCODE_WORKFLOWS_KEY,
   LOWCODE_OVERRIDES_KEY,
-  LOWCODE_ROUTE_PATTERN_KEY
+  LOWCODE_ROUTE_PATTERN_KEY,
+  LOWCODE_REQUIRES_AUTH_KEY,
+  LOWCODE_AUTH_REDIRECT_KEY
 ])
 
 /**
@@ -204,10 +214,26 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (isNonEmpty(node.lowcodeWorkflows)) {
     entries.push(makeEntry(LOWCODE_WORKFLOWS_KEY, node.lowcodeWorkflows))
   }
-  // Phase 4 §16.1: page-level route pattern (page node only). Empty/absent
-  // string writes nothing → non-routed pages stay byte-identical.
+  // Phase 4 §16.x: routing (§16.1 route pattern) + auth-guard (§16.3 requiresAuth
+  // / authRedirect) fields — grouped out to keep this function under the
+  // complexity limit. Appended last so legacy .fig output stays byte-identical.
+  entries.push(...serializeRoutingAuthFields(node))
+  return entries
+}
+
+/** Phase 4 §16.x: routing + auth-guard pluginData entries (route pattern /
+ *  requiresAuth / authRedirect), grouped out of `serializeLowcodeFields`. Each
+ *  writes nothing when at its default → byte-identical legacy .fig output. */
+function serializeRoutingAuthFields(node: SceneNode): PluginDataEntry[] {
+  const entries: PluginDataEntry[] = []
   if (typeof node.lowcodeRoutePattern === 'string' && node.lowcodeRoutePattern !== '') {
     entries.push(makeEntry(LOWCODE_ROUTE_PATTERN_KEY, node.lowcodeRoutePattern))
+  }
+  if (node.lowcodeRequiresAuth === true) {
+    entries.push(makeEntry(LOWCODE_REQUIRES_AUTH_KEY, true))
+  }
+  if (typeof node.lowcodeAuthRedirect === 'string' && node.lowcodeAuthRedirect !== '') {
+    entries.push(makeEntry(LOWCODE_AUTH_REDIRECT_KEY, node.lowcodeAuthRedirect))
   }
   return entries
 }
@@ -392,6 +418,12 @@ export interface ExtractedLowcodeAndPluginData {
    *  page via `assignImportedLowcodeFields`; on regular nodes it flows through
    *  `...lowcodeRest` (harmless — page-only in practice). */
   lowcodeRoutePattern?: string
+  /** Phase 4 §16.3: page-level auth-guard flag (page node only). Restored onto the
+   *  page via `assignImportedLowcodeFields`. */
+  lowcodeRequiresAuth?: boolean
+  /** Phase 4 §16.3: document-level login redirect (root node only). Restored onto
+   *  the root via `assignImportedLowcodeFields`. */
+  lowcodeAuthRedirect?: string
   /** Phase 3 §8 v11: per-instance override snapshot (keyed by master-child id).
    *  Flows onto the node via `...lowcodeRest` as `pendingInstanceOverrides`, then
    *  `reapplyInstanceOverrides` remaps it after populate. */
@@ -517,6 +549,17 @@ function assignLowcodeLayoutFix(
       // which warns + falls back to the slug route for malformed values — so a
       // stray non-`/` string is harmless here.
       if (typeof value === 'string') target.lowcodeRoutePattern = value
+      return
+    case LOWCODE_REQUIRES_AUTH_KEY:
+      // Phase 4 §16.3: page-level auth-guard flag. Strict boolean-true gate (same
+      // posture as FREE) so a hand-edited / malformed .fig never accidentally
+      // guards a page.
+      if (value === true) target.lowcodeRequiresAuth = true
+      return
+    case LOWCODE_AUTH_REDIRECT_KEY:
+      // Phase 4 §16.3: document-level login redirect. Light guard (string); the
+      // compiler defaults to `/login` when absent.
+      if (typeof value === 'string') target.lowcodeAuthRedirect = value
   }
 }
 

@@ -156,6 +156,15 @@ function emitSinglePage(
   // which only exists in the multi-page router shell. Strip them up front and
   // warn — the page body emit then proceeds as if they were never collected.
   const { ir: cleaned, warnings } = stripNavigateForSinglePage(ir)
+  // Phase 4 §16.3: an auth guard needs the router's <Navigate> to redirect, which
+  // only exists in the multi-page shell. Warn + drop for a single-page compile
+  // (the scaffold's `routerAvailable` gate already skips the guard emit).
+  if (cleaned.requiresAuth) {
+    warnings.push({
+      code: 'auth-guard-no-router',
+      message: `page ${cleaned.pageName} requiresAuth dropped — a single-page compile has no router to redirect unauthenticated users`
+    })
+  }
   const files = new Map<string, string | Uint8Array>()
   // Phase 3 §8 v10: drop components no page (transitively) references, so an
   // all-inlined master (e.g. §8 v9 deep-override) leaves no orphan module/class.

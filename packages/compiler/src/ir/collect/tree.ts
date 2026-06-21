@@ -133,11 +133,24 @@ export function collectTree(
   // present.
   const usesRouteParams = docStateReads.delete(ROUTE_PARAMS_IDENT)
 
+  // Phase 4 §16.3: auth guard. Lifted after the walk so it can register a
+  // `$currentUser` read into the (now-finalized) docStateReads set.
+  const { requiresAuth, authRedirect } = liftRequiresAuth(
+    graph,
+    page,
+    pageId,
+    docStatesByName,
+    docStateReads,
+    warnings
+  )
+
   return {
     pageId,
     pageName: page.name || 'Page',
     routePattern,
     usesRouteParams,
+    requiresAuth,
+    authRedirect,
     children,
     states,
     docStates,
@@ -168,6 +181,38 @@ function liftRoutePattern(
     return undefined
   }
   return raw
+}
+
+/** Phase 4 §16.3: the built-in auth doc-state + the default login redirect. */
+const CURRENT_USER_IDENT = '$currentUser'
+const DEFAULT_AUTH_REDIRECT = '/login'
+
+/** Phase 4 §16.3: lift the page's auth-guard flag. Guarding needs the
+ *  `$currentUser` doc-state (Supabase configured); a page asking for a guard
+ *  without it warns + stays public. When guarded, register a `$currentUser` read
+ *  so the page emits the `useDocState('$currentUser')` hook, and resolve the
+ *  login redirect from the root's `lowcodeAuthRedirect` (default `/login`). */
+function liftRequiresAuth(
+  graph: SceneGraph,
+  page: SceneNode,
+  pageId: string,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string>,
+  warnings: IRWarning[]
+): { requiresAuth?: boolean; authRedirect?: string } {
+  if (page.lowcodeRequiresAuth !== true) return {}
+  if (!docStates.has(CURRENT_USER_IDENT)) {
+    warnings.push({
+      code: 'auth-guard-no-supabase',
+      message: `page ${page.name || pageId} requiresAuth but has no Supabase config (no ${CURRENT_USER_IDENT} doc-state); guard skipped`,
+      nodeId: pageId
+    })
+    return {}
+  }
+  docStateReads.add(CURRENT_USER_IDENT)
+  const raw = graph.getNode(graph.rootId)?.lowcodeAuthRedirect
+  const authRedirect = typeof raw === 'string' && raw !== '' ? raw : DEFAULT_AUTH_REDIRECT
+  return { requiresAuth: true, authRedirect }
 }
 
 /**
