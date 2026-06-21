@@ -4,6 +4,7 @@ import type {
   IRApiCallHandler,
   IRConfirmHandler,
   IREventHandler,
+  IRNavigateHandler,
   IRSupabaseAuthHandler,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
@@ -177,6 +178,17 @@ function emitApiCall(h: IRApiCallHandler): string {
   )
 }
 
+/** Phase 4 §16.2: a `navigate` call. Without route params it stays a literal
+ *  `navigate("/about")`; with params it builds the path via react-router's
+ *  `generatePath("/product/:id", { id: <expr> })` so dynamic targets get their
+ *  segments filled from caller-scope expressions. */
+function emitNavigate(h: IRNavigateHandler): string {
+  const to = JSON.stringify(h.to)
+  if (!h.params || h.params.length === 0) return `navigate(${to})`
+  const entries = h.params.map((p) => `${p.name}: ${emitExpression(p.ast)}`).join(', ')
+  return `navigate(generatePath(${to}, { ${entries} }))`
+}
+
 function emitHandlerStatement(h: IREventHandler): string {
   // Exhaustive switch over IREventHandler — the `never` assertion below
   // makes tsgo flag any new kind added to ir/types.ts that misses a case
@@ -189,7 +201,7 @@ function emitHandlerStatement(h: IREventHandler): string {
         : `${setterName(h.stateName)}(${inner})`
     }
     case 'navigate':
-      return `navigate(${JSON.stringify(h.to)})`
+      return emitNavigate(h)
     case 'setVariable': {
       const inner = emitExpression(h.ast)
       return h.mode === 'functional'

@@ -26,6 +26,7 @@ import type {
   IREventHandler,
   IREventName,
   IRExpression,
+  IRNavigateParam,
   IRSetVariableHandler,
   IRStateDecl,
   IRSupabaseAuthHandler,
@@ -622,7 +623,16 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
     case 'setState':
       return resolveSetState(ctx.node, ctx.eventName, action, ctx.states, ctx.warnings)
     case 'navigate':
-      return resolveNavigate(ctx.node, ctx.eventName, action, ctx.warnings)
+      return resolveNavigate(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
     case 'setVariable':
       return resolveSetVariable(ctx.node, ctx.eventName, action, ctx.states, ctx.docStates, ctx.warnings)
     case 'apiCall':
@@ -1012,6 +1022,10 @@ function resolveNavigate(
   node: SceneNode,
   eventName: EventName,
   action: Extract<ActionDef, { kind: 'navigate' }>,
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
   warnings: IRWarning[]
 ): IREventHandler | null {
   const to = action.to?.trim() ?? ''
@@ -1023,7 +1037,36 @@ function resolveNavigate(
     })
     return null
   }
-  return { kind: 'navigate', to }
+  // Phase 4 §16.2: resolve route params (param name → value expression). A bad
+  // param expr drops the whole navigate handler (same posture as supabase
+  // filters) — a broken target link is worse than no navigation.
+  const params: IRNavigateParam[] = []
+  for (const [name, rawExpr] of Object.entries(action.params ?? {})) {
+    const expr = rawExpr.trim()
+    if (expr === '') {
+      warnings.push({
+        code: 'action-navigate-param-missing-value',
+        message: `node ${node.id} ${eventName} navigate param "${name}" has no value expression`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const parsed = parseExpression(expr)
+    if (!parsed.ok) {
+      warnings.push({
+        code: 'action-navigate-param-invalid-value',
+        message: `node ${node.id} ${eventName} navigate param "${name}" "${expr}" → ${parsed.error}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (!checkExprRefs(parsed.references, states, inScope, docStates, node, `${eventName} navigate param "${name}"`, 'action-navigate-param', warnings)) {
+      return null
+    }
+    registerDocStateReads(parsed.references, docStates, docStateReads)
+    params.push({ name, ast: parsed.ast, references: [...parsed.references] })
+  }
+  return params.length > 0 ? { kind: 'navigate', to, params } : { kind: 'navigate', to }
 }
 
 /** Phase 3 §10: lower a `condition` action. Parses the condition expression

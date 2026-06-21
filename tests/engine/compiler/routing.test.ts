@@ -180,3 +180,163 @@ describe('Phase 4 §16.1 — emit: dynamic Route path + useParams hook', () => {
     expect(aboutPage).not.toContain('useParams')
   })
 })
+
+/**
+ * Phase 4 §16.2 — navigate with route params: a `navigate` action may carry
+ * `params: { name: exprString }` so a dynamic target's `:segments` are filled
+ * from caller-scope expressions, emitted as
+ * `navigate(generatePath("/product/:id", { id: <expr> }))`.
+ */
+describe('Phase 4 §16.2 — collect: navigate route params', () => {
+  function navHandler(params?: Record<string, string>, opts?: { state?: boolean }) {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    if (opts?.state) {
+      graph.updateNode(page.id, {
+        state: [{ id: 's1', name: 'pid', type: 'string', defaultValue: '' }]
+      })
+    }
+    graph.createNode('BUTTON', page.id, {
+      interactiveProps: { text: 'Go' },
+      events: { onClick: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params }] }
+    })
+    const ir = collectTree(graph, page.id)
+    const btn = ir.children[0]
+    if (btn.kind !== 'element') throw new Error('expected element')
+    return { ir, h: btn.events?.onClick?.[0] }
+  }
+
+  test('navigate params are parsed into IRNavigateHandler.params', () => {
+    const { h } = navHandler({ id: 'pid' }, { state: true })
+    if (h?.kind !== 'navigate') throw new Error('expected navigate handler')
+    expect(h.params?.[0]?.name).toBe('id')
+    expect(h.params?.[0]?.references).toContain('pid')
+  })
+
+  test('a navigate param reading $params sets usesRouteParams (sentinel-ride, no docStateReads pollution)', () => {
+    const { ir, h } = navHandler({ id: '$params.slug' })
+    if (h?.kind !== 'navigate') throw new Error('expected navigate handler')
+    expect(ir.usesRouteParams).toBe(true)
+    expect(ir.docStateReads).not.toContain('$params')
+    expect(ir.warnings).toEqual([])
+  })
+
+  test('navigate with no params carries no params field (zero-regression)', () => {
+    const { h } = navHandler()
+    if (h?.kind !== 'navigate') throw new Error('expected navigate handler')
+    expect(h.params).toBeUndefined()
+  })
+
+  test('an unknown identifier in a navigate param drops the handler with a warning', () => {
+    const { ir, h } = navHandler({ id: 'nope' })
+    expect(h).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'action-navigate-param-unknown-identifier')).toBe(true)
+  })
+
+  test('an unparseable navigate param expression drops the handler with a warning', () => {
+    const { ir, h } = navHandler({ id: '1 +' })
+    expect(h).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'action-navigate-param-invalid-value')).toBe(true)
+  })
+})
+
+describe('Phase 4 §16.2 — emit: navigate(generatePath(...))', () => {
+  test('navigate with params emits generatePath + the merged react-router-dom import', () => {
+    const { graph, pages } = buildMultiPageGraph('Home', 'Product')
+    const [home, product] = pages
+    graph.updateNode(product.id, {
+      state: [{ id: 's1', name: 'pid', type: 'string', defaultValue: '' }]
+    })
+    graph.createNode('TEXT', home.id, { text: 'Home' })
+    graph.createNode('BUTTON', product.id, {
+      interactiveProps: { text: 'Open' },
+      events: { onClick: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: 'pid' } }] }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [home.id, product.id],
+      options: withDefaults({ packageName: 'nav-params' })
+    })
+
+    const productPage = out.files.get('src/pages/product.tsx') as string
+    expect(productPage).toContain("import { useNavigate, generatePath } from 'react-router-dom'")
+    expect(productPage).toContain('const navigate = useNavigate()')
+    expect(productPage).toContain('navigate(generatePath("/product/:id", { id: pid }))')
+  })
+
+  test('navigate without params stays a literal navigate (no generatePath import)', () => {
+    const { graph, pages } = buildMultiPageGraph('Home', 'About')
+    const [home, about] = pages
+    graph.createNode('BUTTON', home.id, {
+      interactiveProps: { text: 'About' },
+      events: { onClick: [{ id: 'n1', kind: 'navigate', to: '/about' }] }
+    })
+    graph.createNode('TEXT', about.id, { text: 'About' })
+
+    const out = compile({
+      graph,
+      pageIds: [home.id, about.id],
+      options: withDefaults({ packageName: 'nav-plain' })
+    })
+
+    const homePage = out.files.get('src/pages/index.tsx') as string
+    expect(homePage).toContain('navigate("/about")')
+    expect(homePage).toContain("import { useNavigate } from 'react-router-dom'")
+    expect(homePage).not.toContain('generatePath')
+  })
+
+  test('a navigate param passing $params through emits generatePath with the $params read', () => {
+    const { graph, pages } = buildMultiPageGraph('Home', 'Product')
+    const [home, product] = pages
+    graph.updateNode(product.id, { lowcodeRoutePattern: '/product/:id' })
+    graph.createNode('BUTTON', product.id, {
+      interactiveProps: { text: 'Reopen' },
+      events: { onClick: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: '$params.id' } }] }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [home.id, product.id],
+      options: withDefaults({ packageName: 'nav-params-passthrough' })
+    })
+
+    const productPage = out.files.get('src/pages/product.tsx') as string
+    expect(productPage).toContain('const $params = useParams()')
+    expect(productPage).toContain('navigate(generatePath("/product/:id", { id: $params.id }))')
+  })
+
+  test('navigate params nested inside a condition branch still import generatePath (经验 A branch descent)', () => {
+    const { graph, pages } = buildMultiPageGraph('Home', 'Product')
+    const [home, product] = pages
+    graph.updateNode(product.id, {
+      state: [
+        { id: 's1', name: 'ok', type: 'boolean', defaultValue: false },
+        { id: 's2', name: 'pid', type: 'string', defaultValue: '' }
+      ]
+    })
+    graph.createNode('BUTTON', product.id, {
+      interactiveProps: { text: 'Maybe' },
+      events: {
+        onClick: [
+          {
+            id: 'c1',
+            kind: 'condition',
+            condExpr: 'ok',
+            consequent: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: 'pid' } }]
+          }
+        ]
+      }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [home.id, product.id],
+      options: withDefaults({ packageName: 'nav-cond' })
+    })
+
+    const productPage = out.files.get('src/pages/product.tsx') as string
+    expect(productPage).toContain('generatePath')
+    expect(productPage).toContain('navigate(generatePath("/product/:id", { id: pid }))')
+  })
+})

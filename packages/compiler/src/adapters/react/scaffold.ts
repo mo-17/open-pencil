@@ -7,6 +7,7 @@ import {
   hasIntlAttr,
   hasTranslatableText,
   pageHasNavigateHandler,
+  pageHasNavigateParams,
   pageUsesConfirm,
   pageUsesSupabase,
   pageUsesToast,
@@ -189,6 +190,8 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // single named import with whichever the page needs.
   const routerNames: string[] = []
   if (needsNavigate) routerNames.push('useNavigate')
+  // Phase 4 §16.2: a navigate with route params emits navigate(generatePath(…)).
+  if (needsNavigate && pageHasNavigateParams(ir)) routerNames.push('generatePath')
   if (usesRouteParams) routerNames.push('useParams')
   const routerImport = routerNames.length > 0
     ? `import { ${routerNames.join(', ')} } from 'react-router-dom'\n`

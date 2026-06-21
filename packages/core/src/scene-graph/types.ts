@@ -711,9 +711,15 @@ export interface SetStateAction {
 export interface NavigateAction {
   id: string
   kind: 'navigate'
-  /** Target path, e.g. `/about`. Phase 1 §7.4 keeps this a literal string
-   *  — expressions are a future candidate. */
+  /** Target path, e.g. `/about`, or a dynamic route pattern `/product/:id`
+   *  (Phase 4 §16.1). A literal string — the path itself is not an expression. */
   to?: string
+  /** Phase 4 §16.2: values for a dynamic target's route params, keyed by param
+   *  name (the `:id` segment → `id`). Each value is an expression string in the
+   *  same sub-language as `setState.valueExpr` (resolves against page state /
+   *  docState / `$params` / in-scope). Emitted as
+   *  `navigate(generatePath(to, { id: <expr> }))`; absent / empty → `navigate(to)`. */
+  params?: Record<string, string>
 }
 
 /** Reserved stub for runtime variable writes. The compiler currently emits

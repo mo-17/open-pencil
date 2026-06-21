@@ -33,7 +33,19 @@ function treeHasHandler(node: IRNode, pred: (h: IREventHandler) => boolean): boo
 }
 
 export function pageHasNavigateHandler(ir: IRTree): boolean {
-  return ir.children.some((c) => treeHasHandler(c, (h) => h.kind === 'navigate'))
+  return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'navigate')))
+}
+
+/**
+ * Phase 4 §16.2 — does any navigate handler in the page (including one nested
+ * inside a `condition` / `confirm` branch) carry route params? Drives the
+ * `generatePath` import — emitted alongside `useNavigate` only when a dynamic
+ * `navigate(generatePath(...))` is actually produced.
+ */
+export function pageHasNavigateParams(ir: IRTree): boolean {
+  return ir.children.some((c) =>
+    treeHasHandler(c, (h) => handlerTreeMatches(h, (x) => x.kind === 'navigate' && (x.params?.length ?? 0) > 0))
+  )
 }
 
 /**
@@ -167,13 +179,18 @@ function handlerBranches(h: IREventHandler): IREventHandler[] | null {
   return null
 }
 
-/** True when `h` is `kind`, or contains one in a nested `condition` / `confirm`
- *  branch. The branch descent is what closes the §10 "compiles but the import
- *  is silently absent" gap for actions buried inside an if/else. */
-function handlerTreeHasKind(h: IREventHandler, kind: IREventHandler['kind']): boolean {
-  if (h.kind === kind) return true
+/** True when `h` matches `pred`, or contains a matching handler in a nested
+ *  `condition` / `confirm` branch. The branch descent is what closes the §10
+ *  "compiles but the import is silently absent" gap for actions buried inside an
+ *  if/else. */
+function handlerTreeMatches(h: IREventHandler, pred: (h: IREventHandler) => boolean): boolean {
+  if (pred(h)) return true
   const branches = handlerBranches(h)
-  return branches ? branches.some((b) => handlerTreeHasKind(b, kind)) : false
+  return branches ? branches.some((b) => handlerTreeMatches(b, pred)) : false
+}
+
+function handlerTreeHasKind(h: IREventHandler, kind: IREventHandler['kind']): boolean {
+  return handlerTreeMatches(h, (x) => x.kind === kind)
 }
 
 /**

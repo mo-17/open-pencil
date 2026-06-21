@@ -78,6 +78,56 @@ describe('update_lowcode_node', () => {
     expect(node?.events?.onClick?.[0]).toEqual({ id: 'a-1', kind: 'navigate', to: '/done' })
   })
 
+  // Phase 4 §16.2 — navigate route params validate at the tool boundary.
+  test('accepts a navigate with valid route params (round-trips onto the node)', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [{ id: 'a-1', kind: 'navigate', to: '/product/:id', params: { id: 'pid' } }]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual({
+      id: 'a-1',
+      kind: 'navigate',
+      to: '/product/:id',
+      params: { id: 'pid' }
+    })
+  })
+
+  test('rejects a navigate param with a non-identifier key', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: { onClick: [{ id: 'a-1', kind: 'navigate', to: '/p/:id', params: { '1bad': 'pid' } }] }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('1bad')
+  })
+
+  test('rejects a navigate param with an unparseable value expression', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: { onClick: [{ id: 'a-1', kind: 'navigate', to: '/p/:id', params: { id: '1 +' } }] }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('params.id')
+  })
+
   test('null in patch clears the corresponding SceneNode field', () => {
     const { figma, graph } = setupToolTest()
     const btn = figma.createRectangle()

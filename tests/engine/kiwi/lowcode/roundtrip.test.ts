@@ -128,6 +128,23 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(btn.events).toEqual({ onClick })
   })
 
+  test('Phase 4 §16.2 navigate route params survive round-trip (events JSON blob, zero codec change)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(page.id, {
+      state: [{ id: 's-pid', name: 'pid', type: 'string', defaultValue: '' }]
+    })
+    const onClick: ActionDef[] = [
+      { id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: 'pid' } }
+    ]
+    graph.createNode('BUTTON', page.id, { name: 'nav-btn', events: { onClick } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const btn = findByName(reimported, 'nav-btn')
+    expect(btn.events).toEqual({ onClick })
+  })
+
   test('Phase 3 §10 v2 toast (message + variant, incl nested in condition) survives round-trip', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

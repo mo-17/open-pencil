@@ -21,17 +21,23 @@ function refsOf(...asts: (ExprAst | undefined)[]): string[] {
  *
  * Total function over `IREventHandler` (经验 A): the exhaustive switch + `never`
  * default means adding a handler kind without a case here is a tsgo error, not a
- * silent skip. `navigate` / `delay` / `stop` carry no expression AST and are
- * returned unchanged; `apiCall.body` / `supabaseMutation.payload` are
- * pre-serialised JSON literals (not ASTs) and so do not support parameter
- * interpolation (documented limitation — use `payloadEntries` instead).
+ * silent skip. `delay` / `stop` carry no expression AST and are returned
+ * unchanged; `navigate` substitutes its route-param value ASTs (Phase 4 §16.2);
+ * `apiCall.body` / `supabaseMutation.payload` are pre-serialised JSON literals
+ * (not ASTs) and so do not support parameter interpolation (documented
+ * limitation — use `payloadEntries` instead).
  */
 export function substituteHandler(handler: IREventHandler, bindings: ReadonlyMap<string, ExprAst>): IREventHandler {
   switch (handler.kind) {
-    case 'navigate':
     case 'delay':
     case 'stop':
       return handler
+    case 'navigate':
+      // Phase 4 §16.2: `to` is a literal path; only the param value exprs are
+      // substituted (a workflow param can feed a navigate's route param).
+      return handler.params
+        ? { ...handler, params: handler.params.map((p) => substituteFilter(p, bindings)) }
+        : handler
     case 'setState':
     case 'setVariable':
     case 'toast':

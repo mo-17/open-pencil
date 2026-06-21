@@ -313,13 +313,24 @@ export interface IRSetStateHandler {
   mode: ValueUpdateMode
 }
 
-/** Navigate to a literal route at click time. The collector only emits
- *  this when a router is in scope (multi-page compile); single-page
- *  compiles drop the action with a warning at collect time. */
+/** Navigate to a route at click time. The collector only emits this when a
+ *  router is in scope (multi-page compile); single-page compiles drop the
+ *  action with a warning at collect time. */
 export interface IRNavigateHandler {
   kind: 'navigate'
-  /** Route path, e.g. `/about`. Already validated to be non-empty. */
+  /** Route path, e.g. `/about` or `/product/:id`. Already validated non-empty. */
   to: string
+  /** Phase 4 §16.2: resolved values for a dynamic target's route params. Empty /
+   *  absent → plain `navigate(to)`; non-empty → `navigate(generatePath(to, {…}))`. */
+  params?: IRNavigateParam[]
+}
+
+/** Phase 4 §16.2: one resolved `navigate` route param — its name (the `:id`
+ *  segment) and the parsed value expression (caller scope). */
+export interface IRNavigateParam {
+  name: string
+  ast: ExprAst
+  references: string[]
 }
 
 /** Phase 2 §2: writes a document-level state value via the lowcode
