@@ -36,6 +36,16 @@ export function pageHasNavigateHandler(ir: IRTree): boolean {
   return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'navigate')))
 }
 
+/** Phase 4 §18: does any element in the tree carry a file-upload config? Drives
+ *  the `getSupabaseClient` import (the upload onChange calls storage). */
+function treeHasUpload(node: IRNode): boolean {
+  if (node.kind === 'conditional') return treeHasUpload(node.consequent)
+  if (node.kind === 'list') return treeHasUpload(node.template)
+  if (node.kind !== 'element') return false
+  if (node.upload) return true
+  return node.children.some(treeHasUpload)
+}
+
 /**
  * Phase 4 §16.2 — does any navigate handler in the page (including one nested
  * inside a `condition` / `confirm` branch) carry route params? Drives the
@@ -140,6 +150,8 @@ export function pageUsesSupabase(ir: IRTree): boolean {
   // §17: a LIST bound to a Supabase query datasource calls getSupabaseClient()
   // in its fetch hook, so it needs the import + runtime just like an action does.
   if ((ir.listQueries?.length ?? 0) > 0) return true
+  // §18: a file-upload INPUT calls getSupabaseClient().storage in its onChange.
+  if (ir.children.some(treeHasUpload)) return true
   return ir.children.some((c) =>
     treeHasHandler(
       c,

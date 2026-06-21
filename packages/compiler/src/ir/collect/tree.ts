@@ -35,6 +35,7 @@ import type {
   IRList,
   IRListOrder,
   IRListQuery,
+  IRUpload,
   IRMessageValue,
   IRNode,
   IRStateDecl,
@@ -964,17 +965,16 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.workflows
   )
 
-  const controlled = applyControlledInput(node, ctx, attrs, children, events)
+  // §18/§3.x/§15: the mutually-exclusive interactive control descriptors —
+  // file upload > controlled value > UI-kit control hint. Folded into one helper
+  // (with its own side effects) to keep nodeToIR under the complexity gate.
+  const controls = resolveControlDescriptors(node, ctx, attrs, children, events)
 
   // Phase 3 §8 v3: inside a component body, a child with a `:fills` override
   // slot emits `className={prop}` so an instance can re-style it; the static
   // `className` above is the prop default (and what Tailwind safelists).
   const classNameProp = ctx.componentPropSlots?.get(node.id)?.className?.name
 
-  // Phase 3 §15 Phase B: tag the interactive control root so a UI-kit adapter
-  // can swap it for a composed component. Kit-agnostic — the plain emit ignores
-  // it (byte-identical). The array CHECKBOX group is excluded (deferred).
-  const controlKind = controlKindFor(node)
   // Phase 4 §15.1: tag a card-like container FRAME so a UI-kit adapter can wrap
   // it in `<Card>`. Kit-agnostic — the plain emit ignores it (byte-identical).
   const containerKind = containerKindFor(node)
@@ -991,8 +991,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     attrs,
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
-    ...(controlled ? { controlled } : {}),
-    ...(controlKind ? { controlKind } : {}),
+    ...controls,
     ...(containerKind ? { containerKind } : {}),
     ...vector.extra
   }
@@ -1097,6 +1096,28 @@ function containerKindFor(node: SceneNode): IRElement['containerKind'] {
   return undefined
 }
 
+/** §18/§3.x/§15: resolve an element's mutually-exclusive interactive control
+ *  descriptors. A file-upload INPUT (§18) is uncontrolled and not a UI-kit
+ *  control, so its presence suppresses the controlled-value wiring and the
+ *  control-kind hint. Returns only the present keys (each helper has its own
+ *  collect side effects). Extracted to keep `nodeToIR` under the complexity gate. */
+function resolveControlDescriptors(
+  node: SceneNode,
+  ctx: WalkCtx,
+  attrs: Record<string, IRAttrValue>,
+  children: IRNode[],
+  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+): Pick<IRElement, 'controlled' | 'upload' | 'controlKind'> {
+  const upload = applyUploadInput(node, ctx, attrs)
+  if (upload) return { upload }
+  const out: Pick<IRElement, 'controlled' | 'controlKind'> = {}
+  const controlled = applyControlledInput(node, ctx, attrs, children, events)
+  if (controlled) out.controlled = controlled
+  const controlKind = controlKindFor(node)
+  if (controlKind) out.controlKind = controlKind
+  return out
+}
+
 function applyControlledInput(
   node: SceneNode,
   ctx: WalkCtx,
@@ -1145,6 +1166,70 @@ function applyControlledInput(
   return controlled
 }
 
+/** Phase 4 §18: resolve an INPUT's file-upload config (`interactiveProps.upload`)
+ *  into an IRUpload. Requires Supabase configured (`$currentUser` proxy, same as
+ *  §16.3/§17), a non-empty bucket, and a valid `resultTarget` doc-state (the
+ *  public URL lands there — registered as a write so the page imports
+ *  setDocState). The optional `pathExpr` resolves through the shared reactive
+ *  resolver. Returns undefined when the INPUT isn't an upload; null on a config
+ *  error (caller leaves it a plain input). */
+function applyUploadInput(
+  node: SceneNode,
+  ctx: WalkCtx,
+  attrs: Record<string, IRAttrValue>
+): IRUpload | undefined {
+  if (node.type !== 'INPUT') return undefined
+  const ip = node.interactiveProps as { upload?: UploadConfig } | undefined
+  const upload = ip?.upload
+  if (!upload || typeof upload !== 'object') return undefined
+  if (!ctx.docStates.has(CURRENT_USER_IDENT)) {
+    ctx.warnings.push({
+      code: 'upload-no-supabase',
+      message: `INPUT ${node.id} has an upload config but the document has no Supabase config; upload disabled`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const bucket = typeof upload.bucket === 'string' ? upload.bucket.trim() : ''
+  if (bucket === '') {
+    ctx.warnings.push({
+      code: 'upload-missing-bucket',
+      message: `INPUT ${node.id} upload config has no bucket`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const resultTarget = typeof upload.resultTarget === 'string' ? upload.resultTarget.trim() : ''
+  if (resultTarget === '' || !ctx.docStates.has(resultTarget)) {
+    ctx.warnings.push({
+      code: 'upload-bad-result-target',
+      message: `INPUT ${node.id} upload resultTarget "${resultTarget}" is not a known document state`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  ctx.docStateWrites.add(resultTarget)
+  // A file input is uncontrolled and types itself — drop any text-input
+  // fallback attrs so it doesn't carry a stray placeholder / value / type.
+  delete attrs.placeholder
+  delete attrs.value
+  delete attrs.defaultValue
+  delete attrs.type
+  let pathAst: ExprAst | undefined
+  const pathSrc = typeof upload.pathExpr === 'string' ? upload.pathExpr.trim() : ''
+  if (pathSrc !== '') {
+    const resolved = resolveReactiveExpr(node, pathSrc, 'upload-path', ctx)
+    if (resolved === null) return undefined
+    pathAst = resolved.ast
+  }
+  return {
+    bucket,
+    resultTarget,
+    pathAst,
+    accept: typeof upload.accept === 'string' && upload.accept.trim() !== '' ? upload.accept.trim() : undefined
+  }
+}
+
 /** Shared: walk a wrapper's `<label><input.../></label>` children, find the
  *  per-option <input> leaves matching `inputType`, drop their uncontrolled
  *  `defaultChecked` fallback, and attach the parent's controlled descriptor.
@@ -1189,6 +1274,16 @@ interface ListSupabaseQueryConfig {
    *  `$page * 20`). Requires `limit` (the page size); references a page-index
    *  doc-state driven by prev/next setState handlers. */
   offsetExpr?: string
+}
+
+/** Phase 4 §18: an INPUT's file-upload config, carried on its interactiveProps
+ *  blob (rides round-trip, zero codec). `bucket` + `resultTarget` are required;
+ *  `pathExpr` is an optional reactive folder-prefix expression. */
+interface UploadConfig {
+  bucket?: string
+  resultTarget?: string
+  pathExpr?: string
+  accept?: string
 }
 
 /** A LIST datasource ref — a page-scoped array state (Phase 2 §9), a
@@ -1423,17 +1518,17 @@ function resolveListOffset(
     })
     return undefined
   }
-  const resolved = resolveListQueryExpr(node, src, 'list-query-offset', ctx)
+  const resolved = resolveReactiveExpr(node, src, 'list-query-offset', ctx)
   if (resolved === null) return null
   references.push(...resolved.references)
   return resolved.ast
 }
 
-/** Phase 4 §17: resolve one reactive query expression (offset / dynamic sort)
- *  through the same read-context checks as a filter — reject `$prev`, reject
- *  unknown identifiers, register doc-state reads. Returns the parsed AST + its
- *  references, or null (with a warning) on failure. */
-function resolveListQueryExpr(
+/** Phase 4 §17/§18: resolve one reactive expression (list offset / dynamic
+ *  sort / upload path) through the same read-context checks as a filter — reject
+ *  `$prev`, reject unknown identifiers, register doc-state reads. Returns the
+ *  parsed AST + its references, or null (with a warning) on failure. */
+function resolveReactiveExpr(
   node: SceneNode,
   src: string,
   code: string,
@@ -1488,7 +1583,7 @@ function resolveListOrder(
     const column = typeof o.column === 'string' ? o.column.trim() : ''
     let columnAst: ExprAst | undefined
     if (columnExpr !== '') {
-      const resolved = resolveListQueryExpr(node, columnExpr, 'list-query-order', ctx)
+      const resolved = resolveReactiveExpr(node, columnExpr, 'list-query-order', ctx)
       if (resolved === null) return null
       columnAst = resolved.ast
       references.push(...resolved.references)
@@ -1498,7 +1593,7 @@ function resolveListOrder(
     const ascendingExpr = typeof o.ascendingExpr === 'string' ? o.ascendingExpr.trim() : ''
     let ascendingAst: ExprAst | undefined
     if (ascendingExpr !== '') {
-      const resolved = resolveListQueryExpr(node, ascendingExpr, 'list-query-order', ctx)
+      const resolved = resolveReactiveExpr(node, ascendingExpr, 'list-query-order', ctx)
       if (resolved === null) return null
       ascendingAst = resolved.ast
       references.push(...resolved.references)

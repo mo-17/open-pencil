@@ -7,7 +7,8 @@ import type {
   IREventName,
   IRExpression,
   IRNode,
-  IRText
+  IRText,
+  IRUpload
 } from '#compiler/ir/types'
 
 import { emitEventHandler } from './event'
@@ -109,6 +110,7 @@ function emitTagElement(
     node.events,
     devMode ? node.sourceId : undefined,
     node.controlled,
+    node.upload,
     node.classNameProp,
     node.classNamePropFallback
   )
@@ -218,6 +220,7 @@ function formatAttrs(
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
   nodeId: string | undefined,
   controlled: IRControlledInput | undefined,
+  upload: IRUpload | undefined,
   classNameProp?: string,
   classNamePropFallback?: boolean
 ): string {
@@ -234,6 +237,10 @@ function formatAttrs(
   for (const [key, value] of Object.entries(attrs)) {
     parts.push(formatAttr(key, value))
   }
+  // §18: a file-upload INPUT emits `type="file"` + an onChange that uploads to
+  // Supabase Storage and writes the public URL into a doc-state. It's
+  // uncontrolled, so collect leaves `controlled` undefined here.
+  if (upload) parts.push(...uploadAttrParts(upload))
   if (controlled) {
     // §3.v4 dispatch:
     //  - type="radio" → per-option `checked={read === <opt>}` (the IR collect
@@ -277,6 +284,35 @@ function formatAttrs(
     }
   }
   return parts.join(' ')
+}
+
+/** Phase 4 §18: the JSX attrs for a file-upload INPUT — `type="file"`, an
+ *  optional `accept`, and the upload onChange. Split out to keep `formatAttrs`
+ *  under the complexity gate. */
+function uploadAttrParts(upload: IRUpload): string[] {
+  const parts = ['type="file"']
+  if (upload.accept) parts.push(`accept="${escapeAttr(upload.accept)}"`)
+  parts.push(`onChange={${emitUploadHandler(upload)}}`)
+  return parts
+}
+
+/** Phase 4 §18: the async onChange for a file-upload INPUT. Reads the chosen
+ *  file, uploads it to `storage.from(bucket).upload(path, file, { upsert: true })`
+ *  (path = `<pathExpr>/<filename>` when a prefix is set, else the bare file
+ *  name), then writes the object's public URL into the result doc-state. A
+ *  failed upload is left silent (no URL written). */
+function emitUploadHandler(u: IRUpload): string {
+  const bucket = JSON.stringify(u.bucket)
+  const target = JSON.stringify(u.resultTarget)
+  const path = u.pathAst ? '`${' + emitExpression(u.pathAst) + '}/${__file.name}`' : '__file.name'
+  return (
+    'async (e) => { ' +
+    'const __file = e.target.files?.[0]; if (!__file) return; ' +
+    `const __path = ${path}; ` +
+    `const { error: __err } = await getSupabaseClient().storage.from(${bucket}).upload(__path, __file, { upsert: true }); ` +
+    `if (!__err) setDocState(${target}, getSupabaseClient().storage.from(${bucket}).getPublicUrl(__path).data.publicUrl); ` +
+    '}'
+  )
 }
 
 /** Phase 3 §3.x: emit body for a controlled INPUT's onChange — calls the

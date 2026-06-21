@@ -299,6 +299,18 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(list.interactiveProps).toEqual({ dataSourceRef })
   })
 
+  test('INPUT upload interactiveProp round-trips through .fig (Phase 4 §18)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const upload = { bucket: 'avatars', resultTarget: 'avatarUrl', pathExpr: '$currentUser.id', accept: 'image/*' }
+    graph.createNode('INPUT', page.id, { name: 'Avatar', interactiveProps: { upload } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual({ upload })
+  })
+
   test('TEXT with bindings.text → ref(stateId) round-trips through .fig', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

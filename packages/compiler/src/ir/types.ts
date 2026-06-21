@@ -137,6 +137,12 @@ export interface IRElement {
    *  `defaultValue` and any user-defined `onChange` are dropped (the latter
    *  with an `input-controlled-onchange-conflict` warning at collect time). */
   controlled?: IRControlledInput
+  /** Phase 4 §18 — file-upload wiring for an INPUT carrying
+   *  `interactiveProps.upload`. The adapter emits `<input type="file">` + an
+   *  onChange that uploads to Supabase Storage and writes the public URL into a
+   *  doc-state. Mutually exclusive with `controlled` (a file input is
+   *  uncontrolled); collect skips controlled wiring when this is set. */
+  upload?: IRUpload
   /** Phase 3 §15 Phase B — semantic hint identifying an interactive form
    *  control whose plain-HTML emit a UI-kit adapter may replace with a
    *  composed component (shadcn `<Select>`, `<Checkbox>`, `<Switch>`,
@@ -268,6 +274,20 @@ export interface IRList {
   itemName: string
   indexName: string
   template: IRNode
+}
+
+/** Phase 4 §18: a file-upload INPUT (Supabase Storage). The adapter emits
+ *  `<input type="file">` whose onChange uploads the chosen file to
+ *  `storage.from(bucket).upload(path, file, { upsert: true })`, then writes the
+ *  public URL of the stored object into `resultTarget` (a doc-state) for a later
+ *  form submit / display. `pathAst`, when set, evaluates to a folder prefix the
+ *  file name is appended to (e.g. `$currentUser.id` → `<id>/<filename>`);
+ *  otherwise the bare file name is used. */
+export interface IRUpload {
+  bucket: string
+  resultTarget: string
+  pathAst?: ExprAst
+  accept?: string
 }
 
 /** Phase 4 §17: one ORDER BY clause on a LIST's Supabase query datasource.
