@@ -375,6 +375,47 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **边界(已文档化)**:`to` 仍是字面路径(非表达式,只 params 是表达式);param key/value 不与目标页 routePattern 的 `:segments` 交叉校验(延续 §16.1 `$params.id` 成员名不校验);坏 param expr 丢整个 navigate handler;单页 compile navigate 被 strip(params 随之丢)。
 - **§16.3 起手**:页 `requiresAuth` → emit redirect-if-unauthed(复用 §2.v2 `useSupabaseAuth().user` / `$currentUser`);**待锁**:redirect 目标约定(登录页 slug vs 显式字段)。**新经验:给已有 ActionDef kind 加表达式字段(非新 kind)= 经验 A union widening 不涉及,但所有「遍历 handler 树」的 total function(substituteHandler)+ import gate 必须随之处理新 ast 字段;顺带把同区的 pre-existing 漏下降分支的 gate 一并修(handlerTreeMatches 泛化)。**
 
+### §16.3 auth guard 详细设计 + 交付(2026-06-21,AskUserQuestion 锁定)
+
+> **目标**:页声明 `requiresAuth` → 多页编译在页模块顶部 emit redirect-if-unauthed 守卫(`if (!$currentUser.signedIn) return <Navigate to="/login" replace />`),复用 §2.v2 的 `$currentUser` auth docState。把「谁都能访问的多页站」升级成「带受保护页(仪表盘/账户)的真应用」。
+
+**现状坐实(经验 Q/E,直接读源)**:
+- `$currentUser`(`currentUserBuiltIn`,tree.ts)= **仅当 root 有 `lowcodeSupabaseConfig` 时**自动注册的 object docState(`{id,email,signedIn}`);runtime(`_lowcode_supabase.ts`)经 `auth.getSession()`+`onAuthStateChange` 同步;页经 `useDocState('$currentUser')` 读。→ **守卫前提 = supabase 已配**(否则 `$currentUser` 不存在)。
+- §16.1 `lowcodeRoutePattern` 是页级 CANVAS 字段的范本:round-trip 五触点 = scene-graph type / `lowcode-plugin-data.ts`(KEY 常量 + LOWCODE_PLUGIN_KEYS + serialize + Extracted 类型 + assignLowcodeField(§16.1 因 complexity 移进 `assignLowcodeLayoutFix` 溢出组))/ `import.ts assignImportedLowcodeFields`(页/根经此吸收)/ collectTree lift / IRTree。**页/根路由字段不进 PATCH_KEYS → 非 AI-tool-settable,编辑器经 graph.updateNode 设、.fig round-trip**(§16.1 先例)。
+- scaffold `buildPageFile`:hooks(docStateReads → `const x = useDocState('x')`)然后 `return (...)`;`routerAvailable` 门控(多页 buildPageModule=true / 单页 buildAppTsx=false)。
+
+**锁定决定(AskUserQuestion)**:
+1. **〔Fork 锁定〕redirect 目标 = 显式 document-level 字段**(root `lowcodeAuthRedirect?: string`,默认 `/login`)。app 级一处设登录路由,镜像 supabaseConfig root 归属,可配(/signin /auth)。否决「约定固定 `/login` 字面」(写死不可配)。
+2. **守卫开关 = 页级 `lowcodeRequiresAuth?: boolean`**(每页自决,平行 routePattern)。**多选语义无**(布尔)。
+3. **守卫 emit = react-router `<Navigate>` 早返**(`if (!$currentUser.signedIn) return <Navigate to=… replace/>`),比 useEffect+useNavigate 干净、声明式。
+
+**实现(经验 E 跨 scene-graph/round-trip/collect/scaffold;经验 M build:packages 再 lint;经验「加分支前看 complexity 闸」)**,7 src 文件:
+- **scene-graph**(types.ts):`lowcodeRequiresAuth?: boolean`(页)+ `lowcodeAuthRedirect?: string`(root)。
+- **round-trip**(lowcode-plugin-data.ts + import.ts):`LOWCODE_REQUIRES_AUTH_KEY='lowcode/requiresAuth'` / `LOWCODE_AUTH_REDIRECT_KEY='lowcode/authRedirect'` 入 LOWCODE_PLUGIN_KEYS;serialize(requiresAuth 仅 `===true` 写、authRedirect 仅非空写 → public/默认页 byte-identical);Extracted 类型 + assignLowcodeLayoutFix 两 case(requiresAuth 严格 `===true` gate 同 FREE、authRedirect string 守卫);assignImportedLowcodeFields 两行。
+- **IR**(ir/types.ts):`IRTree.requiresAuth?` + `authRedirect?`(可选 → 无 .vue stub 破坏,区别 §16.1 必填 usesRouteParams)。
+- **collect**(tree.ts):新 `liftRequiresAuth(graph,page,pageId,docStatesByName,docStateReads,warnings)` —— `page.lowcodeRequiresAuth!==true`→`{}`;**无 `$currentUser`(无 supabase)→ warn `auth-guard-no-supabase` + 留 public**;否则 `docStateReads.add('$currentUser')`(→ 自动 emit hook)+ 从 root 解析 authRedirect(默认 `/login`)。
+- **scaffold**(scaffold.ts):`guarded = routerAvailable && ir.requiresAuth===true`;guardLine 加进 hookLines 数组尾(在 `$currentUser` hook 之后、return 之前);**抽 `buildRouterImport(ir,needsNavigate,usesRouteParams,guarded)` helper**(useNavigate/generatePath/useParams/Navigate 合一)消 buildPageFile complexity。
+- **单页警告**(index.ts `emitSinglePage`):`cleaned.requiresAuth` → warn `auth-guard-no-router`(单页无 router 不能 redirect,scaffold `routerAvailable` 门控已跳过 emit;经验 A 不静默丢)。
+
+**GATE 收口 2 处(complexity,经验「加分支前看闸」)**:`serializeLowcodeFields` 22>20 → 抽 `serializeRoutingAuthFields`(routePattern+requiresAuth+authRedirect 三 entry 移出,同位置调用 → 顺序/byte-identical 不变);`buildPageFile` 24>20 → 抽 `buildRouterImport`。
+
+**成功标准(headless)**:
+1. 多页 + supabase + 页 requiresAuth → `import { Navigate }` + `const $currentUser = useDocState("$currentUser")` + `if (!$currentUser.signedIn) return <Navigate to="/login" replace />`;public 页无守卫。
+2. root `lowcodeAuthRedirect` 覆盖默认(`/signin`)。
+3. requiresAuth 无 supabase → warn `auth-guard-no-supabase` + 留 public(不 emit 引用不存在 docState 的守卫)。
+4. 单页 → warn `auth-guard-no-router` + 不 emit。
+5. round-trip:requiresAuth(页)+ authRedirect(root)经 .fig 存活;无则 byte-identical。
+6. `bun run check` exit 0;tsgo 0;jscpd 0;compiler/kiwi/scene-graph/tools 全绿。
+7. **真机验 pending**:部署多页站,未登录访问受保护页实际跳登录页 + 登录后可访问。
+
+**交付记录(CODE COMPLETE 2026-06-21,feat `f91bb4a4`)**:
+- 实现按设计 7 src + 2 test(routing.test +7 / kiwi roundtrip +1),**零新 ActionDef kind / 零 tool 改动**(页/根路由字段非 AI-settable,§16.1 先例)。
+- **关键约束**:`$currentUser` 仅 supabase 配置时存在 → 守卫严格 gate 在 supabase 上(无则 warn + public);守卫 emit 用 `<Navigate>` 早返(声明式,免 useEffect)。
+- **GATE 收口 2 处(complexity)**:serializeLowcodeFields→serializeRoutingAuthFields、buildPageFile→buildRouterImport(均抽 helper,行为不变)。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **676/0**(+7)、kiwi **122/0**(+1)、scene-graph 202/0、tools 196/0 零回归;check:vue 0。零 hotfix。
+- **e2e 实跑**:scratch 多页 .fig(root supabaseConfig + `lowcodeAuthRedirect:/signin`,Dashboard 页 requiresAuth)经 CLI compile → `dashboard.tsx` 出 `import { Navigate }` + `$currentUser` read + `if (!$currentUser.signedIn) return <Navigate to="/signin" replace />`;`index.tsx`(public)0 守卫。**§16.1+§16.2+§16.3 链端到端通**(声明路由 + 带参跳 + 守卫)。
+- **边界**:守卫前提 = supabase 配置(无则 warn);单页无守卫(warn);`signedIn` 首帧 false→已登录用户可能闪一下登录页再回来(SPA auth-guard flash,runtime session 同步前;v1 接受,后续可加 loading 态);redirect 目标不与页 route 交叉校验(延续 §16.x)。**§16.4 起手**:query string `$query.foo` ← useSearchParams(BUILTIN_READ_IDENTS 加 `$query`,与 `$params` 平行)。**新经验:页级路由特性字段(routePattern/requiresAuth)走 graph.updateNode + .fig round-trip,刻意不进 update_lowcode_node PATCH_KEYS(非 AI-settable,§16.1 先例延续);新增页/根 round-trip 字段达 3+ 时把 serialize 的尾部分支抽溢出组 helper(同 assignLowcodeLayoutFix 先例)避 complexity-20 闸。**
+
 ## §17 列表绑真实数据源 + 分页 / 排序 / 筛选
 
 > 2026-06-20 产品缺口盘点新增。Bubble「repeating group」核心。
