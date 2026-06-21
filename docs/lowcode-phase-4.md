@@ -487,6 +487,28 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **建议方向**:节点可声明各状态(hover/focus/active/disabled)的样式覆盖(同 §7 responsiveOverrides 的 `Partial<Pick<SceneNode, 样式键>>` 形态),emit 走 §7 的 **style-level diff + 前缀**机制(`hover:bg-...`/`focus:ring-...`),复用 `LAYOUT_STYLE_RESET` 思路。round-trip 走 `lowcode/stateOverrides` 通道(类比 responsiveOverrides)。**待锁**:状态集合(是否含 group-hover / focus-within);与 §7 断点的组合(`md:hover:`)。
 
+### §20 详细设计 + 锁定决定(2026-06-21,无 AskUserQuestion — 明确保守默认,镜像 §16.2/§16.4「直接推荐项」)
+
+**锁定 scope**(助手推荐,三个分叉皆保守默认):
+1. **状态集合 = hover/focus/active/disabled 四个核心**(否决 group-hover/focus-within —— 它们需「`group` 祖先」概念,谁是 group 根是更大设计,延后)。
+2. **可覆盖属性 = 仅 appearance**(`fills`/`strokes`/`cornerRadius`/`opacity`/`effects`)—— 交互态是「视觉反馈」非「重排」,layout-on-hover 罕见;reset map 因此聚焦 appearance 默认值。
+3. **不支持断点×状态组合(`md:hover:`)v1** —— 正交、组合爆炸,延后;状态前缀仅顶层。
+4. **无 tool / 无 GUI**(set via `graph.updateNode` + .fig round-trip,镜像 §7;AI-settable 延后)。
+5. round-trip 走 `lowcode/stateOverrides`(镜像 responsiveOverrides,经 `...lowcodeRest` 落到节点,零 codec override)。
+
+**实现 6 文件**:
+- `scene-graph/types.ts`:`InteractionState`/`StateOverride`(appearance-only Pick)/`StateOverrides` + `SceneNode.stateOverrides?`(**可选 → 不破 .vue IRTree stub**,§16.3 教训)。
+- `io/formats/jsx/tailwind-classes.ts`:把 §7 的 `layoutStyleDelta`→泛化 `styleDelta(base,variant,resetMap)` + 抽共享 `collectVariantClasses<V>`(breakpoint/state 共用核心:merge override→`nodeToStyle`→diff→twirl→`${variant}:` 前缀;可选 `extra` hook 供 responsive 的 visibility 行);`collectResponsiveTailwindClasses` 改用它;新 `INTERACTION_STATES` + `STATE_STYLE_RESET`(appearance 默认:bg→transparent/border→0/radius→0/opacity→1/shadow→none) + `collectStateTailwindClasses`,jsx barrel 导出。
+- `compiler/ir/style.ts`:`tailwindClassName` 在 base/responsive 后追加 state classes。
+- `lowcode-plugin-data.ts`:`LOWCODE_STATE_OVERRIDES_KEY` + 入 `LOWCODE_PLUGIN_KEYS` + serialize(`isNonEmpty` gate → 非交互 .fig byte-identical)+ Extracted 字段 + assign case + `isStateOverrides` 轻校验。
+
+**交付记录(CODE COMPLETE 2026-06-21,feat `209371ad`)**:
+- 实现按设计 6 src/test 触点 + 3 test 文件(core unit 8 / compiler 3 / kiwi round-trip 2)。**零 hotfix、零 GATE 收口**(jscpd 0 —— 共享 `collectVariantClasses` 把 responsive/state 两 collector 去重),**零意外**。
+- **关键复用**:state 与 §7 responsive **同一条 `nodeToStyle` style-level diff 管线**(单一 SceneNode→Tailwind 翻译源),仅前缀(`hover:` vs `md:`)+ reset map(appearance vs layout)+ 属性集不同;`STATE_STYLE_RESET` 复刻 `LAYOUT_STYLE_RESET` 思路,让「清掉某属性回默认」(如 hover 去阴影)emit 显式 reset(`hover:shadow-none`/`hover:opacity-100`)而非静默丢类。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **685/0**(+3)、kiwi **124/0**(+2)、scene-graph 202/0、tools 196/0 零回归;check:vue 0;render/jsx +8(仅既有 §6 frame-nested 出范围 fail)。
+- **e2e 实跑**:scratch .fig(HoverCard 帧带 `stateOverrides.hover.fills` + `disabled.opacity`)经 IORegistry 写真 .fig → CLI compile → App.tsx 出 `bg-white hover:bg-[#EDF2FA] disabled:opacity-50`(证明 scene-graph→.fig serialize→parse→IR→emit 全链路 + 真盘 round-trip)。
+- **边界 / 延后**:`disabled:` 仅匹配 form 控件(input/button/select/textarea),其它节点上为惰性 util(声明式 styling 原语,无害);`cornerRadius` 覆盖走 uniform 半径(节点带 `independentCorners` 时按其路径,边界已记);**授权 GUI / AI tool 延后真机**(沿用 §7 先例);group-hover/focus-within + 断点×状态组合延后。**新经验:把同形态的两个 variant emitter(§7 responsive breakpoint + §20 interaction-state)收敛到一个泛型 `collectVariantClasses<V>`(参数化 variants/overrideFor/resetMap/extra)—— 既杀 jscpd clone 又锁单一翻译源;两者唯一真差异 = 前缀来源 + reset map + 属性集,其余共享。**
+
 ## §21 覆盖层组件(Modal / Dialog / Drawer / Popover / Tooltip)
 
 > 第二波。真应用普遍需要弹窗/抽屉。
