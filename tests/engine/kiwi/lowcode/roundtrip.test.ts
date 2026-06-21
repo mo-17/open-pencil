@@ -546,6 +546,38 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(findByName(reimported, 'PlainStack').responsiveOverrides).toBeUndefined()
   })
 
+  test('FRAME stateOverrides round-trip through .fig (Phase 4 §20)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, {
+      name: 'StatefulCard',
+      width: 200,
+      height: 80,
+      fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true }]
+    })
+    const overrides = {
+      hover: { fills: [{ type: 'SOLID' as const, color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }] },
+      disabled: { opacity: 0.5 }
+    }
+    graph.updateNode(frame.id, { stateOverrides: overrides })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(findByName(reimported, 'StatefulCard').stateOverrides).toEqual(overrides)
+  })
+
+  test('graph without stateOverrides → reimported node has the field undefined (byte regression)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('FRAME', page.id, { name: 'PlainCard', width: 200, height: 80 })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(findByName(reimported, 'PlainCard').stateOverrides).toBeUndefined()
+  })
+
   test('root lowcodeTranslations catalog round-trips through .fig (Phase 3 §9 v7)', async () => {
     const graph = new SceneGraph()
     const translations = {

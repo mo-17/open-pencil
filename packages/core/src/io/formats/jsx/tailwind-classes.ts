@@ -4,6 +4,7 @@ import { colorToCSSCompact } from '#core/color'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import type {
   GridTrack,
+  InteractionState,
   ResponsiveBreakpoint,
   SceneGraph,
   SceneNode
@@ -352,39 +353,110 @@ export function collectResponsiveTailwindClasses(node: SceneNode, graph: SceneGr
   const overrides = node.responsiveOverrides
   if (!overrides) return []
   const baseStyle = nodeToStyle(node, graph)
-  const out: string[] = []
-  for (const bp of RESPONSIVE_BREAKPOINTS) {
-    const override = overrides[bp]
-    if (!override) continue
-    const bpStyle = nodeToStyle({ ...node, ...override }, graph)
-    const twirled = twirl(layoutStyleDelta(baseStyle, bpStyle))
-    if (twirled) for (const cls of twirled.split(' ')) out.push(`${bp}:${cls}`)
-    if (override.visible === false && node.visible) out.push(`${bp}:hidden`)
-    else if (override.visible === true && !node.visible) {
-      // Re-assert the node's (breakpoint-effective) display so it un-hides;
-      // fall back to `block` when the node carries no explicit display.
-      const show = twirl({ display: bpStyle.display }) || 'block'
-      out.push(`${bp}:${show}`)
+  return collectVariantClasses(
+    node,
+    graph,
+    baseStyle,
+    RESPONSIVE_BREAKPOINTS,
+    (bp) => overrides[bp],
+    LAYOUT_STYLE_RESET,
+    (bp, override, bpStyle) => {
+      if (override.visible === false && node.visible) return [`${bp}:hidden`]
+      if (override.visible === true && !node.visible) {
+        // Re-assert the node's (breakpoint-effective) display so it un-hides;
+        // fall back to `block` when the node carries no explicit display.
+        const show = twirl({ display: bpStyle.display }) || 'block'
+        return [`${bp}:${show}`]
+      }
+      return []
     }
+  )
+}
+
+// Appearance-only interaction-state variants (Phase 4 §20) — the smallest set
+// of CSS pseudo-states that cover hover/focus/active/disabled feedback.
+const INTERACTION_STATES: readonly InteractionState[] = ['hover', 'focus', 'active', 'disabled']
+
+// Appearance defaults re-asserted when a state override CLEARS a prop the base
+// style sets (mirrors LAYOUT_STYLE_RESET, but for the appearance props a state
+// override can touch) — e.g. removing a shadow on hover emits `hover:shadow-none`.
+const STATE_STYLE_RESET: Record<string, string> = {
+  backgroundColor: 'transparent',
+  borderWidth: '0px',
+  borderColor: 'transparent',
+  borderRadius: '0px',
+  opacity: '1',
+  boxShadow: 'none'
+}
+
+/**
+ * Phase 4 §20 — interaction-state (pseudo-class-prefixed) Tailwind classes for
+ * a node's `stateOverrides`. Same style-level diff as the responsive emitter
+ * (one source of truth via {@link collectVariantClasses} → {@link nodeToStyle}),
+ * but each changed class is prefixed with the CSS state (`hover:` / `focus:` /
+ * `active:` / `disabled:`) and only appearance props change. Tailwind orders
+ * state variants after base utilities, so `bg-white hover:bg-gray-100` takes
+ * effect on hover.
+ */
+export function collectStateTailwindClasses(node: SceneNode, graph: SceneGraph): string[] {
+  const overrides = node.stateOverrides
+  if (!overrides) return []
+  const baseStyle = nodeToStyle(node, graph)
+  return collectVariantClasses(
+    node,
+    graph,
+    baseStyle,
+    INTERACTION_STATES,
+    (state) => overrides[state],
+    STATE_STYLE_RESET
+  )
+}
+
+/**
+ * Shared core of the variant emitters (responsive breakpoints and interaction
+ * states): for each variant whose override is present, shallow-merge it onto the
+ * node, re-derive the FULL CSS style via {@link nodeToStyle}, diff against the
+ * base style, and `twirl` the changed props — each class prefixed `${variant}:`.
+ * `resetMap` re-asserts a cleared prop's CSS default so the diff emits an
+ * explicit reset utility (e.g. `md:flex-row`, `hover:shadow-none`); the optional
+ * `extra` hook contributes variant-specific classes (responsive visibility).
+ */
+function collectVariantClasses<V extends string>(
+  node: SceneNode,
+  graph: SceneGraph,
+  baseStyle: Record<string, string>,
+  variants: readonly V[],
+  overrideFor: (variant: V) => Partial<SceneNode> | undefined,
+  resetMap: Record<string, string>,
+  extra?: (variant: V, override: Partial<SceneNode>, variantStyle: Record<string, string>) => string[]
+): string[] {
+  const out: string[] = []
+  for (const variant of variants) {
+    const override = overrideFor(variant)
+    if (!override) continue
+    const variantStyle = nodeToStyle({ ...node, ...override }, graph)
+    const twirled = twirl(styleDelta(baseStyle, variantStyle, resetMap))
+    if (twirled) for (const cls of twirled.split(' ')) out.push(`${variant}:${cls}`)
+    if (extra) out.push(...extra(variant, override, variantStyle))
   }
   return out
 }
 
-/** The CSS properties that differ between `base` and `bp`, with cleared
- *  properties re-asserted to their default (so twirl emits an explicit reset).
- *  Only layout props can change here — a responsive override never touches the
- *  appearance/shape/text style, so those stay equal and drop out of the diff. */
-function layoutStyleDelta(
+/** The CSS properties that differ between `base` and a variant style, with
+ *  cleared properties re-asserted to their `resetMap` default (so twirl emits an
+ *  explicit reset utility instead of silently dropping the class). */
+function styleDelta(
   base: Record<string, string>,
-  bp: Record<string, string>
+  variant: Record<string, string>,
+  resetMap: Record<string, string>
 ): Record<string, string> {
   const delta: Record<string, string> = {}
-  for (const key of new Set([...Object.keys(base), ...Object.keys(bp)])) {
-    if (base[key] === bp[key]) continue
-    // Present at the breakpoint → use its value; cleared (only in base) →
+  for (const key of new Set([...Object.keys(base), ...Object.keys(variant)])) {
+    if (base[key] === variant[key]) continue
+    // Present in the variant → use its value; cleared (only in base) →
     // re-assert the default so twirl emits an explicit reset utility.
-    if (Object.hasOwn(bp, key)) delta[key] = bp[key]
-    else if (key in LAYOUT_STYLE_RESET) delta[key] = LAYOUT_STYLE_RESET[key]
+    if (Object.hasOwn(variant, key)) delta[key] = variant[key]
+    else if (key in resetMap) delta[key] = resetMap[key]
   }
   return delta
 }

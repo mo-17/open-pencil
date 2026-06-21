@@ -1,5 +1,6 @@
 import {
   collectResponsiveTailwindClasses,
+  collectStateTailwindClasses,
   collectTailwindClasses
 } from '@open-pencil/core/io/formats/jsx'
 import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
@@ -70,6 +71,10 @@ export function tailwindClassName(node: SceneNode, graph: SceneGraph): string {
   const responsive = collectResponsiveTailwindClasses(node, graph).join(' ')
   let combined = styled
   if (responsive !== '') combined = styled === '' ? responsive : `${styled} ${responsive}`
+  // §20 interaction states re-derive a pseudo-class-prefixed diff in core (same
+  // SceneNode → Tailwind translation), appended after the base/responsive styling.
+  const states = collectStateTailwindClasses(node, graph).join(' ')
+  if (states !== '') combined = combined === '' ? states : `${combined} ${states}`
   // §8 v7: a node hidden via an instance `:visible` override → `hidden`.
   // `collectTailwindClasses` ignores `visible` (it's structural, not style), and
   // base-hidden nodes are skipped before emit, so this only fires for an

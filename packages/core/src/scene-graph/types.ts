@@ -546,6 +546,14 @@ export interface SceneNode {
   // diff against the base. Absent ≡ single (base) layout. Persisted via §12
   // pluginData under `lowcode/responsiveOverrides`.
   responsiveOverrides?: ResponsiveOverrides
+  // ── Lowcode (Phase 4 §20) — interaction-state styling ──
+  // Per-state appearance overrides for the four core CSS interaction states
+  // (hover/focus/active/disabled). Like `responsiveOverrides`, but the
+  // re-derived CSS diff is prefixed with the state (`hover:bg-…`) instead of a
+  // breakpoint, and only appearance props (fills/strokes/cornerRadius/opacity/
+  // effects) may change — interaction feedback is visual, not a reflow. Absent
+  // ≡ no state styling. Persisted via §12 pluginData under `lowcode/stateOverrides`.
+  stateOverrides?: StateOverrides
   // ── Lowcode (Phase 3 §9 v7) ──
   // Document-level translation catalog. Like `lowcodeDocumentState`, only the
   // root node carries this in practice. Keyed by locale code → source message
@@ -624,6 +632,25 @@ export type ResponsiveOverride = Partial<
 >
 
 export type ResponsiveOverrides = Partial<Record<ResponsiveBreakpoint, ResponsiveOverride>>
+
+// ── Lowcode (Phase 4 §20) — interaction-state styling ──────────────
+// The four core CSS interaction pseudo-states, used as Tailwind class prefixes
+// (`hover:` / `focus:` / `active:` / `disabled:`). Ordered as authored; the
+// base (un-prefixed) style is the resting state. `disabled:` only matches form
+// controls (input/button/select/textarea); on other nodes the utility is inert.
+export type InteractionState = 'hover' | 'focus' | 'active' | 'disabled'
+
+// The subset of SceneNode appearance props that may be overridden per state.
+// Appearance-only (no layout) — an interaction state gives visual feedback
+// (background / border / shadow / opacity / radius), not a reflow. Every key
+// here is also read by `collectTailwindClasses`, so the compiler re-derives the
+// state's classes by shallow-merging the override onto the node — the same
+// style-level diff as `ResponsiveOverride`.
+export type StateOverride = Partial<
+  Pick<SceneNode, 'fills' | 'strokes' | 'cornerRadius' | 'opacity' | 'effects'>
+>
+
+export type StateOverrides = Partial<Record<InteractionState, StateOverride>>
 
 export type ComponentPropertyType = 'VARIANT' | 'TEXT' | 'BOOLEAN' | 'INSTANCE_SWAP'
 

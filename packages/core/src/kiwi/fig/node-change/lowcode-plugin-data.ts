@@ -27,6 +27,7 @@ import type {
   SceneGraph,
   SceneNode,
   StateDef,
+  StateOverrides,
   SupabaseConfig,
   WorkflowDef
 } from '#core/scene-graph'
@@ -83,6 +84,12 @@ export const LOWCODE_GRID_POSITION_KEY = 'lowcode/gridPosition'
  *  responsive panel stay byte-identical. Structured field like state/bindings
  *  — restored straight onto the SceneNode, no separate codec override. */
 export const LOWCODE_RESPONSIVE_OVERRIDES_KEY = 'lowcode/responsiveOverrides'
+/** Phase 4 §20: per-interaction-state appearance overrides. Value is the
+ *  JSON-encoded `StateOverrides` map (`{ hover: { fills, … }, … }`). Absent ≡
+ *  no state styling, so .fig files that never touched the state panel stay
+ *  byte-identical. Structured field like responsiveOverrides — restored straight
+ *  onto the SceneNode via `...lowcodeRest`, no separate codec override. */
+export const LOWCODE_STATE_OVERRIDES_KEY = 'lowcode/stateOverrides'
 /** Phase 3 §9 v7: document-level translation catalog, attached to the root node
  *  only. Value is the JSON-encoded `LowcodeTranslations` map (`{ <locale>: {
  *  <sourceMessage>: <translated> } }`). Absent ≡ no authored translations, so
@@ -140,6 +147,7 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_COUNTER_ALIGN_CONTENT_KEY,
   LOWCODE_GRID_POSITION_KEY,
   LOWCODE_RESPONSIVE_OVERRIDES_KEY,
+  LOWCODE_STATE_OVERRIDES_KEY,
   LOWCODE_TRANSLATIONS_KEY,
   LOWCODE_WORKFLOWS_KEY,
   LOWCODE_OVERRIDES_KEY,
@@ -202,6 +210,11 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // nothing → non-responsive .fig files stay byte-identical.
   if (isNonEmpty(node.responsiveOverrides)) {
     entries.push(makeEntry(LOWCODE_RESPONSIVE_OVERRIDES_KEY, node.responsiveOverrides))
+  }
+  // Phase 4 §20: per-interaction-state appearance overrides. Empty/absent map
+  // writes nothing → non-interactive .fig files stay byte-identical.
+  if (isNonEmpty(node.stateOverrides)) {
+    entries.push(makeEntry(LOWCODE_STATE_OVERRIDES_KEY, node.stateOverrides))
   }
   // Phase 3 §9 v7: document-level translation catalog (root node only). Empty/
   // absent map writes nothing → non-translated .fig files stay byte-identical.
@@ -406,6 +419,9 @@ export interface ExtractedLowcodeAndPluginData {
   /** Phase 3 §7: per-breakpoint responsive overrides. Structured field — flows
    *  straight onto the SceneNode via `...lowcodeRest` (no codec override). */
   responsiveOverrides?: ResponsiveOverrides
+  /** Phase 4 §20: per-interaction-state appearance overrides. Structured field
+   *  — flows straight onto the SceneNode via `...lowcodeRest` (no codec override). */
+  stateOverrides?: StateOverrides
   /** Phase 3 §9 v7: document-level translation catalog (root node only).
    *  Restored onto the root via `assignImportedLowcodeFields`; on regular nodes
    *  it flows through `...lowcodeRest` (harmless — root-only in practice). */
@@ -534,6 +550,9 @@ function assignLowcodeLayoutFix(
     case LOWCODE_RESPONSIVE_OVERRIDES_KEY:
       if (isResponsiveOverrides(value)) target.responsiveOverrides = value
       return
+    case LOWCODE_STATE_OVERRIDES_KEY:
+      if (isStateOverrides(value)) target.stateOverrides = value
+      return
     case LOWCODE_GRID_POSITION_KEY:
       if (isGridPosition(value)) target.gridPositionOverride = value
       return
@@ -572,6 +591,14 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
  *  known breakpoint keys (`sm`/`md`/`lg`/`xl`), so any stray keys are ignored
  *  harmlessly; we just reject scalars/arrays from a corrupt .fig. */
 function isResponsiveOverrides(value: unknown): value is ResponsiveOverrides {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+/** Light guard (non-null, non-array object), mirroring {@link isResponsiveOverrides}.
+ *  The emit side reads each per-state override defensively (re-derives a CSS
+ *  diff), so a loose shape is safe; a malformed value from a corrupt .fig is
+ *  rejected only at the object level. */
+function isStateOverrides(value: unknown): value is StateOverrides {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
