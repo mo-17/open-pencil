@@ -178,39 +178,57 @@ ${routes}
  * present on the page (Phase 1 §7.4), then renders the IR tree inside the
  * wrapper div.
  */
+/** Which react-router-dom hooks/components a page module pulls in. */
+interface RouterUsage {
+  needsNavigate: boolean
+  usesRouteParams: boolean
+  usesQueryParams: boolean
+  guarded: boolean
+}
+
 /** Build the single `react-router-dom` named import a page module needs:
  *  `useNavigate` (navigate handlers), `generatePath` (§16.2 navigate-with-params),
- *  `useParams` (§16.1 `$params`), `Navigate` (§16.3 auth guard). Empty when none
- *  apply. Extracted to keep `buildPageFile` under the complexity limit. */
-function buildRouterImport(
-  ir: IRTree,
-  needsNavigate: boolean,
-  usesRouteParams: boolean,
-  guarded: boolean
-): string {
+ *  `useParams` (§16.1 `$params`), `useSearchParams` (§16.4 `$query`), `Navigate`
+ *  (§16.3 auth guard). Empty when none apply. Extracted to keep `buildPageFile`
+ *  under the complexity limit. */
+function buildRouterImport(ir: IRTree, u: RouterUsage): string {
   const routerNames: string[] = []
-  if (needsNavigate) routerNames.push('useNavigate')
-  if (needsNavigate && pageHasNavigateParams(ir)) routerNames.push('generatePath')
-  if (usesRouteParams) routerNames.push('useParams')
-  if (guarded) routerNames.push('Navigate')
+  if (u.needsNavigate) routerNames.push('useNavigate')
+  if (u.needsNavigate && pageHasNavigateParams(ir)) routerNames.push('generatePath')
+  if (u.usesRouteParams) routerNames.push('useParams')
+  if (u.usesQueryParams) routerNames.push('useSearchParams')
+  if (u.guarded) routerNames.push('Navigate')
   return routerNames.length > 0
     ? `import { ${routerNames.join(', ')} } from 'react-router-dom'\n`
     : ''
+}
+
+/** The router-derived hook lines hoisted at the top of a page component, in
+ *  declaration order: `useNavigate`, `$params` (§16.1), `$query` (§16.4).
+ *  Extracted to keep `buildPageFile` under the complexity limit. */
+function buildRouterHookLines(u: RouterUsage): string[] {
+  const lines: string[] = []
+  if (u.needsNavigate) lines.push('  const navigate = useNavigate()')
+  if (u.usesRouteParams) lines.push('  const $params = useParams()')
+  // §16.4: URLSearchParams → a plain object so `$query.foo` member access works.
+  if (u.usesQueryParams) lines.push('  const $query = Object.fromEntries(useSearchParams()[0])')
+  return lines
 }
 
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, componentImportPrefix, uiKit, routerAvailable } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = ir.states.length > 0 ? `import { useState } from 'react'\n` : ''
-  const needsNavigate = pageHasNavigateHandler(ir)
-  // Phase 4 §16.1: route params (`$params`) only resolve inside the multi-page
-  // router; single-page App.tsx has no router context.
-  const usesRouteParams = routerAvailable && ir.usesRouteParams
-  // Phase 4 §16.3: emit the redirect-if-unauthenticated guard only inside the
-  // multi-page router (single-page App.tsx has no <Navigate> context); the
-  // single-page path warns + drops it in emitSinglePage.
-  const guarded = routerAvailable && ir.requiresAuth === true
-  const routerImport = buildRouterImport(ir, needsNavigate, usesRouteParams, guarded)
+  // Phase 4 §16.1/§16.3/§16.4: the route-bound built-ins (`$params`, `$query`)
+  // and the auth guard only resolve inside the multi-page router; single-page
+  // App.tsx has no router context (guard is warned + dropped in emitSinglePage).
+  const usage: RouterUsage = {
+    needsNavigate: pageHasNavigateHandler(ir),
+    usesRouteParams: routerAvailable && ir.usesRouteParams,
+    usesQueryParams: routerAvailable && ir.usesQueryParams === true,
+    guarded: routerAvailable && ir.requiresAuth === true
+  }
+  const routerImport = buildRouterImport(ir, usage)
   const lowcodeStateImport = buildLowcodeStateImport(ir, lowcodeStateImportPath)
   const lowcodeSupabaseImport = pageUsesSupabase(ir)
     ? `import { getSupabaseClient } from '${lowcodeSupabaseImportPath}'\n`
@@ -240,10 +258,8 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeSupabaseImport + lowcodeToastImport + lowcodeConfirmImport + componentImportBlock + kitImportBlock + i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
-  const navigateLine = needsNavigate ? '  const navigate = useNavigate()' : ''
-  // Phase 4 §16.1: hoist `const $params = useParams()` so page expressions can
-  // read `$params.<name>`. Route params are read-only strings (or undefined).
-  const routeParamsLine = usesRouteParams ? '  const $params = useParams()' : ''
+  // Phase 4 §16.1/§16.2/§16.4: useNavigate / $params / $query hook lines.
+  const routerHookLines = buildRouterHookLines(usage).join('\n')
   const docStateReadLines = ir.docStateReads
     .map((name) => `  const ${name} = useDocState(${JSON.stringify(name)})`)
     .join('\n')
@@ -252,11 +268,11 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // Phase 4 §16.3: redirect-if-unauthenticated guard. Comes after the hooks (it
   // reads the `$currentUser` doc-state declared above) and short-circuits the
   // render before the page body when the session isn't signed in.
-  const guardLine = guarded
+  const guardLine = usage.guarded
     ? `  if (!$currentUser.signedIn) return <Navigate to="${ir.authRedirect ?? '/login'}" replace />`
     : ''
 
-  const hookLines = [stateLines, docStateReadLines, navigateLine, routeParamsLine, intlHookLine, guardLine]
+  const hookLines = [stateLines, docStateReadLines, routerHookLines, intlHookLine, guardLine]
     .filter((l) => l !== '')
     .join('\n')
 

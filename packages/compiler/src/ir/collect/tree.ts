@@ -46,6 +46,7 @@ import {
   resolveEvents,
   resolveTextBinding,
   resolveValueBinding,
+  QUERY_PARAMS_IDENT,
   ROUTE_PARAMS_IDENT,
   unknownIdentifiers
 } from './bindings'
@@ -132,6 +133,9 @@ export function collectTree(
   // pure doc-states for the emit consumers. `Set.delete` returns whether it was
   // present.
   const usesRouteParams = docStateReads.delete(ROUTE_PARAMS_IDENT)
+  // Phase 4 §16.4: `$query` rode the same chokepoint; extract it into its own
+  // flag so docStateReads stays pure doc-states for the emit consumers.
+  const usesQueryParams = docStateReads.delete(QUERY_PARAMS_IDENT)
 
   // Phase 4 §16.3: auth guard. Lifted after the walk so it can register a
   // `$currentUser` read into the (now-finalized) docStateReads set.
@@ -149,6 +153,7 @@ export function collectTree(
     pageName: page.name || 'Page',
     routePattern,
     usesRouteParams,
+    usesQueryParams,
     requiresAuth,
     authRedirect,
     children,

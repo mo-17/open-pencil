@@ -441,3 +441,106 @@ describe('Phase 4 §16.3 — emit: <Navigate> redirect guard', () => {
     expect(out.warnings.some((w) => w.code === 'auth-guard-no-router')).toBe(true)
   })
 })
+
+/**
+ * Phase 4 §16.4 — query string: a page expression may read a URL query param via
+ * `$query.<name>` (parallel to §16.1 `$params`), compiled to a
+ * `const $query = Object.fromEntries(useSearchParams()[0])` hook. Query params
+ * only resolve inside the multi-page router; single-page App.tsx has none.
+ */
+describe('Phase 4 §16.4 — collect: $query read-context', () => {
+  test('$query.<name> read sets usesQueryParams without polluting docStateReads', () => {
+    const ir = makeTextExprTree('$query.sort')
+    expect(ir.usesQueryParams).toBe(true)
+    expect(ir.docStateReads).not.toContain('$query')
+    expect(ir.warnings).toEqual([])
+    const text = ir.children[0]
+    if (text.kind !== 'element') throw new Error('expected element')
+    const child = text.children[0]
+    if (child.kind !== 'expression') throw new Error('expected expression child')
+    expect(child.references).toContain('$query')
+  })
+
+  test('$params and $query can be read together on one page', () => {
+    const ir = makeTextExprTree('$params.id + $query.sort', '/product/:id')
+    expect(ir.usesRouteParams).toBe(true)
+    expect(ir.usesQueryParams).toBe(true)
+    expect(ir.docStateReads).not.toContain('$params')
+    expect(ir.docStateReads).not.toContain('$query')
+    expect(ir.warnings).toEqual([])
+  })
+
+  test('no $query → usesQueryParams false (zero-regression)', () => {
+    const ir = makeTextExprTree('"x"')
+    expect(ir.usesQueryParams).toBe(false)
+  })
+})
+
+describe('Phase 4 §16.4 — emit: useSearchParams hook', () => {
+  test('a page reading $query emits the useSearchParams hook + import + $query read', () => {
+    const { graph, pages } = buildMultiPageGraph('Home', 'Products')
+    const [home, products] = pages
+    graph.createNode('TEXT', products.id, {
+      text: 'fallback',
+      bindings: { text: { kind: 'expr', expr: '$query.sort' } }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [home.id, products.id],
+      options: withDefaults({ packageName: 'query-read' })
+    })
+
+    const productsPage = out.files.get('src/pages/products.tsx') as string
+    expect(productsPage).toContain("import { useSearchParams } from 'react-router-dom'")
+    expect(productsPage).toContain('const $query = Object.fromEntries(useSearchParams()[0])')
+    expect(productsPage).toContain('$query.sort')
+  })
+
+  test('a page using navigate + $params + $query shares one react-router-dom import', () => {
+    const { graph, pages } = buildMultiPageGraph('Home', 'Product')
+    const [home, product] = pages
+    graph.updateNode(product.id, { lowcodeRoutePattern: '/product/:id' })
+    graph.createNode('BUTTON', product.id, {
+      interactiveProps: { text: 'Home' },
+      events: { onClick: [{ id: 'n1', kind: 'navigate', to: '/' }] }
+    })
+    graph.createNode('TEXT', product.id, {
+      text: 'fallback',
+      bindings: { text: { kind: 'expr', expr: '$params.id + $query.tab' } }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [home.id, product.id],
+      options: withDefaults({ packageName: 'nav-params-query' })
+    })
+
+    const productPage = out.files.get('src/pages/product.tsx') as string
+    expect(productPage).toContain(
+      "import { useNavigate, useParams, useSearchParams } from 'react-router-dom'"
+    )
+    expect(productPage).toContain('const navigate = useNavigate()')
+    expect(productPage).toContain('const $params = useParams()')
+    expect(productPage).toContain('const $query = Object.fromEntries(useSearchParams()[0])')
+  })
+
+  test('single-page: $query is not emitted (no router context)', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.createNode('TEXT', page.id, {
+      text: 'fallback',
+      bindings: { text: { kind: 'expr', expr: '$query.sort' } }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'query-single' })
+    })
+
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).not.toContain('useSearchParams')
+    expect(app).not.toContain('react-router-dom')
+  })
+})

@@ -294,10 +294,15 @@ const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
  *  docState. */
 export const ROUTE_PARAMS_IDENT = '$params'
 
+/** Phase 4 §16.4: the query-string built-in (`$query.foo`). `$`-prefixed
+ *  (`validateStateName` rejects it) so it can't collide with a user state /
+ *  docState. Resolved at emit to `Object.fromEntries(useSearchParams()[0])`. */
+export const QUERY_PARAMS_IDENT = '$query'
+
 /** Identifiers accepted by `unknownIdentifiers` without being a state / docState
- *  / in-scope name. Currently just the route-params built-in; §16.4 will add
- *  `$query` here in parallel. */
-const BUILTIN_READ_IDENTS: ReadonlySet<string> = new Set([ROUTE_PARAMS_IDENT])
+ *  / in-scope name — the route-params (§16.1) + query-string (§16.4) built-ins,
+ *  both read-only and resolved to react-router hooks at emit. */
+const BUILTIN_READ_IDENTS: ReadonlySet<string> = new Set([ROUTE_PARAMS_IDENT, QUERY_PARAMS_IDENT])
 
 /** Identifiers referenced by an expression that match neither a declared
  *  page state, an in-scope identifier, nor a Document State. Used by
@@ -333,10 +338,10 @@ export function unknownIdentifiers(
  *  `docStateReads`, so the page component emits a `const x = useDocState('x')`
  *  local for it. A no-op when `docStateReads` is undefined.
  *
- *  Phase 4 §16.1: this is also the single chokepoint where every accepted
- *  expression's references flow through, so the route-params built-in
- *  (`$params`) rides the same set. `collectTree` extracts it out into the
- *  `usesRouteParams` flag afterwards (see `extractRouteParamsUse`), keeping
+ *  Phase 4 §16.1 / §16.4: this is also the single chokepoint where every
+ *  accepted expression's references flow through, so the read-only built-ins
+ *  (`$params`, `$query`) ride the same set. `collectTree` extracts them out into
+ *  the `usesRouteParams` / `usesQueryParams` flags afterwards, keeping
  *  `docStateReads` itself pure doc-states for the emit consumers. */
 export function registerDocStateReads(
   references: Iterable<string>,
@@ -345,7 +350,7 @@ export function registerDocStateReads(
 ): void {
   if (!docStateReads) return
   for (const ref of references) {
-    if (docStates.has(ref) || ref === ROUTE_PARAMS_IDENT) docStateReads.add(ref)
+    if (docStates.has(ref) || BUILTIN_READ_IDENTS.has(ref)) docStateReads.add(ref)
   }
 }
 

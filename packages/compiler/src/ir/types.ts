@@ -574,6 +574,11 @@ export interface IRTree {
    *  `$params.<name>`. The multi-page adapter then emits a
    *  `const $params = useParams()` hook + the `useParams` import. */
   usesRouteParams: boolean
+  /** Phase 4 §16.4: true when any page expression reads a query-string param via
+   *  `$query.<name>`. The multi-page adapter then emits a
+   *  `const $query = Object.fromEntries(useSearchParams()[0])` hook + the
+   *  `useSearchParams` import. Optional ≡ false (keeps IRTree stubs valid). */
+  usesQueryParams?: boolean
   /** Phase 4 §16.3: true when the page is auth-guarded — lifted from the page
    *  node's `lowcodeRequiresAuth` AND `$currentUser` exists (Supabase configured).
    *  The multi-page adapter emits a redirect-if-unauthenticated `<Navigate>` at
