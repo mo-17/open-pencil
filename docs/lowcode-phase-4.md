@@ -334,6 +334,47 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **边界(已文档化)**:单页 compile 无 router → `$params` emit 被 `routerAvailable=false` 门控丢弃(单页 route param 无意义);component-body `$params` 不 emit;同 pattern 多页冲突不去重;preview-bridge 对动态路由页导航仍走 slug(真机 §16 follow-up)。
 - **§16.2 起手**:`NavigateAction.params?: Record<param, exprString>` → emit `navigate(generatePath("/product/:id", { id }))`,详情链路点入。
 
+### §16.2 navigate 带参 详细设计 + 交付(2026-06-21,无大分叉)
+
+> **目标**:闭合「列表 → 详情页带 id」链路。§16.1 已能声明 `/product/:id` + 页内 `$params.id` 读;§16.2 让 navigate 能**带参跳进去** —— `navigate(generatePath("/product/:id", { id: <expr> }))`。无大分叉(只给已有 `NavigateAction` 加 `params?` 字段,不新增 ActionDef kind → 经验 A union sweep 不涉及),纯 headless。
+
+**现状坐实(经验 Q/E,直接读源)**:
+- `NavigateAction { id; kind:'navigate'; to? }`(scene-graph/types.ts);`resolveNavigate`(bindings.ts)只取 `to.trim()`,无表达式;`emitHandlerStatement` navigate(event.ts)= `navigate(${JSON.stringify(h.to)})`。
+- 表达式子语言全套就位:`parseExpression` / `checkExprRefs`(`$prev` + unknown-identifier 闸)/ `registerDocStateReads`(§16.1 起把 `$params` sentinel-ride 进 docStateReads)/ `emitExpression`。**supabase filters 是最佳镜像**(每 filter:parse → checkExprRefs → registerDocStateReads → `{column,op,ast,references}`)。
+- `substituteHandler`(§10 v6,substitute.ts)= total function over IREventHandler;navigate 原归「no-ast 组」与 delay/stop 一起原样返回。
+- **import gate latent(经验 A「不报错但漏」)**:`pageHasNavigateHandler`(ir-walk)用 `treeHasHandler` 但**不下降 condition/confirm 分支**(不像 `pageUsesToast` 用 `handlerTreeHasKind`)→ 嵌在分支里的 navigate 漏导 `useNavigate`(pre-existing,§10 condition 引入后产生)。
+
+**设计决定(无 AskUserQuestion,直接推荐项;`$params` 成员名/key-vs-pattern 不交叉校验,延续 §16.1 先例)**:
+- **数据模型**:`NavigateAction.params?: Record<string, string>`(param 名 → 值表达式串)。round-trip:events 整块 `lowcode/events` JSON 序列化 → **零 codec 改动**(同 §10 condition/toast)。
+- **IR**:`IRNavigateHandler.params?: IRNavigateParam[]`(`{name, ast, references}`,平行 IRSupabaseFilter);空/缺 → plain `navigate(to)`,非空 → `navigate(generatePath(to, {…}))`。
+- **emit gate**:`generatePath` 仅在「页有带 params 的 navigate」时随 `useNavigate` 进同一 react-router-dom 具名 import(新 `pageHasNavigateParams`)。
+
+**实现(经验 E 跨 scene-graph/IR/collect/substitute/emit/scaffold/tool;经验 M build:packages 再 lint;经验 A 双轮 sweep)**,8 src 文件:
+- **scene-graph**(types.ts):`NavigateAction.params?`。
+- **collect**(bindings.ts):`resolveNavigate` 加 states/inScope/docStates/docStateReads 参,逐 param `parseExpression` → `checkExprRefs`(code `action-navigate-param`)→ `registerDocStateReads` → push;**坏 param expr 丢整个 navigate handler**(同 supabase filters posture:坏目标链接比不导航更糟)。dispatchAction navigate 调用补参。
+- **IR**(ir/types.ts):`IRNavigateHandler.params` + `IRNavigateParam`。
+- **substitute**(substitute.ts,经验 A total function):navigate 从「no-ast 组」拆出,`params?.map(p => substituteFilter(p, bindings))`(workflow 形参可喂 navigate route param)。
+- **emit**(event.ts):新 `emitNavigate(h)` —— 无 params `navigate(to)`,有 params `navigate(generatePath(to, { name: <emitExpression(ast)>, … }))`。
+- **import gate**(ir-walk.ts):泛化 `handlerTreeHasKind` → `handlerTreeMatches(h, pred)`(下降 condition/confirm 分支),**顺手修 pre-existing latent**:`pageHasNavigateHandler` 改用分支下降(嵌分支的 navigate 现也正确导 useNavigate);新 `pageHasNavigateParams`(同款分支下降)。
+- **scaffold**(scaffold.ts):`needsNavigate && pageHasNavigateParams(ir)` → routerNames push `'generatePath'`(与 useNavigate / useParams 合一 import)。
+- **tool**(tools/modify/lowcode.ts):`validatePerKindFields` navigate arm → 新 `validateNavigateAction`(params 是 `{identifierKey: exprString}`,key 走 `PARAM_NAME_RE`、value 走 `validateExpression`);`buildActionFromValidated` navigate 带 params;tool 描述加 §16.2 段。
+
+**成功标准(headless)**:
+1. navigate + params + 多页 → `navigate(generatePath("/product/:id", { id: <expr> }))` + `generatePath` 进 react-router-dom import;无 params → plain `navigate("/about")`、无 generatePath。
+2. param 值表达式解析 + 标识符解析(page state / docState / `$params`);unknown identifier → 丢 handler + warn(`action-navigate-param-unknown-identifier`);unparseable → 丢 handler + warn(`action-navigate-param-invalid-value`)。
+3. round-trip:navigate.params 经 .fig 存活(events JSON 整块)。
+4. tool 边界:非法 param key / unparseable value 拒;合法 params round-trip 进节点。
+5. `bun run check` exit 0;tsgo 0;jscpd 0;compiler / kiwi / scene-graph / tools 全绿。
+6. **真机验 pending**:`open-pencil build` 多页站浏览器实际从列表点入 `/product/123`(navigate 带 id)+ 详情页渲染 `$params.id`。
+
+**交付记录(CODE COMPLETE 2026-06-21,feat `7b16cd47`)**:
+- 实现按设计 8 src 文件 + 3 test(routing.test +9 / kiwi roundtrip +1 / modify tool +3),**零新 ActionDef kind**(经验 A union widening 完全不涉及)。
+- **顺手修 pre-existing latent(经验 A「不报错但漏」)**:`pageHasNavigateHandler` 原不下降 condition/confirm 分支 → 嵌分支的 navigate 漏导 `useNavigate`(§10 condition 引入后的潜伏 bug);本次泛化 `handlerTreeMatches` 后两个 navigate gate(useNavigate + generatePath)都正确下降分支。新增测试坐实嵌 condition 分支的 navigate-with-params 仍导 generatePath。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0 clones;compiler **669/0**(+9)、kiwi **121/0**(+1)、scene-graph 202/0、tools 196/0(+3)零回归;check:vue 0。零 hotfix、零 GATE 收口、零意外。
+- **e2e 实跑**:scratch 多页 `.fig`(Home 按钮 navigate `/product/:id` params `{id:'pid'}` + Product 页 routePattern + `$params.id` 文本)经 exportFigFile→CLI `compile`→`src/pages/index.tsx` 出 `import { useNavigate, generatePath }` + `navigate(generatePath("/product/:id", { id: pid }))`;`App.tsx` 出 `<Route path="/product/:id">`;`product.tsx` 出 `const $params = useParams()`。**§16.1+§16.2 详情链路端到端通**。
+- **边界(已文档化)**:`to` 仍是字面路径(非表达式,只 params 是表达式);param key/value 不与目标页 routePattern 的 `:segments` 交叉校验(延续 §16.1 `$params.id` 成员名不校验);坏 param expr 丢整个 navigate handler;单页 compile navigate 被 strip(params 随之丢)。
+- **§16.3 起手**:页 `requiresAuth` → emit redirect-if-unauthed(复用 §2.v2 `useSupabaseAuth().user` / `$currentUser`);**待锁**:redirect 目标约定(登录页 slug vs 显式字段)。**新经验:给已有 ActionDef kind 加表达式字段(非新 kind)= 经验 A union widening 不涉及,但所有「遍历 handler 树」的 total function(substituteHandler)+ import gate 必须随之处理新 ast 字段;顺带把同区的 pre-existing 漏下降分支的 gate 一并修(handlerTreeMatches 泛化)。**
+
 ## §17 列表绑真实数据源 + 分页 / 排序 / 筛选
 
 > 2026-06-20 产品缺口盘点新增。Bubble「repeating group」核心。
