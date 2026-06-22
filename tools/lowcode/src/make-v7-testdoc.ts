@@ -14,12 +14,12 @@
 // carries glyph geometry + fontDigest -- otherwise headless Bun emits empty
 // glyphs and Figma shows no text.
 //
-//   bun scripts/make-v7-testdoc.ts
+//   bun tools/lowcode/src/make-v7-testdoc.ts
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/core/scene-graph'
-import { fontManager } from '@open-pencil/core/text'
 import type { Color, Fill, Stroke, SceneGraph as Graph } from '@open-pencil/core/scene-graph'
+import { fontManager } from '@open-pencil/core/text'
 
 const graph = new SceneGraph()
 const pageId = graph.getPages()[0].id
@@ -42,8 +42,14 @@ const WHITE = rgb(1, 1, 1)
 function label(text: string, x: number, y: number): void {
   graph.createNode('TEXT', pageId, {
     name: `label: ${text}`,
-    x, y, width: 460, height: 18,
-    text, fontFamily: 'Inter', fontWeight: 600, fontSize: 13,
+    x,
+    y,
+    width: 460,
+    height: 18,
+    text,
+    fontFamily: 'Inter',
+    fontWeight: 600,
+    fontSize: 13,
     fills: [solid(INK)]
   })
 }
@@ -55,20 +61,28 @@ function label(text: string, x: number, y: number): void {
 function button(parent: string, g: Graph, name: string, text: string, fillWidth: boolean) {
   const btn = g.createNode('FRAME', parent, {
     name,
-    width: 120, height: 44,
+    width: 120,
+    height: 44,
     layoutMode: 'HORIZONTAL',
     primaryAxisSizing: fillWidth ? 'FILL' : 'FIXED',
     counterAxisSizing: 'HUG',
     primaryAxisAlign: 'CENTER',
     counterAxisAlign: 'CENTER',
-    paddingTop: 10, paddingRight: 16, paddingBottom: 10, paddingLeft: 16,
+    paddingTop: 10,
+    paddingRight: 16,
+    paddingBottom: 10,
+    paddingLeft: 16,
     cornerRadius: 8,
     fills: [solid(fillWidth ? BLUE : GRAY)]
   })
   g.createNode('TEXT', btn.id, {
     name: `${name}-label`,
-    width: 88, height: 20,
-    text, fontFamily: 'Inter', fontWeight: 600, fontSize: 14,
+    width: 88,
+    height: 20,
+    text,
+    fontFamily: 'Inter',
+    fontWeight: 600,
+    fontSize: 14,
     textAlignHorizontal: 'CENTER',
     fills: [solid(fillWidth ? WHITE : INK)]
   })
@@ -79,10 +93,18 @@ function button(parent: string, g: Graph, name: string, text: string, fillWidth:
 label('A - fill-width buttons: blue span the card; only "FIXED 120" stays narrow', 40, 40)
 const cardA = graph.createNode('FRAME', pageId, {
   name: 'A-Column',
-  x: 40, y: 64, width: 320, height: 260,
-  layoutMode: 'VERTICAL', itemSpacing: 12,
-  paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16,
-  primaryAxisSizing: 'FIXED', counterAxisSizing: 'FIXED',
+  x: 40,
+  y: 64,
+  width: 320,
+  height: 260,
+  layoutMode: 'VERTICAL',
+  itemSpacing: 12,
+  paddingTop: 16,
+  paddingRight: 16,
+  paddingBottom: 16,
+  paddingLeft: 16,
+  primaryAxisSizing: 'FIXED',
+  counterAxisSizing: 'FIXED',
   fills: [solid(PANEL)],
   strokes: [stroke(GRAY, 1)]
 })
@@ -94,10 +116,18 @@ button(cardA.id, graph, 'A-Btn-Fixed', 'FIXED 120', false)
 label('B - fill-main: blue grows to fill the row beside the fixed gray button', 40, 348)
 const rowB = graph.createNode('FRAME', pageId, {
   name: 'B-Row',
-  x: 40, y: 372, width: 420, height: 76,
-  layoutMode: 'HORIZONTAL', itemSpacing: 12,
-  paddingTop: 16, paddingRight: 16, paddingBottom: 16, paddingLeft: 16,
-  primaryAxisSizing: 'FIXED', counterAxisSizing: 'FIXED',
+  x: 40,
+  y: 372,
+  width: 420,
+  height: 76,
+  layoutMode: 'HORIZONTAL',
+  itemSpacing: 12,
+  paddingTop: 16,
+  paddingRight: 16,
+  paddingBottom: 16,
+  paddingLeft: 16,
+  primaryAxisSizing: 'FIXED',
+  counterAxisSizing: 'FIXED',
   fills: [solid(PANEL)],
   strokes: [stroke(GRAY, 1)]
 })
@@ -113,6 +143,6 @@ await fontManager.loadFont('Inter', 'SemiBold')
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const result = await io.writeDocument('fig', graph)
-const out = `${import.meta.dir}/../../../lowcode-v7-test.fig`
+const out = `${import.meta.dir}/../../../packages/demos/lowcode/lowcode-v7-test.fig`
 await Bun.write(out, result.data as Uint8Array)
 console.log(`wrote ${out} (${(result.data as Uint8Array).byteLength} bytes)`)

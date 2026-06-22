@@ -6,110 +6,153 @@ Vue 3 + CanvasKit (Skia WASM) + Yoga WASM design editor. Tauri v2 desktop, also 
 
 ## Monorepo
 
-Bun workspace with three packages:
+Bun workspace with focused packages:
 
-- `packages/core` — `@open-pencil/core`: scene graph, renderer, layout, codec, kiwi, clipboard, vector, snap, undo. Zero DOM deps, runs headless in Bun.
-- `packages/cli` — `@open-pencil/cli`: headless CLI for .fig inspection, export, linting. Uses `citty` + `agentfmt`.
-- `packages/docs` — `@open-pencil/docs`: VitePress documentation site. Run with `cd packages/docs && bun run dev`.
-- `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + HTTP (Hono). Reuses `createServer()` factory with all core tools.
+- `packages/core` — `@open-pencil/core`: scene graph, renderer, layout, codec, kiwi, IO, clipboard, vector, snap, undo, lowcode validation, and ToolDef operations. Zero DOM deps; runs headless in Bun.
+- `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
+- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into a framework-neutral IR, then emits runnable Vite + React + TypeScript + Tailwind projects, preview VFS, static builds, and deploy bundles.
+- `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
+- `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
+- `packages/docs` — `@open-pencil/docs`: VitePress documentation site. Run with `bun run docs:dev`.
+- `packages/demos` — demo media/assets only, not a published workspace package.
 
-- `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for building custom OpenPencil-powered editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
-
-The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/core` through targeted core subpath exports and `@open-pencil/vue` through the public Vue SDK entrypoint.
+The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
 
 ### Core subpath exports
 
 `@open-pencil/core` exposes domain-specific subpath exports for targeted imports. The main `"."` entry re-exports everything for backward compatibility.
 
-| Subpath | What | Heavy dep isolated |
-|---|---|---|
-| `@open-pencil/core` | everything (barrel) | all |
-| `@open-pencil/core/scene-graph` | SceneGraph, node types, hit-test, copy, snap, undo | — |
-| `@open-pencil/core/color` | parseColor, colorToHex, color management, OkHCL | culori |
-| `@open-pencil/core/text` | fonts, text editor, style runs, direction | — |
-| `@open-pencil/core/vector` | vector network encode/decode, bezier math | — |
-| `@open-pencil/core/figma-api` | FigmaAPI, FigmaNodeProxy | — |
-| `@open-pencil/core/icons` | Iconify API client, icon rendering | @iconify/utils |
-| `@open-pencil/core/canvas` | SkiaRenderer (Skia/CanvasKit painting engine) | — |
-| `@open-pencil/core/design-jsx` | JSX-to-design renderer | sucrase |
-| `@open-pencil/core/editor` | createEditor, Editor, EditorState | — |
-| `@open-pencil/core/tools` | ToolDef, ALL_TOOLS, AI adapter | diff |
-| `@open-pencil/core/kiwi` | .fig parse/serialize, codec, protocol | fflate, fzstd |
-| `@open-pencil/core/clipboard` | Figma/OpenPencil clipboard parsing and import helpers | — |
-| `@open-pencil/core/rpc` | RPC commands for CLI | — |
-| `@open-pencil/core/lint` | design linter rules and presets | — |
-| `@open-pencil/core/profiler` | render profiling | — |
-| `@open-pencil/core/canvaskit` | getCanvasKit loader | canvaskit-wasm |
-| `@open-pencil/core/layout` | computeLayout | yoga-layout |
+| Subpath                                | What                                                                                  | Heavy dep isolated        |
+| -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------- |
+| `@open-pencil/core`                    | everything (barrel)                                                                   | all                       |
+| `@open-pencil/core/scene-graph`        | SceneGraph, node types, hit-test, copy, snap, undo                                    | —                         |
+| `@open-pencil/core/color`              | parseColor, colorToHex, color management, OkHCL                                       | culori                    |
+| `@open-pencil/core/text`               | fonts, text editor, style runs, direction                                             | —                         |
+| `@open-pencil/core/vector`             | vector network encode/decode, bezier math                                             | —                         |
+| `@open-pencil/core/figma-api`          | FigmaAPI, FigmaNodeProxy                                                              | —                         |
+| `@open-pencil/core/icons`              | Iconify API client, icon rendering                                                    | @iconify/utils            |
+| `@open-pencil/core/canvas`             | SkiaRenderer (Skia/CanvasKit painting engine)                                         | —                         |
+| `@open-pencil/core/design-jsx`         | JSX-to-design renderer                                                                | sucrase                   |
+| `@open-pencil/core/editor`             | createEditor, Editor, EditorState                                                     | —                         |
+| `@open-pencil/core/tools`              | ToolDef, ALL_TOOLS, AI adapter                                                        | diff                      |
+| `@open-pencil/core/kiwi`               | .fig parse/serialize, codec, protocol                                                 | fflate, fzstd             |
+| `@open-pencil/core/clipboard`          | Figma/OpenPencil clipboard parsing and import helpers                                 | —                         |
+| `@open-pencil/core/rpc`                | RPC commands for CLI                                                                  | —                         |
+| `@open-pencil/core/lint`               | design linter rules and presets                                                       | —                         |
+| `@open-pencil/core/lowcode-validation` | lowcode state/action/expression/Supabase validators shared by tools, editor, compiler | expr-eval                 |
+| `@open-pencil/core/io`                 | IORegistry, builtin read/write/export formats, headless raster/SVG/JSX helpers        | CanvasKit, jspdf, svg2pdf |
+| `@open-pencil/core/io/formats/fig`     | .fig read/write helpers                                                               | fflate, fzstd             |
+| `@open-pencil/core/io/formats/pen`     | .pen read/write helpers                                                               | —                         |
+| `@open-pencil/core/io/formats/jsx`     | selection/node JSX export helpers                                                     | —                         |
+| `@open-pencil/core/io/formats/raster`  | PNG/JPG/WEBP export helpers                                                           | CanvasKit                 |
+| `@open-pencil/core/io/formats/svg`     | SVG export and vector geometry conversion helpers                                     | svgpath                   |
+| `@open-pencil/core/profiler`           | render profiling                                                                      | —                         |
+| `@open-pencil/core/canvaskit`          | getCanvasKit loader                                                                   | canvaskit-wasm            |
+| `@open-pencil/core/layout`             | computeLayout                                                                         | yoga-layout               |
+| `@open-pencil/core/constants`          | shared runtime constants such as `IS_TAURI`                                           | —                         |
+| `@open-pencil/core/random`             | crypto-backed random helpers                                                          | —                         |
+| `@open-pencil/core/xpath`              | XPath selector support for querying design nodes                                      | fontoxpath                |
+| `@open-pencil/core/types`              | shared primitive types: `GUID`, `Color`, `Vector`, `Matrix`, `Rect`                   | —                         |
+| `@open-pencil/core/geometry`           | geometry/math helpers                                                                 | —                         |
 
 Runtime `canvaskit-wasm` import exists only in `canvaskit.ts` — all other files use `import type`. CanvasKit instance is passed as a parameter everywhere.
 
 ### Editor architecture
 
-`packages/core/src/editor/` is the framework-agnostic editor core — 13 modules sharing an `EditorContext` interface:
+`packages/core/src/editor/` is the framework-agnostic editor core. `create.ts` owns the shared `EditorContext`, creates the event bus, wires graph subscriptions/component sync/layout runners, then spreads domain action factories into a flat `Editor` API:
 
-| Module | What |
-|---|---|
-| `types.ts` | EditorState, EditorOptions, EditorEvents, Tool, EditorToolDef, EditorContext |
-| `create.ts` | `createEditor()` assembler — wires context, event bus + all modules |
-| `viewport.ts` | screenToCanvas, applyZoom, pan, zoomToFit/100/Selection |
-| `selection.ts` | select, clearSelection, marquee, snap, hover, entered container |
-| `pages.ts` | switchPage, addPage, deletePage, renamePage |
-| `shapes.ts` | createShape, pen tool, adoptNodesIntoSection |
-| `structure.ts` | group, ungroup, wrapInAutoLayout, reorder, reparent, z-order |
-| `components.ts` | component/instance/detach/componentSet |
-| `clipboard.ts` | duplicate, copy, paste, delete, storeImage |
-| `undo.ts` | commitMove/Resize/Rotation, snapshot/restore |
-| `text.ts` | startTextEditing, commitTextEdit |
-| `nodes.ts` | updateNode, updateNodeWithUndo, setLayoutMode |
+| Module                                                                         | What                                                                                         |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `types.ts`                                                                     | `EditorState`, `EditorOptions`, `EditorEvents`, `Tool`, `EditorContext`                      |
+| `state.ts`                                                                     | `createDefaultEditorState()` and initial editor state shape                                  |
+| `create.ts`                                                                    | `createEditor()` assembler — context, event bus, graph subscriptions, all actions            |
+| `graph-reads.ts`                                                               | read-only graph helpers exposed on `Editor`                                                  |
+| `graph-events.ts`                                                              | SceneGraph emitter → editor event bus + render invalidation                                  |
+| `layout-runner.ts`                                                             | targeted Yoga layout recomputation                                                           |
+| `component-sync.ts`                                                            | debounced component/instance propagation after graph changes                                 |
+| `viewport.ts` / `page-viewports.ts`                                            | screen/canvas transforms, pan/zoom, per-page viewport restoration                            |
+| `selection/` + `selection.ts`                                                  | select, hover, marquee, hit-test, overlays, entered container                                |
+| `pages.ts`                                                                     | switch/add/delete/rename pages                                                               |
+| `shapes/` + `shapes.ts`                                                        | primitive shapes, lowcode form tools, pen tool, section adoption                             |
+| `structure/` + `structure.ts`                                                  | group, ungroup, frames, auto-layout wrap, reorder, reparent, boolean ops, flatten            |
+| `components/` + `components.ts`                                                | component/instance/component set/detach/focus actions                                        |
+| `clipboard/` + `clipboard.ts`                                                  | duplicate, copy, paste, paste-to-replace, images, fonts, history                             |
+| `undo.ts` + `history/`                                                         | undo snapshots and move/resize/rotation history helpers                                      |
+| `text/` + `text.ts`                                                            | text edit sessions, style runs, commit/cancel                                                |
+| `nodes.ts`, `layout-mode.ts`, `alignment.ts`, `variables.ts`, `color-space.ts` | node mutation, layout mode, align/flip/rotate, variable binding, color profile actions       |
+| `bridges/`                                                                     | compatibility bridges that compose newer domain actions into older app-facing command shapes |
 
-Each module exports a factory: `createXxxActions(ctx: EditorContext) => { ... }`.
-`create.ts` assembles context + all modules, spreads into a flat return object.
+Each action module exports a factory: `createXxxActions(ctx: EditorContext) => { ... }`.
 `Editor` type = `ReturnType<typeof createEditor>`.
 
 #### Editor event bus
 
 The editor exposes a typed nanoevents emitter for lifecycle events. Defined in `EditorEvents` (`types.ts`), emitted via `emitEditorEvent()` on the context, subscribed via `editor.onEditorEvent(event, handler)` which returns an unbind function.
 
-| Event | Payload | Emitted by |
-|---|---|---|
-| `render:requested` | `{ renderVersion, sceneVersion }` | `requestRender()` |
-| `repaint:requested` | `{ renderVersion, sceneVersion }` | `requestRepaint()` |
-| `graph:replaced` | `SceneGraph` | `replaceGraph()` |
-| `node:created` | `SceneNode` | SceneGraph emitter → `graph-events.ts` |
-| `node:updated` | `id, changes` | SceneGraph emitter → `graph-events.ts` |
-| `node:deleted` | `id` | SceneGraph emitter → `graph-events.ts` |
-| `node:reparented` | `nodeId, oldParentId, newParentId` | SceneGraph emitter → `graph-events.ts` |
-| `node:reordered` | `nodeId, parentId, index` | SceneGraph emitter → `graph-events.ts` |
-| `selection:changed` | `selectedIds[], previousIds[]` | `setSelectedIds()` |
-| `tool:changed` | `tool, previousTool` | `setActiveTool()` |
-| `page:changed` | `pageId, previousPageId` | `switchPage()`, `replaceGraph()` |
-| `viewport:changed` | `{ panX, panY, zoom }, previous` | viewport actions |
+| Event               | Payload                            | Emitted by                             |
+| ------------------- | ---------------------------------- | -------------------------------------- |
+| `render:requested`  | `{ renderVersion, sceneVersion }`  | `requestRender()`                      |
+| `repaint:requested` | `{ renderVersion, sceneVersion }`  | `requestRepaint()`                     |
+| `graph:replaced`    | `SceneGraph`                       | `replaceGraph()`                       |
+| `node:created`      | `SceneNode`                        | SceneGraph emitter → `graph-events.ts` |
+| `node:updated`      | `id, changes`                      | SceneGraph emitter → `graph-events.ts` |
+| `node:deleted`      | `id`                               | SceneGraph emitter → `graph-events.ts` |
+| `node:reparented`   | `nodeId, oldParentId, newParentId` | SceneGraph emitter → `graph-events.ts` |
+| `node:reordered`    | `nodeId, parentId, index`          | SceneGraph emitter → `graph-events.ts` |
+| `selection:changed` | `selectedIds[], previousIds[]`     | `setSelectedIds()`                     |
+| `tool:changed`      | `tool, previousTool`               | `setActiveTool()`                      |
+| `page:changed`      | `pageId, previousPageId`           | `switchPage()`, `replaceGraph()`       |
+| `viewport:changed`  | `{ panX, panY, zoom }, previous`   | viewport actions                       |
 
 All selection mutations in core use `ctx.setSelectedIds()` and all tool changes use `ctx.setActiveTool()` so the event bus fires consistently. App-layer code uses `editor.clearSelection()`, `editor.select()`, or `editor.setTool()` — never direct `state.selectedIds =` or `state.activeTool =` assignments.
 
 Vue SDK provides `useEditorEvent(event, handler)` composable (`packages/vue/src/editor/events/use.ts`) that auto-disposes on scope cleanup.
 
-The app editor session (`src/app/editor/session/create.ts`) is a thin Vue wrapper: creates `shallowReactive` state, calls `createEditor()`, and assembles app-specific modules for document I/O, autosave, export, vector edit, pen resume, flashes, profiler, and mobile clipboard. Tabs live in `src/app/tabs/`; active editor access lives in `src/app/editor/active-store/`.
+The app editor session (`src/app/editor/session/create.ts`) is a thin Vue wrapper: creates `shallowReactive` state, calls `createEditor()`, and assembles app-specific modules for document I/O, autosave, export, vector edit, pen resume, flashes, profiler, mobile clipboard, lowcode preview state, and shell integration. Tabs live in `src/app/tabs/`; active editor access lives in `src/app/editor/active-store/`.
 
 ## Commands
 
-- `bun run check` — type-aware lint + typecheck via oxlint + tsgo + architecture checks (run before committing)
-- `bun run check:arch` — Steiger architecture lint for project-specific import boundaries
-- `bun run check:vue` — vue-tsc type-check for .vue files (has pre-existing errors, fix progressively)
-- `bun run test:dupes` — jscpd copy-paste detection across product TS sources
-- `bun run test:tools` — tests for private repo tooling under `tools/*`
+- `bun run dev` — Vite web app dev server
+- `bun run build` — build workspace packages, run `lint`, then `vite build`
+- `bun run preview` — preview the built web app
+- `bun run tauri dev` — Tauri desktop app with hot reload; generates native menu first via Tauri `beforeDevCommand`
+- `bun run build:packages` — build `@open-pencil/core`, `@open-pencil/vue`, `@open-pencil/mcp`, `@open-pencil/cli`, and private `@open-pencil/compiler`
+- `bun run lint` — structure lint + type-aware oxlint over app, packages, compiler, tests, scripts, tools
+- `bun run lint:structure` — fast structural oxlint pass
+- `bun run check` — full pre-commit gate: package build, lint, `tsgo`, Vue typecheck, i18n/package/arch checks, type-shape/tool/dupe tests
+- `bun run check:arch` — Steiger architecture lint for import boundaries, test placement, scripts/tools layout, compiler layers
+- `bun run check:vue` — `vue-tsc` for root app and `packages/vue`
+- `bun run check:i18n` — locale JSON keys must match `packages/vue/src/i18n/messages.ts`
+- `bun run check:packages` — public package metadata must point to built `dist/`, not runtime TypeScript
 - `bun run format` — oxfmt with import sorting
-- `bun test ./tests/engine` — unit tests
-- `bun run test` — Playwright visual regression
-- `bun run tauri dev` — desktop app with hot reload
+- `bun run format:check` — run formatter and fail if it leaves a git diff
+- `bun run test:unit` — Bun unit/engine tests under `tests/engine`
+- `bun run test:coverage` — Bun coverage for `tests/engine`
+- `bun run test` — Playwright app/visual regression (`--project=openpencil`)
+- `bun run test:update` — update Playwright snapshots for the OpenPencil project
+- `bun run test:figma` — Playwright Figma automation project
+- `bun run test:dupes` — jscpd clone detection across `packages/core/src`, `packages/cli/src`, `packages/compiler/src`, and `src`
+- `bun run test:type-shapes` — duplicate object-type shape detector
+- `bun run test:tools` — run private tool package tests under `tools/*`
+- `bun run test:packages` — package metadata check + packed tarball smoke tests
+- `bun run docs:dev` / `docs:build` / `docs:preview` — VitePress docs lifecycle
+- `bun run generate:tauri-menu` — regenerate `desktop/generated/menu.json` from shared menu schema
+- `bun run visual-compare` — Figma vs OpenPencil renderer visual comparison helper
 - `bun open-pencil info <file>` — document stats
 - `bun open-pencil tree <file>` — node tree
 - `bun open-pencil find <file>` — search nodes
 - `bun open-pencil node <file> --id <id>` — detailed node properties
 - `bun open-pencil pages <file>` — list pages
+- `bun open-pencil formats` — list readable/writable/export formats registered by `IORegistry`
+- `bun open-pencil convert <file> --format fig -o <out.fig>` — convert documents through the IO registry
+- `bun open-pencil query <file> '<xpath>'` — query nodes with XPath selectors
+- `bun open-pencil selection` — inspect current selection from a running app via RPC
 - `bun open-pencil variables <file>` — list design variables
+- `bun open-pencil lint <file>` — run design linter rules
 - `bun open-pencil export <file>` — headless render to PNG/JPG/WEBP
+- `bun open-pencil compile <file> -o <dir>` — compile `.pen`/`.fig` to a runnable Vite + React + TypeScript project
+- `bun open-pencil build <file> -o <dir>` — compile and Vite-build a static SPA bundle
+- `bun open-pencil deploy <file> --provider netlify|vercel` — build and deploy a static SPA; token comes from CLI arg or provider env var
 - `bun open-pencil analyze colors <file>` — color palette usage
 - `bun open-pencil analyze typography <file>` — font/size/weight stats
 - `bun open-pencil analyze spacing <file>` — gap/padding values
@@ -129,16 +172,21 @@ The app editor session (`src/app/editor/session/create.ts`) is a thin Vue wrappe
    - Builds Tauri binaries for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
    - Creates a draft GitHub Release with all platform binaries
    - Publishes `@open-pencil/core`, `@open-pencil/cli`, `@open-pencil/mcp`, and `@open-pencil/vue` to npm with provenance
-7. Go to GitHub Releases → edit the draft → paste changelog section → publish
+7. `@open-pencil/compiler` is private and built for app/CLI consumption, but it is not currently published as a standalone npm package.
+8. Go to GitHub Releases → edit the draft → paste changelog section → publish
 
 ### CI workflows
 
-| Workflow | Trigger | What it does |
-|----------|---------|--------------|
-| `build.yml` | `v*` tag push or manual | Build Tauri desktop apps (5 targets), create GitHub Release, publish `@open-pencil/core`, `@open-pencil/cli`, `@open-pencil/mcp`, and `@open-pencil/vue` |
-| `homebrew.yml` | Release published | Update `open-pencil/homebrew-tap` cask with new version + SHA256 hashes |
-| `app.yml` | Push to `master` (non-docs) | Build web app, deploy to Cloudflare Pages (`app.openpencil.dev`) |
-| `docs.yml` | Push to `master` (`packages/docs/**`) | Build VitePress docs, deploy to Cloudflare Pages (`openpencil.dev`) |
+| Workflow                 | Trigger                                          | What it does                                                                                                                                             |
+| ------------------------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`                 | PR to `master` (non-docs)                        | `format:check`, full `bun run check`, engine unit tests, copy-paste detection                                                                            |
+| `preview.yml`            | PR to `master` (non-docs), `pull_request_target` | Build web app, deploy Cloudflare Pages preview, comment preview URL                                                                                      |
+| `build.yml`              | `v*` tag push or manual                          | Build Tauri desktop apps (5 targets), create GitHub Release, publish `@open-pencil/core`, `@open-pencil/cli`, `@open-pencil/mcp`, and `@open-pencil/vue` |
+| `homebrew.yml`           | Release published                                | Update `open-pencil/homebrew-tap` cask with new version + SHA256 hashes                                                                                  |
+| `app.yml`                | Push to `master` (non-docs)                      | Build web app, deploy to Cloudflare Pages (`app.openpencil.dev`)                                                                                         |
+| `docs.yml`               | Push to `master` (`packages/docs/**`)            | Build VitePress docs, deploy to Cloudflare Pages (`openpencil.dev`)                                                                                      |
+| `heavy-tests.yml`        | Manual                                           | Heavy `.fig` round-trip tests with `BUN_HEAVY_TESTS=true`                                                                                                |
+| `pr-review-guidance.yml` | PR review/comment events                         | Record CodeRabbit review guidance using trusted default-branch tooling only                                                                              |
 
 ### Before committing
 
@@ -148,8 +196,10 @@ Run all quality gates (see [Code quality](#code-quality) for the self-review che
 bun run check          # oxlint + tsgo type-aware lint & typecheck
 bun run format         # oxfmt
 bun run test:dupes     # jscpd — zero clones
+bun run test:type-shapes # duplicate object type-shape detector
 bun run test:tools     # private repo tooling tests
 bun run test:unit      # bun:test
+bun run test:packages  # package metadata + packed tarball smoke tests
 bun run test           # Playwright E2E
 ```
 
@@ -159,6 +209,7 @@ bun run test           # Playwright E2E
 - `README.md` — user-facing: features, getting started, CLI, project structure. No implementation details.
 - `AGENTS.md` (this file) — contributor/agent reference: architecture, conventions, how to release.
 - `packages/docs/` — VitePress site deployed at `openpencil.dev`. User guide, SDK, automation, reference, and development docs.
+- `docs/lowcode-phase-*.md` — implementation/design notes for the lowcode compiler phases. Keep durable public docs in `packages/docs/**`; only add root-level Markdown by deliberately updating the Steiger allowlist.
 
 When adding features, update `CHANGELOG.md` (Unreleased section) and `README.md` (if user-facing). Update `AGENTS.md` when architecture or conventions change.
 
@@ -187,32 +238,52 @@ Release commits are the exception: keep using `Release v0.x.y`.
 
 - All CLI output must use `agentfmt` formatters — `fmtList`, `fmtHistogram`, `fmtSummary`, `fmtNode`, `fmtTree`, `kv`, `entity`, `bold`, `dim`, etc.
 - Don't hand-roll `console.log` formatting — use the helpers from `packages/cli/src/format.ts` which re-exports agentfmt with project-specific adapters (`nodeToData`, `nodeDetails`, `nodeToTreeNode`, `nodeToListItem`)
-- Every command supports `--json` for machine-readable output
+- Inspect/report commands should support `--json` when practical. Do not add `--json` to pure write-only commands unless there is a useful structured result.
+- Document format operations go through `@open-pencil/core/io` and `IORegistry`; do not duplicate `.fig`/`.pen`/SVG/raster read-write logic in CLI commands.
+- Design-to-code commands (`compile`, `build`, `deploy`) share `packages/cli/src/codegen.ts`, `i18n-args.ts`, and `ui-kit-args.ts`. Keep option parsing there when flags must remain consistent across all three commands.
 
 ## Tools (AI / MCP / CLI)
 
-- Tool operations live in `packages/core/src/tools/` as framework-agnostic `ToolDef` objects, split by domain:
-  - `schema.ts` — `ToolDef` type, `defineTool()`, shared helpers (`nodeSummary`, `nodeToResult`)
-  - `read.ts` — query tools: selection, find, pages, fonts, components
-  - `create.ts` — shape/component/page creation, JSX render
-  - `modify.ts` — property setters: fills, strokes, effects, text, layout
-  - `structure.ts` — tree ops: delete, clone, reparent, group, arrange
-  - `variables.ts` — variable/collection CRUD and binding
-  - `vector.ts` — boolean ops, paths, viewport, SVG/image export
-  - `analyze.ts` — analyze (colors, typography, spacing, clusters), diff, eval
-  - `registry.ts` — assembles all tools into the `ALL_TOOLS` array
+- Tool operations live in `packages/core/src/tools/` as framework-agnostic `ToolDef` objects, split by domain folders and barrels:
+  - `schema.ts` — `ToolDef` type, `defineTool()`, shared helpers (`nodeSummary`, `nodeToResult`, `requireNode`)
+  - `read/` + `read.ts` — selection, node lookup, JSX, pages, fonts, components, XPath query, lowcode reads
+  - `create/` + `create.ts` — basic shapes, JSX render, components, icons, SVG import, vectors
+  - `modify/` + `modify.ts` — node updates, paint, text, layout, effects, state, lowcode mutations
+  - `structure/` + `structure.ts` — delete, clone, reparent, group, arrange, replace, tree/batch ops
+  - `variables/` + `variables.ts` — variable/collection CRUD, binding, unbinding
+  - `vector/` + `vector.ts` — boolean ops, path edit, viewport, SVG/PDF/image export
+  - `analyze/` + `analyze.ts` — colors, typography, spacing, clusters, diff, eval wrappers
+  - `describe/` — design summaries, issue detection, role/tree descriptions
+  - `codegen/` — token and component-map extraction
+  - `stock-photo/` + `stock-photo.ts` — stock image provider requests and fill application
+  - `calc.ts` — utility calculation tool
+  - `registry-core.ts` — `CORE_TOOLS`, the default app AI set (~30 common tools, lower schema/token cost)
+  - `registry-extended.ts` — advanced variables, vector, export, analysis, codegen, and structure tools
+  - `registry.ts` — exports `ALL_TOOLS = [...CORE_TOOLS, ...EXTENDED_TOOLS]`
 - Each tool has: name, description, typed params, and an `execute(figma: FigmaAPI, args)` function
 - `defineTool()` gives type-safe params in the execute body; the array `ALL_TOOLS` erases the generics for adapters
 - AI adapter (`packages/core/src/tools/ai-adapter.ts`): `toolsToAI()` converts ToolDefs → valibot schemas + Vercel AI `tool()` wrappers
-- `src/app/ai/tools/index.ts` is just a thin wire: creates FigmaAPI from editor store, calls `toolsToAI()`
+- `src/app/ai/tools/index.ts` intentionally uses `CORE_TOOLS` to keep chat schemas small. Only add a tool to `CORE_TOOLS` when it is common enough for default AI chat; otherwise put it in `EXTENDED_TOOLS`.
 - CLI commands (`packages/cli/src/commands/`) are **not** generated from ToolDefs — they have custom agentfmt formatting, tree walking, pagination. The `eval` command is the CLI's access to all ToolDef operations via FigmaAPI.
-- MCP adapter (`packages/mcp/src/server.ts`): `startServer()` creates unified HTTP + WebSocket server. Registers all ToolDefs as MCP tools (zod schemas). Single entry point: `index.ts` (Hono + Streamable HTTP with sessions). Browser connects via WebSocket, tool calls proxied through.
-- MCP-only tools (`open_file`, `new_document`, `save_file`, `get_codegen_prompt`) are registered directly in `server.ts`, not as ToolDefs — they need Node.js fs access or don't operate on the scene graph
+- MCP adapter (`packages/mcp/src/server.ts` + `tool/registration.ts`): `startServer()` creates unified HTTP + WebSocket server. Registers `ALL_TOOLS` as MCP tools (zod schemas). Single HTTP entry point: `index.ts` (Hono + Streamable HTTP with sessions). Browser connects over WebSocket RPC; MCP tool calls are proxied through the running app.
+- MCP-only tools (`open_file`, `new_document`, `save_file`, `get_codegen_prompt`) are registered directly in `packages/mcp/src/tool/registration.ts`, not as ToolDefs — they need Node.js fs access or don't operate on the scene graph
 - `open_file` and `new_document` are only registered when `OPENPENCIL_MCP_ROOT` is set (path scoping for security)
 - Export tools (`export_image`, `export_svg`, `get_jsx`) accept an optional `path` param — when provided and `OPENPENCIL_MCP_ROOT` is set, the MCP server writes output to disk and returns `{ written, byteLength }` instead of the raw data
 - Core prompts (`CODEGEN_PROMPT`, `JSX_REFERENCE`) live as markdown files in `packages/core/src/tools/prompts/`, loaded via raw-md bundler plugin; app chat/ACP prompts live under `src/app/ai/**` markdown files.
-- To add a new tool: add a `defineTool()` in the appropriate domain file, add to `ALL_TOOLS` in `registry.ts` — it's instantly available in AI chat, MCP, and via `eval` in CLI
+- To add a new tool: add a `defineTool()` in the appropriate domain file, export it from the domain barrel, add it to `CORE_TOOLS` or `EXTENDED_TOOLS` intentionally. MCP and CLI eval see `ALL_TOOLS`; app AI chat sees only `CORE_TOOLS`.
 - `FigmaAPI` (`packages/core/src/figma-api/`) is the execution target for all tools — Figma Plugin API compatible, uses Symbols for hidden internals
+
+## Lowcode compiler
+
+- `packages/compiler` is private and is the source of truth for design-to-code output. Data flow is one-way: `SceneGraph` → `packages/compiler/src/ir/**` → `packages/compiler/src/adapters/**`.
+- `packages/compiler/src/ir/**` must not import adapters. `packages/compiler/src/adapters/**` must not import `@open-pencil/core/scene-graph`; adapters consume only IR types. Steiger enforces this with `open-pencil/no-cross-layer-in-compiler`.
+- Public compiler entrypoints: `compile()`, `withDefaults()`, lowcode validators re-exported from `@open-pencil/core/lowcode-validation`, route helpers, VFS/dev-server/build/deploy subpaths.
+- React adapter output is Vite + React + TypeScript + Tailwind. It supports multi-page `react-router-dom`, preview bridge `data-node-id` wiring, i18n via `react-intl`, optional shadcn UI kit emission, Supabase auth/data helpers, workflows, validation, uploads, and static builds.
+- Preview pane code lives in `src/app/lowcode/preview-pane/`. In Tauri, it spawns `bun packages/compiler/src/dev-server.ts --root <repo>` through the shell allowlist name `lowcode-preview`; the browser bundle must not statically import compiler dev-server/build/deploy code.
+- One-click deploy shells out to `bun packages/cli/src/index.ts deploy ... --json` with provider tokens passed through env (`NETLIFY_AUTH_TOKEN` / `VERCEL_TOKEN`), never as process args or persisted document data.
+- Lowcode document/page/node fields live on `SceneNode` (`state`, `bindings`, `events`, `interactiveProps`, `lowcodeDocumentState`, `lowcodeSupabaseConfig`, translations, workflows, route/auth fields) and round-trip through `.fig` pluginData keys in `packages/core/src/kiwi/fig/node-change/lowcode-plugin-data.ts`.
+- Validate lowcode mutations through `packages/core/src/lowcode-validation/**` and the lowcode ToolDefs in `packages/core/src/tools/modify/lowcode.ts`; do not hand-assign unvalidated action/state JSON in app UI or compiler code.
+- Lowcode test coverage belongs under `tests/engine/compiler/**`, `tests/engine/lowcode-validation/**`, `tests/engine/tools/lowcode/**`, `tests/engine/kiwi/lowcode/**`, or UI-facing E2E specs when behavior is visible in the app.
 
 ## ACP (Agent Client Protocol)
 
@@ -220,8 +291,9 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Pure mapping logic in `src/app/ai/acp/map-update.ts` — converts `SessionUpdate` → `UIMessageChunk`
 - ACP design context prompt (`ACP_DESIGN_CONTEXT`) is authored in `src/app/ai/acp/design-context.md` and re-exported from `src/constants.ts`
 - Agent definitions (`ACP_AGENTS`) in `packages/core/src/constants.ts`
-- MCP server: Vite plugin in dev, `openpencil-mcp` via shell plugin in production Tauri (requires `npm i -g @open-pencil/mcp`; follow-up: bundle as Tauri sidecar)
-- Architecture: browser ↔ WebSocket :7601 ↔ MCP server :7600 ↔ HTTP ↔ agent subprocess
+- MCP server: Vite plugin in dev spawns `bun run packages/mcp/src/index.ts`; production Tauri spawns global `openpencil-mcp-http` through shell permissions (requires matching `@open-pencil/mcp` version installed globally; follow-up: bundle as Tauri sidecar)
+- Architecture: app/browser ↔ WebSocket :7601 ↔ MCP server HTTP :7600 (`/health`, `/rpc`, `/mcp`) ↔ agent subprocess / MCP clients
+- Production MCP spawn uses `OPENPENCIL_MCP_AUTH_TOKEN` and `OPENPENCIL_MCP_CORS_ORIGIN`; app health-checks version compatibility and surfaces the package-manager-specific install command
 - Shell permissions scoped per-command in `desktop/capabilities/default.json` (`args: true` — agents need dynamic SDK flags)
 - ACP providers visible only in Tauri desktop when MCP server is reachable
 - Permission requests shown in AlertDialog — user must approve/reject each request (60s auto-reject timeout)
@@ -241,8 +313,8 @@ Release commits are the exception: keep using `Release v0.x.y`.
 ## Code conventions
 
 - Do not place code or tests ad hoc. Before adding or moving files, inspect the existing folder structure and nearby patterns, then put changes in the established domain-specific location. If no proper location exists, create one deliberately and update docs/conventions as needed.
-- Architecture boundaries are enforced by Steiger (`bun run check:arch`). App code must use public workspace package exports, workspace packages must not import app `src/` code, package-local aliases (`#core`, `#vue`, `#cli`, `#mcp`) are only for their owning package, core must stay framework-agnostic, app service/domain code (`src/app/**`) must not import app component/view layers, components must not import views, shared UI (`src/components/ui/**`) must not import app services/stores, property-panel internals must stay inside the property panel, canvas/editor overlay code must not import property-panel internals, Vue components must not use `<style>` blocks, code outside core editor internals must not assign `editor.state.selectedIds` or `editor.state.activeTool` directly, committed code must not import scratch/generated/vendor internals, and durable docs belong under `packages/docs/**` unless the root Markdown allowlist is deliberately updated.
-- Test placement is strict and enforced by Steiger: app E2E tests live under `tests/e2e/**` and use `*.spec.ts`; Figma automation tests live under `tests/figma/**` and use `*.spec.ts`; engine/unit tests live under `tests/engine/**` and use `*.test.ts` (with `helpers.ts`, `*.bench.ts`, and `visual-*` support scripts allowed); shared test utilities live under `tests/helpers/**`. Do not commit temporary/profile specs (`*.tmp.*`, `*.profile.*`). Do not put store-only/internal-state assertions in E2E. If a test drives the UI like a user and verifies visible behavior, it can be E2E; if it creates nodes through internals and asserts graph state, it belongs in engine/unit coverage.
+- Architecture boundaries are enforced by Steiger (`bun run check:arch`). App code must use public workspace package exports, workspace packages must not import app `src/` code, package-local aliases (`#core`, `#vue`, `#cli`, `#compiler`, `#mcp`) are only for their owning package, core must stay framework-agnostic, compiler IR must not import adapters, compiler adapters must not import scene-graph internals, app service/domain code (`src/app/**`) must not import app component/view layers, components must not import views, shared UI (`src/components/ui/**`) must not import app services/stores, property-panel internals must stay inside the property panel, canvas/editor overlay code must not import property-panel internals, Vue components must not use `<style>` blocks, code outside core editor internals must not assign `editor.state.selectedIds` or `editor.state.activeTool` directly, committed code must not import scratch/generated/vendor internals, and durable docs belong under `packages/docs/**` unless the root Markdown allowlist is deliberately updated.
+- Test placement is strict and enforced by Steiger: app E2E tests live under `tests/e2e/**` and use `*.spec.ts`; Figma automation tests live under `tests/figma/**` and use `*.spec.ts`; engine/unit tests live under `tests/engine/**` and use `*.test.ts` (with `helpers.ts`, `*.bench.ts`, and `visual-*` support scripts allowed); shared test utilities live under `tests/helpers/**`. Engine tests should live under a domain folder that mirrors the source module under test (for example `tests/engine/io/fig/**`, not `tests/engine/fig/**`). Do not commit temporary/profile specs (`*.tmp.*`, `*.profile.*`). Do not put store-only/internal-state assertions in E2E. If a test drives the UI like a user and verifies visible behavior, it can be E2E; if it creates nodes through internals and asserts graph state, it belongs in engine/unit coverage.
 
 ### File and folder naming
 
@@ -271,7 +343,7 @@ tools/<domain>/
 Use `scripts/` only for tiny compatibility entrypoint shims that import `../tools/<domain>/src/...`; do not put implementation logic there. Workflow helpers, release packaging helpers, architecture rules, package checks, visual-oracle utilities, and other maintainable programs belong in `tools/` with focused tests when they contain logic. Steiger enforces tool layout and script shims. `bun run check` includes `bun run test:tools`, and lint/format cover `tools/`.
 
 - `@/` import alias for app cross-directory imports; app feature code lives under `src/app/*`
-- Use package-local aliases inside workspace packages: `#vue/*` in `packages/vue`, `#cli/*` in `packages/cli`, `#mcp/*` in `packages/mcp`, and `#core/*` when core code needs an alias. Prefer relative imports within nearby core modules when that is clearer than an alias.
+- Use package-local aliases inside workspace packages: `#vue/*` in `packages/vue`, `#cli/*` in `packages/cli`, `#compiler/*` in `packages/compiler`, `#mcp/*` in `packages/mcp`, and `#core/*` when core code needs an alias. Prefer relative imports within nearby modules when that is clearer than an alias.
 - No `any` — use proper types, generics, declaration merging
 - No `!` non-null assertions — use guards, `?.`, `??`
 - No `Math.random()` — use `crypto.getRandomValues()` everywhere
@@ -297,13 +369,19 @@ Before submitting a PR, run the full quality gate and do a self-review:
 bun run check          # oxlint + tsgo type-aware lint & typecheck — zero errors required
 bun run format         # oxfmt with import sorting
 bun run test:dupes     # jscpd — zero clones required
+bun run test:type-shapes # duplicate object type shapes — zero duplicates required
 bun run test:tools     # private repo tooling tests
 bun run test:unit      # bun:test
+bun run test:packages  # package metadata + tarball smoke tests
 bun run test           # Playwright E2E
 ```
 
 Self-review checklist:
+
 - Run `bun run test:dupes` — if duplication rises, extract shared helpers or use existing types
+- Run `bun run test:type-shapes` — if object type shapes duplicate, reuse/export a named type instead of re-declaring it
+- Run `bun run check:i18n` after editing `packages/vue/src/i18n/messages.ts` or locale JSON files
+- Run `bun run check:packages` / `bun run test:packages` after touching public package exports, `files`, `bin`, `main`, `types`, or publish prep tooling
 - No inline type definitions that duplicate named types (Color, Vector, SceneNode, Effect, Fill, Stroke, etc.)
 - No copy-pasted logic — extract into functions. If two components share a util, icon map, or data structure, export from one place. If `jscpd` flags it, fix it.
 - Use precise union types — `'closed' | 'half' | 'full'` not `number | string | null`
@@ -312,7 +390,6 @@ Self-review checklist:
 - Don't hand-roll what a dependency already does. Check existing deps first (`package.json`, `packages/*/package.json`). If none covers it, find a quality library instead of inlining an implementation — e.g. use `diff` for unified diffs, not a custom line-by-line loop; use `culori` for color math, not manual RGB parsing
 - `es-toolkit` is available in core for small, focused utility helpers when it clearly improves readability. Prefer subpath imports such as `es-toolkit/object`, `es-toolkit/array`, and `es-toolkit/predicate`; good fits include `omit` / `pick` for object key selection, `uniq` for dedupe, and `isNotNil` for typed nullish filtering. Do not replace clear native JavaScript just for consistency, and avoid `es-toolkit/compat` unless deliberately migrating lodash-compatible behavior.
 - Check Reka UI for existing components (Dialog, Popover, DropdownMenu, Select, Tooltip, Toast, etc.) before building custom ones — especially dropdowns, popovers, and modals
-
 
 ## Rendering
 
@@ -375,7 +452,9 @@ Self-review checklist:
 
 ## File format
 
-- .fig files use Kiwi binary codec — schema in `packages/core/src/kiwi/binary/codec.ts`
+- `@open-pencil/core/io` owns document/export format registration through `IORegistry` and `BUILTIN_IO_FORMATS`; app, CLI, and tests should route `.fig`, `.pen`, SVG, raster, and JSX operations through it when possible.
+- .fig files use Kiwi binary codec — protocol/schema helpers live under `packages/core/src/kiwi/fig/codec/`
+- `.pen` is the OpenPencil document format exposed through `@open-pencil/core/io/formats/pen` and accepted by compiler/CLI workflows.
 - `NodeChange` is the central type for Kiwi encode/decode
 - Vector data uses reverse-engineered `vectorNetworkBlob` binary format — encoder/decoder in `packages/core/src/vector/`
 - showOpenFilePicker/showSaveFilePicker are File System Access API (Chrome/Edge), not Tauri-only — code has fallbacks
@@ -387,20 +466,25 @@ Self-review checklist:
 
 ## Tauri
 
-- Tauri v2 with plugin-dialog, plugin-fs, plugin-opener
+- Tauri v2 with plugin-dialog, plugin-fs, plugin-opener, plugin-process, plugin-shell, and plugin-updater
 - File system permissions must be configured in `desktop/tauri.conf.json` — "Internal error" on save means missing permissions
 - Dev tools: add a menu item to toggle, don't rely on keyboard shortcut
+- Shell permissions live in `desktop/capabilities/default.json`; ACP agents, MCP HTTP, and lowcode preview/deploy use allowlisted command names with `args: true`
+- Lowcode preview/deploy uses allowlist name `lowcode-preview` (`cmd: bun`) to spawn compiler dev-server or CLI deploy from the repo root; if it fails in macOS GUI launches, check Bun is on the launch environment PATH
 
 ## Publishing
 
 - `bun publish` from package dirs — resolves `workspace:*` → actual versions
 - Public packages publish built `dist/` output, not runtime TypeScript entrypoints
 - Core, Vue, MCP, and CLI build with tsdown before publishing
+- `@open-pencil/compiler` is private; it is built by `bun run build:packages` and consumed by app/CLI workspace code, but not packed or published by `build.yml`
 - CLI publishes a Node-compatible `bin/openpencil.js` wrapper; do not point package `bin` entries at TypeScript source
+- `tools/package-quality` verifies public package entrypoints and packed tarballs; keep `main`, `types`, `exports`, `bin`, and `files` aligned with built output
 
 ## Reference
 
 [figma-use](https://github.com/dannote/figma-use) — our Figma toolkit. Use as reference for:
+
 - Kiwi binary format, schema, encode/decode (`packages/shared/src/kiwi/`)
 - Figma WebSocket multiplayer protocol (`packages/plugin/src/ws/`)
 - Vector network blob format (`packages/shared/src/vector/`)
