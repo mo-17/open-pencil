@@ -64,7 +64,9 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).toContain('<p className="text-sm text-red-600 mt-1" role="alert">{__fieldErrors[')
     // runtime file
     expect(files.has('src/_lowcode_validation.tsx')).toBe(true)
-    expect(files.get('src/_lowcode_validation.tsx') as string).toContain('export function validateValue')
+    expect(files.get('src/_lowcode_validation.tsx') as string).toContain(
+      'export function validateValue'
+    )
   })
 
   test('customExpr → inline truthiness check with custom message', () => {
@@ -72,7 +74,9 @@ describe('compile — form validation (Phase 4 §19)', () => {
       customExpr: 'email !== "blocked@x.com"',
       messages: { custom: 'That email is blocked' }
     })
-    expect(app).toContain('if (__error === null && !(email !== "blocked@x.com")) __error = "That email is blocked"')
+    expect(app).toContain(
+      'if (__error === null && !(email !== "blocked@x.com")) __error = "That email is blocked"'
+    )
   })
 
   test('customExpr with no message falls back to a default', () => {
@@ -93,7 +97,9 @@ describe('compile — form validation (Phase 4 §19)', () => {
       name: 'F',
       width: 300,
       height: 200,
-      events: { onSubmit: [{ id: 's', kind: 'setVariable', targetName: 'status', valueExpr: '"done"' }] }
+      events: {
+        onSubmit: [{ id: 's', kind: 'setVariable', targetName: 'status', valueExpr: '"done"' }]
+      }
     })
     graph.createNode('INPUT', form.id, {
       name: 'Email',
@@ -221,11 +227,11 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).not.toContain('getDocStateSnapshot')
   })
 
-  test('a user-defined onBlur on a validated field is dropped with a warning', () => {
+  test('a user-defined onBlur on a validated field runs after validation', () => {
     const { app, warnings } = compileField(
       { required: true },
       {
-        extraInputProps: {},
+        extraInputProps: {}
       }
     )
     // baseline: no user onBlur → just the validation onBlur
@@ -244,14 +250,18 @@ describe('compile — form validation (Phase 4 §19)', () => {
       width: 200,
       height: 40,
       bindings: { value: { kind: 'docState', docStateName: 'email' } },
-      events: { onBlur: [{ id: 'b', kind: 'setVariable', targetName: 'touched', valueExpr: '"yes"' }] },
+      events: {
+        onBlur: [{ id: 'b', kind: 'setVariable', targetName: 'touched', valueExpr: '"yes"' }]
+      },
       interactiveProps: { validation: { required: true } }
     })
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
     const app2 = out.files.get('src/App.tsx') as string
-    expect(out.warnings.map((w) => w.code)).toContain('validation-onblur-conflict')
-    expect(app2).toContain('onBlur={() => __validateField(')
-    expect(app2).not.toContain('setDocState("touched"')
+    expect(out.warnings.map((w) => w.code)).not.toContain('validation-onblur-conflict')
+    expect(app2).toContain(
+      'onBlur={(e) => { const $event = e; const $value = (e.target as HTMLInputElement).value; __validateField('
+    )
+    expect(app2).toContain('setDocState("touched", "yes")')
     void warnings
   })
 

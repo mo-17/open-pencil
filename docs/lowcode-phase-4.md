@@ -81,9 +81,9 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | §23 | **图标(lucide-react)** | §15 ui-kit / 新 icon 节点或 prop | 放置 lucide 图标(shadcn 默认图标库),名称/尺寸/色可配 | 无 icon 节点(lucide 仅在 shadcn 内部注释)|
 | §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)** | jsx tailwind-classes | image fill / IMAGE 节点 → `<img src alt>` + object-cover/contain;渐变填充 → `bg-gradient-*`;宽高比 | 无 `<img>` emit、无 gradient、无 aspect/object-fit(全空)|
 | §25 | **外链 `<a href>` + target** | emit/element | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)| **CODE COMPLETE 2026-06-22** |
-| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)** | jsx tailwind-classes | 吸顶头/侧栏、滚动容器、堆叠层级 | 无 sticky/overflow-/z-index emit |
+| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)** | jsx tailwind-classes | 吸顶头/侧栏、滚动容器、堆叠层级 | **CODE COMPLETE 2026-06-22** |
 | §27 | **state 持久化(localStorage)+ 派生/计算 state** | docState + 表达式子语言 | docState 标记持久化→`localStorage` 读写;派生 state = 表达式从其它 state 算出(memo)| 无 localStorage/persist/computed |
-| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur 端到端 + `$event`/`$value` 复活)** | EventName 联合(已有 5)+ events emit | `EventName` 已含 onChange/onSubmit/onFocus/onBlur,但 emit 只接 onClick/onSubmit;onChange 当前**只被 controlled binding 占用**,用户授权的 onChange/onFocus/onBlur 未接 → 接通 + 复活 memory 里 shelved 的 `$event`/`$value` token(已能 parse,缺 live 用例)| `element.ts` onChange 仅 controlled,events→handler 路径无 onChange/onFocus/onBlur |
+| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur 端到端 + `$event`/`$value` 复活)** | EventName 联合(已有 5)+ events emit | `EventName` 已含 onChange/onSubmit/onFocus/onBlur,但 emit 只接 onClick/onSubmit;onChange 当前**只被 controlled binding 占用**,用户授权的 onChange/onFocus/onBlur 未接 → 接通 + 复活 memory 里 shelved 的 `$event`/`$value` token(已能 parse,缺 live 用例)| **CODE COMPLETE 2026-06-22** |
 
 > **第二波优先级建议**:**§20 交互状态样式**最值得先做(复用 §7 的 variant-emit 机制、零新概念、立刻让产物有交互质感);**§24 图片/填充** + **§25 外链** 是「真页面」基础缺(无图片是硬伤);**§21 覆盖层** + **§22 更多原语** 把 UI 表达力补齐;**§27 持久化/派生 state** + **§28 事件收尾** 补运行时逻辑短板(§28 顺带解 memory 里 shelved 的 `$event`/`$value`)。这些都可穿插在第一波 §16–§19 之间做(单条小)。
 
@@ -624,7 +624,12 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状(grep 坐实)**:无 sticky/fixed/overflow-/z-index emit。
 
-**建议方向**:节点布局属性加 `position: sticky/fixed`(+ offset)、`overflow: auto/scroll/hidden`、`zIndex` → 对应 Tailwind class(`sticky top-0`/`overflow-auto`/`z-10`)。扩 `jsx/tailwind-classes`。**待锁**:与现有 FREE/ABSOLUTE 定位(§6)的关系;sticky offset 来源。
+**锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+- **授权形态**:首选 `interactiveProps.layout` 子配置;兼容直接放在 `interactiveProps` 的旧形态字段。纯 emit 能力,不改 scene-graph / codec。
+- **支持范围**:`position` 仅接受 `sticky | fixed`;offset 支持 `top/right/bottom/left/inset`;overflow 支持 `overflow/overflowX/overflowY = auto | scroll | hidden | visible`;`zIndex` 支持有限 number 或数字字符串。
+- **Tailwind emit**:位置/overflow 走普通 utility;offset 数值转 `top-[0px]` 等 arbitrary value,也接受 `px/rem/em/vh/vw/%/cqw/cqh`、`auto/full/px`、fraction token;zIndex 转 `z-[n]`。无效值静默忽略,不污染 className。
+- **验证**:`tests/engine/compiler/layout-primitives.test.ts` 覆盖 fixed+offset+zIndex、sticky+overflow、direct legacy keys、invalid drop、`src/index.css` safelist、空配置不 emit。
+- **边界/延后**:不改变现有 FREE/ABSOLUTE 几何定位语义;本轮只补运行时布局 utility,更复杂的 responsive/gated 布局状态后续走 §7 variant/override 机制。
 
 ## §27 state 持久化(localStorage)+ 派生 / 计算 state
 
@@ -640,7 +645,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状(grep 坐实)**:`EventName` 联合已含 `onClick|onChange|onSubmit|onFocus|onBlur`,但 events→handler emit 路径**只接 onClick/onSubmit**;`element.ts` 的 onChange **只被 controlled binding 占用**,用户在 events 里授权的 onChange/onFocus/onBlur **不 emit**。memory 记 `$event`/`$value` token 因「onChange 无授权入口、无 live 用例」**SHELVED**(token 本身已能 parse,IDENT_RE 含 `$`)。
 
-**建议方向**:把 events→handler emit 扩到 onChange/onFocus/onBlur(与 controlled binding 的 onChange 共存:controlled 先跑、再调用户 handler,或合成一个 onChange);**复活 `$event`/`$value`** 作为这些 handler 体内可读的 read-context token(`$value` = 当前控件值)→ 给 §3.x controlled binding 之外的「自定义 onChange 逻辑」一个真入口。**待锁**:controlled onChange 与用户 onChange 的合并策略;`$value` 的类型/来源(`e.target.value`)。**经验 A**(emit/collect/tool/check:vue 四穷举点 + event-name walker)。
+**锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+- **事件 emit**:events→handler 端到端接通 `onChange/onFocus/onBlur`,保留既有 `onClick/onSubmit` 行为;无事件局部变量的单 action handler 仍保持旧的 braceless emit 形态,降低快照漂移。
+- **事件局部变量**:`onChange/onFocus/onBlur` handler 内注入 `$event` 和 `$value`。`$event = e`;`$value = (e.target as HTMLInputElement).value`。collect 期只在这三个事件的 read-context 放行 `$event/$value`;例如 onClick 里用 `$value` 仍报 unknown identifier 并丢 handler。
+- **受控 onChange 合成策略**:controlled input 的 synthesized writer 先执行,用户授权的 `events.onChange` 后执行,合成同一个 `onChange={(e) => { ... }}`;因此 `$value` 可用于 writer 后的自定义动作。
+- **校验 onBlur 合成策略**:带 validation 的字段先执行 `__validateField(...)`,再执行用户授权 `events.onBlur`;旧 `validation-onblur-conflict` warning 移除。
+- **工具说明**:`update_lowcode_node` 文案同步说明 `$event/$value` 作用域、controlled onChange 组合行为,避免继续暗示用户 handler 会被丢。
+- **验证**:`tests/engine/compiler/event-runtime.test.ts` 覆盖 focus/blur 局部变量、controlled onChange writer-first+user-chain、onClick 拒绝 `$value`;既有 controlled/form-validation/cross-walker 测试更新为新语义。
+- **边界/延后**:本轮复活 HTML 事件局部值;复杂 UI-kit 组合控件的非 input target 归一化值仍可在 §22/§27 之后按组件语义细化。
 
 ## §9 i18n RTL 逻辑属性(v15)
 

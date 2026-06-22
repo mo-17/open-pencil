@@ -1,10 +1,3 @@
-import type {
-  ActionDef,
-  CallWorkflowAction,
-  EventName,
-  SceneNode,
-  WorkflowDef
-} from '@open-pencil/core/scene-graph'
 import {
   type ExprAst,
   hasPrevReference,
@@ -15,6 +8,14 @@ import {
   PREV_IDENT,
   substitutePrev
 } from '@open-pencil/core/lowcode-validation'
+import type {
+  ActionDef,
+  CallWorkflowAction,
+  EventName,
+  SceneNode,
+  WorkflowDef
+} from '@open-pencil/core/scene-graph'
+
 import type {
   IRApiCallHandler,
   IRClipboardHandler,
@@ -354,13 +355,9 @@ export function registerDocStateReads(
   }
 }
 
-const EVENT_NAMES_TO_RESOLVE: EventName[] = [
-  'onClick',
-  'onChange',
-  'onSubmit',
-  'onFocus',
-  'onBlur'
-]
+const EVENT_NAMES_TO_RESOLVE: EventName[] = ['onClick', 'onChange', 'onSubmit', 'onFocus', 'onBlur']
+
+const EVENT_LOCAL_IDENTS = ['$event', '$value'] as const
 
 /** Translate a node's `events` map into IR event handlers, resolving each
  *  ActionDef into a fully-validated handler. Invalid handlers are dropped
@@ -409,6 +406,9 @@ function resolveActions(
   docStateReads: Set<string> | undefined,
   workflows: ReadonlyMap<string, WorkflowDef>
 ): IREventHandler[] {
+  const eventScope = hasEventLocals(eventName)
+    ? new Set([...inScope, ...EVENT_LOCAL_IDENTS])
+    : inScope
   const ctx: ResolveCtx = {
     node,
     eventName,
@@ -416,7 +416,7 @@ function resolveActions(
     warnings,
     docStates,
     docStateWrites,
-    inScope,
+    inScope: eventScope,
     docStateReads,
     workflows,
     // Phase 3 §10 v4: the call stack of currently-expanding workflow ids, for
@@ -424,6 +424,10 @@ function resolveActions(
     workflowStack: []
   }
   return resolveBranch(actions, ctx)
+}
+
+function hasEventLocals(eventName: EventName): boolean {
+  return eventName === 'onChange' || eventName === 'onFocus' || eventName === 'onBlur'
 }
 
 /** Phase 3 §10: lower one ActionDef chain into IR handlers, dropping invalid
@@ -459,7 +463,11 @@ function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] 
  *  dropped branches stay unset → byte-identical to a branch-less action. */
 function withResultBranches<
   H extends IRApiCallHandler | IRSupabaseQueryHandler | IRSupabaseMutationHandler
->(handler: H | null, action: { onSuccess?: ActionDef[]; onError?: ActionDef[] }, ctx: ResolveCtx): H | null {
+>(
+  handler: H | null,
+  action: { onSuccess?: ActionDef[]; onError?: ActionDef[] },
+  ctx: ResolveCtx
+): H | null {
   if (!handler) return null
   if (action.onSuccess && action.onSuccess.length > 0) {
     const branch = resolveBranch(action.onSuccess, ctx)
@@ -520,7 +528,9 @@ function expandWorkflow(action: CallWorkflowAction, ctx: ResolveCtx): IREventHan
   ctx.workflowStack.push(id)
   const expanded = resolveBranch(workflow.actions, bodyCtx)
   ctx.workflowStack.pop()
-  return bindings.size === 0 ? expanded : expanded.map((handler) => substituteHandler(handler, bindings))
+  return bindings.size === 0
+    ? expanded
+    : expanded.map((handler) => substituteHandler(handler, bindings))
 }
 
 /** Phase 3 §10 v8: the AST an omitted optional parameter binds to — the literal
@@ -639,7 +649,15 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
         ctx.warnings
       )
     case 'setVariable':
-      return resolveSetVariable(ctx.node, ctx.eventName, action, ctx.states, ctx.docStates, ctx.warnings)
+      return resolveSetVariable(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.warnings
+      )
     case 'apiCall':
       return withResultBranches(
         resolveApiCall(
@@ -779,9 +797,7 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
  * a functional updater body (currently just the formal parameter itself, used
  * only for setState's stateName when relevant).
  */
-function buildValueUpdate(
-  parsed: { ast: ExprAst; references: Set<string> }
-): {
+function buildValueUpdate(parsed: { ast: ExprAst; references: Set<string> }): {
   ast: ExprAst
   references: string[]
   mode: ValueUpdateMode
@@ -851,6 +867,7 @@ function resolveSetVariable(
   eventName: EventName,
   action: Extract<ActionDef, { kind: 'setVariable' }>,
   states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
   docStates: ReadonlyMap<string, IRDocStateDecl>,
   warnings: IRWarning[]
 ): IRSetVariableHandler | null {
@@ -892,7 +909,7 @@ function resolveSetVariable(
   for (const s of states.values()) stateNames.add(s.name)
   const unknown: string[] = []
   for (const ref of refsExcludingPrev) {
-    if (!stateNames.has(ref)) unknown.push(ref)
+    if (!stateNames.has(ref) && !inScope.has(ref)) unknown.push(ref)
   }
   if (unknown.length > 0) {
     warnings.push({
@@ -1008,7 +1025,15 @@ function resolveApiCall(
   const errorTarget =
     action.errorTarget === undefined
       ? undefined
-      : resolveDocStateTarget(node, eventName, 'action-apicall', action.errorTarget, docStates, warnings, false)
+      : resolveDocStateTarget(
+          node,
+          eventName,
+          'action-apicall',
+          action.errorTarget,
+          docStates,
+          warnings,
+          false
+        )
   if (errorTarget === null) return null
   // Phase 2 §4: a docState referenced inside the URL template needs a
   // `useDocState` local on the page.
@@ -1065,7 +1090,18 @@ function resolveNavigate(
       })
       return null
     }
-    if (!checkExprRefs(parsed.references, states, inScope, docStates, node, `${eventName} navigate param "${name}"`, 'action-navigate-param', warnings)) {
+    if (
+      !checkExprRefs(
+        parsed.references,
+        states,
+        inScope,
+        docStates,
+        node,
+        `${eventName} navigate param "${name}"`,
+        'action-navigate-param',
+        warnings
+      )
+    ) {
       return null
     }
     registerDocStateReads(parsed.references, docStates, docStateReads)
@@ -1350,7 +1386,9 @@ export function resolveSupabaseFilters(
       return null
     }
     const refCtx = `${eventName} ${code} filter[${i}]`
-    if (!checkExprRefs(parsed.references, states, inScope, docStates, node, refCtx, code, warnings)) {
+    if (
+      !checkExprRefs(parsed.references, states, inScope, docStates, node, refCtx, code, warnings)
+    ) {
       return null
     }
     registerDocStateReads(parsed.references, docStates, docStateReads)
@@ -1633,7 +1671,16 @@ function resolveSupabaseAuth(
   let passwordAst: ExprAst | undefined
   if (needsEmail) {
     const email = resolveAuthCredential(
-      node, eventName, op, 'email', action.emailExpr, states, inScope, docStates, docStateReads, warnings
+      node,
+      eventName,
+      op,
+      'email',
+      action.emailExpr,
+      states,
+      inScope,
+      docStates,
+      docStateReads,
+      warnings
     )
     if (email === null) return null
     emailAst = email.ast
@@ -1641,7 +1688,16 @@ function resolveSupabaseAuth(
   }
   if (needsPassword) {
     const password = resolveAuthCredential(
-      node, eventName, op, 'password', action.passwordExpr, states, inScope, docStates, docStateReads, warnings
+      node,
+      eventName,
+      op,
+      'password',
+      action.passwordExpr,
+      states,
+      inScope,
+      docStates,
+      docStateReads,
+      warnings
     )
     if (password === null) return null
     passwordAst = password.ast
@@ -1873,4 +1929,3 @@ function resolveOptionalTarget(
   if (name === undefined) return undefined
   return resolveDocStateTarget(node, eventName, code, name, docStates, warnings, false)
 }
-

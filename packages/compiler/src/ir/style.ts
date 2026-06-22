@@ -1,4 +1,5 @@
 import {
+  collectLayoutPrimitiveClasses,
   collectResponsiveTailwindClasses,
   collectStateTailwindClasses,
   collectTailwindClasses
@@ -75,6 +76,12 @@ export function tailwindClassName(node: SceneNode, graph: SceneGraph): string {
   // SceneNode → Tailwind translation), appended after the base/responsive styling.
   const states = collectStateTailwindClasses(node, graph).join(' ')
   if (states !== '') combined = combined === '' ? states : `${combined} ${states}`
+  // §26 layout primitives ride interactiveProps.layout and append after base /
+  // responsive / state classes so author intent wins for positioning layers.
+  const layoutPrimitives = collectLayoutPrimitiveClasses(node).join(' ')
+  if (layoutPrimitives !== '') {
+    combined = combined === '' ? layoutPrimitives : `${combined} ${layoutPrimitives}`
+  }
   // §8 v7: a node hidden via an instance `:visible` override → `hidden`.
   // `collectTailwindClasses` ignores `visible` (it's structural, not style), and
   // base-hidden nodes are skipped before emit, so this only fires for an

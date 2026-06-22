@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
 import type {
   ActionDef,
@@ -8,16 +9,14 @@ import type {
   StateDef
 } from '@open-pencil/core/scene-graph'
 
-import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
-
 /**
  * Phase 3 §3.x — INPUT controlled-input wiring via `bindings.value`. When a
  * string-typed docState or page-state is referenced through `value`, the
  * collector sets `IRElement.controlled` so the adapter emits a two-way bound
  * input (`value={read}` + synthesized `onChange` writer). Unsupported kinds
- * and non-string state types warn and fall back to uncontrolled emit; a
- * user-defined onChange on a controlled INPUT is dropped with a conflict
- * warning so the synthesized writer stays the single source of truth.
+ * and non-string state types warn and fall back to uncontrolled emit. Since
+ * Phase 4 §28, a user-defined onChange on a controlled INPUT is preserved and
+ * composed after the synthesized writer by the React adapter.
  */
 describe('INPUT bindings.value — controlled input (Phase 3 §3.x)', () => {
   function makeInput(opts: {
@@ -118,9 +117,7 @@ describe('INPUT bindings.value — controlled input (Phase 3 §3.x)', () => {
     expect(input.controlled).toBeUndefined()
     // Uncontrolled defaultValue from interactiveProps still survives.
     expect(input.attrs.placeholder).toBe('Enter text')
-    expect(
-      ir.warnings.some((w) => w.code === 'binding-value-unsupported-kind')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'binding-value-unsupported-kind')).toBe(true)
   })
 
   test('docState boolean type → warn binding-value-bad-state-type, fallback uncontrolled', () => {
@@ -132,16 +129,14 @@ describe('INPUT bindings.value — controlled input (Phase 3 §3.x)', () => {
     const input = ir.children[0]
     if (input.kind !== 'element') throw new Error('expected element')
     expect(input.controlled).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'binding-value-bad-state-type')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'binding-value-bad-state-type')).toBe(true)
     // Rejected docState must NOT register as a read/write — the binding is
     // dropped at collect time so no `useDocState` should be emitted for it.
     expect(ir.docStateReads).toEqual([])
     expect(ir.docStateWrites).toEqual([])
   })
 
-  test('controlled + user-defined onChange → drop onChange with conflict warning', () => {
+  test('controlled + user-defined onChange → preserve onChange for adapter composition', () => {
     const { graph, pageId } = makeInput({
       docStates: [
         { id: 'd1', name: 'formId', type: 'string', defaultValue: '' },
@@ -158,11 +153,7 @@ describe('INPUT bindings.value — controlled input (Phase 3 §3.x)', () => {
     const input = ir.children[0]
     if (input.kind !== 'element') throw new Error('expected element')
     expect(input.controlled).toBeDefined()
-    // The user onChange is dropped — events should not include onChange, and
-    // if no other events were on the node, the events field is omitted.
-    expect(input.events?.onChange).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'input-controlled-onchange-conflict')
-    ).toBe(true)
+    expect(input.events?.onChange?.[0]?.kind).toBe('setVariable')
+    expect(ir.warnings).toEqual([])
   })
 })

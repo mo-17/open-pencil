@@ -1,5 +1,3 @@
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type {
   IRApiCallHandler,
   IRConfirmHandler,
@@ -11,6 +9,9 @@ import type {
   IRSupabaseQueryHandler,
   IRToastHandler
 } from '#compiler/ir/types'
+
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
+import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
 import { setterName } from './state'
 
@@ -62,6 +63,11 @@ function handlersAreAsync(handlers: IREventHandler[]): boolean {
   })
 }
 
+interface EmitEventHandlerOptions {
+  eventLocals?: boolean
+  prelude?: string[]
+}
+
 /**
  * Render an event's handlers as a single arrow function body suitable for the
  * RHS of a JSX prop, e.g. `() => { setCount(count + 1) }`. The opening brace
@@ -72,12 +78,23 @@ function handlersAreAsync(handlers: IREventHandler[]): boolean {
  * `supabaseQuery` / `supabaseMutation`. Phase 3 §10: `delay` awaits and
  * `condition` is async whenever a nested branch awaits.
  */
-export function emitEventHandler(handlers: IREventHandler[]): string {
-  const arrow = handlersAreAsync(handlers) ? 'async () =>' : '() =>'
-  if (handlers.length === 1 && SIMPLE_STATEMENT_KINDS.has(handlers[0].kind)) {
+export function emitEventHandler(
+  handlers: IREventHandler[],
+  options: EmitEventHandlerOptions = {}
+): string {
+  const prelude = options.prelude ?? []
+  const needsEventArg = options.eventLocals || prelude.length > 0
+  const params = needsEventArg ? '(e)' : '()'
+  const arrow = handlersAreAsync(handlers) ? `async ${params} =>` : `${params} =>`
+  if (!needsEventArg && handlers.length === 1 && SIMPLE_STATEMENT_KINDS.has(handlers[0].kind)) {
     return `${arrow} ${emitHandlerStatement(handlers[0])}`
   }
-  return `${arrow} { ${emitStatementList(handlers)} }`
+  const locals = options.eventLocals
+    ? 'const $event = e; const $value = (e.target as HTMLInputElement).value;'
+    : ''
+  const prefix = prelude.map((stmt) => `${stmt};`).join(' ')
+  const body = [locals, prefix, emitStatementList(handlers)].filter(Boolean).join(' ')
+  return `${arrow} { ${body} }`
 }
 
 /** Phase 4 §19: a `<form>`'s onSubmit when it has validated descendant fields —
@@ -100,7 +117,9 @@ export function emitFormSubmitHandler(
  *  the top-level body and `condition`'s nested `then` / `else` branches. */
 function emitStatementList(handlers: IREventHandler[]): string {
   return handlers
-    .map((h) => (NEEDS_SEMICOLON.has(h.kind) ? `${emitHandlerStatement(h)};` : emitHandlerStatement(h)))
+    .map((h) =>
+      NEEDS_SEMICOLON.has(h.kind) ? `${emitHandlerStatement(h)};` : emitHandlerStatement(h)
+    )
     .join(' ')
 }
 
@@ -316,9 +335,7 @@ function emitSupabaseMutation(h: IRSupabaseMutationHandler): string {
  *  reset email links back to wherever the app is served. `errorTarget`, when
  *  set, captures the auth error. */
 function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
-  const errorWrite = h.errorTarget
-    ? `setDocState(${JSON.stringify(h.errorTarget)}, error); `
-    : ''
+  const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, error); ` : ''
   const call = emitAuthCall(h)
   return (
     `try { ` +
@@ -380,9 +397,7 @@ function wrapAsyncResult(
   onSuccess?: IREventHandler[],
   onError?: IREventHandler[]
 ): string {
-  const errorWrite = errorTarget
-    ? `setDocState(${JSON.stringify(errorTarget)}, error); `
-    : ''
+  const errorWrite = errorTarget ? `setDocState(${JSON.stringify(errorTarget)}, error); ` : ''
   // Phase 3 §10 v9: append onError to the error arm, onSuccess to the success
   // arm — both run where `data` / `error` are fresh locals. Branch-less +
   // capture-less stays byte-identical to the §2 output.
@@ -399,4 +414,3 @@ function wrapAsyncResult(
     ` } catch (err) { console.error("supabase request threw:", err) }`
   )
 }
-

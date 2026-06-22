@@ -59,9 +59,7 @@ type BindingKind = BindingExpr['kind']
 type FilterOp = 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'in'
 import { defineTool, type ToolCtx } from '#core/tools/schema'
 
-type ModifyResult<T = undefined> =
-  | { ok: true; data?: T }
-  | { ok: false; error: string }
+type ModifyResult<T = undefined> = { ok: true; data?: T } | { ok: false; error: string }
 
 const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'setState',
@@ -102,16 +100,7 @@ const KNOWN_EVENT_NAMES = new Set<EventName>([
   'onBlur'
 ])
 
-const KNOWN_FILTER_OPS = new Set<FilterOp>([
-  'eq',
-  'neq',
-  'gt',
-  'gte',
-  'lt',
-  'lte',
-  'like',
-  'in'
-])
+const KNOWN_FILTER_OPS = new Set<FilterOp>(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'])
 
 const KNOWN_MUTATION_OPS = new Set<string>(['insert', 'upsert', 'update', 'delete'])
 
@@ -136,7 +125,10 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-function parseJson(src: string, what: string): { ok: true; value: unknown } | { ok: false; error: string } {
+function parseJson(
+  src: string,
+  what: string
+): { ok: true; value: unknown } | { ok: false; error: string } {
   try {
     return { ok: true, value: JSON.parse(src) }
   } catch (err) {
@@ -147,7 +139,10 @@ function parseJson(src: string, what: string): { ok: true; value: unknown } | { 
   }
 }
 
-function validateBindingExpr(channel: string, value: unknown): { ok: true; binding: BindingExpr } | { ok: false; error: string } {
+function validateBindingExpr(
+  channel: string,
+  value: unknown
+): { ok: true; binding: BindingExpr } | { ok: false; error: string } {
   if (!isPlainObject(value)) {
     return { ok: false, error: `bindings.${channel} must be an object` }
   }
@@ -362,9 +357,13 @@ function validateNavigateAction(
   }
   for (const [name, expr] of Object.entries(value.params)) {
     if (!PARAM_NAME_RE.test(name)) {
-      return failAt(`${where}.params`, `param name "${name}" must be a valid identifier (fills a :segment)`)
+      return failAt(
+        `${where}.params`,
+        `param name "${name}" must be a valid identifier (fills a :segment)`
+      )
     }
-    if (typeof expr !== 'string') return failAt(`${where}.params.${name}`, 'must be a string expression')
+    if (typeof expr !== 'string')
+      return failAt(`${where}.params.${name}`, 'must be a string expression')
     const r = validateExpression(expr)
     if (!r.ok) return failAt(`${where}.params.${name}`, `— ${r.reason}`)
   }
@@ -388,7 +387,8 @@ function validateCallWorkflowAction(
       return failAt(`${where}.args`, 'must be an object of { param: expressionString }')
     }
     for (const [param, expr] of Object.entries(value.args)) {
-      if (typeof expr !== 'string') return failAt(`${where}.args.${param}`, 'must be a string expression')
+      if (typeof expr !== 'string')
+        return failAt(`${where}.args.${param}`, 'must be a string expression')
     }
   }
   return { ok: true }
@@ -400,7 +400,9 @@ function validateCallWorkflowAction(
 function validateActionBranches(
   where: string,
   value: Record<string, unknown>
-): { ok: true; consequent: ActionDef[]; alternate: ActionDef[] | undefined } | { ok: false; error: string } {
+):
+  | { ok: true; consequent: ActionDef[]; alternate: ActionDef[] | undefined }
+  | { ok: false; error: string } {
   const consequentR = validateActionArray(`${where}.consequent`, value.consequent, true)
   if (!consequentR.ok) return consequentR
   let alternate: ActionDef[] | undefined
@@ -537,7 +539,10 @@ function validateApiCallAction(
 /** Phase 3 §10 v9: re-derive a validated result-branch array for building (the
  *  shape was already checked in `validateResultBranches`, so this never errors;
  *  undefined → branch absent). */
-function builtBranch(value: Record<string, unknown>, key: 'onSuccess' | 'onError'): ActionDef[] | undefined {
+function builtBranch(
+  value: Record<string, unknown>,
+  key: 'onSuccess' | 'onError'
+): ActionDef[] | undefined {
   if (value[key] === undefined) return undefined
   const r = validateActionArray(key, value[key], false)
   return r.ok ? r.actions : undefined
@@ -656,9 +661,7 @@ function buildActionFromValidated(
         kind,
         operation: raw.operation as 'insert' | 'update' | 'delete' | 'upsert',
         table: raw.table as string,
-        payloadJson: normalizeSupabaseMutationPayloadJson(
-          raw.payloadJson as string | undefined
-        ),
+        payloadJson: normalizeSupabaseMutationPayloadJson(raw.payloadJson as string | undefined),
         payloadEntries: raw.payloadEntries as SupabasePayloadEntry[] | undefined,
         filters: raw.filters as SupabaseFilter[] | undefined,
         resultTarget: raw.resultTarget as string | undefined,
@@ -788,7 +791,9 @@ function validateStateDecls(
   return { ok: true, decls }
 }
 
-function validateRenderCondition(value: unknown): { ok: true; expr: string } | { ok: false; error: string } {
+function validateRenderCondition(
+  value: unknown
+): { ok: true; expr: string } | { ok: false; error: string } {
   if (typeof value !== 'string') return { ok: false, error: 'renderCondition must be a string' }
   if (value === '') return { ok: true, expr: '' }
   const r = validateExpression(value)
@@ -854,7 +859,10 @@ function applyEventsField(raw: Record<string, unknown>, patch: Partial<SceneNode
   return { ok: true }
 }
 
-function applyInteractivePropsField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
+function applyInteractivePropsField(
+  raw: Record<string, unknown>,
+  patch: Partial<SceneNode>
+): FieldResult {
   if (!('interactiveProps' in raw)) return { ok: true }
   if (raw.interactiveProps === null) {
     patch.interactiveProps = undefined
@@ -865,7 +873,10 @@ function applyInteractivePropsField(raw: Record<string, unknown>, patch: Partial
   return { ok: true }
 }
 
-function applyRenderConditionField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
+function applyRenderConditionField(
+  raw: Record<string, unknown>,
+  patch: Partial<SceneNode>
+): FieldResult {
   if (!('renderCondition' in raw)) return { ok: true }
   if (raw.renderCondition === null) {
     patch.renderCondition = undefined
@@ -908,7 +919,10 @@ function parseSupabaseConfig(
   return { ok: true, config }
 }
 
-function applySupabaseConfigField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
+function applySupabaseConfigField(
+  raw: Record<string, unknown>,
+  patch: Partial<SceneNode>
+): FieldResult {
   if (!('lowcodeSupabaseConfig' in raw)) return { ok: true }
   if (raw.lowcodeSupabaseConfig === null) {
     patch.lowcodeSupabaseConfig = undefined
@@ -1030,7 +1044,7 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
-    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object) and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is dropped (with an `input-controlled-onchange-conflict` warning) so the synthesized writer stays the single source of truth. This is the only path for capturing runtime input values into state today — other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) have no controlled binding yet. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id'`, declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
+    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object) and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id'`, declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },
     patch_json: {
@@ -1058,7 +1072,7 @@ export const setDocStates = defineTool({
   name: 'set_doc_states',
   mutates: true,
   description:
-    "Replace the root node's lowcodeDocumentState array wholesale. Pass the FULL list — entries omitted from the JSON are deleted (decision §3.2 #b: no per-entry diff in MVP; preserve existing entries by including them again). Each entry needs {id, name, type, defaultValue}; name goes through validateStateName which rejects empty / non-identifier / $-prefixed names ($currentUser etc. are reserved). Type is one of string / number / boolean / array / object. Duplicate names or duplicate ids are rejected. Example: set_doc_states({ states_json: '[{\"id\":\"d-1\",\"name\":\"count\",\"type\":\"number\",\"defaultValue\":0},{\"id\":\"d-2\",\"name\":\"items\",\"type\":\"array\",\"defaultValue\":[]}]' }) → { ok: true, data: { count: 2 } }. Clear all with states_json: '[]'.",
+    'Replace the root node\'s lowcodeDocumentState array wholesale. Pass the FULL list — entries omitted from the JSON are deleted (decision §3.2 #b: no per-entry diff in MVP; preserve existing entries by including them again). Each entry needs {id, name, type, defaultValue}; name goes through validateStateName which rejects empty / non-identifier / $-prefixed names ($currentUser etc. are reserved). Type is one of string / number / boolean / array / object. Duplicate names or duplicate ids are rejected. Example: set_doc_states({ states_json: \'[{"id":"d-1","name":"count","type":"number","defaultValue":0},{"id":"d-2","name":"items","type":"array","defaultValue":[]}]\' }) → { ok: true, data: { count: 2 } }. Clear all with states_json: \'[]\'.',
   params: {
     states_json: {
       type: 'string',
@@ -1088,12 +1102,11 @@ export const setSupabaseConfig = defineTool({
   name: 'set_supabase_config',
   mutates: true,
   description:
-    "Replace the root node's lowcodeSupabaseConfig wholesale. Pass JSON `null` (literal string \"null\") to clear the config entirely (decision §3.2 #d). Otherwise pass {url, anonKey, schema?} — anonKey MUST be the anon (public) key; a service_role JWT is hard-rejected at this tool boundary, never persists (decision §3.2 #h, mirrors SupabaseConfigPanel.vue rejection logic via shared validateSupabaseConfig). url must start with http:// or https://. Example: set_supabase_config({ config_json: '{\"url\":\"https://abc.supabase.co\",\"anonKey\":\"eyJ.anon.signature\"}' }) → { ok: true, data: { cleared: false } }. Clear example: set_supabase_config({ config_json: 'null' }) → { ok: true, data: { cleared: true } }.",
+    'Replace the root node\'s lowcodeSupabaseConfig wholesale. Pass JSON `null` (literal string "null") to clear the config entirely (decision §3.2 #d). Otherwise pass {url, anonKey, schema?} — anonKey MUST be the anon (public) key; a service_role JWT is hard-rejected at this tool boundary, never persists (decision §3.2 #h, mirrors SupabaseConfigPanel.vue rejection logic via shared validateSupabaseConfig). url must start with http:// or https://. Example: set_supabase_config({ config_json: \'{"url":"https://abc.supabase.co","anonKey":"eyJ.anon.signature"}\' }) → { ok: true, data: { cleared: false } }. Clear example: set_supabase_config({ config_json: \'null\' }) → { ok: true, data: { cleared: true } }.',
   params: {
     config_json: {
       type: 'string',
-      description:
-        'JSON object {url, anonKey, schema?} OR the literal string "null" to clear.',
+      description: 'JSON object {url, anonKey, schema?} OR the literal string "null" to clear.',
       required: true
     }
   },
@@ -1156,7 +1169,7 @@ export const setTranslations = defineTool({
   name: 'set_translations',
   mutates: true,
   description:
-    "Replace the root node's lowcodeTranslations catalog wholesale (Phase 3 §9 v7). Pass the FULL catalog — locales / entries omitted from the JSON are deleted (no per-entry diff; include existing entries again to preserve them). Pass the literal string \"null\" or '{}' to clear all translations. Shape: { <localeCode>: { <sourceMessage>: <translatedString> } } — keyed by the SOURCE message string (the visible canvas text / ICU canonical message the builder authored, NOT the compiler's content-hash id). The compiler pre-fills each target `src/locales/<locale>.json` from this; a missing entry falls back to the source string (so the app always renders). Authoring a translation for a locale auto-emits that locale's JSON + registers it in the i18n runtime + LocaleSwitcher even if it is not listed in CompilerOptions.locales. Only consulted when the compile runs with i18n enabled. Every locale code must be a non-empty string and every translated value must be a string; malformed input is rejected (no silent drops). One call → one undo entry. Example: set_translations({ translations_json: '{\"fr\":{\"Submit\":\"Envoyer\",\"Welcome, {name}!\":\"Bienvenue, {name} !\"}}' }) → { ok: true, data: { locales: 1, entries: 2 } }. Clear example: set_translations({ translations_json: 'null' }) → { ok: true, data: { locales: 0, entries: 0 } }.",
+    'Replace the root node\'s lowcodeTranslations catalog wholesale (Phase 3 §9 v7). Pass the FULL catalog — locales / entries omitted from the JSON are deleted (no per-entry diff; include existing entries again to preserve them). Pass the literal string "null" or \'{}\' to clear all translations. Shape: { <localeCode>: { <sourceMessage>: <translatedString> } } — keyed by the SOURCE message string (the visible canvas text / ICU canonical message the builder authored, NOT the compiler\'s content-hash id). The compiler pre-fills each target `src/locales/<locale>.json` from this; a missing entry falls back to the source string (so the app always renders). Authoring a translation for a locale auto-emits that locale\'s JSON + registers it in the i18n runtime + LocaleSwitcher even if it is not listed in CompilerOptions.locales. Only consulted when the compile runs with i18n enabled. Every locale code must be a non-empty string and every translated value must be a string; malformed input is rejected (no silent drops). One call → one undo entry. Example: set_translations({ translations_json: \'{"fr":{"Submit":"Envoyer","Welcome, {name}!":"Bienvenue, {name} !"}}\' }) → { ok: true, data: { locales: 1, entries: 2 } }. Clear example: set_translations({ translations_json: \'null\' }) → { ok: true, data: { locales: 0, entries: 0 } }.',
   params: {
     translations_json: {
       type: 'string',
@@ -1219,7 +1232,10 @@ function validateWorkflowParams(
   for (let j = 0; j < raw.length; j++) {
     const p = raw[j]
     if (typeof p !== 'string' || !PARAM_NAME_RE.test(p)) {
-      return failAt(`${where}[${j}]`, 'must be a valid identifier (letters/digits/underscore, not starting with a digit or $)')
+      return failAt(
+        `${where}[${j}]`,
+        'must be a valid identifier (letters/digits/underscore, not starting with a digit or $)'
+      )
     }
     if (seen.has(p)) return failAt(`${where}[${j}]`, `parameter "${p}" is duplicated`)
     seen.add(p)
@@ -1239,7 +1255,8 @@ function validateWorkflowParamDefaults(
   params: readonly string[]
 ): { ok: true; paramDefaults: Record<string, string> | undefined } | { ok: false; error: string } {
   if (raw === undefined) return { ok: true, paramDefaults: undefined }
-  if (!isPlainObject(raw)) return failAt(where, 'must be an object mapping parameter names to default expression strings')
+  if (!isPlainObject(raw))
+    return failAt(where, 'must be an object mapping parameter names to default expression strings')
   const paramDefaults: Record<string, string> = {}
   for (const key of Object.keys(raw)) {
     if (!params.includes(key)) {
@@ -1290,14 +1307,23 @@ function validateWorkflows(
     const wf = raw[i]
     const where = `${what}[${i}]`
     if (!isPlainObject(wf)) return failAt(where, 'must be an object')
-    if (typeof wf.id !== 'string' || wf.id === '') return failAt(where, '.id must be a non-empty string')
+    if (typeof wf.id !== 'string' || wf.id === '')
+      return failAt(where, '.id must be a non-empty string')
     if (seenIds.has(wf.id)) return failAt(where, `.id "${wf.id}" is duplicated`)
     if (typeof wf.name !== 'string') return failAt(where, '.name must be a string')
     const paramsR = validateWorkflowParams(`${where}.params`, wf.params)
     if (!paramsR.ok) return paramsR
-    const defaultsR = validateWorkflowParamDefaults(`${where}.paramDefaults`, wf.paramDefaults, paramsR.params ?? [])
+    const defaultsR = validateWorkflowParamDefaults(
+      `${where}.paramDefaults`,
+      wf.paramDefaults,
+      paramsR.params ?? []
+    )
     if (!defaultsR.ok) return defaultsR
-    const optionalR = validateWorkflowOptionalParams(`${where}.optionalParams`, wf.optionalParams, paramsR.params ?? [])
+    const optionalR = validateWorkflowOptionalParams(
+      `${where}.optionalParams`,
+      wf.optionalParams,
+      paramsR.params ?? []
+    )
     if (!optionalR.ok) return optionalR
     const actionsR = validateActionArray(`${where}.actions`, wf.actions, true)
     if (!actionsR.ok) return actionsR
@@ -1318,7 +1344,7 @@ export const setWorkflows = defineTool({
   name: 'set_workflows',
   mutates: true,
   description:
-    "Replace the root node's lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node's event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component's scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string \"null\" or '[]' to clear all workflows. Shape: [{ id, name, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow's expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, optionalParams (Phase 3 §10 v8, optional) is an array of declared parameter names that may be omitted even without a default (each resolves to the literal `undefined` in the body rather than dropping the call), and actions is an ActionDef array (same shape as a node's event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: '[{\"id\":\"wf-notify\",\"name\":\"Notify\",\"params\":[\"msg\"],\"actions\":[{\"id\":\"a1\",\"kind\":\"toast\",\"messageExpr\":\"msg\",\"variant\":\"success\"}]}]' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: 'null' }) → { ok: true, data: { workflows: 0, actions: 0 } }.",
+    'Replace the root node\'s lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node\'s event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component\'s scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string "null" or \'[]\' to clear all workflows. Shape: [{ id, name, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow\'s expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, optionalParams (Phase 3 §10 v8, optional) is an array of declared parameter names that may be omitted even without a default (each resolves to the literal `undefined` in the body rather than dropping the call), and actions is an ActionDef array (same shape as a node\'s event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: \'[{"id":"wf-notify","name":"Notify","params":["msg"],"actions":[{"id":"a1","kind":"toast","messageExpr":"msg","variant":"success"}]}]\' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: \'null\' }) → { ok: true, data: { workflows: 0, actions: 0 } }.',
   params: {
     workflows_json: {
       type: 'string',

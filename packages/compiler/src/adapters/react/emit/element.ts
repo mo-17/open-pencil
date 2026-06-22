@@ -329,14 +329,8 @@ function formatAttrs(
   link?: IRLink
 ): string {
   const parts: string[] = []
-  // Phase 3 §8 v3: a component-body child whose className is parameterized
-  // emits `className={prop}`; otherwise the static class string. Phase 3 §8 v5:
-  // inside a COMPONENT_SET variant subtree the prop spans variants with
-  // different static defaults → `className={prop ?? "thisVariantsClasses"}`.
-  if (classNameProp && classNamePropFallback) {
-    parts.push(`className={${classNameProp} ?? "${escapeAttr(className)}"}`)
-  } else if (classNameProp) parts.push(`className={${classNameProp}}`)
-  else if (className) parts.push(`className="${escapeAttr(className)}"`)
+  const classAttr = classNameAttr(className, classNameProp, classNamePropFallback)
+  if (classAttr) parts.push(classAttr)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
   for (const [key, value] of Object.entries(attrs)) {
     parts.push(formatAttr(key, value))
@@ -349,49 +343,136 @@ function formatAttrs(
   if (image) parts.push(...imageAttrParts(image))
   // §25: a linked element emits `<a href target rel>` attrs.
   if (link) parts.push(...linkAttrParts(link))
-  if (controlled) {
-    // §3.v4 dispatch:
-    //  - type="radio" → per-option `checked={read === <opt>}` (the IR collect
-    //    pass copies the parent's controlled descriptor onto each radio child
-    //    so formatAttrs sees it at the leaf)
-    //  - type="checkbox" + targetType=array → group/multi-select: per-option
-    //    `checked={read.includes(<opt>)}` + onChange toggles `<opt>` in/out
-    //    of the array (§3.v4 step 8 CHECKBOX group)
-    //  - targetType=boolean (CHECKBOX single / SWITCH) → `checked={read}` +
-    //    e.target.checked
-    //  - text-like (string / number; INPUT/TEXTAREA/SELECT/DATEPICKER) →
-    //    `value={read}` + e.target.value (number wraps in Number(...) + sets
-    //    type="number" when not already set)
-    if (attrs.type === 'radio') {
-      const optValue = typeof attrs.value === 'string' ? attrs.value : ''
-      parts.push(`checked={${controlled.read} === ${JSON.stringify(optValue)}}`)
-      parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
-    } else if (attrs.type === 'checkbox' && controlled.write.targetType === 'array') {
-      const optValue = typeof attrs.value === 'string' ? attrs.value : ''
-      const literal = JSON.stringify(optValue)
-      parts.push(`checked={${controlled.read}.includes(${literal})}`)
-      parts.push(`onChange={(e) => ${arrayCheckboxOnChangeBody(controlled, literal)}}`)
-    } else if (controlled.write.targetType === 'boolean') {
-      parts.push(`checked={${controlled.read}}`)
-      parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
-    } else {
-      if (controlled.write.targetType === 'number' && !('type' in attrs)) {
-        parts.push('type="number"')
-      }
-      parts.push(`value={${controlled.read}}`)
-      parts.push(`onChange={(e) => ${controlledOnChangeBody(controlled)}}`)
-    }
-  }
+  if (controlled) parts.push(...controlledAttrParts(controlled, attrs, events?.onChange))
   // §19: a validated field gets `aria-invalid` + an `onBlur` that validates it.
-  if (validationKey !== undefined) parts.push(...validationFieldParts(validationKey))
-  parts.push(...eventAttrParts(events, formValidationKeys))
+  if (validationKey !== undefined)
+    parts.push(...validationFieldParts(validationKey, events?.onBlur))
+  parts.push(
+    ...eventAttrParts(events, formValidationKeys, {
+      skip: eventSkipSet(controlled, validationKey)
+    })
+  )
   return parts.join(' ')
 }
 
+function classNameAttr(
+  className: string,
+  classNameProp: string | undefined,
+  classNamePropFallback: boolean | undefined
+): string | undefined {
+  // Phase 3 §8 v3: a component-body child whose className is parameterized
+  // emits `className={prop}`; otherwise the static class string. Phase 3 §8 v5:
+  // inside a COMPONENT_SET variant subtree the prop spans variants with
+  // different static defaults → `className={prop ?? "thisVariantsClasses"}`.
+  if (classNameProp && classNamePropFallback) {
+    return `className={${classNameProp} ?? "${escapeAttr(className)}"}`
+  }
+  if (classNameProp) return `className={${classNameProp}}`
+  if (className) return `className="${escapeAttr(className)}"`
+  return undefined
+}
+
+function eventSkipSet(
+  controlled: IRControlledInput | undefined,
+  validationKey: string | undefined
+): ReadonlySet<IREventName> {
+  const skip = new Set<IREventName>()
+  if (controlled) skip.add('onChange')
+  if (validationKey !== undefined) skip.add('onBlur')
+  return skip
+}
+
+function controlledAttrParts(
+  controlled: IRControlledInput,
+  attrs: Record<string, IRAttrValue>,
+  onChangeHandlers: IREventHandler[] | undefined
+): string[] {
+  // §3.v4 dispatch:
+  //  - type="radio" → per-option `checked={read === <opt>}`.
+  //  - type="checkbox" + targetType=array → group/multi-select.
+  //  - targetType=boolean → `checked={read}` + e.target.checked.
+  //  - text-like → `value={read}` + e.target.value.
+  if (attrs.type === 'radio') {
+    return controlledRadioAttrParts(controlled, attrs, onChangeHandlers)
+  }
+  if (attrs.type === 'checkbox' && controlled.write.targetType === 'array') {
+    return controlledCheckboxGroupAttrParts(controlled, attrs, onChangeHandlers)
+  }
+  if (controlled.write.targetType === 'boolean') {
+    return [
+      `checked={${controlled.read}}`,
+      controlledOnChangeAttr(
+        controlled,
+        controlledEventValue(controlled.write.targetType),
+        onChangeHandlers
+      )
+    ]
+  }
+  return controlledValueAttrParts(controlled, attrs, onChangeHandlers)
+}
+
+function controlledRadioAttrParts(
+  controlled: IRControlledInput,
+  attrs: Record<string, IRAttrValue>,
+  onChangeHandlers: IREventHandler[] | undefined
+): string[] {
+  const optValue = typeof attrs.value === 'string' ? attrs.value : ''
+  return [
+    `checked={${controlled.read} === ${JSON.stringify(optValue)}}`,
+    controlledOnChangeAttr(
+      controlled,
+      controlledEventValue(controlled.write.targetType),
+      onChangeHandlers
+    )
+  ]
+}
+
+function controlledCheckboxGroupAttrParts(
+  controlled: IRControlledInput,
+  attrs: Record<string, IRAttrValue>,
+  onChangeHandlers: IREventHandler[] | undefined
+): string[] {
+  const optValue = typeof attrs.value === 'string' ? attrs.value : ''
+  const literal = JSON.stringify(optValue)
+  return [
+    `checked={${controlled.read}.includes(${literal})}`,
+    controlledOnChangeAttr(
+      controlled,
+      `e.target.checked ? [...${controlled.read}, ${literal}] : ${controlled.read}.filter((v) => v !== ${literal})`,
+      onChangeHandlers
+    )
+  ]
+}
+
+function controlledValueAttrParts(
+  controlled: IRControlledInput,
+  attrs: Record<string, IRAttrValue>,
+  onChangeHandlers: IREventHandler[] | undefined
+): string[] {
+  const parts: string[] = []
+  if (controlled.write.targetType === 'number' && !('type' in attrs)) {
+    parts.push('type="number"')
+  }
+  parts.push(`value={${controlled.read}}`)
+  parts.push(
+    controlledOnChangeAttr(
+      controlled,
+      controlledEventValue(controlled.write.targetType),
+      onChangeHandlers
+    )
+  )
+  return parts
+}
+
 /** Phase 4 §19: a validated field's `aria-invalid` + validate-on-blur attrs. */
-function validationFieldParts(key: string): string[] {
+function validationFieldParts(key: string, handlers: IREventHandler[] | undefined): string[] {
   const k = JSON.stringify(key)
-  return [`aria-invalid={__fieldErrors[${k}] != null}`, `onBlur={() => __validateField(${k})}`]
+  const validate = `__validateField(${k})`
+  const onBlur =
+    handlers && handlers.length > 0
+      ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate] })}}`
+      : `onBlur={() => ${validate}}`
+  return [`aria-invalid={__fieldErrors[${k}] != null}`, onBlur]
 }
 
 /** The event-handler attrs. Phase 4 §19: when `formValidationKeys` is set (a
@@ -400,21 +481,27 @@ function validationFieldParts(key: string): string[] {
  *  onSubmit. Other events pass through unchanged. */
 function eventAttrParts(
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
-  formValidationKeys: readonly string[] | undefined
+  formValidationKeys: readonly string[] | undefined,
+  options: { skip?: ReadonlySet<IREventName> } = {}
 ): string[] {
   const parts: string[] = []
   if (events) {
     for (const [name, handlers] of Object.entries(events) as [IREventName, IREventHandler[]][]) {
       if (handlers.length === 0) continue
+      if (options.skip?.has(name)) continue
       // The wrapped onSubmit is emitted below from the same handlers.
       if (name === 'onSubmit' && formValidationKeys) continue
-      parts.push(`${name}={${emitEventHandler(handlers)}}`)
+      parts.push(`${name}={${emitEventHandler(handlers, eventHandlerOptions(name))}}`)
     }
   }
   if (formValidationKeys) {
     parts.push(`onSubmit={${emitFormSubmitHandler(events?.onSubmit ?? [], formValidationKeys)}}`)
   }
   return parts
+}
+
+function eventHandlerOptions(name: IREventName): { eventLocals?: boolean } {
+  return name === 'onChange' || name === 'onFocus' || name === 'onBlur' ? { eventLocals: true } : {}
 }
 
 /** Phase 4 §24.1: the JSX attrs for an image node — `src` (a literal URL or a
@@ -479,10 +566,14 @@ function emitUploadHandler(u: IRUpload): string {
  *  `Number(e.target.value)` (number targets). docState writes go through
  *  the lowcode runtime `setDocState('name', value)`; page-state writes go
  *  through the `useState` setter `setName(value)`. */
-function controlledOnChangeBody(c: IRControlledInput): string {
-  // §3.v4: boolean writes the `checked` value of the event target; number
-  // wraps `value` in Number(...); string passes value through unchanged.
-  return controlledWriteCall(c, controlledEventValue(c.write.targetType))
+function controlledOnChangeAttr(
+  c: IRControlledInput,
+  valueExpr: string,
+  handlers: IREventHandler[] | undefined
+): string {
+  const write = controlledWriteCall(c, valueExpr)
+  if (!handlers || handlers.length === 0) return `onChange={(e) => ${write}}`
+  return `onChange={${emitEventHandler(handlers, { eventLocals: true, prelude: [write] })}}`
 }
 
 /** Phase 3 §3.x / §15 Phase B — the writer call for a controlled input: a
@@ -501,15 +592,6 @@ function controlledEventValue(targetType: IRControlledInput['write']['targetType
   if (targetType === 'boolean') return 'e.target.checked'
   if (targetType === 'number') return 'Number(e.target.value)'
   return 'e.target.value'
-}
-
-/** §3.v4 step 8: CHECKBOX group writer body. Toggles `optLiteral` in or
- *  out of the bound array depending on `e.target.checked`. Uses spread +
- *  filter rather than mutation so React sees a fresh reference and
- *  re-renders. */
-function arrayCheckboxOnChangeBody(c: IRControlledInput, optLiteral: string): string {
-  const next = `e.target.checked ? [...${c.read}, ${optLiteral}] : ${c.read}.filter((v) => v !== ${optLiteral})`
-  return controlledWriteCall(c, next)
 }
 
 function formatAttr(key: string, value: IRAttrValue): string {

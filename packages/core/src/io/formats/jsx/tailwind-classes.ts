@@ -297,7 +297,8 @@ function collectShapeExtraClasses(node: SceneNode): string[] {
 function collectGradientClasses(node: SceneNode): string[] {
   if (node.type === 'TEXT') return []
   const fill = node.fills.find(
-    (f) => f.visible && f.opacity > 0 && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL')
+    (f) =>
+      f.visible && f.opacity > 0 && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL')
   )
   if (!fill) return []
   const css = gradientCss(fill, node.width, node.height)
@@ -459,6 +460,91 @@ export function collectStateTailwindClasses(node: SceneNode, graph: SceneGraph):
   )
 }
 
+interface LayoutPrimitiveConfig {
+  position?: unknown
+  top?: unknown
+  right?: unknown
+  bottom?: unknown
+  left?: unknown
+  inset?: unknown
+  overflow?: unknown
+  overflowX?: unknown
+  overflowY?: unknown
+  zIndex?: unknown
+}
+
+const LAYOUT_POSITIONS = new Set(['sticky', 'fixed'])
+const OVERFLOW_VALUES = new Set(['auto', 'scroll', 'hidden', 'visible'])
+
+/** Phase 4 §26 — user-authored layout primitives that do not map cleanly to
+ *  Figma's layout fields: sticky/fixed positioning, offsets, overflow, and
+ *  z-index. They ride `interactiveProps.layout` (or direct legacy keys) so this
+ *  stays pure emit with zero scene-graph / codec changes. */
+export function collectLayoutPrimitiveClasses(node: SceneNode): string[] {
+  const ip = node.interactiveProps as
+    | (LayoutPrimitiveConfig & { layout?: LayoutPrimitiveConfig })
+    | undefined
+  if (!ip) return []
+  const cfg = ip.layout && typeof ip.layout === 'object' ? ip.layout : ip
+  const classes: string[] = []
+  if (typeof cfg.position === 'string' && LAYOUT_POSITIONS.has(cfg.position)) {
+    classes.push(cfg.position)
+  }
+  classes.push(...offsetClasses(cfg))
+  pushOverflow(classes, 'overflow', cfg.overflow)
+  pushOverflow(classes, 'overflow-x', cfg.overflowX)
+  pushOverflow(classes, 'overflow-y', cfg.overflowY)
+  const z = zIndexClass(cfg.zIndex)
+  if (z) classes.push(z)
+  return classes
+}
+
+function offsetClasses(cfg: LayoutPrimitiveConfig): string[] {
+  const classes: string[] = []
+  const inset = offsetClass('inset', cfg.inset)
+  if (inset) classes.push(inset)
+  for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+    const cls = offsetClass(side, cfg[side])
+    if (cls) classes.push(cls)
+  }
+  return classes
+}
+
+function offsetClass(
+  name: 'inset' | 'top' | 'right' | 'bottom' | 'left',
+  raw: unknown
+): string | undefined {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return arbitraryClass(name, `${raw}px`)
+  if (typeof raw !== 'string') return undefined
+  const value = raw.trim()
+  if (value === '') return undefined
+  if (value === 'auto') return `${name}-auto`
+  if (/^-?\d+(\.\d+)?$/.test(value)) return arbitraryClass(name, `${value}px`)
+  if (/^-?\d+(\.\d+)?(px|rem|em|vh|vw|%|cqw|cqh)$/.test(value)) return arbitraryClass(name, value)
+  if (/^-?\d+\/\d+$/.test(value) || value === 'full' || value === 'px') return `${name}-${value}`
+  return undefined
+}
+
+function pushOverflow(
+  classes: string[],
+  prefix: 'overflow' | 'overflow-x' | 'overflow-y',
+  raw: unknown
+): void {
+  if (typeof raw === 'string' && OVERFLOW_VALUES.has(raw)) classes.push(`${prefix}-${raw}`)
+}
+
+function zIndexClass(raw: unknown): string | undefined {
+  let value = Number.NaN
+  if (typeof raw === 'number') value = raw
+  else if (typeof raw === 'string') value = Number(raw.trim())
+  if (!Number.isFinite(value)) return undefined
+  return arbitraryClass('z', String(value))
+}
+
+function arbitraryClass(name: string, value: string): string {
+  return `${name}-[${value.replace(/ /g, '_')}]`
+}
+
 /**
  * Shared core of the variant emitters (responsive breakpoints and interaction
  * states): for each variant whose override is present, shallow-merge it onto the
@@ -475,7 +561,11 @@ function collectVariantClasses<V extends string>(
   variants: readonly V[],
   overrideFor: (variant: V) => Partial<SceneNode> | undefined,
   resetMap: Record<string, string>,
-  extra?: (variant: V, override: Partial<SceneNode>, variantStyle: Record<string, string>) => string[]
+  extra?: (
+    variant: V,
+    override: Partial<SceneNode>,
+    variantStyle: Record<string, string>
+  ) => string[]
 ): string[] {
   const out: string[] = []
   for (const variant of variants) {

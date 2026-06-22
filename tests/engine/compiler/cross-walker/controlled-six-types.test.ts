@@ -1,8 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 3 §3.v4 step 3 — cross-walker regression for the 6 new controlled
@@ -25,9 +24,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }]
     })
     graph.createNode('CHECKBOX', page.id, {
       bindings: { value: { kind: 'docState', docStateName: 'agreed' } }
@@ -39,9 +36,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('checked={agreed}')
-    expect(app).toContain(
-      'onChange={(e) => setDocState("agreed", e.target.checked)}'
-    )
+    expect(app).toContain('onChange={(e) => setDocState("agreed", e.target.checked)}')
     expect(app).toContain('useDocState("agreed")')
     expect(app).not.toContain('defaultChecked')
     expect(out.warnings).toEqual([])
@@ -51,9 +46,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'dark', type: 'boolean', defaultValue: false }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'dark', type: 'boolean', defaultValue: false }]
     })
     graph.createNode('SWITCH', page.id, {
       bindings: { value: { kind: 'docState', docStateName: 'dark' } }
@@ -66,9 +59,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('role="switch"')
     expect(app).toContain('checked={dark}')
-    expect(app).toContain(
-      'onChange={(e) => setDocState("dark", e.target.checked)}'
-    )
+    expect(app).toContain('onChange={(e) => setDocState("dark", e.target.checked)}')
     expect(out.warnings).toEqual([])
   })
 
@@ -99,9 +90,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'country', type: 'string', defaultValue: '' }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'country', type: 'string', defaultValue: '' }]
     })
     graph.createNode('SELECT', page.id, {
       interactiveProps: { options: ['US', 'CN', 'JP'] },
@@ -117,9 +106,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     // (className / data-node-id may sit between them in the emitted source).
     expect(app).toContain('<select')
     expect(app).toContain('value={country}')
-    expect(app).toContain(
-      'onChange={(e) => setDocState("country", e.target.value)}'
-    )
+    expect(app).toContain('onChange={(e) => setDocState("country", e.target.value)}')
     // Options preserved (value + visible label); data-node-id may sit
     // between `<option` and `value=`.
     expect(app).toMatch(/<option [^>]*value="US"[^>]*>US<\/option>/)
@@ -207,9 +194,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'fruits', type: 'array', defaultValue: [] }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'fruits', type: 'array', defaultValue: [] }]
     })
     graph.createNode('CHECKBOX', page.id, {
       interactiveProps: { options: ['Apple', 'Banana', 'Cherry'] },
@@ -240,9 +225,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }]
     })
     graph.createNode('CHECKBOX', page.id, {
       bindings: { value: { kind: 'docState', docStateName: 'agreed' } }
@@ -261,7 +244,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     expect(app).not.toContain('.filter((v) =>')
   })
 
-  test('user onChange + controlled value → drop onChange + warn (sticks per-type)', () => {
+  test('user onChange + controlled value → writer first, user handler second', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.updateNode(graph.rootId, {
@@ -273,9 +256,7 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
     graph.createNode('CHECKBOX', page.id, {
       bindings: { value: { kind: 'docState', docStateName: 'agreed' } },
       events: {
-        onChange: [
-          { id: 'a1', kind: 'setVariable', targetName: 'other', valueExpr: "'x'" }
-        ]
+        onChange: [{ id: 'a1', kind: 'setVariable', targetName: 'other', valueExpr: "'x'" }]
       }
     })
     const out = compile({
@@ -283,13 +264,9 @@ describe('cross-walker — §3.v4 6 controlled component types (Phase 3)', () =>
       pageIds: [page.id],
       options: withDefaults({ packageName: 'cw-conflict' })
     })
-    // Conflict warning fires regardless of node type (locked code name).
-    expect(
-      out.warnings.some(
-        (w) =>
-          w.code === 'input-controlled-onchange-conflict' &&
-          w.message.includes('CHECKBOX')
-      )
-    ).toBe(true)
+    const app = out.files.get('src/App.tsx') as string
+    expect(out.warnings.map((w) => w.code)).not.toContain('input-controlled-onchange-conflict')
+    expect(app).toContain('setDocState("agreed", e.target.checked);')
+    expect(app).toContain('setDocState("other", "x")')
   })
 })

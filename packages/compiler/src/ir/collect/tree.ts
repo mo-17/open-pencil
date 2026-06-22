@@ -29,8 +29,6 @@ import type {
   IRControlledInput,
   IRDocStateDecl,
   IRElement,
-  IREventHandler,
-  IREventName,
   IRExpression,
   IRFieldValidation,
   IRImage,
@@ -993,7 +991,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // §18/§3.x/§15: the mutually-exclusive interactive control descriptors —
   // file upload > controlled value > UI-kit control hint. Folded into one helper
   // (with its own side effects) to keep nodeToIR under the complexity gate.
-  const controls = resolveControlDescriptors(node, ctx, attrs, children, events)
+  const controls = resolveControlDescriptors(node, ctx, attrs, children)
 
   // Phase 3 §8 v3: inside a component body, a child with a `:fills` override
   // slot emits `className={prop}` so an instance can re-style it; the static
@@ -1347,18 +1345,17 @@ function resolveControlDescriptors(
   node: SceneNode,
   ctx: WalkCtx,
   attrs: Record<string, IRAttrValue>,
-  children: IRNode[],
-  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+  children: IRNode[]
 ): Pick<IRElement, 'controlled' | 'upload' | 'controlKind' | 'validation'> {
   const upload = applyUploadInput(node, ctx, attrs)
   if (upload) return { upload }
   const out: Pick<IRElement, 'controlled' | 'controlKind' | 'validation'> = {}
-  const controlled = applyControlledInput(node, ctx, attrs, children, events)
+  const controlled = applyControlledInput(node, ctx, attrs, children)
   if (controlled) {
     out.controlled = controlled
     // §19: a controlled field may carry validation rules — its value is read
     // fresh from `controlled.write.name` at validate time.
-    const validation = applyValidation(node, ctx, controlled, events)
+    const validation = applyValidation(node, ctx, controlled)
     if (validation) out.validation = validation
   } else if (hasValidationConfig(node)) {
     // §19: validation needs a controlled value source (the field's doc-state);
@@ -1379,8 +1376,7 @@ function applyControlledInput(
   node: SceneNode,
   ctx: WalkCtx,
   attrs: Record<string, IRAttrValue>,
-  children: IRNode[],
-  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+  children: IRNode[]
 ): IRControlledInput | undefined {
   if (!CONTROLLED_NODE_TYPES.has(node.type)) return undefined
   const controlled = resolveValueBinding(
@@ -1392,16 +1388,9 @@ function applyControlledInput(
     ctx.docStateWrites
   )
   if (!controlled) return undefined
-  if (events?.onChange) {
-    // Same code as §3.x (locked) — message generalized to cover the new
-    // node types added in §3.v4.
-    ctx.warnings.push({
-      code: 'input-controlled-onchange-conflict',
-      message: `controlled ${node.type} ${node.id} has user-defined onChange; dropped (binding.value owns onChange)`,
-      nodeId: node.id
-    })
-    delete events.onChange
-  }
+  // §28: preserve user-defined onChange. The React adapter composes the
+  // synthesized controlled writer first, then runs the user action chain in
+  // the same event handler.
   // Drop uncontrolled fallback attrs per node type — text-like writes through
   // `value=`, boolean through `checked=`; either way the uncontrolled
   // counterpart on the same control would race with React's value reconciler.
@@ -1533,16 +1522,14 @@ const MESSAGE_KEYS: (keyof IRValidationMessages)[] = [
  *  an IRFieldValidation. The field's value is read fresh from its controlled
  *  doc-/page-state at validate time; core rules JSON-serialize into the page
  *  validators map, the optional `customExpr` parses through the shared reactive
- *  resolver (a boolean expression over doc-state; true ≡ valid). Validation owns
- *  the field's onBlur (the locked live-validation timing) — a user-defined
- *  onBlur is dropped with a warning (mirrors the controlled-onChange conflict).
+ *  resolver (a boolean expression over doc-state; true ≡ valid). §28 lets a
+ *  user-defined onBlur coexist: emit validates first, then runs the user chain.
  *  Returns undefined when there's no usable rule. Pushes onto the page's
  *  `validatedFields` accumulator as a side effect. */
 function applyValidation(
   node: SceneNode,
   ctx: WalkCtx,
-  controlled: IRControlledInput,
-  events: Partial<Record<IREventName, IREventHandler[]>> | undefined
+  controlled: IRControlledInput
 ): IRFieldValidation | undefined {
   const ip = node.interactiveProps as { validation?: ValidationConfig } | undefined
   const cfg = ip?.validation
@@ -1550,14 +1537,6 @@ function applyValidation(
   const rules = resolveValidationRules(node, cfg, ctx)
   const custom = resolveValidationCustom(node, cfg, ctx)
   if (!hasAnyRule(rules) && !custom) return undefined
-  if (events?.onBlur) {
-    ctx.warnings.push({
-      code: 'validation-onblur-conflict',
-      message: `validated ${node.type} ${node.id} has a user-defined onBlur; dropped (validation owns onBlur)`,
-      nodeId: node.id
-    })
-    delete events.onBlur
-  }
   const validation: IRFieldValidation = {
     key: node.id,
     stateName: controlled.write.name,

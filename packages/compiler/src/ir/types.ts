@@ -135,7 +135,7 @@ export interface IRElement {
    *  `bindings.value` to a string-typed docState or page-state. Adapter emits
    *  `value={<read>}` plus a synthesized `onChange` writer; uncontrolled
    *  `defaultValue` and any user-defined `onChange` are dropped (the latter
-   *  with an `input-controlled-onchange-conflict` warning at collect time). */
+   *  is composed after the synthesized writer in the same handler (§28). */
   controlled?: IRControlledInput
   /** Phase 4 §18 — file-upload wiring for an INPUT carrying
    *  `interactiveProps.upload`. The adapter emits `<input type="file">` + an
