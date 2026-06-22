@@ -18,8 +18,7 @@ import {
 // the detector never validates signatures, only classifies the `role`
 // claim, so a syntactically-valid JWT shape with an `anon` payload is
 // the correct positive control for "key passes the gate".
-const FAKE_ANON_JWT =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.fake'
+const FAKE_ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.fake'
 // Same shape, but the payload encodes `{"role":"service_role"}`.
 const FAKE_SERVICE_ROLE_JWT =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.fake'

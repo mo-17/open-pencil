@@ -184,7 +184,11 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     expect(ok.ok).toBe(true)
     expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
 
-    const bad = update(btn.id, { onClick: [{ id: 'cb-2', kind: 'clipboard', valueExpr: 7 }] }, figma)
+    const bad = update(
+      btn.id,
+      { onClick: [{ id: 'cb-2', kind: 'clipboard', valueExpr: 7 }] },
+      figma
+    )
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.error).toContain('.valueExpr')
   })
@@ -197,7 +201,11 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     expect(ok.ok).toBe(true)
     expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
 
-    const bad = update(btn.id, { onClick: [{ id: 'cw-2', kind: 'callWorkflow', workflowId: 9 }] }, figma)
+    const bad = update(
+      btn.id,
+      { onClick: [{ id: 'cw-2', kind: 'callWorkflow', workflowId: 9 }] },
+      figma
+    )
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.error).toContain('.workflowId')
   })
@@ -212,7 +220,11 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
     expect(ok.ok).toBe(true)
     expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
 
-    const notObj = update(btn.id, { onClick: [{ id: 'c', kind: 'callWorkflow', workflowId: 'w', args: 'x' }] }, figma)
+    const notObj = update(
+      btn.id,
+      { onClick: [{ id: 'c', kind: 'callWorkflow', workflowId: 'w', args: 'x' }] },
+      figma
+    )
     expect(notObj.ok).toBe(false)
     if (!notObj.ok) expect(notObj.error).toContain('.args')
 
@@ -280,7 +292,11 @@ describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
 
     const bad = update(
       btn.id,
-      { onClick: [{ id: 'cf-2', kind: 'confirm', messageExpr: '"x"', consequent: [], confirmLabel: 7 }] },
+      {
+        onClick: [
+          { id: 'cf-2', kind: 'confirm', messageExpr: '"x"', consequent: [], confirmLabel: 7 }
+        ]
+      },
       figma
     )
     expect(bad.ok).toBe(false)
@@ -330,13 +346,42 @@ describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
     expect(r.ok).toBe(true)
     expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
 
-    const badParam = setWorkflows(JSON.stringify([{ id: 'w', name: 'a', params: ['$prev'], actions: [] }]), figma)
+    const badParam = setWorkflows(
+      JSON.stringify([{ id: 'w', name: 'a', params: ['$prev'], actions: [] }]),
+      figma
+    )
     expect(badParam.ok).toBe(false)
     if (!badParam.ok) expect(badParam.error).toContain('.params[0]')
 
-    const dupParam = setWorkflows(JSON.stringify([{ id: 'w', name: 'a', params: ['x', 'x'], actions: [] }]), figma)
+    const dupParam = setWorkflows(
+      JSON.stringify([{ id: 'w', name: 'a', params: ['x', 'x'], actions: [] }]),
+      figma
+    )
     expect(dupParam.ok).toBe(false)
     if (!dupParam.ok) expect(dupParam.error).toContain('duplicated')
+  })
+
+  test('persists workflow pageId and rejects malformed pageId (§10 phase 4)', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const workflows = [{ id: 'wf-1', name: 'Scoped', pageId, actions: [] }]
+    const r = setWorkflows(JSON.stringify(workflows), figma)
+    expect(r.ok).toBe(true)
+    expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
+
+    const bad = setWorkflows(
+      JSON.stringify([{ id: 'wf-2', name: 'Bad', pageId: '', actions: [] }]),
+      figma
+    )
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.error).toContain('.pageId')
+
+    const unknown = setWorkflows(
+      JSON.stringify([{ id: 'wf-3', name: 'Unknown', pageId: 'missing-page', actions: [] }]),
+      figma
+    )
+    expect(unknown.ok).toBe(false)
+    if (!unknown.ok) expect(unknown.error).toContain('existing page')
   })
 
   test('persists workflow paramDefaults and rejects non-param keys / empty values (§10 v7)', () => {
@@ -349,14 +394,18 @@ describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
     expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
 
     const notParam = setWorkflows(
-      JSON.stringify([{ id: 'w', name: 'a', params: ['msg'], paramDefaults: { other: '"x"' }, actions: [] }]),
+      JSON.stringify([
+        { id: 'w', name: 'a', params: ['msg'], paramDefaults: { other: '"x"' }, actions: [] }
+      ]),
       figma
     )
     expect(notParam.ok).toBe(false)
     if (!notParam.ok) expect(notParam.error).toContain('.paramDefaults.other')
 
     const emptyVal = setWorkflows(
-      JSON.stringify([{ id: 'w', name: 'a', params: ['msg'], paramDefaults: { msg: '  ' }, actions: [] }]),
+      JSON.stringify([
+        { id: 'w', name: 'a', params: ['msg'], paramDefaults: { msg: '  ' }, actions: [] }
+      ]),
       figma
     )
     expect(emptyVal.ok).toBe(false)
@@ -366,21 +415,31 @@ describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
   test('persists workflow optionalParams and rejects non-param / duplicate entries (§10 v8)', () => {
     const { figma, graph } = setupToolTest()
     const workflows = [
-      { id: 'wf-1', name: 'Notify', params: ['msg', 'detail'], optionalParams: ['detail'], actions: [] }
+      {
+        id: 'wf-1',
+        name: 'Notify',
+        params: ['msg', 'detail'],
+        optionalParams: ['detail'],
+        actions: []
+      }
     ]
     const r = setWorkflows(JSON.stringify(workflows), figma)
     expect(r.ok).toBe(true)
     expect(graph.getNode(graph.rootId)?.lowcodeWorkflows).toEqual(workflows)
 
     const notParam = setWorkflows(
-      JSON.stringify([{ id: 'w', name: 'a', params: ['msg'], optionalParams: ['ghost'], actions: [] }]),
+      JSON.stringify([
+        { id: 'w', name: 'a', params: ['msg'], optionalParams: ['ghost'], actions: [] }
+      ]),
       figma
     )
     expect(notParam.ok).toBe(false)
     if (!notParam.ok) expect(notParam.error).toContain('.optionalParams[0]')
 
     const dup = setWorkflows(
-      JSON.stringify([{ id: 'w', name: 'a', params: ['msg'], optionalParams: ['msg', 'msg'], actions: [] }]),
+      JSON.stringify([
+        { id: 'w', name: 'a', params: ['msg'], optionalParams: ['msg', 'msg'], actions: [] }
+      ]),
       figma
     )
     expect(dup.ok).toBe(false)
@@ -390,9 +449,7 @@ describe('set_workflows / read_workflows (Phase 3 §10 v4)', () => {
   test('validates nested actions recursively, reporting the JSON path', () => {
     const { figma } = setupToolTest()
     const r = setWorkflows(
-      JSON.stringify([
-        { id: 'wf-1', name: 'x', actions: [{ id: 'bad', kind: 'frobnicate' }] }
-      ]),
+      JSON.stringify([{ id: 'wf-1', name: 'x', actions: [{ id: 'bad', kind: 'frobnicate' }] }]),
       figma
     )
     expect(r.ok).toBe(false)

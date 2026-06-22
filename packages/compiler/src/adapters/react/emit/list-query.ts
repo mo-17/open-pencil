@@ -1,6 +1,6 @@
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
-
 import type { IRListOrder, IRListQuery } from '#compiler/ir/types'
+
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
 
 import { emitFilterChain } from './event'
 

@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
-
-import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
 import { collectTree } from '#compiler/ir/collect/tree'
 import type { IREventHandler, IRSupabaseMutationHandler } from '#compiler/ir/types'
+
+import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 3 §3.v2 step 2 — `supabaseMutation.payloadEntries` IR collect +
@@ -34,10 +34,7 @@ function setupGraph(opts: {
   return { graph, pageId: page.id }
 }
 
-function firstMutation(
-  graph: SceneGraph,
-  pageId: string
-): IRSupabaseMutationHandler | undefined {
+function firstMutation(graph: SceneGraph, pageId: string): IRSupabaseMutationHandler | undefined {
   const ir = collectTree(graph, pageId)
   const button = ir.children[0]
   if (!button || button.kind !== 'element') return undefined
@@ -96,9 +93,7 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     expect(h?.payloadEntries?.length).toBe(1)
     expect(h?.payload).toBeUndefined()
     expect(
-      ir.warnings.some(
-        (w) => w.code === 'action-supabase-mutation-payload-source-conflict'
-      )
+      ir.warnings.some((w) => w.code === 'action-supabase-mutation-payload-source-conflict')
     ).toBe(true)
   })
 
@@ -118,9 +113,9 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstMutation(graph, pageId)).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-unexpected-payload')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-unexpected-payload')).toBe(
+      true
+    )
   })
 
   test('entry with non-identifier key → dropped (entry-invalid-key warn)', () => {
@@ -138,9 +133,9 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstMutation(graph, pageId)).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-entry-invalid-key')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-entry-invalid-key')).toBe(
+      true
+    )
   })
 
   test('entry with duplicate key → dropped (entry-duplicate-key warn)', () => {
@@ -161,9 +156,9 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstMutation(graph, pageId)).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-entry-duplicate-key')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-entry-duplicate-key')).toBe(
+      true
+    )
   })
 
   test('entry with unparseable valueExpr → dropped (entry-invalid-value warn)', () => {
@@ -180,9 +175,9 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstMutation(graph, pageId)).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-entry-invalid-value')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-entry-invalid-value')).toBe(
+      true
+    )
   })
 
   test('§3 step 3 — delete + payloadJson `{}` no longer surfaces unexpected-payload (§3.v2 #h)', () => {
@@ -201,11 +196,9 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstMutation(graph, pageId)).toBeDefined()
-    expect(
-      ir.warnings.some(
-        (w) => w.code === 'action-supabase-mutation-unexpected-payload'
-      )
-    ).toBe(false)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-unexpected-payload')).toBe(
+      false
+    )
   })
 
   test('§3 step 3 — insert + payloadJson `{}` falls through to missing-payload (still rejects, but cleaner)', () => {
@@ -222,9 +215,9 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstMutation(graph, pageId)).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-missing-payload')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-missing-payload')).toBe(
+      true
+    )
   })
 
   test('entry referencing an unknown identifier → dropped (unknown-identifier warn)', () => {
@@ -241,11 +234,9 @@ describe('IR collect supabaseMutation.payloadEntries (§3.v2 step 2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstMutation(graph, pageId)).toBeUndefined()
-    expect(
-      ir.warnings.some((w) =>
-        w.code === 'action-supabase-mutation-unknown-identifier'
-      )
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-unknown-identifier')).toBe(
+      true
+    )
   })
 })
 

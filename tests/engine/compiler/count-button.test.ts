@@ -66,9 +66,7 @@ describe('count button — end-to-end compile', () => {
     page.state = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
     const btn = graph.createNode('BUTTON', pageId)
     btn.events = {
-      onClick: [
-        { id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'fn(1)' }
-      ]
+      onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'fn(1)' }]
     }
 
     const out = compile({
@@ -97,6 +95,6 @@ describe('count button — end-to-end compile', () => {
     })
 
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain("const [value, setValue] = useState(\"hi\")")
+    expect(app).toContain('const [value, setValue] = useState("hi")')
   })
 })

@@ -1,12 +1,11 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { stripNavigateForSinglePage } from '@open-pencil/compiler/adapters/react/ir-walk'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRNode } from '@open-pencil/compiler/ir/types'
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 2 §3 step 4 — cross-walker regression (§9.9 checklist experience A).
@@ -33,7 +32,13 @@ describe('cross-walker — apiCall survives the navigate strip + every walker', 
     graph.updateNode(page.id, { name: 'Home' })
     const onClick: ActionDef[] = [
       { id: 'a-nav', kind: 'navigate', to: '/about' },
-      { id: 'a-api', kind: 'apiCall', method: 'GET', url: 'https://x.test/users', targetName: 'users' }
+      {
+        id: 'a-api',
+        kind: 'apiCall',
+        method: 'GET',
+        url: 'https://x.test/users',
+        targetName: 'users'
+      }
     ]
     graph.createNode('BUTTON', page.id, { interactiveProps: { text: 'Load' }, events: { onClick } })
     return { graph, pageId: page.id }

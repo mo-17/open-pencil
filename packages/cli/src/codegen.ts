@@ -50,9 +50,7 @@ export function resolveBuildEnv(flags: {
   return env
 }
 
-export type PageResolution =
-  | { ok: true; pageIds: string[] }
-  | { ok: false; message: string }
+export type PageResolution = { ok: true; pageIds: string[] } | { ok: false; message: string }
 
 /**
  * Resolve which page ids to compile. With `--page`, restrict to the single
@@ -64,7 +62,10 @@ export function resolvePageIds(pages: readonly SceneNode[], page?: string): Page
     const target = pages.find((p) => p.name === page)
     if (!target) {
       const available = pages.map((p) => `"${p.name}"`).join(', ')
-      return { ok: false, message: `Page "${page}" not found. Available pages: ${available || 'none'}.` }
+      return {
+        ok: false,
+        message: `Page "${page}" not found. Available pages: ${available || 'none'}.`
+      }
     }
     return { ok: true, pageIds: [target.id] }
   }
@@ -118,7 +119,9 @@ export async function loadAndCompile(opts: {
     process.exit(1)
   }
 
-  const packageName = sanitizePackageName(opts.packageName ?? basename(opts.file, extname(opts.file)))
+  const packageName = sanitizePackageName(
+    opts.packageName ?? basename(opts.file, extname(opts.file))
+  )
 
   let compiled: CompilerOutput
   try {
@@ -149,7 +152,11 @@ export async function loadAndCompile(opts: {
     )
     if (opts.json) {
       console.log(
-        JSON.stringify({ outDir: opts.outDir, files: [], warnings: compiled.warnings, packageName }, null, 2)
+        JSON.stringify(
+          { outDir: opts.outDir, files: [], warnings: compiled.warnings, packageName },
+          null,
+          2
+        )
       )
     }
     process.exit(1)
@@ -175,7 +182,12 @@ export function reportCodegenResult(opts: {
   if (opts.json) {
     console.log(
       JSON.stringify(
-        { outDir: opts.outDir, packageName: opts.packageName, files: opts.files, warnings: opts.warnings },
+        {
+          outDir: opts.outDir,
+          packageName: opts.packageName,
+          files: opts.files,
+          warnings: opts.warnings
+        },
         null,
         2
       )

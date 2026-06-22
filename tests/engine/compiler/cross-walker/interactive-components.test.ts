@@ -1,8 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 2 §8 step 4 — cross-walker regression (经验 A).

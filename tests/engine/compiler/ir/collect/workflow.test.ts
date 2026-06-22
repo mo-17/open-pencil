@@ -1,8 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
-
 import { collectTree } from '#compiler/ir/collect/tree'
 import type {
   IRClipboardHandler,
@@ -11,6 +8,9 @@ import type {
   IREventHandler,
   IRToastHandler
 } from '#compiler/ir/types'
+
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 3 §10 — workflow-orchestration collect: `condition` (recursive
@@ -226,7 +226,12 @@ describe('collect workflow IR (Phase 3 §10)', () => {
   test('confirm with no cancel branch leaves alternate undefined', () => {
     const { graph, pageId } = makeGraph({
       onClick: [
-        { id: 'cf', kind: 'confirm', messageExpr: '"Sure?"', consequent: [{ id: 's', kind: 'stop' }] }
+        {
+          id: 'cf',
+          kind: 'confirm',
+          messageExpr: '"Sure?"',
+          consequent: [{ id: 's', kind: 'stop' }]
+        }
       ]
     })
     const confirm = onClickHandlers(graph, pageId)[0] as IRConfirmHandler
@@ -238,7 +243,12 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     const { graph, pageId } = makeGraph({
       docStates: [{ id: 'd1', name: 'rowName', type: 'string', defaultValue: '' }],
       onClick: [
-        { id: 'cf', kind: 'confirm', messageExpr: 'rowName', consequent: [{ id: 's', kind: 'stop' }] }
+        {
+          id: 'cf',
+          kind: 'confirm',
+          messageExpr: 'rowName',
+          consequent: [{ id: 's', kind: 'stop' }]
+        }
       ]
     })
     const ir = collectTree(graph, pageId)
@@ -326,7 +336,12 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     })
     // The single callWorkflow becomes the workflow's two handlers spliced in.
     expect(onClickHandlers(graph, pageId)).toEqual([
-      { kind: 'toast', ast: { kind: 'string', value: 'Saved' }, references: [], variant: 'success' },
+      {
+        kind: 'toast',
+        ast: { kind: 'string', value: 'Saved' },
+        references: [],
+        variant: 'success'
+      },
       { kind: 'navigate', to: '/done' }
     ])
   })
@@ -505,7 +520,12 @@ describe('collect workflow IR (Phase 3 §10)', () => {
   test('a literal arg is substituted for the parameter identifier in the body', () => {
     const { graph, pageId } = makeGraph({
       workflows: [
-        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
       ],
       onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: '"Saved!"' } }]
     })
@@ -519,12 +539,23 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     const { graph, pageId } = makeGraph({
       docStates: [{ id: 'd1', name: 'user', type: 'object', defaultValue: {} }],
       workflows: [
-        { id: 'greet', name: 'Greet', params: ['who'], actions: [{ id: 't', kind: 'toast', messageExpr: 'who' }] }
+        {
+          id: 'greet',
+          name: 'Greet',
+          params: ['who'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'who' }]
+        }
       ],
-      onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'greet', args: { who: 'user.email' } }]
+      onClick: [
+        { id: 'cw', kind: 'callWorkflow', workflowId: 'greet', args: { who: 'user.email' } }
+      ]
     })
     const toast = onClickHandlers(graph, pageId)[0] as IRToastHandler
-    expect(toast.ast).toEqual({ kind: 'member', object: { kind: 'ident', name: 'user' }, property: 'email' })
+    expect(toast.ast).toEqual({
+      kind: 'member',
+      object: { kind: 'ident', name: 'user' },
+      property: 'email'
+    })
     expect(toast.references).toEqual(['user'])
   })
 
@@ -532,7 +563,12 @@ describe('collect workflow IR (Phase 3 §10)', () => {
     const { graph, pageId } = makeGraph({
       docStates: [{ id: 'd1', name: 'status', type: 'string', defaultValue: '' }],
       workflows: [
-        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
       ],
       onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: 'status' } }]
     })
@@ -543,7 +579,12 @@ describe('collect workflow IR (Phase 3 §10)', () => {
   test('nested workflow arg referencing the outer parameter resolves at the outer boundary', () => {
     const { graph, pageId } = makeGraph({
       workflows: [
-        { id: 'inner', name: 'inner', params: ['q'], actions: [{ id: 't', kind: 'toast', messageExpr: 'q' }] },
+        {
+          id: 'inner',
+          name: 'inner',
+          params: ['q'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'q' }]
+        },
         {
           id: 'outer',
           name: 'outer',
@@ -561,7 +602,12 @@ describe('collect workflow IR (Phase 3 §10)', () => {
   test('a missing argument drops the whole callWorkflow with a warning', () => {
     const { graph, pageId } = makeGraph({
       workflows: [
-        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
       ],
       onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }]
     })
@@ -572,7 +618,9 @@ describe('collect workflow IR (Phase 3 §10)', () => {
 
   test('an extra arg (not a parameter) warns but still expands', () => {
     const { graph, pageId } = makeGraph({
-      workflows: [{ id: 'wf', name: 'go', params: [], actions: [{ id: 'n', kind: 'navigate', to: '/go' }] }],
+      workflows: [
+        { id: 'wf', name: 'go', params: [], actions: [{ id: 'n', kind: 'navigate', to: '/go' }] }
+      ],
       onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'wf', args: { stray: '"x"' } }]
     })
     const ir = collectTree(graph, pageId)
@@ -583,12 +631,19 @@ describe('collect workflow IR (Phase 3 §10)', () => {
   test('an arg referencing an unknown identifier drops the callWorkflow with a warning', () => {
     const { graph, pageId } = makeGraph({
       workflows: [
-        { id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
       ],
       onClick: [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: 'ghost' } }]
     })
     const ir = collectTree(graph, pageId)
-    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-arg-unknown-identifier')).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-call-workflow-arg-unknown-identifier')).toBe(
+      true
+    )
     expect(onClickHandlers(graph, pageId)).toEqual([])
   })
 

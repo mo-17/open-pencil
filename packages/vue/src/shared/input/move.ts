@@ -40,7 +40,11 @@ export function detectAutoLayoutParent(editor: Editor): string | undefined {
   const selectedNode = editor.graph.getNode(selectedId)
   if (!selectedNode?.parentId) return undefined
   const parent = editor.graph.getNode(selectedNode.parentId)
-  if (parent && isAutoLayoutMode(parent.layoutMode) && selectedNode.layoutPositioning !== 'ABSOLUTE') {
+  if (
+    parent &&
+    isAutoLayoutMode(parent.layoutMode) &&
+    selectedNode.layoutPositioning !== 'ABSOLUTE'
+  ) {
     return parent.id
   }
   return undefined

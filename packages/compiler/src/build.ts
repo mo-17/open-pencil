@@ -88,7 +88,9 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
     define['import.meta.env.VITE_SUPABASE_URL'] = JSON.stringify(opts.env.VITE_SUPABASE_URL)
   }
   if (opts.env?.VITE_SUPABASE_ANON_KEY !== undefined) {
-    define['import.meta.env.VITE_SUPABASE_ANON_KEY'] = JSON.stringify(opts.env.VITE_SUPABASE_ANON_KEY)
+    define['import.meta.env.VITE_SUPABASE_ANON_KEY'] = JSON.stringify(
+      opts.env.VITE_SUPABASE_ANON_KEY
+    )
   }
 
   await build({

@@ -1,14 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { PluginData } from '#core/kiwi/fig/codec'
-import type { PluginDataEntry, SceneNode, SupabaseAuthAction } from '#core/scene-graph'
-
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 import {
   extractLowcodeAndPluginData,
   LOWCODE_EVENTS_KEY,
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
+import type { PluginDataEntry, SceneNode, SupabaseAuthAction } from '#core/scene-graph'
 
 /**
  * Phase 3 §2.v2 step 1 — `SupabaseAuthAction` persistence.

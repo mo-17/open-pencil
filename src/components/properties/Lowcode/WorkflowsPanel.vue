@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   DocumentStateDef,
+  SceneNode,
   StateDef,
   WorkflowDef
 } from '@open-pencil/core/scene-graph'
@@ -29,12 +30,18 @@ const workflows = useSceneComputed<WorkflowDef[]>(() => {
   return root?.lowcodeWorkflows ?? []
 })
 
-// A workflow is inlined at its call site and resolves page-local `setState`
-// targets in the caller's scope; the editor validates against the current page
-// as a sensible approximation (MCP remains authoritative across pages).
-const pageStates = useSceneComputed<StateDef[]>(() => {
-  const page = editor.graph.getNode(editor.state.currentPageId)
-  return page?.state ?? []
+interface WorkflowPage {
+  id: string
+  name: string
+  state: StateDef[]
+}
+
+const pages = useSceneComputed<WorkflowPage[]>(() => {
+  return editor.graph.getPages().map((page: SceneNode) => ({
+    id: page.id,
+    name: page.name || 'Page',
+    state: page.state ?? []
+  }))
 })
 
 const docStates = useSceneComputed<DocumentStateDef[]>(() => {
@@ -51,13 +58,26 @@ function commit(next: WorkflowDef[]): void {
 }
 
 function addWorkflow(): void {
-  commit([...workflows.value, { id: crypto.randomUUID(), name: 'Workflow', actions: [] }])
+  commit([
+    ...workflows.value,
+    {
+      id: crypto.randomUUID(),
+      name: 'Workflow',
+      pageId: editor.state.currentPageId,
+      actions: []
+    }
+  ])
 }
 function updateWorkflow(id: string, next: WorkflowDef): void {
   commit(workflows.value.map((w) => (w.id === id ? next : w)))
 }
 function removeWorkflow(id: string): void {
   commit(workflows.value.filter((w) => w.id !== id))
+}
+
+function pageStatesFor(workflow: WorkflowDef): StateDef[] {
+  const pageId = workflow.pageId ?? editor.state.currentPageId
+  return pages.value.find((page) => page.id === pageId)?.state ?? []
 }
 </script>
 
@@ -85,7 +105,8 @@ function removeWorkflow(id: string): void {
         :key="wf.id"
         :workflow="wf"
         :workflows="workflows"
-        :page-states="pageStates"
+        :pages="pages"
+        :page-states="pageStatesFor(wf)"
         :doc-states="docStates"
         @update:workflow="updateWorkflow(wf.id, $event)"
         @remove="removeWorkflow(wf.id)"

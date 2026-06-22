@@ -38,10 +38,16 @@ const emit = defineEmits<{
 const { panels } = useI18n()
 
 function replaceAt(index: number, next: ActionDef): void {
-  emit('update:actions', actions.map((a, i) => (i === index ? next : a)))
+  emit(
+    'update:actions',
+    actions.map((a, i) => (i === index ? next : a))
+  )
 }
 function removeAt(index: number): void {
-  emit('update:actions', actions.filter((_, i) => i !== index))
+  emit(
+    'update:actions',
+    actions.filter((_, i) => i !== index)
+  )
 }
 function add(): void {
   emit('update:actions', [

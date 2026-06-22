@@ -24,7 +24,11 @@ const CLI = cliSourcePath('index.ts')
 async function writeDoc(figPath: string): Promise<void> {
   const graph = new SceneGraph()
   const pageId = graph.getPages()[0].id
-  const frame = graph.createNode('FRAME', pageId, { width: 320, height: 120, layoutMode: 'VERTICAL' })
+  const frame = graph.createNode('FRAME', pageId, {
+    width: 320,
+    height: 120,
+    layoutMode: 'VERTICAL'
+  })
   graph.createNode('TEXT', frame.id, { text: 'Hello', width: 200, height: 24 })
   graph.updateNode(graph.rootId, { lowcodeTranslations: { ar: { Hello: 'مرحبا' } } })
   const io = new IORegistry(BUILTIN_IO_FORMATS)

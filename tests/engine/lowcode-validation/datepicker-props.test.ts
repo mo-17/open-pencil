@@ -49,7 +49,9 @@ describe('validateDatePickerProps', () => {
   })
 
   test('valid value + min + max is clean', () => {
-    expect(validateDatePickerProps({ value: '2026-06-15', min: '2026-01-01', max: '2026-12-31' })).toEqual([])
+    expect(
+      validateDatePickerProps({ value: '2026-06-15', min: '2026-01-01', max: '2026-12-31' })
+    ).toEqual([])
   })
 
   test('single-sided range is allowed', () => {
@@ -77,8 +79,12 @@ describe('validateDatePickerProps', () => {
   })
 
   test('value-out-of-range below min or above max', () => {
-    expect(codes({ value: '2025-12-31', min: '2026-01-01' })).toEqual(['datepicker-value-out-of-range'])
-    expect(codes({ value: '2027-01-01', max: '2026-12-31' })).toEqual(['datepicker-value-out-of-range'])
+    expect(codes({ value: '2025-12-31', min: '2026-01-01' })).toEqual([
+      'datepicker-value-out-of-range'
+    ])
+    expect(codes({ value: '2027-01-01', max: '2026-12-31' })).toEqual([
+      'datepicker-value-out-of-range'
+    ])
     // inclusive bounds are in range
     expect(codes({ value: '2026-01-01', min: '2026-01-01', max: '2026-12-31' })).toEqual([])
   })

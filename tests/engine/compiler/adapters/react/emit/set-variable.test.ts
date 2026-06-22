@@ -29,9 +29,7 @@ describe('emit setVariable handler (Phase 2 §2)', () => {
       references: ['pageStep'],
       mode: 'absolute'
     }
-    expect(emitEventHandler([handler])).toBe(
-      '() => setDocState("cartCount", pageStep)'
-    )
+    expect(emitEventHandler([handler])).toBe('() => setDocState("cartCount", pageStep)')
   })
 
   test('functional mode: `prev + 1`', () => {
@@ -47,9 +45,7 @@ describe('emit setVariable handler (Phase 2 §2)', () => {
       references: [],
       mode: 'functional'
     }
-    expect(emitEventHandler([handler])).toBe(
-      '() => setDocState("cartCount", (prev) => prev + 1)'
-    )
+    expect(emitEventHandler([handler])).toBe('() => setDocState("cartCount", (prev) => prev + 1)')
   })
 
   test('functional mode mixed with state ref: `prev + step`', () => {
@@ -81,9 +77,7 @@ describe('emit setVariable handler (Phase 2 §2)', () => {
       references: [],
       mode: 'absolute'
     }
-    expect(emitEventHandler([handler])).toBe(
-      '() => setDocState("has\\"quote", 1)'
-    )
+    expect(emitEventHandler([handler])).toBe('() => setDocState("has\\"quote", 1)')
   })
 
   test('multiple handlers in one onClick — block form', () => {

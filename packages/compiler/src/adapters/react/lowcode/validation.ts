@@ -8,27 +8,26 @@
  * page-level glue a validated page needs: an errors `useState`, a `__validators`
  * map (one closure per field — core rules call `validateValue`, the optional
  * custom rule is an inline expression over doc-state), and the `__validateField`
- * (onBlur) / `__validateFields` (onSubmit) helpers.
+ * (onBlur) / `__validateFieldValue` (onChange) / `__validateFields` (onSubmit)
+ * helpers.
  *
  * The custom-rule expression is emitted with `emitExpression`, so it reads the
  * field's bound doc-state via the page's hoisted `useDocState` consts (the
  * render-committed value — current at blur/submit, the locked timing). The core
  * rules read the field value fresh via `getDocStateSnapshot` to dodge the
- * same-handler render-snapshot staleness (§10 v9 lesson).
+ * same-handler render-snapshot staleness (§10 v9 lesson). `__validateFieldValue`
+ * lets controlled onChange validate the next event value instead of a stale
+ * render snapshot.
  */
 
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
-
 import type { IRFieldValidation } from '#compiler/ir/types'
+
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
 
 /** The fixed Tailwind utilities the per-field error `<p>` renders. They never
  *  appear in the IR, so the React adapter must seed them into the
  *  `@source inline(...)` safelist (mirrors `TOAST_RUNTIME_CLASSES`). */
-export const VALIDATION_ERROR_CLASSES: readonly string[] = [
-  'text-sm',
-  'text-red-600',
-  'mt-1'
-]
+export const VALIDATION_ERROR_CLASSES: readonly string[] = ['text-sm', 'text-red-600', 'mt-1']
 
 /** The className on the per-field error `<p>` (emitted by `element.ts`). */
 export const VALIDATION_ERROR_CLASS = VALIDATION_ERROR_CLASSES.join(' ')
@@ -98,12 +97,18 @@ export function buildValidationGlue(fields: readonly IRFieldValidation[]): strin
   const validators = fields.map((f) => buildValidatorEntry(f)).join('\n')
   return [
     `  const [__fieldErrors, __setFieldErrors] = useState<Record<string, string | null>>({})`,
-    `  const __validators: Record<string, () => string | null> = {`,
+    `  const __validators: Record<string, (valueOverride?: unknown) => string | null> = {`,
     validators,
     `  }`,
     `  const __validateField = (id: string): string | null => {`,
     `    const __fn = __validators[id]`,
     `    const __error = __fn ? __fn() : null`,
+    `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
+    `    return __error`,
+    `  }`,
+    `  const __validateFieldValue = (id: string, value: unknown): string | null => {`,
+    `    const __fn = __validators[id]`,
+    `    const __error = __fn ? __fn(value) : null`,
     `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
     `    return __error`,
     `  }`,
@@ -122,15 +127,16 @@ export function buildValidationGlue(fields: readonly IRFieldValidation[]): strin
   ].join('\n')
 }
 
-/** One `"<key>": () => { ... }` entry in the `__validators` map. */
+/** One `"<key>": (__valueOverride?: unknown) => { ... }` entry in the
+ *  `__validators` map. */
 function buildValidatorEntry(field: IRFieldValidation): string {
   const read =
     field.stateKind === 'docState'
       ? `getDocStateSnapshot(${JSON.stringify(field.stateName)})`
       : field.stateName
   const lines = [
-    `    ${JSON.stringify(field.key)}: () => {`,
-    `      const __value = ${read}`,
+    `    ${JSON.stringify(field.key)}: (__valueOverride?: unknown) => {`,
+    `      const __value = __valueOverride !== undefined ? __valueOverride : ${read}`,
     `      let __error = validateValue(__value, ${JSON.stringify(field.rules)})`
   ]
   if (field.custom) {

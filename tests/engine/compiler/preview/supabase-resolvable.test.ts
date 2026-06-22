@@ -1,7 +1,6 @@
+import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-
-import { describe, expect, test } from 'bun:test'
 
 import { SUPABASE_JS_VERSION } from '@open-pencil/compiler/adapters/react/lowcode/supabase'
 
@@ -26,8 +25,7 @@ describe('preview can resolve @supabase/supabase-js (Phase 3 §2 regression)', (
       devDependencies?: Record<string, string>
     }
     const declared =
-      pkg.devDependencies?.['@supabase/supabase-js'] ??
-      pkg.dependencies?.['@supabase/supabase-js']
+      pkg.devDependencies?.['@supabase/supabase-js'] ?? pkg.dependencies?.['@supabase/supabase-js']
     expect(declared).toBe(SUPABASE_JS_VERSION)
   })
 

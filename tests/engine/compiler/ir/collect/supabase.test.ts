@@ -1,8 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
-
 import { collectTree } from '#compiler/ir/collect/tree'
 import type {
   IREventHandler,
@@ -10,6 +7,9 @@ import type {
   IRSupabaseMutationHandler,
   IRSupabaseQueryHandler
 } from '#compiler/ir/types'
+
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 3 §2 step 2 — Supabase IR collect.
@@ -139,9 +139,7 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
     const { graph, pageId } = makeGraph({
       config: DEFAULT_CONFIG,
       docStates: [{ id: 'd-users', name: 'users', type: 'array', defaultValue: [] }],
-      onClick: [
-        { id: 'a1', kind: 'supabaseQuery', table: '   ', resultTarget: 'users' }
-      ]
+      onClick: [{ id: 'a1', kind: 'supabaseQuery', table: '   ', resultTarget: 'users' }]
     })
     const ir = collectTree(graph, pageId)
     expect(firstHandler<IRSupabaseQueryHandler>(graph, pageId, 'supabaseQuery')).toBeUndefined()
@@ -151,9 +149,7 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
   test('supabaseQuery unknown resultTarget → handler dropped', () => {
     const { graph, pageId } = makeGraph({
       config: DEFAULT_CONFIG,
-      onClick: [
-        { id: 'a1', kind: 'supabaseQuery', table: 'users', resultTarget: 'ghost' }
-      ]
+      onClick: [{ id: 'a1', kind: 'supabaseQuery', table: 'users', resultTarget: 'ghost' }]
     })
     const ir = collectTree(graph, pageId)
     expect(firstHandler<IRSupabaseQueryHandler>(graph, pageId, 'supabaseQuery')).toBeUndefined()
@@ -176,9 +172,9 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
     })
     const ir = collectTree(graph, pageId)
     expect(firstHandler<IRSupabaseQueryHandler>(graph, pageId, 'supabaseQuery')).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-query-unknown-identifier')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-query-unknown-identifier')).toBe(
+      true
+    )
   })
 
   test('supabaseMutation insert valid → compact JSON payload kept', () => {
@@ -201,15 +197,15 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
   test('supabaseMutation insert missing payload → dropped', () => {
     const { graph, pageId } = makeGraph({
       config: DEFAULT_CONFIG,
-      onClick: [
-        { id: 'a1', kind: 'supabaseMutation', operation: 'insert', table: 'users' }
-      ]
+      onClick: [{ id: 'a1', kind: 'supabaseMutation', operation: 'insert', table: 'users' }]
     })
     const ir = collectTree(graph, pageId)
-    expect(firstHandler<IRSupabaseMutationHandler>(graph, pageId, 'supabaseMutation')).toBeUndefined()
     expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-missing-payload')
-    ).toBe(true)
+      firstHandler<IRSupabaseMutationHandler>(graph, pageId, 'supabaseMutation')
+    ).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-missing-payload')).toBe(
+      true
+    )
   })
 
   test('supabaseMutation update without filters → dropped (where clause required)', () => {
@@ -226,10 +222,12 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
       ]
     })
     const ir = collectTree(graph, pageId)
-    expect(firstHandler<IRSupabaseMutationHandler>(graph, pageId, 'supabaseMutation')).toBeUndefined()
     expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-missing-filters')
-    ).toBe(true)
+      firstHandler<IRSupabaseMutationHandler>(graph, pageId, 'supabaseMutation')
+    ).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-missing-filters')).toBe(
+      true
+    )
   })
 
   test('supabaseMutation delete with payload → dropped (delete must have no payload)', () => {
@@ -247,10 +245,12 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
       ]
     })
     const ir = collectTree(graph, pageId)
-    expect(firstHandler<IRSupabaseMutationHandler>(graph, pageId, 'supabaseMutation')).toBeUndefined()
     expect(
-      ir.warnings.some((w) => w.code === 'action-supabase-mutation-unexpected-payload')
-    ).toBe(true)
+      firstHandler<IRSupabaseMutationHandler>(graph, pageId, 'supabaseMutation')
+    ).toBeUndefined()
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-mutation-unexpected-payload')).toBe(
+      true
+    )
   })
 
   test('supabaseMutation result/error targets register as docStateWrites', () => {
@@ -320,9 +320,7 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
   test('signUp with a missing credential is dropped with a warning (Phase 3 §2.v3)', () => {
     const { graph, pageId } = makeGraph({
       config: DEFAULT_CONFIG,
-      onClick: [
-        { id: 'a1', kind: 'supabaseAuth', operation: 'signUp', emailExpr: "'a@b.co'" }
-      ]
+      onClick: [{ id: 'a1', kind: 'supabaseAuth', operation: 'signUp', emailExpr: "'a@b.co'" }]
     })
     const ir = collectTree(graph, pageId)
     const button = ir.children[0]
@@ -396,14 +394,14 @@ describe('collect Supabase IR (Phase 3 §2)', () => {
   test('signIn with a missing credential is dropped with a warning', () => {
     const { graph, pageId } = makeGraph({
       config: DEFAULT_CONFIG,
-      onClick: [
-        { id: 'a1', kind: 'supabaseAuth', operation: 'signIn', emailExpr: "'a@b.co'" }
-      ]
+      onClick: [{ id: 'a1', kind: 'supabaseAuth', operation: 'signIn', emailExpr: "'a@b.co'" }]
     })
     const ir = collectTree(graph, pageId)
     const button = ir.children[0]
     expect(button?.kind === 'element' && (button.events?.onClick?.length ?? 0)).toBe(0)
-    expect(ir.warnings.some((w) => w.code === 'action-supabase-auth-missing-credentials')).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-supabase-auth-missing-credentials')).toBe(
+      true
+    )
   })
 
   test('signIn errorTarget is recorded as a docState write', () => {

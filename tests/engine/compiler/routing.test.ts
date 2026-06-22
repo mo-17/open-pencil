@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph } from '@open-pencil/core'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
+import { SceneGraph } from '@open-pencil/core'
 
 /**
  * Phase 4 §16.1 — dynamic routing: a page may declare a `lowcodeRoutePattern`
@@ -230,7 +229,9 @@ describe('Phase 4 §16.2 — collect: navigate route params', () => {
   test('an unknown identifier in a navigate param drops the handler with a warning', () => {
     const { ir, h } = navHandler({ id: 'nope' })
     expect(h).toBeUndefined()
-    expect(ir.warnings.some((w) => w.code === 'action-navigate-param-unknown-identifier')).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-navigate-param-unknown-identifier')).toBe(
+      true
+    )
   })
 
   test('an unparseable navigate param expression drops the handler with a warning', () => {
@@ -250,7 +251,9 @@ describe('Phase 4 §16.2 — emit: navigate(generatePath(...))', () => {
     graph.createNode('TEXT', home.id, { text: 'Home' })
     graph.createNode('BUTTON', product.id, {
       interactiveProps: { text: 'Open' },
-      events: { onClick: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: 'pid' } }] }
+      events: {
+        onClick: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: 'pid' } }]
+      }
     })
 
     const out = compile({
@@ -292,7 +295,9 @@ describe('Phase 4 §16.2 — emit: navigate(generatePath(...))', () => {
     graph.updateNode(product.id, { lowcodeRoutePattern: '/product/:id' })
     graph.createNode('BUTTON', product.id, {
       interactiveProps: { text: 'Reopen' },
-      events: { onClick: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: '$params.id' } }] }
+      events: {
+        onClick: [{ id: 'n1', kind: 'navigate', to: '/product/:id', params: { id: '$params.id' } }]
+      }
     })
 
     const out = compile({
@@ -351,11 +356,14 @@ describe('Phase 4 §16.2 — emit: navigate(generatePath(...))', () => {
 const SUPA_CONFIG = { url: 'https://x.supabase.co', anonKey: 'eyJ.anon.sig' }
 
 describe('Phase 4 §16.3 — collect: auth guard', () => {
-  function collectGuarded(opts: { supabase?: boolean; authRedirect?: string; requiresAuth?: boolean } = {}) {
+  function collectGuarded(
+    opts: { supabase?: boolean; authRedirect?: string; requiresAuth?: boolean } = {}
+  ) {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     if (opts.supabase) graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG })
-    if (opts.authRedirect !== undefined) graph.updateNode(graph.rootId, { lowcodeAuthRedirect: opts.authRedirect })
+    if (opts.authRedirect !== undefined)
+      graph.updateNode(graph.rootId, { lowcodeAuthRedirect: opts.authRedirect })
     if (opts.requiresAuth) graph.updateNode(page.id, { lowcodeRequiresAuth: true })
     graph.createNode('TEXT', page.id, { text: 'secret' })
     return collectTree(graph, page.id)
@@ -392,9 +400,10 @@ describe('Phase 4 §16.3 — emit: <Navigate> redirect guard', () => {
   function buildGuardedMultiPage(authRedirect?: string) {
     const { graph, pages } = buildMultiPageGraph('Home', 'Dashboard')
     const [home, dashboard] = pages
-    const rootPatch = authRedirect !== undefined
-      ? { lowcodeSupabaseConfig: SUPA_CONFIG, lowcodeAuthRedirect: authRedirect }
-      : { lowcodeSupabaseConfig: SUPA_CONFIG }
+    const rootPatch =
+      authRedirect !== undefined
+        ? { lowcodeSupabaseConfig: SUPA_CONFIG, lowcodeAuthRedirect: authRedirect }
+        : { lowcodeSupabaseConfig: SUPA_CONFIG }
     graph.updateNode(graph.rootId, rootPatch)
     graph.updateNode(dashboard.id, { lowcodeRequiresAuth: true })
     graph.createNode('TEXT', home.id, { text: 'Home' })

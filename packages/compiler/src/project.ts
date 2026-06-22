@@ -71,10 +71,7 @@ export default defineConfig({
 /** Phase 3 §15: `themeCss` (the UI kit's Tailwind v4 theme block) is inserted
  *  right after the Tailwind import so the kit's semantic color utilities
  *  (`bg-primary`, …) resolve. Empty → byte-identical. */
-export function buildIndexCss(
-  safelistClasses: readonly string[] = [],
-  themeCss = ''
-): string {
+export function buildIndexCss(safelistClasses: readonly string[] = [], themeCss = ''): string {
   // Tailwind v4's content auto-detection relies on Vite's module graph and a
   // filesystem glob under the project root. Our preview dev-server serves the
   // emitted project from an in-memory VFS, so the glob finds nothing on disk

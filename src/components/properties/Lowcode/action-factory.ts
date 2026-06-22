@@ -56,17 +56,44 @@ function first<T>(arr: readonly T[]): T | undefined {
 const FACTORIES: Record<ActionKind, (id: string, ctx: ActionFactoryCtx) => ActionDef> = {
   setState: (id, ctx) => {
     const target = first(ctx.pageStates)
-    return { id, kind: 'setState', targetStateId: target?.id, valueExpr: target ? `${target.name} + 1` : '' }
+    return {
+      id,
+      kind: 'setState',
+      targetStateId: target?.id,
+      valueExpr: target ? `${target.name} + 1` : ''
+    }
   },
   navigate: (id) => ({ id, kind: 'navigate', to: '/' }),
   setVariable: (id, ctx) => {
     const docTarget = first(ctx.docStates)
-    return { id, kind: 'setVariable', targetName: docTarget?.name ?? '', valueExpr: docTarget ? '$prev + 1' : '' }
+    return {
+      id,
+      kind: 'setVariable',
+      targetName: docTarget?.name ?? '',
+      valueExpr: docTarget ? '$prev + 1' : ''
+    }
   },
-  apiCall: (id, ctx) => ({ id, kind: 'apiCall', method: 'GET', url: '', targetName: first(ctx.docStates)?.name ?? '' }),
-  supabaseQuery: (id, ctx) => ({ id, kind: 'supabaseQuery', table: '', resultTarget: first(ctx.docStates)?.name ?? '' }),
+  apiCall: (id, ctx) => ({
+    id,
+    kind: 'apiCall',
+    method: 'GET',
+    url: '',
+    targetName: first(ctx.docStates)?.name ?? ''
+  }),
+  supabaseQuery: (id, ctx) => ({
+    id,
+    kind: 'supabaseQuery',
+    table: '',
+    resultTarget: first(ctx.docStates)?.name ?? ''
+  }),
   supabaseMutation: (id) => ({ id, kind: 'supabaseMutation', operation: 'insert', table: '' }),
-  supabaseAuth: (id) => ({ id, kind: 'supabaseAuth', operation: 'signIn', emailExpr: '', passwordExpr: '' }),
+  supabaseAuth: (id) => ({
+    id,
+    kind: 'supabaseAuth',
+    operation: 'signIn',
+    emailExpr: '',
+    passwordExpr: ''
+  }),
   // Phase 3 §10 v10 — control-flow kinds: empty branches, filled via the recursive sub-editor.
   condition: (id) => ({ id, kind: 'condition', condExpr: '', consequent: [] }),
   confirm: (id) => ({ id, kind: 'confirm', messageExpr: '"Are you sure?"', consequent: [] }),

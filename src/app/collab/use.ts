@@ -51,11 +51,11 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     updatePeersList,
     setLocalName
   } = createLocalAwarenessActions({
-      state,
-      storedName,
-      getStore: getActiveStore,
-      getAwareness: () => runtime.awareness
-    })
+    state,
+    storedName,
+    getStore: getActiveStore,
+    getAwareness: () => runtime.awareness
+  })
 
   // Phase 3 §4.5 — the app registers a handler that toasts when a remote
   // docState/page-state update would overwrite a concurrent local edit.

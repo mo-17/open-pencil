@@ -282,16 +282,10 @@ async function testConnection(): Promise<void> {
       {{ panels.lowcodeSupabaseTestOk }}
     </p>
 
-    <p
-      data-test-id="lowcode-supabase-rls-note"
-      class="mt-1.5 text-[10px] text-muted"
-    >
+    <p data-test-id="lowcode-supabase-rls-note" class="mt-1.5 text-[10px] text-muted">
       {{ panels.lowcodeSupabaseRlsNote }}
     </p>
-    <p
-      data-test-id="lowcode-supabase-current-user-note"
-      class="mt-1 text-[10px] text-muted"
-    >
+    <p data-test-id="lowcode-supabase-current-user-note" class="mt-1 text-[10px] text-muted">
       {{ panels.lowcodeSupabaseCurrentUserNote }}
     </p>
 
@@ -313,7 +307,8 @@ async function testConnection(): Promise<void> {
             v-for="cmd in req.commands"
             :key="cmd"
             class="rounded bg-hover px-1 text-[9px] uppercase text-muted"
-          >{{ cmd }}</span>
+            >{{ cmd }}</span
+          >
         </div>
         <p
           v-if="req.needsWriteWarning"
@@ -324,14 +319,19 @@ async function testConnection(): Promise<void> {
         <pre
           data-test-id="lowcode-supabase-rls-sql"
           class="overflow-x-auto rounded border border-border bg-input px-2 py-1 font-mono text-[10px] text-surface"
-        >{{ buildRlsPolicySql(req) }}</pre>
+          >{{ buildRlsPolicySql(req) }}</pre
+        >
         <button
           type="button"
           data-test-id="lowcode-supabase-rls-copy"
           class="self-start rounded border border-border px-2 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
           @click="copyRlsSql(req)"
         >
-          {{ copiedTable === req.table ? panels.lowcodeSupabaseRlsCopied : panels.lowcodeSupabaseRlsCopy }}
+          {{
+            copiedTable === req.table
+              ? panels.lowcodeSupabaseRlsCopied
+              : panels.lowcodeSupabaseRlsCopy
+          }}
         </button>
       </div>
     </div>

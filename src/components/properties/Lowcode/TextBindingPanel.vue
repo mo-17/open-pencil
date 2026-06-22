@@ -46,9 +46,7 @@ const selectedValue = computed(() => {
   return binding.value.stateId ?? ''
 })
 
-const exprValue = computed(() =>
-  binding.value?.kind === 'expr' ? (binding.value.expr ?? '') : ''
-)
+const exprValue = computed(() => (binding.value?.kind === 'expr' ? (binding.value.expr ?? '') : ''))
 
 const exprError = computed(() => {
   if (binding.value?.kind !== 'expr') return undefined
@@ -98,11 +96,7 @@ function onButtonTextChange(event: Event): void {
   const ipNext: Record<string, unknown> = { ...ipPrev }
   if (next === '') delete ipNext.text
   else ipNext.text = next
-  editor.updateNodeWithUndo(
-    node.id,
-    { interactiveProps: ipNext },
-    'Update button text'
-  )
+  editor.updateNodeWithUndo(node.id, { interactiveProps: ipNext }, 'Update button text')
 }
 
 function onSourceChange(event: Event): void {
@@ -151,10 +145,7 @@ function onDocStateChange(event: Event): void {
       <option :value="EXPR_SENTINEL">{{ panels.lowcodeTextSourceExpression }}</option>
     </select>
 
-    <div
-      v-if="isButton && inLiteralMode"
-      class="mt-1.5 flex flex-col gap-0.5"
-    >
+    <div v-if="isButton && inLiteralMode" class="mt-1.5 flex flex-col gap-0.5">
       <label class="text-[10px] text-muted">{{ panels.lowcodeButtonText }}</label>
       <input
         :value="buttonLiteralText"

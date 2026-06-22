@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph } from '@open-pencil/core'
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph } from '@open-pencil/core'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 

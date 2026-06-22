@@ -300,7 +300,9 @@ describe('emitElement (React adapter)', () => {
       }),
       0
     )
-    expect(out).toBe('<input type="date" defaultValue="2026-06-15" min="2026-01-01" max="2026-12-31" />')
+    expect(out).toBe(
+      '<input type="date" defaultValue="2026-06-15" min="2026-01-01" max="2026-12-31" />'
+    )
   })
 
   test('controlled RADIO option emits checked={read === <opt>} + shared setter', () => {

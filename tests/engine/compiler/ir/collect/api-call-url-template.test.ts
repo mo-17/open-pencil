@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
-
 import { collectTree } from '#compiler/ir/collect/tree'
 import type { IRApiCallHandler } from '#compiler/ir/types'
+
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 2 §4 — `apiCall` URL templating. The URL is parsed as a `${}`
@@ -91,9 +91,7 @@ describe('resolveApiCall — URL template (Phase 2 §4)', () => {
     const { graph, pageId } = makeGraph('https://x.test/${$prev}')
     expect(handlerOf(graph, pageId)).toBeUndefined()
     expect(
-      collectTree(graph, pageId).warnings.some(
-        (w) => w.code === 'expression-prev-out-of-context'
-      )
+      collectTree(graph, pageId).warnings.some((w) => w.code === 'expression-prev-out-of-context')
     ).toBe(true)
   })
 

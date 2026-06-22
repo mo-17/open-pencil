@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { collectTree } from '#compiler/ir/collect/tree'
 import type { IRConditional, IRElement } from '#compiler/ir/types'
+
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 2 §9 — `renderCondition` resolution. The signal lives on the
@@ -19,9 +19,12 @@ describe('collectTree — renderCondition wrapping (Phase 2 §9)', () => {
 
   function makeGraphWithFrame(
     renderCondition: string | undefined,
-    extraState: { id: string; name: string; type: 'number' | 'boolean'; defaultValue: unknown }[] = [
-      { id: 's-flag', name: 'flag', type: 'boolean', defaultValue: false }
-    ]
+    extraState: {
+      id: string
+      name: string
+      type: 'number' | 'boolean'
+      defaultValue: unknown
+    }[] = [{ id: 's-flag', name: 'flag', type: 'boolean', defaultValue: false }]
   ): { graph: SceneGraph; pageId: string } {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

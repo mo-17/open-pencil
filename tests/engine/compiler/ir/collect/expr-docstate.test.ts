@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
 import type { DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
-
-import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 
 /**
  * Phase 2 §4 — a Document State name may be referenced from a read-context
@@ -25,7 +24,10 @@ function withDocStates(): SceneGraph {
 }
 
 describe('text binding kind:"expr" — docState references (Phase 2 §4)', () => {
-  function makeTextExpr(expr: string, pageStates: StateDef[] = []): { ir: ReturnType<typeof collectTree> } {
+  function makeTextExpr(
+    expr: string,
+    pageStates: StateDef[] = []
+  ): { ir: ReturnType<typeof collectTree> } {
     const graph = withDocStates()
     const page = graph.getPages()[0]
     if (pageStates.length > 0) graph.updateNode(page.id, { state: pageStates })

@@ -1,15 +1,11 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
+import { compile, withDefaults } from '@open-pencil/compiler'
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { initCodec } from '@open-pencil/core'
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
-import {
-  SceneGraph,
-  type DocumentStateDef,
-  type StateDef
-} from '@open-pencil/core/scene-graph'
-import { compile, withDefaults } from '@open-pencil/compiler'
-import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
+import { SceneGraph, type DocumentStateDef, type StateDef } from '@open-pencil/core/scene-graph'
 
 import { ALL_TOOLS, getTool, setupToolTest } from '#tests/helpers/tools'
 
@@ -48,15 +44,11 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     const { figma, graph } = setupToolTest()
     const pageId = graph.getPages()[0].id
 
-    const pageState: StateDef[] = [
-      { id: 's1', name: 'count', type: 'number', defaultValue: 0 }
-    ]
+    const pageState: StateDef[] = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
     graph.updateNode(pageId, { state: pageState })
 
     const docStatesRes = getTool('set_doc_states').execute(figma, {
-      states_json: JSON.stringify([
-        { id: 'd1', name: 'items', type: 'array', defaultValue: [] }
-      ])
+      states_json: JSON.stringify([{ id: 'd1', name: 'items', type: 'array', defaultValue: [] }])
     }) as Result<{ count: number }>
     expect(docStatesRes.ok).toBe(true)
 
@@ -66,9 +58,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
       patch_json: JSON.stringify({
         bindings: { text: { kind: 'docState', docStateName: 'items' } },
         events: {
-          onClick: [
-            { id: 'a1', kind: 'setVariable', targetName: 'items', valueExpr: '$prev' }
-          ]
+          onClick: [{ id: 'a1', kind: 'setVariable', targetName: 'items', valueExpr: '$prev' }]
         },
         interactiveProps: { text: 'Submit' },
         renderCondition: 'count > 0'
@@ -115,9 +105,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
       state: [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
     })
     getTool('set_doc_states').execute(figma, {
-      states_json: JSON.stringify([
-        { id: 'd1', name: 'items', type: 'array', defaultValue: [] }
-      ])
+      states_json: JSON.stringify([{ id: 'd1', name: 'items', type: 'array', defaultValue: [] }])
     })
 
     const btn = graph.createNode('BUTTON', pageId, { name: 'Add' })
@@ -215,9 +203,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     graph.createNode('BUTTON', pageId, {
       interactiveProps: { text: 'Load' },
       events: {
-        onClick: [
-          { id: 'a1', kind: 'supabaseQuery', table: 'rows', resultTarget: 'rows' }
-        ]
+        onClick: [{ id: 'a1', kind: 'supabaseQuery', table: 'rows', resultTarget: 'rows' }]
       }
     })
     // The query needs a doc-state to write into.
@@ -312,9 +298,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     const btn = graph.createNode('BUTTON', pageId, {
       interactiveProps: { text: '+1' },
       events: {
-        onClick: [
-          { id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'count + 1' }
-        ]
+        onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'count + 1' }]
       }
     })
     expect(btn.id).toBeDefined()
@@ -369,9 +353,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     const pageId = graph.getPages()[0].id
 
     getTool('set_doc_states').execute(figma, {
-      states_json: JSON.stringify([
-        { id: 'd1', name: 'formId', type: 'string', defaultValue: '' }
-      ])
+      states_json: JSON.stringify([{ id: 'd1', name: 'formId', type: 'string', defaultValue: '' }])
     })
 
     const input = graph.createNode('INPUT', pageId, { name: 'IdInput' })
@@ -435,9 +417,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
     getTool('set_doc_states').execute(
       figma,
       {
-        states_json: JSON.stringify([
-          { id: 'd1', name: 'items', type: 'array', defaultValue: [] }
-        ])
+        states_json: JSON.stringify([{ id: 'd1', name: 'items', type: 'array', defaultValue: [] }])
       },
       { editor }
     )
@@ -459,9 +439,7 @@ describe('lowcode tools — cross-walker (IR + emit + deps)', () => {
         patch_json: JSON.stringify({
           bindings: { text: { kind: 'docState', docStateName: 'items' } },
           events: {
-            onClick: [
-              { id: 'a1', kind: 'setVariable', targetName: 'items', valueExpr: '$prev' }
-            ]
+            onClick: [{ id: 'a1', kind: 'setVariable', targetName: 'items', valueExpr: '$prev' }]
           },
           interactiveProps: { text: 'Save' },
           renderCondition: 'count >= 0'

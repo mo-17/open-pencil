@@ -248,13 +248,15 @@ export interface IRControlledInput {
 /** Phase 4 §24.1: a node rendered as an `<img>` (from `interactiveProps.image`).
  *  Exactly one of `srcExpr` / `srcLiteral` is set; `alt` defaults to '' (a valid
  *  decorative-image value). object-fit + aspect-ratio ride the element's
- *  `className`. */
+ *  `className`; loading is optional and omitted by default to preserve existing
+ *  output. */
 export interface IRImage {
   /** A literal image URL. */
   srcLiteral?: string
   /** A src expression (e.g. a doc-state binding to a §18 upload result). */
   srcExpr?: ExprAst
   alt: string
+  loading?: 'lazy' | 'eager'
 }
 
 /** Phase 4 §24 v2: binary asset emitted by the compiler project. */

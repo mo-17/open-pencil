@@ -59,14 +59,10 @@ const candidatePageStates = useSceneComputed(() => {
 const candidateDocStates = useSceneComputed(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
   const allow = allowedTypes.value
-  return (root?.lowcodeDocumentState ?? []).filter((d) =>
-    allow.includes(d.type as CtrlType)
-  )
+  return (root?.lowcodeDocumentState ?? []).filter((d) => allow.includes(d.type as CtrlType))
 })
 
-const binding = useSceneComputed<BindingExpr | undefined>(
-  () => selectedNode.value?.bindings?.value
-)
+const binding = useSceneComputed<BindingExpr | undefined>(() => selectedNode.value?.bindings?.value)
 
 const DOCSTATE_PREFIX = 'doc:'
 const STATE_PREFIX = 'state:'
@@ -127,18 +123,10 @@ function onSourceChange(event: Event): void {
       @change="onSourceChange"
     >
       <option value="">{{ panels.lowcodeValueBindingUncontrolled }}</option>
-      <option
-        v-for="s in candidatePageStates"
-        :key="s.id"
-        :value="`${STATE_PREFIX}${s.id}`"
-      >
+      <option v-for="s in candidatePageStates" :key="s.id" :value="`${STATE_PREFIX}${s.id}`">
         {{ panels.lowcodeTextSourceBound }} {{ s.name }} ({{ s.type }})
       </option>
-      <option
-        v-for="d in candidateDocStates"
-        :key="d.id"
-        :value="`${DOCSTATE_PREFIX}${d.name}`"
-      >
+      <option v-for="d in candidateDocStates" :key="d.id" :value="`${DOCSTATE_PREFIX}${d.name}`">
         {{ panels.lowcodeTextSourceDocState }}: {{ d.name }} ({{ d.type }})
       </option>
     </select>

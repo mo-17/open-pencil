@@ -1,4 +1,9 @@
-import { type ExprAst, collectReferences, substituteIdents } from '@open-pencil/core/lowcode-validation'
+import {
+  type ExprAst,
+  collectReferences,
+  substituteIdents
+} from '@open-pencil/core/lowcode-validation'
+
 import type { IREventHandler } from '../types'
 
 /** Phase 3 §10 v6: recompute the `references` list of a handler whose AST(s)
@@ -27,7 +32,10 @@ function refsOf(...asts: (ExprAst | undefined)[]): string[] {
  * (not ASTs) and so do not support parameter interpolation (documented
  * limitation — use `payloadEntries` instead).
  */
-export function substituteHandler(handler: IREventHandler, bindings: ReadonlyMap<string, ExprAst>): IREventHandler {
+export function substituteHandler(
+  handler: IREventHandler,
+  bindings: ReadonlyMap<string, ExprAst>
+): IREventHandler {
   switch (handler.kind) {
     case 'delay':
     case 'stop':
@@ -59,8 +67,12 @@ export function substituteHandler(handler: IREventHandler, bindings: ReadonlyMap
         filters: handler.filters.map((f) => substituteFilter(f, bindings))
       }
     case 'supabaseAuth': {
-      const emailAst = handler.emailAst === undefined ? undefined : substituteIdents(handler.emailAst, bindings)
-      const passwordAst = handler.passwordAst === undefined ? undefined : substituteIdents(handler.passwordAst, bindings)
+      const emailAst =
+        handler.emailAst === undefined ? undefined : substituteIdents(handler.emailAst, bindings)
+      const passwordAst =
+        handler.passwordAst === undefined
+          ? undefined
+          : substituteIdents(handler.passwordAst, bindings)
       return { ...handler, emailAst, passwordAst, references: refsOf(emailAst, passwordAst) }
     }
     case 'condition': {

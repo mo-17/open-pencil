@@ -230,8 +230,7 @@ describe('compile — canvas-direct absolute positioning (Phase 1 §1)', () => {
     })
 
     const app = out.files.get('src/App.tsx') as string
-    const findLine = (id: string) =>
-      app.split('\n').find((l) => l.includes(`data-node-id="${id}"`))
+    const findLine = (id: string) => app.split('\n').find((l) => l.includes(`data-node-id="${id}"`))
 
     // Outer is canvas-direct → absolute.
     const outerLine = findLine(outer.id)

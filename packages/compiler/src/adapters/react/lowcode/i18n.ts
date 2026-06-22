@@ -61,10 +61,7 @@ export function isRtlLocale(code: string): boolean {
  *  file, listing only the symbols it uses: `FormattedMessage` for visible text
  *  (§9 v1), `useIntl` for translated attributes like placeholder (§9 v3).
  *  Returns '' when neither is needed (so non-i18n files stay byte-identical). */
-export function buildReactIntlImport(needs: {
-  formattedMessage: boolean
-  intl: boolean
-}): string {
+export function buildReactIntlImport(needs: { formattedMessage: boolean; intl: boolean }): string {
   const names: string[] = []
   if (needs.formattedMessage) names.push('FormattedMessage')
   if (needs.intl) names.push('useIntl')
@@ -133,7 +130,13 @@ export function buildI18nCoverageReport(
   targetLocales: readonly string[],
   translations: Readonly<Record<string, Readonly<Record<string, string>>>> | undefined
 ): string {
-  return JSON.stringify(computeI18nCoverage(messages, sourceLocale, targetLocales, translations), null, 2) + '\n'
+  return (
+    JSON.stringify(
+      computeI18nCoverage(messages, sourceLocale, targetLocales, translations),
+      null,
+      2
+    ) + '\n'
+  )
 }
 
 /** Phase 3 §9 v10/v14 — per-target-locale coverage data (shared by the JSON
@@ -198,13 +201,18 @@ export function localeIdent(code: string): string {
  * is the runtime's default locale (was fixed to `'en'`). With source `'en'` and
  * no targets the output is byte-identical to the v1 single-locale runtime.
  */
-export function buildLowcodeI18nRuntime(sourceLocale: string, targetLocales: readonly string[]): string {
+export function buildLowcodeI18nRuntime(
+  sourceLocale: string,
+  targetLocales: readonly string[]
+): string {
   const locales = [sourceLocale, ...targetLocales]
   const imports = locales
     .map((code) => `import ${localeIdent(code)} from './locales/${code}.json'`)
     .join('\n')
   const entries = locales
-    .map((code) => (localeIdent(code) === code ? code : `${JSON.stringify(code)}: ${localeIdent(code)}`))
+    .map((code) =>
+      localeIdent(code) === code ? code : `${JSON.stringify(code)}: ${localeIdent(code)}`
+    )
     .join(', ')
   // Phase 3 §9 v11: only wire document direction when an RTL locale is actually
   // in play (source or any target), so LTR-only apps stay byte-identical to v8.

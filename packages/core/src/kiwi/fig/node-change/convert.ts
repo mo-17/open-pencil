@@ -24,11 +24,6 @@ import {
 } from './plugin-data'
 import { resolveGeometryPaths, resolveVectorNetwork } from './vector-geometry'
 export { resolveGeometryPaths } from './vector-geometry'
-import {
-  extractLowcodeAndPluginData,
-  type ExtractedLowcodeAndPluginData
-} from './lowcode-plugin-data'
-
 import type { NodeChange } from '#core/kiwi/fig/codec'
 import type {
   SceneNode,
@@ -53,6 +48,11 @@ import type {
   VariantPropSpec
 } from '#core/scene-graph'
 import type { GUID } from '#core/types'
+
+import {
+  extractLowcodeAndPluginData,
+  type ExtractedLowcodeAndPluginData
+} from './lowcode-plugin-data'
 
 export { guidToString, stringToGuid } from './guid'
 

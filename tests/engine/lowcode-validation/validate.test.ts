@@ -101,9 +101,7 @@ describe('normalizeSupabaseMutationPayloadJson', () => {
   })
 
   test('real JSON literal payloads pass through unchanged', () => {
-    expect(normalizeSupabaseMutationPayloadJson('{"name":"Alice"}')).toBe(
-      '{"name":"Alice"}'
-    )
+    expect(normalizeSupabaseMutationPayloadJson('{"name":"Alice"}')).toBe('{"name":"Alice"}')
     expect(normalizeSupabaseMutationPayloadJson('[{"id":1}]')).toBe('[{"id":1}]')
   })
 

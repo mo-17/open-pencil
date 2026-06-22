@@ -12,7 +12,12 @@ import { collectStateTailwindClasses } from '@open-pencil/core/io/formats/jsx'
  * restoring full opacity still emits an explicit reset utility).
  */
 describe('collectStateTailwindClasses (Phase 4 §20)', () => {
-  const RED = { type: 'SOLID' as const, color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }
+  const RED = {
+    type: 'SOLID' as const,
+    color: { r: 1, g: 0, b: 0, a: 1 },
+    opacity: 1,
+    visible: true
+  }
   const SHADOW = {
     type: 'DROP_SHADOW' as const,
     color: { r: 0, g: 0, b: 0, a: 0.25 },
@@ -60,7 +65,17 @@ describe('collectStateTailwindClasses (Phase 4 §20)', () => {
     const node = styledNode(graph, {
       strokes: [],
       stateOverrides: {
-        focus: { strokes: [{ color: { r: 1, g: 0, b: 0, a: 1 }, weight: 2, opacity: 1, visible: true, align: 'INSIDE' as const }] }
+        focus: {
+          strokes: [
+            {
+              color: { r: 1, g: 0, b: 0, a: 1 },
+              weight: 2,
+              opacity: 1,
+              visible: true,
+              align: 'INSIDE' as const
+            }
+          ]
+        }
       }
     })
     const out = collectStateTailwindClasses(node, graph)
@@ -69,8 +84,13 @@ describe('collectStateTailwindClasses (Phase 4 §20)', () => {
 
   test('hover adds a shadow → `hover:shadow-…` utility', () => {
     const graph = new SceneGraph()
-    const node = styledNode(graph, { effects: [], stateOverrides: { hover: { effects: [SHADOW] } } })
-    expect(collectStateTailwindClasses(node, graph).some((c) => c.startsWith('hover:shadow-'))).toBe(true)
+    const node = styledNode(graph, {
+      effects: [],
+      stateOverrides: { hover: { effects: [SHADOW] } }
+    })
+    expect(
+      collectStateTailwindClasses(node, graph).some((c) => c.startsWith('hover:shadow-'))
+    ).toBe(true)
   })
 
   test('clearing a base prop re-asserts its default (base opacity 0.5 → hover opacity 1 → `hover:opacity-100`)', () => {

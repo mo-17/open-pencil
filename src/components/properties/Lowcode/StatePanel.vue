@@ -8,11 +8,7 @@ import { useSectionUI } from '@/components/ui/section'
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceConflictBanner } from '@/app/editor/presence/use-presence-conflict-banner'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
-import {
-  STATE_VALUE_TYPES,
-  defaultAsString,
-  useStateRowEditor
-} from './state-row-editor'
+import { STATE_VALUE_TYPES, defaultAsString, useStateRowEditor } from './state-row-editor'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
@@ -30,19 +26,12 @@ const states = useSceneComputed<StateDef[]>(() => {
 // Page-scoped state — row editing (add / rename / retype / default-value
 // parsing / name validation) is shared with DocumentStatePanel via the
 // composable; only the commit target differs.
-const {
-  valueErrors,
-  nameErrors,
-  addState,
-  removeState,
-  renameState,
-  changeType,
-  changeDefault
-} = useStateRowEditor({
-  states,
-  commit: (next) => editor.updateNodeWithUndo(pageId.value, { state: next }, 'Update page state'),
-  defaultName: 'count'
-})
+const { valueErrors, nameErrors, addState, removeState, renameState, changeType, changeDefault } =
+  useStateRowEditor({
+    states,
+    commit: (next) => editor.updateNodeWithUndo(pageId.value, { state: next }, 'Update page state'),
+    defaultName: 'count'
+  })
 </script>
 
 <template>
@@ -83,70 +72,72 @@ const {
         class="flex flex-col gap-0.5"
       >
         <div class="flex items-center gap-1">
-        <input
-          :value="state.name"
-          :aria-label="panels.lowcodeStateName"
-          :aria-invalid="nameErrors.has(state.id) ? 'true' : undefined"
-          data-test-id="lowcode-state-name"
-          :class="[
-            'min-w-0 flex-1 rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
-            nameErrors.has(state.id) ? 'border-red-500' : 'border-border'
-          ]"
-          @change="renameState(state.id, ($event.target as HTMLInputElement).value)"
-        />
-        <select
-          :value="state.type"
-          :aria-label="panels.lowcodeStateType"
-          data-test-id="lowcode-state-type"
-          class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="changeType(state.id, ($event.target as HTMLSelectElement).value as StateValueType)"
-        >
-          <option v-for="t in STATE_VALUE_TYPES" :key="t" :value="t">{{ t }}</option>
-        </select>
-        <select
-          v-if="state.type === 'boolean'"
-          :value="defaultAsString(state.defaultValue)"
-          :aria-label="panels.lowcodeStateDefault"
-          data-test-id="lowcode-state-default"
-          class="w-16 rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="changeDefault(state.id, ($event.target as HTMLSelectElement).value, 'boolean')"
-        >
-          <option value="false">false</option>
-          <option value="true">true</option>
-        </select>
-        <input
-          v-else
-          :value="defaultAsString(state.defaultValue)"
-          :type="state.type === 'number' ? 'number' : 'text'"
-          :aria-label="panels.lowcodeStateDefault"
-          :aria-invalid="valueErrors.has(state.id) ? 'true' : undefined"
-          data-test-id="lowcode-state-default"
-          spellcheck="false"
-          :placeholder="
-            state.type === 'array'
-              ? '[{&quot;name&quot;:&quot;Alice&quot;}]'
-              : state.type === 'object'
-                ? '{&quot;a&quot;:1}'
-                : undefined
-          "
-          :class="[
-            'rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
-            state.type === 'array' || state.type === 'object'
-              ? 'min-w-0 flex-1 font-mono'
-              : 'w-20',
-            valueErrors.has(state.id) ? 'border-red-500' : 'border-border'
-          ]"
-          @change="changeDefault(state.id, ($event.target as HTMLInputElement).value, state.type)"
-        />
-        <button
-          type="button"
-          :aria-label="panels.lowcodeStateAdd"
-          data-test-id="lowcode-state-remove"
-          class="rounded p-1 text-muted hover:bg-hover hover:text-surface"
-          @click="removeState(state.id)"
-        >
-          <icon-lucide-x class="size-3" />
-        </button>
+          <input
+            :value="state.name"
+            :aria-label="panels.lowcodeStateName"
+            :aria-invalid="nameErrors.has(state.id) ? 'true' : undefined"
+            data-test-id="lowcode-state-name"
+            :class="[
+              'min-w-0 flex-1 rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
+              nameErrors.has(state.id) ? 'border-red-500' : 'border-border'
+            ]"
+            @change="renameState(state.id, ($event.target as HTMLInputElement).value)"
+          />
+          <select
+            :value="state.type"
+            :aria-label="panels.lowcodeStateType"
+            data-test-id="lowcode-state-type"
+            class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+            @change="
+              changeType(state.id, ($event.target as HTMLSelectElement).value as StateValueType)
+            "
+          >
+            <option v-for="t in STATE_VALUE_TYPES" :key="t" :value="t">{{ t }}</option>
+          </select>
+          <select
+            v-if="state.type === 'boolean'"
+            :value="defaultAsString(state.defaultValue)"
+            :aria-label="panels.lowcodeStateDefault"
+            data-test-id="lowcode-state-default"
+            class="w-16 rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+            @change="changeDefault(state.id, ($event.target as HTMLSelectElement).value, 'boolean')"
+          >
+            <option value="false">false</option>
+            <option value="true">true</option>
+          </select>
+          <input
+            v-else
+            :value="defaultAsString(state.defaultValue)"
+            :type="state.type === 'number' ? 'number' : 'text'"
+            :aria-label="panels.lowcodeStateDefault"
+            :aria-invalid="valueErrors.has(state.id) ? 'true' : undefined"
+            data-test-id="lowcode-state-default"
+            spellcheck="false"
+            :placeholder="
+              state.type === 'array'
+                ? '[{&quot;name&quot;:&quot;Alice&quot;}]'
+                : state.type === 'object'
+                  ? '{&quot;a&quot;:1}'
+                  : undefined
+            "
+            :class="[
+              'rounded border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent',
+              state.type === 'array' || state.type === 'object'
+                ? 'min-w-0 flex-1 font-mono'
+                : 'w-20',
+              valueErrors.has(state.id) ? 'border-red-500' : 'border-border'
+            ]"
+            @change="changeDefault(state.id, ($event.target as HTMLInputElement).value, state.type)"
+          />
+          <button
+            type="button"
+            :aria-label="panels.lowcodeStateAdd"
+            data-test-id="lowcode-state-remove"
+            class="rounded p-1 text-muted hover:bg-hover hover:text-surface"
+            @click="removeState(state.id)"
+          >
+            <icon-lucide-x class="size-3" />
+          </button>
         </div>
         <p
           v-if="nameErrors.has(state.id)"

@@ -128,7 +128,9 @@ describe('compile — components / instances (Phase 3 §8)', () => {
     })
     expect(out.files.get('src/components/SharedCard.tsx')).toBeDefined()
     // page 2's module imports the component from the sibling components dir.
-    const page2File = [...out.files].find(([k]) => k.startsWith('src/pages/') && k.includes('second'))
+    const page2File = [...out.files].find(
+      ([k]) => k.startsWith('src/pages/') && k.includes('second')
+    )
     const page2Src = (page2File?.[1] as string) ?? ''
     expect(page2Src).toContain("from '../components/SharedCard'")
     expect(page2Src).toContain('<SharedCard')

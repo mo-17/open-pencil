@@ -60,9 +60,7 @@ export function useLayerDrag(
       const owningNode = editor.graph.getNode(data.id)
       const parentId = owningNode?.parentId ?? editor.state.currentPageId
       const parent = editor.graph.getNode(parentId)
-      const isLastSibling = parent
-        ? parent.childIds[parent.childIds.length - 1] === data.id
-        : false
+      const isLastSibling = parent ? parent.childIds[parent.childIds.length - 1] === data.id : false
       const mode: ItemMode = pickItemMode(isContainer, isLastSibling)
 
       const cleanup = combine(

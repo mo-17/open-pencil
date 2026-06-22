@@ -30,7 +30,11 @@ function pageWithText(
       lowcodeDocumentState: [{ id: 'd1', name: opts.docState, type: 'string', defaultValue: '' }]
     })
   }
-  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  const frame = graph.createNode('FRAME', pageId, {
+    width: 200,
+    height: 100,
+    layoutMode: 'VERTICAL'
+  })
   graph.createNode('TEXT', frame.id, { text, width: 160, height: 20 })
   return { graph, pageId }
 }

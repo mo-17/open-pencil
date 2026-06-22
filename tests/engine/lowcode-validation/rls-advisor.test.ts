@@ -1,12 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { ActionDef } from '@open-pencil/core/scene-graph'
-
 import {
   type RlsTableRequirement,
   buildRlsPolicySql,
   collectRlsRequirements
 } from '@open-pencil/core/lowcode-validation'
+import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 3 §3.v8 step 1 — direct unit coverage for the RLS policy advisor.
@@ -18,10 +17,7 @@ function query(table: string): ActionDef {
   return { id: 'a', kind: 'supabaseQuery', table, resultTarget: 'rows' }
 }
 
-function mutation(
-  table: string,
-  operation: 'insert' | 'update' | 'delete' | 'upsert'
-): ActionDef {
+function mutation(table: string, operation: 'insert' | 'update' | 'delete' | 'upsert'): ActionDef {
   return { id: 'm', kind: 'supabaseMutation', operation, table }
 }
 
@@ -104,7 +100,11 @@ describe('collectRlsRequirements', () => {
     const workflows = new Map<string, { id: string; name: string; actions: ActionDef[] }>([
       [
         'a',
-        { id: 'a', name: 'a', actions: [mutation('t', 'insert'), { id: 'cb', kind: 'callWorkflow', workflowId: 'b' }] }
+        {
+          id: 'a',
+          name: 'a',
+          actions: [mutation('t', 'insert'), { id: 'cb', kind: 'callWorkflow', workflowId: 'b' }]
+        }
       ],
       ['b', { id: 'b', name: 'b', actions: [{ id: 'ca', kind: 'callWorkflow', workflowId: 'a' }] }]
     ])
@@ -150,11 +150,7 @@ describe('collectRlsRequirements', () => {
   })
 
   test('skips blank table names and trims', () => {
-    const reqs = collectRlsRequirements([
-      query('   '),
-      query(''),
-      mutation('  spaced  ', 'insert')
-    ])
+    const reqs = collectRlsRequirements([query('   '), query(''), mutation('  spaced  ', 'insert')])
     expect(reqs.map((r) => r.table)).toEqual(['spaced'])
   })
 

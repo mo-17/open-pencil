@@ -31,7 +31,10 @@ interface DeployArgs {
 
 const PROVIDERS = ['netlify', 'vercel'] as const
 type DeployProvider = (typeof PROVIDERS)[number]
-const TOKEN_ENV: Record<DeployProvider, string> = { netlify: 'NETLIFY_AUTH_TOKEN', vercel: 'VERCEL_TOKEN' }
+const TOKEN_ENV: Record<DeployProvider, string> = {
+  netlify: 'NETLIFY_AUTH_TOKEN',
+  vercel: 'VERCEL_TOKEN'
+}
 const TOKEN_HELP: Record<DeployProvider, string> = {
   netlify: 'https://app.netlify.com/user/applications#personal-access-tokens',
   vercel: 'https://vercel.com/account/tokens'
@@ -73,12 +76,14 @@ export default defineCommand({
     },
     site: {
       type: 'string',
-      description: 'Existing target — Netlify site id/subdomain or Vercel project name (default: create new).',
+      description:
+        'Existing target — Netlify site id/subdomain or Vercel project name (default: create new).',
       required: false
     },
     page: {
       type: 'string',
-      description: 'Restrict to a single page by name. Default: all pages (multi-page uses react-router-dom).',
+      description:
+        'Restrict to a single page by name. Default: all pages (multi-page uses react-router-dom).',
       required: false
     },
     base: {
@@ -88,12 +93,14 @@ export default defineCommand({
     },
     'supabase-url': {
       type: 'string',
-      description: 'Override the Supabase URL for this deploy (else VITE_SUPABASE_URL, else design-time).',
+      description:
+        'Override the Supabase URL for this deploy (else VITE_SUPABASE_URL, else design-time).',
       required: false
     },
     'supabase-anon-key': {
       type: 'string',
-      description: 'Override the Supabase anon key for this deploy (else VITE_SUPABASE_ANON_KEY, else design-time).',
+      description:
+        'Override the Supabase anon key for this deploy (else VITE_SUPABASE_ANON_KEY, else design-time).',
       required: false
     },
     ...uiKitArgs,
@@ -138,7 +145,12 @@ export default defineCommand({
       })
 
       if (!args.json) console.log('  Building…')
-      const built = await buildPreviewProject({ files: compiled.files, outDir: buildDir, base, env })
+      const built = await buildPreviewProject({
+        files: compiled.files,
+        outDir: buildDir,
+        base,
+        env
+      })
       const dist = readDist(built.outDir, built.files)
 
       let result: DeployResult

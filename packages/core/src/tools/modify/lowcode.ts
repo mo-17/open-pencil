@@ -1338,7 +1338,8 @@ export const setTranslations = defineTool({
  *  `{ id, name, actions }` where `id` is a non-empty unique string, `name` a
  *  string, and `actions` a (possibly empty) ActionDef array validated through
  *  the same recursive pipeline as event chains. Rejects duplicate ids and any
- *  malformed action so a broken workflow never persists. */
+ *  malformed action so a broken workflow never persists. Phase 4 §10 follow-up:
+ *  optional `pageId` scopes editor/tool validation to a page's local state. */
 /** Phase 3 §10 v6: a workflow parameter name. A plain identifier (letters /
  *  digits / underscore, not starting with a digit), deliberately excluding the
  *  `$`-prefixed reserved tokens (`$prev` / `$event` / `$currentUser` …) so a
@@ -1424,7 +1425,8 @@ function validateWorkflowOptionalParams(
 
 function validateWorkflows(
   what: string,
-  raw: unknown
+  raw: unknown,
+  validPageIds?: ReadonlySet<string>
 ): { ok: true; workflows: WorkflowDef[] } | { ok: false; error: string } {
   if (!Array.isArray(raw)) return failAt(what, 'must be a JSON array of { id, name, actions }')
   const out: WorkflowDef[] = []
@@ -1437,6 +1439,8 @@ function validateWorkflows(
       return failAt(where, '.id must be a non-empty string')
     if (seenIds.has(wf.id)) return failAt(where, `.id "${wf.id}" is duplicated`)
     if (typeof wf.name !== 'string') return failAt(where, '.name must be a string')
+    const pageR = validateWorkflowPageId(where, wf.pageId, validPageIds)
+    if (!pageR.ok) return pageR
     const paramsR = validateWorkflowParams(`${where}.params`, wf.params)
     if (!paramsR.ok) return paramsR
     const defaultsR = validateWorkflowParamDefaults(
@@ -1457,6 +1461,7 @@ function validateWorkflows(
     out.push({
       id: wf.id,
       name: wf.name,
+      ...(typeof wf.pageId === 'string' ? { pageId: wf.pageId } : {}),
       params: paramsR.params,
       paramDefaults: defaultsR.paramDefaults,
       optionalParams: optionalR.optionalParams,
@@ -1466,11 +1471,26 @@ function validateWorkflows(
   return { ok: true, workflows: out }
 }
 
+function validateWorkflowPageId(
+  where: string,
+  pageId: unknown,
+  validPageIds: ReadonlySet<string> | undefined
+): { ok: true } | { ok: false; error: string } {
+  if (pageId === undefined) return { ok: true }
+  if (typeof pageId !== 'string' || pageId === '') {
+    return failAt(where, '.pageId must be a non-empty string when present')
+  }
+  if (validPageIds !== undefined && !validPageIds.has(pageId)) {
+    return failAt(where, `.pageId "${pageId}" does not match an existing page`)
+  }
+  return { ok: true }
+}
+
 export const setWorkflows = defineTool({
   name: 'set_workflows',
   mutates: true,
   description:
-    'Replace the root node\'s lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node\'s event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so a workflow that does setState / navigate resolves against the calling component\'s scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string "null" or \'[]\' to clear all workflows. Shape: [{ id, name, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow\'s expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, optionalParams (Phase 3 §10 v8, optional) is an array of declared parameter names that may be omitted even without a default (each resolves to the literal `undefined` in the body rather than dropping the call), and actions is an ActionDef array (same shape as a node\'s event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: \'[{"id":"wf-notify","name":"Notify","params":["msg"],"actions":[{"id":"a1","kind":"toast","messageExpr":"msg","variant":"success"}]}]\' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: \'null\' }) → { ok: true, data: { workflows: 0, actions: 0 } }.',
+    'Replace the root node\'s lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node\'s event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so runtime page-local state still belongs to the calling component scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string "null" or \'[]\' to clear all workflows. Shape: [{ id, name, pageId?, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), pageId is an optional page scope used by editor/tool validation for page-local state, params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow\'s expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, optionalParams (Phase 3 §10 v8, optional) is an array of declared parameter names that may be omitted even without a default (each resolves to the literal `undefined` in the body rather than dropping the call), and actions is an ActionDef array (same shape as a node\'s event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: \'[{"id":"wf-notify","name":"Notify","params":["msg"],"actions":[{"id":"a1","kind":"toast","messageExpr":"msg","variant":"success"}]}]\' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: \'null\' }) → { ok: true, data: { workflows: 0, actions: 0 } }.',
   params: {
     workflows_json: {
       type: 'string',
@@ -1492,7 +1512,8 @@ export const setWorkflows = defineTool({
       )
       return { ok: true, data: { workflows: 0, actions: 0 } }
     }
-    const r = validateWorkflows('workflows_json', parsed.value)
+    const validPageIds = new Set(figma.graph.getPages().map((page) => page.id))
+    const r = validateWorkflows('workflows_json', parsed.value, validPageIds)
     if (!r.ok) return r
     const actions = r.workflows.reduce((n, wf) => n + wf.actions.length, 0)
     // An empty list ([]) clears the field — keep absent ≡ no workflows so .fig

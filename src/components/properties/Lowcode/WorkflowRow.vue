@@ -20,10 +20,11 @@ import ActionList from './ActionList.vue'
  * owns persistence / undo. `optionalParams` editing stays MCP-only (its
  * "omitted → literal undefined" semantics is a deep-authoring detail).
  */
-const { workflow, workflows, pageStates, docStates } = defineProps<{
+const { workflow, workflows, pages, pageStates, docStates } = defineProps<{
   workflow: WorkflowDef
   /** The full workflow list, so a nested `callWorkflow` can target peers. */
   workflows: readonly WorkflowDef[]
+  pages: readonly { id: string; name: string }[]
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
 }>()
@@ -65,6 +66,10 @@ const paramErrors = computed<Map<number, string>>(() => {
 
 function setName(name: string): void {
   emit('update:workflow', { ...workflow, name })
+}
+
+function setPageId(pageId: string): void {
+  emit('update:workflow', { ...workflow, pageId: pageId || undefined })
 }
 
 function updateActions(next: ActionDef[]): void {
@@ -110,7 +115,10 @@ function setParamDefault(index: number, def: string): void {
 </script>
 
 <template>
-  <li data-test-id="lowcode-workflow-row" class="flex flex-col gap-1.5 rounded border border-border p-2">
+  <li
+    data-test-id="lowcode-workflow-row"
+    class="flex flex-col gap-1.5 rounded border border-border p-2"
+  >
     <div class="flex items-center gap-1">
       <input
         :value="workflow.name"
@@ -120,6 +128,16 @@ function setParamDefault(index: number, def: string): void {
         class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
         @change="setName(($event.target as HTMLInputElement).value)"
       />
+      <select
+        :value="workflow.pageId ?? ''"
+        aria-label="Workflow page scope"
+        data-test-id="lowcode-workflow-page"
+        class="max-w-28 rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
+        @change="setPageId(($event.target as HTMLSelectElement).value)"
+      >
+        <option value="">current page</option>
+        <option v-for="page in pages" :key="page.id" :value="page.id">{{ page.name }}</option>
+      </select>
       <button
         type="button"
         aria-label="Remove workflow"

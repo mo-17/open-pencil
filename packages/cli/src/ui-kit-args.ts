@@ -1,5 +1,6 @@
-import type { UiKitName } from '@open-pencil/compiler'
 import type { ArgsDef } from 'citty'
+
+import type { UiKitName } from '@open-pencil/compiler'
 
 /**
  * Phase 3 §15 — shared `--ui-kit` flag for the codegen commands (`compile`,

@@ -43,7 +43,12 @@ describe('compile — components fill-override props (Phase 3 §8 v3)', () => {
   /** Create an instance and override its (single) child's fill, marking the
    *  `:fills` override the way the editor would (diverged fill on the child
    *  node + a presence marker in the overrides map). */
-  function makeFillOverrideInstance(graph: SceneGraph, masterId: string, pageId: string, fill: Fill) {
+  function makeFillOverrideInstance(
+    graph: SceneGraph,
+    masterId: string,
+    pageId: string,
+    fill: Fill
+  ) {
     const inst = graph.createInstance(masterId, pageId)
     if (!inst) throw new Error('instance not created')
     const child = graph.getChildren(inst.id)[0]
@@ -56,7 +61,11 @@ describe('compile — components fill-override props (Phase 3 §8 v3)', () => {
     const { graph, pageId, masterId } = makeGraph()
     makeFillOverrideInstance(graph, masterId, pageId, BLUE)
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Card.tsx') as string
     expect(comp).toContain('badgeClassName?: string')
     // default carries the master red fill; the body child reads the prop
@@ -68,7 +77,11 @@ describe('compile — components fill-override props (Phase 3 §8 v3)', () => {
     const { graph, pageId, masterId } = makeGraph()
     makeFillOverrideInstance(graph, masterId, pageId, BLUE)
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     // instance passes its blue className via the prop
     expect(app).toMatch(/<Card[^>]*\bbadgeClassName="[^"]*bg-\[#0000FF\]/)
@@ -78,7 +91,11 @@ describe('compile — components fill-override props (Phase 3 §8 v3)', () => {
     const { graph, pageId, masterId } = makeGraph()
     makeFillOverrideInstance(graph, masterId, pageId, BLUE)
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     // the safelist file (index.css / tailwind input) must mention the blue bg
     const allSrc = [...out.files.values()].join('\n')
     expect(allSrc).toContain('bg-[#0000FF]')
@@ -107,7 +124,11 @@ describe('compile — components fill-override props (Phase 3 §8 v3)', () => {
       inst.overrides = { [`${child.id}:text`]: 'New', [`${child.id}:fills`]: true }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Tag.tsx') as string
     expect(comp).toContain('label?: string')
     expect(comp).toContain('labelClassName?: string')
@@ -129,7 +150,11 @@ describe('compile — components fill-override props (Phase 3 §8 v3)', () => {
       dirty.overrides = { [`${child.id}:fontSize`]: 24 }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     // master + clean + dirty = 3 refs; nothing inlines.
     expect((app.match(/<Card\b/g) ?? []).length).toBe(3)

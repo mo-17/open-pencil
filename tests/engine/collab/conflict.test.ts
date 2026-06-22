@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+
 import * as Y from 'yjs'
 
 import { docStateApplyLosesLocal } from '@/app/collab/conflict'

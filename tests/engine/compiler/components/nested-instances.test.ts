@@ -58,7 +58,11 @@ describe('compile — nested-instance override (Phase 3 §8 v9)', () => {
       deep.overrides = { [`${label.id}:text`]: 'Bye' }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
 
     // Inner + Outer are still extracted (the clean instance + Outer body reuse them)
@@ -82,7 +86,11 @@ describe('compile — nested-instance override (Phase 3 §8 v9)', () => {
       }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     // the override targets the nested instance node directly → §8 v6 className
     // prop on the <Outer/> ref, so the instance is NOT inlined (master + instance
@@ -99,7 +107,11 @@ describe('compile — nested-instance override (Phase 3 §8 v9)', () => {
       deep.overrides = { [`${label.id}:text`]: 'Solo' }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     // no ref-able Outer instance → Outer is not registered / extracted
     expect(out.files.has('src/components/Outer.tsx')).toBe(false)
@@ -107,7 +119,6 @@ describe('compile — nested-instance override (Phase 3 §8 v9)', () => {
     // the inlined subtree still renders the override
     expect(app).toContain('>Solo</p>')
   })
-
 })
 
 /**
@@ -143,7 +154,11 @@ describe('compile — unreferenced component pruning (Phase 3 §8 v10)', () => {
 
   test('the same component IS emitted when its page is compiled (control)', () => {
     const { graph, pageA, pageB } = makeTwoPageGraph()
-    const out = compile({ graph, pageIds: [pageA, pageB.id], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageA, pageB.id],
+      options: withDefaults({ packageName: 'comp' })
+    })
     // page B references Widget → reachable → emitted
     expect(out.files.has('src/components/Widget.tsx')).toBe(true)
   })

@@ -51,15 +51,23 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).toContain("import { validateValue } from './_lowcode_validation'")
     expect(app).toContain('getDocStateSnapshot')
     expect(app).toContain('const [__fieldErrors, __setFieldErrors] = useState')
-    expect(app).toContain('const __validators: Record<string, () => string | null> = {')
-    expect(app).toContain('const __value = getDocStateSnapshot("email")')
+    expect(app).toContain(
+      'const __validators: Record<string, (valueOverride?: unknown) => string | null> = {'
+    )
+    expect(app).toContain(
+      'const __value = __valueOverride !== undefined ? __valueOverride : getDocStateSnapshot("email")'
+    )
     expect(app).toContain('let __error = validateValue(__value, {"required":true')
     expect(app).toContain('"minLength":5')
     expect(app).toContain('"messages":{"required":"Email required"}')
     expect(app).toContain('const __validateField = (id: string): string | null =>')
+    expect(app).toContain(
+      'const __validateFieldValue = (id: string, value: unknown): string | null =>'
+    )
     expect(app).toContain('const __validateFields = (ids: string[]): boolean =>')
     // field attrs + per-field error <p>
     expect(app).toContain('aria-invalid={__fieldErrors[')
+    expect(app).toContain('setDocState("email", e.target.value); __validateFieldValue(')
     expect(app).toContain('onBlur={() => __validateField(')
     expect(app).toContain('<p className="text-sm text-red-600 mt-1" role="alert">{__fieldErrors[')
     // runtime file
@@ -188,8 +196,8 @@ describe('compile — form validation (Phase 4 §19)', () => {
     })
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain(`${JSON.stringify(a.id)}: () => {`)
-    expect(app).toContain(`${JSON.stringify(b.id)}: () => {`)
+    expect(app).toContain(`${JSON.stringify(a.id)}: (__valueOverride?: unknown) => {`)
+    expect(app).toContain(`${JSON.stringify(b.id)}: (__valueOverride?: unknown) => {`)
     const formLine = app.split('\n').find((l) => l.includes('<form')) ?? ''
     expect(formLine).toContain(JSON.stringify(a.id))
     expect(formLine).toContain(JSON.stringify(b.id))
@@ -223,8 +231,39 @@ describe('compile — form validation (Phase 4 §19)', () => {
     })
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('const __value = name')
+    expect(app).toContain('const __value = __valueOverride !== undefined ? __valueOverride : name')
+    expect(app).toContain('setName(e.target.value); __validateFieldValue(')
     expect(app).not.toContain('getDocStateSnapshot')
+  })
+
+  test('a validated controlled onChange writes, validates next value, then runs user actions', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd1', name: 'email', type: 'string', defaultValue: '' },
+        { id: 'd2', name: 'status', type: 'string', defaultValue: '' }
+      ]
+    })
+    const input = graph.createNode('INPUT', pageId, {
+      name: 'Email',
+      width: 200,
+      height: 40,
+      bindings: { value: { kind: 'docState', docStateName: 'email' } },
+      events: {
+        onChange: [{ id: 'c', kind: 'setVariable', targetName: 'status', valueExpr: '$value' }]
+      },
+      interactiveProps: { validation: { required: true } }
+    })
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const k = JSON.stringify(input.id)
+    expect(app).toContain(
+      `setDocState("email", e.target.value); __validateFieldValue(${k}, e.target.value); setDocState("status", $value);`
+    )
+    expect(app).toContain(
+      'onChange={(e) => { const $event = e; const $value = (e.target as HTMLInputElement).value;'
+    )
   })
 
   test('a user-defined onBlur on a validated field runs after validation', () => {

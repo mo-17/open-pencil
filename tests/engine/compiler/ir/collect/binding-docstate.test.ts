@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
 import type { BindingExpr, DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
-
-import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 
 /**
  * Phase 2 §2 — bindings.text with `kind: 'docState'` resolves to an
@@ -53,9 +52,7 @@ describe('text binding — kind:"docState" (Phase 2 §2)', () => {
     if (text.kind !== 'element') throw new Error('expected element')
     // Falls back to the static `node.text` literal.
     expect(text.children[0]).toEqual({ kind: 'text', value: 'fallback' })
-    expect(
-      ir.warnings.some((w) => w.code === 'binding-docstate-unknown-name')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'binding-docstate-unknown-name')).toBe(true)
     // Unknown name is NOT added to docStateReads (nothing to emit a hook for).
     expect(ir.docStateReads).toEqual([])
   })
@@ -66,9 +63,7 @@ describe('text binding — kind:"docState" (Phase 2 §2)', () => {
       { text: { kind: 'docState' } }
     )
     const ir = collectTree(graph, pageId)
-    expect(
-      ir.warnings.some((w) => w.code === 'binding-docstate-missing-name')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'binding-docstate-missing-name')).toBe(true)
   })
 })
 
@@ -93,27 +88,21 @@ describe('text binding — kind:"expr" rejects $prev (Phase 2 §2)', () => {
     const text = ir.children[0]
     if (text.kind !== 'element') throw new Error('expected element')
     expect(text.children[0]).toEqual({ kind: 'text', value: 'fallback' })
-    expect(
-      ir.warnings.some((w) => w.code === 'expression-prev-out-of-context')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'expression-prev-out-of-context')).toBe(true)
   })
 
   test('expr mixing $prev with a real state → still flagged', () => {
-    const { graph, pageId } = makeTextWithExpr(
-      '$prev + count',
-      [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
-    )
+    const { graph, pageId } = makeTextWithExpr('$prev + count', [
+      { id: 's1', name: 'count', type: 'number', defaultValue: 0 }
+    ])
     const ir = collectTree(graph, pageId)
-    expect(
-      ir.warnings.some((w) => w.code === 'expression-prev-out-of-context')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'expression-prev-out-of-context')).toBe(true)
   })
 
   test('expr with no $prev parses normally', () => {
-    const { graph, pageId } = makeTextWithExpr(
-      'count + 1',
-      [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
-    )
+    const { graph, pageId } = makeTextWithExpr('count + 1', [
+      { id: 's1', name: 'count', type: 'number', defaultValue: 0 }
+    ])
     const ir = collectTree(graph, pageId)
     const text = ir.children[0]
     if (text.kind !== 'element') throw new Error('expected element')
@@ -136,9 +125,7 @@ describe('renderCondition rejects $prev (Phase 2 §2)', () => {
       renderCondition: 'flag && $prev'
     })
     const ir = collectTree(graph, page.id)
-    expect(
-      ir.warnings.some((w) => w.code === 'expression-prev-out-of-context')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'expression-prev-out-of-context')).toBe(true)
     // Decision §9.2 #8 — node stays visible so the user can fix in place.
     const node = ir.children[0]
     expect(node.kind).toBe('element')

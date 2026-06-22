@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
 import type { DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
-
-import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 
 /**
  * Phase 2 §2 — `bindings.ts` step 2: setVariable used to warn-and-drop. It
@@ -77,9 +76,7 @@ describe('resolveSetVariable (Phase 2 §2)', () => {
     const button = ir.children[0]
     if (button.kind !== 'element') throw new Error('expected element')
     expect(button.events?.onClick).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-setvariable-missing-target')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-setvariable-missing-target')).toBe(true)
   })
 
   test('targetName references an unknown docState → warning, handler dropped', () => {
@@ -112,9 +109,7 @@ describe('resolveSetVariable (Phase 2 §2)', () => {
       ]
     )
     const ir = collectTree(graph, pageId)
-    expect(
-      ir.warnings.some((w) => w.code === 'action-setvariable-unknown-identifier')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-setvariable-unknown-identifier')).toBe(true)
   })
 
   test('valueExpr can reference page-state idents', () => {
@@ -153,9 +148,7 @@ describe('resolveSetVariable (Phase 2 §2)', () => {
       ]
     )
     const ir = collectTree(graph, pageId)
-    expect(
-      ir.warnings.some((w) => w.code === 'action-setvariable-invalid-expression')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-setvariable-invalid-expression')).toBe(true)
   })
 
   test('a valid setVariable adds the target name to IRTree.docStateWrites', () => {

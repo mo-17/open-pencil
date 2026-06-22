@@ -1,11 +1,10 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { stripNavigateForSinglePage } from '@open-pencil/compiler/adapters/react/ir-walk'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRNode } from '@open-pencil/compiler/ir/types'
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 2 §2 step 5 — cross-walker regression (§9.9 checklist experience A).
@@ -34,9 +33,7 @@ describe('cross-walker — setVariable + docState binding survive every walker',
   function makeGraph(): { graph: SceneGraph; pageId: string } {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'ds-cart', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'ds-cart', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     const page = graph.getPages()[0]
     graph.updateNode(page.id, { name: 'Home' })

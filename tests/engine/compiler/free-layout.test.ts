@@ -16,8 +16,8 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  *   4. Auto-layout child    → flex item (no false positives)
  */
 
-describe('compile — `layoutMode: \'FREE\'` (Phase 2 §6 parent-level)', () => {
-  test('a FREE FRAME\'s direct child emits absolute + left/top', () => {
+describe("compile — `layoutMode: 'FREE'` (Phase 2 §6 parent-level)", () => {
+  test("a FREE FRAME's direct child emits absolute + left/top", () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     const card = graph.createNode('FRAME', pageId, {
@@ -155,7 +155,7 @@ describe('compile — `layoutMode: \'FREE\'` (Phase 2 §6 parent-level)', () => 
   })
 })
 
-describe('compile — `layoutPositioning: \'ABSOLUTE\'` per-child opt-out (Phase 2 §6 邻近)', () => {
+describe("compile — `layoutPositioning: 'ABSOLUTE'` per-child opt-out (Phase 2 §6 邻近)", () => {
   test('an ABSOLUTE child of an auto-layout FRAME emits absolute + left/top', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

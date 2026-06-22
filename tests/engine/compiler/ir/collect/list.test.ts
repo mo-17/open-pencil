@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { collectTree } from '#compiler/ir/collect/tree'
 import type { IRElement, IRList } from '#compiler/ir/types'
+
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 2 §9 — LIST resolution. `collectListDirective` reads

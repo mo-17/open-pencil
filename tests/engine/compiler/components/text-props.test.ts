@@ -12,7 +12,12 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * instance passes its overridden value (`<Card title="..." />`).
  */
 describe('compile — components text-override props (Phase 3 §8 v2)', () => {
-  function makeGraph(): { graph: SceneGraph; pageId: string; masterId: string; textChildId: string } {
+  function makeGraph(): {
+    graph: SceneGraph
+    pageId: string
+    masterId: string
+    textChildId: string
+  } {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     const master = graph.createNode('COMPONENT', pageId, {
@@ -33,7 +38,12 @@ describe('compile — components text-override props (Phase 3 §8 v2)', () => {
   /** Create an instance and override its (single) text child's value, marking
    *  the `:text` override the way the editor would (diverged value on the
    *  child node + a presence marker in the overrides map). */
-  function makeTextOverrideInstance(graph: SceneGraph, masterId: string, pageId: string, value: string) {
+  function makeTextOverrideInstance(
+    graph: SceneGraph,
+    masterId: string,
+    pageId: string,
+    value: string
+  ) {
     const inst = graph.createInstance(masterId, pageId)
     if (!inst) throw new Error('instance not created')
     const child = graph.getChildren(inst.id)[0]
@@ -46,10 +56,16 @@ describe('compile — components text-override props (Phase 3 §8 v2)', () => {
     const { graph, pageId, masterId } = makeGraph()
     makeTextOverrideInstance(graph, masterId, pageId, 'Hello')
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Card.tsx') as string
     expect(comp).toContain('title?: string')
-    expect(comp).toContain('export default function Card({ className, title = "Default" }: CardProps)')
+    expect(comp).toContain(
+      'export default function Card({ className, title = "Default" }: CardProps)'
+    )
     // body renders the prop, not the literal master text
     expect(comp).toContain('{title}')
     expect(comp).not.toContain('>Default</p>')
@@ -59,7 +75,11 @@ describe('compile — components text-override props (Phase 3 §8 v2)', () => {
     const { graph, pageId, masterId } = makeGraph()
     makeTextOverrideInstance(graph, masterId, pageId, 'Hello')
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toMatch(/<Card[^>]*\btitle="Hello"/)
     // subtree not inlined onto the page
@@ -71,7 +91,11 @@ describe('compile — components text-override props (Phase 3 §8 v2)', () => {
     graph.createInstance(masterId, pageId) // clean
     makeTextOverrideInstance(graph, masterId, pageId, 'Hello') // dirty text
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     // master + clean instance + dirty instance = 3 refs
     expect((app.match(/<Card\b/g) ?? []).length).toBe(3)
@@ -84,7 +108,11 @@ describe('compile — components text-override props (Phase 3 §8 v2)', () => {
     makeTextOverrideInstance(graph, masterId, pageId, 'A')
     makeTextOverrideInstance(graph, masterId, pageId, 'B')
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Card.tsx') as string
     // one prop slot, not two
     expect((comp.match(/title\?: string/g) ?? []).length).toBe(1)
@@ -111,11 +139,17 @@ describe('compile — components text-override props (Phase 3 §8 v2)', () => {
       inst.overrides = { [`${child.id}:text`]: 'Page2' }
     }
 
-    const out = compile({ graph, pageIds: [page1, page2], options: withDefaults({ packageName: 'x' }) })
+    const out = compile({
+      graph,
+      pageIds: [page1, page2],
+      options: withDefaults({ packageName: 'x' })
+    })
     const comp = out.files.get('src/components/Banner.tsx') as string
     expect(comp).toContain('label?: string')
     expect(comp).toContain('label = "Base"')
-    const page2File = [...out.files].find(([k]) => k.startsWith('src/pages/') && k.includes('second'))
+    const page2File = [...out.files].find(
+      ([k]) => k.startsWith('src/pages/') && k.includes('second')
+    )
     expect((page2File?.[1] as string) ?? '').toMatch(/<Banner[^>]*\blabel="Page2"/)
   })
 })

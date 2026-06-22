@@ -21,7 +21,11 @@ describe('compile — interaction-state styling (Phase 4 §20)', () => {
       fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true }]
     })
     graph.updateNode(card.id, {
-      stateOverrides: { hover: { fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }] } }
+      stateOverrides: {
+        hover: {
+          fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+        }
+      }
     })
 
     const out = compile({

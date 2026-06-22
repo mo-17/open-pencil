@@ -54,7 +54,9 @@ describe('buildCollabNetworkConfig (Phase 3 §4.3)', () => {
   })
 
   test('VITE_COLLAB_APP_ID overrides the default app id', () => {
-    expect(buildCollabNetworkConfig({ VITE_COLLAB_APP_ID: 'acme-private' }).appId).toBe('acme-private')
+    expect(buildCollabNetworkConfig({ VITE_COLLAB_APP_ID: 'acme-private' }).appId).toBe(
+      'acme-private'
+    )
   })
 
   test('blank app id → falls back to the default', () => {

@@ -177,7 +177,9 @@ describe('update_lowcode_node — supabaseAuth (Phase 3 §2.v2)', () => {
     const btn = figma.createRectangle()
     const result = update(
       btn.id,
-      { onClick: [{ id: 'a-1', kind: 'supabaseAuth', operation: 'signIn', emailExpr: 'emailInput' }] },
+      {
+        onClick: [{ id: 'a-1', kind: 'supabaseAuth', operation: 'signIn', emailExpr: 'emailInput' }]
+      },
       figma
     )
     expect(result.ok).toBe(true)

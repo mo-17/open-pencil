@@ -18,7 +18,11 @@ function compileWithClick(onClick: ActionDef[]) {
   const pageId = firstPageId(graph)
   const btn = graph.createNode('BUTTON', pageId, { interactiveProps: { text: 'Go' } })
   btn.events = { onClick }
-  return compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'confirm-app' }) })
+  return compile({
+    graph,
+    pageIds: [pageId],
+    options: withDefaults({ packageName: 'confirm-app' })
+  })
 }
 
 describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
@@ -87,7 +91,12 @@ describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
         kind: 'condition',
         condExpr: '1 === 1',
         consequent: [
-          { id: 'cf', kind: 'confirm', messageExpr: '"Sure?"', consequent: [{ id: 's', kind: 'stop' }] }
+          {
+            id: 'cf',
+            kind: 'confirm',
+            messageExpr: '"Sure?"',
+            consequent: [{ id: 's', kind: 'stop' }]
+          }
         ]
       }
     ])
@@ -111,7 +120,9 @@ describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
       }
     ])
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('await __opConfirm("删除?", { confirmLabel: "删除", cancelLabel: "保留" })')
+    expect(app).toContain(
+      'await __opConfirm("删除?", { confirmLabel: "删除", cancelLabel: "保留" })'
+    )
 
     const runtime = out.files.get('src/_lowcode_confirm.tsx') as string
     // runtime renders the per-confirm labels (default 'OK' / 'Cancel' when absent)

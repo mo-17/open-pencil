@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
+import { compile, withDefaults } from '@open-pencil/compiler'
 import {
   exportFigFile,
   initCodec,
@@ -8,8 +9,6 @@ import {
   SceneGraph,
   type LayoutMode
 } from '@open-pencil/core'
-
-import { compile, withDefaults } from '@open-pencil/compiler'
 
 /**
  * Phase 2 §6 step 4 — cross-walker regression (经验 A).

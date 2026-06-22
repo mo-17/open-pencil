@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { StateValueType } from '@open-pencil/core/scene-graph'
-
-import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '#compiler/ir/collect/tree'
 import type { IRNode } from '#compiler/ir/types'
+
+import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { StateValueType } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 2 §3 — a LIST can use a document-level array Document State as its

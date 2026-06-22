@@ -76,7 +76,10 @@ describe('compile — responsive breakpoints (Phase 3 §7)', () => {
       primaryAxisSizing: 'FIXED',
       counterAxisSizing: 'FIXED'
     })
-    graph.updateNode(desktopOnly.id, { visible: false, responsiveOverrides: { md: { visible: true } } })
+    graph.updateNode(desktopOnly.id, {
+      visible: false,
+      responsiveOverrides: { md: { visible: true } }
+    })
     graph.createNode('BUTTON', desktopOnly.id, { interactiveProps: { text: 'X' } })
 
     const out = compile({

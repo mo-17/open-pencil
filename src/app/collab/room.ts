@@ -59,8 +59,13 @@ export function connectCollabRoom({
   const network = buildCollabNetworkConfig(import.meta.env)
   // No-swallow (经验 C): if Supabase signaling was requested but its URL/key
   // were incomplete, buildCollabNetworkConfig falls back to mqtt — surface it.
-  if (import.meta.env.VITE_COLLAB_STRATEGY?.toLowerCase() === 'supabase' && network.strategy !== 'supabase') {
-    console.warn('[collab] VITE_COLLAB_STRATEGY=supabase but URL/key incomplete — falling back to MQTT.')
+  if (
+    import.meta.env.VITE_COLLAB_STRATEGY?.toLowerCase() === 'supabase' &&
+    network.strategy !== 'supabase'
+  ) {
+    console.warn(
+      '[collab] VITE_COLLAB_STRATEGY=supabase but URL/key incomplete — falling back to MQTT.'
+    )
   }
 
   // Phase 3 §4.2 — `password` is the room key (encrypts SDP) regardless of

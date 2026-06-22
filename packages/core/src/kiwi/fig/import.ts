@@ -5,7 +5,6 @@ import type { NodeChange, VariableDataValuesEntry, Color, GUID } from '#core/kiw
 import { populateAndApplyOverrides } from '#core/kiwi/fig/instance-overrides'
 import type { InstanceNodeChange } from '#core/kiwi/fig/instance-overrides'
 import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
-import { extractLowcodeAndPluginData } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import {
   guidToString,
   nodeChangeToProps,
@@ -13,6 +12,7 @@ import {
   setVariableColorResolver,
   VARIABLE_BINDING_FIELDS_INVERSE
 } from '#core/kiwi/fig/node-change/convert'
+import { extractLowcodeAndPluginData } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import { applyStyleRefsToFields } from '#core/kiwi/fig/node-change/style-refs'
 import { SceneGraph } from '#core/scene-graph'
 import type { SceneNode, VariableType, VariableValue } from '#core/scene-graph'

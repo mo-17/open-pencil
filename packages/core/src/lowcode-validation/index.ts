@@ -33,16 +33,9 @@ export {
   validateUrlTemplate
 } from './validate'
 
-export {
-  decodeJwtPayload,
-  detectServiceRole,
-  validateSupabaseConfig
-} from './supabase-config'
+export { decodeJwtPayload, detectServiceRole, validateSupabaseConfig } from './supabase-config'
 
-export {
-  PAYLOAD_ENTRY_KEY_RE,
-  validateSupabasePayloadEntries
-} from './supabase-payload-entries'
+export { PAYLOAD_ENTRY_KEY_RE, validateSupabasePayloadEntries } from './supabase-payload-entries'
 
 export {
   type DatePickerIssue,

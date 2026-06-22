@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
+import { collectTree } from '#compiler/ir/collect/tree'
+
 import { SceneGraph, initCodec } from '@open-pencil/core'
 import type { ActionDef } from '@open-pencil/core/scene-graph'
-
-import { collectTree } from '#compiler/ir/collect/tree'
 
 /**
  * Phase 1 §7.4 — exercise the discriminated-union dispatch in
@@ -68,9 +68,7 @@ describe('resolveActions — discriminated kind dispatch', () => {
     const button = ir.children[0]
     if (button.kind !== 'element') throw new Error('expected element')
     expect(button.events?.onClick).toBeUndefined()
-    expect(
-      ir.warnings.some((w) => w.code === 'action-setvariable-unknown-target')
-    ).toBe(true)
+    expect(ir.warnings.some((w) => w.code === 'action-setvariable-unknown-target')).toBe(true)
   })
 
   test('unknown kind from a future .fig file is dropped with a warning', () => {

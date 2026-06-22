@@ -1,8 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 1 §7.4 — navigate handler end-to-end through the React adapter.

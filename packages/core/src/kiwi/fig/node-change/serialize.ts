@@ -161,11 +161,11 @@ function buildDerivedTextData(
               : glyphAdvance,
           rotation: 0
         }))
-      : (
-          // Only bake fresh outlines when the font actually covers every
-          // character. A font missing a glyph (e.g. CJK text in a Latin-only
-          // font) returns `.notdef` boxes here, which reopen would render as
-          // tofu; skip the bake so the reader falls back to live shaping.
+      : // Only bake fresh outlines when the font actually covers every
+        // character. A font missing a glyph (e.g. CJK text in a Latin-only
+        // font) returns `.notdef` boxes here, which reopen would render as
+        // tofu; skip the bake so the reader falls back to live shaping.
+        (
           (fontCoversTextSync(
             node.fontFamily,
             weightToStyle(node.fontWeight, node.italic),

@@ -232,8 +232,7 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     })
 
     const ir = collectTree(graph, pageId)
-    const input = ((ir.children[0] as IRElement).children[0] as IRElement)
-      .children[0] as IRElement
+    const input = ((ir.children[0] as IRElement).children[0] as IRElement).children[0] as IRElement
     expect(input.attrs).toEqual({ type: 'radio', value: 'A' })
   })
 

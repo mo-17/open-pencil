@@ -59,12 +59,14 @@ export default defineCommand({
     },
     'supabase-url': {
       type: 'string',
-      description: 'Override the Supabase URL for this build (else VITE_SUPABASE_URL, else design-time).',
+      description:
+        'Override the Supabase URL for this build (else VITE_SUPABASE_URL, else design-time).',
       required: false
     },
     'supabase-anon-key': {
       type: 'string',
-      description: 'Override the Supabase anon key for this build (else VITE_SUPABASE_ANON_KEY, else design-time).',
+      description:
+        'Override the Supabase anon key for this build (else VITE_SUPABASE_ANON_KEY, else design-time).',
       required: false
     },
     ...i18nArgs,

@@ -31,7 +31,9 @@ const i18nEnabled = ref(false)
 const localesInput = ref('')
 
 const tokenLabel = computed(() => (provider.value === 'vercel' ? 'Vercel token' : 'Netlify token'))
-const targetLabel = computed(() => (provider.value === 'vercel' ? 'Project (optional)' : 'Site (optional)'))
+const targetLabel = computed(() =>
+  provider.value === 'vercel' ? 'Project (optional)' : 'Site (optional)'
+)
 const targetPlaceholder = computed(() =>
   provider.value === 'vercel' ? 'existing project name' : 'existing site id / subdomain'
 )

@@ -53,9 +53,22 @@ const { panels } = useI18n()
 const API_METHODS = ['GET', 'POST'] as const
 const TOAST_VARIANTS = ['info', 'success', 'error'] as const
 const SUPABASE_OPS = ['insert', 'update', 'delete', 'upsert'] as const
-const SUPABASE_AUTH_OPS = ['signIn', 'signUp', 'signOut', 'resetPassword', 'updatePassword'] as const
+const SUPABASE_AUTH_OPS = [
+  'signIn',
+  'signUp',
+  'signOut',
+  'resetPassword',
+  'updatePassword'
+] as const
 const SUPABASE_FILTER_OPS: SupabaseFilter['op'][] = [
-  'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'
+  'eq',
+  'neq',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'like',
+  'in'
 ]
 
 const validStateIds = computed(() => new Set(pageStates.map((s) => s.id)))
@@ -344,7 +357,15 @@ function setArg(param: string, value: string): void {
           :aria-label="panels.lowcodeActionSupabaseOperation"
           data-test-id="lowcode-action-supabase-operation"
           class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="patch({ operation: ($event.target as HTMLSelectElement).value as 'insert' | 'update' | 'delete' | 'upsert' })"
+          @change="
+            patch({
+              operation: ($event.target as HTMLSelectElement).value as
+                | 'insert'
+                | 'update'
+                | 'delete'
+                | 'upsert'
+            })
+          "
         >
           <option v-for="op in SUPABASE_OPS" :key="op" :value="op">{{ op }}</option>
         </select>
@@ -369,7 +390,16 @@ function setArg(param: string, value: string): void {
           :aria-label="panels.lowcodeActionSupabaseOperation"
           data-test-id="lowcode-action-auth-operation"
           class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="patch({ operation: ($event.target as HTMLSelectElement).value as 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword' })"
+          @change="
+            patch({
+              operation: ($event.target as HTMLSelectElement).value as
+                | 'signIn'
+                | 'signOut'
+                | 'signUp'
+                | 'resetPassword'
+                | 'updatePassword'
+            })
+          "
         >
           <option v-for="op in SUPABASE_AUTH_OPS" :key="op" :value="op">{{ op }}</option>
         </select>
@@ -382,7 +412,7 @@ function setArg(param: string, value: string): void {
           :aria-invalid="errors.message ? 'true' : undefined"
           data-test-id="lowcode-action-toast-message"
           spellcheck="false"
-          placeholder="&quot;Saved!&quot;"
+          placeholder='"Saved!"'
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
             errors.message ? 'border-red-500' : 'border-border'
@@ -394,7 +424,11 @@ function setArg(param: string, value: string): void {
           aria-label="Toast variant"
           data-test-id="lowcode-action-toast-variant"
           class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
-          @change="patch({ variant: ($event.target as HTMLSelectElement).value as 'info' | 'success' | 'error' })"
+          @change="
+            patch({
+              variant: ($event.target as HTMLSelectElement).value as 'info' | 'success' | 'error'
+            })
+          "
         >
           <option v-for="v in TOAST_VARIANTS" :key="v" :value="v">{{ v }}</option>
         </select>
@@ -459,7 +493,7 @@ function setArg(param: string, value: string): void {
           :aria-invalid="errors.message ? 'true' : undefined"
           data-test-id="lowcode-action-confirm-message"
           spellcheck="false"
-          placeholder="&quot;Delete this?&quot;"
+          placeholder='"Delete this?"'
           :class="[
             'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
             errors.message ? 'border-red-500' : 'border-border'
@@ -484,7 +518,9 @@ function setArg(param: string, value: string): void {
           ]"
           @change="changeWorkflow(($event.target as HTMLSelectElement).value)"
         >
-          <option value="">{{ workflows.length === 0 ? 'No workflows yet' : 'Select a workflow…' }}</option>
+          <option value="">
+            {{ workflows.length === 0 ? 'No workflows yet' : 'Select a workflow…' }}
+          </option>
           <option v-for="wf in workflows" :key="wf.id" :value="wf.id">{{ wf.name }}</option>
         </select>
       </template>
@@ -664,7 +700,11 @@ function setArg(param: string, value: string): void {
             aria-label="Filter operator"
             data-test-id="lowcode-action-supabase-filter-op"
             class="rounded border border-border bg-input px-1 py-0.5 text-[11px] text-surface outline-none focus:border-accent"
-            @change="updateFilter(i, { op: ($event.target as HTMLSelectElement).value as SupabaseFilter['op'] })"
+            @change="
+              updateFilter(i, {
+                op: ($event.target as HTMLSelectElement).value as SupabaseFilter['op']
+              })
+            "
           >
             <option v-for="op in SUPABASE_FILTER_OPS" :key="op" :value="op">{{ op }}</option>
           </select>
@@ -726,7 +766,11 @@ function setArg(param: string, value: string): void {
 
     <!-- §10 v9 result branches: apiCall / supabaseQuery / supabaseMutation -->
     <div
-      v-if="action.kind === 'apiCall' || action.kind === 'supabaseQuery' || action.kind === 'supabaseMutation'"
+      v-if="
+        action.kind === 'apiCall' ||
+        action.kind === 'supabaseQuery' ||
+        action.kind === 'supabaseMutation'
+      "
       class="flex flex-col gap-1 border-l border-border pl-2"
     >
       <label class="text-[10px] text-muted">on success</label>
@@ -754,7 +798,9 @@ function setArg(param: string, value: string): void {
       v-if="action.kind === 'condition' || action.kind === 'confirm'"
       class="flex flex-col gap-1 border-l border-border pl-2"
     >
-      <label class="text-[10px] text-muted">{{ action.kind === 'confirm' ? 'on confirm' : 'then' }}</label>
+      <label class="text-[10px] text-muted">{{
+        action.kind === 'confirm' ? 'on confirm' : 'then'
+      }}</label>
       <ActionList
         :actions="action.consequent"
         :page-states="pageStates"
@@ -763,7 +809,9 @@ function setArg(param: string, value: string): void {
         add-test-id="lowcode-action-consequent-add"
         @update:actions="updateBranch('consequent', $event)"
       />
-      <label class="text-[10px] text-muted">{{ action.kind === 'confirm' ? 'on cancel' : 'else' }}</label>
+      <label class="text-[10px] text-muted">{{
+        action.kind === 'confirm' ? 'on cancel' : 'else'
+      }}</label>
       <ActionList
         :actions="action.alternate ?? []"
         :page-states="pageStates"
@@ -784,7 +832,9 @@ function setArg(param: string, value: string): void {
       <label class="text-[10px] text-muted">arguments</label>
       <div v-for="arg in callWorkflowArgs" :key="arg.name" class="flex flex-col gap-0.5">
         <div class="flex items-center gap-1">
-          <label class="w-20 shrink-0 truncate text-[11px] text-muted" :title="arg.name">{{ arg.name }}</label>
+          <label class="w-20 shrink-0 truncate text-[11px] text-muted" :title="arg.name">{{
+            arg.name
+          }}</label>
           <input
             :value="arg.value"
             :aria-label="`Argument ${arg.name}`"
@@ -809,59 +859,131 @@ function setArg(param: string, value: string): void {
       </div>
     </div>
 
-    <p v-if="errors.workflow" data-test-id="lowcode-action-workflow-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.workflow"
+      data-test-id="lowcode-action-workflow-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       workflow: {{ errors.workflow }}
     </p>
 
-    <p v-if="errors.email" data-test-id="lowcode-action-auth-email-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.email"
+      data-test-id="lowcode-action-auth-email-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       email: {{ errors.email }}
     </p>
-    <p v-if="errors.password" data-test-id="lowcode-action-auth-password-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.password"
+      data-test-id="lowcode-action-auth-password-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       password: {{ errors.password }}
     </p>
-    <p v-if="action.kind === 'supabaseAuth'" data-test-id="lowcode-action-auth-current-user-hint" class="pl-1 text-[10px] text-muted">
+    <p
+      v-if="action.kind === 'supabaseAuth'"
+      data-test-id="lowcode-action-auth-current-user-hint"
+      class="pl-1 text-[10px] text-muted"
+    >
       {{ panels.lowcodeActionAuthCurrentUserHint }}
     </p>
-    <p v-if="action.kind === 'supabaseAuth' && action.operation === 'signUp'" data-test-id="lowcode-action-auth-signup-note" class="pl-1 text-[10px] text-muted">
+    <p
+      v-if="action.kind === 'supabaseAuth' && action.operation === 'signUp'"
+      data-test-id="lowcode-action-auth-signup-note"
+      class="pl-1 text-[10px] text-muted"
+    >
       {{ panels.lowcodeActionAuthSignUpNote }}
     </p>
-    <p v-if="action.kind === 'supabaseAuth' && action.operation === 'resetPassword'" data-test-id="lowcode-action-auth-reset-note" class="pl-1 text-[10px] text-muted">
+    <p
+      v-if="action.kind === 'supabaseAuth' && action.operation === 'resetPassword'"
+      data-test-id="lowcode-action-auth-reset-note"
+      class="pl-1 text-[10px] text-muted"
+    >
       {{ panels.lowcodeActionAuthResetNote }}
     </p>
-    <p v-if="action.kind === 'supabaseAuth' && action.operation === 'updatePassword'" data-test-id="lowcode-action-auth-update-note" class="pl-1 text-[10px] text-muted">
+    <p
+      v-if="action.kind === 'supabaseAuth' && action.operation === 'updatePassword'"
+      data-test-id="lowcode-action-auth-update-note"
+      class="pl-1 text-[10px] text-muted"
+    >
       {{ panels.lowcodeActionAuthUpdateNote }}
     </p>
-    <p v-if="errors.target" data-test-id="lowcode-action-target-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.target"
+      data-test-id="lowcode-action-target-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       target: {{ errors.target }}
     </p>
-    <p v-if="errors.table" data-test-id="lowcode-action-table-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.table"
+      data-test-id="lowcode-action-table-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       table: {{ errors.table }}
     </p>
-    <p v-if="errors.payload" data-test-id="lowcode-action-payload-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.payload"
+      data-test-id="lowcode-action-payload-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       payload: {{ errors.payload }}
     </p>
-    <p v-if="errors.url" data-test-id="lowcode-action-url-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.url"
+      data-test-id="lowcode-action-url-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       url: {{ errors.url }}
     </p>
-    <p v-if="action.kind === 'apiCall' && !errors.url" data-test-id="lowcode-action-api-url-hint" class="pl-1 text-[10px] text-muted">
+    <p
+      v-if="action.kind === 'apiCall' && !errors.url"
+      data-test-id="lowcode-action-api-url-hint"
+      class="pl-1 text-[10px] text-muted"
+    >
       {{ panels.lowcodeActionApiUrlHint }}
     </p>
-    <p v-if="errors.body" data-test-id="lowcode-action-body-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.body"
+      data-test-id="lowcode-action-body-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       body: {{ errors.body }}
     </p>
-    <p v-if="errors.expr" data-test-id="lowcode-action-expr-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.expr"
+      data-test-id="lowcode-action-expr-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       expression: {{ errors.expr }}
     </p>
-    <p v-if="errors.condExpr" data-test-id="lowcode-action-cond-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.condExpr"
+      data-test-id="lowcode-action-cond-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       condition: {{ errors.condExpr }}
     </p>
-    <p v-if="errors.message" data-test-id="lowcode-action-message-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.message"
+      data-test-id="lowcode-action-message-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       message: {{ errors.message }}
     </p>
-    <p v-if="errors.ms" data-test-id="lowcode-action-ms-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.ms"
+      data-test-id="lowcode-action-ms-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       delay: {{ errors.ms }}
     </p>
-    <p v-if="errors.to" data-test-id="lowcode-action-to-error" class="pl-1 text-[10px] text-red-500">
+    <p
+      v-if="errors.to"
+      data-test-id="lowcode-action-to-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
       to: {{ errors.to }}
     </p>
   </li>

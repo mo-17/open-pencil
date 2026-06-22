@@ -1,12 +1,11 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { stripNavigateForSinglePage } from '@open-pencil/compiler/adapters/react/ir-walk'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRNode } from '@open-pencil/compiler/ir/types'
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 3 §2 step 5 — cross-walker regression (experiences A + G).
@@ -279,17 +278,13 @@ describe('cross-walker — supabase handlers + config survive every walker', () 
   test('zero regression: document without supabaseConfig emits no supabase runtime + no dep', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'count', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'count', type: 'number', defaultValue: 0 }]
     })
     const pageId = graph.getPages()[0].id
     graph.createNode('BUTTON', pageId, {
       interactiveProps: { text: 'Inc' },
       events: {
-        onClick: [
-          { id: '1', kind: 'setVariable', targetName: 'count', valueExpr: '$prev + 1' }
-        ]
+        onClick: [{ id: '1', kind: 'setVariable', targetName: 'count', valueExpr: '$prev + 1' }]
       }
     })
 

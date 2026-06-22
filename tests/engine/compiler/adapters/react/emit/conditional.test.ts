@@ -64,10 +64,7 @@ describe('emitElement — IRConditional (Phase 2 §9)', () => {
       'ident',
       element({ tag: 'span', children: [{ kind: 'text', value: 'inner' }] })
     )
-    const outer = conditional(
-      'binaryGt',
-      element({ tag: 'div', children: [inner] })
-    )
+    const outer = conditional('binaryGt', element({ tag: 'div', children: [inner] }))
     const out = emitElement(outer, 0)
     // Outer `&&` shell present.
     expect(out).toContain('{(count > 0) && (')

@@ -11,9 +11,19 @@ import type { Fill } from '@open-pencil/core/scene-graph'
  * `_`; colors are hex; the linear angle is derived from the gradientTransform.
  */
 describe('jsx — gradient fills (Phase 4 §24.2)', () => {
-  function gradientClass(fill: Fill, width = 200, height = 100, type: 'RECTANGLE' | 'TEXT' = 'RECTANGLE'): string | undefined {
+  function gradientClass(
+    fill: Fill,
+    width = 200,
+    height = 100,
+    type: 'RECTANGLE' | 'TEXT' = 'RECTANGLE'
+  ): string | undefined {
     const graph = new SceneGraph()
-    const node = graph.createNode(type, graph.getPages()[0].id, { name: 'N', width, height, fills: [fill] })
+    const node = graph.createNode(type, graph.getPages()[0].id, {
+      name: 'N',
+      width,
+      height,
+      fills: [fill]
+    })
     return collectTailwindClasses(node, graph).find((c) => c.includes('gradient'))
   }
 
@@ -67,10 +77,7 @@ describe('jsx — gradient fills (Phase 4 §24.2)', () => {
   })
 
   test('partial-alpha stop emits hex8', () => {
-    const cls =
-      gradientClass(
-        linearFill({ m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 })
-      ) ?? ''
+    const cls = gradientClass(linearFill({ m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 })) ?? ''
     // full-alpha trims to 6-digit; now flip one stop to half-alpha
     const half = gradientClass({
       type: 'GRADIENT_LINEAR',
@@ -88,7 +95,12 @@ describe('jsx — gradient fills (Phase 4 §24.2)', () => {
   })
 
   test('TEXT node with a gradient fill → no bg-gradient class (gradient there is text color)', () => {
-    const cls = gradientClass(linearFill({ m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }), 200, 100, 'TEXT')
+    const cls = gradientClass(
+      linearFill({ m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }),
+      200,
+      100,
+      'TEXT'
+    )
     expect(cls).toBeUndefined()
   })
 
@@ -98,7 +110,10 @@ describe('jsx — gradient fills (Phase 4 §24.2)', () => {
   })
 
   test('invisible gradient fill → no class', () => {
-    const cls = gradientClass({ ...linearFill({ m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }), visible: false })
+    const cls = gradientClass({
+      ...linearFill({ m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }),
+      visible: false
+    })
     expect(cls).toBeUndefined()
   })
 })

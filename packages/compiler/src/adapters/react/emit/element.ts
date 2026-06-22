@@ -434,7 +434,8 @@ function formatAttrs(
   if (image) parts.push(...imageAttrParts(image))
   // §25: a linked element emits `<a href target rel>` attrs.
   if (link) parts.push(...linkAttrParts(link))
-  if (controlled) parts.push(...controlledAttrParts(controlled, attrs, events?.onChange))
+  if (controlled)
+    parts.push(...controlledAttrParts(controlled, attrs, events?.onChange, validationKey))
   // §19: a validated field gets `aria-invalid` + an `onBlur` that validates it.
   if (validationKey !== undefined)
     parts.push(...validationFieldParts(validationKey, events?.onBlur))
@@ -476,7 +477,8 @@ function eventSkipSet(
 function controlledAttrParts(
   controlled: IRControlledInput,
   attrs: Record<string, IRAttrValue>,
-  onChangeHandlers: IREventHandler[] | undefined
+  onChangeHandlers: IREventHandler[] | undefined,
+  validationKey: string | undefined
 ): string[] {
   // §3.v4 dispatch:
   //  - type="radio" → per-option `checked={read === <opt>}`.
@@ -484,10 +486,16 @@ function controlledAttrParts(
   //  - targetType=boolean → `checked={read}` + e.target.checked.
   //  - text-like → `value={read}` + e.target.value.
   if (attrs.type === 'radio') {
-    return controlledRadioAttrParts(controlled, attrs, onChangeHandlers)
+    return controlledOptionAttrParts(controlled, attrs, 'radio', onChangeHandlers, validationKey)
   }
   if (attrs.type === 'checkbox' && controlled.write.targetType === 'array') {
-    return controlledCheckboxGroupAttrParts(controlled, attrs, onChangeHandlers)
+    return controlledOptionAttrParts(
+      controlled,
+      attrs,
+      'checkbox-group',
+      onChangeHandlers,
+      validationKey
+    )
   }
   if (controlled.write.targetType === 'boolean') {
     return [
@@ -495,42 +503,43 @@ function controlledAttrParts(
       controlledOnChangeAttr(
         controlled,
         controlledEventValue(controlled.write.targetType),
-        onChangeHandlers
+        onChangeHandlers,
+        validationKey
       )
     ]
   }
-  return controlledValueAttrParts(controlled, attrs, onChangeHandlers)
+  return controlledValueAttrParts(controlled, attrs, onChangeHandlers, validationKey)
 }
 
-function controlledRadioAttrParts(
+function controlledOptionAttrParts(
   controlled: IRControlledInput,
   attrs: Record<string, IRAttrValue>,
-  onChangeHandlers: IREventHandler[] | undefined
+  mode: 'radio' | 'checkbox-group',
+  onChangeHandlers: IREventHandler[] | undefined,
+  validationKey: string | undefined
 ): string[] {
   const optValue = optionValueExpression(attrs.value)
-  return [
-    `checked={${controlled.read} === ${optValue}}`,
-    controlledOnChangeAttr(
-      controlled,
-      controlledEventValue(controlled.write.targetType),
-      onChangeHandlers
-    )
-  ]
+  const checked =
+    mode === 'radio'
+      ? `${controlled.read} === ${optValue}`
+      : `${controlled.read}.includes(${optValue})`
+  const value =
+    mode === 'radio'
+      ? controlledEventValue(controlled.write.targetType)
+      : `e.target.checked ? [...${controlled.read}, ${optValue}] : ${controlled.read}.filter((v) => v !== ${optValue})`
+  return controlledCheckedParts(controlled, checked, value, onChangeHandlers, validationKey)
 }
 
-function controlledCheckboxGroupAttrParts(
+function controlledCheckedParts(
   controlled: IRControlledInput,
-  attrs: Record<string, IRAttrValue>,
-  onChangeHandlers: IREventHandler[] | undefined
+  checkedExpr: string,
+  valueExpr: string,
+  onChangeHandlers: IREventHandler[] | undefined,
+  validationKey: string | undefined
 ): string[] {
-  const optValue = optionValueExpression(attrs.value)
   return [
-    `checked={${controlled.read}.includes(${optValue})}`,
-    controlledOnChangeAttr(
-      controlled,
-      `e.target.checked ? [...${controlled.read}, ${optValue}] : ${controlled.read}.filter((v) => v !== ${optValue})`,
-      onChangeHandlers
-    )
+    `checked={${checkedExpr}}`,
+    controlledOnChangeAttr(controlled, valueExpr, onChangeHandlers, validationKey)
   ]
 }
 
@@ -543,7 +552,8 @@ function optionValueExpression(value: IRAttrValue | undefined): string {
 function controlledValueAttrParts(
   controlled: IRControlledInput,
   attrs: Record<string, IRAttrValue>,
-  onChangeHandlers: IREventHandler[] | undefined
+  onChangeHandlers: IREventHandler[] | undefined,
+  validationKey: string | undefined
 ): string[] {
   const parts: string[] = []
   if (controlled.write.targetType === 'number' && !('type' in attrs)) {
@@ -554,7 +564,8 @@ function controlledValueAttrParts(
     controlledOnChangeAttr(
       controlled,
       controlledEventValue(controlled.write.targetType),
-      onChangeHandlers
+      onChangeHandlers,
+      validationKey
     )
   )
   return parts
@@ -607,7 +618,9 @@ function imageAttrParts(image: IRImage): string[] {
     image.srcExpr !== undefined
       ? `src={${emitExpression(image.srcExpr)}}`
       : `src="${escapeAttr(image.srcLiteral ?? '')}"`
-  return [src, `alt="${escapeAttr(image.alt)}"`]
+  const parts = [src, `alt="${escapeAttr(image.alt)}"`]
+  if (image.loading !== undefined) parts.push(`loading="${image.loading}"`)
+  return parts
 }
 
 /** Phase 4 §25: external link attrs. `_blank` gets a safe `rel`; other targets
@@ -665,11 +678,19 @@ function emitUploadHandler(u: IRUpload): string {
 function controlledOnChangeAttr(
   c: IRControlledInput,
   valueExpr: string,
-  handlers: IREventHandler[] | undefined
+  handlers: IREventHandler[] | undefined,
+  validationKey: string | undefined
 ): string {
   const write = controlledWriteCall(c, valueExpr)
-  if (!handlers || handlers.length === 0) return `onChange={(e) => ${write}}`
-  return `onChange={${emitEventHandler(handlers, { eventLocals: true, prelude: [write] })}}`
+  const prelude = [write]
+  if (validationKey !== undefined) {
+    prelude.push(`__validateFieldValue(${JSON.stringify(validationKey)}, ${valueExpr})`)
+  }
+  if (!handlers || handlers.length === 0) {
+    if (prelude.length === 1) return `onChange={(e) => ${write}}`
+    return `onChange={${emitEventHandler([], { prelude })}}`
+  }
+  return `onChange={${emitEventHandler(handlers, { eventLocals: true, prelude })}}`
 }
 
 /** Phase 3 §3.x / §15 Phase B — the writer call for a controlled input: a

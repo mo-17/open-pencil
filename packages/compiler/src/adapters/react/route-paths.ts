@@ -43,7 +43,10 @@ export function derivePagePaths(irs: readonly IRTree[]): PagePathInfo[] {
     if (i === 0) {
       originalSlug = 'index'
     } else {
-      const raw = ir.pageName.toLowerCase().replace(SLUG_NON_ALPHANUM, '-').replace(SLUG_TRIM_DASH, '')
+      const raw = ir.pageName
+        .toLowerCase()
+        .replace(SLUG_NON_ALPHANUM, '-')
+        .replace(SLUG_TRIM_DASH, '')
       originalSlug = raw === '' ? `page-${i}` : raw
     }
     let slug = originalSlug

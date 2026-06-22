@@ -90,9 +90,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
       height: 40,
       interactiveProps: { text: 'Click me' },
       events: {
-        onClick: [
-          { id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }
-        ]
+        onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }]
       }
     })
 
@@ -105,9 +103,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedBtn.type).toBe('BUTTON')
     expect(reimportedBtn.interactiveProps).toEqual({ text: 'Click me' })
     expect(reimportedBtn.events).toEqual({
-      onClick: [
-        { id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }
-      ]
+      onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }]
     })
   })
 
@@ -302,7 +298,12 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
   test('INPUT upload interactiveProp round-trips through .fig (Phase 4 §18)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
-    const upload = { bucket: 'avatars', resultTarget: 'avatarUrl', pathExpr: '$currentUser.id', accept: 'image/*' }
+    const upload = {
+      bucket: 'avatars',
+      resultTarget: 'avatarUrl',
+      pathExpr: '$currentUser.id',
+      accept: 'image/*'
+    }
     graph.createNode('INPUT', page.id, { name: 'Avatar', interactiveProps: { upload } })
 
     const bytes = await exportFigFile(graph)
@@ -453,9 +454,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
   test('bindings.text with kind=docState round-trips through .fig (Phase 2 §2)', async () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd-cart', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd-cart', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     const page = graph.getPages()[0]
     graph.createNode('TEXT', page.id, {
@@ -623,7 +622,11 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
       fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true }]
     })
     const overrides = {
-      hover: { fills: [{ type: 'SOLID' as const, color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }] },
+      hover: {
+        fills: [
+          { type: 'SOLID' as const, color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }
+        ]
+      },
       disabled: { opacity: 0.5 }
     }
     graph.updateNode(frame.id, { stateOverrides: overrides })
@@ -687,7 +690,11 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
           }
         ]
       },
-      { id: 'wf-other', name: 'Other', actions: [{ id: 'b1', kind: 'navigate' as const, to: '/x' }] }
+      {
+        id: 'wf-other',
+        name: 'Other',
+        actions: [{ id: 'b1', kind: 'navigate' as const, to: '/x' }]
+      }
     ]
     graph.updateNode(graph.rootId, { lowcodeWorkflows: workflows })
 

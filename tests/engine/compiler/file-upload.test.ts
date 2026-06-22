@@ -19,7 +19,8 @@ describe('compile — file upload (Phase 4 §18)', () => {
   ): string {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    if (opts.supabase !== false) graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG })
+    if (opts.supabase !== false)
+      graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG })
     graph.updateNode(graph.rootId, { lowcodeDocumentState: opts.docStates ?? URL_STATE })
     graph.createNode('INPUT', pageId, {
       name: 'Avatar',
@@ -47,7 +48,11 @@ describe('compile — file upload (Phase 4 §18)', () => {
   })
 
   test('pathExpr → `${expr}/${file.name}` folder prefix; absent → bare file name', () => {
-    const withPrefix = compileUpload({ bucket: 'avatars', resultTarget: 'avatarUrl', pathExpr: '$currentUser.id' })
+    const withPrefix = compileUpload({
+      bucket: 'avatars',
+      resultTarget: 'avatarUrl',
+      pathExpr: '$currentUser.id'
+    })
     expect(withPrefix).toContain('const __path = `${$currentUser.id}/${__file.name}`')
     const noPrefix = compileUpload({ bucket: 'avatars', resultTarget: 'avatarUrl' })
     expect(noPrefix).toContain('const __path = __file.name')
@@ -56,7 +61,10 @@ describe('compile — file upload (Phase 4 §18)', () => {
   test('upload takes precedence over a controlled value binding (file inputs are uncontrolled)', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG, lowcodeDocumentState: URL_STATE })
+    graph.updateNode(graph.rootId, {
+      lowcodeSupabaseConfig: SUPA_CONFIG,
+      lowcodeDocumentState: URL_STATE
+    })
     graph.createNode('INPUT', pageId, {
       name: 'Avatar',
       width: 200,

@@ -31,7 +31,10 @@ export interface DeployI18n {
   locales: string[]
 }
 // The CLI reads the token from the matching env var (never an arg / never persisted).
-const TOKEN_ENV: Record<DeployProvider, string> = { netlify: 'NETLIFY_AUTH_TOKEN', vercel: 'VERCEL_TOKEN' }
+const TOKEN_ENV: Record<DeployProvider, string> = {
+  netlify: 'NETLIFY_AUTH_TOKEN',
+  vercel: 'VERCEL_TOKEN'
+}
 
 interface DeployCliResult {
   provider: string
@@ -89,7 +92,10 @@ export function useDeploy(): UseDeployResult {
     }
     const path = store.getDocumentPath()
     if (!path) {
-      status.value = { kind: 'error', message: 'Save the document to a .fig file first, then deploy.' }
+      status.value = {
+        kind: 'error',
+        message: 'Save the document to a .fig file first, then deploy.'
+      }
       return
     }
 

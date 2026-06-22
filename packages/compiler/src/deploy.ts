@@ -92,7 +92,9 @@ async function apiFetch(
   if (!res.ok) {
     const detail = await res.text().catch(() => '')
     const hint = res.status === 401 ? ' (check your token)' : ''
-    throw new Error(`API ${init.method} ${url} failed: ${res.status}${hint}${detail ? ` — ${detail}` : ''}`)
+    throw new Error(
+      `API ${init.method} ${url} failed: ${res.status}${hint}${detail ? ` — ${detail}` : ''}`
+    )
   }
   // These endpoints return JSON; tolerate an empty body.
   const text = await res.text()
@@ -175,7 +177,11 @@ async function resolveNetlifySite(
 ): Promise<{ siteId: string; createdSite?: Record<string, unknown> }> {
   onProgress?.({ stage: 'create' })
   if (target.site) return { siteId: target.site }
-  const createdSite = await apiFetch(`${NETLIFY_API}/sites`, { method: 'POST', token: target.token, jsonBody: {} })
+  const createdSite = await apiFetch(`${NETLIFY_API}/sites`, {
+    method: 'POST',
+    token: target.token,
+    jsonBody: {}
+  })
   const id = createdSite.id
   if (typeof id !== 'string') throw new Error('Netlify site creation returned no id')
   return { siteId: id, createdSite }
@@ -197,7 +203,9 @@ async function createNetlifyDeploy(
   const deployId = deploy.id
   if (typeof deployId !== 'string') throw new Error('Netlify deploy creation returned no id')
   const required = new Set<string>(
-    Array.isArray(deploy.required) ? deploy.required.filter((s): s is string => typeof s === 'string') : []
+    Array.isArray(deploy.required)
+      ? deploy.required.filter((s): s is string => typeof s === 'string')
+      : []
   )
   return { deploy, deployId, required }
 }
@@ -214,11 +222,14 @@ async function uploadNetlifyRequired(
   onProgress?.({ stage: 'upload', done: 0, total: toUpload.length })
   let uploaded = 0
   for (const e of toUpload) {
-    await apiFetch(`${NETLIFY_API}/deploys/${encodeURIComponent(deployId)}/files${encodeFilePath('/' + e.rel)}`, {
-      method: 'PUT',
-      token,
-      rawBody: e.bytes
-    })
+    await apiFetch(
+      `${NETLIFY_API}/deploys/${encodeURIComponent(deployId)}/files${encodeFilePath('/' + e.rel)}`,
+      {
+        method: 'PUT',
+        token,
+        rawBody: e.bytes
+      }
+    )
     onProgress?.({ stage: 'upload', done: ++uploaded, total: toUpload.length })
   }
 }
@@ -229,7 +240,11 @@ async function deployNetlify(
   opts: DeployOptions
 ): Promise<DeployResult> {
   const { onProgress } = opts
-  const entries = await digestPayload(files, { name: '_redirects', content: SPA_REDIRECTS }, onProgress)
+  const entries = await digestPayload(
+    files,
+    { name: '_redirects', content: SPA_REDIRECTS },
+    onProgress
+  )
   const { siteId, createdSite } = await resolveNetlifySite(target, onProgress)
   const { deploy, deployId, required } = await createNetlifyDeploy(siteId, entries, target.token)
   await uploadNetlifyRequired(entries, required, deployId, target.token, onProgress)
@@ -245,7 +260,11 @@ async function deployNetlify(
 // ── Vercel ──────────────────────────────────────────────────────────────────
 
 /** Upload every file by digest (idempotent — Vercel skips bytes it already has). */
-async function uploadVercelFiles(entries: DigestedFile[], token: string, onProgress: ProgressFn): Promise<void> {
+async function uploadVercelFiles(
+  entries: DigestedFile[],
+  token: string,
+  onProgress: ProgressFn
+): Promise<void> {
   onProgress?.({ stage: 'upload', done: 0, total: entries.length })
   let uploaded = 0
   for (const e of entries) {
@@ -289,7 +308,11 @@ async function deployVercel(
   opts: DeployOptions
 ): Promise<DeployResult> {
   const { onProgress } = opts
-  const entries = await digestPayload(files, { name: 'vercel.json', content: VERCEL_JSON }, onProgress)
+  const entries = await digestPayload(
+    files,
+    { name: 'vercel.json', content: VERCEL_JSON },
+    onProgress
+  )
   await uploadVercelFiles(entries, target.token, onProgress)
   const { deployId, url } = await createVercelDeploy(entries, target, onProgress)
   onProgress?.({ stage: 'done' })

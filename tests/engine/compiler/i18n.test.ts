@@ -16,7 +16,11 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 function pageWithText(): { graph: SceneGraph; pageId: string } {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
-  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  const frame = graph.createNode('FRAME', pageId, {
+    width: 200,
+    height: 100,
+    layoutMode: 'VERTICAL'
+  })
   graph.createNode('TEXT', frame.id, { text: 'Hello world', width: 120, height: 20 })
   return { graph, pageId }
 }
@@ -48,7 +52,10 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     expect(app).not.toContain('>Hello world<') // literal no longer inlined
 
     // catalog carries the source string
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
     expect(Object.values(catalog)).toContain('Hello world')
 
     // runtime + provider + dep
@@ -64,13 +71,20 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
   test('identical strings collapse onto one catalog entry (content-hash dedupe)', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+    const frame = graph.createNode('FRAME', pageId, {
+      width: 200,
+      height: 100,
+      layoutMode: 'VERTICAL'
+    })
     graph.createNode('TEXT', frame.id, { text: 'Save', width: 80, height: 20 })
     graph.createNode('TEXT', frame.id, { text: 'Save', width: 80, height: 20 })
     graph.createNode('TEXT', frame.id, { text: 'Cancel', width: 80, height: 20 })
 
     const out = compileI18n(graph, pageId, true)
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
     // two "Save" + one "Cancel" → 2 entries
     expect(Object.keys(catalog).length).toBe(2)
     expect(Object.values(catalog).filter((v) => v === 'Save').length).toBe(1)
@@ -91,7 +105,10 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     })
 
     const out = compileI18n(graph, pageId, true)
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
     const values = Object.values(catalog)
     expect(values).toContain('Submit')
     expect(values).toContain('Red')
@@ -117,7 +134,10 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
     const comp = out.files.get('src/components/Card.tsx') as string
     expect(comp).toContain("import { FormattedMessage } from 'react-intl'")
     expect(comp).toMatch(/<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"Badge"\} \/>/)
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
     expect(Object.values(catalog)).toContain('Badge')
   })
 })
@@ -130,9 +150,17 @@ describe('compile — emitted i18n runtime (Phase 3 §9)', () => {
 function compileLocales(locales: string[]) {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
-  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  const frame = graph.createNode('FRAME', pageId, {
+    width: 200,
+    height: 100,
+    layoutMode: 'VERTICAL'
+  })
   graph.createNode('TEXT', frame.id, { text: 'Hello', width: 80, height: 20 })
-  return compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp', i18n: true, locales }) })
+  return compile({
+    graph,
+    pageIds: [pageId],
+    options: withDefaults({ packageName: 'comp', i18n: true, locales })
+  })
 }
 
 describe('compile — i18n target locales + switcher (Phase 3 §9 v2)', () => {
@@ -190,7 +218,11 @@ describe('compile — i18n target locales + switcher (Phase 3 §9 v2)', () => {
 function compileWithSource(sourceLocale: string | undefined, locales: string[] = []) {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
-  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  const frame = graph.createNode('FRAME', pageId, {
+    width: 200,
+    height: 100,
+    layoutMode: 'VERTICAL'
+  })
   graph.createNode('TEXT', frame.id, { text: 'Hello', width: 80, height: 20 })
   return compile({
     graph,
@@ -262,7 +294,9 @@ describe('compile — RTL direction (Phase 3 §9 v11)', () => {
     expect(runtime).not.toContain('isRtl')
     // identical to the same compile through the v8 path (no targets) for the
     // shared header — the React import line is unchanged
-    expect(runtime).toContain('import { createContext, useContext, useMemo, useState, type ReactNode }')
+    expect(runtime).toContain(
+      'import { createContext, useContext, useMemo, useState, type ReactNode }'
+    )
   })
 })
 
@@ -415,7 +449,9 @@ describe('compile — attribute-string i18n (Phase 3 §9 v3)', () => {
     expect(comp).toBeDefined()
     expect(comp).toContain("import { useIntl } from 'react-intl'")
     expect(comp).toContain('const intl = useIntl()')
-    expect(comp).toMatch(/placeholder=\{intl\.formatMessage\(\{ id: "m[a-z0-9]+", defaultMessage: "Find…" \}\)\}/)
+    expect(comp).toMatch(
+      /placeholder=\{intl\.formatMessage\(\{ id: "m[a-z0-9]+", defaultMessage: "Find…" \}\)\}/
+    )
   })
 })
 
@@ -442,7 +478,11 @@ function pageWithInterpolation(
       lowcodeDocumentState: [{ id: 'd1', name: opts.docState, type: 'string', defaultValue: '' }]
     })
   }
-  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  const frame = graph.createNode('FRAME', pageId, {
+    width: 200,
+    height: 100,
+    layoutMode: 'VERTICAL'
+  })
   graph.createNode('TEXT', frame.id, { text, width: 160, height: 20 })
   return { graph, pageId }
 }
@@ -455,7 +495,10 @@ describe('compile — i18n ICU interpolation (Phase 3 §9 v4)', () => {
     expect(app).toMatch(
       /<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"Welcome, \{userName\}!"\} values=\{\{ userName: userName \}\} \/>/
     )
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
     expect(Object.values(catalog)).toContain('Welcome, {userName}!')
   })
 
@@ -494,7 +537,9 @@ describe('compile — i18n ICU interpolation (Phase 3 §9 v4)', () => {
     const { graph, pageId } = pageWithInterpolation('No placeholders here')
     const out = compileI18n(graph, pageId, true)
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toMatch(/<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"No placeholders here"\} \/>/)
+    expect(app).toMatch(
+      /<FormattedMessage id="m[a-z0-9]+" defaultMessage=\{"No placeholders here"\} \/>/
+    )
     expect(app).not.toContain('values={{')
   })
 
@@ -529,8 +574,13 @@ describe('compile — i18n ICU plural / select (Phase 3 §9 v6)', () => {
       'defaultMessage={"You have {count, plural, one {# item} other {# items}}"}'
     )
     expect(app).toContain('values={{ count: count }}')
-    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<string, string>
-    expect(Object.values(catalog)).toContain('You have {count, plural, one {# item} other {# items}}')
+    const catalog = JSON.parse(out.files.get('src/locales/en.json') as string) as Record<
+      string,
+      string
+    >
+    expect(Object.values(catalog)).toContain(
+      'You have {count, plural, one {# item} other {# items}}'
+    )
   })
 
   test('plural composes with a §9 v4 ${} interpolation in the same message', () => {
@@ -540,7 +590,9 @@ describe('compile — i18n ICU plural / select (Phase 3 §9 v6)', () => {
     )
     const out = compileI18n(graph, pageId, true)
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('defaultMessage={"{name}: {count, plural, one {# task} other {# tasks}}"}')
+    expect(app).toContain(
+      'defaultMessage={"{name}: {count, plural, one {# task} other {# tasks}}"}'
+    )
     expect(app).toContain('values={{ name: name, count: count }}')
   })
 
@@ -628,9 +680,17 @@ function compileWithTranslations(
 ) {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
-  const frame = graph.createNode('FRAME', pageId, { width: 200, height: 100, layoutMode: 'VERTICAL' })
+  const frame = graph.createNode('FRAME', pageId, {
+    width: 200,
+    height: 100,
+    layoutMode: 'VERTICAL'
+  })
   graph.createNode('TEXT', frame.id, { text: 'Hello', width: 80, height: 20 })
-  graph.createNode('BUTTON', frame.id, { width: 100, height: 32, interactiveProps: { text: 'Submit' } })
+  graph.createNode('BUTTON', frame.id, {
+    width: 100,
+    height: 32,
+    interactiveProps: { text: 'Submit' }
+  })
   graph.updateNode(graph.rootId, { lowcodeTranslations: translations })
   return compile({
     graph,
@@ -667,7 +727,10 @@ describe('compile — translation authoring data model (Phase 3 §9 v7)', () => 
   })
 
   test('options.locales ∪ translation locales (deduped, source excluded)', () => {
-    const out = compileWithTranslations({ fr: { Hello: 'Bonjour' }, en: { Hello: 'IGNORED' } }, ['fr', 'de'])
+    const out = compileWithTranslations({ fr: { Hello: 'Bonjour' }, en: { Hello: 'IGNORED' } }, [
+      'fr',
+      'de'
+    ])
     // fr (both), de (declared only), NOT en (source) → never re-emitted as a target
     expect(out.files.has('src/locales/fr.json')).toBe(true)
     expect(out.files.has('src/locales/de.json')).toBe(true)
@@ -700,7 +763,9 @@ interface CoverageReport {
 describe('compile — translation coverage report (Phase 3 §9 v10)', () => {
   test('reports per-locale translated counts + the missing source strings', () => {
     const out = compileWithTranslations({ fr: { Hello: 'Bonjour' } }, ['fr', 'de'])
-    const report = JSON.parse(out.files.get('src/locales/_coverage.json') as string) as CoverageReport
+    const report = JSON.parse(
+      out.files.get('src/locales/_coverage.json') as string
+    ) as CoverageReport
     expect(report.sourceLocale).toBe('en')
     // two distinct externalized sources: 'Hello' and 'Submit'
     expect(report.locales.fr).toEqual({ total: 2, translated: 1, missing: ['Submit'] })
@@ -710,13 +775,17 @@ describe('compile — translation coverage report (Phase 3 §9 v10)', () => {
 
   test('a fully-translated locale reports zero missing', () => {
     const out = compileWithTranslations({ es: { Hello: 'Hola', Submit: 'Enviar' } }, ['es'])
-    const report = JSON.parse(out.files.get('src/locales/_coverage.json') as string) as CoverageReport
+    const report = JSON.parse(
+      out.files.get('src/locales/_coverage.json') as string
+    ) as CoverageReport
     expect(report.locales.es).toEqual({ total: 2, translated: 2, missing: [] })
   })
 
   test('a blank translation entry counts as missing', () => {
     const out = compileWithTranslations({ fr: { Hello: '   ', Submit: 'Envoyer' } }, ['fr'])
-    const report = JSON.parse(out.files.get('src/locales/_coverage.json') as string) as CoverageReport
+    const report = JSON.parse(
+      out.files.get('src/locales/_coverage.json') as string
+    ) as CoverageReport
     expect(report.locales.fr).toEqual({ total: 2, translated: 1, missing: ['Hello'] })
   })
 

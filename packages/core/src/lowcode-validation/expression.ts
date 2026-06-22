@@ -41,10 +41,21 @@ export type ExprAst =
   | { kind: 'template'; quasis: string[]; expressions: ExprAst[] }
 
 export type BinaryOp =
-  | '+' | '-' | '*' | '/' | '%'
-  | '===' | '!==' | '==' | '!='
-  | '<' | '>' | '<=' | '>='
-  | '&&' | '||'
+  | '+'
+  | '-'
+  | '*'
+  | '/'
+  | '%'
+  | '==='
+  | '!=='
+  | '=='
+  | '!='
+  | '<'
+  | '>'
+  | '<='
+  | '>='
+  | '&&'
+  | '||'
 
 export interface ParseSuccess {
   ok: true
@@ -75,9 +86,22 @@ const IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*/
 const NUM_RE = /^\d+(?:\.\d+)?/
 // Longest-match-first so multi-char ops win over their prefixes.
 const OPS = [
-  '===', '!==',
-  '==', '!=', '<=', '>=', '&&', '||',
-  '<', '>', '+', '-', '*', '/', '%', '!'
+  '===',
+  '!==',
+  '==',
+  '!=',
+  '<=',
+  '>=',
+  '&&',
+  '||',
+  '<',
+  '>',
+  '+',
+  '-',
+  '*',
+  '/',
+  '%',
+  '!'
 ]
 
 const PUNC_CHARS: ReadonlySet<string> = new Set(['(', ')', '?', ':', '.', ','])
@@ -359,7 +383,10 @@ export function parseTemplate(raw: string): ParseResult {
       if (typeof scan === 'string') return { ok: false, error: scan }
       const parsed = parseExpression(scan.exprSrc)
       if (!parsed.ok) {
-        return { ok: false, error: `interpolation ${JSON.stringify(scan.exprSrc)} → ${parsed.error}` }
+        return {
+          ok: false,
+          error: `interpolation ${JSON.stringify(scan.exprSrc)} → ${parsed.error}`
+        }
       }
       expressions.push(parsed.ast)
       for (const ref of parsed.references) references.add(ref)
@@ -558,7 +585,11 @@ export function substitutePrev(ast: ExprAst, replacement: string): ExprAst {
     case 'ident':
       return ast.name === PREV_IDENT ? { kind: 'ident', name: replacement } : ast
     case 'member':
-      return { kind: 'member', object: substitutePrev(ast.object, replacement), property: ast.property }
+      return {
+        kind: 'member',
+        object: substitutePrev(ast.object, replacement),
+        property: ast.property
+      }
     case 'unary':
       return { kind: 'unary', op: ast.op, arg: substitutePrev(ast.arg, replacement) }
     case 'binary':
@@ -601,7 +632,11 @@ export function substituteIdents(ast: ExprAst, bindings: ReadonlyMap<string, Exp
     case 'ident':
       return bindings.get(ast.name) ?? ast
     case 'member':
-      return { kind: 'member', object: substituteIdents(ast.object, bindings), property: ast.property }
+      return {
+        kind: 'member',
+        object: substituteIdents(ast.object, bindings),
+        property: ast.property
+      }
     case 'unary':
       return { kind: 'unary', op: ast.op, arg: substituteIdents(ast.arg, bindings) }
     case 'binary':

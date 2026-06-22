@@ -91,7 +91,9 @@ describe('compile — toast runtime wiring (Phase 3 §10 v2)', () => {
       }
     ])
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('__opToast("Saved", "success", { position: "top-center", durationMs: 5000 })')
+    expect(app).toContain(
+      '__opToast("Saved", "success", { position: "top-center", durationMs: 5000 })'
+    )
 
     const runtime = out.files.get('src/_lowcode_toast.tsx') as string
     expect(runtime).toContain('POSITION_CLASSES')
@@ -132,9 +134,7 @@ describe('compile — toast runtime wiring (Phase 3 §10 v2)', () => {
   // ── Phase 3 §10 v8: stack cap + duplicate suppression ──
 
   test('the runtime caps the toast stack and suppresses duplicate message+variant', () => {
-    const out = compileWithClick([
-      { id: 't', kind: 'toast', messageExpr: '"Hi"', variant: 'info' }
-    ])
+    const out = compileWithClick([{ id: 't', kind: 'toast', messageExpr: '"Hi"', variant: 'info' }])
     const runtime = out.files.get('src/_lowcode_toast.tsx') as string
     // stack cap: a MAX_TOASTS constant + an oldest-drop slice
     expect(runtime).toContain('const MAX_TOASTS = 5')

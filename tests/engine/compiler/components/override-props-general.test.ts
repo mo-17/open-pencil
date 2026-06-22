@@ -54,7 +54,11 @@ describe('compile — override→props generalized (Phase 3 §8 v6)', () => {
       }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Tag.tsx') as string
     // ONE className prop, not three
     expect((comp.match(/boxClassName\??: ?string/g) ?? []).length).toBe(1)
@@ -75,7 +79,11 @@ describe('compile — override→props generalized (Phase 3 §8 v6)', () => {
       dirty.overrides = { [`${child.id}:strokes`]: true }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     // master + clean + dirty = 3 refs; nothing inlines
     expect((app.match(/<Tag\b/g) ?? []).length).toBe(3)
@@ -95,7 +103,11 @@ describe('compile — override→props generalized (Phase 3 §8 v6)', () => {
       dirty.overrides = { [`${child.id}:visible`]: false }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     const comp = out.files.get('src/components/Tag.tsx') as string
     // the hiding instance passes a className prop carrying `hidden`
@@ -150,7 +162,11 @@ describe('compile — instance :visible reverse (Phase 3 §8 v8)', () => {
       reveal.overrides = { [`${child.id}:visible`]: true }
     }
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Tag.tsx') as string
     const app = out.files.get('src/App.tsx') as string
     // the hidden child is now IN the component body, parameterized by a prop
@@ -171,7 +187,11 @@ describe('compile — instance :visible reverse (Phase 3 §8 v8)', () => {
     const { graph, pageId, masterId } = makeHiddenChildGraph()
     graph.createInstance(masterId, pageId) // clean — no override touches the box
 
-    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Tag.tsx') as string
     // no slot → the hidden child never reaches emit
     expect(comp).not.toContain('bg-[#00FF00]')

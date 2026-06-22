@@ -14,7 +14,10 @@ import {
  * explicit reset utility, which a class-level diff would miss).
  */
 describe('collectResponsiveTailwindClasses (Phase 3 §7)', () => {
-  function autoLayoutFrame(graph: SceneGraph, overrides: SceneNode['responsiveOverrides']): SceneNode {
+  function autoLayoutFrame(
+    graph: SceneGraph,
+    overrides: SceneNode['responsiveOverrides']
+  ): SceneNode {
     const page = graph.getPages()[0]
     const frame = graph.createNode('FRAME', page.id, {
       name: 'Stack',
@@ -35,7 +38,9 @@ describe('collectResponsiveTailwindClasses (Phase 3 §7)', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     const frame = graph.createNode('FRAME', page.id, { layoutMode: 'VERTICAL', itemSpacing: 8 })
-    expect(collectResponsiveTailwindClasses(graph.getNode(frame.id) as SceneNode, graph)).toEqual([])
+    expect(collectResponsiveTailwindClasses(graph.getNode(frame.id) as SceneNode, graph)).toEqual(
+      []
+    )
   })
 
   test('column → row at md emits an explicit `md:flex-row` reset (class-diff would miss it)', () => {

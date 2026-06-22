@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { resolveValueBinding } from '@open-pencil/compiler/ir/collect/bindings'
+import type { IRDocStateDecl, IRStateDecl, IRWarning } from '@open-pencil/compiler/ir/types'
 import { SceneGraph } from '@open-pencil/core'
 import type {
   BindingExpr,
@@ -7,9 +9,6 @@ import type {
   SceneNode,
   StateDef
 } from '@open-pencil/core/scene-graph'
-
-import { resolveValueBinding } from '@open-pencil/compiler/ir/collect/bindings'
-import type { IRDocStateDecl, IRStateDecl, IRWarning } from '@open-pencil/compiler/ir/types'
 
 /**
  * Phase 3 §3.v4 step 2 — `resolveValueBinding` per-node-type targetType
@@ -54,9 +53,7 @@ function makeNodeWithOptions(
 describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', () => {
   // ── INPUT: string | number (§3.x baseline, unchanged) ────────────────
   test('INPUT + string docState → controlled OK targetType=string', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'name', type: 'string', defaultValue: '' }
-    ])
+    const docs = makeDocStates([{ id: 'd1', name: 'name', type: 'string', defaultValue: '' }])
     const node = makeNode('INPUT', { kind: 'docState', docStateName: 'name' })
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
@@ -77,9 +74,7 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
   })
 
   test('INPUT + boolean docState → warn bad-state-type (unchanged from §3.x)', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
-    ])
+    const docs = makeDocStates([{ id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }])
     const node = makeNode('INPUT', { kind: 'docState', docStateName: 'agreed' })
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
@@ -89,9 +84,7 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
 
   // ── CHECKBOX / SWITCH: boolean only ─────────────────────────────────
   test('CHECKBOX + boolean docState → controlled OK targetType=boolean', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
-    ])
+    const docs = makeDocStates([{ id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }])
     const node = makeNode('CHECKBOX', { kind: 'docState', docStateName: 'agreed' })
     const reads = new Set<string>()
     const writes = new Set<string>()
@@ -117,9 +110,7 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
   })
 
   test('SWITCH + boolean docState → controlled OK targetType=boolean', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'dark', type: 'boolean', defaultValue: false }
-    ])
+    const docs = makeDocStates([{ id: 'd1', name: 'dark', type: 'boolean', defaultValue: false }])
     const node = makeNode('SWITCH', { kind: 'docState', docStateName: 'dark' })
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
@@ -147,9 +138,7 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
   })
 
   test('SELECT + string docState → controlled OK', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'country', type: 'string', defaultValue: '' }
-    ])
+    const docs = makeDocStates([{ id: 'd1', name: 'country', type: 'string', defaultValue: '' }])
     const node = makeNode('SELECT', { kind: 'docState', docStateName: 'country' })
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
@@ -157,9 +146,7 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
   })
 
   test('RADIO + string page-state → controlled OK', () => {
-    const states = makePageStates([
-      { id: 's1', name: 'gender', type: 'string', defaultValue: '' }
-    ])
+    const states = makePageStates([{ id: 's1', name: 'gender', type: 'string', defaultValue: '' }])
     const node = makeNode('RADIO', { kind: 'ref', stateId: 's1' })
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, states, warnings)
@@ -178,9 +165,7 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
   })
 
   test('DATEPICKER + boolean docState → warn bad-state-type', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
-    ])
+    const docs = makeDocStates([{ id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }])
     const node = makeNode('DATEPICKER', { kind: 'docState', docStateName: 'agreed' })
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
@@ -200,14 +185,12 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
 
   // ── CHECKBOX group mode (§3.v4 step 8) ──────────────────────────────
   test('CHECKBOX + options[] + array docState → controlled OK targetType=array', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'fruits', type: 'array', defaultValue: [] }
+    const docs = makeDocStates([{ id: 'd1', name: 'fruits', type: 'array', defaultValue: [] }])
+    const node = makeNodeWithOptions('CHECKBOX', { kind: 'docState', docStateName: 'fruits' }, [
+      'Apple',
+      'Banana',
+      'Cherry'
     ])
-    const node = makeNodeWithOptions(
-      'CHECKBOX',
-      { kind: 'docState', docStateName: 'fruits' },
-      ['Apple', 'Banana', 'Cherry']
-    )
     const reads = new Set<string>()
     const writes = new Set<string>()
     const warnings: IRWarning[] = []
@@ -222,14 +205,11 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
   })
 
   test('CHECKBOX + options[] + boolean docState → warn (group mode wants array)', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
+    const docs = makeDocStates([{ id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }])
+    const node = makeNodeWithOptions('CHECKBOX', { kind: 'docState', docStateName: 'agreed' }, [
+      'A',
+      'B'
     ])
-    const node = makeNodeWithOptions(
-      'CHECKBOX',
-      { kind: 'docState', docStateName: 'agreed' },
-      ['A', 'B']
-    )
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
     expect(r).toBeNull()
@@ -247,14 +227,8 @@ describe('resolveValueBinding — per-node-type targetType (Phase 3 §3.v4)', ()
   })
 
   test('CHECKBOX + empty options[] → still single mode (boolean)', () => {
-    const docs = makeDocStates([
-      { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }
-    ])
-    const node = makeNodeWithOptions(
-      'CHECKBOX',
-      { kind: 'docState', docStateName: 'agreed' },
-      []
-    )
+    const docs = makeDocStates([{ id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false }])
+    const node = makeNodeWithOptions('CHECKBOX', { kind: 'docState', docStateName: 'agreed' }, [])
     const warnings: IRWarning[] = []
     const r = resolveValueBinding(node, new Map(), warnings, docs, new Set(), new Set())
     expect(r?.write.targetType).toBe('boolean')

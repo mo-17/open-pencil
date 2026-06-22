@@ -204,7 +204,8 @@ describe('deployFiles — Netlify (Phase 3 §5)', () => {
 describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
   test('uploads every file to /v2/files with x-vercel-digest + octet-stream raw bytes', async () => {
     const calls = mockFetch((call) => {
-      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_1', url: 'app-x.vercel.app' })
+      if (call.url.endsWith('/v13/deployments'))
+        return jsonResponse({ id: 'dpl_1', url: 'app-x.vercel.app' })
       return jsonResponse({})
     })
 
@@ -221,7 +222,10 @@ describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
   })
 
   test('creates a deployment with a /-less files manifest incl. injected vercel.json', async () => {
-    let body: { name: string; files: { file: string; sha: string; size: number }[] } = { name: '', files: [] }
+    let body: { name: string; files: { file: string; sha: string; size: number }[] } = {
+      name: '',
+      files: []
+    }
     mockFetch((call) => {
       if (call.url.endsWith('/v13/deployments')) {
         body = JSON.parse(call.body as string) as typeof body
@@ -266,7 +270,8 @@ describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
 
   test('returns the deployment hostname as an https URL', async () => {
     mockFetch((call) => {
-      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_4', url: 'app-q.vercel.app' })
+      if (call.url.endsWith('/v13/deployments'))
+        return jsonResponse({ id: 'dpl_4', url: 'app-q.vercel.app' })
       return jsonResponse({})
     })
 
@@ -280,22 +285,23 @@ describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
   test('surfaces a 401 as a structured error mentioning the token', async () => {
     mockFetch(() => new Response('Unauthorized', { status: 401 }))
 
-    await expect(deployFiles(fixture(), { provider: 'vercel', token: 'bad', site: 'app' })).rejects.toThrow(
-      /401.*token/i
-    )
+    await expect(
+      deployFiles(fixture(), { provider: 'vercel', token: 'bad', site: 'app' })
+    ).rejects.toThrow(/401.*token/i)
   })
 
   test('rejects a missing token before any network call (names VERCEL_TOKEN)', async () => {
     const calls = mockFetch(() => jsonResponse({}))
-    await expect(deployFiles(fixture(), { provider: 'vercel', token: '', site: 'app' })).rejects.toThrow(
-      /VERCEL_TOKEN/
-    )
+    await expect(
+      deployFiles(fixture(), { provider: 'vercel', token: '', site: 'app' })
+    ).rejects.toThrow(/VERCEL_TOKEN/)
     expect(calls).toHaveLength(0)
   })
 
   test('emits the digest → upload → create → done progress sequence', async () => {
     mockFetch((call) => {
-      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_5', url: 'app-p.vercel.app' })
+      if (call.url.endsWith('/v13/deployments'))
+        return jsonResponse({ id: 'dpl_5', url: 'app-p.vercel.app' })
       return jsonResponse({})
     })
 
@@ -314,7 +320,8 @@ describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
 
   test('hits only Vercel endpoints — never the Netlify API', async () => {
     const calls = mockFetch((call) => {
-      if (call.url.endsWith('/v13/deployments')) return jsonResponse({ id: 'dpl_6', url: 'app-w.vercel.app' })
+      if (call.url.endsWith('/v13/deployments'))
+        return jsonResponse({ id: 'dpl_6', url: 'app-w.vercel.app' })
       return jsonResponse({})
     })
 

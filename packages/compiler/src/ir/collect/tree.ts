@@ -1611,6 +1611,7 @@ interface ImageConfig {
   srcExpr?: unknown
   alt?: unknown
   objectFit?: unknown
+  loading?: unknown
 }
 
 /** object-fit value → Tailwind utility. `Partial` so the index access is
@@ -1747,7 +1748,13 @@ function resolveImageNode(
     return undefined
   }
   const objectFit = typeof cfg.objectFit === 'string' ? cfg.objectFit : ''
+  const loading = imageLoading(cfg.loading)
+  if (loading) descriptor.loading = loading
   return { descriptor, objectFitClass: OBJECT_FIT_CLASS[objectFit] ?? '' }
+}
+
+function imageLoading(value: unknown): IRImage['loading'] | undefined {
+  return value === 'lazy' || value === 'eager' ? value : undefined
 }
 
 /** Phase 4 §24.1: build the void `<img>` element for an image node — its src/alt

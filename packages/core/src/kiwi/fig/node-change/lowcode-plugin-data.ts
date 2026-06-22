@@ -13,7 +13,6 @@
 // read side in convert.ts.
 
 import type { NodeChange } from '#core/kiwi/fig/codec'
-import type { JsonObject } from '#core/types'
 import type {
   ActionDef,
   BindingExpr,
@@ -31,6 +30,7 @@ import type {
   SupabaseConfig,
   WorkflowDef
 } from '#core/scene-graph'
+import type { JsonObject } from '#core/types'
 
 import { OPEN_PENCIL_PLUGIN_ID } from './plugin-data'
 
@@ -259,7 +259,10 @@ function serializeRoutingAuthFields(node: SceneNode): PluginDataEntry[] {
  * child. Returns null for non-instances / empty overrides (legacy .fig stays
  * byte-identical). Needs the graph to resolve child ids, so it's separate from
  * `serializeLowcodeFields`. */
-export function serializeInstanceOverrides(node: SceneNode, graph: SceneGraph): PluginDataEntry | null {
+export function serializeInstanceOverrides(
+  node: SceneNode,
+  graph: SceneGraph
+): PluginDataEntry | null {
   if (node.type !== 'INSTANCE') return null
   const keys = Object.keys(node.overrides)
   if (keys.length === 0) return null
@@ -284,7 +287,11 @@ export function serializeInstanceOverrides(node: SceneNode, graph: SceneGraph): 
 /** The child-index path from `ancestorId` down to `descendantId` (e.g. [0,2] =
  *  first child's third child), or null if not a descendant. Empty array when
  *  they are the same node. */
-function childIndexPath(graph: SceneGraph, ancestorId: string, descendantId: string): number[] | null {
+function childIndexPath(
+  graph: SceneGraph,
+  ancestorId: string,
+  descendantId: string
+): number[] | null {
   const path: number[] = []
   let cur = graph.getNode(descendantId)
   while (cur && cur.id !== ancestorId) {
@@ -328,7 +335,11 @@ export function reapplyInstanceOverrides(graph: SceneGraph): void {
 
 /** Walk a dot-separated child-index path (`"0.2"`) from `rootId` to the target
  *  descendant. Returns undefined if any index is out of range. */
-function resolveChildByPath(graph: SceneGraph, rootId: string, path: string): SceneNode | undefined {
+function resolveChildByPath(
+  graph: SceneGraph,
+  rootId: string,
+  path: string
+): SceneNode | undefined {
   let cur = graph.getNode(rootId)
   if (path === '') return cur
   for (const part of path.split('.')) {
@@ -352,7 +363,9 @@ function fillAxisSizing(node: SceneNode): { primary?: 'FILL'; counter?: 'FILL' }
 function isSupabaseConfig(value: unknown): value is SupabaseConfig {
   if (value === null || typeof value !== 'object') return false
   const v = value as JsonObject
-  return typeof v.url === 'string' && v.url !== '' && typeof v.anonKey === 'string' && v.anonKey !== ''
+  return (
+    typeof v.url === 'string' && v.url !== '' && typeof v.anonKey === 'string' && v.anonKey !== ''
+  )
 }
 
 function makeEntry(key: string, value: unknown): PluginDataEntry {
@@ -452,8 +465,7 @@ export function extractLowcodeAndPluginData(
   const pluginData: PluginDataEntry[] = []
   const result: ExtractedLowcodeAndPluginData = { pluginData }
   for (const entry of nc.pluginData ?? []) {
-    const isOurs =
-      entry.pluginID === OPEN_PENCIL_PLUGIN_ID && LOWCODE_PLUGIN_KEYS.has(entry.key)
+    const isOurs = entry.pluginID === OPEN_PENCIL_PLUGIN_ID && LOWCODE_PLUGIN_KEYS.has(entry.key)
     if (!isOurs) {
       pluginData.push({ pluginId: entry.pluginID, key: entry.key, value: entry.value })
       continue
@@ -463,9 +475,7 @@ export function extractLowcodeAndPluginData(
       parsed = JSON.parse(entry.value)
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
-      console.warn(
-        `[lowcode] failed to parse pluginData "${entry.key}": ${reason}; dropping entry`
-      )
+      console.warn(`[lowcode] failed to parse pluginData "${entry.key}": ${reason}; dropping entry`)
       continue
     }
     assignLowcodeField(result, entry.key, parsed)

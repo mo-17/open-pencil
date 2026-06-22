@@ -34,11 +34,16 @@ describe('compile — gradient fills (Phase 4 §24.2)', () => {
       ]
     })
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'g' }) })
-    return { app: out.files.get('src/App.tsx') as string, css: out.files.get('src/index.css') as string }
+    return {
+      app: out.files.get('src/App.tsx') as string,
+      css: out.files.get('src/index.css') as string
+    }
   }
 
   test('gradient node compiles to the arbitrary-value class', () => {
-    expect(compileGradient().app).toContain('bg-[linear-gradient(180deg,_#FF0000_0%,_#0000FF_100%)]')
+    expect(compileGradient().app).toContain(
+      'bg-[linear-gradient(180deg,_#FF0000_0%,_#0000FF_100%)]'
+    )
   })
 
   test('the gradient class is seeded into the Tailwind safelist (index.css)', () => {

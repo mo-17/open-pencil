@@ -1067,6 +1067,12 @@ export type ActionKind = ActionDef['kind']
 export interface WorkflowDef {
   id: string
   name: string
+  /** Phase 4 §10 follow-up: optional authoring scope for page-local state.
+   *  When set, editor/tooling can validate the workflow body against that page's
+   *  `state[]` instead of the currently selected page approximation. Runtime
+   *  expansion still inlines at the call site; cross-page local state writes
+   *  should be modeled as document state. */
+  pageId?: string
   /** Phase 3 §10 v6: formal parameter names. Each is a plain identifier the
    *  workflow's action expressions may reference; at a `CallWorkflowAction`
    *  call site the matching `args` expression (caller scope) is substituted in.

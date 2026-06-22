@@ -1,5 +1,4 @@
 import { BLACK, DEFAULT_FONT_FAMILY, DEFAULT_STROKE_MITER_LIMIT } from '#core/constants'
-
 import type { Color } from '#core/types'
 
 import type { Fill, NodeType, SceneNode, Stroke } from './types'

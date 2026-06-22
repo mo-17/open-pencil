@@ -1,9 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
 import type { StateDef } from '@open-pencil/core/scene-graph'
-
-import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 
 /**
  * Phase 2 §2 — setState picks `mode: 'functional'` when valueExpr references
@@ -22,9 +21,7 @@ describe('resolveSetState — $prev functional updater (Phase 2 §2)', () => {
     graph.updateNode(page.id, { state: pageStates })
     graph.createNode('BUTTON', page.id, {
       events: {
-        onClick: [
-          { id: 'a1', kind: 'setState', targetStateId: targetId, valueExpr }
-        ]
+        onClick: [{ id: 'a1', kind: 'setState', targetStateId: targetId, valueExpr }]
       }
     })
     return { graph, pageId: page.id }

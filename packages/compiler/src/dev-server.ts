@@ -88,9 +88,7 @@ function pickFreePort(): Promise<number> {
   })
 }
 
-export async function createPreviewServer(
-  opts: PreviewServerOptions = {}
-): Promise<PreviewServer> {
+export async function createPreviewServer(opts: PreviewServerOptions = {}): Promise<PreviewServer> {
   const state = { files: opts.initialFiles ?? new Map() }
   const workspaceRoot = opts.fsRoot ?? process.cwd()
   // Use a quiet sub-directory as Vite's root so its default `**/*.html`

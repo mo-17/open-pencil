@@ -94,7 +94,13 @@ describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     const fill = [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
-    const frame = graph.createNode('FRAME', pageId, { x: 0, y: 0, width: 24, height: 24, fills: [] })
+    const frame = graph.createNode('FRAME', pageId, {
+      x: 0,
+      y: 0,
+      width: 24,
+      height: 24,
+      fills: []
+    })
     graph.createNode('VECTOR', frame.id, {
       x: 0,
       y: 0,

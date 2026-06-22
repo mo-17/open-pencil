@@ -1,15 +1,14 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph, initCodec } from '@open-pencil/core'
 import {
   emitExpression,
   hasPrevReference,
   parseTemplate,
   substitutePrev
 } from '@open-pencil/core/lowcode-validation'
+import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 2 §4 step 4 — cross-walker regression (经验 A).

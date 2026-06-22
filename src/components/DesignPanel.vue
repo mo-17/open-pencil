@@ -128,9 +128,7 @@ const { panels } = useI18n()
       "
     />
     <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
-    <StatePanel
-      v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'"
-    />
+    <StatePanel v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'" />
     <EventsPanel v-if="node.type === 'BUTTON' || node.type === 'FORM'" />
     <ListPanel v-if="node.type === 'LIST'" />
     <RenderConditionPanel />

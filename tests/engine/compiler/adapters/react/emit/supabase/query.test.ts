@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type { IREventHandler, IRSupabaseFilter } from '@open-pencil/compiler/ir/types'
+import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
 /**
  * Phase 3 §2 step 2 — `supabaseQuery` handler emit.
@@ -44,9 +44,7 @@ describe('emit supabaseQuery handler (Phase 3 §2)', () => {
     expect(out).toContain(
       'if (error) { console.error("supabase request failed:", error) } else { setDocState("users", data) }'
     )
-    expect(out).toContain(
-      'catch (err) { console.error("supabase request threw:", err) }'
-    )
+    expect(out).toContain('catch (err) { console.error("supabase request threw:", err) }')
   })
 
   test('single() chain when handler.single is true', () => {

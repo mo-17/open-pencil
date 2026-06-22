@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type { IREventHandler } from '@open-pencil/compiler/ir/types'
+import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
 /**
  * Phase 3 §10 v9 — result-branch sub-workflows on the API actions
@@ -55,7 +55,9 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
       onError: [toast('Failed', 'error')]
     }
     const out = emitEventHandler([handler])
-    expect(out).toContain('catch (err) { setDocState("lastError", err); console.error("apiCall failed:", err); __opToast("Failed", "error"); }')
+    expect(out).toContain(
+      'catch (err) { setDocState("lastError", err); console.error("apiCall failed:", err); __opToast("Failed", "error"); }'
+    )
   })
 
   test('apiCall onSuccess only → still adds res.ok guard, no error tail', () => {
@@ -86,7 +88,9 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
       onError: [toast('Oops', 'error')]
     }
     const out = emitEventHandler([handler])
-    expect(out).toContain('if (error) { console.error("supabase request failed:", error); __opToast("Oops", "error"); }')
+    expect(out).toContain(
+      'if (error) { console.error("supabase request failed:", error); __opToast("Oops", "error"); }'
+    )
     expect(out).toContain('else { setDocState("created", data); __opToast("Created", "success"); }')
   })
 
@@ -124,6 +128,8 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
     const out = emitEventHandler([handler])
     expect(out.startsWith('async () =>')).toBe(true)
     // the nested call's own try/catch is spliced into the outer success path.
-    expect(out).toContain('setDocState("a", data); try { const res = await fetch("https://x.test/b")')
+    expect(out).toContain(
+      'setDocState("a", data); try { const res = await fetch("https://x.test/b")'
+    )
   })
 })

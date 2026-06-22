@@ -1,12 +1,10 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 import { exportFigFile, initCodec, SceneGraph } from '@open-pencil/core'
+
 import { importNodeChanges } from '#core/kiwi/fig/import'
 import { parseFigBuffer } from '#core/kiwi/fig/parse/core'
-import {
-  deserializeSceneGraph,
-  serializeSceneGraph
-} from '#core/kiwi/fig/parse/transfer'
+import { deserializeSceneGraph, serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
 
 setDefaultTimeout(30_000)
 
@@ -77,8 +75,14 @@ describe('worker-path multi-page round-trip (Tauri reopen reproducer)', () => {
     const pages = reimported.getPages()
     expect(pages.map((p) => p.name)).toEqual(['Home', 'About'])
 
-    const homeChildren = reimported.getChildren(pages[0].id).map((n) => n.name).sort()
-    const aboutChildren = reimported.getChildren(pages[1].id).map((n) => n.name).sort()
+    const homeChildren = reimported
+      .getChildren(pages[0].id)
+      .map((n) => n.name)
+      .sort()
+    const aboutChildren = reimported
+      .getChildren(pages[1].id)
+      .map((n) => n.name)
+      .sort()
     expect(homeChildren).toEqual(['home-rect', 'home-text'])
     expect(aboutChildren).toEqual(['about-rect', 'about-text'])
 
@@ -117,10 +121,12 @@ describe('worker-path multi-page round-trip (Tauri reopen reproducer)', () => {
     expect(pages.map((p) => p.name)).toEqual(['Home', 'About', 'Contact'])
 
     expect(reimported.getChildren(pages[0].id).map((n) => n.name)).toEqual(['home-btn'])
-    expect(reimported.getChildren(pages[1].id).map((n) => n.name).sort()).toEqual([
-      'about-btn',
-      'about-text'
-    ])
+    expect(
+      reimported
+        .getChildren(pages[1].id)
+        .map((n) => n.name)
+        .sort()
+    ).toEqual(['about-btn', 'about-text'])
     expect(reimported.getChildren(pages[2].id).map((n) => n.name)).toEqual(['contact-input'])
 
     // Lowcode state should track with its own page.
@@ -151,7 +157,8 @@ describe('worker-path multi-page round-trip (Tauri reopen reproducer)', () => {
     for (const node of reimported.getAllNodes()) {
       if (!node.parentId) continue
       const parent = reimported.getNode(node.parentId)
-      if (!parent) throw new Error(`node ${node.id} has parentId ${node.parentId} but it is missing`)
+      if (!parent)
+        throw new Error(`node ${node.id} has parentId ${node.parentId} but it is missing`)
       expect(parent.childIds).toContain(node.id)
     }
   })

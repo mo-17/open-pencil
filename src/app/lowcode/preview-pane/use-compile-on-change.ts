@@ -23,8 +23,8 @@
 // via @tauri-apps/plugin-shell; that path is never imported statically so
 // the browser bundle stays clean.
 
-import { onBeforeUnmount, ref, type Ref } from 'vue'
 import { watchDebounced } from '@vueuse/core'
+import { onBeforeUnmount, ref, type Ref } from 'vue'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 
@@ -70,11 +70,9 @@ async function startPreviewSidecar(): Promise<PreviewSidecar> {
   const { Command } = await import('@tauri-apps/plugin-shell')
   // PROJECT_ROOT is injected by Vite via `define` (see vite.config.ts).
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
-  const command = Command.create(
-    SIDECAR_NAME,
-    [SIDECAR_ENTRY, '--root', projectRoot],
-    { cwd: projectRoot }
-  )
+  const command = Command.create(SIDECAR_NAME, [SIDECAR_ENTRY, '--root', projectRoot], {
+    cwd: projectRoot
+  })
 
   let stdoutBuffer = ''
   const stderrTail: string[] = []
@@ -228,9 +226,7 @@ export function useCompileOnChange(): UseCompileOnChangeResult {
       // hand all pages to the compiler so the iframe boots the same
       // BrowserRouter shell as CLI export — that's what makes editor↔iframe
       // navigation possible (decision #1).
-      const pageIds = pages.length > 1
-        ? pages.map((p) => p.id)
-        : [store.state.currentPageId]
+      const pageIds = pages.length > 1 ? pages.map((p) => p.id) : [store.state.currentPageId]
       const out = compile({
         graph,
         pageIds,

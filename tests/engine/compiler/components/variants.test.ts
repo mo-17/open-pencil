@@ -17,11 +17,20 @@ const GREEN: Fill = { type: 'SOLID', color: { r: 0, g: 1, b: 0, a: 1 }, opacity:
  * is compiled, so the SET itself never inlines into the assertions while the
  * one shared component file is still emitted (registry scans the whole graph).
  */
-function buildSetGraph(): { graph: SceneGraph; setPage: string; usePage: string; variants: SceneNode[] } {
+function buildSetGraph(): {
+  graph: SceneGraph
+  setPage: string
+  usePage: string
+  variants: SceneNode[]
+} {
   const graph = makeSceneGraph()
   const setPage = firstPageId(graph)
   const usePage = graph.addPage('Use').id
-  const set = graph.createNode('COMPONENT_SET', setPage, { name: 'Button', width: 200, height: 100 })
+  const set = graph.createNode('COMPONENT_SET', setPage, {
+    name: 'Button',
+    width: 200,
+    height: 100
+  })
   // Large|Default (first → default variant) and Small|Hover.
   const large = graph.createNode('COMPONENT', set.id, {
     name: 'Size=Large, State=Default',
@@ -45,7 +54,11 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     const { graph, usePage, variants } = buildSetGraph()
     graph.createInstance(variants[1].id, usePage) // instance of Small|Hover
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Button.tsx') as string
     expect(comp).toBeDefined()
     expect(comp).toContain('size?: "Large" | "Small"')
@@ -63,7 +76,11 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     const { graph, usePage, variants } = buildSetGraph()
     graph.createInstance(variants[1].id, usePage) // Small|Hover
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toMatch(/<Button[^>]*\bsize="Small"/)
     expect(app).toMatch(/<Button[^>]*\bstate="Hover"/)
@@ -75,7 +92,11 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     const { graph, usePage, variants } = buildSetGraph()
     graph.createInstance(variants[0].id, usePage) // Large|Default (defaults)
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('<Button')
     expect(app).not.toContain('size="Large"')
@@ -86,7 +107,11 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     const { graph, usePage, variants } = buildSetGraph()
     graph.createInstance(variants[1].id, usePage)
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     // sanitized variant name would be SizeSmallStateHover — must not be a file.
     expect(out.files.get('src/components/SizeSmallStateHover.tsx')).toBeUndefined()
     expect([...out.files.keys()].filter((k) => k.startsWith('src/components/'))).toEqual([
@@ -106,7 +131,11 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
       inst.overrides = { [`${child.id}:fontSize`]: 24 }
     }
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('<Button')
     expect(app).not.toContain('>SmBtn</p>') // subtree lives in the component file, not inlined
@@ -116,7 +145,11 @@ describe('compile — COMPONENT_SET variants (Phase 3 §8 v4)', () => {
     const { graph, usePage, variants } = buildSetGraph()
     graph.createInstance(variants[1].id, usePage)
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     // the small variant's text size class lives only in the component file's
     // subtree; it must still be safelisted so the iframe keeps it.
     const allSrc = [...out.files.values()].join('\n')
@@ -141,13 +174,29 @@ describe('compile — COMPONENT_SET variant defaults (Phase 3 §8 v7)', () => {
     const { graph, setPage, usePage, variants } = buildSetGraph()
     graph.updateNode(setNode(graph, setPage).id, {
       componentPropertyDefinitions: [
-        { id: 'p1', name: 'Size', type: 'VARIANT', defaultValue: 'Small', variantOptions: ['Large', 'Small'] },
-        { id: 'p2', name: 'State', type: 'VARIANT', defaultValue: 'Hover', variantOptions: ['Default', 'Hover'] }
+        {
+          id: 'p1',
+          name: 'Size',
+          type: 'VARIANT',
+          defaultValue: 'Small',
+          variantOptions: ['Large', 'Small']
+        },
+        {
+          id: 'p2',
+          name: 'State',
+          type: 'VARIANT',
+          defaultValue: 'Hover',
+          variantOptions: ['Default', 'Hover']
+        }
       ]
     })
     graph.createInstance(variants[1].id, usePage)
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Button.tsx') as string
     // defaults now come from componentPropertyDefinitions, not the first variant
     expect(comp).toContain('size = "Small", state = "Hover"')
@@ -162,7 +211,11 @@ describe('compile — COMPONENT_SET variant defaults (Phase 3 §8 v7)', () => {
     })
     graph.createInstance(variants[1].id, usePage)
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Button.tsx') as string
     // stale default ignored → the first variant's value (Large) is kept
     expect(comp).toContain('size = "Large"')
@@ -172,7 +225,11 @@ describe('compile — COMPONENT_SET variant defaults (Phase 3 §8 v7)', () => {
     const { graph, usePage, variants } = buildSetGraph()
     graph.createInstance(variants[1].id, usePage)
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Button.tsx') as string
     expect(comp).toContain('size = "Large", state = "Default"')
   })
@@ -183,7 +240,11 @@ describe('compile — COMPONENT_SET instance :visible reverse (Phase 3 §8 v8)',
     const graph = makeSceneGraph()
     const setPage = firstPageId(graph)
     const usePage = graph.addPage('Use').id
-    const set = graph.createNode('COMPONENT_SET', setPage, { name: 'Card', width: 200, height: 100 })
+    const set = graph.createNode('COMPONENT_SET', setPage, {
+      name: 'Card',
+      width: 200,
+      height: 100
+    })
     // both variants carry a base-hidden 'Badge' (same name → one shared SET slot,
     // fanned out to both variant descendant ids by `descendantsOf`).
     const large = graph.createNode('COMPONENT', set.id, {
@@ -192,14 +253,26 @@ describe('compile — COMPONENT_SET instance :visible reverse (Phase 3 §8 v8)',
       height: 40,
       layoutMode: 'VERTICAL'
     })
-    graph.createNode('RECTANGLE', large.id, { name: 'Badge', width: 20, height: 20, fills: [GREEN], visible: false })
+    graph.createNode('RECTANGLE', large.id, {
+      name: 'Badge',
+      width: 20,
+      height: 20,
+      fills: [GREEN],
+      visible: false
+    })
     const small = graph.createNode('COMPONENT', set.id, {
       name: 'Size=Small, State=Hover',
       width: 80,
       height: 28,
       layoutMode: 'VERTICAL'
     })
-    graph.createNode('RECTANGLE', small.id, { name: 'Badge', width: 20, height: 20, fills: [GREEN], visible: false })
+    graph.createNode('RECTANGLE', small.id, {
+      name: 'Badge',
+      width: 20,
+      height: 20,
+      fills: [GREEN],
+      visible: false
+    })
 
     const inst = graph.createInstance(small.id, usePage)
     if (inst) {
@@ -208,7 +281,11 @@ describe('compile — COMPONENT_SET instance :visible reverse (Phase 3 §8 v8)',
       inst.overrides = { [`${child.id}:visible`]: true }
     }
 
-    const out = compile({ graph, pageIds: [usePage], options: withDefaults({ packageName: 'comp' }) })
+    const out = compile({
+      graph,
+      pageIds: [usePage],
+      options: withDefaults({ packageName: 'comp' })
+    })
     const comp = out.files.get('src/components/Card.tsx') as string
     // the hidden Badge is now in the variant body, parameterized via a shared prop
     expect(comp).toContain('bg-[#00FF00]')

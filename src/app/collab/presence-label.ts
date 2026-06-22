@@ -35,7 +35,8 @@ export function presenceEditingLabel(
   if (!editing) return null
 
   const node =
-    (editing.nodeId ? getNodeName(editing.nodeId) : undefined) ?? dialogs.presenceEditingNodeFallback
+    (editing.nodeId ? getNodeName(editing.nodeId) : undefined) ??
+    dialogs.presenceEditingNodeFallback
 
   // Exhaustive over PresenceEditingKind — a new panel kind without a label here
   // is a compile error.

@@ -1,5 +1,5 @@
-import type { Editor } from '@open-pencil/core/editor'
 import { renderTreeNode } from '@open-pencil/core/design-jsx'
+import type { Editor } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import { computeAllLayouts } from '@open-pencil/core/layout'
 import { ALL_TOOLS } from '@open-pencil/core/tools'

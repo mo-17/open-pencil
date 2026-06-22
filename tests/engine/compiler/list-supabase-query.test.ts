@@ -20,7 +20,8 @@ describe('compile — LIST Supabase query datasource (Phase 4 §17.1)', () => {
   ): string {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    if (opts.supabase !== false) graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG })
+    if (opts.supabase !== false)
+      graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SUPA_CONFIG })
     if (opts.docStates) graph.updateNode(graph.rootId, { lowcodeDocumentState: opts.docStates })
     const list = graph.createNode('LIST', pageId, {
       name: opts.name ?? 'Products',

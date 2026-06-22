@@ -28,9 +28,7 @@ const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 const presence = usePresenceTarget('interactiveProps', () => selectedNode.value?.id)
 
-const ip = useSceneComputed<Props>(
-  () => (selectedNode.value?.interactiveProps ?? {}) as Props
-)
+const ip = useSceneComputed<Props>(() => (selectedNode.value?.interactiveProps ?? {}) as Props)
 
 const fields = computed<InteractiveField[]>(() => {
   const type = selectedNode.value?.type

@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph } from '@open-pencil/core'
-import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
+import type { CompilerOptions } from '@open-pencil/compiler'
 import { reactAdapter } from '@open-pencil/compiler/adapters/react'
 import {
   buildLowcodeSupabaseRuntime,
@@ -11,7 +10,8 @@ import {
 } from '@open-pencil/compiler/adapters/react/lowcode/supabase'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRSupabaseConfig } from '@open-pencil/compiler/ir/types'
-import type { CompilerOptions } from '@open-pencil/compiler'
+import { SceneGraph } from '@open-pencil/core'
+import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
 
 const BASE_OPTIONS: CompilerOptions = {
   packageName: 'demo',
@@ -91,9 +91,7 @@ describe('buildLowcodeSupabaseRuntime (Phase 3 §2)', () => {
     // literals in the import.meta.env fallback (§5).
     expect(out).toContain('"https://a\\"b.supabase.co"')
     expect(out).toContain('"a\\\\b\\"c"')
-    expect(out).toContain(
-      'import.meta.env.VITE_SUPABASE_URL ?? "https://a\\"b.supabase.co"'
-    )
+    expect(out).toContain('import.meta.env.VITE_SUPABASE_URL ?? "https://a\\"b.supabase.co"')
   })
 
   test('§5: connection reads import.meta.env with the design-time values as fallback', () => {

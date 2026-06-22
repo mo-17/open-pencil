@@ -168,7 +168,9 @@ function setTranslation(locale: string, source: string, value: string): void {
             spellcheck="false"
             :placeholder="source"
             class="min-w-0 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
-            @change="setTranslation(currentLocale, source, ($event.target as HTMLInputElement).value)"
+            @change="
+              setTranslation(currentLocale, source, ($event.target as HTMLInputElement).value)
+            "
           />
         </li>
       </ul>

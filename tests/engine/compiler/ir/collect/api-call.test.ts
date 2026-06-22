@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
-
 import { collectTree } from '#compiler/ir/collect/tree'
 import type { IRApiCallHandler } from '#compiler/ir/types'
+
+import { SceneGraph, initCodec } from '@open-pencil/core'
+import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 /**
  * Phase 2 §3 step 2 — `apiCall` IR collect.
@@ -73,7 +73,14 @@ describe('resolveApiCall — apiCall IR collect (Phase 2 §3)', () => {
 
   test('Phase 3 §10 v9: unknown errorTarget → warn + handler dropped', () => {
     const { graph, pageId } = makeGraph([
-      { id: 'a1', kind: 'apiCall', method: 'GET', url: 'https://x.test/u', targetName: 'users', errorTarget: 'nope' }
+      {
+        id: 'a1',
+        kind: 'apiCall',
+        method: 'GET',
+        url: 'https://x.test/u',
+        targetName: 'users',
+        errorTarget: 'nope'
+      }
     ])
     const ir = collectTree(graph, pageId)
     expect(onlyHandler(graph, pageId)).toBeUndefined()

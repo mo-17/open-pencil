@@ -574,7 +574,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 - `ir/types.ts`:`IRFieldValidation { key; stateName; stateKind; rules: IRValidationRules; custom?: IRValidationCustom }` + `IRValidationRules`/`IRValidationMessages`/`IRValidationCustom`;`IRElement.validation?`(字段)+ `IRElement.formValidationKeys?`(`<form>` 的受控校验后代键)+ `IRTree.validatedFields?`(页级累加,**全可选 → 不破 .vue IRTree stub**,§16.3 教训)。
 - `ir/collect/tree.ts`:`WalkCtx.validatedFields` 累加器;`applyValidation(node,ctx,controlled,events)`(读 validation 配置,parse 核心规则[pattern compile 校验、数值 finite 校验,坏规则 warn+drop]、customExpr 经共享 `resolveReactiveExpr` 解析[复用 §17,拒 `$prev`/未知标识、注册 docState read]、onBlur 冲突 warn+drop[校验占有 onBlur]),接进 `resolveControlDescriptors`(受控才解析,非受控带配置 warn);`collectValidationKeys(nodes)` 给 FORM 收后代校验键 → `element.formValidationKeys`;collectTree 末 lift `validatedFields`。
-- `adapters/react/lowcode/validation.ts`(新):`buildLowcodeValidationRuntime()`(`_lowcode_validation.tsx` 的纯 `validateValue(value, rules)` —— 核心规则求值,首条失败规则消息[自定义或默认],空可选字段跳过非 required 规则;**消息用字符串拼接非 `${}` 避 no-template-curly**)+ `buildValidationGlue(fields)`(页级 `useState` 错误存 + `__validators` map[每字段一闭包:核心规则调 `validateValue`,customExpr 内联 `emitExpression`]+ `__validateField`(onBlur)/`__validateFields`(onSubmit)) + `VALIDATION_ERROR_CLASSES` safelist。
+- `adapters/react/lowcode/validation.ts`(新):`buildLowcodeValidationRuntime()`(`_lowcode_validation.tsx` 的纯 `validateValue(value, rules)` —— 核心规则求值,首条失败规则消息[自定义或默认],空可选字段跳过非 required 规则;**消息用字符串拼接非 `${}` 避 no-template-curly**)+ `buildValidationGlue(fields)`(页级 `useState` 错误存 + `__validators` map[每字段一闭包:核心规则调 `validateValue`,customExpr 内联 `emitExpression`]+ `__validateField`(onBlur)/`__validateFieldValue`(onChange next value)/`__validateFields`(onSubmit)) + `VALIDATION_ERROR_CLASSES` safelist。
 - `adapters/react/emit/event.ts`:`emitFormSubmitHandler(handlers, keys)` →`(e) => { e.preventDefault(); if (!__validateFields([keys])) return; <user onSubmit> }`(取 `e` 参 preventDefault;async 跟随用户 handler)。
 - `adapters/react/emit/element.ts`:`formatAttrs` 加 `validationKey`(`aria-invalid` + 验证-onBlur)+ `formValidationKeys`(包裹 onSubmit,即使无用户 onSubmit 也 emit 验证-only);`emitTagElement` 拆 dispatcher + `emitTagElementCore`,验证字段经 `wrapValidatedField` 包成 `<>{input}{__fieldErrors[k] && <p role=alert/>}</>`(内层元素 +1 缩进);`eventAttrParts`/`validationFieldParts` 抽出守 complexity。
 - `adapters/react/scaffold.ts`:`buildReactImport` 加 `useState`(验证错误存);`buildLowcodeStateImport` 加 `getDocStateSnapshot`(docState 绑定字段);`buildLowcodeRuntimeImports` 抽出(supabase/toast/confirm/validation 四 import,**守 buildPageFile complexity 24→19 闸**,§16.4 RouterUsage 先例);hookLines 插 validation glue(docState hoist 之后,customExpr 引用它们);`BuildPageOptions.lowcodeValidationImportPath`。
@@ -584,7 +584,8 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 - **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **715/0**(+13 form-validation.test)、kiwi **127/0**(+1 round-trip)、scene-graph 202/0、tools 196/0 零回归;check:vue 0。
 - **e2e 实跑**:scratch 多字段验证表单 .fig(required+pattern+minLength+customExpr+中文消息,FORM onSubmit setVariable)经 `exportFigFile` 写真盘 → CLI `compile` → App.tsx 出 `validateValue` import + `getDocStateSnapshot` 新鲜读 + `__validators` map(核心规则 JSON + 转义 pattern `\\.` + 中文消息)+ customExpr 内联 `if (__error === null && !(email !== "blocked@x.com")) __error = "该邮箱被禁用"` + 字段 `aria-invalid`+`onBlur` + 错误 `<p className="text-sm text-red-600 mt-1" role="alert">` + form `onSubmit={(e) => { e.preventDefault(); if (!__validateFields(["0:5"])) return; setDocState("status", "submitted"); }}` + index.css safelist 含 text-red-600 + `_lowcode_validation.tsx` 含 validateValue(scene-graph→.fig→parse→IR→emit 全链 + 真盘 round-trip)。
-- **边界 / 延后**:校验只挂受控单值字段(RADIO/CHECKBOX group 的值在 leaf 上,v1 不校验,warn);customExpr 用渲染快照读 docState(blur/submit 时已提交,正确;同-handler 程序化 setDocState 后陈旧 —— 罕见,核心规则用 getDocStateSnapshot 新鲜读不受影响);组合型 UI-kit 控件(shadcn Select 等)校验时错误 `<p>` 仍显示但无 per-field onBlur/aria(kit 自有 markup);**校验只对页面直属字段,extract 进组件的字段 v1 不校验**(组件体无页级 validator 槽);无 AI tool / GUI 授权面板(走 graph.updateNode + interactiveProps round-trip,§17/§18 先例)。**真机验积压 +1**:浏览器填表→失焦即时报错 + 非法提交被拦 + 合法提交跑 onSubmit。**§19 v2 follow-ups**:onChange 实时校验选项;FORM 级错误汇总;async/自定义校验函数;校验授权 GUI;组件内字段校验。
+- **§19 v2 onChange 实时校验(CODE COMPLETE 2026-06-23)**:受控 validated field 的合成 `onChange` 现在按 `writer → __validateFieldValue(id,nextValue) → user onChange` 顺序输出。`__validateFieldValue` 直接吃 event next value,避免同一 handler 内 React/page-state 尚未提交导致读旧值;`onBlur`/`onSubmit` 仍走 `__validateField`/`__validateFields` 的快照读取。覆盖 docState/page-state 字段、无用户 onChange baseline、以及用户 onChange 组合顺序。
+- **边界 / 延后**:校验只挂受控单值字段(RADIO/CHECKBOX group 的值在 leaf 上,v1 不校验,warn);customExpr 用渲染快照读 docState(blur/submit 时已提交,正确;同-handler 程序化 setDocState 后陈旧 —— 罕见,核心规则 onChange 用 next value、blur/submit 用 getDocStateSnapshot 新鲜读);组合型 UI-kit 控件(shadcn Select 等)校验时错误 `<p>` 仍显示但无 per-field onBlur/aria(kit 自有 markup);**校验只对页面直属字段,extract 进组件的字段 v1 不校验**(组件体无页级 validator 槽);无 AI tool / GUI 授权面板(走 graph.updateNode + interactiveProps round-trip,§17/§18 先例)。**真机验积压 +1**:浏览器填表→失焦即时报错 + 非法提交被拦 + 合法提交跑 onSubmit。**§19 v2 follow-ups**:FORM 级错误汇总;async/自定义校验函数;校验授权 GUI;组件内字段校验。
 
 **新经验**:① §17/§18/§19 三度印证「给现有交互节点加能力 = interactiveProps 子配置(零 codec/零 scene-graph,随 blob round-trip)」是首选路径;② 页级 emit 增量(validators map + 错误存)= 抽运行时纯函数(`validateValue` 进 `_lowcode_validation.tsx`,跨页 DRY)+ 页级 glue(`buildValidationGlue`)+ per-字段/form emit 三层;③ 「字段 emit 包错误兄弟节点」用 dispatcher 拆 core + fragment 包裹(`emitTagElement`→`emitTagElementCore` + `wrapValidatedField`),内层元素 +1 缩进,避免重排 children 数组;④ FORM 提交拦截 = 一个 `emitFormSubmitHandler` 在 event.ts 复用 `emitStatementList` 把 `preventDefault + validate-abort` 前置到用户 handler,无须改 events 解析;⑤ 加分支撞 complexity/jscpd 即时抽 helper(`buildLowcodeRuntimeImports` 守 complexity、`emitLowcodeRuntimes` 消 clone),提前看闸别等报。
 
@@ -821,6 +822,10 @@ bun test \
 
 **§24 v2 Figma image-fill asset 导出**(CODE COMPLETE 2026-06-23):原 §24.1 只做 `interactiveProps.image` 的 URL/绑定 `<img>`;本次补齐原延后的 native Figma `IMAGE` fill 管道。collector 从 `SceneNode.fills` 找第一个可见 `type:'IMAGE'` fill,用 `fill.imageHash` 读取 `SceneGraph.images` bytes,注册到 IR asset(`src/assets/openpencil-image-<hash>.<ext>`;扩展名从 PNG/JPEG/GIF/WebP/SVG 魔数识别),className 追加 `bg-[url(./assets/...)] bg-center` + scale mode 映射:`FILL/CROP→bg-cover bg-no-repeat`,`FIT→bg-contain bg-no-repeat`,`TILE→bg-auto bg-repeat`。adapter 从 IRTree/ComponentDef 汇总 assets 去重写入 `CompilerOutput.files`,Tailwind safelist 继续由 className 自动收集。缺 `imageHash` warn `image-fill-missing-hash`;hash 有但 graph 无 bytes warn `image-fill-missing-asset`;均跳过背景图,保持普通节点输出。仍只处理第一张可见 image fill;crop transform/多 fill 叠加/响应式 srcset 延后。
 
+**§24.3 image loading attr(CODE COMPLETE 2026-06-23)**:`interactiveProps.image.loading`
+接受 `lazy | eager`,emit 到 `<img loading="...">`;非法值静默丢弃,默认不输出
+以保持旧产物 byte-stable。验证:`bun test tests/engine/compiler/images.test.ts`。
+
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
 ## §25 外链 `<a href>` + target
@@ -1033,7 +1038,19 @@ bun test \
 
 **现状**:§10 v11 GUI 链已闭合(EventsPanel 递归编辑器 + WorkflowsPanel + callWorkflow GUI)。**已知小缺口**:工作流体的 pageStates 当前取**当前页**近似。
 
-**剩余**:跨页 callWorkflow 时,工作流体内引用的 pageStates 应按**目标页**解析(而非编辑时的当前页)。纯 collect/emit 逻辑修正。**待锁**:目标页解析时机(compile 期静态 vs runtime)。
+**交付记录(CODE COMPLETE 2026-06-23)**:
+
+- `WorkflowDef.pageId?` 增加可选页面作用域,用于 authoring / tool validation
+  的 page-local state 解析;未设置时继续回退当前页,保持旧文件兼容。
+- `set_workflows` / `read_workflows` 保留并说明 `pageId`;工具边界拒绝空或不存在的
+  `pageId`,`.fig` 仍走 `lowcode/workflows` 轻 guard,无需新 pluginData key。
+- `WorkflowsPanel` 新建 workflow 时记录当前页 `pageId`;`WorkflowRow` 暴露页面作用域
+  下拉,并按该页把 `pageStates` 传给递归 `ActionList`,不再用全局当前页近似。
+- **边界**:运行时仍 inline 到 call site;跨页局部 state 写入没有共享生命周期,应建模为
+  docState。此轮修 authoring 精确度,不生成跨页面局部 state runtime。
+
+**验证**:`bun test tests/engine/tools/lowcode/workflow-action.test.ts`;
+`bun run check:vue`;`tsgo --noEmit`;`bun run lint:structure`;`git diff --check`。
 
 ## §6 lowcode 字段升格 Kiwi schema(工程债,继续推迟)
 

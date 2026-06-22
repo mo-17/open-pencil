@@ -76,6 +76,17 @@ describe('compile — images & aspect-ratio (Phase 4 §24.1/§24.3)', () => {
     }
   })
 
+  test('image loading accepts lazy/eager and drops invalid values', () => {
+    const lazy = compileNode({ image: { src: 'https://x/a.png', alt: '', loading: 'lazy' } })
+    expect(lazy.app).toContain('loading="lazy"')
+
+    const eager = compileNode({ image: { src: 'https://x/a.png', alt: '', loading: 'eager' } })
+    expect(eager.app).toContain('loading="eager"')
+
+    const invalid = compileNode({ image: { src: 'https://x/a.png', alt: '', loading: 'soon' } })
+    expect(invalid.app).not.toContain('loading=')
+  })
+
   test('missing src → warn + plain node (not an <img>)', () => {
     const { app, warnings } = compileNode({ image: { alt: 'x' } })
     expect(warnings.map((w) => w.code)).toContain('image-missing-src')

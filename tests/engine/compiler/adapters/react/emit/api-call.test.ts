@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type { IREventHandler } from '@open-pencil/compiler/ir/types'
+import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
 /**
  * Phase 2 §3 step 2 — `apiCall` handler emit. Phase 2 §4 — the `url` field

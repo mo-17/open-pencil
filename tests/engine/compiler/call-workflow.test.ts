@@ -13,11 +13,7 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * exactly as if the actions had been authored on the button. No emitted
  * workflow function, no runtime workflow file.
  */
-function compileWithWorkflows(
-  onClick: ActionDef[],
-  workflows: WorkflowDef[],
-  docState?: string
-) {
+function compileWithWorkflows(onClick: ActionDef[], workflows: WorkflowDef[], docState?: string) {
   const graph: SceneGraph = makeSceneGraph('Flows')
   graph.updateNode(graph.rootId, {
     lowcodeWorkflows: workflows,
@@ -94,7 +90,14 @@ describe('compile — workflow parameters (Phase 3 §10 v6)', () => {
   test('a callWorkflow arg is substituted into the inlined workflow body', () => {
     const out = compileWithWorkflows(
       [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: '"Saved!"' } }],
-      [{ id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }]
+      [
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
+      ]
     )
     const app = out.files.get('src/App.tsx') as string
     // the formal parameter `msg` is replaced by the caller's literal argument
@@ -105,7 +108,14 @@ describe('compile — workflow parameters (Phase 3 §10 v6)', () => {
   test('an arg referencing a docState resolves against the caller runtime', () => {
     const out = compileWithWorkflows(
       [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify', args: { msg: 'status' } }],
-      [{ id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }],
+      [
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
+      ],
       'status'
     )
     const app = out.files.get('src/App.tsx') as string
@@ -117,7 +127,14 @@ describe('compile — workflow parameters (Phase 3 §10 v6)', () => {
   test('a missing argument drops the callWorkflow (no toast emitted)', () => {
     const out = compileWithWorkflows(
       [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }],
-      [{ id: 'notify', name: 'Notify', params: ['msg'], actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }] }]
+      [
+        {
+          id: 'notify',
+          name: 'Notify',
+          params: ['msg'],
+          actions: [{ id: 't', kind: 'toast', messageExpr: 'msg' }]
+        }
+      ]
     )
     const app = out.files.get('src/App.tsx') as string
     expect(app).not.toContain('__opToast')
@@ -134,7 +151,10 @@ describe('compile — workflow default arguments (Phase 3 §10 v7)', () => {
   }
 
   test('an omitted arg falls back to the workflow default expression', () => {
-    const out = compileWithWorkflows([{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }], [notify])
+    const out = compileWithWorkflows(
+      [{ id: 'cw', kind: 'callWorkflow', workflowId: 'notify' }],
+      [notify]
+    )
     const app = out.files.get('src/App.tsx') as string
     // no longer dropped — the default `"Done"` is substituted for `msg`
     expect(app).toContain('__opToast("Done")')

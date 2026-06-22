@@ -1,8 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 2 §7 step 4 — cross-scenario regression for the canvas↔preview

@@ -39,7 +39,11 @@ function buildSetGraph(): {
   const graph = makeSceneGraph()
   const setPage = firstPageId(graph)
   const usePage = graph.addPage('Use').id
-  const set = graph.createNode('COMPONENT_SET', setPage, { name: 'Button', width: 200, height: 100 })
+  const set = graph.createNode('COMPONENT_SET', setPage, {
+    name: 'Button',
+    width: 200,
+    height: 100
+  })
   const large = graph.createNode('COMPONENT', set.id, {
     name: 'Size=Large, State=Default',
     width: 120,

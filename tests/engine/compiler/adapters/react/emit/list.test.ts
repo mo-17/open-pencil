@@ -1,12 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { emitElement } from '@open-pencil/compiler/adapters/react/emit/element'
-import type {
-  IRConditional,
-  IRElement,
-  IRList,
-  IRNode
-} from '@open-pencil/compiler/ir/types'
+import type { IRConditional, IRElement, IRList, IRNode } from '@open-pencil/compiler/ir/types'
 
 function element(overrides: Partial<IRElement> & { tag: string }): IRElement {
   return {

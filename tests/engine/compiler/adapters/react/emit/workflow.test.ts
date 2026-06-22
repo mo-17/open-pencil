@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
-import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 import type { IREventHandler } from '@open-pencil/compiler/ir/types'
+import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
 /**
  * Phase 3 §10 — workflow-orchestration emit: `condition` (if/else over nested
@@ -126,14 +126,25 @@ describe('emit toast handlers (Phase 3 §10 v2)', () => {
 
   test('the toast message can interpolate a state/docState expression', () => {
     const out = emitEventHandler([
-      { kind: 'toast', ast: member('currentUser', 'name'), references: ['currentUser'], variant: 'error' }
+      {
+        kind: 'toast',
+        ast: member('currentUser', 'name'),
+        references: ['currentUser'],
+        variant: 'error'
+      }
     ])
     expect(out).toBe('() => __opToast(currentUser.name, "error")')
   })
 
   test('a toast in a block gets a trailing semicolon and stays sync', () => {
     const out = emitEventHandler([
-      { kind: 'setVariable', docStateName: 'saved', ast: { kind: 'string', value: 'yes' }, references: [], mode: 'absolute' },
+      {
+        kind: 'setVariable',
+        docStateName: 'saved',
+        ast: { kind: 'string', value: 'yes' },
+        references: [],
+        mode: 'absolute'
+      },
       { kind: 'toast', ast: { kind: 'string', value: 'Done' }, references: [], variant: 'info' }
     ])
     expect(out).toBe('() => { setDocState("saved", "yes"); __opToast("Done"); }')
@@ -147,7 +158,12 @@ describe('emit toast handlers (Phase 3 §10 v2)', () => {
         condAst: member('res', 'ok'),
         references: ['res'],
         consequent: [
-          { kind: 'toast', ast: { kind: 'string', value: 'OK' }, references: [], variant: 'success' }
+          {
+            kind: 'toast',
+            ast: { kind: 'string', value: 'OK' },
+            references: [],
+            variant: 'success'
+          }
         ]
       }
     ])
@@ -167,7 +183,9 @@ describe('emit toast handlers (Phase 3 §10 v2)', () => {
         durationMs: 5000
       }
     ])
-    expect(out).toBe('() => __opToast("Saved", "info", { position: "top-center", durationMs: 5000 })')
+    expect(out).toBe(
+      '() => __opToast("Saved", "info", { position: "top-center", durationMs: 5000 })'
+    )
   })
 
   test('only position set → options object omits durationMs', () => {
@@ -185,7 +203,13 @@ describe('emit toast handlers (Phase 3 §10 v2)', () => {
 
   test('only duration set → options object omits position', () => {
     const out = emitEventHandler([
-      { kind: 'toast', ast: { kind: 'string', value: 'Hi' }, references: [], variant: 'info', durationMs: 1000 }
+      {
+        kind: 'toast',
+        ast: { kind: 'string', value: 'Hi' },
+        references: [],
+        variant: 'info',
+        durationMs: 1000
+      }
     ])
     expect(out).toBe('() => __opToast("Hi", "info", { durationMs: 1000 })')
   })
@@ -205,7 +229,9 @@ describe('emit confirm + clipboard handlers (Phase 3 §10 v3)', () => {
         ast: { kind: 'string', value: 'Delete?' },
         references: [],
         consequent: [{ kind: 'navigate', to: '/gone' }],
-        alternate: [{ kind: 'toast', ast: { kind: 'string', value: 'Kept' }, references: [], variant: 'info' }]
+        alternate: [
+          { kind: 'toast', ast: { kind: 'string', value: 'Kept' }, references: [], variant: 'info' }
+        ]
       }
     ])
     expect(out).toBe(
@@ -248,7 +274,12 @@ describe('emit confirm + clipboard handlers (Phase 3 §10 v3)', () => {
   test('clipboard value can interpolate an expression and stays sync in a block', () => {
     const out = emitEventHandler([
       { kind: 'clipboard', ast: member('currentUser', 'email'), references: ['currentUser'] },
-      { kind: 'toast', ast: { kind: 'string', value: 'Copied' }, references: [], variant: 'success' }
+      {
+        kind: 'toast',
+        ast: { kind: 'string', value: 'Copied' },
+        references: [],
+        variant: 'success'
+      }
     ])
     expect(out).toBe(
       '() => { navigator.clipboard.writeText(currentUser.email); __opToast("Copied", "success"); }'

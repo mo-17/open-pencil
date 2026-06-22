@@ -70,9 +70,7 @@ export function getNodeContext(node: SceneNode, graph: SceneGraph) {
     // FRAME with `layoutMode === 'FREE'` opts into the same semantic for
     // its children. The absolute-positioning emit branch (tailwind-classes
     // `applyLayoutStyle`) keys off this single predicate.
-    parentIsFreeLayout: parent
-      ? parent.type === 'CANVAS' || parent.layoutMode === 'FREE'
-      : false
+    parentIsFreeLayout: parent ? parent.type === 'CANVAS' || parent.layoutMode === 'FREE' : false
   }
 }
 

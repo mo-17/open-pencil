@@ -7,6 +7,9 @@
 - Add JSX authoring support for components, component sets, and instances.
 - Add type-validated `bindVariable`/`unbindVariable` with event emission and indexed binding format (`fills/N/color` instead of `fills[N]`).
 - Add `unbind_variable` MCP tool for removing variable bindings.
+- Add optional `loading="lazy"` / `loading="eager"` emission for lowcode image nodes.
+- Scope lowcode workflows to an optional page so the workflow editor validates page-local state against the intended page instead of the currently selected page.
+- Validate lowcode controlled form fields on change with the next input value while preserving writer-first user `onChange` composition.
 
 ### Fixes
 
