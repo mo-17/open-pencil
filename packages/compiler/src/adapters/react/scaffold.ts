@@ -1,6 +1,6 @@
 import type { IRNode, IRTree } from '#compiler/ir/types'
 
-import { buildComponentImports } from './emit/component'
+import { buildComponentImports, buildLucideIconImport } from './emit/component'
 import { emitElement } from './emit/element'
 import { emitListQueryHook } from './emit/list-query'
 import { emitStateDecl } from './emit/state'
@@ -12,7 +12,8 @@ import {
   pageUsesConfirm,
   pageUsesSupabase,
   pageUsesToast,
-  referencedComponentNames
+  referencedComponentNames,
+  referencedLucideIconNames
 } from './ir-walk'
 import { buildReactIntlImport } from './lowcode/i18n'
 import { buildValidationGlue, validationUsesDocStateSnapshot } from './lowcode/validation'
@@ -160,10 +161,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
  * Build the multi-page router shell `src/App.tsx`. Uses `BrowserRouter` from
  * `react-router-dom@^6.27` per Phase 1 §11.3 decision #2.
  */
-export function buildRouterApp(
-  infos: readonly PagePathInfo[],
-  options: BuildAppOptions
-): string {
+export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildAppOptions): string {
   const bridgeImport = options.devMode ? `import './__preview-bridge'\n` : ''
   const routerImport = `import { BrowserRouter, Route, Routes } from 'react-router-dom'\n`
   const pageImports = infos
@@ -242,7 +240,19 @@ function buildReactImport(ir: IRTree): string {
 }
 
 function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
-  const { devMode, importPreviewBridge, exportName, lowcodeStateImportPath, lowcodeSupabaseImportPath, lowcodeToastImportPath, lowcodeConfirmImportPath, lowcodeValidationImportPath, componentImportPrefix, uiKit, routerAvailable } = options
+  const {
+    devMode,
+    importPreviewBridge,
+    exportName,
+    lowcodeStateImportPath,
+    lowcodeSupabaseImportPath,
+    lowcodeToastImportPath,
+    lowcodeConfirmImportPath,
+    lowcodeValidationImportPath,
+    componentImportPrefix,
+    uiKit,
+    routerAvailable
+  } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
   const reactImport = buildReactImport(ir)
   // Phase 4 §16.1/§16.3/§16.4: the route-bound built-ins (`$params`, `$query`)
@@ -268,6 +278,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const componentNames = referencedComponentNames(ir.children)
   const componentImports = buildComponentImports(componentNames, componentImportPrefix)
   const componentImportBlock = componentImports ? `${componentImports}\n` : ''
+  const lucideImport = buildLucideIconImport(referencedLucideIconNames(ir.children))
   // Phase 3 §15: import the kit components this page renders (one per used
   // component, e.g. `import { Button } from '@/components/ui/button'`).
   const kitImportBlock = buildKitImports(ir.children, uiKit)
@@ -278,7 +289,16 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     formattedMessage: hasTranslatableText(ir.children),
     intl: usesIntlAttr
   })
-  const importBlock = bridgeImport + reactImport + routerImport + lowcodeStateImport + lowcodeRuntimeImports + componentImportBlock + kitImportBlock + i18nImport
+  const importBlock =
+    bridgeImport +
+    reactImport +
+    routerImport +
+    lowcodeStateImport +
+    lowcodeRuntimeImports +
+    componentImportBlock +
+    lucideImport +
+    kitImportBlock +
+    i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
   // Phase 4 §16.1/§16.2/§16.4: useNavigate / $params / $query hook lines.
@@ -303,7 +323,15 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     ? `  if (!$currentUser.signedIn) return <Navigate to="${ir.authRedirect ?? '/login'}" replace />`
     : ''
 
-  const hookLines = [stateLines, docStateReadLines, routerHookLines, listQueryLines, validationGlue, intlHookLine, guardLine]
+  const hookLines = [
+    stateLines,
+    docStateReadLines,
+    routerHookLines,
+    listQueryLines,
+    validationGlue,
+    intlHookLine,
+    guardLine
+  ]
     .filter((l) => l !== '')
     .join('\n')
 
@@ -349,7 +377,9 @@ function buildLowcodeRuntimeImports(
   ir: IRTree,
   paths: { supabase: string; toast: string; confirm: string; validation: string }
 ): string {
-  const supabase = pageUsesSupabase(ir) ? `import { getSupabaseClient } from '${paths.supabase}'\n` : ''
+  const supabase = pageUsesSupabase(ir)
+    ? `import { getSupabaseClient } from '${paths.supabase}'\n`
+    : ''
   const toast = pageUsesToast(ir) ? `import { __opToast } from '${paths.toast}'\n` : ''
   const confirm = pageUsesConfirm(ir) ? `import { __opConfirm } from '${paths.confirm}'\n` : ''
   const validation =

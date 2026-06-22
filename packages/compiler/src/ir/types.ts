@@ -171,6 +171,11 @@ export interface IRElement {
    *  or direct `interactiveProps.href/target`. The adapter emits this element
    *  as an `<a>` with href/target/rel, separate from internal navigate actions. */
   link?: IRLink
+  /** Phase 4 §23 — named lucide-react icon lifted from
+   *  `interactiveProps.icon`. The React adapter emits the named lucide
+   *  component and imports it from `lucide-react`; existing vector SVG icon
+   *  folding remains the fallback for path-based icon artwork. */
+  icon?: IRLucideIcon
   /** Phase 4 §19 — client-side validation for a controlled form field carrying
    *  `interactiveProps.validation`. The adapter emits `aria-invalid` + an
    *  `onBlur` that validates the field, and wraps the input with a per-field
@@ -251,6 +256,17 @@ export interface IRLink {
   hrefLiteral?: string
   hrefExpr?: ExprAst
   target: '_self' | '_blank' | '_parent' | '_top'
+}
+
+/** Phase 4 §23: named lucide-react icon metadata. `name` is the React export
+ *  name (PascalCase, e.g. `CameraOff`) after collect validates and normalizes
+ *  the authored value against the bundled lucide icon set. */
+export interface IRLucideIcon {
+  name: string
+  size?: number
+  color?: string
+  strokeWidth?: number
+  ariaLabel?: string
 }
 
 /** Phase 4 §19: a controlled form field's client-side validation rules, lifted

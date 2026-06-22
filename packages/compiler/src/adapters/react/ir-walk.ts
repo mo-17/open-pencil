@@ -54,7 +54,9 @@ function treeHasUpload(node: IRNode): boolean {
  */
 export function pageHasNavigateParams(ir: IRTree): boolean {
   return ir.children.some((c) =>
-    treeHasHandler(c, (h) => handlerTreeMatches(h, (x) => x.kind === 'navigate' && (x.params?.length ?? 0) > 0))
+    treeHasHandler(c, (h) =>
+      handlerTreeMatches(h, (x) => x.kind === 'navigate' && (x.params?.length ?? 0) > 0)
+    )
   )
 }
 
@@ -85,6 +87,28 @@ function collectRefNames(node: IRNode, acc: Set<string>): void {
   }
   if (node.kind !== 'element') return
   for (const child of node.children) collectRefNames(child, acc)
+}
+
+/** Phase 4 §23 — the distinct lucide-react component names referenced anywhere
+ *  in a subtree. Drives both page/component imports and package.json deps. */
+export function referencedLucideIconNames(nodes: readonly IRNode[]): string[] {
+  const acc = new Set<string>()
+  for (const node of nodes) collectLucideIconNames(node, acc)
+  return [...acc].sort()
+}
+
+function collectLucideIconNames(node: IRNode, acc: Set<string>): void {
+  if (node.kind === 'conditional') {
+    collectLucideIconNames(node.consequent, acc)
+    return
+  }
+  if (node.kind === 'list') {
+    collectLucideIconNames(node.template, acc)
+    return
+  }
+  if (node.kind !== 'element') return
+  if (node.icon) acc.add(node.icon.name)
+  for (const child of node.children) collectLucideIconNames(child, acc)
 }
 
 /**
@@ -156,9 +180,7 @@ export function pageUsesSupabase(ir: IRTree): boolean {
     treeHasHandler(
       c,
       (h) =>
-        h.kind === 'supabaseQuery' ||
-        h.kind === 'supabaseMutation' ||
-        h.kind === 'supabaseAuth'
+        h.kind === 'supabaseQuery' || h.kind === 'supabaseMutation' || h.kind === 'supabaseAuth'
     )
   )
 }

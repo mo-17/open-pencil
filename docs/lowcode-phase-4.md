@@ -584,7 +584,13 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状(grep 坐实)**:无 icon 节点(lucide 仅在 shadcn 内部注释「inline SVG instead of lucide-react」)。
 
-**建议方向**:icon 节点(或 interactiveProp)→ emit `import { Name } from 'lucide-react'` + `<Name size color />`;icon 名进 Tailwind safelist 无关(走 import)。**经验 D**(lucide-react 进 compiler deps)。**待锁**:用新 NodeType 还是给 FRAME/INSTANCE 标 icon prop;图标选择 UI(GUI 延后真机)。
+**锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+- **授权形态**:不加新 NodeType,走任意节点 `interactiveProps.icon`。支持字符串 `icon:"camera"` / `icon:"lucide:camera"` / `icon:"Camera"` 或对象 `{ name, size, color, strokeWidth, ariaLabel }`。对象 `label` 兼容为 `ariaLabel`。
+- **IR/API**:`IRElement.icon?: IRLucideIcon`。collect 期用本地 `@iconify-json/lucide` 图标清单验证名称,归一化为 lucide-react PascalCase export(如 `camera-off`→`CameraOff`)。unknown / 非 lucide prefix warn `lucide-icon-unknown` 并回退普通元素,避免生成缺失 named import。
+- **emit**:page/component module 按实际使用 emit `import { Name } from 'lucide-react'`;元素 emit `<Name className="..." size color strokeWidth ... />`。无 `ariaLabel` 时默认 `aria-hidden="true"`;有 label 时 `role="img" aria-label="..."`。icon 名不进 Tailwind safelist(走 JS import);节点尺寸/颜色布局仍走既有 className + optional props。
+- **dependency**:生成项目在实际使用 lucide icon 时加入 `lucide-react:^1.21.0`;compiler 自身声明 `@iconify-json/lucide` 用于编译期校验。
+- **验证**:`tests/engine/compiler/lucide-icon.test.ts` 覆盖基础 emit+dependency、`lucide:`/PascalCase 归一化、unknown fallback+warning。
+- **边界/延后**:v1 是 compiler/headless 能力,无图标选择 GUI;不导出 Figma vector 图标到 lucide 名(已有 vector SVG fold 继续覆盖 path 图标);不做 icon 动态表达式/按状态换 icon。
 
 ## §24 图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)
 

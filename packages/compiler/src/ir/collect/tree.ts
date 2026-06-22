@@ -1,3 +1,5 @@
+import lucideIcons from '@iconify-json/lucide/icons.json'
+
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
@@ -646,6 +648,8 @@ function isCheckboxGroup(node: SceneNode): boolean {
   return Array.isArray(raw) && raw.length > 0
 }
 
+const LUCIDE_ICON_NAMES: ReadonlySet<string> = new Set(Object.keys(lucideIcons.icons))
+
 // Pure-vector shape types whose appearance IS the path geometry. As plain
 // `<div>`s they emit only size + fill→bg, i.e. a solid colored box (icons show
 // up as squares in the preview). Instead we emit the node's geometry as inline
@@ -1000,14 +1004,12 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
 
   // Phase 4 §15.1: tag a card-like container FRAME so a UI-kit adapter can wrap
   // it in `<Card>`. Kit-agnostic — the plain emit ignores it (byte-identical).
-  const containerKind = containerKindFor(node)
-  const overlay = resolveOverlay(node, ctx)
-  const link = resolveLink(node, ctx)
+  const semantics = resolveElementSemantics(node, ctx)
 
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
-    tag: link ? 'a' : tag,
+    tag: semantics.link ? 'a' : tag,
     className,
     ...(classNameProp ? { classNameProp } : {}),
     // Phase 3 §8 v5: in a variant subtree the prop spans variants with
@@ -1017,9 +1019,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     ...controls,
-    ...(containerKind ? { containerKind } : {}),
-    ...(overlay ? { overlay } : {}),
-    ...(link ? { link } : {}),
+    ...semantics,
     ...vector.extra
   }
   // §19: a <form> with validated descendant fields validates them at submit —
@@ -1129,6 +1129,22 @@ function containerKindFor(node: SceneNode): IRElement['containerKind'] {
   return undefined
 }
 
+function resolveElementSemantics(
+  node: SceneNode,
+  ctx: WalkCtx
+): Pick<IRElement, 'containerKind' | 'overlay' | 'link' | 'icon'> {
+  const containerKind = containerKindFor(node)
+  const overlay = resolveOverlay(node, ctx)
+  const link = resolveLink(node, ctx)
+  const icon = resolveLucideIcon(node, ctx)
+  return {
+    ...(containerKind ? { containerKind } : {}),
+    ...(overlay ? { overlay } : {}),
+    ...(link ? { link } : {}),
+    ...(icon ? { icon } : {})
+  }
+}
+
 interface OverlayConfig {
   kind?: unknown
   openRef?: unknown
@@ -1213,6 +1229,92 @@ function resolveLink(node: SceneNode, ctx: WalkCtx): IRLink | undefined {
     return { hrefExpr: resolved.ast, target }
   }
   return { hrefLiteral, target }
+}
+
+interface IconConfig {
+  name?: unknown
+  icon?: unknown
+  size?: unknown
+  color?: unknown
+  strokeWidth?: unknown
+  ariaLabel?: unknown
+  label?: unknown
+}
+
+/** Phase 4 §23: `interactiveProps.icon` turns a node into a named lucide-react
+ *  icon. The authored name can be `camera`, `lucide:camera`, or `Camera`; the
+ *  IR stores the validated React export name (`Camera`). Unknown names warn and
+ *  fall back to normal node emission so generated projects never import a
+ *  missing lucide symbol. */
+function resolveLucideIcon(node: SceneNode, ctx: WalkCtx): IRElement['icon'] {
+  const ip = node.interactiveProps as IconConfig | undefined
+  if (!ip) return undefined
+  const cfg = ip.icon && typeof ip.icon === 'object' ? (ip.icon as IconConfig) : ip
+  const rawName = typeof ip.icon === 'string' ? ip.icon : cfg.name
+  if (typeof rawName !== 'string' || rawName.trim() === '') return undefined
+  const normalized = normalizeLucideIconName(rawName)
+  if (!normalized || !LUCIDE_ICON_NAMES.has(normalized.kebab)) {
+    ctx.warnings.push({
+      code: 'lucide-icon-unknown',
+      message: `node ${node.id} references unknown lucide icon ${rawName}`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  return {
+    name: normalized.component,
+    ...finitePositiveNumberProp(cfg.size, 'size'),
+    ...stringProp(cfg.color, 'color'),
+    ...finitePositiveNumberProp(cfg.strokeWidth, 'strokeWidth'),
+    ...stringProp(cfg.ariaLabel ?? cfg.label, 'ariaLabel')
+  }
+}
+
+function normalizeLucideIconName(raw: string): { kebab: string; component: string } | undefined {
+  const trimmed = raw.trim()
+  const hasPrefix = trimmed.includes(':')
+  if (hasPrefix && !trimmed.startsWith('lucide:')) return undefined
+  const base = hasPrefix ? trimmed.slice('lucide:'.length) : trimmed
+  const kebab = toKebabIconName(base)
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(kebab)) return undefined
+  return { kebab, component: kebabToPascal(kebab) }
+}
+
+function toKebabIconName(raw: string): string {
+  return raw
+    .trim()
+    .replace(/_/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .toLowerCase()
+}
+
+function kebabToPascal(kebab: string): string {
+  return kebab
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('')
+}
+
+function finitePositiveNumberProp<K extends 'size' | 'strokeWidth'>(
+  raw: unknown,
+  key: K
+): Partial<Record<K, number>> {
+  if (raw === undefined) return {}
+  let n = Number.NaN
+  if (typeof raw === 'number') n = raw
+  if (typeof raw === 'string') n = Number(raw.trim())
+  return Number.isFinite(n) && n > 0 ? ({ [key]: n } as Partial<Record<K, number>>) : {}
+}
+
+function stringProp<K extends 'color' | 'ariaLabel'>(
+  raw: unknown,
+  key: K
+): Partial<Record<K, string>> {
+  return typeof raw === 'string' && raw.trim() !== ''
+    ? ({ [key]: raw.trim() } as Partial<Record<K, string>>)
+    : {}
 }
 
 /** Join two class strings, skipping empties (no leading/trailing space). */

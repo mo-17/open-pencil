@@ -23,6 +23,7 @@ import {
   pageUsesConfirm,
   pageUsesToast,
   referencedComponentNames,
+  referencedLucideIconNames,
   stripNavigateForSinglePage
 } from './ir-walk'
 import { buildLowcodeConfirmRuntime, CONFIRM_RUNTIME_CLASSES } from './lowcode/confirm'
@@ -59,6 +60,7 @@ import type { UiKitAdapter } from './ui-kit/types'
  * to avoid older v6 versions crashing under `<StrictMode>` in React 19.
  */
 const REACT_ROUTER_DOM_VERSION = '^6.27.0'
+const LUCIDE_REACT_VERSION = '^1.21.0'
 
 const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
 const LOWCODE_SUPABASE_FILE = 'src/_lowcode_supabase.ts'
@@ -195,6 +197,7 @@ function emitSinglePage(
     ...lowcodeStateExtraDeps(cleaned.docStates),
     ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig),
     ...i18nExtraDeps(i18nActive),
+    ...lucideExtraDeps([cleaned], components),
     ...kit.deps
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
@@ -271,6 +274,7 @@ function emitMultiPage(
     ...lowcodeStateExtraDeps(docStates),
     ...lowcodeSupabaseExtraDeps(supabaseConfig),
     ...i18nExtraDeps(i18nActive),
+    ...lucideExtraDeps(irs, components),
     ...kit.deps
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
@@ -332,6 +336,23 @@ function lowcodeSupabaseExtraDeps(config: IRSupabaseConfig | undefined): Record<
 
 function i18nExtraDeps(active: boolean): Record<string, string> {
   return active ? { 'react-intl': REACT_INTL_VERSION } : {}
+}
+
+function lucideExtraDeps(
+  irs: readonly IRTree[],
+  components: readonly ComponentDef[]
+): Record<string, string> {
+  for (const ir of irs) {
+    if (referencedLucideIconNames(ir.children).length > 0) {
+      return { 'lucide-react': LUCIDE_REACT_VERSION }
+    }
+  }
+  for (const def of components) {
+    if (referencedLucideIconNames(componentBodyNodes(def)).length > 0) {
+      return { 'lucide-react': LUCIDE_REACT_VERSION }
+    }
+  }
+  return {}
 }
 
 /** Phase 3 §9: emit the i18n runtime + source-locale catalog when i18n is

@@ -63,6 +63,7 @@
     "build": "bunx tsgo -p tsconfig.build.json"
   },
   "dependencies": {
+    "@iconify-json/lucide": "^1.2.94",
     "@open-pencil/core": "workspace:*"
   },
   "devDependencies": {

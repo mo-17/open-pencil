@@ -7,6 +7,7 @@ import type {
   IRExpression,
   IRImage,
   IRLink,
+  IRLucideIcon,
   IRNode,
   IROverlay,
   IRText,
@@ -134,6 +135,7 @@ function emitTagElementCore(
   const pad = '  '.repeat(indent)
 
   if (node.overlay) return emitOverlayElement(node, indent, devMode, uiKit)
+  if (node.icon) return emitLucideIconElement(node, indent, devMode)
 
   // Phase 3 §15 Phase B: a marked form control (SELECT/CHECKBOX/SWITCH/RADIO)
   // may be emitted as a composed kit component (`<Select><SelectTrigger>…`),
@@ -186,6 +188,46 @@ function emitTagElementCore(
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
   lines.push(`${pad}</${tagName}>`)
   return lines.join('\n')
+}
+
+/** Phase 4 §23: emit a validated named lucide-react icon. It is a leaf SVG
+ *  component, but className/events/dev ids still ride the authored node so it
+ *  behaves like the other compiled primitives. */
+function emitLucideIconElement(node: IRElement, indent: number, devMode: boolean): string {
+  const icon = node.icon
+  if (!icon) return emitTagElementCore(node, indent, devMode, null)
+  const pad = '  '.repeat(indent)
+  const attrsStr = formatAttrs(
+    node.className,
+    node.attrs,
+    node.events,
+    devMode ? node.sourceId : undefined,
+    undefined,
+    undefined,
+    node.classNameProp,
+    node.classNamePropFallback,
+    undefined,
+    undefined,
+    undefined,
+    undefined
+  )
+  const iconAttrs = lucideIconAttrParts(icon)
+  const allAttrs = [attrsStr, ...iconAttrs].filter((part) => part !== '').join(' ')
+  return allAttrs ? `${pad}<${icon.name} ${allAttrs} />` : `${pad}<${icon.name} />`
+}
+
+function lucideIconAttrParts(icon: IRLucideIcon): string[] {
+  const parts: string[] = []
+  if (icon.size !== undefined) parts.push(`size={${icon.size}}`)
+  if (icon.color !== undefined) parts.push(`color="${escapeAttr(icon.color)}"`)
+  if (icon.strokeWidth !== undefined) parts.push(`strokeWidth={${icon.strokeWidth}}`)
+  if (icon.ariaLabel !== undefined) {
+    parts.push(`role="img"`)
+    parts.push(`aria-label="${escapeAttr(icon.ariaLabel)}"`)
+  } else {
+    parts.push(`aria-hidden="true"`)
+  }
+  return parts
 }
 
 const OVERLAY_SHELL_CLASS: Record<IROverlay['kind'], string> = {

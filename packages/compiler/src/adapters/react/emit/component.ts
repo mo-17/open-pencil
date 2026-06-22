@@ -1,10 +1,10 @@
 import type { ComponentDef, IRNode, VariantCase } from '#compiler/ir/types'
 
-import { emitElement } from './element'
-import { hasIntlAttr, hasTranslatableText } from '../ir-walk'
+import { hasIntlAttr, hasTranslatableText, referencedLucideIconNames } from '../ir-walk'
 import { buildReactIntlImport } from '../lowcode/i18n'
 import { collectKitImports, kitImportLine } from '../ui-kit/registry'
 import type { UiKitAdapter } from '../ui-kit/types'
+import { emitElement } from './element'
 
 /**
  * Phase 3 §8 — build `src/components/<Name>.tsx` for one reusable component.
@@ -34,10 +34,12 @@ export function buildComponentModule(
   // its own kit imports.
   const kitImports = uiKit ? collectKitImports(componentBodyNodes(def), uiKit) : []
   const kitImportBlock =
-    kitImports.length > 0
-      ? kitImports.map(kitImportLine).join('\n') + '\n'
+    kitImports.length > 0 ? kitImports.map(kitImportLine).join('\n') + '\n' : ''
+  const lucideImport = buildLucideIconImport(referencedLucideIconNames(componentBodyNodes(def)))
+  const importBlock =
+    i18nImport || kitImportBlock || lucideImport
+      ? `${i18nImport}${kitImportBlock}${lucideImport}\n`
       : ''
-  const importBlock = i18nImport || kitImportBlock ? `${i18nImport}${kitImportBlock}\n` : ''
   return importBlock + buildComponentBody(def, devMode, usesIntl, uiKit)
 }
 
@@ -170,4 +172,11 @@ ${body}
 export function buildComponentImports(names: readonly string[], prefix: string): string {
   const unique = [...new Set(names)].sort()
   return unique.map((n) => `import ${n} from '${prefix}${n}'`).join('\n')
+}
+
+/** Phase 4 §23 — one named import line for every lucide-react icon a module
+ *  renders. Names are already validated + normalized by IR collect. */
+export function buildLucideIconImport(names: readonly string[]): string {
+  if (names.length === 0) return ''
+  return `import { ${names.join(', ')} } from 'lucide-react'\n`
 }
