@@ -33,6 +33,7 @@ import type {
   IREventName,
   IRExpression,
   IRFieldValidation,
+  IRImage,
   IRList,
   IRListOrder,
   IRListQuery,
@@ -941,17 +942,16 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   if (!tag) return null
 
   let className = tailwindClassName(node, ctx.graph)
-  // Phase 3 §3.v5 — give RADIO / CHECKBOX-group wrappers a sane vertical
-  // stack with spacing when the SceneNode itself isn't an auto-layout
-  // (FREE-positioned wrappers would otherwise let the option <label>s run
-  // together inline with no gaps). Auto-layout wrappers already carry a
-  // flex/grid layout from the canvas — respect the direction the user set.
-  if (
-    (node.type === 'RADIO' || isCheckboxGroup(node)) &&
-    !/(^|\s)(flex|inline-flex|grid|inline-grid)(\s|$)/.test(className)
-  ) {
-    className = className === '' ? OPTION_GROUP_WRAPPER_CLASSES : `${className} ${OPTION_GROUP_WRAPPER_CLASSES}`
-  }
+  // Phase 4 §24.3: an `interactiveProps.aspectRatio` adds `aspect-[w/h]` to any
+  // node (most useful on image / media containers, but not limited to them).
+  className = appendAspectRatio(className, node, ctx)
+  // Phase 4 §24.1: a node carrying `interactiveProps.image` renders as a void
+  // `<img>` leaf — resolved + returned here so it skips the control / vector /
+  // child-recursion path (an image has none). Events (e.g. onClick) still apply.
+  const image = resolveImageNode(node, ctx)
+  if (image) return wrapConditional(node, buildImageElement(node, ctx, className, image), ctx)
+  // Phase 3 §3.v5 — RADIO / CHECKBOX-group wrappers get a vertical option-stack.
+  className = applyOptionGroupWrapper(className, node)
   const attrs: Record<string, IRAttrValue> = {}
   const children: IRNode[] = []
 
@@ -1113,6 +1113,127 @@ function containerKindFor(node: SceneNode): IRElement['containerKind'] {
   const hasVisibleFill = node.fills.some((f) => f.visible && f.opacity > 0)
   if (hasVisibleFill && node.cornerRadius > 0) return 'card'
   return undefined
+}
+
+/** Join two class strings, skipping empties (no leading/trailing space). */
+function joinClass(base: string, extra: string): string {
+  if (extra === '') return base
+  return base === '' ? extra : `${base} ${extra}`
+}
+
+/** Phase 3 §3.v5 — a RADIO / CHECKBOX-group wrapper that isn't already a
+ *  flex/grid auto-layout gets a vertical option-stack class so the option
+ *  `<label>`s don't run together inline. Extracted to keep nodeToIR under the
+ *  complexity gate. */
+function applyOptionGroupWrapper(className: string, node: SceneNode): string {
+  if (node.type !== 'RADIO' && !isCheckboxGroup(node)) return className
+  if (/(^|\s)(flex|inline-flex|grid|inline-grid)(\s|$)/.test(className)) return className
+  return joinClass(className, OPTION_GROUP_WRAPPER_CLASSES)
+}
+
+/** Phase 4 §24.1: the raw `interactiveProps.image` config a node may carry to
+ *  render as an `<img>` (rides the interactiveProps blob round-trip, zero codec). */
+interface ImageConfig {
+  src?: unknown
+  srcExpr?: unknown
+  alt?: unknown
+  objectFit?: unknown
+}
+
+/** object-fit value → Tailwind utility. `Partial` so the index access is
+ *  `string | undefined` (the `?? ''` stays necessary under type-aware lint). */
+const OBJECT_FIT_CLASS: Partial<Record<string, string>> = {
+  cover: 'object-cover',
+  contain: 'object-contain',
+  fill: 'object-fill',
+  none: 'object-none',
+  'scale-down': 'object-scale-down'
+}
+
+/** "16/9", "4/3", or a bare number like "1.5". */
+const ASPECT_RATIO_RE = /^\d+(\.\d+)?(\/\d+(\.\d+)?)?$/
+
+/** Phase 4 §24.3: append `aspect-[<ratio>]` when the node carries a valid
+ *  `interactiveProps.aspectRatio`. Applies to any node; a malformed ratio warns
+ *  and is dropped. The class rides `className` → auto-safelisted by
+ *  `collectClassNames`. */
+function appendAspectRatio(className: string, node: SceneNode, ctx: WalkCtx): string {
+  const ip = node.interactiveProps as { aspectRatio?: unknown } | undefined
+  const raw = typeof ip?.aspectRatio === 'string' ? ip.aspectRatio.trim() : ''
+  if (raw === '') return className
+  if (!ASPECT_RATIO_RE.test(raw)) {
+    ctx.warnings.push({
+      code: 'aspect-ratio-invalid',
+      message: `${node.type} ${node.id} interactiveProps.aspectRatio "${raw}" is not a valid ratio (e.g. "16/9" or "1.5")`,
+      nodeId: node.id
+    })
+    return className
+  }
+  return joinClass(className, `aspect-[${raw}]`)
+}
+
+/** Phase 4 §24.1: resolve a node's `interactiveProps.image` into an IRImage +
+ *  its object-fit utility. `srcExpr` (an expression, e.g. a doc-state binding to
+ *  a §18 upload result) wins over a literal `src` URL; a bad expression or a
+ *  missing src warns and returns undefined (the node stays a normal element). */
+function resolveImageNode(
+  node: SceneNode,
+  ctx: WalkCtx
+): { descriptor: IRImage; objectFitClass: string } | undefined {
+  const ip = node.interactiveProps as { image?: ImageConfig } | undefined
+  const cfg = ip?.image
+  if (!cfg || typeof cfg !== 'object') return undefined
+  const srcExprSrc = typeof cfg.srcExpr === 'string' ? cfg.srcExpr.trim() : ''
+  const srcLiteral = typeof cfg.src === 'string' ? cfg.src.trim() : ''
+  const alt = typeof cfg.alt === 'string' ? cfg.alt : ''
+  let descriptor: IRImage
+  if (srcExprSrc !== '') {
+    const resolved = resolveReactiveExpr(node, srcExprSrc, 'image-src', ctx)
+    if (resolved === null) return undefined
+    descriptor = { srcExpr: resolved.ast, alt }
+  } else if (srcLiteral !== '') {
+    descriptor = { srcLiteral, alt }
+  } else {
+    ctx.warnings.push({
+      code: 'image-missing-src',
+      message: `${node.type} ${node.id} interactiveProps.image has no src or srcExpr`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const objectFit = typeof cfg.objectFit === 'string' ? cfg.objectFit : ''
+  return { descriptor, objectFitClass: OBJECT_FIT_CLASS[objectFit] ?? '' }
+}
+
+/** Phase 4 §24.1: build the void `<img>` element for an image node — its src/alt
+ *  ride `IRElement.image`, object-fit joins `className`. Events (e.g. onClick)
+ *  still resolve so an image can be interactive. */
+function buildImageElement(
+  node: SceneNode,
+  ctx: WalkCtx,
+  className: string,
+  image: { descriptor: IRImage; objectFitClass: string }
+): IRElement {
+  const events = resolveEvents(
+    node,
+    ctx.states,
+    ctx.warnings,
+    ctx.docStates,
+    ctx.docStateWrites,
+    ctx.inScope,
+    ctx.docStateReads,
+    ctx.workflows
+  )
+  return {
+    kind: 'element',
+    sourceId: node.id,
+    tag: 'img',
+    className: joinClass(className, image.objectFitClass),
+    attrs: {},
+    children: [],
+    ...(events && Object.keys(events).length > 0 ? { events } : {}),
+    image: image.descriptor
+  }
 }
 
 /** §18/§3.x/§15: resolve an element's mutually-exclusive interactive control

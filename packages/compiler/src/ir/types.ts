@@ -175,6 +175,12 @@ export interface IRElement {
    *  actions) when any field is invalid. The keys are the descendant fields'
    *  SceneNode ids. */
   formValidationKeys?: string[]
+  /** Phase 4 §24.1 — set when a node carries `interactiveProps.image`. The node
+   *  emits a void `<img>` (its `tag` is already `'img'`) with this src + alt;
+   *  the `object-fit` / `aspect-[…]` utilities ride `className`. The `src` is a
+   *  literal URL (`srcLiteral`) or an expression (`srcExpr`, e.g. a doc-state
+   *  binding to a §18 upload result). */
+  image?: IRImage
   /** Raw inner HTML to emit verbatim via `dangerouslySetInnerHTML` instead of
    *  `children`. Set for vector-shape nodes (VECTOR / BOOLEAN_OPERATION / STAR /
    *  POLYGON / LINE) whose appearance IS the path geometry: the wrapper keeps
@@ -206,6 +212,18 @@ export interface IRControlledInput {
     name: string
     targetType: 'string' | 'number' | 'boolean' | 'array'
   }
+}
+
+/** Phase 4 §24.1: a node rendered as an `<img>` (from `interactiveProps.image`).
+ *  Exactly one of `srcExpr` / `srcLiteral` is set; `alt` defaults to '' (a valid
+ *  decorative-image value). object-fit + aspect-ratio ride the element's
+ *  `className`. */
+export interface IRImage {
+  /** A literal image URL. */
+  srcLiteral?: string
+  /** A src expression (e.g. a doc-state binding to a §18 upload result). */
+  srcExpr?: ExprAst
+  alt: string
 }
 
 /** Phase 4 §19: a controlled form field's client-side validation rules, lifted

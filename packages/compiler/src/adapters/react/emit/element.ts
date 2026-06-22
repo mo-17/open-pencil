@@ -6,6 +6,7 @@ import type {
   IREventHandler,
   IREventName,
   IRExpression,
+  IRImage,
   IRNode,
   IRText,
   IRUpload
@@ -147,7 +148,8 @@ function emitTagElementCore(
     node.classNameProp,
     node.classNamePropFallback,
     node.validation?.key,
-    node.formValidationKeys
+    node.formValidationKeys,
+    node.image
   )
   // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
   // keeping the same attrs/children. The underlying tag still drives void-ness
@@ -259,7 +261,8 @@ function formatAttrs(
   classNameProp?: string,
   classNamePropFallback?: boolean,
   validationKey?: string,
-  formValidationKeys?: readonly string[]
+  formValidationKeys?: readonly string[],
+  image?: IRImage
 ): string {
   const parts: string[] = []
   // Phase 3 §8 v3: a component-body child whose className is parameterized
@@ -278,6 +281,8 @@ function formatAttrs(
   // Supabase Storage and writes the public URL into a doc-state. It's
   // uncontrolled, so collect leaves `controlled` undefined here.
   if (upload) parts.push(...uploadAttrParts(upload))
+  // §24.1: an image node emits `src` (literal URL or a bound expression) + alt.
+  if (image) parts.push(...imageAttrParts(image))
   if (controlled) {
     // §3.v4 dispatch:
     //  - type="radio" → per-option `checked={read === <opt>}` (the IR collect
@@ -344,6 +349,16 @@ function eventAttrParts(
     parts.push(`onSubmit={${emitFormSubmitHandler(events?.onSubmit ?? [], formValidationKeys)}}`)
   }
   return parts
+}
+
+/** Phase 4 §24.1: the JSX attrs for an image node — `src` (a literal URL or a
+ *  bound expression) + `alt`. object-fit / aspect-ratio ride `className`. */
+function imageAttrParts(image: IRImage): string[] {
+  const src =
+    image.srcExpr !== undefined
+      ? `src={${emitExpression(image.srcExpr)}}`
+      : `src="${escapeAttr(image.srcLiteral ?? '')}"`
+  return [src, `alt="${escapeAttr(image.alt)}"`]
 }
 
 /** Phase 4 §18: the JSX attrs for a file-upload INPUT — `type="file"`, an

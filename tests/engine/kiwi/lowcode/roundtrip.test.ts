@@ -329,6 +329,21 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual({ validation })
   })
 
+  test('image + aspectRatio interactiveProps round-trip through .fig (Phase 4 §24)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const interactiveProps = {
+      image: { src: 'https://x.com/a.png', alt: 'Hero', objectFit: 'cover' },
+      aspectRatio: '16/9'
+    }
+    graph.createNode('RECTANGLE', page.id, { name: 'Hero', interactiveProps })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(findFirst(reimported, 'RECTANGLE').interactiveProps).toEqual(interactiveProps)
+  })
+
   test('TEXT with bindings.text → ref(stateId) round-trips through .fig', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
