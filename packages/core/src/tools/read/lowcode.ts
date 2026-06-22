@@ -21,6 +21,7 @@ import type {
   LayoutMode,
   LowcodeTranslations,
   StateDef,
+  StateOverrides,
   SupabaseConfig,
   WorkflowDef
 } from '#core/scene-graph'
@@ -56,6 +57,9 @@ export interface LowcodeNodeRead {
   /** Conditional-render expression (Phase 2 §9). Empty string / undefined
    *  → unconditional render. Sub-language matches §7.3 valueExpr. */
   renderCondition?: string
+  /** Phase 4 §20: per-interaction-state appearance overrides, emitted as
+   *  Tailwind pseudo-state classes (`hover:*`, `focus:*`, ...). */
+  stateOverrides?: StateOverrides
   /** Root-only: document-level state declarations. Always undefined on
    *  non-root nodes (decision §2.2 #a); use `readDocStates` for the
    *  canonical access. */
@@ -85,6 +89,7 @@ function buildLowcodeRead(node: {
   events?: Partial<Record<EventName, ActionDef[]>>
   interactiveProps?: Record<string, unknown>
   renderCondition?: string
+  stateOverrides?: StateOverrides
   lowcodeDocumentState?: DocumentStateDef[]
   lowcodeSupabaseConfig?: SupabaseConfig
   lowcodeTranslations?: LowcodeTranslations
@@ -101,8 +106,10 @@ function buildLowcodeRead(node: {
   if (node.events !== undefined) out.events = node.events
   if (node.interactiveProps !== undefined) out.interactiveProps = node.interactiveProps
   if (node.renderCondition !== undefined) out.renderCondition = node.renderCondition
+  if (node.stateOverrides !== undefined) out.stateOverrides = node.stateOverrides
   if (node.lowcodeDocumentState !== undefined) out.lowcodeDocumentState = node.lowcodeDocumentState
-  if (node.lowcodeSupabaseConfig !== undefined) out.lowcodeSupabaseConfig = node.lowcodeSupabaseConfig
+  if (node.lowcodeSupabaseConfig !== undefined)
+    out.lowcodeSupabaseConfig = node.lowcodeSupabaseConfig
   if (node.lowcodeTranslations !== undefined) out.lowcodeTranslations = node.lowcodeTranslations
   if (node.lowcodeWorkflows !== undefined) out.lowcodeWorkflows = node.lowcodeWorkflows
   return out
@@ -115,7 +122,7 @@ function getRoot(figma: FigmaAPI) {
 export const readLowcodeNode = defineTool({
   name: 'read_lowcode_node',
   description:
-    "Read the lowcode-specific fields of a single SceneNode: state declarations, channel bindings, event handlers (onClick / onChange / onSubmit / onFocus / onBlur), interactive component props, renderCondition expression, layoutMode (FREE = Phase 2 freeLayout override), and the root-only documentState / supabaseConfig snapshots. Returns the node's pencil-design metadata (id / type / name) alongside every lowcode field that is currently set; fields that the SceneNode itself stores as undefined are omitted from the result so AI prompts can tell 'never configured' apart from 'configured but empty'. Non-recursive — children are not included; call again per child id. Use read_doc_states for the canonical document-state read and read_supabase_config for the canonical Supabase config read. Example: read_lowcode_node({ id: 'node-42' }) → { ok: true, data: { id: 'node-42', type: 'BUTTON', name: 'Submit', layoutMode: 'NONE', interactiveProps: { text: 'Click me' }, events: { onClick: [{ id: 'a-1', kind: 'navigate', to: '/next' }] } } }. Failure shape: { ok: false, error: <reason> } when the id does not match any node.",
+    "Read the lowcode-specific fields of a single SceneNode: state declarations, channel bindings, event handlers (onClick / onChange / onSubmit / onFocus / onBlur), interactive component props, Phase 4 §20 stateOverrides, renderCondition expression, layoutMode (FREE = Phase 2 freeLayout override), and the root-only documentState / supabaseConfig snapshots. Returns the node's pencil-design metadata (id / type / name) alongside every lowcode field that is currently set; fields that the SceneNode itself stores as undefined are omitted from the result so AI prompts can tell 'never configured' apart from 'configured but empty'. Non-recursive — children are not included; call again per child id. Use read_doc_states for the canonical document-state read and read_supabase_config for the canonical Supabase config read. Example: read_lowcode_node({ id: 'node-42' }) → { ok: true, data: { id: 'node-42', type: 'BUTTON', name: 'Submit', layoutMode: 'NONE', interactiveProps: { text: 'Click me' }, stateOverrides: { hover: { opacity: 0.9 } }, events: { onClick: [{ id: 'a-1', kind: 'navigate', to: '/next' }] } } }. Failure shape: { ok: false, error: <reason> } when the id does not match any node.",
   params: {
     id: { type: 'string', description: 'Node id', required: true }
   },

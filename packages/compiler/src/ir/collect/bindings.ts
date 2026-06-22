@@ -271,6 +271,14 @@ export function resolveValueBinding(
     })
     return null
   }
+  if (isComputedState(state)) {
+    warnings.push({
+      code: 'binding-value-computed-state',
+      message: `node ${node.id} bindings.value state "${state.name}" is computed and read-only; controlled inputs require writable state`,
+      nodeId: node.id
+    })
+    return null
+  }
   const ctrlType = asCtrlTargetType(state.type)
   if (ctrlType === null || !allowed.has(ctrlType)) {
     warnings.push({
@@ -842,6 +850,14 @@ function resolveSetState(
     })
     return null
   }
+  if (isComputedState(target)) {
+    warnings.push({
+      code: 'action-setstate-computed-target',
+      message: `node ${node.id} ${eventName} setState target "${target.name}" is computed and read-only`,
+      nodeId: node.id
+    })
+    return null
+  }
   const src = action.valueExpr ?? ''
   const parsed = parseExpression(src)
   if (!parsed.ok) {
@@ -860,6 +876,10 @@ function resolveSetState(
     references,
     mode
   }
+}
+
+function isComputedState(state: IRStateDecl): boolean {
+  return state.computed !== undefined || state.computedInvalid === true
 }
 
 function resolveSetVariable(

@@ -66,7 +66,7 @@ import {
   instanceHasDeepOverride,
   overrideKind
 } from './components'
-import { collectPageStates, indexStatesById } from './state'
+import { collectPageStates, indexStatesById, resolveComputedStates } from './state'
 
 /**
  * Walk a CANVAS (page) node and produce a framework-neutral IRTree.
@@ -82,7 +82,9 @@ export function collectTree(
 ): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
-  const { states, invalid } = collectPageStates(page)
+  const collected = collectPageStates(page)
+  let states = collected.states
+  const { invalid } = collected
   for (const { id, name, reason } of invalid) {
     warnings.push({
       code: 'state-invalid',
@@ -90,11 +92,12 @@ export function collectTree(
       nodeId: pageId
     })
   }
-  const stateById = indexStatesById(states)
   const docStates = collectDocStates(graph, warnings)
   const docStatesByName = indexDocStatesByName(docStates)
   const docStateReads = new Set<string>()
   const docStateWrites = new Set<string>()
+  states = resolveComputedStates(states, warnings, pageId, docStatesByName, docStateReads)
+  const stateById = indexStatesById(states)
   // Phase 3 §2: lift root-level supabaseConfig onto the tree so the React
   // adapter can decide to emit `_lowcode_supabase.ts` without re-reading
   // the SceneGraph (which it doesn't have access to from `emit(irs, opts)`).
@@ -556,7 +559,10 @@ function collectDocStates(graph: SceneGraph, warnings: IRWarning[]): IRDocStateD
       id: d.id,
       name: d.name,
       type: d.type,
-      defaultValue: d.defaultValue
+      defaultValue: d.defaultValue,
+      ...(d.persist === true ? { persist: true } : {}),
+      ...(typeof d.storageKey === 'string' ? { storageKey: d.storageKey } : {}),
+      ...(typeof d.storageVersion === 'string' ? { storageVersion: d.storageVersion } : {})
     })
   }
   return out
@@ -1156,6 +1162,10 @@ interface UiKitPrimitiveConfig {
   src?: unknown
   alt?: unknown
   fallback?: unknown
+  defaultValue?: unknown
+  type?: unknown
+  collapsible?: unknown
+  items?: unknown
 }
 
 const DISPLAY_PRIMITIVES: ReadonlySet<NonNullable<IRElement['displayKind']>> = new Set([
@@ -1164,7 +1174,9 @@ const DISPLAY_PRIMITIVES: ReadonlySet<NonNullable<IRElement['displayKind']>> = n
   'separator',
   'skeleton',
   'progress',
-  'avatar'
+  'avatar',
+  'tabs',
+  'accordion'
 ])
 
 /** Phase 4 §22: display-only shadcn primitives are authorized through
@@ -1191,6 +1203,8 @@ function resolveDisplayPrimitive(
     }
     return undefined
   }
+  const itemConfig = displayItemsProp(raw.items, kind, node, ctx)
+  if ((kind === 'tabs' || kind === 'accordion') && itemConfig.items === undefined) return undefined
   return {
     kind,
     config: {
@@ -1198,9 +1212,50 @@ function resolveDisplayPrimitive(
       ...finiteNumberProp(raw.value, 'value'),
       ...stringProp(raw.src, 'src'),
       ...stringProp(raw.alt, 'alt'),
-      ...stringProp(raw.fallback, 'fallback')
+      ...stringProp(raw.fallback, 'fallback'),
+      ...stringProp(raw.defaultValue, 'defaultValue'),
+      ...stringProp(raw.type, 'type'),
+      ...(typeof raw.collapsible === 'boolean' ? { collapsible: raw.collapsible } : {}),
+      ...itemConfig
     }
   }
+}
+
+function displayItemsProp(
+  raw: unknown,
+  kind: NonNullable<IRElement['displayKind']>,
+  node: SceneNode,
+  ctx: WalkCtx
+): Pick<NonNullable<IRElement['display']>, 'items'> {
+  if (kind !== 'tabs' && kind !== 'accordion') return {}
+  if (!Array.isArray(raw) || raw.length === 0) {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-items-invalid',
+      message: `${node.type} ${node.id} ${kind} primitive requires a non-empty items array`,
+      nodeId: node.id
+    })
+    return {}
+  }
+  const items: NonNullable<IRElement['display']>['items'] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const record = item as { value?: unknown; label?: unknown; title?: unknown; content?: unknown }
+    const value = typeof record.value === 'string' ? record.value.trim() : ''
+    if (value === '') continue
+    const labelRaw = record.label ?? record.title
+    const label = typeof labelRaw === 'string' && labelRaw.trim() !== '' ? labelRaw.trim() : value
+    const content = typeof record.content === 'string' ? record.content : ''
+    items.push({ value, label, content })
+  }
+  if (items.length === 0) {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-items-invalid',
+      message: `${node.type} ${node.id} ${kind} primitive has no valid items`,
+      nodeId: node.id
+    })
+    return {}
+  }
+  return { items }
 }
 
 function displayPrimitiveLabel(raw: unknown): string {

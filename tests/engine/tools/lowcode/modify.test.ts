@@ -9,8 +9,7 @@ import { getTool, setupToolTest } from '#tests/helpers/tools'
 
 type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string }
 
-const FAKE_ANON_JWT =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.fake'
+const FAKE_ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.fake'
 const FAKE_SERVICE_ROLE_JWT =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.fake'
 
@@ -78,6 +77,39 @@ describe('update_lowcode_node', () => {
     expect(node?.events?.onClick?.[0]).toEqual({ id: 'a-1', kind: 'navigate', to: '/done' })
   })
 
+  test('accepts stateOverrides for interaction-state styling', () => {
+    const { figma, graph } = setupToolTest()
+    const rect = figma.createRectangle()
+    const stateOverrides = {
+      hover: {
+        opacity: 0.85,
+        cornerRadius: 8,
+        fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+      },
+      active: { effects: [] }
+    }
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: rect.id,
+      patch_json: JSON.stringify({ stateOverrides })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data?.updated).toEqual(['stateOverrides'])
+    expect(graph.getNode(rect.id)?.stateOverrides).toEqual(stateOverrides)
+  })
+
+  test('rejects malformed stateOverrides', () => {
+    const { figma } = setupToolTest()
+    const rect = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: rect.id,
+      patch_json: JSON.stringify({ stateOverrides: { groupHover: { opacity: 0.5 } } })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('groupHover')
+  })
+
   // Phase 4 §16.2 — navigate route params validate at the tool boundary.
   test('accepts a navigate with valid route params (round-trips onto the node)', () => {
     const { figma, graph } = setupToolTest()
@@ -106,7 +138,9 @@ describe('update_lowcode_node', () => {
     const result = getTool('update_lowcode_node').execute(figma, {
       id: btn.id,
       patch_json: JSON.stringify({
-        events: { onClick: [{ id: 'a-1', kind: 'navigate', to: '/p/:id', params: { '1bad': 'pid' } }] }
+        events: {
+          onClick: [{ id: 'a-1', kind: 'navigate', to: '/p/:id', params: { '1bad': 'pid' } }]
+        }
       })
     }) as Result<{ id: string; updated: string[] }>
     expect(result.ok).toBe(false)
@@ -274,7 +308,15 @@ describe('set_doc_states', () => {
     const { figma, graph } = setupToolTest()
     const result = getTool('set_doc_states').execute(figma, {
       states_json: JSON.stringify([
-        { id: 'd-1', name: 'count', type: 'number', defaultValue: 0 },
+        {
+          id: 'd-1',
+          name: 'count',
+          type: 'number',
+          defaultValue: 0,
+          persist: true,
+          storageKey: 'demo:count',
+          storageVersion: 'v1'
+        },
         { id: 'd-2', name: 'items', type: 'array', defaultValue: [] }
       ])
     }) as Result<{ count: number }>
@@ -282,6 +324,11 @@ describe('set_doc_states', () => {
     if (!result.ok) return
     expect(result.data?.count).toBe(2)
     expect(graph.getNode(graph.rootId)?.lowcodeDocumentState?.length).toBe(2)
+    expect(graph.getNode(graph.rootId)?.lowcodeDocumentState?.[0]).toMatchObject({
+      persist: true,
+      storageKey: 'demo:count',
+      storageVersion: 'v1'
+    })
   })
 
   test('clears via empty array', () => {
@@ -326,13 +373,72 @@ describe('set_doc_states', () => {
   test('rejects an unknown state type', () => {
     const { figma } = setupToolTest()
     const result = getTool('set_doc_states').execute(figma, {
-      states_json: JSON.stringify([
-        { id: 'd-1', name: 'x', type: 'wizard', defaultValue: null }
-      ])
+      states_json: JSON.stringify([{ id: 'd-1', name: 'x', type: 'wizard', defaultValue: null }])
     }) as Result<{ count: number }>
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toContain('wizard')
+  })
+
+  test('rejects malformed persistence metadata', () => {
+    const { figma } = setupToolTest()
+    const result = getTool('set_doc_states').execute(figma, {
+      states_json: JSON.stringify([
+        { id: 'd-1', name: 'count', type: 'number', defaultValue: 0, persist: 'yes' }
+      ])
+    }) as Result<{ count: number }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('persist')
+  })
+
+  test('rejects persistence metadata on page state', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: pageId,
+      patch_json: JSON.stringify({
+        state: [{ id: 's-1', name: 'count', type: 'number', defaultValue: 0, persist: true }]
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('only supported on lowcodeDocumentState')
+  })
+
+  test('accepts computedExpr on page state', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: pageId,
+      patch_json: JSON.stringify({
+        state: [
+          { id: 's-1', name: 'count', type: 'number', defaultValue: 1 },
+          {
+            id: 's-2',
+            name: 'doubleCount',
+            type: 'number',
+            defaultValue: 0,
+            computedExpr: 'count * 2'
+          }
+        ]
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(graph.getNode(pageId)?.state?.[1]?.computedExpr).toBe('count * 2')
+  })
+
+  test('rejects computedExpr on document state', () => {
+    const { figma } = setupToolTest()
+    const result = getTool('set_doc_states').execute(figma, {
+      states_json: JSON.stringify([
+        { id: 'd-1', name: 'total', type: 'number', defaultValue: 0, computedExpr: 'count + 1' }
+      ])
+    }) as Result<{ count: number }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('only supported on page state')
   })
 })
 
@@ -541,17 +647,13 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
   test('set_doc_states with editor pushes one undo entry that restores prior states', () => {
     const { graph, figma, editor } = setupEditorToolTest()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd-0', name: 'before', type: 'string', defaultValue: 'x' }
-      ]
+      lowcodeDocumentState: [{ id: 'd-0', name: 'before', type: 'string', defaultValue: 'x' }]
     })
     const tool = getTool('set_doc_states')
     const result = tool.execute(
       figma,
       {
-        states_json: JSON.stringify([
-          { id: 'd-1', name: 'after', type: 'number', defaultValue: 1 }
-        ])
+        states_json: JSON.stringify([{ id: 'd-1', name: 'after', type: 'number', defaultValue: 1 }])
       },
       { editor }
     ) as Result<{ count: number }>
@@ -559,9 +661,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
     expect(editor.undo.undoLabel).toBe('AI: set_doc_states')
     editor.undo.undo()
     const restored = graph.getNode(graph.rootId)?.lowcodeDocumentState
-    expect(restored).toEqual([
-      { id: 'd-0', name: 'before', type: 'string', defaultValue: 'x' }
-    ])
+    expect(restored).toEqual([{ id: 'd-0', name: 'before', type: 'string', defaultValue: 'x' }])
   })
 
   test('set_supabase_config with editor pushes one undo entry that restores prior config', () => {
@@ -578,9 +678,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
       { editor }
     ) as Result<{ cleared: boolean }>
     expect(r1.ok).toBe(true)
-    expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig?.url).toBe(
-      'https://x.supabase.co'
-    )
+    expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig?.url).toBe('https://x.supabase.co')
     editor.undo.undo()
     expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toBeUndefined()
   })

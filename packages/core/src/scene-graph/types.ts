@@ -260,9 +260,7 @@ export type LayoutSizing = 'FIXED' | 'HUG' | 'FILL'
  * codebase as part of step 1 (经验 A: scalar equality survives a union
  * widening with no tsgo error).
  */
-export function isAutoLayoutMode(
-  mode: LayoutMode
-): mode is 'HORIZONTAL' | 'VERTICAL' | 'GRID' {
+export function isAutoLayoutMode(mode: LayoutMode): mode is 'HORIZONTAL' | 'VERTICAL' | 'GRID' {
   return mode === 'HORIZONTAL' || mode === 'VERTICAL' || mode === 'GRID'
 }
 
@@ -704,6 +702,17 @@ export interface StateDef {
   type: StateValueType
   defaultValue: unknown
   description?: string
+  // Phase 4 §27.2: page-scoped read-only derived state. Compiler validates the
+  // expression against page state, document state, and route/query built-ins.
+  // Document state rejects this field at the lowcode tool boundary for now.
+  computedExpr?: string
+  // Phase 4 §27.1: document-state persistence metadata. The fields live on the
+  // shared StateDef shape for storage/tooling simplicity, but only root
+  // lowcodeDocumentState entries consume them; page-scoped state rejects them
+  // at the lowcode tool boundary and the compiler ignores them there.
+  persist?: boolean
+  storageKey?: string
+  storageVersion?: string
 }
 
 // Phase 2 §2: document-level "Document State" variable declarations.

@@ -118,6 +118,75 @@ describe('compile — shadcn display primitives (Phase 4 §22)', () => {
     expect(out.warnings).toEqual([])
   })
 
+  test('Tabs emits composed triggers/content and Radix tabs dependency', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: {
+        uiKit: {
+          primitive: 'tabs',
+          defaultValue: 'overview',
+          items: [
+            { value: 'overview', label: 'Overview', content: 'Project overview' },
+            { value: 'settings', label: 'Settings', content: 'Project settings' }
+          ]
+        }
+      }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(
+      `import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'`
+    )
+    expect(app).toContain('<Tabs')
+    expect(app).toContain('defaultValue="overview"')
+    expect(app).toContain('<TabsList>')
+    expect(app).toContain('<TabsTrigger value="settings">Settings</TabsTrigger>')
+    expect(app).toContain('<TabsContent value="overview">')
+    expect(app).toContain('{"Project overview"}')
+    expect(out.files.has('src/components/ui/tabs.tsx')).toBe(true)
+    const pkg = JSON.parse(out.files.get('package.json') as string)
+    expect(pkg.dependencies).toHaveProperty('@radix-ui/react-tabs')
+    expect(out.warnings).toEqual([])
+  })
+
+  test('Accordion emits composed items and Radix accordion dependency', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: {
+        uiKit: {
+          primitive: 'accordion',
+          defaultValue: 'shipping',
+          items: [
+            { value: 'shipping', title: 'Shipping', content: 'Ships in two days' },
+            { value: 'returns', title: 'Returns', content: 'Thirty day returns' }
+          ]
+        }
+      }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(
+      `import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'`
+    )
+    expect(app).toContain('<Accordion')
+    expect(app).toContain('type="single"')
+    expect(app).toContain('collapsible')
+    expect(app).toContain('defaultValue="shipping"')
+    expect(app).toContain('<AccordionItem value="returns">')
+    expect(app).toContain('<AccordionTrigger>Returns</AccordionTrigger>')
+    expect(app).toContain('{"Thirty day returns"}')
+    expect(out.files.has('src/components/ui/accordion.tsx')).toBe(true)
+    const pkg = JSON.parse(out.files.get('package.json') as string)
+    expect(pkg.dependencies).toHaveProperty('@radix-ui/react-accordion')
+    expect(out.warnings).toEqual([])
+  })
+
   test('no uiKit keeps primitive hints on the plain Tailwind path', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -148,5 +217,20 @@ describe('compile — shadcn display primitives (Phase 4 §22)', () => {
     expect(app).toContain('<div')
     expect(app).not.toContain('@/components/ui')
     expect(out.warnings.map((w) => w.code)).toContain('ui-kit-primitive-unknown')
+  })
+
+  test('Tabs/Accordion without valid items warn and fall back to normal element emit', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: { uiKit: { primitive: 'tabs', items: [] } }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain('<div')
+    expect(app).not.toContain('@/components/ui/tabs')
+    expect(out.warnings.map((w) => w.code)).toContain('ui-kit-primitive-items-invalid')
   })
 })

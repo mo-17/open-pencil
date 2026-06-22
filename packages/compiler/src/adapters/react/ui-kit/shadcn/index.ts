@@ -3,6 +3,7 @@ import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compile
 
 import type { KitEmitCtx, UiKitAdapter, UiKitMapping } from '../types'
 import {
+  ACCORDION_TSX,
   ALERT_TSX,
   AVATAR_TSX,
   BADGE_TSX,
@@ -19,6 +20,7 @@ import {
   SHADCN_THEME_CSS,
   SKELETON_TSX,
   SWITCH_TSX,
+  TABS_TSX,
   TEXTAREA_TSX,
   UTILS_TS
 } from './templates'
@@ -36,7 +38,9 @@ const DEP_VERSIONS = {
   '@radix-ui/react-select': '^2.1.4',
   '@radix-ui/react-avatar': '^1.2.0',
   '@radix-ui/react-progress': '^1.1.10',
-  '@radix-ui/react-separator': '^1.1.10'
+  '@radix-ui/react-separator': '^1.1.10',
+  '@radix-ui/react-tabs': '^1.1.12',
+  '@radix-ui/react-accordion': '^1.2.11'
 } as const
 
 interface ShadcnComponent {
@@ -113,6 +117,16 @@ const COMPONENTS: Partial<Record<string, ShadcnComponent>> = {
     file: 'src/components/ui/avatar.tsx',
     source: AVATAR_TSX,
     deps: ['@radix-ui/react-avatar']
+  },
+  Tabs: {
+    file: 'src/components/ui/tabs.tsx',
+    source: TABS_TSX,
+    deps: ['@radix-ui/react-tabs']
+  },
+  Accordion: {
+    file: 'src/components/ui/accordion.tsx',
+    source: ACCORDION_TSX,
+    deps: ['@radix-ui/react-accordion']
   }
 }
 
@@ -134,6 +148,16 @@ const DISPLAY_TO_MAPPING: Partial<Record<NonNullable<IRElement['displayKind']>, 
     component: 'Avatar',
     from: '@/components/ui/avatar',
     imports: ['Avatar', 'AvatarFallback', 'AvatarImage']
+  },
+  tabs: {
+    component: 'Tabs',
+    from: '@/components/ui/tabs',
+    imports: ['Tabs', 'TabsContent', 'TabsList', 'TabsTrigger']
+  },
+  accordion: {
+    component: 'Accordion',
+    from: '@/components/ui/accordion',
+    imports: ['Accordion', 'AccordionContent', 'AccordionItem', 'AccordionTrigger']
   }
 }
 
@@ -401,6 +425,68 @@ function emitAvatar(node: IRElement, ctx: KitEmitCtx): string {
   return lines.join('\n')
 }
 
+function displayItems(node: IRElement): NonNullable<IRElement['display']>['items'] | null {
+  const items = node.display?.items
+  return items && items.length > 0 ? items : null
+}
+
+function indentParts(ctx: KitEmitCtx): { pad: string; i1: string; i2: string; i3: string } {
+  return {
+    pad: '  '.repeat(ctx.indent),
+    i1: '  '.repeat(ctx.indent + 1),
+    i2: '  '.repeat(ctx.indent + 2),
+    i3: '  '.repeat(ctx.indent + 3)
+  }
+}
+
+function emitTabs(node: IRElement, ctx: KitEmitCtx): string | null {
+  const items = displayItems(node)
+  if (!items) return null
+  const { pad, i1, i2 } = indentParts(ctx)
+  const parts = rootAttrParts(node, ctx)
+  const defaultValue = node.display?.defaultValue ?? items[0]?.value
+  if (defaultValue) parts.push(`defaultValue="${ctx.escapeAttr(defaultValue)}"`)
+  const lines = [`${pad}<Tabs${attrSuffix(parts)}>`]
+  lines.push(`${i1}<TabsList>`)
+  for (const item of items) {
+    lines.push(
+      `${i2}<TabsTrigger value="${ctx.escapeAttr(item.value)}">${ctx.escapeAttr(item.label)}</TabsTrigger>`
+    )
+  }
+  lines.push(`${i1}</TabsList>`)
+  for (const item of items) {
+    lines.push(`${i1}<TabsContent value="${ctx.escapeAttr(item.value)}">`)
+    lines.push(`${i2}{${JSON.stringify(item.content)}}`)
+    lines.push(`${i1}</TabsContent>`)
+  }
+  lines.push(`${pad}</Tabs>`)
+  return lines.join('\n')
+}
+
+function emitAccordion(node: IRElement, ctx: KitEmitCtx): string | null {
+  const items = displayItems(node)
+  if (!items) return null
+  const { pad, i1, i2, i3 } = indentParts(ctx)
+  const parts = rootAttrParts(node, ctx)
+  const type = node.display?.type === 'multiple' ? 'multiple' : 'single'
+  parts.push(`type="${type}"`)
+  if (type === 'single' && node.display?.collapsible !== false) parts.push('collapsible')
+  if (type === 'single' && node.display?.defaultValue) {
+    parts.push(`defaultValue="${ctx.escapeAttr(node.display.defaultValue)}"`)
+  }
+  const lines = [`${pad}<Accordion${attrSuffix(parts)}>`]
+  for (const item of items) {
+    lines.push(`${i1}<AccordionItem value="${ctx.escapeAttr(item.value)}">`)
+    lines.push(`${i2}<AccordionTrigger>${ctx.escapeAttr(item.label)}</AccordionTrigger>`)
+    lines.push(`${i2}<AccordionContent>`)
+    lines.push(`${i3}{${JSON.stringify(item.content)}}`)
+    lines.push(`${i2}</AccordionContent>`)
+    lines.push(`${i1}</AccordionItem>`)
+  }
+  lines.push(`${pad}</Accordion>`)
+  return lines.join('\n')
+}
+
 /** The `checked` + `onCheckedChange` props for one option of a controlled
  *  array checkbox-group: read `selected.includes(opt)`, write the array with the
  *  option spread in / filtered out depending on the new checked value. */
@@ -450,6 +536,10 @@ export const shadcnAdapter: UiKitAdapter = {
         return emitProgress(node, ctx)
       case 'avatar':
         return emitAvatar(node, ctx)
+      case 'tabs':
+        return emitTabs(node, ctx)
+      case 'accordion':
+        return emitAccordion(node, ctx)
       default:
         return null
     }

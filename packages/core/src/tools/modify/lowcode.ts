@@ -44,6 +44,7 @@ import type {
   LowcodeTranslations,
   SceneNode,
   StateDef,
+  StateOverrides,
   StateValueType,
   SupabaseConfig,
   SupabaseFilter,
@@ -100,6 +101,16 @@ const KNOWN_EVENT_NAMES = new Set<EventName>([
   'onBlur'
 ])
 
+const KNOWN_INTERACTION_STATES = new Set(['hover', 'focus', 'active', 'disabled'])
+
+const KNOWN_STATE_OVERRIDE_KEYS = new Set([
+  'fills',
+  'strokes',
+  'cornerRadius',
+  'opacity',
+  'effects'
+])
+
 const KNOWN_FILTER_OPS = new Set<FilterOp>(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'])
 
 const KNOWN_MUTATION_OPS = new Set<string>(['insert', 'upsert', 'update', 'delete'])
@@ -112,6 +123,7 @@ const PATCH_KEYS = new Set([
   'bindings',
   'events',
   'interactiveProps',
+  'stateOverrides',
   'renderCondition',
   'lowcodeDocumentState',
   'lowcodeSupabaseConfig'
@@ -738,7 +750,8 @@ function buildActionFromValidated(
 function validateStateDecls(
   what: string,
   raw: unknown,
-  rejectDollarPrefix: boolean
+  rejectDollarPrefix: boolean,
+  options: { allowPersistence?: boolean; allowComputed?: boolean } = {}
 ): { ok: true; decls: StateDef[] } | { ok: false; error: string } {
   if (!Array.isArray(raw)) return { ok: false, error: `${what} must be an array` }
   const decls: StateDef[] = []
@@ -781,14 +794,73 @@ function validateStateDecls(
         error: `${what}[${i}].type must be one of ${[...KNOWN_STATE_TYPES].join(' / ')} (got ${JSON.stringify(entry.type)})`
       }
     }
+    const persistence = validateStatePersistence(what, i, entry, options.allowPersistence === true)
+    if (!persistence.ok) return persistence
+    const computed = validateStateComputed(what, i, entry, options.allowComputed === true)
+    if (!computed.ok) return computed
     decls.push({
       id: entry.id,
       name: entry.name,
       type: entry.type as StateValueType,
-      defaultValue: entry.defaultValue
+      defaultValue: entry.defaultValue,
+      ...computed.data,
+      ...persistence.data
     })
   }
   return { ok: true, decls }
+}
+
+function validateStateComputed(
+  what: string,
+  i: number,
+  entry: Record<string, unknown>,
+  allowComputed: boolean
+): { ok: true; data: Pick<StateDef, 'computedExpr'> } | { ok: false; error: string } {
+  if (!('computedExpr' in entry)) return { ok: true, data: {} }
+  if (!allowComputed) {
+    return fail(`${what}[${i}].computedExpr is only supported on page state`)
+  }
+  if (typeof entry.computedExpr !== 'string' || entry.computedExpr.trim() === '') {
+    return fail(`${what}[${i}].computedExpr must be a non-empty string`)
+  }
+  const expr = validateExpression(entry.computedExpr)
+  if (!expr.ok) return fail(`${what}[${i}].computedExpr — ${expr.reason}`)
+  return { ok: true, data: { computedExpr: entry.computedExpr } }
+}
+
+function validateStatePersistence(
+  what: string,
+  i: number,
+  entry: Record<string, unknown>,
+  allowPersistence: boolean
+):
+  | { ok: true; data: Pick<StateDef, 'persist' | 'storageKey' | 'storageVersion'> }
+  | { ok: false; error: string } {
+  const hasPersistence = 'persist' in entry || 'storageKey' in entry || 'storageVersion' in entry
+  if (!hasPersistence) return { ok: true, data: {} }
+  if (!allowPersistence) {
+    return fail(`${what}[${i}] persistence fields are only supported on lowcodeDocumentState`)
+  }
+  const data: Pick<StateDef, 'persist' | 'storageKey' | 'storageVersion'> = {}
+  if ('persist' in entry) {
+    if (typeof entry.persist !== 'boolean') {
+      return fail(`${what}[${i}].persist must be a boolean`)
+    }
+    data.persist = entry.persist
+  }
+  if ('storageKey' in entry) {
+    if (typeof entry.storageKey !== 'string' || entry.storageKey === '') {
+      return fail(`${what}[${i}].storageKey must be a non-empty string`)
+    }
+    data.storageKey = entry.storageKey
+  }
+  if ('storageVersion' in entry) {
+    if (typeof entry.storageVersion !== 'string' || entry.storageVersion === '') {
+      return fail(`${what}[${i}].storageVersion must be a non-empty string`)
+    }
+    data.storageVersion = entry.storageVersion
+  }
+  return { ok: true, data }
 }
 
 function validateRenderCondition(
@@ -802,6 +874,7 @@ function validateRenderCondition(
 }
 
 type FieldResult = { ok: true } | { ok: false; error: string }
+type StateOverridesResult = { ok: true; value: StateOverrides } | { ok: false; error: string }
 
 function applyStateField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
   if (!('state' in raw)) return { ok: true }
@@ -809,7 +882,7 @@ function applyStateField(raw: Record<string, unknown>, patch: Partial<SceneNode>
     patch.state = undefined
     return { ok: true }
   }
-  const r = validateStateDecls('state', raw.state, false)
+  const r = validateStateDecls('state', raw.state, false, { allowComputed: true })
   if (!r.ok) return r
   patch.state = r.decls
   return { ok: true }
@@ -873,6 +946,54 @@ function applyInteractivePropsField(
   return { ok: true }
 }
 
+function validateStateOverrides(raw: unknown): StateOverridesResult {
+  if (!isPlainObject(raw)) return fail('stateOverrides must be an object')
+  const out: StateOverrides = {}
+  for (const [state, override] of Object.entries(raw)) {
+    if (!KNOWN_INTERACTION_STATES.has(state)) {
+      return fail(
+        `stateOverrides.${state} is not supported — allowed: ${[...KNOWN_INTERACTION_STATES].join(' / ')}`
+      )
+    }
+    if (!isPlainObject(override)) return fail(`stateOverrides.${state} must be an object`)
+    for (const [key, value] of Object.entries(override)) {
+      if (!KNOWN_STATE_OVERRIDE_KEYS.has(key)) {
+        return fail(
+          `stateOverrides.${state}.${key} is not supported — allowed: ${[...KNOWN_STATE_OVERRIDE_KEYS].join(' / ')}`
+        )
+      }
+      if ((key === 'fills' || key === 'strokes' || key === 'effects') && !Array.isArray(value)) {
+        return fail(`stateOverrides.${state}.${key} must be an array`)
+      }
+      if (key === 'cornerRadius' && (typeof value !== 'number' || !Number.isFinite(value))) {
+        return fail(`stateOverrides.${state}.cornerRadius must be a finite number`)
+      }
+      if (key === 'opacity') {
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+          return fail(`stateOverrides.${state}.opacity must be a finite number between 0 and 1`)
+        }
+      }
+    }
+    out[state as keyof StateOverrides] = override
+  }
+  return { ok: true, value: out }
+}
+
+function applyStateOverridesField(
+  raw: Record<string, unknown>,
+  patch: Partial<SceneNode>
+): FieldResult {
+  if (!('stateOverrides' in raw)) return { ok: true }
+  if (raw.stateOverrides === null) {
+    patch.stateOverrides = undefined
+    return { ok: true }
+  }
+  const r = validateStateOverrides(raw.stateOverrides)
+  if (!r.ok) return r
+  patch.stateOverrides = r.value
+  return { ok: true }
+}
+
 function applyRenderConditionField(
   raw: Record<string, unknown>,
   patch: Partial<SceneNode>
@@ -894,7 +1015,9 @@ function applyDocStateField(raw: Record<string, unknown>, patch: Partial<SceneNo
     patch.lowcodeDocumentState = undefined
     return { ok: true }
   }
-  const r = validateStateDecls('lowcodeDocumentState', raw.lowcodeDocumentState, true)
+  const r = validateStateDecls('lowcodeDocumentState', raw.lowcodeDocumentState, true, {
+    allowPersistence: true
+  })
   if (!r.ok) return r
   patch.lowcodeDocumentState = r.decls
   return { ok: true }
@@ -939,6 +1062,7 @@ const FIELD_APPLIERS = [
   applyBindingsField,
   applyEventsField,
   applyInteractivePropsField,
+  applyStateOverridesField,
   applyRenderConditionField,
   applyDocStateField,
   applySupabaseConfigField
@@ -1044,13 +1168,13 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
-    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object) and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id'`, declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
+    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. Page state entries may include Phase 4 §27.2 computedExpr; computed page state is emitted as read-only derived state, so setState and controlled bindings cannot write to it. Phase 4 §20 stateOverrides accepts hover/focus/active/disabled appearance overrides over fills/strokes/cornerRadius/opacity/effects; the compiler emits Tailwind pseudo-state classes such as hover:bg-* or disabled:opacity-50. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / writable page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object), computed page state, and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id'`, declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },
     patch_json: {
       type: 'string',
       description:
-        'JSON object: any subset of {state, bindings, events, interactiveProps, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig}. Use null as a value to clear a field.',
+        'JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig}. Use null as a value to clear a field.',
       required: true
     }
   },
@@ -1072,19 +1196,21 @@ export const setDocStates = defineTool({
   name: 'set_doc_states',
   mutates: true,
   description:
-    'Replace the root node\'s lowcodeDocumentState array wholesale. Pass the FULL list — entries omitted from the JSON are deleted (decision §3.2 #b: no per-entry diff in MVP; preserve existing entries by including them again). Each entry needs {id, name, type, defaultValue}; name goes through validateStateName which rejects empty / non-identifier / $-prefixed names ($currentUser etc. are reserved). Type is one of string / number / boolean / array / object. Duplicate names or duplicate ids are rejected. Example: set_doc_states({ states_json: \'[{"id":"d-1","name":"count","type":"number","defaultValue":0},{"id":"d-2","name":"items","type":"array","defaultValue":[]}]\' }) → { ok: true, data: { count: 2 } }. Clear all with states_json: \'[]\'.',
+    'Replace the root node\'s lowcodeDocumentState array wholesale. Pass the FULL list — entries omitted from the JSON are deleted (decision §3.2 #b: no per-entry diff in MVP; preserve existing entries by including them again). Each entry needs {id, name, type, defaultValue}; optional Phase 4 §27.1 persistence fields are {persist?: boolean, storageKey?: string, storageVersion?: string}. Only entries with persist: true are emitted as localStorage-backed docState. Phase 4 §27.2 computedExpr is page-state only and is rejected for document state. name goes through validateStateName which rejects empty / non-identifier / $-prefixed names ($currentUser etc. are reserved). Type is one of string / number / boolean / array / object. Duplicate names or duplicate ids are rejected. Example: set_doc_states({ states_json: \'[{"id":"d-1","name":"count","type":"number","defaultValue":0,"persist":true},{"id":"d-2","name":"items","type":"array","defaultValue":[]}]\' }) → { ok: true, data: { count: 2 } }. Clear all with states_json: \'[]\'.',
   params: {
     states_json: {
       type: 'string',
       description:
-        'JSON array of DocumentStateDef: [{id, name, type, defaultValue}]. Pass [] to clear.',
+        'JSON array of DocumentStateDef: [{id, name, type, defaultValue, persist?, storageKey?, storageVersion?}]. computedExpr is rejected here; use page state for computed values. Pass [] to clear.',
       required: true
     }
   },
   execute: (figma, args, ctx): ModifyResult<{ count: number }> => {
     const parsed = parseJson(args.states_json, 'states_json')
     if (!parsed.ok) return fail(parsed.error)
-    const validated = validateStateDecls('states_json', parsed.value, true)
+    const validated = validateStateDecls('states_json', parsed.value, true, {
+      allowPersistence: true
+    })
     if (!validated.ok) return validated
     const decls = validated.decls
     applyPatchWithUndo(

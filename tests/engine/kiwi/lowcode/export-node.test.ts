@@ -1,15 +1,17 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { initCodec, SceneGraph, sceneNodeToKiwi } from '@open-pencil/core'
-import type { StateDef } from '#core/scene-graph'
 
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 import {
   LOWCODE_BINDINGS_KEY,
+  LOWCODE_DOCUMENT_STATE_KEY,
   LOWCODE_EVENTS_KEY,
   LOWCODE_INTERACTIVE_PROPS_KEY,
+  LOWCODE_STATE_OVERRIDES_KEY,
   LOWCODE_STATE_KEY
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
+import type { StateDef } from '#core/scene-graph'
 
 beforeAll(async () => {
   await initCodec()
@@ -27,8 +29,29 @@ describe('export-node lowcode pluginData hook (Phase 1 §12 step 1)', () => {
   test('page with state emits lowcode/state into NodeChange.pluginData', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
+    const state: StateDef[] = [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }]
+    graph.updateNode(page.id, { state })
+
+    const nc = exportFirst(graph, page.id)
+    const lowcodeEntry = nc.pluginData?.find(
+      (entry) => entry.pluginID === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_STATE_KEY
+    )
+    expect(lowcodeEntry).toBeDefined()
+    expect(JSON.parse(lowcodeEntry?.value ?? '')).toEqual(state)
+  })
+
+  test('page computed state metadata rides lowcode/state', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
     const state: StateDef[] = [
-      { id: 's1', name: 'count', type: 'number', defaultValue: 0 }
+      { id: 's1', name: 'count', type: 'number', defaultValue: 2 },
+      {
+        id: 's2',
+        name: 'doubleCount',
+        type: 'number',
+        defaultValue: 0,
+        computedExpr: 'count * 2'
+      }
     ]
     graph.updateNode(page.id, { state })
 
@@ -40,6 +63,48 @@ describe('export-node lowcode pluginData hook (Phase 1 §12 step 1)', () => {
     expect(JSON.parse(lowcodeEntry?.value ?? '')).toEqual(state)
   })
 
+  test('root documentState persistence metadata rides lowcode/documentState', () => {
+    const graph = new SceneGraph()
+    const docState = [
+      {
+        id: 'd1',
+        name: 'cartCount',
+        type: 'number' as const,
+        defaultValue: 0,
+        persist: true,
+        storageKey: 'demo:cart',
+        storageVersion: 'v1'
+      }
+    ]
+    graph.updateNode(graph.rootId, { lowcodeDocumentState: docState })
+
+    const nc = exportFirst(graph, graph.rootId)
+    const lowcodeEntry = nc.pluginData?.find(
+      (entry) =>
+        entry.pluginID === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_DOCUMENT_STATE_KEY
+    )
+    expect(lowcodeEntry).toBeDefined()
+    expect(JSON.parse(lowcodeEntry?.value ?? '')).toEqual(docState)
+  })
+
+  test('stateOverrides emits lowcode/stateOverrides pluginData', () => {
+    const graph = new SceneGraph()
+    const rect = graph.createNode('RECTANGLE', graph.getPages()[0].id, {
+      stateOverrides: { hover: { opacity: 0.8 }, disabled: { opacity: 0.5 } }
+    })
+
+    const nc = exportFirst(graph, rect.id)
+    const lowcodeEntry = nc.pluginData?.find(
+      (entry) =>
+        entry.pluginID === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_STATE_OVERRIDES_KEY
+    )
+    expect(lowcodeEntry).toBeDefined()
+    expect(JSON.parse(lowcodeEntry?.value ?? '')).toEqual({
+      hover: { opacity: 0.8 },
+      disabled: { opacity: 0.5 }
+    })
+  })
+
   test('BUTTON with interactiveProps + onClick events emits NodeType + 2 lowcode entries', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
@@ -49,9 +114,7 @@ describe('export-node lowcode pluginData hook (Phase 1 §12 step 1)', () => {
     const btn = graph.createNode('BUTTON', page.id, {
       interactiveProps: { text: 'Go' },
       events: {
-        onClick: [
-          { id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'count + 1' }
-        ]
+        onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'count + 1' }]
       }
     })
 
@@ -77,8 +140,7 @@ describe('export-node lowcode pluginData hook (Phase 1 §12 step 1)', () => {
 
     const nc = exportFirst(graph, rect.id)
     const lowcode = (nc.pluginData ?? []).filter(
-      (entry) =>
-        entry.pluginID === OPEN_PENCIL_PLUGIN_ID && entry.key.startsWith('lowcode/')
+      (entry) => entry.pluginID === OPEN_PENCIL_PLUGIN_ID && entry.key.startsWith('lowcode/')
     )
     expect(lowcode).toEqual([])
   })

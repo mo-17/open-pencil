@@ -164,8 +164,17 @@ export interface IRElement {
   containerKind?: 'card'
   /** Phase 4 §22 — semantic hint for shadcn display primitives. Set from
    *  `interactiveProps.uiKit.primitive`; plain emit ignores it, while a UI-kit
-   *  adapter may map it to Badge/Alert/Separator/Skeleton/Progress/Avatar. */
-  displayKind?: 'badge' | 'alert' | 'separator' | 'skeleton' | 'progress' | 'avatar'
+   *  adapter may map it to Badge/Alert/Separator/Skeleton/Progress/Avatar and
+   *  the v2 composed Tabs/Accordion primitives. */
+  displayKind?:
+    | 'badge'
+    | 'alert'
+    | 'separator'
+    | 'skeleton'
+    | 'progress'
+    | 'avatar'
+    | 'tabs'
+    | 'accordion'
   /** Phase 4 §22 — optional primitive-specific props for displayKind. */
   display?: IRDisplayPrimitive
   /** Phase 4 §21 — overlay container metadata lifted from
@@ -281,6 +290,16 @@ export interface IRDisplayPrimitive {
   src?: string
   alt?: string
   fallback?: string
+  defaultValue?: string
+  type?: string
+  collapsible?: boolean
+  items?: IRDisplayItem[]
+}
+
+export interface IRDisplayItem {
+  value: string
+  label: string
+  content: string
 }
 
 /** Phase 4 §19: a controlled form field's client-side validation rules, lifted
@@ -755,6 +774,23 @@ export interface IRStateDecl {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array'
   /** Default value used to seed `useState(...)`. */
   defaultValue: unknown
+  /** Raw author expression, kept only through collect-time resolution. */
+  computedExpr?: string
+  /** Phase 4 §27.2: read-only derived page state emitted as `useMemo`. */
+  computed?: {
+    ast: ExprAst
+    references: string[]
+  }
+  /** Invalid computed expressions degrade to a read-only default fallback. */
+  computedInvalid?: true
+  /** Phase 4 §27.1: when true on a document-level state, the React runtime
+   *  seeds it from localStorage and writes changes back. Ignored for page
+   *  state. */
+  persist?: boolean
+  /** Optional localStorage key override for persisted document state. */
+  storageKey?: string
+  /** Optional version string; mismatches cause the runtime to ignore old data. */
+  storageVersion?: string
 }
 
 /** Phase 2 §2: a document-level state declaration. Structurally identical to

@@ -18,17 +18,17 @@
 
 phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾。**以下全部已交付、`bun run check` 绿,phase-4 不重列**,改这些前先读 phase-3 对应 §section:
 
-| feature 线 | phase-3 闭合到 | 备注 |
-|---|---|---|
-| §2 Supabase 接入 | §2 + §2.v2–v4(auth signIn/Out/signUp/reset/update)| 5 auth ops + data + interactive |
-| §3 AI-tools 生成/编辑 | §3 + §3.v2–v8(undo/payload/UI/controlled bindings/SWITCH CSS/InteractiveProps 框架/DATEPICKER range/RLS advisor)| |
-| §4 协作 | §4.1–§4.6 + §4.3 self-host + §4.3-S Supabase signaling | code-complete,卡两机真机 ACK(见 §1.7)|
-| §5 部署 | §5.1–§5.3 + Netlify §5.2 + Vercel §5.4 | code-complete,卡真 token ACK(见 §1.7)|
-| §7 响应式断点 | §7 v1 + **§7 v2 re-show**(base-hidden→bp-visible 已实现)| GUI 授权面板延后(→ phase-4 #6/#7)|
-| §8 自定义组件 | §8 v1–v11(clean→`<Component/>` / **v2 text→props** / **v3 fill/color→props** / **v4–v5 COMPONENT_SET variants** / v6 全推广 / v7 `:visible`→hidden / v8 instance `:visible` reverse / v9 nested-instance / v10 orphan 剪枝 / v11 override round-trip)| component-props 面板(GUI)延后(→ phase-4 #7)|
-| §9 i18n | §9 v1–v14(react-intl runtime / locale 切换 / 属性串 / ICU 插值 / plural-select / 译文 catalog / **v11 RTL dir-flip** / CLI flags / 缺译警告)| 编辑器实时 preview i18n(GUI)延后(→ phase-4 #6);RTL **逻辑属性**(ms-/me-)是 v11 之上新增(→ phase-4 #3)|
-| §10 工作流编排 | §10 v1–v11(condition/delay/stop / **v2 toast** / confirm/clipboard / **v4 named WorkflowDef** / **v6 callWorkflow 传参** / **v8 可选形参 emit** / v9 onSuccess/onError / v10 递归编辑器 / v11 callWorkflow GUI + WorkflowsPanel)| optionalParams **GUI** + 跨页 pageStates 延后(→ phase-4 #7/#8)|
-| §15 UI-kit | §15 设计 + Phase A(Button/Input/Textarea/Label)+ Phase B(Select/Checkbox/Switch/RadioGroup)| FRAME→Card / Phase C / 实时 preview shadcn 未实现(→ phase-4 #1/#2/#6)|
+| feature 线            | phase-3 闭合到                                                                                                                                                                                                                                        | 备注                                                                                                  |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| §2 Supabase 接入      | §2 + §2.v2–v4(auth signIn/Out/signUp/reset/update)                                                                                                                                                                                                    | 5 auth ops + data + interactive                                                                       |
+| §3 AI-tools 生成/编辑 | §3 + §3.v2–v8(undo/payload/UI/controlled bindings/SWITCH CSS/InteractiveProps 框架/DATEPICKER range/RLS advisor)                                                                                                                                      |                                                                                                       |
+| §4 协作               | §4.1–§4.6 + §4.3 self-host + §4.3-S Supabase signaling                                                                                                                                                                                                | code-complete,卡两机真机 ACK(见 §1.7)                                                                 |
+| §5 部署               | §5.1–§5.3 + Netlify §5.2 + Vercel §5.4                                                                                                                                                                                                                | code-complete,卡真 token ACK(见 §1.7)                                                                 |
+| §7 响应式断点         | §7 v1 + **§7 v2 re-show**(base-hidden→bp-visible 已实现)                                                                                                                                                                                              | GUI 授权面板延后(→ phase-4 #6/#7)                                                                     |
+| §8 自定义组件         | §8 v1–v11(clean→`<Component/>` / **v2 text→props** / **v3 fill/color→props** / **v4–v5 COMPONENT_SET variants** / v6 全推广 / v7 `:visible`→hidden / v8 instance `:visible` reverse / v9 nested-instance / v10 orphan 剪枝 / v11 override round-trip) | component-props 面板(GUI)延后(→ phase-4 #7)                                                           |
+| §9 i18n               | §9 v1–v14(react-intl runtime / locale 切换 / 属性串 / ICU 插值 / plural-select / 译文 catalog / **v11 RTL dir-flip** / CLI flags / 缺译警告)                                                                                                          | 编辑器实时 preview i18n(GUI)延后(→ phase-4 #6);RTL **逻辑属性**(ms-/me-)是 v11 之上新增(→ phase-4 #3) |
+| §10 工作流编排        | §10 v1–v11(condition/delay/stop / **v2 toast** / confirm/clipboard / **v4 named WorkflowDef** / **v6 callWorkflow 传参** / **v8 可选形参 emit** / v9 onSuccess/onError / v10 递归编辑器 / v11 callWorkflow GUI + WorkflowsPanel)                      | optionalParams **GUI** + 跨页 pageStates 延后(→ phase-4 #7/#8)                                        |
+| §15 UI-kit            | §15 设计 + Phase A(Button/Input/Textarea/Label)+ Phase B(Select/Checkbox/Switch/RadioGroup)                                                                                                                                                           | FRAME→Card / Phase C / 实时 preview shadcn 未实现(→ phase-4 #1/#2/#6)                                 |
 
 > 一句话:**§8/§9/§10 链在 phase-3 已基本走完**,phase-4 的剩余只是它们各自被显式延后的 GUI 入口 + 几条没起头的新线(§14 / §15 收尾 / §9 RTL 逻辑属性 / CF Pages / Kiwi 升格)。
 
@@ -42,21 +42,21 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 > 个来 / 直接干推荐项」,真大决策才单问一个 AskUserQuestion。headless 可验的
 > 连续增量优先,真机 GUI 验证类候选排在后面。
 
-| # | feature | 类型 | 优先级 | 简述 | 与 phase-3 关系 | 详写 |
-|---|---|---|---|---|---|---|
-| 1 | **§15 FRAME→Card 容器映射** | headless emit | **高(最快起点)** | 容器型 FRAME(有 padding/背景/圆角)→ shadcn `Card`/`CardHeader`/`CardContent`,而非裸 `<div>` | phase-3 §15 设计标为「Phase B 可选」**但未实现**;本 phase 实现 | §15 |
-| 2 | **§16 动态路由 / 路由参数 / 路由守卫** ⭐ | headless emit(中-大)| **高(最高产品价值)** | router 现仅字面跳(`navigate("/about")`);加 `/product/:id` 动态段 + `useParams` 绑定 + query string + navigate 带参 + auth-guarded 路由 | **react-router 多页已在**(Phase 1/2);动态段/参数/守卫是新增,**做不了详情页/仪表盘的最大缺口** | §16 |
-| 3 | **§15 Phase C array checkbox-group** | headless emit | 高 | array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版)| phase-3 §15 Phase A/B 后的下一档,未起头 | §15 |
-| 4 | **§17 列表绑真实数据源 + 分页/排序/筛选** | headless emit(中)| 中-高 | repeater 直接绑 Supabase query 结果(Bubble repeating-group)+ 分页/排序/筛选 UI | LIST 现仅绑 state 本地 array(Phase 0 #7);扩到 query + 分页是新增,**当前要 supabaseQuery→setState→LIST 间接绕且无分页** | §17 |
-| 5 | **§19 表单校验** | headless emit(中)| 中 | input 节点 required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截 | FORM 节点在但**无校验**;复用 §3.v6 InteractiveProps 框架 | §19 |
-| 6 | **§18 文件 / 图片上传(Supabase Storage)** | headless emit(中,动 scene-graph)| 中 | 上传控件 + Supabase Storage `upload` + `getPublicUrl` + 进度/预览 | **app 级上传零实现**(代码只有 deploy 的 upload);可能加 node type / interactiveProp | §18 |
-| 7 | **§9 v15 RTL 逻辑属性(ms-/me-)** | headless emit(有回归面)| 中 | margin/padding 物理方向 → `ms-`/`me-`/`ps-`/`pe-` 逻辑属性,RTL locale 自动镜像 | **§9 v11 已做 dir-flip**;v15 是逻辑属性镜像,是 v11 之上**新增**(非重复)| §9 |
-| 8 | **§14 跨文件组件库 / 团队库** | headless(大)| 中 | 组件跨 .fig 文件复用 / 团队共享库 / 更新传播(Figma Team Library 语义)| **phase-3 §14 已有完整设计但标〔未实现〕**;本 phase 才实现 | §14 |
-| 9 | **更多 deploy providers(Cloudflare Pages 等)** | headless | 中 | Netlify/Vercel 已完整;CF Pages 直传需 **blake3**(Web Crypto 只有 SHA-\*)→ 违零依赖,**开工前必须 AskUserQuestion** | phase-3 §10 v7/v8/§7 v2 多次因 blake3 否决 CF Pages,留到本 phase 决策 | §5 |
-| 10 | **编辑器实时 preview i18n / ui-kit toggle** | 真机 GUI | 高(真机)| `src/app/lowcode/preview-pane/use-compile-on-change.ts` 硬编码 `withDefaults`(无 i18n/uiKit)→ app 内 preview 看不到 i18n/shadcn。加 toggle | phase-3 §9 v13(CLI flags)修了 CLI 入口,**编辑器 preview 入口仍缺**;§15 Phase A 注明 preview 不带 uiKit | §9 / §15 |
-| 11 | **§7 / §8 / §10 编辑器授权面板(GUI)** | 真机 GUI | 中(真机)| §7 responsive overrides 编辑面板;§8 component-props 面板;§10 optionalParams GUI(当前 MCP-only)| 三条线在 phase-3 **均显式「GUI 延后」**(沿用「先 emit/headless,GUI 真机」先例)| §7 / §8 / §10 |
-| 12 | **§10 工作流体跨页 pageStates 精确** | headless | 低 | 工作流体当前取**当前页** pageStates 近似;跨页 callWorkflow 时应按目标页解析 | phase-3 §10 v11 已闭合 GUI 链,此为已知小缺口 | §10 |
-| 13 | **lowcode 字段升格 Kiwi schema** | 工程债 | 低 | pluginData 旁路通道稳定;升格成本高(fork vendored `kiwi-schema/` + 通道重写 + 老 .fig 迁移),收益仅清债 | phase-3 §1.1 候选 5 / §6 的纯 **carry-over**(继续推迟)| §6 |
+| #   | feature                                        | 类型                             | 优先级               | 简述                                                                                                                                       | 与 phase-3 关系                                                                                                        | 详写          |
+| --- | ---------------------------------------------- | -------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 1   | **§15 FRAME→Card 容器映射**                    | headless emit                    | **高(最快起点)**     | 容器型 FRAME(有 padding/背景/圆角)→ shadcn `Card`/`CardHeader`/`CardContent`,而非裸 `<div>`                                                | phase-3 §15 设计标为「Phase B 可选」**但未实现**;本 phase 实现                                                         | §15           |
+| 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | headless emit(中-大)             | **高(最高产品价值)** | router 现仅字面跳(`navigate("/about")`);加 `/product/:id` 动态段 + `useParams` 绑定 + query string + navigate 带参 + auth-guarded 路由     | **react-router 多页已在**(Phase 1/2);动态段/参数/守卫是新增,**做不了详情页/仪表盘的最大缺口**                          | §16           |
+| 3   | **§15 Phase C array checkbox-group**           | headless emit                    | 高                   | array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版)                                                    | phase-3 §15 Phase A/B 后的下一档,未起头                                                                                | §15           |
+| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | headless emit(中)                | 中-高                | repeater 直接绑 Supabase query 结果(Bubble repeating-group)+ 分页/排序/筛选 UI                                                             | LIST 现仅绑 state 本地 array(Phase 0 #7);扩到 query + 分页是新增,**当前要 supabaseQuery→setState→LIST 间接绕且无分页** | §17           |
+| 5   | **§19 表单校验**                               | headless emit(中)                | 中                   | input 节点 required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截                                                                       | FORM 节点在但**无校验**;复用 §3.v6 InteractiveProps 框架                                                               | §19           |
+| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | headless emit(中,动 scene-graph) | 中                   | 上传控件 + Supabase Storage `upload` + `getPublicUrl` + 进度/预览                                                                          | **app 级上传零实现**(代码只有 deploy 的 upload);可能加 node type / interactiveProp                                     | §18           |
+| 7   | **§9 v15 RTL 逻辑属性(ms-/me-)**               | headless emit(有回归面)          | 中                   | margin/padding 物理方向 → `ms-`/`me-`/`ps-`/`pe-` 逻辑属性,RTL locale 自动镜像                                                             | **§9 v11 已做 dir-flip**;v15 是逻辑属性镜像,是 v11 之上**新增**(非重复)                                                | §9            |
+| 8   | **§14 跨文件组件库 / 团队库**                  | headless(大)                     | 中                   | 组件跨 .fig 文件复用 / 团队共享库 / 更新传播(Figma Team Library 语义)                                                                      | **phase-3 §14 已有完整设计但标〔未实现〕**;本 phase 才实现                                                             | §14           |
+| 9   | **更多 deploy providers(Cloudflare Pages 等)** | headless                         | 中                   | Netlify/Vercel 已完整;CF Pages 直传需 **blake3**(Web Crypto 只有 SHA-\*)→ 违零依赖,**开工前必须 AskUserQuestion**                          | phase-3 §10 v7/v8/§7 v2 多次因 blake3 否决 CF Pages,留到本 phase 决策                                                  | §5            |
+| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 真机 GUI                         | 高(真机)             | `src/app/lowcode/preview-pane/use-compile-on-change.ts` 硬编码 `withDefaults`(无 i18n/uiKit)→ app 内 preview 看不到 i18n/shadcn。加 toggle | phase-3 §9 v13(CLI flags)修了 CLI 入口,**编辑器 preview 入口仍缺**;§15 Phase A 注明 preview 不带 uiKit                 | §9 / §15      |
+| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 真机 GUI                         | 中(真机)             | §7 responsive overrides 编辑面板;§8 component-props 面板;§10 optionalParams GUI(当前 MCP-only)                                             | 三条线在 phase-3 **均显式「GUI 延后」**(沿用「先 emit/headless,GUI 真机」先例)                                         | §7 / §8 / §10 |
+| 12  | **§10 工作流体跨页 pageStates 精确**           | headless                         | 低                   | 工作流体当前取**当前页** pageStates 近似;跨页 callWorkflow 时应按目标页解析                                                                | phase-3 §10 v11 已闭合 GUI 链,此为已知小缺口                                                                           | §10           |
+| 13  | **lowcode 字段升格 Kiwi schema**               | 工程债                           | 低                   | pluginData 旁路通道稳定;升格成本高(fork vendored `kiwi-schema/` + 通道重写 + 老 .fig 迁移),收益仅清债                                      | phase-3 §1.1 候选 5 / §6 的纯 **carry-over**(继续推迟)                                                                 | §6            |
 
 > **#1–#9 = headless,#10–#11 = 真机 GUI,#12–#13 = 低优先。**
 >
@@ -73,17 +73,17 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 
 > 2026-06-20 第二轮缺口盘点。**全部 grep 坐实代码无实现**,且都是**纯 emit / 复用现有机制**的小-中增量(无架构改动),用来把产物从「能跑的页面」打磨成「真应用」。优先级整体在第一波(§16–§19 数据/表单链)之后,但单条工作量小、可穿插。**避坑(经验 Q):effects 阴影已 emit(`jsx/helpers.ts formatShadow`)、EventName 联合已含 5 事件、navigate 已在,均不重列。**
 
-| # | feature | 复用 | 简述 | grep 坐实 |
-|---|---|---|---|---|
-| §20 | **交互状态样式(hover/focus/active/disabled variants)** | §7 variant-emit 机制 | 节点可声明 `hover:`/`focus:`/`active:`/`disabled:` Tailwind 变体样式(悬停变色/按下/禁用态)| 用户节点无状态变体 emit(命中全是 shadcn 模板内部 hover:)|
-| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)** | FRAME `interactiveProps.overlay` + docState open-state | 可授权弹窗/抽屉/气泡,open 态绑 docState,backdrop 可关 | **CODE COMPLETE 2026-06-22** |
-| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert/Separator)** | §15 ui-kit adapter | 扩 §15 映射表到展示型组件 | **CODE COMPLETE 2026-06-23(首批展示原语)** |
-| §23 | **图标(lucide-react)** | §15 ui-kit / 新 icon 节点或 prop | 放置 lucide 图标(shadcn 默认图标库),名称/尺寸/色可配 | 无 icon 节点(lucide 仅在 shadcn 内部注释)|
-| §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)** | jsx tailwind-classes | image fill / IMAGE 节点 → `<img src alt>` + object-cover/contain;渐变填充 → `bg-gradient-*`;宽高比 | 无 `<img>` emit、无 gradient、无 aspect/object-fit(全空)|
-| §25 | **外链 `<a href>` + target** | emit/element | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)| **CODE COMPLETE 2026-06-22** |
-| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)** | jsx tailwind-classes | 吸顶头/侧栏、滚动容器、堆叠层级 | **CODE COMPLETE 2026-06-22** |
-| §27 | **state 持久化(localStorage)+ 派生/计算 state** | docState + 表达式子语言 | docState 标记持久化→`localStorage` 读写;派生 state = 表达式从其它 state 算出(memo)| 无 localStorage/persist/computed |
-| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur 端到端 + `$event`/`$value` 复活)** | EventName 联合(已有 5)+ events emit | `EventName` 已含 onChange/onSubmit/onFocus/onBlur,但 emit 只接 onClick/onSubmit;onChange 当前**只被 controlled binding 占用**,用户授权的 onChange/onFocus/onBlur 未接 → 接通 + 复活 memory 里 shelved 的 `$event`/`$value` token(已能 parse,缺 live 用例)| **CODE COMPLETE 2026-06-22** |
+| #   | feature                                                                             | 复用                                                   | 简述                                                                                                                                                                                                                                                      | grep 坐实                                                |
+| --- | ----------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| §20 | **交互状态样式(hover/focus/active/disabled variants)**                              | §7 variant-emit 机制                                   | 节点可声明 `hover:`/`focus:`/`active:`/`disabled:` Tailwind 变体样式(悬停变色/按下/禁用态)                                                                                                                                                                | 用户节点无状态变体 emit(命中全是 shadcn 模板内部 hover:) |
+| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)**                                 | FRAME `interactiveProps.overlay` + docState open-state | 可授权弹窗/抽屉/气泡,open 态绑 docState,backdrop 可关                                                                                                                                                                                                     | **CODE COMPLETE 2026-06-22**                             |
+| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert/Separator)** | §15 ui-kit adapter                                     | 扩 §15 映射表到展示型组件                                                                                                                                                                                                                                 | **CODE COMPLETE 2026-06-23(首批展示原语)**               |
+| §23 | **图标(lucide-react)**                                                              | §15 ui-kit / 新 icon 节点或 prop                       | 放置 lucide 图标(shadcn 默认图标库),名称/尺寸/色可配                                                                                                                                                                                                      | 无 icon 节点(lucide 仅在 shadcn 内部注释)                |
+| §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)**             | jsx tailwind-classes                                   | image fill / IMAGE 节点 → `<img src alt>` + object-cover/contain;渐变填充 → `bg-gradient-*`;宽高比                                                                                                                                                        | 无 `<img>` emit、无 gradient、无 aspect/object-fit(全空) |
+| §25 | **外链 `<a href>` + target**                                                        | emit/element                                           | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)                                                                                                                                                                                          | **CODE COMPLETE 2026-06-22**                             |
+| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)**                         | jsx tailwind-classes                                   | 吸顶头/侧栏、滚动容器、堆叠层级                                                                                                                                                                                                                           | **CODE COMPLETE 2026-06-22**                             |
+| §27 | **state 持久化(localStorage)+ 派生/计算 state**                                     | docState + 表达式子语言                                | docState 标记持久化→`localStorage` 读写;派生 state = 表达式从其它 state 算出(memo)                                                                                                                                                                        | 无 localStorage/persist/computed                         |
+| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur 端到端 + `$event`/`$value` 复活)**       | EventName 联合(已有 5)+ events emit                    | `EventName` 已含 onChange/onSubmit/onFocus/onBlur,但 emit 只接 onClick/onSubmit;onChange 当前**只被 controlled binding 占用**,用户授权的 onChange/onFocus/onBlur 未接 → 接通 + 复活 memory 里 shelved 的 `$event`/`$value` token(已能 parse,缺 live 用例) | **CODE COMPLETE 2026-06-22**                             |
 
 > **第二波优先级建议**:**§20 交互状态样式**最值得先做(复用 §7 的 variant-emit 机制、零新概念、立刻让产物有交互质感);**§24 图片/填充** + **§25 外链** 是「真页面」基础缺(无图片是硬伤);**§21 覆盖层** + **§22 更多原语** 把 UI 表达力补齐;**§27 持久化/派生 state** + **§28 事件收尾** 补运行时逻辑短板(§28 顺带解 memory 里 shelved 的 `$event`/`$value`)。这些都可穿插在第一波 §16–§19 之间做(单条小)。
 
@@ -123,17 +123,17 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 
 **A–I 直接继承 Phase 3 §1.4**(walker 漏 case / Tauri 拖拽锁 / parse 不 swallow / emit 新 npm import 进 compiler deps / 跨 §X 接口预查 / 别全仓 format / union widening helper-first / UX 显示元素 vs 后台同步 / emit 全绿 ≠ 跑得起来 module-resolve 维度)。下面是 re-baseline 期 + Phase 4 新增/强化的:
 
-| 经验 | 内容 |
-|---|---|
-| **J. 上游 merge:relocate 而非 gut** | dev 脚本只用公共包导出时迁 `tools/` 零 import 破坏。3-way 交错冲突(上游重构成函数 + 我们加字段)= 重写整段而非逐 marker,把我们字段折进上游新函数签名;两侧独立贡献 pluginData 的,串调用顺序。**本会话实证**:`4bc1698e` 合入 = 2 个纯 import 行冲突取并集(`isAutoLayoutMode` value + 上游 `SceneGraph`/`SceneNode` type) |
-| **K. `scripts/*.ts` 必须是单行 shim** | 上游 steiger 规则 `scripts-are-entrypoint-shims`:`#!/usr/bin/env bun` + `import '../tools/...'`。实现逻辑放 `tools/<domain>/src/`(kebab domain,`strictToolsLayout`;每 tool 一个 minimal `package.json`,tools/* 非 workspace 成员)。`check` 现含 `test:tools` |
-| **L. keep-out scratch 现触发 shim 规则** | 未跟踪生成器(make-v5/v6/realmachine/layout-roundtrip)在 `scripts/` 下会触发 K 的 shim 规则 → **`bun run check` 前移到 `$CLAUDE_JOB_DIR/tmp/scratch`、check 后还原**(make-v7 已 relocate 到 `tools/lowcode/src/`,tracked,别当 keep-out)|
-| **M. 改 core/compiler src 必先 `build:packages` 再 lint** | 否则 type-aware oxlint 报 dist-vs-src SceneNode TS2345 假错。改 Vue 必跑 `check:vue`(第 4 道闸,vue-tsc 抓 oxlint/tsgo 抓不到的 narrow 漏 case)。每 commit 前 `git checkout -- desktop/Cargo.lock`(cargo run/check 会改它)|
-| **N. type-shapes.ts 禁重复 alias-to-type-literal shape** | 跨 src+tests 禁任何 ≥2 成员的具名 type-literal alias 形状重复;逃逸口 = inline union 或 interface-extends,不是具名 2 成员 literal alias |
-| **O. tsconfig paths 从最近的 tsconfig 解析** | bun-test/tsgo 从 importing file 最近的 tsconfig 解析 `paths`;无匹配 key **不**回退父 tsconfig → 落到 node_modules exports。新 package 的 tsconfig 要 mirror `packages/vue/tsconfig.json` 的 `@open-pencil/core/*`→`../core/src/*` 映射 |
-| **P. 旧 .fig 中文方框 = 两层** | (1)fallback 字体没加载(Stage 14 bundled Noto Sans SC);(2)烤进文件的 `.notdef` glyph 绕过实时 shape(Stage 13 写侧门控 + Stage 16/8d 读侧 `shouldLiveShapeOverDerivedGlyphs`)。invalidateAllPictures 清不掉文件数据,必须渲染侧门控落回 buildParagraph。文本乱码 after .fig reopen = baked-glyph,不是 encoding |
-| **Q. 写 roadmap 前先核 phase-3 各 v-version 闭合状态** | phase-3 在 v-version 里把当初「首次交付时延后的 follow-up」一路关掉了(§8 v3 fill/color、§8 v4/v5 variants、§7 v2 re-show、§10 v2 toast 全已实现)。**别拿「首次交付快照的延后清单」当剩余需求** —— 以 prompt.md「入口现状矩阵」+ phase-3 各 v-section 实际状态为准,否则 roadmap 重列已交付项 |
-| **R. Phase 4 §16.1/§15.1 新增(4 条)** | ① **跨 N 个 register-chokepoint 跟踪一个新内置只读标识符**:sentinel-ride 既有已穿线的 Set + collect 末 `Set.delete` 抽布尔,比新建并行 set 穿 N 点更省、穷举-by-construction(§16.1 `$params` rode docStateReads)。② **UI-kit 容器型映射用 `mapContainer`(只换 tag、保留子)而非 `mapControl`(独占 markup、跳子)**;二者都靠 collect 期 kit-agnostic IR-hint(containerKind/controlKind),plain emit 忽略 → byte-identical-off(§15.1)。③ **`check:vue` 是真第 4 道闸**:tsgo 不覆盖 `.vue`,新增 IRTree/SceneNode 必填字段时 `.vue` 里的 stub 字面量只有 vue-tsc 抓得到 → 加必填字段后 grep 全仓字面量构造点(含 `.vue`)。④ **同前缀兄弟测试 ≥3 触发 steiger `prefer-domain-folders`** → 新增第 3 个时直接建子目录(§8 v4/§9/§15.1 印证)。 |
+| 经验                                                      | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **J. 上游 merge:relocate 而非 gut**                       | dev 脚本只用公共包导出时迁 `tools/` 零 import 破坏。3-way 交错冲突(上游重构成函数 + 我们加字段)= 重写整段而非逐 marker,把我们字段折进上游新函数签名;两侧独立贡献 pluginData 的,串调用顺序。**本会话实证**:`4bc1698e` 合入 = 2 个纯 import 行冲突取并集(`isAutoLayoutMode` value + 上游 `SceneGraph`/`SceneNode` type)                                                                                                                                                                                                                                                                                                                                                                                                            |
+| **K. `scripts/*.ts` 必须是单行 shim**                     | 上游 steiger 规则 `scripts-are-entrypoint-shims`:`#!/usr/bin/env bun` + `import '../tools/...'`。实现逻辑放 `tools/<domain>/src/`(kebab domain,`strictToolsLayout`;每 tool 一个 minimal `package.json`,tools/\* 非 workspace 成员)。`check` 现含 `test:tools`                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **L. keep-out scratch 现触发 shim 规则**                  | 未跟踪生成器(make-v5/v6/realmachine/layout-roundtrip)在 `scripts/` 下会触发 K 的 shim 规则 → **`bun run check` 前移到 `$CLAUDE_JOB_DIR/tmp/scratch`、check 后还原**(make-v7 已 relocate 到 `tools/lowcode/src/`,tracked,别当 keep-out)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **M. 改 core/compiler src 必先 `build:packages` 再 lint** | 否则 type-aware oxlint 报 dist-vs-src SceneNode TS2345 假错。改 Vue 必跑 `check:vue`(第 4 道闸,vue-tsc 抓 oxlint/tsgo 抓不到的 narrow 漏 case)。每 commit 前 `git checkout -- desktop/Cargo.lock`(cargo run/check 会改它)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **N. type-shapes.ts 禁重复 alias-to-type-literal shape**  | 跨 src+tests 禁任何 ≥2 成员的具名 type-literal alias 形状重复;逃逸口 = inline union 或 interface-extends,不是具名 2 成员 literal alias                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **O. tsconfig paths 从最近的 tsconfig 解析**              | bun-test/tsgo 从 importing file 最近的 tsconfig 解析 `paths`;无匹配 key **不**回退父 tsconfig → 落到 node_modules exports。新 package 的 tsconfig 要 mirror `packages/vue/tsconfig.json` 的 `@open-pencil/core/*`→`../core/src/*` 映射                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **P. 旧 .fig 中文方框 = 两层**                            | (1)fallback 字体没加载(Stage 14 bundled Noto Sans SC);(2)烤进文件的 `.notdef` glyph 绕过实时 shape(Stage 13 写侧门控 + Stage 16/8d 读侧 `shouldLiveShapeOverDerivedGlyphs`)。invalidateAllPictures 清不掉文件数据,必须渲染侧门控落回 buildParagraph。文本乱码 after .fig reopen = baked-glyph,不是 encoding                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Q. 写 roadmap 前先核 phase-3 各 v-version 闭合状态**    | phase-3 在 v-version 里把当初「首次交付时延后的 follow-up」一路关掉了(§8 v3 fill/color、§8 v4/v5 variants、§7 v2 re-show、§10 v2 toast 全已实现)。**别拿「首次交付快照的延后清单」当剩余需求** —— 以 prompt.md「入口现状矩阵」+ phase-3 各 v-section 实际状态为准,否则 roadmap 重列已交付项                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **R. Phase 4 §16.1/§15.1 新增(4 条)**                     | ① **跨 N 个 register-chokepoint 跟踪一个新内置只读标识符**:sentinel-ride 既有已穿线的 Set + collect 末 `Set.delete` 抽布尔,比新建并行 set 穿 N 点更省、穷举-by-construction(§16.1 `$params` rode docStateReads)。② **UI-kit 容器型映射用 `mapContainer`(只换 tag、保留子)而非 `mapControl`(独占 markup、跳子)**;二者都靠 collect 期 kit-agnostic IR-hint(containerKind/controlKind),plain emit 忽略 → byte-identical-off(§15.1)。③ **`check:vue` 是真第 4 道闸**:tsgo 不覆盖 `.vue`,新增 IRTree/SceneNode 必填字段时 `.vue` 里的 stub 字面量只有 vue-tsc 抓得到 → 加必填字段后 grep 全仓字面量构造点(含 `.vue`)。④ **同前缀兄弟测试 ≥3 触发 steiger `prefer-domain-folders`** → 新增第 3 个时直接建子目录(§8 v4/§9/§15.1 印证)。 |
 
 ### 1.5 测试 / 验证命令
 
@@ -154,6 +154,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 ```
 
 **既有 pre-existing fail(非回归,出范围,勿修)**:
+
 - io 的 4 个 `material3.fig` —— export-node 写 `EXCLUDE` 到 kiwi enum(只有 XOR=3),上游既有(checkout 纯 upstream kiwi+io 同样挂)。`bun test tests/engine/io` ~10min。
 - render/jsx `Tailwind JSX export > frame with children renders nested` —— §6 CANVAS 隐式 FREE 漂移,clean HEAD 同样挂。
 - IDE 偶发 `Cannot find module '@open-pencil/...'` / `#core/...` 是 LSP moduleResolution 噪音 —— 以 `tsgo --noEmit` + `check:vue` 为准。
@@ -204,16 +205,19 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 > **目标**:启用 shadcn ui-kit 时,容器型 card-like FRAME emit 成 `<Card>` 而非裸 `<div>`,产物更接近手写 shadcn 项目(生产级可维护)。className passthrough → kit 给语义/结构、设计保外观。
 
 **现状坐实(经验 Q/E,直接读源)**:
+
 - `emit/element.ts:118` `tagName = uiKit?.mapTag(node.tag, node.attrs)?.component ?? node.tag` —— kit 映射点;但 FRAME 全 `div`(TAG_BY_TYPE tree.ts:517),不能全 div→Card,需语义 hint。
 - **`controlKind` 是现成 IR-hint 先例**(Phase B):`controlKindFor(node)`(tree.ts:1005)collect 期按 node.type 打 kit-agnostic hint;registry `walkForKit` 按 hint 解析 `mapControl`/`emitControl`,plain emit 忽略 → byte-identical-off。**但 control 的 emit 跳过子节点(`if (node.controlKind) return`),Card 要包裹子节点(子照常 emit)** —— 这是 Card vs control 的关键差异。
 - SceneNode `cornerRadius: number`(required)+ `fills: Fill[]`(`Fill.visible: boolean` + `opacity: number`)→ 启发式可读。
 - §15 全程纯 compiler-emit 零 scene-graph/round-trip。
 
 **锁定决定**:
+
 1. **〔Fork 1 锁定〕判定规则 = 启发式**:`node.type === 'FRAME'` && 有可见背景填充(`fills.some(f => f.visible && f.opacity > 0)`)&& `cornerRadius > 0` → card-like。纯 emit、零 scene-graph/round-trip(延续 §15 特性)。否决显式标记(需新 lowcode 字段 + round-trip + GUI,破坏纯-emit)。**className passthrough 使误判低害**(设计的 `rounded-[..] bg-[..]` 经 cn/tailwind-merge 覆盖 shadcn Card 默认 `rounded-lg border bg-card shadow-sm` → 视觉不变,只语义化成 `<Card>`)。仅限 FRAME(GROUP/ROUNDED_RECTANGLE 等不纳入:GROUP 无 surface、bare rounded-rect 是装饰非容器)。
 2. **〔Fork 2 锁定〕子结构 = 只 `<Card>` wrapper**:FRAME → `<Card className=...>`,子节点原样 emit 在内,className passthrough 保设计布局/padding。否决拆 Header/Content/Footer(shadcn CardHeader/Content 自带 padding 与设计 padding 双重冲突 + 分区启发式脆;需作者意图,留后续)。
 
 **实现(纯 compiler-emit,镜像 controlKind 但「包裹不跳子」;经验 M build:packages 再 lint)**:
+
 - **IR hint**(`ir/types.ts`):`IRElement.containerKind?: 'card'`(平行 controlKind,kit-agnostic;plain emit 忽略 → byte-identical-off)。
 - **detection**(`ir/collect/tree.ts`):`containerKindFor(node)` 启发式(同上),`nodeToIR` 里 `...(containerKind ? { containerKind } : {})`(镜像 controlKind 设置点)。
 - **adapter 接口**(`ui-kit/types.ts`):`mapContainer?(kind): UiKitMapping | null`(平行 mapControl,但**不带 emitControl** —— Card 不需独占 markup/事件翻译,只换 tag)。
@@ -223,6 +227,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **零碰**:off / 无 card-like FRAME → byte-identical(既有 ui-kit 测试零改);Phase A/B control 路径不动。
 
 **成功标准(headless)**:
+
 1. card-like FRAME(FRAME+bg+圆角)+ `--ui-kit shadcn` → `<Card className=...>` + `import { Card } from '@/components/ui/card'` + emit `src/components/ui/card.tsx`;子节点保留在内。
 2. 非-card FRAME(无 bg / 无圆角)→ 仍 `<div>`(不误判)。
 3. off(无 uiKit)→ card-like FRAME 仍 `<div>`,byte-identical。
@@ -230,6 +235,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 5. **真机验 pending**:部署 shadcn 产物看 `<Card>` 视觉(headless 仅断言 emit 串 + 文件)。
 
 **交付记录(CODE COMPLETE 2026-06-21,commit `d86489d9`)**:
+
 - 实现按设计 8 文件(ir/types containerKind + tree.ts containerKindFor + ui-kit/types mapContainer + emit/element.ts tag 解析 + registry walkForKit + shadcn/index COMPONENTS+CONTAINER_TO_MAPPING+mapContainer + templates CARD_TSX + doc),零 scene-graph/round-trip 改动。
 - **Card vs control 的关键差异落地干净**:emit tag 解析 `containerKind→mapContainer 优先 ?? mapTag ?? node.tag`,子节点走既有 emitElement 递归(**包裹不跳子**);walkForKit container 分支收 `Card` 进 used names **但继续 walk 子**(区别 control 的 `if(controlKind) return`)。
 - **CARD_TSX = canonical shadcn card.tsx**(Card+Header+Title+Description+Content+Footer 全导出,纯 styled `<div>` + cn(),**无 Radix dep**);FRAME→Card 只 import/用 `Card`,子组件随文件 ship 供作者后续 compose。
@@ -242,17 +248,20 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 > **目标**:启用 shadcn ui-kit 时,array 多选 CHECKBOX group(`CHECKBOX` + `interactiveProps.options[]`)emit 成 N 个 `<Checkbox>` 行 + 手动数组 toggle,而非现在的裸 N 个 `<input type=checkbox>`。把 §15 ui-kit 这条线收完(Phase A/B 已交付的 9 个交互组件之后的最后一档)。
 
 **现状坐实(经验 Q/E,直接读源)**:
+
 - `isCheckboxGroup(node)`(tree.ts:560)= `CHECKBOX` + `interactiveProps.options[]` 非空。collect 出 `<div>` wrapper(tag `div`,className = design 类 + 非 flex/grid 时补 `OPTION_GROUP_WRAPPER_CLASSES='flex flex-col gap-2'`)+ 每项 `<label class=OPTION_LABEL_CLASSES><input type=checkbox value=opt class=OPTION_INPUT_CLASSES/> opt</label>`(`applyCheckboxGroupOptions`/`appendOptionInputs`)。
 - **受控**:绑 array<string> state 时,`applyControlledInput` 走 `isCheckboxGroup` 分支调 `patchOptionLeafControlled(children,'checkbox',controlled)` 把同一 controlled 描述符贴到**每个** `<input type=checkbox>` leaf(wrapper 自身返回 undefined,无 value/onChange);plain emit(element.ts:254)出 `checked={read.includes(opt)}` + `onChange={(e)=>...spread/filter toggle}`(`arrayCheckboxOnChangeBody`)。
 - **`controlKindFor`(tree.ts:1009)对 checkbox-group 刻意返回 `undefined`**(Phase B 排除注释:「no native shadcn group component — deferred」)→ shadcn 下 checkbox-group 留 plain `<input>`。这正是 Phase C 要补的点。
 - Phase B 的 RADIO→`radio-group` 是完全对称的先例:`controlKindFor` 返回 `'radio-group'` → shadcn `CONTROL_TO_MAPPING['radio-group']` + `emitControl` case → `emitRadioGroup` 从 wrapper 的 `<label><input>` 子里抽 options(`radioOptions`)emit `<RadioGroupItem>` 行。
 
 **锁定决定(2 fork + 1 定序,AskUserQuestion)**:
+
 1. **〔Fork 1 锁定〕options 来源 = 仅静态 `interactiveProps.options[]`**(本次)。**动态 options 绑定(options 来自 state/query array)归 §17 数据链首片**(独立设计,含 `{value,label}` 对象选项决策)—— recon 坐实它是中等量级(scene-graph `optionsSourceRef` + 新 IR `.map()` 形态 + plain&shadcn 双 emit + round-trip),与 §17 列表绑数据源重叠。用户先选「动态」,经定序问题后改选「先静态、动态归 §17(推荐)」。
 2. **〔Fork 2 锁定〕shadcn 排版 = 镜像 radio-group 行布局**:wrapper 保持 plain `<div className=design 类>`(shadcn 无原生 group 组件),内含每项一行 `<div className="flex items-center gap-2"><Checkbox id checked onCheckedChange/><label htmlFor>opt</label></div>`。否决极简内联 `<label><Checkbox/> opt</label>`(与 shadcn radio-group 行布局不一致)。
 3. **语义本身已定死**:checkbox-group 天然多选(array<string>,每项独立 toggle);单选互斥 = RADIO(Phase B 已做)。不浪费 AskUserQuestion。
 
 **实现(纯 compiler-emit + IR-hint widening,镜像 Phase B controlKind;经验 M build:packages 再 lint;经验 A union widening sweep)**:
+
 - **IR-hint widening**(`ir/types.ts`):`IRElement.controlKind` 联合加 `'checkbox-group'`(可选字段,无 `.vue` stub 破坏、无 `never` 闸)。
 - **detection**(`ir/collect/tree.ts`):`controlKindFor` 的 CHECKBOX arm `isCheckboxGroup(node) ? 'checkbox-group' : 'checkbox'`(原 `undefined`)。**这是唯一 collect 改动**;`patchOptionLeafControlled` 仍贴 controlled 到 leaf(emitControl 从 leaf 读)。
 - **shadcn**(`shadcn/index.ts`):`CONTROL_TO_MAPPING['checkbox-group'] = { component:'Checkbox', from:'@/components/ui/checkbox' }`(**复用既有 Checkbox.tsx + `@radix-ui/react-checkbox`,零新模板/零新 dep**)+ `emitControl` case `'checkbox-group'` → 新 `emitCheckboxGroup`。
@@ -261,6 +270,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **经验 A 双轮 sweep(controlKind 全消费点)**:`controlKindFor`(producer,改)/ `IRElement.controlKind` union(widen)/ registry walkForKit(generic 不动)/ emit tryEmitKitControl(generic 不动)/ shadcn CONTROL_TO_MAPPING(加 arm)/ shadcn emitControl switch(加 arm)。`src/`+`packages/vue/src/` 零 controlKind 消费 → check:vue 不涉及。**无新 ActionDef kind / 无 round-trip / 无 scene-graph 改动**。
 
 **成功标准(headless)**:
+
 1. array checkbox-group(`options[]`)+ array state 绑定 + `--ui-kit shadcn` → N 个 `<Checkbox>` 行 + `checked={sel.includes(opt)}` + `onCheckedChange` spread/filter toggle + `<label htmlFor>` + `import { Checkbox }` + emit `checkbox.tsx` + `@radix-ui/react-checkbox` dep。
 2. 受控(docState array → `setDocState`;page-state array → `setX` setter)+ 非受控(裸 `<Checkbox>`,无 checked/onCheckedChange)。
 3. option label i18n-aware(`emitChild` → `<FormattedMessage>`)。
@@ -269,6 +279,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 6. **真机验 pending**:部署 shadcn 产物看 `<Checkbox>` 复选框视觉 + 多选 toggle 行为。
 
 **交付记录(CODE COMPLETE 2026-06-21,feat `1e4e4db5`)**:
+
 - 实现按设计 4 文件(ir/types controlKind union + tree.ts controlKindFor + shadcn/index CONTROL_TO_MAPPING+emitControl+emitCheckboxGroup+checkboxToggleParts+optionGroupBase + ui-kit/controls.test),**零 scene-graph/round-trip/scene-graph types 改动**。
 - **共享重构(消 jscpd clone)**:`radioOptions`→`optionLeaves`(radio+checkbox 共享抽 option leaf);新 `emitOptionRow`(共享行布局,radio/checkbox 各传 control 行);新 `optionGroupBase`(共享 pad/i1/i2 + options + controlled + rootParts 前导,radio 再 append valueBindingParts、checkbox 直接用)—— emitRadioGroup 一并改用,零行为变化。
 - **GATE 收口 1 处(jscpd)**:`emitCheckboxGroup` 的前导(pad/i1/i2+options+controlled+rootParts)与 `emitRadioGroup` 6 行 116 token 重复 → 抽 `optionGroupBase` 消重(0 clones)。
@@ -284,6 +295,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状(grep 坐实)**:react-router 多页已在(`compiler/types.ts router:'react-router-v6'`,Phase 1/2 多页 emit + `route-paths.ts` 单一 route 派生源 + preview-bridge editor↔iframe navigate 同步)。但 **navigate 是字面路由**(`emit/event.ts:192` `navigate(${JSON.stringify(h.to)})`),`NavigateAction.to` = 「已校验非空的字面 route」。**无动态段 / 参数 / 守卫**。
 
 **剩余 / 建议方向**:
+
 - **动态路由段**:页面可声明 `/product/:id` 形态的路由 pattern(非纯 `/about` 字面)。
 - **路由参数绑定**:emit `useParams()` → 参数进表达式子语言可读(类似 docState/pageState,新 read-context 源),供 supabaseQuery where-clause / 文本插值用。
 - **query string**:`useSearchParams` 读写。
@@ -304,15 +316,18 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 > **目标**:页面可声明 `/product/:id` 动态路由,路由参数经 `$params.id` 在表达式子语言里可读(文本插值 / 绑定 / renderCondition / 未来 supabaseQuery where-clause)。把「多页静态站」升级成「能做详情页/仪表盘的真应用」的地基。
 
 **现状坐实(经验 Q/E,直接读源)**:
+
 - `derivePagePaths`(`adapters/react/route-paths.ts`)按 slug 派生 `route`(首页 `/`,其余 `/<slug>`);`buildRouterApp`(scaffold.ts:137)emit `<BrowserRouter><Routes><Route path={route} element={<Page/>}/></Routes>`;`buildPageFile` 按 `pageHasNavigateHandler` emit `useNavigate` + `import { useNavigate } from 'react-router-dom'`。
 - 表达式只读上下文:`unknownIdentifiers`(bindings.ts:297)对 `states`/`inScope`/`docStates` 解析;`$currentUser` 经 `currentUserBuiltIn()` 注册成 docState(emit `useDocState`)。成员访问根标识符(`$currentUser.email` 的根 `$currentUser`)走 docStates 校验。
 - 页级字段挂 CANVAS 节点(per-page `state?: StateDef[]`),round-trip = `serializeLowcodeFields(page)`(export.ts:267 序列化)+ `assignImportedLowcodeFields`(import.ts:26 吸收)+ `assignLowcodeField`(extract 分发)。
 
 **锁定决定**:
+
 1. **〔Fork 1 锁定〕route pattern 数据归属 = 页 CANVAS 节点字段**。新 `SceneNode.lowcodeRoutePattern?: string`(页级,镜像 per-page `state`);round-trip 走新 `lowcode/routePattern` key(`serializeLowcodeFields` + `assignLowcodeField` + `assignImportedLowcodeFields`,与 `state` 同路径)。否决文档级路由表(与 per-page state 模型分叉 + 多一层 pageId→pattern 间接)。
 2. **〔Fork 2 锁定〕路由参数命名 = `$params.<name>` 命名空间内置只读源**。`$params` 注册为内置只读标识符(镜像 `$currentUser` 但 emit 不同),`unknownIdentifiers` 经 `BUILTIN_READ_IDENTS` 接受;页用到 `$params` 时 emit `const $params = useParams()` + `import { useParams }`。成员名(`.id`)不校验(同 `$currentUser.email` 先例,运行时 `useParams()` 返回 `string|undefined`)。否决裸名 `id`(与同名 state/docState 碰撞 + 需从 pattern 抽参数名列表)。
 
 **实现(经验 E 跨 router/IR/emit/round-trip/表达式;经验 M 改 core 必 build:packages 再 lint)**:
+
 - **数据模型**(`scene-graph/types.ts`):`SceneNode.lowcodeRoutePattern?: string`(页级,注释类比 `state`)。
 - **round-trip**(`kiwi/fig/node-change/lowcode-plugin-data.ts`):`LOWCODE_ROUTE_PATTERN_KEY='lowcode/routePattern'` 入 `LOWCODE_PLUGIN_KEYS`;`serializeLowcodeFields` 加 `typeof===string && !==''` gate(非路由页 byte-identical);`ExtractedLowcodeAndPluginData.lowcodeRoutePattern?`;`assignLowcodeField` 加 case(string 守卫);`import.ts assignImportedLowcodeFields` 加一行(页/根经此吸收)。
 - **IR**(`ir/types.ts` + `ir/collect/tree.ts`):`IRTree.routePattern?: string`;collectTree 从 `page.lowcodeRoutePattern` lift + 校验(非空 + `/` 开头,否则 warn `route-pattern-invalid` + 回退 undefined → slug 派生)。`routeParamReads: Set<string>` 跟踪(镜像 `docStateReads`,在每个 `registerDocStateReads` 旁加 `registerRouteParamReads`,经验 A 穷举所有表达式上下文);`IRTree.usesRouteParams = routeParamReads.size > 0`。
@@ -321,12 +336,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **零碰**:navigate 仍字面(§16.2 才扩);单页 compile 无 router → 有 routePattern 也无意义(但 round-trip 仍存,无害)。
 
 **成功标准(headless)**:
+
 1. kiwi round-trip:页 `lowcodeRoutePattern` 经 exportFigFile→parseFigFile 存活;无字段时 byte-identical。
 2. compiler:页声明 `/product/:id` → `<Route path="/product/:id">`;页内 `$params.id` 文本插值 → `const $params = useParams()` + `import { useParams }` + emit `$params.id`;非法 pattern → warn + slug 回退;无 routePattern/无 `$params` → byte-identical(既有测试零改)。
 3. `bun run check` exit 0;tsgo 0;kiwi 119+ / compiler 全绿基准不回归。
 4. **真机验 pending**:`open-pencil build` 导出的多页应用在浏览器实际按 `/product/123` 路由 + `$params.id` 渲染 123(headless 仅断言 emit 串)。
 
 **交付记录(CODE COMPLETE 2026-06-21,commit `0af2e765`)**:
+
 - 实现按设计 12 文件(scene-graph types + lowcode-plugin-data + import.ts + ir/types + bindings + tree + route-paths + scaffold + PreviewPane.vue stub + kiwi round-trip 测试 +1 + 新 routing.test.ts +10)。
 - **`$params` 实现取「sentinel-ride-docStateReads」**:`$params` 经唯一 chokepoint `registerDocStateReads` 加进 `docStateReads`,`collectTree` 末 `docStateReads.delete(ROUTE_PARAMS_IDENT)` 抽成 `usesRouteParams` 布尔(`docStateReads` 对 emit 保持纯 docState)——避开 11 个 register 点的 set 穿线,经验 A 穷举-by-construction。component-body 的 `docStateReads` 被丢弃,sentinel 落那里无害。
 - **GATE 收口 2 处**:① `assignLowcodeField` 加 ROUTE_PATTERN case → complexity 21>20 → 移进 `assignLowcodeLayoutFix` 溢出组(§8 v11 同款,经验「加分支前看 complexity 闸」);② **check:vue(第 4 道闸)抓到** `src/app/lowcode/preview-pane/PreviewPane.vue:80` 的 IRTree stub 缺新增必填 `usesRouteParams`(tsgo 不覆盖 .vue)→ 补 `usesRouteParams: false`(动态路由 preview 导航是真机 §16 follow-up,stub 保持 slug 派生不变)。
@@ -339,17 +356,20 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 > **目标**:闭合「列表 → 详情页带 id」链路。§16.1 已能声明 `/product/:id` + 页内 `$params.id` 读;§16.2 让 navigate 能**带参跳进去** —— `navigate(generatePath("/product/:id", { id: <expr> }))`。无大分叉(只给已有 `NavigateAction` 加 `params?` 字段,不新增 ActionDef kind → 经验 A union sweep 不涉及),纯 headless。
 
 **现状坐实(经验 Q/E,直接读源)**:
+
 - `NavigateAction { id; kind:'navigate'; to? }`(scene-graph/types.ts);`resolveNavigate`(bindings.ts)只取 `to.trim()`,无表达式;`emitHandlerStatement` navigate(event.ts)= `navigate(${JSON.stringify(h.to)})`。
 - 表达式子语言全套就位:`parseExpression` / `checkExprRefs`(`$prev` + unknown-identifier 闸)/ `registerDocStateReads`(§16.1 起把 `$params` sentinel-ride 进 docStateReads)/ `emitExpression`。**supabase filters 是最佳镜像**(每 filter:parse → checkExprRefs → registerDocStateReads → `{column,op,ast,references}`)。
 - `substituteHandler`(§10 v6,substitute.ts)= total function over IREventHandler;navigate 原归「no-ast 组」与 delay/stop 一起原样返回。
 - **import gate latent(经验 A「不报错但漏」)**:`pageHasNavigateHandler`(ir-walk)用 `treeHasHandler` 但**不下降 condition/confirm 分支**(不像 `pageUsesToast` 用 `handlerTreeHasKind`)→ 嵌在分支里的 navigate 漏导 `useNavigate`(pre-existing,§10 condition 引入后产生)。
 
 **设计决定(无 AskUserQuestion,直接推荐项;`$params` 成员名/key-vs-pattern 不交叉校验,延续 §16.1 先例)**:
+
 - **数据模型**:`NavigateAction.params?: Record<string, string>`(param 名 → 值表达式串)。round-trip:events 整块 `lowcode/events` JSON 序列化 → **零 codec 改动**(同 §10 condition/toast)。
 - **IR**:`IRNavigateHandler.params?: IRNavigateParam[]`(`{name, ast, references}`,平行 IRSupabaseFilter);空/缺 → plain `navigate(to)`,非空 → `navigate(generatePath(to, {…}))`。
 - **emit gate**:`generatePath` 仅在「页有带 params 的 navigate」时随 `useNavigate` 进同一 react-router-dom 具名 import(新 `pageHasNavigateParams`)。
 
 **实现(经验 E 跨 scene-graph/IR/collect/substitute/emit/scaffold/tool;经验 M build:packages 再 lint;经验 A 双轮 sweep)**,8 src 文件:
+
 - **scene-graph**(types.ts):`NavigateAction.params?`。
 - **collect**(bindings.ts):`resolveNavigate` 加 states/inScope/docStates/docStateReads 参,逐 param `parseExpression` → `checkExprRefs`(code `action-navigate-param`)→ `registerDocStateReads` → push;**坏 param expr 丢整个 navigate handler**(同 supabase filters posture:坏目标链接比不导航更糟)。dispatchAction navigate 调用补参。
 - **IR**(ir/types.ts):`IRNavigateHandler.params` + `IRNavigateParam`。
@@ -360,6 +380,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **tool**(tools/modify/lowcode.ts):`validatePerKindFields` navigate arm → 新 `validateNavigateAction`(params 是 `{identifierKey: exprString}`,key 走 `PARAM_NAME_RE`、value 走 `validateExpression`);`buildActionFromValidated` navigate 带 params;tool 描述加 §16.2 段。
 
 **成功标准(headless)**:
+
 1. navigate + params + 多页 → `navigate(generatePath("/product/:id", { id: <expr> }))` + `generatePath` 进 react-router-dom import;无 params → plain `navigate("/about")`、无 generatePath。
 2. param 值表达式解析 + 标识符解析(page state / docState / `$params`);unknown identifier → 丢 handler + warn(`action-navigate-param-unknown-identifier`);unparseable → 丢 handler + warn(`action-navigate-param-invalid-value`)。
 3. round-trip:navigate.params 经 .fig 存活(events JSON 整块)。
@@ -368,6 +389,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 6. **真机验 pending**:`open-pencil build` 多页站浏览器实际从列表点入 `/product/123`(navigate 带 id)+ 详情页渲染 `$params.id`。
 
 **交付记录(CODE COMPLETE 2026-06-21,feat `7b16cd47`)**:
+
 - 实现按设计 8 src 文件 + 3 test(routing.test +9 / kiwi roundtrip +1 / modify tool +3),**零新 ActionDef kind**(经验 A union widening 完全不涉及)。
 - **顺手修 pre-existing latent(经验 A「不报错但漏」)**:`pageHasNavigateHandler` 原不下降 condition/confirm 分支 → 嵌分支的 navigate 漏导 `useNavigate`(§10 condition 引入后的潜伏 bug);本次泛化 `handlerTreeMatches` 后两个 navigate gate(useNavigate + generatePath)都正确下降分支。新增测试坐实嵌 condition 分支的 navigate-with-params 仍导 generatePath。
 - **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0 clones;compiler **669/0**(+9)、kiwi **121/0**(+1)、scene-graph 202/0、tools 196/0(+3)零回归;check:vue 0。零 hotfix、零 GATE 收口、零意外。
@@ -380,16 +402,19 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 > **目标**:页声明 `requiresAuth` → 多页编译在页模块顶部 emit redirect-if-unauthed 守卫(`if (!$currentUser.signedIn) return <Navigate to="/login" replace />`),复用 §2.v2 的 `$currentUser` auth docState。把「谁都能访问的多页站」升级成「带受保护页(仪表盘/账户)的真应用」。
 
 **现状坐实(经验 Q/E,直接读源)**:
+
 - `$currentUser`(`currentUserBuiltIn`,tree.ts)= **仅当 root 有 `lowcodeSupabaseConfig` 时**自动注册的 object docState(`{id,email,signedIn}`);runtime(`_lowcode_supabase.ts`)经 `auth.getSession()`+`onAuthStateChange` 同步;页经 `useDocState('$currentUser')` 读。→ **守卫前提 = supabase 已配**(否则 `$currentUser` 不存在)。
 - §16.1 `lowcodeRoutePattern` 是页级 CANVAS 字段的范本:round-trip 五触点 = scene-graph type / `lowcode-plugin-data.ts`(KEY 常量 + LOWCODE_PLUGIN_KEYS + serialize + Extracted 类型 + assignLowcodeField(§16.1 因 complexity 移进 `assignLowcodeLayoutFix` 溢出组))/ `import.ts assignImportedLowcodeFields`(页/根经此吸收)/ collectTree lift / IRTree。**页/根路由字段不进 PATCH_KEYS → 非 AI-tool-settable,编辑器经 graph.updateNode 设、.fig round-trip**(§16.1 先例)。
 - scaffold `buildPageFile`:hooks(docStateReads → `const x = useDocState('x')`)然后 `return (...)`;`routerAvailable` 门控(多页 buildPageModule=true / 单页 buildAppTsx=false)。
 
 **锁定决定(AskUserQuestion)**:
+
 1. **〔Fork 锁定〕redirect 目标 = 显式 document-level 字段**(root `lowcodeAuthRedirect?: string`,默认 `/login`)。app 级一处设登录路由,镜像 supabaseConfig root 归属,可配(/signin /auth)。否决「约定固定 `/login` 字面」(写死不可配)。
 2. **守卫开关 = 页级 `lowcodeRequiresAuth?: boolean`**(每页自决,平行 routePattern)。**多选语义无**(布尔)。
 3. **守卫 emit = react-router `<Navigate>` 早返**(`if (!$currentUser.signedIn) return <Navigate to=… replace/>`),比 useEffect+useNavigate 干净、声明式。
 
 **实现(经验 E 跨 scene-graph/round-trip/collect/scaffold;经验 M build:packages 再 lint;经验「加分支前看 complexity 闸」)**,7 src 文件:
+
 - **scene-graph**(types.ts):`lowcodeRequiresAuth?: boolean`(页)+ `lowcodeAuthRedirect?: string`(root)。
 - **round-trip**(lowcode-plugin-data.ts + import.ts):`LOWCODE_REQUIRES_AUTH_KEY='lowcode/requiresAuth'` / `LOWCODE_AUTH_REDIRECT_KEY='lowcode/authRedirect'` 入 LOWCODE_PLUGIN_KEYS;serialize(requiresAuth 仅 `===true` 写、authRedirect 仅非空写 → public/默认页 byte-identical);Extracted 类型 + assignLowcodeLayoutFix 两 case(requiresAuth 严格 `===true` gate 同 FREE、authRedirect string 守卫);assignImportedLowcodeFields 两行。
 - **IR**(ir/types.ts):`IRTree.requiresAuth?` + `authRedirect?`(可选 → 无 .vue stub 破坏,区别 §16.1 必填 usesRouteParams)。
@@ -400,6 +425,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **GATE 收口 2 处(complexity,经验「加分支前看闸」)**:`serializeLowcodeFields` 22>20 → 抽 `serializeRoutingAuthFields`(routePattern+requiresAuth+authRedirect 三 entry 移出,同位置调用 → 顺序/byte-identical 不变);`buildPageFile` 24>20 → 抽 `buildRouterImport`。
 
 **成功标准(headless)**:
+
 1. 多页 + supabase + 页 requiresAuth → `import { Navigate }` + `const $currentUser = useDocState("$currentUser")` + `if (!$currentUser.signedIn) return <Navigate to="/login" replace />`;public 页无守卫。
 2. root `lowcodeAuthRedirect` 覆盖默认(`/signin`)。
 3. requiresAuth 无 supabase → warn `auth-guard-no-supabase` + 留 public(不 emit 引用不存在 docState 的守卫)。
@@ -409,6 +435,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 7. **真机验 pending**:部署多页站,未登录访问受保护页实际跳登录页 + 登录后可访问。
 
 **交付记录(CODE COMPLETE 2026-06-21,feat `f91bb4a4`)**:
+
 - 实现按设计 7 src + 2 test(routing.test +7 / kiwi roundtrip +1),**零新 ActionDef kind / 零 tool 改动**(页/根路由字段非 AI-settable,§16.1 先例)。
 - **关键约束**:`$currentUser` 仅 supabase 配置时存在 → 守卫严格 gate 在 supabase 上(无则 warn + public);守卫 emit 用 `<Navigate>` 早返(声明式,免 useEffect)。
 - **GATE 收口 2 处(complexity)**:serializeLowcodeFields→serializeRoutingAuthFields、buildPageFile→buildRouterImport(均抽 helper,行为不变)。
@@ -423,6 +450,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状坐实(经验 Q/E)**:§16.1 已把 `$params` 做成 sentinel-ride 内置只读源:`BUILTIN_READ_IDENTS`(bindings.ts)+ `unknownIdentifiers` 跳过 + `registerDocStateReads` 单 chokepoint 把 `$params` 搭车进 `docStateReads` + `collectTree` 末 `docStateReads.delete(ROUTE_PARAMS_IDENT)` 抽 `usesRouteParams` + scaffold `routerAvailable` 门控 emit `const $params = useParams()`。§16.4 完全镜像这条。
 
 **设计(无 AskUserQuestion,直接平行 §16.1)**:
+
 - **`$query` 内置只读源**(bindings.ts):`QUERY_PARAMS_IDENT='$query'` 入 `BUILTIN_READ_IDENTS`;`registerDocStateReads` 的 sentinel 条件从 `ref===ROUTE_PARAMS_IDENT` 收敛成 `BUILTIN_READ_IDENTS.has(ref)`(`$params`+`$query` 都搭车,单点)。
 - **collect**(tree.ts):`usesQueryParams = docStateReads.delete(QUERY_PARAMS_IDENT)`(平行 usesRouteParams),入 IRTree。
 - **IR**(ir/types.ts):`IRTree.usesQueryParams?: boolean`(**可选** → 不破 .vue IRTree stub,§16.3 教训)。
@@ -431,12 +459,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **零碰**:无新 scene-graph 字段(`$query` 在 bindings 表达式串里,随 `lowcode/bindings` 整块 round-trip)→ **零 round-trip / 零 scene-graph / 零 tool 改动**;单页无 router → 不 emit(byte-identical)。
 
 **成功标准(headless)**:
+
 1. 页表达式 `$query.foo` + 多页 → `import { useSearchParams }` + `const $query = Object.fromEntries(useSearchParams()[0])` + emit `$query.foo`;`$params` + `$query` 同页共一个 react-router-dom import(navigate/useParams/useSearchParams 合一)。
 2. 无 `$query` → usesQueryParams false,byte-identical;单页 → 不 emit。
 3. `bun run check` exit 0;tsgo 0;jscpd 0;compiler/kiwi/scene-graph/tools 全绿。
 4. **真机验 pending**:浏览器 `/products?sort=price` 实际 `$query.sort` 渲 `price`。
 
 **交付记录(CODE COMPLETE 2026-06-21,feat `7c315609`)**:
+
 - 实现按设计 4 src + 1 test(routing.test +6),**零 scene-graph / 零 round-trip / 零 tool 改动**(§16.x 最干净一片;`$query` 随 bindings 表达式 round-trip)。
 - **`$query.foo` 成员访问靠 `Object.fromEntries(useSearchParams()[0])`**(URLSearchParams→plain object;区别 §16.1 `$params`=useParams() 本就是 object)。
 - **complexity 主动收口**:抽 `RouterUsage` + `buildRouterHookLines`(把 §16.3 已抽的 buildRouterImport 一并收进 RouterUsage 入参),buildPageFile 压回 20 以下,无 GATE 报错。
@@ -451,6 +481,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状(grep 坐实)**:`IRList`(ir/types.ts:256,Phase 2 §9)只对「array-typed **state** datasource」emit `.map()`。绑真实数据源要 `supabaseQuery action → setState(array) → LIST`(Phase 3 §2),**间接绕且无分页/排序/筛选**。
 
 **剩余 / 建议方向**:
+
 - **repeater 直接声明数据源 = Supabase query**(表/select/where/order/limit),编译期 emit 拉取 + `.map()`,免手搭 supabaseQuery→setState 链。
 - **分页**:offset/cursor 分页 + 上一页/下一页 / 加载更多控件。
 - **排序 / 筛选 UI**:绑控件值 → query order/where(复用 §3.v4 controlled bindings)。
@@ -462,6 +493,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **分叉锁定**:① 首片范围 = **全做**(数据源 + 分页 + 排序/筛选 UI)—— 用户选最进取项;② 数据源声明形态 = **LIST 内联 query 配置**(挂在 `dataSourceRef` 上,随 interactiveProps JSON blob round-trip → 零 codec)。**统一机制**:filter/sort/pagination 全靠「query 表达式引用响应式值(docState/page-state)」+ 复用既有 §3.v4 controlled bindings / setState 驱动控件 → **无新 ActionDef kind**。体量较大,按 §16 节奏分 §17.1→.2→.3 三片交付,每片 `bun run check` 绿。
 
 **交付记录(CODE COMPLETE 2026-06-21,§17.1 `ff7ac57c` / §17.2+§17.3 `231c732d`)**:
+
 - **§17.1 数据源 + 响应式 filters**:LIST `dataSourceRef.kind==='supabaseQuery'` + `query{table,columns,filters,orderBy,limit}` → 编译期 emit per-LIST fetch hook(`useState` rows + `useEffect` 跑 `getSupabaseClient().from(t).select(c)<filters><order><limit>`,`active` 守卫防卸载后 setState)+ `.map()` 迭代 rows。filters 复用 §2 `resolveSupabaseFilters`(`valueExpr` 走表达式子语言)→ 引用的 docState 进 effect deps = **绑控件即实时筛选,零额外接线**。门控 = supabase 配置(`$currentUser` proxy,同 §16.3);组件内的 supabase LIST 拒绝(无 page hook 槽)。`$`-builtin($params/$query)dep 走 `JSON.stringify` 防对象身份每渲染重跑。
 - **§17.2 offset 分页**:`query.offsetExpr`(如 `$page * 20`,需 `limit` 页大小)→ emit `.range(offset, offset+size-1)` 取代 `.limit(size)`;offset 引用的 docState 进 deps → 用户自建的上一页/下一页 setState 改 page docState 即翻页。offset 无 limit → warn + 忽略分页(不丢整 list)。
 - **§17.3 动态排序**:orderBy 子句接受响应式 `columnExpr`/`ascendingExpr`(覆盖静态 `column`/`ascending`)→ `.order(<expr>, { ascending: <expr> })`;绑 select/toggle 到引用的 docState 即实时改排序列/方向。静态 + 响应式子句共存。
@@ -484,6 +516,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **分叉锁定**:① 控件形态 = **INPUT 上 upload interactiveProp**(否决新 FILEUPLOAD NodeType —— **零 scene-graph/codec 改动,随 interactiveProps blob round-trip,延续 §17 经验**;避开经验 A/G union widening);② URL 形态 + 范围 = **public URL 核心上传**(`getPublicUrl` → resultTarget docState;单文件;否决 signed URL / 进度 / 预览 / 多文件,全延后)。
 
 **交付记录(CODE COMPLETE 2026-06-21,feat `d99ae83b`)**:
+
 - **数据模型**:INPUT `interactiveProps.upload = { bucket, resultTarget, pathExpr?, accept? }`(自由 blob,**零 scene-graph/codec**)。
 - **collect**(tree.ts):`applyUploadInput` 门控 supabase(`$currentUser` proxy,同 §16.3/§17)+ bucket 非空 + resultTarget 是合法 docState(注册为 write → 自动 import `setDocState`);可选 `pathExpr` 走共享 `resolveReactiveExpr`(原 §17 `resolveListQueryExpr` 改名泛化);丢弃 file input 不需要的 text 属性(placeholder/value/defaultValue/type)。`resolveControlDescriptors` 把 upload>controlled>controlKind 的互斥优先级收进一个 helper(nodeToIR complexity 闸)。
 - **emit**(element.ts):`<input type="file">` + accept + async onChange(`uploadAttrParts` + `emitUploadHandler`,formatAttrs complexity 闸):`const __file = e.target.files?.[0]; if (!__file) return; const __path = <pathExpr 前缀>/__file.name | __file.name; await getSupabaseClient().storage.from(bucket).upload(__path, __file, {upsert:true}); if (!error) setDocState(resultTarget, …getPublicUrl(__path).data.publicUrl)`。path = `` `${<pathExpr>}/${__file.name}` ``(有前缀)或裸 `__file.name`。
@@ -510,6 +543,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **数据模型(零 scene-graph/codec,延续 §17/§18 的 interactiveProps blob 路径)**:受控 input `interactiveProps.validation = { required?, pattern?, minLength?, maxLength?, min?, max?, customExpr?, messages?: { required?, pattern?, minLength?, maxLength?, min?, max?, custom? } }`。随 `lowcode/interactiveProps` 整块 round-trip。
 
 **实现(纯 compiler-emit,8 文件)**:
+
 - `ir/types.ts`:`IRFieldValidation { key; stateName; stateKind; rules: IRValidationRules; custom?: IRValidationCustom }` + `IRValidationRules`/`IRValidationMessages`/`IRValidationCustom`;`IRElement.validation?`(字段)+ `IRElement.formValidationKeys?`(`<form>` 的受控校验后代键)+ `IRTree.validatedFields?`(页级累加,**全可选 → 不破 .vue IRTree stub**,§16.3 教训)。
 - `ir/collect/tree.ts`:`WalkCtx.validatedFields` 累加器;`applyValidation(node,ctx,controlled,events)`(读 validation 配置,parse 核心规则[pattern compile 校验、数值 finite 校验,坏规则 warn+drop]、customExpr 经共享 `resolveReactiveExpr` 解析[复用 §17,拒 `$prev`/未知标识、注册 docState read]、onBlur 冲突 warn+drop[校验占有 onBlur]),接进 `resolveControlDescriptors`(受控才解析,非受控带配置 warn);`collectValidationKeys(nodes)` 给 FORM 收后代校验键 → `element.formValidationKeys`;collectTree 末 lift `validatedFields`。
 - `adapters/react/lowcode/validation.ts`(新):`buildLowcodeValidationRuntime()`(`_lowcode_validation.tsx` 的纯 `validateValue(value, rules)` —— 核心规则求值,首条失败规则消息[自定义或默认],空可选字段跳过非 required 规则;**消息用字符串拼接非 `${}` 避 no-template-curly**)+ `buildValidationGlue(fields)`(页级 `useState` 错误存 + `__validators` map[每字段一闭包:核心规则调 `validateValue`,customExpr 内联 `emitExpression`]+ `__validateField`(onBlur)/`__validateFields`(onSubmit)) + `VALIDATION_ERROR_CLASSES` safelist。
@@ -519,6 +553,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - `adapters/react/index.ts`:`maybeEmitLowcodeValidationRuntime` + `validationActive` 双路径计算 + `emitLowcodeRuntimes` 抽共享(6 个 maybeEmit 调用收一处,**消 jscpd clone**)+ import 路径单/多页 + safelist 并入 VALIDATION_ERROR_CLASSES。
 
 **交付记录(CODE COMPLETE 2026-06-22,feat `e888effb`)**:实现按设计 8 src 文件 + 2 test 文件;**2 处 GATE 收口**(complexity:buildPageFile→`buildLowcodeRuntimeImports`;jscpd:双路径 maybeEmit 序列→`emitLowcodeRuntimes` 共享 helper),零 hotfix、零意外。
+
 - **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **715/0**(+13 form-validation.test)、kiwi **127/0**(+1 round-trip)、scene-graph 202/0、tools 196/0 零回归;check:vue 0。
 - **e2e 实跑**:scratch 多字段验证表单 .fig(required+pattern+minLength+customExpr+中文消息,FORM onSubmit setVariable)经 `exportFigFile` 写真盘 → CLI `compile` → App.tsx 出 `validateValue` import + `getDocStateSnapshot` 新鲜读 + `__validators` map(核心规则 JSON + 转义 pattern `\\.` + 中文消息)+ customExpr 内联 `if (__error === null && !(email !== "blocked@x.com")) __error = "该邮箱被禁用"` + 字段 `aria-invalid`+`onBlur` + 错误 `<p className="text-sm text-red-600 mt-1" role="alert">` + form `onSubmit={(e) => { e.preventDefault(); if (!__validateFields(["0:5"])) return; setDocState("status", "submitted"); }}` + index.css safelist 含 text-red-600 + `_lowcode_validation.tsx` 含 validateValue(scene-graph→.fig→parse→IR→emit 全链 + 真盘 round-trip)。
 - **边界 / 延后**:校验只挂受控单值字段(RADIO/CHECKBOX group 的值在 leaf 上,v1 不校验,warn);customExpr 用渲染快照读 docState(blur/submit 时已提交,正确;同-handler 程序化 setDocState 后陈旧 —— 罕见,核心规则用 getDocStateSnapshot 新鲜读不受影响);组合型 UI-kit 控件(shadcn Select 等)校验时错误 `<p>` 仍显示但无 per-field onBlur/aria(kit 自有 markup);**校验只对页面直属字段,extract 进组件的字段 v1 不校验**(组件体无页级 validator 槽);无 AI tool / GUI 授权面板(走 graph.updateNode + interactiveProps round-trip,§17/§18 先例)。**真机验积压 +1**:浏览器填表→失焦即时报错 + 非法提交被拦 + 合法提交跑 onSubmit。**§19 v2 follow-ups**:onChange 实时校验选项;FORM 级错误汇总;async/自定义校验函数;校验授权 GUI;组件内字段校验。
@@ -538,24 +573,39 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 ### §20 详细设计 + 锁定决定(2026-06-21,无 AskUserQuestion — 明确保守默认,镜像 §16.2/§16.4「直接推荐项」)
 
 **锁定 scope**(助手推荐,三个分叉皆保守默认):
+
 1. **状态集合 = hover/focus/active/disabled 四个核心**(否决 group-hover/focus-within —— 它们需「`group` 祖先」概念,谁是 group 根是更大设计,延后)。
 2. **可覆盖属性 = 仅 appearance**(`fills`/`strokes`/`cornerRadius`/`opacity`/`effects`)—— 交互态是「视觉反馈」非「重排」,layout-on-hover 罕见;reset map 因此聚焦 appearance 默认值。
 3. **不支持断点×状态组合(`md:hover:`)v1** —— 正交、组合爆炸,延后;状态前缀仅顶层。
-4. **无 tool / 无 GUI**(set via `graph.updateNode` + .fig round-trip,镜像 §7;AI-settable 延后)。
+4. **v1 起初无 GUI;tool read/write 后续接通**(先经 `graph.updateNode` + .fig round-trip 验证,再补 AI/MCP tool 边界;GUI 仍延后)。
 5. round-trip 走 `lowcode/stateOverrides`(镜像 responsiveOverrides,经 `...lowcodeRest` 落到节点,零 codec override)。
 
 **实现 6 文件**:
+
 - `scene-graph/types.ts`:`InteractionState`/`StateOverride`(appearance-only Pick)/`StateOverrides` + `SceneNode.stateOverrides?`(**可选 → 不破 .vue IRTree stub**,§16.3 教训)。
 - `io/formats/jsx/tailwind-classes.ts`:把 §7 的 `layoutStyleDelta`→泛化 `styleDelta(base,variant,resetMap)` + 抽共享 `collectVariantClasses<V>`(breakpoint/state 共用核心:merge override→`nodeToStyle`→diff→twirl→`${variant}:` 前缀;可选 `extra` hook 供 responsive 的 visibility 行);`collectResponsiveTailwindClasses` 改用它;新 `INTERACTION_STATES` + `STATE_STYLE_RESET`(appearance 默认:bg→transparent/border→0/radius→0/opacity→1/shadow→none) + `collectStateTailwindClasses`,jsx barrel 导出。
 - `compiler/ir/style.ts`:`tailwindClassName` 在 base/responsive 后追加 state classes。
 - `lowcode-plugin-data.ts`:`LOWCODE_STATE_OVERRIDES_KEY` + 入 `LOWCODE_PLUGIN_KEYS` + serialize(`isNonEmpty` gate → 非交互 .fig byte-identical)+ Extracted 字段 + assign case + `isStateOverrides` 轻校验。
 
 **交付记录(CODE COMPLETE 2026-06-21,feat `209371ad`)**:
+
 - 实现按设计 6 src/test 触点 + 3 test 文件(core unit 8 / compiler 3 / kiwi round-trip 2)。**零 hotfix、零 GATE 收口**(jscpd 0 —— 共享 `collectVariantClasses` 把 responsive/state 两 collector 去重),**零意外**。
 - **关键复用**:state 与 §7 responsive **同一条 `nodeToStyle` style-level diff 管线**(单一 SceneNode→Tailwind 翻译源),仅前缀(`hover:` vs `md:`)+ reset map(appearance vs layout)+ 属性集不同;`STATE_STYLE_RESET` 复刻 `LAYOUT_STYLE_RESET` 思路,让「清掉某属性回默认」(如 hover 去阴影)emit 显式 reset(`hover:shadow-none`/`hover:opacity-100`)而非静默丢类。
 - **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **685/0**(+3)、kiwi **124/0**(+2)、scene-graph 202/0、tools 196/0 零回归;check:vue 0;render/jsx +8(仅既有 §6 frame-nested 出范围 fail)。
 - **e2e 实跑**:scratch .fig(HoverCard 帧带 `stateOverrides.hover.fills` + `disabled.opacity`)经 IORegistry 写真 .fig → CLI compile → App.tsx 出 `bg-white hover:bg-[#EDF2FA] disabled:opacity-50`(证明 scene-graph→.fig serialize→parse→IR→emit 全链路 + 真盘 round-trip)。
-- **边界 / 延后**:`disabled:` 仅匹配 form 控件(input/button/select/textarea),其它节点上为惰性 util(声明式 styling 原语,无害);`cornerRadius` 覆盖走 uniform 半径(节点带 `independentCorners` 时按其路径,边界已记);**授权 GUI / AI tool 延后真机**(沿用 §7 先例);group-hover/focus-within + 断点×状态组合延后。**新经验:把同形态的两个 variant emitter(§7 responsive breakpoint + §20 interaction-state)收敛到一个泛型 `collectVariantClasses<V>`(参数化 variants/overrideFor/resetMap/extra)—— 既杀 jscpd clone 又锁单一翻译源;两者唯一真差异 = 前缀来源 + reset map + 属性集,其余共享。**
+- **边界 / 延后**:`disabled:` 仅匹配 form 控件(input/button/select/textarea),其它节点上为惰性 util(声明式 styling 原语,无害);`cornerRadius` 覆盖走 uniform 半径(节点带 `independentCorners` 时按其路径,边界已记);GUI 仍延后;group-hover/focus-within + 断点×状态组合延后。**新经验:把同形态的两个 variant emitter(§7 responsive breakpoint + §20 interaction-state)收敛到一个泛型 `collectVariantClasses<V>`(参数化 variants/overrideFor/resetMap/extra)—— 既杀 jscpd clone 又锁单一翻译源;两者唯一真差异 = 前缀来源 + reset map + 属性集,其余共享。**
+
+### §20.3 tool / round-trip polish(2026-06-23)
+
+**交付记录**:
+
+- `update_lowcode_node` 接受 `stateOverrides`,工具边界只允许 `hover|focus|active|disabled` 和 appearance-only 字段(`fills/strokes/cornerRadius/opacity/effects`);`null` 可清空。
+- `read_lowcode_node` 返回节点已设置的 `stateOverrides`,保持「未配置字段省略」契约。
+- Kiwi 覆盖补齐 `lowcode/stateOverrides` export + `serializeLowcodeFields` round-trip 测试,防止后续 lowcode pluginData 收口时误删交互态样式。
+
+**验证**:
+
+- `bun test tests/engine/compiler/state-variants.test.ts tests/engine/tools/lowcode/modify.test.ts tests/engine/tools/lowcode/read.test.ts tests/engine/kiwi/lowcode/export-node.test.ts tests/engine/kiwi/lowcode/plugin-data.test.ts`
 
 ## §21 覆盖层组件(Modal / Dialog / Drawer / Popover / Tooltip)
 
@@ -564,6 +614,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状(grep 坐实)**:无用户可授权覆盖层(命中仅 preview-bridge overlay + `__opConfirm` 内部 modal)。
 
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+
 - **授权形态**:不加新 NodeType,不引入 Radix/shadcn runtime 依赖;覆盖层走 FRAME 的 `interactiveProps.overlay` blob。`kind` 支持 `modal | drawer | popover | tooltip`,默认 `modal`;`openRef` 必须指向 boolean docState;`closeOnBackdrop` 默认 `true`。
 - **IR/API**:`IRElement.overlay?: IROverlay`。collect 期验证 FRAME + boolean docState,通过后把 `openRef` 加入 docState read;可点击 backdrop 时把 `openRef` 加入 docState write。非 FRAME / unknown docState / 非 boolean docState 分别 warn 并回退普通元素。
 - **emit**:overlay panel 仍走原始元素 emitter;外层包 `{openRef && (...)}` + fixed shell + backdrop + panel class。`closeOnBackdrop=true` 时 backdrop 是 button 并 `setDocState(openRef,false)`;`false` 时 backdrop 是 `aria-hidden` div,不导入 setter。runtime-only Tailwind class 由 `OVERLAY_RUNTIME_CLASSES` 注入 safelist,避免动态类被漏扫。
@@ -577,6 +628,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状**:§15 ui-kit adapter 仅映射 9 个交互组件(Button/Input/Textarea/Label/Select/Checkbox/Switch/RadioGroup + Phase C 在做)。无展示型原语。
 
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-23)**:
+
 - **首批范围**:只做展示型/低状态原语 `Badge` / `Alert` / `Separator` / `Skeleton` / `Progress` / `Avatar`。`Tabs` / `Accordion` 需要 active/open state 数据模型,延后到复用 §21 docState open-state 的独立片。
 - **授权形态**:不加新 NodeType,走任意节点 `interactiveProps.uiKit = { primitive: "badge" | "alert" | "separator" | "skeleton" | "progress" | "avatar", ... }`。兼容字段 `kind`/`component` 作为 primitive 别名;plain emit 忽略该 hint。
 - **IR/API**:`IRElement.displayKind?: "badge" | ... | "avatar"` + `display?: { variant?, value?, src?, alt?, fallback? }`。collect 期识别未知 primitive 时 warn `ui-kit-primitive-unknown` 并回退普通元素。
@@ -585,6 +637,16 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **验证**:`tests/engine/compiler/ui-kit/display-primitives.test.ts` 覆盖首批基础映射、Progress value、Avatar image/fallback、uiKit off plain path、unknown primitive warning;并回跑 §15 tags/controls/card UI-kit 测试。
 - **边界/延后**:v1 是 headless compiler 能力,无 GUI primitive picker;不做 Tabs/Accordion;不自动根据节点名称/样式推断 primitive;不做 variant 白名单校验(交给生成项目 TS/shadcn 类型约束)。
 
+### §22 v2 Tabs / Accordion(2026-06-23)
+
+**锁定决定 + 交付记录**:
+
+- **范围**:补 `Tabs` / `Accordion` 两个 composed display primitives,继续走 `interactiveProps.uiKit` blob,不新增 NodeType,plain emit 保持普通节点。
+- **授权形态**:`{ primitive: "tabs", defaultValue?, items: [{ value, label, content }] }` 和 `{ primitive: "accordion", defaultValue?, type?: "single"|"multiple", collapsible?, items: [{ value, title|label, content }] }`。`items` 缺失/无有效项时 warn `ui-kit-primitive-items-invalid` 并回退普通元素。
+- **IR/API**:`displayKind` 扩到 `tabs|accordion`;`IRDisplayPrimitive` 增加 `items/defaultValue/type/collapsible`。v2 先做静态 items;active/open state 双向绑定留给后续 stateful primitive 片。
+- **emit**:shadcn adapter inline `tabs.tsx` / `accordion.tsx`,deps 按需加入 `@radix-ui/react-tabs` / `@radix-ui/react-accordion`;`emitDisplay` 输出 `TabsList/TabsTrigger/TabsContent` 和 `AccordionItem/AccordionTrigger/AccordionContent` 结构。
+- **验证**:`bun test tests/engine/compiler/ui-kit/display-primitives.test.ts tests/engine/compiler/ui-kit/card.test.ts tests/engine/compiler/ui-kit/tags.test.ts tests/engine/compiler/ui-kit/controls.test.ts`。
+
 ## §23 图标(lucide-react)
 
 > 第二波。shadcn 默认图标库,小而通用。
@@ -592,6 +654,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状(grep 坐实)**:无 icon 节点(lucide 仅在 shadcn 内部注释「inline SVG instead of lucide-react」)。
 
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+
 - **授权形态**:不加新 NodeType,走任意节点 `interactiveProps.icon`。支持字符串 `icon:"camera"` / `icon:"lucide:camera"` / `icon:"Camera"` 或对象 `{ name, size, color, strokeWidth, ariaLabel }`。对象 `label` 兼容为 `ariaLabel`。
 - **IR/API**:`IRElement.icon?: IRLucideIcon`。collect 期用本地 `@iconify-json/lucide` 图标清单验证名称,归一化为 lucide-react PascalCase export(如 `camera-off`→`CameraOff`)。unknown / 非 lucide prefix warn `lucide-icon-unknown` 并回退普通元素,避免生成缺失 named import。
 - **emit**:page/component module 按实际使用 emit `import { Name } from 'lucide-react'`;元素 emit `<Name className="..." size color strokeWidth ... />`。无 `ariaLabel` 时默认 `aria-hidden="true"`;有 label 时 `role="img" aria-label="..."`。icon 名不进 Tailwind safelist(走 JS import);节点尺寸/颜色布局仍走既有 className + optional props。
@@ -613,7 +676,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **§24.1 图片 + aspect-ratio**(feat `8a145cbb`):节点 `interactiveProps.image={src?,srcExpr?,alt?,objectFit?}` → emit 空 `<img>`(`srcExpr` 表达式[绑 docState/§18 上传结果]优先于字面 `src` URL;`alt`;object-fit→`object-cover/contain/fill/none/scale-down`)。`interactiveProps.aspectRatio`(任意节点)→ `aspect-[w/h]`(校验 "16/9"/"1.5",坏的 warn+drop)。实现:`IRImage{srcLiteral?,srcExpr?,alt}` + `IRElement.image?`;tree.ts `resolveImageNode`(srcExpr 经共享 `resolveReactiveExpr`,坏 expr/缺 src warn+skip)+ `appendAspectRatio` + `buildImageElement`(void 叶,early-return 跳 control/vector/children 路径,events 仍解析支持 onClick);element.ts `formatAttrs` += image → `imageAttrParts`(`src={expr}`/`src="url"` + `alt`)。object-fit/aspect 进 className → collectClassNames 自动 safelist。**2 GATE 收口**:nodeToIR complexity 21→抽 `applyOptionGroupWrapper`;no-nested-ternary→`joinClass` helper。compiler **726/0**(+11 images.test)、kiwi **128/0**(+1 round-trip)。e2e CLI compile 真盘 .fig:字面 URL `<img src="..." object-cover aspect-[16/9]>` + 绑定 `<img src={avatarUrl}>`(useDocState,链 §18)。
 
-**§24.2 渐变填充**(feat `bcd89742`):GRADIENT_LINEAR/RADIAL fill → `bg-[linear-gradient(...)]`/`bg-[radial-gradient(circle,...)]` arbitrary value(core `collectTailwindClasses` 的 `collectGradientClasses`,镜像 clip-path bypass:twirl 表达不了 gradient background → 直接建 CSS 值,空格→`_`,hex 色,linear 角度从 gradientTransform 端点 `atan2(dx,-dy)` 派生)。跳 TEXT(那里 gradient 是文字色)+ ANGULAR/DIAMOND(v1)。**native fill 数据 → 零 scene-graph/codec**;arbitrary value 进 index.css safelist(`@source inline`)。endpoint 数学内联(不 import canvas/,守 arch 边界)。compiler **729/0**(+3 gradient.test)、render/jsx gradient +8(仅既有 §6 frame-nested 出范围 fail)。e2e CLI compile 真盘 .fig:`bg-[linear-gradient(180deg,_#3366F2_0%,_#991ACC_100%)]` + safelisted(gradient native fill 经 exportFigFile→parseFigFile→emit 全链)。
+**§24.2 渐变填充**(feat `bcd89742`):GRADIENT*LINEAR/RADIAL fill → `bg-[linear-gradient(...)]`/`bg-[radial-gradient(circle,...)]` arbitrary value(core `collectTailwindClasses` 的 `collectGradientClasses`,镜像 clip-path bypass:twirl 表达不了 gradient background → 直接建 CSS 值,空格→`*`,hex 色,linear 角度从 gradientTransform 端点 `atan2(dx,-dy)` 派生)。跳 TEXT(那里 gradient 是文字色)+ ANGULAR/DIAMOND(v1)。**native fill 数据 → 零 scene-graph/codec**;arbitrary value 进 index.css safelist(`@source inline`)。endpoint 数学内联(不 import canvas/,守 arch 边界)。compiler **729/0**(+3 gradient.test)、render/jsx gradient +8(仅既有 §6 frame-nested 出范围 fail)。e2e CLI compile 真盘 .fig:`bg-[linear-gradient(180deg,_#3366F2_0%,_#991ACC_100%)]` + safelisted(gradient native fill 经 exportFigFile→parseFigFile→emit 全链)。
 
 **GATE(两片)**:`bun run check` exit 0;tsgo 0;jscpd 0;零回归。**边界/延后**:image 只走用户 URL/绑定(Figma image-fill 导出 asset 延后);单 fill;object-fit 走 className;gradient ANGULAR(conic)/DIAMOND + 多 fill 叠加延后;aspect-ratio 任意节点但 image 容器最常用;无 AI tool/GUI(graph.updateNode+interactiveProps round-trip)。**真机验积压 +1**(浏览器渲图片[含 §18 上传 URL]+ 渐变背景 + aspect-ratio 盒)。**§24 v2 follow-ups**:Figma image-fill→asset 导出;gradient conic/多 stop 精度;`<picture>`/srcset 响应式图;image lazy-loading。
 
@@ -626,6 +689,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状(grep 坐实)**:无 `<a href>` emit(只有内部 navigate)。
 
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+
 - **授权形态**:外链显式走 `interactiveProps.href`/`target`,或嵌套 `interactiveProps.link.{href,hrefExpr,target}`;不做 URL 自动判定,避免把内部路由与外链混淆。`target` 允许 `_self | _blank | _parent | _top`,默认 `_blank`。
 - **IR/API**:`IRElement.link?: IRLink`。collect 期一旦解析出 link,元素 tag 从原 tag 改为 `a`;静态 `href` 变 `hrefLiteral`,动态 `hrefExpr` 走已有表达式解析和 docState read 追踪。表达式非法 / 引用未知时 warn 并回退普通元素。
 - **emit**:`<a href target>`;`target="_blank"` 自动加 `rel="noopener noreferrer"`,其它 target 不加 rel。链接能力与内部 `navigate` action 完全分离。
@@ -638,6 +702,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状(grep 坐实)**:无 sticky/fixed/overflow-/z-index emit。
 
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+
 - **授权形态**:首选 `interactiveProps.layout` 子配置;兼容直接放在 `interactiveProps` 的旧形态字段。纯 emit 能力,不改 scene-graph / codec。
 - **支持范围**:`position` 仅接受 `sticky | fixed`;offset 支持 `top/right/bottom/left/inset`;overflow 支持 `overflow/overflowX/overflowY = auto | scroll | hidden | visible`;`zIndex` 支持有限 number 或数字字符串。
 - **Tailwind emit**:位置/overflow 走普通 utility;offset 数值转 `top-[0px]` 等 arbitrary value,也接受 `px/rem/em/vh/vw/%/cqw/cqh`、`auto/full/px`、fraction token;zIndex 转 `z-[n]`。无效值静默忽略,不污染 className。
@@ -652,6 +717,96 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **建议方向**:(a)docState 键标 `persist` → emit 初值读 `localStorage` + 变更写回(版本化 key);(b)派生 state = 一条表达式从其它 state/props 算出(emit `useMemo`),复用表达式子语言 + read-context 引用追踪。**待锁**:持久化范围(整 docState vs 标记键);派生 state 的循环依赖检测(collect 期静态拒)。
 
+### §27.1 persisted docState 详细设计 + 锁定决定(2026-06-23,无 AskUserQuestion — prompt.md 锁保守推荐项)
+
+> **目标**:让显式标记的 Document State 在生成应用里跨刷新保存到 `localStorage`,补齐「应用状态会变但刷新即丢」的运行时短板。派生 / 计算 state 不混入本片,单独放 §27.2。
+
+**现状坐实(直接读源)**:
+
+- `StateDef` 同时服务 page state 和 root `lowcodeDocumentState`;docState 经 `collectDocStates` 转成 `IRDocStateDecl` 后由 `buildLowcodeStateRuntime` 生成 `src/_lowcode_state.ts`。
+- `_lowcode_state.ts` 目前只有 `initial` 默认值 + zustand store;无 `localStorage` 读写。
+- `.fig` lowcode 字段走 `lowcode/documentState` pluginData 整 blob;给 docState entry 加可选字段无需新 pluginData key / kiwi schema。
+- `set_doc_states` / `update_lowcode_node.lowcodeDocumentState` 共用 `validateStateDecls`;新增字段必须在工具边界校验,避免 AI 写入坏持久化配置。
+
+**锁定决定**:
+
+1. **持久化范围 = 仅显式标记的 docState**:`DocumentStateDef.persist?: true` 才持久化。page state 不持久化;`state[]` 里出现持久化字段由工具拒绝。否决「全部 docState 默认持久」,避免把 session/auth/error/loading 等瞬态状态写进浏览器存储。
+2. **key 策略 = `openpencil:<packageName>:<stateName>` + 可选 `storageKey` 覆盖**。默认 key 绑定生成项目包名和状态名,足够稳定且不需要文档级 appId;高级用户可用 `storageKey` 做跨重命名保留或多应用共享。
+3. **版本策略 = `storageVersion?: string` 变化时忽略旧值**。runtime 存 `{ version, value }`;未设置版本时写 `version:null`。读取时版本不等回退默认值,下一次写入覆盖成新版本。只忽略旧值,不主动 `removeItem`,避免误删用户自己复用的 key。
+4. **错误策略 = fail-open 到默认值**。`typeof window === 'undefined'`、JSON parse 失败、localStorage security/quota 异常都不阻断应用启动;写入失败静默忽略,因为持久化是增强能力不是业务关键路径。
+5. **§27.2 computed state 延后**:新增 `computedExpr` / `useMemo` / 循环依赖检测会触碰表达式 read-context 和 setter 语义,独立交付。
+
+**公开 API / Schema 改动**:
+
+- `StateDef` 增加可选字段:`persist?: boolean`, `storageKey?: string`, `storageVersion?: string`。字段共享在类型上存在,但编译器只在 `lowcodeDocumentState` 使用。
+- `IRStateDecl` 同步增加这三个可选字段;`collectDocStates` 透传用户 docState 的配置,内置 `$currentUser` 不持久化。
+- `set_doc_states` 文案更新为可接收 `{ persist?: true, storageKey?, storageVersion? }`。
+
+**内部实现拆解**:
+
+- `collectDocStates`:输出 `persist/storageKey/storageVersion`;page `collectPageStates` 保持默认值逻辑不变,不会把 page state 持久化到 runtime。
+- `buildLowcodeStateRuntime(decls, packageName)`:拆 `initialDefaults`;对每个字段生成 `readPersisted(name, default)` 初值;生成 `persistConfig` + `persistedNames`;`store.subscribe` 在变更时写 `localStorage`。
+- adapter emit:单页 / 多页把 `options.packageName` 传给 runtime builder;没有 docState 时仍不 emit runtime / zustand。
+- tools:校验持久化字段类型;`state[]` 带持久化字段拒绝,`lowcodeDocumentState[]` 允许。
+- tests:覆盖 runtime 读写代码串、adapter 传包名、tool 接受/拒绝、pluginData blob round-trip。
+
+**成功标准(headless)**:
+
+1. `persist:true` docState → `_lowcode_state.ts` 初值从 `localStorage` 读取,store 变更写回同 key。
+2. 未标记 docState → 保持内存态默认值,不进入 `persistConfig`。
+3. `storageKey` 覆盖默认 key;`storageVersion` 不匹配时回退默认值。
+4. page state 持久化字段由工具拒绝;docState 持久化字段经工具和 `.fig` pluginData 保留。
+5. `bun run build:packages`, focused tests, `tsgo --noEmit`, `bun run lint:structure` 通过;完整 `bun run check` 视 keep-out scratch 按 §1.5 处理。
+
+### §27.2 computed page state 详细设计 + 锁定决定(2026-06-23,无 AskUserQuestion — prompt.md 锁保守推荐项)
+
+> **目标**:让 page-scoped state 可以声明只读派生值,由现有表达式子语言从其它 state/docState/路由上下文计算,生成 React `useMemo`。本片不做 document-level computed state,避免把全局 store 生命周期和 page/router 生命周期混在一起。
+
+**锁定决定**:
+
+1. **范围 = page state only**:`StateDef.computedExpr?: string` 只允许出现在 page `state[]`;`lowcodeDocumentState[]` 带 `computedExpr` 由工具拒绝。docState computed 需要单独设计全局 store selector / dependency lifecycle,不塞进本轮。
+2. **只读语义**:computed state 不生成 setter。`setState` 目标指向 computed state 时 collect 阶段丢 action 并告警;`bindings.value` 指向 computed state 时丢 controlled wiring 并告警,因为 controlled input 必须有可写目标。
+3. **read-context 复用**:表达式复用现有 `parseExpression` + read-context 引用校验。可读 page state、docState、`$params`、`$query`;拒绝 `$prev`、未知 identifier。docState / route / query 引用沿用 `registerDocStateReads` 路径,保证 page scaffold 自动声明 `useDocState` / router hooks。
+4. **循环依赖 = collect 期静态降级**:computed↔computed 循环会标记循环成员为 `computedInvalid`,emit 为默认值常量并告警,而不是生成运行时递归或抛错。未知引用 / parse error 同样降级为默认值常量。
+5. **声明顺序 = writable state/doc/router before computed**:page scaffold 先声明 `useDocState`、`$params/$query`,再声明 page state;state emit 内部把 writable state 放前面,computed state 按依赖拓扑排序,保证 `useMemo` 引用的局部变量已在作用域中。
+
+**公开 API / Schema 改动**:
+
+- `StateDef` 增加 `computedExpr?: string`。字段存在于共享类型上,但工具边界只允许 page `state[]` 使用。
+- `IRStateDecl` 增加 `computed?: { ast, references }` 和 `computedInvalid?: true`;adapter 根据这两个字段选择 `useMemo`、默认值常量、或普通 `useState`。
+
+**内部实现拆解**:
+
+- `collectPageStates`:保留合法 state 声明与原始 `computedExpr`。
+- `resolveComputedStates`:在 docState 已收集后解析 computed 表达式,注册 docState/route/query reads,检测 unknown / `$prev` / 循环,并输出可 emit 的拓扑顺序。
+- `emitStateDecl`:普通 state → `useState(default)`;有效 computed → `useMemo(() => expr, deps)`;无效 computed → `const name = default`。
+- `buildReactImport` / page scaffold:仅有 computed state 时只导入 `useMemo`;混合 state 时导入 `useState, useMemo`;hook 声明顺序调整为 docState/router before state。
+- `resolveSetState` / `resolveValueBinding`:computed state 统一视作 read-only target,写入路径丢弃并告警。
+- tools:`update_lowcode_node.state[]` 允许并校验非空合法 `computedExpr`;`lowcodeDocumentState` / `set_doc_states` 明确拒绝。
+
+**成功标准(headless)**:
+
+1. `computedExpr: "count + tax"` → emitted TSX 含 `const total = useMemo(() => count + tax, [count, tax])`。
+2. computed 可读 docState、`$params`、`$query`;对应 hook 声明出现在 computed `useMemo` 之前。
+3. computed target 被 `setState` 或 controlled `bindings.value` 写入时 collect 告警并丢弃写入 wiring。
+4. 循环 / 未知引用 / parse error 不生成坏代码,而是默认值常量 + warning。
+5. focused compiler/tool tests、`bun run build:packages`, `tsgo --noEmit`, `bun run lint:structure` 通过;完整 `bun run check` 视 keep-out scratch 按 §1.5 处理。
+
+### §27.3 polish / round-trip 收尾(2026-06-23)
+
+> **目标**:把 §27.1/§27.2 从「能 emit」收尾到「schema/codec/IR 行为被钉住」,避免后续低代码字段扩展时误删 state 元数据。
+
+**交付记录**:
+
+- **Kiwi / `.fig` pluginData 覆盖**:`computedExpr` 继续走现有 `lowcode/state` JSON blob;不新增 kiwi schema key。测试固定 page computed state export 到 `NodeChange.pluginData`、`serializeLowcodeFields` JSON round-trip。
+- **IR collect 覆盖**:新增不依赖 React adapter 的 collect 测试,直接断言 computed state 的拓扑顺序、docState read 注册、`$query` 标记、循环/unknown warning 和 `computedInvalid` fallback。
+- **任务入口更新**:`prompt.md` 同步标记 §27.1/§27.2/§27.3 已完成,下一轮默认顺序改为 §20 → §24 → §22。
+
+**验证**:
+
+- `bun test tests/engine/compiler/ir/collect/state.test.ts tests/engine/kiwi/lowcode/export-node.test.ts tests/engine/kiwi/lowcode/plugin-data.test.ts`
+- §27.1/§27.2 聚焦测试与 full `bun run check` 已在同轮验证;§27.3 只补 coverage / docs / prompt。
+
 ## §28 用户事件覆盖收尾(onChange / onFocus / onBlur 端到端 + `$event`/`$value` 复活)
 
 > 第二波。接通已有但未走通的事件 + 复活 memory 里 shelved 的 token。
@@ -659,6 +814,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状(grep 坐实)**:`EventName` 联合已含 `onClick|onChange|onSubmit|onFocus|onBlur`,但 events→handler emit 路径**只接 onClick/onSubmit**;`element.ts` 的 onChange **只被 controlled binding 占用**,用户在 events 里授权的 onChange/onFocus/onBlur **不 emit**。memory 记 `$event`/`$value` token 因「onChange 无授权入口、无 live 用例」**SHELVED**(token 本身已能 parse,IDENT_RE 含 `$`)。
 
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+
 - **事件 emit**:events→handler 端到端接通 `onChange/onFocus/onBlur`,保留既有 `onClick/onSubmit` 行为;无事件局部变量的单 action handler 仍保持旧的 braceless emit 形态,降低快照漂移。
 - **事件局部变量**:`onChange/onFocus/onBlur` handler 内注入 `$event` 和 `$value`。`$event = e`;`$value = (e.target as HTMLInputElement).value`。collect 期只在这三个事件的 read-context 放行 `$event/$value`;例如 onClick 里用 `$value` 仍报 unknown identifier 并丢 handler。
 - **受控 onChange 合成策略**:controlled input 的 synthesized writer 先执行,用户授权的 `events.onChange` 后执行,合成同一个 `onChange={(e) => { ... }}`;因此 `$value` 可用于 writer 后的自定义动作。
@@ -700,6 +856,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **现状**:§7 responsive overrides / §8 component-props / §10 optionalParams 的数据模型 + emit + round-trip 在 phase-3 均已 headless 交付,**但授权 GUI 在 phase-3 均显式「延后真机」**(沿用「先 emit/headless,GUI 真机」先例)。
 
 **剩余**:
+
 - **§7 responsive overrides 编辑面板** —— 当前响应式 override 只能 MCP/CLI 写。
 - **§8 component-props 面板** —— 显式 props 编辑(text/fill/variant prop 值)。
 - **§10 optionalParams GUI** —— callWorkflow 的 optionalParams 当前 MCP-only(§10 v8 已实现 emit/数据,缺 GUI)。

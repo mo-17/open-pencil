@@ -1,10 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { ActionDef, DocumentStateDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
+import type { LowcodeNodeRead } from '@open-pencil/core/tools'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
-
-import type { LowcodeNodeRead } from '@open-pencil/core/tools'
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 
@@ -42,7 +41,8 @@ describe('read_lowcode_node', () => {
     graph.updateNode(btn.id, {
       interactiveProps: { text: 'Click me' },
       events: { onClick: actions },
-      renderCondition: 'count > 0'
+      renderCondition: 'count > 0',
+      stateOverrides: { hover: { opacity: 0.9 } }
     })
     const tool = getTool('read_lowcode_node')
     const result = tool.execute(figma, { id: btn.id }) as Result<LowcodeNodeRead>
@@ -51,6 +51,7 @@ describe('read_lowcode_node', () => {
     expect(result.data.interactiveProps).toEqual({ text: 'Click me' })
     expect(result.data.events?.onClick).toEqual(actions)
     expect(result.data.renderCondition).toBe('count > 0')
+    expect(result.data.stateOverrides).toEqual({ hover: { opacity: 0.9 } })
   })
 
   test('returns root-only fields when reading the root node', () => {

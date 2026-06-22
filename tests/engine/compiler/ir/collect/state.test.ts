@@ -61,6 +61,62 @@ describe('collectTree — page state', () => {
     expect(ir.states[0].id).toBe('s1')
     expect(ir.warnings.some((w) => w.code === 'state-invalid')).toBe(true)
   })
+
+  test('computed state resolves read-context refs and topologically orders computed deps', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 1 }]
+    })
+    const page = graph.getNode(pageId)
+    if (!page) throw new Error('no page')
+    page.state = [
+      { id: 's1', name: 'count', type: 'number', defaultValue: 2 },
+      {
+        id: 's3',
+        name: 'summary',
+        type: 'number',
+        defaultValue: 0,
+        computedExpr: 'doubleCount + cartCount + $query.bonus'
+      },
+      {
+        id: 's2',
+        name: 'doubleCount',
+        type: 'number',
+        defaultValue: 0,
+        computedExpr: 'count * 2'
+      }
+    ]
+
+    const ir = collectTree(graph, pageId)
+    expect(ir.states.map((s) => s.name)).toEqual(['count', 'doubleCount', 'summary'])
+    expect(ir.states[1].computed?.references).toEqual(['count'])
+    expect(ir.states[2].computed?.references).toEqual(['doubleCount', 'cartCount', '$query'])
+    expect(ir.docStateReads).toEqual(['cartCount'])
+    expect(ir.usesQueryParams).toBe(true)
+    expect(ir.warnings).toEqual([])
+  })
+
+  test('invalid computed state remains read-only fallback and keeps later collection safe', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const page = graph.getNode(pageId)
+    if (!page) throw new Error('no page')
+    page.state = [
+      { id: 's1', name: 'a', type: 'number', defaultValue: 1, computedExpr: 'b + 1' },
+      { id: 's2', name: 'b', type: 'number', defaultValue: 2, computedExpr: 'a + 1' },
+      { id: 's3', name: 'missing', type: 'number', defaultValue: 3, computedExpr: 'nope + 1' }
+    ]
+
+    const ir = collectTree(graph, pageId)
+    expect(ir.states.map((s) => [s.name, s.computedInvalid === true])).toEqual([
+      ['a', true],
+      ['b', true],
+      ['missing', true]
+    ])
+    expect(ir.warnings.map((w) => w.code)).toContain('computed-state-cycle')
+    expect(ir.warnings.map((w) => w.code)).toContain('computed-state-unknown')
+  })
 })
 
 describe('collectTree — text bindings', () => {

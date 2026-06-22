@@ -1,14 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph } from '@open-pencil/core'
+import type { CompilerOptions } from '@open-pencil/compiler'
 import { reactAdapter } from '@open-pencil/compiler/adapters/react'
 import {
   buildLowcodeStateRuntime,
   ZUSTAND_VERSION
 } from '@open-pencil/compiler/adapters/react/lowcode/state'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
-import type { CompilerOptions } from '@open-pencil/compiler'
 import type { IRDocStateDecl } from '@open-pencil/compiler/ir/types'
+import { SceneGraph } from '@open-pencil/core'
 
 const BASE_OPTIONS: CompilerOptions = {
   packageName: 'demo',
@@ -93,6 +93,37 @@ describe('buildLowcodeStateRuntime (Phase 2 §2)', () => {
     expect(out).toContain('(prev: DocState[K]) => DocState[K]')
   })
 
+  test('persisted declarations read and write localStorage with a package-scoped key', () => {
+    const decls: IRDocStateDecl[] = [
+      { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0, persist: true },
+      { id: 'd2', name: 'sessionMessage', type: 'string', defaultValue: 'hi' }
+    ]
+    const out = buildLowcodeStateRuntime(decls, 'shop-demo')
+    expect(out).toContain('cartCount: { key: "openpencil:shop-demo:cartCount", version: null }')
+    expect(out).toContain('cartCount: readPersisted("cartCount", initialDefaults.cartCount)')
+    expect(out).toContain('sessionMessage: initialDefaults.sessionMessage')
+    expect(out).toContain('window.localStorage.getItem(config.key)')
+    expect(out).toContain('window.localStorage.setItem(config.key')
+    expect(out).toContain('store.subscribe((state, previous) => {')
+  })
+
+  test('persisted declarations can override storage key and version', () => {
+    const decls: IRDocStateDecl[] = [
+      {
+        id: 'd1',
+        name: 'filters',
+        type: 'object',
+        defaultValue: {},
+        persist: true,
+        storageKey: 'custom:filters',
+        storageVersion: 'v2'
+      }
+    ]
+    const out = buildLowcodeStateRuntime(decls, 'ignored')
+    expect(out).toContain('filters: { key: "custom:filters", version: "v2" }')
+    expect(out).toContain('parsed.version !== config.version')
+  })
+
   test('§4.6 — exposes the store on window.__opDocStore + dispatches the ready event', () => {
     const decls: IRDocStateDecl[] = [
       { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
@@ -120,7 +151,7 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
       lowcodeDocumentState: [
-        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
+        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0, persist: true }
       ]
     })
     const pageId = graph.getPages()[0].id
@@ -130,6 +161,7 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
     expect(out.files.has('src/_lowcode_state.ts')).toBe(true)
     const runtime = out.files.get('src/_lowcode_state.ts') as string
     expect(runtime).toContain('cartCount: number')
+    expect(runtime).toContain('openpencil:demo:cartCount')
 
     const pkg = JSON.parse(out.files.get('package.json') as string)
     expect(pkg.dependencies.zustand).toBe(ZUSTAND_VERSION)
@@ -138,9 +170,7 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
   test('multi-page document with docStates → runtime is emitted once + zustand + react-router-dom both injected', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     graph.addPage('About')
     const irs = graph.getPages().map((p) => collectTree(graph, p.id))
@@ -155,9 +185,7 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
   test('page that reads a docState gets `const x = useDocState("x")` + scoped import', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     const pageId = graph.getPages()[0].id
     graph.createNode('TEXT', pageId, {
@@ -175,12 +203,147 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
     expect(app).not.toContain('setDocState')
   })
 
+  test('page computed state emits useMemo and can read page state', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    graph.updateNode(pageId, {
+      state: [
+        { id: 's1', name: 'count', type: 'number', defaultValue: 2 },
+        { id: 's2', name: 'tax', type: 'number', defaultValue: 3 },
+        {
+          id: 's3',
+          name: 'total',
+          type: 'number',
+          defaultValue: 0,
+          computedExpr: 'count + tax'
+        }
+      ]
+    })
+    graph.createNode('TEXT', pageId, {
+      text: '0',
+      bindings: { text: { kind: 'ref', stateId: 's3' } }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const out = reactAdapter.emit([ir], BASE_OPTIONS)
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(ir.warnings?.map((w) => w.code) ?? []).not.toContain('computed-state-invalid')
+    expect(app).toContain(`import { useState, useMemo } from 'react'`)
+    expect(app).toContain('const [count, setCount] = useState(2)')
+    expect(app).toContain('const [tax, setTax] = useState(3)')
+    expect(app).toContain('const total = useMemo(() => count + tax, [count, tax])')
+    expect(app).toContain('{total}')
+  })
+
+  test('computed state can read docState and route/query built-ins before state hooks', () => {
+    const graph = new SceneGraph()
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }]
+    })
+    const pageId = graph.getPages()[0].id
+    graph.updateNode(pageId, {
+      lowcodeRoutePattern: '/cart/:id',
+      state: [
+        {
+          id: 's1',
+          name: 'summary',
+          type: 'string',
+          defaultValue: '',
+          computedExpr: 'cartCount + $params.id + $query.coupon'
+        }
+      ]
+    })
+    graph.addPage('Other')
+    graph.createNode('TEXT', pageId, {
+      text: '',
+      bindings: { text: { kind: 'ref', stateId: 's1' } }
+    })
+
+    const irs = graph.getPages().map((p) => collectTree(graph, p.id))
+    const out = reactAdapter.emit(irs, BASE_OPTIONS)
+    const page = [...out.files.values()].find((content) => content.includes('summary')) as
+      | string
+      | undefined
+
+    expect(page).toBeDefined()
+    expect(page).toContain(`import { useMemo } from 'react'`)
+    expect(page).toContain(`import { useParams, useSearchParams } from 'react-router-dom'`)
+    expect(page).toContain(`const cartCount = useDocState("cartCount")`)
+    expect(page).toContain('const $params = useParams()')
+    expect(page).toContain('const $query = Object.fromEntries(useSearchParams()[0])')
+    expect(page).toContain(
+      'const summary = useMemo(() => cartCount + $params.id + $query.coupon, [cartCount, JSON.stringify($params), JSON.stringify($query)])'
+    )
+    expect((page as string).indexOf('const cartCount')).toBeLessThan(
+      (page as string).indexOf('const summary')
+    )
+    expect((page as string).indexOf('const $params')).toBeLessThan(
+      (page as string).indexOf('const summary')
+    )
+  })
+
+  test('computed state cycles and unknown identifiers degrade to read-only defaults', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    graph.updateNode(pageId, {
+      state: [
+        { id: 's1', name: 'a', type: 'number', defaultValue: 1, computedExpr: 'b + 1' },
+        { id: 's2', name: 'b', type: 'number', defaultValue: 2, computedExpr: 'a + 1' },
+        { id: 's3', name: 'missing', type: 'number', defaultValue: 3, computedExpr: 'nope + 1' }
+      ]
+    })
+
+    const ir = collectTree(graph, pageId)
+    const out = reactAdapter.emit([ir], BASE_OPTIONS)
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(ir.warnings?.map((w) => w.code)).toContain('computed-state-cycle')
+    expect(ir.warnings?.map((w) => w.code)).toContain('computed-state-unknown')
+    expect(app).not.toContain('useMemo')
+    expect(app).toContain('const a = 1')
+    expect(app).toContain('const b = 2')
+    expect(app).toContain('const missing = 3')
+  })
+
+  test('setState and controlled value bindings cannot write computed state', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    graph.updateNode(pageId, {
+      state: [
+        { id: 's1', name: 'count', type: 'number', defaultValue: 1 },
+        {
+          id: 's2',
+          name: 'doubleCount',
+          type: 'number',
+          defaultValue: 0,
+          computedExpr: 'count * 2'
+        }
+      ]
+    })
+    graph.createNode('BUTTON', pageId, {
+      events: {
+        onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's2', valueExpr: '4' }]
+      }
+    })
+    graph.createNode('INPUT', pageId, {
+      bindings: { value: { kind: 'ref', stateId: 's2' } }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const out = reactAdapter.emit([ir], BASE_OPTIONS)
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(ir.warnings?.map((w) => w.code)).toContain('action-setstate-computed-target')
+    expect(ir.warnings?.map((w) => w.code)).toContain('binding-value-computed-state')
+    expect(app).not.toContain('setDoubleCount')
+    expect(app).not.toContain('value={doubleCount}')
+  })
+
   test('page that writes a docState (setVariable) imports only setDocState — no useDocState hook call', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     const pageId = graph.getPages()[0].id
     graph.createNode('BUTTON', pageId, {
@@ -207,9 +370,7 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
   test('page that both reads and writes → both names imported', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     const pageId = graph.getPages()[0].id
     graph.createNode('TEXT', pageId, {
@@ -240,9 +401,7 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
   test('multi-page: page modules import from `../_lowcode_state` (relative back to src/)', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     const homeId = graph.getPages()[0].id
     graph.createNode('TEXT', homeId, {
@@ -261,9 +420,7 @@ describe('React adapter — emit lowcode runtime + zustand inject (Phase 2 §2)'
   test('page that neither reads nor writes any docState skips the runtime import', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, {
-      lowcodeDocumentState: [
-        { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
-      ]
+      lowcodeDocumentState: [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }]
     })
     const homeId = graph.getPages()[0].id
     // Home reads cartCount; About does not.

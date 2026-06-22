@@ -1,9 +1,6 @@
 import { describe, expect, mock, spyOn, test } from 'bun:test'
 
 import type { PluginData } from '#core/kiwi/fig/codec'
-import type { PluginDataEntry, SceneNode } from '#core/scene-graph'
-
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 import {
   extractLowcodeAndPluginData,
   LOWCODE_BINDINGS_KEY,
@@ -12,9 +9,12 @@ import {
   LOWCODE_INTERACTIVE_PROPS_KEY,
   LOWCODE_NODE_TYPE_KEY,
   LOWCODE_RENDER_CONDITION_KEY,
+  LOWCODE_STATE_OVERRIDES_KEY,
   LOWCODE_STATE_KEY,
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
+import type { PluginDataEntry, SceneNode } from '#core/scene-graph'
 
 /**
  * `serializeLowcodeFields` only reads a handful of fields, so test inputs
@@ -68,14 +68,37 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
     })
   })
 
+  test('round-trips computedExpr inside lowcode/state', () => {
+    const state = [
+      { id: 's1', name: 'count', type: 'number' as const, defaultValue: 2 },
+      {
+        id: 's2',
+        name: 'doubleCount',
+        type: 'number' as const,
+        defaultValue: 0,
+        computedExpr: 'count * 2'
+      }
+    ]
+    const entries = serializeLowcodeFields(makeNode({ state }))
+    expect(entries).toHaveLength(1)
+    expect(entries[0].key).toBe(LOWCODE_STATE_KEY)
+    expect(JSON.parse(entries[0].value)).toEqual(state)
+  })
+
+  test('round-trips stateOverrides inside lowcode/stateOverrides', () => {
+    const stateOverrides = { hover: { opacity: 0.8 }, focus: { cornerRadius: 12 } }
+    const entries = serializeLowcodeFields(makeNode({ stateOverrides }))
+    expect(entries).toHaveLength(1)
+    expect(entries[0].key).toBe(LOWCODE_STATE_OVERRIDES_KEY)
+    expect(JSON.parse(entries[0].value)).toEqual(stateOverrides)
+  })
+
   test('round-trips all five fields when populated, in stable emit order', () => {
     const node = makeNode({
       state: [{ id: 's1', name: 'count', type: 'number', defaultValue: 0 }],
       bindings: { text: { kind: 'ref', stateId: 's1' } },
       events: {
-        onClick: [
-          { id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'count + 1' }
-        ]
+        onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's1', valueExpr: 'count + 1' }]
       },
       interactiveProps: { text: 'Go' },
       renderCondition: 'count > 0'
@@ -98,9 +121,7 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
     expect(JSON.parse(byKey.get(LOWCODE_INTERACTIVE_PROPS_KEY) as string)).toEqual(
       node.interactiveProps
     )
-    expect(JSON.parse(byKey.get(LOWCODE_RENDER_CONDITION_KEY) as string)).toBe(
-      node.renderCondition
-    )
+    expect(JSON.parse(byKey.get(LOWCODE_RENDER_CONDITION_KEY) as string)).toBe(node.renderCondition)
   })
 
   test('emits a lowcode/renderCondition entry only for a non-empty expression string', () => {
@@ -127,9 +148,7 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
   })
 
   test('does not mutate node.pluginData; existing pluginData entries are untouched', () => {
-    const existing: PluginDataEntry[] = [
-      { pluginId: 'someone-else', key: 'foo', value: 'bar' }
-    ]
+    const existing: PluginDataEntry[] = [{ pluginId: 'someone-else', key: 'foo', value: 'bar' }]
     const node = makeNode({
       pluginData: [...existing],
       state: [{ id: 's1', name: 'flag', type: 'boolean', defaultValue: true }]
@@ -250,7 +269,9 @@ describe('serializeLowcodeFields (Phase 1 §12 step 1)', () => {
       { url: '', anonKey: '' }
     ]) {
       const entries = serializeLowcodeFields(
-        makeNode({ lowcodeSupabaseConfig: bad as Parameters<typeof makeNode>[0]['lowcodeSupabaseConfig'] })
+        makeNode({
+          lowcodeSupabaseConfig: bad as Parameters<typeof makeNode>[0]['lowcodeSupabaseConfig']
+        })
       )
       expect(entries.map((e) => e.key)).not.toContain('lowcode/supabaseConfig')
     }
@@ -333,9 +354,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       const result = extractLowcodeAndPluginData(
-        makeNc([
-          { pluginID: OPEN_PENCIL_PLUGIN_ID, key: LOWCODE_STATE_KEY, value: '{not-json' }
-        ])
+        makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: LOWCODE_STATE_KEY, value: '{not-json' }])
       )
       expect(result.state).toBeUndefined()
       expect(result.pluginData).toEqual([])
@@ -370,9 +389,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
 
   test('unknown lowcode/* key (forward-compat) passes through pluginData unchanged', () => {
     const result = extractLowcodeAndPluginData(
-      makeNc([
-        { pluginID: OPEN_PENCIL_PLUGIN_ID, key: 'lowcode/futureField', value: '"unknown"' }
-      ])
+      makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: 'lowcode/futureField', value: '"unknown"' }])
     )
     expect(result.pluginData).toEqual([
       { pluginId: OPEN_PENCIL_PLUGIN_ID, key: 'lowcode/futureField', value: '"unknown"' }
@@ -382,9 +399,7 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
 
   test('non-lowcode OPEN_PENCIL entries (e.g. textDirection) pass through', () => {
     const result = extractLowcodeAndPluginData(
-      makeNc([
-        { pluginID: OPEN_PENCIL_PLUGIN_ID, key: 'textDirection', value: 'rtl' }
-      ])
+      makeNc([{ pluginID: OPEN_PENCIL_PLUGIN_ID, key: 'textDirection', value: 'rtl' }])
     )
     expect(result.pluginData).toEqual([
       { pluginId: OPEN_PENCIL_PLUGIN_ID, key: 'textDirection', value: 'rtl' }
@@ -411,7 +426,11 @@ describe('extractLowcodeAndPluginData (Phase 1 §12 step 2)', () => {
     for (const type of ['BUTTON', 'INPUT', 'CHECKBOX', 'FORM', 'LIST', 'SELECT']) {
       const result = extractLowcodeAndPluginData(
         makeNc([
-          { pluginID: OPEN_PENCIL_PLUGIN_ID, key: LOWCODE_NODE_TYPE_KEY, value: JSON.stringify(type) }
+          {
+            pluginID: OPEN_PENCIL_PLUGIN_ID,
+            key: LOWCODE_NODE_TYPE_KEY,
+            value: JSON.stringify(type)
+          }
         ])
       )
       expect(result.nodeTypeOverride).toBe(type)

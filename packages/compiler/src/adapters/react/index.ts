@@ -205,6 +205,7 @@ function emitSinglePage(
   // DocumentStateDef exists; the page module imports `useDocState` /
   // `setDocState` from `./` (single-page) or `../` (multi-page).
   emitLowcodeRuntimes(files, {
+    packageName: options.packageName,
     docStates: cleaned.docStates,
     supabaseConfig: cleaned.supabaseConfig,
     i18nActive,
@@ -279,6 +280,7 @@ function emitMultiPage(
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
   emitLowcodeRuntimes(files, {
+    packageName: options.packageName,
     docStates,
     supabaseConfig,
     i18nActive,
@@ -365,6 +367,7 @@ function lucideExtraDeps(
  *  target exists — a switcher with just the source locale is pointless). */
 /** The resolved per-emission inputs the on-demand lowcode runtime files need. */
 interface LowcodeRuntimeEmit {
+  packageName: string
   docStates: readonly IRTree['docStates'][number][]
   supabaseConfig: IRSupabaseConfig | undefined
   i18nActive: boolean
@@ -381,7 +384,7 @@ interface LowcodeRuntimeEmit {
  *  i18n, toast, confirm, validation). Shared by the single-page and multi-page
  *  emitters so the identical call sequence stays in one place (and clone-free). */
 function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: LowcodeRuntimeEmit): void {
-  maybeEmitLowcodeRuntime(files, e.docStates)
+  maybeEmitLowcodeRuntime(files, e.docStates, e.packageName)
   maybeEmitLowcodeSupabaseRuntime(files, e.supabaseConfig)
   maybeEmitI18n(files, e.i18nActive, e.messages, e.sourceLocale, e.targetLocales, e.translations)
   maybeEmitLowcodeToastRuntime(files, e.toastActive)
@@ -446,10 +449,11 @@ function resolveTargetLocales(
 
 function maybeEmitLowcodeRuntime(
   files: Map<string, string | Uint8Array>,
-  docStates: readonly IRTree['docStates'][number][]
+  docStates: readonly IRTree['docStates'][number][],
+  packageName: string
 ): void {
   if (docStates.length === 0) return
-  files.set(LOWCODE_STATE_FILE, buildLowcodeStateRuntime(docStates))
+  files.set(LOWCODE_STATE_FILE, buildLowcodeStateRuntime(docStates, packageName))
 }
 
 /** Phase 3 §10 v2: emit the toast runtime (`_lowcode_toast.tsx`) when any page

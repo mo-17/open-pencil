@@ -233,8 +233,11 @@ function buildReactImport(ir: IRTree): string {
   const hasListQueries = (ir.listQueries?.length ?? 0) > 0
   // Phase 4 §19: a validated page needs `useState` for its field-errors store.
   const hasValidation = (ir.validatedFields?.length ?? 0) > 0
+  const hasComputedState = ir.states.some((s) => s.computed)
+  const hasWritableState = ir.states.some((s) => !s.computed && s.computedInvalid !== true)
   const hooks: string[] = []
-  if (ir.states.length > 0 || hasListQueries || hasValidation) hooks.push('useState')
+  if (hasWritableState || hasListQueries || hasValidation) hooks.push('useState')
+  if (hasComputedState) hooks.push('useMemo')
   if (hasListQueries) hooks.push('useEffect')
   return hooks.length > 0 ? `import { ${hooks.join(', ')} } from 'react'\n` : ''
 }
@@ -324,9 +327,9 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     : ''
 
   const hookLines = [
-    stateLines,
     docStateReadLines,
     routerHookLines,
+    stateLines,
     listQueryLines,
     validationGlue,
     intlHookLine,
