@@ -3,6 +3,7 @@ import { twirl } from 'twirlwind'
 import { colorToCSSCompact } from '#core/color'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import type {
+  Fill,
   GridTrack,
   InteractionState,
   ResponsiveBreakpoint,
@@ -11,7 +12,7 @@ import type {
 } from '#core/scene-graph'
 import { resolveNodeTextDirection } from '#core/text/direction'
 
-import { formatTrack, getNodeContext, solidFillColor, solidStroke } from './helpers'
+import { formatColor, formatTrack, getNodeContext, solidFillColor, solidStroke } from './helpers'
 
 function px(v: number): string {
   return `${v}px`
@@ -285,6 +286,52 @@ function collectShapeExtraClasses(node: SceneNode): string[] {
   return []
 }
 
+/**
+ * Phase 4 §24.2: a gradient fill → a `bg-[linear-gradient(...)]` /
+ * `bg-[radial-gradient(...)]` arbitrary-value class. twirl can't express a
+ * gradient background-image, so (like the clip-path bypass) we build the CSS
+ * value and emit the class directly, replacing spaces with `_` (Tailwind reads
+ * `_` as a space inside `[...]`). Skipped on TEXT (a gradient there is text
+ * color, not background) and for the rarer ANGULAR / DIAMOND types (v1).
+ */
+function collectGradientClasses(node: SceneNode): string[] {
+  if (node.type === 'TEXT') return []
+  const fill = node.fills.find(
+    (f) => f.visible && f.opacity > 0 && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL')
+  )
+  if (!fill) return []
+  const css = gradientCss(fill, node.width, node.height)
+  return css === null ? [] : [`bg-[${css.replace(/ /g, '_')}]`]
+}
+
+/** Build the CSS gradient value for a linear / radial fill, or null when its
+ *  stops / transform are missing. Colors are hex8 (no spaces); positions are
+ *  percentages. The linear angle is derived from Figma's gradientTransform. */
+function gradientCss(fill: Fill, width: number, height: number): string | null {
+  const stops = fill.gradientStops
+  const t = fill.gradientTransform
+  if (!stops || stops.length === 0 || !t) return null
+  const stopList = stops
+    .map((s) => `${formatColor(s.color, s.color.a)} ${roundPct(s.position * 100)}%`)
+    .join(', ')
+  if (fill.type === 'GRADIENT_RADIAL') return `radial-gradient(circle, ${stopList})`
+  // GRADIENT_LINEAR — endpoints in pixel space (mirrors canvas/fills.ts), then
+  // the CSS angle (0deg = up, clockwise) from the start→end direction (y-down).
+  const startX = (t.m00 + t.m02) * width
+  const startY = (t.m10 + t.m12) * height
+  const endX = t.m02 * width
+  const endY = t.m12 * height
+  const angle = cssGradientAngle(endX - startX, endY - startY)
+  return `linear-gradient(${angle}deg, ${stopList})`
+}
+
+/** CSS linear-gradient angle (degrees) for a direction vector in screen (y-down)
+ *  coordinates: 0deg points up, increasing clockwise. */
+function cssGradientAngle(dx: number, dy: number): number {
+  const deg = (Math.atan2(dx, -dy) * 180) / Math.PI
+  return Math.round(((deg % 360) + 360) % 360)
+}
+
 function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
   if (node.type !== 'TEXT') return
   style.fontSize = px(node.fontSize)
@@ -473,6 +520,9 @@ export function collectTailwindClasses(node: SceneNode, graph: SceneGraph): stri
   if (node.type === 'TEXT' && resolveNodeTextDirection(node) === 'RTL')
     extraClasses.push('[direction:rtl]')
   extraClasses.push(...collectShapeExtraClasses(node))
+  // Phase 4 §24.2: a gradient fill → `bg-[linear-gradient(...)]` arbitrary value
+  // (twirl can't express it; mirrors the clip-path bypass).
+  extraClasses.push(...collectGradientClasses(node))
 
   const twirlClasses = twirl(style)
   const combined = twirlClasses ? twirlClasses.split(' ') : []
