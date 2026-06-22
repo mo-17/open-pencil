@@ -1,3 +1,10 @@
+import type {
+  ComponentDef,
+  IRNode,
+  IRSupabaseConfig,
+  IRTranslations,
+  IRTree
+} from '#compiler/ir/types'
 import {
   buildGitignore,
   buildIndexCss,
@@ -7,12 +14,18 @@ import {
   buildTsConfig,
   buildViteConfig
 } from '#compiler/project'
-import type { ComponentDef, IRNode, IRSupabaseConfig, IRTranslations, IRTree } from '#compiler/ir/types'
 import type { CompilerOptions, CompileWarning } from '#compiler/types'
 
 import type { AdapterEmission, FrameworkAdapter } from '../types'
-
 import { buildComponentModule } from './emit/component'
+import { OVERLAY_RUNTIME_CLASSES } from './emit/element'
+import {
+  pageUsesConfirm,
+  pageUsesToast,
+  referencedComponentNames,
+  stripNavigateForSinglePage
+} from './ir-walk'
+import { buildLowcodeConfirmRuntime, CONFIRM_RUNTIME_CLASSES } from './lowcode/confirm'
 import {
   buildI18nCoverageReport,
   i18nCoverageWarnings,
@@ -25,27 +38,20 @@ import {
   sourceCatalogPath,
   SOURCE_LOCALE
 } from './lowcode/i18n'
-import { pageUsesConfirm, pageUsesToast, referencedComponentNames, stripNavigateForSinglePage } from './ir-walk'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode/state'
-import { buildLowcodeToastRuntime, TOAST_RUNTIME_CLASSES } from './lowcode/toast'
-import { buildLowcodeConfirmRuntime, CONFIRM_RUNTIME_CLASSES } from './lowcode/confirm'
-import { buildLowcodeValidationRuntime, VALIDATION_ERROR_CLASSES } from './lowcode/validation'
 import {
   buildLowcodeSupabaseRuntime,
   buildSupabaseEnvExample,
   buildViteEnvDts,
   SUPABASE_JS_VERSION
 } from './lowcode/supabase'
+import { buildLowcodeToastRuntime, TOAST_RUNTIME_CLASSES } from './lowcode/toast'
+import { buildLowcodeValidationRuntime, VALIDATION_ERROR_CLASSES } from './lowcode/validation'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
+import { buildAppTsx, buildPageModule, buildRouterApp, PAGE_WRAPPER_CLASSES } from './scaffold'
 import { collectUsedKitComponents, resolveUiKit } from './ui-kit/registry'
 import type { UiKitAdapter } from './ui-kit/types'
-import {
-  buildAppTsx,
-  buildPageModule,
-  buildRouterApp,
-  PAGE_WRAPPER_CLASSES
-} from './scaffold'
 
 /**
  * Pinned alongside `react: ^19.2.0` / `react: ^18.3.1` — `react-router-dom@6`
@@ -232,7 +238,9 @@ function emitSinglePage(
     kit
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
-  const coverage = i18nActive ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations) : []
+  const coverage = i18nActive
+    ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations)
+    : []
   return { files, warnings: [...warnings, ...coverage] }
 }
 
@@ -306,7 +314,9 @@ function emitMultiPage(
     kit
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
-  const coverage = i18nActive ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations) : []
+  const coverage = i18nActive
+    ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations)
+    : []
   return { files, warnings: [...collectSlugWarnings(infos), ...coverage] }
 }
 
@@ -316,9 +326,7 @@ function lowcodeStateExtraDeps(
   return docStates.length > 0 ? { zustand: ZUSTAND_VERSION } : {}
 }
 
-function lowcodeSupabaseExtraDeps(
-  config: IRSupabaseConfig | undefined
-): Record<string, string> {
+function lowcodeSupabaseExtraDeps(config: IRSupabaseConfig | undefined): Record<string, string> {
   return config ? { '@supabase/supabase-js': SUPABASE_JS_VERSION } : {}
 }
 
@@ -381,7 +389,10 @@ function maybeEmitI18n(
     files.set('src/components/LocaleSwitcher.tsx', buildLocaleSwitcher())
     // Phase 3 §9 v10: a build-time translation-coverage report (which source
     // strings each target locale still lacks). Not imported by the app.
-    files.set('src/locales/_coverage.json', buildI18nCoverageReport(messages, sourceLocale, targetLocales, translations))
+    files.set(
+      'src/locales/_coverage.json',
+      buildI18nCoverageReport(messages, sourceLocale, targetLocales, translations)
+    )
   }
 }
 
@@ -574,6 +585,9 @@ function walk(node: IRNode, acc: Set<string>): void {
   }
   if (node.kind !== 'element') return
   addClasses(node.className, acc)
+  if (node.overlay) {
+    for (const cls of OVERLAY_RUNTIME_CLASSES) acc.add(cls)
+  }
   for (const child of node.children) walk(child, acc)
 }
 

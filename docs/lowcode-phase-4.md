@@ -76,11 +76,11 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | # | feature | 复用 | 简述 | grep 坐实 |
 |---|---|---|---|---|
 | §20 | **交互状态样式(hover/focus/active/disabled variants)** | §7 variant-emit 机制 | 节点可声明 `hover:`/`focus:`/`active:`/`disabled:` Tailwind 变体样式(悬停变色/按下/禁用态)| 用户节点无状态变体 emit(命中全是 shadcn 模板内部 hover:)|
-| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)** | shadcn Dialog/Sheet/Popover 模板 + docState open-state | 可授权弹窗/抽屉/气泡,open 态绑 docState,触发器 action 开关 | 无用户可授权覆盖层(命中仅 preview-bridge overlay + `__opConfirm` 内部 modal)|
+| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)** | FRAME `interactiveProps.overlay` + docState open-state | 可授权弹窗/抽屉/气泡,open 态绑 docState,backdrop 可关 | **CODE COMPLETE 2026-06-22** |
 | §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert/Separator)** | §15 ui-kit adapter | 扩 §15 映射表到展示型组件 | §15 仅到 9 个交互组件 |
 | §23 | **图标(lucide-react)** | §15 ui-kit / 新 icon 节点或 prop | 放置 lucide 图标(shadcn 默认图标库),名称/尺寸/色可配 | 无 icon 节点(lucide 仅在 shadcn 内部注释)|
 | §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)** | jsx tailwind-classes | image fill / IMAGE 节点 → `<img src alt>` + object-cover/contain;渐变填充 → `bg-gradient-*`;宽高比 | 无 `<img>` emit、无 gradient、无 aspect/object-fit(全空)|
-| §25 | **外链 `<a href>` + target** | emit/element | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)| 无 `<a href>` emit |
+| §25 | **外链 `<a href>` + target** | emit/element | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)| **CODE COMPLETE 2026-06-22** |
 | §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)** | jsx tailwind-classes | 吸顶头/侧栏、滚动容器、堆叠层级 | 无 sticky/overflow-/z-index emit |
 | §27 | **state 持久化(localStorage)+ 派生/计算 state** | docState + 表达式子语言 | docState 标记持久化→`localStorage` 读写;派生 state = 表达式从其它 state 算出(memo)| 无 localStorage/persist/computed |
 | §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur 端到端 + `$event`/`$value` 复活)** | EventName 联合(已有 5)+ events emit | `EventName` 已含 onChange/onSubmit/onFocus/onBlur,但 emit 只接 onClick/onSubmit;onChange 当前**只被 controlled binding 占用**,用户授权的 onChange/onFocus/onBlur 未接 → 接通 + 复活 memory 里 shelved 的 `$event`/`$value` token(已能 parse,缺 live 用例)| `element.ts` onChange 仅 controlled,events→handler 路径无 onChange/onFocus/onBlur |
@@ -563,7 +563,12 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状(grep 坐实)**:无用户可授权覆盖层(命中仅 preview-bridge overlay + `__opConfirm` 内部 modal)。
 
-**建议方向**:覆盖层容器节点(新 NodeType 或 FRAME 标记)+ open 态绑 docState(布尔)+ 触发器 action 开/关;emit 复用 **shadcn Dialog/Sheet/Popover/Tooltip 模板**(uiKit off 时退化为自绘 portal + 遮罩)。**待锁**:用新 NodeType 还是 FRAME `overlayKind` 标记;open 态数据归属(docState key);非-shadcn 退化策略。**经验 A/G**(union widening)+ **经验 D**(radix dep 进 compiler deps)。
+**锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+- **授权形态**:不加新 NodeType,不引入 Radix/shadcn runtime 依赖;覆盖层走 FRAME 的 `interactiveProps.overlay` blob。`kind` 支持 `modal | drawer | popover | tooltip`,默认 `modal`;`openRef` 必须指向 boolean docState;`closeOnBackdrop` 默认 `true`。
+- **IR/API**:`IRElement.overlay?: IROverlay`。collect 期验证 FRAME + boolean docState,通过后把 `openRef` 加入 docState read;可点击 backdrop 时把 `openRef` 加入 docState write。非 FRAME / unknown docState / 非 boolean docState 分别 warn 并回退普通元素。
+- **emit**:overlay panel 仍走原始元素 emitter;外层包 `{openRef && (...)}` + fixed shell + backdrop + panel class。`closeOnBackdrop=true` 时 backdrop 是 button 并 `setDocState(openRef,false)`;`false` 时 backdrop 是 `aria-hidden` div,不导入 setter。runtime-only Tailwind class 由 `OVERLAY_RUNTIME_CLASSES` 注入 safelist,避免动态类被漏扫。
+- **验证**:`tests/engine/compiler/overlay.test.ts` 覆盖 modal/drawer、backdrop close 开关、Tailwind safelist、三类 invalid fallback。定向 compiler 相关测试 + tsgo/lint 通过;整 `tests/engine/compiler` 仅 preview HMR 在当前 sandbox 不能 listen `127.0.0.1:0`(EPERM),非本功能回归。
+- **边界/延后**:v1 是 headless/plain overlay,无 trigger 语义 UI、无 focus trap/portal/escape key、无 shadcn Dialog/Sheet 结构;触发器可先沿用既有 action 写 boolean docState。后续 §22 Tabs/Accordion 若需要 open/active state,可复用同一 docState 绑定思路。
 
 ## §22 更多 shadcn 原语(Tabs / Accordion / Avatar / Badge / Skeleton / Progress / Alert / Separator)
 
@@ -607,7 +612,11 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状(grep 坐实)**:无 `<a href>` emit(只有内部 navigate)。
 
-**建议方向**:节点标外链(interactiveProp `href` + `target`)→ emit `<a href target=_blank rel=noopener>`;区别于内部 `navigate`(§16)。**待锁**:外链 vs navigate 的授权区分(URL 是否 http(s) 自动判定)。
+**锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
+- **授权形态**:外链显式走 `interactiveProps.href`/`target`,或嵌套 `interactiveProps.link.{href,hrefExpr,target}`;不做 URL 自动判定,避免把内部路由与外链混淆。`target` 允许 `_self | _blank | _parent | _top`,默认 `_blank`。
+- **IR/API**:`IRElement.link?: IRLink`。collect 期一旦解析出 link,元素 tag 从原 tag 改为 `a`;静态 `href` 变 `hrefLiteral`,动态 `hrefExpr` 走已有表达式解析和 docState read 追踪。表达式非法 / 引用未知时 warn 并回退普通元素。
+- **emit**:`<a href target>`;`target="_blank"` 自动加 `rel="noopener noreferrer"`,其它 target 不加 rel。链接能力与内部 `navigate` action 完全分离。
+- **验证**:`tests/engine/compiler/external-link.test.ts` 覆盖直接 href、嵌套 link、动态 hrefExpr、unknown expr fallback、无 link 保持 div。定向 compiler 相关测试 + tsgo/lint 通过。
 
 ## §26 布局原语(sticky / fixed 定位 + overflow scroll + z-index)
 

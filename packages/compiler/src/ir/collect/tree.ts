@@ -1,10 +1,3 @@
-import {
-  parseVariantName,
-  type NodeType,
-  type SceneGraph,
-  type SceneNode,
-  type WorkflowDef
-} from '@open-pencil/core/scene-graph'
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
@@ -15,6 +8,13 @@ import {
   PREV_IDENT,
   validateDatePickerProps
 } from '@open-pencil/core/lowcode-validation'
+import {
+  parseVariantName,
+  type NodeType,
+  type SceneGraph,
+  type SceneNode,
+  type WorkflowDef
+} from '@open-pencil/core/scene-graph'
 
 import { tailwindClassName } from '../style'
 import type {
@@ -34,9 +34,11 @@ import type {
   IRExpression,
   IRFieldValidation,
   IRImage,
+  IRLink,
   IRList,
   IRListOrder,
   IRListQuery,
+  IROverlay,
   IRValidationCustom,
   IRValidationMessages,
   IRValidationRules,
@@ -48,7 +50,6 @@ import type {
   IRTree,
   IRWarning
 } from '../types'
-
 import {
   registerDocStateReads,
   resolveEvents,
@@ -59,7 +60,12 @@ import {
   ROUTE_PARAMS_IDENT,
   unknownIdentifiers
 } from './bindings'
-import { type ComponentRegistry, type ComponentSlot, instanceHasDeepOverride, overrideKind } from './components'
+import {
+  type ComponentRegistry,
+  type ComponentSlot,
+  instanceHasDeepOverride,
+  overrideKind
+} from './components'
 import { collectPageStates, indexStatesById } from './state'
 
 /**
@@ -332,7 +338,9 @@ function dedupeProps(propSlots: Map<string, ComponentSlot>): ComponentProp[] {
  *  at base, while the instance className prop / `${bp}:<display>` re-show class
  *  un-hides it. */
 function shouldEmitChild(child: SceneNode, ctx: WalkCtx): boolean {
-  return child.visible || (ctx.componentPropSlots?.has(child.id) ?? false) || hasResponsiveReshow(child)
+  return (
+    child.visible || (ctx.componentPropSlots?.has(child.id) ?? false) || hasResponsiveReshow(child)
+  )
 }
 
 /** Phase 3 §7 v2 — true when a base-hidden node is re-shown at some breakpoint
@@ -694,7 +702,10 @@ function isVectorIcon(node: SceneNode, graph: SceneGraph): boolean {
 function buildVectorSvg(node: SceneNode, graph: SceneGraph): string | undefined {
   const svg = renderNodesToSVG(graph, '', [node.id], { xmlDeclaration: false })
   if (!svg) return undefined
-  return svg.replace(/(<svg\b[^>]*?)\swidth="[^"]*"\sheight="[^"]*"/, '$1 width="100%" height="100%"')
+  return svg.replace(
+    /(<svg\b[^>]*?)\swidth="[^"]*"\sheight="[^"]*"/,
+    '$1 width="100%" height="100%"'
+  )
 }
 
 /**
@@ -766,7 +777,9 @@ function displayText(value: string, ctx: WalkCtx): IRText | IRExpression {
  *  plural/select blocks pass their argument through values (v6). */
 function buildI18nText(value: string, ctx: WalkCtx): IRText {
   const tpl = resolveTextTemplate(value, ctx, 'i18n-interpolation-unknown-identifier')
-  const base: IRText = tpl ? buildIcuMessage(tpl) : { kind: 'text', value, messageId: messageKey(value) }
+  const base: IRText = tpl
+    ? buildIcuMessage(tpl)
+    : { kind: 'text', value, messageId: messageKey(value) }
   return augmentWithPluralArgs(base, value, ctx)
 }
 
@@ -859,10 +872,7 @@ function resolveTextTemplate(
  *  every branch of a plural body) emits `{name} … {name}` not `{name} {name2}`.
  *  `uniquePlaceholderName`'s numeric suffix still separates *different*
  *  expressions whose leaf names collide (`${a.name} ${b.name}` → `{name}`/`{name2}`). */
-function buildIcuMessage(tpl: {
-  quasis: string[]
-  expressions: ExprAst[]
-}): IRText {
+function buildIcuMessage(tpl: { quasis: string[]; expressions: ExprAst[] }): IRText {
   const usedNames = new Set<string>()
   const byExpr = new Map<string, IRMessageValue>()
   const names: string[] = []
@@ -875,7 +885,9 @@ function buildIcuMessage(tpl: {
     }
     names.push(value.name)
   }
-  const defaultMessage = tpl.quasis.map((q, i) => (i < names.length ? `${q}{${names[i]}}` : q)).join('')
+  const defaultMessage = tpl.quasis
+    .map((q, i) => (i < names.length ? `${q}{${names[i]}}` : q))
+    .join('')
   return {
     kind: 'text',
     value: defaultMessage,
@@ -991,11 +1003,13 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // Phase 4 §15.1: tag a card-like container FRAME so a UI-kit adapter can wrap
   // it in `<Card>`. Kit-agnostic — the plain emit ignores it (byte-identical).
   const containerKind = containerKindFor(node)
+  const overlay = resolveOverlay(node, ctx)
+  const link = resolveLink(node, ctx)
 
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
-    tag,
+    tag: link ? 'a' : tag,
     className,
     ...(classNameProp ? { classNameProp } : {}),
     // Phase 3 §8 v5: in a variant subtree the prop spans variants with
@@ -1006,6 +1020,8 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     ...controls,
     ...(containerKind ? { containerKind } : {}),
+    ...(overlay ? { overlay } : {}),
+    ...(link ? { link } : {}),
     ...vector.extra
   }
   // §19: a <form> with validated descendant fields validates them at submit —
@@ -1113,6 +1129,92 @@ function containerKindFor(node: SceneNode): IRElement['containerKind'] {
   const hasVisibleFill = node.fills.some((f) => f.visible && f.opacity > 0)
   if (hasVisibleFill && node.cornerRadius > 0) return 'card'
   return undefined
+}
+
+interface OverlayConfig {
+  kind?: unknown
+  openRef?: unknown
+  closeOnBackdrop?: unknown
+}
+
+const OVERLAY_KINDS: ReadonlySet<IROverlay['kind']> = new Set([
+  'modal',
+  'drawer',
+  'popover',
+  'tooltip'
+])
+
+/** Phase 4 §21: FRAME `interactiveProps.overlay` turns a container into a
+ *  conditional overlay panel. `openRef` must name a boolean doc-state so the
+ *  runtime can read it and optionally close it from the backdrop. */
+function resolveOverlay(node: SceneNode, ctx: WalkCtx): IROverlay | undefined {
+  const ip = node.interactiveProps as { overlay?: OverlayConfig } | undefined
+  const cfg = ip?.overlay
+  if (!cfg || typeof cfg !== 'object') return undefined
+  if (node.type !== 'FRAME') {
+    ctx.warnings.push({
+      code: 'overlay-not-frame',
+      message: `${node.type} ${node.id} has interactiveProps.overlay but overlays must be FRAME containers; overlay skipped`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const kind =
+    typeof cfg.kind === 'string' && OVERLAY_KINDS.has(cfg.kind as IROverlay['kind'])
+      ? (cfg.kind as IROverlay['kind'])
+      : 'modal'
+  const openRef = typeof cfg.openRef === 'string' ? cfg.openRef.trim() : ''
+  const decl = ctx.docStates.get(openRef)
+  if (!decl) {
+    ctx.warnings.push({
+      code: 'overlay-open-ref-unknown',
+      message: `FRAME ${node.id} overlay.openRef points to unknown document state ${openRef || '(empty)'}`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  if (decl.type !== 'boolean') {
+    ctx.warnings.push({
+      code: 'overlay-open-ref-not-boolean',
+      message: `FRAME ${node.id} overlay.openRef ${openRef} must be a boolean document state`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  ctx.docStateReads.add(openRef)
+  const closeOnBackdrop = cfg.closeOnBackdrop !== false
+  if (closeOnBackdrop) ctx.docStateWrites.add(openRef)
+  return { kind, openRef, closeOnBackdrop }
+}
+
+interface LinkConfig {
+  href?: unknown
+  hrefExpr?: unknown
+  target?: unknown
+}
+
+const LINK_TARGETS: ReadonlySet<IRLink['target']> = new Set(['_self', '_blank', '_parent', '_top'])
+
+/** Phase 4 §25: an external link rides `interactiveProps` (either
+ *  `interactiveProps.link` or direct `href`/`target`). Static hrefs and bound
+ *  href expressions both stay separate from internal navigate actions. */
+function resolveLink(node: SceneNode, ctx: WalkCtx): IRLink | undefined {
+  const ip = node.interactiveProps as (LinkConfig & { link?: LinkConfig }) | undefined
+  if (!ip) return undefined
+  const cfg = ip.link && typeof ip.link === 'object' ? ip.link : ip
+  const hrefExprSrc = typeof cfg.hrefExpr === 'string' ? cfg.hrefExpr.trim() : ''
+  const hrefLiteral = typeof cfg.href === 'string' ? cfg.href.trim() : ''
+  if (hrefExprSrc === '' && hrefLiteral === '') return undefined
+  const rawTarget = typeof cfg.target === 'string' ? cfg.target : '_blank'
+  const target = LINK_TARGETS.has(rawTarget as IRLink['target'])
+    ? (rawTarget as IRLink['target'])
+    : '_blank'
+  if (hrefExprSrc !== '') {
+    const resolved = resolveReactiveExpr(node, hrefExprSrc, 'link-href', ctx)
+    if (resolved === null) return undefined
+    return { hrefExpr: resolved.ast, target }
+  }
+  return { hrefLiteral, target }
 }
 
 /** Join two class strings, skipping empties (no leading/trailing space). */
@@ -1281,7 +1383,14 @@ function applyControlledInput(
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined
 ): IRControlledInput | undefined {
   if (!CONTROLLED_NODE_TYPES.has(node.type)) return undefined
-  const controlled = resolveValueBinding(node, ctx.states, ctx.warnings, ctx.docStates, ctx.docStateReads, ctx.docStateWrites)
+  const controlled = resolveValueBinding(
+    node,
+    ctx.states,
+    ctx.warnings,
+    ctx.docStates,
+    ctx.docStateReads,
+    ctx.docStateWrites
+  )
   if (!controlled) return undefined
   if (events?.onChange) {
     // Same code as §3.x (locked) — message generalized to cover the new
@@ -1381,7 +1490,10 @@ function applyUploadInput(
     bucket,
     resultTarget,
     pathAst,
-    accept: typeof upload.accept === 'string' && upload.accept.trim() !== '' ? upload.accept.trim() : undefined
+    accept:
+      typeof upload.accept === 'string' && upload.accept.trim() !== ''
+        ? upload.accept.trim()
+        : undefined
   }
 }
 
@@ -1589,11 +1701,7 @@ function patchOptionLeafControlled(
   for (const child of children) {
     if (child.kind !== 'element' || child.tag !== 'label') continue
     for (const inner of child.children) {
-      if (
-        inner.kind === 'element' &&
-        inner.tag === 'input' &&
-        inner.attrs.type === inputType
-      ) {
+      if (inner.kind === 'element' && inner.tag === 'input' && inner.attrs.type === inputType) {
         delete inner.attrs.defaultChecked
         inner.controlled = controlled
       }
@@ -1725,8 +1833,7 @@ function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
   if (arrayName === null) return null
 
   const itemName = typeof ip.itemName === 'string' && ip.itemName !== '' ? ip.itemName : 'item'
-  const indexName =
-    typeof ip.indexName === 'string' && ip.indexName !== '' ? ip.indexName : 'index'
+  const indexName = typeof ip.indexName === 'string' && ip.indexName !== '' ? ip.indexName : 'index'
 
   const visibleChildren = ctx.graph.getChildren(node.id).filter((c) => c.visible)
   if (visibleChildren.length === 0) {
@@ -1969,7 +2076,11 @@ function listQueryDeps(references: Iterable<string>): string[] {
  *  the LIST node name (`Products` → `productsRows`), de-duplicated against the
  *  page's other list queries. */
 function uniqueListRowsName(node: SceneNode, existing: readonly IRListQuery[]): string {
-  const words = (node.name || 'list').replace(/[^a-zA-Z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean)
+  const words = (node.name || 'list')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
   const camel = words
     .map((w, i) => (i === 0 ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()))
     .join('')

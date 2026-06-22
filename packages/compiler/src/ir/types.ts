@@ -162,6 +162,15 @@ export interface IRElement {
    *  (they emit normally inside `<Card>`); the plain React adapter ignores this
    *  hint (→ byte-identical output). */
   containerKind?: 'card'
+  /** Phase 4 §21 — overlay container metadata lifted from
+   *  `interactiveProps.overlay`. The element itself is the overlay panel; the
+   *  React adapter wraps it in a fixed-position conditional shell with an
+   *  optional backdrop close handler. */
+  overlay?: IROverlay
+  /** Phase 4 §25 — external link metadata lifted from `interactiveProps.link`
+   *  or direct `interactiveProps.href/target`. The adapter emits this element
+   *  as an `<a>` with href/target/rel, separate from internal navigate actions. */
+  link?: IRLink
   /** Phase 4 §19 — client-side validation for a controlled form field carrying
    *  `interactiveProps.validation`. The adapter emits `aria-invalid` + an
    *  `onBlur` that validates the field, and wraps the input with a per-field
@@ -224,6 +233,24 @@ export interface IRImage {
   /** A src expression (e.g. a doc-state binding to a §18 upload result). */
   srcExpr?: ExprAst
   alt: string
+}
+
+/** Phase 4 §21: a FRAME rendered as a user-authored overlay. `openRef` is a
+ *  boolean doc-state name; the page hoists it via `useDocState`. When
+ *  `closeOnBackdrop` is true, the backdrop writes `false` to the same doc-state
+ *  through `setDocState`. */
+export interface IROverlay {
+  kind: 'modal' | 'drawer' | 'popover' | 'tooltip'
+  openRef: string
+  closeOnBackdrop: boolean
+}
+
+/** Phase 4 §25: external link attrs. Exactly one of `hrefLiteral` /
+ *  `hrefExpr` is set. */
+export interface IRLink {
+  hrefLiteral?: string
+  hrefExpr?: ExprAst
+  target: '_self' | '_blank' | '_parent' | '_top'
 }
 
 /** Phase 4 §19: a controlled form field's client-side validation rules, lifted

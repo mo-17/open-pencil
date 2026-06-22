@@ -1,4 +1,3 @@
-import { emitExpression } from '@open-pencil/core/lowcode-validation'
 import type {
   IRAttrValue,
   IRControlledInput,
@@ -7,15 +6,19 @@ import type {
   IREventName,
   IRExpression,
   IRImage,
+  IRLink,
   IRNode,
+  IROverlay,
   IRText,
   IRUpload
 } from '#compiler/ir/types'
 
-import { emitEventHandler, emitFormSubmitHandler } from './event'
-import { setterName } from './state'
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
+
 import { VALIDATION_ERROR_CLASS } from '../lowcode/validation'
 import type { UiKitAdapter } from '../ui-kit/types'
+import { emitEventHandler, emitFormSubmitHandler } from './event'
+import { setterName } from './state'
 
 /** Tags that must self-close in JSX (no children). */
 const VOID_TAGS: ReadonlySet<string> = new Set(['input', 'br', 'hr', 'img', 'meta', 'link'])
@@ -64,9 +67,7 @@ export function emitElement(
     // emitted component file; the usage site supplies its own root classes.
     // Phase 3 §8 v2: text-only instances pass their overridden text as props.
     const classAttr = node.className ? ` className="${escapeAttr(node.className)}"` : ''
-    const propAttrs = node.props
-      .map((p) => ` ${p.name}="${escapeAttr(p.value)}"`)
-      .join('')
+    const propAttrs = node.props.map((p) => ` ${p.name}="${escapeAttr(p.value)}"`).join('')
     const idAttr = devMode ? ` data-node-id="${node.sourceId}"` : ''
     return `${pad}<${node.name}${classAttr}${propAttrs}${idAttr} />`
   }
@@ -132,6 +133,8 @@ function emitTagElementCore(
 ): string {
   const pad = '  '.repeat(indent)
 
+  if (node.overlay) return emitOverlayElement(node, indent, devMode, uiKit)
+
   // Phase 3 §15 Phase B: a marked form control (SELECT/CHECKBOX/SWITCH/RADIO)
   // may be emitted as a composed kit component (`<Select><SelectTrigger>…`),
   // owning its own event-API translation + markup. Null → plain-HTML fallback.
@@ -149,7 +152,8 @@ function emitTagElementCore(
     node.classNamePropFallback,
     node.validation?.key,
     node.formValidationKeys,
-    node.image
+    node.image,
+    node.link
   )
   // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
   // keeping the same attrs/children. The underlying tag still drives void-ness
@@ -182,6 +186,65 @@ function emitTagElementCore(
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
   lines.push(`${pad}</${tagName}>`)
   return lines.join('\n')
+}
+
+const OVERLAY_SHELL_CLASS: Record<IROverlay['kind'], string> = {
+  modal: 'fixed inset-0 z-50 flex items-center justify-center',
+  drawer: 'fixed inset-0 z-50 flex justify-end',
+  popover: 'fixed inset-0 z-50 flex items-center justify-center',
+  tooltip: 'fixed inset-0 z-50 flex items-center justify-center pointer-events-none'
+}
+
+const OVERLAY_PANEL_CLASS: Record<IROverlay['kind'], string> = {
+  modal: 'relative z-10',
+  drawer: 'relative z-10 h-full',
+  popover: 'relative z-10',
+  tooltip: 'relative z-10 pointer-events-auto'
+}
+
+export const OVERLAY_RUNTIME_CLASSES: readonly string[] = [
+  ...Object.values(OVERLAY_SHELL_CLASS).flatMap((s) => s.split(/\s+/)),
+  ...Object.values(OVERLAY_PANEL_CLASS).flatMap((s) => s.split(/\s+/)),
+  'absolute',
+  'inset-0',
+  'bg-black/50'
+]
+
+/** Phase 4 §21: render a FRAME overlay as a conditional fixed shell. The IR
+ *  element is the panel; this wrapper supplies backdrop/positioning and keeps
+ *  the normal element emitter responsible for the panel's attrs/children. */
+function emitOverlayElement(
+  node: IRElement,
+  indent: number,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
+): string {
+  const overlay = node.overlay
+  if (!overlay) return emitTagElementCore(node, indent, devMode, uiKit)
+  const pad = '  '.repeat(indent)
+  const shellPad = '  '.repeat(indent + 1)
+  const backdropPad = '  '.repeat(indent + 2)
+  const panel = emitTagElementCore(
+    {
+      ...node,
+      overlay: undefined,
+      className: joinClass(node.className, OVERLAY_PANEL_CLASS[overlay.kind])
+    },
+    indent + 2,
+    devMode,
+    uiKit
+  )
+  const backdrop = overlay.closeOnBackdrop
+    ? `${backdropPad}<button type="button" aria-label="Close overlay" className="absolute inset-0 bg-black/50" onClick={() => setDocState(${JSON.stringify(overlay.openRef)}, false)} />`
+    : `${backdropPad}<div aria-hidden="true" className="absolute inset-0 bg-black/50" />`
+  return [
+    `${pad}{${overlay.openRef} && (`,
+    `${shellPad}<div className="${OVERLAY_SHELL_CLASS[overlay.kind]}" role="presentation">`,
+    backdrop,
+    panel,
+    `${shellPad}</div>`,
+    `${pad})}`
+  ].join('\n')
 }
 
 /** Phase 3 §15 Phase B — emit a marked form control as a composed UI-kit
@@ -262,7 +325,8 @@ function formatAttrs(
   classNamePropFallback?: boolean,
   validationKey?: string,
   formValidationKeys?: readonly string[],
-  image?: IRImage
+  image?: IRImage,
+  link?: IRLink
 ): string {
   const parts: string[] = []
   // Phase 3 §8 v3: a component-body child whose className is parameterized
@@ -283,6 +347,8 @@ function formatAttrs(
   if (upload) parts.push(...uploadAttrParts(upload))
   // §24.1: an image node emits `src` (literal URL or a bound expression) + alt.
   if (image) parts.push(...imageAttrParts(image))
+  // §25: a linked element emits `<a href target rel>` attrs.
+  if (link) parts.push(...linkAttrParts(link))
   if (controlled) {
     // §3.v4 dispatch:
     //  - type="radio" → per-option `checked={read === <opt>}` (the IR collect
@@ -359,6 +425,24 @@ function imageAttrParts(image: IRImage): string[] {
       ? `src={${emitExpression(image.srcExpr)}}`
       : `src="${escapeAttr(image.srcLiteral ?? '')}"`
   return [src, `alt="${escapeAttr(image.alt)}"`]
+}
+
+/** Phase 4 §25: external link attrs. `_blank` gets a safe `rel`; other targets
+ *  keep only `target` so internal browser semantics are not changed. */
+function linkAttrParts(link: IRLink): string[] {
+  const href =
+    link.hrefExpr !== undefined
+      ? `href={${emitExpression(link.hrefExpr)}}`
+      : `href="${escapeAttr(link.hrefLiteral ?? '')}"`
+  const parts = [href, `target="${link.target}"`]
+  if (link.target === '_blank') parts.push('rel="noopener noreferrer"')
+  return parts
+}
+
+/** Join two class strings, skipping empties (no leading/trailing space). */
+function joinClass(base: string, extra: string): string {
+  if (extra === '') return base
+  return base === '' ? extra : `${base} ${extra}`
 }
 
 /** Phase 4 §18: the JSX attrs for a file-upload INPUT — `type="file"`, an
