@@ -1679,18 +1679,12 @@ function registerImageFillAsset(fill: Fill, node: SceneNode, ctx: WalkCtx): IRAs
 function imageFillClasses(fill: Fill, assetPath: string): string {
   const cssUrl = `./assets/${assetPath.split('/').at(-1) ?? assetPath}`
   const classes = [`bg-[url(${cssUrl})]`, 'bg-center']
-  switch (fill.imageScaleMode) {
-    case 'FIT':
-      classes.push('bg-contain', 'bg-no-repeat')
-      break
-    case 'TILE':
-      classes.push('bg-auto', 'bg-repeat')
-      break
-    case 'CROP':
-    case 'FILL':
-    default:
-      classes.push('bg-cover', 'bg-no-repeat')
-      break
+  if (fill.imageScaleMode === 'FIT') {
+    classes.push('bg-contain', 'bg-no-repeat')
+  } else if (fill.imageScaleMode === 'TILE') {
+    classes.push('bg-auto', 'bg-repeat')
+  } else {
+    classes.push('bg-cover', 'bg-no-repeat')
   }
   return classes.join(' ')
 }
@@ -1702,24 +1696,21 @@ function imageAssetPath(hash: string, bytes: Uint8Array): string {
 }
 
 function imageExtension(bytes: Uint8Array): string {
-  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png'
-  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg'
-  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'gif'
+  if (startsWithBytes(bytes, [0x89, 0x50, 0x4e, 0x47])) return 'png'
+  if (startsWithBytes(bytes, [0xff, 0xd8, 0xff])) return 'jpg'
+  if (startsWithBytes(bytes, [0x47, 0x49, 0x46])) return 'gif'
   if (
-    bytes[0] === 0x52 &&
-    bytes[1] === 0x49 &&
-    bytes[2] === 0x46 &&
-    bytes[3] === 0x46 &&
-    bytes[8] === 0x57 &&
-    bytes[9] === 0x45 &&
-    bytes[10] === 0x42 &&
-    bytes[11] === 0x50
-  ) {
+    startsWithBytes(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+    startsWithBytes(bytes.slice(8), [0x57, 0x45, 0x42, 0x50])
+  )
     return 'webp'
-  }
   const ascii = new TextDecoder().decode(bytes.slice(0, 128)).trimStart()
   if (ascii.startsWith('<svg') || ascii.startsWith('<?xml')) return 'svg'
   return 'bin'
+}
+
+function startsWithBytes(bytes: Uint8Array, prefix: readonly number[]): boolean {
+  return prefix.every((byte, index) => bytes[index] === byte)
 }
 
 /** Phase 4 §24.1: resolve a node's `interactiveProps.image` into an IRImage +
