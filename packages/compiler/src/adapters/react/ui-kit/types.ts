@@ -78,6 +78,14 @@ export interface UiKitAdapter {
    * keeps emitting its children inside — there is no composed-markup hook.
    */
   mapContainer?(kind: NonNullable<IRElement['containerKind']>): UiKitMapping | null
+  /** Phase 4 §22 — resolve a display primitive hint to a kit component mapping.
+   *  Simple primitives only rename the tag; composed primitives can additionally
+   *  be emitted through `emitDisplay`. */
+  mapDisplay?(kind: NonNullable<IRElement['displayKind']>): UiKitMapping | null
+  /** Phase 4 §22 — emit a display primitive with custom composition, such as
+   *  AvatarImage/Fallback or Progress value. Return null to use normal tag
+   *  replacement through `mapDisplay`. */
+  emitDisplay?(node: IRElement, ctx: KitEmitCtx): string | null
   /**
    * Inline component-source files for the used component names (e.g. `Button`),
    * keyed by output path (`src/components/ui/button.tsx`). Only the components

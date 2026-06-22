@@ -1132,17 +1132,89 @@ function containerKindFor(node: SceneNode): IRElement['containerKind'] {
 function resolveElementSemantics(
   node: SceneNode,
   ctx: WalkCtx
-): Pick<IRElement, 'containerKind' | 'overlay' | 'link' | 'icon'> {
+): Pick<IRElement, 'containerKind' | 'displayKind' | 'display' | 'overlay' | 'link' | 'icon'> {
   const containerKind = containerKindFor(node)
+  const display = resolveDisplayPrimitive(node, ctx)
   const overlay = resolveOverlay(node, ctx)
   const link = resolveLink(node, ctx)
   const icon = resolveLucideIcon(node, ctx)
   return {
     ...(containerKind ? { containerKind } : {}),
+    ...(display ? { displayKind: display.kind, display: display.config } : {}),
     ...(overlay ? { overlay } : {}),
     ...(link ? { link } : {}),
     ...(icon ? { icon } : {})
   }
+}
+
+interface UiKitPrimitiveConfig {
+  primitive?: unknown
+  kind?: unknown
+  component?: unknown
+  variant?: unknown
+  value?: unknown
+  src?: unknown
+  alt?: unknown
+  fallback?: unknown
+}
+
+const DISPLAY_PRIMITIVES: ReadonlySet<NonNullable<IRElement['displayKind']>> = new Set([
+  'badge',
+  'alert',
+  'separator',
+  'skeleton',
+  'progress',
+  'avatar'
+])
+
+/** Phase 4 §22: display-only shadcn primitives are authorized through
+ *  `interactiveProps.uiKit = { primitive: "badge" | ... }`. This keeps the
+ *  design model unchanged and lets plain HTML emit ignore the hint entirely. */
+function resolveDisplayPrimitive(
+  node: SceneNode,
+  ctx: WalkCtx
+):
+  | { kind: NonNullable<IRElement['displayKind']>; config: NonNullable<IRElement['display']> }
+  | undefined {
+  const ip = node.interactiveProps as { uiKit?: UiKitPrimitiveConfig } | undefined
+  const raw = ip?.uiKit
+  if (!raw || typeof raw !== 'object') return undefined
+  const kind = displayPrimitiveKind(raw.primitive ?? raw.kind ?? raw.component)
+  if (!kind) {
+    const label = displayPrimitiveLabel(raw.primitive ?? raw.kind ?? raw.component)
+    if (label !== '') {
+      ctx.warnings.push({
+        code: 'ui-kit-primitive-unknown',
+        message: `node ${node.id} references unknown UI-kit primitive ${label}`,
+        nodeId: node.id
+      })
+    }
+    return undefined
+  }
+  return {
+    kind,
+    config: {
+      ...stringProp(raw.variant, 'variant'),
+      ...finiteNumberProp(raw.value, 'value'),
+      ...stringProp(raw.src, 'src'),
+      ...stringProp(raw.alt, 'alt'),
+      ...stringProp(raw.fallback, 'fallback')
+    }
+  }
+}
+
+function displayPrimitiveLabel(raw: unknown): string {
+  if (typeof raw === 'string') return raw
+  if (typeof raw === 'number' || typeof raw === 'boolean') return JSON.stringify(raw)
+  return ''
+}
+
+function displayPrimitiveKind(raw: unknown): NonNullable<IRElement['displayKind']> | undefined {
+  if (typeof raw !== 'string') return undefined
+  const normalized = raw.trim().toLowerCase().replaceAll('_', '-')
+  return DISPLAY_PRIMITIVES.has(normalized as NonNullable<IRElement['displayKind']>)
+    ? (normalized as NonNullable<IRElement['displayKind']>)
+    : undefined
 }
 
 interface OverlayConfig {
@@ -1308,10 +1380,15 @@ function finitePositiveNumberProp<K extends 'size' | 'strokeWidth'>(
   return Number.isFinite(n) && n > 0 ? ({ [key]: n } as Partial<Record<K, number>>) : {}
 }
 
-function stringProp<K extends 'color' | 'ariaLabel'>(
-  raw: unknown,
-  key: K
-): Partial<Record<K, string>> {
+function finiteNumberProp<K extends 'value'>(raw: unknown, key: K): Partial<Record<K, number>> {
+  if (raw === undefined) return {}
+  let n = Number.NaN
+  if (typeof raw === 'number') n = raw
+  if (typeof raw === 'string') n = Number(raw.trim())
+  return Number.isFinite(n) ? ({ [key]: n } as Partial<Record<K, number>>) : {}
+}
+
+function stringProp<K extends string>(raw: unknown, key: K): Partial<Record<K, string>> {
   return typeof raw === 'string' && raw.trim() !== ''
     ? ({ [key]: raw.trim() } as Partial<Record<K, string>>)
     : {}

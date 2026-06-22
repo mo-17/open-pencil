@@ -1,18 +1,23 @@
+import { controlledWriteCall } from '#compiler/adapters/react/emit/element'
 import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compiler/ir/types'
 
-import { controlledWriteCall } from '#compiler/adapters/react/emit/element'
 import type { KitEmitCtx, UiKitAdapter, UiKitMapping } from '../types'
-
 import {
+  ALERT_TSX,
+  AVATAR_TSX,
+  BADGE_TSX,
   BUTTON_TSX,
   CARD_TSX,
   CHECKBOX_TSX,
   COMPONENTS_JSON,
   INPUT_TSX,
   LABEL_TSX,
+  PROGRESS_TSX,
   RADIO_GROUP_TSX,
   SELECT_TSX,
+  SEPARATOR_TSX,
   SHADCN_THEME_CSS,
+  SKELETON_TSX,
   SWITCH_TSX,
   TEXTAREA_TSX,
   UTILS_TS
@@ -28,7 +33,10 @@ const DEP_VERSIONS = {
   '@radix-ui/react-checkbox': '^1.1.3',
   '@radix-ui/react-switch': '^1.1.2',
   '@radix-ui/react-radio-group': '^1.2.2',
-  '@radix-ui/react-select': '^2.1.4'
+  '@radix-ui/react-select': '^2.1.4',
+  '@radix-ui/react-avatar': '^1.2.0',
+  '@radix-ui/react-progress': '^1.1.10',
+  '@radix-ui/react-separator': '^1.1.10'
 } as const
 
 interface ShadcnComponent {
@@ -78,14 +86,55 @@ const COMPONENTS: Partial<Record<string, ShadcnComponent>> = {
     deps: ['@radix-ui/react-select']
   },
   // Phase 4 §15.1 — Card is a plain styled `<div>` (cn() only), no Radix dep.
-  Card: { file: 'src/components/ui/card.tsx', source: CARD_TSX, deps: [] }
+  Card: { file: 'src/components/ui/card.tsx', source: CARD_TSX, deps: [] },
+  // Phase 4 §22 — display primitives.
+  Badge: {
+    file: 'src/components/ui/badge.tsx',
+    source: BADGE_TSX,
+    deps: ['class-variance-authority']
+  },
+  Alert: {
+    file: 'src/components/ui/alert.tsx',
+    source: ALERT_TSX,
+    deps: ['class-variance-authority']
+  },
+  Separator: {
+    file: 'src/components/ui/separator.tsx',
+    source: SEPARATOR_TSX,
+    deps: ['@radix-ui/react-separator']
+  },
+  Skeleton: { file: 'src/components/ui/skeleton.tsx', source: SKELETON_TSX, deps: [] },
+  Progress: {
+    file: 'src/components/ui/progress.tsx',
+    source: PROGRESS_TSX,
+    deps: ['@radix-ui/react-progress']
+  },
+  Avatar: {
+    file: 'src/components/ui/avatar.tsx',
+    source: AVATAR_TSX,
+    deps: ['@radix-ui/react-avatar']
+  }
 }
 
 /** Phase 4 §15.1 — `containerKind` → the kit mapping for a card-like container
  *  FRAME. Card only renames the tag (`<div>` → `<Card>`) and keeps its children;
  *  no composed markup / extra imports. */
-const CONTAINER_TO_MAPPING: Partial<Record<NonNullable<IRElement['containerKind']>, UiKitMapping>> = {
-  card: { component: 'Card', from: '@/components/ui/card' }
+const CONTAINER_TO_MAPPING: Partial<Record<NonNullable<IRElement['containerKind']>, UiKitMapping>> =
+  {
+    card: { component: 'Card', from: '@/components/ui/card' }
+  }
+
+const DISPLAY_TO_MAPPING: Partial<Record<NonNullable<IRElement['displayKind']>, UiKitMapping>> = {
+  badge: { component: 'Badge', from: '@/components/ui/badge' },
+  alert: { component: 'Alert', from: '@/components/ui/alert' },
+  separator: { component: 'Separator', from: '@/components/ui/separator' },
+  skeleton: { component: 'Skeleton', from: '@/components/ui/skeleton' },
+  progress: { component: 'Progress', from: '@/components/ui/progress' },
+  avatar: {
+    component: 'Avatar',
+    from: '@/components/ui/avatar',
+    imports: ['Avatar', 'AvatarFallback', 'AvatarImage']
+  }
 }
 
 /** Phase B — `controlKind` → the kit mapping for a composed form control. The
@@ -216,14 +265,19 @@ function valueBindingParts(
   return defaultValue !== undefined ? [`defaultValue="${ctx.escapeAttr(defaultValue)}"`] : []
 }
 
+function rootAttrParts(node: IRElement, ctx: KitEmitCtx): string[] {
+  const parts: string[] = []
+  if (node.className) parts.push(`className="${ctx.escapeAttr(node.className)}"`)
+  if (ctx.devMode) parts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  return parts
+}
+
 /** Emit a boolean toggle (Checkbox / Switch): `checked` + `onCheckedChange`, or
  *  uncontrolled `defaultChecked`. Checkbox's change yields `boolean |
  *  'indeterminate'` so it coerces to a strict boolean. */
 function emitToggle(node: IRElement, ctx: KitEmitCtx, component: 'Checkbox' | 'Switch'): string {
   const pad = '  '.repeat(ctx.indent)
-  const parts: string[] = []
-  if (node.className) parts.push(`className="${ctx.escapeAttr(node.className)}"`)
-  if (ctx.devMode) parts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  const parts = rootAttrParts(node, ctx)
   if (node.controlled) {
     const value = component === 'Checkbox' ? 'checked === true' : 'checked'
     parts.push(`checked={${node.controlled.read}}`)
@@ -243,9 +297,7 @@ function emitSelect(node: IRElement, ctx: KitEmitCtx): string {
   const defaultValue =
     typeof node.attrs.defaultValue === 'string' ? node.attrs.defaultValue : undefined
   const rootParts = valueBindingParts(node.controlled, defaultValue, ctx)
-  const triggerParts: string[] = []
-  if (node.className) triggerParts.push(`className="${ctx.escapeAttr(node.className)}"`)
-  if (ctx.devMode) triggerParts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  const triggerParts = rootAttrParts(node, ctx)
   const items = selectOptions(node.children).map(
     (o) =>
       `${i2}<SelectItem value="${ctx.escapeAttr(o.value)}">${o.labelNode ? ctx.emitChild(o.labelNode, 0) : ''}</SelectItem>`
@@ -277,9 +329,7 @@ interface OptionGroupBase {
 }
 
 function optionGroupBase(node: IRElement, ctx: KitEmitCtx): OptionGroupBase {
-  const rootParts: string[] = []
-  if (node.className) rootParts.push(`className="${ctx.escapeAttr(node.className)}"`)
-  if (ctx.devMode) rootParts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  const rootParts = rootAttrParts(node, ctx)
   const options = optionLeaves(node.children)
   return {
     pad: '  '.repeat(ctx.indent),
@@ -326,6 +376,31 @@ function emitCheckboxGroup(node: IRElement, ctx: KitEmitCtx): string {
   return [`${pad}<div${attrSuffix(rootParts)}>`, ...rows, `${pad}</div>`].join('\n')
 }
 
+function emitProgress(node: IRElement, ctx: KitEmitCtx): string {
+  const pad = '  '.repeat(ctx.indent)
+  const parts = rootAttrParts(node, ctx)
+  if (node.display?.value !== undefined) parts.push(`value={${node.display.value}}`)
+  return `${pad}<Progress${attrSuffix(parts)} />`
+}
+
+function emitAvatar(node: IRElement, ctx: KitEmitCtx): string {
+  const pad = '  '.repeat(ctx.indent)
+  const i1 = '  '.repeat(ctx.indent + 1)
+  const parts = rootAttrParts(node, ctx)
+  const src = node.display?.src
+  const alt = node.display?.alt ?? ''
+  const fallback = node.display?.fallback ?? ''
+  const lines = [`${pad}<Avatar${attrSuffix(parts)}>`]
+  if (src !== undefined) {
+    lines.push(`${i1}<AvatarImage src="${ctx.escapeAttr(src)}" alt="${ctx.escapeAttr(alt)}" />`)
+  }
+  if (fallback !== '') {
+    lines.push(`${i1}<AvatarFallback>{${JSON.stringify(fallback)}}</AvatarFallback>`)
+  }
+  lines.push(`${pad}</Avatar>`)
+  return lines.join('\n')
+}
+
 /** The `checked` + `onCheckedChange` props for one option of a controlled
  *  array checkbox-group: read `selected.includes(opt)`, write the array with the
  *  option spread in / filtered out depending on the new checked value. */
@@ -363,6 +438,21 @@ export const shadcnAdapter: UiKitAdapter = {
 
   mapContainer(kind: NonNullable<IRElement['containerKind']>): UiKitMapping | null {
     return CONTAINER_TO_MAPPING[kind] ?? null
+  },
+
+  mapDisplay(kind: NonNullable<IRElement['displayKind']>): UiKitMapping | null {
+    return DISPLAY_TO_MAPPING[kind] ?? null
+  },
+
+  emitDisplay(node: IRElement, ctx: KitEmitCtx): string | null {
+    switch (node.displayKind) {
+      case 'progress':
+        return emitProgress(node, ctx)
+      case 'avatar':
+        return emitAvatar(node, ctx)
+      default:
+        return null
+    }
   },
 
   emitControl(node: IRElement, ctx: KitEmitCtx): string | null {

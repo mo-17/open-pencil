@@ -77,7 +77,7 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 |---|---|---|---|---|
 | §20 | **交互状态样式(hover/focus/active/disabled variants)** | §7 variant-emit 机制 | 节点可声明 `hover:`/`focus:`/`active:`/`disabled:` Tailwind 变体样式(悬停变色/按下/禁用态)| 用户节点无状态变体 emit(命中全是 shadcn 模板内部 hover:)|
 | §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)** | FRAME `interactiveProps.overlay` + docState open-state | 可授权弹窗/抽屉/气泡,open 态绑 docState,backdrop 可关 | **CODE COMPLETE 2026-06-22** |
-| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert/Separator)** | §15 ui-kit adapter | 扩 §15 映射表到展示型组件 | §15 仅到 9 个交互组件 |
+| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert/Separator)** | §15 ui-kit adapter | 扩 §15 映射表到展示型组件 | **CODE COMPLETE 2026-06-23(首批展示原语)** |
 | §23 | **图标(lucide-react)** | §15 ui-kit / 新 icon 节点或 prop | 放置 lucide 图标(shadcn 默认图标库),名称/尺寸/色可配 | 无 icon 节点(lucide 仅在 shadcn 内部注释)|
 | §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)** | jsx tailwind-classes | image fill / IMAGE 节点 → `<img src alt>` + object-cover/contain;渐变填充 → `bg-gradient-*`;宽高比 | 无 `<img>` emit、无 gradient、无 aspect/object-fit(全空)|
 | §25 | **外链 `<a href>` + target** | emit/element | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)| **CODE COMPLETE 2026-06-22** |
@@ -576,7 +576,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状**:§15 ui-kit adapter 仅映射 9 个交互组件(Button/Input/Textarea/Label/Select/Checkbox/Switch/RadioGroup + Phase C 在做)。无展示型原语。
 
-**建议方向**:adapter 映射表加展示组件;部分需 open/active 态(Tabs/Accordion → 复用 §21 的 docState open-state 机制)。**待锁**:哪些进首批;Tabs/Accordion 的 active 态数据模型(可与 §21 共用)。
+**锁定决定 + 交付记录(CODE COMPLETE 2026-06-23)**:
+- **首批范围**:只做展示型/低状态原语 `Badge` / `Alert` / `Separator` / `Skeleton` / `Progress` / `Avatar`。`Tabs` / `Accordion` 需要 active/open state 数据模型,延后到复用 §21 docState open-state 的独立片。
+- **授权形态**:不加新 NodeType,走任意节点 `interactiveProps.uiKit = { primitive: "badge" | "alert" | "separator" | "skeleton" | "progress" | "avatar", ... }`。兼容字段 `kind`/`component` 作为 primitive 别名;plain emit 忽略该 hint。
+- **IR/API**:`IRElement.displayKind?: "badge" | ... | "avatar"` + `display?: { variant?, value?, src?, alt?, fallback? }`。collect 期识别未知 primitive 时 warn `ui-kit-primitive-unknown` 并回退普通元素。
+- **emit**:shadcn adapter 新增 `mapDisplay` / `emitDisplay`。Badge/Alert/Separator/Skeleton 走 tag replacement + children passthrough;Progress emit `<Progress value={...}/>`;Avatar emit `<Avatar><AvatarImage .../><AvatarFallback>...</AvatarFallback></Avatar>`。
+- **dependency / files**:按实际使用 inline `badge.tsx` / `alert.tsx` / `separator.tsx` / `skeleton.tsx` / `progress.tsx` / `avatar.tsx`;deps 按需加入 `class-variance-authority`, `@radix-ui/react-separator`, `@radix-ui/react-progress`, `@radix-ui/react-avatar`。
+- **验证**:`tests/engine/compiler/ui-kit/display-primitives.test.ts` 覆盖首批基础映射、Progress value、Avatar image/fallback、uiKit off plain path、unknown primitive warning;并回跑 §15 tags/controls/card UI-kit 测试。
+- **边界/延后**:v1 是 headless compiler 能力,无 GUI primitive picker;不做 Tabs/Accordion;不自动根据节点名称/样式推断 primitive;不做 variant 白名单校验(交给生成项目 TS/shadcn 类型约束)。
 
 ## §23 图标(lucide-react)
 

@@ -1,0 +1,152 @@
+import { describe, expect, test } from 'bun:test'
+
+import { compile, withDefaults } from '@open-pencil/compiler'
+import type { SceneGraph } from '@open-pencil/core/scene-graph'
+
+import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
+
+/**
+ * Phase 4 §22 — shadcn display primitives. Authored nodes can opt into
+ * display-only kit components through `interactiveProps.uiKit.primitive`.
+ * Plain emit ignores the hint entirely.
+ */
+
+function compileWith(graph: SceneGraph, pageId: string, uiKit?: 'shadcn') {
+  return compile({
+    graph,
+    pageIds: [pageId],
+    options: withDefaults({ packageName: 'display-primitives', ...(uiKit ? { uiKit } : {}) })
+  })
+}
+
+describe('compile — shadcn display primitives (Phase 4 §22)', () => {
+  test('Badge/Alert/Separator/Skeleton map to kit imports, files and deps', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const badge = graph.createNode('FRAME', pageId, {
+      name: 'Status',
+      interactiveProps: { uiKit: { primitive: 'badge', variant: 'secondary' } }
+    })
+    graph.createNode('TEXT', badge.id, { text: 'Draft' })
+    const alert = graph.createNode('FRAME', pageId, {
+      name: 'Warning',
+      interactiveProps: { uiKit: { primitive: 'alert', variant: 'destructive' } }
+    })
+    graph.createNode('TEXT', alert.id, { text: 'Check your input' })
+    graph.createNode('FRAME', pageId, {
+      name: 'Line',
+      interactiveProps: { uiKit: { primitive: 'separator' } }
+    })
+    graph.createNode('FRAME', pageId, {
+      name: 'Loading',
+      interactiveProps: { uiKit: { primitive: 'skeleton' } }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(`import { Alert } from '@/components/ui/alert'`)
+    expect(app).toContain(`import { Badge } from '@/components/ui/badge'`)
+    expect(app).toContain(`import { Separator } from '@/components/ui/separator'`)
+    expect(app).toContain(`import { Skeleton } from '@/components/ui/skeleton'`)
+    expect(app).toContain('<Badge')
+    expect(app).toContain('variant="secondary"')
+    expect(app).toContain('Draft')
+    expect(app).toContain('<Alert')
+    expect(app).toContain('variant="destructive"')
+    expect(app).toContain('Check your input')
+    expect(app).toContain('<Separator')
+    expect(app).toContain('<Skeleton')
+
+    expect(out.files.has('src/components/ui/badge.tsx')).toBe(true)
+    expect(out.files.has('src/components/ui/alert.tsx')).toBe(true)
+    expect(out.files.has('src/components/ui/separator.tsx')).toBe(true)
+    expect(out.files.has('src/components/ui/skeleton.tsx')).toBe(true)
+    const pkg = JSON.parse(out.files.get('package.json') as string)
+    expect(pkg.dependencies).toHaveProperty('class-variance-authority')
+    expect(pkg.dependencies).toHaveProperty('@radix-ui/react-separator')
+    expect(pkg.dependencies).not.toHaveProperty('@radix-ui/react-progress')
+    expect(pkg.dependencies).not.toHaveProperty('@radix-ui/react-avatar')
+    expect(out.warnings).toEqual([])
+  })
+
+  test('Progress emits a composed value prop and Radix progress dependency', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: { uiKit: { primitive: 'progress', value: 42 } }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(`import { Progress } from '@/components/ui/progress'`)
+    expect(app).toContain('<Progress')
+    expect(app).toContain('value={42}')
+    expect(out.files.has('src/components/ui/progress.tsx')).toBe(true)
+    const pkg = JSON.parse(out.files.get('package.json') as string)
+    expect(pkg.dependencies).toHaveProperty('@radix-ui/react-progress')
+    expect(out.warnings).toEqual([])
+  })
+
+  test('Avatar emits image/fallback composition and Radix avatar dependency', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: {
+        uiKit: {
+          primitive: 'avatar',
+          src: 'https://example.com/a.png',
+          alt: 'Ada',
+          fallback: 'AD'
+        }
+      }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(
+      `import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'`
+    )
+    expect(app).toContain('<Avatar')
+    expect(app).toContain('<AvatarImage src="https://example.com/a.png" alt="Ada" />')
+    expect(app).toContain('<AvatarFallback>{"AD"}</AvatarFallback>')
+    expect(out.files.has('src/components/ui/avatar.tsx')).toBe(true)
+    const pkg = JSON.parse(out.files.get('package.json') as string)
+    expect(pkg.dependencies).toHaveProperty('@radix-ui/react-avatar')
+    expect(out.warnings).toEqual([])
+  })
+
+  test('no uiKit keeps primitive hints on the plain Tailwind path', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: { uiKit: { primitive: 'badge', variant: 'secondary' } }
+    })
+
+    const out = compileWith(graph, pageId)
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain('<div')
+    expect(app).not.toContain('<Badge')
+    expect(app).not.toContain('variant="secondary"')
+    expect(app).not.toContain('@/components/ui')
+    expect(out.files.has('src/components/ui/badge.tsx')).toBe(false)
+  })
+
+  test('unknown primitives warn and fall back to normal element emit', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: { uiKit: { primitive: 'toast' } }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain('<div')
+    expect(app).not.toContain('@/components/ui')
+    expect(out.warnings.map((w) => w.code)).toContain('ui-kit-primitive-unknown')
+  })
+})

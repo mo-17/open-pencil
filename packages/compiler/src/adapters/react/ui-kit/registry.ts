@@ -21,10 +21,7 @@ export function resolveUiKit(options: CompilerOptions): UiKitAdapter | null {
  * Returns the unique `{ component, from }` mappings (sorted by component) so a
  * file can emit one import line each. Pure — mirrors `referencedComponentNames`.
  */
-export function collectKitImports(
-  nodes: readonly IRNode[],
-  kit: UiKitAdapter
-): UiKitMapping[] {
+export function collectKitImports(nodes: readonly IRNode[], kit: UiKitAdapter): UiKitMapping[] {
   const byComponent = new Map<string, UiKitMapping>()
   for (const node of nodes) walkForKit(node, kit, byComponent)
   return [...byComponent.values()].sort((a, b) => a.component.localeCompare(b.component))
@@ -63,16 +60,8 @@ function walkForKit(
     return
   }
   if (node.kind !== 'element') return
-  // Phase 4 §15.1: a card-like container resolves via `mapContainer` and is
-  // collected here, but — unlike a control — it WRAPS its children, so the walk
-  // continues into them below (a card's content still renders).
-  if (node.containerKind && kit.mapContainer) {
-    const container = kit.mapContainer(node.containerKind)
-    if (container) {
-      imports?.set(container.component, container)
-      names?.add(container.component)
-    }
-  }
+  collectContainerMapping(node, kit, imports, names)
+  collectDisplayMapping(node, kit, imports, names)
   // Phase 3 §15 Phase B: a marked form control resolves via `mapControl`
   // (identified by its semantic `controlKind`, not its HTML tag); everything
   // else resolves via `mapTag` (Phase A 1:1 tags). A control's plain-HTML
@@ -88,4 +77,40 @@ function walkForKit(
     if (node.controlKind) return
   }
   for (const child of node.children) walkForKit(child, kit, imports, names)
+}
+
+function collectContainerMapping(
+  node: Extract<IRNode, { kind: 'element' }>,
+  kit: UiKitAdapter,
+  imports?: Map<string, UiKitMapping>,
+  names?: Set<string>
+): void {
+  // Phase 4 §15.1: a card-like container resolves via `mapContainer` and is
+  // collected here, but — unlike a control — it WRAPS its children, so the walk
+  // continues into them below (a card's content still renders).
+  if (!node.containerKind || !kit.mapContainer) return
+  addMapping(kit.mapContainer(node.containerKind), imports, names)
+}
+
+function collectDisplayMapping(
+  node: Extract<IRNode, { kind: 'element' }>,
+  kit: UiKitAdapter,
+  imports?: Map<string, UiKitMapping>,
+  names?: Set<string>
+): void {
+  // Phase 4 §22: display primitives (Badge/Alert/etc.) wrap or replace their
+  // node but keep walking children, since Badge/Alert still render authored
+  // content inside.
+  if (!node.displayKind || !kit.mapDisplay) return
+  addMapping(kit.mapDisplay(node.displayKind), imports, names)
+}
+
+function addMapping(
+  mapping: UiKitMapping | null,
+  imports?: Map<string, UiKitMapping>,
+  names?: Set<string>
+): void {
+  if (!mapping) return
+  imports?.set(mapping.component, mapping)
+  names?.add(mapping.component)
 }

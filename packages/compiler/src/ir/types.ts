@@ -162,6 +162,12 @@ export interface IRElement {
    *  (they emit normally inside `<Card>`); the plain React adapter ignores this
    *  hint (→ byte-identical output). */
   containerKind?: 'card'
+  /** Phase 4 §22 — semantic hint for shadcn display primitives. Set from
+   *  `interactiveProps.uiKit.primitive`; plain emit ignores it, while a UI-kit
+   *  adapter may map it to Badge/Alert/Separator/Skeleton/Progress/Avatar. */
+  displayKind?: 'badge' | 'alert' | 'separator' | 'skeleton' | 'progress' | 'avatar'
+  /** Phase 4 §22 — optional primitive-specific props for displayKind. */
+  display?: IRDisplayPrimitive
   /** Phase 4 §21 — overlay container metadata lifted from
    *  `interactiveProps.overlay`. The element itself is the overlay panel; the
    *  React adapter wraps it in a fixed-position conditional shell with an
@@ -267,6 +273,14 @@ export interface IRLucideIcon {
   color?: string
   strokeWidth?: number
   ariaLabel?: string
+}
+
+export interface IRDisplayPrimitive {
+  variant?: string
+  value?: number
+  src?: string
+  alt?: string
+  fallback?: string
 }
 
 /** Phase 4 §19: a controlled form field's client-side validation rules, lifted

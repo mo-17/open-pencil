@@ -142,31 +142,10 @@ function emitTagElementCore(
   // owning its own event-API translation + markup. Null → plain-HTML fallback.
   const kitControl = tryEmitKitControl(node, indent, devMode, uiKit)
   if (kitControl !== null) return kitControl
+  const kitDisplay = tryEmitKitDisplay(node, indent, devMode, uiKit)
+  if (kitDisplay !== null) return kitDisplay
 
-  const attrsStr = formatAttrs(
-    node.className,
-    node.attrs,
-    node.events,
-    devMode ? node.sourceId : undefined,
-    node.controlled,
-    node.upload,
-    node.classNameProp,
-    node.classNamePropFallback,
-    node.validation?.key,
-    node.formValidationKeys,
-    node.image,
-    node.link
-  )
-  // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
-  // keeping the same attrs/children. The underlying tag still drives void-ness
-  // (a mapped `<input>` stays self-closing as `<Input />`). Phase 4 §15.1: a
-  // card-like container FRAME maps `<div>` → `<Card>` via `mapContainer`,
-  // keeping its children inside (unlike a composed control, which owns its
-  // markup). The container mapping takes precedence over the tag mapping.
-  const kitComponent =
-    (node.containerKind ? uiKit?.mapContainer?.(node.containerKind)?.component : undefined) ??
-    uiKit?.mapTag(node.tag, node.attrs)?.component
-  const tagName = kitComponent ?? node.tag
+  const { attrsStr, tagName } = tagOpenParts(node, devMode, uiKit)
   const opening = attrsStr ? `<${tagName} ${attrsStr}` : `<${tagName}`
 
   // Vector-shape nodes carry their geometry as inline SVG via
@@ -188,6 +167,50 @@ function emitTagElementCore(
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
   lines.push(`${pad}</${tagName}>`)
   return lines.join('\n')
+}
+
+function tagOpenParts(
+  node: IRElement,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
+): { attrsStr: string; tagName: string } {
+  const baseAttrsStr = formatAttrs(
+    node.className,
+    node.attrs,
+    node.events,
+    devMode ? node.sourceId : undefined,
+    node.controlled,
+    node.upload,
+    node.classNameProp,
+    node.classNamePropFallback,
+    node.validation?.key,
+    node.formValidationKeys,
+    node.image,
+    node.link
+  )
+  const displayMapping = node.displayKind ? uiKit?.mapDisplay?.(node.displayKind) : undefined
+  const attrsStr = displayMapping ? displayAttrs(baseAttrsStr, node) : baseAttrsStr
+  return { attrsStr, tagName: kitTagName(node, uiKit, displayMapping) }
+}
+
+function kitTagName(
+  node: IRElement,
+  uiKit: UiKitAdapter | null,
+  displayMapping: ReturnType<NonNullable<UiKitAdapter['mapDisplay']>> | undefined
+): string {
+  // Phase 3 §15: an interactive tag may map to a UI-kit component (`<Button>`),
+  // keeping the same attrs/children. The underlying tag still drives void-ness
+  // (a mapped `<input>` stays self-closing as `<Input />`). Phase 4 §15.1: a
+  // card-like container FRAME maps `<div>` → `<Card>` via `mapContainer`,
+  // keeping its children inside (unlike a composed control, which owns its
+  // markup). Explicit display primitives take precedence over container/tag
+  // mapping; container mapping takes precedence over the tag mapping.
+  return (
+    displayMapping?.component ??
+    (node.containerKind ? uiKit?.mapContainer?.(node.containerKind)?.component : undefined) ??
+    uiKit?.mapTag(node.tag, node.attrs)?.component ??
+    node.tag
+  )
 }
 
 /** Phase 4 §23: emit a validated named lucide-react icon. It is a leaf SVG
@@ -305,6 +328,32 @@ function tryEmitKitControl(
     emitChild: (child, childIndent) => emitElement(child, childIndent, devMode, uiKit),
     escapeAttr
   })
+}
+
+function tryEmitKitDisplay(
+  node: IRElement,
+  indent: number,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
+): string | null {
+  if (!uiKit?.emitDisplay || !node.displayKind) return null
+  return uiKit.emitDisplay(node, {
+    indent,
+    devMode,
+    emitChild: (child, childIndent) => emitElement(child, childIndent, devMode, uiKit),
+    escapeAttr
+  })
+}
+
+function displayAttrs(attrsStr: string, node: IRElement): string {
+  const parts: string[] = []
+  if (attrsStr !== '') parts.push(attrsStr)
+  if (node.display?.variant !== undefined)
+    parts.push(`variant="${escapeAttr(node.display.variant)}"`)
+  if (node.displayKind === 'progress' && node.display?.value !== undefined) {
+    parts.push(`value={${node.display.value}}`)
+  }
+  return parts.join(' ')
 }
 
 /** Compact a single text/expression child onto the element's own line
