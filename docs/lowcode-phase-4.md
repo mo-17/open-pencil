@@ -18,17 +18,33 @@
 
 phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾。**以下全部已交付、`bun run check` 绿,phase-4 不重列**,改这些前先读 phase-3 对应 §section:
 
-| feature 线            | phase-3 闭合到                                                                                                                                                                                                                                        | 备注                                                                                                  |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| §2 Supabase 接入      | §2 + §2.v2–v4(auth signIn/Out/signUp/reset/update)                                                                                                                                                                                                    | 5 auth ops + data + interactive                                                                       |
-| §3 AI-tools 生成/编辑 | §3 + §3.v2–v8(undo/payload/UI/controlled bindings/SWITCH CSS/InteractiveProps 框架/DATEPICKER range/RLS advisor)                                                                                                                                      |                                                                                                       |
-| §4 协作               | §4.1–§4.6 + §4.3 self-host + §4.3-S Supabase signaling                                                                                                                                                                                                | code-complete,卡两机真机 ACK(见 §1.7)                                                                 |
-| §5 部署               | §5.1–§5.3 + Netlify §5.2 + Vercel §5.4                                                                                                                                                                                                                | code-complete,卡真 token ACK(见 §1.7)                                                                 |
-| §7 响应式断点         | §7 v1 + **§7 v2 re-show**(base-hidden→bp-visible 已实现)                                                                                                                                                                                              | GUI 授权面板延后(→ phase-4 #6/#7)                                                                     |
-| §8 自定义组件         | §8 v1–v11(clean→`<Component/>` / **v2 text→props** / **v3 fill/color→props** / **v4–v5 COMPONENT_SET variants** / v6 全推广 / v7 `:visible`→hidden / v8 instance `:visible` reverse / v9 nested-instance / v10 orphan 剪枝 / v11 override round-trip) | component-props 面板(GUI)延后(→ phase-4 #7)                                                           |
-| §9 i18n               | §9 v1–v14(react-intl runtime / locale 切换 / 属性串 / ICU 插值 / plural-select / 译文 catalog / **v11 RTL dir-flip** / CLI flags / 缺译警告)                                                                                                          | 编辑器实时 preview i18n(GUI)延后(→ phase-4 #6);RTL **逻辑属性**(ms-/me-)是 v11 之上新增(→ phase-4 #3) |
-| §10 工作流编排        | §10 v1–v11(condition/delay/stop / **v2 toast** / confirm/clipboard / **v4 named WorkflowDef** / **v6 callWorkflow 传参** / **v8 可选形参 emit** / v9 onSuccess/onError / v10 递归编辑器 / v11 callWorkflow GUI + WorkflowsPanel)                      | optionalParams **GUI** + 跨页 pageStates 延后(→ phase-4 #7/#8)                                        |
-| §15 UI-kit            | §15 设计 + Phase A(Button/Input/Textarea/Label)+ Phase B(Select/Checkbox/Switch/RadioGroup)                                                                                                                                                           | FRAME→Card / Phase C / 实时 preview shadcn 未实现(→ phase-4 #1/#2/#6)                                 |
+- **§2 Supabase 接入**:§2 + §2.v2–v4(auth signIn/Out/signUp/reset/update)。
+  备注:5 auth ops + data + interactive。
+- **§3 AI-tools 生成/编辑**:§3 + §3.v2–v8(undo/payload/UI/controlled
+  bindings/SWITCH CSS/InteractiveProps 框架/DATEPICKER range/RLS advisor)。
+- **§4 协作**:§4.1–§4.6 + §4.3 self-host + §4.3-S Supabase signaling。
+  备注:code-complete,卡两机真机 ACK(见 §1.7)。
+- **§5 部署**:§5.1–§5.3 + Netlify §5.2 + Vercel §5.4。
+  备注:code-complete,卡真 token ACK(见 §1.7)。
+- **§7 响应式断点**:§7 v1 + **§7 v2 re-show**
+  (base-hidden→bp-visible 已实现)。GUI 授权面板延后(→ phase-4 #6/#7)。
+- **§8 自定义组件**:§8 v1–v11(clean→`<Component/>` / **v2 text→props** /
+  **v3 fill/color→props** / **v4–v5 COMPONENT_SET variants** / v6 全推广 /
+  v7 `:visible`→hidden / v8 instance `:visible` reverse / v9 nested-instance /
+  v10 orphan 剪枝 / v11 override round-trip)。component-props 面板(GUI)延后
+  (→ phase-4 #7)。
+- **§9 i18n**:§9 v1–v14(react-intl runtime / locale 切换 / 属性串 /
+  ICU 插值 / plural-select / 译文 catalog / **v11 RTL dir-flip** / CLI flags /
+  缺译警告)。编辑器实时 preview i18n(GUI)延后(→ phase-4 #6);
+  RTL **逻辑属性**(ms-/me-)是 v11 之上新增(→ phase-4 #3)。
+- **§10 工作流编排**:§10 v1–v11(condition/delay/stop / **v2 toast** /
+  confirm/clipboard / **v4 named WorkflowDef** / **v6 callWorkflow 传参** /
+  **v8 可选形参 emit** / v9 onSuccess/onError / v10 递归编辑器 /
+  v11 callWorkflow GUI + WorkflowsPanel)。optionalParams **GUI** +
+  跨页 pageStates 延后(→ phase-4 #7/#8)。
+- **§15 UI-kit**:§15 设计 + Phase A(Button/Input/Textarea/Label) +
+  Phase B(Select/Checkbox/Switch/RadioGroup)。FRAME→Card / Phase C /
+  实时 preview shadcn 未实现(→ phase-4 #1/#2/#6)。
 
 > 一句话:**§8/§9/§10 链在 phase-3 已基本走完**,phase-4 的剩余只是它们各自被显式延后的 GUI 入口 + 几条没起头的新线(§14 / §15 收尾 / §9 RTL 逻辑属性 / CF Pages / Kiwi 升格)。
 
@@ -42,21 +58,21 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 > 个来 / 直接干推荐项」,真大决策才单问一个 AskUserQuestion。headless 可验的
 > 连续增量优先,真机 GUI 验证类候选排在后面。
 
-| #   | feature                                        | 类型                             | 优先级               | 简述                                                                                                                                       | 与 phase-3 关系                                                                                                        | 详写          |
-| --- | ---------------------------------------------- | -------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 1   | **§15 FRAME→Card 容器映射**                    | headless emit                    | **高(最快起点)**     | 容器型 FRAME(有 padding/背景/圆角)→ shadcn `Card`/`CardHeader`/`CardContent`,而非裸 `<div>`                                                | phase-3 §15 设计标为「Phase B 可选」**但未实现**;本 phase 实现                                                         | §15           |
-| 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | headless emit(中-大)             | **高(最高产品价值)** | router 现仅字面跳(`navigate("/about")`);加 `/product/:id` 动态段 + `useParams` 绑定 + query string + navigate 带参 + auth-guarded 路由     | **react-router 多页已在**(Phase 1/2);动态段/参数/守卫是新增,**做不了详情页/仪表盘的最大缺口**                          | §16           |
-| 3   | **§15 Phase C array checkbox-group**           | headless emit                    | 高                   | array 类型字段(多选)→ shadcn checkbox-group 排版(复用 §3.v5 RADIO/CHECKBOX inline 排版)                                                    | phase-3 §15 Phase A/B 后的下一档,未起头                                                                                | §15           |
-| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | headless emit(中)                | 中-高                | repeater 直接绑 Supabase query 结果(Bubble repeating-group)+ 分页/排序/筛选 UI                                                             | LIST 现仅绑 state 本地 array(Phase 0 #7);扩到 query + 分页是新增,**当前要 supabaseQuery→setState→LIST 间接绕且无分页** | §17           |
-| 5   | **§19 表单校验**                               | headless emit(中)                | 中                   | input 节点 required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截                                                                       | FORM 节点在但**无校验**;复用 §3.v6 InteractiveProps 框架                                                               | §19           |
-| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | headless emit(中,动 scene-graph) | 中                   | 上传控件 + Supabase Storage `upload` + `getPublicUrl` + 进度/预览                                                                          | **app 级上传零实现**(代码只有 deploy 的 upload);可能加 node type / interactiveProp                                     | §18           |
-| 7   | **§9 v15 RTL 逻辑属性(ms-/me-)**               | headless emit(有回归面)          | 中                   | margin/padding 物理方向 → `ms-`/`me-`/`ps-`/`pe-` 逻辑属性,RTL locale 自动镜像                                                             | **§9 v11 已做 dir-flip**;v15 是逻辑属性镜像,是 v11 之上**新增**(非重复)                                                | §9            |
-| 8   | **§14 跨文件组件库 / 团队库**                  | headless(大)                     | 中                   | 组件跨 .fig 文件复用 / 团队共享库 / 更新传播(Figma Team Library 语义)                                                                      | **phase-3 §14 已有完整设计但标〔未实现〕**;本 phase 才实现                                                             | §14           |
-| 9   | **更多 deploy providers(Cloudflare Pages 等)** | headless                         | 中                   | Netlify/Vercel 已完整;CF Pages 直传需 **blake3**(Web Crypto 只有 SHA-\*)→ 违零依赖,**开工前必须 AskUserQuestion**                          | phase-3 §10 v7/v8/§7 v2 多次因 blake3 否决 CF Pages,留到本 phase 决策                                                  | §5            |
-| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 真机 GUI                         | 高(真机)             | `src/app/lowcode/preview-pane/use-compile-on-change.ts` 硬编码 `withDefaults`(无 i18n/uiKit)→ app 内 preview 看不到 i18n/shadcn。加 toggle | phase-3 §9 v13(CLI flags)修了 CLI 入口,**编辑器 preview 入口仍缺**;§15 Phase A 注明 preview 不带 uiKit                 | §9 / §15      |
-| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 真机 GUI                         | 中(真机)             | §7 responsive overrides 编辑面板;§8 component-props 面板;§10 optionalParams GUI(当前 MCP-only)                                             | 三条线在 phase-3 **均显式「GUI 延后」**(沿用「先 emit/headless,GUI 真机」先例)                                         | §7 / §8 / §10 |
-| 12  | **§10 工作流体跨页 pageStates 精确**           | headless                         | 低                   | 工作流体当前取**当前页** pageStates 近似;跨页 callWorkflow 时应按目标页解析                                                                | phase-3 §10 v11 已闭合 GUI 链,此为已知小缺口                                                                           | §10           |
-| 13  | **lowcode 字段升格 Kiwi schema**               | 工程债                           | 低                   | pluginData 旁路通道稳定;升格成本高(fork vendored `kiwi-schema/` + 通道重写 + 老 .fig 迁移),收益仅清债                                      | phase-3 §1.1 候选 5 / §6 的纯 **carry-over**(继续推迟)                                                                 | §6            |
+| #   | feature                                        | 优先级               | 简述 / 状态                                                                                   | 详写          |
+| --- | ---------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------- | ------------- |
+| 1   | **§15 FRAME→Card 容器映射**                    | **高(最快起点)**     | headless emit;容器型 FRAME → shadcn `Card`/`CardHeader`/`CardContent`,phase-3 未实现。         | §15           |
+| 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | **高(最高产品价值)** | headless emit(中-大);补 `/product/:id`、`useParams`、query string、带参 navigate、auth guard。 | §16           |
+| 3   | **§15 Phase C array checkbox-group**           | 高                   | headless emit;array 字段 → shadcn checkbox-group,接 phase-3 §15 Phase A/B。                   | §15           |
+| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | 中-高                | headless emit;LIST 从本地 array 扩到 Supabase query + 分页/排序/筛选。                        | §17           |
+| 5   | **§19 表单校验**                               | 中                   | headless emit;required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截。                     | §19           |
+| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 中                   | headless emit,可能动 scene-graph;上传控件 + Storage upload/getPublicUrl + 进度/预览。         | §18           |
+| 7   | **§9 v15 RTL 逻辑属性(ms-/me-)**               | 中                   | headless emit,有回归面;物理 margin/padding → 逻辑属性,补 §9 v11 dir-flip 缺口。              | §9            |
+| 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | headless(大);组件跨 .fig 复用 / 团队共享库 / 更新传播。phase-3 有设计但未实现。              | §14           |
+| 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                  | §5            |
+| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 高(真机)             | 真机 GUI;preview 入口补 i18n/uiKit toggle,解决 app 内看不到 i18n/shadcn。                     | §9 / §15      |
+| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 中(真机)             | 真机 GUI;responsive overrides、component-props、optionalParams 面板。                         | §7 / §8 / §10 |
+| 12  | **§10 工作流体跨页 pageStates 精确**           | 低                   | headless;跨页 callWorkflow 按目标页解析 pageStates。                                          | §10           |
+| 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                              | §6            |
 
 > **#1–#9 = headless,#10–#11 = 真机 GUI,#12–#13 = 低优先。**
 >
@@ -71,21 +87,32 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
 
-> 2026-06-20 第二轮缺口盘点。**全部 grep 坐实代码无实现**,且都是**纯 emit / 复用现有机制**的小-中增量(无架构改动),用来把产物从「能跑的页面」打磨成「真应用」。优先级整体在第一波(§16–§19 数据/表单链)之后,但单条工作量小、可穿插。**避坑(经验 Q):effects 阴影已 emit(`jsx/helpers.ts formatShadow`)、EventName 联合已含 5 事件、navigate 已在,均不重列。**
+> 2026-06-20 第二轮缺口盘点。**全部 grep 坐实代码无实现**,且都是**纯 emit /
+> 复用现有机制**的小-中增量(无架构改动),用来把产物从「能跑的页面」打磨成
+> 「真应用」。优先级整体在第一波(§16–§19 数据/表单链)之后,但单条工作量小、
+> 可穿插。**避坑(经验 Q):effects 阴影已 emit(`jsx/helpers.ts formatShadow`)、
+> EventName 联合已含 5 事件、navigate 已在,均不重列。**
 
-| #   | feature                                                                             | 复用                                                   | 简述                                                                                                                                                                                                                                                      | grep 坐实                                                |
-| --- | ----------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| §20 | **交互状态样式(hover/focus/active/disabled variants)**                              | §7 variant-emit 机制                                   | 节点可声明 `hover:`/`focus:`/`active:`/`disabled:` Tailwind 变体样式(悬停变色/按下/禁用态)                                                                                                                                                                | 用户节点无状态变体 emit(命中全是 shadcn 模板内部 hover:) |
-| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)**                                 | FRAME `interactiveProps.overlay` + docState open-state | 可授权弹窗/抽屉/气泡,open 态绑 docState,backdrop 可关                                                                                                                                                                                                     | **CODE COMPLETE 2026-06-22**                             |
-| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert/Separator)** | §15 ui-kit adapter                                     | 扩 §15 映射表到展示型组件                                                                                                                                                                                                                                 | **CODE COMPLETE 2026-06-23(首批展示原语)**               |
-| §23 | **图标(lucide-react)**                                                              | §15 ui-kit / 新 icon 节点或 prop                       | 放置 lucide 图标(shadcn 默认图标库),名称/尺寸/色可配                                                                                                                                                                                                      | 无 icon 节点(lucide 仅在 shadcn 内部注释)                |
-| §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)**             | jsx tailwind-classes                                   | image fill / IMAGE 节点 → `<img src alt>` + object-cover/contain;渐变填充 → `bg-gradient-*`;宽高比                                                                                                                                                        | 无 `<img>` emit、无 gradient、无 aspect/object-fit(全空) |
-| §25 | **外链 `<a href>` + target**                                                        | emit/element                                           | 外部链接节点 → `<a href target=_blank rel>`(区别于内部 navigate)                                                                                                                                                                                          | **CODE COMPLETE 2026-06-22**                             |
-| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)**                         | jsx tailwind-classes                                   | 吸顶头/侧栏、滚动容器、堆叠层级                                                                                                                                                                                                                           | **CODE COMPLETE 2026-06-22**                             |
-| §27 | **state 持久化(localStorage)+ 派生/计算 state**                                     | docState + 表达式子语言                                | docState 标记持久化→`localStorage` 读写;派生 state = 表达式从其它 state 算出(memo)                                                                                                                                                                        | 无 localStorage/persist/computed                         |
-| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur 端到端 + `$event`/`$value` 复活)**       | EventName 联合(已有 5)+ events emit                    | `EventName` 已含 onChange/onSubmit/onFocus/onBlur,但 emit 只接 onClick/onSubmit;onChange 当前**只被 controlled binding 占用**,用户授权的 onChange/onFocus/onBlur 未接 → 接通 + 复活 memory 里 shelved 的 `$event`/`$value` token(已能 parse,缺 live 用例) | **CODE COMPLETE 2026-06-22**                             |
+| #   | feature                                                                       | 复用 / 状态                                                      |
+| --- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| §20 | **交互状态样式(hover/focus/active/disabled variants)**                        | §7 variant-emit;用户节点无状态变体 emit。                       |
+| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)**                           | FRAME `interactiveProps.overlay` + docState;**CODE COMPLETE**。 |
+| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert 等)**  | §15 ui-kit adapter;**CODE COMPLETE 2026-06-23**。                |
+| §23 | **图标(lucide-react)**                                                        | §15 ui-kit / 新 icon 节点或 prop;无 icon 节点。                  |
+| §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)**       | jsx tailwind-classes;无 `<img>`/gradient/aspect/object-fit。     |
+| §25 | **外链 `<a href>` + target**                                                  | emit/element;**CODE COMPLETE 2026-06-22**。                      |
+| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)**                   | jsx tailwind-classes;**CODE COMPLETE 2026-06-22**。              |
+| §27 | **state 持久化(localStorage)+ 派生/计算 state**                               | docState + 表达式子语言;无 localStorage/persist/computed。       |
+| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur + `$event`/`$value`)**             | EventName 联合 + events emit;**CODE COMPLETE 2026-06-22**。      |
 
-> **第二波优先级建议**:**§20 交互状态样式**最值得先做(复用 §7 的 variant-emit 机制、零新概念、立刻让产物有交互质感);**§24 图片/填充** + **§25 外链** 是「真页面」基础缺(无图片是硬伤);**§21 覆盖层** + **§22 更多原语** 把 UI 表达力补齐;**§27 持久化/派生 state** + **§28 事件收尾** 补运行时逻辑短板(§28 顺带解 memory 里 shelved 的 `$event`/`$value`)。这些都可穿插在第一波 §16–§19 之间做(单条小)。
+> **第二波优先级建议**:
+>
+> - **§20 交互状态样式**最值得先做:复用 §7 variant-emit,零新概念,立刻让产物有交互质感。
+> - **§24 图片/填充** + **§25 外链** 是「真页面」基础缺口。
+> - **§21 覆盖层** + **§22 更多原语** 补 UI 表达力。
+> - **§27 持久化/派生 state** + **§28 事件收尾** 补运行时逻辑短板。
+>
+> 这些都可穿插在第一波 §16–§19 之间做(单条小)。
 
 ### 1.2 Phase 4 Out-of-Scope(明确推迟到 Phase 5+)
 
@@ -568,7 +595,15 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状(grep 坐实)**:用户节点无状态变体样式 —— `hover:` 命中全是 shadcn 模板内部,无用户可授权的 hover/focus/active 样式。
 
-**建议方向**:节点可声明各状态(hover/focus/active/disabled)的样式覆盖(同 §7 responsiveOverrides 的 `Partial<Pick<SceneNode, 样式键>>` 形态),emit 走 §7 的 **style-level diff + 前缀**机制(`hover:bg-...`/`focus:ring-...`),复用 `LAYOUT_STYLE_RESET` 思路。round-trip 走 `lowcode/stateOverrides` 通道(类比 responsiveOverrides)。**待锁**:状态集合(是否含 group-hover / focus-within);与 §7 断点的组合(`md:hover:`)。
+**建议方向**:
+
+- 节点可声明 `hover/focus/active/disabled` 的样式覆盖,形态同 §7
+  `responsiveOverrides` 的 `Partial<Pick<SceneNode, 样式键>>`。
+- emit 复用 §7 的 **style-level diff + 前缀**机制
+  (`hover:bg-...` / `focus:ring-...`),并复用 `LAYOUT_STYLE_RESET` 思路。
+- round-trip 走 `lowcode/stateOverrides` 通道。
+
+**待锁**:状态集合(是否含 group-hover / focus-within);与 §7 断点的组合(`md:hover:`)。
 
 ### §20 详细设计 + 锁定决定(2026-06-21,无 AskUserQuestion — 明确保守默认,镜像 §16.2/§16.4「直接推荐项」)
 
@@ -583,17 +618,34 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **实现 6 文件**:
 
 - `scene-graph/types.ts`:`InteractionState`/`StateOverride`(appearance-only Pick)/`StateOverrides` + `SceneNode.stateOverrides?`(**可选 → 不破 .vue IRTree stub**,§16.3 教训)。
-- `io/formats/jsx/tailwind-classes.ts`:把 §7 的 `layoutStyleDelta`→泛化 `styleDelta(base,variant,resetMap)` + 抽共享 `collectVariantClasses<V>`(breakpoint/state 共用核心:merge override→`nodeToStyle`→diff→twirl→`${variant}:` 前缀;可选 `extra` hook 供 responsive 的 visibility 行);`collectResponsiveTailwindClasses` 改用它;新 `INTERACTION_STATES` + `STATE_STYLE_RESET`(appearance 默认:bg→transparent/border→0/radius→0/opacity→1/shadow→none) + `collectStateTailwindClasses`,jsx barrel 导出。
+- `io/formats/jsx/tailwind-classes.ts`:
+  - 把 §7 的 `layoutStyleDelta` 泛化为 `styleDelta(base,variant,resetMap)`。
+  - 抽共享 `collectVariantClasses<V>`;breakpoint/state 共用
+    `merge override → nodeToStyle → diff → twirl → ${variant}:` 核心。
+  - 新增 `INTERACTION_STATES`、`STATE_STYLE_RESET`、
+    `collectStateTailwindClasses`,并从 jsx barrel 导出。
 - `compiler/ir/style.ts`:`tailwindClassName` 在 base/responsive 后追加 state classes。
-- `lowcode-plugin-data.ts`:`LOWCODE_STATE_OVERRIDES_KEY` + 入 `LOWCODE_PLUGIN_KEYS` + serialize(`isNonEmpty` gate → 非交互 .fig byte-identical)+ Extracted 字段 + assign case + `isStateOverrides` 轻校验。
+- `lowcode-plugin-data.ts`:
+  `LOWCODE_STATE_OVERRIDES_KEY` 入 `LOWCODE_PLUGIN_KEYS`,并补 serialize /
+  Extracted 字段 / assign case / `isStateOverrides` 轻校验。
 
 **交付记录(CODE COMPLETE 2026-06-21,feat `209371ad`)**:
 
 - 实现按设计 6 src/test 触点 + 3 test 文件(core unit 8 / compiler 3 / kiwi round-trip 2)。**零 hotfix、零 GATE 收口**(jscpd 0 —— 共享 `collectVariantClasses` 把 responsive/state 两 collector 去重),**零意外**。
-- **关键复用**:state 与 §7 responsive **同一条 `nodeToStyle` style-level diff 管线**(单一 SceneNode→Tailwind 翻译源),仅前缀(`hover:` vs `md:`)+ reset map(appearance vs layout)+ 属性集不同;`STATE_STYLE_RESET` 复刻 `LAYOUT_STYLE_RESET` 思路,让「清掉某属性回默认」(如 hover 去阴影)emit 显式 reset(`hover:shadow-none`/`hover:opacity-100`)而非静默丢类。
-- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **685/0**(+3)、kiwi **124/0**(+2)、scene-graph 202/0、tools 196/0 零回归;check:vue 0;render/jsx +8(仅既有 §6 frame-nested 出范围 fail)。
-- **e2e 实跑**:scratch .fig(HoverCard 帧带 `stateOverrides.hover.fills` + `disabled.opacity`)经 IORegistry 写真 .fig → CLI compile → App.tsx 出 `bg-white hover:bg-[#EDF2FA] disabled:opacity-50`(证明 scene-graph→.fig serialize→parse→IR→emit 全链路 + 真盘 round-trip)。
-- **边界 / 延后**:`disabled:` 仅匹配 form 控件(input/button/select/textarea),其它节点上为惰性 util(声明式 styling 原语,无害);`cornerRadius` 覆盖走 uniform 半径(节点带 `independentCorners` 时按其路径,边界已记);GUI 仍延后;group-hover/focus-within + 断点×状态组合延后。**新经验:把同形态的两个 variant emitter(§7 responsive breakpoint + §20 interaction-state)收敛到一个泛型 `collectVariantClasses<V>`(参数化 variants/overrideFor/resetMap/extra)—— 既杀 jscpd clone 又锁单一翻译源;两者唯一真差异 = 前缀来源 + reset map + 属性集,其余共享。**
+- **关键复用**:state 与 §7 responsive 共用同一条 `nodeToStyle`
+  style-level diff 管线。两者仅前缀(`hover:` vs `md:`)、reset map
+  (appearance vs layout)和属性集不同。
+- **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **685/0**(+3)、
+  kiwi **124/0**(+2)、scene-graph 202/0、tools 196/0 零回归;check:vue 0;
+  render/jsx +8(仅既有 §6 frame-nested 出范围 fail)。
+- **e2e 实跑**:scratch .fig(HoverCard 帧带 `stateOverrides.hover.fills` +
+  `disabled.opacity`)经 IORegistry 写真 .fig → CLI compile → App.tsx 出
+  `bg-white hover:bg-[#EDF2FA] disabled:opacity-50`。
+- **边界 / 延后**:`disabled:` 仅匹配 form 控件(input/button/select/textarea);
+  其它节点上为惰性 util;GUI 仍延后;group-hover/focus-within +
+  断点×状态组合延后。
+- **新经验**:把同形态的两个 variant emitter 收敛到泛型
+  `collectVariantClasses<V>`,既杀 jscpd clone,又锁单一翻译源。
 
 ### §20.3 tool / round-trip polish(2026-06-23)
 
@@ -605,7 +657,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **验证**:
 
-- `bun test tests/engine/compiler/state-variants.test.ts tests/engine/tools/lowcode/modify.test.ts tests/engine/tools/lowcode/read.test.ts tests/engine/kiwi/lowcode/export-node.test.ts tests/engine/kiwi/lowcode/plugin-data.test.ts`
+```sh
+bun test \
+  tests/engine/compiler/state-variants.test.ts \
+  tests/engine/tools/lowcode/modify.test.ts \
+  tests/engine/tools/lowcode/read.test.ts \
+  tests/engine/kiwi/lowcode/export-node.test.ts \
+  tests/engine/kiwi/lowcode/plugin-data.test.ts
+```
 
 ## §21 覆盖层组件(Modal / Dialog / Drawer / Popover / Tooltip)
 
@@ -630,10 +689,24 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-23)**:
 
 - **首批范围**:只做展示型/低状态原语 `Badge` / `Alert` / `Separator` / `Skeleton` / `Progress` / `Avatar`。`Tabs` / `Accordion` 需要 active/open state 数据模型,延后到复用 §21 docState open-state 的独立片。
-- **授权形态**:不加新 NodeType,走任意节点 `interactiveProps.uiKit = { primitive: "badge" | "alert" | "separator" | "skeleton" | "progress" | "avatar", ... }`。兼容字段 `kind`/`component` 作为 primitive 别名;plain emit 忽略该 hint。
-- **IR/API**:`IRElement.displayKind?: "badge" | ... | "avatar"` + `display?: { variant?, value?, src?, alt?, fallback? }`。collect 期识别未知 primitive 时 warn `ui-kit-primitive-unknown` 并回退普通元素。
-- **emit**:shadcn adapter 新增 `mapDisplay` / `emitDisplay`。Badge/Alert/Separator/Skeleton 走 tag replacement + children passthrough;Progress emit `<Progress value={...}/>`;Avatar emit `<Avatar><AvatarImage .../><AvatarFallback>...</AvatarFallback></Avatar>`。
-- **dependency / files**:按实际使用 inline `badge.tsx` / `alert.tsx` / `separator.tsx` / `skeleton.tsx` / `progress.tsx` / `avatar.tsx`;deps 按需加入 `class-variance-authority`, `@radix-ui/react-separator`, `@radix-ui/react-progress`, `@radix-ui/react-avatar`。
+- **授权形态**:不加新 NodeType,走任意节点:
+
+  ```ts
+  interactiveProps: {
+    uiKit: { primitive: "badge" | "alert" | "separator" | "skeleton" | "progress" | "avatar" }
+  }
+  ```
+
+  兼容字段 `kind`/`component` 作为 primitive 别名;plain emit 忽略该 hint。
+- **IR/API**:`IRElement.displayKind?: "badge" | ... | "avatar"` +
+  `display?: { variant?, value?, src?, alt?, fallback? }`。
+  collect 期识别未知 primitive 时 warn `ui-kit-primitive-unknown` 并回退普通元素。
+- **emit**:shadcn adapter 新增 `mapDisplay` / `emitDisplay`。Badge/Alert/
+  Separator/Skeleton 走 tag replacement + children passthrough;Progress emit
+  `<Progress value={...}/>`;Avatar emit Avatar/Image/Fallback composition。
+- **dependency / files**:按实际使用 inline `badge.tsx` / `alert.tsx` /
+  `separator.tsx` / `skeleton.tsx` / `progress.tsx` / `avatar.tsx`;deps 按需加入
+  `class-variance-authority` 和 Radix avatar/progress/separator 包。
 - **验证**:`tests/engine/compiler/ui-kit/display-primitives.test.ts` 覆盖首批基础映射、Progress value、Avatar image/fallback、uiKit off plain path、unknown primitive warning;并回跑 §15 tags/controls/card UI-kit 测试。
 - **边界/延后**:v1 是 headless compiler 能力,无 GUI primitive picker;不做 Tabs/Accordion;不自动根据节点名称/样式推断 primitive;不做 variant 白名单校验(交给生成项目 TS/shadcn 类型约束)。
 
@@ -642,10 +715,34 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **锁定决定 + 交付记录**:
 
 - **范围**:补 `Tabs` / `Accordion` 两个 composed display primitives,继续走 `interactiveProps.uiKit` blob,不新增 NodeType,plain emit 保持普通节点。
-- **授权形态**:`{ primitive: "tabs", defaultValue?, items: [{ value, label, content }] }` 和 `{ primitive: "accordion", defaultValue?, type?: "single"|"multiple", collapsible?, items: [{ value, title|label, content }] }`。`items` 缺失/无有效项时 warn `ui-kit-primitive-items-invalid` 并回退普通元素。
+- **授权形态**:
+
+  ```ts
+  { primitive: "tabs", defaultValue?, items: [{ value, label, content }] }
+  ```
+
+  ```ts
+  {
+    primitive: "accordion",
+    defaultValue?,
+    type?: "single" | "multiple",
+    collapsible?,
+    items: [{ value, title | label, content }]
+  }
+  ```
+
+  `items` 缺失/无有效项时 warn `ui-kit-primitive-items-invalid` 并回退普通元素。
 - **IR/API**:`displayKind` 扩到 `tabs|accordion`;`IRDisplayPrimitive` 增加 `items/defaultValue/type/collapsible`。v2 先做静态 items;active/open state 双向绑定留给后续 stateful primitive 片。
 - **emit**:shadcn adapter inline `tabs.tsx` / `accordion.tsx`,deps 按需加入 `@radix-ui/react-tabs` / `@radix-ui/react-accordion`;`emitDisplay` 输出 `TabsList/TabsTrigger/TabsContent` 和 `AccordionItem/AccordionTrigger/AccordionContent` 结构。
-- **验证**:`bun test tests/engine/compiler/ui-kit/display-primitives.test.ts tests/engine/compiler/ui-kit/card.test.ts tests/engine/compiler/ui-kit/tags.test.ts tests/engine/compiler/ui-kit/controls.test.ts`。
+- **验证**:
+
+  ```sh
+  bun test \
+    tests/engine/compiler/ui-kit/display-primitives.test.ts \
+    tests/engine/compiler/ui-kit/card.test.ts \
+    tests/engine/compiler/ui-kit/tags.test.ts \
+    tests/engine/compiler/ui-kit/controls.test.ts
+  ```
 
 ## §23 图标(lucide-react)
 
@@ -715,7 +812,13 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状(grep 坐实)**:无 localStorage/persist/computed。
 
-**建议方向**:(a)docState 键标 `persist` → emit 初值读 `localStorage` + 变更写回(版本化 key);(b)派生 state = 一条表达式从其它 state/props 算出(emit `useMemo`),复用表达式子语言 + read-context 引用追踪。**待锁**:持久化范围(整 docState vs 标记键);派生 state 的循环依赖检测(collect 期静态拒)。
+**建议方向**:
+
+- docState 键标 `persist` → emit 初值读 `localStorage` + 变更写回(版本化 key)。
+- 派生 state = 一条表达式从其它 state/props 算出(emit `useMemo`)。
+- 复用表达式子语言 + read-context 引用追踪。
+
+**待锁**:持久化范围(整 docState vs 标记键);派生 state 的循环依赖检测(collect 期静态拒)。
 
 ### §27.1 persisted docState 详细设计 + 锁定决定(2026-06-23,无 AskUserQuestion — prompt.md 锁保守推荐项)
 
@@ -730,10 +833,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **锁定决定**:
 
-1. **持久化范围 = 仅显式标记的 docState**:`DocumentStateDef.persist?: true` 才持久化。page state 不持久化;`state[]` 里出现持久化字段由工具拒绝。否决「全部 docState 默认持久」,避免把 session/auth/error/loading 等瞬态状态写进浏览器存储。
-2. **key 策略 = `openpencil:<packageName>:<stateName>` + 可选 `storageKey` 覆盖**。默认 key 绑定生成项目包名和状态名,足够稳定且不需要文档级 appId;高级用户可用 `storageKey` 做跨重命名保留或多应用共享。
-3. **版本策略 = `storageVersion?: string` 变化时忽略旧值**。runtime 存 `{ version, value }`;未设置版本时写 `version:null`。读取时版本不等回退默认值,下一次写入覆盖成新版本。只忽略旧值,不主动 `removeItem`,避免误删用户自己复用的 key。
-4. **错误策略 = fail-open 到默认值**。`typeof window === 'undefined'`、JSON parse 失败、localStorage security/quota 异常都不阻断应用启动;写入失败静默忽略,因为持久化是增强能力不是业务关键路径。
+1. **持久化范围 = 仅显式标记的 docState**:`DocumentStateDef.persist?: true`
+   才持久化。page state 不持久化;`state[]` 里出现持久化字段由工具拒绝。
+2. **key 策略 = `openpencil:<packageName>:<stateName>` + 可选 `storageKey` 覆盖**。
+   默认 key 绑定生成项目包名和状态名;高级用户可用 `storageKey` 做跨重命名保留。
+3. **版本策略 = `storageVersion?: string` 变化时忽略旧值**。runtime 存
+   `{ version, value }`;未设置版本时写 `version:null`。读取时版本不等回退默认值。
+4. **错误策略 = fail-open 到默认值**。`window` 不存在、JSON parse 失败、
+   localStorage security/quota 异常都不阻断应用启动;写入失败静默忽略。
 5. **§27.2 computed state 延后**:新增 `computedExpr` / `useMemo` / 循环依赖检测会触碰表达式 read-context 和 setter 语义,独立交付。
 
 **公开 API / Schema 改动**:
@@ -745,7 +852,9 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 **内部实现拆解**:
 
 - `collectDocStates`:输出 `persist/storageKey/storageVersion`;page `collectPageStates` 保持默认值逻辑不变,不会把 page state 持久化到 runtime。
-- `buildLowcodeStateRuntime(decls, packageName)`:拆 `initialDefaults`;对每个字段生成 `readPersisted(name, default)` 初值;生成 `persistConfig` + `persistedNames`;`store.subscribe` 在变更时写 `localStorage`。
+- `buildLowcodeStateRuntime(decls, packageName)`:
+  拆 `initialDefaults`;对每个字段生成 `readPersisted(name, default)` 初值;
+  生成 `persistConfig` + `persistedNames`;`store.subscribe` 在变更时写 `localStorage`。
 - adapter emit:单页 / 多页把 `options.packageName` 传给 runtime builder;没有 docState 时仍不 emit runtime / zustand。
 - tools:校验持久化字段类型;`state[]` 带持久化字段拒绝,`lowcodeDocumentState[]` 允许。
 - tests:覆盖 runtime 读写代码串、adapter 传包名、tool 接受/拒绝、pluginData blob round-trip。
@@ -764,11 +873,16 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **锁定决定**:
 
-1. **范围 = page state only**:`StateDef.computedExpr?: string` 只允许出现在 page `state[]`;`lowcodeDocumentState[]` 带 `computedExpr` 由工具拒绝。docState computed 需要单独设计全局 store selector / dependency lifecycle,不塞进本轮。
-2. **只读语义**:computed state 不生成 setter。`setState` 目标指向 computed state 时 collect 阶段丢 action 并告警;`bindings.value` 指向 computed state 时丢 controlled wiring 并告警,因为 controlled input 必须有可写目标。
-3. **read-context 复用**:表达式复用现有 `parseExpression` + read-context 引用校验。可读 page state、docState、`$params`、`$query`;拒绝 `$prev`、未知 identifier。docState / route / query 引用沿用 `registerDocStateReads` 路径,保证 page scaffold 自动声明 `useDocState` / router hooks。
+1. **范围 = page state only**:`StateDef.computedExpr?: string` 只允许出现在 page
+   `state[]`;`lowcodeDocumentState[]` 带 `computedExpr` 由工具拒绝。
+2. **只读语义**:computed state 不生成 setter。`setState` 或 `bindings.value`
+   写入 computed state 时 collect 阶段丢弃并告警。
+3. **read-context 复用**:表达式复用现有 `parseExpression` + read-context 引用校验。
+   可读 page state、docState、`$params`、`$query`;拒绝 `$prev`、未知 identifier。
 4. **循环依赖 = collect 期静态降级**:computed↔computed 循环会标记循环成员为 `computedInvalid`,emit 为默认值常量并告警,而不是生成运行时递归或抛错。未知引用 / parse error 同样降级为默认值常量。
-5. **声明顺序 = writable state/doc/router before computed**:page scaffold 先声明 `useDocState`、`$params/$query`,再声明 page state;state emit 内部把 writable state 放前面,computed state 按依赖拓扑排序,保证 `useMemo` 引用的局部变量已在作用域中。
+5. **声明顺序 = writable state/doc/router before computed**:
+   page scaffold 先声明 `useDocState`、`$params/$query`,再声明 page state;
+   state emit 内部把 writable state 放前面,computed state 按依赖拓扑排序。
 
 **公开 API / Schema 改动**:
 
@@ -804,8 +918,14 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **验证**:
 
-- `bun test tests/engine/compiler/ir/collect/state.test.ts tests/engine/kiwi/lowcode/export-node.test.ts tests/engine/kiwi/lowcode/plugin-data.test.ts`
-- §27.1/§27.2 聚焦测试与 full `bun run check` 已在同轮验证;§27.3 只补 coverage / docs / prompt。
+```sh
+bun test \
+  tests/engine/compiler/ir/collect/state.test.ts \
+  tests/engine/kiwi/lowcode/export-node.test.ts \
+  tests/engine/kiwi/lowcode/plugin-data.test.ts
+```
+
+§27.1/§27.2 聚焦测试与 full `bun run check` 已在同轮验证;§27.3 只补 coverage / docs / prompt。
 
 ## §28 用户事件覆盖收尾(onChange / onFocus / onBlur 端到端 + `$event`/`$value` 复活)
 
