@@ -1,5 +1,6 @@
 import type {
   ComponentDef,
+  IRAsset,
   IRNode,
   IRSupabaseConfig,
   IRTranslations,
@@ -183,6 +184,7 @@ function emitSinglePage(
   // here (sets files; returns deps + theme to fold in below).
   const uiKit = resolveUiKit(options)
   const kit = applyUiKit(files, [cleaned], components, uiKit)
+  emitAssets(files, collectAssets([cleaned], components))
   // Phase 3 §9: i18n is active only when the flag is on AND there is text to
   // translate (an empty doc gets no runtime/dep/provider).
   const messages = collectMessages([cleaned], components)
@@ -260,6 +262,7 @@ function emitMultiPage(
   // Phase 3 §15: emit the UI kit's inlined sources across all pages.
   const uiKit = resolveUiKit(options)
   const kit = applyUiKit(files, irs, components, uiKit)
+  emitAssets(files, collectAssets(irs, components))
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
   const translations = irs.find((ir) => ir.translations)?.translations
@@ -541,6 +544,21 @@ function setSharedProjectFiles(
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())
   }
+}
+
+function emitAssets(files: Map<string, string | Uint8Array>, assets: readonly IRAsset[]): void {
+  for (const asset of assets) files.set(asset.path, asset.bytes)
+}
+
+function collectAssets(irs: readonly IRTree[], components: readonly ComponentDef[]): IRAsset[] {
+  const byPath = new Map<string, IRAsset>()
+  for (const ir of irs) {
+    for (const asset of ir.assets ?? []) byPath.set(asset.path, asset)
+  }
+  for (const def of components) {
+    for (const asset of def.assets ?? []) byPath.set(asset.path, asset)
+  }
+  return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path))
 }
 
 function collectSlugWarnings(infos: readonly PagePathInfo[]): CompileWarning[] {

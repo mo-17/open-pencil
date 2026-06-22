@@ -24,6 +24,10 @@ function gridTemplateTw(tracks: GridTrack[]): string {
   return `[${tracks.map(formatTrack).join('_')}]`
 }
 
+export interface TailwindClassOptions {
+  logicalProperties?: boolean
+}
+
 function collectGridClasses(node: SceneNode): string[] {
   const classes = ['grid']
   if (node.gridTemplateColumns.length > 0)
@@ -76,15 +80,38 @@ function applyFlexSizing(style: Record<string, string>, node: SceneNode): void {
   else if (node.counterAxisSizing !== 'HUG') style[crossAxis] = px(node[crossAxis])
 }
 
-function applyPadding(style: Record<string, string>, node: SceneNode): void {
+function applyPadding(
+  style: Record<string, string>,
+  node: SceneNode,
+  options: TailwindClassOptions = {}
+): void {
   const { paddingTop: pt, paddingRight: pr, paddingBottom: pb, paddingLeft: pl } = node
   if (pt === 0 && pr === 0 && pb === 0 && pl === 0) return
+  if (options.logicalProperties === true) {
+    if (pt === pr && pr === pb && pb === pl) {
+      style.padding = px(pt)
+    } else if (pt === pb && pl === pr) {
+      style.paddingBlock = px(pt)
+      style.paddingInline = px(pl)
+    } else {
+      style.paddingBlockStart = px(pt)
+      style.paddingInlineEnd = px(pr)
+      style.paddingBlockEnd = px(pb)
+      style.paddingInlineStart = px(pl)
+    }
+    return
+  }
   if (pt === pr && pr === pb && pb === pl) style.padding = px(pt)
   else if (pt === pb && pl === pr) style.padding = `${px(pt)} ${px(pl)}`
   else style.padding = `${px(pt)} ${px(pr)} ${px(pb)} ${px(pl)}`
 }
 
-function applyLayoutStyle(style: Record<string, string>, node: SceneNode, graph: SceneGraph): void {
+function applyLayoutStyle(
+  style: Record<string, string>,
+  node: SceneNode,
+  graph: SceneGraph,
+  options: TailwindClassOptions = {}
+): void {
   const ctx = getNodeContext(node, graph)
 
   if (ctx.isGrid) {
@@ -102,7 +129,7 @@ function applyLayoutStyle(style: Record<string, string>, node: SceneNode, graph:
   }
 
   if (ctx.parentIsAutoLayout && node.layoutGrow > 0) style.flexGrow = '1'
-  if (ctx.isAutoLayout) applyPadding(style, node)
+  if (ctx.isAutoLayout) applyPadding(style, node, options)
 
   // Phase 2 §6: free positioning fires for two cases that share the same
   // CSS shape — parent opts the whole container into free layout (CANVAS
@@ -343,9 +370,13 @@ function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
   if (textColor) style.color = textColor
 }
 
-function nodeToStyle(node: SceneNode, graph: SceneGraph): Record<string, string> {
+function nodeToStyle(
+  node: SceneNode,
+  graph: SceneGraph,
+  options: TailwindClassOptions = {}
+): Record<string, string> {
   const style: Record<string, string> = {}
-  applyLayoutStyle(style, node, graph)
+  applyLayoutStyle(style, node, graph, options)
   applyAppearanceStyle(style, node)
   applyShapeStyle(style, node)
   applyTextStyle(style, node)
@@ -371,6 +402,12 @@ const LAYOUT_STYLE_RESET: Record<string, string> = {
   paddingRight: '0px',
   paddingBottom: '0px',
   paddingLeft: '0px',
+  paddingBlock: '0px',
+  paddingInline: '0px',
+  paddingBlockStart: '0px',
+  paddingInlineEnd: '0px',
+  paddingBlockEnd: '0px',
+  paddingInlineStart: '0px',
   width: 'auto',
   height: 'auto',
   flexGrow: '0',
@@ -397,13 +434,18 @@ const LAYOUT_STYLE_RESET: Record<string, string> = {
  * base-hidden node that carries a responsive re-show). Tailwind orders
  * breakpoint variants after base utilities, so `hidden md:flex` shows at ≥md.
  */
-export function collectResponsiveTailwindClasses(node: SceneNode, graph: SceneGraph): string[] {
+export function collectResponsiveTailwindClasses(
+  node: SceneNode,
+  graph: SceneGraph,
+  options: TailwindClassOptions = {}
+): string[] {
   const overrides = node.responsiveOverrides
   if (!overrides) return []
-  const baseStyle = nodeToStyle(node, graph)
+  const baseStyle = nodeToStyle(node, graph, options)
   return collectVariantClasses(
     node,
     graph,
+    options,
     baseStyle,
     RESPONSIVE_BREAKPOINTS,
     (bp) => overrides[bp],
@@ -446,13 +488,18 @@ const STATE_STYLE_RESET: Record<string, string> = {
  * state variants after base utilities, so `bg-white hover:bg-gray-100` takes
  * effect on hover.
  */
-export function collectStateTailwindClasses(node: SceneNode, graph: SceneGraph): string[] {
+export function collectStateTailwindClasses(
+  node: SceneNode,
+  graph: SceneGraph,
+  options: TailwindClassOptions = {}
+): string[] {
   const overrides = node.stateOverrides
   if (!overrides) return []
-  const baseStyle = nodeToStyle(node, graph)
+  const baseStyle = nodeToStyle(node, graph, options)
   return collectVariantClasses(
     node,
     graph,
+    options,
     baseStyle,
     INTERACTION_STATES,
     (state) => overrides[state],
@@ -557,6 +604,7 @@ function arbitraryClass(name: string, value: string): string {
 function collectVariantClasses<V extends string>(
   node: SceneNode,
   graph: SceneGraph,
+  options: TailwindClassOptions,
   baseStyle: Record<string, string>,
   variants: readonly V[],
   overrideFor: (variant: V) => Partial<SceneNode> | undefined,
@@ -571,7 +619,7 @@ function collectVariantClasses<V extends string>(
   for (const variant of variants) {
     const override = overrideFor(variant)
     if (!override) continue
-    const variantStyle = nodeToStyle({ ...node, ...override }, graph)
+    const variantStyle = nodeToStyle({ ...node, ...override }, graph, options)
     const twirled = twirl(styleDelta(baseStyle, variantStyle, resetMap))
     if (twirled) for (const cls of twirled.split(' ')) out.push(`${variant}:${cls}`)
     if (extra) out.push(...extra(variant, override, variantStyle))
@@ -598,8 +646,12 @@ function styleDelta(
   return delta
 }
 
-export function collectTailwindClasses(node: SceneNode, graph: SceneGraph): string[] {
-  const style = nodeToStyle(node, graph)
+export function collectTailwindClasses(
+  node: SceneNode,
+  graph: SceneGraph,
+  options: TailwindClassOptions = {}
+): string[] {
+  const style = nodeToStyle(node, graph, options)
   const ctx = getNodeContext(node, graph)
 
   const extraClasses: string[] = []

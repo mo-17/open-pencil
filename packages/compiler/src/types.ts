@@ -63,6 +63,12 @@ export interface CompilerOptions {
    */
   sourceLocale?: string
   /**
+   * Phase 4 §9 v15 — emit RTL-safe logical padding utilities (`ps-*` / `pe-*`)
+   * instead of physical left/right utilities for asymmetric auto-layout
+   * padding. Default false preserves legacy physical Tailwind output.
+   */
+  rtlLogicalProperties?: boolean
+  /**
    * Phase 3 §15 — emit interactive nodes (BUTTON/INPUT/TEXTAREA/LABEL) as a real
    * code-UI-kit component instead of hand-rolled Tailwind HTML. `'shadcn'` inlines
    * the shadcn/ui sources (`src/components/ui/*` + `src/lib/utils.ts` +

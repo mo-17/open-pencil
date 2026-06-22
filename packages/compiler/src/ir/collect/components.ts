@@ -1,7 +1,7 @@
-import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/core/scene-graph'
-
-import { tailwindClassName } from '#compiler/ir/style'
+import { tailwindClassName, type CompilerStyleOptions } from '#compiler/ir/style'
 import type { ComponentProp, VariantAxis } from '#compiler/ir/types'
+
+import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/core/scene-graph'
 
 /** Phase 3 §8 v2/v3 — the prop(s) a single master descendant is parameterized
  *  by: `text` (`:text` override → `{prop}` content) and/or `className`
@@ -129,7 +129,10 @@ function variantDefaultsFromDefinitions(set: SceneNode): Map<string, string> {
  * overrides across all its instances, keyed by the master descendant the
  * override targets (mapped via the instance child's `componentId`).
  */
-export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
+export function buildComponentRegistry(
+  graph: SceneGraph,
+  styleOptions: CompilerStyleOptions = {}
+): ComponentRegistry {
   const instancesByComponent = new Map<string, SceneNode[]>()
   const masters: SceneNode[] = []
   const sets: SceneNode[] = []
@@ -158,7 +161,7 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
     if (refable.length === 0) continue
     registry.set(master.id, {
       name: uniqueName(componentName(master.name), usedNames),
-      propSlots: buildPropSlots(graph, refable)
+      propSlots: buildPropSlots(graph, refable, styleOptions)
     })
   }
   // Phase 3 §8 v4: a COMPONENT_SET with ≥1 instanced variant → one component
@@ -175,7 +178,7 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
       name: uniqueName(componentName(set.name), usedNames),
       // Phase 3 §8 v5: a SET's text/fill prop slots, merged by layer name so
       // the same logical node across variant subtrees shares one prop.
-      propSlots: buildSetPropSlots(graph, kids, variantInstances),
+      propSlots: buildSetPropSlots(graph, kids, variantInstances, styleOptions),
       variants: buildVariants(set, kids)
     })
   }
@@ -192,11 +195,12 @@ export function buildComponentRegistry(graph: SceneGraph): ComponentRegistry {
 function buildSetPropSlots(
   graph: SceneGraph,
   variantKids: SceneNode[],
-  instances: SceneNode[]
+  instances: SceneNode[],
+  styleOptions: CompilerStyleOptions = {}
 ): Map<string, ComponentSlot> {
   // Same override→slot accumulation as a plain component, but keyed by layer
   // name so the same logical node across variant subtrees shares one prop.
-  const byName = accumulateSlots(graph, instances, (masterChild) => masterChild.name)
+  const byName = accumulateSlots(graph, instances, (masterChild) => masterChild.name, styleOptions)
   // Fan the name-keyed slots back out to every variant descendant id so the
   // walker (which looks up by node id) parameterizes the matching node in
   // every variant subtree, not just the one an instance happened to override.
@@ -231,9 +235,13 @@ function descendantsOf(graph: SceneGraph, parentId: string): SceneNode[] {
  *  override adds a content prop (default = master text); a `:fills` override
  *  adds a className prop (default = master child's Tailwind classes). A child
  *  can carry both. */
-function buildPropSlots(graph: SceneGraph, instances: SceneNode[]): Map<string, ComponentSlot> {
+function buildPropSlots(
+  graph: SceneGraph,
+  instances: SceneNode[],
+  styleOptions: CompilerStyleOptions = {}
+): Map<string, ComponentSlot> {
   // Plain component: one body, so slots are keyed by the master child's node id.
-  return accumulateSlots(graph, instances, (masterChild) => masterChild.id)
+  return accumulateSlots(graph, instances, (masterChild) => masterChild.id, styleOptions)
 }
 
 /** The shared slot accumulator for §8 v2/v3 (and v5). Walks every supported
@@ -245,7 +253,8 @@ function buildPropSlots(graph: SceneGraph, instances: SceneNode[]): Map<string, 
 function accumulateSlots(
   graph: SceneGraph,
   instances: SceneNode[],
-  keyOf: (masterChild: SceneNode) => string
+  keyOf: (masterChild: SceneNode) => string,
+  styleOptions: CompilerStyleOptions = {}
 ): Map<string, ComponentSlot> {
   const slots = new Map<string, ComponentSlot>()
   const usedPropNames = new Set<string>()
@@ -268,7 +277,7 @@ function accumulateSlots(
         // className, so a single slot captures every visual divergence.
         slot.className = {
           name: uniqueName(`${propName(masterChild.name)}ClassName`, usedPropNames),
-          defaultValue: tailwindClassName(masterChild, graph),
+          defaultValue: tailwindClassName(masterChild, graph, styleOptions),
           kind: 'className'
         }
       }

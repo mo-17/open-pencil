@@ -83,6 +83,8 @@ export interface ComponentDef {
   variantAxes?: VariantAxis[]
   /** Phase 3 §8 v4 — one entry per variant (a COMPONENT child of the SET). */
   variants?: VariantCase[]
+  /** Binary assets referenced by this component body. */
+  assets?: IRAsset[]
 }
 
 /** Phase 3 §8 v4 — one variant axis of a COMPONENT_SET (e.g. `Size`). */
@@ -255,6 +257,12 @@ export interface IRImage {
   alt: string
 }
 
+/** Phase 4 §24 v2: binary asset emitted by the compiler project. */
+export interface IRAsset {
+  path: string
+  bytes: Uint8Array
+}
+
 /** Phase 4 §21: a FRAME rendered as a user-authored overlay. `openRef` is a
  *  boolean doc-state name; the page hoists it via `useDocState`. When
  *  `closeOnBackdrop` is true, the backdrop writes `false` to the same doc-state
@@ -291,6 +299,10 @@ export interface IRDisplayPrimitive {
   alt?: string
   fallback?: string
   defaultValue?: string
+  /** Phase 4 §22 stateful primitives — optional controlled value wiring for
+   *  Tabs / Accordion. Tabs and single Accordion bind a string state; multiple
+   *  Accordion binds an array state. */
+  valueBinding?: IRControlledInput
   type?: string
   collapsible?: boolean
   items?: IRDisplayItem[]
@@ -867,6 +879,8 @@ export interface IRTree {
   translations?: IRTranslations
   /** Warnings raised while collecting the IR (invalid bindings, expressions, etc.). */
   warnings: IRWarning[]
+  /** Binary assets referenced by this page tree. */
+  assets?: IRAsset[]
 }
 
 /** Phase 3 §9 v7: IR-local mirror of `LowcodeTranslations` from scene-graph, so

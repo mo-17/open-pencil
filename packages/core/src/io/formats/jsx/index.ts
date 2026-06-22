@@ -3,5 +3,6 @@ export {
   collectLayoutPrimitiveClasses,
   collectResponsiveTailwindClasses,
   collectStateTailwindClasses,
-  collectTailwindClasses
+  collectTailwindClasses,
+  type TailwindClassOptions
 } from './tailwind-classes'

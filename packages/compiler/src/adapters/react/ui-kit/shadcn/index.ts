@@ -444,8 +444,15 @@ function emitTabs(node: IRElement, ctx: KitEmitCtx): string | null {
   if (!items) return null
   const { pad, i1, i2 } = indentParts(ctx)
   const parts = rootAttrParts(node, ctx)
-  const defaultValue = node.display?.defaultValue ?? items[0]?.value
-  if (defaultValue) parts.push(`defaultValue="${ctx.escapeAttr(defaultValue)}"`)
+  if (node.display?.valueBinding) {
+    parts.push(`value={${node.display.valueBinding.read}}`)
+    parts.push(
+      `onValueChange={(value) => ${controlledWriteCall(node.display.valueBinding, 'value')}}`
+    )
+  } else {
+    const defaultValue = node.display?.defaultValue ?? items[0]?.value
+    if (defaultValue) parts.push(`defaultValue="${ctx.escapeAttr(defaultValue)}"`)
+  }
   const lines = [`${pad}<Tabs${attrSuffix(parts)}>`]
   lines.push(`${i1}<TabsList>`)
   for (const item of items) {
@@ -471,7 +478,12 @@ function emitAccordion(node: IRElement, ctx: KitEmitCtx): string | null {
   const type = node.display?.type === 'multiple' ? 'multiple' : 'single'
   parts.push(`type="${type}"`)
   if (type === 'single' && node.display?.collapsible !== false) parts.push('collapsible')
-  if (type === 'single' && node.display?.defaultValue) {
+  if (node.display?.valueBinding) {
+    parts.push(`value={${node.display.valueBinding.read}}`)
+    parts.push(
+      `onValueChange={(value) => ${controlledWriteCall(node.display.valueBinding, 'value')}}`
+    )
+  } else if (type === 'single' && node.display?.defaultValue) {
     parts.push(`defaultValue="${ctx.escapeAttr(node.display.defaultValue)}"`)
   }
   const lines = [`${pad}<Accordion${attrSuffix(parts)}>`]

@@ -3,7 +3,13 @@ import { collectComponents, collectTree } from './ir/collect/tree'
 import { selectAdapter } from './select-adapter'
 import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
-export type { CompileWarning, CompilerInput, CompilerOptions, CompilerOutput, UiKitName } from './types'
+export type {
+  CompileWarning,
+  CompilerInput,
+  CompilerOptions,
+  CompilerOutput,
+  UiKitName
+} from './types'
 // Phase 3 §3: validator + expression sublanguage live in
 // `@open-pencil/core/lowcode-validation` so the lowcode AI tool surface
 // (which sits in core) can share one source with editor + compiler.
@@ -55,16 +61,18 @@ export function compile(input: CompilerInput): CompilerOutput {
   // Phase 3 §8: extract reusable components (COMPONENT masters with ≥1
   // instance) once, then walk each page with the registry so masters + clean
   // instances emit `<Name />` refs instead of inlining the subtree.
-  const registry = buildComponentRegistry(input.graph)
+  const styleOptions = { rtlLogicalProperties: input.options.rtlLogicalProperties === true }
+  const registry = buildComponentRegistry(input.graph, styleOptions)
   // Phase 3 §9: i18n externalizes display strings at collect time, so the flag
   // threads into both page walks and component-body walks.
   const i18n = input.options.i18n === true
   const { defs: components, warnings: componentWarnings } = collectComponents(
     input.graph,
     registry,
-    i18n
+    i18n,
+    styleOptions
   )
-  const irs = input.pageIds.map((id) => collectTree(input.graph, id, registry, i18n))
+  const irs = input.pageIds.map((id) => collectTree(input.graph, id, registry, i18n, styleOptions))
   const { files, warnings: adapterWarnings } = adapter.emit(irs, input.options, components)
   return {
     files,

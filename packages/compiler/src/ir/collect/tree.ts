@@ -12,19 +12,21 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import {
   parseVariantName,
+  type Fill,
   type NodeType,
   type SceneGraph,
   type SceneNode,
   type WorkflowDef
 } from '@open-pencil/core/scene-graph'
 
-import { tailwindClassName } from '../style'
+import { tailwindClassName, type CompilerStyleOptions } from '../style'
 import type {
   ComponentDef,
   ComponentProp,
   ComponentRefProp,
   VariantAxis,
   VariantCase,
+  IRAsset,
   IRAttrValue,
   IRComponentRef,
   IRConditional,
@@ -78,7 +80,8 @@ export function collectTree(
   graph: SceneGraph,
   pageId: string,
   components: ComponentRegistry = new Map(),
-  i18n = false
+  i18n = false,
+  styleOptions: CompilerStyleOptions = {}
 ): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
@@ -129,6 +132,7 @@ export function collectTree(
 
   const listQueries: IRListQuery[] = []
   const validatedFields: IRFieldValidation[] = []
+  const assets = new Map<string, IRAsset>()
   const ctx: WalkCtx = {
     graph,
     states: stateById,
@@ -140,8 +144,10 @@ export function collectTree(
     components,
     workflows,
     i18n,
+    styleOptions,
     listQueries,
-    validatedFields
+    validatedFields,
+    assets
   }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
@@ -187,7 +193,8 @@ export function collectTree(
     validatedFields: validatedFields.length > 0 ? validatedFields : undefined,
     supabaseConfig,
     translations,
-    warnings
+    warnings,
+    ...(assets.size > 0 ? { assets: [...assets.values()] } : {})
   }
 }
 
@@ -255,7 +262,8 @@ function liftRequiresAuth(
 export function collectComponents(
   graph: SceneGraph,
   components: ComponentRegistry,
-  i18n = false
+  i18n = false,
+  styleOptions: CompilerStyleOptions = {}
 ): { defs: ComponentDef[]; warnings: IRWarning[] } {
   const warnings: IRWarning[] = []
   // Discard doc-state warnings here — they're already surfaced per page.
@@ -265,6 +273,7 @@ export function collectComponents(
   for (const [componentId, meta] of components) {
     const master = graph.getNode(componentId)
     if (!master) continue
+    const assets = new Map<string, IRAsset>()
     const baseCtx: WalkCtx = {
       graph,
       states: new Map(),
@@ -275,7 +284,9 @@ export function collectComponents(
       inScope: new Set(),
       components,
       workflows,
-      i18n
+      i18n,
+      styleOptions,
+      assets
     }
     const variantMeta = meta.variants
     if (variantMeta) {
@@ -299,7 +310,8 @@ export function collectComponents(
         children: [],
         props: dedupeProps(meta.propSlots),
         variantAxes: variantMeta.axes,
-        variants
+        variants,
+        ...(assets.size > 0 ? { assets: [...assets.values()] } : {})
       })
       continue
     }
@@ -312,7 +324,8 @@ export function collectComponents(
       componentId,
       name: meta.name,
       children: collectChildSubtree(graph, componentId, ctx),
-      props
+      props,
+      ...(assets.size > 0 ? { assets: [...assets.values()] } : {})
     })
   }
   return { defs, warnings }
@@ -386,7 +399,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   if (instanceHasDeepOverride(ctx.graph, node)) return null
   const meta = ctx.components.get(node.componentId)
   if (meta) {
-    return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx.graph), ctx)
+    return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx), ctx)
   }
   // Phase 3 §8 v4: a variant instance — componentId points to a variant child
   // of a registered COMPONENT_SET.
@@ -397,7 +410,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   // text/className override props.
   const props = [
     ...variantProps(variantChild, setMeta.variants.axes),
-    ...resolveInstanceProps(node, setMeta.propSlots, ctx.graph)
+    ...resolveInstanceProps(node, setMeta.propSlots, ctx)
   ]
   return refOf(node, setMeta.name, props, ctx)
 }
@@ -425,7 +438,7 @@ function refOf(
     kind: 'componentRef',
     sourceId: node.id,
     name,
-    className: tailwindClassName(node, ctx.graph),
+    className: tailwindClassName(node, ctx.graph, ctx.styleOptions),
     props
   }
 }
@@ -442,14 +455,14 @@ function refOf(
 function resolveInstanceProps(
   node: SceneNode,
   propSlots: Map<string, ComponentSlot>,
-  graph: WalkCtx['graph']
+  ctx: WalkCtx
 ): ComponentRefProp[] {
   const props: ComponentRefProp[] = []
   const seen = new Set<string>()
   for (const key of Object.keys(node.overrides)) {
     const colon = key.lastIndexOf(':')
     if (colon === -1) continue
-    const instChild = graph.getNode(key.slice(0, colon))
+    const instChild = ctx.graph.getNode(key.slice(0, colon))
     const slot = instChild?.componentId ? propSlots.get(instChild.componentId) : undefined
     if (!slot || !instChild) continue
     const kind = overrideKind(key)
@@ -460,7 +473,7 @@ function resolveInstanceProps(
       seen.add(slot.className.name)
       props.push({
         name: slot.className.name,
-        value: tailwindClassName(instChild, graph),
+        value: tailwindClassName(instChild, ctx.graph, ctx.styleOptions),
         kind: 'className'
       })
     }
@@ -503,6 +516,9 @@ interface WalkCtx {
    *  true, `displayText` tags each literal with a content-hash `messageId` so
    *  the adapter emits `<FormattedMessage>` + a locale catalog. */
   i18n?: boolean
+  /** Phase 4 §9 v15: compiler-only CSS emission options, such as gated RTL
+   *  logical padding utilities. */
+  styleOptions?: CompilerStyleOptions
   /** Phase 3 §8 v5: true while collecting a COMPONENT_SET variant subtree. A
    *  prop here spans multiple variant subtrees with different static defaults,
    *  so a parameterized node emits `{prop ?? ownLiteral}` / `className={prop ??
@@ -520,6 +536,9 @@ interface WalkCtx {
    *  component-body walk (a component has no page-level validator slot, so a
    *  validated field there is left unvalidated — documented v1 boundary). */
   validatedFields?: IRFieldValidation[]
+  /** Phase 4 §24 v2: binary assets referenced by image fills while walking this
+   *  page or component body. */
+  assets: Map<string, IRAsset>
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -961,10 +980,14 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const tag = isCheckboxGroup(node) ? 'div' : TAG_BY_TYPE[node.type]
   if (!tag) return null
 
-  let className = tailwindClassName(node, ctx.graph)
+  let className = tailwindClassName(node, ctx.graph, ctx.styleOptions)
   // Phase 4 §24.3: an `interactiveProps.aspectRatio` adds `aspect-[w/h]` to any
   // node (most useful on image / media containers, but not limited to them).
   className = appendAspectRatio(className, node, ctx)
+  // Phase 4 §24 v2: a Figma IMAGE fill becomes a project asset plus Tailwind
+  // background-image classes. Explicit `interactiveProps.image` below still
+  // renders a semantic <img>; this path is for design-surface image fills.
+  className = appendImageFillClasses(className, node, ctx)
   // Phase 4 §24.1: a node carrying `interactiveProps.image` renders as a void
   // `<img>` leaf — resolved + returned here so it skips the control / vector /
   // child-recursion path (an image has none). Events (e.g. onClick) still apply.
@@ -1163,9 +1186,16 @@ interface UiKitPrimitiveConfig {
   alt?: unknown
   fallback?: unknown
   defaultValue?: unknown
+  valueBinding?: unknown
   type?: unknown
   collapsible?: unknown
   items?: unknown
+}
+
+interface UiKitValueBindingConfig {
+  kind?: unknown
+  stateId?: unknown
+  docStateName?: unknown
 }
 
 const DISPLAY_PRIMITIVES: ReadonlySet<NonNullable<IRElement['displayKind']>> = new Set([
@@ -1205,6 +1235,8 @@ function resolveDisplayPrimitive(
   }
   const itemConfig = displayItemsProp(raw.items, kind, node, ctx)
   if ((kind === 'tabs' || kind === 'accordion') && itemConfig.items === undefined) return undefined
+  const type = typeof raw.type === 'string' ? raw.type : undefined
+  const valueBinding = resolveDisplayValueBinding(raw.valueBinding, kind, type, node, ctx)
   return {
     kind,
     config: {
@@ -1214,11 +1246,114 @@ function resolveDisplayPrimitive(
       ...stringProp(raw.alt, 'alt'),
       ...stringProp(raw.fallback, 'fallback'),
       ...stringProp(raw.defaultValue, 'defaultValue'),
-      ...stringProp(raw.type, 'type'),
+      ...stringProp(type, 'type'),
+      ...(valueBinding ? { valueBinding } : {}),
       ...(typeof raw.collapsible === 'boolean' ? { collapsible: raw.collapsible } : {}),
       ...itemConfig
     }
   }
+}
+
+function resolveDisplayValueBinding(
+  raw: unknown,
+  kind: NonNullable<IRElement['displayKind']>,
+  type: string | undefined,
+  node: SceneNode,
+  ctx: WalkCtx
+): IRControlledInput | undefined {
+  if (raw === undefined) return undefined
+  if (kind !== 'tabs' && kind !== 'accordion') {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-binding-unsupported',
+      message: `${node.type} ${node.id} ${kind} primitive does not support valueBinding`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  if (!raw || typeof raw !== 'object') {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-binding-invalid',
+      message: `${node.type} ${node.id} ${kind} primitive valueBinding must be an object`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const binding = raw as UiKitValueBindingConfig
+  const targetType = kind === 'accordion' && type === 'multiple' ? 'array' : 'string'
+  if (binding.kind === 'docState') {
+    const name = typeof binding.docStateName === 'string' ? binding.docStateName : ''
+    if (name === '') {
+      ctx.warnings.push({
+        code: 'ui-kit-primitive-binding-missing-target',
+        message: `${node.type} ${node.id} ${kind} primitive docState valueBinding has no docStateName`,
+        nodeId: node.id
+      })
+      return undefined
+    }
+    const decl = ctx.docStates.get(name)
+    if (!decl) {
+      ctx.warnings.push({
+        code: 'ui-kit-primitive-binding-unknown-target',
+        message: `${node.type} ${node.id} ${kind} primitive valueBinding references unknown document state "${name}"`,
+        nodeId: node.id
+      })
+      return undefined
+    }
+    if (decl.type !== targetType) {
+      ctx.warnings.push({
+        code: 'ui-kit-primitive-binding-bad-state-type',
+        message: `${node.type} ${node.id} ${kind} primitive valueBinding docState "${name}" is type ${decl.type}; expected ${targetType}`,
+        nodeId: node.id
+      })
+      return undefined
+    }
+    ctx.docStateReads.add(name)
+    ctx.docStateWrites.add(name)
+    return { read: name, write: { kind: 'docState', name, targetType } }
+  }
+  if (binding.kind !== 'ref') {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-binding-unsupported-kind',
+      message: `${node.type} ${node.id} ${kind} primitive valueBinding kind must be docState or ref`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const stateId = typeof binding.stateId === 'string' ? binding.stateId : ''
+  if (stateId === '') {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-binding-missing-target',
+      message: `${node.type} ${node.id} ${kind} primitive ref valueBinding has no stateId`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const state = ctx.states.get(stateId)
+  if (!state) {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-binding-unknown-target',
+      message: `${node.type} ${node.id} ${kind} primitive valueBinding references unknown state ${stateId}`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  if (state.computed !== undefined || state.computedInvalid === true) {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-binding-computed-state',
+      message: `${node.type} ${node.id} ${kind} primitive valueBinding state "${state.name}" is computed and read-only`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  if (state.type !== targetType) {
+    ctx.warnings.push({
+      code: 'ui-kit-primitive-binding-bad-state-type',
+      message: `${node.type} ${node.id} ${kind} primitive valueBinding state "${state.name}" is type ${state.type}; expected ${targetType}`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  return { read: state.name, write: { kind: 'state', name: state.name, targetType } }
 }
 
 function displayItemsProp(
@@ -1504,6 +1639,87 @@ function appendAspectRatio(className: string, node: SceneNode, ctx: WalkCtx): st
     return className
   }
   return joinClass(className, `aspect-[${raw}]`)
+}
+
+function appendImageFillClasses(className: string, node: SceneNode, ctx: WalkCtx): string {
+  const fill = node.fills.find((candidate) => candidate.visible && candidate.type === 'IMAGE')
+  if (!fill) return className
+  const asset = registerImageFillAsset(fill, node, ctx)
+  if (!asset) return className
+  return joinClass(className, imageFillClasses(fill, asset.path))
+}
+
+function registerImageFillAsset(fill: Fill, node: SceneNode, ctx: WalkCtx): IRAsset | undefined {
+  if (!fill.imageHash) {
+    ctx.warnings.push({
+      code: 'image-fill-missing-hash',
+      message: `${node.type} ${node.id} has an IMAGE fill without imageHash; background image skipped`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const bytes = ctx.graph.images.get(fill.imageHash)
+  if (!bytes) {
+    ctx.warnings.push({
+      code: 'image-fill-missing-asset',
+      message: `${node.type} ${node.id} references IMAGE fill ${fill.imageHash}, but the graph has no matching bytes; background image skipped`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const path = imageAssetPath(fill.imageHash, bytes)
+  let asset = ctx.assets.get(path)
+  if (!asset) {
+    asset = { path, bytes }
+    ctx.assets.set(path, asset)
+  }
+  return asset
+}
+
+function imageFillClasses(fill: Fill, assetPath: string): string {
+  const cssUrl = `./assets/${assetPath.split('/').at(-1) ?? assetPath}`
+  const classes = [`bg-[url(${cssUrl})]`, 'bg-center']
+  switch (fill.imageScaleMode) {
+    case 'FIT':
+      classes.push('bg-contain', 'bg-no-repeat')
+      break
+    case 'TILE':
+      classes.push('bg-auto', 'bg-repeat')
+      break
+    case 'CROP':
+    case 'FILL':
+    default:
+      classes.push('bg-cover', 'bg-no-repeat')
+      break
+  }
+  return classes.join(' ')
+}
+
+function imageAssetPath(hash: string, bytes: Uint8Array): string {
+  const safeHash =
+    hash.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || `bytes-${bytes.length.toString(36)}`
+  return `src/assets/openpencil-image-${safeHash}.${imageExtension(bytes)}`
+}
+
+function imageExtension(bytes: Uint8Array): string {
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png'
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'jpg'
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'gif'
+  if (
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return 'webp'
+  }
+  const ascii = new TextDecoder().decode(bytes.slice(0, 128)).trimStart()
+  if (ascii.startsWith('<svg') || ascii.startsWith('<?xml')) return 'svg'
+  return 'bin'
 }
 
 /** Phase 4 §24.1: resolve a node's `interactiveProps.image` into an IRImage +

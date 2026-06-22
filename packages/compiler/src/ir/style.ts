@@ -2,9 +2,18 @@ import {
   collectLayoutPrimitiveClasses,
   collectResponsiveTailwindClasses,
   collectStateTailwindClasses,
-  collectTailwindClasses
+  collectTailwindClasses,
+  type TailwindClassOptions
 } from '@open-pencil/core/io/formats/jsx'
 import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
+
+export interface CompilerStyleOptions {
+  rtlLogicalProperties?: boolean
+}
+
+function coreTailwindOptions(options: CompilerStyleOptions = {}): TailwindClassOptions {
+  return { logicalProperties: options.rtlLogicalProperties === true }
+}
 
 /**
  * Phase 3 §3.v5 — full SWITCH CSS (supersedes the §3.v4 step 9/9b hotfix).
@@ -63,18 +72,23 @@ const SWITCH_CLASSES = [...SWITCH_TRACK, ...SWITCH_THUMB].join(' ')
  * the toggle-specific styling above; §7 responsive overrides append the
  * breakpoint-prefixed diff classes after that.
  */
-export function tailwindClassName(node: SceneNode, graph: SceneGraph): string {
-  const base = collectTailwindClasses(node, graph).join(' ')
+export function tailwindClassName(
+  node: SceneNode,
+  graph: SceneGraph,
+  options: CompilerStyleOptions = {}
+): string {
+  const tailwindOptions = coreTailwindOptions(options)
+  const base = collectTailwindClasses(node, graph, tailwindOptions).join(' ')
   const styled =
     node.type === 'SWITCH' ? (base === '' ? SWITCH_CLASSES : `${base} ${SWITCH_CLASSES}`) : base
   // §7 responsive overrides re-derive a breakpoint-prefixed diff in core (same
   // SceneNode → Tailwind translation), appended after the base/SWITCH styling.
-  const responsive = collectResponsiveTailwindClasses(node, graph).join(' ')
+  const responsive = collectResponsiveTailwindClasses(node, graph, tailwindOptions).join(' ')
   let combined = styled
   if (responsive !== '') combined = styled === '' ? responsive : `${styled} ${responsive}`
   // §20 interaction states re-derive a pseudo-class-prefixed diff in core (same
   // SceneNode → Tailwind translation), appended after the base/responsive styling.
-  const states = collectStateTailwindClasses(node, graph).join(' ')
+  const states = collectStateTailwindClasses(node, graph, tailwindOptions).join(' ')
   if (states !== '') combined = combined === '' ? states : `${combined} ${states}`
   // §26 layout primitives ride interactiveProps.layout and append after base /
   // responsive / state classes so author intent wins for positioning layers.

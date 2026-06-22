@@ -33,10 +33,10 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
   v7 `:visible`→hidden / v8 instance `:visible` reverse / v9 nested-instance /
   v10 orphan 剪枝 / v11 override round-trip)。component-props 面板(GUI)延后
   (→ phase-4 #7)。
-- **§9 i18n**:§9 v1–v14(react-intl runtime / locale 切换 / 属性串 /
+- **§9 i18n**:§9 v1–v15(react-intl runtime / locale 切换 / 属性串 /
   ICU 插值 / plural-select / 译文 catalog / **v11 RTL dir-flip** / CLI flags /
-  缺译警告)。编辑器实时 preview i18n(GUI)延后(→ phase-4 #6);
-  RTL **逻辑属性**(ms-/me-)是 v11 之上新增(→ phase-4 #3)。
+  缺译警告 / **v15 gated RTL logical padding**)。编辑器实时 preview
+  i18n(GUI)延后(→ phase-4 #6)。
 - **§10 工作流编排**:§10 v1–v11(condition/delay/stop / **v2 toast** /
   confirm/clipboard / **v4 named WorkflowDef** / **v6 callWorkflow 传参** /
   **v8 可选形参 emit** / v9 onSuccess/onError / v10 递归编辑器 /
@@ -58,21 +58,21 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 > 个来 / 直接干推荐项」,真大决策才单问一个 AskUserQuestion。headless 可验的
 > 连续增量优先,真机 GUI 验证类候选排在后面。
 
-| #   | feature                                        | 优先级               | 简述 / 状态                                                                                   | 详写          |
-| --- | ---------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------- | ------------- |
+| #   | feature                                        | 优先级               | 简述 / 状态                                                                                    | 详写          |
+| --- | ---------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------- | ------------- |
 | 1   | **§15 FRAME→Card 容器映射**                    | **高(最快起点)**     | headless emit;容器型 FRAME → shadcn `Card`/`CardHeader`/`CardContent`,phase-3 未实现。         | §15           |
 | 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | **高(最高产品价值)** | headless emit(中-大);补 `/product/:id`、`useParams`、query string、带参 navigate、auth guard。 | §16           |
-| 3   | **§15 Phase C array checkbox-group**           | 高                   | headless emit;array 字段 → shadcn checkbox-group,接 phase-3 §15 Phase A/B。                   | §15           |
-| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | 中-高                | headless emit;LIST 从本地 array 扩到 Supabase query + 分页/排序/筛选。                        | §17           |
-| 5   | **§19 表单校验**                               | 中                   | headless emit;required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截。                     | §19           |
-| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 中                   | headless emit,可能动 scene-graph;上传控件 + Storage upload/getPublicUrl + 进度/预览。         | §18           |
-| 7   | **§9 v15 RTL 逻辑属性(ms-/me-)**               | 中                   | headless emit,有回归面;物理 margin/padding → 逻辑属性,补 §9 v11 dir-flip 缺口。              | §9            |
-| 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | headless(大);组件跨 .fig 复用 / 团队共享库 / 更新传播。phase-3 有设计但未实现。              | §14           |
-| 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                  | §5            |
-| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 高(真机)             | 真机 GUI;preview 入口补 i18n/uiKit toggle,解决 app 内看不到 i18n/shadcn。                     | §9 / §15      |
-| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 中(真机)             | 真机 GUI;responsive overrides、component-props、optionalParams 面板。                         | §7 / §8 / §10 |
-| 12  | **§10 工作流体跨页 pageStates 精确**           | 低                   | headless;跨页 callWorkflow 按目标页解析 pageStates。                                          | §10           |
-| 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                              | §6            |
+| 3   | **§15 Phase C array checkbox-group**           | 高                   | headless emit;array 字段 → shadcn checkbox-group,接 phase-3 §15 Phase A/B。                    | §15           |
+| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | 中-高                | headless emit;LIST 从本地 array 扩到 Supabase query + 分页/排序/筛选。                         | §17           |
+| 5   | **§19 表单校验**                               | 中                   | headless emit;required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截。                      | §19           |
+| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 中                   | headless emit,可能动 scene-graph;上传控件 + Storage upload/getPublicUrl + 进度/预览。          | §18           |
+| 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 中                   | headless emit;**CODE COMPLETE 2026-06-23**。gated `rtlLogicalProperties`,默认不漂移。          | §9            |
+| 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | headless(大);组件跨 .fig 复用 / 团队共享库 / 更新传播。phase-3 有设计但未实现。                | §14           |
+| 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
+| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 高(真机)             | 真机 GUI;preview 入口补 i18n/uiKit toggle,解决 app 内看不到 i18n/shadcn。                      | §9 / §15      |
+| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 中(真机)             | 真机 GUI;responsive overrides、component-props、optionalParams 面板。                          | §7 / §8 / §10 |
+| 12  | **§10 工作流体跨页 pageStates 精确**           | 低                   | headless;跨页 callWorkflow 按目标页解析 pageStates。                                           | §10           |
+| 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
 > **#1–#9 = headless,#10–#11 = 真机 GUI,#12–#13 = 低优先。**
 >
@@ -93,17 +93,17 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 > 可穿插。**避坑(经验 Q):effects 阴影已 emit(`jsx/helpers.ts formatShadow`)、
 > EventName 联合已含 5 事件、navigate 已在,均不重列。**
 
-| #   | feature                                                                       | 复用 / 状态                                                      |
-| --- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| §20 | **交互状态样式(hover/focus/active/disabled variants)**                        | §7 variant-emit;用户节点无状态变体 emit。                       |
-| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)**                           | FRAME `interactiveProps.overlay` + docState;**CODE COMPLETE**。 |
-| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert 等)**  | §15 ui-kit adapter;**CODE COMPLETE 2026-06-23**。                |
-| §23 | **图标(lucide-react)**                                                        | §15 ui-kit / 新 icon 节点或 prop;无 icon 节点。                  |
-| §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)**       | jsx tailwind-classes;无 `<img>`/gradient/aspect/object-fit。     |
-| §25 | **外链 `<a href>` + target**                                                  | emit/element;**CODE COMPLETE 2026-06-22**。                      |
-| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)**                   | jsx tailwind-classes;**CODE COMPLETE 2026-06-22**。              |
-| §27 | **state 持久化(localStorage)+ 派生/计算 state**                               | docState + 表达式子语言;无 localStorage/persist/computed。       |
-| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur + `$event`/`$value`)**             | EventName 联合 + events emit;**CODE COMPLETE 2026-06-22**。      |
+| #   | feature                                                                      | 复用 / 状态                                                     |
+| --- | ---------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| §20 | **交互状态样式(hover/focus/active/disabled variants)**                       | §7 variant-emit;用户节点无状态变体 emit。                       |
+| §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)**                          | FRAME `interactiveProps.overlay` + docState;**CODE COMPLETE**。 |
+| §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert 等)** | §15 ui-kit adapter;**CODE COMPLETE 2026-06-23**。               |
+| §23 | **图标(lucide-react)**                                                       | §15 ui-kit / 新 icon 节点或 prop;无 icon 节点。                 |
+| §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)**      | **CODE COMPLETE 2026-06-23**;含 image-fill→asset v2。           |
+| §25 | **外链 `<a href>` + target**                                                 | emit/element;**CODE COMPLETE 2026-06-22**。                     |
+| §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)**                  | jsx tailwind-classes;**CODE COMPLETE 2026-06-22**。             |
+| §27 | **state 持久化(localStorage)+ 派生/计算 state**                              | docState + 表达式子语言;无 localStorage/persist/computed。      |
+| §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur + `$event`/`$value`)**            | EventName 联合 + events emit;**CODE COMPLETE 2026-06-22**。     |
 
 > **第二波优先级建议**:
 >
@@ -693,11 +693,14 @@ bun test \
 
   ```ts
   interactiveProps: {
-    uiKit: { primitive: "badge" | "alert" | "separator" | "skeleton" | "progress" | "avatar" }
+    uiKit: {
+      primitive: 'badge' | 'alert' | 'separator' | 'skeleton' | 'progress' | 'avatar'
+    }
   }
   ```
 
   兼容字段 `kind`/`component` 作为 primitive 别名;plain emit 忽略该 hint。
+
 - **IR/API**:`IRElement.displayKind?: "badge" | ... | "avatar"` +
   `display?: { variant?, value?, src?, alt?, fallback? }`。
   collect 期识别未知 primitive 时 warn `ui-kit-primitive-unknown` 并回退普通元素。
@@ -732,7 +735,8 @@ bun test \
   ```
 
   `items` 缺失/无有效项时 warn `ui-kit-primitive-items-invalid` 并回退普通元素。
-- **IR/API**:`displayKind` 扩到 `tabs|accordion`;`IRDisplayPrimitive` 增加 `items/defaultValue/type/collapsible`。v2 先做静态 items;active/open state 双向绑定留给后续 stateful primitive 片。
+
+- **IR/API**:`displayKind` 扩到 `tabs|accordion`;`IRDisplayPrimitive` 增加 `items/defaultValue/type/collapsible`。v2 先做静态 items。
 - **emit**:shadcn adapter inline `tabs.tsx` / `accordion.tsx`,deps 按需加入 `@radix-ui/react-tabs` / `@radix-ui/react-accordion`;`emitDisplay` 输出 `TabsList/TabsTrigger/TabsContent` 和 `AccordionItem/AccordionTrigger/AccordionContent` 结构。
 - **验证**:
 
@@ -742,6 +746,43 @@ bun test \
     tests/engine/compiler/ui-kit/card.test.ts \
     tests/engine/compiler/ui-kit/tags.test.ts \
     tests/engine/compiler/ui-kit/controls.test.ts
+  ```
+
+### §22 v3 stateful Tabs / Accordion(2026-06-23)
+
+**锁定决定 + 交付记录**:
+
+- **范围**:给 v2 的 Tabs / Accordion 增加 active/open state 双向绑定;仍走
+  `interactiveProps.uiKit` blob,plain emit 保持普通节点。
+- **授权形态**:
+
+  ```ts
+  {
+    primitive: "tabs",
+    valueBinding: { kind: "ref", stateId: "s-active-tab" },
+    items: [{ value, label, content }]
+  }
+  ```
+
+  ```ts
+  {
+    primitive: "accordion",
+    type: "multiple",
+    valueBinding: { kind: "docState", docStateName: "openSections" },
+    items: [{ value, title, content }]
+  }
+  ```
+
+- **类型约束**:Tabs 和 single Accordion 绑定 `string` state;multiple Accordion 绑定
+  `array` state。computed page state 是只读目标,拒绝绑定。坏绑定 warn
+  `ui-kit-primitive-binding-*` 并回退非受控 `defaultValue`。
+- **emit**:controlled primitive 输出 `value={state}` + `onValueChange` 写回
+  page state setter 或 `setDocState`;controlled 时不再 emit `defaultValue`。
+- **验证**:
+
+  ```sh
+  bun test tests/engine/compiler/ui-kit/display-primitives.test.ts
+  ./node_modules/.bin/tsgo --noEmit
   ```
 
 ## §23 图标(lucide-react)
@@ -775,7 +816,9 @@ bun test \
 
 **§24.2 渐变填充**(feat `bcd89742`):GRADIENT*LINEAR/RADIAL fill → `bg-[linear-gradient(...)]`/`bg-[radial-gradient(circle,...)]` arbitrary value(core `collectTailwindClasses` 的 `collectGradientClasses`,镜像 clip-path bypass:twirl 表达不了 gradient background → 直接建 CSS 值,空格→`*`,hex 色,linear 角度从 gradientTransform 端点 `atan2(dx,-dy)` 派生)。跳 TEXT(那里 gradient 是文字色)+ ANGULAR/DIAMOND(v1)。**native fill 数据 → 零 scene-graph/codec**;arbitrary value 进 index.css safelist(`@source inline`)。endpoint 数学内联(不 import canvas/,守 arch 边界)。compiler **729/0**(+3 gradient.test)、render/jsx gradient +8(仅既有 §6 frame-nested 出范围 fail)。e2e CLI compile 真盘 .fig:`bg-[linear-gradient(180deg,_#3366F2_0%,_#991ACC_100%)]` + safelisted(gradient native fill 经 exportFigFile→parseFigFile→emit 全链)。
 
-**GATE(两片)**:`bun run check` exit 0;tsgo 0;jscpd 0;零回归。**边界/延后**:image 只走用户 URL/绑定(Figma image-fill 导出 asset 延后);单 fill;object-fit 走 className;gradient ANGULAR(conic)/DIAMOND + 多 fill 叠加延后;aspect-ratio 任意节点但 image 容器最常用;无 AI tool/GUI(graph.updateNode+interactiveProps round-trip)。**真机验积压 +1**(浏览器渲图片[含 §18 上传 URL]+ 渐变背景 + aspect-ratio 盒)。**§24 v2 follow-ups**:Figma image-fill→asset 导出;gradient conic/多 stop 精度;`<picture>`/srcset 响应式图;image lazy-loading。
+**GATE(两片)**:`bun run check` exit 0;tsgo 0;jscpd 0;零回归。**边界/延后(当时)**:image 只走用户 URL/绑定(Figma image-fill 导出 asset 当时延后,现已由 §24 v2 补齐);单 fill;object-fit 走 className;gradient ANGULAR(conic)/DIAMOND + 多 fill 叠加延后;aspect-ratio 任意节点但 image 容器最常用;无 AI tool/GUI(graph.updateNode+interactiveProps round-trip)。**真机验积压 +1**(浏览器渲图片[含 §18 上传 URL]+ 渐变背景 + aspect-ratio 盒)。**§24 后续**:gradient conic/多 stop 精度;`<picture>`/srcset 响应式图;image lazy-loading。
+
+**§24 v2 Figma image-fill asset 导出**(CODE COMPLETE 2026-06-23):原 §24.1 只做 `interactiveProps.image` 的 URL/绑定 `<img>`;本次补齐原延后的 native Figma `IMAGE` fill 管道。collector 从 `SceneNode.fills` 找第一个可见 `type:'IMAGE'` fill,用 `fill.imageHash` 读取 `SceneGraph.images` bytes,注册到 IR asset(`src/assets/openpencil-image-<hash>.<ext>`;扩展名从 PNG/JPEG/GIF/WebP/SVG 魔数识别),className 追加 `bg-[url(./assets/...)] bg-center` + scale mode 映射:`FILL/CROP→bg-cover bg-no-repeat`,`FIT→bg-contain bg-no-repeat`,`TILE→bg-auto bg-repeat`。adapter 从 IRTree/ComponentDef 汇总 assets 去重写入 `CompilerOutput.files`,Tailwind safelist 继续由 className 自动收集。缺 `imageHash` warn `image-fill-missing-hash`;hash 有但 graph 无 bytes warn `image-fill-missing-asset`;均跳过背景图,保持普通节点输出。仍只处理第一张可见 image fill;crop transform/多 fill 叠加/响应式 srcset 延后。
 
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
@@ -950,6 +993,8 @@ bun test \
 **剩余(v15)**:**RTL 逻辑属性** —— `margin`/`padding` 物理方向(`ml-`/`mr-`/`pl-`/`pr-`)→ `ms-`/`me-`/`ps-`/`pe-` 逻辑属性,让 RTL locale 自动镜像间距(v11 只翻 `dir`,间距仍物理方向 → RTL 下左右间距不镜像)。改 core `collectTailwindClasses`。
 
 **⚠ 回归面大**:大量既有测试断言具体 class(`ml-`/`mr-`)→ 改成逻辑属性后期望全变。**强烈建议 gated**(RTL locale / ui-kit 条件触发,而非全局改 default emit),否则非-RTL 产物 class 全漂移 + 大批测试要改。**待锁**:全局默认改 vs gated(建议 gated);逻辑属性覆盖范围(仅 margin/padding 还是含 inset/border)。
+
+**§9 v15 gated RTL logical padding**(CODE COMPLETE 2026-06-23):按建议走 gated,新增 `CompilerOptions.rtlLogicalProperties?: boolean`,默认 `false` 保持旧物理 `pl-*`/`pr-*` 输出不漂移;显式开启时 compiler 把 style option 传入 component registry / page tree / component body / instance override className 计算。core JSX Tailwind emitter 新增可选 `TailwindClassOptions.logicalProperties`;仅 auto-layout padding 走 logical emit:对称 padding 仍 `p-*`/`px-*`/`py-*`,非对称左右改 `ps-*`/`pe-*`(上下仍 `pt-*`/`pb-*`)。当前只覆盖 padding(本仓尚无 margin SceneNode 字段 emit);inset/border 延后。新增 `tests/engine/compiler/rtl-logical.test.ts` 锁默认物理 + gated logical 两路。
 
 ## §14 跨文件组件库 / 团队库
 

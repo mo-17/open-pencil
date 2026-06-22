@@ -152,6 +152,35 @@ describe('compile — shadcn display primitives (Phase 4 §22)', () => {
     expect(out.warnings).toEqual([])
   })
 
+  test('Tabs can bind active value to writable page state', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(pageId, {
+      state: [{ id: 's-active', name: 'activeTab', type: 'string', defaultValue: 'overview' }]
+    })
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: {
+        uiKit: {
+          primitive: 'tabs',
+          valueBinding: { kind: 'ref', stateId: 's-active' },
+          items: [
+            { value: 'overview', label: 'Overview', content: 'Project overview' },
+            { value: 'settings', label: 'Settings', content: 'Project settings' }
+          ]
+        }
+      }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain('const [activeTab, setActiveTab] = useState("overview")')
+    expect(app).toContain('value={activeTab}')
+    expect(app).toContain('onValueChange={(value) => setActiveTab(value)}')
+    expect(app).not.toContain('defaultValue="overview"')
+    expect(out.warnings).toEqual([])
+  })
+
   test('Accordion emits composed items and Radix accordion dependency', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -185,6 +214,65 @@ describe('compile — shadcn display primitives (Phase 4 §22)', () => {
     const pkg = JSON.parse(out.files.get('package.json') as string)
     expect(pkg.dependencies).toHaveProperty('@radix-ui/react-accordion')
     expect(out.warnings).toEqual([])
+  })
+
+  test('Accordion multiple can bind open values to document state array', () => {
+    const graph = makeSceneGraph()
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd-open', name: 'openSections', type: 'array', defaultValue: ['shipping'] }
+      ]
+    })
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: {
+        uiKit: {
+          primitive: 'accordion',
+          type: 'multiple',
+          valueBinding: { kind: 'docState', docStateName: 'openSections' },
+          items: [
+            { value: 'shipping', title: 'Shipping', content: 'Ships in two days' },
+            { value: 'returns', title: 'Returns', content: 'Thirty day returns' }
+          ]
+        }
+      }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(`import { useDocState, setDocState } from './_lowcode_state'`)
+    expect(app).toContain(`const openSections = useDocState("openSections")`)
+    expect(app).toContain('type="multiple"')
+    expect(app).toContain('value={openSections}')
+    expect(app).toContain('onValueChange={(value) => setDocState("openSections", value)}')
+    expect(app).not.toContain('defaultValue=')
+    expect(out.warnings).toEqual([])
+  })
+
+  test('Tabs valueBinding rejects non-string state and falls back to defaultValue', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(pageId, {
+      state: [{ id: 's-open', name: 'openSections', type: 'array', defaultValue: [] }]
+    })
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: {
+        uiKit: {
+          primitive: 'tabs',
+          defaultValue: 'overview',
+          valueBinding: { kind: 'ref', stateId: 's-open' },
+          items: [{ value: 'overview', label: 'Overview', content: 'Project overview' }]
+        }
+      }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain('defaultValue="overview"')
+    expect(app).not.toContain('value={openSections}')
+    expect(out.warnings.map((w) => w.code)).toContain('ui-kit-primitive-binding-bad-state-type')
   })
 
   test('no uiKit keeps primitive hints on the plain Tailwind path', () => {
