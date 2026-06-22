@@ -1,8 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { SceneGraph, initCodec } from '@open-pencil/core'
-
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { SceneGraph, initCodec } from '@open-pencil/core'
 
 /**
  * Phase 3 §15 Phase B — shadcn Radix-composition controls. With `uiKit: 'shadcn'`
@@ -15,7 +14,7 @@ import { compile, withDefaults } from '@open-pencil/compiler'
  *  - RADIO   → `<RadioGroup value onValueChange>` + RadioGroupItem + label per option
  * Phase 4 §15 Phase C — the array multi-select CHECKBOX group becomes N
  * `<Checkbox>` rows + manual array toggle (shadcn has no native group component).
- * Dynamic (data-bound) option lists stay deferred to §17.
+ * Phase 4 §17.4 covers dynamic data-bound option lists separately.
  */
 function compileShadcn(graph: SceneGraph, pageId: string, pkg: string, i18n = false) {
   return compile({
@@ -97,7 +96,9 @@ describe('compile — shadcn Radix controls (Phase 3 §15 Phase B)', () => {
     expect(app).toContain(
       `import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'`
     )
-    expect(app).toContain('<Select value={country} onValueChange={(value) => setDocState("country", value)}>')
+    expect(app).toContain(
+      '<Select value={country} onValueChange={(value) => setDocState("country", value)}>'
+    )
     expect(app).toContain('<SelectTrigger')
     expect(app).toContain('<SelectValue />')
     expect(app).toContain('<SelectContent>')
@@ -125,7 +126,9 @@ describe('compile — shadcn Radix controls (Phase 3 §15 Phase B)', () => {
 
     const out = compileShadcn(graph, page.id, 'kb-radio')
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain(`import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'`)
+    expect(app).toContain(
+      `import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'`
+    )
     expect(app).toContain('<RadioGroup')
     expect(app).toContain('value={gender}')
     expect(app).toContain('onValueChange={(value) => setGender(value)}')

@@ -166,7 +166,11 @@ type CtrlTargetType = 'string' | 'number' | 'boolean' | 'array'
 
 function checkboxHasOptions(node: SceneNode): boolean {
   const raw = node.interactiveProps?.options
-  return Array.isArray(raw) && raw.length > 0
+  if (Array.isArray(raw) && raw.length > 0) return true
+  return (
+    typeof node.interactiveProps?.optionsSource === 'object' &&
+    node.interactiveProps.optionsSource !== null
+  )
 }
 
 function allowedTargetTypes(node: SceneNode): ReadonlySet<CtrlTargetType> {

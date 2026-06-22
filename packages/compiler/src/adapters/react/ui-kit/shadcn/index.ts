@@ -1,6 +1,8 @@
 import { controlledWriteCall } from '#compiler/adapters/react/emit/element'
 import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compiler/ir/types'
 
+import { emitExpression } from '@open-pencil/core/lowcode-validation'
+
 import type { KitEmitCtx, UiKitAdapter, UiKitMapping } from '../types'
 import {
   ACCORDION_TSX,
@@ -210,7 +212,24 @@ function attrSuffix(parts: readonly string[]): string {
 
 interface SelectOption {
   value: string
+  valueExpr?: string
   labelNode: IRNode | undefined
+}
+
+function optionValue(value: IRAttrValue | undefined): { value: string; valueExpr?: string } {
+  if (typeof value === 'string') return { value }
+  if (typeof value === 'object' && value.kind === 'exprAttr') {
+    return { value: '', valueExpr: emitExpression(value.ast) }
+  }
+  return { value: '' }
+}
+
+function optionValueCode(o: SelectOption): string {
+  return o.valueExpr ?? JSON.stringify(o.value)
+}
+
+function selectItemValueAttr(o: SelectOption, ctx: KitEmitCtx): string {
+  return o.valueExpr !== undefined ? `value={${o.valueExpr}}` : `value="${ctx.escapeAttr(o.value)}"`
 }
 
 /** SELECT children are `<option value>{label}</option>` — extract value + label. */
@@ -219,9 +238,31 @@ function selectOptions(children: readonly IRNode[]): SelectOption[] {
   for (const child of children) {
     if (child.kind !== 'element' || child.tag !== 'option') continue
     out.push({
-      value: typeof child.attrs.value === 'string' ? child.attrs.value : '',
+      ...optionValue(child.attrs.value),
       labelNode: child.children[0]
     })
+  }
+  return out
+}
+
+function selectOptionFromTemplate(node: IRNode): SelectOption | null {
+  if (node.kind !== 'element' || node.tag !== 'option') return null
+  return { ...optionValue(node.attrs.value), labelNode: node.children[0] }
+}
+
+function selectOptionLists(children: readonly IRNode[], ctx: KitEmitCtx, pad: string): string[] {
+  const out: string[] = []
+  const innerPad = `${pad}  `
+  for (const child of children) {
+    if (child.kind !== 'list') continue
+    const option = selectOptionFromTemplate(child.template)
+    if (!option) continue
+    const label = option.labelNode ? ctx.emitChild(option.labelNode, 0) : ''
+    out.push(
+      `${pad}{(${child.arrayName}).map((${child.itemName}, ${child.indexName}) => (`,
+      `${innerPad}<SelectItem key={${child.indexName}} ${selectItemValueAttr(option, ctx)}>${label}</SelectItem>`,
+      `${pad}))}`
+    )
   }
   return out
 }
@@ -229,6 +270,20 @@ function selectOptions(children: readonly IRNode[]): SelectOption[] {
 interface OptionLeaf extends SelectOption {
   defaultChecked: boolean
   controlled: IRControlledInput | undefined
+}
+
+function optionLeafFromLabel(label: IRNode): OptionLeaf | null {
+  if (label.kind !== 'element' || label.tag !== 'label') return null
+  const input = label.children.find(
+    (c): c is IRElement => c.kind === 'element' && c.tag === 'input'
+  )
+  if (!input) return null
+  return {
+    ...optionValue(input.attrs.value),
+    labelNode: label.children.find((c) => c !== input),
+    defaultChecked: input.attrs.defaultChecked === true,
+    controlled: input.controlled
+  }
 }
 
 /** RADIO / CHECKBOX-group wrapper children are
@@ -239,19 +294,22 @@ interface OptionLeaf extends SelectOption {
 function optionLeaves(children: readonly IRNode[]): OptionLeaf[] {
   const out: OptionLeaf[] = []
   for (const label of children) {
-    if (label.kind !== 'element' || label.tag !== 'label') continue
-    const input = label.children.find(
-      (c): c is IRElement => c.kind === 'element' && c.tag === 'input'
-    )
-    if (!input) continue
-    out.push({
-      value: typeof input.attrs.value === 'string' ? input.attrs.value : '',
-      labelNode: label.children.find((c) => c !== input),
-      defaultChecked: input.attrs.defaultChecked === true,
-      controlled: input.controlled
-    })
+    const option = optionLeafFromLabel(label)
+    if (option) out.push(option)
   }
   return out
+}
+
+function firstOptionControlled(children: readonly IRNode[]): IRControlledInput | undefined {
+  for (const option of optionLeaves(children)) {
+    if (option.controlled) return option.controlled
+  }
+  for (const child of children) {
+    if (child.kind !== 'list') continue
+    const option = optionLeafFromLabel(child.template)
+    if (option?.controlled) return option.controlled
+  }
+  return undefined
 }
 
 /** A composed option row shared by RADIO + CHECKBOX-group:
@@ -269,6 +327,22 @@ function emitOptionRow(
     `${i1}<div className="flex items-center gap-2">`,
     controlLine,
     `${i2}<label htmlFor="${ctx.escapeAttr(id)}">${labelNode ? ctx.emitChild(labelNode, 0) : ''}</label>`,
+    `${i1}</div>`
+  ]
+}
+
+function emitDynamicOptionRow(
+  controlLine: string,
+  idExpr: string,
+  labelNode: IRNode | undefined,
+  i1: string,
+  i2: string,
+  ctx: KitEmitCtx
+): string[] {
+  return [
+    `${i1}<div className="flex items-center gap-2">`,
+    controlLine,
+    `${i2}<label htmlFor={${idExpr}}>${labelNode ? ctx.emitChild(labelNode, 0) : ''}</label>`,
     `${i1}</div>`
   ]
 }
@@ -322,17 +396,19 @@ function emitSelect(node: IRElement, ctx: KitEmitCtx): string {
     typeof node.attrs.defaultValue === 'string' ? node.attrs.defaultValue : undefined
   const rootParts = valueBindingParts(node.controlled, defaultValue, ctx)
   const triggerParts = rootAttrParts(node, ctx)
-  const items = selectOptions(node.children).map(
+  const staticItems = selectOptions(node.children).map(
     (o) =>
-      `${i2}<SelectItem value="${ctx.escapeAttr(o.value)}">${o.labelNode ? ctx.emitChild(o.labelNode, 0) : ''}</SelectItem>`
+      `${i2}<SelectItem ${selectItemValueAttr(o, ctx)}>${o.labelNode ? ctx.emitChild(o.labelNode, 0) : ''}</SelectItem>`
   )
+  const dynamicItems = selectOptionLists(node.children, ctx, i2)
   return [
     `${pad}<Select${attrSuffix(rootParts)}>`,
     `${i1}<SelectTrigger${attrSuffix(triggerParts)}>`,
     `${i2}<SelectValue />`,
     `${i1}</SelectTrigger>`,
     `${i1}<SelectContent>`,
-    ...items,
+    ...staticItems,
+    ...dynamicItems,
     `${i1}</SelectContent>`,
     `${pad}</Select>`
   ].join('\n')
@@ -360,9 +436,39 @@ function optionGroupBase(node: IRElement, ctx: KitEmitCtx): OptionGroupBase {
     i1: '  '.repeat(ctx.indent + 1),
     i2: '  '.repeat(ctx.indent + 2),
     options,
-    controlled: options.find((o) => o.controlled)?.controlled,
+    controlled: firstOptionControlled(node.children),
     rootParts
   }
+}
+
+function optionGroupLists(
+  node: IRElement,
+  ctx: KitEmitCtx,
+  i1: string,
+  renderControl: (option: OptionLeaf, idExpr: string, controlPad: string) => string
+): string[] {
+  const rows: string[] = []
+  const innerPad = `${i1}  `
+  const controlPad = `${innerPad}  `
+  for (const child of node.children) {
+    if (child.kind !== 'list') continue
+    const option = optionLeafFromLabel(child.template)
+    if (!option) continue
+    const idExpr = `${JSON.stringify(node.sourceId)} + "-" + ${child.indexName}`
+    rows.push(
+      `${i1}{(${child.arrayName}).map((${child.itemName}, ${child.indexName}) => (`,
+      ...emitDynamicOptionRow(
+        renderControl(option, idExpr, controlPad),
+        idExpr,
+        option.labelNode,
+        innerPad,
+        controlPad,
+        ctx
+      ),
+      `${i1}))}`
+    )
+  }
+  return rows
 }
 
 /** Emit a shadcn `<RadioGroup>`; the controlled descriptor lives on the radio
@@ -373,10 +479,22 @@ function emitRadioGroup(node: IRElement, ctx: KitEmitCtx): string {
   rootParts.push(...valueBindingParts(controlled, defaultValue, ctx))
   const rows = options.flatMap((o, i) => {
     const id = `${node.sourceId}-${i}`
-    const control = `${i2}<RadioGroupItem value="${ctx.escapeAttr(o.value)}" id="${ctx.escapeAttr(id)}" />`
+    const control = `${i2}<RadioGroupItem ${selectItemValueAttr(o, ctx)} id="${ctx.escapeAttr(id)}" />`
     return emitOptionRow(control, id, o.labelNode, i1, i2, ctx)
   })
-  return [`${pad}<RadioGroup${attrSuffix(rootParts)}>`, ...rows, `${pad}</RadioGroup>`].join('\n')
+  const dynamicRows = optionGroupLists(
+    node,
+    ctx,
+    i1,
+    (o, idExpr, controlPad) =>
+      `${controlPad}<RadioGroupItem ${selectItemValueAttr(o, ctx)} id={${idExpr}} />`
+  )
+  return [
+    `${pad}<RadioGroup${attrSuffix(rootParts)}>`,
+    ...rows,
+    ...dynamicRows,
+    `${pad}</RadioGroup>`
+  ].join('\n')
 }
 
 /** Phase 4 §15 Phase C — emit an array multi-select CHECKBOX group. shadcn has
@@ -393,11 +511,16 @@ function emitCheckboxGroup(node: IRElement, ctx: KitEmitCtx): string {
     const id = `${node.sourceId}-${i}`
     const idAttr = `id="${ctx.escapeAttr(id)}"`
     const control = controlled
-      ? `${i2}<Checkbox ${idAttr} ${checkboxToggleParts(controlled, o.value)} />`
+      ? `${i2}<Checkbox ${idAttr} ${checkboxToggleParts(controlled, o)} />`
       : `${i2}<Checkbox ${idAttr} />`
     return emitOptionRow(control, id, o.labelNode, i1, i2, ctx)
   })
-  return [`${pad}<div${attrSuffix(rootParts)}>`, ...rows, `${pad}</div>`].join('\n')
+  const dynamicRows = optionGroupLists(node, ctx, i1, (o, idExpr, controlPad) =>
+    controlled
+      ? `${controlPad}<Checkbox id={${idExpr}} ${checkboxToggleParts(controlled, o)} />`
+      : `${controlPad}<Checkbox id={${idExpr}} />`
+  )
+  return [`${pad}<div${attrSuffix(rootParts)}>`, ...rows, ...dynamicRows, `${pad}</div>`].join('\n')
 }
 
 function emitProgress(node: IRElement, ctx: KitEmitCtx): string {
@@ -502,10 +625,10 @@ function emitAccordion(node: IRElement, ctx: KitEmitCtx): string | null {
 /** The `checked` + `onCheckedChange` props for one option of a controlled
  *  array checkbox-group: read `selected.includes(opt)`, write the array with the
  *  option spread in / filtered out depending on the new checked value. */
-function checkboxToggleParts(controlled: IRControlledInput, optValue: string): string {
-  const literal = JSON.stringify(optValue)
-  const next = `checked === true ? [...${controlled.read}, ${literal}] : ${controlled.read}.filter((v) => v !== ${literal})`
-  return `checked={${controlled.read}.includes(${literal})} onCheckedChange={(checked) => ${controlledWriteCall(controlled, next)}}`
+function checkboxToggleParts(controlled: IRControlledInput, option: SelectOption): string {
+  const value = optionValueCode(option)
+  const next = `checked === true ? [...${controlled.read}, ${value}] : ${controlled.read}.filter((v) => v !== ${value})`
+  return `checked={${controlled.read}.includes(${value})} onCheckedChange={(checked) => ${controlledWriteCall(controlled, next)}}`
 }
 
 /** Phase 3 §15 — the shadcn/ui adapter. Phase A maps BUTTON/text-INPUT/

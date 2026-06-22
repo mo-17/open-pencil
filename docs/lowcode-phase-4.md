@@ -283,7 +283,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **锁定决定(2 fork + 1 定序,AskUserQuestion)**:
 
-1. **〔Fork 1 锁定〕options 来源 = 仅静态 `interactiveProps.options[]`**(本次)。**动态 options 绑定(options 来自 state/query array)归 §17 数据链首片**(独立设计,含 `{value,label}` 对象选项决策)—— recon 坐实它是中等量级(scene-graph `optionsSourceRef` + 新 IR `.map()` 形态 + plain&shadcn 双 emit + round-trip),与 §17 列表绑数据源重叠。用户先选「动态」,经定序问题后改选「先静态、动态归 §17(推荐)」。
+1. **〔Fork 1 锁定〕options 来源 = 仅静态 `interactiveProps.options[]`**(本次)。**动态 options 绑定已归 §17.4 交付**(options 来自 state/docState array,支持 `{value,label}` 对象映射)—— recon 坐实它是中等量级(`optionsSource` + 新 IR `.map()` 形态 + plain&shadcn 双 emit),与 §17 数据链重叠。用户先选「动态」,经定序问题后改选「先静态、动态归 §17(推荐)」。
 2. **〔Fork 2 锁定〕shadcn 排版 = 镜像 radio-group 行布局**:wrapper 保持 plain `<div className=design 类>`(shadcn 无原生 group 组件),内含每项一行 `<div className="flex items-center gap-2"><Checkbox id checked onCheckedChange/><label htmlFor>opt</label></div>`。否决极简内联 `<label><Checkbox/> opt</label>`(与 shadcn radio-group 行布局不一致)。
 3. **语义本身已定死**:checkbox-group 天然多选(array<string>,每项独立 toggle);单选互斥 = RADIO(Phase B 已做)。不浪费 AskUserQuestion。
 
@@ -312,7 +312,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **GATE 收口 1 处(jscpd)**:`emitCheckboxGroup` 的前导(pad/i1/i2+options+controlled+rootParts)与 `emitRadioGroup` 6 行 116 token 重复 → 抽 `optionGroupBase` 消重(0 clones)。
 - **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0 clones;compiler **660/0**(+4 net:新增受控-docState/受控-pageState/非受控/i18n/byte-identical-off 5 条 - 改写 1 条 deferred);kiwi 120/0、scene-graph 202/0 零回归;check:vue 0。零 hotfix。
 - **e2e 实跑**:scratch `.fig`(3-option checkbox-group 绑 docState array)经 `exportFigFile`→CLI `parseFigFile`→`compile --ui-kit shadcn` 真落盘 3 个 `<Checkbox>` 行 + includes/toggle + `<label htmlFor>` + `src/components/ui/checkbox.tsx` + package.json `@radix-ui/react-checkbox`(options 经 .fig round-trip 存活)。
-- **边界(已文档化)**:仅静态 `options[]`(动态 options 绑数据源 → §17 首片);多选 array 语义(单选 = RADIO);wrapper 保 plain `<div>`(shadcn 无原生 CheckboxGroup);复用 Phase B 的 Checkbox.tsx/dep(无新增);`{value,label}` 对象选项延后(同 static options 的 `string[]` 假设)。
+- **边界(已文档化)**:§15 Phase C 只交付静态 `options[]`;动态 options 绑数据源 → §17.4 已交付;多选 array 语义(单选 = RADIO);wrapper 保 plain `<div>`(shadcn 无原生 CheckboxGroup);复用 Phase B 的 Checkbox.tsx/dep(无新增);静态 options 仍保持 `string[]` 假设。
 - **新经验**:UI-kit「无原生分组件」的多选场景 —— 不造自定义 group 组件,而是 wrapper 保 plain `<div>` + 复用单组件(Checkbox)按 option `.flatMap` 拆行 + 手动 array toggle;与 radio-group(有原生 RadioGroup)的关键区别是 wrapper tag(`<div>` vs `<RadioGroup>`)+ control 的事件 API(`onCheckedChange` array spread/filter vs `onValueChange` 单值)。共享 `optionGroupBase`/`emitOptionRow`/`optionLeaves` 三 helper 让 radio/checkbox 两路零 jscpd clone。
 
 ## §16 动态路由 / 路由参数 / 路由守卫 ⭐
@@ -524,9 +524,10 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - **§17.1 数据源 + 响应式 filters**:LIST `dataSourceRef.kind==='supabaseQuery'` + `query{table,columns,filters,orderBy,limit}` → 编译期 emit per-LIST fetch hook(`useState` rows + `useEffect` 跑 `getSupabaseClient().from(t).select(c)<filters><order><limit>`,`active` 守卫防卸载后 setState)+ `.map()` 迭代 rows。filters 复用 §2 `resolveSupabaseFilters`(`valueExpr` 走表达式子语言)→ 引用的 docState 进 effect deps = **绑控件即实时筛选,零额外接线**。门控 = supabase 配置(`$currentUser` proxy,同 §16.3);组件内的 supabase LIST 拒绝(无 page hook 槽)。`$`-builtin($params/$query)dep 走 `JSON.stringify` 防对象身份每渲染重跑。
 - **§17.2 offset 分页**:`query.offsetExpr`(如 `$page * 20`,需 `limit` 页大小)→ emit `.range(offset, offset+size-1)` 取代 `.limit(size)`;offset 引用的 docState 进 deps → 用户自建的上一页/下一页 setState 改 page docState 即翻页。offset 无 limit → warn + 忽略分页(不丢整 list)。
 - **§17.3 动态排序**:orderBy 子句接受响应式 `columnExpr`/`ascendingExpr`(覆盖静态 `column`/`ascending`)→ `.order(<expr>, { ascending: <expr> })`;绑 select/toggle 到引用的 docState 即实时改排序列/方向。静态 + 响应式子句共存。
+- **§17.4 动态控件 options(CODE COMPLETE 2026-06-23)**:SELECT/RADIO/CHECKBOX 接受 `interactiveProps.optionsSource = { kind:'ref'|'stateRef'|'docStateRef', stateId?/docStateName?, itemName?, indexName?, valueExpr?, labelExpr? }`;source 必须是 array-typed page state / docState(docState 自动注册 read)。collect 将 options 降成控件内部 `IRList` 模板:SELECT → 动态 `<option value={...}>{...}</option>`;RADIO/CHECKBOX → 动态 `<label><input ... value={...}/>{...}</label>`。`valueExpr`/`labelExpr` 在 item/index 作用域解析,省略时回退到 item 本身。plain HTML 与 shadcn 双 emit 覆盖:shadcn SelectItem / RadioGroupItem / Checkbox rows 均支持动态 value,受控 CHECKBOX array toggle 用同一个 value 表达式做 `includes/spread/filter`。
 - **共享机制**:泛型 `resolveListQueryExpr`(offset + sort 共用,与 filter 同一套 read-context 校验:拒 `$prev`/未知标识/注册 docState read);坏表达式丢整 list(filter posture);deps 聚合 filter+sort+offset 全部响应式 refs。
 - **GATE**:`bun run check` exit 0;tsgo 0;jscpd 0;compiler **696/0**(+11)、kiwi **125/0**(+1 round-trip)、scene-graph 202/0、tools 196/0 零回归。2 次 complexity 闸(buildPageFile→抽 buildReactImport;resolveListSupabaseQuery→抽 resolveListOffset)按规则提前/即时收口。
-- **边界 / 延后**:**纯数据层**——§17 让 LIST 数据响应控件,但**不自动生成**分页/排序/筛选控件(用户用既有 setState 按钮 + controlled bindings 自接,Bubble 模型);query 写在 interactiveProps,**无 AI tool / 无 GUI**(graph.updateNode + .fig round-trip,沿用 §7/§16.1 先例);cursor 分页延后(offset 已覆盖常见场景);columns/table 静态(schema 感知 autocomplete 出范围)。**与 §16 成链**:filter `valueExpr` 可引用 `$params.id` → 详情页 `/post/:id` 直接列出该 id 的子数据(dep 走 `JSON.stringify($params)`)。**真机验积压 +1**:浏览器实拉 Supabase 表渲染 + 改筛选/排序/翻页控件实时刷新。
+- **边界 / 延后**:**纯数据层**——§17 让 LIST 数据响应控件,并让控件 options 响应已存在数组数据,但**不自动生成**分页/排序/筛选控件(用户用既有 setState 按钮 + controlled bindings 自接,Bubble 模型);query/optionsSource 写在 interactiveProps,**无 AI tool / 无 GUI**(graph.updateNode + .fig round-trip,沿用 §7/§16.1 先例);optionsSource v1 读取既有 array state/docState,**不为单个控件自动 emit Supabase query hook**;cursor 分页延后(offset 已覆盖常见场景);columns/table 静态(schema 感知 autocomplete 出范围)。**与 §16 成链**:filter `valueExpr` 可引用 `$params.id` → 详情页 `/post/:id` 直接列出该 id 的子数据(dep 走 `JSON.stringify($params)`)。**真机验积压 +1**:浏览器实拉 Supabase 表渲染 + 改筛选/排序/翻页控件实时刷新。
 
 ## §18 文件 / 图片上传(Supabase Storage)
 

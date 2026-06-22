@@ -681,7 +681,9 @@ function collectText(node: IRNode, acc: Map<string, string>): void {
   // Phase 3 §9 v3: a translated attribute (e.g. placeholder) carries an
   // `intlMessage` value that must land in the catalog like visible text.
   for (const value of Object.values(node.attrs)) {
-    if (typeof value === 'object') acc.set(value.messageId, value.defaultMessage)
+    if (typeof value === 'object' && value.kind === 'intlMessage') {
+      acc.set(value.messageId, value.defaultMessage)
+    }
   }
   for (const child of node.children) collectText(child, acc)
 }

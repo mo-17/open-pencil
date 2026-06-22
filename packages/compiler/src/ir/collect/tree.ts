@@ -670,7 +670,11 @@ const CONTAINER_TYPES_FOR_RECURSION: ReadonlySet<NodeType> = new Set([
 function isCheckboxGroup(node: SceneNode): boolean {
   if (node.type !== 'CHECKBOX') return false
   const raw = node.interactiveProps?.options
-  return Array.isArray(raw) && raw.length > 0
+  if (Array.isArray(raw) && raw.length > 0) return true
+  return (
+    typeof node.interactiveProps?.optionsSource === 'object' &&
+    node.interactiveProps.optionsSource !== null
+  )
 }
 
 const LUCIDE_ICON_NAMES: ReadonlySet<string> = new Set(Object.keys(lucideIcons.icons))
@@ -2119,6 +2123,10 @@ function patchOptionLeafControlled(
   controlled: IRControlledInput
 ): void {
   for (const child of children) {
+    if (child.kind === 'list') {
+      patchOptionLeafControlled([child.template], inputType, controlled)
+      continue
+    }
     if (child.kind !== 'element' || child.tag !== 'label') continue
     for (const inner of child.children) {
       if (inner.kind === 'element' && inner.tag === 'input' && inner.attrs.type === inputType) {
@@ -2149,6 +2157,20 @@ interface ListSupabaseQueryConfig {
    *  `$page * 20`). Requires `limit` (the page size); references a page-index
    *  doc-state driven by prev/next setState handlers. */
   offsetExpr?: string
+}
+
+/** Phase 4 §17.4: dynamic option source for SELECT/RADIO/CHECKBOX controls.
+ *  It reads an existing array-typed page state (`kind: 'ref'`) or document
+ *  state (`kind: 'docStateRef'`). `valueExpr` / `labelExpr` run in the option
+ *  item scope; omitted expressions fall back to the item itself. */
+interface OptionsSourceConfig {
+  kind?: string
+  stateId?: string
+  docStateName?: string
+  itemName?: string
+  indexName?: string
+  valueExpr?: string
+  labelExpr?: string
 }
 
 /** Phase 4 §18: an INPUT's file-upload config, carried on its interactiveProps
@@ -2659,6 +2681,133 @@ function optionStrings(ip: InteractiveProps): string[] {
   return raw.filter((o): o is string => typeof o === 'string')
 }
 
+function optionSource(ip: InteractiveProps): OptionsSourceConfig | null {
+  return typeof ip.optionsSource === 'object' && ip.optionsSource !== null
+    ? (ip.optionsSource as OptionsSourceConfig)
+    : null
+}
+
+function resolveOptionsArrayName(
+  node: SceneNode,
+  src: OptionsSourceConfig,
+  ctx: WalkCtx
+): string | null {
+  if ((src.kind === 'ref' || src.kind === 'stateRef') && typeof src.stateId === 'string') {
+    const state = ctx.states.get(src.stateId)
+    if (!state) {
+      ctx.warnings.push({
+        code: 'options-source-unknown-state',
+        message: `${node.type} ${node.id} optionsSource points to unknown state ${src.stateId}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (state.type !== 'array') {
+      ctx.warnings.push({
+        code: 'options-source-bad-state-type',
+        message: `${node.type} ${node.id} optionsSource state ${state.name} is type ${state.type}, expected array`,
+        nodeId: node.id
+      })
+      return null
+    }
+    return state.name
+  }
+  if (src.kind === 'docStateRef' && typeof src.docStateName === 'string') {
+    const decl = ctx.docStates.get(src.docStateName)
+    if (!decl) {
+      ctx.warnings.push({
+        code: 'options-source-unknown-docstate',
+        message: `${node.type} ${node.id} optionsSource points to unknown document state ${src.docStateName}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (decl.type !== 'array') {
+      ctx.warnings.push({
+        code: 'options-source-bad-docstate-type',
+        message: `${node.type} ${node.id} optionsSource document state ${decl.name} is type ${decl.type}, expected array`,
+        nodeId: node.id
+      })
+      return null
+    }
+    ctx.docStateReads.add(decl.name)
+    return decl.name
+  }
+  ctx.warnings.push({
+    code: 'options-source-invalid',
+    message: `${node.type} ${node.id} optionsSource must be kind "ref", "stateRef", or "docStateRef"`,
+    nodeId: node.id
+  })
+  return null
+}
+
+function withOptionScope<T>(ctx: WalkCtx, itemName: string, indexName: string, run: () => T): T {
+  const hadItem = ctx.inScope.has(itemName)
+  const hadIndex = ctx.inScope.has(indexName)
+  ctx.inScope.add(itemName)
+  ctx.inScope.add(indexName)
+  const result = run()
+  if (!hadItem) ctx.inScope.delete(itemName)
+  if (!hadIndex) ctx.inScope.delete(indexName)
+  return result
+}
+
+function resolveOptionExpr(
+  node: SceneNode,
+  src: string,
+  code: string,
+  ctx: WalkCtx
+): { kind: 'expression'; ast: ExprAst; references: string[] } | null {
+  const resolved = resolveReactiveExpr(node, src, code, ctx)
+  if (resolved === null) return null
+  return { kind: 'expression', ast: resolved.ast, references: resolved.references }
+}
+
+function optionSourceExpressions(
+  node: SceneNode,
+  src: OptionsSourceConfig,
+  itemName: string,
+  ctx: WalkCtx
+): { value: IRAttrValue; label: IRNode } | null {
+  const valueSrc =
+    typeof src.valueExpr === 'string' && src.valueExpr.trim() !== ''
+      ? src.valueExpr.trim()
+      : itemName
+  const labelSrc =
+    typeof src.labelExpr === 'string' && src.labelExpr.trim() !== ''
+      ? src.labelExpr.trim()
+      : valueSrc
+  const valueResolved = resolveReactiveExpr(node, valueSrc, 'options-source-value', ctx)
+  if (valueResolved === null) return null
+  const label = resolveOptionExpr(node, labelSrc, 'options-source-label', ctx)
+  if (label === null) return null
+  return { value: { kind: 'exprAttr', ast: valueResolved.ast }, label }
+}
+
+function dynamicOptionsList(
+  node: SceneNode,
+  src: OptionsSourceConfig,
+  ctx: WalkCtx,
+  makeTemplate: (value: IRAttrValue, label: IRNode) => IRNode
+): IRList | null {
+  const arrayName = resolveOptionsArrayName(node, src, ctx)
+  if (arrayName === null) return null
+  const itemName = typeof src.itemName === 'string' && src.itemName !== '' ? src.itemName : 'item'
+  const indexName =
+    typeof src.indexName === 'string' && src.indexName !== '' ? src.indexName : 'index'
+  return withOptionScope(ctx, itemName, indexName, () => {
+    const expressions = optionSourceExpressions(node, src, itemName, ctx)
+    if (expressions === null) return null
+    return {
+      kind: 'list',
+      arrayName,
+      itemName,
+      indexName,
+      template: makeTemplate(expressions.value, expressions.label)
+    }
+  })
+}
+
 /** SELECT — one `<option>` child per string in `interactiveProps.options`. The
  *  option's display label is translatable (§9); its `value=` attr stays the
  *  literal form value. */
@@ -2668,6 +2817,19 @@ function applySelectOptions(
   children: IRNode[],
   ctx: WalkCtx
 ): void {
+  const src = optionSource(ip)
+  if (src) {
+    const list = dynamicOptionsList(node, src, ctx, (value, label) => ({
+      kind: 'element',
+      sourceId: node.id,
+      tag: 'option',
+      className: '',
+      attrs: { value },
+      children: [label]
+    }))
+    if (list) children.push(list)
+    return
+  }
   for (const opt of optionStrings(ip)) {
     children.push({
       kind: 'element',
@@ -2721,6 +2883,37 @@ function appendOptionInputs(
   }
 }
 
+function appendDynamicOptionInputs(
+  node: SceneNode,
+  ip: InteractiveProps,
+  children: IRNode[],
+  makeInputAttrs: (value: IRAttrValue) => Record<string, IRAttrValue>,
+  ctx: WalkCtx
+): boolean {
+  const src = optionSource(ip)
+  if (!src) return false
+  const list = dynamicOptionsList(node, src, ctx, (value, label) => ({
+    kind: 'element',
+    sourceId: node.id,
+    tag: 'label',
+    className: OPTION_LABEL_CLASSES,
+    attrs: {},
+    children: [
+      {
+        kind: 'element',
+        sourceId: node.id,
+        tag: 'input',
+        className: OPTION_INPUT_CLASSES,
+        attrs: makeInputAttrs(value),
+        children: []
+      },
+      label
+    ]
+  }))
+  if (list) children.push(list)
+  return true
+}
+
 /** CHECKBOX group (Phase 3 §3.v4 step 8) — when `interactiveProps.options`
  *  is set, the CHECKBOX node renders as a wrapper div with one
  *  `<label><input type="checkbox" value={opt}/> opt</label>` per option,
@@ -2733,6 +2926,11 @@ function applyCheckboxGroupOptions(
   children: IRNode[],
   ctx: WalkCtx
 ): void {
+  if (
+    appendDynamicOptionInputs(node, ip, children, (value) => ({ type: 'checkbox', value }), ctx)
+  ) {
+    return
+  }
   appendOptionInputs(node, ip, children, (opt) => ({ type: 'checkbox', value: opt }), ctx)
 }
 
@@ -2746,6 +2944,21 @@ function applyRadioOptions(
   ctx: WalkCtx
 ): void {
   const groupName = typeof ip.groupName === 'string' ? ip.groupName : ''
+  if (
+    appendDynamicOptionInputs(
+      node,
+      ip,
+      children,
+      (value) => {
+        const inputAttrs: Record<string, IRAttrValue> = { type: 'radio', value }
+        if (groupName !== '') inputAttrs.name = groupName
+        return inputAttrs
+      },
+      ctx
+    )
+  ) {
+    return
+  }
   const selected = typeof ip.value === 'string' ? ip.value : ''
   appendOptionInputs(
     node,

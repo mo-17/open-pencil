@@ -146,7 +146,7 @@ function nodeHasIntlAttr(node: IRNode): boolean {
   if (node.kind === 'list') return nodeHasIntlAttr(node.template)
   if (node.kind !== 'element') return false
   for (const value of Object.values(node.attrs)) {
-    if (typeof value === 'object') return true
+    if (typeof value === 'object' && value.kind === 'intlMessage') return true
   }
   return node.children.some(nodeHasIntlAttr)
 }

@@ -507,9 +507,9 @@ function controlledRadioAttrParts(
   attrs: Record<string, IRAttrValue>,
   onChangeHandlers: IREventHandler[] | undefined
 ): string[] {
-  const optValue = typeof attrs.value === 'string' ? attrs.value : ''
+  const optValue = optionValueExpression(attrs.value)
   return [
-    `checked={${controlled.read} === ${JSON.stringify(optValue)}}`,
+    `checked={${controlled.read} === ${optValue}}`,
     controlledOnChangeAttr(
       controlled,
       controlledEventValue(controlled.write.targetType),
@@ -523,16 +523,21 @@ function controlledCheckboxGroupAttrParts(
   attrs: Record<string, IRAttrValue>,
   onChangeHandlers: IREventHandler[] | undefined
 ): string[] {
-  const optValue = typeof attrs.value === 'string' ? attrs.value : ''
-  const literal = JSON.stringify(optValue)
+  const optValue = optionValueExpression(attrs.value)
   return [
-    `checked={${controlled.read}.includes(${literal})}`,
+    `checked={${controlled.read}.includes(${optValue})}`,
     controlledOnChangeAttr(
       controlled,
-      `e.target.checked ? [...${controlled.read}, ${literal}] : ${controlled.read}.filter((v) => v !== ${literal})`,
+      `e.target.checked ? [...${controlled.read}, ${optValue}] : ${controlled.read}.filter((v) => v !== ${optValue})`,
       onChangeHandlers
     )
   ]
+}
+
+function optionValueExpression(value: IRAttrValue | undefined): string {
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'object' && value.kind === 'exprAttr') return emitExpression(value.ast)
+  return JSON.stringify('')
 }
 
 function controlledValueAttrParts(
@@ -692,6 +697,7 @@ function formatAttr(key: string, value: IRAttrValue): string {
   // `attr={intl.formatMessage({ id, defaultMessage })}`. The enclosing function
   // gets a `const intl = useIntl()` hook from the scaffold (driven by hasIntlAttr).
   if (typeof value === 'object') {
+    if (value.kind === 'exprAttr') return `${key}={${emitExpression(value.ast)}}`
     return `${key}={intl.formatMessage({ id: "${value.messageId}", defaultMessage: ${JSON.stringify(value.defaultMessage)} })}`
   }
   return value ? key : `${key}={false}`

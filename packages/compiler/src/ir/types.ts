@@ -155,7 +155,7 @@ export interface IRElement {
    *  carry the `controlled` descriptor. Phase 4 §15 Phase C: the array
    *  multi-select checkbox-group is `checkbox-group` (shadcn has no native group
    *  component, so the adapter emits N `<Checkbox>` rows + manual array toggle).
-   *  Dynamic (data-bound) option lists are deferred to §17. */
+   *  Phase 4 §17.4 adds dynamic data-bound option lists via `optionsSource`. */
   controlKind?: 'select' | 'checkbox' | 'switch' | 'radio-group' | 'checkbox-group'
   /** Phase 4 §15.1 — semantic hint identifying a card-like container FRAME whose
    *  plain `<div>` emit a UI-kit adapter may replace with a `<Card>` wrapper.
@@ -425,7 +425,14 @@ export interface IRIntlAttr {
   defaultMessage: string
 }
 
-export type IRAttrValue = string | number | boolean | IRIntlAttr
+/** A JSX attribute backed by a lowcode expression, e.g. `<option value={item.id}>`.
+ *  Used for Phase 4 §17 dynamic control options. */
+export interface IRExprAttr {
+  kind: 'exprAttr'
+  ast: ExprAst
+}
+
+export type IRAttrValue = string | number | boolean | IRIntlAttr | IRExprAttr
 
 /** Phase 2 §9: conditional render wrapper. Adapter emits
  *  `{(<expr>) && (<consequent>)}`. Only present when the source node's
