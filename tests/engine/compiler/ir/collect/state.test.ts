@@ -117,6 +117,35 @@ describe('collectTree — page state', () => {
     expect(ir.warnings.map((w) => w.code)).toContain('computed-state-cycle')
     expect(ir.warnings.map((w) => w.code)).toContain('computed-state-unknown')
   })
+
+  test('computed state rejects prev refs and empty expressions as fallbacks', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const page = graph.getNode(pageId)
+    if (!page) throw new Error('no page')
+    page.state = [
+      { id: 's1', name: 'count', type: 'number', defaultValue: 1 },
+      {
+        id: 's2',
+        name: 'previous',
+        type: 'number',
+        defaultValue: 2,
+        computedExpr: '$prev + count'
+      },
+      { id: 's3', name: 'blank', type: 'string', defaultValue: 'fallback', computedExpr: '   ' }
+    ]
+
+    const ir = collectTree(graph, pageId)
+    expect(ir.states.map((s) => [s.name, s.computedInvalid === true])).toEqual([
+      ['count', false],
+      ['previous', true],
+      ['blank', true]
+    ])
+    expect(ir.states.find((s) => s.name === 'previous')?.computed).toBeUndefined()
+    expect(ir.states.find((s) => s.name === 'blank')?.computed).toBeUndefined()
+    expect(ir.warnings.map((w) => w.code)).toContain('computed-state-prev')
+    expect(ir.warnings.map((w) => w.code)).toContain('computed-state-empty')
+  })
 })
 
 describe('collectTree — text bindings', () => {
