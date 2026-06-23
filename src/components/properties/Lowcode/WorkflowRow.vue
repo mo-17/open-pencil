@@ -13,12 +13,11 @@ import ActionList from './ActionList.vue'
 /**
  * Phase 3 §10 v11 — one row of the `WorkflowsPanel`: edits a single named
  * `WorkflowDef`. Surfaces the workflow's label, its formal parameters (each with
- * an optional default expression → `params` + `paramDefaults`), and its action
- * chain via the same recursive `ActionList` editor used for node events — so a
- * workflow body can itself contain control-flow / result branches and even
- * nested `callWorkflow`s. Emits the whole new workflow on every edit; the panel
- * owns persistence / undo. `optionalParams` editing stays MCP-only (its
- * "omitted → literal undefined" semantics is a deep-authoring detail).
+ * an optional default expression / omitted-argument toggle → `params` +
+ * `paramDefaults` + `optionalParams`), and its action chain via the same
+ * recursive `ActionList` editor used for node events — so a workflow body can
+ * itself contain control-flow / result branches and even nested `callWorkflow`s.
+ * Emits the whole new workflow on every edit; the panel owns persistence / undo.
  */
 const { workflow, workflows, pages, pageStates, docStates } = defineProps<{
   workflow: WorkflowDef
@@ -42,13 +41,16 @@ const PARAM_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 interface ParamRow {
   name: string
   default: string
+  optional: boolean
 }
 
 const paramRows = computed<ParamRow[]>(() => {
   const defaults = workflow.paramDefaults ?? {}
+  const optional = new Set(workflow.optionalParams)
   return (workflow.params ?? []).map((name) => ({
     name,
-    default: Object.hasOwn(defaults, name) ? defaults[name] : ''
+    default: Object.hasOwn(defaults, name) ? defaults[name] : '',
+    optional: optional.has(name)
   }))
 })
 
@@ -76,19 +78,23 @@ function updateActions(next: ActionDef[]): void {
   emit('update:workflow', { ...workflow, actions: next })
 }
 
-// Rebuild params + paramDefaults from the edited rows; spread keeps any
-// MCP-authored `optionalParams`. Empty lists collapse to undefined so a
-// parameterless workflow round-trips byte-identically.
+// Rebuild params + paramDefaults + optionalParams from the edited rows. Empty
+// lists collapse to undefined so a parameterless workflow round-trips
+// byte-identically. Rename/remove naturally rewrites optionalParams to the
+// surviving rows, avoiding stale MCP-authored parameter names.
 function commitParams(rows: ParamRow[]): void {
   const params = rows.map((r) => r.name)
   const paramDefaults: Record<string, string> = {}
+  const optionalParams: string[] = []
   for (const r of rows) {
     if (r.default.trim() !== '') paramDefaults[r.name] = r.default
+    if (r.optional) optionalParams.push(r.name)
   }
   emit('update:workflow', {
     ...workflow,
     params: params.length > 0 ? params : undefined,
-    paramDefaults: Object.keys(paramDefaults).length > 0 ? paramDefaults : undefined
+    paramDefaults: Object.keys(paramDefaults).length > 0 ? paramDefaults : undefined,
+    optionalParams: optionalParams.length > 0 ? optionalParams : undefined
   })
 }
 
@@ -101,7 +107,7 @@ function uniqueParamName(): string {
 }
 
 function addParam(): void {
-  commitParams([...paramRows.value, { name: uniqueParamName(), default: '' }])
+  commitParams([...paramRows.value, { name: uniqueParamName(), default: '', optional: false }])
 }
 function removeParam(index: number): void {
   commitParams(paramRows.value.filter((_, i) => i !== index))
@@ -111,6 +117,9 @@ function setParamName(index: number, name: string): void {
 }
 function setParamDefault(index: number, def: string): void {
   commitParams(paramRows.value.map((r, i) => (i === index ? { ...r, default: def } : r)))
+}
+function setParamOptional(index: number, optional: boolean): void {
+  commitParams(paramRows.value.map((r, i) => (i === index ? { ...r, optional } : r)))
 }
 </script>
 
@@ -189,6 +198,17 @@ function setParamDefault(index: number, def: string): void {
             class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
             @change="setParamDefault(i, ($event.target as HTMLInputElement).value)"
           />
+          <label class="flex shrink-0 items-center gap-1 text-[10px] text-muted">
+            <input
+              type="checkbox"
+              :checked="p.optional"
+              aria-label="Optional parameter"
+              data-test-id="lowcode-workflow-param-optional"
+              class="size-3 accent-accent"
+              @change="setParamOptional(i, ($event.target as HTMLInputElement).checked)"
+            />
+            optional
+          </label>
           <button
             type="button"
             aria-label="Remove parameter"

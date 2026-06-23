@@ -70,17 +70,17 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | headless(大);组件跨 .fig 复用 / 团队共享库 / 更新传播。phase-3 有设计但未实现。                | §14           |
 | 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
 | 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-23**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options。      | §9 / §15      |
-| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 部分完成(真机)       | §7 responsive overrides + §8 component-props 面板已完成;仍剩 §10 optionalParams GUI。           | §7 / §8 / §10 |
+| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合。 | §7 / §8 / §10 |
 | 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
-> **当前未闭合**:#8 / #9 / #11 / #13。#8、#13 偏大或工程债;#9 有
-> blake3 依赖决策;#10 只剩真机 ACK;#11 已完成 §7/§8 子项,仍剩 §10 GUI。
+> **当前未闭合**:#8 / #9 / #13。#8、#13 偏大或工程债;#9 有
+> blake3 依赖决策;#10/#11 只剩真机 ACK。
 >
-> **下一步建议(2026-06-23 状态校准后)**:若继续 headless,只剩 #8 §14
-> 跨文件组件库(大)或 #9 CF Pages(需先锁 blake3 依赖)。若继续小步快跑,优先转
-> #11 的 GUI 授权入口,但必须安排 Tauri/浏览器真机验证。#13 Kiwi schema
-> 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
+> **下一步建议(2026-06-24 状态校准后)**:若继续 headless,只剩 #8 §14
+> 跨文件组件库(大)或 #9 CF Pages(需先锁 blake3 依赖)。#13 Kiwi schema
+> 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。若继续 GUI/真机,
+> 则安排 #10/#11 的 Tauri/浏览器 ACK。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
 
@@ -1130,15 +1130,15 @@ bun test \
 
 ## §7 / §8 / §10 编辑器授权面板(GUI,真机)
 
-**现状**:§7 responsive overrides / §8 component-props / §10 optionalParams 的数据模型 + emit + round-trip 在 phase-3 均已 headless 交付,授权 GUI 在 phase-3 均显式「延后真机」(沿用「先 emit/headless,GUI 真机」先例)。§7 responsive overrides 与 §8 component-props 编辑面板已在 phase-4 补齐。
+**现状**:§7 responsive overrides / §8 component-props / §10 optionalParams 的数据模型 + emit + round-trip 在 phase-3 均已 headless 交付,授权 GUI 在 phase-3 均显式「延后真机」(沿用「先 emit/headless,GUI 真机」先例)。§7 responsive overrides、§8 component-props 与 §10 optionalParams 编辑入口已在 phase-4 补齐。
 
 **剩余**:
 
 - ~~**§7 responsive overrides 编辑面板**~~ —— **CODE COMPLETE 2026-06-24**:`ResponsivePanel.vue` 挂到右侧 Design panel,支持 sm/md/lg/xl 下 visible、layoutMode、layoutWrap、primaryAxisSizing、gap/padding/size/layoutGrow 等常用 override;空值继承 base,清空 breakpoint 写 `{}`(Kiwi/compiler 均视为空)。
 - ~~**§8 component-props 面板**~~ —— **CODE COMPLETE 2026-06-24**:`ComponentPropsPanel.vue` 挂到 INSTANCE 右侧属性区,统一展示 variant selects、TEXT child prop 输入、solid fill prop 颜色入口;写入 instance child 的真实 text/fills,并维护 compiler 读取的 `instance.overrides` marker(`<childId>:text` / `<childId>:fills`)。variant 切换复用 `editor.switchInstanceVariant()` / `graph.swapInstanceComponent()`。
-- **§10 optionalParams GUI** —— callWorkflow 的 optionalParams 当前 MCP-only(§10 v8 已实现 emit/数据,缺 GUI)。
+- ~~**§10 optionalParams GUI**~~ —— **CODE COMPLETE 2026-06-24**:`WorkflowRow.vue` 的参数行新增 optional checkbox,会重建 `WorkflowDef.optionalParams`;rename/remove 参数时同步清理 optional 名称,避免 GUI 写出悬空 optional param。`ActionRow` 既有 callWorkflow args editor 会立即把该参数显示为 optional 并放宽 required 校验。
 
-**验证**:`bun playwright test tests/e2e/properties/responsive-panel.spec.ts --project=openpencil` 1/0;`bun playwright test tests/e2e/properties/component-props-panel.spec.ts --project=openpencil` 1/0(均需沙箱外本地端口权限);`bun run check` exit 0;`bun run check:vue`;`bun run lint:structure`(仅既有 max-lines warnings)。**剩余需真机点画面**:§10 GUI。**待锁**:optionalParams GUI 是否继续作为下一个小块。
+**验证**:`bun playwright test tests/e2e/properties/responsive-panel.spec.ts --project=openpencil` 1/0;`bun playwright test tests/e2e/properties/component-props-panel.spec.ts --project=openpencil` 1/0;`bun playwright test tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil` 1/0(均需沙箱外本地端口权限);`bun run check` exit 0;`bun run check:vue`;`bun run lint:structure`(仅既有 max-lines warnings)。**剩余需真机点画面**:#10/#11 GUI ACK。
 
 ## §10 工作流体跨页 pageStates 精确
 
