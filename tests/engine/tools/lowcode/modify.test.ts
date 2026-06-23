@@ -301,6 +301,104 @@ describe('update_lowcode_node', () => {
     // decision f: range relationships don't hard-fail at the tool boundary
     expect(run({ min: '2026-12-31', max: '2026-01-01' }).ok).toBe(true)
   })
+
+  test('accepts valid form validation and summary interactiveProps (§19)', () => {
+    const { figma, graph } = setupToolTest()
+    const input = figma.createRectangle()
+    const validation = {
+      required: true,
+      pattern: '^[^@]+@[^@]+$',
+      minLength: 5,
+      customExpr: 'email !== "blocked@x.com"',
+      messages: {
+        required: 'Email required',
+        pattern: 'Invalid email',
+        custom: 'Blocked email'
+      },
+      async: {
+        urlExpr: 'validatorUrl',
+        method: 'GET',
+        message: 'Remote validation failed'
+      }
+    }
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: input.id,
+      patch_json: JSON.stringify({
+        interactiveProps: {
+          validation,
+          validationSummary: { enabled: true, title: 'Fix these fields' },
+          text: 'Submit'
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(graph.getNode(input.id)?.interactiveProps).toEqual({
+      validation,
+      validationSummary: { enabled: true, title: 'Fix these fields' },
+      text: 'Submit'
+    })
+  })
+
+  test('rejects malformed validation configs at the tool boundary (§19)', () => {
+    const { figma } = setupToolTest()
+    const input = figma.createRectangle()
+    const run = (validation: Record<string, unknown>) =>
+      getTool('update_lowcode_node').execute(figma, {
+        id: input.id,
+        patch_json: JSON.stringify({ interactiveProps: { validation } })
+      }) as Result<{ id: string; updated: string[] }>
+
+    expect((run({ pattern: '([unbalanced' }) as { ok: false; error: string }).error).toContain(
+      'pattern'
+    )
+    expect((run({ minLength: '5' }) as { ok: false; error: string }).error).toContain('minLength')
+    expect((run({ customExpr: 'email !==' }) as { ok: false; error: string }).error).toContain(
+      'customExpr'
+    )
+    expect((run({ typo: true }) as { ok: false; error: string }).error).toContain('typo')
+  })
+
+  test('rejects malformed async validation configs at the tool boundary (§19)', () => {
+    const { figma } = setupToolTest()
+    const input = figma.createRectangle()
+    const run = (async: Record<string, unknown>) =>
+      getTool('update_lowcode_node').execute(figma, {
+        id: input.id,
+        patch_json: JSON.stringify({ interactiveProps: { validation: { async } } })
+      }) as Result<{ id: string; updated: string[] }>
+
+    expect((run({ method: 'POST' }) as { ok: false; error: string }).error).toContain('url')
+    expect(
+      (run({ url: '/api/check', urlExpr: 'validatorUrl' }) as { ok: false; error: string }).error
+    ).toContain('either url or urlExpr')
+    expect(
+      (run({ url: '/api/check', method: 'PUT' }) as { ok: false; error: string }).error
+    ).toContain('GET or POST')
+    expect((run({ urlExpr: 'validatorUrl +' }) as { ok: false; error: string }).error).toContain(
+      'urlExpr'
+    )
+    expect(
+      (run({ url: '/api/check', extra: true }) as { ok: false; error: string }).error
+    ).toContain('extra')
+  })
+
+  test('rejects malformed validationSummary configs at the tool boundary (§19)', () => {
+    const { figma } = setupToolTest()
+    const form = figma.createRectangle()
+    const run = (validationSummary: unknown) =>
+      getTool('update_lowcode_node').execute(figma, {
+        id: form.id,
+        patch_json: JSON.stringify({ interactiveProps: { validationSummary } })
+      }) as Result<{ id: string; updated: string[] }>
+
+    expect(run(false).ok).toBe(true)
+    expect((run({ enabled: 'yes' }) as { ok: false; error: string }).error).toContain('enabled')
+    expect((run({ title: 123 }) as { ok: false; error: string }).error).toContain('title')
+    expect((run({ enabled: true, extra: 'x' }) as { ok: false; error: string }).error).toContain(
+      'extra'
+    )
+  })
 })
 
 describe('set_doc_states', () => {

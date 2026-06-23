@@ -111,6 +111,32 @@ const KNOWN_STATE_OVERRIDE_KEYS = new Set([
   'effects'
 ])
 
+const KNOWN_VALIDATION_KEYS = new Set([
+  'required',
+  'pattern',
+  'minLength',
+  'maxLength',
+  'min',
+  'max',
+  'customExpr',
+  'messages',
+  'async'
+])
+
+const KNOWN_VALIDATION_MESSAGE_KEYS = new Set([
+  'required',
+  'pattern',
+  'minLength',
+  'maxLength',
+  'min',
+  'max',
+  'custom'
+])
+
+const KNOWN_VALIDATION_ASYNC_KEYS = new Set(['url', 'urlExpr', 'method', 'message'])
+
+const KNOWN_VALIDATION_SUMMARY_KEYS = new Set(['enabled', 'title'])
+
 const KNOWN_FILTER_OPS = new Set<FilterOp>(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'])
 
 const KNOWN_MUTATION_OPS = new Set<string>(['insert', 'upsert', 'update', 'delete'])
@@ -942,8 +968,175 @@ function applyInteractivePropsField(
     return { ok: true }
   }
   if (!isPlainObject(raw.interactiveProps)) return fail('interactiveProps must be an object')
+  const r = validateInteractivePropsBoundary(raw.interactiveProps)
+  if (!r.ok) return r
   patch.interactiveProps = raw.interactiveProps
   return { ok: true }
+}
+
+function validateInteractivePropsBoundary(ip: Record<string, unknown>): FieldResult {
+  if ('validation' in ip) {
+    const r = validateFieldValidationConfig(ip.validation)
+    if (!r.ok) return r
+  }
+  if ('validationSummary' in ip) {
+    const r = validateValidationSummaryConfig(ip.validationSummary)
+    if (!r.ok) return r
+  }
+  return { ok: true }
+}
+
+function validateFieldValidationConfig(raw: unknown): FieldResult {
+  if (raw === null) return { ok: true }
+  if (!isPlainObject(raw)) return fail('interactiveProps.validation must be an object or null')
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_VALIDATION_KEYS.has(key)) {
+      return fail(
+        `interactiveProps.validation.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_KEYS].join(' / ')}`
+      )
+    }
+  }
+  if ('required' in raw && typeof raw.required !== 'boolean') {
+    return fail('interactiveProps.validation.required must be a boolean')
+  }
+  const pattern = validateValidationPattern(raw.pattern)
+  if (!pattern.ok) return pattern
+  const numbers = validateValidationNumbers(raw)
+  if (!numbers.ok) return numbers
+  const custom = validateValidationCustomExpr(raw.customExpr)
+  if (!custom.ok) return custom
+  const messages = validateValidationMessages(raw.messages)
+  if (!messages.ok) return messages
+  const async = validateAsyncValidationConfig(raw.async)
+  if (!async.ok) return async
+  return { ok: true }
+}
+
+function validateValidationPattern(raw: unknown): FieldResult {
+  if (raw === undefined || raw === null) return { ok: true }
+  if (typeof raw !== 'string') return fail('interactiveProps.validation.pattern must be a string')
+  if (!isValidRegex(raw)) {
+    return fail('interactiveProps.validation.pattern must compile as a regular expression')
+  }
+  return { ok: true }
+}
+
+function validateValidationNumbers(raw: Record<string, unknown>): FieldResult {
+  for (const key of ['minLength', 'maxLength', 'min', 'max'] as const) {
+    if (raw[key] === undefined || raw[key] === null) continue
+    if (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])) {
+      return fail(`interactiveProps.validation.${key} must be a finite number`)
+    }
+  }
+  return { ok: true }
+}
+
+function validateValidationCustomExpr(raw: unknown): FieldResult {
+  if (raw === undefined || raw === null) return { ok: true }
+  if (typeof raw !== 'string')
+    return fail('interactiveProps.validation.customExpr must be a string')
+  const r = validateExpression(raw)
+  if (!r.ok) return fail(`interactiveProps.validation.customExpr — ${r.reason}`)
+  return { ok: true }
+}
+
+function validateValidationMessages(raw: unknown): FieldResult {
+  if (raw === undefined || raw === null) return { ok: true }
+  if (!isPlainObject(raw)) return fail('interactiveProps.validation.messages must be an object')
+  for (const [key, value] of Object.entries(raw)) {
+    if (!KNOWN_VALIDATION_MESSAGE_KEYS.has(key)) {
+      return fail(
+        `interactiveProps.validation.messages.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_MESSAGE_KEYS].join(' / ')}`
+      )
+    }
+    if (typeof value !== 'string') {
+      return fail(`interactiveProps.validation.messages.${key} must be a string`)
+    }
+  }
+  return { ok: true }
+}
+
+function validateAsyncValidationConfig(raw: unknown): FieldResult {
+  if (raw === undefined || raw === null) return { ok: true }
+  if (!isPlainObject(raw)) return fail('interactiveProps.validation.async must be an object')
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_VALIDATION_ASYNC_KEYS.has(key)) {
+      return fail(
+        `interactiveProps.validation.async.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_ASYNC_KEYS].join(' / ')}`
+      )
+    }
+  }
+  const url = validateAsyncValidationUrl(raw)
+  if (!url.ok) return url
+  const method = validateAsyncValidationMethod(raw.method)
+  if (!method.ok) return method
+  if (raw.message !== undefined && raw.message !== null && typeof raw.message !== 'string') {
+    return fail('interactiveProps.validation.async.message must be a string')
+  }
+  return { ok: true }
+}
+
+function validateAsyncValidationUrl(raw: Record<string, unknown>): FieldResult {
+  const hasUrl = typeof raw.url === 'string' && raw.url.trim() !== ''
+  const hasUrlExpr = typeof raw.urlExpr === 'string' && raw.urlExpr.trim() !== ''
+  if (raw.url !== undefined && raw.url !== null && typeof raw.url !== 'string') {
+    return fail('interactiveProps.validation.async.url must be a string')
+  }
+  if (raw.urlExpr !== undefined && raw.urlExpr !== null && typeof raw.urlExpr !== 'string') {
+    return fail('interactiveProps.validation.async.urlExpr must be a string')
+  }
+  if (hasUrl && hasUrlExpr) {
+    return fail('interactiveProps.validation.async must use either url or urlExpr, not both')
+  }
+  if (!hasUrl && !hasUrlExpr) {
+    return fail('interactiveProps.validation.async requires a non-empty url or urlExpr')
+  }
+  if (!hasUrlExpr) return { ok: true }
+  const r = validateExpression(String(raw.urlExpr))
+  if (!r.ok) return fail(`interactiveProps.validation.async.urlExpr — ${r.reason}`)
+  return { ok: true }
+}
+
+function validateAsyncValidationMethod(raw: unknown): FieldResult {
+  if (raw === undefined || raw === null) return { ok: true }
+  if (typeof raw !== 'string')
+    return fail('interactiveProps.validation.async.method must be GET or POST')
+  const method = raw.trim().toUpperCase()
+  if (method !== 'GET' && method !== 'POST') {
+    return fail('interactiveProps.validation.async.method must be GET or POST')
+  }
+  return { ok: true }
+}
+
+function validateValidationSummaryConfig(raw: unknown): FieldResult {
+  if (raw === null || typeof raw === 'boolean') return { ok: true }
+  if (!isPlainObject(raw)) {
+    return fail('interactiveProps.validationSummary must be a boolean, object, or null')
+  }
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_VALIDATION_SUMMARY_KEYS.has(key)) {
+      return fail(
+        `interactiveProps.validationSummary.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_SUMMARY_KEYS].join(' / ')}`
+      )
+    }
+  }
+  if (raw.enabled !== undefined && typeof raw.enabled !== 'boolean') {
+    return fail('interactiveProps.validationSummary.enabled must be a boolean')
+  }
+  if (raw.title !== undefined && raw.title !== null && typeof raw.title !== 'string') {
+    return fail('interactiveProps.validationSummary.title must be a string')
+  }
+  return { ok: true }
+}
+
+function isValidRegex(src: string): boolean {
+  try {
+    // eslint-disable-next-line no-new
+    new RegExp(src)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function validateStateOverrides(raw: unknown): StateOverridesResult {
@@ -1168,7 +1361,7 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
-    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. Page state entries may include Phase 4 §27.2 computedExpr; computed page state is emitted as read-only derived state, so setState and controlled bindings cannot write to it. Phase 4 §20 stateOverrides accepts hover/focus/active/disabled appearance overrides over fills/strokes/cornerRadius/opacity/effects; the compiler emits Tailwind pseudo-state classes such as hover:bg-* or disabled:opacity-50. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / writable page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object), computed page state, and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id'`, declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
+    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. Page state entries may include Phase 4 §27.2 computedExpr; computed page state is emitted as read-only derived state, so setState and controlled bindings cannot write to it. Phase 4 §20 stateOverrides accepts hover/focus/active/disabled appearance overrides over fills/strokes/cornerRadius/opacity/effects; the compiler emits Tailwind pseudo-state classes such as hover:bg-* or disabled:opacity-50. Phase 4 §19 interactiveProps.validation and validationSummary are schema-checked at this tool boundary: patterns must compile, numeric rules must be finite, customExpr/urlExpr must parse, async validators require exactly one non-empty url or urlExpr and method GET/POST, and unknown validation keys are rejected. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / writable page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object), computed page state, and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id'`, declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },
     patch_json: {
