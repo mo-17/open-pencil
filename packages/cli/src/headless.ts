@@ -12,3 +12,12 @@ export async function loadDocument(filePath: string): Promise<SceneGraph> {
   computeAllLayouts(graph)
   return graph
 }
+
+export async function saveDocument(
+  format: string,
+  graph: SceneGraph,
+  filePath: string
+): Promise<void> {
+  const result = await io.writeDocument(format, graph)
+  await Bun.write(filePath, result.data as Uint8Array)
+}

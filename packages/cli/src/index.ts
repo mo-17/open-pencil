@@ -11,6 +11,7 @@ import exportCmd from './commands/export'
 import find from './commands/find'
 import formats from './commands/formats'
 import info from './commands/info'
+import library from './commands/library'
 import lint from './commands/lint'
 import node from './commands/node'
 import pages from './commands/pages'
@@ -38,6 +39,7 @@ const main = defineCommand({
     find,
     formats,
     info,
+    library,
     lint,
     query,
     node,

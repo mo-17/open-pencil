@@ -341,7 +341,15 @@ function resolveManifestComponent(
   entry: LibraryComponentManifestEntry
 ): SceneNode | undefined {
   const byId = graph.getNode(entry.nodeId)
-  if (byId) return byId
+  if (
+    byId &&
+    (byId.type === 'COMPONENT' || byId.type === 'COMPONENT_SET') &&
+    (byId.libraryComponentKey === entry.key ||
+      byId.componentKey === entry.key ||
+      byId.name === entry.name)
+  ) {
+    return byId
+  }
   return [...graph.getAllNodes()].find(
     (node) =>
       (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') &&
