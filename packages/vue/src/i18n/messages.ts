@@ -334,6 +334,14 @@ export const panelMessages = i18n('panels', {
   lowcodeListIndexName: 'Index name',
   lowcodeListTemplateHint: 'The first visible child of the LIST is rendered once per item',
   lowcodeListNoArrayStates: 'Define an array state first to drive this list',
+  lowcodeResponsive: 'Responsive',
+  lowcodeResponsiveInherit: 'Inherit',
+  lowcodeResponsiveVisible: 'Visible',
+  lowcodeResponsiveShow: 'Show',
+  lowcodeResponsiveHide: 'Hide',
+  lowcodeResponsiveClear: 'Clear',
+  lowcodeResponsiveWrap: 'Wrap',
+  lowcodeResponsiveSizing: 'Sizing',
 
   // Lowcode (Phase 2 §2 — Document State)
   lowcodeDocumentState: 'Document State',
@@ -562,6 +570,7 @@ export const dialogMessages = i18n('dialogs', {
   presenceEditingInteractiveProps: params('Editing properties of {node}'),
   presenceEditingEvents: params('Editing events of {node}'),
   presenceEditingList: params('Editing the list of {node}'),
+  presenceEditingResponsiveOverrides: params('Editing responsive overrides of {node}'),
   presenceEditingRenderCondition: params('Editing the render condition of {node}'),
   presenceEditingState: 'Editing page state',
   presenceEditingDocState: 'Editing document state',

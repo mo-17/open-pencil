@@ -18,6 +18,7 @@ import ValueBindingPanel from './properties/Lowcode/ValueBindingPanel.vue'
 import ValidationPanel from './properties/Lowcode/ValidationPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
+import ResponsivePanel from './properties/Lowcode/ResponsivePanel.vue'
 import StatePanel from './properties/Lowcode/StatePanel.vue'
 import SupabaseConfigPanel from './properties/Lowcode/SupabaseConfigPanel.vue'
 import TextBindingPanel from './properties/Lowcode/TextBindingPanel.vue'
@@ -141,6 +142,7 @@ const { panels } = useI18n()
     <StatePanel v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'" />
     <EventsPanel v-if="node.type === 'BUTTON' || node.type === 'FORM'" />
     <ListPanel v-if="node.type === 'LIST'" />
+    <ResponsivePanel />
     <RenderConditionPanel />
 
     <ExportSection />

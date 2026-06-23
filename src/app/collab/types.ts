@@ -9,6 +9,7 @@ export type PresenceEditingKind =
   | 'state'
   | 'events'
   | 'list'
+  | 'responsiveOverrides'
   | 'renderCondition'
   | 'docState'
   | 'supabaseConfig'
