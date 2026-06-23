@@ -53,6 +53,27 @@ describe('compile — interaction-state styling (Phase 4 §20)', () => {
     expect(app).toContain('disabled:opacity-50')
   })
 
+  test('focus and active overrides emit state-prefixed classes', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const button = graph.createNode('BUTTON', pageId, { interactiveProps: { text: 'Press' } })
+    graph.updateNode(button.id, {
+      stateOverrides: {
+        focus: { opacity: 0.75 },
+        active: { opacity: 0.5 }
+      }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'state-button-focus-active' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('focus:opacity-75')
+    expect(app).toContain('active:opacity-50')
+  })
+
   test('no override → no user-authored state-prefixed classes', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
