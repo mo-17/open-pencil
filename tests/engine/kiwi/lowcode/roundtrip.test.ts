@@ -38,12 +38,19 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     return node
   }
 
-  test('page-scoped state round-trips through .fig', async () => {
+  test('page-scoped state and computed metadata round-trip through .fig', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     const state = [
       { id: 's-count', name: 'count', type: 'number' as const, defaultValue: 0 },
-      { id: 's-on', name: 'on', type: 'boolean' as const, defaultValue: false }
+      { id: 's-on', name: 'on', type: 'boolean' as const, defaultValue: false },
+      {
+        id: 's-double',
+        name: 'doubleCount',
+        type: 'number' as const,
+        defaultValue: 0,
+        computedExpr: 'count * 2'
+      }
     ]
     graph.updateNode(page.id, { state })
 
@@ -439,7 +446,15 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     const graph = new SceneGraph()
     const docState = [
       { id: 'd-username', name: 'username', type: 'string' as const, defaultValue: 'guest' },
-      { id: 'd-cart', name: 'cartCount', type: 'number' as const, defaultValue: 0 },
+      {
+        id: 'd-cart',
+        name: 'cartCount',
+        type: 'number' as const,
+        defaultValue: 0,
+        persist: true,
+        storageKey: 'demo:cart',
+        storageVersion: 'v1'
+      },
       { id: 'd-on', name: 'isLoggedIn', type: 'boolean' as const, defaultValue: false }
     ]
     graph.updateNode(graph.rootId, { lowcodeDocumentState: docState })
