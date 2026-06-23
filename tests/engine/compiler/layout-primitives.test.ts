@@ -52,6 +52,31 @@ describe('compile — layout primitives (Phase 4 §26)', () => {
     expect(app).toContain('overflow-y-scroll')
   })
 
+  test('offset tokens, axis overflow, and string z-index are supported', () => {
+    const { app } = compileLayout({
+      layout: {
+        position: 'fixed',
+        inset: 'auto',
+        right: '1/2',
+        bottom: 'full',
+        left: 'px',
+        top: '-2.5rem',
+        overflowX: 'hidden',
+        overflowY: 'visible',
+        zIndex: '100'
+      }
+    })
+    expect(app).toContain('fixed')
+    expect(app).toContain('inset-auto')
+    expect(app).toContain('right-1/2')
+    expect(app).toContain('bottom-full')
+    expect(app).toContain('left-px')
+    expect(app).toContain('top-[-2.5rem]')
+    expect(app).toContain('overflow-x-hidden')
+    expect(app).toContain('overflow-y-visible')
+    expect(app).toContain('z-[100]')
+  })
+
   test('direct legacy keys are supported', () => {
     const { app } = compileLayout({ position: 'sticky', top: '0', overflow: 'hidden' })
     expect(app).toContain('sticky')
