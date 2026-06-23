@@ -48,6 +48,29 @@ function collectGridPositionClasses(node: SceneNode): string[] {
   return classes
 }
 
+const MIX_BLEND_CLASS: Record<string, string> = {
+  DARKEN: 'mix-blend-darken',
+  MULTIPLY: 'mix-blend-multiply',
+  COLOR_BURN: 'mix-blend-color-burn',
+  LIGHTEN: 'mix-blend-lighten',
+  SCREEN: 'mix-blend-screen',
+  COLOR_DODGE: 'mix-blend-color-dodge',
+  OVERLAY: 'mix-blend-overlay',
+  SOFT_LIGHT: 'mix-blend-soft-light',
+  HARD_LIGHT: 'mix-blend-hard-light',
+  DIFFERENCE: 'mix-blend-difference',
+  EXCLUSION: 'mix-blend-exclusion',
+  HUE: 'mix-blend-hue',
+  SATURATION: 'mix-blend-saturation',
+  COLOR: 'mix-blend-color',
+  LUMINOSITY: 'mix-blend-luminosity'
+}
+
+function collectBlendModeClasses(node: SceneNode): string[] {
+  const cls = MIX_BLEND_CLASS[node.blendMode]
+  return cls ? [cls] : []
+}
+
 const JUSTIFY_MAP: Record<string, string> = {
   CENTER: 'center',
   MAX: 'flex-end',
@@ -685,6 +708,7 @@ export function collectTailwindClasses(
   if (node.type === 'TEXT' && resolveNodeTextDirection(node) === 'RTL')
     extraClasses.push('[direction:rtl]')
   extraClasses.push(...collectShapeExtraClasses(node))
+  extraClasses.push(...collectBlendModeClasses(node))
   // Phase 4 §24.2: a gradient fill → `bg-[linear-gradient(...)]` arbitrary value
   // (twirl can't express it; mirrors the clip-path bypass).
   extraClasses.push(...collectGradientClasses(node))

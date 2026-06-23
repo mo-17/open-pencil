@@ -11,6 +11,7 @@
 - Add `<picture>` / `srcSet` emission for responsive lowcode image nodes.
 - Add conic-gradient emission for imported Figma angular gradient fills.
 - Approximate imported Figma diamond gradient fills in compiled CSS.
+- Emit node-level Figma blend modes as Tailwind `mix-blend-*` utilities.
 - Warn when lowcode compile skips unsupported visual fills, masks, or blend semantics.
 - Add browser pixel smoke coverage for lowcode preview image and background rendering.
 - Preserve axis-aligned crop transforms for imported Figma image fills in compiled background CSS.

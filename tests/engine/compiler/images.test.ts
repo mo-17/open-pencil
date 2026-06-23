@@ -422,7 +422,7 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     expect(app).not.toContain('NOISE')
   })
 
-  test('unsupported mask and blend semantics warn without changing safe fill output', () => {
+  test('node blend emits mix-blend while unsupported mask and fill blend still warn', () => {
     const graph: SceneGraph = makeSceneGraph()
     const pageId = firstPageId(graph)
     graph.createNode('RECTANGLE', pageId, {
@@ -448,11 +448,14 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
       options: withDefaults({ packageName: 'image-fill' })
     })
     const app = out.files.get('src/App.tsx') as string
+    const css = out.files.get('src/index.css') as string
     const codes = out.warnings.map((w) => w.code)
 
     expect(codes).toContain('visual-mask-unsupported')
-    expect(codes).toContain('visual-blend-mode-unsupported')
+    expect(codes).not.toContain('visual-blend-mode-unsupported')
     expect(codes).toContain('visual-fill-blend-mode-unsupported')
+    expect(app).toContain('mix-blend-multiply')
+    expect(css).toContain('mix-blend-multiply')
     expect(app).toContain('bg-[#FF0000]')
   })
 })

@@ -903,9 +903,10 @@ DIAMOND 走 radial shader/defs fallback),避免 preview/export 直接丢层。ce
 `visual-fill-type-unsupported` 覆盖可见 `PATTERN`/`NOISE`/`VIDEO`/`CUSTOM` fill(跳过该
 layer,保留同节点上可表达的 SOLID/IMAGE/GRADIENT layers);
 `visual-fill-blend-mode-unsupported` 覆盖 fill-level 非 NORMAL/PASS_THROUGH blend;
-`visual-blend-mode-unsupported` 覆盖 node-level blend;
+`visual-blend-mode-unsupported` 覆盖尚无 CSS 映射的 node-level blend(常见 node-level
+blend 已由 §24.12 emit);
 `visual-mask-unsupported` 覆盖 `isMask` 节点。当前策略是 warning+保守降级,不新增
-CSS mask/mix-blend-mode emit,因为 Figma mask stack、per-fill blend 与 CSS stacking
+CSS mask/per-fill blend emit,因为 Figma mask stack、per-fill blend 与 CSS stacking
 context 不是一一等价。验证:`bun test tests/engine/compiler/images.test.ts`。
 
 **§24.11 browser pixel smoke(CODE COMPLETE 2026-06-23)**:preview
@@ -919,6 +920,16 @@ screenshot 并解码 PNG 像素:① `<picture>` 在 360px viewport 命中 mobile
 需要提升权限运行。验证:`bun test tests/engine/compiler/preview/browser-pixel.test.ts`
 以及 preview smoke 组合
 `bun test tests/engine/compiler/preview/browser-pixel.test.ts tests/engine/compiler/preview/image-runtime.test.ts tests/engine/compiler/preview/hmr.test.ts`。
+
+**§24.12 node-level blend emit(CODE COMPLETE 2026-06-23)**:core/compiler
+node-level `SceneNode.blendMode` 现在通过 core JSX Tailwind class 收集 emit 成
+`mix-blend-*` utility,compiler 复用同一来源并自动进入 `src/index.css` safelist。支持:
+`DARKEN/MULTIPLY/COLOR_BURN/LIGHTEN/SCREEN/COLOR_DODGE/OVERLAY/SOFT_LIGHT/HARD_LIGHT/
+DIFFERENCE/EXCLUSION/HUE/SATURATION/COLOR/LUMINOSITY`;`NORMAL` 和 `PASS_THROUGH` 不
+emit class。compiler 不再对这些可映射的 node-level blend 发
+`visual-blend-mode-unsupported`;fill-level blend 仍 warning,因为 per-fill blend 不能安全
+映射到单个 DOM 节点的 `mix-blend-mode`。验证:
+`bun test tests/engine/render/jsx/blend-mode.test.ts tests/engine/compiler/images.test.ts`。
 
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 

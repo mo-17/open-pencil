@@ -1736,7 +1736,11 @@ function warnUnsupportedVisualSemantics(node: SceneNode, ctx: WalkCtx): void {
     })
   }
 
-  if (node.blendMode !== 'PASS_THROUGH' && node.blendMode !== 'NORMAL') {
+  if (
+    node.blendMode !== 'PASS_THROUGH' &&
+    node.blendMode !== 'NORMAL' &&
+    !isCssBlendMode(node.blendMode)
+  ) {
     ctx.warnings.push({
       code: 'visual-blend-mode-unsupported',
       message: `${node.type} ${node.id} uses blendMode ${node.blendMode}; lowcode compile does not emit mix-blend-mode yet`,
@@ -1748,6 +1752,26 @@ function warnUnsupportedVisualSemantics(node: SceneNode, ctx: WalkCtx): void {
     if (!fill.visible || fill.opacity <= 0) continue
     warnUnsupportedFill(node, fill, ctx)
   }
+}
+
+function isCssBlendMode(mode: string): boolean {
+  return (
+    mode === 'DARKEN' ||
+    mode === 'MULTIPLY' ||
+    mode === 'COLOR_BURN' ||
+    mode === 'LIGHTEN' ||
+    mode === 'SCREEN' ||
+    mode === 'COLOR_DODGE' ||
+    mode === 'OVERLAY' ||
+    mode === 'SOFT_LIGHT' ||
+    mode === 'HARD_LIGHT' ||
+    mode === 'DIFFERENCE' ||
+    mode === 'EXCLUSION' ||
+    mode === 'HUE' ||
+    mode === 'SATURATION' ||
+    mode === 'COLOR' ||
+    mode === 'LUMINOSITY'
+  )
 }
 
 function warnUnsupportedFill(node: SceneNode, fill: Fill, ctx: WalkCtx): void {
