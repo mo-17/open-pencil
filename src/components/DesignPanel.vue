@@ -10,6 +10,7 @@ import EffectsSection from './properties/EffectsSection.vue'
 import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
+import ComponentPropsPanel from './properties/Lowcode/ComponentPropsPanel.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
 import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
@@ -29,7 +30,6 @@ import PositionSection from './properties/PositionSection.vue'
 import StrokeSection from './properties/StrokeSection.vue'
 import TypographySection from './properties/TypographySection.vue'
 import VariablesSection from './properties/VariablesSection.vue'
-import VariantSection from './properties/VariantSection.vue'
 
 const variablesOpen = ref(false)
 const { selectedNode: node, selectedCount: multiCount } = useSelectionState()
@@ -108,7 +108,7 @@ const { panels } = useI18n()
       </button>
     </div>
 
-    <VariantSection v-if="node.type === 'INSTANCE'" />
+    <ComponentPropsPanel v-if="node.type === 'INSTANCE'" />
 
     <PositionSection />
     <LayoutSection />

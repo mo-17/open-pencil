@@ -182,6 +182,7 @@ export const panelMessages = i18n('panels', {
   variables: 'Variables',
   variants: 'Variants',
   constraints: 'Constraints',
+  reset: 'Reset',
 
   addFill: 'Add fill',
   addStroke: 'Add stroke',
@@ -342,6 +343,9 @@ export const panelMessages = i18n('panels', {
   lowcodeResponsiveClear: 'Clear',
   lowcodeResponsiveWrap: 'Wrap',
   lowcodeResponsiveSizing: 'Sizing',
+  lowcodeComponentProps: 'Component props',
+  lowcodeComponentPropText: 'Text',
+  lowcodeComponentPropFill: 'Fill',
 
   // Lowcode (Phase 2 §2 — Document State)
   lowcodeDocumentState: 'Document State',
@@ -570,6 +574,7 @@ export const dialogMessages = i18n('dialogs', {
   presenceEditingInteractiveProps: params('Editing properties of {node}'),
   presenceEditingEvents: params('Editing events of {node}'),
   presenceEditingList: params('Editing the list of {node}'),
+  presenceEditingComponentProps: params('Editing component props of {node}'),
   presenceEditingResponsiveOverrides: params('Editing responsive overrides of {node}'),
   presenceEditingRenderCondition: params('Editing the render condition of {node}'),
   presenceEditingState: 'Editing page state',

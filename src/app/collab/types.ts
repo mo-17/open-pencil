@@ -9,6 +9,7 @@ export type PresenceEditingKind =
   | 'state'
   | 'events'
   | 'list'
+  | 'componentProps'
   | 'responsiveOverrides'
   | 'renderCondition'
   | 'docState'
