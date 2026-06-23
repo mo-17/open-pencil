@@ -400,4 +400,47 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const css = files.get('src/index.css') as string
     expect(css).toContain('text-red-600')
   })
+
+  test('component-internal validated fields get component-local validation glue', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'd1', name: 'email', type: 'string', defaultValue: '' }]
+    })
+    const master = graph.createNode('COMPONENT', pageId, {
+      name: 'Email Field',
+      width: 240,
+      height: 80
+    })
+    graph.createNode('INPUT', master.id, {
+      name: 'Email input',
+      width: 200,
+      height: 40,
+      bindings: { value: { kind: 'docState', docStateName: 'email' } },
+      interactiveProps: {
+        validation: {
+          required: true,
+          async: { url: '/api/check-email', method: 'POST', message: 'Email is taken' }
+        }
+      }
+    })
+    graph.createInstance(master.id, pageId)
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const comp = out.files.get('src/components/EmailField.tsx') as string
+
+    expect(app).toContain("import EmailField from './components/EmailField'")
+    expect(app).not.toContain('const [__fieldErrors, __setFieldErrors] = useState')
+    expect(comp).toContain("import { useState } from 'react'")
+    expect(comp).toContain(
+      "import { useDocState, setDocState, getDocStateSnapshot } from '../_lowcode_state'"
+    )
+    expect(comp).toContain("import { validateRemote, validateValue } from '../_lowcode_validation'")
+    expect(comp).toContain('const email = useDocState("email")')
+    expect(comp).toContain('const [__fieldErrors, __setFieldErrors] = useState')
+    expect(comp).toContain('setDocState("email", e.target.value); await __validateFieldValue(')
+    expect(comp).toContain('await validateRemote(__value, { url: "/api/check-email"')
+    expect(out.files.has('src/_lowcode_validation.tsx')).toBe(true)
+  })
 })

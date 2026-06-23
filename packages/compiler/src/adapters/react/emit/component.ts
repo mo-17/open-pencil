@@ -2,6 +2,11 @@ import type { ComponentDef, IRNode, VariantCase } from '#compiler/ir/types'
 
 import { hasIntlAttr, hasTranslatableText, referencedLucideIconNames } from '../ir-walk'
 import { buildReactIntlImport } from '../lowcode/i18n'
+import {
+  buildValidationGlue,
+  validationUsesDocStateSnapshot,
+  validationUsesRemote
+} from '../lowcode/validation'
 import { collectKitImports, kitImportLine } from '../ui-kit/registry'
 import type { UiKitAdapter } from '../ui-kit/types'
 import { emitElement } from './element'
@@ -36,9 +41,17 @@ export function buildComponentModule(
   const kitImportBlock =
     kitImports.length > 0 ? kitImports.map(kitImportLine).join('\n') + '\n' : ''
   const lucideImport = buildLucideIconImport(referencedLucideIconNames(componentBodyNodes(def)))
+  const reactImport = buildComponentReactImport(def)
+  const lowcodeStateImport = buildComponentLowcodeStateImport(def)
+  const validationImport = buildComponentValidationImport(def)
   const importBlock =
-    i18nImport || kitImportBlock || lucideImport
-      ? `${i18nImport}${kitImportBlock}${lucideImport}\n`
+    reactImport ||
+    lowcodeStateImport ||
+    validationImport ||
+    i18nImport ||
+    kitImportBlock ||
+    lucideImport
+      ? `${reactImport}${lowcodeStateImport}${validationImport}${i18nImport}${kitImportBlock}${lucideImport}\n`
       : ''
   return importBlock + buildComponentBody(def, devMode, usesIntl, uiKit)
 }
@@ -71,10 +84,10 @@ function buildComponentBody(
 ): string {
   // Phase 3 §9 v3: the `const intl = useIntl()` hook line (empty when the body
   // has no translated attribute → byte-identical to the pre-§9-v3 output).
-  const intlHook = usesIntl ? '  const intl = useIntl()\n' : ''
+  const hookBlock = buildComponentHookBlock(def, usesIntl)
   // Phase 3 §8 v4: a COMPONENT_SET emits per-axis variant props + a subtree
   // switch instead of the single shared body.
-  if (def.variantAxes && def.variants) return buildVariantModule(def, devMode, intlHook, uiKit)
+  if (def.variantAxes && def.variants) return buildVariantModule(def, devMode, hookBlock, uiKit)
   // Phase 3 §8 v2: one optional string prop per text-override slot, each
   // defaulting to the master child's text so clean usages (`<Name />`) render
   // unchanged. The body's matching TEXT nodes were collected as `{prop}`.
@@ -86,13 +99,13 @@ function buildComponentBody(
   ].join(', ')
   if (def.children.length === 0) {
     return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
-${intlHook}  return <div className={className} />
+${hookBlock}  return <div className={className} />
 }
 `
   }
   const body = def.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
-${intlHook}  return (
+${hookBlock}  return (
     <div className={className}>
 ${body}
     </div>
@@ -110,7 +123,7 @@ ${body}
 function buildVariantModule(
   def: ComponentDef,
   devMode: boolean,
-  intlHook: string,
+  hookBlock: string,
   uiKit: UiKitAdapter | null
 ): string {
   const axes = def.variantAxes ?? []
@@ -148,10 +161,41 @@ function buildVariantModule(
     )
     .join('')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
-${intlHook}  const __variant = ${key}
+${hookBlock}  const __variant = ${key}
 ${guards}  return ${variantBody(defaultCase, devMode, uiKit)}
 }
 `
+}
+
+function buildComponentReactImport(def: ComponentDef): string {
+  return (def.validatedFields?.length ?? 0) > 0 ? `import { useState } from 'react'\n` : ''
+}
+
+function buildComponentLowcodeStateImport(def: ComponentDef): string {
+  const names: string[] = []
+  if ((def.docStateReads?.length ?? 0) > 0) names.push('useDocState')
+  if ((def.docStateWrites?.length ?? 0) > 0) names.push('setDocState')
+  if (validationUsesDocStateSnapshot(def.validatedFields ?? [])) names.push('getDocStateSnapshot')
+  if (names.length === 0) return ''
+  return `import { ${[...new Set(names)].join(', ')} } from '../_lowcode_state'\n`
+}
+
+function buildComponentValidationImport(def: ComponentDef): string {
+  if ((def.validatedFields?.length ?? 0) === 0) return ''
+  const names = ['validateValue']
+  if (validationUsesRemote(def.validatedFields ?? [])) names.push('validateRemote')
+  return `import { ${names.sort().join(', ')} } from '../_lowcode_validation'\n`
+}
+
+function buildComponentHookBlock(def: ComponentDef, usesIntl: boolean): string {
+  const lines = [
+    ...(def.docStateReads ?? []).map(
+      (name) => `  const ${name} = useDocState(${JSON.stringify(name)})`
+    ),
+    (def.validatedFields?.length ?? 0) > 0 ? buildValidationGlue(def.validatedFields ?? []) : '',
+    usesIntl ? '  const intl = useIntl()' : ''
+  ].filter((line) => line !== '')
+  return lines.length > 0 ? `${lines.join('\n')}\n` : ''
 }
 
 /** Render one variant's `<div className={className}>…</div>` return value. */

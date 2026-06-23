@@ -85,6 +85,12 @@ export interface ComponentDef {
   variants?: VariantCase[]
   /** Binary assets referenced by this component body. */
   assets?: IRAsset[]
+  /** Document-state names read by this component body. */
+  docStateReads?: string[]
+  /** Document-state names written by this component body. */
+  docStateWrites?: string[]
+  /** Component-local validated fields. */
+  validatedFields?: IRFieldValidation[]
 }
 
 /** Phase 3 §8 v4 — one variant axis of a COMPONENT_SET (e.g. `Size`). */

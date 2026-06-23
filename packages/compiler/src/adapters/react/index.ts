@@ -191,7 +191,7 @@ function emitSinglePage(
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = pageUsesToast(cleaned)
   const confirmActive = pageUsesConfirm(cleaned)
-  const validationActive = (cleaned.validatedFields?.length ?? 0) > 0
+  const validationActive = validationActiveIn([cleaned], components)
   const translations = cleaned.translations
   const sourceLocale = resolveSourceLocale(options)
   const targetLocales = resolveTargetLocales(options.locales, translations, sourceLocale)
@@ -270,7 +270,7 @@ function emitMultiPage(
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = irs.some((ir) => pageUsesToast(ir))
   const confirmActive = irs.some((ir) => pageUsesConfirm(ir))
-  const validationActive = irs.some((ir) => (ir.validatedFields?.length ?? 0) > 0)
+  const validationActive = validationActiveIn(irs, components)
   const sourceLocale = resolveSourceLocale(options)
   const targetLocales = resolveTargetLocales(options.locales, translations, sourceLocale)
   const extraDeps: Record<string, string> = {
@@ -358,6 +358,13 @@ function lucideExtraDeps(
     }
   }
   return {}
+}
+
+function validationActiveIn(irs: readonly IRTree[], components: readonly ComponentDef[]): boolean {
+  return (
+    irs.some((ir) => (ir.validatedFields?.length ?? 0) > 0) ||
+    components.some((def) => (def.validatedFields?.length ?? 0) > 0)
+  )
 }
 
 /** Phase 3 §9: emit the i18n runtime + source-locale catalog when i18n is

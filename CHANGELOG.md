@@ -13,6 +13,7 @@
 - Add opt-in lowcode FORM validation summaries for aggregated field errors.
 - Add runtime coverage and workspace dependencies for lowcode shadcn Tabs/Accordion state bindings.
 - Add async remote custom validators for lowcode form fields.
+- Add a lowcode validation authoring panel and support validated fields inside components.
 
 ### Fixes
 

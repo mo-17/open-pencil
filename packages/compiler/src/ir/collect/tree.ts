@@ -276,19 +276,23 @@ export function collectComponents(
     const master = graph.getNode(componentId)
     if (!master) continue
     const assets = new Map<string, IRAsset>()
+    const docStateReads = new Set<string>()
+    const docStateWrites = new Set<string>()
+    const validatedFields: IRFieldValidation[] = []
     const baseCtx: WalkCtx = {
       graph,
       states: new Map(),
       docStates,
-      docStateReads: new Set(),
-      docStateWrites: new Set(),
+      docStateReads,
+      docStateWrites,
       warnings,
       inScope: new Set(),
       components,
       workflows,
       i18n,
       styleOptions,
-      assets
+      assets,
+      validatedFields
     }
     const variantMeta = meta.variants
     if (variantMeta) {
@@ -313,7 +317,8 @@ export function collectComponents(
         props: dedupeProps(meta.propSlots),
         variantAxes: variantMeta.axes,
         variants,
-        ...(assets.size > 0 ? { assets: [...assets.values()] } : {})
+        ...(assets.size > 0 ? { assets: [...assets.values()] } : {}),
+        ...componentLowcodeUsage(docStateReads, docStateWrites, validatedFields)
       })
       continue
     }
@@ -327,10 +332,23 @@ export function collectComponents(
       name: meta.name,
       children: collectChildSubtree(graph, componentId, ctx),
       props,
-      ...(assets.size > 0 ? { assets: [...assets.values()] } : {})
+      ...(assets.size > 0 ? { assets: [...assets.values()] } : {}),
+      ...componentLowcodeUsage(docStateReads, docStateWrites, validatedFields)
     })
   }
   return { defs, warnings }
+}
+
+function componentLowcodeUsage(
+  docStateReads: ReadonlySet<string>,
+  docStateWrites: ReadonlySet<string>,
+  validatedFields: readonly IRFieldValidation[]
+): Pick<ComponentDef, 'docStateReads' | 'docStateWrites' | 'validatedFields'> {
+  return {
+    ...(docStateReads.size > 0 ? { docStateReads: [...docStateReads] } : {}),
+    ...(docStateWrites.size > 0 ? { docStateWrites: [...docStateWrites] } : {}),
+    ...(validatedFields.length > 0 ? { validatedFields: [...validatedFields] } : {})
+  }
 }
 
 /** Phase 3 §8 v5 — flatten a propSlots map to the component's prop list,
@@ -533,10 +551,8 @@ interface WalkCtx {
    *  (a component has no page-level hook slot). */
   listQueries?: IRListQuery[]
   /** Phase 4 §19: accumulator for controlled form fields carrying validation
-   *  rules — present only during a PAGE walk (the adapter emits the validators
-   *  map + error state at the page-component level). Undefined during a
-   *  component-body walk (a component has no page-level validator slot, so a
-   *  validated field there is left unvalidated — documented v1 boundary). */
+   *  rules. Page walks emit this glue in the page module; component walks emit
+   *  component-local glue so each component instance owns its error state. */
   validatedFields?: IRFieldValidation[]
   /** Phase 4 §24 v2: binary assets referenced by image fills while walking this
    *  page or component body. */
@@ -2208,8 +2224,8 @@ function isValidRegex(src: string): boolean {
 
 /** §19: collect the validation keys of every validated field in an IR subtree,
  *  for a `<form>`'s submit-time validation. Descends element children,
- *  conditional consequents, and list templates (componentRef bodies live in a
- *  separate file and aren't validated — documented v1 boundary). */
+ *  conditional consequents, and list templates. ComponentRefs remain leaves
+ *  because referenced component bodies validate inside their own module. */
 function collectValidationKeys(nodes: readonly IRNode[]): string[] {
   const keys: string[] = []
   for (const n of nodes) {

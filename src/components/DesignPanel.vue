@@ -15,6 +15,7 @@ import EventsPanel from './properties/Lowcode/EventsPanel.vue'
 import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
 import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
 import ValueBindingPanel from './properties/Lowcode/ValueBindingPanel.vue'
+import ValidationPanel from './properties/Lowcode/ValidationPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
 import StatePanel from './properties/Lowcode/StatePanel.vue'
@@ -125,6 +126,15 @@ const { panels } = useI18n()
         node.type === 'SELECT' ||
         node.type === 'RADIO' ||
         node.type === 'DATEPICKER'
+      "
+    />
+    <ValidationPanel
+      v-if="
+        node.type === 'INPUT' ||
+        node.type === 'TEXTAREA' ||
+        node.type === 'SELECT' ||
+        node.type === 'DATEPICKER' ||
+        node.type === 'FORM'
       "
     />
     <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
