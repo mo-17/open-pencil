@@ -1634,6 +1634,17 @@ interface ImageConfig {
   alt?: unknown
   objectFit?: unknown
   loading?: unknown
+  sources?: unknown
+}
+
+interface ImageSourceConfig {
+  src?: unknown
+  srcSet?: unknown
+  srcExpr?: unknown
+  srcSetExpr?: unknown
+  media?: unknown
+  type?: unknown
+  sizes?: unknown
 }
 
 /** object-fit value → Tailwind utility. `Partial` so the index access is
@@ -1772,11 +1783,64 @@ function resolveImageNode(
   const objectFit = typeof cfg.objectFit === 'string' ? cfg.objectFit : ''
   const loading = imageLoading(cfg.loading)
   if (loading) descriptor.loading = loading
+  const sources = imageSources(node, cfg.sources, ctx)
+  if (sources.length > 0) descriptor.sources = sources
   return { descriptor, objectFitClass: OBJECT_FIT_CLASS[objectFit] ?? '' }
 }
 
 function imageLoading(value: unknown): IRImage['loading'] | undefined {
   return value === 'lazy' || value === 'eager' ? value : undefined
+}
+
+function imageSources(
+  node: SceneNode,
+  value: unknown,
+  ctx: WalkCtx
+): NonNullable<IRImage['sources']> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+    const source = imageSource(node, entry as ImageSourceConfig, ctx)
+    return source ? [source] : []
+  })
+}
+
+function imageSource(
+  node: SceneNode,
+  cfg: ImageSourceConfig,
+  ctx: WalkCtx
+): NonNullable<IRImage['sources']>[number] | undefined {
+  const srcExpr = firstString(cfg.srcSetExpr, cfg.srcExpr)
+  const srcLiteral = firstString(cfg.srcSet, cfg.src)
+  const media = firstString(cfg.media)
+  const type = firstString(cfg.type)
+  const sizes = firstString(cfg.sizes)
+  if (srcExpr !== '') {
+    const resolved = resolveReactiveExpr(node, srcExpr, 'image-source', ctx)
+    if (resolved === null) return undefined
+    return {
+      srcExpr: resolved.ast,
+      ...(media ? { media } : {}),
+      ...(type ? { type } : {}),
+      ...(sizes ? { sizes } : {})
+    }
+  }
+  if (srcLiteral === '') return undefined
+  return {
+    srcLiteral,
+    ...(media ? { media } : {}),
+    ...(type ? { type } : {}),
+    ...(sizes ? { sizes } : {})
+  }
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (trimmed !== '') return trimmed
+  }
+  return ''
 }
 
 /** Phase 4 §24.1: build the void `<img>` element for an image node — its src/alt

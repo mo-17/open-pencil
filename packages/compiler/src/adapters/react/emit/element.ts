@@ -155,6 +155,10 @@ function emitTagElementCore(
     return `${pad}${opening} dangerouslySetInnerHTML={{ __html: ${JSON.stringify(node.rawHtml)} }} />`
   }
 
+  if (node.tag === 'img' && node.image?.sources && node.image.sources.length > 0) {
+    return emitPictureElement(opening, node.image, indent)
+  }
+
   if (VOID_TAGS.has(node.tag) || node.children.length === 0) {
     return `${pad}${opening} />`
   }
@@ -648,6 +652,30 @@ function imageAttrParts(image: IRImage): string[] {
       : `src="${escapeAttr(image.srcLiteral ?? '')}"`
   const parts = [src, `alt="${escapeAttr(image.alt)}"`]
   if (image.loading !== undefined) parts.push(`loading="${image.loading}"`)
+  return parts
+}
+
+function emitPictureElement(opening: string, image: IRImage, indent: number): string {
+  const pad = '  '.repeat(indent)
+  const sourcePad = '  '.repeat(indent + 1)
+  const lines = [`${pad}<picture>`]
+  for (const source of image.sources ?? []) {
+    lines.push(`${sourcePad}<source ${sourceAttrParts(source).join(' ')} />`)
+  }
+  lines.push(`${sourcePad}${opening} />`)
+  lines.push(`${pad}</picture>`)
+  return lines.join('\n')
+}
+
+function sourceAttrParts(source: NonNullable<IRImage['sources']>[number]): string[] {
+  const srcSet =
+    source.srcExpr !== undefined
+      ? `srcSet={${emitExpression(source.srcExpr)}}`
+      : `srcSet="${escapeAttr(source.srcLiteral ?? '')}"`
+  const parts = [srcSet]
+  if (source.media !== undefined) parts.push(`media="${escapeAttr(source.media)}"`)
+  if (source.type !== undefined) parts.push(`type="${escapeAttr(source.type)}"`)
+  if (source.sizes !== undefined) parts.push(`sizes="${escapeAttr(source.sizes)}"`)
   return parts
 }
 

@@ -87,6 +87,66 @@ describe('compile — images & aspect-ratio (Phase 4 §24.1/§24.3)', () => {
     expect(invalid.app).not.toContain('loading=')
   })
 
+  test('responsive image sources emit a picture wrapper with literal srcSet values', () => {
+    const { app } = compileNode({
+      image: {
+        src: 'https://x/desktop.jpg',
+        alt: 'Hero',
+        objectFit: 'cover',
+        sources: [
+          {
+            srcSet: 'https://x/mobile.jpg 640w, https://x/mobile@2x.jpg 1280w',
+            media: '(max-width: 640px)',
+            type: 'image/jpeg',
+            sizes: '100vw'
+          }
+        ]
+      }
+    })
+
+    expect(app).toContain('<picture>')
+    expect(app).toContain(
+      '<source srcSet="https://x/mobile.jpg 640w, https://x/mobile@2x.jpg 1280w" media="(max-width: 640px)" type="image/jpeg" sizes="100vw" />'
+    )
+    expect(app).toContain('src="https://x/desktop.jpg"')
+    expect(app).toContain('alt="Hero"')
+    expect(app).toContain('object-cover')
+    expect(app).toContain('</picture>')
+  })
+
+  test('responsive image sources support bound srcSet expressions', () => {
+    const { app } = compileNode(
+      {
+        image: {
+          src: 'https://x/fallback.jpg',
+          alt: '',
+          sources: [{ srcSetExpr: 'heroSrcSet', media: '(min-width: 768px)' }]
+        }
+      },
+      { docStates: [{ id: 'd1', name: 'heroSrcSet', type: 'string', defaultValue: '' }] }
+    )
+
+    expect(app).toContain('const heroSrcSet = useDocState("heroSrcSet")')
+    expect(app).toContain('<source srcSet={heroSrcSet} media="(min-width: 768px)" />')
+    expect(app).toContain('src="https://x/fallback.jpg"')
+  })
+
+  test('invalid responsive image sources are dropped without changing fallback image emit', () => {
+    const { app, warnings } = compileNode({
+      image: {
+        src: 'https://x/fallback.jpg',
+        alt: '',
+        sources: [{ srcSetExpr: 'missingSrcSet' }, { media: '(max-width: 640px)' }]
+      }
+    })
+
+    expect(warnings.some((w) => w.code === 'image-source-unknown')).toBe(true)
+    expect(app).not.toContain('<picture>')
+    expect(app).not.toContain('<source')
+    expect(app).toContain('<img')
+    expect(app).toContain('src="https://x/fallback.jpg"')
+  })
+
   test('missing src → warn + plain node (not an <img>)', () => {
     const { app, warnings } = compileNode({ image: { alt: 'x' } })
     expect(warnings.map((w) => w.code)).toContain('image-missing-src')

@@ -266,6 +266,19 @@ export interface IRImage {
   srcExpr?: ExprAst
   alt: string
   loading?: 'lazy' | 'eager'
+  /** Phase 4 §24 follow-up: optional responsive `<source>` descriptors emitted
+   *  inside a `<picture>` wrapper before the fallback `<img>`. */
+  sources?: IRImageSource[]
+}
+
+export interface IRImageSource {
+  /** A literal `srcSet` value for a `<source>`. */
+  srcLiteral?: string
+  /** A bound `srcSet` expression. */
+  srcExpr?: ExprAst
+  media?: string
+  type?: string
+  sizes?: string
 }
 
 /** Phase 4 §24 v2: binary asset emitted by the compiler project. */
