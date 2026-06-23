@@ -14,6 +14,7 @@
 - Add runtime coverage and workspace dependencies for lowcode shadcn Tabs/Accordion state bindings.
 - Add async remote custom validators for lowcode form fields.
 - Add a lowcode validation authoring panel and support validated fields inside components.
+- Debounce lowcode remote field validation on blur and cancel stale remote requests before applying field errors.
 
 ### Fixes
 

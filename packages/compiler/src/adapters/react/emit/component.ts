@@ -168,7 +168,10 @@ ${guards}  return ${variantBody(defaultCase, devMode, uiKit)}
 }
 
 function buildComponentReactImport(def: ComponentDef): string {
-  return (def.validatedFields?.length ?? 0) > 0 ? `import { useState } from 'react'\n` : ''
+  const names: string[] = []
+  if ((def.validatedFields?.length ?? 0) > 0) names.push('useState')
+  if (validationUsesRemote(def.validatedFields ?? [])) names.push('useRef')
+  return names.length > 0 ? `import { ${names.join(', ')} } from 'react'\n` : ''
 }
 
 function buildComponentLowcodeStateImport(def: ComponentDef): string {

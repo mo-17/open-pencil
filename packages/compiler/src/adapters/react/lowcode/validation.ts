@@ -10,6 +10,8 @@
  * custom rule is an inline expression over doc-state, and async custom
  * validators call `validateRemote`), and the `__validateField` (onBlur) /
  * `__validateFieldValue` (onChange) / `__validateFields` (onSubmit) helpers.
+ * Remote validators get an AbortSignal, stale-result guard, and a short blur
+ * debounce; submit validation still runs immediately.
  *
  * The custom-rule expression is emitted with `emitExpression`, so it reads the
  * field's bound doc-state via the page's hoisted `useDocState` consts (the
@@ -100,23 +102,26 @@ export interface RemoteValidationConfig {
  */
 export async function validateRemote(
   value: unknown,
-  config: RemoteValidationConfig
+  config: RemoteValidationConfig,
+  signal?: AbortSignal
 ): Promise<string | null> {
   try {
     const res =
       config.method === 'GET'
-        ? await fetch(withValueQuery(config.url, value))
+        ? await fetch(withValueQuery(config.url, value), { signal })
         : await fetch(config.url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ value })
+            body: JSON.stringify({ value }),
+            signal
           })
     const data = await res.json().catch(() => null)
     if (res.ok && data?.valid === true) return null
     return typeof data?.message === 'string' && data.message.trim() !== ''
       ? data.message
       : config.message
-  } catch {
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return null
     return config.message
   }
 }
@@ -136,23 +141,97 @@ function withValueQuery(url: string, value: unknown): string {
  */
 export function buildValidationGlue(fields: readonly IRFieldValidation[]): string {
   const validators = fields.map((f) => buildValidatorEntry(f)).join('\n')
+  const hasRemote = validationUsesRemote(fields)
+  const remoteState = hasRemote
+    ? [
+        `  const __remoteValidationDebounceMs = 150`,
+        `  const __validationSeq = useRef<Record<string, number>>({})`,
+        `  const __validationAbort = useRef<Record<string, AbortController | undefined>>({})`
+      ]
+    : []
+  const remoteRunner = hasRemote ? buildRemoteValidatorRunner() : []
+  const validateField = hasRemote
+    ? [
+        `  const __validateField = async (id: string): Promise<string | null> => {`,
+        `    const { error: __error, stale: __stale } = await __runValidator(id, undefined, true, __remoteValidationDebounceMs)`,
+        `    if (!__stale) __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
+        `    return __stale ? null : __error`,
+        `  }`
+      ]
+    : [
+        `  const __validateField = async (id: string): Promise<string | null> => {`,
+        `    const __fn = __validators[id]`,
+        `    const __error = __fn ? await __fn() : null`,
+        `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
+        `    return __error`,
+        `  }`
+      ]
+  const validateFieldValue = hasRemote
+    ? [
+        `  const __validateFieldValue = async (id: string, value: unknown, includeAsync = false): Promise<string | null> => {`,
+        `    const { error: __error, stale: __stale } = await __runValidator(id, value, includeAsync, includeAsync ? __remoteValidationDebounceMs : 0)`,
+        `    if (!__stale) __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
+        `    return __stale ? null : __error`,
+        `  }`
+      ]
+    : [
+        `  const __validateFieldValue = async (id: string, value: unknown, includeAsync = false): Promise<string | null> => {`,
+        `    const __fn = __validators[id]`,
+        `    const __error = __fn ? await __fn(value, includeAsync) : null`,
+        `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
+        `    return __error`,
+        `  }`
+      ]
+  const validateFields = hasRemote ? buildRemoteValidateFields() : buildLocalValidateFields()
   return [
     `  const [__fieldErrors, __setFieldErrors] = useState<Record<string, string | null>>({})`,
-    `  const __validators: Record<string, (valueOverride?: unknown, includeAsync?: boolean) => Promise<string | null>> = {`,
+    ...remoteState,
+    `  const __validators: Record<string, (valueOverride?: unknown, includeAsync?: boolean, signal?: AbortSignal) => Promise<string | null>> = {`,
     validators,
     `  }`,
-    `  const __validateField = async (id: string): Promise<string | null> => {`,
+    ...remoteRunner,
+    ...validateField,
+    ...validateFieldValue,
+    ...validateFields
+  ].join('\n')
+}
+
+function buildRemoteValidatorRunner(): string[] {
+  return [
+    `  const __runValidator = async (id: string, value?: unknown, includeAsync = true, debounceMs = 0): Promise<{ error: string | null; stale: boolean }> => {`,
     `    const __fn = __validators[id]`,
-    `    const __error = __fn ? await __fn() : null`,
-    `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
-    `    return __error`,
-    `  }`,
-    `  const __validateFieldValue = async (id: string, value: unknown, includeAsync = false): Promise<string | null> => {`,
-    `    const __fn = __validators[id]`,
-    `    const __error = __fn ? await __fn(value, includeAsync) : null`,
-    `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
-    `    return __error`,
-    `  }`,
+    `    if (!__fn) return { error: null, stale: false }`,
+    `    if (!includeAsync) {`,
+    `      __validationSeq.current[id] = (__validationSeq.current[id] ?? 0) + 1`,
+    `      __validationAbort.current[id]?.abort()`,
+    `      delete __validationAbort.current[id]`,
+    `      return { error: await __fn(value, false), stale: false }`,
+    `    }`,
+    `    const __seq = (__validationSeq.current[id] ?? 0) + 1`,
+    `    __validationSeq.current[id] = __seq`,
+    `    __validationAbort.current[id]?.abort()`,
+    `    const __controller = new AbortController()`,
+    `    __validationAbort.current[id] = __controller`,
+    `    if (debounceMs > 0) {`,
+    `      await new Promise<void>((resolve) => {`,
+    `        const __timer = window.setTimeout(resolve, debounceMs)`,
+    `        __controller.signal.addEventListener('abort', () => {`,
+    `          window.clearTimeout(__timer)`,
+    `          resolve()`,
+    `        }, { once: true })`,
+    `      })`,
+    `      if (__controller.signal.aborted) return { error: null, stale: true }`,
+    `    }`,
+    `    const __error = await __fn(value, true, __controller.signal)`,
+    `    const __stale = __controller.signal.aborted || __validationSeq.current[id] !== __seq`,
+    `    if (__validationAbort.current[id] === __controller) delete __validationAbort.current[id]`,
+    `    return { error: __error, stale: __stale }`,
+    `  }`
+  ]
+}
+
+function buildLocalValidateFields(): string[] {
+  return [
     `  const __validateFields = async (ids: string[]): Promise<boolean> => {`,
     `    const __next: Record<string, string | null> = {}`,
     `    let __ok = true`,
@@ -165,7 +244,27 @@ export function buildValidationGlue(fields: readonly IRFieldValidation[]): strin
     `    __setFieldErrors((prev) => ({ ...prev, ...__next }))`,
     `    return __ok`,
     `  }`
-  ].join('\n')
+  ]
+}
+
+function buildRemoteValidateFields(): string[] {
+  return [
+    `  const __validateFields = async (ids: string[]): Promise<boolean> => {`,
+    `    const __next: Record<string, string | null> = {}`,
+    `    let __ok = true`,
+    `    for (const id of ids) {`,
+    `      const { error: __error, stale: __stale } = await __runValidator(id, undefined, true)`,
+    `      if (__stale) {`,
+    `        __ok = false`,
+    `        continue`,
+    `      }`,
+    `      __next[id] = __error`,
+    `      if (__error !== null) __ok = false`,
+    `    }`,
+    `    __setFieldErrors((prev) => ({ ...prev, ...__next }))`,
+    `    return __ok`,
+    `  }`
+  ]
 }
 
 /** One `"<key>": (__valueOverride?: unknown) => { ... }` entry in the
@@ -176,7 +275,7 @@ function buildValidatorEntry(field: IRFieldValidation): string {
       ? `getDocStateSnapshot(${JSON.stringify(field.stateName)})`
       : field.stateName
   const lines = [
-    `    ${JSON.stringify(field.key)}: async (__valueOverride?: unknown, __includeAsync = true) => {`,
+    `    ${JSON.stringify(field.key)}: async (__valueOverride?: unknown, __includeAsync = true, __signal?: AbortSignal) => {`,
     `      const __value = __valueOverride !== undefined ? __valueOverride : ${read}`,
     `      let __error = validateValue(__value, ${JSON.stringify(field.rules)})`
   ]
@@ -189,7 +288,7 @@ function buildValidatorEntry(field: IRFieldValidation): string {
   }
   if (field.async) {
     lines.push(
-      `      if (__includeAsync && __error === null) __error = await validateRemote(__value, ${asyncValidationConfig(field)})`
+      `      if (__includeAsync && __error === null) __error = await validateRemote(__value, ${asyncValidationConfig(field)}, __signal)`
     )
   }
   lines.push(`      return __error`, `    },`)

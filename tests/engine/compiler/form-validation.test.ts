@@ -52,7 +52,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).toContain('getDocStateSnapshot')
     expect(app).toContain('const [__fieldErrors, __setFieldErrors] = useState')
     expect(app).toContain(
-      'const __validators: Record<string, (valueOverride?: unknown, includeAsync?: boolean) => Promise<string | null>> = {'
+      'const __validators: Record<string, (valueOverride?: unknown, includeAsync?: boolean, signal?: AbortSignal) => Promise<string | null>> = {'
     )
     expect(app).toContain(
       'const __value = __valueOverride !== undefined ? __valueOverride : getDocStateSnapshot("email")'
@@ -145,13 +145,31 @@ describe('compile — form validation (Phase 4 §19)', () => {
         message: 'Email is already taken'
       }
     })
+    expect(app).toContain("import { useState, useRef } from 'react'")
     expect(app).toContain("import { validateRemote, validateValue } from './_lowcode_validation'")
+    expect(app).toContain('const __remoteValidationDebounceMs = 150')
+    expect(app).toContain('const __validationSeq = useRef<Record<string, number>>({})')
     expect(app).toContain(
-      'if (__includeAsync && __error === null) __error = await validateRemote(__value, { url: "/api/check-email", method: "POST", message: "Email is already taken" })'
+      'const __validationAbort = useRef<Record<string, AbortController | undefined>>({})'
+    )
+    expect(app).toContain('__validationAbort.current[id]?.abort()')
+    expect(app).toContain('const __controller = new AbortController()')
+    expect(app).toContain(
+      'await __runValidator(id, value, includeAsync, includeAsync ? __remoteValidationDebounceMs : 0)'
+    )
+    expect(app).toContain('delete __validationAbort.current[id]')
+    expect(app).toContain(
+      'if (__includeAsync && __error === null) __error = await validateRemote(__value, { url: "/api/check-email", method: "POST", message: "Email is already taken" }, __signal)'
     )
     const runtime = files.get('src/_lowcode_validation.tsx') as string
     expect(runtime).toContain('export async function validateRemote')
+    expect(runtime).toContain('signal?: AbortSignal')
+    expect(runtime).toContain('await fetch(withValueQuery(config.url, value), { signal })')
+    expect(runtime).toContain(
+      "if (err instanceof DOMException && err.name === 'AbortError') return null"
+    )
     expect(runtime).toContain('body: JSON.stringify({ value })')
+    expect(runtime).toContain('signal')
   })
 
   test('async custom validator can use a bound URL expression and GET method', () => {
@@ -182,7 +200,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('const validatorUrl = useDocState("validatorUrl")')
     expect(app).toContain(
-      'await validateRemote(__value, { url: validatorUrl, method: "GET", message: "Remote validation failed" })'
+      'await validateRemote(__value, { url: validatorUrl, method: "GET", message: "Remote validation failed" }, __signal)'
     )
     expect(out.warnings).toEqual([])
   })
@@ -284,10 +302,10 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain(
-      `${JSON.stringify(a.id)}: async (__valueOverride?: unknown, __includeAsync = true) => {`
+      `${JSON.stringify(a.id)}: async (__valueOverride?: unknown, __includeAsync = true, __signal?: AbortSignal) => {`
     )
     expect(app).toContain(
-      `${JSON.stringify(b.id)}: async (__valueOverride?: unknown, __includeAsync = true) => {`
+      `${JSON.stringify(b.id)}: async (__valueOverride?: unknown, __includeAsync = true, __signal?: AbortSignal) => {`
     )
     const formLine = app.split('\n').find((l) => l.includes('<form')) ?? ''
     expect(formLine).toContain(JSON.stringify(a.id))
@@ -432,7 +450,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
 
     expect(app).toContain("import EmailField from './components/EmailField'")
     expect(app).not.toContain('const [__fieldErrors, __setFieldErrors] = useState')
-    expect(comp).toContain("import { useState } from 'react'")
+    expect(comp).toContain("import { useState, useRef } from 'react'")
     expect(comp).toContain(
       "import { useDocState, setDocState, getDocStateSnapshot } from '../_lowcode_state'"
     )
@@ -440,6 +458,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(comp).toContain('const email = useDocState("email")')
     expect(comp).toContain('const [__fieldErrors, __setFieldErrors] = useState')
     expect(comp).toContain('setDocState("email", e.target.value); await __validateFieldValue(')
+    expect(comp).toContain('const __validationAbort = useRef')
     expect(comp).toContain('await validateRemote(__value, { url: "/api/check-email"')
     expect(out.files.has('src/_lowcode_validation.tsx')).toBe(true)
   })
