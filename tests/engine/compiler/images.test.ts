@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import type { ImageScaleMode, SceneGraph } from '@open-pencil/core/scene-graph'
+import type { GradientTransform, ImageScaleMode, SceneGraph } from '@open-pencil/core/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -208,7 +208,12 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
   const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2])
 
   function compileImageFill(
-    opts: { imageHash?: string; bytes?: Uint8Array; scaleMode?: ImageScaleMode } = {}
+    opts: {
+      imageHash?: string
+      bytes?: Uint8Array
+      scaleMode?: ImageScaleMode
+      imageTransform?: GradientTransform
+    } = {}
   ): { app: string; warnings: { code: string }[]; files: Map<string, string | Uint8Array> } {
     const graph: SceneGraph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -223,6 +228,7 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
           type: 'IMAGE',
           imageHash,
           imageScaleMode: opts.scaleMode ?? 'FILL',
+          imageTransform: opts.imageTransform,
           color: { r: 0, g: 0, b: 0, a: 1 },
           opacity: 1,
           visible: true
@@ -259,6 +265,31 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
 
     expect(app).toContain('bg-auto')
     expect(app).toContain('bg-repeat')
+  })
+
+  test('CROP image fills preserve axis-aligned image transforms as background geometry', () => {
+    const { app } = compileImageFill({
+      bytes: PNG_BYTES,
+      scaleMode: 'CROP',
+      imageTransform: { m00: 0.5, m01: 0, m02: 0.25, m10: 0, m11: 0.75, m12: 0.125 }
+    })
+
+    expect(app).toContain('[background-size:50%_75%]')
+    expect(app).toContain('[background-position:left_25%_top_12.5%]')
+    expect(app).toContain('bg-no-repeat')
+    expect(app).not.toContain('bg-cover')
+  })
+
+  test('CROP image fills with rotated transforms fall back to cover sizing', () => {
+    const { app } = compileImageFill({
+      bytes: PNG_BYTES,
+      scaleMode: 'CROP',
+      imageTransform: { m00: 0.5, m01: 0.1, m02: 0.25, m10: -0.2, m11: 0.75, m12: 0.125 }
+    })
+
+    expect(app).toContain('bg-cover')
+    expect(app).toContain('bg-no-repeat')
+    expect(app).not.toContain('[background-size:')
   })
 
   test('missing image bytes warn and skip background asset emit', () => {

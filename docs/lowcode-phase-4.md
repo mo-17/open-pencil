@@ -856,6 +856,14 @@ transform 映射的 `(0.5,0.5)` 推导,比默认 conic 更接近 CanvasKit sweep
 `bun test tests/engine/render/jsx/gradient.test.ts`、
 `bun test tests/engine/compiler/gradient.test.ts`。
 
+**§24.6 image CROP transform 精度(CODE COMPLETE 2026-06-23)**:native
+`IMAGE` fill 的 `imageScaleMode:'CROP'` 现在在 `imageTransform` 为 axis-aligned
+(无旋转/斜切、正 scale、有限 translate)时 emit CSS background geometry:
+`[background-size:<w>%_<h>%]` + `[background-position:left_<x>%_top_<y>%]` +
+`bg-no-repeat`,从而保留导入 Figma crop 的缩放/偏移。旋转/斜切 transform 仍 fallback
+到旧 `bg-cover bg-no-repeat`,避免错编。验证:
+`bun test tests/engine/compiler/images.test.ts`。
+
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
 ## §25 外链 `<a href>` + target

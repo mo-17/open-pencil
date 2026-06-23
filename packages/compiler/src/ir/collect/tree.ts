@@ -1721,10 +1721,43 @@ function imageFillClasses(fill: Fill, assetPath: string): string {
     classes.push('bg-contain', 'bg-no-repeat')
   } else if (fill.imageScaleMode === 'TILE') {
     classes.push('bg-auto', 'bg-repeat')
+  } else if (fill.imageScaleMode === 'CROP' && fill.imageTransform) {
+    classes.push(...cropImageTransformClasses(fill.imageTransform))
   } else {
     classes.push('bg-cover', 'bg-no-repeat')
   }
   return classes.join(' ')
+}
+
+function cropImageTransformClasses(transform: NonNullable<Fill['imageTransform']>): string[] {
+  if (!isCssRepresentableImageTransform(transform)) return ['bg-cover', 'bg-no-repeat']
+  const width = cssPercent(transform.m00 * 100)
+  const height = cssPercent(transform.m11 * 100)
+  const left = cssPercent(transform.m02 * 100)
+  const top = cssPercent(transform.m12 * 100)
+  return [
+    `[background-size:${width}%_${height}%]`,
+    `[background-position:left_${left}%_top_${top}%]`,
+    'bg-no-repeat'
+  ]
+}
+
+function isCssRepresentableImageTransform(transform: NonNullable<Fill['imageTransform']>): boolean {
+  return (
+    transform.m00 > 0 &&
+    transform.m11 > 0 &&
+    transform.m01 === 0 &&
+    transform.m10 === 0 &&
+    imageTransformValues(transform).every(Number.isFinite)
+  )
+}
+
+function imageTransformValues(transform: NonNullable<Fill['imageTransform']>): number[] {
+  return [transform.m00, transform.m01, transform.m02, transform.m10, transform.m11, transform.m12]
+}
+
+function cssPercent(value: number): string {
+  return Number(value.toFixed(3)).toString()
 }
 
 function imageAssetPath(hash: string, bytes: Uint8Array): string {
