@@ -52,6 +52,19 @@ describe('compile — external links (Phase 4 §25)', () => {
     expect(app).not.toContain('rel="noopener noreferrer"')
   })
 
+  test('invalid target falls back to _blank with safe rel', () => {
+    const { app } = compileLink({ href: 'https://openpencil.dev', target: 'popup' })
+    expect(app).toContain('<a')
+    expect(app).toContain('href="https://openpencil.dev"')
+    expect(app).toContain('target="_blank"')
+    expect(app).toContain('rel="noopener noreferrer"')
+  })
+
+  test('static href is escaped as an attribute', () => {
+    const { app } = compileLink({ href: 'https://example.com/?q="quoted"&from=op' })
+    expect(app).toContain('href="https://example.com/?q=&quot;quoted&quot;&amp;from=op"')
+  })
+
   test('hrefExpr emits bound href and registers docState read', () => {
     const { app } = compileLink({ link: { hrefExpr: 'profileUrl', target: '_blank' } }, true)
     expect(app).toContain('const profileUrl = useDocState("profileUrl")')
