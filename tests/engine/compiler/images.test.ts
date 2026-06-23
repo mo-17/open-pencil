@@ -523,7 +523,9 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
         },
         { type: 'NOISE', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true },
         { type: 'VIDEO', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true },
-        { type: 'CUSTOM', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }
+        { type: 'CUSTOM', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true },
+        { type: 'PATTERN', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: false },
+        { type: 'NOISE', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 0, visible: true }
       ]
     })
     const out = compile({
@@ -533,8 +535,16 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     })
     const app = out.files.get('src/App.tsx') as string
     const codes = out.warnings.map((w) => w.code)
+    const unsupported = out.warnings.filter((w) => w.code === 'visual-fill-type-unsupported')
 
     expect(codes.filter((code) => code === 'visual-fill-type-unsupported')).toHaveLength(4)
+    expect(unsupported.every((warning) => warning.nodeId != null)).toBe(true)
+    expect(unsupported.map((warning) => warning.message)).toEqual([
+      expect.stringContaining('unsupported PATTERN fill'),
+      expect.stringContaining('unsupported NOISE fill'),
+      expect.stringContaining('unsupported VIDEO fill'),
+      expect.stringContaining('unsupported CUSTOM fill')
+    ])
     expect(app).toContain('bg-white')
     expect(app).not.toContain('PATTERN')
     expect(app).not.toContain('NOISE')
