@@ -131,6 +131,29 @@ describe('compile — images & aspect-ratio (Phase 4 §24.1/§24.3)', () => {
     expect(app).toContain('src="https://x/fallback.jpg"')
   })
 
+  test('responsive image sources accept src and srcExpr aliases', () => {
+    const { app } = compileNode(
+      {
+        image: {
+          src: 'https://x/fallback.jpg',
+          alt: '',
+          sources: [
+            { src: 'https://x/static-mobile.jpg', media: '(max-width: 640px)' },
+            { srcExpr: 'mobileHeroSrc', type: 'image/webp' }
+          ]
+        }
+      },
+      { docStates: [{ id: 'd1', name: 'mobileHeroSrc', type: 'string', defaultValue: '' }] }
+    )
+
+    expect(app).toContain('const mobileHeroSrc = useDocState("mobileHeroSrc")')
+    expect(app).toContain(
+      '<source srcSet="https://x/static-mobile.jpg" media="(max-width: 640px)" />'
+    )
+    expect(app).toContain('<source srcSet={mobileHeroSrc} type="image/webp" />')
+    expect(app).toContain('src="https://x/fallback.jpg"')
+  })
+
   test('invalid responsive image sources are dropped without changing fallback image emit', () => {
     const { app, warnings } = compileNode({
       image: {
