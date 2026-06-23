@@ -16,7 +16,11 @@ import {
   referencedLucideIconNames
 } from './ir-walk'
 import { buildReactIntlImport } from './lowcode/i18n'
-import { buildValidationGlue, validationUsesDocStateSnapshot } from './lowcode/validation'
+import {
+  buildValidationGlue,
+  validationUsesDocStateSnapshot,
+  validationUsesRemote
+} from './lowcode/validation'
 import type { PagePathInfo } from './route-paths'
 import { collectKitImports, kitImportLine } from './ui-kit/registry'
 import type { UiKitAdapter } from './ui-kit/types'
@@ -387,9 +391,17 @@ function buildLowcodeRuntimeImports(
   const confirm = pageUsesConfirm(ir) ? `import { __opConfirm } from '${paths.confirm}'\n` : ''
   const validation =
     (ir.validatedFields?.length ?? 0) > 0
-      ? `import { validateValue } from '${paths.validation}'\n`
+      ? `import { ${validationImportNames(ir.validatedFields ?? []).join(', ')} } from '${paths.validation}'\n`
       : ''
   return supabase + toast + confirm + validation
+}
+
+function validationImportNames(
+  fields: readonly NonNullable<IRTree['validatedFields']>[number][]
+): string[] {
+  const names = ['validateValue']
+  if (validationUsesRemote(fields)) names.push('validateRemote')
+  return names.sort()
 }
 
 function buildLowcodeStateImport(ir: IRTree, path: string): string {

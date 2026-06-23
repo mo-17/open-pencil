@@ -52,7 +52,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).toContain('getDocStateSnapshot')
     expect(app).toContain('const [__fieldErrors, __setFieldErrors] = useState')
     expect(app).toContain(
-      'const __validators: Record<string, (valueOverride?: unknown) => string | null> = {'
+      'const __validators: Record<string, (valueOverride?: unknown, includeAsync?: boolean) => Promise<string | null>> = {'
     )
     expect(app).toContain(
       'const __value = __valueOverride !== undefined ? __valueOverride : getDocStateSnapshot("email")'
@@ -60,15 +60,15 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).toContain('let __error = validateValue(__value, {"required":true')
     expect(app).toContain('"minLength":5')
     expect(app).toContain('"messages":{"required":"Email required"}')
-    expect(app).toContain('const __validateField = (id: string): string | null =>')
+    expect(app).toContain('const __validateField = async (id: string): Promise<string | null> =>')
     expect(app).toContain(
-      'const __validateFieldValue = (id: string, value: unknown): string | null =>'
+      'const __validateFieldValue = async (id: string, value: unknown, includeAsync = false): Promise<string | null> =>'
     )
-    expect(app).toContain('const __validateFields = (ids: string[]): boolean =>')
+    expect(app).toContain('const __validateFields = async (ids: string[]): Promise<boolean> =>')
     // field attrs + per-field error <p>
     expect(app).toContain('aria-invalid={__fieldErrors[')
-    expect(app).toContain('setDocState("email", e.target.value); __validateFieldValue(')
-    expect(app).toContain('onBlur={() => __validateField(')
+    expect(app).toContain('setDocState("email", e.target.value); await __validateFieldValue(')
+    expect(app).toContain('onBlur={async (e) => { await __validateFieldValue(')
     expect(app).toContain('<p className="text-sm text-red-600 mt-1" role="alert">{__fieldErrors[')
     // runtime file
     expect(files.has('src/_lowcode_validation.tsx')).toBe(true)
@@ -119,17 +119,72 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
     const app = out.files.get('src/App.tsx') as string
     const form2 = app.split('\n').find((l) => l.includes('onSubmit=')) ?? ''
-    expect(form2).toContain('onSubmit={(e) => { e.preventDefault(); if (!__validateFields([')
-    expect(form2).toContain('])) return; setDocState("status", "done"); }}')
+    expect(form2).toContain(
+      'onSubmit={async (e) => { e.preventDefault(); if (!(await __validateFields(['
+    )
+    expect(form2).toContain(']))) return; setDocState("status", "done"); }}')
   })
 
   test('FORM with no user onSubmit still emits a validate-only onSubmit', () => {
     const { app } = compileField({ required: true }, { inForm: true })
     const formLine = app.split('\n').find((l) => l.includes('<form')) ?? ''
-    expect(formLine).toContain('onSubmit={(e) => { e.preventDefault(); if (!__validateFields([')
+    expect(formLine).toContain(
+      'onSubmit={async (e) => { e.preventDefault(); if (!(await __validateFields(['
+    )
     expect(formLine).toContain(']))')
     // the form's validate keys include the field
     expect(formLine).toMatch(/__validateFields\(\["[^"]+"\]\)/)
+  })
+
+  test('async custom validator emits validateRemote after sync rules pass', () => {
+    const { app, files } = compileField({
+      required: true,
+      async: {
+        url: '/api/check-email',
+        method: 'POST',
+        message: 'Email is already taken'
+      }
+    })
+    expect(app).toContain("import { validateRemote, validateValue } from './_lowcode_validation'")
+    expect(app).toContain(
+      'if (__includeAsync && __error === null) __error = await validateRemote(__value, { url: "/api/check-email", method: "POST", message: "Email is already taken" })'
+    )
+    const runtime = files.get('src/_lowcode_validation.tsx') as string
+    expect(runtime).toContain('export async function validateRemote')
+    expect(runtime).toContain('body: JSON.stringify({ value })')
+  })
+
+  test('async custom validator can use a bound URL expression and GET method', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd1', name: 'email', type: 'string', defaultValue: '' },
+        { id: 'd2', name: 'validatorUrl', type: 'string', defaultValue: '/api/check-email' }
+      ]
+    })
+    graph.createNode('INPUT', pageId, {
+      name: 'Email',
+      width: 200,
+      height: 40,
+      bindings: { value: { kind: 'docState', docStateName: 'email' } },
+      interactiveProps: {
+        validation: {
+          async: {
+            urlExpr: 'validatorUrl',
+            method: 'GET',
+            message: 'Remote validation failed'
+          }
+        }
+      }
+    })
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('const validatorUrl = useDocState("validatorUrl")')
+    expect(app).toContain(
+      'await validateRemote(__value, { url: validatorUrl, method: "GET", message: "Remote validation failed" })'
+    )
+    expect(out.warnings).toEqual([])
   })
 
   test('FORM validation summary is opt-in and aggregates field errors', () => {
@@ -228,8 +283,12 @@ describe('compile — form validation (Phase 4 §19)', () => {
     })
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain(`${JSON.stringify(a.id)}: (__valueOverride?: unknown) => {`)
-    expect(app).toContain(`${JSON.stringify(b.id)}: (__valueOverride?: unknown) => {`)
+    expect(app).toContain(
+      `${JSON.stringify(a.id)}: async (__valueOverride?: unknown, __includeAsync = true) => {`
+    )
+    expect(app).toContain(
+      `${JSON.stringify(b.id)}: async (__valueOverride?: unknown, __includeAsync = true) => {`
+    )
     const formLine = app.split('\n').find((l) => l.includes('<form')) ?? ''
     expect(formLine).toContain(JSON.stringify(a.id))
     expect(formLine).toContain(JSON.stringify(b.id))
@@ -264,7 +323,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('const __value = __valueOverride !== undefined ? __valueOverride : name')
-    expect(app).toContain('setName(e.target.value); __validateFieldValue(')
+    expect(app).toContain('setName(e.target.value); await __validateFieldValue(')
     expect(app).not.toContain('getDocStateSnapshot')
   })
 
@@ -291,10 +350,10 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const app = out.files.get('src/App.tsx') as string
     const k = JSON.stringify(input.id)
     expect(app).toContain(
-      `setDocState("email", e.target.value); __validateFieldValue(${k}, e.target.value); setDocState("status", $value);`
+      `setDocState("email", e.target.value); await __validateFieldValue(${k}, e.target.value); setDocState("status", $value);`
     )
     expect(app).toContain(
-      'onChange={(e) => { const $event = e; const $value = (e.target as HTMLInputElement).value;'
+      'onChange={async (e) => { const $event = e; const $value = (e.target as HTMLInputElement).value;'
     )
   })
 
@@ -306,7 +365,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
       }
     )
     // baseline: no user onBlur → just the validation onBlur
-    expect(app).toContain('onBlur={() => __validateField(')
+    expect(app).toContain('onBlur={async (e) => { await __validateFieldValue(')
 
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -330,7 +389,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const app2 = out.files.get('src/App.tsx') as string
     expect(out.warnings.map((w) => w.code)).not.toContain('validation-onblur-conflict')
     expect(app2).toContain(
-      'onBlur={(e) => { const $event = e; const $value = (e.target as HTMLInputElement).value; __validateField('
+      'onBlur={async (e) => { const $event = e; const $value = (e.target as HTMLInputElement).value; await __validateFieldValue('
     )
     expect(app2).toContain('setDocState("touched", "yes")')
     void warnings

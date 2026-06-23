@@ -66,6 +66,7 @@ function handlersAreAsync(handlers: IREventHandler[]): boolean {
 interface EmitEventHandlerOptions {
   eventLocals?: boolean
   prelude?: string[]
+  forceAsync?: boolean
 }
 
 /**
@@ -85,7 +86,8 @@ export function emitEventHandler(
   const prelude = options.prelude ?? []
   const needsEventArg = options.eventLocals || prelude.length > 0
   const params = needsEventArg ? '(e)' : '()'
-  const arrow = handlersAreAsync(handlers) ? `async ${params} =>` : `${params} =>`
+  const arrow =
+    options.forceAsync || handlersAreAsync(handlers) ? `async ${params} =>` : `${params} =>`
   if (!needsEventArg && handlers.length === 1 && SIMPLE_STATEMENT_KINDS.has(handlers[0].kind)) {
     return `${arrow} ${emitHandlerStatement(handlers[0])}`
   }
@@ -105,9 +107,9 @@ export function emitFormSubmitHandler(
   handlers: IREventHandler[],
   validationKeys: readonly string[]
 ): string {
-  const arrow = handlersAreAsync(handlers) ? 'async (e) =>' : '(e) =>'
+  const arrow = 'async (e) =>'
   const ids = validationKeys.map((k) => JSON.stringify(k)).join(', ')
-  const guard = `e.preventDefault(); if (!__validateFields([${ids}])) return;`
+  const guard = `e.preventDefault(); if (!(await __validateFields([${ids}]))) return;`
   const body = handlers.length > 0 ? ` ${emitStatementList(handlers)}` : ''
   return `${arrow} { ${guard}${body} }`
 }

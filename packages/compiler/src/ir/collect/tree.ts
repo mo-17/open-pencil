@@ -35,6 +35,7 @@ import type {
   IRElement,
   IRExpression,
   IRFieldValidation,
+  IRValidationAsync,
   IRFormValidationSummary,
   IRImage,
   IRLink,
@@ -1954,7 +1955,15 @@ interface ValidationConfig {
   min?: unknown
   max?: unknown
   customExpr?: unknown
+  async?: unknown
   messages?: Record<string, unknown>
+}
+
+interface ValidationAsyncConfig {
+  url?: unknown
+  urlExpr?: unknown
+  method?: unknown
+  message?: unknown
 }
 
 interface ValidationSummaryConfig {
@@ -2015,13 +2024,15 @@ function applyValidation(
   if (!cfg || typeof cfg !== 'object') return undefined
   const rules = resolveValidationRules(node, cfg, ctx)
   const custom = resolveValidationCustom(node, cfg, ctx)
-  if (!hasAnyRule(rules) && !custom) return undefined
+  const async = resolveValidationAsync(node, cfg, ctx)
+  if (!hasAnyRule(rules) && !custom && !async) return undefined
   const validation: IRFieldValidation = {
     key: node.id,
     stateName: controlled.write.name,
     stateKind: controlled.write.kind,
     rules,
-    ...(custom ? { custom } : {})
+    ...(custom ? { custom } : {}),
+    ...(async ? { async } : {})
   }
   ctx.validatedFields?.push(validation)
   return validation
@@ -2102,6 +2113,73 @@ function resolveValidationCustom(
   const raw = cfg.messages?.custom
   const message = typeof raw === 'string' && raw.trim() !== '' ? raw : 'Invalid value'
   return { ast: resolved.ast, references: resolved.references, message }
+}
+
+/** §19 follow-up: resolve an optional async custom validation endpoint. This is
+ *  the safe generated-app form of custom async functions: the endpoint owns the
+ *  function body and returns `{ valid, message? }`. */
+function resolveValidationAsync(
+  node: SceneNode,
+  cfg: ValidationConfig,
+  ctx: WalkCtx
+): IRValidationAsync | undefined {
+  const raw = cfg.async
+  if (!raw || typeof raw !== 'object') return undefined
+  const asyncCfg = raw as ValidationAsyncConfig
+  const url = typeof asyncCfg.url === 'string' ? asyncCfg.url.trim() : ''
+  const urlExpr = typeof asyncCfg.urlExpr === 'string' ? asyncCfg.urlExpr.trim() : ''
+  if (url !== '' && urlExpr !== '') {
+    ctx.warnings.push({
+      code: 'validation-async-url-conflict',
+      message: `${node.type} ${node.id} validation async config must use either url or urlExpr, not both; async rule dropped`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  let urlAst: ExprAst | undefined
+  if (urlExpr !== '') {
+    const resolved = resolveReactiveExpr(node, urlExpr, 'validation-async-url', ctx)
+    if (resolved === null) return undefined
+    urlAst = resolved.ast
+  }
+  if (url === '' && urlAst === undefined) {
+    ctx.warnings.push({
+      code: 'validation-async-missing-url',
+      message: `${node.type} ${node.id} validation async config has no url or urlExpr; async rule dropped`,
+      nodeId: node.id
+    })
+    return undefined
+  }
+  const method = validationAsyncMethod(asyncCfg.method, node, ctx)
+  if (!method) return undefined
+  const message =
+    typeof asyncCfg.message === 'string' && asyncCfg.message.trim() !== ''
+      ? asyncCfg.message
+      : 'Invalid value'
+  return {
+    ...(url !== '' ? { urlLiteral: url } : {}),
+    ...(urlAst ? { urlAst } : {}),
+    method,
+    message
+  }
+}
+
+function validationAsyncMethod(
+  raw: unknown,
+  node: SceneNode,
+  ctx: WalkCtx
+): IRValidationAsync['method'] | undefined {
+  if (raw === undefined) return 'POST'
+  if (typeof raw === 'string') {
+    const method = raw.trim().toUpperCase()
+    if (method === 'GET' || method === 'POST') return method
+  }
+  ctx.warnings.push({
+    code: 'validation-async-invalid-method',
+    message: `${node.type} ${node.id} validation async method must be GET or POST; async rule dropped`,
+    nodeId: node.id
+  })
+  return undefined
 }
 
 /** §19: true when a rule set has at least one checkable rule. */

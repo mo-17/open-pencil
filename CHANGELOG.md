@@ -12,6 +12,7 @@
 - Validate lowcode controlled form fields on change with the next input value while preserving writer-first user `onChange` composition.
 - Add opt-in lowcode FORM validation summaries for aggregated field errors.
 - Add runtime coverage and workspace dependencies for lowcode shadcn Tabs/Accordion state bindings.
+- Add async remote custom validators for lowcode form fields.
 
 ### Fixes
 

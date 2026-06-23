@@ -7,9 +7,9 @@
  * numeric range) against its current value. `buildValidationGlue` emits the
  * page-level glue a validated page needs: an errors `useState`, a `__validators`
  * map (one closure per field — core rules call `validateValue`, the optional
- * custom rule is an inline expression over doc-state), and the `__validateField`
- * (onBlur) / `__validateFieldValue` (onChange) / `__validateFields` (onSubmit)
- * helpers.
+ * custom rule is an inline expression over doc-state, and async custom
+ * validators call `validateRemote`), and the `__validateField` (onBlur) /
+ * `__validateFieldValue` (onChange) / `__validateFields` (onSubmit) helpers.
  *
  * The custom-rule expression is emitted with `emitExpression`, so it reads the
  * field's bound doc-state via the page's hoisted `useDocState` consts (the
@@ -85,6 +85,47 @@ export function validateValue(value: unknown, rules: ValidationRules): string | 
   }
   return null
 }
+
+export interface RemoteValidationConfig {
+  url: string
+  method: 'GET' | 'POST'
+  message: string
+}
+
+/**
+ * Run a remote custom validator. The endpoint should return JSON shaped like
+ * { valid: true } or { valid: false, message?: string }. Network failures,
+ * non-2xx responses, invalid JSON, and missing valid: true all fail closed
+ * with the configured fallback message.
+ */
+export async function validateRemote(
+  value: unknown,
+  config: RemoteValidationConfig
+): Promise<string | null> {
+  try {
+    const res =
+      config.method === 'GET'
+        ? await fetch(withValueQuery(config.url, value))
+        : await fetch(config.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value })
+          })
+    const data = await res.json().catch(() => null)
+    if (res.ok && data?.valid === true) return null
+    return typeof data?.message === 'string' && data.message.trim() !== ''
+      ? data.message
+      : config.message
+  } catch {
+    return config.message
+  }
+}
+
+function withValueQuery(url: string, value: unknown): string {
+  const out = new URL(url, window.location.origin)
+  out.searchParams.set('value', value == null ? '' : String(value))
+  return out.toString()
+}
 `
 }
 
@@ -97,27 +138,27 @@ export function buildValidationGlue(fields: readonly IRFieldValidation[]): strin
   const validators = fields.map((f) => buildValidatorEntry(f)).join('\n')
   return [
     `  const [__fieldErrors, __setFieldErrors] = useState<Record<string, string | null>>({})`,
-    `  const __validators: Record<string, (valueOverride?: unknown) => string | null> = {`,
+    `  const __validators: Record<string, (valueOverride?: unknown, includeAsync?: boolean) => Promise<string | null>> = {`,
     validators,
     `  }`,
-    `  const __validateField = (id: string): string | null => {`,
+    `  const __validateField = async (id: string): Promise<string | null> => {`,
     `    const __fn = __validators[id]`,
-    `    const __error = __fn ? __fn() : null`,
+    `    const __error = __fn ? await __fn() : null`,
     `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
     `    return __error`,
     `  }`,
-    `  const __validateFieldValue = (id: string, value: unknown): string | null => {`,
+    `  const __validateFieldValue = async (id: string, value: unknown, includeAsync = false): Promise<string | null> => {`,
     `    const __fn = __validators[id]`,
-    `    const __error = __fn ? __fn(value) : null`,
+    `    const __error = __fn ? await __fn(value, includeAsync) : null`,
     `    __setFieldErrors((prev) => ({ ...prev, [id]: __error }))`,
     `    return __error`,
     `  }`,
-    `  const __validateFields = (ids: string[]): boolean => {`,
+    `  const __validateFields = async (ids: string[]): Promise<boolean> => {`,
     `    const __next: Record<string, string | null> = {}`,
     `    let __ok = true`,
     `    for (const id of ids) {`,
     `      const __fn = __validators[id]`,
-    `      const __error = __fn ? __fn() : null`,
+    `      const __error = __fn ? await __fn() : null`,
     `      __next[id] = __error`,
     `      if (__error !== null) __ok = false`,
     `    }`,
@@ -135,7 +176,7 @@ function buildValidatorEntry(field: IRFieldValidation): string {
       ? `getDocStateSnapshot(${JSON.stringify(field.stateName)})`
       : field.stateName
   const lines = [
-    `    ${JSON.stringify(field.key)}: (__valueOverride?: unknown) => {`,
+    `    ${JSON.stringify(field.key)}: async (__valueOverride?: unknown, __includeAsync = true) => {`,
     `      const __value = __valueOverride !== undefined ? __valueOverride : ${read}`,
     `      let __error = validateValue(__value, ${JSON.stringify(field.rules)})`
   ]
@@ -146,12 +187,31 @@ function buildValidatorEntry(field: IRFieldValidation): string {
       `      if (__error === null && !(${emitExpression(field.custom.ast)})) __error = ${JSON.stringify(field.custom.message)}`
     )
   }
+  if (field.async) {
+    lines.push(
+      `      if (__includeAsync && __error === null) __error = await validateRemote(__value, ${asyncValidationConfig(field)})`
+    )
+  }
   lines.push(`      return __error`, `    },`)
   return lines.join('\n')
+}
+
+function asyncValidationConfig(field: IRFieldValidation): string {
+  const async = field.async
+  if (!async) return '{}'
+  const url =
+    async.urlAst !== undefined
+      ? `url: ${emitExpression(async.urlAst)}`
+      : `url: ${JSON.stringify(async.urlLiteral ?? '')}`
+  return `{ ${url}, method: ${JSON.stringify(async.method)}, message: ${JSON.stringify(async.message)} }`
 }
 
 /** Whether any validated field reads its value fresh via `getDocStateSnapshot`
  *  (i.e. is doc-state bound) — drives the runtime-state import. */
 export function validationUsesDocStateSnapshot(fields: readonly IRFieldValidation[]): boolean {
   return fields.some((f) => f.stateKind === 'docState')
+}
+
+export function validationUsesRemote(fields: readonly IRFieldValidation[]): boolean {
+  return fields.some((f) => f.async !== undefined)
 }

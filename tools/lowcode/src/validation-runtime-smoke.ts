@@ -57,6 +57,11 @@ graph.createNode('INPUT', form.id, {
       required: true,
       pattern: '^[^@]+@[^@]+\\.[^@]+$',
       customExpr: 'email !== "blocked@x.com"',
+      async: {
+        url: '/api/check-email',
+        method: 'POST',
+        message: 'Email failed remote validation'
+      },
       messages: {
         required: 'Email is required',
         pattern: 'Use a valid email',
@@ -96,6 +101,18 @@ let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
 try {
   browser = await chromium.launch({ channel: 'chrome' })
   const page = await browser.newPage()
+  await page.route('**/api/check-email', async (route) => {
+    const payload = route.request().postDataJSON() as { value?: unknown } | null
+    const value = String(payload?.value ?? '')
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(
+        value === 'taken@example.com'
+          ? { valid: false, message: 'Email is already taken' }
+          : { valid: true }
+      )
+    })
+  })
   await page.goto(server.url)
   await page.getByText('Status: idle').waitFor()
 
@@ -128,6 +145,14 @@ try {
   assert(
     (await fieldAlert.textContent()) === 'That email is blocked',
     'blur should show custom error'
+  )
+
+  await email.fill('taken@example.com')
+  await email.blur()
+  await fieldAlert.waitFor()
+  assert(
+    (await fieldAlert.textContent()) === 'Email is already taken',
+    'blur should show async remote error'
   )
 
   await email.focus()

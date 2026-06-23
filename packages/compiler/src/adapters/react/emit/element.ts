@@ -601,11 +601,12 @@ function controlledValueAttrParts(
 /** Phase 4 §19: a validated field's `aria-invalid` + validate-on-blur attrs. */
 function validationFieldParts(key: string, handlers: IREventHandler[] | undefined): string[] {
   const k = JSON.stringify(key)
-  const validate = `__validateField(${k})`
+  const eventValue = '(e.target as HTMLInputElement).value'
+  const validate = `await __validateFieldValue(${k}, ${eventValue}, true)`
   const onBlur =
     handlers && handlers.length > 0
-      ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate] })}}`
-      : `onBlur={() => ${validate}}`
+      ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate], forceAsync: true })}}`
+      : `onBlur={async (e) => { ${validate}; }}`
   return [`aria-invalid={__fieldErrors[${k}] != null}`, onBlur]
 }
 
@@ -711,13 +712,13 @@ function controlledOnChangeAttr(
   const write = controlledWriteCall(c, valueExpr)
   const prelude = [write]
   if (validationKey !== undefined) {
-    prelude.push(`__validateFieldValue(${JSON.stringify(validationKey)}, ${valueExpr})`)
+    prelude.push(`await __validateFieldValue(${JSON.stringify(validationKey)}, ${valueExpr})`)
   }
   if (!handlers || handlers.length === 0) {
     if (prelude.length === 1) return `onChange={(e) => ${write}}`
-    return `onChange={${emitEventHandler([], { prelude })}}`
+    return `onChange={${emitEventHandler([], { prelude, forceAsync: true })}}`
   }
-  return `onChange={${emitEventHandler(handlers, { eventLocals: true, prelude })}}`
+  return `onChange={${emitEventHandler(handlers, { eventLocals: true, prelude, forceAsync: validationKey !== undefined })}}`
 }
 
 /** Phase 3 §3.x / §15 Phase B — the writer call for a controlled input: a

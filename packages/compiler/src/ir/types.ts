@@ -323,7 +323,7 @@ export interface IRDisplayItem {
  *  from `interactiveProps.validation`. The data-driven core rules (required /
  *  pattern / length / numeric range) evaluate in the `validateValue` runtime
  *  helper; `custom` is an expression over doc-state (true ≡ valid) evaluated
- *  inline in the page component. */
+ *  inline in the page component; `async` calls a remote custom validator. */
 export interface IRFieldValidation {
   /** Error-map key + the `onBlur` / `onSubmit` validate argument — the field's
    *  SceneNode id (unique across the page). */
@@ -339,6 +339,8 @@ export interface IRFieldValidation {
   rules: IRValidationRules
   /** Optional custom rule: a boolean expression (true ≡ valid) + its message. */
   custom?: IRValidationCustom
+  /** Optional asynchronous custom rule, run after core + sync custom pass. */
+  async?: IRValidationAsync
 }
 
 /** Phase 4 §19: the data-driven core validation rules. Each present rule is
@@ -371,6 +373,16 @@ export interface IRValidationMessages {
 export interface IRValidationCustom {
   ast: ExprAst
   references: string[]
+  message: string
+}
+
+/** Phase 4 §19 follow-up: asynchronous custom validation against a remote
+ *  endpoint. The endpoint returns JSON `{ valid: boolean, message?: string }`.
+ *  GET appends `value` as a query param; POST sends `{ value }` JSON. */
+export interface IRValidationAsync {
+  urlLiteral?: string
+  urlAst?: ExprAst
+  method: 'GET' | 'POST'
   message: string
 }
 
