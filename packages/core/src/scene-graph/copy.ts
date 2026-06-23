@@ -16,6 +16,7 @@ import type {
   Fill,
   GeometryPath,
   GradientStop,
+  LibraryRef,
   SceneNode,
   Stroke,
   StyleRun
@@ -119,6 +120,14 @@ function copyPropertyDefs(
   )
 }
 
+function copyLibraryRefs(libraries: LibraryRef[] | undefined): LibraryRef[] | undefined {
+  return libraries?.map((library) => ({
+    ...library,
+    source: { ...library.source },
+    importedComponents: library.importedComponents.map((component) => ({ ...component }))
+  }))
+}
+
 function copyGlyphs(glyphs: FigmaDerivedTextGlyph[] | null): FigmaDerivedTextGlyph[] | null {
   return glyphs ? glyphs.map((g) => ({ ...g, commandsBlob: new Uint8Array(g.commandsBlob) })) : null
 }
@@ -167,6 +176,7 @@ export function cloneNodeProps(src: SceneNode, componentId: string | null): Part
     pluginData: copySpread(src.pluginData),
     pluginRelaunchData: copySpread(src.pluginRelaunchData),
     exportSettings: copySpread(src.exportSettings),
+    lowcodeLibraries: copyLibraryRefs(src.lowcodeLibraries),
     componentPropertyValues: { ...src.componentPropertyValues },
     figmaDerivedLayout: src.figmaDerivedLayout ? { ...src.figmaDerivedLayout } : null,
     arcData: src.arcData ? copyArcData(src.arcData) : null,

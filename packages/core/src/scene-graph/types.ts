@@ -18,6 +18,28 @@ export type SceneGraphEventHandlers = Partial<{
 
 export type DocumentColorSpace = 'srgb' | 'display-p3'
 
+export type LibrarySource =
+  | {
+      kind: 'file'
+      ref: string
+    }
+  | {
+      kind: 'url'
+      ref: string
+    }
+
+export interface LibraryImportedComponent {
+  key: string
+  version: string
+}
+
+export interface LibraryRef {
+  libraryId: string
+  name: string
+  source: LibrarySource
+  importedComponents: LibraryImportedComponent[]
+}
+
 export interface FigmaSourcePayload {
   rawSize: Vector | null
   rawTransform: Matrix | null
@@ -486,6 +508,14 @@ export interface SceneNode {
   componentPropertyDefinitions: ComponentPropertyDefinition[]
   componentPropertyValues: Record<string, string>
   componentKey: string | null
+  /** Phase 4 §14: cross-file library identity for cached local COMPONENT
+   *  masters. `componentKey` remains the generic Figma-compatible global key;
+   *  this field makes lowcode team-library metadata explicit for publish/import
+   *  tooling and `.fig` pluginData round-trip. */
+  libraryComponentKey?: string
+  libraryId?: string
+  libraryVersion?: string
+  libraryReadonly?: boolean
   sourceLibraryKey: string | null
   publishId: string | null
   overrideKey: string | null
@@ -587,6 +617,12 @@ export interface SceneNode {
   // `lowcodeSupabaseConfig`). Absent ≡ the `/login` default. Persisted via §12
   // pluginData under `lowcode/authRedirect`.
   lowcodeAuthRedirect?: string
+  // ── Lowcode (Phase 4 §14) — team-library manifest refs ──
+  // Root-level list of local/remote library sources imported into this document,
+  // plus the component keys/versions cached locally. Cached masters remain normal
+  // COMPONENT/COMPONENT_SET nodes so the compiler needs no special handling.
+  // Persisted via §12 pluginData under `lowcode/libraries`.
+  lowcodeLibraries?: LibraryRef[]
 }
 
 // ── Lowcode (Phase 3 §9 v7) ──

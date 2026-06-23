@@ -19,6 +19,7 @@ import type {
   DocumentStateDef,
   EventName,
   GridPosition,
+  LibraryRef,
   LowcodeTranslations,
   NodeType,
   PluginDataEntry,
@@ -105,6 +106,15 @@ export const LOWCODE_WORKFLOWS_KEY = 'lowcode/workflows'
  *  `reapplyInstanceOverrides` after `populateInstances`. */
 export const LOWCODE_OVERRIDES_KEY = 'lowcode/overrides'
 
+/** Phase 4 §14: cross-file/team-library metadata for cached COMPONENT masters.
+ *  Value is `{ key, libraryId, version, readonly }`, mirroring the explicit
+ *  SceneNode fields while keeping the cached master a normal local component. */
+export const LOWCODE_LIBRARY_COMPONENT_KEY = 'lowcode/libraryComponent'
+
+/** Phase 4 §14: root-level list of imported library sources and cached component
+ *  key/version pairs. Value is a JSON-encoded `LibraryRef[]`. */
+export const LOWCODE_LIBRARIES_KEY = 'lowcode/libraries'
+
 /** Phase 4 §16.1: page-level (CANVAS) route pattern, e.g. `/product/:id`. A
  *  non-empty string on a page node; absent → slug-derived route. */
 export const LOWCODE_ROUTE_PATTERN_KEY = 'lowcode/routePattern'
@@ -151,6 +161,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_TRANSLATIONS_KEY,
   LOWCODE_WORKFLOWS_KEY,
   LOWCODE_OVERRIDES_KEY,
+  LOWCODE_LIBRARY_COMPONENT_KEY,
+  LOWCODE_LIBRARIES_KEY,
   LOWCODE_ROUTE_PATTERN_KEY,
   LOWCODE_REQUIRES_AUTH_KEY,
   LOWCODE_AUTH_REDIRECT_KEY
@@ -227,11 +239,38 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (isNonEmpty(node.lowcodeWorkflows)) {
     entries.push(makeEntry(LOWCODE_WORKFLOWS_KEY, node.lowcodeWorkflows))
   }
+  entries.push(...serializeLibraryFields(node))
   // Phase 4 §16.x: routing (§16.1 route pattern) + auth-guard (§16.3 requiresAuth
   // / authRedirect) fields — grouped out to keep this function under the
   // complexity limit. Appended last so legacy .fig output stays byte-identical.
   entries.push(...serializeRoutingAuthFields(node))
   return entries
+}
+
+/** Phase 4 §14: team-library metadata. Empty fields write nothing so ordinary
+ *  single-document components keep their previous .fig output. */
+function serializeLibraryFields(node: SceneNode): PluginDataEntry[] {
+  const entries: PluginDataEntry[] = []
+  const libraryComponent = libraryComponentPayload(node)
+  if (libraryComponent) entries.push(makeEntry(LOWCODE_LIBRARY_COMPONENT_KEY, libraryComponent))
+  if (isNonEmpty(node.lowcodeLibraries)) {
+    entries.push(makeEntry(LOWCODE_LIBRARIES_KEY, node.lowcodeLibraries))
+  }
+  return entries
+}
+
+function libraryComponentPayload(node: SceneNode): JsonObject | null {
+  const payload: JsonObject = {}
+  if (typeof node.libraryComponentKey === 'string' && node.libraryComponentKey !== '') {
+    payload.key = node.libraryComponentKey
+  }
+  if (typeof node.libraryId === 'string' && node.libraryId !== '')
+    payload.libraryId = node.libraryId
+  if (typeof node.libraryVersion === 'string' && node.libraryVersion !== '') {
+    payload.version = node.libraryVersion
+  }
+  if (node.libraryReadonly === true) payload.readonly = true
+  return Object.keys(payload).length > 0 ? payload : null
 }
 
 /** Phase 4 §16.x: routing + auth-guard pluginData entries (route pattern /
@@ -453,6 +492,15 @@ export interface ExtractedLowcodeAndPluginData {
   /** Phase 4 §16.3: document-level login redirect (root node only). Restored onto
    *  the root via `assignImportedLowcodeFields`. */
   lowcodeAuthRedirect?: string
+  /** Phase 4 §14: cached local COMPONENT master metadata restored from
+   *  `lowcode/libraryComponent`. */
+  libraryComponentKey?: string
+  libraryId?: string
+  libraryVersion?: string
+  libraryReadonly?: boolean
+  /** Phase 4 §14: root-level imported library refs restored from
+   *  `lowcode/libraries`. */
+  lowcodeLibraries?: LibraryRef[]
   /** Phase 3 §8 v11: per-instance override snapshot (keyed by master-child id).
    *  Flows onto the node via `...lowcodeRest` as `pendingInstanceOverrides`, then
    *  `reapplyInstanceOverrides` remaps it after populate. */
@@ -538,10 +586,28 @@ function assignLowcodeField(
       if (isLowcodeWorkflows(value)) target.lowcodeWorkflows = value
       return
     default:
-      // Layout round-trip fixes (axis sizing / counter-align / grid placement),
-      // §7 responsive overrides, and the §16.1 route pattern — grouped out to
-      // keep this switch under the complexity limit.
+      // Less common lowcode pluginData families are grouped out to keep this
+      // switch under the complexity limit.
       assignLowcodeLayoutFix(target, key, value)
+  }
+}
+
+function assignLowcodeLibraryField(
+  target: ExtractedLowcodeAndPluginData,
+  key: string,
+  value: unknown
+): void {
+  switch (key) {
+    case LOWCODE_LIBRARY_COMPONENT_KEY:
+      if (isLibraryComponentPayload(value)) {
+        if (typeof value.key === 'string') target.libraryComponentKey = value.key
+        if (typeof value.libraryId === 'string') target.libraryId = value.libraryId
+        if (typeof value.version === 'string') target.libraryVersion = value.version
+        if (value.readonly === true) target.libraryReadonly = true
+      }
+      return
+    case LOWCODE_LIBRARIES_KEY:
+      if (isLibraryRefs(value)) target.lowcodeLibraries = value
   }
 }
 
@@ -571,6 +637,10 @@ function assignLowcodeLayoutFix(
       // Light guard (non-null, non-array object); remapped onto cloned children by
       // `reapplyInstanceOverrides` after populate, where unknown paths just no-op.
       if (isPlainRecord(value)) target.pendingInstanceOverrides = value
+      return
+    case LOWCODE_LIBRARY_COMPONENT_KEY:
+    case LOWCODE_LIBRARIES_KEY:
+      assignLowcodeLibraryField(target, key, value)
       return
     case LOWCODE_ROUTE_PATTERN_KEY:
       // Phase 4 §16.1: page-level route pattern. Light guard (string). Pattern
@@ -625,6 +695,57 @@ function isLowcodeTranslations(value: unknown): value is LowcodeTranslations {
  *  strictly. We only reject non-arrays from a corrupt .fig. */
 function isLowcodeWorkflows(value: unknown): value is WorkflowDef[] {
   return Array.isArray(value) && value.every((w) => w !== null && typeof w === 'object')
+}
+
+interface LibraryComponentPayload {
+  key?: string
+  libraryId?: string
+  version?: string
+  readonly?: boolean
+}
+
+function isLibraryComponentPayload(value: unknown): value is LibraryComponentPayload {
+  if (!isPlainRecord(value)) return false
+  return (
+    optionalString(value.key) &&
+    optionalString(value.libraryId) &&
+    optionalString(value.version) &&
+    optionalBoolean(value.readonly)
+  )
+}
+
+function isLibraryRefs(value: unknown): value is LibraryRef[] {
+  return Array.isArray(value) && value.every(isLibraryRef)
+}
+
+function isLibraryRef(value: unknown): value is LibraryRef {
+  if (!isPlainRecord(value)) return false
+  return (
+    typeof value.libraryId === 'string' &&
+    typeof value.name === 'string' &&
+    isLibrarySource(value.source) &&
+    Array.isArray(value.importedComponents) &&
+    value.importedComponents.every(isLibraryImportedComponent)
+  )
+}
+
+function isLibrarySource(value: unknown): value is LibraryRef['source'] {
+  if (!isPlainRecord(value)) return false
+  return (value.kind === 'file' || value.kind === 'url') && typeof value.ref === 'string'
+}
+
+function isLibraryImportedComponent(
+  value: unknown
+): value is LibraryRef['importedComponents'][number] {
+  return isPlainRecord(value) && typeof value.key === 'string' && typeof value.version === 'string'
+}
+
+function optionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
+}
+
+function optionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === 'boolean'
 }
 
 /** Strict guard: all four placement fields must be finite numbers, else the
