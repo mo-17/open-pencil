@@ -36,7 +36,7 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 - **§9 i18n**:§9 v1–v15(react-intl runtime / locale 切换 / 属性串 /
   ICU 插值 / plural-select / 译文 catalog / **v11 RTL dir-flip** / CLI flags /
   缺译警告 / **v15 gated RTL logical padding**)。编辑器实时 preview
-  i18n(GUI)延后(→ phase-4 #6)。
+  i18n toggle 已在 phase-4 闭合。
 - **§10 工作流编排**:§10 v1–v11(condition/delay/stop / **v2 toast** /
   confirm/clipboard / **v4 named WorkflowDef** / **v6 callWorkflow 传参** /
   **v8 可选形参 emit** / v9 onSuccess/onError / v10 递归编辑器 /
@@ -44,9 +44,9 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
   跨页 pageStates 延后(→ phase-4 #7/#8)。
 - **§15 UI-kit**:§15 设计 + Phase A(Button/Input/Textarea/Label) +
   Phase B(Select/Checkbox/Switch/RadioGroup)。FRAME→Card / Phase C
-  已在 phase-4 闭合;实时 preview shadcn 仍归 GUI 候选 #10。
+  已在 phase-4 闭合;实时 preview shadcn toggle 已在 phase-4 闭合。
 
-> 一句话:**§8/§9/§10 链在 phase-3 已基本走完**,phase-4 的剩余只是它们各自被显式延后的 GUI 入口 + 几条没起头的新线(§14 / §15 收尾 / §9 RTL 逻辑属性 / CF Pages / Kiwi 升格)。
+> 一句话:**§8/§9/§10 链在 phase-3 已基本走完**,phase-4 的剩余只是它们各自被显式延后的少量 GUI 入口 + 几条没起头的新线(§14 / CF Pages / Kiwi 升格)。
 
 ---
 
@@ -69,17 +69,17 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
 | 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | headless(大);组件跨 .fig 复用 / 团队共享库 / 更新传播。phase-3 有设计但未实现。                | §14           |
 | 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
-| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 高(真机)             | 真机 GUI;preview 入口补 i18n/uiKit toggle,解决 app 内看不到 i18n/shadcn。                      | §9 / §15      |
+| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-23**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options。      | §9 / §15      |
 | 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 中(真机)             | 真机 GUI;responsive overrides、component-props、optionalParams 面板。                          | §7 / §8 / §10 |
 | 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
-> **当前未闭合**:#8 / #9 / #10 / #11 / #13。#8、#13 偏大或工程债;#9 有
-> blake3 依赖决策;#10–#11 需要真机 GUI 验证。
+> **当前未闭合**:#8 / #9 / #11 / #13。#8、#13 偏大或工程债;#9 有
+> blake3 依赖决策;#10 只剩真机 ACK;#11 需要真机 GUI 验证。
 >
 > **下一步建议(2026-06-23 状态校准后)**:若继续 headless,只剩 #8 §14
 > 跨文件组件库(大)或 #9 CF Pages(需先锁 blake3 依赖)。若继续小步快跑,优先转
-> #10/#11 的 GUI 授权入口,但必须安排 Tauri/浏览器真机验证。#13 Kiwi schema
+> #11 的 GUI 授权入口,但必须安排 Tauri/浏览器真机验证。#13 Kiwi schema
 > 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
@@ -1124,9 +1124,9 @@ bun test \
 
 ## §9 / §15 编辑器实时 preview i18n / ui-kit toggle(真机 GUI)
 
-**现状**:§9 v13 修了 CLI i18n 入口(`compile`/`build --i18n`),但 **编辑器实时 preview 入口仍缺** —— `src/app/lowcode/preview-pane/use-compile-on-change.ts` 硬编码 `compile(withDefaults({packageName}))`(i18n 默认 false、无 uiKit)→ app 内 preview 看不到 i18n 译文 / shadcn 组件。§15 Phase A 也注明 preview 不带 uiKit(避免缺 dep 崩)。
+**现状**:§9 v13 修了 CLI i18n 入口(`compile`/`build --i18n`),§15 Phase A-C 修了 shadcn emit / deps / deploy toggle。编辑器实时 preview 入口已补齐小 GUI:preview 工具条可选 `UI: Tailwind|shadcn`,可开 `i18n` 并填写 target locales,`useCompileOnChange()` 会把当前设置传入 `compile(withDefaults(...))`;sceneVersion debounce 和 reload 都读同一份设置。
 
-**剩余**:给编辑器 preview 加 i18n / ui-kit toggle,让实时 preview 编译带 i18n/shadcn(shadcn alias+deps 真机 install 后就位)。**需真机点画面**(headless 验不了视觉)。**待锁**:toggle 位置(导出面板 vs preview 工具条);shadcn preview 的 dep 解析(VFS-build 缺 radix dep → 真机 install 才视觉保真)。
+**交付记录(CODE COMPLETE 2026-06-23)**:`PreviewPane.vue` 新增 preview-local controls(`lowcode-preview-uikit`,`lowcode-preview-i18n`,`lowcode-preview-locales`),设置变化会 force recompile + iframe reload;`use-compile-on-change.ts` 增加 `PreviewCompileSettings`、`parsePreviewLocales()` 和 compiler override 组装。默认仍是 Tailwind/no-i18n,所以老 preview 输出不漂移。**边界**:本轮只是 GUI 入口 + compile options plumbing;shadcn preview 的依赖解析仍由 compiler VFS/package.json 提供,视觉保真需真机桌面 preview 点画面 ACK。
 
 ## §7 / §8 / §10 编辑器授权面板(GUI,真机)
 

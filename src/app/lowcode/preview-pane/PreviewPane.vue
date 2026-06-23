@@ -10,7 +10,7 @@ import type { PreviewDocStatePayload } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 
 import DeployControls from './DeployControls.vue'
-import { useCompileOnChange } from './use-compile-on-change'
+import { useCompileOnChange, type PreviewUiKit } from './use-compile-on-change'
 
 // docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
 // Message kinds: 'select' (overlay highlight, Alt/Option-click round-trip),
@@ -20,7 +20,14 @@ import { useCompileOnChange } from './use-compile-on-change'
 const INBOUND_SOURCE = 'op-lowcode-preview'
 const OUTBOUND_SOURCE = 'op-lowcode-editor'
 
-const { status, forceRecompile } = useCompileOnChange()
+const previewUiKit = ref<PreviewUiKit>('none')
+const previewI18nEnabled = ref(false)
+const previewLocalesInput = ref('')
+const { status, forceRecompile } = useCompileOnChange({
+  uiKit: previewUiKit,
+  i18nEnabled: previewI18nEnabled,
+  localesInput: previewLocalesInput
+})
 const store = useEditorStore()
 const collab = useCollabInjected()
 
@@ -35,6 +42,11 @@ const iframeEl = ref<HTMLIFrameElement | null>(null)
 let suppressOutboundNavigate = false
 
 function reload(): void {
+  forceRecompile()
+  iframeKey.value++
+}
+
+function recompilePreviewOptions(): void {
   forceRecompile()
   iframeKey.value++
 }
@@ -212,6 +224,10 @@ watch(
   }
 )
 
+watch([previewUiKit, previewI18nEnabled, previewLocalesInput], () => {
+  recompilePreviewOptions()
+})
+
 onMounted(() => {
   unsubscribeSelection = store.onEditorEvent('selection:changed', () => {
     postSelection()
@@ -236,6 +252,32 @@ onBeforeUnmount(() => {
     <div class="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-2">
       <span class="truncate text-xs text-muted">Preview · {{ statusLabel }}</span>
       <div class="flex shrink-0 items-center gap-1">
+        <label class="flex items-center gap-1 text-xs text-muted" title="Preview UI components">
+          <span>UI</span>
+          <select
+            v-model="previewUiKit"
+            data-test-id="lowcode-preview-uikit"
+            class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
+          >
+            <option value="none">Tailwind</option>
+            <option value="shadcn">shadcn</option>
+          </select>
+        </label>
+        <label
+          class="flex h-6 items-center gap-1 rounded px-1 text-xs text-muted hover:bg-hover"
+          title="Preview i18n"
+        >
+          <input v-model="previewI18nEnabled" type="checkbox" data-test-id="lowcode-preview-i18n" />
+          <span>i18n</span>
+        </label>
+        <input
+          v-if="previewI18nEnabled"
+          v-model="previewLocalesInput"
+          type="text"
+          data-test-id="lowcode-preview-locales"
+          placeholder="ar, fr"
+          class="h-6 w-20 rounded border border-border bg-input px-1 text-xs text-surface"
+        />
         <DeployControls />
         <button
           v-if="url"

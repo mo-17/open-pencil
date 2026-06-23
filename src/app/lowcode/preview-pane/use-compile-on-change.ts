@@ -26,7 +26,7 @@
 import { watchDebounced } from '@vueuse/core'
 import { onBeforeUnmount, ref, type Ref } from 'vue'
 
-import { compile, withDefaults } from '@open-pencil/compiler'
+import { compile, withDefaults, type CompilerOptions } from '@open-pencil/compiler'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { decodeTauriStderr } from '@/app/shell/ui'
@@ -59,6 +59,32 @@ const READY_TIMEOUT_MS = 15_000
 const DEBOUNCE_MS = 200
 
 const NOOP = (): void => undefined
+
+export type PreviewUiKit = 'none' | 'shadcn'
+
+export interface PreviewCompileSettings {
+  uiKit: Ref<PreviewUiKit>
+  i18nEnabled: Ref<boolean>
+  localesInput: Ref<string>
+}
+
+export function parsePreviewLocales(raw: string): string[] {
+  return raw
+    .split(/[,\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+}
+
+function previewCompilerOverrides(settings?: PreviewCompileSettings): Partial<CompilerOptions> {
+  if (!settings) return {}
+  const locales = parsePreviewLocales(settings.localesInput.value)
+  return {
+    ...(settings.uiKit.value === 'shadcn' ? { uiKit: 'shadcn' as const } : {}),
+    ...(settings.i18nEnabled.value
+      ? { i18n: true, ...(locales.length > 0 ? { locales } : {}) }
+      : {})
+  }
+}
 
 interface PreviewSidecar {
   url: string
@@ -204,7 +230,7 @@ interface UseCompileOnChangeResult {
  * Then debounce-watch `sceneVersion` and push fresh compiles on change.
  * Unmount: dispose the sidecar.
  */
-export function useCompileOnChange(): UseCompileOnChangeResult {
+export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompileOnChangeResult {
   const status = ref<PreviewStatus>({ kind: 'idle' })
 
   if (!isTauri()) {
@@ -230,7 +256,10 @@ export function useCompileOnChange(): UseCompileOnChangeResult {
       const out = compile({
         graph,
         pageIds,
-        options: withDefaults({ packageName: 'openpencil-preview' })
+        options: withDefaults({
+          packageName: 'openpencil-preview',
+          ...previewCompilerOverrides(settings)
+        })
       })
       for (const w of out.warnings) {
         console.warn(`[preview] ${w.code}: ${w.message}`)
