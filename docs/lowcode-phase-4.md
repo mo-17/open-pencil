@@ -67,21 +67,21 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 5   | **§19 表单校验**                               | 已完成               | **CODE COMPLETE 2026-06-23**;runtime、remote debounce/cancel、GUI、tool schema、E2E 已闭合。   | §19           |
 | 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 已完成               | **CODE COMPLETE 2026-06-21**;INPUT upload → Supabase Storage public URL 已闭合。               | §18           |
 | 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
-| 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | Phase A foundation + publish/import/update helpers + `publish_component` + headless CLI 已完成;GUI 仍未实现。 | §14           |
+| 8   | **§14 跨文件组件库 / 团队库**                  | 已完成(待真机 ACK)   | Phase A foundation + publish/import/update helpers + `publish_component` + CLI + local Libraries 面板已完成。 | §14           |
 | 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
 | 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-23**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options。      | §9 / §15      |
 | 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合。 | §7 / §8 / §10 |
 | 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
-> **当前未闭合**:#8 / #9 / #13。#8 已完成数据模型 + `.fig`
-> round-trip foundation + publish helper/tool + import/update helpers + headless CLI;GUI 仍剩余;#13 偏工程债;#9 有
-> blake3 依赖决策;#10/#11 只剩真机 ACK。
+> **当前未闭合**:#9 / #13。#8 已完成数据模型 + `.fig`
+> round-trip foundation + publish helper/tool + import/update helpers + headless CLI + local GUI;
+> 只剩真机 ACK / remote registry 后续增强。#13 偏工程债;#9 有 blake3 依赖决策;#10/#11 只剩真机 ACK。
 >
-> **下一步建议(2026-06-24 状态校准后)**:若继续 headless,优先继续 #8 §14
-> GUI Libraries 面板;或转 #9 CF Pages(需先锁 blake3 依赖)。
+> **下一步建议(2026-06-24 状态校准后)**:若继续 headless,转 #9 CF Pages(需先锁
+> blake3 依赖)或继续推迟 #13 Kiwi schema debt。若继续 GUI/真机,则安排 #8/#10/#11
+> 的 Tauri/浏览器 ACK。
 > #13 Kiwi schema 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
-> 若继续 GUI/真机,则安排 #10/#11 的 Tauri/浏览器 ACK。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
 
@@ -1111,7 +1111,7 @@ bun test \
 
 ## §14 跨文件组件库 / 团队库
 
-**现状**:§8 组件复用限单文件内 COMPONENT/INSTANCE(v1–v11 已闭合)。跨 .fig 文件 / 团队共享库的 **Phase A foundation + publish helper/tool + import/update helpers + headless CLI 已完成(2026-06-24)**:SceneNode 可承载 cached library master 元数据 + root library refs,并能经 `.fig` pluginData round-trip;`publish_component` 可标记库组件并返回 manifest entry;`importLibraryComponent` 可从库 graph/manifest 克隆 cached master 到消费 graph;`checkLibraryUpdates` / `acceptLibraryUpdate` 可检测并接受 manifest 版本更新;`open-pencil library publish/import/check/accept` 可做 manifest 文件 I/O 和消费文档写回。GUI 尚未实现。phase-3 §14 的完整设计仍适用。
+**现状**:§8 组件复用限单文件内 COMPONENT/INSTANCE(v1–v11 已闭合)。跨 .fig 文件 / 团队共享库的 **Phase A foundation + publish helper/tool + import/update helpers + headless CLI + local GUI 已完成(2026-06-24)**:SceneNode 可承载 cached library master 元数据 + root library refs,并能经 `.fig` pluginData round-trip;`publish_component` 可标记库组件并返回 manifest entry;`importLibraryComponent` 可从库 graph/manifest 克隆 cached master 到消费 graph;`checkLibraryUpdates` / `acceptLibraryUpdate` 可检测并接受 manifest 版本更新;`open-pencil library publish/import/check/accept` 可做 manifest 文件 I/O 和消费文档写回;右侧 `Libraries` 面板可加载 manifest/library 文件、显示 imported component 状态并接受更新。phase-3 §14 的完整设计仍适用。
 
 **地基(phase-3 §14 已勘)**:`SceneNode.componentKey: string | null`(Figma 库组件用全局 GUID 做跨文件身份,天然锚点);`componentId` 是文档内 master 链接;编译器侧零改动(§8 已能提取/复用本地 master,团队库纯 scene-graph + import + round-trip + 编辑器面板)。
 
@@ -1151,7 +1151,7 @@ bun test \
 
 **剩余**:
 
-1. GUI:`Libraries` 面板 + 更新角标 + readonly/detach 语义。
+1. 真机 ACK:本地 manifest/library 文件选择 + outdated 显示 + Accept update。
 
 ### §14 Phase A2 publish helper/tool 交付(2026-06-24)
 
@@ -1188,7 +1188,7 @@ bun test \
 
 **剩余**:
 
-1. GUI Libraries 面板。
+1. 真机 ACK:本地 manifest/library 文件选择 + outdated 显示 + Accept update。
 
 ### §14 Phase A3 import helper 交付(2026-06-24)
 
@@ -1216,7 +1216,7 @@ bun test \
 
 **剩余**:
 
-1. GUI Libraries 面板。
+1. 真机 ACK:本地 manifest/library 文件选择 + outdated 显示 + Accept update。
 
 ### §14 Phase A4 update check/accept helpers 交付(2026-06-24)
 
@@ -1246,7 +1246,7 @@ bun test \
 
 **剩余**:
 
-1. GUI Libraries 面板。
+1. 真机 ACK:本地 manifest/library 文件选择 + outdated 显示 + Accept update。
 
 ### §14 Phase A5 CLI manifest I/O 交付(2026-06-24)
 
@@ -1275,8 +1275,41 @@ bun test \
 
 **剩余**:
 
-1. GUI Libraries 面板 + 更新角标 + readonly/detach 语义。
-2. 可选:后续把 CLI source 支持从 local file 扩到 registry/url fetch。
+1. 真机 ACK:本地 manifest/library 文件选择 + outdated 显示 + Accept update。
+2. 可选:后续把 CLI/source 支持从 local file 扩到 registry/url fetch。
+
+### §14 Phase A6 local Libraries panel 交付(2026-06-24)
+
+**锁定范围**:右侧 Design panel 的 no-selection root-level `Libraries` 小入口。只做本地 manifest JSON + library `.fig/.pen` 文件流,不做 remote registry、不做 Tauri-only native dialog、不做 override 智能 remap。
+
+**实现**:
+
+- 新增 `LibrariesPanel.vue`,挂到 `DesignPanel` 无选中分支的 `WorkflowsPanel` 后。
+- 面板读取 root `lowcodeLibraries`,逐 imported component 显示:
+  - library/component key。
+  - current/latest version。
+  - `unknown` / `up-to-date` / `outdated` / `missing-manifest` / `missing-cached-master` status。
+  - source ref。
+- 支持两个本地文件输入:
+  - manifest JSON → `parseLibraryManifestText()` 轻量校验。
+  - library `.fig/.pen` → IORegistry `readDocument()` 解析 source graph。
+- `Accept update` 只在 row status 为 `outdated` 且 manifest/library 均已加载时可点;调用 `acceptLibraryUpdate()` 后 `computeAllLayouts()` + `requestRender()`。
+- GUI accept 使用整图 snapshot undo:接受前后各 `cloneSceneGraphForLibraryUndo()`,undo/redo 通过 `replaceGraph()` 恢复。第一版粒度偏大但保证正确,后续可优化为 cached subtree undo。
+
+**验证**:
+
+- `bun test tests/engine/app/library-panel.test.ts` → 3/0:
+  - manifest shape parser。
+  - imported row status unknown/outdated。
+  - undo snapshot clone 保留 root library refs 和 instance index。
+- `bun run check:vue` → exit 0。
+- `bun run lint:structure` → exit 0(仅既有 max-lines warnings)。
+
+**剩余**:
+
+1. 真机 ACK:在浏览器/Tauri 里用真实 manifest + library 文件验证 status 和 accept update。
+2. Remote registry/url fetch。
+3. 更细粒度 subtree undo / override remap。
 
 **风险**:**override 跨版本 index-path 错位** —— 库组件更新后,实例的 child-override key(`<childId>:<prop>`)可能指向已变的子树结构。设计阶段必须定 index 稳定性策略。**待锁**:库存储/引用机制(componentKey 注册表 vs 文件路径);版本/更新传播策略;关键 fork 走 AskUserQuestion。
 

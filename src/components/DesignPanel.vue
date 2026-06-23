@@ -15,6 +15,7 @@ import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
 import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
 import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
+import LibrariesPanel from './properties/Lowcode/LibrariesPanel.vue'
 import ValueBindingPanel from './properties/Lowcode/ValueBindingPanel.vue'
 import ValidationPanel from './properties/Lowcode/ValidationPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
@@ -158,6 +159,7 @@ const { panels } = useI18n()
     <SupabaseConfigPanel />
     <DocumentStatePanel />
     <WorkflowsPanel />
+    <LibrariesPanel />
     <TranslationsPanel />
     <VariablesSection @open-dialog="variablesOpen = true" />
     <ExportSection />
