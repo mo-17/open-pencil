@@ -1,6 +1,7 @@
 export { setEffects } from './modify/effects'
 export { setMinMax, setOpacity, setRadius, setRotation } from './modify/geometry'
 export { setConstraints, setLayout, setLayoutChild } from './modify/layout'
+export { publishComponent } from './modify/library'
 export {
   setDocStates,
   setSupabaseConfig,

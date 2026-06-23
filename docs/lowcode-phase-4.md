@@ -67,7 +67,7 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 5   | **§19 表单校验**                               | 已完成               | **CODE COMPLETE 2026-06-23**;runtime、remote debounce/cancel、GUI、tool schema、E2E 已闭合。   | §19           |
 | 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 已完成               | **CODE COMPLETE 2026-06-21**;INPUT upload → Supabase Storage public URL 已闭合。               | §18           |
 | 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
-| 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | Phase A foundation 已完成;发布/导入/更新工具、CLI、GUI 仍未实现。                              | §14           |
+| 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | Phase A foundation + `publish_component` 已完成;导入/更新工具、CLI、GUI 仍未实现。              | §14           |
 | 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
 | 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-23**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options。      | §9 / §15      |
 | 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合。 | §7 / §8 / §10 |
@@ -75,11 +75,11 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
 > **当前未闭合**:#8 / #9 / #13。#8 已完成数据模型 + `.fig`
-> round-trip foundation,但发布/导入/更新传播仍是大块;#13 偏工程债;#9 有
+> round-trip foundation + publish helper/tool,但导入/更新传播仍是大块;#13 偏工程债;#9 有
 > blake3 依赖决策;#10/#11 只剩真机 ACK。
 >
 > **下一步建议(2026-06-24 状态校准后)**:若继续 headless,优先继续 #8 §14
-> publish/import/update 工具链;或转 #9 CF Pages(需先锁 blake3 依赖)。
+> `import_library_component`;或转 #9 CF Pages(需先锁 blake3 依赖)。
 > #13 Kiwi schema 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
 > 若继续 GUI/真机,则安排 #10/#11 的 Tauri/浏览器 ACK。
 
@@ -1111,7 +1111,7 @@ bun test \
 
 ## §14 跨文件组件库 / 团队库
 
-**现状**:§8 组件复用限单文件内 COMPONENT/INSTANCE(v1–v11 已闭合)。跨 .fig 文件 / 团队共享库的 **Phase A foundation 已完成(2026-06-24)**:SceneNode 可承载 cached library master 元数据 + root library refs,并能经 `.fig` pluginData round-trip。发布/导入/更新传播工具、CLI、GUI 尚未实现。phase-3 §14 的完整设计仍适用。
+**现状**:§8 组件复用限单文件内 COMPONENT/INSTANCE(v1–v11 已闭合)。跨 .fig 文件 / 团队共享库的 **Phase A foundation + publish helper/tool 已完成(2026-06-24)**:SceneNode 可承载 cached library master 元数据 + root library refs,并能经 `.fig` pluginData round-trip;`publish_component` 可标记库组件并返回 manifest entry。导入/更新传播工具、CLI、GUI 尚未实现。phase-3 §14 的完整设计仍适用。
 
 **地基(phase-3 §14 已勘)**:`SceneNode.componentKey: string | null`(Figma 库组件用全局 GUID 做跨文件身份,天然锚点);`componentId` 是文档内 master 链接;编译器侧零改动(§8 已能提取/复用本地 master,团队库纯 scene-graph + import + round-trip + 编辑器面板)。
 
@@ -1151,11 +1151,50 @@ bun test \
 
 **剩余**:
 
-1. `publish_component`:分配/保留 `componentKey`,计算 subtree version,生成/更新 manifest。
-2. `import_library_component`:从本地 `.fig`/manifest 克隆 master subtree 入消费文档,标 readonly + 注册 `lowcodeLibraries`。
-3. `check_library_updates` / `accept_library_update`:对比 version,替换 cached master 子树并调用 `syncInstances(componentId)`。
-4. CLI:`open-pencil library publish/import/check/accept`。
-5. GUI:`Libraries` 面板 + 更新角标 + readonly/detach 语义。
+1. `import_library_component`:从本地 `.fig`/manifest 克隆 master subtree 入消费文档,标 readonly + 注册 `lowcodeLibraries`。
+2. `check_library_updates` / `accept_library_update`:对比 version,替换 cached master 子树并调用 `syncInstances(componentId)`。
+3. CLI:`open-pencil library publish/import/check/accept`。
+4. GUI:`Libraries` 面板 + 更新角标 + readonly/detach 语义。
+
+### §14 Phase A2 publish helper/tool 交付(2026-06-24)
+
+**锁定范围**:发布库文档里的 COMPONENT / COMPONENT_SET master。生成和返回 manifest 数据,并把 publish metadata 写回 master。消费文档导入、更新传播、manifest 文件 I/O 和 CLI 留后续。
+
+**实现**:
+
+- 新增 `packages/core/src/scene-graph/libraries.ts`:
+  - `publishLibraryComponent(graph, options)`
+  - `componentSubtreeVersion(graph, componentId)`
+  - `LibraryManifest` / `LibraryComponentManifestEntry` / publish result types
+- `publishLibraryComponent` 行为:
+  - 只接受 COMPONENT / COMPONENT_SET。
+  - `componentKey` 优先级:`options.componentKey` → `libraryComponentKey` → `componentKey` → 新生成 40-char hex。
+  - 写回 `componentKey`,并同步 `libraryComponentKey/libraryId/libraryVersion/libraryReadonly`。
+  - 返回 `{ component, manifest }`;manifest 可由后续 CLI/库文件写入磁盘。
+- `componentSubtreeVersion` 使用同步 deterministic structural hash:
+  - 保留子节点顺序和可见结构/样式字段。
+  - 排除 `id/parentId/source/pluginData/componentKey/libraryVersion/...` 等易漂移 publish 元数据。
+  - 输出形如 `v1-<16hex>`。
+- 新增 `publish_component` ToolDef:
+  - 参数:`component_id`, `library_id`, 可选 `library_name`, `component_key`, `source_kind`, `source_ref`, `readonly`。
+  - 返回 `{ ok:true, data:{ component, manifest } }`。
+  - 注册到 `EXTENDED_TOOLS`,不进入默认 `CORE_TOOLS`。
+
+**验证**:
+
+- `bun test tests/engine/scene-graph/libraries.test.ts` → 3/0。
+- `bun test tests/engine/tools/lowcode/library.test.ts` → 2/0。
+- `git diff --check` → exit 0。
+- `bun run check:vue` → exit 0。
+- `bun run lint:structure` → exit 0(仅既有 max-lines warnings)。
+- `bun run test:type-shapes` → 0 duplicate。
+
+**剩余**:
+
+1. `import_library_component`:从本地库 graph / manifest 导入 cached master 到消费 graph。
+2. `check_library_updates` / `accept_library_update`:版本对比 + cached master 替换 + instance sync。
+3. CLI manifest 文件 I/O。
+4. GUI Libraries 面板。
 
 **风险**:**override 跨版本 index-path 错位** —— 库组件更新后,实例的 child-override key(`<childId>:<prop>`)可能指向已变的子树结构。设计阶段必须定 index 稳定性策略。**待锁**:库存储/引用机制(componentKey 注册表 vs 文件路径);版本/更新传播策略;关键 fork 走 AskUserQuestion。
 

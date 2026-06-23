@@ -38,6 +38,14 @@ import type {
 
 export { cloneVectorNetwork, normalizeVectorNetwork, validateVectorNetwork } from './vector-network'
 export { parseVariantName, buildVariantName } from './variant-name'
+export {
+  componentSubtreeVersion,
+  publishLibraryComponent,
+  type LibraryComponentManifestEntry,
+  type LibraryManifest,
+  type PublishLibraryComponentOptions,
+  type PublishLibraryComponentResult
+} from './libraries'
 
 function removeStaleBindings(
   node: SceneNode,

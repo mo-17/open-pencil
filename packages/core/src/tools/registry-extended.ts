@@ -29,6 +29,7 @@ import {
   setLocked,
   setMinMax,
   setOpacity,
+  publishComponent,
   setRotation,
   setStrokeAlign,
   setTextResize,
@@ -137,6 +138,7 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   setLocked,
   setStrokeAlign,
   setImageFill,
+  publishComponent,
   // Structure (advanced)
   cloneNode,
   nodeMove,
