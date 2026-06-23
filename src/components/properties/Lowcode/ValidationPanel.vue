@@ -123,8 +123,7 @@ function cleanValidation(input: FieldValidation): FieldValidation {
     if (!next[key] || next[key]?.trim() === '') Reflect.deleteProperty(next, key)
   }
   for (const key of ['minLength', 'maxLength', 'min', 'max'] as const) {
-    if (next[key] === undefined) continue
-    if (!Number.isFinite(next[key])) Reflect.deleteProperty(next, key)
+    if (next[key] === undefined || !Number.isFinite(next[key])) Reflect.deleteProperty(next, key)
   }
   if (next.messages) {
     const messages = Object.fromEntries(
