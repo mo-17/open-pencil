@@ -407,6 +407,60 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     expect(css).toContain('background-image:url(./assets/openpencil-image-fig-image-1.png)')
   })
 
+  test('multiple image fills preserve per-layer order and geometry metadata', () => {
+    const graph: SceneGraph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.images.set('bottom-photo', PNG_BYTES)
+    graph.images.set('tile-pattern', PNG_BYTES)
+    graph.images.set('crop-photo', PNG_BYTES)
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'LayeredImages',
+      width: 200,
+      height: 100,
+      fills: [
+        { type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true },
+        {
+          type: 'IMAGE',
+          imageHash: 'bottom-photo',
+          imageScaleMode: 'FILL',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true
+        },
+        {
+          type: 'IMAGE',
+          imageHash: 'tile-pattern',
+          imageScaleMode: 'TILE',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true
+        },
+        {
+          type: 'IMAGE',
+          imageHash: 'crop-photo',
+          imageScaleMode: 'CROP',
+          imageTransform: { m00: 0.25, m01: 0, m02: 0.1, m10: 0, m11: 0.5, m12: 0.2 },
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'image-fill' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(
+      '[background-image:url(./assets/openpencil-image-crop-photo.png),url(./assets/openpencil-image-tile-pattern.png),url(./assets/openpencil-image-bottom-photo.png),linear-gradient(#FFFFFF,_#FFFFFF)]'
+    )
+    expect(app).toContain('[background-size:25%_50%,auto,cover,auto]')
+    expect(app).toContain('[background-position:left_10%_top_20%,center,center,0%_0%]')
+    expect(app).toContain('[background-repeat:no-repeat,repeat,no-repeat,no-repeat]')
+  })
+
   test('multiple visual fills can stack a diamond gradient fallback layer', () => {
     const graph: SceneGraph = makeSceneGraph()
     const pageId = firstPageId(graph)
