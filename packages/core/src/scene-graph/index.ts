@@ -40,7 +40,10 @@ export { cloneVectorNetwork, normalizeVectorNetwork, validateVectorNetwork } fro
 export { parseVariantName, buildVariantName } from './variant-name'
 export {
   componentSubtreeVersion,
+  importLibraryComponent,
   publishLibraryComponent,
+  type ImportLibraryComponentOptions,
+  type ImportLibraryComponentResult,
   type LibraryComponentManifestEntry,
   type LibraryManifest,
   type PublishLibraryComponentOptions,
