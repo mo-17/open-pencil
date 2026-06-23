@@ -275,6 +275,45 @@ describe('compile — shadcn display primitives (Phase 4 §22)', () => {
     expect(out.warnings.map((w) => w.code)).toContain('ui-kit-primitive-binding-bad-state-type')
   })
 
+  test('Tabs valueBinding rejects computed page state and falls back to defaultValue', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(pageId, {
+      state: [
+        { id: 's-base', name: 'baseTab', type: 'string', defaultValue: 'overview' },
+        {
+          id: 's-computed',
+          name: 'computedTab',
+          type: 'string',
+          defaultValue: 'settings',
+          computedExpr: 'baseTab'
+        }
+      ]
+    })
+    graph.createNode('FRAME', pageId, {
+      interactiveProps: {
+        uiKit: {
+          primitive: 'tabs',
+          defaultValue: 'overview',
+          valueBinding: { kind: 'ref', stateId: 's-computed' },
+          items: [
+            { value: 'overview', label: 'Overview', content: 'Project overview' },
+            { value: 'settings', label: 'Settings', content: 'Project settings' }
+          ]
+        }
+      }
+    })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain('const computedTab = useMemo(() => baseTab, [baseTab])')
+    expect(app).toContain('defaultValue="overview"')
+    expect(app).not.toContain('value={computedTab}')
+    expect(app).not.toContain('onValueChange={(value) => setComputedTab(value)}')
+    expect(out.warnings.map((w) => w.code)).toContain('ui-kit-primitive-binding-computed-state')
+  })
+
   test('no uiKit keeps primitive hints on the plain Tailwind path', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
