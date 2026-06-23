@@ -12,6 +12,7 @@
 // `configureServer` hook is a dev-only Vite lifecycle hook; it's a no-op during
 // `vite build`, so the same plugin instance serves both paths.
 
+import { Buffer } from 'node:buffer'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, posix } from 'node:path'
 
@@ -185,6 +186,15 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
       // middleware.
       server.middlewares.use((req, res, next) => {
         const url = (req.url ?? '/').split('?')[0]
+        const asset = lookupBinaryAsset(state.files, url)
+        if (asset) {
+          res.setHeader('Content-Type', asset.contentType)
+          res.setHeader('Content-Length', String(asset.bytes.byteLength))
+          res.setHeader('Connection', 'close')
+          res.statusCode = 200
+          res.end(Buffer.from(asset.bytes))
+          return
+        }
         if (url !== '/' && url !== '/index.html') return next()
         const html = state.files.get('index.html')
         if (typeof html !== 'string') return next()
@@ -201,4 +211,29 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
       })
     }
   }
+}
+
+function lookupBinaryAsset(
+  files: PreviewFiles,
+  urlPath: string
+): { bytes: Uint8Array; contentType: string } | null {
+  const rel = stripQuery(urlPath.replace(/^\/+/, ''))
+  const candidates = rel.startsWith('assets/') ? [rel, `src/${rel}`] : [rel]
+  for (const candidate of candidates) {
+    const content = files.get(candidate)
+    if (content instanceof Uint8Array) {
+      return { bytes: content, contentType: contentTypeForPath(candidate) }
+    }
+  }
+  return null
+}
+
+function contentTypeForPath(path: string): string {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.svg')) return 'image/svg+xml'
+  return 'application/octet-stream'
 }

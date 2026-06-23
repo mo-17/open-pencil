@@ -876,6 +876,17 @@ transform 映射的 `(0.5,0.5)` 推导,比默认 conic 更接近 CanvasKit sweep
 保持旧紧凑 `bg-[url]`/`bg-[gradient]` 输出以降低回归面。验证:
 `bun test tests/engine/compiler/images.test.ts`。
 
+**§24.8 image runtime smoke + preview asset serving(CODE COMPLETE 2026-06-23)**:
+补上低代码 preview dev-server 的运行时 smoke。测试构造一个页面同时包含
+responsive `<picture>` image node 和 multi-background image/gradient/solid fill,把
+compiler VFS 推给 `createPreviewServer`,再请求 Vite 转换后的 `src/index.css` 和
+image asset URL。修复点:`inMemoryVFS.configureServer` 现在会服务 VFS 里的
+`Uint8Array` 二进制文件,包括 `/src/assets/...` 以及 CSS `url(./assets/...)`
+在根路径下解析出的 `/assets/...`,并返回正确 image content-type。`PreviewServer.close()`
+也主动关闭底层 HTTP keep-alive connections,避免 runtime smoke 结束时挂住。验证:
+`bun test tests/engine/compiler/preview/image-runtime.test.ts`、
+`bun test tests/engine/compiler/preview/hmr.test.ts`。
+
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
 ## §25 外链 `<a href>` + target

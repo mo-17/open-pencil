@@ -186,7 +186,10 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       server.ws.send({ type: 'update', updates })
     },
     async close() {
-      await server.close()
+      const closed = server.close()
+      server.httpServer?.closeIdleConnections?.()
+      server.httpServer?.closeAllConnections?.()
+      await closed
     }
   }
 }

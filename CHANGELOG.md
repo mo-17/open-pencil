@@ -12,6 +12,7 @@
 - Add conic-gradient emission for imported Figma angular gradient fills.
 - Preserve axis-aligned crop transforms for imported Figma image fills in compiled background CSS.
 - Stack multiple imported visual fills as one compiled CSS multi-background.
+- Serve compiled image-fill assets from the lowcode preview dev server.
 - Scope lowcode workflows to an optional page so the workflow editor validates page-local state against the intended page instead of the currently selected page.
 - Validate lowcode controlled form fields on change with the next input value while preserving writer-first user `onChange` composition.
 - Add opt-in lowcode FORM validation summaries for aggregated field errors.
