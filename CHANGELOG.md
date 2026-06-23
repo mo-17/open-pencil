@@ -25,6 +25,7 @@
 - Add a lowcode validation authoring panel and support validated fields inside components.
 - Debounce lowcode remote field validation on blur and cancel stale remote requests before applying field errors.
 - Validate lowcode form validation configs at the AI tool boundary before persisting interactive props.
+- Avoid emitting localStorage persistence helpers when no document state is marked persistent.
 
 ### Fixes
 

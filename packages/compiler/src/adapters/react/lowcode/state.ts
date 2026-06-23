@@ -48,6 +48,12 @@ export function buildLowcodeStateRuntime(
     .join(',\n')
   const persisted = sorted.filter((d) => d.persist === true)
   const persistBlock = buildPersistenceBlock(persisted, packageName)
+  const persistSubscribe =
+    persisted.length > 0
+      ? `
+subscribePersistedDocState(store)
+`
+      : ''
   const initialFields = sorted
     .map((d) => {
       const value =
@@ -74,8 +80,7 @@ ${initialFields}
 }
 
 const store = createStore<DocState>(() => initial)
-
-subscribePersistedDocState(store)
+${persistSubscribe}
 
 // Phase 3 §4.6 — expose the store so the dev-mode preview bridge can mirror
 // runtime docState across collaborators. Harmless in prod (no bridge reads it).
@@ -109,16 +114,14 @@ export function getDocStateSnapshot<K extends keyof DocState>(name: K): DocState
 }
 
 function buildPersistenceBlock(decls: readonly IRDocStateDecl[], packageName: string): string {
-  const configFields =
-    decls.length === 0
-      ? ''
-      : decls
-          .map((d) => {
-            const key = d.storageKey ?? `openpencil:${packageName}:${d.name}`
-            const version = d.storageVersion ?? null
-            return `  ${d.name}: { key: ${JSON.stringify(key)}, version: ${JSON.stringify(version)} }`
-          })
-          .join(',\n')
+  if (decls.length === 0) return ''
+  const configFields = decls
+    .map((d) => {
+      const key = d.storageKey ?? `openpencil:${packageName}:${d.name}`
+      const version = d.storageVersion ?? null
+      return `  ${d.name}: { key: ${JSON.stringify(key)}, version: ${JSON.stringify(version)} }`
+    })
+    .join(',\n')
   const persistedNames = `[${decls.map((d) => JSON.stringify(d.name)).join(', ')}]`
   return `const persistConfig: Partial<Record<keyof DocState, { key: string; version: string | null }>> = {
 ${configFields}

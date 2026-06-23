@@ -93,6 +93,18 @@ describe('buildLowcodeStateRuntime (Phase 2 §2)', () => {
     expect(out).toContain('(prev: DocState[K]) => DocState[K]')
   })
 
+  test('unpersisted declarations do not emit localStorage helpers', () => {
+    const decls: IRDocStateDecl[] = [
+      { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }
+    ]
+    const out = buildLowcodeStateRuntime(decls)
+    expect(out).toContain('cartCount: initialDefaults.cartCount')
+    expect(out).not.toContain('persistConfig')
+    expect(out).not.toContain('readPersisted')
+    expect(out).not.toContain('window.localStorage')
+    expect(out).not.toContain('subscribePersistedDocState')
+  })
+
   test('persisted declarations read and write localStorage with a package-scoped key', () => {
     const decls: IRDocStateDecl[] = [
       { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0, persist: true },
