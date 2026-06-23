@@ -13,7 +13,7 @@
 // COMPONENT masters (Card / Panel) live on a separate "Components" page so they
 // don't overlap the demo at the canvas origin.
 //
-//   bun tools/lowcode/src/make-realmachine-testdoc.ts
+//   bun tools/lowcode/src/make/realmachine-testdoc.ts
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/core/scene-graph'
@@ -228,6 +228,6 @@ text(s7.id, 'Desktop ≥md', { visible: false, responsiveOverrides: { md: { visi
 // ── write ────────────────────────────────────────────────────────────────────
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const result = await io.writeDocument('fig', graph)
-const out = `${import.meta.dir}/../../../packages/demos/lowcode/lowcode-realmachine-test.fig`
+const out = `${import.meta.dir}/../../../../packages/demos/lowcode/lowcode-realmachine-test.fig`
 await Bun.write(out, result.data as Uint8Array)
 console.log('wrote', out, (result.data as Uint8Array).length, 'bytes')

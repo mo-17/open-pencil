@@ -14,7 +14,7 @@
 // carries glyph geometry + fontDigest -- otherwise headless Bun emits empty
 // glyphs and Figma shows no text.
 //
-//   bun tools/lowcode/src/make-v7-testdoc.ts
+//   bun tools/lowcode/src/make/v7-testdoc.ts
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/core/scene-graph'
@@ -143,6 +143,6 @@ await fontManager.loadFont('Inter', 'SemiBold')
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const result = await io.writeDocument('fig', graph)
-const out = `${import.meta.dir}/../../../packages/demos/lowcode/lowcode-v7-test.fig`
+const out = `${import.meta.dir}/../../../../packages/demos/lowcode/lowcode-v7-test.fig`
 await Bun.write(out, result.data as Uint8Array)
 console.log(`wrote ${out} (${(result.data as Uint8Array).byteLength} bytes)`)

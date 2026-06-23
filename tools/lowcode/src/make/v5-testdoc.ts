@@ -52,6 +52,6 @@ graph.createNode('RADIO', pageId, {
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const result = await io.writeDocument('fig', graph)
-const out = `${import.meta.dir}/../../../packages/demos/lowcode/lowcode-v5-test.fig`
+const out = `${import.meta.dir}/../../../../packages/demos/lowcode/lowcode-v5-test.fig`
 await Bun.write(out, result.data as Uint8Array)
 console.log(`wrote ${out}`)

@@ -5,7 +5,7 @@
 //   C1 FILL axis sizing · C2 strokesIncludedInLayout · C3 GRID tracks+placement
 //   C4 counterAxisAlignContent SPACE_BETWEEN · C5 nested HUG child position
 //
-//   bun tools/lowcode/src/make-layout-roundtrip-testdoc.ts
+//   bun tools/lowcode/src/make/layout-roundtrip-testdoc.ts
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import { SceneGraph } from '@open-pencil/core/scene-graph'
@@ -201,6 +201,6 @@ for (let i = 0; i < 4; i++) {
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 const result = await io.writeDocument('fig', graph)
-const out = `${import.meta.dir}/../../../packages/demos/lowcode/layout-roundtrip-test.fig`
+const out = `${import.meta.dir}/../../../../packages/demos/lowcode/layout-roundtrip-test.fig`
 await Bun.write(out, result.data as Uint8Array)
 console.log(`wrote ${out} (${(result.data as Uint8Array).byteLength} bytes)`)
