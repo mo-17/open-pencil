@@ -908,6 +908,18 @@ layer,保留同节点上可表达的 SOLID/IMAGE/GRADIENT layers);
 CSS mask/mix-blend-mode emit,因为 Figma mask stack、per-fill blend 与 CSS stacking
 context 不是一一等价。验证:`bun test tests/engine/compiler/images.test.ts`。
 
+**§24.11 browser pixel smoke(CODE COMPLETE 2026-06-23)**:preview
+新增真实 Chromium preview pixel smoke:
+`tests/engine/compiler/preview/browser-pixel.test.ts`。测试启动 `createPreviewServer`,
+把 compiler VFS 推进 Vite preview,打开页面后对三个 `data-node-id` 元素做 clip
+screenshot 并解码 PNG 像素:① `<picture>` 在 360px viewport 命中 mobile `<source>`
+并采样蓝色;② multi-background `SOLID+GRADIENT_LINEAR` 顶部采样红>蓝、底部蓝>红;
+③ native `IMAGE` fill 通过同源 SVG asset 渲染并采样绿色。PNG 解码只在测试内使用
+`fflate` 解 IDAT,不引入新运行时依赖。普通 sandbox 会因 `127.0.0.1` listen 被拦,
+需要提升权限运行。验证:`bun test tests/engine/compiler/preview/browser-pixel.test.ts`
+以及 preview smoke 组合
+`bun test tests/engine/compiler/preview/browser-pixel.test.ts tests/engine/compiler/preview/image-runtime.test.ts tests/engine/compiler/preview/hmr.test.ts`。
+
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
 ## §25 外链 `<a href>` + target

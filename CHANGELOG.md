@@ -12,6 +12,7 @@
 - Add conic-gradient emission for imported Figma angular gradient fills.
 - Approximate imported Figma diamond gradient fills in compiled CSS.
 - Warn when lowcode compile skips unsupported visual fills, masks, or blend semantics.
+- Add browser pixel smoke coverage for lowcode preview image and background rendering.
 - Preserve axis-aligned crop transforms for imported Figma image fills in compiled background CSS.
 - Stack multiple imported visual fills as one compiled CSS multi-background.
 - Serve compiled image-fill assets from the lowcode preview dev server.
