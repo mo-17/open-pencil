@@ -931,6 +931,14 @@ emit class。compiler 不再对这些可映射的 node-level blend 发
 映射到单个 DOM 节点的 `mix-blend-mode`。验证:
 `bun test tests/engine/render/jsx/blend-mode.test.ts tests/engine/compiler/images.test.ts`。
 
+**§24.13 blend browser pixel smoke(CODE COMPLETE 2026-06-23)**:preview
+`tests/engine/compiler/preview/browser-pixel.test.ts` 现在同时覆盖 node-level blend 的真实
+浏览器 compositing:在同一 preview 页面创建重叠红/蓝矩形,上层节点使用
+`blendMode:'MULTIPLY'`,测试对上层 `data-node-id` clip screenshot 解码像素并确认中心
+接近黑色,同时读取 `getComputedStyle(...).mixBlendMode === 'multiply'`。这补齐了 §24.12
+的运行时验证,避免只停留在 class/safelist 字符串断言。验证:
+`bun test tests/engine/compiler/preview/browser-pixel.test.ts`。
+
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
 ## §25 外链 `<a href>` + target

@@ -86,18 +86,40 @@ function buildBrowserSmokeFiles(): { files: Map<string, string | Uint8Array>; id
     ]
   })
 
+  graph.createNode('RECTANGLE', pageId, {
+    name: 'BlendBaseSmoke',
+    x: 8,
+    y: 110,
+    width: 80,
+    height: 80,
+    fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+  })
+  const blended = graph.createNode('RECTANGLE', pageId, {
+    name: 'BlendMultiplySmoke',
+    x: 8,
+    y: 110,
+    width: 80,
+    height: 80,
+    blendMode: 'MULTIPLY',
+    fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 }, opacity: 1, visible: true }]
+  })
+
   const files = compile({
     graph,
     pageIds: [pageId],
     options: withDefaults({ packageName: 'browser-pixel-smoke' })
   }).files
-  return { files, ids: { picture: picture.id, layered: layered.id, imageFill: imageFill.id } }
+  return {
+    files,
+    ids: { picture: picture.id, layered: layered.id, imageFill: imageFill.id, blended: blended.id }
+  }
 }
 
 interface SmokeIds {
   picture: string
   layered: string
   imageFill: string
+  blended: string
 }
 
 describe('preview browser pixels — image and visual fills (Phase 4 §24)', () => {
@@ -108,7 +130,7 @@ describe('preview browser pixels — image and visual fills (Phase 4 §24)', () 
   beforeEach(async () => {
     server = await createPreviewServer({})
     browser = await chromium.launch()
-    page = await browser.newPage({ viewport: { width: 360, height: 160 }, deviceScaleFactor: 1 })
+    page = await browser.newPage({ viewport: { width: 360, height: 220 }, deviceScaleFactor: 1 })
   })
 
   afterEach(async () => {
@@ -120,7 +142,7 @@ describe('preview browser pixels — image and visual fills (Phase 4 §24)', () 
     server = null
   })
 
-  test('renders picture, multi-background gradient, and image-fill asset pixels', async () => {
+  test('renders picture, multi-background, image-fill, and blend pixels', async () => {
     if (!server || !page) throw new Error('missing preview test runtime')
     const { files, ids } = buildBrowserSmokeFiles()
     server.updateFiles(files)
@@ -138,6 +160,14 @@ describe('preview browser pixels — image and visual fills (Phase 4 §24)', () 
 
     const imageFill = await elementImage(page, ids.imageFill)
     expect(colorAt(imageFill, 40, 40)).toEqual([0, 255, 0, 255])
+
+    const blended = await elementImage(page, ids.blended)
+    expectRgbNear(colorAt(blended, 40, 40), [0, 0, 0], 4)
+
+    const blendMode = await page.locator(nodeSelector(ids.blended)).evaluate((el) => {
+      return getComputedStyle(el as HTMLElement).mixBlendMode
+    })
+    expect(blendMode).toBe('multiply')
 
     const backgroundImage = await page.locator(nodeSelector(ids.layered)).evaluate((el) => {
       return getComputedStyle(el as HTMLElement).backgroundImage
@@ -197,6 +227,17 @@ function colorAt(image: PngImage, x: number, y: number): [number, number, number
     image.data[index + 2] ?? 0,
     image.data[index + 3] ?? 0
   ]
+}
+
+function expectRgbNear(
+  actual: [number, number, number, number],
+  expected: [number, number, number],
+  tolerance: number
+): void {
+  for (let i = 0; i < expected.length; i++) {
+    expect(Math.abs((actual[i] ?? 0) - expected[i])).toBeLessThanOrEqual(tolerance)
+  }
+  expect(actual[3]).toBe(255)
 }
 
 function decodePng(bytes: Uint8Array): PngImage {
