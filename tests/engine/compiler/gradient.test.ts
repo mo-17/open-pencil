@@ -106,6 +106,37 @@ describe('compile — gradient fills (Phase 4 §24.2)', () => {
     expect(css).toContain('radial-gradient(circle_at_50%_50%,_#FF0000_0%,_#0000FF_100%)')
   })
 
+  test('fractional gradient stops compile and seed the safelist', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'Stops',
+      width: 100,
+      height: 100,
+      fills: [
+        {
+          type: 'GRADIENT_LINEAR',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          gradientStops: [
+            { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+            { color: { r: 0, g: 1, b: 0, a: 1 }, position: 1 / 3 },
+            { color: { r: 0, g: 0, b: 1, a: 1 }, position: 0.875 }
+          ],
+          gradientTransform: { m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }
+        }
+      ]
+    })
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'g' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const css = out.files.get('src/index.css') as string
+    const gradient = 'linear-gradient(180deg,_#FF0000_0%,_#00FF00_33.333%,_#0000FF_87.5%)'
+
+    expect(app).toContain(`bg-[${gradient}]`)
+    expect(css).toContain(gradient)
+  })
+
   test('a node without a gradient fill emits no gradient class', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

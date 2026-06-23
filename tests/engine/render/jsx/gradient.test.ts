@@ -141,6 +141,22 @@ describe('jsx — gradient fills (Phase 4 §24.2)', () => {
     void cls
   })
 
+  test('fractional stop positions are rounded and stripped', () => {
+    const cls = gradientClass({
+      type: 'GRADIENT_LINEAR',
+      color: { r: 0, g: 0, b: 0, a: 1 },
+      opacity: 1,
+      visible: true,
+      gradientStops: [
+        { color: RED, position: 0 },
+        { color: { r: 0, g: 1, b: 0, a: 1 }, position: 1 / 3 },
+        { color: BLUE, position: 0.875 }
+      ],
+      gradientTransform: { m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }
+    })
+    expect(cls).toBe('bg-[linear-gradient(180deg,_#FF0000_0%,_#00FF00_33.333%,_#0000FF_87.5%)]')
+  })
+
   test('TEXT node with a gradient fill → no bg-gradient class (gradient there is text color)', () => {
     const cls = gradientClass(
       linearFill({ m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }),
