@@ -39,13 +39,20 @@ import type {
 export { cloneVectorNetwork, normalizeVectorNetwork, validateVectorNetwork } from './vector-network'
 export { parseVariantName, buildVariantName } from './variant-name'
 export {
+  acceptLibraryUpdate,
+  checkLibraryUpdates,
   componentSubtreeVersion,
   importLibraryComponent,
   publishLibraryComponent,
+  type AcceptLibraryUpdateOptions,
+  type AcceptLibraryUpdateResult,
+  type CheckLibraryUpdatesOptions,
   type ImportLibraryComponentOptions,
   type ImportLibraryComponentResult,
   type LibraryComponentManifestEntry,
   type LibraryManifest,
+  type LibraryUpdateCheck,
+  type LibraryUpdateStatus,
   type PublishLibraryComponentOptions,
   type PublishLibraryComponentResult
 } from './libraries'

@@ -69,6 +69,41 @@ export interface ImportLibraryComponentResult {
   libraryRef: LibraryRef
 }
 
+export type LibraryUpdateStatus =
+  | 'up-to-date'
+  | 'outdated'
+  | 'missing-manifest'
+  | 'missing-cached-master'
+
+export interface LibraryUpdateCheck {
+  libraryId: string
+  componentKey: string
+  status: LibraryUpdateStatus
+  cachedNodeId?: string
+  currentVersion?: string
+  latestVersion?: string
+}
+
+export interface CheckLibraryUpdatesOptions {
+  targetGraph: SceneGraph
+  manifest: LibraryManifest
+}
+
+export interface AcceptLibraryUpdateOptions {
+  sourceGraph: SceneGraph
+  targetGraph: SceneGraph
+  manifest: LibraryManifest
+  componentKey: string
+}
+
+export interface AcceptLibraryUpdateResult {
+  component: LibraryComponentManifestEntry
+  cachedNodeId: string
+  previousVersion?: string
+  libraryRef: LibraryRef
+  warnings: string[]
+}
+
 export function publishLibraryComponent(
   graph: SceneGraph,
   options: PublishLibraryComponentOptions
@@ -116,11 +151,9 @@ export function publishLibraryComponent(
 export function importLibraryComponent(
   options: ImportLibraryComponentOptions
 ): ImportLibraryComponentResult | { error: string } {
-  const manifestEntry = options.manifest.components.find(
-    (component) => component.key === options.componentKey
-  )
+  const manifestEntry = findManifestEntry(options.manifest, options.componentKey)
   if (!manifestEntry) {
-    return { error: `Component key "${options.componentKey}" not found in library manifest` }
+    return missingManifestEntryError(options.componentKey)
   }
   const source = options.source ?? options.manifest.source
   if (!source) return { error: 'library source is required to register imported components' }
@@ -145,13 +178,7 @@ export function importLibraryComponent(
   )
   if (!clone) return { error: `Failed to clone source component "${manifestEntry.key}"` }
   copyReferencedImages(options.sourceGraph, options.targetGraph, sourceRoot.id)
-  options.targetGraph.updateNode(clone.id, {
-    componentKey: manifestEntry.key,
-    libraryComponentKey: manifestEntry.key,
-    libraryId: options.manifest.libraryId,
-    libraryVersion: manifestEntry.version,
-    libraryReadonly: true
-  })
+  applyLibraryComponentMetadata(options.targetGraph, clone.id, options.manifest, manifestEntry)
 
   const libraryRef = upsertImportedLibraryRef(
     options.targetGraph,
@@ -163,10 +190,150 @@ export function importLibraryComponent(
   return { component: manifestEntry, importedNodeId: clone.id, libraryRef }
 }
 
+export function checkLibraryUpdates(options: CheckLibraryUpdatesOptions): LibraryUpdateCheck[] {
+  const root = options.targetGraph.getNode(options.targetGraph.rootId)
+  const libraryRef = root?.lowcodeLibraries?.find(
+    (library) => library.libraryId === options.manifest.libraryId
+  )
+  if (!libraryRef) return []
+
+  return libraryRef.importedComponents.map((imported) => {
+    const manifestEntry = options.manifest.components.find(
+      (component) => component.key === imported.key
+    )
+    if (!manifestEntry) {
+      return {
+        libraryId: options.manifest.libraryId,
+        componentKey: imported.key,
+        status: 'missing-manifest',
+        currentVersion: imported.version
+      }
+    }
+
+    const cachedMaster = findCachedLibraryMaster(
+      options.targetGraph,
+      options.manifest.libraryId,
+      imported.key
+    )
+    if (!cachedMaster) {
+      return {
+        libraryId: options.manifest.libraryId,
+        componentKey: imported.key,
+        status: 'missing-cached-master',
+        currentVersion: imported.version,
+        latestVersion: manifestEntry.version
+      }
+    }
+
+    const currentVersion = cachedMaster.libraryVersion ?? imported.version
+    return {
+      libraryId: options.manifest.libraryId,
+      componentKey: imported.key,
+      status: currentVersion === manifestEntry.version ? 'up-to-date' : 'outdated',
+      cachedNodeId: cachedMaster.id,
+      currentVersion,
+      latestVersion: manifestEntry.version
+    }
+  })
+}
+
+export function acceptLibraryUpdate(
+  options: AcceptLibraryUpdateOptions
+): AcceptLibraryUpdateResult | { error: string } {
+  const manifestEntry = findManifestEntry(options.manifest, options.componentKey)
+  if (!manifestEntry) {
+    return missingManifestEntryError(options.componentKey)
+  }
+
+  const cachedMaster = findCachedLibraryMaster(
+    options.targetGraph,
+    options.manifest.libraryId,
+    manifestEntry.key
+  )
+  if (!cachedMaster) {
+    return { error: `Cached component "${manifestEntry.key}" not found in target graph` }
+  }
+  if (cachedMaster.type !== manifestEntry.type) {
+    return {
+      error: `Cached component "${manifestEntry.key}" type changed from ${cachedMaster.type} to ${manifestEntry.type}`
+    }
+  }
+
+  const sourceRoot = resolveManifestComponent(options.sourceGraph, manifestEntry)
+  if (!sourceRoot) {
+    return { error: `Source component "${manifestEntry.key}" not found in source graph` }
+  }
+  if (sourceRoot.type !== cachedMaster.type) {
+    return {
+      error: `Source component "${manifestEntry.key}" type changed from ${cachedMaster.type} to ${sourceRoot.type}`
+    }
+  }
+  const source =
+    options.manifest.source ?? findLibraryRefSource(options.targetGraph, options.manifest.libraryId)
+  if (!source) return { error: 'library source is required to update imported components' }
+
+  const previousVersion = cachedMaster.libraryVersion
+  const warnings =
+    componentStructureSignature(options.targetGraph, cachedMaster.id) ===
+    componentStructureSignature(options.sourceGraph, sourceRoot.id)
+      ? []
+      : ['Component structure changed; existing instance overrides were not remapped']
+
+  replaceCachedMasterSubtree(options.sourceGraph, options.targetGraph, sourceRoot.id, cachedMaster)
+  copyReferencedImages(options.sourceGraph, options.targetGraph, sourceRoot.id)
+  applyLibraryComponentMetadata(
+    options.targetGraph,
+    cachedMaster.id,
+    options.manifest,
+    manifestEntry
+  )
+  const libraryRef = upsertImportedLibraryRef(
+    options.targetGraph,
+    options.manifest,
+    source,
+    manifestEntry
+  )
+  options.targetGraph.syncInstances(cachedMaster.id)
+
+  return {
+    component: manifestEntry,
+    cachedNodeId: cachedMaster.id,
+    previousVersion,
+    libraryRef,
+    warnings
+  }
+}
+
 export function componentSubtreeVersion(graph: SceneGraph, componentId: string): string {
   const node = graph.getNode(componentId)
   if (!node) return 'v0-missing'
   return `v1-${hashString(stableStringify(normalizeNode(graph, node)))}`
+}
+
+function findManifestEntry(
+  manifest: LibraryManifest,
+  componentKey: string
+): LibraryComponentManifestEntry | undefined {
+  return manifest.components.find((component) => component.key === componentKey)
+}
+
+function missingManifestEntryError(componentKey: string): { error: string } {
+  return { error: `Component key "${componentKey}" not found in library manifest` }
+}
+
+function applyLibraryComponentMetadata(
+  graph: SceneGraph,
+  nodeId: string,
+  manifest: LibraryManifest,
+  entry: LibraryComponentManifestEntry
+): void {
+  graph.updateNode(nodeId, {
+    componentKey: entry.key,
+    libraryComponentKey: entry.key,
+    libraryId: manifest.libraryId,
+    libraryVersion: entry.version,
+    libraryReadonly: true
+  })
 }
 
 function resolveManifestComponent(
@@ -179,6 +346,19 @@ function resolveManifestComponent(
     (node) =>
       (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') &&
       (node.libraryComponentKey === entry.key || node.componentKey === entry.key)
+  )
+}
+
+function findCachedLibraryMaster(
+  graph: SceneGraph,
+  libraryId: string,
+  componentKey: string
+): SceneNode | undefined {
+  return [...graph.getAllNodes()].find(
+    (node) =>
+      (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') &&
+      node.libraryId === libraryId &&
+      (node.libraryComponentKey === componentKey || node.componentKey === componentKey)
   )
 }
 
@@ -212,6 +392,61 @@ function cloneSubtree(
     cloneSubtree(sourceGraph, targetGraph, childId, clone.id, idMap)
   }
   return clone
+}
+
+function replaceCachedMasterSubtree(
+  sourceGraph: SceneGraph,
+  targetGraph: SceneGraph,
+  sourceId: string,
+  cachedMaster: SceneNode
+): void {
+  const source = sourceGraph.getNode(sourceId)
+  if (!source) return
+  if (
+    componentStructureSignature(sourceGraph, source.id) ===
+    componentStructureSignature(targetGraph, cachedMaster.id)
+  ) {
+    replaceMatchingSubtreeInPlace(sourceGraph, targetGraph, source, cachedMaster)
+    return
+  }
+  const childIds = [...cachedMaster.childIds]
+  for (const childId of childIds) targetGraph.deleteNode(childId)
+  const props = cloneNodeProps(source, null)
+  props.source = { ...(props.source as SourceMetadata), id: null, orderKey: null }
+  props.componentId = null
+  targetGraph.updateNode(cachedMaster.id, props)
+  const idMap = new Map<string, string>([[source.id, cachedMaster.id]])
+  for (const childId of source.childIds) {
+    cloneSubtree(sourceGraph, targetGraph, childId, cachedMaster.id, idMap)
+  }
+  remapClonedComponentIds(sourceGraph, targetGraph, idMap)
+}
+
+function replaceMatchingSubtreeInPlace(
+  sourceGraph: SceneGraph,
+  targetGraph: SceneGraph,
+  sourceRoot: SceneNode,
+  targetRoot: SceneNode
+): void {
+  const pairs: Array<{ source: SceneNode; target: SceneNode }> = []
+  const idMap = new Map<string, string>()
+  const collectPairs = (source: SceneNode, target: SceneNode): void => {
+    pairs.push({ source, target })
+    idMap.set(source.id, target.id)
+    for (let i = 0; i < source.childIds.length; i++) {
+      const sourceChild = sourceGraph.getNode(source.childIds[i] ?? '')
+      const targetChild = targetGraph.getNode(target.childIds[i] ?? '')
+      if (sourceChild && targetChild) collectPairs(sourceChild, targetChild)
+    }
+  }
+  collectPairs(sourceRoot, targetRoot)
+
+  for (const { source, target } of pairs) {
+    const props = cloneNodeProps(source, null)
+    props.source = { ...(props.source as SourceMetadata), id: null, orderKey: null }
+    props.componentId = source.componentId ? (idMap.get(source.componentId) ?? null) : null
+    targetGraph.updateNode(target.id, props)
+  }
 }
 
 function remapClonedComponentIds(
@@ -286,6 +521,30 @@ function upsertImportedLibraryRef(
   if (!existing) libraries.push(libraryRef)
   targetGraph.updateNode(targetGraph.rootId, { lowcodeLibraries: libraries })
   return libraryRef
+}
+
+function findLibraryRefSource(
+  targetGraph: SceneGraph,
+  libraryId: string
+): LibraryRef['source'] | undefined {
+  const root = targetGraph.getNode(targetGraph.rootId)
+  return root?.lowcodeLibraries?.find((library) => library.libraryId === libraryId)?.source
+}
+
+function componentStructureSignature(graph: SceneGraph, rootId: string): string {
+  const node = graph.getNode(rootId)
+  if (!node) return ''
+  return stableStringify(structureSignature(graph, node))
+}
+
+function structureSignature(graph: SceneGraph, node: SceneNode): unknown {
+  return {
+    type: node.type,
+    children: node.childIds
+      .map((childId) => graph.getNode(childId))
+      .filter((child): child is SceneNode => child !== undefined)
+      .map((child) => structureSignature(graph, child))
+  }
 }
 
 function normalizeNode(graph: SceneGraph, node: SceneNode): Record<string, unknown> {

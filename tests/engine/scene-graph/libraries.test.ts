@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  acceptLibraryUpdate,
+  checkLibraryUpdates,
   componentSubtreeVersion,
   importLibraryComponent,
   publishLibraryComponent,
@@ -270,8 +272,229 @@ describe('team-library scene-graph helpers (Phase 4 §14)', () => {
       })
     ).toEqual({ error: 'Source component "missing-card" not found in source graph' })
   })
+
+  test('checks imported library component update status', () => {
+    const { sourceGraph, targetGraph, component, importedNodeId, first } = createImportedCard()
+
+    expect(checkLibraryUpdates({ targetGraph, manifest: first.manifest })).toEqual([
+      {
+        libraryId: 'design-system',
+        componentKey: 'component-card',
+        status: 'up-to-date',
+        cachedNodeId: importedNodeId,
+        currentVersion: first.component.version,
+        latestVersion: first.component.version
+      }
+    ])
+
+    const title = sourceGraph.getChildren(component.id).find((node) => node.type === 'TEXT')
+    expect(title).toBeDefined()
+    sourceGraph.updateNode(title?.id ?? '', { text: 'Updated' })
+    const second = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      libraryName: 'Design System',
+      componentKey: 'component-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in second).toBe(false)
+    if ('error' in second) return
+
+    expect(checkLibraryUpdates({ targetGraph, manifest: second.manifest })).toEqual([
+      {
+        libraryId: 'design-system',
+        componentKey: 'component-card',
+        status: 'outdated',
+        cachedNodeId: importedNodeId,
+        currentVersion: first.component.version,
+        latestVersion: second.component.version
+      }
+    ])
+
+    const missingManifest = {
+      libraryId: 'design-system',
+      name: 'Design System',
+      source: { kind: 'file' as const, ref: './design-system.fig' },
+      components: []
+    }
+    expect(checkLibraryUpdates({ targetGraph, manifest: missingManifest })).toEqual([
+      {
+        libraryId: 'design-system',
+        componentKey: 'component-card',
+        status: 'missing-manifest',
+        currentVersion: first.component.version
+      }
+    ])
+
+    targetGraph.deleteNode(importedNodeId)
+    expect(checkLibraryUpdates({ targetGraph, manifest: second.manifest })).toEqual([
+      {
+        libraryId: 'design-system',
+        componentKey: 'component-card',
+        status: 'missing-cached-master',
+        currentVersion: first.component.version,
+        latestVersion: second.component.version
+      }
+    ])
+  })
+
+  test('accepts a library update while preserving cached master id and syncing instances', () => {
+    const { sourceGraph, targetGraph, component, importedNodeId, first } = createImportedCard()
+    const targetPage = targetGraph.getPages()[0]
+    const instance = targetGraph.createInstance(importedNodeId, targetPage.id)
+    expect(instance).not.toBeNull()
+    if (!instance) return
+    const originalInstanceChild = targetGraph.getChildren(instance.id)[0]
+    const originalCachedChildId = targetGraph.getNode(importedNodeId)?.childIds[0]
+
+    const title = sourceGraph.getChildren(component.id).find((node) => node.type === 'TEXT')
+    expect(title).toBeDefined()
+    sourceGraph.updateNode(title?.id ?? '', { text: 'Updated' })
+    const second = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      libraryName: 'Design System',
+      componentKey: 'component-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in second).toBe(false)
+    if ('error' in second) return
+
+    const accepted = acceptLibraryUpdate({
+      sourceGraph,
+      targetGraph,
+      manifest: second.manifest,
+      componentKey: 'component-card'
+    })
+    expect('error' in accepted).toBe(false)
+    if ('error' in accepted) return
+
+    expect(accepted.cachedNodeId).toBe(importedNodeId)
+    expect(accepted.previousVersion).toBe(first.component.version)
+    expect(accepted.warnings).toEqual([])
+    expect(targetGraph.getNode(importedNodeId)?.libraryVersion).toBe(second.component.version)
+    expect(targetGraph.getNode(importedNodeId)?.childIds[0]).toBe(originalCachedChildId)
+    expect(targetGraph.getNode(originalCachedChildId ?? '')?.text).toBe('Updated')
+    expect(targetGraph.getChildren(instance.id)).toHaveLength(1)
+    expect(targetGraph.getNode(originalInstanceChild?.id ?? '')?.text).toBe('Updated')
+    expect(
+      targetGraph.getNode(targetGraph.rootId)?.lowcodeLibraries?.[0]?.importedComponents
+    ).toEqual([{ key: 'component-card', version: second.component.version }])
+  })
+
+  test('accepts structure-changing updates with a warning', () => {
+    const { sourceGraph, targetGraph, component, importedNodeId } = createImportedCard()
+    graphCreateTitle(sourceGraph, component.id, 'Subtitle')
+    const next = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      libraryName: 'Design System',
+      componentKey: 'component-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in next).toBe(false)
+    if ('error' in next) return
+
+    const accepted = acceptLibraryUpdate({
+      sourceGraph,
+      targetGraph,
+      manifest: next.manifest,
+      componentKey: 'component-card'
+    })
+    expect('error' in accepted).toBe(false)
+    if ('error' in accepted) return
+
+    expect(accepted.cachedNodeId).toBe(importedNodeId)
+    expect(accepted.warnings).toEqual([
+      'Component structure changed; existing instance overrides were not remapped'
+    ])
+    expect(targetGraph.getNode(importedNodeId)?.childIds).toHaveLength(2)
+  })
+
+  test('rejects library update requests without matching source or cached master', () => {
+    const { sourceGraph, targetGraph, component, first, importedNodeId } = createImportedCard()
+    const missingKey = acceptLibraryUpdate({
+      sourceGraph,
+      targetGraph,
+      manifest: first.manifest,
+      componentKey: 'missing-key'
+    })
+    expect(missingKey).toEqual({
+      error: 'Component key "missing-key" not found in library manifest'
+    })
+
+    targetGraph.deleteNode(importedNodeId)
+    const missingCached = acceptLibraryUpdate({
+      sourceGraph,
+      targetGraph,
+      manifest: first.manifest,
+      componentKey: 'component-card'
+    })
+    expect(missingCached).toEqual({
+      error: 'Cached component "component-card" not found in target graph'
+    })
+
+    const next = publishLibraryComponent(sourceGraph, {
+      componentId: component.id,
+      libraryId: 'design-system',
+      componentKey: 'component-card'
+    })
+    expect('error' in next).toBe(false)
+    if ('error' in next) return
+    const targetWithoutSource = new SceneGraph()
+    const imported = importLibraryComponent({
+      sourceGraph,
+      targetGraph: targetWithoutSource,
+      manifest: next.manifest,
+      componentKey: 'component-card',
+      source: { kind: 'file', ref: './design-system.fig' }
+    })
+    expect('error' in imported).toBe(false)
+    if ('error' in imported) return
+    targetWithoutSource.updateNode(targetWithoutSource.rootId, { lowcodeLibraries: [] })
+    expect(
+      acceptLibraryUpdate({
+        sourceGraph,
+        targetGraph: targetWithoutSource,
+        manifest: next.manifest,
+        componentKey: 'component-card'
+      })
+    ).toEqual({ error: 'library source is required to update imported components' })
+  })
 })
 
 function graphCreateTitle(graph: SceneGraph, parentId: string, text: string) {
   return graph.createNode('TEXT', parentId, { name: 'Title', text })
+}
+
+function createImportedCard() {
+  const sourceGraph = new SceneGraph()
+  const sourcePage = sourceGraph.getPages()[0]
+  const component = sourceGraph.createNode('COMPONENT', sourcePage.id, { name: 'Card' })
+  graphCreateTitle(sourceGraph, component.id, 'Hello')
+  const first = publishLibraryComponent(sourceGraph, {
+    componentId: component.id,
+    libraryId: 'design-system',
+    libraryName: 'Design System',
+    componentKey: 'component-card',
+    source: { kind: 'file', ref: './design-system.fig' }
+  })
+  expect('error' in first).toBe(false)
+  if ('error' in first) throw new Error(first.error)
+  const targetGraph = new SceneGraph()
+  const imported = importLibraryComponent({
+    sourceGraph,
+    targetGraph,
+    manifest: first.manifest,
+    componentKey: 'component-card'
+  })
+  expect('error' in imported).toBe(false)
+  if ('error' in imported) throw new Error(imported.error)
+  return {
+    sourceGraph,
+    targetGraph,
+    component,
+    first,
+    importedNodeId: imported.importedNodeId
+  }
 }
