@@ -114,6 +114,27 @@ describe('compile — images & aspect-ratio (Phase 4 §24.1/§24.3)', () => {
     expect(app).toContain('</picture>')
   })
 
+  test('responsive image source attributes escape quotes and ampersands', () => {
+    const { app } = compileNode({
+      image: {
+        src: 'https://x/fallback.jpg',
+        alt: '',
+        sources: [
+          {
+            srcSet: 'https://x/mobile.jpg?name="hero"&w=640 640w',
+            media: '(max-width: 640px) and (min-resolution: "2dppx")',
+            type: 'image/svg+xml; charset="utf-8"',
+            sizes: 'calc(100vw - "gap") & 100vw'
+          }
+        ]
+      }
+    })
+
+    expect(app).toContain(
+      '<source srcSet="https://x/mobile.jpg?name=&quot;hero&quot;&amp;w=640 640w" media="(max-width: 640px) and (min-resolution: &quot;2dppx&quot;)" type="image/svg+xml; charset=&quot;utf-8&quot;" sizes="calc(100vw - &quot;gap&quot;) &amp; 100vw" />'
+    )
+  })
+
   test('responsive image sources support bound srcSet expressions', () => {
     const { app } = compileNode(
       {
