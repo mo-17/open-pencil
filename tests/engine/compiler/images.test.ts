@@ -292,6 +292,57 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     expect(app).not.toContain('[background-size:')
   })
 
+  test('multiple visual fills emit one stacked background instead of competing bg utilities', () => {
+    const graph: SceneGraph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.images.set('fig-image-1', PNG_BYTES)
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'LayeredFill',
+      width: 200,
+      height: 100,
+      fills: [
+        { type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true },
+        {
+          type: 'GRADIENT_LINEAR',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          gradientStops: [
+            { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+            { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+          ],
+          gradientTransform: { m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }
+        },
+        {
+          type: 'IMAGE',
+          imageHash: 'fig-image-1',
+          imageScaleMode: 'FIT',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'image-fill' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    const css = out.files.get('src/index.css') as string
+
+    expect(app).toContain(
+      '[background-image:url(./assets/openpencil-image-fig-image-1.png),linear-gradient(180deg,_#FF0000_0%,_#0000FF_100%),linear-gradient(#FFFFFF,_#FFFFFF)]'
+    )
+    expect(app).toContain('[background-size:contain,auto,auto]')
+    expect(app).toContain('[background-position:center,0%_0%,0%_0%]')
+    expect(app).toContain('[background-repeat:no-repeat,no-repeat,no-repeat]')
+    expect(app).not.toContain('bg-white')
+    expect(app).not.toContain('bg-[linear-gradient(')
+    expect(app).not.toContain('bg-[url(')
+    expect(css).toContain('background-image:url(./assets/openpencil-image-fig-image-1.png)')
+  })
+
   test('missing image bytes warn and skip background asset emit', () => {
     const { app, files, warnings } = compileImageFill()
 

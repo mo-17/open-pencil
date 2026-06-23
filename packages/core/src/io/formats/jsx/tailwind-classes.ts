@@ -333,7 +333,7 @@ function collectGradientClasses(node: SceneNode): string[] {
         f.type === 'GRADIENT_ANGULAR')
   )
   if (!fill) return []
-  const css = gradientCss(fill, node.width, node.height)
+  const css = gradientFillCss(fill, node.width, node.height)
   return css === null ? [] : [`bg-[${css.replace(/ /g, '_')}]`]
 }
 
@@ -341,7 +341,7 @@ function collectGradientClasses(node: SceneNode): string[] {
  *  when its stops / transform are missing. Colors are hex8 (no spaces);
  *  positions are percentages. Linear/conic orientation is derived from
  *  Figma's gradientTransform. */
-function gradientCss(fill: Fill, width: number, height: number): string | null {
+export function gradientFillCss(fill: Fill, width: number, height: number): string | null {
   const stops = fill.gradientStops
   const t = fill.gradientTransform
   if (!stops || stops.length === 0 || !t) return null

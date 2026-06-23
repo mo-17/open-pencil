@@ -833,7 +833,7 @@ bun test \
 
 **GATE(两片)**:`bun run check` exit 0;tsgo 0;jscpd 0;零回归。**边界/延后(当时)**:image 只走用户 URL/绑定(Figma image-fill 导出 asset 当时延后,现已由 §24 v2 补齐);单 fill;object-fit 走 className;gradient ANGULAR(conic)/DIAMOND + 多 fill 叠加延后;aspect-ratio 任意节点但 image 容器最常用;无 AI tool/GUI(graph.updateNode+interactiveProps round-trip)。**真机验积压 +1**(浏览器渲图片[含 §18 上传 URL]+ 渐变背景 + aspect-ratio 盒)。**§24 后续**:gradient conic/多 stop 精度。
 
-**§24 v2 Figma image-fill asset 导出**(CODE COMPLETE 2026-06-23):原 §24.1 只做 `interactiveProps.image` 的 URL/绑定 `<img>`;本次补齐原延后的 native Figma `IMAGE` fill 管道。collector 从 `SceneNode.fills` 找第一个可见 `type:'IMAGE'` fill,用 `fill.imageHash` 读取 `SceneGraph.images` bytes,注册到 IR asset(`src/assets/openpencil-image-<hash>.<ext>`;扩展名从 PNG/JPEG/GIF/WebP/SVG 魔数识别),className 追加 `bg-[url(./assets/...)] bg-center` + scale mode 映射:`FILL/CROP→bg-cover bg-no-repeat`,`FIT→bg-contain bg-no-repeat`,`TILE→bg-auto bg-repeat`。adapter 从 IRTree/ComponentDef 汇总 assets 去重写入 `CompilerOutput.files`,Tailwind safelist 继续由 className 自动收集。缺 `imageHash` warn `image-fill-missing-hash`;hash 有但 graph 无 bytes warn `image-fill-missing-asset`;均跳过背景图,保持普通节点输出。仍只处理第一张可见 image fill;crop transform/多 fill 叠加/响应式 srcset 延后。
+**§24 v2 Figma image-fill asset 导出**(CODE COMPLETE 2026-06-23):原 §24.1 只做 `interactiveProps.image` 的 URL/绑定 `<img>`;本次补齐原延后的 native Figma `IMAGE` fill 管道。collector 从 `SceneNode.fills` 找第一个可见 `type:'IMAGE'` fill,用 `fill.imageHash` 读取 `SceneGraph.images` bytes,注册到 IR asset(`src/assets/openpencil-image-<hash>.<ext>`;扩展名从 PNG/JPEG/GIF/WebP/SVG 魔数识别),className 追加 `bg-[url(./assets/...)] bg-center` + scale mode 映射:`FILL/CROP→bg-cover bg-no-repeat`,`FIT→bg-contain bg-no-repeat`,`TILE→bg-auto bg-repeat`。adapter 从 IRTree/ComponentDef 汇总 assets 去重写入 `CompilerOutput.files`,Tailwind safelist 继续由 className 自动收集。缺 `imageHash` warn `image-fill-missing-hash`;hash 有但 graph 无 bytes warn `image-fill-missing-asset`;均跳过背景图,保持普通节点输出。单 image fill 保持该紧凑输出;多 fill 叠加由 §24.7 接管。响应式 srcset 由 §24.4 补齐。
 
 **§24.3 image loading attr(CODE COMPLETE 2026-06-23)**:`interactiveProps.image.loading`
 接受 `lazy | eager`,emit 到 `<img loading="...">`;非法值静默丢弃,默认不输出
@@ -862,6 +862,18 @@ transform 映射的 `(0.5,0.5)` 推导,比默认 conic 更接近 CanvasKit sweep
 `[background-size:<w>%_<h>%]` + `[background-position:left_<x>%_top_<y>%]` +
 `bg-no-repeat`,从而保留导入 Figma crop 的缩放/偏移。旋转/斜切 transform 仍 fallback
 到旧 `bg-cover bg-no-repeat`,避免错编。验证:
+`bun test tests/engine/compiler/images.test.ts`。
+
+**§24.7 multi fill stacking(CODE COMPLETE 2026-06-23)**:当一个非 TEXT 节点存在多个
+可编译视觉 fill(`SOLID`/`IMAGE`/`GRADIENT_LINEAR`/`GRADIENT_RADIAL`/
+`GRADIENT_ANGULAR`)时,compiler 不再追加多个会互相覆盖的 `bg-*` utility,而是输出
+一组 CSS multi-background arbitrary-property class:
+`[background-image:...]`、`[background-size:...]`、`[background-position:...]`、
+`[background-repeat:...]`。layer 顺序按 Canvas/Figma 绘制模型反转:fill 数组后面的
+层在 CSS 中排前面,保持 topmost-first。`SOLID` 作为
+`linear-gradient(color,color)` 层参与叠加;image fill 继续注册 asset,并把
+`FILL/FIT/TILE/CROP` 的 size/position/repeat 写入对应逗号列表。单层 image/gradient
+保持旧紧凑 `bg-[url]`/`bg-[gradient]` 输出以降低回归面。验证:
 `bun test tests/engine/compiler/images.test.ts`。
 
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。

@@ -1,5 +1,7 @@
 import lucideIcons from '@iconify-json/lucide/icons.json'
 
+import { colorToHex8 } from '@open-pencil/core/color'
+import { gradientFillCss } from '@open-pencil/core/io/formats/jsx'
 import { renderNodesToSVG } from '@open-pencil/core/io/formats/svg'
 import {
   type DatePickerIssueCode,
@@ -1006,10 +1008,10 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // Phase 4 §24.3: an `interactiveProps.aspectRatio` adds `aspect-[w/h]` to any
   // node (most useful on image / media containers, but not limited to them).
   className = appendAspectRatio(className, node, ctx)
-  // Phase 4 §24 v2: a Figma IMAGE fill becomes a project asset plus Tailwind
-  // background-image classes. Explicit `interactiveProps.image` below still
-  // renders a semantic <img>; this path is for design-surface image fills.
-  className = appendImageFillClasses(className, node, ctx)
+  // Phase 4 §24 v2/v7: Figma visual fills become background classes. Single
+  // fills keep the old compact utilities; multiple fills are collapsed into
+  // one CSS multi-background so layers don't overwrite each other.
+  className = appendVisualFillClasses(className, node, ctx)
   // Phase 4 §24.1: a node carrying `interactiveProps.image` renders as a void
   // `<img>` leaf — resolved + returned here so it skips the control / vector /
   // child-recursion path (an image has none). Events (e.g. onClick) still apply.
@@ -1679,12 +1681,148 @@ function appendAspectRatio(className: string, node: SceneNode, ctx: WalkCtx): st
   return joinClass(className, `aspect-[${raw}]`)
 }
 
+function appendVisualFillClasses(className: string, node: SceneNode, ctx: WalkCtx): string {
+  if (potentialBackgroundFillCount(node) <= 1) return appendImageFillClasses(className, node, ctx)
+  const layers = backgroundFillLayers(node, ctx)
+  if (layers.length === 0) return stripSingleBackgroundClasses(className)
+  if (layers.length === 1) {
+    return joinClass(stripSingleBackgroundClasses(className), backgroundLayerClasses(layers[0]))
+  }
+  return joinClass(stripSingleBackgroundClasses(className), multiBackgroundClasses(layers))
+}
+
 function appendImageFillClasses(className: string, node: SceneNode, ctx: WalkCtx): string {
-  const fill = node.fills.find((candidate) => candidate.visible && candidate.type === 'IMAGE')
+  const fill = node.fills.find(
+    (candidate) => candidate.visible && candidate.opacity > 0 && candidate.type === 'IMAGE'
+  )
   if (!fill) return className
   const asset = registerImageFillAsset(fill, node, ctx)
   if (!asset) return className
   return joinClass(className, imageFillClasses(fill, asset.path))
+}
+
+interface BackgroundLayer {
+  image: string
+  size: string
+  position: string
+  repeat: string
+}
+
+function potentialBackgroundFillCount(node: SceneNode): number {
+  if (node.type === 'TEXT') return 0
+  return node.fills.filter((fill) => fill.visible && fill.opacity > 0 && isBackgroundFill(fill))
+    .length
+}
+
+function isBackgroundFill(fill: Fill): boolean {
+  return (
+    fill.type === 'SOLID' ||
+    fill.type === 'IMAGE' ||
+    fill.type === 'GRADIENT_LINEAR' ||
+    fill.type === 'GRADIENT_RADIAL' ||
+    fill.type === 'GRADIENT_ANGULAR'
+  )
+}
+
+function backgroundFillLayers(node: SceneNode, ctx: WalkCtx): BackgroundLayer[] {
+  const layers: BackgroundLayer[] = []
+  for (const fill of node.fills) {
+    if (!fill.visible || fill.opacity <= 0 || !isBackgroundFill(fill)) continue
+    const layer = backgroundFillLayer(fill, node, ctx)
+    if (layer) layers.push(layer)
+  }
+  return layers.reverse()
+}
+
+function backgroundFillLayer(
+  fill: Fill,
+  node: SceneNode,
+  ctx: WalkCtx
+): BackgroundLayer | undefined {
+  if (fill.type === 'SOLID') return solidFillLayer(fill)
+  if (fill.type === 'IMAGE') return imageFillLayer(fill, node, ctx)
+  const css = gradientFillCss(fill, node.width, node.height)
+  if (css === null) return undefined
+  return { image: css, size: 'auto', position: '0%_0%', repeat: 'no-repeat' }
+}
+
+function solidFillLayer(fill: Fill): BackgroundLayer {
+  const color = colorToHex8(fill.color, fill.opacity)
+  return {
+    image: `linear-gradient(${color}, ${color})`,
+    size: 'auto',
+    position: '0%_0%',
+    repeat: 'no-repeat'
+  }
+}
+
+function imageFillLayer(fill: Fill, node: SceneNode, ctx: WalkCtx): BackgroundLayer | undefined {
+  const asset = registerImageFillAsset(fill, node, ctx)
+  if (!asset) return undefined
+  const image = `url(${assetCssUrl(asset.path)})`
+  if (fill.imageScaleMode === 'FIT') {
+    return { image, size: 'contain', position: 'center', repeat: 'no-repeat' }
+  }
+  if (fill.imageScaleMode === 'TILE') {
+    return { image, size: 'auto', position: 'center', repeat: 'repeat' }
+  }
+  if (fill.imageScaleMode === 'CROP' && fill.imageTransform) {
+    return cropImageTransformLayer(image, fill.imageTransform)
+  }
+  return { image, size: 'cover', position: 'center', repeat: 'no-repeat' }
+}
+
+function cropImageTransformLayer(
+  image: string,
+  transform: NonNullable<Fill['imageTransform']>
+): BackgroundLayer {
+  if (!isCssRepresentableImageTransform(transform)) {
+    return { image, size: 'cover', position: 'center', repeat: 'no-repeat' }
+  }
+  const width = cssPercent(transform.m00 * 100)
+  const height = cssPercent(transform.m11 * 100)
+  const left = cssPercent(transform.m02 * 100)
+  const top = cssPercent(transform.m12 * 100)
+  return {
+    image,
+    size: `${width}%_${height}%`,
+    position: `left_${left}%_top_${top}%`,
+    repeat: 'no-repeat'
+  }
+}
+
+function backgroundLayerClasses(layer: BackgroundLayer): string {
+  return multiBackgroundClasses([layer])
+}
+
+function multiBackgroundClasses(layers: BackgroundLayer[]): string {
+  return [
+    arbitraryPropertyClass('background-image', layers.map((layer) => layer.image).join(',')),
+    arbitraryPropertyClass('background-size', layers.map((layer) => layer.size).join(',')),
+    arbitraryPropertyClass('background-position', layers.map((layer) => layer.position).join(',')),
+    arbitraryPropertyClass('background-repeat', layers.map((layer) => layer.repeat).join(','))
+  ].join(' ')
+}
+
+function arbitraryPropertyClass(property: string, value: string): string {
+  return `[${property}:${value.replace(/ /g, '_')}]`
+}
+
+function stripSingleBackgroundClasses(className: string): string {
+  return className
+    .split(/\s+/)
+    .filter((c) => c !== '' && !isSingleBackgroundClass(c))
+    .join(' ')
+}
+
+function isSingleBackgroundClass(className: string): boolean {
+  return (
+    className.startsWith('bg-') ||
+    className.startsWith('[background-image:') ||
+    className.startsWith('[background-size:') ||
+    className.startsWith('[background-position:') ||
+    className.startsWith('[background-repeat:')
+  )
 }
 
 function registerImageFillAsset(fill: Fill, node: SceneNode, ctx: WalkCtx): IRAsset | undefined {
@@ -1715,7 +1853,7 @@ function registerImageFillAsset(fill: Fill, node: SceneNode, ctx: WalkCtx): IRAs
 }
 
 function imageFillClasses(fill: Fill, assetPath: string): string {
-  const cssUrl = `./assets/${assetPath.split('/').at(-1) ?? assetPath}`
+  const cssUrl = assetCssUrl(assetPath)
   const classes = [`bg-[url(${cssUrl})]`, 'bg-center']
   if (fill.imageScaleMode === 'FIT') {
     classes.push('bg-contain', 'bg-no-repeat')
@@ -1727,6 +1865,10 @@ function imageFillClasses(fill: Fill, assetPath: string): string {
     classes.push('bg-cover', 'bg-no-repeat')
   }
   return classes.join(' ')
+}
+
+function assetCssUrl(assetPath: string): string {
+  return `./assets/${assetPath.split('/').at(-1) ?? assetPath}`
 }
 
 function cropImageTransformClasses(transform: NonNullable<Fill['imageTransform']>): string[] {

@@ -4,5 +4,6 @@ export {
   collectResponsiveTailwindClasses,
   collectStateTailwindClasses,
   collectTailwindClasses,
+  gradientFillCss,
   type TailwindClassOptions
 } from './tailwind-classes'
