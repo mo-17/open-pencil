@@ -11,6 +11,7 @@
 - Scope lowcode workflows to an optional page so the workflow editor validates page-local state against the intended page instead of the currently selected page.
 - Validate lowcode controlled form fields on change with the next input value while preserving writer-first user `onChange` composition.
 - Add opt-in lowcode FORM validation summaries for aggregated field errors.
+- Add runtime coverage and workspace dependencies for lowcode shadcn Tabs/Accordion state bindings.
 
 ### Fixes
 

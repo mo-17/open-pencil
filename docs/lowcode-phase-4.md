@@ -788,6 +788,13 @@ bun test \
   ./node_modules/.bin/tsgo --noEmit
   ```
 
+- **真机 ACK 2026-06-23**:`tools/lowcode/src/stateful-primitives-runtime-smoke.ts`
+  用 compiler preview server + Chrome 跑真实 shadcn Tabs/Accordion app,覆盖 Tabs
+  page-state active 切换、Accordion multiple docState array open/close。该 smoke 抓到
+  preview/root 缺 `@radix-ui/react-tabs` / `@radix-ui/react-accordion` 的真实 Vite
+  resolve 问题;已把 §22 display primitive 所需 Radix 运行依赖补进 root
+  `package.json` / `bun.lock`。
+
 ## §23 图标(lucide-react)
 
 > 第二波。shadcn 默认图标库,小而通用。
