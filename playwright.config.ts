@@ -28,6 +28,7 @@ export default defineConfig({
     {
       name: 'openpencil',
       testDir: './tests/e2e',
+      testIgnore: '**/*.webkit.spec.ts',
       fullyParallel: false
     },
     {

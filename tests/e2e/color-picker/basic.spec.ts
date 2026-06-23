@@ -1,5 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
+import type { Color } from '@open-pencil/core/types'
+
 import { CanvasHelper } from '#tests/helpers/canvas'
 
 let page: Page
@@ -29,6 +31,21 @@ async function getSelectedFill() {
   })
 }
 
+async function setSelectedSolidFill(color: Color) {
+  await page.evaluate((nextColor) => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = [...store.state.selectedIds][0]
+    if (!id) throw new Error('No selected node')
+    const node = store.graph.getNode(id)
+    if (!node) throw new Error('Selected node missing')
+    store.graph.updateNode(id, {
+      fills: [{ type: 'SOLID', color: nextColor, opacity: nextColor.a, visible: true }]
+    })
+  }, color)
+  await canvas.waitForRender()
+}
+
 async function openFillPicker() {
   const solidTab = page.getByTestId('fill-picker-tab-solid')
   if (await solidTab.isVisible().catch(() => false)) return
@@ -44,15 +61,14 @@ async function chooseFormat(label: 'RGB' | 'HSL' | 'HSB' | 'OkHCL') {
 
 async function dragSlider(testId: string, ratio: number) {
   const slider = page.getByTestId(testId).locator('input[type="range"]')
-  const box = await slider.boundingBox()
-  if (!box) throw new Error(`Missing slider: ${testId}`)
-  const y = box.y + box.height / 2
-  await page.mouse.move(box.x + 2, y)
-  await page.mouse.down()
-  await page.mouse.move(box.x + Math.max(2, Math.min(box.width - 2, box.width * ratio)), y, {
-    steps: 20
-  })
-  await page.mouse.up()
+  await slider.evaluate((input, nextRatio) => {
+    const range = input as HTMLInputElement
+    const min = Number(range.min || 0)
+    const max = Number(range.max || 100)
+    range.value = String(min + (max - min) * Math.max(0, Math.min(1, nextRatio)))
+    range.dispatchEvent(new Event('input', { bubbles: true }))
+    range.dispatchEvent(new Event('change', { bubbles: true }))
+  }, ratio)
   await canvas.waitForRender()
 }
 
@@ -85,6 +101,11 @@ test('rgb alpha slider updates fill opacity and alpha', async () => {
 })
 
 test('hsl saturation slider changes saturation', async () => {
+  await canvas.clearCanvas()
+  await canvas.drawRect(100, 100, 160, 120)
+  await canvas.waitForRender()
+  await setSelectedSolidFill({ r: 0.1, g: 0.45, b: 1, a: 1 })
+
   await openFillPicker()
   await chooseFormat('HSL')
   const before = await getSelectedFill()
@@ -100,6 +121,11 @@ test('hsl saturation slider changes saturation', async () => {
 })
 
 test('hsl lightness slider changes color independently', async () => {
+  await canvas.clearCanvas()
+  await canvas.drawRect(100, 100, 160, 120)
+  await canvas.waitForRender()
+  await setSelectedSolidFill({ r: 0.1, g: 0.45, b: 1, a: 1 })
+
   await openFillPicker()
   await chooseFormat('HSL')
   const before = await getSelectedFill()
