@@ -43,8 +43,8 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
   v11 callWorkflow GUI + WorkflowsPanel)。optionalParams **GUI** +
   跨页 pageStates 延后(→ phase-4 #7/#8)。
 - **§15 UI-kit**:§15 设计 + Phase A(Button/Input/Textarea/Label) +
-  Phase B(Select/Checkbox/Switch/RadioGroup)。FRAME→Card / Phase C /
-  实时 preview shadcn 未实现(→ phase-4 #1/#2/#6)。
+  Phase B(Select/Checkbox/Switch/RadioGroup)。FRAME→Card / Phase C
+  已在 phase-4 闭合;实时 preview shadcn 仍归 GUI 候选 #10。
 
 > 一句话:**§8/§9/§10 链在 phase-3 已基本走完**,phase-4 的剩余只是它们各自被显式延后的 GUI 入口 + 几条没起头的新线(§14 / §15 收尾 / §9 RTL 逻辑属性 / CF Pages / Kiwi 升格)。
 
@@ -52,7 +52,7 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 
 ## 1. 范围
 
-### 1.1 Phase 4 In-Scope(真剩余候选,待逐条承诺)
+### 1.1 Phase 4 In-Scope(真剩余候选 + 当前状态)
 
 > 用户明确(prompt.md):**优先做功能,Tauri 真机测试靠后**;偏好「一个一
 > 个来 / 直接干推荐项」,真大决策才单问一个 AskUserQuestion。headless 可验的
@@ -60,30 +60,27 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 
 | #   | feature                                        | 优先级               | 简述 / 状态                                                                                    | 详写          |
 | --- | ---------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------- | ------------- |
-| 1   | **§15 FRAME→Card 容器映射**                    | **高(最快起点)**     | headless emit;容器型 FRAME → shadcn `Card`/`CardHeader`/`CardContent`,phase-3 未实现。         | §15           |
-| 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | **高(最高产品价值)** | headless emit(中-大);补 `/product/:id`、`useParams`、query string、带参 navigate、auth guard。 | §16           |
-| 3   | **§15 Phase C array checkbox-group**           | 高                   | headless emit;array 字段 → shadcn checkbox-group,接 phase-3 §15 Phase A/B。                    | §15           |
-| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | 中-高                | headless emit;LIST 从本地 array 扩到 Supabase query + 分页/排序/筛选。                         | §17           |
-| 5   | **§19 表单校验**                               | 中                   | headless emit;required/pattern/min-max/自定义规则 + 错误提示 + 提交拦截。                      | §19           |
-| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 中                   | headless emit,可能动 scene-graph;上传控件 + Storage upload/getPublicUrl + 进度/预览。          | §18           |
-| 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 中                   | headless emit;**CODE COMPLETE 2026-06-23**。gated `rtlLogicalProperties`,默认不漂移。          | §9            |
+| 1   | **§15 FRAME→Card 容器映射**                    | 已完成               | **CODE COMPLETE 2026-06-21**;容器型 FRAME → shadcn Card 容器映射。                             | §15           |
+| 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | 已完成               | **CODE COMPLETE 2026-06-21**;动态段、`$params`、带参 navigate、auth guard、`$query` 已闭合。   | §16           |
+| 3   | **§15 Phase C array checkbox-group**           | 已完成               | **CODE COMPLETE 2026-06-21**;静态 array checkbox-group shadcn emit 已闭合。                    | §15           |
+| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | 已完成               | **CODE COMPLETE 2026-06-23**;Supabase query、分页、排序、筛选、动态 options 已闭合。           | §17           |
+| 5   | **§19 表单校验**                               | 已完成               | **CODE COMPLETE 2026-06-23**;runtime、remote debounce/cancel、GUI、tool schema、E2E 已闭合。   | §19           |
+| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 已完成               | **CODE COMPLETE 2026-06-21**;INPUT upload → Supabase Storage public URL 已闭合。               | §18           |
+| 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
 | 8   | **§14 跨文件组件库 / 团队库**                  | 中                   | headless(大);组件跨 .fig 复用 / 团队共享库 / 更新传播。phase-3 有设计但未实现。                | §14           |
 | 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
 | 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 高(真机)             | 真机 GUI;preview 入口补 i18n/uiKit toggle,解决 app 内看不到 i18n/shadcn。                      | §9 / §15      |
 | 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 中(真机)             | 真机 GUI;responsive overrides、component-props、optionalParams 面板。                          | §7 / §8 / §10 |
-| 12  | **§10 工作流体跨页 pageStates 精确**           | 低                   | headless;跨页 callWorkflow 按目标页解析 pageStates。                                           | §10           |
+| 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
-> **#1–#9 = headless,#10–#11 = 真机 GUI,#12–#13 = 低优先。**
+> **当前未闭合**:#8 / #9 / #10 / #11 / #13。#8、#13 偏大或工程债;#9 有
+> blake3 依赖决策;#10–#11 需要真机 GUI 验证。
 >
-> **优先级建议**:两个高优先起手点 ——(a)**最快**:#1 §15 FRAME→Card(纯 emit
-> 最干净,接 #3 Phase C 把 §15 收尾);(b)**最高产品价值**:#2 §16 动态路由
-> ——它把「多页静态站」升级成「真应用」(详情页 `/product/:id`、仪表盘、auth-
-> guarded 路由),是 Bubble 级平台的核心缺口,吃现有 react-router 地基、可
-> headless 验。**建议先做 #1/#3 快速收一条线,再正式投 #2 §16**(量级中-大,值得
-> 单独锁设计)。#4 §17 列表绑数据源 / #5 §19 校验 / #6 §18 上传 是真应用的另外三
-> 块刚需,接在 §16 后成「真应用数据/表单链」。#7 RTL 有回归面、#9 CF Pages 卡
-> blake3,先沟通。真机 GUI(#10 #11)攒一批 Tauri session 验。
+> **下一步建议(2026-06-23 状态校准后)**:若继续 headless,只剩 #8 §14
+> 跨文件组件库(大)或 #9 CF Pages(需先锁 blake3 依赖)。若继续小步快跑,优先转
+> #10/#11 的 GUI 授权入口,但必须安排 Tauri/浏览器真机验证。#13 Kiwi schema
+> 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
 
@@ -95,24 +92,20 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 
 | #   | feature                                                                      | 复用 / 状态                                                     |
 | --- | ---------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| §20 | **交互状态样式(hover/focus/active/disabled variants)**                       | §7 variant-emit;用户节点无状态变体 emit。                       |
+| §20 | **交互状态样式(hover/focus/active/disabled variants)**                       | §7 variant-emit;**CODE COMPLETE 2026-06-21**。                  |
 | §21 | **覆盖层组件(Modal/Dialog/Drawer/Popover/Tooltip)**                          | FRAME `interactiveProps.overlay` + docState;**CODE COMPLETE**。 |
 | §22 | **更多 shadcn 原语(Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert 等)** | §15 ui-kit adapter;**CODE COMPLETE 2026-06-23**。               |
-| §23 | **图标(lucide-react)**                                                       | §15 ui-kit / 新 icon 节点或 prop;无 icon 节点。                 |
+| §23 | **图标(lucide-react)**                                                       | `interactiveProps.icon`;**CODE COMPLETE 2026-06-22**。          |
 | §24 | **图片与视觉填充(`<img>` 真 src/alt/object-fit + 渐变 + aspect-ratio)**      | **CODE COMPLETE 2026-06-23**;含 image-fill→asset v2。           |
 | §25 | **外链 `<a href>` + target**                                                 | emit/element;**CODE COMPLETE 2026-06-22**。                     |
 | §26 | **布局原语(sticky/fixed 定位 + overflow scroll + z-index)**                  | jsx tailwind-classes;**CODE COMPLETE 2026-06-22**。             |
-| §27 | **state 持久化(localStorage)+ 派生/计算 state**                              | docState + 表达式子语言;无 localStorage/persist/computed。      |
+| §27 | **state 持久化(localStorage)+ 派生/计算 state**                              | docState + 表达式子语言;**CODE COMPLETE 2026-06-23**。          |
 | §28 | **用户事件覆盖收尾(onChange/onFocus/onBlur + `$event`/`$value`)**            | EventName 联合 + events emit;**CODE COMPLETE 2026-06-22**。     |
 
 > **第二波优先级建议**:
 >
-> - **§20 交互状态样式**最值得先做:复用 §7 variant-emit,零新概念,立刻让产物有交互质感。
-> - **§24 图片/填充** + **§25 外链** 是「真页面」基础缺口。
-> - **§21 覆盖层** + **§22 更多原语** 补 UI 表达力。
-> - **§27 持久化/派生 state** + **§28 事件收尾** 补运行时逻辑短板。
->
-> 这些都可穿插在第一波 §16–§19 之间做(单条小)。
+> - §20–§28 均已 headless code-complete;当前只剩真机 ACK / GUI authoring
+>   入口 / 个别后续增强。
 
 ### 1.2 Phase 4 Out-of-Scope(明确推迟到 Phase 5+)
 
@@ -225,7 +218,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 
 **现状**:§15 shadcn 导出已交付 Phase A(Button/Input/Textarea/Label)+ Phase B(Select/Checkbox/Switch/RadioGroup),由导出/部署面板 ui-kit toggle 驱动,alias + deps 就位。**纯 compiler-emit 增量,零 scene-graph/round-trip 改动**。
 
-**剩余 #1 FRAME → `Card`**:容器型 FRAME(尤其有 padding/背景/圆角的)映射到 shadcn `Card`,而非裸 `<div>`。phase-3 §15 设计已把它列为「Phase B 可选」但未实现。**推荐作为 Phase 4 headless 起点**(风险低)。详细设计见下 §15.1。
+**原剩余 #1 FRAME → `Card`**:容器型 FRAME(尤其有 padding/背景/圆角的)映射到 shadcn `Card`,而非裸 `<div>`。phase-3 §15 设计曾把它列为「Phase B 可选」;已在 §15.1 闭合。
 
 ### §15.1 FRAME→Card 详细设计 + 锁定决定(2026-06-21,AskUserQuestion 锁定)
 
@@ -804,7 +797,7 @@ bun test \
 
 > 第二波。shadcn 默认图标库,小而通用。
 
-**现状(grep 坐实)**:无 icon 节点(lucide 仅在 shadcn 内部注释「inline SVG instead of lucide-react」)。
+**原始现状(grep 坐实)**:开工前无 icon 节点(lucide 仅在 shadcn 内部注释「inline SVG instead of lucide-react」);§23 已闭合。
 
 **锁定决定 + 交付记录(CODE COMPLETE 2026-06-22)**:
 
@@ -972,7 +965,7 @@ emit class。compiler 不再对这些可映射的 node-level blend 发
 
 > 第二波。补运行时逻辑短板。
 
-**现状(grep 坐实)**:无 localStorage/persist/computed。
+**原始现状(grep 坐实)**:开工前无 localStorage/persist/computed;§27.1–§27.3 已闭合。
 
 **建议方向**:
 
