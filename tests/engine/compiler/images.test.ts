@@ -386,4 +386,73 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     expect(files.has('src/assets/openpencil-image-fig-image-1.png')).toBe(false)
     expect(app).not.toContain('bg-[url(')
   })
+
+  test('unsupported visual fills warn and are skipped while supported layers still emit', () => {
+    const graph: SceneGraph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'UnsupportedVisuals',
+      width: 160,
+      height: 120,
+      fills: [
+        { type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true },
+        {
+          type: 'PATTERN',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          sourceNodeId: 'pattern-source'
+        },
+        { type: 'NOISE', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true },
+        { type: 'VIDEO', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true },
+        { type: 'CUSTOM', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }
+      ]
+    })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'image-fill' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    const codes = out.warnings.map((w) => w.code)
+
+    expect(codes.filter((code) => code === 'visual-fill-type-unsupported')).toHaveLength(4)
+    expect(app).toContain('bg-white')
+    expect(app).not.toContain('PATTERN')
+    expect(app).not.toContain('NOISE')
+  })
+
+  test('unsupported mask and blend semantics warn without changing safe fill output', () => {
+    const graph: SceneGraph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'BlendAndMask',
+      width: 120,
+      height: 80,
+      isMask: true,
+      maskType: 'LUMINANCE',
+      blendMode: 'MULTIPLY',
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 1, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          blendMode: 'SCREEN'
+        }
+      ]
+    })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'image-fill' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    const codes = out.warnings.map((w) => w.code)
+
+    expect(codes).toContain('visual-mask-unsupported')
+    expect(codes).toContain('visual-blend-mode-unsupported')
+    expect(codes).toContain('visual-fill-blend-mode-unsupported')
+    expect(app).toContain('bg-[#FF0000]')
+  })
 })

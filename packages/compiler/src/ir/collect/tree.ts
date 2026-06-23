@@ -1004,6 +1004,8 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const tag = isCheckboxGroup(node) ? 'div' : TAG_BY_TYPE[node.type]
   if (!tag) return null
 
+  warnUnsupportedVisualSemantics(node, ctx)
+
   let className = tailwindClassName(node, ctx.graph, ctx.styleOptions)
   // Phase 4 §24.3: an `interactiveProps.aspectRatio` adds `aspect-[w/h]` to any
   // node (most useful on image / media containers, but not limited to them).
@@ -1723,6 +1725,46 @@ function isBackgroundFill(fill: Fill): boolean {
     fill.type === 'GRADIENT_ANGULAR' ||
     fill.type === 'GRADIENT_DIAMOND'
   )
+}
+
+function warnUnsupportedVisualSemantics(node: SceneNode, ctx: WalkCtx): void {
+  if (node.isMask) {
+    ctx.warnings.push({
+      code: 'visual-mask-unsupported',
+      message: `${node.type} ${node.id} is a ${node.maskType} mask; lowcode compile renders it as a normal node because CSS mask semantics are not emitted yet`,
+      nodeId: node.id
+    })
+  }
+
+  if (node.blendMode !== 'PASS_THROUGH' && node.blendMode !== 'NORMAL') {
+    ctx.warnings.push({
+      code: 'visual-blend-mode-unsupported',
+      message: `${node.type} ${node.id} uses blendMode ${node.blendMode}; lowcode compile does not emit mix-blend-mode yet`,
+      nodeId: node.id
+    })
+  }
+
+  for (const fill of node.fills) {
+    if (!fill.visible || fill.opacity <= 0) continue
+    warnUnsupportedFill(node, fill, ctx)
+  }
+}
+
+function warnUnsupportedFill(node: SceneNode, fill: Fill, ctx: WalkCtx): void {
+  if (fill.blendMode && fill.blendMode !== 'NORMAL' && fill.blendMode !== 'PASS_THROUGH') {
+    ctx.warnings.push({
+      code: 'visual-fill-blend-mode-unsupported',
+      message: `${node.type} ${node.id} has a ${fill.type} fill with blendMode ${fill.blendMode}; lowcode compile emits the fill without per-fill blend semantics`,
+      nodeId: node.id
+    })
+  }
+
+  if (isBackgroundFill(fill)) return
+  ctx.warnings.push({
+    code: 'visual-fill-type-unsupported',
+    message: `${node.type} ${node.id} has unsupported ${fill.type} fill; lowcode compile skips this visual layer`,
+    nodeId: node.id
+  })
 }
 
 function backgroundFillLayers(node: SceneNode, ctx: WalkCtx): BackgroundLayer[] {

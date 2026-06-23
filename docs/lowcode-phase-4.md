@@ -898,6 +898,16 @@ DIAMOND 走 radial shader/defs fallback),避免 preview/export 直接丢层。ce
 `bun test tests/engine/compiler/gradient.test.ts`、
 `bun test tests/engine/compiler/images.test.ts`。
 
+**§24.10 visual unsupported warnings(CODE COMPLETE 2026-06-23)**:compiler
+现在会对尚未可安全 emit 的视觉语义给出显式 warning,避免静默错编或误以为完全支持:
+`visual-fill-type-unsupported` 覆盖可见 `PATTERN`/`NOISE`/`VIDEO`/`CUSTOM` fill(跳过该
+layer,保留同节点上可表达的 SOLID/IMAGE/GRADIENT layers);
+`visual-fill-blend-mode-unsupported` 覆盖 fill-level 非 NORMAL/PASS_THROUGH blend;
+`visual-blend-mode-unsupported` 覆盖 node-level blend;
+`visual-mask-unsupported` 覆盖 `isMask` 节点。当前策略是 warning+保守降级,不新增
+CSS mask/mix-blend-mode emit,因为 Figma mask stack、per-fill blend 与 CSS stacking
+context 不是一一等价。验证:`bun test tests/engine/compiler/images.test.ts`。
+
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
 ## §25 外链 `<a href>` + target
