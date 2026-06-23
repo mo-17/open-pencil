@@ -253,6 +253,26 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     expect(app).toContain('bg-no-repeat')
   })
 
+  test('image fill assets infer SVG, WebP, and fallback binary extensions', () => {
+    const svgBytes = new TextEncoder().encode('<?xml version="1.0"?><svg></svg>')
+    const webpBytes = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 1, 2
+    ])
+    const binBytes = new Uint8Array([1, 2, 3, 4])
+
+    const svg = compileImageFill({ imageHash: 'icon.svg?raw', bytes: svgBytes })
+    expect(svg.files.get('src/assets/openpencil-image-iconsvgraw.svg')).toEqual(svgBytes)
+    expect(svg.app).toContain('bg-[url(./assets/openpencil-image-iconsvgraw.svg)]')
+
+    const webp = compileImageFill({ imageHash: 'hero-webp', bytes: webpBytes })
+    expect(webp.files.get('src/assets/openpencil-image-hero-webp.webp')).toEqual(webpBytes)
+    expect(webp.app).toContain('bg-[url(./assets/openpencil-image-hero-webp.webp)]')
+
+    const bin = compileImageFill({ imageHash: 'opaque', bytes: binBytes })
+    expect(bin.files.get('src/assets/openpencil-image-opaque.bin')).toEqual(binBytes)
+    expect(bin.app).toContain('bg-[url(./assets/openpencil-image-opaque.bin)]')
+  })
+
   test('FIT image fills use contain sizing', () => {
     const { app } = compileImageFill({ bytes: PNG_BYTES, scaleMode: 'FIT' })
 
