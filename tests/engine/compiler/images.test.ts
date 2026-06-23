@@ -343,6 +343,42 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     expect(css).toContain('background-image:url(./assets/openpencil-image-fig-image-1.png)')
   })
 
+  test('multiple visual fills can stack a diamond gradient fallback layer', () => {
+    const graph: SceneGraph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'DiamondLayer',
+      width: 200,
+      height: 100,
+      fills: [
+        { type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true },
+        {
+          type: 'GRADIENT_DIAMOND',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          gradientStops: [
+            { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+            { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+          ],
+          gradientTransform: { m00: 0.5, m01: 0, m02: 0.25, m10: 0, m11: 0.5, m12: 0.25 }
+        }
+      ]
+    })
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'image-fill' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain(
+      '[background-image:radial-gradient(circle_at_50%_50%,_#FF0000_0%,_#0000FF_100%),linear-gradient(#FFFFFF,_#FFFFFF)]'
+    )
+    expect(app).toContain('[background-size:auto,auto]')
+    expect(app).toContain('[background-repeat:no-repeat,no-repeat]')
+  })
+
   test('missing image bytes warn and skip background asset emit', () => {
     const { app, files, warnings } = compileImageFill()
 

@@ -1720,7 +1720,8 @@ function isBackgroundFill(fill: Fill): boolean {
     fill.type === 'IMAGE' ||
     fill.type === 'GRADIENT_LINEAR' ||
     fill.type === 'GRADIENT_RADIAL' ||
-    fill.type === 'GRADIENT_ANGULAR'
+    fill.type === 'GRADIENT_ANGULAR' ||
+    fill.type === 'GRADIENT_DIAMOND'
   )
 }
 

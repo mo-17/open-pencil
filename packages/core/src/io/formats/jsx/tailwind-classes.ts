@@ -319,8 +319,7 @@ function collectShapeExtraClasses(node: SceneNode): string[] {
  * class. twirl can't express a gradient background-image, so (like the
  * clip-path bypass) we build the CSS value and emit the class directly,
  * replacing spaces with `_` (Tailwind reads `_` as a space inside `[...]`).
- * Skipped on TEXT (a gradient there is text color, not background) and for
- * DIAMOND (not representable as a CSS gradient without a heavier fallback).
+ * Skipped on TEXT because a gradient there is text color, not background.
  */
 function collectGradientClasses(node: SceneNode): string[] {
   if (node.type === 'TEXT') return []
@@ -330,17 +329,19 @@ function collectGradientClasses(node: SceneNode): string[] {
       f.opacity > 0 &&
       (f.type === 'GRADIENT_LINEAR' ||
         f.type === 'GRADIENT_RADIAL' ||
-        f.type === 'GRADIENT_ANGULAR')
+        f.type === 'GRADIENT_ANGULAR' ||
+        f.type === 'GRADIENT_DIAMOND')
   )
   if (!fill) return []
   const css = gradientFillCss(fill, node.width, node.height)
   return css === null ? [] : [`bg-[${css.replace(/ /g, '_')}]`]
 }
 
-/** Build the CSS gradient value for a linear / radial / angular fill, or null
- *  when its stops / transform are missing. Colors are hex8 (no spaces);
+/** Build the CSS gradient value for a linear / radial / angular / diamond fill,
+ *  or null when its stops / transform are missing. Colors are hex8 (no spaces);
  *  positions are percentages. Linear/conic orientation is derived from
- *  Figma's gradientTransform. */
+ *  Figma's gradientTransform. DIAMOND uses the same radial approximation as
+ *  the Canvas/SVG fallback paths. */
 export function gradientFillCss(fill: Fill, width: number, height: number): string | null {
   const stops = fill.gradientStops
   const t = fill.gradientTransform
@@ -349,6 +350,10 @@ export function gradientFillCss(fill: Fill, width: number, height: number): stri
     .map((s) => `${formatColor(s.color, s.color.a)} ${roundPct(s.position * 100)}%`)
     .join(', ')
   if (fill.type === 'GRADIENT_RADIAL') return `radial-gradient(circle, ${stopList})`
+  if (fill.type === 'GRADIENT_DIAMOND') {
+    const center = gradientCenter(t)
+    return `radial-gradient(circle at ${center.x}% ${center.y}%, ${stopList})`
+  }
   if (fill.type === 'GRADIENT_ANGULAR') {
     const angle = cssGradientAngle(t.m00, t.m10)
     const center = gradientCenter(t)

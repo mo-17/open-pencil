@@ -78,6 +78,34 @@ describe('compile — gradient fills (Phase 4 §24.2)', () => {
     expect(css).toContain('conic-gradient(from_90deg_at_50%_50%,_#FF0000_0%,_#0000FF_100%)')
   })
 
+  test('diamond gradient compiles to a radial fallback class and safelist entry', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, {
+      name: 'Diamond',
+      width: 100,
+      height: 100,
+      fills: [
+        {
+          type: 'GRADIENT_DIAMOND',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          gradientStops: [
+            { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+            { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+          ],
+          gradientTransform: { m00: 0.5, m01: 0, m02: 0.25, m10: 0, m11: 0.5, m12: 0.25 }
+        }
+      ]
+    })
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'g' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const css = out.files.get('src/index.css') as string
+    expect(app).toContain('bg-[radial-gradient(circle_at_50%_50%,_#FF0000_0%,_#0000FF_100%)]')
+    expect(css).toContain('radial-gradient(circle_at_50%_50%,_#FF0000_0%,_#0000FF_100%)')
+  })
+
   test('a node without a gradient fill emits no gradient class', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

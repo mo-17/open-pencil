@@ -10,6 +10,7 @@
 - Add optional `loading="lazy"` / `loading="eager"` emission for lowcode image nodes.
 - Add `<picture>` / `srcSet` emission for responsive lowcode image nodes.
 - Add conic-gradient emission for imported Figma angular gradient fills.
+- Approximate imported Figma diamond gradient fills in compiled CSS.
 - Preserve axis-aligned crop transforms for imported Figma image fills in compiled background CSS.
 - Stack multiple imported visual fills as one compiled CSS multi-background.
 - Serve compiled image-fill assets from the lowcode preview dev server.
