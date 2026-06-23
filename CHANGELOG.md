@@ -9,6 +9,7 @@
 - Add `unbind_variable` MCP tool for removing variable bindings.
 - Add optional `loading="lazy"` / `loading="eager"` emission for lowcode image nodes.
 - Add `<picture>` / `srcSet` emission for responsive lowcode image nodes.
+- Add conic-gradient emission for imported Figma angular gradient fills.
 - Scope lowcode workflows to an optional page so the workflow editor validates page-local state against the intended page instead of the currently selected page.
 - Validate lowcode controlled form fields on change with the next input value while preserving writer-first user `onChange` composition.
 - Add opt-in lowcode FORM validation summaries for aggregated field errors.

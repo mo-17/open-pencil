@@ -315,26 +315,32 @@ function collectShapeExtraClasses(node: SceneNode): string[] {
 
 /**
  * Phase 4 §24.2: a gradient fill → a `bg-[linear-gradient(...)]` /
- * `bg-[radial-gradient(...)]` arbitrary-value class. twirl can't express a
- * gradient background-image, so (like the clip-path bypass) we build the CSS
- * value and emit the class directly, replacing spaces with `_` (Tailwind reads
- * `_` as a space inside `[...]`). Skipped on TEXT (a gradient there is text
- * color, not background) and for the rarer ANGULAR / DIAMOND types (v1).
+ * `bg-[radial-gradient(...)]` / `bg-[conic-gradient(...)]` arbitrary-value
+ * class. twirl can't express a gradient background-image, so (like the
+ * clip-path bypass) we build the CSS value and emit the class directly,
+ * replacing spaces with `_` (Tailwind reads `_` as a space inside `[...]`).
+ * Skipped on TEXT (a gradient there is text color, not background) and for
+ * DIAMOND (not representable as a CSS gradient without a heavier fallback).
  */
 function collectGradientClasses(node: SceneNode): string[] {
   if (node.type === 'TEXT') return []
   const fill = node.fills.find(
     (f) =>
-      f.visible && f.opacity > 0 && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL')
+      f.visible &&
+      f.opacity > 0 &&
+      (f.type === 'GRADIENT_LINEAR' ||
+        f.type === 'GRADIENT_RADIAL' ||
+        f.type === 'GRADIENT_ANGULAR')
   )
   if (!fill) return []
   const css = gradientCss(fill, node.width, node.height)
   return css === null ? [] : [`bg-[${css.replace(/ /g, '_')}]`]
 }
 
-/** Build the CSS gradient value for a linear / radial fill, or null when its
- *  stops / transform are missing. Colors are hex8 (no spaces); positions are
- *  percentages. The linear angle is derived from Figma's gradientTransform. */
+/** Build the CSS gradient value for a linear / radial / angular fill, or null
+ *  when its stops / transform are missing. Colors are hex8 (no spaces);
+ *  positions are percentages. Linear/conic orientation is derived from
+ *  Figma's gradientTransform. */
 function gradientCss(fill: Fill, width: number, height: number): string | null {
   const stops = fill.gradientStops
   const t = fill.gradientTransform
@@ -343,6 +349,11 @@ function gradientCss(fill: Fill, width: number, height: number): string | null {
     .map((s) => `${formatColor(s.color, s.color.a)} ${roundPct(s.position * 100)}%`)
     .join(', ')
   if (fill.type === 'GRADIENT_RADIAL') return `radial-gradient(circle, ${stopList})`
+  if (fill.type === 'GRADIENT_ANGULAR') {
+    const angle = cssGradientAngle(t.m00, t.m10)
+    const center = gradientCenter(t)
+    return `conic-gradient(from ${angle}deg at ${center.x}% ${center.y}%, ${stopList})`
+  }
   // GRADIENT_LINEAR — endpoints in pixel space (mirrors canvas/fills.ts), then
   // the CSS angle (0deg = up, clockwise) from the start→end direction (y-down).
   const startX = (t.m00 + t.m02) * width
@@ -351,6 +362,13 @@ function gradientCss(fill: Fill, width: number, height: number): string | null {
   const endY = t.m12 * height
   const angle = cssGradientAngle(endX - startX, endY - startY)
   return `linear-gradient(${angle}deg, ${stopList})`
+}
+
+function gradientCenter(t: NonNullable<Fill['gradientTransform']>): { x: string; y: string } {
+  return {
+    x: roundPct((t.m00 * 0.5 + t.m01 * 0.5 + t.m02) * 100),
+    y: roundPct((t.m10 * 0.5 + t.m11 * 0.5 + t.m12) * 100)
+  }
 }
 
 /** CSS linear-gradient angle (degrees) for a direction vector in screen (y-down)

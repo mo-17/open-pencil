@@ -847,6 +847,15 @@ bun test \
 被丢弃,坏表达式沿用 `image-source-*` warning,不影响 fallback image。验证:
 `bun test tests/engine/compiler/images.test.ts`。
 
+**§24.5 angular gradient → conic-gradient(CODE COMPLETE 2026-06-23)**:native
+`GRADIENT_ANGULAR` fill 现在 emit
+`bg-[conic-gradient(from_<angle>deg_at_<x>%_<y>%,...)]` arbitrary-value class,
+并自动进入 Tailwind safelist。角度从 `gradientTransform` 的 x-axis 推导,center 从
+transform 映射的 `(0.5,0.5)` 推导,比默认 conic 更接近 CanvasKit sweep gradient。
+仍跳过 TEXT(文字 gradient 不是 background)和 DIAMOND。验证:
+`bun test tests/engine/render/jsx/gradient.test.ts`、
+`bun test tests/engine/compiler/gradient.test.ts`。
+
 **新经验**:① 图片在我们模型里是 **fill 非 NodeType** —— 用户 URL 路径走 interactiveProps(零 asset 管道,链 §18),Figma-asset 导出是更重的 v2;② void 叶节点(`<img>`)用 early-return 建专用元素跳 control/vector/children 路径最干净(events 仍解析);③ gradient 等 twirl 表达不了的 CSS 走 arbitrary-value extraClass + 空格→`_`(clip-path 先例),native fill 数据零 codec;④ 跨包纯数学(linearGradientEndpoints)**内联**而非 import canvas/(守 io↛canvas arch 边界 + 不拉 CanvasKit 重依赖);⑤ 加分支撞 complexity/nested-ternary 即抽 helper(applyOptionGroupWrapper / joinClass)。
 
 ## §25 外链 `<a href>` + target

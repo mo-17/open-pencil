@@ -5,10 +5,11 @@ import { SceneGraph } from '@open-pencil/core/scene-graph'
 import type { Fill } from '@open-pencil/core/scene-graph'
 
 /**
- * Phase 4 §24.2 — a gradient fill (GRADIENT_LINEAR / GRADIENT_RADIAL) emits a
- * `bg-[linear-gradient(...)]` / `bg-[radial-gradient(...)]` arbitrary-value
+ * Phase 4 §24.2/§24 follow-up — a gradient fill (GRADIENT_LINEAR /
+ * GRADIENT_RADIAL / GRADIENT_ANGULAR) emits a `bg-[linear-gradient(...)]` /
+ * `bg-[radial-gradient(...)]` / `bg-[conic-gradient(...)]` arbitrary-value
  * class (twirl can't express it; mirrors the clip-path bypass). Spaces become
- * `_`; colors are hex; the linear angle is derived from the gradientTransform.
+ * `_`; colors are hex; linear/conic orientation comes from gradientTransform.
  */
 describe('jsx — gradient fills (Phase 4 §24.2)', () => {
   function gradientClass(
@@ -69,6 +70,36 @@ describe('jsx — gradient fills (Phase 4 §24.2)', () => {
       gradientTransform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
     })
     expect(cls).toBe('bg-[radial-gradient(circle,_#FFFFFF_0%,_#000000_100%)]')
+  })
+
+  test('angular gradient → bg-[conic-gradient(from angle at center,...)]', () => {
+    const cls = gradientClass({
+      type: 'GRADIENT_ANGULAR',
+      color: { r: 0, g: 0, b: 0, a: 1 },
+      opacity: 1,
+      visible: true,
+      gradientStops: [
+        { color: RED, position: 0 },
+        { color: BLUE, position: 1 }
+      ],
+      gradientTransform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
+    })
+    expect(cls).toBe('bg-[conic-gradient(from_90deg_at_50%_50%,_#FF0000_0%,_#0000FF_100%)]')
+  })
+
+  test('angular gradient center is derived from gradientTransform', () => {
+    const cls = gradientClass({
+      type: 'GRADIENT_ANGULAR',
+      color: { r: 0, g: 0, b: 0, a: 1 },
+      opacity: 1,
+      visible: true,
+      gradientStops: [
+        { color: RED, position: 0 },
+        { color: BLUE, position: 1 }
+      ],
+      gradientTransform: { m00: 0.5, m01: 0, m02: 0.25, m10: 0, m11: 0.5, m12: 0.25 }
+    })
+    expect(cls).toContain('conic-gradient(from_90deg_at_50%_50%,')
   })
 
   test('no spaces survive in the arbitrary value (all → _)', () => {
