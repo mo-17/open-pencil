@@ -31,6 +31,9 @@ const form = graph.createNode('FORM', pageId, {
   paddingRight: 16,
   paddingBottom: 16,
   paddingLeft: 16,
+  interactiveProps: {
+    validationSummary: { enabled: true, title: 'Fix these fields' }
+  },
   events: {
     onSubmit: [
       {
@@ -82,7 +85,10 @@ const out = compile({
   pageIds: [pageId],
   options: withDefaults({ packageName: 'validation-runtime-smoke' })
 })
-assert(out.warnings.length === 0, `Expected no compiler warnings, got ${JSON.stringify(out.warnings)}`)
+assert(
+  out.warnings.length === 0,
+  `Expected no compiler warnings, got ${JSON.stringify(out.warnings)}`
+)
 
 const server = await createPreviewServer({ initialFiles: out.files, fsRoot: process.cwd() })
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined
@@ -94,21 +100,35 @@ try {
   await page.getByText('Status: idle').waitFor()
 
   const email = page.getByPlaceholder('Email')
-  const alert = page.getByRole('alert')
+  const fieldAlert = page.locator('p[role="alert"]')
+  const summary = page.locator('form > div[role="alert"]')
 
   await email.pressSequentially('bad')
-  await alert.waitFor()
-  assert((await alert.textContent()) === 'Use a valid email', 'onChange should show pattern error')
+  await fieldAlert.waitFor()
+  assert(
+    (await fieldAlert.textContent()) === 'Use a valid email',
+    'onChange should show pattern error'
+  )
+  assert(
+    (await summary.textContent()) === 'Fix these fieldsUse a valid email',
+    'summary should aggregate pattern error'
+  )
 
   await email.fill('')
   await email.blur()
-  await alert.waitFor()
-  assert((await alert.textContent()) === 'Email is required', 'blur should show required error')
+  await fieldAlert.waitFor()
+  assert(
+    (await fieldAlert.textContent()) === 'Email is required',
+    'blur should show required error'
+  )
 
   await email.pressSequentially('blocked@x.com')
   await email.blur()
-  await alert.waitFor()
-  assert((await alert.textContent()) === 'That email is blocked', 'blur should show custom error')
+  await fieldAlert.waitFor()
+  assert(
+    (await fieldAlert.textContent()) === 'That email is blocked',
+    'blur should show custom error'
+  )
 
   await email.focus()
   await email.press('Enter')

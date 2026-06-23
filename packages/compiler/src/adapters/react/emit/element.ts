@@ -164,9 +164,36 @@ function emitTagElementCore(
   if (inlined !== undefined) return inlined
 
   const lines = [`${pad}${opening}>`]
+  if (node.formValidationSummary && node.formValidationKeys) {
+    lines.push(
+      emitValidationSummary(node.formValidationKeys, node.formValidationSummary.title, indent + 1)
+    )
+  }
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
   lines.push(`${pad}</${tagName}>`)
   return lines.join('\n')
+}
+
+/** §19 follow-up: opt-in FORM-level aggregate over the same field errors used
+ *  by the per-field messages. The individual fields remain the source of truth;
+ *  this only improves submit-time scanability. */
+function emitValidationSummary(keys: readonly string[], title: string, indent: number): string {
+  const pad = '  '.repeat(indent)
+  const innerPad = '  '.repeat(indent + 1)
+  const itemPad = '  '.repeat(indent + 2)
+  const ids = keys.map((k) => JSON.stringify(k)).join(', ')
+  return [
+    `${pad}{[${ids}].some((id) => __fieldErrors[id]) && (`,
+    `${innerPad}<div className="${VALIDATION_ERROR_CLASS}" role="alert">`,
+    `${itemPad}<p>${escapeJSXText(title)}</p>`,
+    `${itemPad}<ul>`,
+    `${itemPad}  {[${ids}].filter((id) => __fieldErrors[id]).map((id) => (`,
+    `${itemPad}    <li key={id}>{__fieldErrors[id]}</li>`,
+    `${itemPad}  ))}`,
+    `${itemPad}</ul>`,
+    `${innerPad}</div>`,
+    `${pad})}`
+  ].join('\n')
 }
 
 function tagOpenParts(

@@ -206,6 +206,9 @@ export interface IRElement {
    *  actions) when any field is invalid. The keys are the descendant fields'
    *  SceneNode ids. */
   formValidationKeys?: string[]
+  /** Phase 4 §19 follow-up — opt-in FORM-level summary for the field errors
+   *  listed in `formValidationKeys`. Disabled by default for byte stability. */
+  formValidationSummary?: IRFormValidationSummary
   /** Phase 4 §24.1 — set when a node carries `interactiveProps.image`. The node
    *  emits a void `<img>` (its `tag` is already `'img'`) with this src + alt;
    *  the `object-fit` / `aspect-[…]` utilities ride `className`. The `src` is a
@@ -369,6 +372,12 @@ export interface IRValidationCustom {
   ast: ExprAst
   references: string[]
   message: string
+}
+
+/** Phase 4 §19 follow-up: FORM-level validation summary metadata, lifted from
+ *  `FORM.interactiveProps.validationSummary`. */
+export interface IRFormValidationSummary {
+  title: string
 }
 
 export interface IRText {

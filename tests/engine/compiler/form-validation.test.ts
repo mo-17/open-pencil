@@ -132,6 +132,38 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(formLine).toMatch(/__validateFields\(\["[^"]+"\]\)/)
   })
 
+  test('FORM validation summary is opt-in and aggregates field errors', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, { lowcodeDocumentState: EMAIL_DOC })
+    const form = graph.createNode('FORM', pageId, {
+      name: 'F',
+      width: 300,
+      height: 200,
+      interactiveProps: { validationSummary: { enabled: true, title: 'Fix these fields' } }
+    })
+    const input = graph.createNode('INPUT', form.id, {
+      name: 'Email',
+      width: 200,
+      height: 40,
+      bindings: { value: { kind: 'docState', docStateName: 'email' } },
+      interactiveProps: { validation: { required: true } }
+    })
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const k = JSON.stringify(input.id)
+    expect(app).toContain(`${k}].some((id) => __fieldErrors[id])`)
+    expect(app).toContain('<div className="text-sm text-red-600 mt-1" role="alert">')
+    expect(app).toContain('<p>Fix these fields</p>')
+    expect(app).toContain(`<li key={id}>{__fieldErrors[id]}</li>`)
+  })
+
+  test('FORM validation summary is disabled by default for byte stability', () => {
+    const { app } = compileField({ required: true }, { inForm: true })
+    expect(app).not.toContain('Please fix the highlighted fields.')
+    expect(app).not.toContain('.some((id) => __fieldErrors[id])')
+  })
+
   test('a validation config on an uncontrolled input → warn + plain input (no validation)', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

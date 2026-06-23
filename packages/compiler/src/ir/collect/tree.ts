@@ -35,6 +35,7 @@ import type {
   IRElement,
   IRExpression,
   IRFieldValidation,
+  IRFormValidationSummary,
   IRImage,
   IRLink,
   IRList,
@@ -1059,7 +1060,11 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // the adapter wraps onSubmit to preventDefault + abort when any is invalid.
   if (node.type === 'FORM') {
     const validationKeys = collectValidationKeys(element.children)
-    if (validationKeys.length > 0) element.formValidationKeys = validationKeys
+    if (validationKeys.length > 0) {
+      element.formValidationKeys = validationKeys
+      const summary = resolveFormValidationSummary(node)
+      if (summary) element.formValidationSummary = summary
+    }
   }
   return wrapConditional(node, element, ctx)
 }
@@ -1950,6 +1955,28 @@ interface ValidationConfig {
   max?: unknown
   customExpr?: unknown
   messages?: Record<string, unknown>
+}
+
+interface ValidationSummaryConfig {
+  enabled?: unknown
+  title?: unknown
+}
+
+/** §19 follow-up: a FORM may opt into a top-level error summary via
+ *  `interactiveProps.validationSummary`. `true` uses the default title; an
+ *  object may set `{ enabled, title }`. */
+function resolveFormValidationSummary(node: SceneNode): IRFormValidationSummary | undefined {
+  const ip = node.interactiveProps as { validationSummary?: unknown } | undefined
+  const raw = ip?.validationSummary
+  if (raw === true) return { title: 'Please fix the highlighted fields.' }
+  if (!raw || typeof raw !== 'object') return undefined
+  const cfg = raw as ValidationSummaryConfig
+  if (cfg.enabled === false) return undefined
+  const title =
+    typeof cfg.title === 'string' && cfg.title.trim() !== ''
+      ? cfg.title
+      : 'Please fix the highlighted fields.'
+  return { title }
 }
 
 /** Phase 4 §19: true when a node declares any validation config — used to warn
