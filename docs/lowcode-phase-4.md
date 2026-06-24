@@ -69,18 +69,17 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
 | 8   | **§14 跨文件组件库 / 团队库**                  | 已完成               | Phase A foundation + publish/import/update helpers + `publish_component` + CLI + local Libraries 面板已完成, browser GUI ACK 通过。 | §14           |
 | 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
-| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-23**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options。      | §9 / §15      |
+| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成               | **GUI ACK 2026-06-24**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options,真机 Tauri ACK 通过。 | §9 / §15      |
 | 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成               | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合并通过 E2E ACK。 | §7 / §8 / §10 |
 | 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
-> **当前未闭合**:#9 / #10 Tauri preview 真机 ACK / #13。#8 已完成数据模型 + `.fig`
+> **当前未闭合**:#9 / #13。#8 已完成数据模型 + `.fig`
 > round-trip foundation + publish helper/tool + import/update helpers + headless CLI + local GUI;
-> browser GUI ACK 已过,remote registry 属后续增强。#11 GUI ACK 已过。#13 偏工程债;#9 有 blake3 依赖决策;#10 仍需 Tauri 桌面 preview 点画面 ACK。
+> browser GUI ACK 已过,remote registry 属后续增强。#10 Tauri preview GUI ACK 已过。#11 GUI ACK 已过。#13 偏工程债;#9 有 blake3 依赖决策。
 >
-> **下一步建议(2026-06-24 状态校准后)**:若继续 headless,转 #9 CF Pages(需先锁
-> blake3 依赖)或继续推迟 #13 Kiwi schema debt。若继续 GUI/真机,则只剩 #10
-> 的 Tauri preview ACK。
+> **下一步建议(2026-06-24 Tauri ACK 后)**:若继续 headless,转 #9 CF Pages(需先锁
+> blake3 依赖)或继续推迟 #13 Kiwi schema debt。
 > #13 Kiwi schema 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
@@ -1333,8 +1332,15 @@ bun test \
 **自动化补强(2026-06-24)**:
 
 - `bun playwright test tests/e2e/code/preview-pane-tauri.spec.ts --project=openpencil` → 1/0:用 Tauri IPC mock 让 `isTauri()` 为真,验证 preview pane 渲染、`lowcode-preview-uikit` 可切 `shadcn`、`lowcode-preview-i18n` 勾选后显示 `lowcode-preview-locales`,locales 可写 `en,zh-CN`,并展示 sidecar ready URL。
-- `bun run tauri dev` 可启动真实桌面 app;本轮日志确认 preview sidecar 监听成功(`http://localhost:61475/`)。当前 Codex 环境仍无法截图(`screencapture` 返回 `could not create image from display`)且 `osascript` 无 Accessibility 权限,所以**视觉点画面 ACK 仍未完成**。
+- `bun run tauri dev` 可启动真实桌面 app;早期日志确认 preview sidecar 监听成功(`http://localhost:61475/`)。当时 Codex 环境仍无法截图(`screencapture` 返回 `could not create image from display`)且 `osascript` 无 Accessibility 权限;后续改用 Tauri automation bridge 完成真实 webview ACK。
 - 真实启动过程中补了 `list_system_fonts` 非数组返回 guard,避免 Tauri/font mock 或异常 IPC 返回导致 `fonts is not iterable` 干扰 preview ACK。
+
+**Tauri GUI ACK(2026-06-24)**:
+
+- `bun run tauri:automation:dev` 启动真实 Tauri desktop app,并启用调试 automation bridge;MCP bridge 监听 `0.0.0.0:9223`,preview sidecar 监听 `http://localhost:61333/`。
+- `bunx --bun tauri-mcp driver-session start --port 9223` + `webview-evaluate` 直接操作真实 webview:确认右侧 preview pane 可见,`lowcode-preview-uikit` 可切到 `shadcn`,`lowcode-preview-i18n` 勾选后 `lowcode-preview-locales` 出现并接受 `en,zh-CN`。
+- 输入 invalid locale(`bad locale !!!`) 后 app 仍存活;恢复 `en,zh-CN` 并点击 preview reload 后,toolbar state 稳定保持 `shadcn` + checked i18n + `en,zh-CN`,iframe 仍可见。
+- 证据截图写入 ignored 本地 artifact:`test-results/tauri-preview-ack-final.png`。本轮还补齐 `mcp-bridge:allow-script-result`/`webdriver-automation:default` capability,消除真实 Tauri console 中的 MCP permission error;剩余只有既有 font cache / Vite preview deprecation warnings。
 
 ## §7 / §8 / §10 编辑器授权面板(GUI,真机)
 
@@ -1346,7 +1352,7 @@ bun test \
 - ~~**§8 component-props 面板**~~ —— **CODE COMPLETE 2026-06-24**:`ComponentPropsPanel.vue` 挂到 INSTANCE 右侧属性区,统一展示 variant selects、TEXT child prop 输入、solid fill prop 颜色入口;写入 instance child 的真实 text/fills,并维护 compiler 读取的 `instance.overrides` marker(`<childId>:text` / `<childId>:fills`)。variant 切换复用 `editor.switchInstanceVariant()` / `graph.swapInstanceComponent()`。
 - ~~**§10 optionalParams GUI**~~ —— **CODE COMPLETE 2026-06-24**:`WorkflowRow.vue` 的参数行新增 optional checkbox,会重建 `WorkflowDef.optionalParams`;rename/remove 参数时同步清理 optional 名称,避免 GUI 写出悬空 optional param。`ActionRow` 既有 callWorkflow args editor 会立即把该参数显示为 optional 并放宽 required 校验。
 
-**验证**:`bun playwright test tests/e2e/properties/responsive-panel.spec.ts tests/e2e/properties/component-props-panel.spec.ts tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil` → 3/0(需沙箱外本地端口权限);此前 `bun run check` exit 0;`bun run check:vue`;`bun run lint:structure`(仅既有 max-lines warnings)。**ACK 结论**:#11 browser GUI ACK 通过;#10 preview pane 是 Tauri-only,仍需桌面 preview 真机 ACK。
+**验证**:`bun playwright test tests/e2e/properties/responsive-panel.spec.ts tests/e2e/properties/component-props-panel.spec.ts tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil` → 3/0(需沙箱外本地端口权限);此前 `bun run check` exit 0;`bun run check:vue`;`bun run lint:structure`(仅既有 max-lines warnings)。**ACK 结论**:#11 browser GUI ACK 通过;#10 preview pane 已在 Tauri automation bridge 真实 webview 中 ACK。
 
 ## §10 工作流体跨页 pageStates 精确
 

@@ -11,6 +11,9 @@
     "dialog:allow-open",
     "updater:default",
     "process:default",
+    "mcp-bridge:default",
+    "mcp-bridge:allow-script-result",
+    "webdriver-automation:default",
     {
       "identifier": "fs:allow-read-file",
       "allow": [{ "path": "**" }]
