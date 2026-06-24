@@ -1,0 +1,316 @@
+# Phase 5 — Lowcode Platform Productization
+
+> 紧接 `docs/lowcode-phase-4.md`。Phase 4 已在 2026-06-25 收尾:
+> #1–#12 均已完成,#13 Kiwi schema 升格明确 Deferred 到 Phase 5+ 工程债。
+>
+> **本 doc 的作用**:把 lowcode 从「功能链路已打通」推进到「真实应用发布 /
+> 运营 / 商业化」阶段。这里先列候选、优先级、依赖和成功标准;开工前仍需用户
+> 选定单条候选,再把对应小节扩写成详细设计。
+
+---
+
+## 0. Phase 4 Closeout Baseline
+
+Phase 4 结束时已经具备:
+
+- 数据 / 后端:Supabase auth、query、mutation、storage upload、RLS advisor。
+- 交互 / 状态:docState、pageState、bindings、events、workflows、validation、
+  remote validators、optional workflow params、page-scoped workflow state。
+- 组件 / UI emit:responsive overrides、component props、component set variants、
+  shadcn/ui adapter、overlays、Tabs/Accordion/Avatar/Badge/Skeleton/Progress/Alert、
+  icons、image fills、gradients、sticky/fixed/overflow/z-index。
+- i18n / preview:i18n runtime、RTL、CLI flags、preview i18n toggle、preview
+  UI-kit toggle,真实 Tauri GUI ACK 已过。
+- 发布:Netlify、Vercel、Cloudflare Pages Direct Upload provider;Cloudflare 真
+  token live ACK 需真实凭据另跑。
+- AI / MCP / CLI:lowcode ToolDefs、CLI build/deploy、MCP/Tauri GUI automation
+  bridge。
+- 持久化格式:lowcode 字段仍走 `lowcode/*` pluginData 旁路,稳定 round-trip。
+
+**Phase 5 的默认前提**:不重做 Phase 0–4 已交付能力;除非明确进入 §6 Kiwi
+schema 债务,否则继续保持 pluginData 旁路。
+
+---
+
+## 1. 范围
+
+### 1.1 Phase 5 In-Scope Candidates
+
+| #   | 主题                                                  | 优先级 | 类型     | 简述                                                                                         | 详写 |
+| --- | ----------------------------------------------------- | ------ | -------- | -------------------------------------------------------------------------------------------- | ---- |
+| 1   | **应用发布生命周期:preview / staging / production / rollback** | 高     | 产品闭环 | 在现有 deploy provider 之上建立 app version、environment、publish/rollback 语义。            | §2   |
+| 2   | **轻量 SEO / metadata emit**                          | 高     | 小闭环   | per-page title/description/OG/static meta 注入;不做 SSG。                                     | §3   |
+| 3   | **低代码能力文档 / release notes / onboarding**        | 高     | 发现性   | 把 Supabase/workflow/i18n/shadcn/deploy 等能力整理成用户入口和示例。                          | §4   |
+| 4   | **全局主题 / design tokens / dark mode emit**          | 中     | 产品力   | 从 Figma variables / app theme 映射 CSS variables,支持 light/dark/theme switch。              | §5   |
+| 5   | **Kiwi schema 升格设计文档**                          | 低     | 工程债   | 先设计,不直接改 codec;评估迁移/兼容/协作收益。                                                | §6   |
+| 6   | **Analytics / tracking 集成**                         | 中     | 运营     | GA / Plausible / PostHog script injection + event tracking hooks。                            | §7   |
+| 7   | **Custom code escape hatch**                          | 中     | 高级用户 | head/custom CSS/custom JS snippets;需要安全边界和 deploy 兼容。                               | §8   |
+| 8   | **Stripe / paid app primitives**                      | 中     | 商业化   | Stripe checkout / webhook / Supabase Edge Function 模式;跨静态 SPA 边界。                     | §9   |
+| 9   | **可视化 Workflow DAG editor**                        | 低     | 大重构   | 当前 ActionDef 链已够用;DAG 是 authoring 体验升级,不是 runtime 必需。                         | §10  |
+| 10  | **Mobile/native export strategy**                     | 低     | 平台扩展 | React Native / Capacitor / Tauri Mobile 路线评估;不与 React web adapter 混改。                | §11  |
+| 11  | **Plugin / marketplace architecture**                 | 低     | 生态     | 自定义节点/自定义 action/模板 marketplace;需权限、沙箱、包格式。                              | §12  |
+
+### 1.2 推荐开工顺序
+
+1. **§4 文档 / onboarding**:最快把已完成能力变成用户可发现价值,风险最低。
+2. **§3 轻量 SEO**:纯 compiler/CLI 小闭环,价值明确,不需要引入服务端。
+3. **§2 应用发布生命周期**:承接 deploy provider,把“能 deploy”升级成“能发布产品”。
+4. **§5 主题 / dark mode**:视觉产品力,但会横跨 variables、compiler、preview。
+5. **§7 Analytics**:运营闭环,可在 custom head/script 注入前先做受控集成。
+6. **§6 Kiwi schema 设计**:只在需要协作/AI 一等字段时做,先写设计文档。
+
+### 1.3 Phase 5 Out-of-Scope Until Explicitly Chosen
+
+- 不默认做 Kiwi schema 迁移;先设计,再决定是否落地。
+- 不默认引入平台计费 / 多租户 / workspace billing。
+- 不默认做 SSG/SSR;SEO 第一刀只做静态 metadata emit。
+- 不默认做 native mobile export。
+- 不默认做 plugin marketplace。
+- 不默认改低代码 pluginData key 或已发布 runtime symbol。
+
+---
+
+## 2. 应用发布生命周期
+
+### 2.1 问题
+
+Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,但用户视角仍是
+“一次性 deploy 命令”。真实 lowcode 平台需要:
+
+- draft / preview / production 的环境概念;
+- 发布前预览和发布后 live URL;
+- 回滚到上一个版本;
+- 记录 deploy provider、deploy id、commit/message、构建选项;
+- 与 Supabase production URL / anon key override 对齐。
+
+### 2.2 初始设计方向
+
+- 新增 app-level deployment metadata,不写入每个 node。
+- `open-pencil deploy` 仍保持 stateless CLI;发布历史可以由 app shell / local
+  project metadata 管。
+- 先支持 local history + provider deploy id,不做云端 team workspace。
+- production/staging 命名仅影响 metadata 和 deploy target,不改 compiler emit。
+
+### 2.3 成功标准草案
+
+- CLI 可以输出包含 provider、deployId、url、environment 的 JSON。
+- Tauri DeployControls 可以选择 `preview/staging/production`。
+- 能记录最近 N 次 deploy history,显示 live URL 和 provider id。
+- 支持 rollback 指引:至少能重新 deploy 某个历史 build artifact 或提示 provider
+  dashboard rollback。
+
+---
+
+## 3. 轻量 SEO / Metadata Emit
+
+### 3.1 问题
+
+当前 React SPA 仅有基础 HTML metadata。对营销页、公开页面、模板站点来说,缺
+`title` / `description` / OG metadata 会直接影响分享和搜索体验。
+
+### 3.2 范围
+
+第一刀只做静态 metadata:
+
+- document-level default title / description;
+- page-level override title / description / social image / canonical URL;
+- compile/build 时把当前 page metadata 注入 `index.html`;
+- 多页 SPA 不做 SSG,不承诺每个 route 独立 HTML。
+
+### 3.3 非目标
+
+- 不做 SSG/SSR。
+- 不做 sitemap/robots 的全自动站点生成,除非后续 provider lifecycle 需要。
+- 不做动态 runtime head manager。
+
+### 3.4 成功标准草案
+
+- `.pen` / `.fig` round-trip 保留 metadata。
+- CLI build 输出的 `index.html` 包含 title/description/OG tags。
+- preview 不因 metadata 缺失崩溃。
+- 无 metadata 时输出 byte-stable 或最小漂移。
+
+---
+
+## 4. 文档 / Onboarding / Release Notes
+
+### 4.1 问题
+
+低代码能力已经跨 Supabase、workflow、validation、component library、i18n、
+shadcn、deploy 多条线完成,但用户入口分散在 phase docs 和内部实现记录里。
+
+### 4.2 交付物
+
+- README 低代码能力总览:适合用户快速理解“能做什么”。
+- `packages/docs` 用户指南:从设计到 preview 到 deploy 的一条完整路径。
+- 示例 app / demo checklist:展示 Supabase 列表、表单校验、workflow、deploy。
+- CHANGELOG Unreleased 补齐 Cloudflare deploy / Tauri automation / GUI ACK 等用户可见项。
+
+### 4.3 成功标准草案
+
+- 新用户能按文档完成一个低代码 app 的 preview + build + deploy。
+- 文档明确哪些能力是 Tauri-only、哪些是 browser-only。
+- 文档不暴露内部 phase 术语作为主要用户入口。
+
+---
+
+## 5. 全局主题 / Design Tokens / Dark Mode
+
+### 5.1 问题
+
+shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还缺一等主题模型。
+没有主题模型时,dark mode、品牌色、运行时 theme switch 都只能靠零散 class。
+
+### 5.2 初始设计方向
+
+- 从 document/theme 或 variables collection 生成 CSS variables。
+- compiler 输出 `:root` / `.dark` token blocks。
+- lowcode runtime 提供 `ThemeProvider` 或最小 `useTheme` hook。
+- preview pane 能切 theme,但默认保持 byte-stable。
+
+### 5.3 风险
+
+- 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
+- Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
+
+---
+
+## 6. Kiwi Schema 升格设计
+
+### 6.1 当前决定
+
+保持 Deferred。当前 `lowcode/*` pluginData 旁路稳定 round-trip,已覆盖 compiler /
+editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
+
+### 6.2 只有这些条件满足才值得进入实现
+
+- 协作 / AI / 外部工具需要 lowcode 字段作为 schema 一等字段;
+- pluginData 旁路在性能、兼容或迁移上出现真实瓶颈;
+- 有明确旧文件迁移策略和回滚策略;
+- 有完整 codec / kiwi / import-export / cross-version 测试预算。
+
+### 6.3 设计文档必须回答
+
+- 新字段归属哪个 Kiwi message?
+- 旧 pluginData 如何迁移? 是否双写? 双写多久?
+- 老客户端读新文件的行为是什么?
+- 新客户端读旧文件如何升级?
+- 与 Figma 原始 pluginData 是否冲突?
+- 如何验证 round-trip 不丢字段?
+
+---
+
+## 7. Analytics / Tracking
+
+### 7.1 范围
+
+- Provider presets:GA4、Plausible、PostHog。
+- document-level tracking id / endpoint。
+- event action 可选 `trackEvent`。
+- deploy/build 时注入 script 和 runtime helper。
+
+### 7.2 风险
+
+- CSP / privacy / cookie consent。
+- 不同 provider SDK 加载方式不同。
+- 不能把 analytics secret 写进 document。
+
+---
+
+## 8. Custom Code Escape Hatch
+
+### 8.1 范围
+
+- custom `<head>` snippets;
+- custom CSS;
+- custom JS module / inline script;
+- per-page embed blocks。
+
+### 8.2 风险
+
+- XSS / sandbox / deploy provider CSP。
+- preview iframe 安全边界。
+- AI 生成代码的可审计性。
+
+---
+
+## 9. Stripe / Paid App Primitives
+
+### 9.1 问题
+
+真实商业 app 需要 checkout、subscription、webhook、customer portal。但静态 SPA
+不能安全持有 secret key,必须依赖 Supabase Edge Function 或用户自有 backend。
+
+### 9.2 初始方向
+
+- Stripe checkout action 只调用 server endpoint。
+- Supabase Edge Function template 作为推荐后端。
+- 文档明确 secret 只进 server env,不进 `.fig` / compiled SPA。
+
+---
+
+## 10. Workflow DAG Editor
+
+当前 workflow runtime/action chain 已可表达大多数业务流程。DAG editor 是 authoring
+体验升级,不是 runtime 必需。进入前先评估:
+
+- 是否真的需要 graph,还是当前递归 editor + named workflow 足够;
+- DAG 到 ActionDef chain 的序列化规则;
+- cycle detection / branching / join semantics;
+- UI complexity 与 Tauri/browser E2E 成本。
+
+---
+
+## 11. Mobile / Native Export Strategy
+
+不直接从现有 React web adapter 混改。先做路线评估:
+
+- React Native adapter;
+- Capacitor wrapper;
+- Tauri Mobile;
+- PWA-first。
+
+每条路线需要分别评估 UI-kit、Supabase、navigation、storage、deploy/package。
+
+---
+
+## 12. Plugin / Marketplace Architecture
+
+进入前先定义:
+
+- plugin package format;
+- allowed capabilities;
+- custom node/action registration;
+- install/update/revoke;
+- sandbox and review model;
+- marketplace metadata and signing。
+
+这属于平台生态能力,不是 Phase 5 第一优先级。
+
+---
+
+## 13. 验证策略
+
+每个 Phase 5 候选都必须至少有:
+
+- compiler/engine unit tests for emitted behavior;
+- `.fig` / `.pen` round-trip tests when document schema changes;
+- CLI test when adding flags;
+- Tauri/browser GUI ACK when adding authoring controls;
+- `git diff --check`;
+- `bun run check:vue` for Vue changes;
+- `bunx tsgo --noEmit` for TS changes;
+- focused tests before any broad `bun run check`。
+
+---
+
+## 14. 推荐第一刀
+
+推荐先做 **§4 文档 / Onboarding / Release Notes**。
+
+理由:
+
+- Phase 0–4 已经积累大量真实能力,但分散在内部 phase docs;
+- 风险最低,不会碰 compiler/codec;
+- 能立刻提升可用性和产品表达;
+- 做完后再开 §3 轻量 SEO 或 §2 发布生命周期,用户路径会更顺。
