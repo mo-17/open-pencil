@@ -7,10 +7,9 @@
 > `official/master` 0 behind)。re-baseline 项目本身(Stage 1–16)+ 后续四条
 > feature 线均已 code-complete 且 `bun run check` exit 0。
 >
-> **本 doc 的作用**:只列 **phase-3 未闭合的真剩余需求** + 优先级 + 每条 stub。
-> **目前所有候选未锁定;实际开工前每条单独 AskUserQuestion 锁主决定 → 回本 doc
-> 把对应 stub 扩写成「详细设计 + 锁定决定」格式 → 分 step commit → headless 验
-> 证(Tauri 真机靠后)。不要自动开工任何候选。**
+> **本 doc 的作用**:记录 phase-3 未闭合项在 phase-4 的处理结果。2026-06-25
+> 收尾后,phase-4 的功能候选均已 code-complete 或 GUI/headless ACK;唯一剩余
+> #13 Kiwi schema 升格被明确推迟到 Phase 5+ 工程债,不再作为 phase-4 阻塞项。
 
 ---
 
@@ -72,15 +71,15 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成               | **GUI ACK 2026-06-24**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options,真机 Tauri ACK 通过。 | §9 / §15      |
 | 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成               | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合并通过 E2E ACK。 | §7 / §8 / §10 |
 | 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
-| 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
+| 13  | **lowcode 字段升格 Kiwi schema**               | Deferred             | **DEFERRED 2026-06-25**;pluginData 旁路稳定,升格成本高,移入 Phase 5+ 工程债。                  | §6            |
 
-> **当前未闭合**:#13。#8 已完成数据模型 + `.fig`
+> **Phase 4 closeout(2026-06-25)**:#1–#12 均已完成;#13 明确 Deferred。#8 已完成数据模型 + `.fig`
 > round-trip foundation + publish helper/tool + import/update helpers + headless CLI + local GUI;
-> browser GUI ACK 已过,remote registry 属后续增强。#9 Cloudflare Pages headless 已闭合。#10 Tauri preview GUI ACK 已过。#11 GUI ACK 已过。#13 偏工程债。
+> browser GUI ACK 已过,remote registry 属后续增强。#9 Cloudflare Pages headless 已闭合。#10 Tauri preview GUI ACK 已过。#11 GUI ACK 已过。
 >
-> **下一步建议(2026-06-25 Cloudflare deploy 后)**:继续推迟 #13 Kiwi schema debt,
-> 除非协作/AI 流程明确需要 schema 一等字段。
-> #13 Kiwi schema 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
+> **后续建议**:没有真实 Cloudflare token 时,不要伪造网络 ACK;有凭据再跑一次
+> Cloudflare Pages live deploy。#13 Kiwi schema 仅在协作/AI 流程明确需要 schema
+> 一等字段时进入 Phase 5+ 设计。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
 
@@ -117,6 +116,13 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 - **可视化数据流 DAG 编辑器** —— §10 工作流编排限定 ActionDef 链 + condition/delay/stop;Bubble Flow-style 节点 DAG 编辑器留 Phase 5
 - **手机原生导出**(iOS / Android) —— 当前 emit 仅 React/Web;React Native / Capacitor / Tauri Mobile
 - **插件系统 / Marketplace** —— 自定义节点类型 / 自定义 action 动态加载
+
+**(a.1) Phase 4 closeout 后明确推迟**:
+
+- **lowcode 字段升格 Kiwi schema(#13)** —— 当前 `lowcode/*` pluginData
+  旁路已稳定 round-trip,继续满足 compiler / editor / MCP / `.fig` 兼容需求。升格
+  要改 vendored schema、codec 通道和旧文件迁移,产品侧没有新功能解锁,因此移入
+  Phase 5+ 工程债。
 
 **(b) Tier 2/3 真实缺口 —— 已确认代码无实现,价值高但偏架构级/外部依赖,Phase 5 预留**(2026-06-20 产品缺口盘点,grep 确认):
 
@@ -1378,4 +1384,7 @@ bun test \
 
 **现状**:全部 lowcode 字段经 pluginData 旁路通道(`lowcode/*`,含 §7 `responsiveOverrides`)round-trip,稳定运行,kiwi 119/0。
 
-**评估**:升格成本高(fork vendored `kiwi-schema/` + 通道重写 + 老 .fig 迁移工具),产品层面零新功能解锁。**继续推迟**(phase-3 §1.1 候选 5 的 carry-over),除非协作/AI 流程对 schema 一等字段位有刚需。本节仅占位,不主动开工。
+**收尾决定(DEFERRED 2026-06-25)**:保持 #13 推迟。升格成本高(fork vendored
+`kiwi-schema/` + 通道重写 + 老 .fig 迁移工具),产品层面零新功能解锁。当前
+pluginData 旁路已覆盖 compiler/editor/MCP/`.fig` 兼容路径,继续作为稳定实现。除非
+协作/AI 流程对 schema 一等字段位有刚需,否则不主动开工。
