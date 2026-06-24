@@ -6,6 +6,7 @@
 
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.
+- Add user-facing lowcode app onboarding docs covering preview, compile, build, Supabase overrides, i18n, shadcn/ui, and deploy.
 - Add JSX authoring support for components, component sets, and instances.
 - Add type-validated `bindVariable`/`unbindVariable` with event emission and indexed binding format (`fills/N/color` instead of `fills[N]`).
 - Add `unbind_variable` MCP tool for removing variable bindings.
@@ -33,6 +34,7 @@
 
 - Clip compiled lowcode card children to the parent rounded corners by emitting overflow clipping on card-like containers.
 - Show JSX in the Code panel when selecting lowcode Button nodes, including their interactive text in OpenPencil and Tailwind formats.
+- Allow the CLI deploy command to accept the documented `--provider cloudflare` option.
 - Treat unexpected Tauri system-font IPC responses as an empty local font list instead of crashing during desktop preview startup.
 - Fix accepting local lowcode library updates from the Libraries panel when the editor graph contains Vue reactive nodes.
 - Fix clone operations (duplicate, instance creation, clipboard copy) sharing mutable references with the original — editing fills, strokes, variable bindings, overrides, or vector networks on one no longer corrupts the other.

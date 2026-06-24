@@ -43,6 +43,12 @@ const TOKEN_HELP: Record<DeployProvider, string> = {
   cloudflare: 'https://dash.cloudflare.com/profile/api-tokens'
 }
 
+export function resolveDeployProvider(raw: string | undefined): DeployProvider {
+  const provider = (raw ?? 'netlify').toLowerCase()
+  if ((PROVIDERS as readonly string[]).includes(provider)) return provider as DeployProvider
+  throw new Error(`Unknown --provider '${provider}'. Supported: ${PROVIDERS.join(', ')}.`)
+}
+
 /** Read a built dist directory back into a path → bytes map for upload. */
 function readDist(outDir: string, relPaths: readonly string[]): Map<string, Uint8Array> {
   const files = new Map<string, Uint8Array>()
@@ -122,12 +128,13 @@ export default defineCommand({
     const { file, page, base } = args as DeployArgs
     const uiKit = resolveUiKitFlag(args as DeployArgs)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as DeployArgs)
-    const providerArg = ((args as DeployArgs).provider ?? 'netlify').toLowerCase()
-    if (providerArg !== 'netlify' && providerArg !== 'vercel') {
-      printError(`Unknown --provider '${providerArg}'. Supported: ${PROVIDERS.join(', ')}.`)
+    let provider: DeployProvider
+    try {
+      provider = resolveDeployProvider((args as DeployArgs).provider)
+    } catch (e) {
+      printError(e)
       process.exit(1)
     }
-    const provider: DeployProvider = providerArg
     const deployArgs = args as DeployArgs
     const token = deployArgs.token ?? process.env[TOKEN_ENV[provider]]
     if (!token) {

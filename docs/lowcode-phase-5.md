@@ -148,10 +148,16 @@ shadcn、deploy 多条线完成,但用户入口分散在 phase docs 和内部实
 
 ### 4.2 交付物
 
-- README 低代码能力总览:适合用户快速理解“能做什么”。
-- `packages/docs` 用户指南:从设计到 preview 到 deploy 的一条完整路径。
-- 示例 app / demo checklist:展示 Supabase 列表、表单校验、workflow、deploy。
-- CHANGELOG Unreleased 补齐 Cloudflare deploy / Tauri automation / GUI ACK 等用户可见项。
+- README 低代码能力总览:适合用户快速理解“能做什么”。**2026-06-25 第一刀已补
+  `README.md` 的 lowcode app publishing 和 compile/build/deploy 快速路径。**
+- `packages/docs` 用户指南:从设计到 preview 到 deploy 的一条完整路径。**2026-06-25
+  第一刀已新增 `packages/docs/user-guide/lowcode-apps.md`,并从英文 docs 首页、
+  User Guide 索引和英文 sidebar 挂入口。**
+- 示例 app / demo checklist:展示 Supabase 列表、表单校验、workflow、deploy。**2026-06-25
+  第一刀已在用户指南内加入 demo checklist;真实 demo 文件仍可后续补。**
+- CHANGELOG Unreleased 补齐 Cloudflare deploy / Tauri automation / GUI ACK 等用户可见项。**2026-06-25
+  第一刀已补 lowcode onboarding 文档项,并顺手修复 CLI `--provider cloudflare`
+  入口校验。**
 
 ### 4.3 成功标准草案
 

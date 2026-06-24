@@ -28,6 +28,7 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
 - **Design-to-code export** — export selections as JSX/Tailwind, generate token outputs, and map designs into component-oriented code workflows
+- **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase actions, workflows, i18n, shadcn/ui output, preview, build, and deploy flows
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
 - **Real-time collaboration** — P2P via WebRTC, no server, no account. Cursors, presence, follow mode
 - **Auto layout & CSS Grid** — flex and grid layout via Yoga WASM, with gap, padding, alignment, track sizing
@@ -147,6 +148,33 @@ openpencil eval -c "figma.currentPage.name"   # Query the editor
 ```
 
 All commands support `--json` for machine-readable output.
+
+### Build lowcode apps
+
+OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app. The lowcode compiler preserves layout, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, i18n catalogs, and optional shadcn/ui components.
+
+```sh
+openpencil compile app.fig -o generated-app
+cd generated-app
+npm install
+npm run dev
+```
+
+Build a static SPA bundle for any static host:
+
+```sh
+openpencil build app.fig -o dist --ui-kit shadcn --i18n --locale fr
+```
+
+Deploy directly to Netlify, Vercel, or Cloudflare Pages:
+
+```sh
+NETLIFY_AUTH_TOKEN=... openpencil deploy app.fig --provider netlify --site my-site
+VERCEL_TOKEN=... openpencil deploy app.fig --provider vercel --site my-project
+CLOUDFLARE_API_TOKEN=... openpencil deploy app.fig --provider cloudflare --account-id <account-id> --site my-pages-project
+```
+
+For Supabase-backed apps, override production credentials at build/deploy time with `--supabase-url` and `--supabase-anon-key`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. See the [Lowcode Apps guide](https://openpencil.dev/user-guide/lowcode-apps) for the full path from preview to deploy.
 
 ## AI & MCP
 

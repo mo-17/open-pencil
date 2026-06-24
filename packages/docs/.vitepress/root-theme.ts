@@ -23,7 +23,7 @@ export const rootThemeConfig = (): DefaultTheme.Config => ({
   ],
 
   sidebar: {
-    '/user-guide/': userGuideSidebar('', EN),
+    '/user-guide/': userGuideSidebar('', EN, true),
     '/programmable/sdk/': sdkSidebar(''),
     '/programmable/': programmableSidebar('', EN_PROG),
     '/reference/': referenceSidebar('', 'Reference'),

@@ -126,6 +126,81 @@ openpencil eval [file] [options]
 | `--json` | | Output as JSON |
 | `--quiet` | `-q` | Suppress output |
 
+## compile
+
+Compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript project.
+
+```sh
+openpencil compile <file> -o <dir>
+```
+
+| Option | Alias | Description |
+|--------|-------|-------------|
+| `--out` | `-o` | Output directory (default: `.`) |
+| `--package-name` | | `package.json` name (default: sanitized from input filename) |
+| `--page` | | Restrict output to a single page by name |
+| `--i18n` | | Enable the react-intl runtime and locale catalogs |
+| `--locale` | | Target locale; repeatable, implies `--i18n` |
+| `--source-locale` | | Source locale for authored canvas strings; implies `--i18n` |
+| `--ui-kit` | | Emit supported controls with a code UI kit (`shadcn`) |
+| `--json` | | Output a JSON summary |
+
+## build
+
+Build a `.fig` or `.pen` document into a deployable static SPA bundle.
+
+```sh
+openpencil build <file> -o dist
+```
+
+| Option | Alias | Description |
+|--------|-------|-------------|
+| `--out` | `-o` | Output directory for the static bundle (default: `dist`) |
+| `--package-name` | | `package.json` name (default: sanitized from input filename) |
+| `--page` | | Restrict output to a single page by name |
+| `--base` | | Public base path for assets (default: `/`) |
+| `--supabase-url` | | Override the Supabase URL for this build |
+| `--supabase-anon-key` | | Override the Supabase anon key for this build |
+| `--i18n` | | Enable the react-intl runtime and locale catalogs |
+| `--locale` | | Target locale; repeatable, implies `--i18n` |
+| `--source-locale` | | Source locale for authored canvas strings; implies `--i18n` |
+| `--ui-kit` | | Emit supported controls with a code UI kit (`shadcn`) |
+| `--json` | | Output a JSON summary |
+
+## deploy
+
+Build and deploy a document to a static host.
+
+```sh
+openpencil deploy <file> --provider netlify --site my-site
+openpencil deploy <file> --provider vercel --site my-project
+openpencil deploy <file> --provider cloudflare --account-id <account-id> --site my-pages-project
+```
+
+| Option | Description |
+|--------|-------------|
+| `--provider` | `netlify` (default), `vercel`, or `cloudflare` |
+| `--token` | Provider access token; falls back to provider-specific env vars |
+| `--site` | Netlify site id/subdomain, Vercel project name, or Cloudflare project name |
+| `--account-id` | Cloudflare account id; also supported through `CLOUDFLARE_ACCOUNT_ID` |
+| `--page` | Restrict output to a single page by name |
+| `--base` | Public base path for assets |
+| `--supabase-url` | Override the Supabase URL for this deploy |
+| `--supabase-anon-key` | Override the Supabase anon key for this deploy |
+| `--ui-kit` | Emit supported controls with a code UI kit (`shadcn`) |
+| `--i18n` | Enable the react-intl runtime and locale catalogs |
+| `--locale` | Target locale; repeatable, implies `--i18n` |
+| `--source-locale` | Source locale for authored canvas strings; implies `--i18n` |
+| `--json` | Output the deploy result as JSON |
+
+Token env vars:
+
+| Provider | Env var |
+|----------|---------|
+| Netlify | `NETLIFY_AUTH_TOKEN` |
+| Vercel | `VERCEL_TOKEN` |
+| Cloudflare | `CLOUDFLARE_API_TOKEN` |
+
 ## analyze colors
 
 Analyze color palette usage across the document.

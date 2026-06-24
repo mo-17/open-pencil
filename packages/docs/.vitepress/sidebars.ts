@@ -18,6 +18,7 @@ export const guideSidebar = (prefix: string, labels: SidebarLabels): DefaultThem
 export const userGuideSidebar = (
   prefix: string,
   labels: SidebarLabels,
+  includeLowcodeApps = false,
 ): DefaultTheme.SidebarItem[] => [
   {
     text: labels.gettingAround,
@@ -48,6 +49,9 @@ export const userGuideSidebar = (
       { text: labels.autoLayout, link: `${prefix}/user-guide/auto-layout` },
       { text: labels.components, link: `${prefix}/user-guide/components` },
       { text: labels.variables, link: `${prefix}/user-guide/variables` },
+      ...(includeLowcodeApps
+        ? [{ text: 'Lowcode Apps', link: `${prefix}/user-guide/lowcode-apps` }]
+        : []),
     ],
   },
 ]

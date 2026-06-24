@@ -25,6 +25,9 @@ features:
   - icon: ⚡
     title: Programmable
     details: Headless CLI to inspect, export, and analyze .fig files. Figma Plugin API via eval. Tailwind CSS export. JSON output for CI and automation.
+  - icon: 🚀
+    title: Lowcode Apps
+    details: Compile pages into React/Tailwind apps with state, bindings, Supabase actions, workflows, i18n, shadcn/ui output, preview, build, and deploy.
   - icon: 🧩
     title: Toolkit, not just app
     details: Build custom editing surfaces with the Vue SDK, embed OpenPencil into other products, or assemble workflow-specific editors around the same core.
