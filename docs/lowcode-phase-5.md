@@ -121,7 +121,9 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 
 - document-level default title / description;
 - page-level override title / description / social image / canonical URL;
-- compile/build 时把当前 page metadata 注入 `index.html`;
+- compile/build 时把当前 page metadata 注入 `index.html`; **2026-06-25 第一刀已补
+  compiler `metadata` option,支持 title / description / OG image / canonical URL,
+  且单页 compile 可用 page override 覆盖 document default。**
 - 多页 SPA 不做 SSG,不承诺每个 route 独立 HTML。
 
 ### 3.3 非目标
@@ -132,10 +134,14 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 
 ### 3.4 成功标准草案
 
-- `.pen` / `.fig` round-trip 保留 metadata。
-- CLI build 输出的 `index.html` 包含 title/description/OG tags。
-- preview 不因 metadata 缺失崩溃。
-- 无 metadata 时输出 byte-stable 或最小漂移。
+- `.pen` / `.fig` round-trip 保留 metadata。**未做:需要后续 UI / ToolDef /
+  pluginData 持久化小闭环,本刀不改 Kiwi schema。**
+- CLI build 输出的 `index.html` 包含 title/description/OG tags。**2026-06-25 已由
+  `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler VFS output。**
+- preview 不因 metadata 缺失崩溃。**2026-06-25 已覆盖 metadata absent path,不额外
+  emit description/OG/canonical。**
+- 无 metadata 时输出 byte-stable 或最小漂移。**2026-06-25 已保持默认
+  `buildIndexHtml()` 输出不插入额外 tags。**
 
 ---
 

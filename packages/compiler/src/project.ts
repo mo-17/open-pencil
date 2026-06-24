@@ -1,4 +1,4 @@
-import type { CompilerOptions } from './types'
+import type { CompilerOptions, HtmlMetadata } from './types'
 
 const REACT_DEP_VERSIONS = {
   '18': { react: '^18.3.1', reactDom: '^18.3.1', reactTypes: '^18.3.12', reactDomTypes: '^18.3.5' },
@@ -114,23 +114,61 @@ export function buildTsConfig(withAlias = false): string {
   return JSON.stringify({ compilerOptions, include: ['src'] }, null, 2) + '\n'
 }
 
-export function buildIndexHtml(packageName: string, lang = 'en', rtl = false): string {
+export function buildIndexHtml(
+  packageName: string,
+  lang = 'en',
+  rtl = false,
+  metadata?: HtmlMetadata
+): string {
   // Phase 3 §9 v12: reflect the source locale on <html lang> (a11y / SEO) and
   // pre-set dir="rtl" for an RTL source so the page doesn't flash LTR before the
   // runtime's useEffect runs. Defaults ('en', false) keep the LTR output byte-identical.
+  const title = cleanMetadataText(metadata?.title) ?? packageName
+  const meta = buildMetadataTags(metadata)
   return `<!doctype html>
 <html lang="${escapeHtml(lang)}"${rtl ? ' dir="rtl"' : ''}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escapeHtml(packageName)}</title>
-  </head>
+    <title>${escapeHtml(title)}</title>
+${meta}  </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
 `
+}
+
+function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
+  if (!metadata) return ''
+  const title = cleanMetadataText(metadata.title)
+  const description = cleanMetadataText(metadata.description)
+  const image = cleanMetadataText(metadata.image)
+  const canonicalUrl = cleanMetadataText(metadata.canonicalUrl)
+  const lines: string[] = []
+  if (description) {
+    lines.push(metaTag('name', 'description', description))
+    lines.push(metaTag('property', 'og:description', description))
+  }
+  if (title) lines.push(metaTag('property', 'og:title', title))
+  if (image) lines.push(metaTag('property', 'og:image', image))
+  if (canonicalUrl) {
+    lines.push(`    <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`)
+    lines.push(metaTag('property', 'og:url', canonicalUrl))
+  }
+  if (lines.length === 0) return ''
+  return `${lines.join('\n')}\n`
+}
+
+function metaTag(kind: 'name' | 'property', key: string, content: string): string {
+  return `    <meta ${kind}="${escapeHtml(key)}" content="${escapeHtml(content)}" />`
+}
+
+function cleanMetadataText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed === '' ? undefined : trimmed
 }
 
 /** Phase 3 §9: when `i18n` is true, wrap `<App/>` in the `<I18nProvider>` the

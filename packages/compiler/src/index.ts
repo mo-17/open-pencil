@@ -5,6 +5,8 @@ import type { CompilerInput, CompilerOptions, CompilerOutput } from './types'
 
 export type {
   CompileWarning,
+  HtmlMetadata,
+  HtmlMetadataOptions,
   CompilerInput,
   CompilerOptions,
   CompilerOutput,

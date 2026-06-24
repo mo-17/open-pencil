@@ -78,10 +78,28 @@ export interface CompilerOptions {
    * Tailwind emit. Optional so existing call sites / `withDefaults` stay unbroken.
    */
   uiKit?: UiKitName
+  /**
+   * Phase 5 §3 — static HTML metadata for the generated SPA shell. Document-level
+   * fields apply to `index.html`; `pages` lets a single-page compile override
+   * them for the compiled page. Multi-page SPA output still has one HTML shell,
+   * so route-specific metadata is intentionally not promised here.
+   */
+  metadata?: HtmlMetadataOptions
 }
 
 /** Phase 3 §15 — supported code-UI-kit identifiers. */
 export type UiKitName = 'shadcn'
+
+export interface HtmlMetadata {
+  title?: string
+  description?: string
+  image?: string
+  canonicalUrl?: string
+}
+
+export interface HtmlMetadataOptions extends HtmlMetadata {
+  pages?: Record<string, HtmlMetadata>
+}
 
 export interface CompileWarning {
   /** Stable code so callers can suppress / categorize */

@@ -15,7 +15,7 @@ import {
   buildTsConfig,
   buildViteConfig
 } from '#compiler/project'
-import type { CompilerOptions, CompileWarning } from '#compiler/types'
+import type { CompilerOptions, CompileWarning, HtmlMetadata } from '#compiler/types'
 
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
@@ -241,7 +241,8 @@ function emitSinglePage(
     toastActive,
     confirmActive,
     validationActive,
-    kit
+    kit,
+    resolveIndexMetadata([cleaned], options)
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
   const coverage = i18nActive
@@ -320,7 +321,8 @@ function emitMultiPage(
     toastActive,
     confirmActive,
     validationActive,
-    kit
+    kit,
+    resolveIndexMetadata(irs, options)
   )
   // Phase 3 §9 v14: surface untranslated strings per target locale in the build flow.
   const coverage = i18nActive
@@ -524,7 +526,8 @@ function setSharedProjectFiles(
   toast: boolean,
   confirm: boolean,
   validation: boolean,
-  kit: { themeCss: string; active: boolean }
+  kit: { themeCss: string; active: boolean },
+  metadata?: HtmlMetadata
 ): void {
   // Phase 3 §10 v2 / v3 + §19: the toast / confirm / validation-error classes
   // never appear in the IR, so seed them into the Tailwind safelist (the VFS
@@ -544,13 +547,50 @@ function setSharedProjectFiles(
   files.set('tsconfig.json', buildTsConfig(kit.active))
   // Phase 3 §9 v12: <html lang>/dir from the configured source locale.
   const htmlLang = resolveSourceLocale(options)
-  files.set('index.html', buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang)))
+  files.set(
+    'index.html',
+    buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang), metadata)
+  )
   files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm))
   files.set('src/index.css', buildIndexCss(safelist, kit.themeCss))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())
   }
+}
+
+function resolveIndexMetadata(
+  irs: readonly IRTree[],
+  options: CompilerOptions
+): HtmlMetadata | undefined {
+  const base = cleanMetadata(options.metadata)
+  const pageOverride =
+    irs.length === 1 ? cleanMetadata(options.metadata?.pages?.[irs[0].pageId]) : undefined
+  return mergeMetadata(base, pageOverride)
+}
+
+function cleanMetadata(metadata: HtmlMetadata | undefined): HtmlMetadata | undefined {
+  if (!metadata) return undefined
+  const title = cleanMetadataText(metadata.title)
+  const description = cleanMetadataText(metadata.description)
+  const image = cleanMetadataText(metadata.image)
+  const canonicalUrl = cleanMetadataText(metadata.canonicalUrl)
+  if (!title && !description && !image && !canonicalUrl) return undefined
+  return { title, description, image, canonicalUrl }
+}
+
+function mergeMetadata(
+  base: HtmlMetadata | undefined,
+  override: HtmlMetadata | undefined
+): HtmlMetadata | undefined {
+  if (!base) return override
+  if (!override) return base
+  return { ...base, ...override }
+}
+
+function cleanMetadataText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
 }
 
 function emitAssets(files: Map<string, string | Uint8Array>, assets: readonly IRAsset[]): void {

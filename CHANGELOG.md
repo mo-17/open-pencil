@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Add compiler support for static lowcode SEO metadata in generated `index.html`, including title, description, Open Graph image, and canonical URL fields.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.
 - Add user-facing lowcode app onboarding docs covering preview, compile, build, Supabase overrides, i18n, shadcn/ui, and deploy.
