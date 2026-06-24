@@ -213,8 +213,13 @@ image tile、component container 等常见结构里。
 
 - 最小复现中,父元素圆角能稳定裁剪子元素背景和媒体内容。
 - 不破坏需要子元素自有圆角的合法场景,例如 nested card/button。
-- compiler/engine 增加 focused emit test。
-- Tauri/browser preview GUI ACK 覆盖至少一个父圆角裁剪场景。
+- compiler/engine 增加 focused emit test。**2026-06-25 已补
+  `tests/engine/compiler/ui-kit/card.test.ts`,覆盖 card-like frame emits
+  `overflow-hidden`。**
+- Tauri/browser preview GUI ACK 覆盖至少一个父圆角裁剪场景。**2026-06-25 已补
+  `tests/e2e/code/preview-pane-tauri.spec.ts`,通过 Tauri shell stdin mock 验证 preview
+  pane 实际 compile update 的 `src/App.tsx` 包含 rounded parent 的
+  `overflow-hidden`。**
 
 ---
 

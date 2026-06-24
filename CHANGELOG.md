@@ -32,7 +32,7 @@
 
 ### Fixes
 
-- Clip compiled lowcode card children to the parent rounded corners by emitting overflow clipping on card-like containers.
+- Clip compiled lowcode card children to the parent rounded corners by emitting overflow clipping on card-like containers, with Tauri preview coverage for the rounded-parent path.
 - Show JSX in the Code panel when selecting lowcode Button nodes, including their interactive text in OpenPencil and Tailwind formats.
 - Allow the CLI deploy command to accept the documented `--provider cloudflare` option.
 - Treat unexpected Tauri system-font IPC responses as an empty local font list instead of crashing during desktop preview startup.

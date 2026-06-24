@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test'
+
 import { expect, test } from '#tests/e2e/fixtures'
 
 type TauriInternals = {
@@ -15,12 +17,13 @@ type TauriInternals = {
 
 type TauriWindow = Window & {
   __TAURI_INTERNALS__?: TauriInternals
+  __OP_PREVIEW_STDIN__?: string[]
 }
 
-test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser }) => {
-  const page = await browser.newPage()
+async function installTauriPreviewMock(page: Page) {
   await page.addInitScript(() => {
     const tauriWindow = window as TauriWindow
+    tauriWindow.__OP_PREVIEW_STDIN__ = []
     tauriWindow.__TAURI_INTERNALS__ ??= {}
     const internals = tauriWindow.__TAURI_INTERNALS__
     internals.metadata = {
@@ -62,7 +65,11 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
         }, 0)
         return 1
       }
-      if (cmd === 'plugin:shell|stdin_write' || cmd === 'plugin:shell|kill') return null
+      if (cmd === 'plugin:shell|stdin_write') {
+        if (typeof args?.buffer === 'string') tauriWindow.__OP_PREVIEW_STDIN__?.push(args.buffer)
+        return null
+      }
+      if (cmd === 'plugin:shell|kill') return null
       if (cmd === 'plugin:event|listen') return 1
       if (cmd === 'plugin:event|unlisten') return null
       if (cmd === 'plugin:event|emit') return null
@@ -71,6 +78,11 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
       return null
     }
   })
+}
+
+test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser }) => {
+  const page = await browser.newPage()
+  await installTauriPreviewMock(page)
   await page.goto('/')
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
@@ -95,5 +107,70 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
 
   const status = await pane.textContent()
   expect(status).toContain('http://127.0.0.1:60140/')
+  await page.close()
+})
+
+test('Tauri preview compiles rounded card parents with overflow clipping', async ({ browser }) => {
+  const page = await browser.newPage()
+  await installTauriPreviewMock(page)
+  await page.goto('/')
+  await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
+  await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
+  await expect(page.getByTestId('lowcode-preview-pane')).toBeVisible()
+
+  await page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const pageId = store.state.currentPageId
+    const card = store.graph.createNode('FRAME', pageId, {
+      name: 'Clip ACK Card',
+      x: 80,
+      y: 80,
+      width: 160,
+      height: 120,
+      cornerRadius: 24,
+      fills: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true }]
+    })
+    store.graph.createNode('RECTANGLE', card.id, {
+      name: 'Overflowing child',
+      x: -24,
+      y: -24,
+      width: 96,
+      height: 96,
+      fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+    })
+    store.graph.createNode('TEXT', card.id, {
+      name: 'Clip marker',
+      text: 'Clip ACK Marker',
+      x: 16,
+      y: 72,
+      width: 120,
+      height: 24
+    })
+    store.state.sceneVersion++
+    store.requestRender()
+  })
+
+  await page.waitForFunction(() => {
+    const writes = (window as TauriWindow).__OP_PREVIEW_STDIN__ ?? []
+    return writes.some((raw) => {
+      try {
+        const message = JSON.parse(raw) as {
+          type?: unknown
+          files?: Array<[string, string]>
+        }
+        if (message.type !== 'update') return false
+        const app = message.files?.find(([path]) => path === 'src/App.tsx')?.[1]
+        return (
+          typeof app === 'string' &&
+          app.includes('Clip ACK Marker') &&
+          /<div[^>]*className="[^"]*\boverflow-hidden\b[^"]*"/.test(app)
+        )
+      } catch {
+        return false
+      }
+    })
+  })
+
   await page.close()
 })
