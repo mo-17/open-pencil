@@ -112,6 +112,13 @@ pub fn run() {
         }));
     }
 
+    #[cfg(debug_assertions)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_mcp_bridge::init())
+            .plugin(tauri_plugin_webdriver_automation::init());
+    }
+
     builder
         .manage(PendingOpen(Mutex::new(Vec::new())))
         .invoke_handler(tauri::generate_handler![

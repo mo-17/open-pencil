@@ -116,6 +116,12 @@ The app editor session (`src/app/editor/session/create.ts`) is a thin Vue wrappe
 - `bun run build` — build workspace packages, run `lint`, then `vite build`
 - `bun run preview` — preview the built web app
 - `bun run tauri dev` — Tauri desktop app with hot reload; generates native menu first via Tauri `beforeDevCommand`
+- `bun run tauri:automation:dev` — Tauri desktop app with debug automation config (`withGlobalTauri`) for MCP/WebDriver GUI automation bridges
+- `bun run mcp:tauri` — start the `hypothesi/mcp-server-tauri` MCP server
+- `bun run tauri:mcp:session` — start a `hypothesi/mcp-server-tauri` driver session on port 9223
+- `bun run tauri:mcp:screenshot` — capture a webview screenshot through the hypothesi Tauri MCP CLI
+- `bun run tauri:webdriver:install` — install `tauri-wd` from `tauri-webdriver-automation`
+- `bun run tauri:webdriver` — start the `tauri-wd` WebDriver server on port 4444
 - `bun run build:packages` — build `@open-pencil/core`, `@open-pencil/vue`, `@open-pencil/mcp`, `@open-pencil/cli`, and private `@open-pencil/compiler`
 - `bun run lint` — structure lint + type-aware oxlint over app, packages, compiler, tests, scripts, tools
 - `bun run lint:structure` — fast structural oxlint pass
@@ -210,6 +216,7 @@ bun run test           # Playwright E2E
 - `AGENTS.md` (this file) — contributor/agent reference: architecture, conventions, how to release.
 - `packages/docs/` — VitePress site deployed at `openpencil.dev`. User guide, SDK, automation, reference, and development docs.
 - `docs/lowcode-phase-*.md` — implementation/design notes for the lowcode compiler phases. Keep durable public docs in `packages/docs/**`; only add root-level Markdown by deliberately updating the Steiger allowlist.
+- `docs/tauri-gui-automation.md` — local Tauri GUI automation setup for hypothesi MCP bridge and tauri-webdriver.
 
 When adding features, update `CHANGELOG.md` (Unreleased section) and `README.md` (if user-facing). Update `AGENTS.md` when architecture or conventions change.
 
