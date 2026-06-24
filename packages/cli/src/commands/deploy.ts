@@ -18,6 +18,7 @@ interface DeployArgs {
   provider?: string
   token?: string
   site?: string
+  'account-id'?: string
   page?: string
   base?: string
   'supabase-url'?: string
@@ -29,15 +30,17 @@ interface DeployArgs {
   json?: boolean
 }
 
-const PROVIDERS = ['netlify', 'vercel'] as const
+const PROVIDERS = ['netlify', 'vercel', 'cloudflare'] as const
 type DeployProvider = (typeof PROVIDERS)[number]
 const TOKEN_ENV: Record<DeployProvider, string> = {
   netlify: 'NETLIFY_AUTH_TOKEN',
-  vercel: 'VERCEL_TOKEN'
+  vercel: 'VERCEL_TOKEN',
+  cloudflare: 'CLOUDFLARE_API_TOKEN'
 }
 const TOKEN_HELP: Record<DeployProvider, string> = {
   netlify: 'https://app.netlify.com/user/applications#personal-access-tokens',
-  vercel: 'https://vercel.com/account/tokens'
+  vercel: 'https://vercel.com/account/tokens',
+  cloudflare: 'https://dash.cloudflare.com/profile/api-tokens'
 }
 
 /** Read a built dist directory back into a path → bytes map for upload. */
@@ -56,7 +59,8 @@ function logProgress(p: DeployProgress, provider: string): void {
 
 export default defineCommand({
   meta: {
-    description: 'Build a .pen document and deploy it to a static host (Netlify or Vercel)'
+    description:
+      'Build a .pen document and deploy it to a static host (Netlify, Vercel, or Cloudflare Pages)'
   },
   args: {
     file: {
@@ -66,18 +70,25 @@ export default defineCommand({
     },
     provider: {
       type: 'string',
-      description: 'Hosting provider: netlify (default) or vercel.',
+      description: 'Hosting provider: netlify (default), vercel, or cloudflare.',
       required: false
     },
     token: {
       type: 'string',
-      description: 'Provider access token (falls back to NETLIFY_AUTH_TOKEN / VERCEL_TOKEN).',
+      description:
+        'Provider access token (falls back to NETLIFY_AUTH_TOKEN / VERCEL_TOKEN / CLOUDFLARE_API_TOKEN).',
       required: false
     },
     site: {
       type: 'string',
       description:
-        'Existing target — Netlify site id/subdomain or Vercel project name (default: create new).',
+        'Existing target — Netlify site id/subdomain, Vercel project name, or Cloudflare project name. For Cloudflare, use <account>/<project> or pass --account-id.',
+      required: false
+    },
+    'account-id': {
+      type: 'string',
+      description:
+        'Cloudflare account id. May also be set with CLOUDFLARE_ACCOUNT_ID, or encoded in --site <account>/<project>.',
       required: false
     },
     page: {
@@ -117,7 +128,8 @@ export default defineCommand({
       process.exit(1)
     }
     const provider: DeployProvider = providerArg
-    const token = (args as DeployArgs).token ?? process.env[TOKEN_ENV[provider]]
+    const deployArgs = args as DeployArgs
+    const token = deployArgs.token ?? process.env[TOKEN_ENV[provider]]
     if (!token) {
       printError(
         `A ${provider} token is required. Pass --token <token> or set ${TOKEN_ENV[provider]}.\n` +
@@ -157,7 +169,15 @@ export default defineCommand({
       try {
         result = await deployFiles(
           dist,
-          { provider, token, site: (args as DeployArgs).site },
+          {
+            provider,
+            token,
+            site: deployArgs.site,
+            accountId:
+              provider === 'cloudflare'
+                ? (deployArgs['account-id'] ?? process.env.CLOUDFLARE_ACCOUNT_ID)
+                : undefined
+          },
           { onProgress: args.json ? undefined : (p) => logProgress(p, provider) }
         )
       } catch (e) {

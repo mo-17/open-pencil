@@ -13,7 +13,7 @@ interface RecordedCall {
   url: string
   method: string
   headers: Record<string, string>
-  body: string | Uint8Array | undefined
+  body: FormData | string | Uint8Array | undefined
 }
 
 const realFetch = globalThis.fetch
@@ -38,9 +38,10 @@ function mockFetch(handler: (call: RecordedCall) => Response): RecordedCall[] {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const headers = (init?.headers ?? {}) as Record<string, string>
     const rawBody = init?.body
-    let body: string | Uint8Array | undefined
+    let body: FormData | string | Uint8Array | undefined
     if (rawBody instanceof Uint8Array) body = rawBody
     else if (typeof rawBody === 'string') body = rawBody
+    else if (rawBody instanceof FormData) body = rawBody
     const call: RecordedCall = {
       url: String(input),
       method: init?.method ?? 'GET',
@@ -59,6 +60,9 @@ const HTML = '<html>'
 const HTML_SHA1 = '0fe0bb445f51fad57f3fc4115d7c66cf18545107'
 const CSS = 'body{}'
 const CSS_SHA1 = 'a4c0dac49e47ffe0dbcca7615f73b72ef6b71543'
+// Cloudflare Pages asset hash: BLAKE3(base64(file bytes) + extension), hex-truncated to 128 bits.
+const HTML_CF_HASH = 'a0dcff64eeb2008a8032037c92384148'
+const CSS_CF_HASH = '622e1fa69535c6ed5e3a85e2ccaafd15'
 
 function fixture(): Map<string, string> {
   return new Map([
@@ -329,6 +333,130 @@ describe('deployFiles — Vercel (Phase 3 §5.4)', () => {
 
     expect(calls.every((c) => c.url.startsWith('https://api.vercel.com'))).toBe(true)
     expect(calls.some((c) => c.url.includes('netlify.com'))).toBe(false)
+  })
+})
+
+describe('deployFiles — Cloudflare Pages (Phase 4 §5)', () => {
+  test('uploads missing BLAKE3 assets and creates a Pages deployment manifest', async () => {
+    let uploadPayload: {
+      key: string
+      value: string
+      metadata: { contentType: string }
+      base64: boolean
+    }[] = []
+    let manifest: Record<string, string> = {}
+    const calls = mockFetch((call) => {
+      if (call.url.endsWith('/upload-token')) return jsonResponse({ result: { jwt: 'jwt_1' } })
+      if (call.url.endsWith('/pages/assets/check-missing')) {
+        const body = JSON.parse(call.body as string) as { hashes: string[] }
+        expect(body.hashes).toContain(HTML_CF_HASH)
+        expect(body.hashes).toContain(CSS_CF_HASH)
+        return jsonResponse({ result: [CSS_CF_HASH] })
+      }
+      if (call.url.endsWith('/pages/assets/upload')) {
+        uploadPayload = JSON.parse(call.body as string) as typeof uploadPayload
+        return jsonResponse({ result: {} })
+      }
+      if (call.url.endsWith('/pages/assets/upsert-hashes')) return jsonResponse({ result: {} })
+      if (call.url.endsWith('/deployments')) {
+        const form = call.body as FormData
+        manifest = JSON.parse(String(form.get('manifest'))) as Record<string, string>
+        return jsonResponse({ result: { id: 'cf_dep_1', url: 'https://app.pages.dev' } })
+      }
+      return jsonResponse({ result: {} })
+    })
+
+    const result = await deployFiles(fixture(), {
+      provider: 'cloudflare',
+      token: 't',
+      accountId: 'acct',
+      site: 'app'
+    })
+
+    expect(calls.every((c) => c.url.startsWith('https://api.cloudflare.com/client/v4'))).toBe(true)
+    expect(calls.some((c) => c.url.includes('netlify.com'))).toBe(false)
+    expect(calls.some((c) => c.url.includes('vercel.com'))).toBe(false)
+    expect(uploadPayload).toHaveLength(1)
+    expect(uploadPayload[0]?.key).toBe(CSS_CF_HASH)
+    expect(uploadPayload[0]?.value).toBe(Buffer.from(CSS).toString('base64'))
+    expect(uploadPayload[0]?.metadata.contentType).toBe('text/css; charset=utf-8')
+    expect(manifest['/index.html']).toBe(HTML_CF_HASH)
+    expect(manifest['/assets/app.css']).toBe(CSS_CF_HASH)
+    expect(manifest['/_redirects']).toBeDefined()
+    expect(result).toEqual({
+      provider: 'cloudflare',
+      url: 'https://app.pages.dev',
+      deployId: 'cf_dep_1',
+      fileCount: 3
+    })
+  })
+
+  test('accepts --site style account/project shorthand', async () => {
+    const calls = mockFetch((call) => {
+      if (call.url.endsWith('/upload-token')) return jsonResponse({ result: { jwt: 'jwt_2' } })
+      if (call.url.endsWith('/pages/assets/check-missing')) return jsonResponse({ result: [] })
+      if (call.url.endsWith('/pages/assets/upsert-hashes')) return jsonResponse({ result: {} })
+      if (call.url.endsWith('/deployments')) {
+        return jsonResponse({ result: { id: 'cf_dep_2', url: 'https://proj.pages.dev' } })
+      }
+      return jsonResponse({ result: {} })
+    })
+
+    await deployFiles(fixture(), {
+      provider: 'cloudflare',
+      token: 't',
+      site: 'acct/proj'
+    })
+
+    expect(calls[0]?.url).toContain('/accounts/acct/pages/projects/proj/upload-token')
+  })
+
+  test('rejects missing Cloudflare token before any network call', async () => {
+    const calls = mockFetch(() => jsonResponse({ result: {} }))
+    await expect(
+      deployFiles(fixture(), {
+        provider: 'cloudflare',
+        token: '',
+        accountId: 'acct',
+        site: 'app'
+      })
+    ).rejects.toThrow(/CLOUDFLARE_API_TOKEN/)
+    expect(calls).toHaveLength(0)
+  })
+
+  test('requires an account id and project name before any network call', async () => {
+    const calls = mockFetch(() => jsonResponse({ result: {} }))
+    await expect(
+      deployFiles(fixture(), {
+        provider: 'cloudflare',
+        token: 't',
+        site: 'app'
+      })
+    ).rejects.toThrow(/account id and project name/i)
+    expect(calls).toHaveLength(0)
+  })
+
+  test('emits the digest → upload → create → done progress sequence', async () => {
+    mockFetch((call) => {
+      if (call.url.endsWith('/upload-token')) return jsonResponse({ result: { jwt: 'jwt_3' } })
+      if (call.url.endsWith('/pages/assets/check-missing')) return jsonResponse({ result: [] })
+      if (call.url.endsWith('/pages/assets/upsert-hashes')) return jsonResponse({ result: {} })
+      if (call.url.endsWith('/deployments')) {
+        return jsonResponse({ result: { id: 'cf_dep_3', url: 'https://app.pages.dev' } })
+      }
+      return jsonResponse({ result: {} })
+    })
+
+    const stages: DeployProgress['stage'][] = []
+    await deployFiles(
+      fixture(),
+      { provider: 'cloudflare', token: 't', accountId: 'acct', site: 'app' },
+      { onProgress: (p) => stages.push(p.stage) }
+    )
+
+    expect(stages[0]).toBe('digest')
+    expect(stages.indexOf('upload')).toBeLessThan(stages.indexOf('create'))
+    expect(stages[stages.length - 1]).toBe('done')
   })
 })
 

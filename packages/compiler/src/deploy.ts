@@ -7,17 +7,23 @@
 // built-ins — so the editor could call this directly in future (the first
 // editor surface shells out to the CLI instead, keeping one deploy pipeline).
 
+import { blake3 } from '@noble/hashes/blake3'
+
 import type { JsonObject } from '@open-pencil/core/types'
 
 export interface DeployTarget {
-  provider: 'netlify' | 'vercel'
+  provider: 'netlify' | 'vercel' | 'cloudflare'
   /** Personal access token. Never persisted (passed via --token / env). */
   token: string
   /**
    * Existing deploy target. Netlify: site id or `*.netlify.app` subdomain.
-   * Vercel: project name. Omit to create a new site / project automatically.
+   * Vercel: project name. Cloudflare: project name, or `account/project`
+   * when `accountId` is not passed. Omit to create a new Netlify site /
+   * Vercel project automatically.
    */
   site?: string
+  /** Cloudflare account id. CLI may also pass this via --account-id. */
+  accountId?: string
 }
 
 export interface DeployResult {
@@ -41,11 +47,18 @@ export interface DeployOptions {
 
 const NETLIFY_API = 'https://api.netlify.com/api/v1'
 const VERCEL_API = 'https://api.vercel.com'
+const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4'
 // SPA fallback so client-side BrowserRouter routes resolve on hard refresh.
 const SPA_REDIRECTS = '/* /index.html 200\n' // Netlify `_redirects`
 const VERCEL_JSON = // Vercel `vercel.json` — equivalent SPA rewrite.
   JSON.stringify({ rewrites: [{ source: '/(.*)', destination: '/index.html' }] }, null, 2) + '\n'
 const DEFAULT_VERCEL_NAME = 'open-pencil-app'
+
+function tokenEnv(provider: DeployTarget['provider']): string {
+  if (provider === 'vercel') return 'VERCEL_TOKEN'
+  if (provider === 'cloudflare') return 'CLOUDFLARE_API_TOKEN'
+  return 'NETLIFY_AUTH_TOKEN'
+}
 
 /** Lowercase hex SHA-1 of `bytes` (Web Crypto — works in Bun and browsers). */
 async function sha1Hex(bytes: Uint8Array): Promise<string> {
@@ -54,6 +67,37 @@ async function sha1Hex(bytes: Uint8Array): Promise<string> {
   let hex = ''
   for (const b of view) hex += b.toString(16).padStart(2, '0')
   return hex
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = ''
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0')
+  return hex
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== 'undefined') return Buffer.from(bytes).toString('base64')
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  }
+  return btoa(binary)
+}
+
+function fileExtension(rel: string): string {
+  const name = rel.split('/').pop() ?? rel
+  const dot = name.lastIndexOf('.')
+  return dot === -1 ? '' : name.slice(dot + 1)
+}
+
+/**
+ * Cloudflare Pages hashes the base64 file contents plus the file extension,
+ * then truncates the BLAKE3 digest to 128 bits. This mirrors Wrangler's direct
+ * upload asset manifest.
+ */
+function cloudflareHash(rel: string, bytes: Uint8Array): string {
+  return bytesToHex(blake3(bytesToBase64(bytes) + fileExtension(rel))).slice(0, 32)
 }
 
 /** `/index.html` → `/index.html`, `/a b/x.js` → `/a%20b/x.js` (leading slash kept). */
@@ -161,9 +205,11 @@ export async function deployFiles(
   opts: DeployOptions = {}
 ): Promise<DeployResult> {
   if (!target.token) {
-    const envName = target.provider === 'vercel' ? 'VERCEL_TOKEN' : 'NETLIFY_AUTH_TOKEN'
-    throw new Error(`A ${target.provider} auth token is required (pass --token or set ${envName}).`)
+    throw new Error(
+      `A ${target.provider} auth token is required (pass --token or set ${tokenEnv(target.provider)}).`
+    )
   }
+  if (target.provider === 'cloudflare') return deployCloudflare(files, target, opts)
   if (target.provider === 'vercel') return deployVercel(files, target, opts)
   return deployNetlify(files, target, opts)
 }
@@ -317,4 +363,188 @@ async function deployVercel(
   const { deployId, url } = await createVercelDeploy(entries, target, onProgress)
   onProgress?.({ stage: 'done' })
   return { provider: 'vercel', url, deployId, fileCount: entries.length }
+}
+
+// ── Cloudflare Pages ────────────────────────────────────────────────────────
+
+interface CloudflareAsset extends DigestedFile {
+  cfHash: string
+  contentType: string
+}
+
+type CloudflareApiResult = JsonObject | unknown[]
+
+function isCloudflareApiResult(value: unknown): value is CloudflareApiResult {
+  return Array.isArray(value) || (typeof value === 'object' && value !== null)
+}
+
+function resolveCloudflareTarget(target: DeployTarget): { accountId: string; projectName: string } {
+  if (target.accountId && target.site) {
+    return { accountId: target.accountId, projectName: target.site }
+  }
+  const site = target.site?.trim()
+  const slash = site?.indexOf('/') ?? -1
+  if (site && slash > 0 && slash < site.length - 1) {
+    return {
+      accountId: site.slice(0, slash),
+      projectName: site.slice(slash + 1)
+    }
+  }
+  throw new Error(
+    'Cloudflare Pages requires an account id and project name ' +
+      '(pass --account-id <id> --site <project>, or --site <account>/<project>).'
+  )
+}
+
+function cloudflareContentType(rel: string): string {
+  if (rel.endsWith('.html')) return 'text/html; charset=utf-8'
+  if (rel.endsWith('.css')) return 'text/css; charset=utf-8'
+  if (rel.endsWith('.js') || rel.endsWith('.mjs')) return 'text/javascript; charset=utf-8'
+  if (rel.endsWith('.json')) return 'application/json; charset=utf-8'
+  if (rel.endsWith('.svg')) return 'image/svg+xml'
+  return 'application/octet-stream'
+}
+
+async function cloudflareFetch(
+  path: string,
+  init: {
+    method?: 'GET' | 'POST'
+    token: string
+    jsonBody?: unknown
+    formBody?: FormData
+  }
+): Promise<CloudflareApiResult> {
+  const headers: Record<string, string> = { Authorization: `Bearer ${init.token}` }
+  let body: BodyInit | undefined
+  if (init.jsonBody !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    body = JSON.stringify(init.jsonBody)
+  } else if (init.formBody !== undefined) {
+    body = init.formBody
+  }
+
+  const res = await fetch(`${CLOUDFLARE_API}${path}`, {
+    method: init.method ?? 'GET',
+    headers,
+    body
+  })
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    const hint = res.status === 401 ? ' (check your token)' : ''
+    throw new Error(
+      `Cloudflare API ${path} failed: ${res.status}${hint}${detail ? ` — ${detail}` : ''}`
+    )
+  }
+  const parsed = (await res.json()) as JsonObject
+  return 'result' in parsed && isCloudflareApiResult(parsed.result) ? parsed.result : parsed
+}
+
+async function getCloudflareUploadToken(
+  accountId: string,
+  projectName: string,
+  token: string
+): Promise<string> {
+  const result = await cloudflareFetch(
+    `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/upload-token`,
+    { token }
+  )
+  if (!result || Array.isArray(result) || typeof result.jwt !== 'string') {
+    throw new Error('Cloudflare upload-token returned no jwt')
+  }
+  return result.jwt
+}
+
+async function uploadCloudflareAssets(
+  assets: CloudflareAsset[],
+  jwt: string,
+  onProgress: ProgressFn
+): Promise<void> {
+  const missing = await cloudflareFetch('/pages/assets/check-missing', {
+    method: 'POST',
+    token: jwt,
+    jsonBody: { hashes: assets.map((a) => a.cfHash) }
+  })
+  if (!Array.isArray(missing))
+    throw new Error('Cloudflare check-missing returned an invalid result')
+  const missingHashes = new Set(missing.filter((h): h is string => typeof h === 'string'))
+  const toUpload = assets.filter((asset) => missingHashes.has(asset.cfHash))
+
+  onProgress?.({ stage: 'upload', done: 0, total: toUpload.length })
+  let uploaded = 0
+  for (const asset of toUpload) {
+    await cloudflareFetch('/pages/assets/upload', {
+      method: 'POST',
+      token: jwt,
+      jsonBody: [
+        {
+          key: asset.cfHash,
+          value: bytesToBase64(asset.bytes),
+          metadata: { contentType: asset.contentType },
+          base64: true
+        }
+      ]
+    })
+    onProgress?.({ stage: 'upload', done: ++uploaded, total: toUpload.length })
+  }
+
+  await cloudflareFetch('/pages/assets/upsert-hashes', {
+    method: 'POST',
+    token: jwt,
+    jsonBody: { hashes: assets.map((a) => a.cfHash) }
+  })
+}
+
+async function createCloudflareDeployment(
+  assets: CloudflareAsset[],
+  target: DeployTarget,
+  resolved: { accountId: string; projectName: string },
+  onProgress: ProgressFn
+): Promise<{ deployId: string; url: string }> {
+  onProgress?.({ stage: 'create' })
+  const manifest: Record<string, string> = {}
+  for (const asset of assets) manifest['/' + asset.rel] = asset.cfHash
+
+  const form = new FormData()
+  form.append('manifest', JSON.stringify(manifest))
+
+  const deployment = await cloudflareFetch(
+    `/accounts/${encodeURIComponent(resolved.accountId)}/pages/projects/${encodeURIComponent(
+      resolved.projectName
+    )}/deployments`,
+    { method: 'POST', token: target.token, formBody: form }
+  )
+  if (!deployment || Array.isArray(deployment))
+    throw new Error('Cloudflare deployment returned no result')
+  const deployId = deployment.id
+  if (typeof deployId !== 'string') throw new Error('Cloudflare deployment returned no id')
+  const url =
+    typeof deployment.url === 'string'
+      ? deployment.url
+      : `https://dash.cloudflare.com/${resolved.accountId}/pages/view/${resolved.projectName}/${deployId}`
+  return { deployId, url }
+}
+
+async function deployCloudflare(
+  files: Map<string, string | Uint8Array>,
+  target: DeployTarget,
+  opts: DeployOptions
+): Promise<DeployResult> {
+  const { onProgress } = opts
+  const resolved = resolveCloudflareTarget(target)
+  const entries = await digestPayload(
+    files,
+    { name: '_redirects', content: SPA_REDIRECTS },
+    onProgress
+  )
+  const assets: CloudflareAsset[] = entries.map((entry) => ({
+    ...entry,
+    cfHash: cloudflareHash(entry.rel, entry.bytes),
+    contentType: cloudflareContentType(entry.rel)
+  }))
+
+  const jwt = await getCloudflareUploadToken(resolved.accountId, resolved.projectName, target.token)
+  await uploadCloudflareAssets(assets, jwt, onProgress)
+  const { deployId, url } = await createCloudflareDeployment(assets, target, resolved, onProgress)
+  onProgress?.({ stage: 'done' })
+  return { provider: 'cloudflare', url, deployId, fileCount: assets.length }
 }

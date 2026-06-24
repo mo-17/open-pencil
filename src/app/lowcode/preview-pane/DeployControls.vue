@@ -16,8 +16,8 @@ function parseLocales(raw: string): string[] {
 // Phase 3 §5: one-click deploy from the preview header. The token lives only in
 // this component's memory (never persisted) and is handed to the deploy CLI via
 // the spawned process env (see use-deploy.ts). §5.4 adds a provider picker
-// (Netlify / Vercel). Plain English strings match the (non-i18n) PreviewPane
-// sibling.
+// (Netlify / Vercel / Cloudflare). Plain English strings match the (non-i18n)
+// PreviewPane sibling.
 const { status, deploy, reset } = useDeploy()
 
 const open = ref(false)
@@ -30,13 +30,20 @@ const uiKit = ref<DeployUiKit>('none')
 const i18nEnabled = ref(false)
 const localesInput = ref('')
 
-const tokenLabel = computed(() => (provider.value === 'vercel' ? 'Vercel token' : 'Netlify token'))
-const targetLabel = computed(() =>
-  provider.value === 'vercel' ? 'Project (optional)' : 'Site (optional)'
-)
-const targetPlaceholder = computed(() =>
-  provider.value === 'vercel' ? 'existing project name' : 'existing site id / subdomain'
-)
+const tokenLabel = computed(() => {
+  if (provider.value === 'cloudflare') return 'Cloudflare token'
+  return provider.value === 'vercel' ? 'Vercel token' : 'Netlify token'
+})
+const targetLabel = computed(() => {
+  if (provider.value === 'cloudflare') return 'Account / project (required)'
+  if (provider.value === 'vercel') return 'Project (optional)'
+  return 'Site (optional)'
+})
+const targetPlaceholder = computed(() => {
+  if (provider.value === 'cloudflare') return 'account-id/project-name'
+  if (provider.value === 'vercel') return 'existing project name'
+  return 'existing site id / subdomain'
+})
 
 function toggle(): void {
   open.value = !open.value
@@ -81,6 +88,7 @@ function openDeployed(url: string): void {
       >
         <option value="netlify">Netlify</option>
         <option value="vercel">Vercel</option>
+        <option value="cloudflare">Cloudflare</option>
       </select>
 
       <label class="mb-1 block text-xs text-muted">UI components</label>

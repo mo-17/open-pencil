@@ -8,8 +8,8 @@
 //
 // Tauri-only (needs a real `bun` + the repo on disk, like the preview sidecar).
 // The provider token is passed via the spawned process's env (NETLIFY_AUTH_TOKEN
-// / VERCEL_TOKEN) — never as a CLI arg (stays out of any process/arg listing)
-// and never persisted.
+// / VERCEL_TOKEN / CLOUDFLARE_API_TOKEN) — never as a CLI arg (stays out of any
+// process/arg listing) and never persisted.
 
 import { ref, type Ref } from 'vue'
 
@@ -20,7 +20,7 @@ import { isTauri } from '@/app/tauri/env'
 const DEPLOY_COMMAND = 'lowcode-preview' // shell-allowlisted `bun` (args:true)
 const CLI_ENTRY = 'packages/cli/src/index.ts'
 
-export type DeployProvider = 'netlify' | 'vercel'
+export type DeployProvider = 'netlify' | 'vercel' | 'cloudflare'
 // Phase 3 §15: optional code UI kit for the emitted project. 'none' → the
 // self-contained Tailwind emit (default); 'shadcn' → `--ui-kit shadcn`.
 export type DeployUiKit = 'none' | 'shadcn'
@@ -33,7 +33,8 @@ export interface DeployI18n {
 // The CLI reads the token from the matching env var (never an arg / never persisted).
 const TOKEN_ENV: Record<DeployProvider, string> = {
   netlify: 'NETLIFY_AUTH_TOKEN',
-  vercel: 'VERCEL_TOKEN'
+  vercel: 'VERCEL_TOKEN',
+  cloudflare: 'CLOUDFLARE_API_TOKEN'
 }
 
 interface DeployCliResult {

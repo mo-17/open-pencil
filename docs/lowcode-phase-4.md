@@ -68,18 +68,18 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 已完成               | **CODE COMPLETE 2026-06-21**;INPUT upload → Supabase Storage public URL 已闭合。               | §18           |
 | 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
 | 8   | **§14 跨文件组件库 / 团队库**                  | 已完成               | Phase A foundation + publish/import/update helpers + `publish_component` + CLI + local Libraries 面板已完成, browser GUI ACK 通过。 | §14           |
-| 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
+| 9   | **更多 deploy providers(Cloudflare Pages 等)** | 已完成               | **CODE COMPLETE 2026-06-25**;Cloudflare Pages Direct Upload provider 已接入 CLI + Tauri DeployControls。 | §5            |
 | 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成               | **GUI ACK 2026-06-24**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options,真机 Tauri ACK 通过。 | §9 / §15      |
 | 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成               | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合并通过 E2E ACK。 | §7 / §8 / §10 |
 | 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
-> **当前未闭合**:#9 / #13。#8 已完成数据模型 + `.fig`
+> **当前未闭合**:#13。#8 已完成数据模型 + `.fig`
 > round-trip foundation + publish helper/tool + import/update helpers + headless CLI + local GUI;
-> browser GUI ACK 已过,remote registry 属后续增强。#10 Tauri preview GUI ACK 已过。#11 GUI ACK 已过。#13 偏工程债;#9 有 blake3 依赖决策。
+> browser GUI ACK 已过,remote registry 属后续增强。#9 Cloudflare Pages headless 已闭合。#10 Tauri preview GUI ACK 已过。#11 GUI ACK 已过。#13 偏工程债。
 >
-> **下一步建议(2026-06-24 Tauri ACK 后)**:若继续 headless,转 #9 CF Pages(需先锁
-> blake3 依赖)或继续推迟 #13 Kiwi schema debt。
+> **下一步建议(2026-06-25 Cloudflare deploy 后)**:继续推迟 #13 Kiwi schema debt,
+> 除非协作/AI 流程明确需要 schema 一等字段。
 > #13 Kiwi schema 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
@@ -191,7 +191,7 @@ git fetch official && git merge official/master    # 上游前进时合入(merge
 - 别 `git add -A` 把 keep-out 入仓:`prompt.md` / 根目录临时 `*.fig` / `fig-layout-roundtrip-findings.md` / `.claude/`。低代码 demo 生成器已统一 relocate 到 `tools/lowcode/src/make/`,tracked,别当 keep-out。
 - 别全仓 `bun run format`(经验 F);别在测试里跑整套 `tests/engine/`(慢 + pre-existing fail)。
 - 新增 `scripts/*.ts` 必须是单行 shim(经验 K);实现逻辑放 `tools/<domain>/src/`。
-- **CF Pages deploy 别默认开干 —— 需 blake3 依赖,先 AskUserQuestion 问用户**。
+- **CF Pages deploy 已经经用户确认引入 `@noble/hashes` BLAKE3 依赖并完成 headless provider;真 token 网络 ACK 另行手动跑。**
 - 别盲目开 workflow 并行多 milestone:候选互撞 `scene-graph/types.ts` + emit 路径 → 串行单 milestone。
 - bg 隔离守卫:本会话就地工作(`.claude/settings.local.json` gitignored 设 `worktree.bgIsolation:none`,用户授权)。EnterWorktree 默认 baseRef=fresh 从 origin/main 分,不要用。
 - **自动开工任何候选 —— 必须用户先挑**。
@@ -1319,9 +1319,11 @@ bun test \
 
 ## §5 更多 deploy providers(Cloudflare Pages 等)
 
-**现状**:deploy 管线 Netlify(§5.2)+ Vercel(§5.4)完整 —— `deploy.ts` digest-upload + CLI `deploy` + 编辑器一键 DeployControls(shell out `open-pencil deploy --json`)。
+**现状**:deploy 管线 Netlify(§5.2)+ Vercel(§5.4)+ Cloudflare Pages Direct Upload 完整 —— `deploy.ts` digest-upload + CLI `deploy` + 编辑器一键 DeployControls(shell out `open-pencil deploy --json`)。
 
-**剩余**:Cloudflare Pages 直传。**⚠ 阻塞决策**:CF Pages 直传 API 需 **blake3** 文件哈希(Web Crypto 只有 SHA-\*)→ 引 blake3 npm 依赖,**违背零依赖约束**。phase-3(§10 v7/v8、§7 v2)已多次因此否决 CF Pages。**开工前必须 AskUserQuestion 问用户是否接受 blake3 依赖**;若不接受,评估 CF Pages 的 Git-integration 路径(无需直传哈希)或换其它 provider(Render/Surge/GitHub Pages)。**待锁**:是否接受 blake3 依赖。
+**交付记录(CODE COMPLETE 2026-06-25)**:用户已确认可引入 BLAKE3 依赖;选择 `@noble/hashes` 作为直接 dependency,避免 native/wasm 包和额外运行时。`deployFiles()` 新增 `cloudflare` provider,对齐 Wrangler Direct Upload 流程:获取 upload-token → `check-missing` → 上传缺失 assets → `upsert-hashes` → final Pages deployment FormData manifest。CLI 支持 `--provider cloudflare --account-id <id> --site <project>` 或 `--site <account>/<project>`,token 走 `CLOUDFLARE_API_TOKEN`;Tauri DeployControls provider 下拉新增 Cloudflare,桌面单输入框使用 `account-id/project-name`。
+
+**验证**:`bun test tests/engine/compiler/deploy.test.ts` → 21/0,新增 Cloudflare BLAKE3 manifest、missing upload、account/project shorthand、missing token、missing target、progress sequence 测试。真 Cloudflare token 网络 ACK 未跑,需要用户提供真实 `CLOUDFLARE_API_TOKEN` / account id / Pages project 时再执行。
 
 ## §9 / §15 编辑器实时 preview i18n / ui-kit toggle(真机 GUI)
 
