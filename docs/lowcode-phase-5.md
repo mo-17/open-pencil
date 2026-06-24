@@ -27,7 +27,7 @@ Phase 4 结束时已经具备:
   bridge。
 - 持久化格式:lowcode 字段仍走 `lowcode/*` pluginData 旁路,稳定 round-trip。
 
-**Phase 5 的默认前提**:不重做 Phase 0–4 已交付能力;除非明确进入 §6 Kiwi
+**Phase 5 的默认前提**:不重做 Phase 0–4 已交付能力;除非明确进入 §7 Kiwi
 schema 债务,否则继续保持 pluginData 旁路。
 
 ---
@@ -42,22 +42,25 @@ schema 债务,否则继续保持 pluginData 旁路。
 | 2   | **轻量 SEO / metadata emit**                          | 高     | 小闭环   | per-page title/description/OG/static meta 注入;不做 SSG。                                     | §3   |
 | 3   | **低代码能力文档 / release notes / onboarding**        | 高     | 发现性   | 把 Supabase/workflow/i18n/shadcn/deploy 等能力整理成用户入口和示例。                          | §4   |
 | 4   | **全局主题 / design tokens / dark mode emit**          | 中     | 产品力   | 从 Figma variables / app theme 映射 CSS variables,支持 light/dark/theme switch。              | §5   |
-| 5   | **Kiwi schema 升格设计文档**                          | 低     | 工程债   | 先设计,不直接改 codec;评估迁移/兼容/协作收益。                                                | §6   |
-| 6   | **Analytics / tracking 集成**                         | 中     | 运营     | GA / Plausible / PostHog script injection + event tracking hooks。                            | §7   |
-| 7   | **Custom code escape hatch**                          | 中     | 高级用户 | head/custom CSS/custom JS snippets;需要安全边界和 deploy 兼容。                               | §8   |
-| 8   | **Stripe / paid app primitives**                      | 中     | 商业化   | Stripe checkout / webhook / Supabase Edge Function 模式;跨静态 SPA 边界。                     | §9   |
-| 9   | **可视化 Workflow DAG editor**                        | 低     | 大重构   | 当前 ActionDef 链已够用;DAG 是 authoring 体验升级,不是 runtime 必需。                         | §10  |
-| 10  | **Mobile/native export strategy**                     | 低     | 平台扩展 | React Native / Capacitor / Tauri Mobile 路线评估;不与 React web adapter 混改。                | §11  |
-| 11  | **Plugin / marketplace architecture**                 | 低     | 生态     | 自定义节点/自定义 action/模板 marketplace;需权限、沙箱、包格式。                              | §12  |
+| 5   | **Inspector / Design Panel 折叠信息架构**              | 高     | UX       | 右侧设计面板参数过多,用可记忆折叠分组、搜索和上下文显隐降低认知负担。                        | §6   |
+| 6   | **Kiwi schema 升格设计文档**                          | 低     | 工程债   | 先设计,不直接改 codec;评估迁移/兼容/协作收益。                                                | §7   |
+| 7   | **Analytics / tracking 集成**                         | 中     | 运营     | GA / Plausible / PostHog script injection + event tracking hooks。                            | §8   |
+| 8   | **Custom code escape hatch**                          | 中     | 高级用户 | head/custom CSS/custom JS snippets;需要安全边界和 deploy 兼容。                               | §9   |
+| 9   | **Stripe / paid app primitives**                      | 中     | 商业化   | Stripe checkout / webhook / Supabase Edge Function 模式;跨静态 SPA 边界。                     | §10  |
+| 10  | **可视化 Workflow DAG editor**                        | 低     | 大重构   | 当前 ActionDef 链已够用;DAG 是 authoring 体验升级,不是 runtime 必需。                         | §11  |
+| 11  | **Mobile/native export strategy**                     | 低     | 平台扩展 | React Native / Capacitor / Tauri Mobile 路线评估;不与 React web adapter 混改。                | §12  |
+| 12  | **Plugin / marketplace architecture**                 | 低     | 生态     | 自定义节点/自定义 action/模板 marketplace;需权限、沙箱、包格式。                              | §13  |
 
 ### 1.2 推荐开工顺序
 
 1. **§4 文档 / onboarding**:最快把已完成能力变成用户可发现价值,风险最低。
-2. **§3 轻量 SEO**:纯 compiler/CLI 小闭环,价值明确,不需要引入服务端。
-3. **§2 应用发布生命周期**:承接 deploy provider,把“能 deploy”升级成“能发布产品”。
-4. **§5 主题 / dark mode**:视觉产品力,但会横跨 variables、compiler、preview。
-5. **§7 Analytics**:运营闭环,可在 custom head/script 注入前先做受控集成。
-6. **§6 Kiwi schema 设计**:只在需要协作/AI 一等字段时做,先写设计文档。
+2. **§6 Inspector / Design Panel 折叠信息架构**:直接改善日常编辑体验,实现风险低于
+   runtime/compiler 能力。
+3. **§3 轻量 SEO**:纯 compiler/CLI 小闭环,价值明确,不需要引入服务端。
+4. **§2 应用发布生命周期**:承接 deploy provider,把“能 deploy”升级成“能发布产品”。
+5. **§5 主题 / dark mode**:视觉产品力,但会横跨 variables、compiler、preview。
+6. **§8 Analytics**:运营闭环,可在 custom head/script 注入前先做受控集成。
+7. **§7 Kiwi schema 设计**:只在需要协作/AI 一等字段时做,先写设计文档。
 
 ### 1.3 Phase 5 Out-of-Scope Until Explicitly Chosen
 
@@ -175,21 +178,64 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 
 ---
 
-## 6. Kiwi Schema 升格设计
+## 6. Inspector / Design Panel 折叠信息架构
 
-### 6.1 当前决定
+### 6.1 问题
+
+右侧设计面板已经承载基础样式、布局、组件属性、低代码状态、bindings、events、
+workflows、validation、i18n、deploy/preview 等入口。继续平铺会导致:
+
+- 参数密度过高,新用户不知道先看哪里;
+- 专业用户滚动成本高,频繁编辑时效率下降;
+- lowcode 相关参数和常规 design 参数互相打断;
+- 后续 Phase 5 增加 SEO、analytics、theme 等设置时面板会继续膨胀。
+
+### 6.2 推荐方案
+
+第一刀做 **可记忆的折叠分组 + 上下文显隐**,不要一次性重写 inspector:
+
+- 分组建议:`Position`、`Layout`、`Appearance`、`Typography`、`Component`、
+  `Prototype / Events`、`Lowcode`、`Export / Deploy`。
+- 每个分组使用 disclosure/accordion,保留键盘可达、ARIA 状态和焦点恢复。
+- 折叠状态按 user preference 持久化,不要写入 `.fig` 文档。
+- 根据选择节点类型显隐分组:例如 text node 默认展开 Typography,component instance
+  默认展开 Component,lowcode node 默认展开 Lowcode。
+- 支持“搜索属性 / filter sections”作为第二刀,避免用户记不住参数在哪。
+- 对高级低代码分组使用 progressive disclosure:默认只显示常用项,高级项折叠到
+  `Advanced`。
+
+### 6.3 非目标
+
+- 不在第一刀改变 SceneNode schema。
+- 不重做所有 inspector controls。
+- 不把每个参数都藏起来;常用参数仍应一眼可达。
+- 不为了折叠而增加嵌套卡片;面板仍保持紧凑工具属性布局。
+
+### 6.4 成功标准草案
+
+- 常见节点选择后,首屏能看到最相关的 2-3 个分组。
+- 折叠状态在同一设备重启 app 后保留。
+- 空选择、多选、text、frame、component instance、lowcode 表单节点都有合理默认展开。
+- Tauri GUI ACK 覆盖展开/折叠、切换选择、状态保留。
+- Vue typecheck 和 focused component tests 通过。
+
+---
+
+## 7. Kiwi Schema 升格设计
+
+### 7.1 当前决定
 
 保持 Deferred。当前 `lowcode/*` pluginData 旁路稳定 round-trip,已覆盖 compiler /
 editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
-### 6.2 只有这些条件满足才值得进入实现
+### 7.2 只有这些条件满足才值得进入实现
 
 - 协作 / AI / 外部工具需要 lowcode 字段作为 schema 一等字段;
 - pluginData 旁路在性能、兼容或迁移上出现真实瓶颈;
 - 有明确旧文件迁移策略和回滚策略;
 - 有完整 codec / kiwi / import-export / cross-version 测试预算。
 
-### 6.3 设计文档必须回答
+### 7.3 设计文档必须回答
 
 - 新字段归属哪个 Kiwi message?
 - 旧 pluginData 如何迁移? 是否双写? 双写多久?
@@ -200,16 +246,16 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 7. Analytics / Tracking
+## 8. Analytics / Tracking
 
-### 7.1 范围
+### 8.1 范围
 
 - Provider presets:GA4、Plausible、PostHog。
 - document-level tracking id / endpoint。
 - event action 可选 `trackEvent`。
 - deploy/build 时注入 script 和 runtime helper。
 
-### 7.2 风险
+### 8.2 风险
 
 - CSP / privacy / cookie consent。
 - 不同 provider SDK 加载方式不同。
@@ -217,16 +263,16 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 8. Custom Code Escape Hatch
+## 9. Custom Code Escape Hatch
 
-### 8.1 范围
+### 9.1 范围
 
 - custom `<head>` snippets;
 - custom CSS;
 - custom JS module / inline script;
 - per-page embed blocks。
 
-### 8.2 风险
+### 9.2 风险
 
 - XSS / sandbox / deploy provider CSP。
 - preview iframe 安全边界。
@@ -234,14 +280,14 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 9. Stripe / Paid App Primitives
+## 10. Stripe / Paid App Primitives
 
-### 9.1 问题
+### 10.1 问题
 
 真实商业 app 需要 checkout、subscription、webhook、customer portal。但静态 SPA
 不能安全持有 secret key,必须依赖 Supabase Edge Function 或用户自有 backend。
 
-### 9.2 初始方向
+### 10.2 初始方向
 
 - Stripe checkout action 只调用 server endpoint。
 - Supabase Edge Function template 作为推荐后端。
@@ -249,7 +295,7 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 10. Workflow DAG Editor
+## 11. Workflow DAG Editor
 
 当前 workflow runtime/action chain 已可表达大多数业务流程。DAG editor 是 authoring
 体验升级,不是 runtime 必需。进入前先评估:
@@ -261,7 +307,7 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 11. Mobile / Native Export Strategy
+## 12. Mobile / Native Export Strategy
 
 不直接从现有 React web adapter 混改。先做路线评估:
 
@@ -274,7 +320,7 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 12. Plugin / Marketplace Architecture
+## 13. Plugin / Marketplace Architecture
 
 进入前先定义:
 
@@ -289,7 +335,7 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 13. 验证策略
+## 14. 验证策略
 
 每个 Phase 5 候选都必须至少有:
 
@@ -304,7 +350,7 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 
 ---
 
-## 14. 推荐第一刀
+## 15. 推荐第一刀
 
 推荐先做 **§4 文档 / Onboarding / Release Notes**。
 
