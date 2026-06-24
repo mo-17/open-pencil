@@ -33,7 +33,9 @@ const NODE_TYPE_TO_TAG: Partial<Record<NodeType, string>> = {
   COMPONENT: 'Component',
   COMPONENT_SET: 'Frame',
   INSTANCE: 'Frame',
-  BUTTON: 'Button'
+  BUTTON: 'Button',
+  INPUT: 'Input',
+  SELECT: 'Select'
 }
 
 const NODE_TYPE_TO_TW_TAG: Partial<Record<NodeType, string>> = {
@@ -51,12 +53,30 @@ const NODE_TYPE_TO_TW_TAG: Partial<Record<NodeType, string>> = {
   COMPONENT: 'div',
   COMPONENT_SET: 'div',
   INSTANCE: 'div',
-  BUTTON: 'button'
+  BUTTON: 'button',
+  INPUT: 'input',
+  SELECT: 'select'
 }
 
 function buttonLabel(node: SceneNode): string {
   const text = node.interactiveProps?.text
   return typeof text === 'string' && text.trim() ? text : 'Button'
+}
+
+function inputPlaceholder(node: SceneNode): string | null {
+  const placeholder = node.interactiveProps?.placeholder
+  return typeof placeholder === 'string' ? placeholder : null
+}
+
+function interactiveValue(node: SceneNode): string | null {
+  const value = node.interactiveProps?.value
+  return typeof value === 'string' && value !== '' ? value : null
+}
+
+function selectOptions(node: SceneNode): string[] {
+  const options = node.interactiveProps?.options
+  if (!Array.isArray(options)) return []
+  return options.filter((option): option is string => typeof option === 'string')
 }
 
 // --- OpenPencil format helpers ---
@@ -284,6 +304,22 @@ function collectShapeNodeProps(node: SceneNode, props: [string, unknown][]): voi
   }
 }
 
+function collectInteractiveNodeProps(node: SceneNode, props: [string, unknown][]): void {
+  if (node.type === 'INPUT') {
+    const placeholder = inputPlaceholder(node)
+    const value = interactiveValue(node)
+    if (placeholder !== null) props.push(['placeholder', placeholder])
+    if (value !== null) props.push(['value', value])
+  }
+
+  if (node.type === 'SELECT') {
+    const options = selectOptions(node)
+    const value = interactiveValue(node)
+    if (options.length > 0) props.push(['options', options])
+    if (value !== null) props.push(['value', value])
+  }
+}
+
 function collectProps(node: SceneNode, graph: SceneGraph): [string, unknown][] {
   const props: [string, unknown][] = []
   const ctx = getNodeContext(node, graph)
@@ -298,11 +334,33 @@ function collectProps(node: SceneNode, graph: SceneGraph): [string, unknown][] {
   collectAppearanceProps(node, props)
   if (node.type === 'TEXT') collectTextNodeProps(node, props)
   collectShapeNodeProps(node, props)
+  collectInteractiveNodeProps(node, props)
 
   return props
 }
 
 // --- JSX rendering ---
+
+function collectTailwindAttrs(node: SceneNode, graph: SceneGraph): [string, unknown][] {
+  const classes = collectTailwindClasses(node, graph)
+  const attrs: [string, unknown][] = []
+  if (node.name && node.name !== node.type) attrs.push(['data-name', node.name])
+  if (classes.length > 0) attrs.push(['className', classes.join(' ')])
+
+  if (node.type === 'INPUT') {
+    const placeholder = inputPlaceholder(node)
+    const value = interactiveValue(node)
+    if (placeholder !== null) attrs.push(['placeholder', placeholder])
+    if (value !== null) attrs.push(['defaultValue', value])
+  }
+
+  if (node.type === 'SELECT') {
+    const value = interactiveValue(node)
+    if (value !== null) attrs.push(['defaultValue', value])
+  }
+
+  return attrs
+}
 
 function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number, format: JSXFormat): string {
   const tagMap = format === 'tailwind' ? NODE_TYPE_TO_TW_TAG : NODE_TYPE_TO_TAG
@@ -313,10 +371,9 @@ function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number, format: J
   let attrsStr: string
 
   if (format === 'tailwind') {
-    const classes = collectTailwindClasses(node, graph)
-    const nameAttr = node.name && node.name !== node.type ? ` data-name="${node.name}"` : ''
-    const classAttr = classes.length > 0 ? ` className="${classes.join(' ')}"` : ''
-    attrsStr = `${nameAttr}${classAttr}`.trim()
+    attrsStr = collectTailwindAttrs(node, graph)
+      .map(([k, v]) => formatProp(k, v))
+      .join(' ')
   } else {
     const props = collectProps(node, graph)
     attrsStr = props.map(([k, v]) => formatProp(k, v)).join(' ')
@@ -341,6 +398,19 @@ function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number, format: J
 
   if (node.type === 'BUTTON' && children.length === 0) {
     return `${prefix}${opening}>${escapeJSXText(buttonLabel(node))}</${tag}>`
+  }
+
+  if (node.type === 'SELECT' && children.length === 0 && format === 'tailwind') {
+    const options = selectOptions(node)
+    if (options.length === 0) return `${prefix}${opening} />`
+    return [
+      `${prefix}${opening}>`,
+      ...options.map(
+        (option) =>
+          `${prefix}  <option value="${escapeJSXText(option)}">${escapeJSXText(option)}</option>`
+      ),
+      `${prefix}</${tag}>`
+    ].join('\n')
   }
 
   if (children.length === 0) return `${prefix}${opening} />`

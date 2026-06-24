@@ -92,6 +92,51 @@ describe('sceneNodeToJSX', () => {
     expect(jsx).toContain('>Save</button>')
   })
 
+  test('input node exposes placeholder in OpenPencil and tailwind formats', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('INPUT', pageId(graph), {
+      name: 'Email Field',
+      width: 240,
+      height: 36,
+      interactiveProps: { placeholder: 'Email address', value: 'hello@example.com' }
+    })
+
+    const openpencil = sceneNodeToJSX(node.id, graph)
+    expect(openpencil).toContain('<Input')
+    expect(openpencil).toContain('name="Email Field"')
+    expect(openpencil).toContain('placeholder="Email address"')
+    expect(openpencil).toContain('value="hello@example.com"')
+    expect(selectionToJSX([node.id], graph)).toContain('<Input')
+
+    const tailwind = sceneNodeToJSX(node.id, graph, 'tailwind')
+    expect(tailwind).toContain('<input')
+    expect(tailwind).toContain('placeholder="Email address"')
+    expect(tailwind).toContain('defaultValue="hello@example.com"')
+  })
+
+  test('select node exposes options in OpenPencil and tailwind formats', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('SELECT', pageId(graph), {
+      name: 'Country Select',
+      width: 220,
+      height: 36,
+      interactiveProps: { options: ['US', 'JP'], value: 'JP' }
+    })
+
+    const openpencil = sceneNodeToJSX(node.id, graph)
+    expect(openpencil).toContain('<Select')
+    expect(openpencil).toContain('name="Country Select"')
+    expect(openpencil).toContain('options={["US","JP"]}')
+    expect(openpencil).toContain('value="JP"')
+    expect(selectionToJSX([node.id], graph)).toContain('<Select')
+
+    const tailwind = sceneNodeToJSX(node.id, graph, 'tailwind')
+    expect(tailwind).toContain('<select')
+    expect(tailwind).toContain('defaultValue="JP"')
+    expect(tailwind).toContain('<option value="US">US</option>')
+    expect(tailwind).toContain('<option value="JP">JP</option>')
+  })
+
   test('rtl text node', () => {
     const graph = makeGraph()
     const node = graph.createNode('TEXT', pageId(graph), {

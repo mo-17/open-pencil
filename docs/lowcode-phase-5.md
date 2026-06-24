@@ -244,10 +244,14 @@ image tile、component container 等常见结构里。
 
 ### 7.3 成功标准草案
 
-- 选中 Button、Input、Card、普通 Frame 时都能看到对应代码或明确 unsupported reason。
+- 选中 Button、Input、Select、Card、普通 Frame 时都能看到对应代码或明确 unsupported
+  reason。**2026-06-25 已补 Button/Input/Select selection snippet 映射与 CodePanel
+  E2E ACK;Card/Frame 已由既有 frame/rectangle 路径覆盖。**
 - component instance 和 component set variant 的 snippet 能反映实际 props。
 - 代码面板切换选择时不会残留上一个节点代码。
-- 增加 focused unit/component test,并用 Tauri GUI ACK 验证选中 Button 后出现代码。
+- 增加 focused unit/component test,并用 GUI ACK 验证选中 Button 后出现代码。**2026-06-25
+  已补 `tests/engine/render/jsx/export.test.ts` 与 `tests/e2e/code/panel.spec.ts`,
+  覆盖 OpenPencil / Tailwind 格式切换和 Input/Select 交互属性。**
 
 ---
 

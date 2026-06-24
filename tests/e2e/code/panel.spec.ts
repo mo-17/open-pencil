@@ -109,6 +109,62 @@ test('selecting a button shows JSX code', async () => {
   const code = await codePanel().textContent()
   expect(code).toContain('Button')
   expect(code).toContain('Continue')
+
+  await formatToggle().click()
+  await expect(formatToggle()).toContainText('Tailwind')
+  const tailwindCode = await codePanel().textContent()
+  expect(tailwindCode).toContain('button')
+  expect(tailwindCode).toContain('Continue')
+  await formatToggle().click()
+  await expect(formatToggle()).toContainText('OpenPencil')
+})
+
+test('selecting an input shows placeholder code', async () => {
+  await codeTab().click()
+  await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = store.graph.createNode('INPUT', store.state.currentPageId, {
+      name: 'Email Input',
+      x: 120,
+      y: 180,
+      width: 220,
+      height: 36,
+      interactiveProps: { placeholder: 'Email address', value: 'hello@example.com' }
+    }).id
+    store.select([id])
+  })
+  await editor.canvas.waitForRender()
+
+  await expect(codePanel()).toBeVisible()
+  const code = await codePanel().textContent()
+  expect(code).toContain('Input')
+  expect(code).toContain('Email address')
+  expect(code).toContain('hello@example.com')
+})
+
+test('selecting a select shows option code', async () => {
+  await codeTab().click()
+  await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = store.graph.createNode('SELECT', store.state.currentPageId, {
+      name: 'Country Select',
+      x: 120,
+      y: 240,
+      width: 220,
+      height: 36,
+      interactiveProps: { options: ['US', 'JP'], value: 'JP' }
+    }).id
+    store.select([id])
+  })
+  await editor.canvas.waitForRender()
+
+  await expect(codePanel()).toBeVisible()
+  const code = await codePanel().textContent()
+  expect(code).toContain('Select')
+  expect(code).toContain('US')
+  expect(code).toContain('JP')
 })
 
 test('switching back to Design tab works', async () => {
