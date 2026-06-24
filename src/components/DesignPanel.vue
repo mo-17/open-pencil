@@ -9,6 +9,7 @@ import AppearanceSection from './properties/AppearanceSection.vue'
 import EffectsSection from './properties/EffectsSection.vue'
 import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
+import InspectorSection from './properties/InspectorSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
 import ComponentPropsPanel from './properties/Lowcode/ComponentPropsPanel.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
@@ -42,6 +43,30 @@ const isComponentType = computed(() => {
   const t = node.value?.type
   return t === 'COMPONENT' || t === 'COMPONENT_SET' || t === 'INSTANCE'
 })
+const hasValueBinding = computed(() => {
+  const t = node.value?.type
+  return (
+    t === 'INPUT' ||
+    t === 'TEXTAREA' ||
+    t === 'CHECKBOX' ||
+    t === 'SWITCH' ||
+    t === 'SELECT' ||
+    t === 'RADIO' ||
+    t === 'DATEPICKER'
+  )
+})
+const hasValidation = computed(() => {
+  const t = node.value?.type
+  return t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT' || t === 'DATEPICKER' || t === 'FORM'
+})
+const hasStatePanel = computed(() => {
+  const t = node.value?.type
+  return t === 'TEXT' || t === 'BUTTON' || t === 'FORM'
+})
+const hasEvents = computed(() => {
+  const t = node.value?.type
+  return t === 'BUTTON' || t === 'FORM'
+})
 const { panels } = useI18n()
 </script>
 
@@ -64,12 +89,18 @@ const { panels } = useI18n()
         <BooleanOperationsControl v-if="showBooleanOperations" />
       </div>
     </div>
-    <PositionSection />
-    <AppearanceSection />
-    <FillSection />
-    <StrokeSection />
-    <EffectsSection />
-    <ExportSection />
+    <InspectorSection id="position" :title="panels.position">
+      <PositionSection />
+    </InspectorSection>
+    <InspectorSection id="appearance" :title="panels.appearance">
+      <AppearanceSection />
+      <FillSection />
+      <StrokeSection />
+      <EffectsSection />
+    </InspectorSection>
+    <InspectorSection id="export" :title="panels.export">
+      <ExportSection />
+    </InspectorSection>
   </div>
 
   <!-- Single selection -->
@@ -88,65 +119,57 @@ const { panels } = useI18n()
       <span class="text-xs font-semibold">{{ node.name }}</span>
     </div>
 
-    <!-- Component actions -->
-    <div
-      v-if="node.type === 'INSTANCE'"
-      class="flex flex-col gap-1 border-b border-border px-3 py-2"
-    >
-      <button
-        data-test-id="design-go-to-component"
-        class="rounded bg-component/10 px-2 py-1 text-left text-[11px] text-component hover:bg-component/20"
-        @click="goToMainComponent.run()"
-      >
-        {{ panels.goToMainComponent }}
-      </button>
-      <button
-        data-test-id="design-detach-instance"
-        class="rounded px-2 py-1 text-left text-[11px] text-muted hover:bg-hover"
-        @click="detachInstance.run()"
-      >
-        {{ panels.detachInstance }}
-      </button>
-    </div>
+    <InspectorSection id="position" :title="panels.position">
+      <PositionSection />
+    </InspectorSection>
 
-    <ComponentPropsPanel v-if="node.type === 'INSTANCE'" />
+    <InspectorSection id="layout" title="Layout">
+      <LayoutSection />
+    </InspectorSection>
 
-    <PositionSection />
-    <LayoutSection />
-    <AppearanceSection />
-    <TypographySection v-if="node.type === 'TEXT'" />
-    <FillSection />
-    <StrokeSection />
-    <EffectsSection />
-    <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
-    <ValueBindingPanel
-      v-if="
-        node.type === 'INPUT' ||
-        node.type === 'TEXTAREA' ||
-        node.type === 'CHECKBOX' ||
-        node.type === 'SWITCH' ||
-        node.type === 'SELECT' ||
-        node.type === 'RADIO' ||
-        node.type === 'DATEPICKER'
-      "
-    />
-    <ValidationPanel
-      v-if="
-        node.type === 'INPUT' ||
-        node.type === 'TEXTAREA' ||
-        node.type === 'SELECT' ||
-        node.type === 'DATEPICKER' ||
-        node.type === 'FORM'
-      "
-    />
-    <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
-    <StatePanel v-if="node.type === 'TEXT' || node.type === 'BUTTON' || node.type === 'FORM'" />
-    <EventsPanel v-if="node.type === 'BUTTON' || node.type === 'FORM'" />
-    <ListPanel v-if="node.type === 'LIST'" />
-    <ResponsivePanel />
-    <RenderConditionPanel />
+    <InspectorSection v-if="node.type === 'INSTANCE'" id="component" title="Component">
+      <div class="flex flex-col gap-1 border-b border-border px-3 py-2">
+        <button
+          data-test-id="design-go-to-component"
+          class="rounded bg-component/10 px-2 py-1 text-left text-[11px] text-component hover:bg-component/20"
+          @click="goToMainComponent.run()"
+        >
+          {{ panels.goToMainComponent }}
+        </button>
+        <button
+          data-test-id="design-detach-instance"
+          class="rounded px-2 py-1 text-left text-[11px] text-muted hover:bg-hover"
+          @click="detachInstance.run()"
+        >
+          {{ panels.detachInstance }}
+        </button>
+      </div>
+      <ComponentPropsPanel />
+    </InspectorSection>
 
-    <ExportSection />
+    <InspectorSection id="appearance" :title="panels.appearance">
+      <AppearanceSection />
+      <TypographySection v-if="node.type === 'TEXT'" />
+      <FillSection />
+      <StrokeSection />
+      <EffectsSection />
+    </InspectorSection>
+
+    <InspectorSection id="lowcode" title="Lowcode">
+      <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
+      <ValueBindingPanel v-if="hasValueBinding" />
+      <ValidationPanel v-if="hasValidation" />
+      <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
+      <StatePanel v-if="hasStatePanel" />
+      <EventsPanel v-if="hasEvents" />
+      <ListPanel v-if="node.type === 'LIST'" />
+      <ResponsivePanel />
+      <RenderConditionPanel />
+    </InspectorSection>
+
+    <InspectorSection id="export" :title="panels.export">
+      <ExportSection />
+    </InspectorSection>
   </div>
 
   <div
@@ -154,15 +177,23 @@ const { panels } = useI18n()
     data-test-id="design-panel-empty"
     class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
   >
-    <PageSection />
-    <StatePanel />
-    <SupabaseConfigPanel />
-    <DocumentStatePanel />
-    <WorkflowsPanel />
-    <LibrariesPanel />
-    <TranslationsPanel />
-    <VariablesSection @open-dialog="variablesOpen = true" />
-    <ExportSection />
+    <InspectorSection id="page" title="Page">
+      <PageSection />
+    </InspectorSection>
+    <InspectorSection id="lowcode-document" title="Lowcode Document">
+      <StatePanel />
+      <SupabaseConfigPanel />
+      <DocumentStatePanel />
+      <WorkflowsPanel />
+      <TranslationsPanel />
+    </InspectorSection>
+    <InspectorSection id="assets-variables" title="Assets & Variables">
+      <LibrariesPanel />
+      <VariablesSection @open-dialog="variablesOpen = true" />
+    </InspectorSection>
+    <InspectorSection id="export" :title="panels.export">
+      <ExportSection />
+    </InspectorSection>
   </div>
 
   <VariablesDialog v-model:open="variablesOpen" />

@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add JSX authoring support for components, component sets, and instances.
 - Add type-validated `bindVariable`/`unbindVariable` with event emission and indexed binding format (`fills/N/color` instead of `fills[N]`).
 - Add `unbind_variable` MCP tool for removing variable bindings.

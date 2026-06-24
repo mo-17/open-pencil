@@ -323,3 +323,27 @@ test('multi-select shows mixed header and boolean operations', async () => {
   await expect(editor.page.getByTestId('boolean-operation-booleanExclude')).toBeVisible()
   await expect(editor.page.getByTestId('boolean-operation-flatten')).toBeVisible()
 })
+
+test('inspector sections collapse and remember state', async () => {
+  await editor.page.evaluate(() => {
+    localStorage.removeItem('open-pencil:inspector-section:position')
+  })
+  await editor.canvas.clearCanvas()
+  await editor.canvas.drawRect(120, 120, 100, 80)
+  await editor.canvas.waitForRender()
+
+  const trigger = editor.page.getByTestId('inspector-section-trigger-position')
+  await expect(trigger).toBeVisible()
+  await expect(positionSection()).toBeVisible()
+
+  await trigger.click()
+  await expect(positionSection()).not.toBeVisible()
+
+  await editor.page.reload()
+  await editor.canvas.waitForInit()
+  await editor.canvas.drawRect(120, 120, 100, 80)
+  await editor.canvas.waitForRender()
+
+  await expect(editor.page.getByTestId('inspector-section-trigger-position')).toBeVisible()
+  await expect(positionSection()).not.toBeVisible()
+})
