@@ -1,3 +1,5 @@
+import { toRaw } from 'vue'
+
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 import {
   checkLibraryUpdates,
@@ -9,6 +11,10 @@ import {
 } from '@open-pencil/core/scene-graph'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
+
+type RawObject = {
+  [key: string]: unknown
+}
 
 export type LibraryPanelStatus = LibraryUpdateStatus | 'unknown'
 
@@ -123,20 +129,25 @@ export async function readLibraryGraphFile(file: File): Promise<SceneGraph> {
 }
 
 export function cloneSceneGraphForLibraryUndo(graph: SceneGraph): SceneGraph {
+  const rawGraph = toRaw(graph)
   const clone = new SceneGraph()
-  clone.nodes = new Map([...graph.nodes].map(([id, node]) => [id, structuredClone(node)]))
-  clone.images = new Map([...graph.images].map(([id, data]) => [id, new Uint8Array(data)]))
+  clone.nodes = new Map([...rawGraph.nodes].map(([id, node]) => [id, cloneRaw(node)]))
+  clone.images = new Map(
+    [...rawGraph.images].map(([id, data]) => [id, new Uint8Array(toRaw(data))])
+  )
   clone.variables = new Map(
-    [...graph.variables].map(([id, variable]) => [id, structuredClone(variable)])
+    [...rawGraph.variables].map(([id, variable]) => [id, cloneRaw(variable)])
   )
   clone.variableCollections = new Map(
-    [...graph.variableCollections].map(([id, collection]) => [id, structuredClone(collection)])
+    [...rawGraph.variableCollections].map(([id, collection]) => [id, cloneRaw(collection)])
   )
-  clone.activeMode = new Map(graph.activeMode)
-  clone.rootId = graph.rootId
-  clone.figKiwiVersion = graph.figKiwiVersion
-  clone.figSchemaDeflated = graph.figSchemaDeflated ? new Uint8Array(graph.figSchemaDeflated) : null
-  clone.documentColorSpace = graph.documentColorSpace
+  clone.activeMode = new Map(rawGraph.activeMode)
+  clone.rootId = rawGraph.rootId
+  clone.figKiwiVersion = rawGraph.figKiwiVersion
+  clone.figSchemaDeflated = rawGraph.figSchemaDeflated
+    ? new Uint8Array(toRaw(rawGraph.figSchemaDeflated))
+    : null
+  clone.documentColorSpace = rawGraph.documentColorSpace
   clone.instanceIndex = new Map()
   for (const node of clone.nodes.values()) {
     if (node.type !== 'INSTANCE' || !node.componentId) continue
@@ -145,6 +156,31 @@ export function cloneSceneGraphForLibraryUndo(graph: SceneGraph): SceneGraph {
     clone.instanceIndex.set(node.componentId, ids)
   }
   return clone
+}
+
+function cloneRaw<T>(value: T): T {
+  return structuredClone(deepToRaw(value)) as T
+}
+
+function deepToRaw(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value
+
+  const raw = toRaw(value)
+  if (raw instanceof Uint8Array) return new Uint8Array(raw)
+  if (Array.isArray(raw)) return raw.map(deepToRaw)
+
+  if (!isRawObject(raw)) return raw
+
+  const copy: RawObject = {}
+  for (const [key, child] of Object.entries(raw)) {
+    copy[key] = deepToRaw(child)
+  }
+  return copy
+}
+
+function isRawObject(value: object): value is RawObject {
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
 }
 
 function sourceLabel(library: LibraryRef): string {

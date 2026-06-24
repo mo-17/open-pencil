@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test'
 
+import { reactive } from 'vue'
+
 import {
   importLibraryComponent,
   publishLibraryComponent,
@@ -110,6 +112,29 @@ test('cloneSceneGraphForLibraryUndo preserves root library refs and instance ind
   )
   expect(clone.getNode(component.id)?.libraryComponentKey).toBe('component-card')
   expect(clone.getInstances(component.id).map((node) => node.id)).toEqual([instance.id])
+})
+
+test('cloneSceneGraphForLibraryUndo unwraps reactive graph nodes', () => {
+  const graph = new SceneGraph()
+  const page = firstPage(graph)
+  const component = graph.createNode('COMPONENT', page.id, {
+    name: 'Card',
+    libraryComponentKey: 'component-card',
+    libraryId: 'design-system',
+    libraryVersion: 'v1',
+    libraryReadonly: true
+  })
+  const componentNode = graph.getNode(component.id)
+  if (!componentNode) throw new Error('Expected component node')
+  graph.nodes.set(component.id, reactive(componentNode))
+
+  const clone = cloneSceneGraphForLibraryUndo(graph)
+
+  expect(clone.getNode(component.id)).toMatchObject({
+    name: 'Card',
+    libraryComponentKey: 'component-card',
+    libraryVersion: 'v1'
+  })
 })
 
 function createLibrarySource(text: string): { graph: SceneGraph; componentId: string } {

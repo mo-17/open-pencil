@@ -67,20 +67,20 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | 5   | **§19 表单校验**                               | 已完成               | **CODE COMPLETE 2026-06-23**;runtime、remote debounce/cancel、GUI、tool schema、E2E 已闭合。   | §19           |
 | 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 已完成               | **CODE COMPLETE 2026-06-21**;INPUT upload → Supabase Storage public URL 已闭合。               | §18           |
 | 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
-| 8   | **§14 跨文件组件库 / 团队库**                  | 已完成(待真机 ACK)   | Phase A foundation + publish/import/update helpers + `publish_component` + CLI + local Libraries 面板已完成。 | §14           |
+| 8   | **§14 跨文件组件库 / 团队库**                  | 已完成               | Phase A foundation + publish/import/update helpers + `publish_component` + CLI + local Libraries 面板已完成, browser GUI ACK 通过。 | §14           |
 | 9   | **更多 deploy providers(Cloudflare Pages 等)** | 中                   | headless;CF Pages 直传需 blake3,开工前必须 AskUserQuestion。                                   | §5            |
 | 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-23**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options。      | §9 / §15      |
-| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成(待真机 ACK)   | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合。 | §7 / §8 / §10 |
+| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成               | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合并通过 E2E ACK。 | §7 / §8 / §10 |
 | 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
 | 13  | **lowcode 字段升格 Kiwi schema**               | 低                   | 工程债;pluginData 旁路稳定,升格成本高,继续推迟。                                               | §6            |
 
-> **当前未闭合**:#9 / #13。#8 已完成数据模型 + `.fig`
+> **当前未闭合**:#9 / #10 Tauri preview 真机 ACK / #13。#8 已完成数据模型 + `.fig`
 > round-trip foundation + publish helper/tool + import/update helpers + headless CLI + local GUI;
-> 只剩真机 ACK / remote registry 后续增强。#13 偏工程债;#9 有 blake3 依赖决策;#10/#11 只剩真机 ACK。
+> browser GUI ACK 已过,remote registry 属后续增强。#11 GUI ACK 已过。#13 偏工程债;#9 有 blake3 依赖决策;#10 仍需 Tauri 桌面 preview 点画面 ACK。
 >
 > **下一步建议(2026-06-24 状态校准后)**:若继续 headless,转 #9 CF Pages(需先锁
-> blake3 依赖)或继续推迟 #13 Kiwi schema debt。若继续 GUI/真机,则安排 #8/#10/#11
-> 的 Tauri/浏览器 ACK。
+> blake3 依赖)或继续推迟 #13 Kiwi schema debt。若继续 GUI/真机,则只剩 #10
+> 的 Tauri preview ACK。
 > #13 Kiwi schema 仍建议推迟,除非协作/AI 流程明确需要 schema 一等字段。
 
 ### 1.1.1 第二波:落地增量候选(组件 / 样式 / 交互细节)
@@ -1275,8 +1275,7 @@ bun test \
 
 **剩余**:
 
-1. 真机 ACK:本地 manifest/library 文件选择 + outdated 显示 + Accept update。
-2. 可选:后续把 CLI/source 支持从 local file 扩到 registry/url fetch。
+1. 可选:后续把 CLI/source 支持从 local file 扩到 registry/url fetch。
 
 ### §14 Phase A6 local Libraries panel 交付(2026-06-24)
 
@@ -1298,18 +1297,24 @@ bun test \
 
 **验证**:
 
-- `bun test tests/engine/app/library-panel.test.ts` → 3/0:
+- `bun test tests/engine/app/library-panel.test.ts` → 4/0:
   - manifest shape parser。
   - imported row status unknown/outdated。
   - undo snapshot clone 保留 root library refs 和 instance index。
+  - undo snapshot clone 可解开 Vue reactive node,避免 browser `DataCloneError`。
 - `bun run check:vue` → exit 0。
 - `bun run lint:structure` → exit 0(仅既有 max-lines warnings)。
+- **GUI ACK 2026-06-24**:`bun playwright test tests/e2e/properties/libraries-panel.spec.ts --project=openpencil` → 1/0:
+  - browser 打开真实 imported `.fig` fixture。
+  - manifest + library `.fig` 文件输入。
+  - status `unknown → outdated → up-to-date`。
+  - `Accept update` 后 cached component 文本 `Hello → Updated`。
+  - undo/redo 正常,无 browser console/page error。
 
 **剩余**:
 
-1. 真机 ACK:在浏览器/Tauri 里用真实 manifest + library 文件验证 status 和 accept update。
-2. Remote registry/url fetch。
-3. 更细粒度 subtree undo / override remap。
+1. Remote registry/url fetch。
+2. 更细粒度 subtree undo / override remap。
 
 **风险**:**override 跨版本 index-path 错位** —— 库组件更新后,实例的 child-override key(`<childId>:<prop>`)可能指向已变的子树结构。设计阶段必须定 index 稳定性策略。**待锁**:库存储/引用机制(componentKey 注册表 vs 文件路径);版本/更新传播策略;关键 fork 走 AskUserQuestion。
 
@@ -1335,7 +1340,7 @@ bun test \
 - ~~**§8 component-props 面板**~~ —— **CODE COMPLETE 2026-06-24**:`ComponentPropsPanel.vue` 挂到 INSTANCE 右侧属性区,统一展示 variant selects、TEXT child prop 输入、solid fill prop 颜色入口;写入 instance child 的真实 text/fills,并维护 compiler 读取的 `instance.overrides` marker(`<childId>:text` / `<childId>:fills`)。variant 切换复用 `editor.switchInstanceVariant()` / `graph.swapInstanceComponent()`。
 - ~~**§10 optionalParams GUI**~~ —— **CODE COMPLETE 2026-06-24**:`WorkflowRow.vue` 的参数行新增 optional checkbox,会重建 `WorkflowDef.optionalParams`;rename/remove 参数时同步清理 optional 名称,避免 GUI 写出悬空 optional param。`ActionRow` 既有 callWorkflow args editor 会立即把该参数显示为 optional 并放宽 required 校验。
 
-**验证**:`bun playwright test tests/e2e/properties/responsive-panel.spec.ts --project=openpencil` 1/0;`bun playwright test tests/e2e/properties/component-props-panel.spec.ts --project=openpencil` 1/0;`bun playwright test tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil` 1/0(均需沙箱外本地端口权限);`bun run check` exit 0;`bun run check:vue`;`bun run lint:structure`(仅既有 max-lines warnings)。**剩余需真机点画面**:#10/#11 GUI ACK。
+**验证**:`bun playwright test tests/e2e/properties/responsive-panel.spec.ts tests/e2e/properties/component-props-panel.spec.ts tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil` → 3/0(需沙箱外本地端口权限);此前 `bun run check` exit 0;`bun run check:vue`;`bun run lint:structure`(仅既有 max-lines warnings)。**ACK 结论**:#11 browser GUI ACK 通过;#10 preview pane 是 Tauri-only,仍需桌面 preview 真机 ACK。
 
 ## §10 工作流体跨页 pageStates 精确
 
