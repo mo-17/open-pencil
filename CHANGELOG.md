@@ -29,6 +29,7 @@
 
 ### Fixes
 
+- Treat unexpected Tauri system-font IPC responses as an empty local font list instead of crashing during desktop preview startup.
 - Fix accepting local lowcode library updates from the Libraries panel when the editor graph contains Vue reactive nodes.
 - Fix clone operations (duplicate, instance creation, clipboard copy) sharing mutable references with the original — editing fills, strokes, variable bindings, overrides, or vector networks on one no longer corrupts the other.
 - Fix instance overrides shallow-copied on clone — override values containing objects are now deep-copied.

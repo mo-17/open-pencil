@@ -1330,6 +1330,12 @@ bun test \
 
 **交付记录(CODE COMPLETE 2026-06-23)**:`PreviewPane.vue` 新增 preview-local controls(`lowcode-preview-uikit`,`lowcode-preview-i18n`,`lowcode-preview-locales`),设置变化会 force recompile + iframe reload;`use-compile-on-change.ts` 增加 `PreviewCompileSettings`、`parsePreviewLocales()` 和 compiler override 组装。默认仍是 Tailwind/no-i18n,所以老 preview 输出不漂移。**边界**:本轮只是 GUI 入口 + compile options plumbing;shadcn preview 的依赖解析仍由 compiler VFS/package.json 提供,视觉保真需真机桌面 preview 点画面 ACK。
 
+**自动化补强(2026-06-24)**:
+
+- `bun playwright test tests/e2e/code/preview-pane-tauri.spec.ts --project=openpencil` → 1/0:用 Tauri IPC mock 让 `isTauri()` 为真,验证 preview pane 渲染、`lowcode-preview-uikit` 可切 `shadcn`、`lowcode-preview-i18n` 勾选后显示 `lowcode-preview-locales`,locales 可写 `en,zh-CN`,并展示 sidecar ready URL。
+- `bun run tauri dev` 可启动真实桌面 app;本轮日志确认 preview sidecar 监听成功(`http://localhost:61475/`)。当前 Codex 环境仍无法截图(`screencapture` 返回 `could not create image from display`)且 `osascript` 无 Accessibility 权限,所以**视觉点画面 ACK 仍未完成**。
+- 真实启动过程中补了 `list_system_fonts` 非数组返回 guard,避免 Tauri/font mock 或异常 IPC 返回导致 `fonts is not iterable` 干扰 preview ACK。
+
 ## §7 / §8 / §10 编辑器授权面板(GUI,真机)
 
 **现状**:§7 responsive overrides / §8 component-props / §10 optionalParams 的数据模型 + emit + round-trip 在 phase-3 均已 headless 交付,授权 GUI 在 phase-3 均显式「延后真机」(沿用「先 emit/headless,GUI 真机」先例)。§7 responsive overrides、§8 component-props 与 §10 optionalParams 编辑入口已在 phase-4 补齐。

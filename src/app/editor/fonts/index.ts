@@ -45,8 +45,8 @@ async function getTauriFonts(): Promise<TauriFontFamily[]> {
     tauriFontsPromise = import('@tauri-apps/api/core')
       .then(({ invoke }) => invoke<TauriFontFamily[]>('list_system_fonts'))
       .then((fonts) => {
-        tauriFontsCache = fonts
-        return fonts
+        tauriFontsCache = Array.isArray(fonts) ? fonts : []
+        return tauriFontsCache
       })
       .catch(() => [])
   }
