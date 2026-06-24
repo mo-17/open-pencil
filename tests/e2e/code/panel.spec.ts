@@ -88,6 +88,29 @@ test('selecting a frame shows Frame in JSX', async () => {
   expect(code).toContain('Frame')
 })
 
+test('selecting a button shows JSX code', async () => {
+  await codeTab().click()
+  await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = store.graph.createNode('BUTTON', store.state.currentPageId, {
+      name: 'Primary Button',
+      x: 100,
+      y: 120,
+      width: 140,
+      height: 40,
+      interactiveProps: { text: 'Continue' }
+    }).id
+    store.select([id])
+  })
+  await editor.canvas.waitForRender()
+
+  await expect(codePanel()).toBeVisible()
+  const code = await codePanel().textContent()
+  expect(code).toContain('Button')
+  expect(code).toContain('Continue')
+})
+
 test('switching back to Design tab works', async () => {
   await designTab().click()
 

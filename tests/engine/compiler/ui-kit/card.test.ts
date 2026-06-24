@@ -9,7 +9,8 @@ import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
  * Phase 4 §15.1 — FRAME→Card. When `uiKit: 'shadcn'` is set, a card-like
  * container FRAME (visible background fill + rounded corners) emits `<Card>`
  * instead of a bare `<div>`, with its children kept inside. The heuristic is
- * pure compiler-emit; off / non-card FRAMEs stay `<div>` (byte-identical).
+ * pure compiler-emit; off / non-card FRAMEs stay `<div>`, and card-like frames now
+ * keep overflow clipping by class injection.
  */
 
 const WHITE_FILL: Fill = {
@@ -48,6 +49,39 @@ describe('compile — FRAME→Card (Phase 4 §15.1)', () => {
     expect(app).toContain('Inside the card')
     // Inlined component source emitted.
     expect(out.files.has('src/components/ui/card.tsx')).toBe(true)
+  })
+
+  test('rounded FRAME parent adds clipping while nested non-card rounded child keeps its own radius classes', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const cardFrame = graph.createNode('FRAME', pageId, {
+      name: 'Card',
+      fills: [WHITE_FILL],
+      cornerRadius: 12,
+      width: 240,
+      height: 160
+    })
+    const child = graph.createNode('FRAME', cardFrame.id, {
+      name: 'Child',
+      fills: [],
+      cornerRadius: 16,
+      width: 120,
+      height: 80
+    })
+    graph.createNode('TEXT', child.id, { text: 'chip' })
+
+    const out = compileWith(graph, pageId, 'shadcn')
+    const app = out.files.get('src/App.tsx') as string
+
+    // Parent card container should receive overflow clipping even when mapped to Card.
+    expect(app).toMatch(/<Card[^>]*className="[^"]*\boverflow-hidden\b[^"]*"/)
+
+    // Child FRAME (no visible fill -> non-card in heuristic) should keep its own rounded style.
+    const childMatch = app.match(/<div[^>]*className="[^"]*w-30 h-20[^"]*"/)?.[0]
+    expect(childMatch).toBeDefined()
+    expect(childMatch).toMatch(/\brounded-(?:\[[^\]]+\]|\d+)\b/)
+    // Non-card child should not be forced clipping unless it has its own clip intent.
+    expect(childMatch).not.toMatch(/\boverflow-hidden\b/)
   })
 
   test('Card pulls no Radix dep (plain styled div — base deps only)', () => {
@@ -104,7 +138,7 @@ describe('compile — FRAME→Card (Phase 4 §15.1)', () => {
     expect(app).not.toContain('<Card')
   })
 
-  test('without a UI kit, a card-like FRAME stays a <div> (byte-identical)', () => {
+  test('without a UI kit, a card-like FRAME stays a div and still gets clipping', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     const frame = graph.createNode('FRAME', pageId, { fills: [WHITE_FILL], cornerRadius: 12 })
@@ -113,6 +147,7 @@ describe('compile — FRAME→Card (Phase 4 §15.1)', () => {
     const out = compileWith(graph, pageId)
     const app = out.files.get('src/App.tsx') as string
     expect(app).not.toContain('Card')
+    expect(app).toMatch(/<div[^>]*className="[^"]*rounded[^"]*overflow-hidden[^"]*"/)
     expect(out.files.has('src/components/ui/card.tsx')).toBe(false)
   })
 })

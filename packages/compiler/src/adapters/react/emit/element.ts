@@ -205,8 +205,9 @@ function tagOpenParts(
   devMode: boolean,
   uiKit: UiKitAdapter | null
 ): { attrsStr: string; tagName: string } {
+  const className = ensureCardClipClass(node)
   const baseAttrsStr = formatAttrs(
-    node.className,
+    className,
     node.attrs,
     node.events,
     devMode ? node.sourceId : undefined,
@@ -222,6 +223,18 @@ function tagOpenParts(
   const displayMapping = node.displayKind ? uiKit?.mapDisplay?.(node.displayKind) : undefined
   const attrsStr = displayMapping ? displayAttrs(baseAttrsStr, node) : baseAttrsStr
   return { attrsStr, tagName: kitTagName(node, uiKit, displayMapping) }
+}
+
+/**
+ * Phase 4 §15.1 with §6 follow-up: card-like rounded FRAMEs should keep child
+ * overflow clipped at compile/runtime even when node.clipsContent is not set.
+ * Add overflow-hidden via IR-emitted className so UI-kit wrappers (`<Card>`) and
+ * plain `<div>` frames both inherit the expected corner clipping.
+ */
+function ensureCardClipClass(node: IRElement): string {
+  if (node.containerKind !== 'card') return node.className
+  if (node.className.includes('overflow-hidden')) return node.className
+  return joinClass(node.className, 'overflow-hidden')
 }
 
 function kitTagName(

@@ -61,6 +61,37 @@ describe('sceneNodeToJSX', () => {
     expect(jsx).toContain('>Hello World</Text>')
   })
 
+  test('button node uses interactive text so code panel is not empty', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('BUTTON', pageId(graph), {
+      name: 'Primary CTA',
+      width: 120,
+      height: 40,
+      interactiveProps: { text: 'Submit' }
+    })
+
+    const jsx = sceneNodeToJSX(node.id, graph)
+    expect(jsx).toContain('<Button')
+    expect(jsx).toContain('name="Primary CTA"')
+    expect(jsx).toContain('w={120}')
+    expect(jsx).toContain('h={40}')
+    expect(jsx).toContain('>Submit</Button>')
+    expect(selectionToJSX([node.id], graph)).toContain('<Button')
+  })
+
+  test('button node emits html button in tailwind format', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('BUTTON', pageId(graph), {
+      width: 120,
+      height: 40,
+      interactiveProps: { text: 'Save' }
+    })
+
+    const jsx = sceneNodeToJSX(node.id, graph, 'tailwind')
+    expect(jsx).toContain('<button')
+    expect(jsx).toContain('>Save</button>')
+  })
+
   test('rtl text node', () => {
     const graph = makeGraph()
     const node = graph.createNode('TEXT', pageId(graph), {

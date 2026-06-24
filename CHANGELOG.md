@@ -29,6 +29,8 @@
 
 ### Fixes
 
+- Clip compiled lowcode card children to the parent rounded corners by emitting overflow clipping on card-like containers.
+- Show JSX in the Code panel when selecting lowcode Button nodes, including their interactive text in OpenPencil and Tailwind formats.
 - Treat unexpected Tauri system-font IPC responses as an empty local font list instead of crashing during desktop preview startup.
 - Fix accepting local lowcode library updates from the Libraries panel when the editor graph contains Vue reactive nodes.
 - Fix clone operations (duplicate, instance creation, clipboard copy) sharing mutable references with the original — editing fills, strokes, variable bindings, overrides, or vector networks on one no longer corrupts the other.

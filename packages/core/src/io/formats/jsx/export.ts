@@ -32,7 +32,8 @@ const NODE_TYPE_TO_TAG: Partial<Record<NodeType, string>> = {
   SECTION: 'Section',
   COMPONENT: 'Component',
   COMPONENT_SET: 'Frame',
-  INSTANCE: 'Frame'
+  INSTANCE: 'Frame',
+  BUTTON: 'Button'
 }
 
 const NODE_TYPE_TO_TW_TAG: Partial<Record<NodeType, string>> = {
@@ -49,7 +50,13 @@ const NODE_TYPE_TO_TW_TAG: Partial<Record<NodeType, string>> = {
   SECTION: 'section',
   COMPONENT: 'div',
   COMPONENT_SET: 'div',
-  INSTANCE: 'div'
+  INSTANCE: 'div',
+  BUTTON: 'button'
+}
+
+function buttonLabel(node: SceneNode): string {
+  const text = node.interactiveProps?.text
+  return typeof text === 'string' && text.trim() ? text : 'Button'
 }
 
 // --- OpenPencil format helpers ---
@@ -315,8 +322,8 @@ function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number, format: J
     attrsStr = props.map(([k, v]) => formatProp(k, v)).join(' ')
   }
 
-  const opening = attrsStr ? `<${tag} ${attrsStr}` : `<${tag}`
   const children = graph.getChildren(node.id)
+  const opening = attrsStr ? `<${tag} ${attrsStr}` : `<${tag}`
 
   if (node.type === 'TEXT') {
     const text = node.text
@@ -330,6 +337,10 @@ function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number, format: J
       ...escaped.split('\n').map((l) => `${prefix}  ${l}`),
       `${prefix}</${tag}>`
     ].join('\n')
+  }
+
+  if (node.type === 'BUTTON' && children.length === 0) {
+    return `${prefix}${opening}>${escapeJSXText(buttonLabel(node))}</${tag}>`
   }
 
   if (children.length === 0) return `${prefix}${opening} />`
