@@ -65,7 +65,8 @@ describe('read_lowcode_node', () => {
     }
     graph.updateNode(graph.rootId, {
       lowcodeDocumentState: docStates,
-      lowcodeSupabaseConfig: config
+      lowcodeSupabaseConfig: config,
+      lowcodeSeoMetadata: { title: 'Launch', description: 'Fast page' }
     })
     const tool = getTool('read_lowcode_node')
     const result = tool.execute(figma, { id: graph.rootId }) as Result<LowcodeNodeRead>
@@ -73,6 +74,10 @@ describe('read_lowcode_node', () => {
     if (!result.ok) return
     expect(result.data.lowcodeDocumentState).toEqual(docStates)
     expect(result.data.lowcodeSupabaseConfig).toEqual(config)
+    expect(result.data.lowcodeSeoMetadata).toEqual({
+      title: 'Launch',
+      description: 'Fast page'
+    })
   })
 
   test('returns ok:false with a descriptive error when the id is missing', () => {

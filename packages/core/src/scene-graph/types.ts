@@ -59,6 +59,13 @@ export interface SourceMetadata {
   fig: FigmaSourcePayload
 }
 
+export interface SeoMetadata {
+  title?: string
+  description?: string
+  image?: string
+  canonicalUrl?: string
+}
+
 export type HandleMirroring = 'NONE' | 'ANGLE' | 'ANGLE_AND_LENGTH'
 export type WindingRule = 'NONZERO' | 'EVENODD'
 
@@ -566,6 +573,11 @@ export interface SceneNode {
   // emit + `$currentUser` auto-registration. Persisted via §12 pluginData
   // under `lowcode/supabaseConfig`.
   lowcodeSupabaseConfig?: SupabaseConfig
+  // ── Lowcode (Phase 5 §3) ──
+  // Static HTML metadata authored for generated lowcode output. The root node
+  // carries document defaults; page CANVAS nodes may carry a single-page
+  // override. Persisted via §12 pluginData under `lowcode/seoMetadata`.
+  lowcodeSeoMetadata?: SeoMetadata
   // ── Lowcode (Phase 3 §7) ──
   // Per-breakpoint layout overrides. Bubble-style responsive design via
   // Tailwind viewport prefixes (`md:` / `lg:` …). Only the layout-affecting

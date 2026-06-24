@@ -1,6 +1,12 @@
 import { parseSVGPath } from '#core/io/formats/svg/parse-path'
 import { SceneGraph } from '#core/scene-graph'
-import type { LayoutMode, LayoutSizing, SceneNode, VectorNetwork } from '#core/scene-graph'
+import type {
+  LayoutMode,
+  LayoutSizing,
+  SceneNode,
+  SeoMetadata,
+  VectorNetwork
+} from '#core/scene-graph'
 import { copyEffects, copyFills, copyStrokes } from '#core/scene-graph/copy'
 import { populateInstanceChildren } from '#core/scene-graph/instances'
 
@@ -244,6 +250,7 @@ function createSceneNode(
   }
 
   const node = graph.createNode(mapNodeType(pen), parentId, overrides)
+  if (isSeoMetadata(pen.lowcodeSeoMetadata)) node.lowcodeSeoMetadata = pen.lowcodeSeoMetadata
 
   if (pen.fill !== undefined) node.fills = convertFill(pen.fill, ctx, node)
   if (pen.stroke) node.strokes = convertStroke(pen.stroke, ctx, node)
@@ -505,6 +512,11 @@ export function parsePenFile(json: string): SceneGraph {
   collectComponentIds(doc.children, componentIds)
 
   const page = graph.addPage(doc.children[0]?.name ?? 'Page 1')
+  const root = graph.getNode(graph.rootId)
+  if (root && isSeoMetadata(doc.lowcodeSeoMetadata)) {
+    root.lowcodeSeoMetadata = doc.lowcodeSeoMetadata
+  }
+  if (isSeoMetadata(doc.pageSeoMetadata)) page.lowcodeSeoMetadata = doc.pageSeoMetadata
   for (const child of doc.children) {
     createSceneNode(child, page.id, graph, ctx, componentIds, penSources)
   }
@@ -522,6 +534,22 @@ export function parsePenFile(json: string): SceneGraph {
   }
 
   return graph
+}
+
+function isSeoMetadata(value: unknown): value is SeoMetadata {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    optionalString((value as Record<string, unknown>).title) &&
+    optionalString((value as Record<string, unknown>).description) &&
+    optionalString((value as Record<string, unknown>).image) &&
+    optionalString((value as Record<string, unknown>).canonicalUrl)
+  )
+}
+
+function optionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string'
 }
 
 export async function readPenFile(file: File): Promise<SceneGraph> {

@@ -124,6 +124,11 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - compile/build 时把当前 page metadata 注入 `index.html`; **2026-06-25 第一刀已补
   compiler `metadata` option,支持 title / description / OG image / canonical URL,
   且单页 compile 可用 page override 覆盖 document default。**
+- **2026-06-25 第二刀已补持久化 / authoring 小闭环**:`SceneNode.lowcodeSeoMetadata`
+  通过 `lowcode/seoMetadata` pluginData round-trip,root 作为 document defaults,
+  page CANVAS 作为 single-page override;`update_lowcode_node` / `read_lowcode_node`
+  可通过 MCP / CLI eval 写读该字段,compiler 默认读取 graph metadata,显式
+  `CompilerOptions.metadata` 仍优先。
 - 多页 SPA 不做 SSG,不承诺每个 route 独立 HTML。
 
 ### 3.3 非目标
@@ -134,8 +139,10 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 
 ### 3.4 成功标准草案
 
-- `.pen` / `.fig` round-trip 保留 metadata。**未做:需要后续 UI / ToolDef /
-  pluginData 持久化小闭环,本刀不改 Kiwi schema。**
+- `.fig` round-trip 保留 metadata。**2026-06-25 已覆盖 `.fig` root/page
+  pluginData round-trip,并让 `.pen` importer 支持 `lowcodeSeoMetadata` /
+  `pageSeoMetadata`;不改 Kiwi schema。`.pen` 当前仍是 read-only importer,完整
+  write round-trip 留到后续专门处理。**
 - CLI build 输出的 `index.html` 包含 title/description/OG tags。**2026-06-25 已由
   `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler VFS output。**
 - preview 不因 metadata 缺失崩溃。**2026-06-25 已覆盖 metadata absent path,不额外
@@ -443,5 +450,5 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 - 风险最低,不会碰 compiler/codec;
 - 能立刻提升可用性和产品表达;
 - 如果优先修用户体验缺口,先做 §6 Preview 圆角裁剪和 §7 代码面板选中态排查;
-- 做完质量修复后再开 §8 Inspector 折叠面板、§3 轻量 SEO 或 §2 发布生命周期,
-  用户路径会更顺。
+- §3 轻量 SEO 的 compiler + persistence + ToolDef 小闭环已经完成;下一刀更适合接
+  §8 Inspector 折叠面板的 GUI polish,或回到 §2 发布生命周期。

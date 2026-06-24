@@ -43,6 +43,7 @@ import type {
   EventName,
   LowcodeTranslations,
   SceneNode,
+  SeoMetadata,
   StateDef,
   StateOverrides,
   StateValueType,
@@ -152,7 +153,8 @@ const PATCH_KEYS = new Set([
   'stateOverrides',
   'renderCondition',
   'lowcodeDocumentState',
-  'lowcodeSupabaseConfig'
+  'lowcodeSupabaseConfig',
+  'lowcodeSeoMetadata'
 ])
 
 function fail(error: string): { ok: false; error: string } {
@@ -1250,6 +1252,42 @@ function applySupabaseConfigField(
   return { ok: true }
 }
 
+const KNOWN_SEO_METADATA_KEYS = new Set(['title', 'description', 'image', 'canonicalUrl'])
+
+function parseSeoMetadata(
+  raw: unknown,
+  what: string
+): { ok: true; metadata: SeoMetadata } | { ok: false; error: string } {
+  if (!isPlainObject(raw)) return fail(`${what} must be an object or null`)
+  const metadata: SeoMetadata = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (!KNOWN_SEO_METADATA_KEYS.has(key)) {
+      return fail(
+        `${what}.${key} is not supported — allowed: ${[...KNOWN_SEO_METADATA_KEYS].join(' / ')}`
+      )
+    }
+    if (typeof value !== 'string') return fail(`${what}.${key} must be a string`)
+    const trimmed = value.trim()
+    if (trimmed !== '') metadata[key as keyof SeoMetadata] = trimmed
+  }
+  return { ok: true, metadata }
+}
+
+function applySeoMetadataField(
+  raw: Record<string, unknown>,
+  patch: Partial<SceneNode>
+): FieldResult {
+  if (!('lowcodeSeoMetadata' in raw)) return { ok: true }
+  if (raw.lowcodeSeoMetadata === null) {
+    patch.lowcodeSeoMetadata = undefined
+    return { ok: true }
+  }
+  const r = parseSeoMetadata(raw.lowcodeSeoMetadata, 'lowcodeSeoMetadata')
+  if (!r.ok) return r
+  patch.lowcodeSeoMetadata = Object.keys(r.metadata).length > 0 ? r.metadata : undefined
+  return { ok: true }
+}
+
 const FIELD_APPLIERS = [
   applyStateField,
   applyBindingsField,
@@ -1258,7 +1296,8 @@ const FIELD_APPLIERS = [
   applyStateOverridesField,
   applyRenderConditionField,
   applyDocStateField,
-  applySupabaseConfigField
+  applySupabaseConfigField,
+  applySeoMetadataField
 ]
 
 // Phase 3 §3.v7 — reject a DATEPICKER whose interactiveProps carry a
@@ -1367,7 +1406,7 @@ export const updateLowcodeNode = defineTool({
     patch_json: {
       type: 'string',
       description:
-        'JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig}. Use null as a value to clear a field.',
+        'JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig, lowcodeSeoMetadata}. Use null as a value to clear a field.',
       required: true
     }
   },

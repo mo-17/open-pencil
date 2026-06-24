@@ -86,6 +86,28 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimported.getNode(reimported.rootId)?.lowcodeAuthRedirect).toBe('/signin')
   })
 
+  test('Phase 5 §3: root and page SEO metadata round-trip through .fig', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const rootMetadata = {
+      title: 'Root SEO',
+      description: 'Root description.',
+      canonicalUrl: 'https://example.com'
+    }
+    const pageMetadata = {
+      title: 'Page SEO',
+      image: 'https://example.com/og.png'
+    }
+    graph.updateNode(graph.rootId, { lowcodeSeoMetadata: rootMetadata })
+    graph.updateNode(page.id, { lowcodeSeoMetadata: pageMetadata })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(reimported.getNode(reimported.rootId)?.lowcodeSeoMetadata).toEqual(rootMetadata)
+    expect(reimported.getPages()[0].lowcodeSeoMetadata).toEqual(pageMetadata)
+  })
+
   test('BUTTON with events + interactiveProps round-trips through .fig (including NodeType)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

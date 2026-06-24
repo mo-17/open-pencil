@@ -77,6 +77,41 @@ describe('update_lowcode_node', () => {
     expect(node?.events?.onClick?.[0]).toEqual({ id: 'a-1', kind: 'navigate', to: '/done' })
   })
 
+  test('accepts lowcodeSeoMetadata and trims empty fields', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeSeoMetadata: {
+          title: '  Launch  ',
+          description: 'Fast page',
+          image: ''
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data?.updated).toEqual(['lowcodeSeoMetadata'])
+    expect(graph.getNode(graph.rootId)?.lowcodeSeoMetadata).toEqual({
+      title: 'Launch',
+      description: 'Fast page'
+    })
+  })
+
+  test('rejects malformed lowcodeSeoMetadata keys', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeSeoMetadata: { canonicalURL: 'https://example.com' }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('canonicalURL')
+    expect(graph.getNode(graph.rootId)?.lowcodeSeoMetadata).toBeUndefined()
+  })
+
   test('accepts stateOverrides for interaction-state styling', () => {
     const { figma, graph } = setupToolTest()
     const rect = figma.createRectangle()

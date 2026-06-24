@@ -26,6 +26,7 @@ import type {
   ResponsiveOverrides,
   SceneGraph,
   SceneNode,
+  SeoMetadata,
   StateDef,
   StateOverrides,
   SupabaseConfig,
@@ -58,6 +59,9 @@ export const LOWCODE_FREE_LAYOUT_KEY = 'lowcode/freeLayout'
  *  Absent ≡ no Supabase wiring → compiler skips the `_lowcode_supabase.ts`
  *  emit and `$currentUser` auto-registration. */
 export const LOWCODE_SUPABASE_CONFIG_KEY = 'lowcode/supabaseConfig'
+/** Phase 5 §3: static SEO metadata for compiler HTML output. Root node carries
+ *  document defaults; page CANVAS nodes may carry single-page overrides. */
+export const LOWCODE_SEO_METADATA_KEY = 'lowcode/seoMetadata'
 /** Round-trip fix: `LayoutSizing` carries `'FILL'`, but the vendored Figma
  *  `StackSize` enum only has FIXED / RESIZE_TO_FIT(+implicit) — so on save
  *  `serialize.ts` collapses HUG→RESIZE_TO_FIT and **everything else (incl.
@@ -153,6 +157,7 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_NODE_TYPE_KEY,
   LOWCODE_FREE_LAYOUT_KEY,
   LOWCODE_SUPABASE_CONFIG_KEY,
+  LOWCODE_SEO_METADATA_KEY,
   LOWCODE_AXIS_SIZING_KEY,
   LOWCODE_COUNTER_ALIGN_CONTENT_KEY,
   LOWCODE_GRID_POSITION_KEY,
@@ -205,6 +210,8 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (isSupabaseConfig(node.lowcodeSupabaseConfig)) {
     entries.push(makeEntry(LOWCODE_SUPABASE_CONFIG_KEY, node.lowcodeSupabaseConfig))
   }
+  const seoMetadata = seoMetadataPayload(node.lowcodeSeoMetadata)
+  if (seoMetadata) entries.push(makeEntry(LOWCODE_SEO_METADATA_KEY, seoMetadata))
   // Round-trip fix: persist FILL axis sizing the vendored StackSize enum can't
   // hold. Only the FILL axes are written; if neither is FILL no entry is
   // emitted, keeping legacy .fig output byte-identical.
@@ -270,6 +277,16 @@ function libraryComponentPayload(node: SceneNode): JsonObject | null {
     payload.version = node.libraryVersion
   }
   if (node.libraryReadonly === true) payload.readonly = true
+  return Object.keys(payload).length > 0 ? payload : null
+}
+
+function seoMetadataPayload(value: SeoMetadata | undefined): SeoMetadata | null {
+  if (!value) return null
+  const payload: SeoMetadata = {}
+  for (const key of ['title', 'description', 'image', 'canonicalUrl'] as const) {
+    const fieldValue = value[key]
+    if (typeof fieldValue === 'string' && fieldValue !== '') payload[key] = fieldValue
+  }
   return Object.keys(payload).length > 0 ? payload : null
 }
 
@@ -407,6 +424,16 @@ function isSupabaseConfig(value: unknown): value is SupabaseConfig {
   )
 }
 
+function isSeoMetadata(value: unknown): value is SeoMetadata {
+  if (!isPlainRecord(value)) return false
+  return (
+    optionalString(value.title) &&
+    optionalString(value.description) &&
+    optionalString(value.image) &&
+    optionalString(value.canonicalUrl)
+  )
+}
+
 function makeEntry(key: string, value: unknown): PluginDataEntry {
   return { pluginId: OPEN_PENCIL_PLUGIN_ID, key, value: JSON.stringify(value) }
 }
@@ -457,6 +484,10 @@ export interface ExtractedLowcodeAndPluginData {
    *  `lowcode/supabaseConfig`. Present only when the saved value passed
    *  the type guard (object with non-empty `url` and `anonKey`). */
   lowcodeSupabaseConfig?: SupabaseConfig
+  /** Phase 5 §3: static SEO metadata restored from `lowcode/seoMetadata`. Root
+   *  node values are document defaults; page CANVAS values are single-page
+   *  overrides. */
+  lowcodeSeoMetadata?: SeoMetadata
   /** Round-trip fix: FILL axes restored from `lowcode/axisSizing`. Callers
    *  override the kiwi-restored (FIXED) sizing for whichever axis is present. */
   primaryAxisSizingOverride?: 'FILL'
@@ -571,6 +602,9 @@ function assignLowcodeField(
       // is treated as absent rather than dropped silently — the read-side
       // JSON.parse already logged a warn for true parse failures.
       if (isSupabaseConfig(value)) target.lowcodeSupabaseConfig = value
+      return
+    case LOWCODE_SEO_METADATA_KEY:
+      if (isSeoMetadata(value)) target.lowcodeSeoMetadata = value
       return
     case LOWCODE_TRANSLATIONS_KEY:
       // Light guard: a non-null, non-array object. Per-locale / per-message

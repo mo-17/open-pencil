@@ -74,6 +74,82 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     expect(html).not.toContain('Document description.')
   })
 
+  test('uses persisted root lowcodeSeoMetadata when options omit metadata', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeSeoMetadata: {
+        title: 'Persisted Title',
+        description: 'Persisted description.'
+      }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'seo-app' })
+    })
+    const html = out.files.get('index.html') as string
+
+    expect(html).toContain('<title>Persisted Title</title>')
+    expect(html).toContain('<meta name="description" content="Persisted description." />')
+  })
+
+  test('uses persisted page lowcodeSeoMetadata as a single-page override', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeSeoMetadata: {
+        title: 'Root Title',
+        description: 'Root description.'
+      }
+    })
+    graph.updateNode(pageId, {
+      lowcodeSeoMetadata: {
+        title: 'Page Title',
+        description: 'Page description.'
+      }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'seo-app' })
+    })
+    const html = out.files.get('index.html') as string
+
+    expect(html).toContain('<title>Page Title</title>')
+    expect(html).toContain('<meta name="description" content="Page description." />')
+    expect(html).not.toContain('Root Title')
+  })
+
+  test('explicit CompilerOptions.metadata overrides persisted metadata', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeSeoMetadata: {
+        title: 'Persisted Title',
+        description: 'Persisted description.'
+      }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({
+        packageName: 'seo-app',
+        metadata: {
+          title: 'Explicit Title'
+        }
+      })
+    })
+    const html = out.files.get('index.html') as string
+
+    expect(html).toContain('<title>Explicit Title</title>')
+    expect(html).toContain('<meta name="description" content="Persisted description." />')
+    expect(html).not.toContain('Persisted Title')
+  })
+
   test('escapes metadata values in HTML attributes', () => {
     const { html } = compileIndexHtml({
       metadata: {

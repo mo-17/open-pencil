@@ -35,4 +35,30 @@ describe('parsePenFile', () => {
     expect(vectors.length).toBeGreaterThan(0)
     expect(vectors.some((node) => (node.vectorNetwork?.vertices.length ?? 0) > 0)).toBe(true)
   })
+
+  test('imports document and page SEO metadata', () => {
+    const graph = parsePenFile(
+      JSON.stringify({
+        version: '1',
+        lowcodeSeoMetadata: {
+          title: 'Root SEO',
+          description: 'Root description.'
+        },
+        pageSeoMetadata: {
+          title: 'Page SEO',
+          canonicalUrl: 'https://example.com/page'
+        },
+        children: [{ id: 'hero', type: 'frame', name: 'Landing', children: [] }]
+      })
+    )
+
+    expect(graph.getNode(graph.rootId)?.lowcodeSeoMetadata).toEqual({
+      title: 'Root SEO',
+      description: 'Root description.'
+    })
+    expect(graph.getPages()[0].lowcodeSeoMetadata).toEqual({
+      title: 'Page SEO',
+      canonicalUrl: 'https://example.com/page'
+    })
+  })
 })

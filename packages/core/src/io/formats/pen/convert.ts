@@ -12,6 +12,7 @@ import type {
   NodeType,
   SceneGraph,
   SceneNode,
+  SeoMetadata,
   Stroke,
   StrokeCap,
   StrokeJoin,
@@ -29,6 +30,8 @@ export interface PenDocument {
   children: PenNode[]
   themes?: Record<string, string[]>
   variables?: Record<string, PenVariable>
+  lowcodeSeoMetadata?: SeoMetadata
+  pageSeoMetadata?: SeoMetadata
 }
 
 export interface PenVariable {
@@ -109,6 +112,7 @@ export interface PenNode {
   weight?: number
   model?: string
   theme?: Record<string, string>
+  lowcodeSeoMetadata?: SeoMetadata
 }
 
 export interface VarContext {

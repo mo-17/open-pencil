@@ -20,6 +20,7 @@ import type {
   EventName,
   LayoutMode,
   LowcodeTranslations,
+  SeoMetadata,
   StateDef,
   StateOverrides,
   SupabaseConfig,
@@ -67,6 +68,9 @@ export interface LowcodeNodeRead {
   /** Root-only: Supabase connection config. Always undefined on
    *  non-root nodes; use `readSupabaseConfig` for the canonical access. */
   lowcodeSupabaseConfig?: SupabaseConfig
+  /** Root defaults or page override: static HTML SEO metadata used by the
+   *  compiler when CompilerOptions.metadata does not override it. */
+  lowcodeSeoMetadata?: SeoMetadata
   /** Root-only: document-level translation catalog (Phase 3 §9 v7). Always
    *  undefined on non-root nodes; use `readTranslations` for the canonical
    *  access. */
@@ -92,6 +96,7 @@ function buildLowcodeRead(node: {
   stateOverrides?: StateOverrides
   lowcodeDocumentState?: DocumentStateDef[]
   lowcodeSupabaseConfig?: SupabaseConfig
+  lowcodeSeoMetadata?: SeoMetadata
   lowcodeTranslations?: LowcodeTranslations
   lowcodeWorkflows?: WorkflowDef[]
 }): LowcodeNodeRead {
@@ -110,6 +115,7 @@ function buildLowcodeRead(node: {
   if (node.lowcodeDocumentState !== undefined) out.lowcodeDocumentState = node.lowcodeDocumentState
   if (node.lowcodeSupabaseConfig !== undefined)
     out.lowcodeSupabaseConfig = node.lowcodeSupabaseConfig
+  if (node.lowcodeSeoMetadata !== undefined) out.lowcodeSeoMetadata = node.lowcodeSeoMetadata
   if (node.lowcodeTranslations !== undefined) out.lowcodeTranslations = node.lowcodeTranslations
   if (node.lowcodeWorkflows !== undefined) out.lowcodeWorkflows = node.lowcodeWorkflows
   return out
