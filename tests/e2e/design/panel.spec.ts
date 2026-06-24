@@ -324,6 +324,33 @@ test('multi-select shows mixed header and boolean operations', async () => {
   await expect(editor.page.getByTestId('boolean-operation-flatten')).toBeVisible()
 })
 
+test('inspector filter narrows sections and can be cleared', async () => {
+  await editor.page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('open-pencil:inspector-section:')) localStorage.removeItem(key)
+    }
+  })
+  await editor.canvas.clearCanvas()
+  await editor.canvas.drawRect(120, 120, 100, 80)
+  await editor.canvas.waitForRender()
+
+  const filter = editor.page.getByTestId('inspector-filter-input')
+  await expect(filter).toBeVisible()
+
+  await filter.fill('export')
+  await expect(editor.page.getByTestId('inspector-section-export')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-position')).not.toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-appearance')).not.toBeVisible()
+
+  await editor.page.getByTestId('inspector-filter-clear').click()
+  await expect(editor.page.getByTestId('inspector-section-position')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-appearance')).toBeVisible()
+
+  await filter.fill('event')
+  await expect(editor.page.getByTestId('inspector-section-lowcode')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-position')).not.toBeVisible()
+})
+
 test('inspector sections collapse and remember state', async () => {
   await editor.page.evaluate(() => {
     localStorage.removeItem('open-pencil:inspector-section:position')

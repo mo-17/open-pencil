@@ -9,6 +9,7 @@ import AppearanceSection from './properties/AppearanceSection.vue'
 import EffectsSection from './properties/EffectsSection.vue'
 import ExportSection from './properties/ExportSection.vue'
 import FillSection from './properties/FillSection.vue'
+import InspectorFilter from './properties/InspectorFilter.vue'
 import InspectorSection from './properties/InspectorSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
 import ComponentPropsPanel from './properties/Lowcode/ComponentPropsPanel.vue'
@@ -34,6 +35,7 @@ import TypographySection from './properties/TypographySection.vue'
 import VariablesSection from './properties/VariablesSection.vue'
 
 const variablesOpen = ref(false)
+const inspectorFilter = ref('')
 const { selectedNode: node, selectedCount: multiCount } = useSelectionState()
 const showBooleanOperations = computed(() => multiCount.value >= 2)
 const { getCommand } = useEditorCommands()
@@ -68,6 +70,71 @@ const hasEvents = computed(() => {
   return t === 'BUTTON' || t === 'FORM'
 })
 const { panels } = useI18n()
+
+const SECTION_KEYWORDS: Record<string, string[]> = {
+  position: [
+    'position',
+    'x',
+    'y',
+    'width',
+    'height',
+    'rotate',
+    'rotation',
+    'flip',
+    'align',
+    'size'
+  ],
+  layout: ['layout', 'auto layout', 'grid', 'padding', 'gap', 'wrap', 'clip', 'spacing'],
+  component: ['component', 'instance', 'props', 'property', 'variant', 'detach'],
+  appearance: [
+    'appearance',
+    'fill',
+    'stroke',
+    'effect',
+    'shadow',
+    'blur',
+    'opacity',
+    'radius',
+    'typography',
+    'font',
+    'text',
+    'color'
+  ],
+  lowcode: [
+    'lowcode',
+    'binding',
+    'state',
+    'event',
+    'workflow',
+    'validation',
+    'responsive',
+    'condition',
+    'list',
+    'props',
+    'button',
+    'input'
+  ],
+  export: ['export', 'png', 'jpg', 'jpeg', 'webp', 'svg', 'pdf', 'scale'],
+  page: ['page', 'canvas', 'background'],
+  'lowcode-document': [
+    'lowcode',
+    'document',
+    'state',
+    'supabase',
+    'workflow',
+    'translation',
+    'i18n'
+  ],
+  'assets-variables': ['assets', 'libraries', 'library', 'variables', 'tokens']
+}
+
+function sectionMatches(id: string, title: string) {
+  const needle = inspectorFilter.value.trim().toLowerCase()
+  if (!needle) return true
+  return [id, title, ...(SECTION_KEYWORDS[id] ?? [])].some((value) =>
+    value.toLowerCase().includes(needle)
+  )
+}
 </script>
 
 <template>
@@ -89,16 +156,29 @@ const { panels } = useI18n()
         <BooleanOperationsControl v-if="showBooleanOperations" />
       </div>
     </div>
-    <InspectorSection id="position" :title="panels.position">
+    <InspectorFilter v-model="inspectorFilter" />
+    <InspectorSection
+      v-show="sectionMatches('position', panels.position)"
+      id="position"
+      :title="panels.position"
+    >
       <PositionSection />
     </InspectorSection>
-    <InspectorSection id="appearance" :title="panels.appearance">
+    <InspectorSection
+      v-show="sectionMatches('appearance', panels.appearance)"
+      id="appearance"
+      :title="panels.appearance"
+    >
       <AppearanceSection />
       <FillSection />
       <StrokeSection />
       <EffectsSection />
     </InspectorSection>
-    <InspectorSection id="export" :title="panels.export">
+    <InspectorSection
+      v-show="sectionMatches('export', panels.export)"
+      id="export"
+      :title="panels.export"
+    >
       <ExportSection />
     </InspectorSection>
   </div>
@@ -119,15 +199,26 @@ const { panels } = useI18n()
       <span class="text-xs font-semibold">{{ node.name }}</span>
     </div>
 
-    <InspectorSection id="position" :title="panels.position">
+    <InspectorFilter v-model="inspectorFilter" />
+
+    <InspectorSection
+      v-show="sectionMatches('position', panels.position)"
+      id="position"
+      :title="panels.position"
+    >
       <PositionSection />
     </InspectorSection>
 
-    <InspectorSection id="layout" title="Layout">
+    <InspectorSection v-show="sectionMatches('layout', 'Layout')" id="layout" title="Layout">
       <LayoutSection />
     </InspectorSection>
 
-    <InspectorSection v-if="node.type === 'INSTANCE'" id="component" title="Component">
+    <InspectorSection
+      v-if="node.type === 'INSTANCE'"
+      v-show="sectionMatches('component', 'Component')"
+      id="component"
+      title="Component"
+    >
       <div class="flex flex-col gap-1 border-b border-border px-3 py-2">
         <button
           data-test-id="design-go-to-component"
@@ -147,7 +238,11 @@ const { panels } = useI18n()
       <ComponentPropsPanel />
     </InspectorSection>
 
-    <InspectorSection id="appearance" :title="panels.appearance">
+    <InspectorSection
+      v-show="sectionMatches('appearance', panels.appearance)"
+      id="appearance"
+      :title="panels.appearance"
+    >
       <AppearanceSection />
       <TypographySection v-if="node.type === 'TEXT'" />
       <FillSection />
@@ -155,7 +250,7 @@ const { panels } = useI18n()
       <EffectsSection />
     </InspectorSection>
 
-    <InspectorSection id="lowcode" title="Lowcode">
+    <InspectorSection v-show="sectionMatches('lowcode', 'Lowcode')" id="lowcode" title="Lowcode">
       <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
       <ValueBindingPanel v-if="hasValueBinding" />
       <ValidationPanel v-if="hasValidation" />
@@ -167,7 +262,11 @@ const { panels } = useI18n()
       <RenderConditionPanel />
     </InspectorSection>
 
-    <InspectorSection id="export" :title="panels.export">
+    <InspectorSection
+      v-show="sectionMatches('export', panels.export)"
+      id="export"
+      :title="panels.export"
+    >
       <ExportSection />
     </InspectorSection>
   </div>
@@ -177,21 +276,34 @@ const { panels } = useI18n()
     data-test-id="design-panel-empty"
     class="scrollbar-thin flex-1 overflow-x-hidden overflow-y-auto pb-4"
   >
-    <InspectorSection id="page" title="Page">
+    <InspectorFilter v-model="inspectorFilter" />
+    <InspectorSection v-show="sectionMatches('page', 'Page')" id="page" title="Page">
       <PageSection />
     </InspectorSection>
-    <InspectorSection id="lowcode-document" title="Lowcode Document">
+    <InspectorSection
+      v-show="sectionMatches('lowcode-document', 'Lowcode Document')"
+      id="lowcode-document"
+      title="Lowcode Document"
+    >
       <StatePanel />
       <SupabaseConfigPanel />
       <DocumentStatePanel />
       <WorkflowsPanel />
       <TranslationsPanel />
     </InspectorSection>
-    <InspectorSection id="assets-variables" title="Assets & Variables">
+    <InspectorSection
+      v-show="sectionMatches('assets-variables', 'Assets & Variables')"
+      id="assets-variables"
+      title="Assets & Variables"
+    >
       <LibrariesPanel />
       <VariablesSection @open-dialog="variablesOpen = true" />
     </InspectorSection>
-    <InspectorSection id="export" :title="panels.export">
+    <InspectorSection
+      v-show="sectionMatches('export', panels.export)"
+      id="export"
+      :title="panels.export"
+    >
       <ExportSection />
     </InspectorSection>
   </div>
