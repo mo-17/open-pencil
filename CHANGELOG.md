@@ -23,8 +23,8 @@
 - Map more bound lowcode theme variables to generated inline styles, including stroke colors,
   scalar opacity, translucent solid fills, multi-layer solid backgrounds, and component usage
   roots, with warnings for missing design-token bindings.
-- Map bound multi-stroke token colors to generated layered CSS shadows when no existing shadow
-  effect would be overwritten.
+- Map bound multi-stroke token colors to generated layered CSS shadows, including composition
+  with existing drop and inner shadow effects.
 - Map component child token overrides and gradient stop color bindings to generated inline
   styles while keeping the existing className component override channel intact.
 - Preserve gradient stop color token bindings through `.fig` export and re-import using Figma

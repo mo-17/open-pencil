@@ -538,6 +538,21 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 本刀只覆盖 generated DOM 的 token-aware multi-stroke fallback,不等同完整 Figma stroke
   geometry:dash pattern、per-side independent stroke、center/outside 的精确几何裁剪仍留给后续。
 
+**2026-06-26 第十四刀已完成**:
+
+- Multi-stroke token fallback 现在会把原有 visible `DROP_SHADOW` / `INNER_SHADOW` effect
+  合并到同一个 inline `boxShadow` 声明中,不再因为存在 shadow effect 就退回单
+  `borderColor`。
+- `effectShadows()` 会把现有 shadow effect 转成稳定 CSS layer:
+  - `DROP_SHADOW` 输出 `<x>px <y>px <radius>px <spread?> <color>`。
+  - `INNER_SHADOW` 额外带 `inset`。
+  - effect color 使用 alpha-aware hex,保持 generated JSX snapshot 稳定。
+- 合并顺序保持 stroke layers 在前、原 shadow effects 在后,让 token stroke fallback 和原视觉
+  shadow 同时存在。
+- 新增 focused compiler coverage 验证带 drop shadow 的 multi-stroke token node 会输出
+  `boxShadow` 中的 token stroke layers + 原 drop shadow layer,且不再退回 `borderColor`。
+- 本刀仍不处理 dash pattern、per-side independent stroke、center/outside 的精确几何裁剪。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
@@ -586,7 +601,7 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   export 不会写 vendored Kiwi enum 不支持的 dynamic field。**2026-06-25 第十二刀已完成;由
   `tests/engine/io/fig/roundtrip/variables.test.ts` 覆盖。**
 - 多 visible stroke token stack 在 generated DOM 中可通过 layered `boxShadow` 保留 token
-  colors,且有 shadow effect 时不会覆盖原 shadow。**2026-06-26 第十三刀已完成;由
+  colors,且可与原 drop / inner shadow effect 合并。**2026-06-26 第十三/十四刀已完成;由
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
 - 后续可继续做:Kiwi `VariableField` enum 升级 / Figma 官方 stop-level field 名确认、完整多
   stroke 几何语义、更多非 dark mode 的 runtime UI。

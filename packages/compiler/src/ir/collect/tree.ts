@@ -15,6 +15,7 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import {
   parseVariantName,
+  type Effect,
   type Fill,
   type NodeType,
   type SceneGraph,
@@ -1302,13 +1303,7 @@ function applyBoundStrokeStyle(
     return
   }
 
-  if (hasVisibleShadowEffect(node)) {
-    const color = layers.find((layer) => layer.boundColor)?.boundColor
-    if (color) declarations.borderColor = color
-    return
-  }
-
-  declarations.boxShadow = layersToBoxShadow(layers)
+  declarations.boxShadow = [...layersToBoxShadow(layers), ...effectShadows(node.effects)].join(', ')
 }
 
 interface BoundStrokeLayer {
@@ -1334,7 +1329,7 @@ function boundStrokeLayers(node: SceneNode, ctx: WalkCtx): BoundStrokeLayer[] {
   return hasBoundLayer ? layers : []
 }
 
-function layersToBoxShadow(layers: BoundStrokeLayer[]): string {
+function layersToBoxShadow(layers: BoundStrokeLayer[]): string[] {
   let insetWidth = 0
   let outsetWidth = 0
   const shadows: string[] = []
@@ -1348,17 +1343,22 @@ function layersToBoxShadow(layers: BoundStrokeLayer[]): string {
       shadows.push(`inset 0 0 0 ${cssPx(insetWidth)} ${layer.color}`)
     }
   }
-  return shadows.join(', ')
+  return shadows
 }
 
 function cssPx(value: number): string {
   return `${Number(value.toFixed(3))}px`
 }
 
-function hasVisibleShadowEffect(node: SceneNode): boolean {
-  return node.effects.some(
-    (effect) => effect.visible && (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW')
-  )
+function effectShadows(effects: Effect[]): string[] {
+  return effects.flatMap((effect) => {
+    if (!effect.visible || (effect.type !== 'DROP_SHADOW' && effect.type !== 'INNER_SHADOW')) {
+      return []
+    }
+    const inset = effect.type === 'INNER_SHADOW' ? 'inset ' : ''
+    const spread = effect.spread !== 0 ? ` ${cssPx(effect.spread)}` : ''
+    return `${inset}${cssPx(effect.offset.x)} ${cssPx(effect.offset.y)} ${cssPx(effect.radius)}${spread} ${colorToHex8(effect.color, effect.color.a)}`
+  })
 }
 
 function cssColorForPaintBinding(

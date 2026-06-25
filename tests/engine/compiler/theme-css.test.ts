@@ -255,7 +255,7 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(appTsx).not.toContain('borderColor: "var(--op-brand-theme-color-primary)"')
   })
 
-  test('multi-stroke token emit preserves existing shadow effects by falling back to border color', () => {
+  test('multi-stroke token emit combines stroke layers with existing shadow effects', () => {
     const graph = addThemeVariables()
     const pageId = firstPageId(graph)
     const rect = createRect(graph, pageId, { name: 'Token Shadow Border' })
@@ -273,8 +273,10 @@ describe('Phase 5 §5 design token theme CSS', () => {
     })
 
     const appTsx = out.files.get('src/App.tsx') as string
-    expect(appTsx).toContain('style={{ borderColor: "var(--op-brand-theme-color-primary)" }}')
-    expect(appTsx).not.toContain('boxShadow: "inset 0 0 0 1px #FF0000')
+    expect(appTsx).toContain(
+      'boxShadow: "inset 0 0 0 1px #FF0000, inset 0 0 0 4px var(--op-brand-theme-color-primary), 0px 2px 8px #00000033"'
+    )
+    expect(appTsx).not.toContain('borderColor: "var(--op-brand-theme-color-primary)"')
   })
 
   test('compile maps bound opacity and translucent fill variables to generated inline CSS vars', () => {
