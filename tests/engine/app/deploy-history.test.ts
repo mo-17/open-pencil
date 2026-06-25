@@ -23,7 +23,7 @@ afterEach(() => {
 describe('lowcode deploy history', () => {
   test('records recent deploy metadata without provider tokens', async () => {
     const storage = installLocalStorage()
-    const { readDeployHistory, recordDeployHistory } =
+    const { deployArtifactLabel, readDeployHistory, recordDeployHistory } =
       await import('@/app/lowcode/preview-pane/deploy-history')
 
     const history = recordDeployHistory({
@@ -37,6 +37,7 @@ describe('lowcode deploy history', () => {
       i18nEnabled: true,
       locales: ['fr', 'ja']
     })
+    const label = deployArtifactLabel(history[0])
 
     expect(history).toHaveLength(1)
     expect(history[0]).toMatchObject({
@@ -48,8 +49,16 @@ describe('lowcode deploy history', () => {
       site: 'demo-site',
       uiKit: 'shadcn',
       i18nEnabled: true,
-      locales: ['fr', 'ja']
+      locales: ['fr', 'ja'],
+      buildOptions: {
+        uiKit: 'shadcn',
+        i18nEnabled: true,
+        locales: ['fr', 'ja']
+      },
+      artifactLabel: label,
+      compat: { schema: 1 }
     })
+    expect(label).toBe('staging · netlify · demo-site · shadcn · i18n:fr,ja')
     expect(storage.values().next().value).not.toContain('token')
     expect(readDeployHistory()).toEqual(history)
   })
@@ -97,7 +106,7 @@ describe('lowcode deploy history', () => {
 
   test('builds a redeploy draft from history without restoring deploy artifacts or tokens', async () => {
     installLocalStorage()
-    const { deployRollbackDraft, recordDeployHistory } =
+    const { deployBuildOptionsSnapshot, deployRollbackDraft, recordDeployHistory } =
       await import('@/app/lowcode/preview-pane/deploy-history')
 
     const [entry] = recordDeployHistory({
@@ -112,6 +121,11 @@ describe('lowcode deploy history', () => {
       locales: ['zh-CN', 'fr']
     })
 
+    expect(deployBuildOptionsSnapshot(entry)).toEqual({
+      uiKit: 'shadcn',
+      i18nEnabled: true,
+      locales: ['zh-CN', 'fr']
+    })
     expect(deployRollbackDraft(entry)).toEqual({
       provider: 'cloudflare',
       environment: 'production',
@@ -123,6 +137,37 @@ describe('lowcode deploy history', () => {
     expect(JSON.stringify(deployRollbackDraft(entry))).not.toContain('cf_1')
     expect(JSON.stringify(deployRollbackDraft(entry))).not.toContain('https://example.pages.dev')
     expect(deployRollbackDraft({ ...entry, provider: 'custom-host' })).toBeNull()
+  })
+
+  test('uses structured build options before legacy replay fields', async () => {
+    installLocalStorage()
+    const { deployArtifactLabel, deployRollbackDraft } =
+      await import('@/app/lowcode/preview-pane/deploy-history')
+
+    const entry = {
+      id: 'mixed',
+      provider: 'vercel',
+      environment: 'staging' as const,
+      url: 'https://mixed.vercel.app',
+      deployId: 'dep_mixed',
+      fileCount: 6,
+      createdAt: '2026-06-25T00:00:00.000Z',
+      uiKit: 'none' as const,
+      i18nEnabled: false,
+      locales: [],
+      buildOptions: {
+        uiKit: 'shadcn' as const,
+        i18nEnabled: true,
+        locales: ['de']
+      }
+    }
+
+    expect(deployRollbackDraft(entry)).toMatchObject({
+      uiKit: 'shadcn',
+      i18nEnabled: true,
+      locales: ['de']
+    })
+    expect(deployArtifactLabel(entry)).toBe('staging · vercel · shadcn · i18n:de')
   })
 
   test('defaults optional replay fields for legacy deploy history entries', async () => {
@@ -145,6 +190,7 @@ describe('lowcode deploy history', () => {
       await import('@/app/lowcode/preview-pane/deploy-history')
 
     const [entry] = readDeployHistory()
+    expect(entry.compat).toBeUndefined()
     expect(deployRollbackDraft(entry)).toEqual({
       provider: 'netlify',
       environment: 'preview',

@@ -123,6 +123,17 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 本刀不引入团队共享 history、持久 build artifact bundle 或 environment 到 provider
   target 的强绑定;这些仍留给后续更完整发布生命周期。
 
+**2026-06-25 第三刀已完成**:
+
+- Deploy history entry 增加 `artifactLabel`、结构化 `buildOptions` snapshot 和
+  `compat.schema` 版本位点。
+- `recordDeployHistory()` 会从当前 UI kit / i18n / locales 生成 build option snapshot,
+  并自动生成可读 artifact label。
+- History list 直接显示 artifact label 与 build options,让用户在 redeploy 前能确认
+  回放的构建配置。
+- 旧 history 记录仍可读取;缺失 `buildOptions` / `compat` 时从 legacy fields 回退。
+- 本刀仍不改 CLI deploy JSON、provider 上传实现或 provider 原生 rollback API。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -133,7 +144,8 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 支持 rollback 指引:至少能重新 deploy 某个历史 build artifact 或提示 provider
   dashboard rollback。**2026-06-25 已完成 provider dashboard 链接第一刀;真实 provider
   rollback API 未做。第二刀已补 history → redeploy draft,覆盖在
-  `tests/engine/app/deploy-history.test.ts`。**
+  `tests/engine/app/deploy-history.test.ts`。第三刀已补 artifact label /
+  build option snapshot / compat schema,同文件覆盖。**
 
 ---
 

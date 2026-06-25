@@ -4,6 +4,8 @@ import { computed, ref } from 'vue'
 import { openExternalLink } from '@/app/shell/ui'
 
 import {
+  deployArtifactLabel,
+  deployBuildOptionsSnapshot,
   deployDashboardUrl,
   deployRollbackDraft,
   type DeployEnvironment,
@@ -88,6 +90,19 @@ function restoreForRollback(entry: DeployHistoryEntry): void {
 
 function openDeployed(url: string): void {
   void openExternalLink(url)
+}
+
+function artifactLabel(entry: DeployHistoryEntry): string {
+  return entry.artifactLabel ?? deployArtifactLabel(entry)
+}
+
+function buildOptionsLabel(entry: DeployHistoryEntry): string {
+  const options = deployBuildOptionsSnapshot(entry)
+  const parts = [options.uiKit === 'shadcn' ? 'shadcn/ui' : 'Tailwind']
+  if (options.i18nEnabled) {
+    parts.push(options.locales.length > 0 ? `i18n ${options.locales.join(', ')}` : 'i18n')
+  }
+  return parts.join(' · ')
 }
 </script>
 
@@ -247,6 +262,8 @@ function openDeployed(url: string): void {
                 open
               </button>
             </div>
+            <div class="truncate" :title="artifactLabel(entry)">{{ artifactLabel(entry) }}</div>
+            <div class="truncate">{{ buildOptionsLabel(entry) }}</div>
             <div class="truncate">Deploy {{ entry.deployId }}</div>
             <div class="truncate">
               Rollback:

@@ -16,6 +16,19 @@ export interface DeployHistoryEntry {
   uiKit?: DeployHistoryUiKit
   i18nEnabled?: boolean
   locales?: string[]
+  buildOptions?: DeployBuildOptions
+  artifactLabel?: string
+  compat?: DeployHistoryCompat
+}
+
+export interface DeployBuildOptions {
+  uiKit: DeployHistoryUiKit
+  i18nEnabled: boolean
+  locales: string[]
+}
+
+export interface DeployHistoryCompat {
+  schema: 1
 }
 
 export interface DeployRollbackDraft {
@@ -29,6 +42,7 @@ export interface DeployRollbackDraft {
 
 const DEPLOY_HISTORY_KEY = 'open-pencil:lowcode-deploy-history:v1'
 const DEPLOY_HISTORY_LIMIT = 8
+const DEPLOY_HISTORY_SCHEMA = 1
 
 function storage(): Storage | null {
   if (typeof window === 'undefined') return null
@@ -53,8 +67,27 @@ function isDeployHistoryEntry(value: unknown): value is DeployHistoryEntry {
     (entry.uiKit === undefined || entry.uiKit === 'none' || entry.uiKit === 'shadcn') &&
     (entry.i18nEnabled === undefined || typeof entry.i18nEnabled === 'boolean') &&
     (entry.locales === undefined ||
-      (Array.isArray(entry.locales) && entry.locales.every((loc) => typeof loc === 'string')))
+      (Array.isArray(entry.locales) && entry.locales.every((loc) => typeof loc === 'string'))) &&
+    (entry.buildOptions === undefined || isDeployBuildOptions(entry.buildOptions)) &&
+    (entry.artifactLabel === undefined || typeof entry.artifactLabel === 'string') &&
+    (entry.compat === undefined || isDeployHistoryCompat(entry.compat))
   )
+}
+
+function isDeployBuildOptions(value: unknown): value is DeployBuildOptions {
+  if (!value || typeof value !== 'object') return false
+  const options = value as Record<string, unknown>
+  return (
+    (options.uiKit === 'none' || options.uiKit === 'shadcn') &&
+    typeof options.i18nEnabled === 'boolean' &&
+    Array.isArray(options.locales) &&
+    options.locales.every((loc) => typeof loc === 'string')
+  )
+}
+
+function isDeployHistoryCompat(value: unknown): value is DeployHistoryCompat {
+  if (!value || typeof value !== 'object') return false
+  return (value as Record<string, unknown>).schema === DEPLOY_HISTORY_SCHEMA
 }
 
 export function readDeployHistory(): DeployHistoryEntry[] {
@@ -82,12 +115,48 @@ export function recordDeployHistory(
   entry: Omit<DeployHistoryEntry, 'id' | 'createdAt'>
 ): DeployHistoryEntry[] {
   const createdAt = new Date().toISOString()
+  const buildOptions = deployBuildOptionsSnapshot(entry)
   const nextEntry: DeployHistoryEntry = {
     ...entry,
+    buildOptions,
+    artifactLabel: entry.artifactLabel ?? deployArtifactLabel({ ...entry, buildOptions }),
+    compat: { schema: DEPLOY_HISTORY_SCHEMA },
     id: `${createdAt}:${entry.provider}:${entry.environment}:${entry.deployId}`,
     createdAt
   }
   return writeDeployHistory([nextEntry, ...readDeployHistory()])
+}
+
+export function deployBuildOptionsSnapshot(entry: {
+  uiKit?: DeployHistoryUiKit
+  i18nEnabled?: boolean
+  locales?: readonly string[]
+  buildOptions?: DeployBuildOptions
+}): DeployBuildOptions {
+  return {
+    uiKit: entry.buildOptions?.uiKit ?? entry.uiKit ?? 'none',
+    i18nEnabled: entry.buildOptions?.i18nEnabled ?? entry.i18nEnabled ?? false,
+    locales: [...(entry.buildOptions?.locales ?? entry.locales ?? [])]
+  }
+}
+
+export function deployArtifactLabel(entry: {
+  provider: string
+  environment: DeployEnvironment
+  site?: string
+  buildOptions?: DeployBuildOptions
+  uiKit?: DeployHistoryUiKit
+  i18nEnabled?: boolean
+  locales?: readonly string[]
+}): string {
+  const options = deployBuildOptionsSnapshot(entry)
+  const parts = [entry.environment, entry.provider]
+  if (entry.site) parts.push(entry.site)
+  if (options.uiKit !== 'none') parts.push(options.uiKit)
+  if (options.i18nEnabled) {
+    parts.push(options.locales.length > 0 ? `i18n:${options.locales.join(',')}` : 'i18n')
+  }
+  return parts.join(' · ')
 }
 
 export function deployRollbackDraft(entry: DeployHistoryEntry): DeployRollbackDraft | null {
@@ -98,13 +167,14 @@ export function deployRollbackDraft(entry: DeployHistoryEntry): DeployRollbackDr
   ) {
     return null
   }
+  const buildOptions = deployBuildOptionsSnapshot(entry)
   return {
     provider: entry.provider,
     environment: entry.environment,
     site: entry.site,
-    uiKit: entry.uiKit ?? 'none',
-    i18nEnabled: entry.i18nEnabled ?? false,
-    locales: entry.locales ?? []
+    uiKit: buildOptions.uiKit,
+    i18nEnabled: buildOptions.i18nEnabled,
+    locales: buildOptions.locales
   }
 }
 
