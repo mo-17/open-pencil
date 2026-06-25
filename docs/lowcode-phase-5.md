@@ -195,6 +195,19 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 本刀不改 CLI `--account-id` / `--site` 参数、不改 Cloudflare Direct Upload provider、不调远端
   rollback API,也不改变旧 history 的读取兼容性。
 
+**2026-06-25 第九刀已完成**:
+
+- 将 Vercel rollback contract 的自然语言缺口拆成 `parseVercelProjectTarget(site)` 和
+  `missingFields`。
+- Vercel history 的 `site` 仍只表示 project name;helper 只 trim 并判断是否存在,不把它误认为
+  production alias 或 owner scope。
+- `deployRollbackContract()` 的 Vercel 分支保持 `dashboard-only`,但 required fields 改为:
+  `token` / `deployId` / `projectName` / `productionAlias` / `projectOwner`。
+- 有 project name 的 history 仍缺 `productionAlias` / `projectOwner`;legacy 无 site 的 history 还会额外缺
+  `projectName`。
+- 本刀不改 Vercel upload/deploy provider、不新增 Vercel API helper、不接 production alias promote,
+  只让后续 UI/API 接入能机器读取缺失字段。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -221,6 +234,9 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - Cloudflare rollback contract 能把 `account/project` 与脏历史 site 值区分开。**2026-06-25
   第八刀已补 `parseCloudflarePagesTarget()` 和 focused app tests;真实 Cloudflare rollback API
   仍未调用。**
+- Vercel rollback contract 能说明 project / production alias / owner scope 缺口。**2026-06-25
+  第九刀已补 `parseVercelProjectTarget()` 和 focused app tests;真实 Vercel production alias
+  API 仍未调用。**
 
 ---
 

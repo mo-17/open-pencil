@@ -147,11 +147,21 @@ describe('lowcode deploy history', () => {
       missingFields: ['accountId', 'projectName'],
       reason: 'Cloudflare rollback needs a site target in account/project format.'
     })
-    expect(deployRollbackContract({ provider: 'vercel', deployId: 'ver_1' })).toMatchObject({
+    expect(
+      deployRollbackContract({ provider: 'vercel', deployId: 'ver_1', site: 'my-project' })
+    ).toMatchObject({
       provider: 'vercel',
       support: 'dashboard-only',
-      requiredFields: ['token', 'deployId', 'productionAlias'],
-      missingFields: ['productionAlias']
+      requiredFields: ['token', 'deployId', 'projectName', 'productionAlias', 'projectOwner'],
+      missingFields: ['productionAlias', 'projectOwner'],
+      reason: 'Vercel rollback needs productionAlias, projectOwner metadata not stored locally yet.'
+    })
+    expect(deployRollbackContract({ provider: 'vercel', deployId: 'ver_2' })).toMatchObject({
+      provider: 'vercel',
+      support: 'dashboard-only',
+      missingFields: ['projectName', 'productionAlias', 'projectOwner'],
+      reason:
+        'Vercel rollback needs projectName, productionAlias, projectOwner metadata not stored locally yet.'
     })
     expect(deployRollbackContract({ provider: 'custom', deployId: 'x' })).toMatchObject({
       provider: 'custom',
@@ -204,6 +214,24 @@ describe('lowcode deploy history', () => {
     expect(
       deployDashboardUrl({ provider: 'cloudflare', deployId: 'cf_5', site: 'project' })
     ).toBeNull()
+  })
+
+  test('parses Vercel project targets without implying production rollback readiness', async () => {
+    installLocalStorage()
+    const { parseVercelProjectTarget } = await import('@/app/lowcode/preview-pane/deploy-history')
+
+    expect(parseVercelProjectTarget(' my-project ')).toEqual({
+      projectName: 'my-project',
+      missingFields: []
+    })
+    expect(parseVercelProjectTarget()).toEqual({
+      missingFields: ['projectName'],
+      reason: 'Vercel rollback needs the project name used for the deployment.'
+    })
+    expect(parseVercelProjectTarget('   ')).toEqual({
+      missingFields: ['projectName'],
+      reason: 'Vercel rollback needs the project name used for the deployment.'
+    })
   })
 
   test('restores a Netlify deploy through the site-scoped restore API', async () => {

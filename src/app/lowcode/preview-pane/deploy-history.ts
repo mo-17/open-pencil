@@ -67,6 +67,12 @@ export interface CloudflarePagesTargetMetadata {
   reason?: string
 }
 
+export interface VercelProjectTargetMetadata {
+  projectName?: string
+  missingFields: string[]
+  reason?: string
+}
+
 export interface NetlifyRollbackTarget {
   token: string
   siteId: string
@@ -324,6 +330,17 @@ export function parseCloudflarePagesTarget(site?: string): CloudflarePagesTarget
   return { accountId, projectName, missingFields: [] }
 }
 
+export function parseVercelProjectTarget(site?: string): VercelProjectTargetMetadata {
+  const projectName = site?.trim()
+  if (!projectName) {
+    return {
+      missingFields: ['projectName'],
+      reason: 'Vercel rollback needs the project name used for the deployment.'
+    }
+  }
+  return { projectName, missingFields: [] }
+}
+
 export function deployRollbackContract(
   entry: Pick<DeployHistoryEntry, 'provider' | 'deployId' | 'site'>
 ): DeployRollbackContract {
@@ -354,14 +371,15 @@ export function deployRollbackContract(
     }
   }
   if (entry.provider === 'vercel') {
+    const target = parseVercelProjectTarget(entry.site)
+    const missingFields = [...target.missingFields, 'productionAlias', 'projectOwner']
     return {
       provider: 'vercel',
       support: 'dashboard-only',
       label: 'Promote deployment',
-      requiredFields: ['token', 'deployId', 'productionAlias'],
-      missingFields: ['productionAlias'],
-      reason:
-        'Vercel rollback needs production alias/project ownership metadata not stored locally yet.',
+      requiredFields: ['token', 'deployId', 'projectName', 'productionAlias', 'projectOwner'],
+      missingFields,
+      reason: `Vercel rollback needs ${missingFields.join(', ')} metadata not stored locally yet.`,
       dashboardUrl
     }
   }
