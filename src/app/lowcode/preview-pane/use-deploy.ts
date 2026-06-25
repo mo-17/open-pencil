@@ -17,6 +17,13 @@ import { useEditorStore } from '@/app/editor/active-store'
 import { decodeTauriStderr } from '@/app/shell/ui'
 import { isTauri } from '@/app/tauri/env'
 
+import {
+  recordDeployHistory,
+  readDeployHistory,
+  type DeployEnvironment,
+  type DeployHistoryEntry
+} from './deploy-history'
+
 const DEPLOY_COMMAND = 'lowcode-preview' // shell-allowlisted `bun` (args:true)
 const CLI_ENTRY = 'packages/cli/src/index.ts'
 
@@ -42,12 +49,13 @@ interface DeployCliResult {
   url: string
   deployId: string
   fileCount: number
+  environment: DeployEnvironment
 }
 
 export type DeployStatus =
   | { kind: 'idle' }
   | { kind: 'deploying' }
-  | { kind: 'done'; url: string }
+  | { kind: 'done'; url: string; result: DeployCliResult }
   | { kind: 'error'; message: string }
 
 interface UseDeployResult {
@@ -59,15 +67,18 @@ interface UseDeployResult {
   deploy: (
     token: string,
     provider: DeployProvider,
+    environment: DeployEnvironment,
     site?: string,
     uiKit?: DeployUiKit,
     i18n?: DeployI18n
   ) => Promise<void>
+  history: Ref<DeployHistoryEntry[]>
   reset: () => void
 }
 
 export function useDeploy(): UseDeployResult {
   const status = ref<DeployStatus>({ kind: 'idle' })
+  const history = ref<DeployHistoryEntry[]>(readDeployHistory())
   const store = useEditorStore()
 
   function reset(): void {
@@ -77,6 +88,7 @@ export function useDeploy(): UseDeployResult {
   async function deploy(
     token: string,
     provider: DeployProvider,
+    environment: DeployEnvironment,
     site?: string,
     uiKit: DeployUiKit = 'none',
     i18n?: DeployI18n
@@ -102,27 +114,38 @@ export function useDeploy(): UseDeployResult {
 
     status.value = { kind: 'deploying' }
     try {
-      const result = await runDeployCli(path, trimmed, provider, site, uiKit, i18n)
-      status.value = { kind: 'done', url: result.url }
+      const result = await runDeployCli(path, trimmed, provider, environment, site, uiKit, i18n)
+      history.value = recordDeployHistory({ ...result, site })
+      status.value = { kind: 'done', url: result.url, result }
     } catch (e) {
       status.value = { kind: 'error', message: e instanceof Error ? e.message : String(e) }
     }
   }
 
-  return { status, deploy, reset }
+  return { status, deploy, history, reset }
 }
 
 async function runDeployCli(
   filePath: string,
   token: string,
   provider: DeployProvider,
+  environment: DeployEnvironment,
   site?: string,
   uiKit: DeployUiKit = 'none',
   i18n?: DeployI18n
 ): Promise<DeployCliResult> {
   const { Command } = await import('@tauri-apps/plugin-shell')
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
-  const args = [CLI_ENTRY, 'deploy', filePath, '--provider', provider, '--json']
+  const args = [
+    CLI_ENTRY,
+    'deploy',
+    filePath,
+    '--provider',
+    provider,
+    '--environment',
+    environment,
+    '--json'
+  ]
   if (site) args.push('--site', site)
   // Phase 3 §15: opt into a code UI kit for the emitted project.
   if (uiKit !== 'none') args.push('--ui-kit', uiKit)

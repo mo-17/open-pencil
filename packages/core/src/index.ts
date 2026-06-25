@@ -11,6 +11,7 @@ export {
 export { randomHex, randomInt, randomIndex } from './random'
 
 export * from './constants'
+export * from './lowcode-deployment'
 
 export { createDefaultEditorState, createEditor, EDITOR_TOOLS, TOOL_SHORTCUTS } from './editor'
 export type {

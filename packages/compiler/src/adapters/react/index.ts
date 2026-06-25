@@ -552,7 +552,8 @@ function setSharedProjectFiles(
     buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang), metadata)
   )
   files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm))
-  files.set('src/index.css', buildIndexCss(safelist, kit.themeCss))
+  const themeCss = [options.themeCss, kit.themeCss].filter(Boolean).join('\n')
+  files.set('src/index.css', buildIndexCss(safelist, themeCss))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())

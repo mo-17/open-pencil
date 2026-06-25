@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 
 import { openExternalLink } from '@/app/shell/ui'
 
+import { deployDashboardUrl, type DeployEnvironment } from './deploy-history'
 import { useDeploy, type DeployProvider, type DeployUiKit } from './use-deploy'
 
 /** Split the comma/space-separated locale field into clean target codes. */
@@ -18,10 +19,11 @@ function parseLocales(raw: string): string[] {
 // the spawned process env (see use-deploy.ts). §5.4 adds a provider picker
 // (Netlify / Vercel / Cloudflare). Plain English strings match the (non-i18n)
 // PreviewPane sibling.
-const { status, deploy, reset } = useDeploy()
+const { status, deploy, history, reset } = useDeploy()
 
 const open = ref(false)
 const provider = ref<DeployProvider>('netlify')
+const environment = ref<DeployEnvironment>('preview')
 const token = ref('')
 const site = ref('')
 // Phase 3 §15: code UI kit for the emitted project ('none' → plain Tailwind).
@@ -51,10 +53,17 @@ function toggle(): void {
 }
 
 async function submit(): Promise<void> {
-  await deploy(token.value, provider.value, site.value.trim() || undefined, uiKit.value, {
-    enabled: i18nEnabled.value,
-    locales: parseLocales(localesInput.value)
-  })
+  await deploy(
+    token.value,
+    provider.value,
+    environment.value,
+    site.value.trim() || undefined,
+    uiKit.value,
+    {
+      enabled: i18nEnabled.value,
+      locales: parseLocales(localesInput.value)
+    }
+  )
 }
 
 function openDeployed(url: string): void {
@@ -89,6 +98,18 @@ function openDeployed(url: string): void {
         <option value="netlify">Netlify</option>
         <option value="vercel">Vercel</option>
         <option value="cloudflare">Cloudflare</option>
+      </select>
+
+      <label class="mb-1 block text-xs text-muted">Environment</label>
+      <select
+        v-model="environment"
+        data-test-id="lowcode-deploy-environment"
+        class="mb-2 w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface"
+        :disabled="status.kind === 'deploying'"
+      >
+        <option value="preview">Preview</option>
+        <option value="staging">Staging</option>
+        <option value="production">Production</option>
       </select>
 
       <label class="mb-1 block text-xs text-muted">UI components</label>
@@ -162,6 +183,10 @@ function openDeployed(url: string): void {
         <button type="button" class="text-accent underline" @click="openDeployed(status.url)">
           open site
         </button>
+        <span class="block">
+          {{ status.result.environment }} · {{ status.result.provider }} ·
+          {{ status.result.deployId }}
+        </span>
       </p>
       <p
         v-else-if="status.kind === 'error'"
@@ -170,6 +195,48 @@ function openDeployed(url: string): void {
       >
         {{ status.message }}
       </p>
+
+      <div v-if="history.length > 0" class="mt-3 border-t border-border pt-2">
+        <div class="mb-1 text-[11px] font-medium text-muted">Recent deploys</div>
+        <ul
+          class="flex max-h-32 flex-col gap-1 overflow-y-auto"
+          data-test-id="lowcode-deploy-history"
+        >
+          <li
+            v-for="entry in history"
+            :key="entry.id"
+            class="rounded border border-border px-2 py-1 text-[11px] text-muted"
+            data-test-id="lowcode-deploy-history-item"
+          >
+            <div class="flex items-center gap-1">
+              <span class="font-medium text-surface">{{ entry.environment }}</span>
+              <span>· {{ entry.provider }}</span>
+              <button
+                type="button"
+                class="ml-auto text-accent underline"
+                @click="openDeployed(entry.url)"
+              >
+                open
+              </button>
+            </div>
+            <div class="truncate">Deploy {{ entry.deployId }}</div>
+            <div class="truncate">
+              Rollback: redeploy this environment
+              <template v-if="deployDashboardUrl(entry)">
+                or
+                <button
+                  type="button"
+                  class="text-accent underline"
+                  @click="openDeployed(deployDashboardUrl(entry)!)"
+                >
+                  open dashboard
+                </button>
+              </template>
+              <template v-else>or use the provider dashboard.</template>
+            </div>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>

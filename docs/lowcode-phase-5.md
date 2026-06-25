@@ -98,13 +98,30 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 先支持 local history + provider deploy id,不做云端 team workspace。
 - production/staging 命名仅影响 metadata 和 deploy target,不改 compiler emit。
 
+**2026-06-25 第一刀已完成**:
+
+- `open-pencil deploy` 增加 `--environment preview|staging|production`,默认 `preview`;
+  `--json` 输出包含 `environment`。
+- Tauri `DeployControls` 增加 Environment 选择,并继续通过 env 传 provider token,不持久化
+  token。
+- 桌面端成功部署后写入本机 `localStorage` deploy history,记录 provider /
+  environment / url / deployId / fileCount / site / createdAt,最多保留 8 条。
+- History item 可打开 live URL,并按 provider 派生 dashboard 链接作为 rollback 指引:
+  Netlify deploy、Vercel deployment、Cloudflare Pages deployment(需要 `account/project`
+  site shorthand)。
+- 本刀仍不做 provider 原生 rollback API、团队共享发布历史或 environment 到 provider target
+  的强绑定;这些留给后续发布生命周期第二刀。
+
 ### 2.3 成功标准草案
 
-- CLI 可以输出包含 provider、deployId、url、environment 的 JSON。
-- Tauri DeployControls 可以选择 `preview/staging/production`。
-- 能记录最近 N 次 deploy history,显示 live URL 和 provider id。
+- CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
+  `tests/engine/cli/deploy-provider.test.ts` 覆盖 environment 解析。**
+- Tauri DeployControls 可以选择 `preview/staging/production`。**2026-06-25 已完成。**
+- 能记录最近 N 次 deploy history,显示 live URL 和 provider id。**2026-06-25 已完成
+  local history,`tests/engine/app/deploy-history.test.ts` 覆盖排序、8 条上限和 token 不入库。**
 - 支持 rollback 指引:至少能重新 deploy 某个历史 build artifact 或提示 provider
-  dashboard rollback。
+  dashboard rollback。**2026-06-25 已完成 provider dashboard 链接第一刀;真实 provider
+  rollback API 未做。**
 
 ---
 
@@ -194,10 +211,33 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - lowcode runtime 提供 `ThemeProvider` 或最小 `useTheme` hook。
 - preview pane 能切 theme,但默认保持 byte-stable。
 
+**2026-06-25 第一刀已完成**:
+
+- 新增 compiler 纯函数 `buildDesignTokenThemeCss(graph)`,从 SceneGraph
+  `VariableCollection` / `Variable` 生成确定性的 CSS custom properties。
+- `compile()` 在不改 SceneNode schema 的前提下自动把 graph variables 注入
+  `CompilerOptions.themeCss`;显式 `themeCss` 会追加在生成 token CSS 后,可用于后续 runtime
+  hook 或调用方覆盖。
+- `src/index.css` 输出 `:root` 默认 mode token,并为非默认 mode 输出
+  `:root[data-theme="<mode>"], .theme-<mode>`;mode 名为 `Dark` 时额外使用
+  `:root[data-theme="dark"], .dark`。
+- 无变量时保持无额外 theme block;shadcn/ui kit 的固定 theme CSS 仍按既有路径合并。
+- 本刀只解决 token emit,还不自动把节点样式改写为 `var(...)`,也不提供 preview theme
+  switch UI / runtime provider。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
+
+### 5.4 成功标准草案
+
+- 有 Light/Dark mode variables 时,generated `src/index.css` 包含 `:root` 与 `.dark`
+  token blocks。**2026-06-25 已由 `tests/engine/compiler/theme-css.test.ts` 覆盖。**
+- 无 variables 时不引入额外 theme block。**2026-06-25 已覆盖。**
+- 显式 `CompilerOptions.themeCss` 与自动 token CSS 合并顺序稳定。**2026-06-25 已覆盖。**
+- 后续第二刀可继续做:节点样式 `var(...)` 映射、preview theme switch、runtime
+  `ThemeProvider` / `useTheme` hook。
 
 ---
 

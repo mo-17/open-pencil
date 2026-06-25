@@ -3,6 +3,7 @@ import type { SceneGraph, SeoMetadata } from '@open-pencil/core/scene-graph'
 import { buildComponentRegistry } from './ir/collect/components'
 import { collectComponents, collectTree } from './ir/collect/tree'
 import { selectAdapter } from './select-adapter'
+import { buildDesignTokenThemeCss } from './theme-css'
 import type { CompilerInput, CompilerOptions, CompilerOutput, HtmlMetadataOptions } from './types'
 
 export type {
@@ -57,7 +58,10 @@ export function compile(input: CompilerInput): CompilerOutput {
     }
   }
 
-  const options = withPersistedMetadata(input.graph, input.pageIds, input.options)
+  const options = withPersistedThemeCss(
+    input.graph,
+    withPersistedMetadata(input.graph, input.pageIds, input.options)
+  )
   const { adapter, warnings: selectionWarnings } = selectAdapter(options)
   if (!adapter) {
     return { files: new Map(), warnings: selectionWarnings }
@@ -92,6 +96,13 @@ export function compile(input: CompilerInput): CompilerOutput {
 
 export function withDefaults(overrides: Partial<CompilerOptions> = {}): CompilerOptions {
   return { ...DEFAULT_OPTIONS, ...overrides }
+}
+
+function withPersistedThemeCss(graph: SceneGraph, options: CompilerOptions): CompilerOptions {
+  const generated = buildDesignTokenThemeCss(graph)
+  const explicit = options.themeCss?.trim()
+  const themeCss = [generated.trim(), explicit].filter(Boolean).join('\n\n')
+  return themeCss ? { ...options, themeCss: `${themeCss}\n` } : options
 }
 
 function withPersistedMetadata(

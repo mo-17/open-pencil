@@ -7,6 +7,7 @@ import { defineCommand } from 'citty'
 
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { deployFiles, type DeployProgress, type DeployResult } from '@open-pencil/compiler/deploy'
+import { resolveDeployEnvironment, type DeployEnvironment } from '@open-pencil/core'
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { bold, dim, ok, printError } from '#cli/format'
@@ -16,6 +17,7 @@ import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 interface DeployArgs {
   file?: string
   provider?: string
+  environment?: string
   token?: string
   site?: string
   'account-id'?: string
@@ -79,6 +81,12 @@ export default defineCommand({
       description: 'Hosting provider: netlify (default), vercel, or cloudflare.',
       required: false
     },
+    environment: {
+      type: 'string',
+      description:
+        'Deployment environment label: preview (default), staging, or production. This labels the deploy result; provider targeting still comes from --site / provider settings.',
+      required: false
+    },
     token: {
       type: 'string',
       description:
@@ -136,6 +144,13 @@ export default defineCommand({
       process.exit(1)
     }
     const deployArgs = args as DeployArgs
+    let environment: DeployEnvironment
+    try {
+      environment = resolveDeployEnvironment(deployArgs.environment)
+    } catch (e) {
+      printError(e)
+      process.exit(1)
+    }
     const token = deployArgs.token ?? process.env[TOKEN_ENV[provider]]
     if (!token) {
       printError(
@@ -194,12 +209,14 @@ export default defineCommand({
       }
 
       if (args.json) {
-        console.log(JSON.stringify(result, null, 2))
+        console.log(JSON.stringify({ ...result, environment }, null, 2))
         return
       }
 
       console.log('')
-      console.log(bold(`  Deployed ${result.fileCount} files to ${result.provider}`))
+      console.log(
+        bold(`  Deployed ${result.fileCount} files to ${result.provider} (${environment})`)
+      )
       console.log('')
       console.log(ok(`Live at ${result.url}`))
     } finally {

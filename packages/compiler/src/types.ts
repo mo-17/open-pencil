@@ -85,6 +85,14 @@ export interface CompilerOptions {
    * so route-specific metadata is intentionally not promised here.
    */
   metadata?: HtmlMetadataOptions
+  /**
+   * Phase 5 §5 — optional CSS custom-property theme block appended to
+   * `src/index.css` after the Tailwind import. `compile()` auto-populates this
+   * from SceneGraph variables when the caller leaves it unset; explicit values
+   * are appended after generated design-token CSS so callers can override or
+   * add runtime theme hooks without changing document schema.
+   */
+  themeCss?: string
 }
 
 /** Phase 3 §15 — supported code-UI-kit identifiers. */

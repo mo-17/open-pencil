@@ -53,6 +53,11 @@
       "types": "./src/deploy.ts",
       "bun": "./src/deploy.ts",
       "default": "./dist/deploy.js"
+    },
+    "./theme-css": {
+      "types": "./src/theme-css.ts",
+      "bun": "./src/theme-css.ts",
+      "default": "./dist/theme-css.js"
     }
   },
   "files": [
