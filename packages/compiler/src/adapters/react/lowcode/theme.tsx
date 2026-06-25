@@ -2,12 +2,11 @@ export function buildLowcodeThemeRuntime(): string {
   return `import { createContext, useCallback, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 
 export type LowcodeTheme = 'light' | 'dark'
+export type LowcodeThemeSwitchPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 const STORAGE_KEY = 'open-pencil:lowcode-theme'
 const switcherStyle: CSSProperties = {
   position: 'fixed',
-  right: '1rem',
-  bottom: '1rem',
   zIndex: 50,
   display: 'inline-flex',
   alignItems: 'center',
@@ -19,6 +18,12 @@ const switcherStyle: CSSProperties = {
   color: 'CanvasText',
   boxShadow: '0 10px 30px color-mix(in srgb, CanvasText 14%, transparent)',
   colorScheme: 'light dark'
+}
+const switcherPositionStyles: Record<LowcodeThemeSwitchPosition, CSSProperties> = {
+  'top-left': { top: '1rem', left: '1rem' },
+  'top-right': { top: '1rem', right: '1rem' },
+  'bottom-left': { bottom: '1rem', left: '1rem' },
+  'bottom-right': { right: '1rem', bottom: '1rem' }
 }
 const buttonStyle: CSSProperties = {
   border: 0,
@@ -90,10 +95,14 @@ export function useTheme() {
   return useContext(ThemeContext)
 }
 
-export function LowcodeThemeSwitch() {
+export function LowcodeThemeSwitch({
+  position = 'bottom-right'
+}: {
+  position?: LowcodeThemeSwitchPosition
+}) {
   const { theme, setTheme } = useTheme()
   return (
-    <div aria-label="Theme" style={switcherStyle}>
+    <div aria-label="Theme" style={{ ...switcherStyle, ...switcherPositionStyles[position] }}>
       {(['light', 'dark'] as const).map((value) => (
         <button
           key={value}

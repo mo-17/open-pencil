@@ -96,10 +96,61 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(out.files.has('src/_lowcode_theme.tsx')).toBe(true)
     const runtime = out.files.get('src/_lowcode_theme.tsx') as string
     expect(runtime).toContain('export function useTheme()')
-    expect(runtime).toContain('export function LowcodeThemeSwitch()')
+    expect(runtime).toContain('export function LowcodeThemeSwitch({')
+    expect(runtime).toContain("position = 'bottom-right'")
+    expect(runtime).toContain("'bottom-right': { right: '1rem', bottom: '1rem' }")
     expect(runtime).toContain('aria-pressed={theme === value}')
     expect(runtime).toContain("data.source !== 'op-lowcode-editor' || data.type !== 'theme'")
     expect(runtime).toContain("document.documentElement.classList.toggle('dark'")
+  })
+
+  test('themeSwitch false keeps theme provider but omits the generated app switch', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({
+        packageName: 'theme-demo',
+        themeSwitch: false
+      })
+    })
+
+    expect(out.files.has('src/_lowcode_theme.tsx')).toBe(true)
+    const main = out.files.get('src/main.tsx') as string
+    expect(main).toContain("import { LowcodeThemeProvider } from './_lowcode_theme'")
+    expect(main).toContain('<LowcodeThemeProvider>')
+    expect(main).not.toContain('LowcodeThemeSwitch')
+
+    const configuredOut = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({
+        packageName: 'theme-demo',
+        themeSwitch: { enabled: false }
+      })
+    })
+    expect(configuredOut.files.get('src/main.tsx') as string).not.toContain('LowcodeThemeSwitch')
+  })
+
+  test('themeSwitch position config repositions the generated app switch', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({
+        packageName: 'theme-demo',
+        themeSwitch: { position: 'top-left' }
+      })
+    })
+
+    const main = out.files.get('src/main.tsx') as string
+    expect(main).toContain('<LowcodeThemeSwitch position="top-left" />')
+    const runtime = out.files.get('src/_lowcode_theme.tsx') as string
+    expect(runtime).toContain("'top-left': { top: '1rem', left: '1rem' }")
   })
 
   test('compile does not emit theme runtime when no theme css exists', () => {

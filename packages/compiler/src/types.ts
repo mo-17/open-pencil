@@ -93,10 +93,23 @@ export interface CompilerOptions {
    * add runtime theme hooks without changing document schema.
    */
   themeCss?: string
+  /**
+   * Phase 5 §5 — generated-app theme switch controls. Theme CSS still emits the
+   * provider/runtime when this is disabled; only the visible fixed switch is
+   * omitted or repositioned at publish time.
+   */
+  themeSwitch?: boolean | LowcodeThemeSwitchOptions
 }
 
 /** Phase 3 §15 — supported code-UI-kit identifiers. */
 export type UiKitName = 'shadcn'
+
+export type LowcodeThemeSwitchPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+
+export interface LowcodeThemeSwitchOptions {
+  enabled?: boolean
+  position?: LowcodeThemeSwitchPosition
+}
 
 export interface HtmlMetadata {
   title?: string

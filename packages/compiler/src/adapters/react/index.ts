@@ -15,7 +15,12 @@ import {
   buildTsConfig,
   buildViteConfig
 } from '#compiler/project'
-import type { CompilerOptions, CompileWarning, HtmlMetadata } from '#compiler/types'
+import type {
+  CompilerOptions,
+  CompileWarning,
+  HtmlMetadata,
+  LowcodeThemeSwitchPosition
+} from '#compiler/types'
 
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
@@ -71,6 +76,16 @@ const LOWCODE_TOAST_FILE = 'src/_lowcode_toast.tsx'
 const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
 const LOWCODE_VALIDATION_FILE = 'src/_lowcode_validation.tsx'
 const LOWCODE_THEME_FILE = 'src/_lowcode_theme.tsx'
+
+function resolveThemeSwitchPosition(
+  options: CompilerOptions
+): LowcodeThemeSwitchPosition | false | undefined {
+  const config = options.themeSwitch
+  if (config === false) return false
+  if (config === true || config === undefined) return undefined
+  if (config.enabled === false) return false
+  return config.position
+}
 
 export const reactAdapter: FrameworkAdapter = {
   emit(
@@ -555,7 +570,10 @@ function setSharedProjectFiles(
     buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang), metadata)
   )
   if (themeActive) files.set(LOWCODE_THEME_FILE, buildLowcodeThemeRuntime())
-  files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm, themeActive))
+  files.set(
+    'src/main.tsx',
+    buildMainTsx(i18n, toast, confirm, themeActive, resolveThemeSwitchPosition(options))
+  )
   const themeCss = [options.themeCss, kit.themeCss].filter(Boolean).join('\n')
   files.set('src/index.css', buildIndexCss(safelist, themeCss))
   files.set('.gitignore', buildGitignore())

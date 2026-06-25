@@ -376,12 +376,24 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 本刀仍不自动把节点样式改写为 `var(...)`,也不引入 theme switch 配置面板;只有存在
   theme CSS 时才 emit 该 runtime 和控件。
 
+**2026-06-25 第四刀已完成**:
+
+- 新增 `CompilerOptions.themeSwitch`,让发布期可以关闭 generated app 内的可见
+  `LowcodeThemeSwitch`,或把它放到 `top-left` / `top-right` / `bottom-left` /
+  `bottom-right`。
+- `themeSwitch: false` 或 `{ enabled: false }` 只隐藏 fixed switch;只要 theme CSS
+  存在,`LowcodeThemeProvider` / `useTheme()` runtime 仍会 emit,preview pane 的
+  postMessage theme 切换也保持可用。
+- `LowcodeThemeSwitch` 默认位置仍为 `bottom-right`,未传配置的输出保持旧行为。
+- 本刀仍不自动把节点样式改写为 `var(...)`,也不引入 app 侧配置面板;配置入口先保持在
+  compiler publish-time options。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
-- Generated app 默认 fixed switch 可能遮挡用户自己的导航 / CTA;后续如果做发布设置,
-  应增加可关闭或可放置的 theme switch option。
+- 节点样式还未自动改写为 `var(...)`,只有已经引用 CSS variables / theme selectors 的输出
+  会响应 runtime theme。
 
 ### 5.4 成功标准草案
 
@@ -394,8 +406,9 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   `tests/engine/compiler/theme-css.test.ts`。**
 - Generated app 内可见 light/dark switch。**2026-06-25 第三刀已完成;同样由
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
-- 后续第四刀可继续做:节点样式 `var(...)` 映射、theme switch 的 publish-time 配置、
-  更多非 dark mode 的 runtime UI。
+- Theme switch 可在 publish-time 关闭或放置到四角。**2026-06-25 第四刀已完成;同样由
+  `tests/engine/compiler/theme-css.test.ts` 覆盖。**
+- 后续可继续做:节点样式 `var(...)` 映射、更多非 dark mode 的 runtime UI。
 
 ---
 

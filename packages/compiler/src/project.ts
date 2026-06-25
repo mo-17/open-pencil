@@ -1,4 +1,4 @@
-import type { CompilerOptions, HtmlMetadata } from './types'
+import type { CompilerOptions, HtmlMetadata, LowcodeThemeSwitchPosition } from './types'
 
 const REACT_DEP_VERSIONS = {
   '18': { react: '^18.3.1', reactDom: '^18.3.1', reactTypes: '^18.3.12', reactDomTypes: '^18.3.5' },
@@ -180,17 +180,33 @@ function cleanMetadataText(value: unknown): string | undefined {
  *  so `__opConfirm` can render its modal. Phase 5 §5: when `theme` is true,
  *  wrap the app in the generated theme provider and mount the visible theme
  *  switch inside that provider. */
-export function buildMainTsx(i18n = false, toast = false, confirm = false, theme = false): string {
+export function buildMainTsx(
+  i18n = false,
+  toast = false,
+  confirm = false,
+  theme = false,
+  themeSwitchPosition?: LowcodeThemeSwitchPosition | false
+): string {
   const i18nImport = i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
   const toastImport = toast ? `import { ToastHost } from './_lowcode_toast'\n` : ''
   const confirmImport = confirm ? `import { ConfirmHost } from './_lowcode_confirm'\n` : ''
+  const themeSwitchEnabled = theme && themeSwitchPosition !== false
   const themeImport = theme
-    ? `import { LowcodeThemeProvider, LowcodeThemeSwitch } from './_lowcode_theme'\n`
+    ? `import { LowcodeThemeProvider${
+        themeSwitchEnabled ? ', LowcodeThemeSwitch' : ''
+      } } from './_lowcode_theme'\n`
     : ''
   let app = '<App />'
   if (i18n) app = `<I18nProvider>\n      ${app}\n    </I18nProvider>`
-  if (theme)
-    app = `<LowcodeThemeProvider>\n      ${app}\n      <LowcodeThemeSwitch />\n    </LowcodeThemeProvider>`
+  const themeSwitch =
+    typeof themeSwitchPosition === 'string'
+      ? `<LowcodeThemeSwitch position="${themeSwitchPosition}" />`
+      : '<LowcodeThemeSwitch />'
+  if (theme) {
+    app = `<LowcodeThemeProvider>\n      ${app}${
+      themeSwitchEnabled ? `\n      ${themeSwitch}` : ''
+    }\n    </LowcodeThemeProvider>`
+  }
   const toastChild = toast ? `\n    <ToastHost />` : ''
   const confirmChild = confirm ? `\n    <ConfirmHost />` : ''
   return `import { StrictMode } from 'react'
