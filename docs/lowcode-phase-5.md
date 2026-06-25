@@ -464,14 +464,28 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 本刀只补 AI / MCP / CLI eval 可发现入口和回归测试;editor 右侧 UI / Vue color binding 控件
   的 stop-level authoring 仍留给后续单独一刀。
 
+**2026-06-25 第十刀已完成**:
+
+- Editor gradient stop UI 已接入 stop-level color variable authoring:
+  - `useColorVariableBinding('fills')` 增加 gradient stop path helpers,统一生成
+    `fills/N/gradientStops/M/color`。
+  - Fill picker 会把 active node id、fill index 和 stop-level binding API 传给
+    `GradientEditor`。
+  - Gradient stop 行可应用已有 COLOR variable、从当前 stop color 创建并绑定新 variable、
+    显示已绑定 variable 的解析颜色、解绑该 stop-level binding。
+  - 用户手动修改已绑定 stop 的 hex、opacity 或 ColorPicker 时会先解绑该 stop,避免 UI 看似改色
+    但仍被 variable 覆盖。
+- 新增 app-neutral helper test 覆盖 gradient stop bound variable color resolution。
+- 本刀不做 Tauri/browser GUI ACK,也不升格 Figma `variableConsumptionMap` 标准通道。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
 - 节点样式 `var(...)` 映射仍是渐进覆盖;目前覆盖 simple fill/text、stroke、scalar
   opacity、多层 SOLID background layer、component usage root、component child style prop,
-  以及 core/compiler/Kiwi/ToolDef 层的 gradient stop token binding。Editor UI 创建入口和
-  完整多 stroke 几何语义仍需后续补齐。
+  以及 core/compiler/Kiwi/ToolDef/editor UI 层的 gradient stop token binding。完整多 stroke
+  几何语义和 stop-level `variableConsumptionMap` 标准通道仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -501,7 +515,10 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   已完成;由 `tests/engine/io/fig/roundtrip/variables.test.ts` 覆盖。**
 - Gradient stop token binding 可通过 `bind_variable` / `unbind_variable` ToolDef 创建和移除。
   **2026-06-25 第九刀已完成;由 `tests/engine/tools/variables.test.ts` 覆盖。**
-- 后续可继续做:editor UI 创建入口、完整多 stroke 语义、更多非 dark mode 的 runtime UI。
+- Gradient stop token binding 可通过 editor gradient stop UI 创建、显示和解绑。**2026-06-25
+  第十刀已完成;由 `tests/engine/app/color-style-row.test.ts` 加固 app-neutral helper。**
+- 后续可继续做:真实 GUI ACK、stop-level `variableConsumptionMap` 标准通道、完整多 stroke
+  语义、更多非 dark mode 的 runtime UI。
 
 ---
 

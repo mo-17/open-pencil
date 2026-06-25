@@ -5,12 +5,13 @@ import { applySolidFillColor, FillPickerRoot, useI18n } from '@open-pencil/vue'
 
 import GradientEditor from './GradientEditor.vue'
 import ColorPickerPanel from '@/components/ColorPickerPanel/ColorPickerPanel.vue'
-import ImageFillPicker from './ImageFillPicker.vue'
-import Tip from './ui/Tip.vue'
-import { usePopoverUI } from './ui/popover'
+import ImageFillPicker from '@/components/ImageFillPicker.vue'
+import Tip from '@/components/ui/Tip.vue'
+import { usePopoverUI } from '@/components/ui/popover'
 
 import type { Fill } from '@open-pencil/core/scene-graph'
 import type { OkHCLControls } from '@open-pencil/vue'
+import type { GradientStopColorVariableBindingApi } from '@/app/properties/color-variable-binding'
 
 const TAB_BASE =
   'flex size-6 cursor-pointer items-center justify-center rounded border-none p-0 transition-colors'
@@ -25,11 +26,17 @@ function tabClass(active: boolean) {
 const {
   fill,
   okhcl = null,
-  swatchBackground
+  swatchBackground,
+  activeNodeId = null,
+  fillIndex = null,
+  gradientStopBindingApi
 } = defineProps<{
   fill: Fill
   okhcl?: OkHCLControls | null
   swatchBackground?: string
+  activeNodeId?: string | null
+  fillIndex?: number | null
+  gradientStopBindingApi?: GradientStopColorVariableBindingApi
 }>()
 const emit = defineEmits<{ update: [fill: Fill] }>()
 const cls = usePopoverUI({ content: 'w-60 p-2' })
@@ -93,6 +100,9 @@ const { panels } = useI18n()
       <GradientEditor
         v-if="category === 'GRADIENT'"
         :fill="currentFill"
+        :active-node-id="activeNodeId"
+        :fill-index="fillIndex"
+        :stop-binding-api="gradientStopBindingApi"
         @update="emit('update', $event)"
       />
 

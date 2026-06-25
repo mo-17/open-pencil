@@ -29,6 +29,8 @@
   `stopsVar` data plus the OpenPencil bound-variable fallback.
 - Document and test `bind_variable` / `unbind_variable` support for gradient stop color token
   paths such as `fills/0/gradientStops/0/color`.
+- Add editor gradient-stop variable binding controls so fill stops can bind, create, display,
+  and detach color variables from the gradient editor.
 - Split lowcode Inspector controls into Bindings, Events, Validation, and Advanced groups, with highlighted filter matches and an empty filter result state.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.

@@ -56,12 +56,62 @@ export function useColorVariableBinding(kind: ColorBindingKind) {
     binding.bindVariable(nodeId, id, index)
   }
 
+  function gradientStopPath(fillIndex: number, stopIndex: number) {
+    return `fills/${fillIndex}/gradientStops/${stopIndex}/color`
+  }
+
+  function getGradientStopBoundVariable(nodeId: string, fillIndex: number, stopIndex: number) {
+    const node = binding.store.getNode(nodeId)
+    if (!node) return undefined
+    const variableId = node.boundVariables[gradientStopPath(fillIndex, stopIndex)]
+    return variableId ? binding.store.getVariable(variableId) : undefined
+  }
+
+  function bindGradientStopVariable(
+    nodeId: string,
+    fillIndex: number,
+    stopIndex: number,
+    variableId: string
+  ) {
+    binding.store.bindVariable(nodeId, gradientStopPath(fillIndex, stopIndex), variableId)
+  }
+
+  function unbindGradientStopVariable(nodeId: string, fillIndex: number, stopIndex: number) {
+    binding.store.unbindVariable(nodeId, gradientStopPath(fillIndex, stopIndex))
+  }
+
+  function createAndBindGradientStopVariable(
+    nodeId: string,
+    fillIndex: number,
+    stopIndex: number,
+    color: Color,
+    name = FALLBACK_COLOR_VARIABLE_NAME
+  ) {
+    const collection = colorCollection()
+    const id = `var:${randomHex(8)}`
+    binding.store.addVariable({
+      id,
+      name: name.trim() || FALLBACK_COLOR_VARIABLE_NAME,
+      type: 'COLOR',
+      collectionId: collection.id,
+      valuesByMode: Object.fromEntries(collection.modes.map((mode) => [mode.modeId, color])),
+      description: '',
+      hiddenFromPublishing: false
+    })
+    bindGradientStopVariable(nodeId, fillIndex, stopIndex, id)
+  }
+
   return {
     ...binding,
     colorVariables: binding.variables,
     bindVariable: (nodeId: string, index: number, variableId: string) =>
       binding.bindVariable(nodeId, variableId, index),
     unbindVariable: (nodeId: string, index: number) => binding.unbindVariable(nodeId, index),
-    createAndBindVariable
+    createAndBindVariable,
+    gradientStopPath,
+    getGradientStopBoundVariable,
+    bindGradientStopVariable,
+    unbindGradientStopVariable,
+    createAndBindGradientStopVariable
   }
 }

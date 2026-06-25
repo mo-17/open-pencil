@@ -2,7 +2,7 @@
 import { PropertyListRoot, useFillControls, useOkHCL, useI18n, inputValue } from '@open-pencil/vue'
 import { colorToHexRaw, parseColor } from '@open-pencil/core/color'
 
-import FillPicker from '@/components/FillPicker.vue'
+import FillPicker from '@/components/properties/FillPicker.vue'
 import Tip from '@/components/ui/Tip.vue'
 import ColorStyleRow from '@/components/properties/ColorStyleRow.vue'
 import {
@@ -91,6 +91,9 @@ function updateFillHex(
           :swatch-background="
             activeNode ? boundVariableSwatchBackground(fillCtx, activeNode.id, i) : undefined
           "
+          :active-node-id="activeNode?.id ?? null"
+          :fill-index="i"
+          :gradient-stop-binding-api="fillCtx"
           @update="updateFill(activeNode, i, $event, actions.update)"
         />
 
