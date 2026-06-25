@@ -14,6 +14,7 @@
 - Add Netlify deploy restore live ACK steps with token-safety checks for manual provider verification.
 - Tighten Cloudflare Pages rollback readiness around explicit account/project target metadata.
 - Describe Vercel rollback readiness through project, production alias, and owner-scope metadata gaps.
+- Show missing rollback contract fields in lowcode deploy history rows without invoking provider APIs.
 - Emit lowcode design-token CSS variables from SceneGraph variable modes into generated `src/index.css`, including `.dark` mode blocks.
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.

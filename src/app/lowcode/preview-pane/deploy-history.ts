@@ -394,6 +394,22 @@ export function deployRollbackContract(
   }
 }
 
+export function deployRollbackContractLabel(contract: DeployRollbackContract): string {
+  if (contract.support === 'api-candidate') return `${contract.label} API candidate`
+  if (contract.support === 'dashboard-only') {
+    const missing =
+      contract.missingFields.length > 0 ? ` · missing ${contract.missingFields.join(', ')}` : ''
+    return `${contract.label}: dashboard only${missing}`
+  }
+  return 'Rollback unsupported'
+}
+
+export function deployRollbackContractTitle(contract: DeployRollbackContract): string {
+  const missing =
+    contract.missingFields.length > 0 ? ` Missing: ${contract.missingFields.join(', ')}.` : ''
+  return `${contract.reason ?? deployRollbackContractLabel(contract)}${missing}`
+}
+
 export async function restoreNetlifyDeploy(
   target: NetlifyRollbackTarget,
   fetcher: typeof fetch = fetch

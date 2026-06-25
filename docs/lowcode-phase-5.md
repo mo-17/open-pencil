@@ -208,6 +208,17 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 本刀不改 Vercel upload/deploy provider、不新增 Vercel API helper、不接 production alias promote,
   只让后续 UI/API 接入能机器读取缺失字段。
 
+**2026-06-25 第十刀已完成**:
+
+- Deploy history 的 rollback contract 文案现在直接显示 `missingFields`,例如
+  `dashboard only · missing productionAlias, projectOwner`。
+- `deployRollbackContractLabel()` / `deployRollbackContractTitle()` 把短 label 和 title tooltip
+  格式化逻辑下沉到纯 helper,便于 app tests 覆盖。
+- DeployControls 继续保持 history row 一行 `truncate`,长说明放入 title,避免部署历史列表被
+  Vercel / Cloudflare provider-specific 字段撑宽。
+- Netlify `api-candidate` 的 `restore deploy` 按钮路径不变;Cloudflare / Vercel 仍只显示
+  dashboard-only / redeploy 指引,不调用远端 API。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -237,6 +248,8 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - Vercel rollback contract 能说明 project / production alias / owner scope 缺口。**2026-06-25
   第九刀已补 `parseVercelProjectTarget()` 和 focused app tests;真实 Vercel production alias
   API 仍未调用。**
+- Deploy history UI 能展示 rollback contract 缺失字段。**2026-06-25 第十刀已补纯 helper
+  和 focused app tests;真实 Cloudflare/Vercel rollback API 仍未调用。**
 
 ---
 

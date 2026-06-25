@@ -106,7 +106,8 @@ describe('lowcode deploy history', () => {
 
   test('describes provider rollback contracts without calling provider APIs', async () => {
     installLocalStorage()
-    const { deployRollbackContract } = await import('@/app/lowcode/preview-pane/deploy-history')
+    const { deployRollbackContract, deployRollbackContractLabel, deployRollbackContractTitle } =
+      await import('@/app/lowcode/preview-pane/deploy-history')
 
     expect(
       deployRollbackContract({ provider: 'netlify', deployId: 'dep_1', site: 'site_1' })
@@ -133,12 +134,22 @@ describe('lowcode deploy history', () => {
       requiredFields: ['token', 'accountId', 'projectName', 'deployId'],
       missingFields: []
     })
-    expect(deployRollbackContract({ provider: 'cloudflare', deployId: 'cf_2' })).toMatchObject({
+    const cloudflareMissing = deployRollbackContract({
+      provider: 'cloudflare',
+      deployId: 'cf_2'
+    })
+    expect(cloudflareMissing).toMatchObject({
       provider: 'cloudflare',
       support: 'dashboard-only',
       missingFields: ['site'],
       reason: 'Cloudflare rollback needs a site target in account/project format.'
     })
+    expect(deployRollbackContractLabel(cloudflareMissing)).toBe(
+      'Rollback Pages deployment: dashboard only · missing site'
+    )
+    expect(deployRollbackContractTitle(cloudflareMissing)).toBe(
+      'Cloudflare rollback needs a site target in account/project format. Missing: site.'
+    )
     expect(
       deployRollbackContract({ provider: 'cloudflare', deployId: 'cf_3', site: 'project-only' })
     ).toMatchObject({
@@ -147,15 +158,24 @@ describe('lowcode deploy history', () => {
       missingFields: ['accountId', 'projectName'],
       reason: 'Cloudflare rollback needs a site target in account/project format.'
     })
-    expect(
-      deployRollbackContract({ provider: 'vercel', deployId: 'ver_1', site: 'my-project' })
-    ).toMatchObject({
+    const vercelMissing = deployRollbackContract({
+      provider: 'vercel',
+      deployId: 'ver_1',
+      site: 'my-project'
+    })
+    expect(vercelMissing).toMatchObject({
       provider: 'vercel',
       support: 'dashboard-only',
       requiredFields: ['token', 'deployId', 'projectName', 'productionAlias', 'projectOwner'],
       missingFields: ['productionAlias', 'projectOwner'],
       reason: 'Vercel rollback needs productionAlias, projectOwner metadata not stored locally yet.'
     })
+    expect(deployRollbackContractLabel(vercelMissing)).toBe(
+      'Promote deployment: dashboard only · missing productionAlias, projectOwner'
+    )
+    expect(deployRollbackContractTitle(vercelMissing)).toBe(
+      'Vercel rollback needs productionAlias, projectOwner metadata not stored locally yet. Missing: productionAlias, projectOwner.'
+    )
     expect(deployRollbackContract({ provider: 'vercel', deployId: 'ver_2' })).toMatchObject({
       provider: 'vercel',
       support: 'dashboard-only',
