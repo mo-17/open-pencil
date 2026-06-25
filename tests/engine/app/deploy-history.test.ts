@@ -200,4 +200,79 @@ describe('lowcode deploy history', () => {
       locales: []
     })
   })
+
+  test('saves environment target presets without provider tokens', async () => {
+    const storage = installLocalStorage()
+    const { readDeployTargetPresets, saveDeployTargetPreset } =
+      await import('@/app/lowcode/preview-pane/deploy-history')
+
+    const presets = saveDeployTargetPreset({
+      environment: 'production',
+      provider: 'cloudflare',
+      site: 'account/project',
+      buildOptions: {
+        uiKit: 'shadcn',
+        i18nEnabled: true,
+        locales: ['fr', 'ja']
+      }
+    })
+
+    expect(presets.production).toMatchObject({
+      environment: 'production',
+      provider: 'cloudflare',
+      site: 'account/project',
+      buildOptions: {
+        uiKit: 'shadcn',
+        i18nEnabled: true,
+        locales: ['fr', 'ja']
+      }
+    })
+    expect(presets.preview).toBeNull()
+    expect(readDeployTargetPresets()).toEqual(presets)
+    expect([...storage.values()].join('\n')).not.toContain('token')
+  })
+
+  test('isolates target presets by environment and skips invalid stored presets', async () => {
+    const storage = installLocalStorage()
+    const { readDeployTargetPresets, saveDeployTargetPreset } =
+      await import('@/app/lowcode/preview-pane/deploy-history')
+
+    saveDeployTargetPreset({
+      environment: 'preview',
+      provider: 'netlify',
+      site: 'preview-site',
+      buildOptions: { uiKit: 'none', i18nEnabled: false, locales: [] }
+    })
+    saveDeployTargetPreset({
+      environment: 'staging',
+      provider: 'vercel',
+      site: 'staging-project',
+      buildOptions: { uiKit: 'shadcn', i18nEnabled: false, locales: [] }
+    })
+
+    expect(readDeployTargetPresets()).toMatchObject({
+      preview: { provider: 'netlify', site: 'preview-site' },
+      staging: { provider: 'vercel', site: 'staging-project' },
+      production: null
+    })
+
+    storage.set(
+      'open-pencil:lowcode-deploy-targets:v1',
+      JSON.stringify({
+        preview: {
+          environment: 'preview',
+          provider: 'custom-host',
+          buildOptions: { uiKit: 'none', i18nEnabled: false, locales: [] },
+          updatedAt: '2026-06-25T00:00:00.000Z'
+        },
+        staging: readDeployTargetPresets().staging
+      })
+    )
+
+    expect(readDeployTargetPresets()).toMatchObject({
+      preview: null,
+      staging: { provider: 'vercel', site: 'staging-project' },
+      production: null
+    })
+  })
 })

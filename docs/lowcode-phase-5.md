@@ -134,6 +134,17 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 旧 history 记录仍可读取;缺失 `buildOptions` / `compat` 时从 legacy fields 回退。
 - 本刀仍不改 CLI deploy JSON、provider 上传实现或 provider 原生 rollback API。
 
+**2026-06-25 第四刀已完成**:
+
+- 增加本地 environment target presets,按 `preview` / `staging` / `production` 分别保存
+  provider、site 和 build options。
+- DeployControls 增加 `Save <environment> target`,切换 environment 时自动套用已保存的
+  target preset。
+- Target presets 只写入本机 `localStorage`,不保存 provider token,也不做 provider target
+  形式的强校验。
+- 本刀仍不改 CLI deploy 参数、provider 上传实现、团队共享 history 或 provider 原生
+  rollback API。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -146,6 +157,8 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
   rollback API 未做。第二刀已补 history → redeploy draft,覆盖在
   `tests/engine/app/deploy-history.test.ts`。第三刀已补 artifact label /
   build option snapshot / compat schema,同文件覆盖。**
+- Environment target 可以记住 provider/site/build options 且不保存 token。**2026-06-25
+  第四刀已补本地 target presets,覆盖在 `tests/engine/app/deploy-history.test.ts`。**
 
 ---
 

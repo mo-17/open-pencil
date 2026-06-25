@@ -8,6 +8,7 @@
 - Add lowcode deploy lifecycle labels for preview, staging, and production, plus local deploy history and provider dashboard rollback links.
 - Let lowcode deploy history restore provider, environment, site, UI kit, and i18n fields for a guarded redeploy/rollback draft.
 - Store lowcode deploy artifact labels and structured build option snapshots in local deploy history.
+- Add local lowcode deploy target presets so preview, staging, and production can remember provider/site/build options without storing tokens.
 - Emit lowcode design-token CSS variables from SceneGraph variable modes into generated `src/index.css`, including `.dark` mode blocks.
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.

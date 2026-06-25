@@ -40,7 +40,16 @@ export interface DeployRollbackDraft {
   locales: string[]
 }
 
+export interface DeployTargetPreset {
+  environment: DeployEnvironment
+  provider: DeployHistoryProvider
+  site?: string
+  buildOptions: DeployBuildOptions
+  updatedAt: string
+}
+
 const DEPLOY_HISTORY_KEY = 'open-pencil:lowcode-deploy-history:v1'
+const DEPLOY_TARGETS_KEY = 'open-pencil:lowcode-deploy-targets:v1'
 const DEPLOY_HISTORY_LIMIT = 8
 const DEPLOY_HISTORY_SCHEMA = 1
 
@@ -90,6 +99,22 @@ function isDeployHistoryCompat(value: unknown): value is DeployHistoryCompat {
   return (value as Record<string, unknown>).schema === DEPLOY_HISTORY_SCHEMA
 }
 
+function isDeployTargetPreset(value: unknown): value is DeployTargetPreset {
+  if (!value || typeof value !== 'object') return false
+  const preset = value as Record<string, unknown>
+  return (
+    (preset.environment === 'preview' ||
+      preset.environment === 'staging' ||
+      preset.environment === 'production') &&
+    (preset.provider === 'netlify' ||
+      preset.provider === 'vercel' ||
+      preset.provider === 'cloudflare') &&
+    (preset.site === undefined || typeof preset.site === 'string') &&
+    isDeployBuildOptions(preset.buildOptions) &&
+    typeof preset.updatedAt === 'string'
+  )
+}
+
 export function readDeployHistory(): DeployHistoryEntry[] {
   const s = storage()
   if (!s) return []
@@ -125,6 +150,46 @@ export function recordDeployHistory(
     createdAt
   }
   return writeDeployHistory([nextEntry, ...readDeployHistory()])
+}
+
+export function readDeployTargetPresets(): Record<DeployEnvironment, DeployTargetPreset | null> {
+  const empty = { preview: null, staging: null, production: null }
+  const s = storage()
+  if (!s) return empty
+  const raw = s.getItem(DEPLOY_TARGETS_KEY)
+  if (!raw) return empty
+  try {
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return empty
+    const record = parsed as Record<string, unknown>
+    return {
+      preview: isDeployTargetPreset(record.preview) ? record.preview : null,
+      staging: isDeployTargetPreset(record.staging) ? record.staging : null,
+      production: isDeployTargetPreset(record.production) ? record.production : null
+    }
+  } catch {
+    return empty
+  }
+}
+
+export function writeDeployTargetPresets(
+  presets: Record<DeployEnvironment, DeployTargetPreset | null>
+): Record<DeployEnvironment, DeployTargetPreset | null> {
+  const s = storage()
+  if (s) s.setItem(DEPLOY_TARGETS_KEY, JSON.stringify(presets))
+  return presets
+}
+
+export function saveDeployTargetPreset(
+  draft: Omit<DeployTargetPreset, 'updatedAt'>
+): Record<DeployEnvironment, DeployTargetPreset | null> {
+  const presets = readDeployTargetPresets()
+  const next: DeployTargetPreset = {
+    ...draft,
+    buildOptions: deployBuildOptionsSnapshot(draft.buildOptions),
+    updatedAt: new Date().toISOString()
+  }
+  return writeDeployTargetPresets({ ...presets, [draft.environment]: next })
 }
 
 export function deployBuildOptionsSnapshot(entry: {

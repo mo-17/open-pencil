@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { openExternalLink } from '@/app/shell/ui'
 
@@ -8,6 +8,8 @@ import {
   deployBuildOptionsSnapshot,
   deployDashboardUrl,
   deployRollbackDraft,
+  readDeployTargetPresets,
+  saveDeployTargetPreset,
   type DeployEnvironment,
   type DeployHistoryEntry
 } from './deploy-history'
@@ -39,6 +41,8 @@ const uiKit = ref<DeployUiKit>('none')
 const i18nEnabled = ref(false)
 const localesInput = ref('')
 const rollbackNotice = ref<string | null>(null)
+const targetNotice = ref<string | null>(null)
+const targetPresets = ref(readDeployTargetPresets())
 
 const tokenLabel = computed(() => {
   if (provider.value === 'cloudflare') return 'Cloudflare token'
@@ -58,6 +62,14 @@ const targetPlaceholder = computed(() => {
 function toggle(): void {
   open.value = !open.value
   if (!open.value) reset()
+}
+
+function currentBuildOptions() {
+  return deployBuildOptionsSnapshot({
+    uiKit: uiKit.value,
+    i18nEnabled: i18nEnabled.value,
+    locales: parseLocales(localesInput.value)
+  })
 }
 
 async function submit(): Promise<void> {
@@ -88,6 +100,27 @@ function restoreForRollback(entry: DeployHistoryEntry): void {
   rollbackNotice.value = `Ready to redeploy ${entry.environment} from ${entry.deployId}. Enter a ${draft.provider} token, then deploy.`
 }
 
+function applyEnvironmentPreset(nextEnvironment: DeployEnvironment): void {
+  const preset = targetPresets.value[nextEnvironment]
+  if (!preset) return
+  provider.value = preset.provider
+  site.value = preset.site ?? ''
+  uiKit.value = preset.buildOptions.uiKit
+  i18nEnabled.value = preset.buildOptions.i18nEnabled
+  localesInput.value = preset.buildOptions.locales.join(', ')
+  targetNotice.value = `Using saved ${nextEnvironment} target.`
+}
+
+function saveCurrentTarget(): void {
+  targetPresets.value = saveDeployTargetPreset({
+    environment: environment.value,
+    provider: provider.value,
+    site: site.value.trim() || undefined,
+    buildOptions: currentBuildOptions()
+  })
+  targetNotice.value = `Saved ${environment.value} target.`
+}
+
 function openDeployed(url: string): void {
   void openExternalLink(url)
 }
@@ -104,6 +137,13 @@ function buildOptionsLabel(entry: DeployHistoryEntry): string {
   }
   return parts.join(' · ')
 }
+
+watch(environment, (next) => {
+  rollbackNotice.value = null
+  applyEnvironmentPreset(next)
+})
+
+applyEnvironmentPreset(environment.value)
 </script>
 
 <template>
@@ -198,6 +238,24 @@ function buildOptionsLabel(entry: DeployHistoryEntry): string {
         :disabled="status.kind === 'deploying'"
         @keydown.enter="submit"
       />
+
+      <button
+        type="button"
+        data-test-id="lowcode-deploy-save-target"
+        class="mb-2 w-full rounded border border-border px-2 py-1 text-xs text-muted hover:bg-hover hover:text-surface"
+        :disabled="status.kind === 'deploying'"
+        @click="saveCurrentTarget"
+      >
+        Save {{ environment }} target
+      </button>
+
+      <p
+        v-if="targetNotice"
+        class="mb-2 break-words text-[11px] text-muted"
+        data-test-id="lowcode-deploy-target-preset"
+      >
+        {{ targetNotice }}
+      </p>
 
       <button
         type="button"
