@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildDesignTokenThemeCss } from '@open-pencil/compiler/theme-css'
-import type { Fill, Stroke } from '@open-pencil/core/scene-graph'
+import type { Effect, Fill, Stroke } from '@open-pencil/core/scene-graph'
 import type { Color } from '@open-pencil/core/types'
 
 import { createRect, firstPageId, makeSceneGraph } from '#tests/helpers/scene'
@@ -68,8 +68,29 @@ function solidFill(color: Color, opacity = 1): Fill {
   return { type: 'SOLID', color, opacity, visible: true }
 }
 
-function solidStroke(color: Color, opacity = 1): Stroke {
-  return { color, opacity, visible: true, weight: 2, align: 'INSIDE' }
+function solidStroke(
+  color: Color,
+  opacity = 1,
+  options: Partial<Pick<Stroke, 'weight' | 'align'>> = {}
+): Stroke {
+  return {
+    color,
+    opacity,
+    visible: true,
+    weight: options.weight ?? 2,
+    align: options.align ?? 'INSIDE'
+  }
+}
+
+function dropShadow(): Effect {
+  return {
+    type: 'DROP_SHADOW',
+    color: { r: 0, g: 0, b: 0, a: 0.2 },
+    offset: { x: 0, y: 2 },
+    radius: 8,
+    spread: 0,
+    visible: true
+  }
 }
 
 describe('Phase 5 §5 design token theme CSS', () => {
@@ -207,6 +228,53 @@ describe('Phase 5 §5 design token theme CSS', () => {
 
     const appTsx = out.files.get('src/App.tsx') as string
     expect(appTsx).toContain('style={{ borderColor: "var(--op-brand-theme-color-primary)" }}')
+  })
+
+  test('compile maps bound multi-stroke colors to layered inline CSS shadows', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+    const rect = createRect(graph, pageId, { name: 'Token Border Stack' })
+    rect.strokes = [
+      solidStroke({ r: 1, g: 0, b: 0, a: 1 }, 1, { weight: 1 }),
+      solidStroke({ r: 0.2, g: 0.4, b: 0.8, a: 1 }, 0.5, { weight: 3 }),
+      solidStroke({ r: 0, g: 0, b: 0, a: 1 }, 1, { align: 'OUTSIDE', weight: 2 })
+    ]
+    graph.bindVariable(rect.id, 'strokes/1/color', 'var-primary')
+    graph.bindVariable(rect.id, 'strokes/2/color', 'var-alias')
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'theme-demo' })
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain(
+      'boxShadow: "inset 0 0 0 1px #FF0000, inset 0 0 0 4px color-mix(in srgb, var(--op-brand-theme-color-primary) 50%, transparent), 0 0 0 2px var(--op-brand-theme-color-accent)"'
+    )
+    expect(appTsx).not.toContain('borderColor: "var(--op-brand-theme-color-primary)"')
+  })
+
+  test('multi-stroke token emit preserves existing shadow effects by falling back to border color', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+    const rect = createRect(graph, pageId, { name: 'Token Shadow Border' })
+    rect.strokes = [
+      solidStroke({ r: 1, g: 0, b: 0, a: 1 }, 1, { weight: 1 }),
+      solidStroke({ r: 0.2, g: 0.4, b: 0.8, a: 1 }, 1, { weight: 3 })
+    ]
+    rect.effects = [dropShadow()]
+    graph.bindVariable(rect.id, 'strokes/1/color', 'var-primary')
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'theme-demo' })
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain('style={{ borderColor: "var(--op-brand-theme-color-primary)" }}')
+    expect(appTsx).not.toContain('boxShadow: "inset 0 0 0 1px #FF0000')
   })
 
   test('compile maps bound opacity and translucent fill variables to generated inline CSS vars', () => {

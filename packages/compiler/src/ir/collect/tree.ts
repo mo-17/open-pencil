@@ -19,6 +19,7 @@ import {
   type NodeType,
   type SceneGraph,
   type SceneNode,
+  type Stroke,
   type WorkflowDef
 } from '@open-pencil/core/scene-graph'
 
@@ -1291,14 +1292,73 @@ function applyBoundStrokeStyle(
   ctx: WalkCtx,
   declarations: Record<string, string>
 ): void {
-  for (let index = 0; index < node.strokes.length; index++) {
-    const stroke = node.strokes[index]
-    if (!stroke.visible || stroke.opacity <= 0) continue
-    const color = cssColorForPaintBinding(node, ctx, `strokes/${index}/color`, stroke)
-    if (!color) continue
+  const layers = boundStrokeLayers(node, ctx)
+  if (layers.length === 0) return
+
+  if (layers.length === 1) {
+    const color = layers[0].boundColor
+    if (!color) return
     declarations.borderColor = color
     return
   }
+
+  if (hasVisibleShadowEffect(node)) {
+    const color = layers.find((layer) => layer.boundColor)?.boundColor
+    if (color) declarations.borderColor = color
+    return
+  }
+
+  declarations.boxShadow = layersToBoxShadow(layers)
+}
+
+interface BoundStrokeLayer {
+  stroke: Stroke
+  color: string
+  boundColor?: string
+}
+
+function boundStrokeLayers(node: SceneNode, ctx: WalkCtx): BoundStrokeLayer[] {
+  const layers: BoundStrokeLayer[] = []
+  let hasBoundLayer = false
+  for (let index = 0; index < node.strokes.length; index++) {
+    const stroke = node.strokes[index]
+    if (!stroke.visible || stroke.opacity <= 0 || stroke.weight <= 0) continue
+    const boundColor = cssColorForPaintBinding(node, ctx, `strokes/${index}/color`, stroke)
+    if (boundColor) hasBoundLayer = true
+    layers.push({
+      stroke,
+      color: boundColor ?? colorToHex8(stroke.color, stroke.opacity),
+      ...(boundColor ? { boundColor } : {})
+    })
+  }
+  return hasBoundLayer ? layers : []
+}
+
+function layersToBoxShadow(layers: BoundStrokeLayer[]): string {
+  let insetWidth = 0
+  let outsetWidth = 0
+  const shadows: string[] = []
+  for (const layer of layers) {
+    const outside = layer.stroke.align === 'OUTSIDE'
+    if (outside) {
+      outsetWidth += layer.stroke.weight
+      shadows.push(`0 0 0 ${cssPx(outsetWidth)} ${layer.color}`)
+    } else {
+      insetWidth += layer.stroke.weight
+      shadows.push(`inset 0 0 0 ${cssPx(insetWidth)} ${layer.color}`)
+    }
+  }
+  return shadows.join(', ')
+}
+
+function cssPx(value: number): string {
+  return `${Number(value.toFixed(3))}px`
+}
+
+function hasVisibleShadowEffect(node: SceneNode): boolean {
+  return node.effects.some(
+    (effect) => effect.visible && (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW')
+  )
 }
 
 function cssColorForPaintBinding(

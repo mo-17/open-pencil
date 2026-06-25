@@ -519,16 +519,35 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 结论:stop-level map **import compatibility 已完成**;stop-level map **export 标准化仍需 Kiwi
   schema / VariableField enum 升级或确认 Figma 官方 enum 名称**,继续 Deferred。
 
+**2026-06-26 第十三刀已完成**:
+
+- Compiler 的 bound stroke token emit 从单层 `borderColor` fallback 扩展到多 visible
+  stroke fallback:
+  - 单 visible stroke 仍保持旧行为,输出 `style={{ borderColor: "var(--op-...)" }}`。
+  - 多 visible stroke 且至少一个 stroke color 绑定了 design token 时,generated React DOM
+    输出 layered `boxShadow`,用累计 stroke weight 表达 inside/outside stroke layers。
+  - 未绑定 token 的同组 stroke layer 会用静态 hex 颜色参与 `boxShadow`,避免多 stroke stack
+    只保留 token layer 而丢掉相邻 hardcoded layer。
+  - 如果节点已有 visible drop shadow / inner shadow effect,为避免 inline `boxShadow` 覆盖原本
+    shadow effect,会保守退回第一个 bound stroke 的 `borderColor` 行为。
+- 新增 focused compiler coverage:
+  - 多 stroke token stack 会输出 `boxShadow` 中的 `var(--op-...)` /
+    `color-mix(...)` layer。
+  - 带 shadow effect 的多 stroke 节点不会写入 token `boxShadow`,而是保留单 stroke
+    `borderColor` fallback。
+- 本刀只覆盖 generated DOM 的 token-aware multi-stroke fallback,不等同完整 Figma stroke
+  geometry:dash pattern、per-side independent stroke、center/outside 的精确几何裁剪仍留给后续。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
 - 节点样式 `var(...)` 映射仍是渐进覆盖;目前覆盖 simple fill/text、stroke、scalar
-  opacity、多层 SOLID background layer、component usage root、component child style prop,
-  以及 core/compiler/Kiwi/ToolDef/editor UI 层的 gradient stop token binding。Gradient stop
-  editor UI 已有 browser E2E ACK。Stop-level `variableConsumptionMap` 只完成 import
-  compatibility;export 仍受 Kiwi fixed enum 限制。完整多 stroke 几何语义和 stop-level map
-  export 标准化仍需后续补齐。
+  opacity、多层 SOLID background layer、component usage root、component child style prop、多 visible
+  stroke token fallback,以及 core/compiler/Kiwi/ToolDef/editor UI 层的 gradient stop token
+  binding。Gradient stop editor UI 已有 browser E2E ACK。Stop-level `variableConsumptionMap`
+  只完成 import compatibility;export 仍受 Kiwi fixed enum 限制。完整 stroke 几何语义和
+  stop-level map export 标准化仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -566,8 +585,11 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - Raw `.fig` stop-level `variableConsumptionMap` entry 可导入为 gradient stop binding,且
   export 不会写 vendored Kiwi enum 不支持的 dynamic field。**2026-06-25 第十二刀已完成;由
   `tests/engine/io/fig/roundtrip/variables.test.ts` 覆盖。**
+- 多 visible stroke token stack 在 generated DOM 中可通过 layered `boxShadow` 保留 token
+  colors,且有 shadow effect 时不会覆盖原 shadow。**2026-06-26 第十三刀已完成;由
+  `tests/engine/compiler/theme-css.test.ts` 覆盖。**
 - 后续可继续做:Kiwi `VariableField` enum 升级 / Figma 官方 stop-level field 名确认、完整多
-  stroke 语义、更多非 dark mode 的 runtime UI。
+  stroke 几何语义、更多非 dark mode 的 runtime UI。
 
 ---
 
