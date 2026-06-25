@@ -366,8 +366,19 @@ function valueBindingParts(
 function rootAttrParts(node: IRElement, ctx: KitEmitCtx): string[] {
   const parts: string[] = []
   if (node.className) parts.push(`className="${ctx.escapeAttr(node.className)}"`)
+  const style = node.attrs.style
+  if (typeof style === 'object' && style.kind === 'styleAttr') {
+    parts.push(`style={${formatStyleAttr(style.declarations)}}`)
+  }
   if (ctx.devMode) parts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
   return parts
+}
+
+function formatStyleAttr(declarations: Record<string, string>): string {
+  const entries = Object.entries(declarations)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([prop, value]) => `${prop}: ${JSON.stringify(value)}`)
+  return `{ ${entries.join(', ')} }`
 }
 
 /** Emit a boolean toggle (Checkbox / Switch): `checked` + `onCheckedChange`, or

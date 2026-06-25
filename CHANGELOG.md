@@ -19,6 +19,7 @@
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.
 - Let generated lowcode theme switches be hidden or positioned at publish time.
+- Map simple bound lowcode fill color variables to generated `var(--op-...)` inline styles.
 - Split lowcode Inspector controls into Bindings, Events, Validation, and Advanced groups, with highlighted filter matches and an empty filter result state.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.

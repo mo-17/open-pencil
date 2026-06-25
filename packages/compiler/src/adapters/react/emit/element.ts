@@ -788,9 +788,17 @@ function formatAttr(key: string, value: IRAttrValue): string {
   // gets a `const intl = useIntl()` hook from the scaffold (driven by hasIntlAttr).
   if (typeof value === 'object') {
     if (value.kind === 'exprAttr') return `${key}={${emitExpression(value.ast)}}`
+    if (value.kind === 'styleAttr') return `${key}={${formatStyleAttr(value.declarations)}}`
     return `${key}={intl.formatMessage({ id: "${value.messageId}", defaultMessage: ${JSON.stringify(value.defaultMessage)} })}`
   }
   return value ? key : `${key}={false}`
+}
+
+function formatStyleAttr(declarations: Record<string, string>): string {
+  const entries = Object.entries(declarations)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([prop, value]) => `${prop}: ${JSON.stringify(value)}`)
+  return `{ ${entries.join(', ')} }`
 }
 
 function escapeAttr(s: string): string {

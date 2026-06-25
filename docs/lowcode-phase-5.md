@@ -388,12 +388,28 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 本刀仍不自动把节点样式改写为 `var(...)`,也不引入 app 侧配置面板;配置入口先保持在
   compiler publish-time options。
 
+**2026-06-25 第五刀已完成**:
+
+- 新增 `designTokenCssVariableName(graph, variableId)`,让 theme CSS emit 和节点样式引用共用
+  同一套 token 命名规则。
+- React IR 新增 `IRStyleAttr`,adapter 统一 emit JSX style object,避免在 collect 阶段拼原始
+  JSX。
+- Compiler 现在会把已有 `boundVariables['fills/0/color']` 的简单颜色绑定映射到
+  generated inline style:
+  - `TEXT` 节点输出 `style={{ color: "var(--op-...)" }}`。
+  - 非 `TEXT` 节点在 fill 为 visible `SOLID` 且 opacity 为 `1` 时输出
+    `style={{ backgroundColor: "var(--op-...)" }}`。
+- shadcn 组合控件根节点会透传该 `styleAttr`,避免 `Switch` 等 composed controls
+  静默吞掉 bound token style。
+- 本刀只覆盖 `fills/0/color` 的最小闭环;暂不处理 stroke、多层 background、opacity 混合、
+  gradients、component ref usage site 或未知 collection/token。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
-- 节点样式还未自动改写为 `var(...)`,只有已经引用 CSS variables / theme selectors 的输出
-  会响应 runtime theme。
+- 节点样式 `var(...)` 映射仍是渐进覆盖;目前只覆盖 `fills/0/color` 的简单 SOLID 场景,
+  strokes / gradients / opacity / component refs 仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -408,7 +424,11 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
 - Theme switch 可在 publish-time 关闭或放置到四角。**2026-06-25 第四刀已完成;同样由
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
-- 后续可继续做:节点样式 `var(...)` 映射、更多非 dark mode 的 runtime UI。
+- 已绑定 `fills/0/color` 的简单 SOLID fill/text color 可 emit `var(--op-...)` inline style。
+  **2026-06-25 第五刀已完成;同样由
+  `tests/engine/compiler/theme-css.test.ts` 覆盖。**
+- 后续可继续做:stroke / opacity / 多层 background 的 `var(...)` 映射、更多非 dark mode
+  的 runtime UI。
 
 ---
 

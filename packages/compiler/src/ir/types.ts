@@ -474,7 +474,15 @@ export interface IRExprAttr {
   ast: ExprAst
 }
 
-export type IRAttrValue = string | number | boolean | IRIntlAttr | IRExprAttr
+/** A JSX style object with string literal values, emitted as
+ *  `style={{ backgroundColor: "var(...)" }}`. Kept in IR (rather than raw JSX)
+ *  so adapters still own escaping/formatting. */
+export interface IRStyleAttr {
+  kind: 'styleAttr'
+  declarations: Record<string, string>
+}
+
+export type IRAttrValue = string | number | boolean | IRIntlAttr | IRExprAttr | IRStyleAttr
 
 /** Phase 2 §9: conditional render wrapper. Adapter emits
  *  `{(<expr>) && (<consequent>)}`. Only present when the source node's

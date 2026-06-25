@@ -73,6 +73,14 @@ function sortedVariables(
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
 }
 
+export function designTokenCssVariableName(graph: SceneGraph, variableId: string): string | null {
+  const variable = graph.variables.get(variableId)
+  if (!variable) return null
+  const collection = graph.variableCollections.get(variable.collectionId)
+  if (!collection) return null
+  return `--op-${slugify(collection.name)}-${slugify(variable.name)}`
+}
+
 export function buildDesignTokenThemeCss(graph: SceneGraph): string {
   const collections = [...graph.variableCollections.values()]
     .filter((collection) => collection.variableIds.length > 0)
@@ -89,10 +97,9 @@ export function buildDesignTokenThemeCss(graph: SceneGraph): string {
     if (vars.length === 0) continue
     const defaultModeId = collection.defaultModeId || collection.modes[0]?.modeId
     if (!defaultModeId) continue
-    const collectionSlug = slugify(collection.name)
-
     for (const variable of vars) {
-      const cssVar = `--op-${collectionSlug}-${slugify(variable.name)}`
+      const cssVar = designTokenCssVariableName(graph, variable.id)
+      if (!cssVar) continue
       const defaultValue = variable.valuesByMode[defaultModeId]
       if (defaultValue !== undefined) {
         const formatted = formatCssValue(defaultValue, variables, defaultModeId)

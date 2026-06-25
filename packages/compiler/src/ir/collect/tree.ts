@@ -21,6 +21,7 @@ import {
   type WorkflowDef
 } from '@open-pencil/core/scene-graph'
 
+import { designTokenCssVariableName } from '../../theme-css'
 import { tailwindClassName, type CompilerStyleOptions } from '../style'
 import type {
   ComponentDef,
@@ -1025,6 +1026,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const children: IRNode[] = []
 
   applyInteractiveProps(node, attrs, children, ctx)
+  applyBoundVariableStyles(node, ctx.graph, attrs)
 
   // Icon nodes (a vector shape, or an all-vector container — see isVectorIcon)
   // emit their geometry as one inline SVG; the wrapper keeps layout/size classes
@@ -1088,6 +1090,34 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     }
   }
   return wrapConditional(node, element, ctx)
+}
+
+function applyBoundVariableStyles(
+  node: SceneNode,
+  graph: SceneGraph,
+  attrs: Record<string, IRAttrValue>
+): void {
+  const variableId = node.boundVariables['fills/0/color']
+  const fill = node.fills[0]
+  if (!variableId || !isTokenStyleFill(fill)) return
+  const cssVar = designTokenCssVariableName(graph, variableId)
+  if (!cssVar) return
+  const styleProp = node.type === 'TEXT' ? 'color' : 'backgroundColor'
+  attrs.style = mergeStyleAttr(attrs.style, { [styleProp]: `var(${cssVar})` })
+}
+
+function isTokenStyleFill(fill: Fill | undefined): fill is Fill & { type: 'SOLID' } {
+  return !!fill && fill.type === 'SOLID' && fill.visible && fill.opacity === 1
+}
+
+function mergeStyleAttr(
+  value: IRAttrValue | undefined,
+  declarations: Record<string, string>
+): IRAttrValue {
+  if (typeof value === 'object' && value !== null && value.kind === 'styleAttr') {
+    return { kind: 'styleAttr', declarations: { ...value.declarations, ...declarations } }
+  }
+  return { kind: 'styleAttr', declarations }
 }
 
 /**

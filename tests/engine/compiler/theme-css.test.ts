@@ -2,9 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildDesignTokenThemeCss } from '@open-pencil/compiler/theme-css'
+import type { Fill } from '@open-pencil/core/scene-graph'
 import type { Color } from '@open-pencil/core/types'
 
-import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
+import { createRect, firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 function addThemeVariables() {
   const graph = makeSceneGraph()
@@ -52,6 +53,10 @@ function addThemeVariables() {
     hiddenFromPublishing: false
   })
   return graph
+}
+
+function solidFill(color: Color): Fill {
+  return { type: 'SOLID', color, opacity: 1, visible: true }
 }
 
 describe('Phase 5 §5 design token theme CSS', () => {
@@ -151,6 +156,45 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(main).toContain('<LowcodeThemeSwitch position="top-left" />')
     const runtime = out.files.get('src/_lowcode_theme.tsx') as string
     expect(runtime).toContain("'top-left': { top: '1rem', left: '1rem' }")
+  })
+
+  test('compile maps bound fill color variables to generated inline CSS vars', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+    const rect = createRect(graph, pageId, { name: 'Token Card' })
+    const text = graph.createNode('TEXT', pageId, { text: 'Token copy' })
+    rect.fills = [solidFill({ r: 0.2, g: 0.4, b: 0.8, a: 1 })]
+    text.fills = [solidFill({ r: 0.8, g: 0.9, b: 1, a: 1 })]
+    graph.bindVariable(rect.id, 'fills/0/color', 'var-primary')
+    graph.bindVariable(text.id, 'fills/0/color', 'var-alias')
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'theme-demo' })
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain('style={{ backgroundColor: "var(--op-brand-theme-color-primary)" }}')
+    expect(appTsx).toContain('style={{ color: "var(--op-brand-theme-color-accent)" }}')
+  })
+
+  test('shadcn composed controls preserve bound fill variable styles', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+    const toggle = graph.createNode('SWITCH', pageId, { name: 'Theme Toggle' })
+    toggle.fills = [solidFill({ r: 0.2, g: 0.4, b: 0.8, a: 1 })]
+    graph.bindVariable(toggle.id, 'fills/0/color', 'var-primary')
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'theme-demo', uiKit: 'shadcn' })
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain('<Switch')
+    expect(appTsx).toContain('style={{ backgroundColor: "var(--op-brand-theme-color-primary)" }}')
   })
 
   test('compile does not emit theme runtime when no theme css exists', () => {
