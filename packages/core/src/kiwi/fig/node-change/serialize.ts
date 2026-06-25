@@ -17,7 +17,7 @@ import type { NodeChange, Paint, VariableConsumptionEntry } from '#core/kiwi/fig
 import type { SceneGraph, SceneNode } from '#core/scene-graph'
 import type { Color, GUID, JsonObject, Matrix } from '#core/types'
 
-import { guidToString, stringToGuid, VARIABLE_BINDING_FIELDS } from './convert'
+import { guidToString, stringToGuid, variableBindingFieldToKiwi } from './convert'
 import {
   buildAssetRefToVarGuidMap,
   sceneNodeToKiwiWithContext,
@@ -464,7 +464,7 @@ function serializeVariableBindings(
     const varGuid = varIdToGuid?.get(varId) ?? stringToGuid(varId)
     roundtripBindings[field] = guidToString(varGuid)
 
-    const kiwiField = VARIABLE_BINDING_FIELDS[field]
+    const kiwiField = variableBindingFieldToKiwi(field)
     if (!kiwiField) continue
     const resolvedType = typeMap[variable.type] ?? 'FLOAT'
     entries.push({

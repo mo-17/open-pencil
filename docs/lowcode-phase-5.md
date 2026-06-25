@@ -495,6 +495,30 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   popover UI 仍显示旧按钮。
 - 本刀仍不升格 Figma `variableConsumptionMap` 标准通道,也不处理完整多 stroke 几何语义。
 
+**2026-06-25 第十二刀已完成**:
+
+- Import 侧新增 stop-level `variableConsumptionMap` field decoder:
+  - `FILL_PAINT_N_GRADIENT_STOP_M_COLOR` 会还原为
+    `fills/N/gradientStops/M/color`。
+  - `importVariableBindings()` 现在通过 `kiwiVariableFieldToBindingField()` 统一解析静态字段和
+    stop-level dynamic 字段。
+- Export 侧保持 schema-safe:
+  - `variableConsumptionMap.variableField` 在 vendored Kiwi schema 中是固定 enum;尝试写
+    `FILL_PAINT_0_GRADIENT_STOP_0_COLOR` 会在 encode 时抛
+    `Invalid value ... for enum "VariableField"`。
+  - 因此本刀不把 stop-level binding 写入 `variableConsumptionMap`;导出仍通过
+    `fillPaints[N].stopsVar[M].colorVar` 写标准 paint stop binding,并继续写 OpenPencil
+    `boundVariables` pluginData fallback。
+  - 新增回归测试确保 export 不写非法 stop-level `variableConsumptionMap` entry,避免未来误把
+    dynamic field 塞进固定 enum。
+- 新增 focused fig roundtrip coverage:
+  - 仅靠 raw `variableConsumptionMap` 的 stop-level entry 也能导入到
+    `boundVariables['fills/0/gradientStops/1/color']`。
+  - 导出 gradient stop binding 时 `stopsVar.colorVar` 存在,但非法 dynamic
+    `variableConsumptionMap` entry 不存在。
+- 结论:stop-level map **import compatibility 已完成**;stop-level map **export 标准化仍需 Kiwi
+  schema / VariableField enum 升级或确认 Figma 官方 enum 名称**,继续 Deferred。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
@@ -502,8 +526,9 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 节点样式 `var(...)` 映射仍是渐进覆盖;目前覆盖 simple fill/text、stroke、scalar
   opacity、多层 SOLID background layer、component usage root、component child style prop,
   以及 core/compiler/Kiwi/ToolDef/editor UI 层的 gradient stop token binding。Gradient stop
-  editor UI 已有 browser E2E ACK。完整多 stroke 几何语义和 stop-level
-  `variableConsumptionMap` 标准通道仍需后续补齐。
+  editor UI 已有 browser E2E ACK。Stop-level `variableConsumptionMap` 只完成 import
+  compatibility;export 仍受 Kiwi fixed enum 限制。完整多 stroke 几何语义和 stop-level map
+  export 标准化仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -538,8 +563,11 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - Gradient stop editor UI 有真实 browser E2E 覆盖。**2026-06-25 第十一刀已完成;由
   `tests/e2e/properties/panel.spec.ts` 覆盖 bind existing / create / detach / manual edit
   unbind。**
-- 后续可继续做:stop-level `variableConsumptionMap` 标准通道、完整多 stroke 语义、更多非 dark
-  mode 的 runtime UI。
+- Raw `.fig` stop-level `variableConsumptionMap` entry 可导入为 gradient stop binding,且
+  export 不会写 vendored Kiwi enum 不支持的 dynamic field。**2026-06-25 第十二刀已完成;由
+  `tests/engine/io/fig/roundtrip/variables.test.ts` 覆盖。**
+- 后续可继续做:Kiwi `VariableField` enum 升级 / Figma 官方 stop-level field 名确认、完整多
+  stroke 语义、更多非 dark mode 的 runtime UI。
 
 ---
 

@@ -3,17 +3,26 @@ import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import {
   exportFigFile,
   FigmaAPI,
+  importNodeChanges,
   initCodec,
   parseFigFile,
   SceneGraph,
-  type Color
+  type Color,
+  type NodeChange
 } from '@open-pencil/core'
+import { parseFigBuffer } from '@open-pencil/core/kiwi/fig/parse/core'
 
 import { expectDefined } from '#tests/helpers/assert'
 import { parseFixture } from '#tests/helpers/fig-fixtures'
 import { runsHeavyTests } from '#tests/helpers/test-utils'
 
+import { canvas, doc, node } from '../import/legacy/helpers'
+
 setDefaultTimeout(60_000)
+
+function decodeExport(bytes: Uint8Array) {
+  return parseFigBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
+}
 
 describe('variable roundtrip', () => {
   test('variables and collections survive export → re-import', async () => {
@@ -165,6 +174,114 @@ describe('variable roundtrip', () => {
     const bindings = expectDefined(reimportedRect, 'reimportedRect').boundVariables
     expect(Object.keys(bindings)).toContain('fills/0/gradientStops/0/color')
     expect(Object.keys(bindings)).toContain('fills/0/gradientStops/1/color')
+  })
+
+  test('imports gradient stop bindings from variableConsumptionMap entries', () => {
+    const graph = importNodeChanges([
+      doc(),
+      canvas(),
+      {
+        ...node('VARIABLE_SET', 20, 1),
+        name: 'Gradient Tokens',
+        variableSetModes: [{ id: { sessionID: 10, localID: 1 }, name: 'Default' }]
+      } as NodeChange,
+      {
+        ...node('VARIABLE', 21, 1),
+        name: 'Stop Blue',
+        variableSetID: { guid: { sessionID: 1, localID: 20 } },
+        variableResolvedType: 'COLOR',
+        variableDataValues: {
+          entries: [
+            {
+              modeID: { sessionID: 10, localID: 1 },
+              variableData: {
+                dataType: 'COLOR',
+                resolvedDataType: 'COLOR',
+                value: { colorValue: { r: 0, g: 0, b: 1, a: 1 } }
+              }
+            }
+          ]
+        }
+      } as NodeChange,
+      node('RECTANGLE', 30, 1, {
+        name: 'Variable map gradient',
+        fillPaints: [
+          {
+            type: 'GRADIENT_LINEAR',
+            stops: [
+              { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+              { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+            ],
+            transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 0, m12: 0.5 },
+            visible: true,
+            opacity: 1
+          }
+        ],
+        variableConsumptionMap: {
+          entries: [
+            {
+              variableField: 'FILL_PAINT_0_GRADIENT_STOP_1_COLOR',
+              variableData: {
+                dataType: 'ALIAS',
+                resolvedDataType: 'COLOR',
+                value: { alias: { guid: { sessionID: 1, localID: 21 } } }
+              }
+            }
+          ]
+        }
+      })
+    ])
+
+    const rect = expectDefined(
+      [...graph.getAllNodes()].find((n) => n.name === 'Variable map gradient'),
+      'imported variable map gradient'
+    )
+    expect(rect.boundVariables['fills/0/gradientStops/1/color']).toBe('1:21')
+  })
+
+  test('exports gradient stop bindings through stopsVar without invalid variableConsumptionMap fields', async () => {
+    await initCodec()
+
+    const graph = new SceneGraph()
+    const col = graph.createCollection('Gradient Tokens')
+    const startVar = graph.createVariable('gradient/start', 'COLOR', col.id, {
+      r: 1,
+      g: 0,
+      b: 0,
+      a: 1
+    })
+    const page = graph.getPages()[0]
+    const rect = graph.createNode('RECTANGLE', page.id, {
+      name: 'Variable map export gradient',
+      width: 100,
+      height: 100,
+      fills: [
+        {
+          type: 'GRADIENT_LINEAR',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          gradientStops: [
+            { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+            { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+          ],
+          gradientTransform: { m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }
+        }
+      ]
+    })
+    graph.bindVariable(rect.id, 'fills/0/gradientStops/0/color', startVar.id)
+
+    const decoded = decodeExport(await exportFigFile(graph))
+    const exportedRect = expectDefined(
+      decoded.nodeChanges.find((nodeChange) => nodeChange.name === rect.name),
+      'exported variable map gradient'
+    )
+    const entry = exportedRect.variableConsumptionMap?.entries?.find(
+      (item) => item.variableField === 'FILL_PAINT_0_GRADIENT_STOP_0_COLOR'
+    )
+
+    expect(entry).toBeUndefined()
+    expect(exportedRect.fillPaints?.[0]?.stopsVar?.[0]?.colorVar?.value?.alias?.guid).toBeDefined()
   })
 
   test.if(runsHeavyTests)(

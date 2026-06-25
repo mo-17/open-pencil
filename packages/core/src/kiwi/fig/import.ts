@@ -7,10 +7,10 @@ import type { InstanceNodeChange } from '#core/kiwi/fig/instance-overrides'
 import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
 import {
   guidToString,
+  kiwiVariableFieldToBindingField,
   nodeChangeToProps,
   sortChildren,
-  setVariableColorResolver,
-  VARIABLE_BINDING_FIELDS_INVERSE
+  setVariableColorResolver
 } from '#core/kiwi/fig/node-change/convert'
 import { extractLowcodeAndPluginData } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import { applyStyleRefsToFields } from '#core/kiwi/fig/node-change/style-refs'
@@ -375,7 +375,7 @@ function importVariableBindings(
     for (const entry of nc.variableConsumptionMap.entries) {
       const varGuid = entry.variableData?.value?.alias?.guid
       if (!varGuid) continue
-      const field = VARIABLE_BINDING_FIELDS_INVERSE[entry.variableField ?? '']
+      const field = kiwiVariableFieldToBindingField(entry.variableField ?? '')
       if (field) graph.bindVariable(nodeId, field, guidToString(varGuid))
     }
   }

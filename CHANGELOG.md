@@ -27,6 +27,8 @@
   styles while keeping the existing className component override channel intact.
 - Preserve gradient stop color token bindings through `.fig` export and re-import using Figma
   `stopsVar` data plus the OpenPencil bound-variable fallback.
+- Read gradient stop color token bindings from raw `.fig` `variableConsumptionMap` entries while
+  keeping export on the schema-safe `stopsVar` path.
 - Document and test `bind_variable` / `unbind_variable` support for gradient stop color token
   paths such as `fills/0/gradientStops/0/color`.
 - Add editor gradient-stop variable binding controls so fill stops can bind, create, display,

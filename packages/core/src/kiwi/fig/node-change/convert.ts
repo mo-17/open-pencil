@@ -104,6 +104,20 @@ export const VARIABLE_BINDING_FIELDS_INVERSE: Record<string, string> = Object.fr
   Object.entries(VARIABLE_BINDING_FIELDS).map(([k, v]) => [v, k])
 )
 
+const KIWI_GRADIENT_STOP_BINDING_FIELD = /^FILL_PAINT_(\d+)_GRADIENT_STOP_(\d+)_COLOR$/
+
+export function variableBindingFieldToKiwi(field: string): string | undefined {
+  return VARIABLE_BINDING_FIELDS[field]
+}
+
+export function kiwiVariableFieldToBindingField(field: string): string | undefined {
+  const staticField = VARIABLE_BINDING_FIELDS_INVERSE[field]
+  if (staticField) return staticField
+  const match = field.match(KIWI_GRADIENT_STOP_BINDING_FIELD)
+  if (!match) return undefined
+  return `fills/${match[1]}/gradientStops/${match[2]}/color`
+}
+
 const NODE_TYPE_MAP: Record<string, NodeType | 'DOCUMENT' | 'VARIABLE'> = {
   DOCUMENT: 'DOCUMENT',
   VARIABLE: 'VARIABLE',
