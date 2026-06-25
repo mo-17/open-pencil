@@ -603,27 +603,47 @@ function assignLowcodeField(
       // JSON.parse already logged a warn for true parse failures.
       if (isSupabaseConfig(value)) target.lowcodeSupabaseConfig = value
       return
-    case LOWCODE_SEO_METADATA_KEY:
-      if (isSeoMetadata(value)) target.lowcodeSeoMetadata = value
-      return
-    case LOWCODE_TRANSLATIONS_KEY:
-      // Light guard: a non-null, non-array object. Per-locale / per-message
-      // shape isn't strictly validated here — the compiler emit only reads
-      // string values via `?? source` fallback, so a stray non-string is
-      // harmless. The write path (`set_translations`) validates strictly.
-      if (isLowcodeTranslations(value)) target.lowcodeTranslations = value
-      return
-    case LOWCODE_WORKFLOWS_KEY:
-      // Light guard: an array of plain objects. Per-action shape isn't strictly
-      // validated here — the IR collect pass drops malformed actions with a
-      // warning. The write path (`set_workflows`) validates strictly.
-      if (isLowcodeWorkflows(value)) target.lowcodeWorkflows = value
-      return
     default:
-      // Less common lowcode pluginData families are grouped out to keep this
-      // switch under the complexity limit.
-      assignLowcodeLayoutFix(target, key, value)
+      assignLowcodeContentOrLayoutField(target, key, value)
   }
+}
+
+function assignLowcodeContentOrLayoutField(
+  target: ExtractedLowcodeAndPluginData,
+  key: string,
+  value: unknown
+): void {
+  if (assignLowcodeContentField(target, key, value)) return
+  // Less common lowcode pluginData families are grouped out to keep this
+  // switch under the complexity limit.
+  assignLowcodeLayoutFix(target, key, value)
+}
+
+function assignLowcodeContentField(
+  target: ExtractedLowcodeAndPluginData,
+  key: string,
+  value: unknown
+): boolean {
+  if (key === LOWCODE_SEO_METADATA_KEY) {
+    if (isSeoMetadata(value)) target.lowcodeSeoMetadata = value
+    return true
+  }
+  if (key === LOWCODE_TRANSLATIONS_KEY) {
+    // Light guard: a non-null, non-array object. Per-locale / per-message
+    // shape isn't strictly validated here — the compiler emit only reads
+    // string values via `?? source` fallback, so a stray non-string is
+    // harmless. The write path (`set_translations`) validates strictly.
+    if (isLowcodeTranslations(value)) target.lowcodeTranslations = value
+    return true
+  }
+  if (key === LOWCODE_WORKFLOWS_KEY) {
+    // Light guard: an array of plain objects. Per-action shape isn't strictly
+    // validated here — the IR collect pass drops malformed actions with a
+    // warning. The write path (`set_workflows`) validates strictly.
+    if (isLowcodeWorkflows(value)) target.lowcodeWorkflows = value
+    return true
+  }
+  return false
 }
 
 function assignLowcodeLibraryField(

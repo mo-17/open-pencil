@@ -7,7 +7,10 @@ import { defineCommand } from 'citty'
 
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { deployFiles, type DeployProgress, type DeployResult } from '@open-pencil/compiler/deploy'
-import { resolveDeployEnvironment, type DeployEnvironment } from '@open-pencil/core'
+import {
+  resolveDeployEnvironment,
+  type DeployEnvironment
+} from '@open-pencil/core/lowcode-deployment'
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { bold, dim, ok, printError } from '#cli/format'

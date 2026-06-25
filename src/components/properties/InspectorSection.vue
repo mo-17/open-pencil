@@ -2,33 +2,33 @@
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
 import { ref, watch } from 'vue'
 
-import { IS_BROWSER } from '@open-pencil/core/constants'
+import { readLocalStorageText, writeLocalStorageText } from '@/app/cache'
 
-const props = withDefaults(
-  defineProps<{
-    id: string
-    title: string
-    defaultOpen?: boolean
-    highlighted?: boolean
-  }>(),
-  { defaultOpen: true, highlighted: false }
-)
+const {
+  id,
+  title,
+  defaultOpen = true,
+  highlighted = false
+} = defineProps<{
+  id: string
+  title: string
+  defaultOpen?: boolean
+  highlighted?: boolean
+}>()
 
 const STORAGE_PREFIX = 'open-pencil:inspector-section:'
 
 function readOpen(id: string, fallback: boolean): boolean {
-  if (!IS_BROWSER) return fallback
-  const saved = window.localStorage.getItem(`${STORAGE_PREFIX}${id}`)
+  const saved = readLocalStorageText(`${STORAGE_PREFIX}${id}`)
   if (saved === 'open') return true
   if (saved === 'closed') return false
   return fallback
 }
 
-const open = ref(readOpen(props.id, props.defaultOpen))
+const open = ref(readOpen(id, defaultOpen))
 
 watch(open, (next) => {
-  if (!IS_BROWSER) return
-  window.localStorage.setItem(`${STORAGE_PREFIX}${props.id}`, next ? 'open' : 'closed')
+  writeLocalStorageText(`${STORAGE_PREFIX}${id}`, next ? 'open' : 'closed')
 })
 </script>
 

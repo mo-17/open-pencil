@@ -24,6 +24,9 @@ export interface IRComponentRef {
   name: string
   /** Space-separated Tailwind classes for this usage's root (empty when none). */
   className: string
+  /** Inline style declarations for the usage root, e.g. bound design-token
+   *  colors that cannot be represented as static Tailwind classes. */
+  styleAttr?: IRStyleAttr
   /** Phase 3 §8 v2 — text-override prop values this usage passes
    *  (`<Name title="new" />`). Empty for the master and clean instances (they
    *  fall back to the component's per-prop defaults). */

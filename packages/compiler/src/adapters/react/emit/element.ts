@@ -67,10 +67,8 @@ export function emitElement(
     // Phase 3 §8: `<Name className="..." />`. The shared subtree lives in the
     // emitted component file; the usage site supplies its own root classes.
     // Phase 3 §8 v2: text-only instances pass their overridden text as props.
-    const classAttr = node.className ? ` className="${escapeAttr(node.className)}"` : ''
-    const propAttrs = node.props.map((p) => ` ${p.name}="${escapeAttr(p.value)}"`).join('')
-    const idAttr = devMode ? ` data-node-id="${node.sourceId}"` : ''
-    return `${pad}<${node.name}${classAttr}${propAttrs}${idAttr} />`
+    const attrs = componentRefAttrs(node, devMode)
+    return `${pad}<${node.name}${attrs} />`
   }
 
   if (node.kind === 'list') {
@@ -794,11 +792,25 @@ function formatAttr(key: string, value: IRAttrValue): string {
   return value ? key : `${key}={false}`
 }
 
+function componentRefAttrs(
+  node: Extract<IRNode, { kind: 'componentRef' }>,
+  devMode: boolean
+): string {
+  const attrs: string[] = []
+  if (node.className) attrs.push(`className="${escapeAttr(node.className)}"`)
+  if (node.styleAttr) attrs.push(`style={${formatStyleAttr(node.styleAttr.declarations)}}`)
+  attrs.push(...node.props.map((p) => `${p.name}="${escapeAttr(p.value)}"`))
+  if (devMode) attrs.push(`data-node-id="${node.sourceId}"`)
+  return attrs.length > 0 ? ` ${attrs.join(' ')}` : ''
+}
+
 function formatStyleAttr(declarations: Record<string, string>): string {
-  const entries = Object.entries(declarations)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([prop, value]) => `${prop}: ${JSON.stringify(value)}`)
-  return `{ ${entries.join(', ')} }`
+  const props = Object.keys(declarations).sort((a, b) => a.localeCompare(b))
+  const body = props.reduce<string[]>((parts, prop) => {
+    parts.push(`${prop}: ${JSON.stringify(declarations[prop])}`)
+    return parts
+  }, [])
+  return `{ ${body.join(', ')} }`
 }
 
 function escapeAttr(s: string): string {

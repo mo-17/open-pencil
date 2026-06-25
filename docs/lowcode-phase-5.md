@@ -404,12 +404,34 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 本刀只覆盖 `fills/0/color` 的最小闭环;暂不处理 stroke、多层 background、opacity 混合、
   gradients、component ref usage site 或未知 collection/token。
 
+**2026-06-25 第六刀已完成**:
+
+- Bound token style 收集从单点 `fills/0/color` 扩展为渐进声明收集器,继续通过
+  `IRStyleAttr` 让 React adapter 统一 emit JSX style object。
+- `strokes/N/color` 现在会取第一个 visible stroke 的 token binding,输出
+  `style={{ borderColor: "var(--op-...)" }}`;仍不尝试完整还原 Figma 多 stroke /
+  inside-center-outside 几何语义。
+- `opacity` scalar FLOAT binding 现在会输出 `style={{ opacity: "var(--op-...)" }}`。
+- `fills/N/color` 的 visible SOLID fill 支持 opacity < 1,输出
+  `color-mix(in srgb, var(--op-...) <percent>%, transparent)`。
+- 多层 background 现在可在保留其它 solid/image/gradient layer 的同时,把绑定的 SOLID
+  fill layer 写入 inline `backgroundImage` / `backgroundSize` / `backgroundPosition` /
+  `backgroundRepeat`。
+- Component ref usage root 新增 `styleAttr` 通道,generated component wrapper 接收
+  `style?: CSSProperties`,让 instance/component usage site 的 root bound token style 不再丢失。
+- 找不到 collection/token 的 binding 现在会产生 `design-token-binding-missing` warning,
+  不再静默跳过。
+- 本刀仍不扩展 core binding path:不支持 `fills/0/gradientStops/0/color` 这类 gradient stop
+  token binding;component 内部子节点 override 仍只有 `text` / `className` prop 通道,完整
+  child style prop 另开后续设计。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
-- 节点样式 `var(...)` 映射仍是渐进覆盖;目前只覆盖 `fills/0/color` 的简单 SOLID 场景,
-  strokes / gradients / opacity / component refs 仍需后续补齐。
+- 节点样式 `var(...)` 映射仍是渐进覆盖;目前覆盖 simple fill/text、stroke、scalar
+  opacity、多层 SOLID background layer 和 component usage root。Gradient stop token
+  binding、component child style prop、完整多 stroke 几何语义仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -427,8 +449,12 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 已绑定 `fills/0/color` 的简单 SOLID fill/text color 可 emit `var(--op-...)` inline style。
   **2026-06-25 第五刀已完成;同样由
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
-- 后续可继续做:stroke / opacity / 多层 background 的 `var(...)` 映射、更多非 dark mode
-  的 runtime UI。
+- 已绑定 stroke color、scalar opacity、半透明 SOLID fill、多层 SOLID background layer 和
+  component usage root style 可 emit `var(--op-...)` / `color-mix(...)` inline styles。
+  **2026-06-25 第六刀已完成;同样由
+  `tests/engine/compiler/theme-css.test.ts` 覆盖。**
+- 后续可继续做:gradient stop token binding、component child style prop、完整多 stroke
+  语义、更多非 dark mode 的 runtime UI。
 
 ---
 

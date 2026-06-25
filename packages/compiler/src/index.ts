@@ -149,7 +149,7 @@ function mergeMetadataPages(
   if (!explicit) return persisted
   const merged: Record<string, SeoMetadata> = { ...persisted }
   for (const [pageId, metadata] of Object.entries(explicit)) {
-    merged[pageId] = { ...(merged[pageId] ?? {}), ...metadata }
+    merged[pageId] = { ...merged[pageId], ...metadata }
   }
   return Object.keys(merged).length > 0 ? merged : undefined
 }

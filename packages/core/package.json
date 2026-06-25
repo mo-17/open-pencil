@@ -83,6 +83,11 @@
       "default": "./dist/lowcode-validation/index.js",
       "import": "./dist/lowcode-validation/index.js"
     },
+    "./lowcode-deployment": {
+      "types": "./dist/lowcode-deployment.d.ts",
+      "default": "./dist/lowcode-deployment.js",
+      "import": "./dist/lowcode-deployment.js"
+    },
     "./io": {
       "types": "./dist/io/index.d.ts",
       "default": "./dist/io/index.js",

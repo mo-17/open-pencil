@@ -1,3 +1,4 @@
+import { designTokenCssVariableName } from '#compiler/theme-css'
 import lucideIcons from '@iconify-json/lucide/icons.json'
 
 import { colorToHex8 } from '@open-pencil/core/color'
@@ -21,7 +22,6 @@ import {
   type WorkflowDef
 } from '@open-pencil/core/scene-graph'
 
-import { designTokenCssVariableName } from '../../theme-css'
 import { tailwindClassName, type CompilerStyleOptions } from '../style'
 import type {
   ComponentDef,
@@ -457,11 +457,15 @@ function refOf(
   props: ComponentRefProp[],
   ctx: WalkCtx
 ): IRComponentRef {
+  const styleDeclarations = boundVariableStyleDeclarations(node, ctx)
   return {
     kind: 'componentRef',
     sourceId: node.id,
     name,
     className: tailwindClassName(node, ctx.graph, ctx.styleOptions),
+    ...(hasStyleDeclarations(styleDeclarations)
+      ? { styleAttr: { kind: 'styleAttr', declarations: styleDeclarations } }
+      : {}),
     props
   }
 }
@@ -1026,7 +1030,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   const children: IRNode[] = []
 
   applyInteractiveProps(node, attrs, children, ctx)
-  applyBoundVariableStyles(node, ctx.graph, attrs)
+  applyBoundVariableStyles(node, ctx, attrs)
 
   // Icon nodes (a vector shape, or an all-vector container — see isVectorIcon)
   // emit their geometry as one inline SVG; the wrapper keeps layout/size classes
@@ -1094,27 +1098,211 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
 
 function applyBoundVariableStyles(
   node: SceneNode,
-  graph: SceneGraph,
+  ctx: WalkCtx,
   attrs: Record<string, IRAttrValue>
 ): void {
-  const variableId = node.boundVariables['fills/0/color']
-  const fill = node.fills[0]
-  if (!variableId || !isTokenStyleFill(fill)) return
-  const cssVar = designTokenCssVariableName(graph, variableId)
-  if (!cssVar) return
-  const styleProp = node.type === 'TEXT' ? 'color' : 'backgroundColor'
-  attrs.style = mergeStyleAttr(attrs.style, { [styleProp]: `var(${cssVar})` })
+  const declarations = boundVariableStyleDeclarations(node, ctx)
+  if (!hasStyleDeclarations(declarations)) return
+  attrs.style = mergeStyleAttr(attrs.style, declarations)
 }
 
-function isTokenStyleFill(fill: Fill | undefined): fill is Fill & { type: 'SOLID' } {
-  return !!fill && fill.type === 'SOLID' && fill.visible && fill.opacity === 1
+function boundVariableStyleDeclarations(node: SceneNode, ctx: WalkCtx): Record<string, string> {
+  const declarations: Record<string, string> = {}
+  applyBoundOpacityStyle(node, ctx, declarations)
+  applyBoundFillStyle(node, ctx, declarations)
+  applyBoundStrokeStyle(node, ctx, declarations)
+  return declarations
+}
+
+function hasStyleDeclarations(declarations: Record<string, string>): boolean {
+  return Object.keys(declarations).length > 0
+}
+
+function applyBoundOpacityStyle(
+  node: SceneNode,
+  ctx: WalkCtx,
+  declarations: Record<string, string>
+): void {
+  const cssVar = cssVarForBinding(node, ctx, 'opacity')
+  if (cssVar) declarations.opacity = `var(${cssVar})`
+}
+
+function applyBoundFillStyle(
+  node: SceneNode,
+  ctx: WalkCtx,
+  declarations: Record<string, string>
+): void {
+  if (node.type === 'TEXT') {
+    const color = firstBoundTextColor(node, ctx)
+    if (color) declarations.color = color
+    return
+  }
+
+  const background = boundBackgroundDeclarations(node, ctx)
+  Object.assign(declarations, background)
+}
+
+function firstBoundTextColor(node: SceneNode, ctx: WalkCtx): string | undefined {
+  for (let index = 0; index < node.fills.length; index++) {
+    const fill = node.fills[index]
+    if (!isVisibleSolidPaint(fill)) continue
+    const color = cssColorForPaintBinding(node, ctx, `fills/${index}/color`, fill)
+    if (color) return color
+  }
+  return undefined
+}
+
+function boundBackgroundDeclarations(node: SceneNode, ctx: WalkCtx): Record<string, string> {
+  if (!hasBoundBackgroundFill(node)) return {}
+  const visibleBackgrounds = node.fills
+    .map((fill, index) => ({ fill, index }))
+    .filter(({ fill }) => fill.visible && fill.opacity > 0 && isBackgroundFill(fill))
+  if (visibleBackgrounds.length === 0) return {}
+
+  if (visibleBackgrounds.length === 1) {
+    const { fill, index } = visibleBackgrounds[0]
+    if (fill.type === 'SOLID') {
+      const color = cssColorForPaintBinding(node, ctx, `fills/${index}/color`, fill)
+      return color ? { backgroundColor: color } : {}
+    }
+    const layer = backgroundFillLayerWithTokens(fill, index, node, ctx)
+    return layer ? backgroundDeclarations([layer]) : {}
+  }
+
+  const layers: BackgroundLayer[] = []
+  for (const { fill, index } of visibleBackgrounds) {
+    const layer = backgroundFillLayerWithTokens(fill, index, node, ctx)
+    if (layer) layers.push(layer)
+  }
+  return layers.length > 0 ? backgroundDeclarations(layers.reverse()) : {}
+}
+
+function hasBoundBackgroundFill(node: SceneNode): boolean {
+  return node.fills.some((fill, index) => {
+    if (!fill.visible || fill.opacity <= 0 || !isBackgroundFill(fill)) return false
+    return !!node.boundVariables[`fills/${index}/color`]
+  })
+}
+
+function backgroundFillLayerWithTokens(
+  fill: Fill,
+  index: number,
+  node: SceneNode,
+  ctx: WalkCtx
+): BackgroundLayer | undefined {
+  if (fill.type === 'SOLID') return solidFillLayerWithColor(cssColorForFill(node, ctx, index, fill))
+  if (fill.type === 'IMAGE') return imageFillLayer(fill, node, ctx)
+  const css = gradientFillCssWithTokens(fill, index, node, ctx)
+  if (css === null) return undefined
+  return { image: css, size: 'auto', position: '0%_0%', repeat: 'no-repeat' }
+}
+
+function solidFillLayerWithColor(color: string): BackgroundLayer {
+  return {
+    image: `linear-gradient(${color}, ${color})`,
+    size: 'auto',
+    position: '0%_0%',
+    repeat: 'no-repeat'
+  }
+}
+
+function cssColorForFill(node: SceneNode, ctx: WalkCtx, index: number, fill: Fill): string {
+  return (
+    cssColorForPaintBinding(node, ctx, `fills/${index}/color`, fill) ??
+    colorToHex8(fill.color, fill.opacity)
+  )
+}
+
+function gradientFillCssWithTokens(
+  fill: Fill,
+  index: number,
+  node: SceneNode,
+  ctx: WalkCtx
+): string | null {
+  let css = gradientFillCss(fill, node.width, node.height)
+  if (css === null) return null
+  const cssVar = cssVarForBinding(node, ctx, `fills/${index}/color`)
+  if (!cssVar || !fill.gradientStops) return css
+  for (const stop of fill.gradientStops) {
+    css = replaceFirst(css, colorToHex8(stop.color, stop.color.a), tokenColor(cssVar, stop.color.a))
+  }
+  return css
+}
+
+function replaceFirst(value: string, search: string, replacement: string): string {
+  const index = value.indexOf(search)
+  if (index === -1) return value
+  return `${value.slice(0, index)}${replacement}${value.slice(index + search.length)}`
+}
+
+function backgroundDeclarations(layers: BackgroundLayer[]): Record<string, string> {
+  return {
+    backgroundImage: layers.map((layer) => layer.image).join(', '),
+    backgroundSize: layers.map((layer) => cssBackgroundListValue(layer.size)).join(', '),
+    backgroundPosition: layers.map((layer) => cssBackgroundListValue(layer.position)).join(', '),
+    backgroundRepeat: layers.map((layer) => layer.repeat).join(', ')
+  }
+}
+
+function cssBackgroundListValue(value: string): string {
+  return value.replace(/_/g, ' ')
+}
+
+function applyBoundStrokeStyle(
+  node: SceneNode,
+  ctx: WalkCtx,
+  declarations: Record<string, string>
+): void {
+  for (let index = 0; index < node.strokes.length; index++) {
+    const stroke = node.strokes[index]
+    if (!stroke.visible || stroke.opacity <= 0) continue
+    const color = cssColorForPaintBinding(node, ctx, `strokes/${index}/color`, stroke)
+    if (!color) continue
+    declarations.borderColor = color
+    return
+  }
+}
+
+function cssColorForPaintBinding(
+  node: SceneNode,
+  ctx: WalkCtx,
+  path: string,
+  paint: { opacity: number }
+): string | undefined {
+  const cssVar = cssVarForBinding(node, ctx, path)
+  return cssVar ? tokenColor(cssVar, paint.opacity) : undefined
+}
+
+function cssVarForBinding(node: SceneNode, ctx: WalkCtx, path: string): string | undefined {
+  const variableId = node.boundVariables[path]
+  if (!variableId) return undefined
+  const cssVar = designTokenCssVariableName(ctx.graph, variableId)
+  if (cssVar) return cssVar
+  ctx.warnings.push({
+    code: 'design-token-binding-missing',
+    message: `${node.type} ${node.id} binding ${path} references missing design token ${variableId}; style variable skipped`,
+    nodeId: node.id
+  })
+  return undefined
+}
+
+function tokenColor(cssVar: string, opacity: number): string {
+  if (opacity >= 1) return `var(${cssVar})`
+  const percent = Number(Math.max(0, opacity * 100).toFixed(3))
+  return `color-mix(in srgb, var(${cssVar}) ${percent}%, transparent)`
+}
+
+function isVisibleSolidPaint(
+  paint: { type?: string; visible: boolean; opacity: number } | undefined
+): paint is { type: 'SOLID'; visible: true; opacity: number } {
+  return !!paint && paint.type === 'SOLID' && paint.visible && paint.opacity > 0
 }
 
 function mergeStyleAttr(
   value: IRAttrValue | undefined,
   declarations: Record<string, string>
 ): IRAttrValue {
-  if (typeof value === 'object' && value !== null && value.kind === 'styleAttr') {
+  if (typeof value === 'object' && value.kind === 'styleAttr') {
     return { kind: 'styleAttr', declarations: { ...value.declarations, ...declarations } }
   }
   return { kind: 'styleAttr', declarations }

@@ -1,4 +1,6 @@
-import type { DeployEnvironment } from '@open-pencil/core'
+import type { DeployEnvironment } from '@open-pencil/core/lowcode-deployment'
+
+import { readLocalStorageText, writeLocalStorageText } from '@/app/cache'
 
 export type { DeployEnvironment }
 export type DeployHistoryProvider = 'netlify' | 'vercel' | 'cloudflare'
@@ -91,15 +93,24 @@ const DEPLOY_HISTORY_LIMIT = 8
 const DEPLOY_HISTORY_SCHEMA = 1
 const NETLIFY_API = 'https://api.netlify.com/api/v1'
 
-function storage(): Storage | null {
-  if (typeof window === 'undefined') return null
-  if (typeof window.localStorage?.getItem !== 'function') return null
-  return window.localStorage
+interface UnknownFields {
+  [key: string]: unknown
+}
+
+function objectFields(value: unknown): UnknownFields | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as UnknownFields
 }
 
 function isDeployHistoryEntry(value: unknown): value is DeployHistoryEntry {
-  if (!value || typeof value !== 'object') return false
-  const entry = value as Record<string, unknown>
+  const entry = objectFields(value)
+  if (!entry) return false
+  if (!isDeployHistoryRequiredFields(entry)) return false
+  if (!isDeployHistoryOptionalFields(entry)) return false
+  return entry.compat === undefined || isDeployHistoryCompat(entry.compat)
+}
+
+function isDeployHistoryRequiredFields(entry: UnknownFields): boolean {
   return (
     typeof entry.id === 'string' &&
     typeof entry.provider === 'string' &&
@@ -107,23 +118,25 @@ function isDeployHistoryEntry(value: unknown): value is DeployHistoryEntry {
     typeof entry.deployId === 'string' &&
     typeof entry.fileCount === 'number' &&
     typeof entry.createdAt === 'string' &&
-    (entry.environment === 'preview' ||
-      entry.environment === 'staging' ||
-      entry.environment === 'production') &&
+    isDeployEnvironment(entry.environment)
+  )
+}
+
+function isDeployHistoryOptionalFields(entry: UnknownFields): boolean {
+  return (
     (entry.site === undefined || typeof entry.site === 'string') &&
     (entry.uiKit === undefined || entry.uiKit === 'none' || entry.uiKit === 'shadcn') &&
     (entry.i18nEnabled === undefined || typeof entry.i18nEnabled === 'boolean') &&
     (entry.locales === undefined ||
       (Array.isArray(entry.locales) && entry.locales.every((loc) => typeof loc === 'string'))) &&
     (entry.buildOptions === undefined || isDeployBuildOptions(entry.buildOptions)) &&
-    (entry.artifactLabel === undefined || typeof entry.artifactLabel === 'string') &&
-    (entry.compat === undefined || isDeployHistoryCompat(entry.compat))
+    (entry.artifactLabel === undefined || typeof entry.artifactLabel === 'string')
   )
 }
 
 function isDeployBuildOptions(value: unknown): value is DeployBuildOptions {
-  if (!value || typeof value !== 'object') return false
-  const options = value as Record<string, unknown>
+  const options = objectFields(value)
+  if (!options) return false
   return (
     (options.uiKit === 'none' || options.uiKit === 'shadcn') &&
     typeof options.i18nEnabled === 'boolean' &&
@@ -133,17 +146,14 @@ function isDeployBuildOptions(value: unknown): value is DeployBuildOptions {
 }
 
 function isDeployHistoryCompat(value: unknown): value is DeployHistoryCompat {
-  if (!value || typeof value !== 'object') return false
-  return (value as Record<string, unknown>).schema === DEPLOY_HISTORY_SCHEMA
+  return objectFields(value)?.schema === DEPLOY_HISTORY_SCHEMA
 }
 
 function isDeployTargetPreset(value: unknown): value is DeployTargetPreset {
-  if (!value || typeof value !== 'object') return false
-  const preset = value as Record<string, unknown>
+  const preset = objectFields(value)
+  if (!preset) return false
   return (
-    (preset.environment === 'preview' ||
-      preset.environment === 'staging' ||
-      preset.environment === 'production') &&
+    isDeployEnvironment(preset.environment) &&
     (preset.provider === 'netlify' ||
       preset.provider === 'vercel' ||
       preset.provider === 'cloudflare') &&
@@ -153,10 +163,12 @@ function isDeployTargetPreset(value: unknown): value is DeployTargetPreset {
   )
 }
 
+function isDeployEnvironment(value: unknown): value is DeployEnvironment {
+  return value === 'preview' || value === 'staging' || value === 'production'
+}
+
 export function readDeployHistory(): DeployHistoryEntry[] {
-  const s = storage()
-  if (!s) return []
-  const raw = s.getItem(DEPLOY_HISTORY_KEY)
+  const raw = readLocalStorageText(DEPLOY_HISTORY_KEY)
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw) as unknown
@@ -169,8 +181,7 @@ export function readDeployHistory(): DeployHistoryEntry[] {
 
 export function writeDeployHistory(entries: readonly DeployHistoryEntry[]): DeployHistoryEntry[] {
   const next = entries.slice(0, DEPLOY_HISTORY_LIMIT)
-  const s = storage()
-  if (s) s.setItem(DEPLOY_HISTORY_KEY, JSON.stringify(next))
+  writeLocalStorageText(DEPLOY_HISTORY_KEY, JSON.stringify(next))
   return next
 }
 
@@ -192,14 +203,12 @@ export function recordDeployHistory(
 
 export function readDeployTargetPresets(): Record<DeployEnvironment, DeployTargetPreset | null> {
   const empty = { preview: null, staging: null, production: null }
-  const s = storage()
-  if (!s) return empty
-  const raw = s.getItem(DEPLOY_TARGETS_KEY)
+  const raw = readLocalStorageText(DEPLOY_TARGETS_KEY)
   if (!raw) return empty
   try {
     const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object') return empty
-    const record = parsed as Record<string, unknown>
+    const record = objectFields(parsed)
+    if (!record) return empty
     return {
       preview: isDeployTargetPreset(record.preview) ? record.preview : null,
       staging: isDeployTargetPreset(record.staging) ? record.staging : null,
@@ -213,8 +222,7 @@ export function readDeployTargetPresets(): Record<DeployEnvironment, DeployTarge
 export function writeDeployTargetPresets(
   presets: Record<DeployEnvironment, DeployTargetPreset | null>
 ): Record<DeployEnvironment, DeployTargetPreset | null> {
-  const s = storage()
-  if (s) s.setItem(DEPLOY_TARGETS_KEY, JSON.stringify(presets))
+  writeLocalStorageText(DEPLOY_TARGETS_KEY, JSON.stringify(presets))
   return presets
 }
 
@@ -431,13 +439,14 @@ export async function restoreNetlifyDeploy(
     throw new Error(`Netlify rollback failed: ${res.status}${hint}${detail ? ` — ${detail}` : ''}`)
   }
   const text = await res.text()
-  const deploy = text ? (JSON.parse(text) as Record<string, unknown>) : {}
-  const restoredId = typeof deploy.id === 'string' ? deploy.id : deployId
-  const url =
-    typeof deploy.ssl_url === 'string'
-      ? deploy.ssl_url
-      : typeof deploy.url === 'string'
-        ? deploy.url
-        : undefined
+  const deploy = text ? objectFields(JSON.parse(text)) : null
+  const restoredId = typeof deploy?.id === 'string' ? deploy.id : deployId
+  const url = restoreDeployUrl(deploy)
   return { provider: 'netlify', deployId: restoredId, url }
+}
+
+function restoreDeployUrl(deploy: UnknownFields | null): string | undefined {
+  if (typeof deploy?.ssl_url === 'string') return deploy.ssl_url
+  if (typeof deploy?.url === 'string') return deploy.url
+  return undefined
 }

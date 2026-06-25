@@ -537,15 +537,26 @@ export function parsePenFile(json: string): SceneGraph {
 }
 
 function isSeoMetadata(value: unknown): value is SeoMetadata {
+  const metadata = seoMetadataFields(value)
+  if (!metadata) return false
   return (
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    optionalString((value as Record<string, unknown>).title) &&
-    optionalString((value as Record<string, unknown>).description) &&
-    optionalString((value as Record<string, unknown>).image) &&
-    optionalString((value as Record<string, unknown>).canonicalUrl)
+    optionalString(metadata.title) &&
+    optionalString(metadata.description) &&
+    optionalString(metadata.image) &&
+    optionalString(metadata.canonicalUrl)
   )
+}
+
+interface SeoMetadataFields {
+  title?: unknown
+  description?: unknown
+  image?: unknown
+  canonicalUrl?: unknown
+}
+
+function seoMetadataFields(value: unknown): SeoMetadataFields | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
+  return value as SeoMetadataFields
 }
 
 function optionalString(value: unknown): boolean {

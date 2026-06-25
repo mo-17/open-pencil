@@ -448,8 +448,8 @@ async function getCloudflareUploadToken(
     `/accounts/${encodeURIComponent(accountId)}/pages/projects/${encodeURIComponent(projectName)}/upload-token`,
     { token }
   )
-  if (!result || Array.isArray(result) || typeof result.jwt !== 'string') {
-    throw new Error('Cloudflare upload-token returned no jwt')
+  if (Array.isArray(result) || typeof result.jwt !== 'string') {
+    throw new TypeError('Cloudflare upload-token returned no jwt')
   }
   return result.jwt
 }
@@ -513,8 +513,7 @@ async function createCloudflareDeployment(
     )}/deployments`,
     { method: 'POST', token: target.token, formBody: form }
   )
-  if (!deployment || Array.isArray(deployment))
-    throw new Error('Cloudflare deployment returned no result')
+  if (Array.isArray(deployment)) throw new Error('Cloudflare deployment returned no result')
   const deployId = deployment.id
   if (typeof deployId !== 'string') throw new Error('Cloudflare deployment returned no id')
   const url =

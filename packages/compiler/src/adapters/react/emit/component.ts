@@ -92,21 +92,22 @@ function buildComponentBody(
   // defaulting to the master child's text so clean usages (`<Name />`) render
   // unchanged. The body's matching TEXT nodes were collected as `{prop}`.
   const propLines = def.props.map((p) => `\n  ${p.name}?: string`).join('')
-  const header = `interface ${def.name}Props {\n  className?: string${propLines}\n}\n\n`
+  const header = componentPropsHeader(def.name, propLines)
   const destructure = [
     'className',
+    'style',
     ...def.props.map((p) => `${p.name} = ${JSON.stringify(p.defaultValue)}`)
   ].join(', ')
   if (def.children.length === 0) {
     return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
-${hookBlock}  return <div className={className} />
+${hookBlock}  return <div className={className} style={style} />
 }
 `
   }
   const body = def.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
 ${hookBlock}  return (
-    <div className={className}>
+    <div className={className} style={style}>
 ${body}
     </div>
   )
@@ -136,17 +137,18 @@ function buildVariantModule(
     .map((a) => `\n  ${a.name}?: ${a.options.map((o) => JSON.stringify(o)).join(' | ')}`)
     .join('')
   const propLines = axisLines + def.props.map((p) => `\n  ${p.name}?: string`).join('')
-  const header = `interface ${def.name}Props {\n  className?: string${propLines}\n}\n\n`
+  const header = componentPropsHeader(def.name, propLines)
   const destructure = [
     'className',
+    'style',
     ...axes.map((a) => `${a.name} = ${JSON.stringify(a.defaultValue)}`),
     ...def.props.map((p) => p.name)
   ].join(', ')
   // A registered SET always has ≥1 variant, but guard so the slice below is
   // sound and the fallback never references an undefined case.
   if (variants.length === 0) {
-    return `${header}export default function ${def.name}({ className }: ${def.name}Props) {
-  return <div className={className} />
+    return `${header}export default function ${def.name}({ className, style }: ${def.name}Props) {
+  return <div className={className} style={style} />
 }
 `
   }
@@ -167,11 +169,16 @@ ${guards}  return ${variantBody(defaultCase, devMode, uiKit)}
 `
 }
 
+function componentPropsHeader(name: string, propLines: string): string {
+  return `interface ${name}Props {\n  className?: string\n  style?: CSSProperties${propLines}\n}\n\n`
+}
+
 function buildComponentReactImport(def: ComponentDef): string {
   const names: string[] = []
   if ((def.validatedFields?.length ?? 0) > 0) names.push('useState')
   if (validationUsesRemote(def.validatedFields ?? [])) names.push('useRef')
-  return names.length > 0 ? `import { ${names.join(', ')} } from 'react'\n` : ''
+  const valueImport = names.length > 0 ? `import { ${names.join(', ')} } from 'react'\n` : ''
+  return `${valueImport}import type { CSSProperties } from 'react'\n`
 }
 
 function buildComponentLowcodeStateImport(def: ComponentDef): string {
@@ -203,10 +210,10 @@ function buildComponentHookBlock(def: ComponentDef, usesIntl: boolean): string {
 
 /** Render one variant's `<div className={className}>…</div>` return value. */
 function variantBody(variant: VariantCase, devMode: boolean, uiKit: UiKitAdapter | null): string {
-  if (variant.children.length === 0) return '<div className={className} />'
+  if (variant.children.length === 0) return '<div className={className} style={style} />'
   const body = variant.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `(
-    <div className={className}>
+    <div className={className} style={style}>
 ${body}
     </div>
   )`

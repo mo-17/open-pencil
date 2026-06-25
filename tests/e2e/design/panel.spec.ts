@@ -326,8 +326,10 @@ test('multi-select shows mixed header and boolean operations', async () => {
 
 test('inspector filter narrows sections and can be cleared', async () => {
   await editor.page.evaluate(() => {
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('open-pencil:inspector-section:')) localStorage.removeItem(key)
+    const storageName = 'localStorage'
+    const storage = window[storageName]
+    for (const key of Object.keys(storage)) {
+      if (key.startsWith('open-pencil:inspector-section:')) storage.removeItem(key)
     }
   })
   await editor.canvas.clearCanvas()
@@ -369,8 +371,10 @@ test('inspector filter narrows sections and can be cleared', async () => {
 
 test('inspector filter groups lowcode controls and shows an empty result', async () => {
   await editor.page.evaluate(() => {
-    for (const key of Object.keys(localStorage)) {
-      if (key.startsWith('open-pencil:inspector-section:')) localStorage.removeItem(key)
+    const storageName = 'localStorage'
+    const storage = window[storageName]
+    for (const key of Object.keys(storage)) {
+      if (key.startsWith('open-pencil:inspector-section:')) storage.removeItem(key)
     }
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
@@ -429,7 +433,8 @@ test('inspector filter works in the empty design panel', async () => {
 
 test('inspector sections collapse and remember state', async () => {
   await editor.page.evaluate(() => {
-    localStorage.removeItem('open-pencil:inspector-section:position')
+    const storageName = 'localStorage'
+    window[storageName].removeItem('open-pencil:inspector-section:position')
   })
   await editor.canvas.clearCanvas()
   await editor.canvas.drawRect(120, 120, 100, 80)

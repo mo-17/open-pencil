@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import { resolveDeployEnvironment } from '@open-pencil/core'
+import { resolveDeployEnvironment } from '@open-pencil/core/lowcode-deployment'
 
-import { resolveDeployProvider } from '../../../packages/cli/src/commands/deploy'
+import { resolveDeployProvider } from '#cli/commands/deploy'
 
 describe('deploy CLI provider parsing', () => {
   test('accepts all deploy providers exposed by help text', () => {

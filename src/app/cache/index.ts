@@ -22,6 +22,23 @@ function storageKey(key: string) {
   return `${STORAGE_PREFIX}${key}`
 }
 
+function localStorageOrNull(): Storage | null {
+  if (!isStorageAvailable()) return null
+  return window.localStorage
+}
+
+export function readLocalStorageText(key: string): string | null {
+  return localStorageOrNull()?.getItem(key) ?? null
+}
+
+export function writeLocalStorageText(key: string, value: string): void {
+  localStorageOrNull()?.setItem(key, value)
+}
+
+export function removeLocalStorageText(key: string): void {
+  localStorageOrNull()?.removeItem(key)
+}
+
 export async function readCacheText(key: string): Promise<string | null> {
   if (isTauriRuntime()) {
     try {
@@ -34,8 +51,7 @@ export async function readCacheText(key: string): Promise<string | null> {
     }
   }
 
-  if (!isStorageAvailable()) return null
-  return window.localStorage.getItem(storageKey(key))
+  return readLocalStorageText(storageKey(key))
 }
 
 export async function writeCacheText(key: string, value: string): Promise<void> {
@@ -48,8 +64,7 @@ export async function writeCacheText(key: string, value: string): Promise<void> 
     return
   }
 
-  if (!isStorageAvailable()) return
-  window.localStorage.setItem(storageKey(key), value)
+  writeLocalStorageText(storageKey(key), value)
 }
 
 export async function removeCacheEntry(key: string): Promise<void> {
@@ -63,8 +78,7 @@ export async function removeCacheEntry(key: string): Promise<void> {
     return
   }
 
-  if (!isStorageAvailable()) return
-  window.localStorage.removeItem(storageKey(key))
+  removeLocalStorageText(storageKey(key))
 }
 
 export async function readCacheBytes(key: string): Promise<ArrayBuffer | null> {

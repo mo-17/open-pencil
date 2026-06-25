@@ -18,12 +18,20 @@ function slugify(name: string): string {
   return slug || 'token'
 }
 
-function isColor(value: VariableValue): value is Color {
-  return typeof value === 'object' && value !== null && 'r' in value && 'g' in value && 'b' in value
+function hasVariableObjectKey(value: VariableValue, key: string): boolean {
+  return typeof value === 'object' && Object.hasOwn(value, key)
 }
 
-function isAlias(value: VariableValue): value is { aliasId: string } {
-  return typeof value === 'object' && value !== null && 'aliasId' in value
+function isCssColorValue(value: VariableValue): value is Color {
+  return (
+    hasVariableObjectKey(value, 'r') &&
+    hasVariableObjectKey(value, 'g') &&
+    hasVariableObjectKey(value, 'b')
+  )
+}
+
+function isVariableAliasValue(value: VariableValue): value is { aliasId: string } {
+  return hasVariableObjectKey(value, 'aliasId')
 }
 
 function resolveValue(
@@ -32,16 +40,16 @@ function resolveValue(
   modeId: string,
   visited = new Set<string>()
 ): VariableValue {
-  if (!isAlias(value)) return value
-  if (visited.has(value.aliasId)) return value
-  visited.add(value.aliasId)
-  const target = variables.get(value.aliasId)
-  if (!target) return value
-  const targetValue =
-    target.valuesByMode[modeId] ??
-    target.valuesByMode[Object.keys(target.valuesByMode)[0] ?? ''] ??
-    value
-  return resolveValue(targetValue, variables, modeId, visited)
+  let current = value
+  while (isVariableAliasValue(current) && !visited.has(current.aliasId)) {
+    visited.add(current.aliasId)
+    const target = variables.get(current.aliasId)
+    if (!target) break
+    const valuesByMode: Partial<Record<string, VariableValue>> = target.valuesByMode
+    current =
+      valuesByMode[modeId] ?? valuesByMode[Object.keys(target.valuesByMode)[0] ?? ''] ?? current
+  }
+  return current
 }
 
 function formatCssValue(
@@ -50,7 +58,7 @@ function formatCssValue(
   modeId: string
 ): string | null {
   const resolved = resolveValue(value, variables, modeId)
-  if (isColor(resolved)) return colorToHex(resolved)
+  if (isCssColorValue(resolved)) return colorToHex(resolved)
   if (typeof resolved === 'number') return String(resolved)
   if (typeof resolved === 'string') return resolved
   if (typeof resolved === 'boolean') return resolved ? '1' : '0'
@@ -100,7 +108,8 @@ export function buildDesignTokenThemeCss(graph: SceneGraph): string {
     for (const variable of vars) {
       const cssVar = designTokenCssVariableName(graph, variable.id)
       if (!cssVar) continue
-      const defaultValue = variable.valuesByMode[defaultModeId]
+      const valuesByMode: Partial<Record<string, VariableValue>> = variable.valuesByMode
+      const defaultValue = valuesByMode[defaultModeId]
       if (defaultValue !== undefined) {
         const formatted = formatCssValue(defaultValue, variables, defaultModeId)
         if (formatted !== null) rootLines.push(`  ${cssVar}: ${formatted};`)
@@ -108,7 +117,7 @@ export function buildDesignTokenThemeCss(graph: SceneGraph): string {
 
       for (const mode of collection.modes) {
         if (mode.modeId === defaultModeId) continue
-        const value = variable.valuesByMode[mode.modeId]
+        const value = valuesByMode[mode.modeId]
         if (value === undefined) continue
         const formatted = formatCssValue(value, variables, mode.modeId)
         if (formatted === null) continue

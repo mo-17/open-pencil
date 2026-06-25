@@ -12,7 +12,9 @@ function installLocalStorage() {
     key: (index: number) => [...data.keys()][index] ?? null
   } satisfies Pick<Storage, 'length' | 'getItem' | 'setItem' | 'removeItem' | 'key'>
 
-  Object.assign(globalThis, { window: { localStorage: storage } })
+  const windowMock = {}
+  Object.defineProperty(windowMock, 'localStorage', { value: storage })
+  Object.assign(globalThis, { window: windowMock })
   return data
 }
 
