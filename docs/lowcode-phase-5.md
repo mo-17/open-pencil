@@ -145,6 +145,16 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 本刀仍不改 CLI deploy 参数、provider 上传实现、团队共享 history 或 provider 原生
   rollback API。
 
+**2026-06-25 第五刀已完成**:
+
+- 增加本地 rollback contract helper,按 provider 描述未来真实 rollback API 所需字段和当前支持状态。
+- Netlify / Cloudflare 带足本地字段时标记为 `api-candidate`;Cloudflare 缺少
+  `account/project` target 时降级为 `dashboard-only`。
+- Vercel 当前标记为 `dashboard-only`,因为 production alias / project ownership metadata
+  尚未进入本地 history contract。
+- Deploy history item 显示 rollback contract 状态,但仍不调用 provider API。
+- 本刀仍不改 CLI deploy 参数、provider 上传实现、token 读取逻辑或远端 rollback endpoint。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -159,6 +169,9 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
   build option snapshot / compat schema,同文件覆盖。**
 - Environment target 可以记住 provider/site/build options 且不保存 token。**2026-06-25
   第四刀已补本地 target presets,覆盖在 `tests/engine/app/deploy-history.test.ts`。**
+- Provider rollback API 的前置 contract 可判断 api-candidate / dashboard-only /
+  unsupported。**2026-06-25 第五刀已补本地 rollback contract,覆盖在
+  `tests/engine/app/deploy-history.test.ts`;真实 provider API 仍未调用。**
 
 ---
 

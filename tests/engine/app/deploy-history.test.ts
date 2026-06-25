@@ -104,6 +104,43 @@ describe('lowcode deploy history', () => {
     expect(deployDashboardUrl({ provider: 'cloudflare', deployId: 'cf_4' })).toBeNull()
   })
 
+  test('describes provider rollback contracts without calling provider APIs', async () => {
+    installLocalStorage()
+    const { deployRollbackContract } = await import('@/app/lowcode/preview-pane/deploy-history')
+
+    expect(deployRollbackContract({ provider: 'netlify', deployId: 'dep_1' })).toMatchObject({
+      provider: 'netlify',
+      support: 'api-candidate',
+      label: 'Restore deploy',
+      requiredFields: ['token', 'deployId']
+    })
+    expect(
+      deployRollbackContract({
+        provider: 'cloudflare',
+        deployId: 'cf_1',
+        site: 'account/project'
+      })
+    ).toMatchObject({
+      provider: 'cloudflare',
+      support: 'api-candidate',
+      requiredFields: ['token', 'site', 'deployId']
+    })
+    expect(deployRollbackContract({ provider: 'cloudflare', deployId: 'cf_2' })).toMatchObject({
+      provider: 'cloudflare',
+      support: 'dashboard-only',
+      reason: 'Cloudflare rollback needs an account/project site target.'
+    })
+    expect(deployRollbackContract({ provider: 'vercel', deployId: 'ver_1' })).toMatchObject({
+      provider: 'vercel',
+      support: 'dashboard-only',
+      requiredFields: ['token', 'deployId', 'productionAlias']
+    })
+    expect(deployRollbackContract({ provider: 'custom', deployId: 'x' })).toMatchObject({
+      provider: 'custom',
+      support: 'unsupported'
+    })
+  })
+
   test('builds a redeploy draft from history without restoring deploy artifacts or tokens', async () => {
     installLocalStorage()
     const { deployBuildOptionsSnapshot, deployRollbackDraft, recordDeployHistory } =

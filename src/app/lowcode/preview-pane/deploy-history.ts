@@ -48,6 +48,17 @@ export interface DeployTargetPreset {
   updatedAt: string
 }
 
+export type DeployRollbackSupport = 'api-candidate' | 'dashboard-only' | 'unsupported'
+
+export interface DeployRollbackContract {
+  provider: string
+  support: DeployRollbackSupport
+  label: string
+  requiredFields: string[]
+  reason?: string
+  dashboardUrl: string | null
+}
+
 const DEPLOY_HISTORY_KEY = 'open-pencil:lowcode-deploy-history:v1'
 const DEPLOY_TARGETS_KEY = 'open-pencil:lowcode-deploy-targets:v1'
 const DEPLOY_HISTORY_LIMIT = 8
@@ -259,4 +270,49 @@ export function deployDashboardUrl(
     }
   }
   return null
+}
+
+export function deployRollbackContract(
+  entry: Pick<DeployHistoryEntry, 'provider' | 'deployId' | 'site'>
+): DeployRollbackContract {
+  const dashboardUrl = deployDashboardUrl(entry)
+  if (entry.provider === 'netlify') {
+    return {
+      provider: 'netlify',
+      support: 'api-candidate',
+      label: 'Restore deploy',
+      requiredFields: ['token', 'deployId'],
+      dashboardUrl
+    }
+  }
+  if (entry.provider === 'cloudflare') {
+    const hasTarget = typeof entry.site === 'string' && entry.site.includes('/')
+    return {
+      provider: 'cloudflare',
+      support: hasTarget ? 'api-candidate' : 'dashboard-only',
+      label: 'Rollback Pages deployment',
+      requiredFields: ['token', 'site', 'deployId'],
+      reason: hasTarget ? undefined : 'Cloudflare rollback needs an account/project site target.',
+      dashboardUrl
+    }
+  }
+  if (entry.provider === 'vercel') {
+    return {
+      provider: 'vercel',
+      support: 'dashboard-only',
+      label: 'Promote deployment',
+      requiredFields: ['token', 'deployId', 'productionAlias'],
+      reason:
+        'Vercel rollback needs production alias/project ownership metadata not stored locally yet.',
+      dashboardUrl
+    }
+  }
+  return {
+    provider: entry.provider,
+    support: 'unsupported',
+    label: 'Provider rollback',
+    requiredFields: [],
+    reason: 'No rollback contract is defined for this provider.',
+    dashboardUrl
+  }
 }

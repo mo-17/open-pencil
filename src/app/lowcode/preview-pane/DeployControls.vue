@@ -7,6 +7,7 @@ import {
   deployArtifactLabel,
   deployBuildOptionsSnapshot,
   deployDashboardUrl,
+  deployRollbackContract,
   deployRollbackDraft,
   readDeployTargetPresets,
   saveDeployTargetPreset,
@@ -136,6 +137,13 @@ function buildOptionsLabel(entry: DeployHistoryEntry): string {
     parts.push(options.locales.length > 0 ? `i18n ${options.locales.join(', ')}` : 'i18n')
   }
   return parts.join(' · ')
+}
+
+function rollbackContractLabel(entry: DeployHistoryEntry): string {
+  const contract = deployRollbackContract(entry)
+  if (contract.support === 'api-candidate') return `${contract.label} API candidate`
+  if (contract.support === 'dashboard-only') return `${contract.label}: dashboard only`
+  return 'Rollback unsupported'
 }
 
 watch(environment, (next) => {
@@ -322,6 +330,9 @@ applyEnvironmentPreset(environment.value)
             </div>
             <div class="truncate" :title="artifactLabel(entry)">{{ artifactLabel(entry) }}</div>
             <div class="truncate">{{ buildOptionsLabel(entry) }}</div>
+            <div class="truncate" :title="deployRollbackContract(entry).reason">
+              {{ rollbackContractLabel(entry) }}
+            </div>
             <div class="truncate">Deploy {{ entry.deployId }}</div>
             <div class="truncate">
               Rollback:
