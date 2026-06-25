@@ -5,6 +5,7 @@
 ### Changed
 
 - Add compiler support for persisted static lowcode SEO metadata in generated `index.html`, including title, description, Open Graph image, canonical URL fields, `.fig` / `.pen` import coverage, and AI ToolDef read/write support.
+- Split lowcode Inspector controls into Bindings, Events, Validation, and Advanced groups, with highlighted filter matches and an empty filter result state.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.
 - Add user-facing lowcode app onboarding docs covering preview, compile, build, Supabase overrides, i18n, shadcn/ui, and deploy.

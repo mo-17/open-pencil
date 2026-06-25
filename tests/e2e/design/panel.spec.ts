@@ -339,6 +339,9 @@ test('inspector filter narrows sections and can be cleared', async () => {
 
   await filter.fill('export')
   await expect(editor.page.getByTestId('inspector-section-export')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-trigger-export')).toHaveClass(
+    /text-accent/
+  )
   await expect(editor.page.getByTestId('inspector-section-position')).not.toBeVisible()
   await expect(editor.page.getByTestId('inspector-section-appearance')).not.toBeVisible()
 
@@ -346,9 +349,82 @@ test('inspector filter narrows sections and can be cleared', async () => {
   await expect(editor.page.getByTestId('inspector-section-position')).toBeVisible()
   await expect(editor.page.getByTestId('inspector-section-appearance')).toBeVisible()
 
+  await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = store.createShape('BUTTON', 140, 140, 120, 44)
+    store.select([id])
+    store.state.sceneVersion++
+  })
+  await editor.canvas.waitForRender()
+
   await filter.fill('event')
-  await expect(editor.page.getByTestId('inspector-section-lowcode')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-lowcode-events')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-trigger-lowcode-events')).toHaveClass(
+    /text-accent/
+  )
   await expect(editor.page.getByTestId('inspector-section-position')).not.toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-lowcode-bindings')).not.toBeVisible()
+})
+
+test('inspector filter groups lowcode controls and shows an empty result', async () => {
+  await editor.page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('open-pencil:inspector-section:')) localStorage.removeItem(key)
+    }
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    store.graph.updateNode(store.graph.rootId, {
+      lowcodeDocumentState: [{ id: 'doc-email', name: 'email', type: 'string', defaultValue: '' }]
+    })
+    const id = store.createShape('INPUT', 140, 140, 220, 36)
+    store.graph.updateNode(id, {
+      bindings: { value: { kind: 'docState', docStateName: 'email' } }
+    })
+    store.select([id])
+    store.state.sceneVersion++
+  })
+  await editor.canvas.waitForRender()
+
+  const filter = editor.page.getByTestId('inspector-filter-input')
+  await filter.fill('binding')
+  await expect(editor.page.getByTestId('inspector-section-lowcode-bindings')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-lowcode-validation')).not.toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-lowcode-advanced')).not.toBeVisible()
+
+  await filter.fill('validation')
+  await expect(editor.page.getByTestId('inspector-section-lowcode-validation')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-lowcode-bindings')).not.toBeVisible()
+
+  await filter.fill('zzzz-no-section')
+  await expect(editor.page.getByTestId('inspector-filter-empty')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-filter-empty')).toContainText(
+    'No matching property sections'
+  )
+})
+
+test('inspector filter works in the empty design panel', async () => {
+  await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    store.clearSelection()
+  })
+  await editor.canvas.waitForRender()
+  await expect(editor.page.getByTestId('design-panel-empty')).toBeVisible()
+
+  const filter = editor.page.getByTestId('inspector-filter-input')
+  await filter.fill('supabase')
+  await expect(editor.page.getByTestId('inspector-section-lowcode-document-services')).toBeVisible()
+  await expect(editor.page.getByTestId('inspector-section-page')).not.toBeVisible()
+
+  await filter.fill('translation')
+  await expect(editor.page.getByTestId('inspector-section-lowcode-document-content')).toBeVisible()
+  await expect(
+    editor.page.getByTestId('inspector-section-lowcode-document-services')
+  ).not.toBeVisible()
+
+  await filter.fill('zzzz-no-section')
+  await expect(editor.page.getByTestId('inspector-filter-empty')).toBeVisible()
 })
 
 test('inspector sections collapse and remember state', async () => {

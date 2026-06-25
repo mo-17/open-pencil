@@ -9,8 +9,9 @@ const props = withDefaults(
     id: string
     title: string
     defaultOpen?: boolean
+    highlighted?: boolean
   }>(),
-  { defaultOpen: true }
+  { defaultOpen: true, highlighted: false }
 )
 
 const STORAGE_PREFIX = 'open-pencil:inspector-section:'
@@ -40,6 +41,7 @@ watch(open, (next) => {
     <CollapsibleTrigger
       :data-test-id="`inspector-section-trigger-${id}`"
       class="flex h-8 w-full items-center gap-2 px-3 text-left text-[11px] font-medium text-muted hover:bg-hover hover:text-surface"
+      :class="highlighted ? 'bg-accent/10 text-accent' : ''"
     >
       <icon-lucide-chevron-down
         class="size-3 transition-transform [[data-state=closed]>&]:-rotate-90"

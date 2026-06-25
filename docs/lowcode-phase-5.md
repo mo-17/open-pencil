@@ -294,6 +294,17 @@ workflows、validation、i18n、deploy/preview 等入口。继续平铺会导致
 - 对高级低代码分组使用 progressive disclosure:默认只显示常用项,高级项折叠到
   `Advanced`。
 
+**2026-06-25 收尾 polish 已完成**:
+
+- 单选节点的低代码属性从单一 `Lowcode` section 拆成 `Bindings`、`Events`、
+  `Validation`、`Advanced` 四组,保留原有子面板和写入路径。
+- 空选择的文档级低代码入口拆成 `Lowcode State`、`Services & Workflows`、
+  `Content & i18n`,减少 Supabase / workflow / translation 与 page 属性互相打断。
+- Inspector filter 命中 section 时高亮 section trigger;无匹配时显示
+  `No matching property sections` 空状态,不再留下静默空白面板。
+- `tests/e2e/design/panel.spec.ts` 覆盖普通节点、低代码 INPUT/BUTTON、空选态、空结果、
+  section 高亮和折叠状态记忆。
+
 ### 8.3 非目标
 
 - 不在第一刀改变 SceneNode schema。
@@ -304,10 +315,16 @@ workflows、validation、i18n、deploy/preview 等入口。继续平铺会导致
 ### 8.4 成功标准草案
 
 - 常见节点选择后,首屏能看到最相关的 2-3 个分组。
-- 折叠状态在同一设备重启 app 后保留。
+- 折叠状态在同一设备重启 app 后保留。**2026-06-25 已由
+  `tests/e2e/design/panel.spec.ts` 覆盖 localStorage 记忆。**
 - 空选择、多选、text、frame、component instance、lowcode 表单节点都有合理默认展开。
-- Tauri GUI ACK 覆盖展开/折叠、切换选择、状态保留。
-- Vue typecheck 和 focused component tests 通过。
+  **2026-06-25 已覆盖空选态、多选、普通矩形、BUTTON/INPUT 低代码节点;component
+  instance 仍沿用既有 `Component` section。**
+- Tauri/browser GUI ACK 覆盖展开/折叠、切换选择、状态保留。**2026-06-25 已跑浏览器
+  Playwright ACK:`bun run test -- tests/e2e/design/panel.spec.ts --project=openpencil`
+  16 passed。**
+- Vue typecheck 和 focused component tests 通过。**2026-06-25 已通过 `bun run check:vue`
+  和 focused Playwright;本刀没有新增组件单测 harness。**
 
 ---
 
