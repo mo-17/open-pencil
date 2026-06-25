@@ -96,6 +96,12 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
   await uiKit.selectOption('shadcn')
   await expect(uiKit).toHaveValue('shadcn')
 
+  const theme = page.getByTestId('lowcode-preview-theme')
+  await expect(theme).toBeVisible()
+  await expect(theme).toHaveValue('light')
+  await theme.selectOption('dark')
+  await expect(theme).toHaveValue('dark')
+
   const i18n = page.getByTestId('lowcode-preview-i18n')
   await expect(i18n).toBeVisible()
   await i18n.check()

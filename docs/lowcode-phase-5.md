@@ -225,6 +225,18 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 本刀只解决 token emit,还不自动把节点样式改写为 `var(...)`,也不提供 preview theme
   switch UI / runtime provider。
 
+**2026-06-25 第二刀已完成**:
+
+- 当 generated theme CSS 存在时,React adapter 同步 emit `src/_lowcode_theme.tsx`。
+- `src/main.tsx` 自动用 `LowcodeThemeProvider` 包住 App;runtime 暴露 `useTheme()` 和
+  `setTheme(theme)`。
+- Runtime 默认从 `localStorage` / `prefers-color-scheme` 初始化,并把当前 theme 应用到
+  `document.documentElement.dataset.theme`、`.dark` class 和 `color-scheme`。
+- Preview pane 增加 Light / Dark theme switch,通过现有 editor→iframe postMessage 通道发送
+  `{ type: 'theme' }`,iframe runtime 接收后即时切换。
+- 本刀仍不自动把节点样式改写为 `var(...)`;只有已经使用 CSS variables / theme selectors
+  的输出会随 theme 切换。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
@@ -236,8 +248,11 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   token blocks。**2026-06-25 已由 `tests/engine/compiler/theme-css.test.ts` 覆盖。**
 - 无 variables 时不引入额外 theme block。**2026-06-25 已覆盖。**
 - 显式 `CompilerOptions.themeCss` 与自动 token CSS 合并顺序稳定。**2026-06-25 已覆盖。**
-- 后续第二刀可继续做:节点样式 `var(...)` 映射、preview theme switch、runtime
-  `ThemeProvider` / `useTheme` hook。
+- Preview pane 可切换 light/dark,emitted runtime 暴露 `ThemeProvider` / `useTheme` hook。
+  **2026-06-25 第二刀已完成;compiler runtime 覆盖在
+  `tests/engine/compiler/theme-css.test.ts`。**
+- 后续第三刀可继续做:节点样式 `var(...)` 映射、用户可见的 generated app theme switch
+  控件、更多非 dark mode 的 runtime UI。
 
 ---
 

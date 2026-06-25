@@ -47,6 +47,7 @@ import {
   buildViteEnvDts,
   SUPABASE_JS_VERSION
 } from './lowcode/supabase'
+import { buildLowcodeThemeRuntime } from './lowcode/theme'
 import { buildLowcodeToastRuntime, TOAST_RUNTIME_CLASSES } from './lowcode/toast'
 import { buildLowcodeValidationRuntime, VALIDATION_ERROR_CLASSES } from './lowcode/validation'
 import { buildPreviewBridge } from './preview-bridge'
@@ -69,6 +70,7 @@ const LOWCODE_I18N_FILE = 'src/_lowcode_i18n.tsx'
 const LOWCODE_TOAST_FILE = 'src/_lowcode_toast.tsx'
 const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
 const LOWCODE_VALIDATION_FILE = 'src/_lowcode_validation.tsx'
+const LOWCODE_THEME_FILE = 'src/_lowcode_theme.tsx'
 
 export const reactAdapter: FrameworkAdapter = {
   emit(
@@ -529,6 +531,7 @@ function setSharedProjectFiles(
   kit: { themeCss: string; active: boolean },
   metadata?: HtmlMetadata
 ): void {
+  const themeActive = !!options.themeCss?.trim()
   // Phase 3 §10 v2 / v3 + §19: the toast / confirm / validation-error classes
   // never appear in the IR, so seed them into the Tailwind safelist (the VFS
   // iframe finds no classes on disk). Only seed the runtimes a page actually
@@ -551,7 +554,8 @@ function setSharedProjectFiles(
     'index.html',
     buildIndexHtml(options.packageName, htmlLang, isRtlLocale(htmlLang), metadata)
   )
-  files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm))
+  if (themeActive) files.set(LOWCODE_THEME_FILE, buildLowcodeThemeRuntime())
+  files.set('src/main.tsx', buildMainTsx(i18n, toast, confirm, themeActive))
   const themeCss = [options.themeCss, kit.themeCss].filter(Boolean).join('\n')
   files.set('src/index.css', buildIndexCss(safelist, themeCss))
   files.set('.gitignore', buildGitignore())

@@ -86,6 +86,29 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(css).toContain('@import "tailwindcss"')
     expect(css).toContain('--op-brand-theme-color-primary: #3366CC;')
     expect(css).toContain(':root[data-theme="dark"], .dark')
+
+    const main = out.files.get('src/main.tsx') as string
+    expect(main).toContain("import { LowcodeThemeProvider } from './_lowcode_theme'")
+    expect(main).toContain('<LowcodeThemeProvider>')
+    expect(out.files.has('src/_lowcode_theme.tsx')).toBe(true)
+    const runtime = out.files.get('src/_lowcode_theme.tsx') as string
+    expect(runtime).toContain('export function useTheme()')
+    expect(runtime).toContain("data.source !== 'op-lowcode-editor' || data.type !== 'theme'")
+    expect(runtime).toContain("document.documentElement.classList.toggle('dark'")
+  })
+
+  test('compile does not emit theme runtime when no theme css exists', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'plain-demo' })
+    })
+
+    expect(out.files.has('src/_lowcode_theme.tsx')).toBe(false)
+    expect(out.files.get('src/main.tsx') as string).not.toContain('LowcodeThemeProvider')
   })
 
   test('explicit themeCss appends after generated design token css', () => {

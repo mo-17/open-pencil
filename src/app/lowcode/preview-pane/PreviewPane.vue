@@ -23,6 +23,7 @@ const OUTBOUND_SOURCE = 'op-lowcode-editor'
 const previewUiKit = ref<PreviewUiKit>('none')
 const previewI18nEnabled = ref(false)
 const previewLocalesInput = ref('')
+const previewTheme = ref<'light' | 'dark'>('light')
 const { status, forceRecompile } = useCompileOnChange({
   uiKit: previewUiKit,
   i18nEnabled: previewI18nEnabled,
@@ -133,9 +134,14 @@ function postIframe(
   payload:
     | { type: 'select'; id: string | null }
     | { type: 'navigate'; route: string }
+    | { type: 'theme'; theme: 'light' | 'dark' }
     | ({ type: 'docState' } & PreviewDocStatePayload)
 ): void {
   iframeEl.value?.contentWindow?.postMessage({ source: OUTBOUND_SOURCE, ...payload }, '*')
+}
+
+function postTheme(): void {
+  postIframe({ type: 'theme', theme: previewTheme.value })
 }
 
 function postNavigateToCurrent(): void {
@@ -163,6 +169,7 @@ function onIframeLoad(): void {
   // editor state (target page + selection) so the iframe doesn't sit on
   // the default `/` route or with a stale overlay.
   postNavigateToCurrent()
+  postTheme()
   postSelection()
 }
 
@@ -228,6 +235,10 @@ watch([previewUiKit, previewI18nEnabled, previewLocalesInput], () => {
   recompilePreviewOptions()
 })
 
+watch(previewTheme, () => {
+  postTheme()
+})
+
 onMounted(() => {
   unsubscribeSelection = store.onEditorEvent('selection:changed', () => {
     postSelection()
@@ -261,6 +272,17 @@ onBeforeUnmount(() => {
           >
             <option value="none">Tailwind</option>
             <option value="shadcn">shadcn</option>
+          </select>
+        </label>
+        <label class="flex items-center gap-1 text-xs text-muted" title="Preview theme">
+          <span>Theme</span>
+          <select
+            v-model="previewTheme"
+            data-test-id="lowcode-preview-theme"
+            class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
+          >
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
           </select>
         </label>
         <label
