@@ -117,6 +117,56 @@ describe('variable roundtrip', () => {
     expect(Object.keys(reimportedRect.boundVariables)).toContain('strokes/0/color')
   })
 
+  test('gradient stop variable bindings survive export → re-import', async () => {
+    await initCodec()
+
+    const graph = new SceneGraph()
+    const col = graph.createCollection('Gradient Tokens')
+    const startVar = graph.createVariable('gradient/start', 'COLOR', col.id, {
+      r: 1,
+      g: 0,
+      b: 0,
+      a: 1
+    })
+    const endVar = graph.createVariable('gradient/end', 'COLOR', col.id, {
+      r: 0,
+      g: 0,
+      b: 1,
+      a: 1
+    })
+
+    const page = graph.getPages()[0]
+    const rect = graph.createNode('RECTANGLE', page.id, {
+      name: 'Bound Gradient',
+      width: 100,
+      height: 100,
+      fills: [
+        {
+          type: 'GRADIENT_LINEAR',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          gradientStops: [
+            { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+            { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+          ],
+          gradientTransform: { m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }
+        }
+      ]
+    })
+    graph.bindVariable(rect.id, 'fills/0/gradientStops/0/color', startVar.id)
+    graph.bindVariable(rect.id, 'fills/0/gradientStops/1/color', endVar.id)
+
+    const exported = await exportFigFile(graph)
+    const reimported = await parseFigFile(exported.buffer as ArrayBuffer)
+
+    const reimportedRect = [...reimported.getAllNodes()].find((n) => n.name === 'Bound Gradient')
+    expect(reimportedRect).toBeDefined()
+    const bindings = expectDefined(reimportedRect, 'reimportedRect').boundVariables
+    expect(Object.keys(bindings)).toContain('fills/0/gradientStops/0/color')
+    expect(Object.keys(bindings)).toContain('fills/0/gradientStops/1/color')
+  })
+
   test.if(runsHeavyTests)(
     'material3.fig variables survive round-trip',
     async () => {

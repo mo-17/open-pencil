@@ -1,4 +1,5 @@
 import { normalizeColor } from '#core/color'
+import { BLACK } from '#core/constants'
 import type { Paint, Effect as KiwiEffect } from '#core/kiwi/fig/codec'
 import { guidToString } from '#core/kiwi/fig/node-change/guid'
 import type {
@@ -55,12 +56,24 @@ function convertBaseFill(p: Paint): Fill {
 }
 
 function applyGradientPaintFields(fill: Fill, p: Paint): void {
-  if (!p.type.startsWith('GRADIENT') || !p.stops) return
-  fill.gradientStops = p.stops.map((s) => ({
-    color: convertColor(s.color),
-    position: s.position
+  if (!p.type.startsWith('GRADIENT')) return
+  const stops = p.stopsVar ?? p.stops
+  if (!stops) return
+  fill.gradientStops = stops.map((s) => ({
+    color: convertColor(resolveColorStopVar(s) ?? colorStopColor(s)),
+    position: s.position ?? 0
   }))
   if (p.transform) fill.gradientTransform = convertGradientTransform(p.transform)
+}
+
+function resolveColorStopVar(stop: NonNullable<Paint['stopsVar']>[number]): Color | undefined {
+  const alias = stop.colorVar?.value?.alias
+  if (!alias || !variableColorResolver) return undefined
+  return variableColorResolver(alias) ?? undefined
+}
+
+function colorStopColor(stop: NonNullable<Paint['stopsVar']>[number]): Color {
+  return stop.color ?? BLACK
 }
 
 function applyImagePaintFields(fill: Fill, p: Paint): void {

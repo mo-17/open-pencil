@@ -80,6 +80,10 @@ export function extractBoundVariables(nc: NodeChange): Record<string, string> {
     if (paint.colorVariableBinding) {
       bindings[`fills/${i}/color`] = guidToString(paint.colorVariableBinding.variableID)
     }
+    paint.stopsVar?.forEach((stop, stopIndex) => {
+      const guid = stop.colorVar?.value?.alias?.guid
+      if (guid) bindings[`fills/${i}/gradientStops/${stopIndex}/color`] = guidToString(guid)
+    })
   })
   nc.strokePaints?.forEach((paint, i) => {
     if (paint.colorVariableBinding) {

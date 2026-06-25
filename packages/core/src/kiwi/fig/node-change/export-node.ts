@@ -98,6 +98,34 @@ function applyColorVariableBinding(
   }
 }
 
+function applyGradientStopVariableBindings(
+  context: SceneNodeToKiwiContext,
+  node: SceneNode,
+  paint: Paint,
+  fillIndex: number
+): Paint {
+  if (!paint.stops) return paint
+  const stopsVar = paint.stops.map((stop, stopIndex) => {
+    const variableId = node.boundVariables[`fills/${fillIndex}/gradientStops/${stopIndex}/color`]
+    return {
+      color: stop.color,
+      position: stop.position,
+      ...(variableId
+        ? {
+            colorVar: {
+              value: {
+                alias: { guid: context.varIdToGuid?.get(variableId) ?? stringToGuid(variableId) }
+              },
+              dataType: 'ALIAS',
+              resolvedDataType: 'COLOR'
+            }
+          }
+        : {})
+    }
+  })
+  return stopsVar.some((stop) => stop.colorVar) ? { ...paint, stopsVar } : paint
+}
+
 function createStrokePaints(context: SceneNodeToKiwiContext, node: SceneNode): Paint[] {
   return node.strokes.map((stroke, index) =>
     applyColorVariableBinding(
@@ -163,6 +191,7 @@ interface ColorVarCarrier {
       }
     }
   }
+  stopsVar?: ColorVarCarrier[]
 }
 
 function isFigmaPayloadVariableMap(value: unknown): value is FigmaPayloadVariableMap {
@@ -409,34 +438,57 @@ function applyRawFigmaNodeFields(
  */
 function convertColorVarAssetRefs<T>(paints: T, assetRefToVarGuid: Map<string, GUID>): T {
   if (!Array.isArray(paints)) return paints
-  const result = paints.map((paint: ColorVarCarrier) => {
-    const colorVar = paint.colorVar
-    const value = colorVar?.value
-    const alias = value?.alias
-    if (!colorVar || !value || !alias) return paint
-    if (alias.guid) return paint
-    const assetRef = alias.assetRef
-    if (!assetRef?.key) return paint
-    // Look up by key@version first, then by key alone
-    const lookupKey = assetRef.version ? `${assetRef.key}@${assetRef.version}` : assetRef.key
-    const guid = assetRefToVarGuid.get(lookupKey) ?? assetRefToVarGuid.get(assetRef.key)
-    if (!guid) return paint
-    return {
-      ...paint,
-      colorVar: {
-        ...colorVar,
-        value: {
-          ...value,
-          alias: { guid }
-        }
-      }
-    }
-  })
+  const result = paints.map((paint: ColorVarCarrier) =>
+    convertColorVarCarrierAssetRef(paint, assetRefToVarGuid)
+  )
   // Check if any paint was actually changed (skip expensive JSON comparison)
   for (let i = 0; i < paints.length; i++) {
     if (result[i] !== paints[i]) return result as T
   }
   return paints
+}
+
+function convertColorVarCarrierAssetRef(
+  paint: ColorVarCarrier,
+  assetRefToVarGuid: Map<string, GUID>
+): ColorVarCarrier {
+  const convertedPaint = convertOwnColorVarAssetRef(paint, assetRefToVarGuid)
+  const stopsVar = convertedPaint.stopsVar
+  if (!stopsVar) return convertedPaint
+  const convertedStops = stopsVar.map((stop) =>
+    convertColorVarCarrierAssetRef(stop, assetRefToVarGuid)
+  )
+  for (let i = 0; i < stopsVar.length; i++) {
+    if (convertedStops[i] !== stopsVar[i]) return { ...convertedPaint, stopsVar: convertedStops }
+  }
+  return convertedPaint
+}
+
+function convertOwnColorVarAssetRef(
+  paint: ColorVarCarrier,
+  assetRefToVarGuid: Map<string, GUID>
+): ColorVarCarrier {
+  const colorVar = paint.colorVar
+  const value = colorVar?.value
+  const alias = value?.alias
+  if (!colorVar || !value || !alias) return paint
+  if (alias.guid) return paint
+  const assetRef = alias.assetRef
+  if (!assetRef?.key) return paint
+  // Look up by key@version first, then by key alone
+  const lookupKey = assetRef.version ? `${assetRef.key}@${assetRef.version}` : assetRef.key
+  const guid = assetRefToVarGuid.get(lookupKey) ?? assetRefToVarGuid.get(assetRef.key)
+  if (!guid) return paint
+  return {
+    ...paint,
+    colorVar: {
+      ...colorVar,
+      value: {
+        ...value,
+        alias: { guid }
+      }
+    }
+  }
 }
 
 function applyInstancePayload(
@@ -604,14 +656,15 @@ function applyNodeVisualProps(
   }
 
   if (node.fills.length > 0) {
-    nc.fillPaints = node.fills.map((fill, index) =>
-      applyColorVariableBinding(
+    nc.fillPaints = node.fills.map((fill, index) => {
+      const paint = applyColorVariableBinding(
         context,
         node,
         context.fillToKiwiPaint(fill),
         `fills/${index}/color`
       )
-    )
+      return applyGradientStopVariableBindings(context, node, paint, index)
+    })
   }
 
   context.serializeCornerRadii(node, nc)

@@ -199,6 +199,7 @@ export interface Paint {
   visible?: boolean
   blendMode?: string
   stops?: { color: Color; position: number }[]
+  stopsVar?: { color?: Color; colorVar?: Paint['colorVar']; position?: number }[]
   transform?: Matrix
   image?: { hash: string | Uint8Array }
   imageScaleMode?: string

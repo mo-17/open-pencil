@@ -439,14 +439,28 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 本刀仍不补齐 Figma/Kiwi 标准 stop-level variableConsumptionMap round-trip 和 editor UI
   创建入口;当前 stop-level binding 主要通过 core API / 手动 `boundVariables` 数据进入 compiler。
 
+**2026-06-25 第八刀已完成**:
+
+- Figma/Kiwi gradient stop binding 已支持 round-trip:
+  - Kiwi codec `Paint` 暴露 `stopsVar`。
+  - Import 会从 `fillPaints[N].stopsVar[M].colorVar` 恢复
+    `fills/N/gradientStops/M/color`。
+  - Export 会把 `boundVariables['fills/N/gradientStops/M/color']` 写回对应
+    `stopsVar[M].colorVar`。
+  - OpenPencil `boundVariables` plugin data 继续作为兼容 fallback 写入。
+- Raw Figma payload 的 `stopsVar.colorVar.assetRef` 会和 paint-level `colorVar.assetRef`
+  一样转换为 guid,避免 library variable 引用在重导出时丢失。
+- 本刀仍不补 editor UI / ToolDef 创建入口;当前可通过 core API、导入 `.fig` 或已有
+  `boundVariables` 数据进入 compiler。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
 - 节点样式 `var(...)` 映射仍是渐进覆盖;目前覆盖 simple fill/text、stroke、scalar
   opacity、多层 SOLID background layer、component usage root、component child style prop,
-  以及 compiler/core 层的 gradient stop token binding。Figma/Kiwi stop-level
-  round-trip、editor UI 创建入口和完整多 stroke 几何语义仍需后续补齐。
+  以及 core/compiler/Kiwi 层的 gradient stop token binding。Editor UI 创建入口和完整多
+  stroke 几何语义仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -472,8 +486,10 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   `color-mix(...)` inline styles。**2026-06-25 第七刀已完成;由
   `tests/engine/compiler/theme-css.test.ts` 和
   `tests/engine/scene-graph/variable/binding/validation.test.ts` 覆盖。**
-- 后续可继续做:Figma/Kiwi stop-level binding round-trip、editor UI 创建入口、完整多 stroke
-  语义、更多非 dark mode 的 runtime UI。
+- Gradient stop token binding 可通过 `.fig` export → re-import 保留。**2026-06-25 第八刀
+  已完成;由 `tests/engine/io/fig/roundtrip/variables.test.ts` 覆盖。**
+- 后续可继续做:editor UI / ToolDef 创建入口、完整多 stroke 语义、更多非 dark mode 的
+  runtime UI。
 
 ---
 
