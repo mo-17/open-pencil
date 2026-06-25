@@ -108,11 +108,18 @@ describe('lowcode deploy history', () => {
     installLocalStorage()
     const { deployRollbackContract } = await import('@/app/lowcode/preview-pane/deploy-history')
 
-    expect(deployRollbackContract({ provider: 'netlify', deployId: 'dep_1' })).toMatchObject({
+    expect(
+      deployRollbackContract({ provider: 'netlify', deployId: 'dep_1', site: 'site_1' })
+    ).toMatchObject({
       provider: 'netlify',
       support: 'api-candidate',
       label: 'Restore deploy',
-      requiredFields: ['token', 'deployId']
+      requiredFields: ['token', 'site', 'deployId']
+    })
+    expect(deployRollbackContract({ provider: 'netlify', deployId: 'dep_2' })).toMatchObject({
+      provider: 'netlify',
+      support: 'dashboard-only',
+      reason: 'Netlify restore needs a site id or site slug.'
     })
     expect(
       deployRollbackContract({
@@ -139,6 +146,47 @@ describe('lowcode deploy history', () => {
       provider: 'custom',
       support: 'unsupported'
     })
+  })
+
+  test('restores a Netlify deploy through the site-scoped restore API', async () => {
+    installLocalStorage()
+    const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy-history')
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(input), init })
+      return new Response(
+        JSON.stringify({ id: 'dep_restored', ssl_url: 'https://app.netlify.app' })
+      )
+    }) satisfies typeof fetch
+
+    const result = await restoreNetlifyDeploy(
+      { token: 'netlify-token', siteId: 'site 1', deployId: 'dep 1' },
+      fetcher
+    )
+
+    expect(result).toEqual({
+      provider: 'netlify',
+      deployId: 'dep_restored',
+      url: 'https://app.netlify.app'
+    })
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe(
+      'https://api.netlify.com/api/v1/sites/site%201/deploys/dep%201/restore'
+    )
+    expect(calls[0].init?.method).toBe('POST')
+    expect(calls[0].init?.headers).toEqual({ Authorization: 'Bearer netlify-token' })
+  })
+
+  test('surfaces Netlify rollback API errors without persisting tokens', async () => {
+    const storage = installLocalStorage()
+    const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy-history')
+    const fetcher = (async () =>
+      new Response('Unauthorized', { status: 401 })) satisfies typeof fetch
+
+    await expect(
+      restoreNetlifyDeploy({ token: 'bad-token', siteId: 'site_1', deployId: 'dep_1' }, fetcher)
+    ).rejects.toThrow('Netlify rollback failed: 401 (check your token) — Unauthorized')
+    expect([...storage.values()].join('\n')).not.toContain('bad-token')
   })
 
   test('builds a redeploy draft from history without restoring deploy artifacts or tokens', async () => {

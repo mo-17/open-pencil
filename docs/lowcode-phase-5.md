@@ -155,6 +155,17 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - Deploy history item 显示 rollback contract 状态,但仍不调用 provider API。
 - 本刀仍不改 CLI deploy 参数、provider 上传实现、token 读取逻辑或远端 rollback endpoint。
 
+**2026-06-25 第六刀已完成**:
+
+- 增加 Netlify `restoreNetlifyDeploy()` helper,使用 site-scoped restore API:
+  `POST /sites/{site_id}/deploys/{deploy_id}/restore`。
+- Netlify rollback contract 现在要求 `token` / `site` / `deployId`;缺少 site 时降级为
+  `dashboard-only`。
+- DeployControls 对 Netlify `api-candidate` history item 显示 `restore deploy` 动作,
+  使用当前 token 输入框调用 helper。
+- Token 仍只留在组件内存,不写入 history / target presets / localStorage。
+- 本刀仍不改 CLI deploy 参数、provider 上传实现、Cloudflare / Vercel rollback endpoint。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -172,6 +183,9 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - Provider rollback API 的前置 contract 可判断 api-candidate / dashboard-only /
   unsupported。**2026-06-25 第五刀已补本地 rollback contract,覆盖在
   `tests/engine/app/deploy-history.test.ts`;真实 provider API 仍未调用。**
+- Netlify rollback API 可通过 mock fetch 验证请求构造和错误处理。**2026-06-25 第六刀已补
+  Netlify site-scoped restore helper,覆盖在 `tests/engine/app/deploy-history.test.ts`;
+  真 token live ACK 留给后续手动验证。**
 
 ---
 

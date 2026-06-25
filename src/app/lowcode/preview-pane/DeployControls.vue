@@ -11,6 +11,7 @@ import {
   deployRollbackDraft,
   readDeployTargetPresets,
   saveDeployTargetPreset,
+  restoreNetlifyDeploy,
   type DeployEnvironment,
   type DeployHistoryEntry
 } from './deploy-history'
@@ -99,6 +100,21 @@ function restoreForRollback(entry: DeployHistoryEntry): void {
   i18nEnabled.value = draft.i18nEnabled
   localesInput.value = draft.locales.join(', ')
   rollbackNotice.value = `Ready to redeploy ${entry.environment} from ${entry.deployId}. Enter a ${draft.provider} token, then deploy.`
+}
+
+async function restoreProviderDeploy(entry: DeployHistoryEntry): Promise<void> {
+  const contract = deployRollbackContract(entry)
+  if (entry.provider !== 'netlify' || contract.support !== 'api-candidate' || !entry.site) return
+  try {
+    const result = await restoreNetlifyDeploy({
+      token: token.value,
+      siteId: entry.site,
+      deployId: entry.deployId
+    })
+    rollbackNotice.value = `Restored Netlify deploy ${result.deployId}${result.url ? ` · ${result.url}` : ''}.`
+  } catch (e) {
+    rollbackNotice.value = e instanceof Error ? e.message : String(e)
+  }
 }
 
 function applyEnvironmentPreset(nextEnvironment: DeployEnvironment): void {
@@ -337,9 +353,21 @@ applyEnvironmentPreset(environment.value)
             <div class="truncate">
               Rollback:
               <button
-                v-if="deployRollbackDraft(entry)"
+                v-if="
+                  entry.provider === 'netlify' &&
+                  deployRollbackContract(entry).support === 'api-candidate'
+                "
                 type="button"
                 class="text-accent underline"
+                data-test-id="lowcode-deploy-history-restore"
+                @click="restoreProviderDeploy(entry)"
+              >
+                restore deploy
+              </button>
+              <button
+                v-if="deployRollbackDraft(entry)"
+                type="button"
+                class="ml-1 text-accent underline"
                 data-test-id="lowcode-deploy-history-redeploy"
                 @click="restoreForRollback(entry)"
               >

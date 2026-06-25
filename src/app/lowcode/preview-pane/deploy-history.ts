@@ -59,10 +59,23 @@ export interface DeployRollbackContract {
   dashboardUrl: string | null
 }
 
+export interface NetlifyRollbackTarget {
+  token: string
+  siteId: string
+  deployId: string
+}
+
+export interface DeployRollbackResult {
+  provider: DeployHistoryProvider
+  deployId: string
+  url?: string
+}
+
 const DEPLOY_HISTORY_KEY = 'open-pencil:lowcode-deploy-history:v1'
 const DEPLOY_TARGETS_KEY = 'open-pencil:lowcode-deploy-targets:v1'
 const DEPLOY_HISTORY_LIMIT = 8
 const DEPLOY_HISTORY_SCHEMA = 1
+const NETLIFY_API = 'https://api.netlify.com/api/v1'
 
 function storage(): Storage | null {
   if (typeof window === 'undefined') return null
@@ -277,11 +290,13 @@ export function deployRollbackContract(
 ): DeployRollbackContract {
   const dashboardUrl = deployDashboardUrl(entry)
   if (entry.provider === 'netlify') {
+    const hasTarget = typeof entry.site === 'string' && entry.site.trim() !== ''
     return {
       provider: 'netlify',
-      support: 'api-candidate',
+      support: hasTarget ? 'api-candidate' : 'dashboard-only',
       label: 'Restore deploy',
-      requiredFields: ['token', 'deployId'],
+      requiredFields: ['token', 'site', 'deployId'],
+      reason: hasTarget ? undefined : 'Netlify restore needs a site id or site slug.',
       dashboardUrl
     }
   }
@@ -315,4 +330,36 @@ export function deployRollbackContract(
     reason: 'No rollback contract is defined for this provider.',
     dashboardUrl
   }
+}
+
+export async function restoreNetlifyDeploy(
+  target: NetlifyRollbackTarget,
+  fetcher: typeof fetch = fetch
+): Promise<DeployRollbackResult> {
+  const token = target.token.trim()
+  const siteId = target.siteId.trim()
+  const deployId = target.deployId.trim()
+  if (!token) throw new Error('Netlify rollback requires a token.')
+  if (!siteId) throw new Error('Netlify rollback requires a site id or site slug.')
+  if (!deployId) throw new Error('Netlify rollback requires a deploy id.')
+
+  const res = await fetcher(
+    `${NETLIFY_API}/sites/${encodeURIComponent(siteId)}/deploys/${encodeURIComponent(deployId)}/restore`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+  )
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '')
+    const hint = res.status === 401 ? ' (check your token)' : ''
+    throw new Error(`Netlify rollback failed: ${res.status}${hint}${detail ? ` — ${detail}` : ''}`)
+  }
+  const text = await res.text()
+  const deploy = text ? (JSON.parse(text) as Record<string, unknown>) : {}
+  const restoredId = typeof deploy.id === 'string' ? deploy.id : deployId
+  const url =
+    typeof deploy.ssl_url === 'string'
+      ? deploy.ssl_url
+      : typeof deploy.url === 'string'
+        ? deploy.url
+        : undefined
+  return { provider: 'netlify', deployId: restoredId, url }
 }
