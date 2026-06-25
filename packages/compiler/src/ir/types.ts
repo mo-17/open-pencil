@@ -35,17 +35,17 @@ export interface IRComponentRef {
 
 /** Phase 3 §8 v2/v3/v4 — which override a component prop carries. `text` feeds a
  *  TEXT node's content (`{prop}`); `className` (Phase 3 §8 v3) replaces a
- *  child's whole className (`className={prop}`); `variant` (Phase 3 §8 v4)
- *  selects a COMPONENT_SET variant subtree. Only `className` values are
- *  Tailwind-safelisted. */
-export type ComponentPropKind = 'text' | 'className' | 'variant'
+ *  child's whole className (`className={prop}`); `style` carries inline
+ *  CSSProperties for token-bound styles; `variant` (Phase 3 §8 v4) selects a
+ *  COMPONENT_SET variant subtree. Only `className` values are Tailwind-safelisted. */
+export type ComponentPropKind = 'text' | 'className' | 'style' | 'variant'
 
 /** Phase 3 §8 v2 — one override value passed at a component usage site. */
 export interface ComponentRefProp {
   /** Prop name on the component (matches a `ComponentDef.props[].name`). */
   name: string
-  /** The overridden value (text content, or a Tailwind class string). */
-  value: string
+  /** The overridden value (text content, a Tailwind class string, or style declarations). */
+  value: string | Record<string, string>
   /** Phase 3 §8 v3 — text content vs className (drives safelisting). */
   kind: ComponentPropKind
 }
@@ -131,12 +131,19 @@ export interface IRElement {
    *  override on an instance can re-style it. The static `className` above is
    *  the default. Only set inside a component body. */
   classNameProp?: string
+  /** Phase 5 §5 follow-up — when set, this component-body child receives
+   *  token-bound inline style declarations from a usage-site prop. The static
+   *  `attrs.style` remains the fallback/default. */
+  styleProp?: string
   /** Phase 3 §8 v5 — inside a COMPONENT_SET variant subtree, a single
    *  className prop spans multiple variant subtrees with different static
    *  defaults, so the adapter emits `className={<classNameProp> ?? "<className>"}`
    *  (the static `className` is this variant's own fallback). Set only
    *  alongside `classNameProp` in a variant body. */
   classNamePropFallback?: true
+  /** Emit `style={<styleProp> ?? <attrs.style>}` when the component prop spans
+   *  variant subtrees or when the master child has its own static token style. */
+  stylePropFallback?: true
   /** Static JSX attributes. Adapters quote/escape per their syntax. */
   attrs: Record<string, IRAttrValue>
   children: IRNode[]

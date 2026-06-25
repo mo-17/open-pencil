@@ -253,6 +253,38 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(appTsx).toContain('backgroundRepeat: "no-repeat, no-repeat"')
   })
 
+  test('compile maps gradient stop token colors to generated inline CSS vars', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+    const rect = createRect(graph, pageId, { name: 'Token Gradient' })
+    rect.fills = [
+      {
+        type: 'GRADIENT_LINEAR',
+        color: { r: 0, g: 0, b: 0, a: 1 },
+        opacity: 1,
+        visible: true,
+        gradientStops: [
+          { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+          { color: { r: 0, g: 0, b: 1, a: 0.5 }, position: 1 }
+        ],
+        gradientTransform: { m00: 0, m01: 1, m02: 0, m10: -1, m11: 0, m12: 1 }
+      }
+    ]
+    graph.bindVariable(rect.id, 'fills/0/gradientStops/0/color', 'var-primary')
+    graph.bindVariable(rect.id, 'fills/0/gradientStops/1/color', 'var-alias')
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'theme-demo' })
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain(
+      'backgroundImage: "linear-gradient(180deg, var(--op-brand-theme-color-primary) 0%, color-mix(in srgb, var(--op-brand-theme-color-accent) 50%, transparent) 100%)"'
+    )
+  })
+
   test('component usage roots preserve bound token styles', () => {
     const graph = addThemeVariables()
     const pageId = firstPageId(graph)
@@ -281,6 +313,43 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(component).toContain("import type { CSSProperties } from 'react'")
     expect(component).toContain('style?: CSSProperties')
     expect(component).toContain('<div className={className} style={style}>')
+  })
+
+  test('component child overrides pass bound token styles through style props', () => {
+    const graph = addThemeVariables()
+    const pageId = firstPageId(graph)
+    const master = graph.createNode('COMPONENT', pageId, {
+      name: 'Token Card',
+      width: 120,
+      height: 40
+    })
+    graph.createNode('RECTANGLE', master.id, {
+      name: 'Token Badge',
+      width: 80,
+      height: 20,
+      fills: [solidFill({ r: 1, g: 0, b: 0, a: 1 })]
+    })
+    const inst = graph.createInstance(master.id, pageId)
+    if (!inst) throw new Error('instance not created')
+    const child = graph.getChildren(inst.id)[0]
+    graph.updateNode(child.id, { fills: [solidFill({ r: 0.2, g: 0.4, b: 0.8, a: 1 })] })
+    graph.bindVariable(child.id, 'fills/0/color', 'var-primary')
+    inst.overrides = { [`${child.id}:fills`]: true }
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'theme-demo' })
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toMatch(
+      /<TokenCard[^>]*tokenBadgeStyle=\{\{ backgroundColor: "var\(--op-brand-theme-color-primary\)" \}\}/
+    )
+    const component = out.files.get('src/components/TokenCard.tsx') as string
+    expect(component).toContain('tokenBadgeStyle?: CSSProperties')
+    expect(component).toContain('tokenBadgeStyle')
+    expect(component).toContain('style={tokenBadgeStyle}')
   })
 
   test('compile warns when a bound design token cannot be resolved', () => {

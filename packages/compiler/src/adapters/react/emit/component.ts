@@ -1,4 +1,4 @@
-import type { ComponentDef, IRNode, VariantCase } from '#compiler/ir/types'
+import type { ComponentDef, ComponentProp, IRNode, VariantCase } from '#compiler/ir/types'
 
 import { hasIntlAttr, hasTranslatableText, referencedLucideIconNames } from '../ir-walk'
 import { buildReactIntlImport } from '../lowcode/i18n'
@@ -91,12 +91,14 @@ function buildComponentBody(
   // Phase 3 §8 v2: one optional string prop per text-override slot, each
   // defaulting to the master child's text so clean usages (`<Name />`) render
   // unchanged. The body's matching TEXT nodes were collected as `{prop}`.
-  const propLines = def.props.map((p) => `\n  ${p.name}?: string`).join('')
+  const propLines = def.props.map(componentPropLine).join('')
   const header = componentPropsHeader(def.name, propLines)
   const destructure = [
     'className',
     'style',
-    ...def.props.map((p) => `${p.name} = ${JSON.stringify(p.defaultValue)}`)
+    ...def.props.map((p) =>
+      p.kind === 'style' ? p.name : `${p.name} = ${JSON.stringify(p.defaultValue)}`
+    )
   ].join(', ')
   if (def.children.length === 0) {
     return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
@@ -136,7 +138,7 @@ function buildVariantModule(
   const axisLines = axes
     .map((a) => `\n  ${a.name}?: ${a.options.map((o) => JSON.stringify(o)).join(' | ')}`)
     .join('')
-  const propLines = axisLines + def.props.map((p) => `\n  ${p.name}?: string`).join('')
+  const propLines = axisLines + def.props.map(componentPropLine).join('')
   const header = componentPropsHeader(def.name, propLines)
   const destructure = [
     'className',
@@ -171,6 +173,11 @@ ${guards}  return ${variantBody(defaultCase, devMode, uiKit)}
 
 function componentPropsHeader(name: string, propLines: string): string {
   return `interface ${name}Props {\n  className?: string\n  style?: CSSProperties${propLines}\n}\n\n`
+}
+
+function componentPropLine(prop: ComponentProp): string {
+  const type = prop.kind === 'style' ? 'CSSProperties' : 'string'
+  return `\n  ${prop.name}?: ${type}`
 }
 
 function buildComponentReactImport(def: ComponentDef): string {

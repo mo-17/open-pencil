@@ -692,7 +692,7 @@ function walk(node: IRNode, acc: Set<string>): void {
   if (node.kind === 'componentRef') {
     addClasses(node.className, acc)
     for (const prop of node.props) {
-      if (prop.kind === 'className') addClasses(prop.value, acc)
+      if (prop.kind === 'className' && typeof prop.value === 'string') addClasses(prop.value, acc)
     }
     return
   }

@@ -23,6 +23,8 @@
 - Map more bound lowcode theme variables to generated inline styles, including stroke colors,
   scalar opacity, translucent solid fills, multi-layer solid backgrounds, and component usage
   roots, with warnings for missing design-token bindings.
+- Map component child token overrides and gradient stop color bindings to generated inline
+  styles while keeping the existing className component override channel intact.
 - Split lowcode Inspector controls into Bindings, Events, Validation, and Advanced groups, with highlighted filter matches and an empty filter result state.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.

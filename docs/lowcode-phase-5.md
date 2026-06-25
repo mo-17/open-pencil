@@ -425,13 +425,28 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   token binding;component 内部子节点 override 仍只有 `text` / `className` prop 通道,完整
   child style prop 另开后续设计。
 
+**2026-06-25 第七刀已完成**:
+
+- Component 内部子节点 override 新增 `style` prop 通道。实例子节点已有
+  `boundVariables` token style 时,usage site 会传入 `<childName>Style={{ ... }}`,
+  generated component body 则以 `style={<childName>Style}` 或
+  `style={<childName>Style ?? <defaultStyle>}` 保留 master fallback。
+- 该通道与既有 `text` / `className` prop 并行,不改变现有 Tailwind className override
+  语义;style prop 使用 `CSSProperties` 类型,不会进入 Tailwind safelist。
+- Core `bindVariable` 现在放行并校验 `fills/N/gradientStops/M/color` stop-level color
+  binding;compiler 会把 stop-level token 写入 gradient inline `backgroundImage`,支持不同 stop
+  使用不同 token 和 `color-mix(...)` alpha。
+- 本刀仍不补齐 Figma/Kiwi 标准 stop-level variableConsumptionMap round-trip 和 editor UI
+  创建入口;当前 stop-level binding 主要通过 core API / 手动 `boundVariables` 数据进入 compiler。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
 - 节点样式 `var(...)` 映射仍是渐进覆盖;目前覆盖 simple fill/text、stroke、scalar
-  opacity、多层 SOLID background layer 和 component usage root。Gradient stop token
-  binding、component child style prop、完整多 stroke 几何语义仍需后续补齐。
+  opacity、多层 SOLID background layer、component usage root、component child style prop,
+  以及 compiler/core 层的 gradient stop token binding。Figma/Kiwi stop-level
+  round-trip、editor UI 创建入口和完整多 stroke 几何语义仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -453,7 +468,11 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   component usage root style 可 emit `var(--op-...)` / `color-mix(...)` inline styles。
   **2026-06-25 第六刀已完成;同样由
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
-- 后续可继续做:gradient stop token binding、component child style prop、完整多 stroke
+- 已绑定 gradient stop color 和 component child token override 可 emit `var(--op-...)` /
+  `color-mix(...)` inline styles。**2026-06-25 第七刀已完成;由
+  `tests/engine/compiler/theme-css.test.ts` 和
+  `tests/engine/scene-graph/variable/binding/validation.test.ts` 覆盖。**
+- 后续可继续做:Figma/Kiwi stop-level binding round-trip、editor UI 创建入口、完整多 stroke
   语义、更多非 dark mode 的 runtime UI。
 
 ---

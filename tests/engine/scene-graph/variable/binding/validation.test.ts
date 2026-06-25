@@ -225,4 +225,28 @@ describe('bindVariable validation', () => {
     expect(n.boundVariables['fills']).toBeUndefined()
     expect(n.boundVariables['fills/0/color']).toBe('v-color')
   })
+
+  test('bindVariable accepts gradient stop color fields and rejects out-of-range stops', () => {
+    const graph = setupGraph()
+    const node = graph.createNode('RECTANGLE', pageId(graph), {
+      name: 'Gradient',
+      fills: [
+        {
+          type: 'GRADIENT_LINEAR',
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          visible: true,
+          opacity: 1,
+          gradientStops: [
+            { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+            { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+          ]
+        }
+      ]
+    })
+    graph.bindVariable(node.id, 'fills/0/gradientStops/1/color', 'v-color')
+    expect(graph.getNode(node.id).boundVariables['fills/0/gradientStops/1/color']).toBe('v-color')
+    expect(() => {
+      graph.bindVariable(node.id, 'fills/0/gradientStops/2/color', 'v-color')
+    }).toThrow(/gradientStops/)
+  })
 })

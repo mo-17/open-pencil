@@ -4,11 +4,13 @@ import type { ComponentProp, VariantAxis } from '#compiler/ir/types'
 import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/core/scene-graph'
 
 /** Phase 3 §8 v2/v3 — the prop(s) a single master descendant is parameterized
- *  by: `text` (`:text` override → `{prop}` content) and/or `className`
- *  (`:fills` override → `className={prop}`). A child can carry both. */
+ *  by: `text` (`:text` override → `{prop}` content), `className`
+ *  (`:fills` override → `className={prop}`), and `style` for token-bound inline
+ *  styles that cannot live in Tailwind classes. A child can carry all three. */
 export interface ComponentSlot {
   text?: ComponentProp
   className?: ComponentProp
+  style?: ComponentProp
 }
 
 /**
@@ -279,6 +281,11 @@ function accumulateSlots(
           name: uniqueName(`${propName(masterChild.name)}ClassName`, usedPropNames),
           defaultValue: tailwindClassName(masterChild, graph, styleOptions),
           kind: 'className'
+        }
+        slot.style = {
+          name: uniqueName(`${propName(masterChild.name)}Style`, usedPropNames),
+          defaultValue: '',
+          kind: 'style'
         }
       }
       slots.set(slotKey, slot)

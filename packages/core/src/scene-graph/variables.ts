@@ -4,7 +4,7 @@ import { BLACK } from '#core/constants'
 import type { Color } from '#core/types'
 
 import type { SceneGraph } from './index'
-import type { Variable, VariableCollection, VariableType, VariableValue } from './types'
+import type { SceneNode, Variable, VariableCollection, VariableType, VariableValue } from './types'
 
 export function addVariable(graph: SceneGraph, variable: Variable): void {
   graph.variables.set(variable.id, variable)
@@ -265,6 +265,11 @@ const STRING_BINDING_FIELDS: ReadonlySet<string> = new Set(['fontFamily'])
 
 const BOOLEAN_BINDING_FIELDS: ReadonlySet<string> = new Set(['visible'])
 
+interface BindingFieldInfo {
+  isKnown: boolean
+  topLevelKey?: 'fills' | 'strokes'
+}
+
 export function bindVariable(
   graph: SceneGraph,
   nodeId: string,
@@ -280,24 +285,9 @@ export function bindVariable(
     throw new Error(`Variable "${variableId}" not found`)
   }
 
-  // Color fields require COLOR variable type
-  const colorFieldMatch = field.match(/^(fills|strokes)\/(\d+)\/color$/)
-  if (colorFieldMatch) {
-    if (variable.type !== 'COLOR') {
-      throw new Error(`Cannot bind ${variable.type} variable to color field "${field}"`)
-    }
-    // Validate index is within current array bounds
-    const arrayKey = colorFieldMatch[1] as 'fills' | 'strokes'
-    const index = Number.parseInt(colorFieldMatch[2], 10)
-    const currentLength = (node[arrayKey] as unknown[] | undefined)?.length ?? 0
-    if (index >= currentLength) {
-      throw new Error(`Index ${index} out of range for ${arrayKey} (length ${currentLength})`)
-    }
-    // Auto-remove top-level dead binding (e.g. 'fills') when setting indexed binding
-    const topLevelKey = colorFieldMatch[1]
-    if (topLevelKey in node.boundVariables) {
-      node.boundVariables = omit(node.boundVariables, [topLevelKey])
-    }
+  const fieldInfo = validateBindingField(node, field, variable)
+  if (fieldInfo.topLevelKey && fieldInfo.topLevelKey in node.boundVariables) {
+    node.boundVariables = omit(node.boundVariables, [fieldInfo.topLevelKey])
   }
 
   if (SCALAR_BINDING_FIELDS.has(field) && variable.type !== 'FLOAT') {
@@ -312,19 +302,75 @@ export function bindVariable(
     throw new Error(`Cannot bind ${variable.type} variable to boolean field "${field}"`)
   }
 
-  const isKnownField =
-    SCALAR_BINDING_FIELDS.has(field) ||
-    STRING_BINDING_FIELDS.has(field) ||
-    BOOLEAN_BINDING_FIELDS.has(field) ||
-    colorFieldMatch
-
-  if (!isKnownField) {
+  if (!fieldInfo.isKnown) {
     throw new Error(`Unknown binding field "${field}"`)
   }
 
   node.boundVariables = { ...node.boundVariables, [field]: variableId }
   graph.emitter.emit('node:updated', nodeId, { boundVariables: { ...node.boundVariables } })
   markBoundVariablesOverrideOnInstance(graph, nodeId)
+}
+
+function validateBindingField(
+  node: SceneNode,
+  field: string,
+  variable: Variable
+): BindingFieldInfo {
+  return (
+    validateIndexedColorBinding(node, field, variable) ??
+    validateGradientStopColorBinding(node, field, variable) ?? {
+      isKnown:
+        SCALAR_BINDING_FIELDS.has(field) ||
+        STRING_BINDING_FIELDS.has(field) ||
+        BOOLEAN_BINDING_FIELDS.has(field)
+    }
+  )
+}
+
+function validateIndexedColorBinding(
+  node: SceneNode,
+  field: string,
+  variable: Variable
+): BindingFieldInfo | undefined {
+  const match = field.match(/^(fills|strokes)\/(\d+)\/color$/)
+  if (!match) return undefined
+  assertColorVariable(variable, field)
+  const arrayKey = match[1] as 'fills' | 'strokes'
+  const index = Number.parseInt(match[2], 10)
+  const currentLength = (node[arrayKey] as unknown[] | undefined)?.length ?? 0
+  if (index >= currentLength) {
+    throw new Error(`Index ${index} out of range for ${arrayKey} (length ${currentLength})`)
+  }
+  return { isKnown: true, topLevelKey: arrayKey }
+}
+
+function validateGradientStopColorBinding(
+  node: SceneNode,
+  field: string,
+  variable: Variable
+): BindingFieldInfo | undefined {
+  const match = field.match(/^fills\/(\d+)\/gradientStops\/(\d+)\/color$/)
+  if (!match) return undefined
+  assertColorVariable(variable, field)
+  const fillIndex = Number.parseInt(match[1], 10)
+  const stopIndex = Number.parseInt(match[2], 10)
+  if (fillIndex >= node.fills.length) {
+    throw new Error(`Index ${fillIndex} out of range for fills (length ${node.fills.length})`)
+  }
+  const fill = node.fills[fillIndex]
+  const stopCount = fill.gradientStops?.length ?? 0
+  if (stopIndex >= stopCount) {
+    throw new Error(
+      `Index ${stopIndex} out of range for fills/${fillIndex}/gradientStops (length ${stopCount})`
+    )
+  }
+  return { isKnown: true, topLevelKey: 'fills' }
+}
+
+function assertColorVariable(variable: Variable, field: string): void {
+  if (variable.type !== 'COLOR') {
+    throw new Error(`Cannot bind ${variable.type} variable to color field "${field}"`)
+  }
 }
 
 export function unbindVariable(graph: SceneGraph, nodeId: string, field: string): void {

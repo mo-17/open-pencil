@@ -213,6 +213,8 @@ function tagOpenParts(
     node.upload,
     node.classNameProp,
     node.classNamePropFallback,
+    node.styleProp,
+    node.stylePropFallback,
     node.validation?.key,
     node.formValidationKeys,
     node.image,
@@ -271,6 +273,8 @@ function emitLucideIconElement(node: IRElement, indent: number, devMode: boolean
     undefined,
     node.classNameProp,
     node.classNamePropFallback,
+    node.styleProp,
+    node.stylePropFallback,
     undefined,
     undefined,
     undefined,
@@ -456,6 +460,8 @@ function formatAttrs(
   upload: IRUpload | undefined,
   classNameProp?: string,
   classNamePropFallback?: boolean,
+  styleProp?: string,
+  stylePropFallback?: boolean,
   validationKey?: string,
   formValidationKeys?: readonly string[],
   image?: IRImage,
@@ -464,8 +470,11 @@ function formatAttrs(
   const parts: string[] = []
   const classAttr = classNameAttr(className, classNameProp, classNamePropFallback)
   if (classAttr) parts.push(classAttr)
+  const styleAttr = stylePropAttr(attrs.style, styleProp, stylePropFallback)
+  if (styleAttr) parts.push(styleAttr)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
   for (const [key, value] of Object.entries(attrs)) {
+    if (key === 'style' && styleAttr) continue
     parts.push(formatAttr(key, value))
   }
   // §18: a file-upload INPUT emits `type="file"` + an onChange that uploads to
@@ -504,6 +513,23 @@ function classNameAttr(
   if (classNameProp) return `className={${classNameProp}}`
   if (className) return `className="${escapeAttr(className)}"`
   return undefined
+}
+
+function stylePropAttr(
+  style: IRAttrValue | undefined,
+  styleProp: string | undefined,
+  stylePropFallback: boolean | undefined
+): string | undefined {
+  const fallback = styleExpr(style)
+  if (styleProp && stylePropFallback && fallback) return `style={${styleProp} ?? ${fallback}}`
+  if (styleProp) return `style={${styleProp}}`
+  return fallback ? `style={${fallback}}` : undefined
+}
+
+function styleExpr(style: IRAttrValue | undefined): string | undefined {
+  return typeof style === 'object' && style.kind === 'styleAttr'
+    ? formatStyleAttr(style.declarations)
+    : undefined
 }
 
 function eventSkipSet(
@@ -799,9 +825,19 @@ function componentRefAttrs(
   const attrs: string[] = []
   if (node.className) attrs.push(`className="${escapeAttr(node.className)}"`)
   if (node.styleAttr) attrs.push(`style={${formatStyleAttr(node.styleAttr.declarations)}}`)
-  attrs.push(...node.props.map((p) => `${p.name}="${escapeAttr(p.value)}"`))
+  attrs.push(...node.props.map(componentRefPropAttr))
   if (devMode) attrs.push(`data-node-id="${node.sourceId}"`)
   return attrs.length > 0 ? ` ${attrs.join(' ')}` : ''
+}
+
+function componentRefPropAttr(
+  prop: Extract<IRNode, { kind: 'componentRef' }>['props'][number]
+): string {
+  if (prop.kind === 'style' && typeof prop.value === 'object') {
+    return `${prop.name}={${formatStyleAttr(prop.value)}}`
+  }
+  const value = typeof prop.value === 'string' ? prop.value : JSON.stringify(prop.value)
+  return `${prop.name}="${escapeAttr(value)}"`
 }
 
 function formatStyleAttr(declarations: Record<string, string>): string {

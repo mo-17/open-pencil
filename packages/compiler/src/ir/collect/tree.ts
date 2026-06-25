@@ -327,9 +327,7 @@ export function collectComponents(
     }
     // Phase 3 §8 v2/v3: parameterize the master's overridden TEXT/fill children.
     const ctx: WalkCtx = { ...baseCtx, componentPropSlots: meta.propSlots }
-    const props = [...meta.propSlots.values()].flatMap((slot) =>
-      [slot.text, slot.className].filter((p): p is ComponentProp => p !== undefined)
-    )
+    const props = [...meta.propSlots.values()].flatMap(slotProps)
     defs.push({
       componentId,
       name: meta.name,
@@ -361,11 +359,15 @@ function componentLowcodeUsage(
 function dedupeProps(propSlots: Map<string, ComponentSlot>): ComponentProp[] {
   const byName = new Map<string, ComponentProp>()
   for (const slot of propSlots.values()) {
-    for (const prop of [slot.text, slot.className]) {
-      if (prop && !byName.has(prop.name)) byName.set(prop.name, prop)
+    for (const prop of slotProps(slot)) {
+      if (!byName.has(prop.name)) byName.set(prop.name, prop)
     }
   }
   return [...byName.values()]
+}
+
+function slotProps(slot: ComponentSlot): ComponentProp[] {
+  return [slot.text, slot.className, slot.style].filter((p): p is ComponentProp => p !== undefined)
 }
 
 /** Phase 3 §8 v8 / §7 v2 — whether a child reaches emit. Visible children
@@ -406,9 +408,9 @@ function collectChildSubtree(graph: SceneGraph, parentId: string, ctx: WalkCtx):
  *  INSTANCE of one; null for everything else (normal inline emit). Phase 3 §8
  *  v6: every instance composes — `:text` overrides pass as content props
  *  (`title=`), every other visual override passes as a className prop
- *  (`badgeClassName=`, the whole recomputed child className). There is no longer
- *  an inline fallback for property overrides (the suffix universe is all
- *  property-level, so nothing is unsupported). */
+ *  (`badgeClassName=`, the whole recomputed child className). Phase 5 §5 follow-up:
+ *  token-bound inline styles on an overridden child additionally pass through a
+ *  sibling style prop (`badgeStyle=`). */
 function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | null {
   if (node.type === 'COMPONENT') {
     const meta = ctx.components.get(node.id)
@@ -503,6 +505,11 @@ function resolveInstanceProps(
         value: tailwindClassName(instChild, ctx.graph, ctx.styleOptions),
         kind: 'className'
       })
+      const declarations = boundVariableStyleDeclarations(instChild, ctx)
+      if (slot.style && hasStyleDeclarations(declarations) && !seen.has(slot.style.name)) {
+        seen.add(slot.style.name)
+        props.push({ name: slot.style.name, value: declarations, kind: 'style' })
+      }
     }
   }
   return props
@@ -1061,7 +1068,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // Phase 3 §8 v3: inside a component body, a child with a `:fills` override
   // slot emits `className={prop}` so an instance can re-style it; the static
   // `className` above is the prop default (and what Tailwind safelists).
-  const classNameProp = ctx.componentPropSlots?.get(node.id)?.className?.name
+  const propOverrides = componentBodyPropOverrides(node, ctx, attrs)
 
   // Phase 4 §15.1: tag a card-like container FRAME so a UI-kit adapter can wrap
   // it in `<Card>`. Kit-agnostic — the plain emit ignores it (byte-identical).
@@ -1072,10 +1079,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     sourceId: node.id,
     tag: semantics.link ? 'a' : tag,
     className,
-    ...(classNameProp ? { classNameProp } : {}),
-    // Phase 3 §8 v5: in a variant subtree the prop spans variants with
-    // different static defaults → emit `className={prop ?? "ownClasses"}`.
-    ...(classNameProp && ctx.variantBody ? { classNamePropFallback: true } : {}),
+    ...propOverrides,
     attrs,
     children,
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
@@ -1094,6 +1098,24 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     }
   }
   return wrapConditional(node, element, ctx)
+}
+
+function componentBodyPropOverrides(
+  node: SceneNode,
+  ctx: WalkCtx,
+  attrs: Record<string, IRAttrValue>
+): Pick<IRElement, 'classNameProp' | 'classNamePropFallback' | 'styleProp' | 'stylePropFallback'> {
+  const slot = ctx.componentPropSlots?.get(node.id)
+  const classNameProp = slot?.className?.name
+  const styleProp = slot?.style?.name
+  return {
+    ...(classNameProp ? { classNameProp } : {}),
+    // Phase 3 §8 v5: in a variant subtree the prop spans variants with
+    // different static defaults → emit `className={prop ?? "ownClasses"}`.
+    ...(classNameProp && ctx.variantBody ? { classNamePropFallback: true } : {}),
+    ...(styleProp ? { styleProp } : {}),
+    ...(styleProp && (ctx.variantBody || attrs.style) ? { stylePropFallback: true } : {})
+  }
 }
 
 function applyBoundVariableStyles(
@@ -1180,7 +1202,10 @@ function boundBackgroundDeclarations(node: SceneNode, ctx: WalkCtx): Record<stri
 function hasBoundBackgroundFill(node: SceneNode): boolean {
   return node.fills.some((fill, index) => {
     if (!fill.visible || fill.opacity <= 0 || !isBackgroundFill(fill)) return false
-    return !!node.boundVariables[`fills/${index}/color`]
+    if (node.boundVariables[`fills/${index}/color`]) return true
+    return fill.gradientStops?.some((_, stopIndex) =>
+      Boolean(node.boundVariables[`fills/${index}/gradientStops/${stopIndex}/color`])
+    )
   })
 }
 
@@ -1221,10 +1246,23 @@ function gradientFillCssWithTokens(
 ): string | null {
   let css = gradientFillCss(fill, node.width, node.height)
   if (css === null) return null
-  const cssVar = cssVarForBinding(node, ctx, `fills/${index}/color`)
-  if (!cssVar || !fill.gradientStops) return css
-  for (const stop of fill.gradientStops) {
-    css = replaceFirst(css, colorToHex8(stop.color, stop.color.a), tokenColor(cssVar, stop.color.a))
+  const fillCssVar = cssVarForBinding(node, ctx, `fills/${index}/color`)
+  if (!fill.gradientStops) return css
+  for (let stopIndex = 0; stopIndex < fill.gradientStops.length; stopIndex++) {
+    const stop = fill.gradientStops[stopIndex]
+    const stopCssVar = cssVarForBinding(
+      node,
+      ctx,
+      `fills/${index}/gradientStops/${stopIndex}/color`
+    )
+    const cssVar = stopCssVar ?? fillCssVar
+    if (cssVar) {
+      css = replaceFirst(
+        css,
+        colorToHex8(stop.color, stop.color.a),
+        tokenColor(cssVar, stop.color.a)
+      )
+    }
   }
   return css
 }
