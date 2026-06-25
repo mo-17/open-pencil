@@ -1,6 +1,8 @@
 import type { DeployEnvironment } from '@open-pencil/core'
 
 export type { DeployEnvironment }
+export type DeployHistoryProvider = 'netlify' | 'vercel' | 'cloudflare'
+export type DeployHistoryUiKit = 'none' | 'shadcn'
 
 export interface DeployHistoryEntry {
   id: string
@@ -11,6 +13,18 @@ export interface DeployHistoryEntry {
   fileCount: number
   createdAt: string
   site?: string
+  uiKit?: DeployHistoryUiKit
+  i18nEnabled?: boolean
+  locales?: string[]
+}
+
+export interface DeployRollbackDraft {
+  provider: DeployHistoryProvider
+  environment: DeployEnvironment
+  site?: string
+  uiKit: DeployHistoryUiKit
+  i18nEnabled: boolean
+  locales: string[]
 }
 
 const DEPLOY_HISTORY_KEY = 'open-pencil:lowcode-deploy-history:v1'
@@ -35,7 +49,11 @@ function isDeployHistoryEntry(value: unknown): value is DeployHistoryEntry {
     (entry.environment === 'preview' ||
       entry.environment === 'staging' ||
       entry.environment === 'production') &&
-    (entry.site === undefined || typeof entry.site === 'string')
+    (entry.site === undefined || typeof entry.site === 'string') &&
+    (entry.uiKit === undefined || entry.uiKit === 'none' || entry.uiKit === 'shadcn') &&
+    (entry.i18nEnabled === undefined || typeof entry.i18nEnabled === 'boolean') &&
+    (entry.locales === undefined ||
+      (Array.isArray(entry.locales) && entry.locales.every((loc) => typeof loc === 'string')))
   )
 }
 
@@ -70,6 +88,24 @@ export function recordDeployHistory(
     createdAt
   }
   return writeDeployHistory([nextEntry, ...readDeployHistory()])
+}
+
+export function deployRollbackDraft(entry: DeployHistoryEntry): DeployRollbackDraft | null {
+  if (
+    entry.provider !== 'netlify' &&
+    entry.provider !== 'vercel' &&
+    entry.provider !== 'cloudflare'
+  ) {
+    return null
+  }
+  return {
+    provider: entry.provider,
+    environment: entry.environment,
+    site: entry.site,
+    uiKit: entry.uiKit ?? 'none',
+    i18nEnabled: entry.i18nEnabled ?? false,
+    locales: entry.locales ?? []
+  }
 }
 
 export function deployDashboardUrl(

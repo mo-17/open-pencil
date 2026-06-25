@@ -3,7 +3,12 @@ import { computed, ref } from 'vue'
 
 import { openExternalLink } from '@/app/shell/ui'
 
-import { deployDashboardUrl, type DeployEnvironment } from './deploy-history'
+import {
+  deployDashboardUrl,
+  deployRollbackDraft,
+  type DeployEnvironment,
+  type DeployHistoryEntry
+} from './deploy-history'
 import { useDeploy, type DeployProvider, type DeployUiKit } from './use-deploy'
 
 /** Split the comma/space-separated locale field into clean target codes. */
@@ -31,6 +36,7 @@ const uiKit = ref<DeployUiKit>('none')
 // Phase 3 §9: enable the i18n runtime + a comma-separated target-locale list.
 const i18nEnabled = ref(false)
 const localesInput = ref('')
+const rollbackNotice = ref<string | null>(null)
 
 const tokenLabel = computed(() => {
   if (provider.value === 'cloudflare') return 'Cloudflare token'
@@ -53,6 +59,7 @@ function toggle(): void {
 }
 
 async function submit(): Promise<void> {
+  rollbackNotice.value = null
   await deploy(
     token.value,
     provider.value,
@@ -64,6 +71,19 @@ async function submit(): Promise<void> {
       locales: parseLocales(localesInput.value)
     }
   )
+}
+
+function restoreForRollback(entry: DeployHistoryEntry): void {
+  const draft = deployRollbackDraft(entry)
+  if (!draft) return
+  reset()
+  provider.value = draft.provider
+  environment.value = draft.environment
+  site.value = draft.site ?? ''
+  uiKit.value = draft.uiKit
+  i18nEnabled.value = draft.i18nEnabled
+  localesInput.value = draft.locales.join(', ')
+  rollbackNotice.value = `Ready to redeploy ${entry.environment} from ${entry.deployId}. Enter a ${draft.provider} token, then deploy.`
 }
 
 function openDeployed(url: string): void {
@@ -175,6 +195,14 @@ function openDeployed(url: string): void {
       </button>
 
       <p
+        v-if="rollbackNotice"
+        class="mt-2 break-words text-xs text-muted"
+        data-test-id="lowcode-deploy-rollback-draft"
+      >
+        {{ rollbackNotice }}
+      </p>
+
+      <p
         v-if="status.kind === 'done'"
         class="mt-2 text-xs text-muted"
         data-test-id="lowcode-deploy-done"
@@ -221,7 +249,17 @@ function openDeployed(url: string): void {
             </div>
             <div class="truncate">Deploy {{ entry.deployId }}</div>
             <div class="truncate">
-              Rollback: redeploy this environment
+              Rollback:
+              <button
+                v-if="deployRollbackDraft(entry)"
+                type="button"
+                class="text-accent underline"
+                data-test-id="lowcode-deploy-history-redeploy"
+                @click="restoreForRollback(entry)"
+              >
+                redeploy this environment
+              </button>
+              <template v-else>redeploy this environment</template>
               <template v-if="deployDashboardUrl(entry)">
                 or
                 <button

@@ -115,7 +115,13 @@ export function useDeploy(): UseDeployResult {
     status.value = { kind: 'deploying' }
     try {
       const result = await runDeployCli(path, trimmed, provider, environment, site, uiKit, i18n)
-      history.value = recordDeployHistory({ ...result, site })
+      history.value = recordDeployHistory({
+        ...result,
+        site,
+        uiKit,
+        i18nEnabled: i18n?.enabled ?? false,
+        locales: i18n?.enabled ? i18n.locales : []
+      })
       status.value = { kind: 'done', url: result.url, result }
     } catch (e) {
       status.value = { kind: 'error', message: e instanceof Error ? e.message : String(e) }

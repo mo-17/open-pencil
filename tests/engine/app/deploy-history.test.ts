@@ -32,7 +32,10 @@ describe('lowcode deploy history', () => {
       url: 'https://example.netlify.app',
       deployId: 'dep_1',
       fileCount: 3,
-      site: 'demo-site'
+      site: 'demo-site',
+      uiKit: 'shadcn',
+      i18nEnabled: true,
+      locales: ['fr', 'ja']
     })
 
     expect(history).toHaveLength(1)
@@ -42,7 +45,10 @@ describe('lowcode deploy history', () => {
       url: 'https://example.netlify.app',
       deployId: 'dep_1',
       fileCount: 3,
-      site: 'demo-site'
+      site: 'demo-site',
+      uiKit: 'shadcn',
+      i18nEnabled: true,
+      locales: ['fr', 'ja']
     })
     expect(storage.values().next().value).not.toContain('token')
     expect(readDeployHistory()).toEqual(history)
@@ -87,5 +93,65 @@ describe('lowcode deploy history', () => {
       })
     ).toBe('https://dash.cloudflare.com/account/pages/view/project/cf_3')
     expect(deployDashboardUrl({ provider: 'cloudflare', deployId: 'cf_4' })).toBeNull()
+  })
+
+  test('builds a redeploy draft from history without restoring deploy artifacts or tokens', async () => {
+    installLocalStorage()
+    const { deployRollbackDraft, recordDeployHistory } =
+      await import('@/app/lowcode/preview-pane/deploy-history')
+
+    const [entry] = recordDeployHistory({
+      provider: 'cloudflare',
+      environment: 'production',
+      url: 'https://example.pages.dev',
+      deployId: 'cf_1',
+      fileCount: 12,
+      site: 'account/project',
+      uiKit: 'shadcn',
+      i18nEnabled: true,
+      locales: ['zh-CN', 'fr']
+    })
+
+    expect(deployRollbackDraft(entry)).toEqual({
+      provider: 'cloudflare',
+      environment: 'production',
+      site: 'account/project',
+      uiKit: 'shadcn',
+      i18nEnabled: true,
+      locales: ['zh-CN', 'fr']
+    })
+    expect(JSON.stringify(deployRollbackDraft(entry))).not.toContain('cf_1')
+    expect(JSON.stringify(deployRollbackDraft(entry))).not.toContain('https://example.pages.dev')
+    expect(deployRollbackDraft({ ...entry, provider: 'custom-host' })).toBeNull()
+  })
+
+  test('defaults optional replay fields for legacy deploy history entries', async () => {
+    const storage = installLocalStorage()
+    storage.set(
+      'open-pencil:lowcode-deploy-history:v1',
+      JSON.stringify([
+        {
+          id: 'legacy',
+          provider: 'netlify',
+          environment: 'preview',
+          url: 'https://legacy.netlify.app',
+          deployId: 'dep_legacy',
+          fileCount: 1,
+          createdAt: '2026-06-25T00:00:00.000Z'
+        }
+      ])
+    )
+    const { deployRollbackDraft, readDeployHistory } =
+      await import('@/app/lowcode/preview-pane/deploy-history')
+
+    const [entry] = readDeployHistory()
+    expect(deployRollbackDraft(entry)).toEqual({
+      provider: 'netlify',
+      environment: 'preview',
+      site: undefined,
+      uiKit: 'none',
+      i18nEnabled: false,
+      locales: []
+    })
   })
 })

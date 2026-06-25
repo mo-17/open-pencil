@@ -112,6 +112,17 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 本刀仍不做 provider 原生 rollback API、团队共享发布历史或 environment 到 provider target
   的强绑定;这些留给后续发布生命周期第二刀。
 
+**2026-06-25 第二刀已完成**:
+
+- Deploy history item 增加 `redeploy this environment` 动作,把历史记录里的 provider /
+  environment / site / UI kit / i18n locales 回填成当前 deploy form draft。
+- Redeploy draft 明确不恢复 provider token、旧 deploy URL 或旧 deploy id;用户仍需输入当前
+  token 后重新执行 `Build & Deploy`。
+- 该动作把 rollback 从纯 dashboard 指引推进到本地 guarded redeploy flow,但仍不调用
+  Netlify / Vercel / Cloudflare 的 provider 原生 rollback API。
+- 本刀不引入团队共享 history、持久 build artifact bundle 或 environment 到 provider
+  target 的强绑定;这些仍留给后续更完整发布生命周期。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -121,7 +132,8 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
   local history,`tests/engine/app/deploy-history.test.ts` 覆盖排序、8 条上限和 token 不入库。**
 - 支持 rollback 指引:至少能重新 deploy 某个历史 build artifact 或提示 provider
   dashboard rollback。**2026-06-25 已完成 provider dashboard 链接第一刀;真实 provider
-  rollback API 未做。**
+  rollback API 未做。第二刀已补 history → redeploy draft,覆盖在
+  `tests/engine/app/deploy-history.test.ts`。**
 
 ---
 
