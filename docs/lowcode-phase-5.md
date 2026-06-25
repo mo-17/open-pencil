@@ -180,6 +180,21 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - 本刀不执行真实 Netlify restore,不接 Cloudflare / Vercel rollback endpoint,也不新增 root-level
   Markdown 文件,避免 Steiger root Markdown allowlist 漂移。
 
+**2026-06-25 第八刀已完成**:
+
+- 将 Cloudflare Pages rollback contract 从 `site.includes('/')` 的宽松判断收紧为
+  `parseCloudflarePagesTarget(site)`。
+- Cloudflare target metadata 现在只接受 `account/project` shorthand,并 trim 两端空白;
+  空 site、project-only、缺 account、缺 project、多段 slash、dashboard URL 等脏历史值都会降级为
+  `dashboard-only`。
+- `deployRollbackContract()` 的 Cloudflare 分支改为 provider-specific fields:
+  `token` / `accountId` / `projectName` / `deployId`,并返回 `missingFields` 供后续 UI 或
+  API helper 使用。
+- `deployDashboardUrl()` 复用同一个 parser,只有 account/project 解析成功时才生成 Cloudflare
+  dashboard deployment URL。
+- 本刀不改 CLI `--account-id` / `--site` 参数、不改 Cloudflare Direct Upload provider、不调远端
+  rollback API,也不改变旧 history 的读取兼容性。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -203,6 +218,9 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - Netlify restore live ACK 有可执行手测步骤和安全边界。**2026-06-25 第七刀已补
   `docs/lowcode-gui-ack-test.md` checklist;真实 provider ACK 仍需用户凭有效 Netlify token
   手动执行。**
+- Cloudflare rollback contract 能把 `account/project` 与脏历史 site 值区分开。**2026-06-25
+  第八刀已补 `parseCloudflarePagesTarget()` 和 focused app tests;真实 Cloudflare rollback API
+  仍未调用。**
 
 ---
 

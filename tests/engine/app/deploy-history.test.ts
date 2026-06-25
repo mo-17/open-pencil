@@ -130,22 +130,80 @@ describe('lowcode deploy history', () => {
     ).toMatchObject({
       provider: 'cloudflare',
       support: 'api-candidate',
-      requiredFields: ['token', 'site', 'deployId']
+      requiredFields: ['token', 'accountId', 'projectName', 'deployId'],
+      missingFields: []
     })
     expect(deployRollbackContract({ provider: 'cloudflare', deployId: 'cf_2' })).toMatchObject({
       provider: 'cloudflare',
       support: 'dashboard-only',
-      reason: 'Cloudflare rollback needs an account/project site target.'
+      missingFields: ['site'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    })
+    expect(
+      deployRollbackContract({ provider: 'cloudflare', deployId: 'cf_3', site: 'project-only' })
+    ).toMatchObject({
+      provider: 'cloudflare',
+      support: 'dashboard-only',
+      missingFields: ['accountId', 'projectName'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
     })
     expect(deployRollbackContract({ provider: 'vercel', deployId: 'ver_1' })).toMatchObject({
       provider: 'vercel',
       support: 'dashboard-only',
-      requiredFields: ['token', 'deployId', 'productionAlias']
+      requiredFields: ['token', 'deployId', 'productionAlias'],
+      missingFields: ['productionAlias']
     })
     expect(deployRollbackContract({ provider: 'custom', deployId: 'x' })).toMatchObject({
       provider: 'custom',
       support: 'unsupported'
     })
+  })
+
+  test('parses Cloudflare Pages account/project targets for rollback readiness', async () => {
+    installLocalStorage()
+    const { deployDashboardUrl, parseCloudflarePagesTarget } =
+      await import('@/app/lowcode/preview-pane/deploy-history')
+
+    expect(parseCloudflarePagesTarget(' account / project ')).toEqual({
+      accountId: 'account',
+      projectName: 'project',
+      missingFields: []
+    })
+    expect(parseCloudflarePagesTarget()).toEqual({
+      missingFields: ['site'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    })
+    expect(parseCloudflarePagesTarget('project')).toEqual({
+      missingFields: ['accountId', 'projectName'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    })
+    expect(parseCloudflarePagesTarget('account/')).toEqual({
+      accountId: 'account',
+      missingFields: ['projectName'],
+      reason: 'Cloudflare rollback needs both account id and project name.'
+    })
+    expect(parseCloudflarePagesTarget('/project')).toEqual({
+      projectName: 'project',
+      missingFields: ['accountId'],
+      reason: 'Cloudflare rollback needs both account id and project name.'
+    })
+    expect(parseCloudflarePagesTarget('account/project/extra')).toEqual({
+      missingFields: ['accountId', 'projectName'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    })
+    expect(parseCloudflarePagesTarget('account//project')).toEqual({
+      missingFields: ['accountId', 'projectName'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    })
+    expect(
+      parseCloudflarePagesTarget('https://dash.cloudflare.com/account/pages/view/project/cf')
+    ).toEqual({
+      missingFields: ['accountId', 'projectName'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    })
+    expect(
+      deployDashboardUrl({ provider: 'cloudflare', deployId: 'cf_5', site: 'project' })
+    ).toBeNull()
   })
 
   test('restores a Netlify deploy through the site-scoped restore API', async () => {

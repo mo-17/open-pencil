@@ -55,8 +55,16 @@ export interface DeployRollbackContract {
   support: DeployRollbackSupport
   label: string
   requiredFields: string[]
+  missingFields: string[]
   reason?: string
   dashboardUrl: string | null
+}
+
+export interface CloudflarePagesTargetMetadata {
+  accountId?: string
+  projectName?: string
+  missingFields: string[]
+  reason?: string
 }
 
 export interface NetlifyRollbackTarget {
@@ -276,13 +284,44 @@ export function deployDashboardUrl(
   if (entry.provider === 'vercel') {
     return `https://vercel.com/deployments/${encodeURIComponent(entry.deployId)}`
   }
-  if (entry.provider === 'cloudflare' && entry.site?.includes('/')) {
-    const [accountId, projectName] = entry.site.split('/', 2)
-    if (accountId && projectName) {
-      return `https://dash.cloudflare.com/${encodeURIComponent(accountId)}/pages/view/${encodeURIComponent(projectName)}/${encodeURIComponent(entry.deployId)}`
+  if (entry.provider === 'cloudflare') {
+    const target = parseCloudflarePagesTarget(entry.site)
+    if (target.accountId && target.projectName) {
+      return `https://dash.cloudflare.com/${encodeURIComponent(target.accountId)}/pages/view/${encodeURIComponent(target.projectName)}/${encodeURIComponent(entry.deployId)}`
     }
   }
   return null
+}
+
+export function parseCloudflarePagesTarget(site?: string): CloudflarePagesTargetMetadata {
+  const raw = site?.trim()
+  if (!raw) {
+    return {
+      missingFields: ['site'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    }
+  }
+  const parts = raw.split('/')
+  if (parts.length !== 2) {
+    return {
+      missingFields: ['accountId', 'projectName'],
+      reason: 'Cloudflare rollback needs a site target in account/project format.'
+    }
+  }
+  const [accountId, projectName] = parts.map((part) => part.trim())
+  const missingFields = [
+    ...(accountId ? [] : ['accountId']),
+    ...(projectName ? [] : ['projectName'])
+  ]
+  if (missingFields.length > 0) {
+    return {
+      accountId: accountId || undefined,
+      projectName: projectName || undefined,
+      missingFields,
+      reason: 'Cloudflare rollback needs both account id and project name.'
+    }
+  }
+  return { accountId, projectName, missingFields: [] }
 }
 
 export function deployRollbackContract(
@@ -296,18 +335,21 @@ export function deployRollbackContract(
       support: hasTarget ? 'api-candidate' : 'dashboard-only',
       label: 'Restore deploy',
       requiredFields: ['token', 'site', 'deployId'],
+      missingFields: hasTarget ? [] : ['site'],
       reason: hasTarget ? undefined : 'Netlify restore needs a site id or site slug.',
       dashboardUrl
     }
   }
   if (entry.provider === 'cloudflare') {
-    const hasTarget = typeof entry.site === 'string' && entry.site.includes('/')
+    const target = parseCloudflarePagesTarget(entry.site)
+    const hasTarget = target.missingFields.length === 0
     return {
       provider: 'cloudflare',
       support: hasTarget ? 'api-candidate' : 'dashboard-only',
       label: 'Rollback Pages deployment',
-      requiredFields: ['token', 'site', 'deployId'],
-      reason: hasTarget ? undefined : 'Cloudflare rollback needs an account/project site target.',
+      requiredFields: ['token', 'accountId', 'projectName', 'deployId'],
+      missingFields: target.missingFields,
+      reason: hasTarget ? undefined : target.reason,
       dashboardUrl
     }
   }
@@ -317,6 +359,7 @@ export function deployRollbackContract(
       support: 'dashboard-only',
       label: 'Promote deployment',
       requiredFields: ['token', 'deployId', 'productionAlias'],
+      missingFields: ['productionAlias'],
       reason:
         'Vercel rollback needs production alias/project ownership metadata not stored locally yet.',
       dashboardUrl
@@ -327,6 +370,7 @@ export function deployRollbackContract(
     support: 'unsupported',
     label: 'Provider rollback',
     requiredFields: [],
+    missingFields: [],
     reason: 'No rollback contract is defined for this provider.',
     dashboardUrl
   }
