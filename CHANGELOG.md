@@ -27,6 +27,8 @@
   styles while keeping the existing className component override channel intact.
 - Preserve gradient stop color token bindings through `.fig` export and re-import using Figma
   `stopsVar` data plus the OpenPencil bound-variable fallback.
+- Document and test `bind_variable` / `unbind_variable` support for gradient stop color token
+  paths such as `fills/0/gradientStops/0/color`.
 - Split lowcode Inspector controls into Bindings, Events, Validation, and Advanced groups, with highlighted filter matches and an empty filter result state.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.

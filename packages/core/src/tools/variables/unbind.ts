@@ -3,13 +3,14 @@ import { defineTool } from '#core/tools/schema'
 export const unbindVariable = defineTool({
   name: 'unbind_variable',
   mutates: true,
-  description: 'Remove a variable binding from a node property.',
+  description:
+    'Remove a variable binding from a node property, including indexed fills/strokes and gradient stop color paths.',
   params: {
     node_id: { type: 'string', description: 'Node ID', required: true },
     field: {
       type: 'string',
       description:
-        'Property field path to unbind. For fills/strokes use indexed format: "fills/0/color", "strokes/0/color". ' +
+        'Property field path to unbind. For fills/strokes use indexed format: "fills/0/color", "strokes/0/color"; for gradient stop colors use "fills/0/gradientStops/0/color". ' +
         'For FLOAT scalars: "opacity", "width", "height", "cornerRadius", "fontSize", "letterSpacing", ' +
         '"lineHeight", "itemSpacing", "strokeWeight", "paddingLeft/Right/Top/Bottom", "counterAxisSpacing", ' +
         '"rotation", "x", "y", "minWidth", "maxWidth", "minHeight", "maxHeight", ' +

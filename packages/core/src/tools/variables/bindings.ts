@@ -4,13 +4,13 @@ export const bindVariable = defineTool({
   name: 'bind_variable',
   mutates: true,
   description:
-    'Bind a variable to a node property. For fills/strokes color bindings use indexed format like "fills/0/color".',
+    'Bind a variable to a node property. For fills/strokes color bindings use indexed format like "fills/0/color"; for gradient stop colors use "fills/0/gradientStops/0/color".',
   params: {
     node_id: { type: 'string', description: 'Node ID', required: true },
     field: {
       type: 'string',
       description:
-        'Property field path. For fills/strokes use indexed format: "fills/0/color", "strokes/0/color". ' +
+        'Property field path. For fills/strokes use indexed format: "fills/0/color", "strokes/0/color"; for gradient stop colors use "fills/0/gradientStops/0/color". ' +
         'For FLOAT scalars: "opacity", "width", "height", "cornerRadius", "fontSize", "letterSpacing", ' +
         '"lineHeight", "itemSpacing", "strokeWeight", "paddingLeft/Right/Top/Bottom", "counterAxisSpacing", ' +
         '"rotation", "x", "y", "minWidth", "maxWidth", "minHeight", "maxHeight", ' +
