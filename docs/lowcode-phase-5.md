@@ -478,14 +478,32 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 新增 app-neutral helper test 覆盖 gradient stop bound variable color resolution。
 - 本刀不做 Tauri/browser GUI ACK,也不升格 Figma `variableConsumptionMap` 标准通道。
 
+**2026-06-25 第十一刀已完成**:
+
+- 新增 browser E2E 覆盖 `GradientEditor` 的 stop-level variable binding authoring:
+  - 通过真实 fill popover 打开 gradient stop editor。
+  - 点击 `fill-gradient-stop-apply-variable-0` 绑定已有 COLOR variable。
+  - 点击 `fill-gradient-stop-unbind-variable-0` 解绑 stop-level binding。
+  - 通过 `fill-gradient-stop-apply-variable-0-create` 从当前 stop color 创建并绑定新 variable。
+  - 手动修改 stop hex 后验证 `fills/0/gradientStops/0/color` binding 被移除,stop color 直接落库。
+- GUI ACK 过程中修复两个可见问题:
+  - `GradientEditor.vue` 多行 template event expression 在真实 Vite / Vue compile 中会报 parse error,
+    已下沉为 script helper。
+  - 嵌套在 fill popover 内的 variable picker 会被父 popover 截住点击;`VariablePickerPopover`
+    默认继续 portal,但 gradient stop picker 显式 `portal=false`,并提高内容层级。
+- Stop-level bind / detach / create 后通过本地 `bindingVersion` 刷新 stop row,避免 graph 已更新但
+  popover UI 仍显示旧按钮。
+- 本刀仍不升格 Figma `variableConsumptionMap` 标准通道,也不处理完整多 stroke 几何语义。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
 - Figma variables mode 与 app runtime theme 不是一回事,需要映射层。
 - 节点样式 `var(...)` 映射仍是渐进覆盖;目前覆盖 simple fill/text、stroke、scalar
   opacity、多层 SOLID background layer、component usage root、component child style prop,
-  以及 core/compiler/Kiwi/ToolDef/editor UI 层的 gradient stop token binding。完整多 stroke
-  几何语义和 stop-level `variableConsumptionMap` 标准通道仍需后续补齐。
+  以及 core/compiler/Kiwi/ToolDef/editor UI 层的 gradient stop token binding。Gradient stop
+  editor UI 已有 browser E2E ACK。完整多 stroke 几何语义和 stop-level
+  `variableConsumptionMap` 标准通道仍需后续补齐。
 
 ### 5.4 成功标准草案
 
@@ -517,8 +535,11 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   **2026-06-25 第九刀已完成;由 `tests/engine/tools/variables.test.ts` 覆盖。**
 - Gradient stop token binding 可通过 editor gradient stop UI 创建、显示和解绑。**2026-06-25
   第十刀已完成;由 `tests/engine/app/color-style-row.test.ts` 加固 app-neutral helper。**
-- 后续可继续做:真实 GUI ACK、stop-level `variableConsumptionMap` 标准通道、完整多 stroke
-  语义、更多非 dark mode 的 runtime UI。
+- Gradient stop editor UI 有真实 browser E2E 覆盖。**2026-06-25 第十一刀已完成;由
+  `tests/e2e/properties/panel.spec.ts` 覆盖 bind existing / create / detach / manual edit
+  unbind。**
+- 后续可继续做:stop-level `variableConsumptionMap` 标准通道、完整多 stroke 语义、更多非 dark
+  mode 的 runtime UI。
 
 ---
 

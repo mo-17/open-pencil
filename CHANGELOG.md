@@ -31,6 +31,8 @@
   paths such as `fills/0/gradientStops/0/color`.
 - Add editor gradient-stop variable binding controls so fill stops can bind, create, display,
   and detach color variables from the gradient editor.
+- Add browser E2E coverage for gradient-stop variable binding controls, including existing
+  variable binding, variable creation, detaching, and manual color edits.
 - Split lowcode Inspector controls into Bindings, Events, Validation, and Advanced groups, with highlighted filter matches and an empty filter result state.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.
@@ -69,6 +71,8 @@
 - Fix instance overrides shallow-copied on clone — override values containing objects are now deep-copied.
 - Fix stale variable bindings not cleaned up when fills/strokes arrays shrink — any indexed sub-path is now handled, not just `/color`.
 - Fix tooltips around inspector dropdowns/popovers without breaking floating menu anchoring.
+- Fix nested variable picker popovers inside the gradient editor so they remain clickable above
+  the fill picker, and refresh stop-level binding controls after bind/detach actions.
 - Harden MCP calls with bounded page-tree responses, oversized-result errors, JSON HTTP responses, and stale WebSocket cleanup.
 - Clear lowcode validation numeric rules from the inspector instead of leaving empty validation entries.
 - Improve Figma boolean imports by preserving XOR operations as editable exclude nodes and falling back to imported fill geometry when boolean path reconstruction cannot produce a path.

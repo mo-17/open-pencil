@@ -159,6 +159,122 @@ test('fill color can create and bind a variable', async () => {
   editor.canvas.assertNoErrors()
 })
 
+test('gradient stop color can bind, create, and detach variables', async () => {
+  await editor.canvas.clearCanvas()
+  await editor.canvas.drawRect(200, 200, 80, 80)
+
+  await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const collection = store.graph.createCollection('Gradient Colors')
+    store.graph.createVariable('Gradient/start', 'COLOR', collection.id, {
+      r: 0,
+      g: 0.5,
+      b: 1,
+      a: 1
+    })
+    const id = [...store.state.selectedIds][0]
+    if (!id) throw new Error('No selected node')
+    store.graph.updateNode(id, {
+      fills: [
+        {
+          type: 'GRADIENT_LINEAR',
+          visible: true,
+          opacity: 1,
+          gradientStops: [
+            { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+            { position: 1, color: { r: 0, g: 0, b: 1, a: 1 } }
+          ],
+          gradientTransform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 0, m12: 0.5 }
+        }
+      ]
+    })
+    store.state.sceneVersion++
+  })
+  await editor.canvas.waitForRender()
+
+  const fillSwatch = editor.page.getByTestId('fill-picker-swatch')
+  async function openGradientStopEditor() {
+    if (
+      await editor.page
+        .getByTestId('fill-picker-gradient-bar')
+        .isVisible()
+        .catch(() => false)
+    )
+      return
+    await fillSwatch.click()
+    await expect(editor.page.getByTestId('fill-picker-gradient-bar')).toBeVisible()
+  }
+
+  await openGradientStopEditor()
+  await expect(editor.page.getByTestId('fill-gradient-stop-apply-variable-0')).toBeVisible()
+
+  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0').click()
+  await editor.page.getByText('Gradient/start', { exact: true }).click()
+  await editor.canvas.waitForRender()
+
+  await openGradientStopEditor()
+  await expect(editor.page.getByTestId('fill-gradient-stop-unbind-variable-0')).toBeVisible()
+  const boundExisting = await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = [...store.state.selectedIds][0]
+    return id ? (store.getNode(id)?.boundVariables['fills/0/gradientStops/0/color'] ?? null) : null
+  })
+  expect(boundExisting).not.toBeNull()
+
+  await editor.page.getByTestId('fill-gradient-stop-unbind-variable-0').click()
+  await editor.canvas.waitForRender()
+  const detachedExisting = await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = [...store.state.selectedIds][0]
+    return id ? (store.getNode(id)?.boundVariables['fills/0/gradientStops/0/color'] ?? null) : null
+  })
+  expect(detachedExisting).toBeNull()
+
+  await openGradientStopEditor()
+  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0').click()
+  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0-create').click()
+  await editor.page.getByPlaceholder('Variable name').fill('Gradient/created-stop')
+  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0-create').click()
+  await editor.canvas.waitForRender()
+
+  await openGradientStopEditor()
+  await expect(editor.page.getByTestId('fill-gradient-stop-unbind-variable-0')).toBeVisible()
+  const createdBinding = await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = [...store.state.selectedIds][0]
+    if (!id) return null
+    const variableId = store.getNode(id)?.boundVariables['fills/0/gradientStops/0/color']
+    return variableId ? store.getVariable(variableId)?.name : null
+  })
+  expect(createdBinding).toBe('Gradient/created-stop')
+
+  const hexInput = editor.page.locator('[role="dialog"] input[maxlength="6"]').first()
+  await hexInput.fill('00FF00')
+  await hexInput.blur()
+  await editor.canvas.waitForRender()
+
+  await expect(editor.page.getByTestId('fill-gradient-stop-unbind-variable-0')).toBeHidden()
+  const directStop = await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const id = [...store.state.selectedIds][0]
+    const node = id ? store.getNode(id) : null
+    return node
+      ? {
+          binding: node.boundVariables['fills/0/gradientStops/0/color'] ?? null,
+          color: node.fills[0]?.gradientStops?.[0]?.color
+        }
+      : null
+  })
+  expect(directStop?.binding).toBeNull()
+  expect(directStop?.color.g).toBe(1)
+  editor.canvas.assertNoErrors()
+})
+
 test('width can create, bind, and detach a number variable', async () => {
   await editor.canvas.clearCanvas()
   await editor.canvas.drawRect(200, 200, 80, 80)

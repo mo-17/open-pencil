@@ -15,6 +15,7 @@ import {
   inputValue,
   useI18n
 } from '@open-pencil/vue'
+import { ref } from 'vue'
 
 import type { Fill, GradientStop } from '@open-pencil/core/scene-graph'
 import type { GradientStopColorVariableBindingApi } from '@/app/properties/color-variable-binding'
@@ -32,13 +33,20 @@ const {
 }>()
 const emit = defineEmits<{ update: [fill: Fill] }>()
 const { panels, dialogs } = useI18n()
+const bindingVersion = ref(0)
+
+function refreshStopBindings() {
+  bindingVersion.value++
+}
 
 function stopVariable(index: number) {
+  void bindingVersion.value
   if (!activeNodeId || fillIndex == null || !stopBindingApi) return undefined
   return stopBindingApi.getGradientStopBoundVariable(activeNodeId, fillIndex, index)
 }
 
 function displayStop(stop: GradientStop, index: number): GradientStop {
+  void bindingVersion.value
   if (!activeNodeId || fillIndex == null || !stopBindingApi) return stop
   const color = boundGradientStopColor(stopBindingApi, activeNodeId, fillIndex, index)
   return color ? { ...stop, color } : stop
@@ -48,18 +56,54 @@ function unbindStopIfNeeded(index: number) {
   if (!activeNodeId || fillIndex == null || !stopBindingApi) return
   if (stopBindingApi.getGradientStopBoundVariable(activeNodeId, fillIndex, index)) {
     stopBindingApi.unbindGradientStopVariable(activeNodeId, fillIndex, index)
+    refreshStopBindings()
   }
 }
 
 function bindStopVariable(index: number, variableId: string) {
   if (!activeNodeId || fillIndex == null || !stopBindingApi) return
   stopBindingApi.bindGradientStopVariable(activeNodeId, fillIndex, index, variableId)
+  refreshStopBindings()
+}
+
+function detachStopVariable(index: number) {
+  if (!activeNodeId || fillIndex == null || !stopBindingApi) return
+  stopBindingApi.unbindGradientStopVariable(activeNodeId, fillIndex, index)
+  refreshStopBindings()
 }
 
 function createStopVariable(index: number, stop: GradientStop, name: string) {
   if (!activeNodeId || fillIndex == null || !stopBindingApi?.createAndBindGradientStopVariable)
     return
   stopBindingApi.createAndBindGradientStopVariable(activeNodeId, fillIndex, index, stop.color, name)
+  refreshStopBindings()
+}
+
+function updateStopHex(
+  actions: { updateColor: (hex: string) => void },
+  index: number,
+  hex: string
+) {
+  unbindStopIfNeeded(index)
+  actions.updateColor(hex)
+}
+
+function updateStopOpacity(
+  actions: { updateOpacity: (value: number) => void },
+  index: number,
+  value: number
+) {
+  unbindStopIfNeeded(index)
+  actions.updateOpacity(value)
+}
+
+function updateActiveColor(
+  actions: { updateActiveColor: (color: GradientStop['color']) => void },
+  index: number,
+  color: GradientStop['color']
+) {
+  unbindStopIfNeeded(index)
+  actions.updateActiveColor(color)
 }
 </script>
 
@@ -143,10 +187,7 @@ function createStopVariable(index: number, stop: GradientStop, name: string) {
               class="min-w-0 flex-1 rounded border border-border bg-input px-1 py-0.5 font-mono text-[11px] text-surface"
               :value="s.hex"
               maxlength="6"
-              @change="
-                unbindStopIfNeeded(s.index)
-                s.actions.updateColor(inputValue($event))
-              "
+              @change="updateStopHex(s.actions, s.index, inputValue($event))"
               @click.stop
             />
             <ScrubInput
@@ -155,10 +196,7 @@ function createStopVariable(index: number, stop: GradientStop, name: string) {
               :model-value="s.opacityPercent"
               :min="0"
               :max="100"
-              @update:model-value="
-                unbindStopIfNeeded(s.index)
-                s.actions.updateOpacity(Number($event))
-              "
+              @update:model-value="updateStopOpacity(s.actions, s.index, Number($event))"
               @click.stop
             />
             <VariablePickerPopover
@@ -181,6 +219,7 @@ function createStopVariable(index: number, stop: GradientStop, name: string) {
               :create-default-name="stopBindingApi.searchTerm.value"
               :create-test-id="`fill-gradient-stop-apply-variable-${s.index}-create`"
               :trigger-test-id="`fill-gradient-stop-apply-variable-${s.index}`"
+              :portal="false"
               :swatch-background="
                 (variableId) => variableSwatchBackground(stopBindingApi, variableId)
               "
@@ -193,7 +232,7 @@ function createStopVariable(index: number, stop: GradientStop, name: string) {
               "
               :test-id="`fill-gradient-stop-unbind-variable-${s.index}`"
               :label="panels.detachVariable"
-              @detach="stopBindingApi.unbindGradientStopVariable(activeNodeId, fillIndex, s.index)"
+              @detach="detachStopVariable(s.index)"
             />
             <button
               v-if="root.stops.length > 2"
@@ -208,10 +247,7 @@ function createStopVariable(index: number, stop: GradientStop, name: string) {
 
       <ColorPickerPanel
         :color="displayStop({ color: root.activeColor, position: 0 }, root.activeStopIndex).color"
-        @update="
-          unbindStopIfNeeded(root.activeStopIndex)
-          root.actions.updateActiveColor($event)
-        "
+        @update="updateActiveColor(root.actions, root.activeStopIndex, $event)"
       />
     </div>
   </GradientEditorRoot>

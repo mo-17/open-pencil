@@ -31,7 +31,8 @@ const {
   createDefaultName = '',
   createTestId,
   triggerTestId,
-  swatchBackground
+  swatchBackground,
+  portal = true
 } = defineProps<{
   variables: Variable[]
   triggerLabel: string
@@ -44,6 +45,7 @@ const {
   createTestId?: string
   triggerTestId?: string
   swatchBackground?: (variableId: string) => string
+  portal?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -104,13 +106,13 @@ function submitCreate() {
         {{ triggerLabel }}
       </div>
     </div>
-    <PopoverPortal>
+    <PopoverPortal :disabled="!portal">
       <PopoverContent
         side="left"
         align="center"
         :side-offset="8"
         :collision-padding="8"
-        class="z-50 w-56 rounded-lg border border-border bg-panel shadow-lg"
+        class="z-[60] w-56 rounded-lg border border-border bg-panel shadow-lg"
       >
         <ComboboxRoot
           :open="true"
