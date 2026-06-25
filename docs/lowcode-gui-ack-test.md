@@ -1,6 +1,7 @@
 # Lowcode GUI ACK Test Steps
 
 > 2026-06-24 handoff for manual browser/Tauri verification after the §14 local Libraries panel, #10 preview i18n/uiKit toggle, and #11 lowcode authorization GUI work.
+> 2026-06-25 update: add the Phase 5 Netlify deploy restore live ACK checklist.
 
 ## 0. Scope
 
@@ -14,6 +15,7 @@ Secondary ACK targets:
 
 - #10 Preview i18n/uiKit toolbar controls.
 - #11 Lowcode GUI authorization panels for responsive overrides, component props, and optional params.
+- Phase 5 §2 Netlify deploy restore live ACK.
 
 ## 1. Baseline
 
@@ -28,8 +30,8 @@ git ls-remote upstream refs/heads/lowcode-rebaseline
 Expected:
 
 - Tracked working tree is clean, except local ignored `prompt.md` may differ.
-- Local head is at least `829eb4e0 feat(app): add lowcode libraries panel`.
-- Remote `upstream/lowcode-rebaseline` points at `829eb4e0270a2de3b7e92ae1b80e1fbe6d7d0903` or a later intended commit.
+- Local head is at least `2c64609b feat(app): restore netlify deploys` for the Netlify restore ACK, or a later intended commit.
+- Remote `upstream/lowcode-rebaseline` points at the same commit if the branch has already been pushed.
 
 ## 2. Prepare §14 Fixture Files
 
@@ -232,18 +234,78 @@ Pass criteria:
 - Save/reopen round-trip preserves valid values.
 - Undo/redo works for the edited GUI values.
 
-## 6. Closeout
+## 6. Phase 5 Netlify Deploy Restore Live ACK
+
+Use this only with a real Netlify site and a deploy history entry that is safe to restore. This
+checklist verifies the live provider path that unit tests cannot exercise.
+
+Prerequisites:
+
+- A lowcode document has at least two successful Netlify deploy history entries for the same site.
+- The target history row has provider `netlify`, a non-empty site value, and a deploy id.
+- The target row shows rollback support as `API candidate` and displays `restore deploy`.
+- You have a current Netlify Personal Access Token with permission to restore deploys for that site.
+
+Safety rules:
+
+- Do not paste the token into issue text, chat, screenshots, shell history, or committed files.
+- Do not save the token in a deploy target preset; it must only live in the current Deploy panel input.
+- Confirm the site value points at the intended Netlify site before clicking `restore deploy`.
+- Prefer a preview/staging site for the first ACK. Production restore should only be run when the target deploy is intentionally chosen.
+
+Steps:
+
+1. Open the lowcode preview pane and the Deploy controls.
+2. Select the same provider/environment that created the Netlify history entry.
+3. Find the Netlify history row that should become active again.
+4. Confirm the row shows:
+   - provider `netlify`
+   - the expected environment
+   - the intended site id or site slug
+   - the expected deploy id
+   - `restore deploy`
+5. Enter a valid Netlify token in the token input.
+6. Open browser devtools or the Tauri automation network/console inspector if available.
+7. Click `restore deploy`.
+8. Confirm the outgoing request is:
+   - `POST`
+   - `https://api.netlify.com/api/v1/sites/{site}/deploys/{deployId}/restore`
+   - `Authorization: Bearer <current token>`
+   - no request body is required
+9. Confirm the UI reports a restore success message with the restored deploy id and URL when Netlify returns success.
+10. Open the returned URL or the Netlify dashboard link and confirm the active deploy matches the intended target.
+11. Reload the app and reopen Deploy controls.
+12. Confirm the token input is empty or not automatically restored from local history/presets.
+
+Pass criteria:
+
+- The restore request uses the history row site/deploy id and the current token input.
+- The token is not written into localStorage, deploy history, target presets, or `prompt.md`.
+- Success feedback includes the restored deploy id, and the active Netlify deploy matches the selected target.
+- A failed 401/403/404 shows an error message and does not claim success.
+- Rows without a site stay dashboard-only and do not show the Netlify restore API button.
+
+If the ACK fails:
+
+1. Record the environment, site value, deploy id, HTTP status, and visible error text.
+2. Do not record the token value.
+3. Re-run `bun test tests/engine/app/deploy-history.test.ts`.
+4. Fix the smallest affected DeployControls or deploy-history helper surface.
+
+## 7. Closeout
 
 If all ACKs pass:
 
 1. Update `docs/lowcode-phase-4.md`:
    - Mark #8 §14 from `已完成(待真机 ACK)` to `已完成`.
    - Mark #10 and #11 ACK text as true-machine verified.
-2. Update local `prompt.md` with the ACK results and next recommendation.
-3. Run at least:
+2. For the Phase 5 Netlify restore ACK, update `docs/lowcode-phase-5.md` with the live ACK result.
+3. Update local `prompt.md` with the ACK results and next recommendation.
+4. Run at least:
 
 ```sh
 git diff --check
+bun test tests/engine/app/deploy-history.test.ts
 bun run check:vue
 bun run check:arch
 ```

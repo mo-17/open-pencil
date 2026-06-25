@@ -166,6 +166,20 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - Token 仍只留在组件内存,不写入 history / target presets / localStorage。
 - 本刀仍不改 CLI deploy 参数、provider 上传实现、Cloudflare / Vercel rollback endpoint。
 
+**2026-06-25 第七刀已完成**:
+
+- 将 Netlify restore 的真 token / 真站点 ACK 从代码实现中拆出来,补进
+  `docs/lowcode-gui-ack-test.md`。
+- ACK checklist 明确真实 provider 验证所需前提:同一 Netlify site 至少两个 deploy
+  history entry、目标 row 具备 site / deployId、并显示 `restore deploy`。
+- ACK 步骤覆盖请求形态、成功回执、dashboard/live URL 观察点和 reload 后 token 不回填。
+- 安全边界写入文档:不把 token 粘到 issue / chat / screenshot / shell history / committed
+  files,不保存到 deploy target preset,优先在 preview/staging site 试跑。
+- 失败路径要求记录 environment / site / deployId / HTTP status / visible error text,但不记录
+  token 值。
+- 本刀不执行真实 Netlify restore,不接 Cloudflare / Vercel rollback endpoint,也不新增 root-level
+  Markdown 文件,避免 Steiger root Markdown allowlist 漂移。
+
 ### 2.3 成功标准草案
 
 - CLI 可以输出包含 provider、deployId、url、environment 的 JSON。**2026-06-25 已完成,
@@ -186,6 +200,9 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
 - Netlify rollback API 可通过 mock fetch 验证请求构造和错误处理。**2026-06-25 第六刀已补
   Netlify site-scoped restore helper,覆盖在 `tests/engine/app/deploy-history.test.ts`;
   真 token live ACK 留给后续手动验证。**
+- Netlify restore live ACK 有可执行手测步骤和安全边界。**2026-06-25 第七刀已补
+  `docs/lowcode-gui-ack-test.md` checklist;真实 provider ACK 仍需用户凭有效 Netlify token
+  手动执行。**
 
 ---
 

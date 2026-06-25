@@ -11,6 +11,7 @@
 - Add local lowcode deploy target presets so preview, staging, and production can remember provider/site/build options without storing tokens.
 - Add a local lowcode rollback contract for provider API readiness without invoking provider rollback APIs.
 - Add a Netlify deploy restore action backed by the site-scoped Netlify restore API.
+- Add Netlify deploy restore live ACK steps with token-safety checks for manual provider verification.
 - Emit lowcode design-token CSS variables from SceneGraph variable modes into generated `src/index.css`, including `.dark` mode blocks.
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.
