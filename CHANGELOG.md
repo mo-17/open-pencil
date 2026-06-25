@@ -8,6 +8,7 @@
 - Add lowcode deploy lifecycle labels for preview, staging, and production, plus local deploy history and provider dashboard rollback links.
 - Emit lowcode design-token CSS variables from SceneGraph variable modes into generated `src/index.css`, including `.dark` mode blocks.
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
+- Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.
 - Split lowcode Inspector controls into Bindings, Events, Validation, and Advanced groups, with highlighted filter matches and an empty filter result state.
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.

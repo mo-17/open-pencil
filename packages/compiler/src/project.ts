@@ -177,15 +177,20 @@ function cleanMetadataText(value: unknown): string | undefined {
  *  `<ToastHost/>` (from `_lowcode_toast.tsx`) as a sibling of `<App/>` so the
  *  `__opToast` runtime has somewhere to render. Phase 3 §10 v3: when `confirm`
  *  is true, likewise auto-mount `<ConfirmHost/>` (from `_lowcode_confirm.tsx`)
- *  so `__opConfirm` can render its modal. */
+ *  so `__opConfirm` can render its modal. Phase 5 §5: when `theme` is true,
+ *  wrap the app in the generated theme provider and mount the visible theme
+ *  switch inside that provider. */
 export function buildMainTsx(i18n = false, toast = false, confirm = false, theme = false): string {
   const i18nImport = i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
   const toastImport = toast ? `import { ToastHost } from './_lowcode_toast'\n` : ''
   const confirmImport = confirm ? `import { ConfirmHost } from './_lowcode_confirm'\n` : ''
-  const themeImport = theme ? `import { LowcodeThemeProvider } from './_lowcode_theme'\n` : ''
+  const themeImport = theme
+    ? `import { LowcodeThemeProvider, LowcodeThemeSwitch } from './_lowcode_theme'\n`
+    : ''
   let app = '<App />'
   if (i18n) app = `<I18nProvider>\n      ${app}\n    </I18nProvider>`
-  if (theme) app = `<LowcodeThemeProvider>\n      ${app}\n    </LowcodeThemeProvider>`
+  if (theme)
+    app = `<LowcodeThemeProvider>\n      ${app}\n      <LowcodeThemeSwitch />\n    </LowcodeThemeProvider>`
   const toastChild = toast ? `\n    <ToastHost />` : ''
   const confirmChild = confirm ? `\n    <ConfirmHost />` : ''
   return `import { StrictMode } from 'react'

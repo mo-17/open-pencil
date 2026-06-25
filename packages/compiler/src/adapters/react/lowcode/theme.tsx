@@ -1,9 +1,39 @@
 export function buildLowcodeThemeRuntime(): string {
-  return `import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+  return `import { createContext, useCallback, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 
 export type LowcodeTheme = 'light' | 'dark'
 
 const STORAGE_KEY = 'open-pencil:lowcode-theme'
+const switcherStyle: CSSProperties = {
+  position: 'fixed',
+  right: '1rem',
+  bottom: '1rem',
+  zIndex: 50,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  padding: '0.25rem',
+  border: '1px solid color-mix(in srgb, CanvasText 16%, transparent)',
+  borderRadius: '999px',
+  background: 'Canvas',
+  color: 'CanvasText',
+  boxShadow: '0 10px 30px color-mix(in srgb, CanvasText 14%, transparent)',
+  colorScheme: 'light dark'
+}
+const buttonStyle: CSSProperties = {
+  border: 0,
+  borderRadius: '999px',
+  padding: '0.375rem 0.625rem',
+  background: 'transparent',
+  color: 'inherit',
+  cursor: 'pointer',
+  font: '600 0.75rem/1 system-ui, sans-serif'
+}
+const activeButtonStyle: CSSProperties = {
+  ...buttonStyle,
+  background: 'CanvasText',
+  color: 'Canvas'
+}
 const ThemeContext = createContext<{
   theme: LowcodeTheme
   setTheme: (theme: LowcodeTheme) => void
@@ -58,6 +88,25 @@ export function LowcodeThemeProvider({ children }: { children: ReactNode }) {
 
 export function useTheme() {
   return useContext(ThemeContext)
+}
+
+export function LowcodeThemeSwitch() {
+  const { theme, setTheme } = useTheme()
+  return (
+    <div aria-label="Theme" style={switcherStyle}>
+      {(['light', 'dark'] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={theme === value}
+          onClick={() => setTheme(value)}
+          style={theme === value ? activeButtonStyle : buttonStyle}
+        >
+          {value === 'light' ? 'Light' : 'Dark'}
+        </button>
+      ))}
+    </div>
+  )
 }
 `
 }

@@ -88,11 +88,16 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(css).toContain(':root[data-theme="dark"], .dark')
 
     const main = out.files.get('src/main.tsx') as string
-    expect(main).toContain("import { LowcodeThemeProvider } from './_lowcode_theme'")
+    expect(main).toContain(
+      "import { LowcodeThemeProvider, LowcodeThemeSwitch } from './_lowcode_theme'"
+    )
     expect(main).toContain('<LowcodeThemeProvider>')
+    expect(main).toContain('<LowcodeThemeSwitch />')
     expect(out.files.has('src/_lowcode_theme.tsx')).toBe(true)
     const runtime = out.files.get('src/_lowcode_theme.tsx') as string
     expect(runtime).toContain('export function useTheme()')
+    expect(runtime).toContain('export function LowcodeThemeSwitch()')
+    expect(runtime).toContain('aria-pressed={theme === value}')
     expect(runtime).toContain("data.source !== 'op-lowcode-editor' || data.type !== 'theme'")
     expect(runtime).toContain("document.documentElement.classList.toggle('dark'")
   })
