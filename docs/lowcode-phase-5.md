@@ -781,6 +781,25 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   - `bun run lint:structure` / `CHOKIDAR_USEPOLLING=1 bun run check:arch` /
     `bunx tsgo --noEmit` / `bun run test:tools` 通过。
 
+**2026-06-29 第二十九刀已完成**:
+
+- 将 repo-local Tauri lowcode preview ACK helper 拆成可测试的 CLI contract:
+  - `tools/lowcode/src/tauri-lowcode-preview-ack.ts` 导出参数解析、CLI runner 和 ACK runner。
+  - `scripts/tauri-mcp-lowcode-preview-ack.ts` 作为 root shim 显式调用 `runCli()`。
+  - 新增 `tests/engine/tauri/lowcode-preview-ack.test.ts` 覆盖:
+    - `--help` 不触发 bridge 命令。
+    - 缺少全局 `tauri-mcp` 时 fallback 到 `bunx tauri-mcp`。
+    - `TAURI_MCP_BIN` 自定义可执行文件路径。
+    - `--skip-screenshot` 不写截图。
+    - driver session 未连接时输出清晰错误。
+- 为测试侧导入 tools 代码补充 `#tools/*` tsconfig alias,避免深层 parent-relative import。
+- 验证:
+  - `bun test tests/engine/tauri/mcp-spawn.test.ts tests/engine/tauri/automation-files.test.ts tests/engine/tauri/lowcode-preview-ack.test.ts`
+    通过,7 pass,21 expects。
+  - `bun run lint:structure` 通过,仅既有 max-lines warnings。
+  - `bunx tsgo --noEmit` 通过。
+  - `bun run test:tools` 通过。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
@@ -860,8 +879,12 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   覆盖。**
 - 真实 Tauri lowcode preview ACK 可通过 repo-local helper 重复执行。**2026-06-26 第二十八刀
   已完成;由 `bun run tauri:mcp:lowcode-preview-ack` 覆盖。**
+- Repo-local Tauri lowcode preview ACK helper 的 CLI contract 有 engine-level 覆盖。
+  **2026-06-29 第二十九刀已完成;由
+  `tests/engine/tauri/lowcode-preview-ack.test.ts` 覆盖。**
 - 后续可继续做:Kiwi `VariableField` enum 升级 / Figma 官方 stop-level field 名确认、完整多
-  stroke 几何语义、把真实 Tauri automation ACK 沉淀成可重复测试、更多 runtime UI polish。
+  stroke 几何语义、评估真实 Tauri automation helper 是否应进一步升级为可自启动/自清理的 GUI
+  spec、更多 runtime UI polish。
 
 ---
 
