@@ -54,7 +54,11 @@ import {
 } from './lowcode/supabase'
 import { buildLowcodeThemeRuntime } from './lowcode/theme'
 import { buildLowcodeToastRuntime, TOAST_RUNTIME_CLASSES } from './lowcode/toast'
-import { buildLowcodeValidationRuntime, VALIDATION_ERROR_CLASSES } from './lowcode/validation'
+import {
+  buildLowcodeValidationRuntime,
+  VALIDATION_ERROR_CLASSES,
+  VALIDATION_INVALID_FIELD_CLASSES
+} from './lowcode/validation'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import { buildAppTsx, buildPageModule, buildRouterApp, PAGE_WRAPPER_CLASSES } from './scaffold'
@@ -76,6 +80,38 @@ const LOWCODE_TOAST_FILE = 'src/_lowcode_toast.tsx'
 const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
 const LOWCODE_VALIDATION_FILE = 'src/_lowcode_validation.tsx'
 const LOWCODE_THEME_FILE = 'src/_lowcode_theme.tsx'
+const LOWCODE_RUNTIME_THEME_UTILITY_RE =
+  /(?:^|:)(?:accent|bg|text|border|ring)-(?:background|foreground|primary|primary-foreground|secondary|secondary-foreground|muted-foreground|destructive|destructive-foreground|border|ring)(?:\/|$)/
+const LOWCODE_RUNTIME_THEME_CSS = `@layer base {
+  :root {
+    --background: Canvas;
+    --foreground: CanvasText;
+    --primary: var(--op-lowcode-theme-accent, CanvasText);
+    --primary-foreground: var(--op-lowcode-theme-on-accent, Canvas);
+    --secondary: color-mix(in srgb, var(--op-lowcode-theme-accent, CanvasText) 10%, Canvas);
+    --secondary-foreground: CanvasText;
+    --muted-foreground: color-mix(in srgb, CanvasText 68%, transparent);
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    --border: color-mix(in srgb, CanvasText 16%, transparent);
+    --ring: var(--destructive);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+}
+`
 
 function resolveThemeSwitchPosition(
   options: CompilerOptions
@@ -554,10 +590,13 @@ function setSharedProjectFiles(
   const runtimeClasses = [
     ...(toast ? TOAST_RUNTIME_CLASSES : []),
     ...(confirm ? CONFIRM_RUNTIME_CLASSES : []),
-    ...(validation ? VALIDATION_ERROR_CLASSES : [])
+    ...(validation ? [...VALIDATION_ERROR_CLASSES, ...VALIDATION_INVALID_FIELD_CLASSES] : [])
   ]
   const safelist =
     runtimeClasses.length > 0 ? [...new Set([...classNames, ...runtimeClasses])].sort() : classNames
+  const needsRuntimeThemeCss =
+    runtimeClasses.length > 0 ||
+    classNames.some((className) => LOWCODE_RUNTIME_THEME_UTILITY_RE.test(className))
   // Phase 3 §15: when a UI kit is active, the inlined `@/`-aliased imports need
   // the alias in both tsconfig (standalone tsc) and vite (build/dev resolution),
   // and the kit's theme tokens go into index.css.
@@ -574,7 +613,13 @@ function setSharedProjectFiles(
     'src/main.tsx',
     buildMainTsx(i18n, toast, confirm, themeActive, resolveThemeSwitchPosition(options))
   )
-  const themeCss = [options.themeCss, kit.themeCss].filter(Boolean).join('\n')
+  const themeCss = [
+    options.themeCss,
+    needsRuntimeThemeCss ? LOWCODE_RUNTIME_THEME_CSS : '',
+    kit.themeCss
+  ]
+    .filter(Boolean)
+    .join('\n')
   files.set('src/index.css', buildIndexCss(safelist, themeCss))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {

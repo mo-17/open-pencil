@@ -47,7 +47,8 @@ describe('compile — overlays (Phase 4 §21)', () => {
     expect(app).toContain('const isOpen = useDocState("isOpen")')
     expect(app).toContain('{isOpen && (')
     expect(app).toContain('className="fixed inset-0 z-50 flex items-center justify-center"')
-    expect(app).toContain('className="absolute inset-0 bg-black/50"')
+    expect(app).toContain('className="absolute inset-0 bg-foreground/50"')
+    expect(app).not.toContain('bg-black/50')
     expect(app).toContain('onClick={() => setDocState("isOpen", false)}')
     expect(app).toContain('Overlay body')
   })
@@ -70,7 +71,10 @@ describe('compile — overlays (Phase 4 §21)', () => {
     const { css } = compileOverlay({ kind: 'modal', openRef: 'isOpen' })
     expect(css).toContain('fixed')
     expect(css).toContain('z-50')
-    expect(css).toContain('bg-black/50')
+    expect(css).toContain('bg-foreground/50')
+    expect(css).toContain('@theme inline')
+    expect(css).toContain('--color-foreground')
+    expect(css).not.toContain('bg-black/50')
   })
 
   test('unknown openRef warns and falls back to a normal element', () => {

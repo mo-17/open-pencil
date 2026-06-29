@@ -1,5 +1,5 @@
 import { designTokenCssVariableName } from '#compiler/theme-css'
-import lucideIcons from '@iconify-json/lucide/icons.json'
+import lucideIcons from '@iconify-json/lucide/icons.json' with { type: 'json' }
 
 import { colorToHex8 } from '@open-pencil/core/color'
 import { gradientFillCss } from '@open-pencil/core/io/formats/jsx'
@@ -1303,6 +1303,22 @@ function applyBoundStrokeStyle(
     return
   }
 
+  if (hasIndependentStrokeWeights(node)) {
+    applyUnsupportedStrokeGeometryFallback(node, ctx, declarations, layers, {
+      reason: 'independent stroke weights',
+      detail: 'side-specific layered shadows'
+    })
+    return
+  }
+
+  if (hasDashPattern(node)) {
+    applyUnsupportedStrokeGeometryFallback(node, ctx, declarations, layers, {
+      reason: 'dash pattern strokes',
+      detail: 'dashed layered shadows'
+    })
+    return
+  }
+
   declarations.boxShadow = [...layersToBoxShadow(layers), ...effectShadows(node.effects)].join(', ')
 }
 
@@ -1329,13 +1345,45 @@ function boundStrokeLayers(node: SceneNode, ctx: WalkCtx): BoundStrokeLayer[] {
   return hasBoundLayer ? layers : []
 }
 
+function hasIndependentStrokeWeights(node: SceneNode): boolean {
+  if (!node.independentStrokeWeights) return false
+  const weights = [
+    node.borderTopWeight,
+    node.borderRightWeight,
+    node.borderBottomWeight,
+    node.borderLeftWeight
+  ]
+  return weights.some((weight) => weight !== weights[0])
+}
+
+function hasDashPattern(node: SceneNode): boolean {
+  return node.dashPattern.some((value) => value > 0)
+}
+
+function applyUnsupportedStrokeGeometryFallback(
+  node: SceneNode,
+  ctx: WalkCtx,
+  declarations: Record<string, string>,
+  layers: BoundStrokeLayer[],
+  { reason, detail }: { reason: string; detail: string }
+): void {
+  const color = layers.find((layer) => layer.boundColor)?.boundColor
+  if (!color) return
+  ctx.warnings.push({
+    code: 'design-token-stroke-geometry-unsupported',
+    message: `${node.type} ${node.id} uses ${reason}; multi-stroke token fallback is reduced to borderColor because ${detail} are not supported yet`,
+    nodeId: node.id
+  })
+  declarations.borderColor = color
+}
+
 function layersToBoxShadow(layers: BoundStrokeLayer[]): string[] {
   let insetWidth = 0
   let outsetWidth = 0
   const shadows: string[] = []
   for (const layer of layers) {
-    const outside = layer.stroke.align === 'OUTSIDE'
-    if (outside) {
+    const placement = strokeShadowPlacement(layer.stroke)
+    if (placement === 'outset') {
       outsetWidth += layer.stroke.weight
       shadows.push(`0 0 0 ${cssPx(outsetWidth)} ${layer.color}`)
     } else {
@@ -1344,6 +1392,10 @@ function layersToBoxShadow(layers: BoundStrokeLayer[]): string[] {
     }
   }
   return shadows
+}
+
+function strokeShadowPlacement(stroke: Stroke): 'inset' | 'outset' {
+  return stroke.align === 'OUTSIDE' ? 'outset' : 'inset'
 }
 
 function cssPx(value: number): string {
@@ -3598,7 +3650,7 @@ function applySelectOptions(
 // control + its text align with a small gap instead of butting together.
 const OPTION_GROUP_WRAPPER_CLASSES = 'flex flex-col gap-2'
 const OPTION_LABEL_CLASSES = 'inline-flex items-center gap-2 cursor-pointer'
-const OPTION_INPUT_CLASSES = 'shrink-0 accent-blue-500 dark:accent-blue-400'
+const OPTION_INPUT_CLASSES = 'shrink-0 accent-primary'
 
 /** Shared per-option emit for RADIO + CHECKBOX-group wrappers. Each option
  *  becomes a `<label><input ...> opt</label>` child of the wrapper div.

@@ -32,6 +32,49 @@ bun run tauri:mcp:screenshot
 
 The bridge uses port `9223` by default. If the session cannot connect, verify that the Tauri app was started with `bun run tauri:automation:dev`, not plain `bun run tauri dev`.
 
+### Lowcode preview ACK runbook
+
+Use this sequence for a local, real Tauri webview ACK of the lowcode preview pane. It verifies the debug app, the MCP bridge, the window, the webview DOM, and a screenshot path without relying on the Playwright Tauri mock.
+
+Terminal 1:
+
+```sh
+bun run tauri:automation:dev
+```
+
+Terminal 2:
+
+```sh
+bun run tauri:mcp:lowcode-preview-ack
+```
+
+This helper runs the same checks listed below in sequence and writes the screenshot to `test-results/tauri-mcp-screenshot.png` by default. Use `--skip-screenshot` for a non-image smoke, or set `TAURI_MCP_BIN=/path/to/tauri-mcp` when you want to avoid the `bunx` fallback.
+
+For manual debugging, run the underlying steps one at a time:
+
+```sh
+bunx tauri-mcp driver-session start --port 9223
+bunx tauri-mcp driver-session status
+bunx tauri-mcp ipc-get-backend-state
+bunx tauri-mcp manage-window --action list
+bunx tauri-mcp webview-dom-snapshot --type structure
+bunx tauri-mcp webview-execute-js --script "(() => ({ hasTauri: Boolean(window.__TAURI__), hasLowcodePreview: Boolean(document.querySelector('#lowcode-preview')), toolbarText: document.querySelector('#lowcode-preview')?.textContent?.slice(0, 200) ?? null }))()"
+bunx tauri-mcp webview-get-styles --selector '#lowcode-preview' --properties display,visibility,width,height
+bunx tauri-mcp webview-wait-for --type selector --value '#lowcode-preview' --timeout 5000
+bunx tauri-mcp webview-screenshot --file test-results/tauri-mcp-screenshot.png
+```
+
+Expected signals:
+
+- `driver-session status` returns `connected: true` for `net.dannote.open-pencil` on port `9223`.
+- `ipc-get-backend-state` returns `OpenPencil`, debug macOS environment details, and at least one visible window.
+- `manage-window --action list` includes the focused `main` window at `http://localhost:1420/`.
+- `webview-execute-js` returns `hasTauri: true` and `hasLowcodePreview: true`.
+- `webview-get-styles` reports `#lowcode-preview` as visible, usually `display: flex` and `visibility: visible`.
+- `webview-screenshot` writes to `test-results/tauri-mcp-screenshot.png`. `test-results/` is ignored and should not be committed.
+
+Run the session commands sequentially. Running `driver-session start` and `webview-screenshot` in parallel can fail because the screenshot process may not see the active session yet.
+
 ## Tauri WebDriver
 
 Use this path when you want repeatable WebDriverIO/Selenium-style E2E tests for the Tauri desktop app.

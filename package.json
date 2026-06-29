@@ -16,6 +16,7 @@
     "mcp:tauri": "mcp-server-tauri",
     "tauri:mcp:session": "tauri-mcp driver-session start --port 9223",
     "tauri:mcp:screenshot": "tauri-mcp webview-screenshot --file test-results/tauri-mcp-screenshot.png",
+    "tauri:mcp:lowcode-preview-ack": "bun scripts/tauri-mcp-lowcode-preview-ack.ts",
     "tauri:webdriver": "tauri-wd --port 4444",
     "tauri:webdriver:install": "cargo install tauri-webdriver-automation",
     "lint": "bun run lint:structure && oxlint -c oxlint.json --type-aware --type-check src/ packages/core/src/ packages/vue/src/ packages/cli/src/ packages/mcp/src/ packages/compiler/src/",

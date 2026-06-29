@@ -5,9 +5,15 @@ import { fileURLToPath } from 'node:url'
 
 const rootDir = fileURLToPath(new URL('../../..', import.meta.url))
 const packageDirs = ['packages/core', 'packages/vue', 'packages/mcp', 'packages/cli']
+const privateDependencyDirs = ['packages/compiler']
 
-function run(command: string[], cwd = rootDir): string {
-  const proc = Bun.spawnSync(command, { cwd, stdout: 'pipe', stderr: 'pipe' })
+function run(command: string[], cwd = rootDir, env: Record<string, string> = {}): string {
+  const proc = Bun.spawnSync(command, {
+    cwd,
+    env: { ...Bun.env, ...env },
+    stdout: 'pipe',
+    stderr: 'pipe'
+  })
   const stdout = proc.stdout.toString()
   const stderr = proc.stderr.toString()
   if (!proc.success) {
@@ -28,8 +34,7 @@ const tempDir = mkdtempSync(join(tmpdir(), 'open-pencil-package-smoke-'))
 try {
   run(['bun', 'run', 'build:packages'])
 
-  const tarballs: string[] = []
-  for (const packageDir of packageDirs) {
+  const packPackage = (packageDir: string): string => {
     const output = run(
       ['bun', 'pm', 'pack', '--destination', tempDir, '--quiet'],
       join(rootDir, packageDir)
@@ -37,11 +42,15 @@ try {
     const filename = output
       .split('\n')
       .map((line) => line.trim())
-      .findLast((line) => line.length > 0)
+      .findLast((line) => line.endsWith('.tgz'))
     if (!filename) throw new Error(`No tarball produced for ${packageDir}`)
-    const tarball = filename.startsWith('/') ? filename : join(tempDir, filename)
-    tarballs.push(tarball)
+    return filename.startsWith('/') ? filename : join(tempDir, filename)
+  }
 
+  const tarballs: string[] = []
+  for (const packageDir of packageDirs) {
+    const tarball = packPackage(packageDir)
+    tarballs.push(tarball)
     const contents = run(['tar', '-tf', tarball])
     const runtimeTs = contents
       .split('\n')
@@ -51,9 +60,14 @@ try {
       process.exit(1)
     }
   }
+  for (const packageDir of privateDependencyDirs) {
+    tarballs.push(packPackage(packageDir))
+  }
 
   run(['npm', 'init', '-y'], tempDir)
-  run(['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', ...tarballs], tempDir)
+  run(['npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', ...tarballs], tempDir, {
+    npm_config_cache: join(tempDir, '.npm-cache')
+  })
 
   nodeEval("await import('@open-pencil/core')", tempDir)
   nodeEval("await import('@open-pencil/core/scene-graph')", tempDir)

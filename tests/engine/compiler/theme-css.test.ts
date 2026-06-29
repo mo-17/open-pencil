@@ -64,6 +64,29 @@ function addThemeVariables() {
   return graph
 }
 
+function addColorOnlyThemeVariables() {
+  const graph = makeSceneGraph()
+  graph.addCollection({
+    id: 'col-theme',
+    name: 'Brand Theme',
+    modes: [{ modeId: 'light', name: 'Light' }],
+    defaultModeId: 'light',
+    variableIds: ['var-primary']
+  })
+  graph.addVariable({
+    id: 'var-primary',
+    name: 'color/primary',
+    type: 'COLOR',
+    collectionId: 'col-theme',
+    valuesByMode: {
+      light: { r: 0.2, g: 0.4, b: 0.8, a: 1 } satisfies Color
+    },
+    description: '',
+    hiddenFromPublishing: false
+  })
+  return graph
+}
+
 function solidFill(color: Color, opacity = 1): Fill {
   return { type: 'SOLID', color, opacity, visible: true }
 }
@@ -102,6 +125,13 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(css).toContain('--op-brand-theme-color-primary: #3366CC;')
     expect(css).toContain('--op-brand-theme-color-accent: #3366CC;')
     expect(css).toContain('--op-brand-theme-radius-base: 8;')
+    expect(css).toContain('--op-lowcode-theme-accent: var(--op-brand-theme-color-primary);')
+    expect(css).toContain(
+      '--op-lowcode-theme-surface: color-mix(in srgb, var(--op-brand-theme-color-primary) 8%, Canvas);'
+    )
+    expect(css).toContain(
+      '--op-lowcode-theme-radius: calc(var(--op-brand-theme-radius-base) * 1px);'
+    )
     expect(css).toContain(':root[data-theme="dark"], .dark {')
     expect(css).toContain('--op-brand-theme-color-primary: #CCE6FF;')
     expect(css).toContain('--op-brand-theme-radius-base: 10;')
@@ -109,6 +139,14 @@ describe('Phase 5 §5 design token theme CSS', () => {
 
   test('returns empty css when a graph has no variables', () => {
     expect(buildDesignTokenThemeCss(makeSceneGraph())).toBe('')
+  })
+
+  test('runtime theme aliases stay sparse when optional token roles are absent', () => {
+    const css = buildDesignTokenThemeCss(addColorOnlyThemeVariables())
+
+    expect(css).toContain('--op-lowcode-theme-accent: var(--op-brand-theme-color-primary);')
+    expect(css).toContain('--op-lowcode-theme-surface:')
+    expect(css).not.toContain('--op-lowcode-theme-radius:')
   })
 
   test('compile injects design token theme css into index.css', () => {
@@ -138,6 +176,12 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(runtime).toContain('export function LowcodeThemeSwitch({')
     expect(runtime).toContain("position = 'bottom-right'")
     expect(runtime).toContain("'bottom-right': { right: '1rem', bottom: '1rem' }")
+    expect(runtime).toContain("const accentColor = 'var(--op-lowcode-theme-accent, CanvasText)'")
+    expect(runtime).toContain("const surfaceColor = 'var(--op-lowcode-theme-surface, Canvas)'")
+    expect(runtime).toContain("const radius = 'var(--op-lowcode-theme-radius, 999px)'")
+    expect(runtime).toContain('background: surfaceColor')
+    expect(runtime).toContain('borderRadius: radius')
+    expect(runtime).toContain('background: accentColor')
     expect(runtime).toContain('aria-pressed={theme === value}')
     expect(runtime).toContain("data.source !== 'op-lowcode-editor' || data.type !== 'theme'")
     expect(runtime).toContain("document.documentElement.classList.toggle('dark'")

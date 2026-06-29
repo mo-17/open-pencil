@@ -21,9 +21,9 @@ function coreTailwindOptions(options: CompilerStyleOptions = {}): TailwindClassO
  * Track: `appearance-none` strips the native checkbox glyph; the input is a
  * query container (`container-type:size`) so the thumb pseudo-element can size
  * and travel in `cqw`/`cqh` — i.e. relative to the track's own width/height.
- * Colors are fixed (off gray / on blue, both with a dark variant) and override
- * any SceneNode fill — a created SWITCH already carries a default gray fill, so
- * deriving the on-color from it would just paint the toggle gray-on-gray.
+ * Colors use the generated app's semantic tokens and override any SceneNode
+ * fill — a created SWITCH already carries a default gray fill, so deriving the
+ * on-color from it would just paint the toggle gray-on-gray.
  */
 const SWITCH_TRACK = [
   'appearance-none',
@@ -31,10 +31,8 @@ const SWITCH_TRACK = [
   'relative',
   'rounded-full',
   '[container-type:size]',
-  'bg-gray-300',
-  'dark:bg-gray-600',
-  'checked:bg-blue-500',
-  'dark:checked:bg-blue-400',
+  'bg-secondary',
+  'checked:bg-primary',
   'transition-colors'
 ]
 
@@ -54,8 +52,7 @@ const SWITCH_THUMB = [
   'before:h-[80cqh]',
   'before:aspect-square',
   'before:rounded-full',
-  'before:bg-white',
-  'dark:before:bg-gray-100',
+  'before:bg-background',
   'before:shadow',
   'before:transition-transform',
   'before:duration-200',
@@ -64,6 +61,10 @@ const SWITCH_THUMB = [
 ]
 
 const SWITCH_CLASSES = [...SWITCH_TRACK, ...SWITCH_THUMB].join(' ')
+
+function switchBaseClasses(baseClasses: string[]): string {
+  return baseClasses.filter((className) => !className.startsWith('bg-')).join(' ')
+}
 
 /**
  * Derive the Tailwind class string for a SceneNode. Delegates to the core
@@ -78,7 +79,8 @@ export function tailwindClassName(
   options: CompilerStyleOptions = {}
 ): string {
   const tailwindOptions = coreTailwindOptions(options)
-  const base = collectTailwindClasses(node, graph, tailwindOptions).join(' ')
+  const baseClasses = collectTailwindClasses(node, graph, tailwindOptions)
+  const base = node.type === 'SWITCH' ? switchBaseClasses(baseClasses) : baseClasses.join(' ')
   const styled =
     node.type === 'SWITCH' ? (base === '' ? SWITCH_CLASSES : `${base} ${SWITCH_CLASSES}`) : base
   // §7 responsive overrides re-derive a breakpoint-prefixed diff in core (same

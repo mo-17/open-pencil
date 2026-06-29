@@ -120,7 +120,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       // Skip Vite's html crawler; we pre-declare the npm deps the emitted
       // app needs so the depscan has nothing to do.
       entries: [],
-      include: ['react', 'react-dom', 'react-dom/client']
+      include: ['react', 'react-dom', 'react-dom/client', 'zustand', 'zustand/vanilla']
     },
     // Hard-override JSX so the in-memory tsx parses cleanly (shared with the
     // static build — see VITE_JSX_ESBUILD).

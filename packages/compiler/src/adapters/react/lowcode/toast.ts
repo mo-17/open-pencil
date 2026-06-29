@@ -29,11 +29,15 @@ export const TOAST_RUNTIME_CLASSES: readonly string[] = [
   'px-4',
   'py-2',
   'text-sm',
-  'text-white',
   'shadow-lg',
-  'bg-blue-600',
-  'bg-green-600',
-  'bg-red-600',
+  'border',
+  'border-border',
+  'bg-primary',
+  'bg-secondary',
+  'bg-destructive',
+  'text-primary-foreground',
+  'text-secondary-foreground',
+  'text-destructive-foreground',
   // Phase 3 §10 v7: the per-toast row layout + manual close (×) button.
   'items-center',
   'ml-auto',
@@ -131,9 +135,9 @@ export function __opToast(
 }
 
 const VARIANT_CLASSES: Record<ToastVariant, string> = {
-  info: 'bg-blue-600',
-  success: 'bg-green-600',
-  error: 'bg-red-600'
+  info: 'border-border bg-secondary text-secondary-foreground',
+  success: 'border-border bg-primary text-primary-foreground',
+  error: 'border-destructive bg-destructive text-destructive-foreground'
 }
 
 const POSITION_CLASSES: Record<ToastPosition, string> = {
@@ -159,7 +163,7 @@ export function ToastHost() {
             .map((t) => (
               <div
                 key={t.id}
-                className={'flex items-center gap-2 rounded px-4 py-2 text-sm text-white shadow-lg ' + VARIANT_CLASSES[t.variant]}
+                className={'flex items-center gap-2 rounded border px-4 py-2 text-sm shadow-lg ' + VARIANT_CLASSES[t.variant]}
               >
                 <span>{t.message}</span>
                 <button

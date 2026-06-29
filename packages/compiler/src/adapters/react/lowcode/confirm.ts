@@ -20,26 +20,28 @@ export const CONFIRM_RUNTIME_CLASSES: readonly string[] = [
   'flex',
   'items-center',
   'justify-center',
-  'bg-black/40',
+  'bg-foreground/40',
   'mx-4',
   'max-w-sm',
   'rounded-lg',
-  'bg-white',
+  'border',
+  'border-border',
+  'bg-background',
   'p-6',
   'shadow-xl',
   'mb-4',
   'text-sm',
-  'text-gray-800',
+  'text-foreground',
   'justify-end',
   'gap-2',
   'rounded',
   'px-4',
   'py-2',
-  'text-gray-600',
-  'hover:bg-gray-100',
-  'bg-blue-600',
-  'text-white',
-  'hover:bg-blue-700'
+  'text-muted-foreground',
+  'hover:bg-secondary',
+  'bg-primary',
+  'text-primary-foreground',
+  'hover:bg-primary/90'
 ]
 
 /** Build the contents of `src/_lowcode_confirm.tsx`. */
@@ -108,20 +110,20 @@ export function ConfirmHost() {
   const active = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
   if (!active) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="mx-4 max-w-sm rounded-lg bg-white p-6 shadow-xl">
-        <p className="mb-4 text-sm text-gray-800">{active.message}</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40">
+      <div className="mx-4 max-w-sm rounded-lg border border-border bg-background p-6 shadow-xl">
+        <p className="mb-4 text-sm text-foreground">{active.message}</p>
         <div className="flex justify-end gap-2">
           <button
             type="button"
-            className="rounded px-4 py-2 text-sm text-gray-600 hover:bg-gray-100"
+            className="rounded px-4 py-2 text-sm text-muted-foreground hover:bg-secondary"
             onClick={() => settle(false)}
           >
             {active.cancelLabel}
           </button>
           <button
             type="button"
-            className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
+            className="rounded bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
             onClick={() => settle(true)}
           >
             {active.confirmLabel}

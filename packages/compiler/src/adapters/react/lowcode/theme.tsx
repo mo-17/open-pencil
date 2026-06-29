@@ -5,6 +5,10 @@ export type LowcodeTheme = 'light' | 'dark'
 export type LowcodeThemeSwitchPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 const STORAGE_KEY = 'open-pencil:lowcode-theme'
+const accentColor = 'var(--op-lowcode-theme-accent, CanvasText)'
+const surfaceColor = 'var(--op-lowcode-theme-surface, Canvas)'
+const onAccentColor = 'var(--op-lowcode-theme-on-accent, Canvas)'
+const radius = 'var(--op-lowcode-theme-radius, 999px)'
 const switcherStyle: CSSProperties = {
   position: 'fixed',
   zIndex: 50,
@@ -12,11 +16,11 @@ const switcherStyle: CSSProperties = {
   alignItems: 'center',
   gap: '0.25rem',
   padding: '0.25rem',
-  border: '1px solid color-mix(in srgb, CanvasText 16%, transparent)',
-  borderRadius: '999px',
-  background: 'Canvas',
-  color: 'CanvasText',
-  boxShadow: '0 10px 30px color-mix(in srgb, CanvasText 14%, transparent)',
+  border: \`1px solid color-mix(in srgb, \${accentColor} 28%, transparent)\`,
+  borderRadius: radius,
+  background: surfaceColor,
+  color: accentColor,
+  boxShadow: \`0 10px 30px color-mix(in srgb, \${accentColor} 16%, transparent)\`,
   colorScheme: 'light dark'
 }
 const switcherPositionStyles: Record<LowcodeThemeSwitchPosition, CSSProperties> = {
@@ -36,8 +40,8 @@ const buttonStyle: CSSProperties = {
 }
 const activeButtonStyle: CSSProperties = {
   ...buttonStyle,
-  background: 'CanvasText',
-  color: 'Canvas'
+  background: accentColor,
+  color: onAccentColor
 }
 const ThemeContext = createContext<{
   theme: LowcodeTheme

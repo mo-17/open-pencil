@@ -32,6 +32,13 @@ describe('compile — toast runtime wiring (Phase 3 §10 v2)', () => {
     expect(runtime).toContain('export function ToastHost')
     expect(runtime).toContain('useSyncExternalStore')
     expect(runtime).not.toContain('Math.random') // id via module counter, not random
+    expect(runtime).toContain("success: 'border-border bg-primary text-primary-foreground'")
+    expect(runtime).toContain(
+      "error: 'border-destructive bg-destructive text-destructive-foreground'"
+    )
+    expect(runtime).not.toContain('bg-green-600')
+    expect(runtime).not.toContain('bg-red-600')
+    expect(runtime).not.toContain('text-white')
 
     // page imports + calls the pusher
     const app = out.files.get('src/App.tsx') as string
@@ -45,7 +52,12 @@ describe('compile — toast runtime wiring (Phase 3 §10 v2)', () => {
 
     // the toast's classes reach the Tailwind safelist
     const css = out.files.get('src/index.css') as string
-    expect(css).toContain('bg-green-600')
+    expect(css).toContain('bg-primary')
+    expect(css).toContain('text-primary-foreground')
+    expect(css).toContain('@theme inline')
+    expect(css).toContain('--color-primary')
+    expect(css).toContain('--color-destructive')
+    expect(css).not.toContain('bg-green-600')
     expect(css).toContain('fixed')
 
     // no new npm dependency

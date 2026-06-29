@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { compile, withDefaults } from '@open-pencil/compiler'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRElement } from '@open-pencil/compiler/ir/types'
 
@@ -151,7 +152,7 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     expect(sw.attrs.defaultChecked).toBe(true)
   })
 
-  test('SWITCH className → §3.v5 full CSS (cqw slide tween + fixed colors + dark)', () => {
+  test('SWITCH className → §3.v5 full CSS (cqw slide tween + semantic colors)', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
     graph.createNode('SWITCH', pageId)
@@ -163,14 +164,34 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     expect(sw.className).toContain('[container-type:size]')
     expect(sw.className).toContain('before:transition-transform')
     expect(sw.className).toContain('checked:before:translate-x-[calc(100cqw_-_100cqh)]')
-    // Fixed off/on colors with dark variants — not derived from the (gray) fill.
-    expect(sw.className).toContain('bg-gray-300')
-    expect(sw.className).toContain('dark:bg-gray-600')
-    expect(sw.className).toContain('checked:bg-blue-500')
-    expect(sw.className).toContain('dark:checked:bg-blue-400')
+    // Semantic off/on colors — not derived from the (gray) fill.
+    expect(sw.className).toContain('bg-secondary')
+    expect(sw.className).toContain('checked:bg-primary')
+    expect(sw.className).toContain('before:bg-background')
+    expect(sw.className).not.toContain('bg-gray-300')
+    expect(sw.className).not.toContain('checked:bg-blue-500')
     // The §3.v4 anchor-swap tokens are gone.
     expect(sw.className).not.toContain('checked:before:right-[5%]')
     expect(sw.className).not.toContain('before:left-[5%]')
+  })
+
+  test('SWITCH semantic classes seed generated runtime theme tokens', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('SWITCH', pageId)
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'switch' })
+    })
+    const css = out.files.get('src/index.css') as string
+    expect(css).toContain('bg-secondary')
+    expect(css).toContain('checked:bg-primary')
+    expect(css).toContain('before:bg-background')
+    expect(css).toContain('@theme inline')
+    expect(css).toContain('--color-secondary')
+    expect(css).toContain('--color-background')
   })
 
   test('SWITCH unchecked → no defaultChecked attr', () => {
@@ -245,7 +266,25 @@ describe('collectTree — Phase 2 §8 interactive components', () => {
     const label = radio.children[0] as IRElement
     const input = label.children[0] as IRElement
     expect(label.className).toBe('inline-flex items-center gap-2 cursor-pointer')
-    expect(input.className).toBe('shrink-0 accent-blue-500 dark:accent-blue-400')
+    expect(input.className).toBe('shrink-0 accent-primary')
+  })
+
+  test('RADIO semantic accent class seeds generated runtime theme tokens', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RADIO', pageId, { interactiveProps: { options: ['A'] } })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'radio' })
+    })
+    const css = out.files.get('src/index.css') as string
+    expect(css).toContain('accent-primary')
+    expect(css).toContain('@theme inline')
+    expect(css).toContain('--color-primary')
+    expect(css).not.toContain('accent-blue-500')
+    expect(css).not.toContain('accent-blue-400')
   })
 
   test('§3.v5 — FREE-positioned RADIO wrapper gets flex-col fallback', () => {

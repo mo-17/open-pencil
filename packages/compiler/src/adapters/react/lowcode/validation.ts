@@ -29,10 +29,16 @@ import { emitExpression } from '@open-pencil/core/lowcode-validation'
 /** The fixed Tailwind utilities the per-field error `<p>` renders. They never
  *  appear in the IR, so the React adapter must seed them into the
  *  `@source inline(...)` safelist (mirrors `TOAST_RUNTIME_CLASSES`). */
-export const VALIDATION_ERROR_CLASSES: readonly string[] = ['text-sm', 'text-red-600', 'mt-1']
+export const VALIDATION_ERROR_CLASSES: readonly string[] = ['text-sm', 'text-destructive', 'mt-1']
+export const VALIDATION_INVALID_FIELD_CLASSES: readonly string[] = [
+  'border-destructive',
+  'ring-1',
+  'ring-destructive'
+]
 
 /** The className on the per-field error `<p>` (emitted by `element.ts`). */
 export const VALIDATION_ERROR_CLASS = VALIDATION_ERROR_CLASSES.join(' ')
+export const VALIDATION_INVALID_FIELD_CLASS = VALIDATION_INVALID_FIELD_CLASSES.join(' ')
 
 /** Build the contents of `src/_lowcode_validation.tsx`. Messages with embedded
  *  values use string concatenation (not template literals) so this builder's

@@ -44,6 +44,12 @@ describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
     expect(runtime).toContain('useSyncExternalStore')
     expect(runtime).toContain('Promise<boolean>')
     expect(runtime).not.toContain('Math.random')
+    expect(runtime).toContain('border border-border bg-background')
+    expect(runtime).toContain('text-foreground')
+    expect(runtime).toContain('bg-primary px-4 py-2 text-sm text-primary-foreground')
+    expect(runtime).not.toContain('bg-white')
+    expect(runtime).not.toContain('bg-blue-600')
+    expect(runtime).not.toContain('text-white')
 
     // page imports + awaits the prompter
     const app = out.files.get('src/App.tsx') as string
@@ -57,7 +63,13 @@ describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
 
     // the modal's classes reach the Tailwind safelist
     const css = out.files.get('src/index.css') as string
-    expect(css).toContain('bg-black/40')
+    expect(css).toContain('bg-foreground/40')
+    expect(css).toContain('bg-background')
+    expect(css).toContain('text-primary-foreground')
+    expect(css).toContain('@theme inline')
+    expect(css).toContain('--color-foreground')
+    expect(css).not.toContain('bg-blue-600')
+    expect(css).not.toContain('bg-black/40')
     expect(css).toContain('shadow-xl')
 
     // no new npm dependency

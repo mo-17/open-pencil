@@ -11,53 +11,53 @@
       "default": "./dist/*.js"
     }
   },
-  "main": "./src/index.ts",
+  "main": "./dist/index.mjs",
   "types": "./src/index.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
       "bun": "./src/index.ts",
-      "default": "./dist/index.js"
+      "default": "./dist/index.mjs"
     },
     "./ir/*": {
       "types": "./src/ir/*.ts",
       "bun": "./src/ir/*.ts",
-      "default": "./dist/ir/*.js"
+      "default": "./dist/ir/*.mjs"
     },
     "./adapters/react": {
       "types": "./src/adapters/react/index.ts",
       "bun": "./src/adapters/react/index.ts",
-      "default": "./dist/adapters/react/index.js"
+      "default": "./dist/adapters/react/index.mjs"
     },
     "./adapters/react/*": {
       "types": "./src/adapters/react/*.ts",
       "bun": "./src/adapters/react/*.ts",
-      "default": "./dist/adapters/react/*.js"
+      "default": "./dist/adapters/react/*.mjs"
     },
     "./dev-server": {
       "types": "./src/dev-server.ts",
       "bun": "./src/dev-server.ts",
-      "default": "./dist/dev-server.js"
+      "default": "./dist/dev-server.mjs"
     },
     "./vfs": {
       "types": "./src/vfs.ts",
       "bun": "./src/vfs.ts",
-      "default": "./dist/vfs.js"
+      "default": "./dist/vfs.mjs"
     },
     "./build": {
       "types": "./src/build.ts",
       "bun": "./src/build.ts",
-      "default": "./dist/build.js"
+      "default": "./dist/build.mjs"
     },
     "./deploy": {
       "types": "./src/deploy.ts",
       "bun": "./src/deploy.ts",
-      "default": "./dist/deploy.js"
+      "default": "./dist/deploy.mjs"
     },
     "./theme-css": {
       "types": "./src/theme-css.ts",
       "bun": "./src/theme-css.ts",
-      "default": "./dist/theme-css.js"
+      "default": "./dist/theme-css.mjs"
     }
   },
   "files": [
@@ -65,23 +65,24 @@
     "src"
   ],
   "scripts": {
-    "build": "bunx tsgo -p tsconfig.build.json"
+    "build": "bunx tsdown --config tsdown.config.ts"
   },
   "dependencies": {
     "@iconify-json/lucide": "^1.2.94",
-    "@open-pencil/core": "workspace:*"
+    "@noble/hashes": "^1.8.0",
+    "@open-pencil/core": "workspace:*",
+    "@tailwindcss/vite": "^4.2.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^8.0.0"
   },
   "devDependencies": {
     "@supabase/supabase-js": "^2.100.0",
-    "@tailwindcss/vite": "^4.2.1",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "@vitejs/plugin-react": "^4.3.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-intl": "^7.1.0",
-    "vite": "^8.0.0",
     "zustand": "^5.0.0"
   }
 }

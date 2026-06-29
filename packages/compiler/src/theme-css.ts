@@ -81,6 +81,46 @@ function sortedVariables(
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
 }
 
+function normalizedVariableName(variable: Variable): string {
+  return variable.name.toLowerCase().replace(/\s+/g, '/')
+}
+
+function findRuntimeColorToken(variables: readonly Variable[], graph: SceneGraph): string | null {
+  const colorVariables = variables.filter((variable) =>
+    Object.values(variable.valuesByMode).some((value) =>
+      isCssColorValue(resolveValue(value, graph.variables, ''))
+    )
+  )
+  if (colorVariables.length === 0) return null
+  const preferred =
+    colorVariables.find((variable) => normalizedVariableName(variable).includes('color/primary')) ??
+    colorVariables.find((variable) => normalizedVariableName(variable).includes('primary')) ??
+    colorVariables.find((variable) => normalizedVariableName(variable).includes('accent')) ??
+    colorVariables[0]
+  return designTokenCssVariableName(graph, preferred.id)
+}
+
+function findRuntimeRadiusToken(variables: readonly Variable[], graph: SceneGraph): string | null {
+  const preferred = variables.find((variable) => {
+    const name = normalizedVariableName(variable)
+    return name.includes('radius') || name.includes('corner')
+  })
+  return preferred ? designTokenCssVariableName(graph, preferred.id) : null
+}
+
+function lowcodeRuntimeThemeAliases(variables: readonly Variable[], graph: SceneGraph): string[] {
+  const lines: string[] = []
+  const accent = findRuntimeColorToken(variables, graph)
+  if (accent) {
+    lines.push(`  --op-lowcode-theme-accent: var(${accent});`)
+    lines.push(`  --op-lowcode-theme-surface: color-mix(in srgb, var(${accent}) 8%, Canvas);`)
+    lines.push('  --op-lowcode-theme-on-accent: Canvas;')
+  }
+  const radius = findRuntimeRadiusToken(variables, graph)
+  if (radius) lines.push(`  --op-lowcode-theme-radius: calc(var(${radius}) * 1px);`)
+  return lines
+}
+
 export function designTokenCssVariableName(graph: SceneGraph, variableId: string): string | null {
   const variable = graph.variables.get(variableId)
   if (!variable) return null
@@ -99,10 +139,12 @@ export function buildDesignTokenThemeCss(graph: SceneGraph): string {
   const variables = graph.variables
   const rootLines: string[] = []
   const modeLines = new Map<string, { name: string; lines: string[] }>()
+  const runtimeAliasVariables: Variable[] = []
 
   for (const collection of collections) {
     const vars = sortedVariables(collection, variables)
     if (vars.length === 0) continue
+    runtimeAliasVariables.push(...vars)
     const defaultModeId = collection.defaultModeId || collection.modes[0]?.modeId
     if (!defaultModeId) continue
     for (const variable of vars) {
@@ -132,6 +174,7 @@ export function buildDesignTokenThemeCss(graph: SceneGraph): string {
     blocks.push('/* OpenPencil design tokens */')
     blocks.push(':root {')
     blocks.push(...rootLines)
+    blocks.push(...lowcodeRuntimeThemeAliases(runtimeAliasVariables, graph))
     blocks.push('}')
   }
 

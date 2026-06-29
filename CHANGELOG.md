@@ -19,12 +19,36 @@
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.
 - Let generated lowcode theme switches be hidden or positioned at publish time.
+- Let generated lowcode runtime UI surfaces consume theme/design tokens, including the
+  theme switch aliases and semantic token classes for toast and confirm runtimes.
+- Use semantic destructive token classes for generated lowcode validation error text.
+- Use semantic token classes for generated validated-field invalid states and overlay
+  backdrops.
+- Inject generated runtime Tailwind theme tokens whenever compiled runtime or IR classes use
+  semantic color utilities, and migrate generated switch controls to semantic colors.
+- Use semantic `accent-primary` styling for generated radio and checkbox option inputs.
+- Add browser preview smoke coverage for generated lowcode runtime UI token surfaces, and
+  pre-optimize zustand in the lowcode preview dev server.
+- Verify generated lowcode runtime UI changes through the full check gate and the existing
+  Tauri preview pane mock.
+- Verify generated lowcode runtime UI changes through the full Playwright app/browser suite.
+- Verify the real Tauri automation bridge can connect to the debug app and inspect the
+  lowcode preview pane.
+- Document the real Tauri lowcode preview automation ACK flow and verify automation
+  spawn/file helper contracts.
+- Add a repo-local Tauri MCP lowcode preview ACK helper for repeatable real-webview
+  automation checks.
+- Fix package tarball smoke coverage for the private compiler dependency, isolated npm
+  cache use, compiler ESM output, and runtime package dependencies.
 - Map simple bound lowcode fill color variables to generated `var(--op-...)` inline styles.
 - Map more bound lowcode theme variables to generated inline styles, including stroke colors,
   scalar opacity, translucent solid fills, multi-layer solid backgrounds, and component usage
   roots, with warnings for missing design-token bindings.
 - Map bound multi-stroke token colors to generated layered CSS shadows, including composition
   with existing drop and inner shadow effects.
+- Make lowcode multi-stroke token fallback geometry explicit by documenting/testing
+  inside/center/outside shadow placement and warning when independent side weights or dash
+  patterns require a safer `borderColor` fallback.
 - Map component child token overrides and gradient stop color bindings to generated inline
   styles while keeping the existing className component override channel intact.
 - Preserve gradient stop color token bindings through `.fig` export and re-import using Figma

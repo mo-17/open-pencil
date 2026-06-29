@@ -553,6 +553,234 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   `boxShadow` 中的 token stroke layers + 原 drop shadow layer,且不再退回 `borderColor`。
 - 本刀仍不处理 dash pattern、per-side independent stroke、center/outside 的精确几何裁剪。
 
+**2026-06-26 第十五刀已完成**:
+
+- Multi-stroke token fallback 的 stroke geometry guardrails 变为显式 compiler 行为:
+  - `INSIDE` / `CENTER` 继续映射为 inset CSS shadow layer。
+  - `OUTSIDE` 继续映射为 outset CSS shadow layer。
+  - 多层 stroke 会分别累计 inset / outset width,避免不同 placement 互相污染。
+- 对当前 CSS shadow fallback 无法诚实表达的几何能力降级:
+  - `independentStrokeWeights` 且四边权重不一致时,降级为第一个 bound stroke 的
+    `borderColor`,并输出 `design-token-stroke-geometry-unsupported` warning。
+  - `dashPattern` 非空时,同样降级为第一个 bound stroke 的 `borderColor`,并输出相同
+    warning。
+- 新增 focused compiler coverage 锁定 align placement、independent side weight 降级和
+  dash pattern 降级。
+- 本刀仍不做完整 Figma stroke geometry: `CENTER` 的半内半外裁剪、per-side layered shadow
+  合成、dash pattern 分段绘制仍留给后续更重的实现。
+
+**2026-06-26 第十六刀已完成**:
+
+- Generated app 的非 dark mode runtime UI 开始消费 theme/design token:
+  - `buildDesignTokenThemeCss()` 会在 `:root` 中生成 runtime aliases:
+    `--op-lowcode-theme-accent`、`--op-lowcode-theme-surface`、
+    `--op-lowcode-theme-on-accent` 和可选 `--op-lowcode-theme-radius`。
+  - `LowcodeThemeSwitch` 的 surface、accent、active button 和 radius 现在引用这些 aliases,
+    并保留 Canvas fallback。
+- Toast runtime 从固定 `bg-blue-600` / `bg-green-600` / `bg-red-600` / `text-white`
+  切到 semantic token classes:
+  - `info`: `bg-secondary text-secondary-foreground`。
+  - `success`: `bg-primary text-primary-foreground`。
+  - `error`: `bg-destructive text-destructive-foreground`。
+- Confirm runtime 从固定 white/gray/blue 类切到 semantic token classes:
+  - modal surface 使用 `bg-background` / `text-foreground` / `border-border`。
+  - primary action 使用 `bg-primary` / `text-primary-foreground`。
+  - cancel action 使用 `text-muted-foreground` / `hover:bg-secondary`。
+- 新增/更新 focused compiler coverage:
+  - `tests/engine/compiler/theme-css.test.ts`
+  - `tests/engine/compiler/toast.test.ts`
+  - `tests/engine/compiler/confirm.test.ts`
+- 本刀不改 shadcn UI kit 本身,也不新增真实 browser/Tauri ACK;仅让 generated runtime
+  surfaces 先使用现有 token/theme 通道。
+
+**2026-06-26 第十七刀已完成**:
+
+- Validation runtime 的 error surface 从固定 `text-red-600` 切到 semantic
+  `text-destructive`:
+  - per-field error `<p>` 使用 `text-sm text-destructive mt-1`。
+  - FORM validation summary 使用同一套 semantic class。
+  - validation safelist 也同步 seed `text-destructive`,不再 seed `text-red-600`。
+- 新增 focused compiler coverage:
+  - `tests/engine/compiler/form-validation.test.ts` 覆盖 field error、summary error、
+    no-validation byte-stability 和 safelist。
+- 本刀只处理 validation runtime 的文本错误 surface;input border/ring 的 invalid 视觉状态仍
+  留给后续可见 UI 小刀。
+
+**2026-06-26 第十八刀已完成**:
+
+- Validated field 的 invalid state 现在会在有错误时追加 semantic destructive classes:
+  - `border-destructive`
+  - `ring-1`
+  - `ring-destructive`
+- Validation safelist 同步 seed invalid-state classes,无 validation 时仍保持 byte-stable 不注入。
+- Overlay backdrop 从固定 `bg-black/50` 切到 semantic `bg-foreground/50`,并保持
+  close-on-backdrop button / passive backdrop div 两条路径一致。
+- 新增/更新 focused compiler coverage:
+  - `tests/engine/compiler/form-validation.test.ts`
+  - `tests/engine/compiler/overlay.test.ts`
+- 本刀不改 overlay panel 本身的 layout / animation / focus trap 行为;只处理 runtime surface 的
+  semantic token class。
+
+**2026-06-26 第十九刀已完成**:
+
+- Confirm runtime 的 modal backdrop 从固定 `bg-black/40` 切到 semantic
+  `bg-foreground/40`,并通过 focused coverage 锁定不再 seed 固定黑色类。
+- Generated app 现在只要发现 runtime/IR className 使用 semantic color utility,就会注入
+  Tailwind v4 `@theme inline` token 映射:
+  - runtime-only classes: toast / confirm / validation / overlay。
+  - IR-emitted classes: SWITCH 等控件。
+- SWITCH 默认视觉从固定 gray/blue/white 类切到 semantic token classes:
+  - track off: `bg-secondary`。
+  - track checked: `checked:bg-primary`。
+  - thumb: `before:bg-background`。
+  - SWITCH 路径会过滤节点默认 fill 生成的基础 `bg-*` 类,避免 `bg-gray-300` 与 semantic
+    track token 同时出现在 compiled output。
+- 新增/更新 focused compiler coverage:
+  - `tests/engine/compiler/confirm.test.ts`
+  - `tests/engine/compiler/toast.test.ts`
+  - `tests/engine/compiler/form-validation.test.ts`
+  - `tests/engine/compiler/overlay.test.ts`
+  - `tests/engine/compiler/ir/collect/interactive-components.test.ts`
+- 本刀不迁移设计内容本身的 hex/gradient 输出;那些仍应忠实表达 Figma/OpenPencil 节点样式。
+
+**2026-06-26 第二十刀已完成**:
+
+- RADIO / CHECKBOX-group 的 option input accent 从固定
+  `accent-blue-500 dark:accent-blue-400` 切到 semantic `accent-primary`。
+- Generated runtime theme utility 检测同步覆盖 `accent-*`,确保原生 radio/checkbox
+  accent color 也能拿到 `--color-primary` 的 Tailwind v4 token 映射。
+- 新增 focused compiler coverage:
+  - `tests/engine/compiler/ir/collect/interactive-components.test.ts` 覆盖 option input
+    className、`index.css` safelist、`@theme inline` 和旧 `accent-blue-*` 防回退。
+- 本刀只处理 generated option input 的 accent color;不改变 radio/checkbox 的 DOM
+  structure、groupName/value/defaultChecked 行为。
+
+**2026-06-26 第二十一刀已完成**:
+
+- 新增 generated runtime UI 的真实 browser smoke:
+  - `tests/engine/compiler/preview/runtime-ui.test.ts`
+  - 使用现有 `createPreviewServer()` + Chromium,加载 generated VFS app。
+  - 拆成三段可排障用例:
+    - theme switch + toast + confirm token surfaces。
+    - validation invalid state + overlay backdrop。
+    - switch + radio semantic control tokens。
+- Preview dev-server 的 `optimizeDeps.include` 同步加入 `zustand` 和
+  `zustand/vanilla`,避免 `_lowcode_state.ts` 页面在 Vite preview 中触发 duplicate React /
+  invalid hook call。
+- 本刀是 browser ACK,不是只看 emitted source string;但仍不覆盖 Tauri preview pane。
+
+**2026-06-26 第二十二刀已完成**:
+
+- 跑完整 pre-commit gate `bun run check` 并通过:
+  - `build:packages`
+  - `lint`
+  - `tsgo --noEmit`
+  - `check:vue`
+  - `check:i18n`
+  - `check:packages`
+  - `check:arch`
+  - `test:type-shapes`
+  - `test:tools`
+  - `test:dupes`
+- 本刀补齐 focused tests 之外的 package build / Vue typecheck / package metadata /
+  tooling gates。`bun run check` 本身仍不包含 browser smoke 或 Playwright E2E。
+
+**2026-06-26 第二十三刀已完成**:
+
+- 跑 Tauri preview pane 的 focused Playwright mock ACK:
+  - `bun run test -- tests/e2e/code/preview-pane-tauri.spec.ts --project=openpencil`
+  - 2 passed。
+- 覆盖 preview pane toolbar 的 UI kit / theme / i18n controls,以及 Tauri shell
+  mock 下 preview compile stdin payload 中的 rounded-card overflow clipping。
+- 本刀使用 `installTauriPreviewMock()` 模拟 Tauri shell/事件环境,不是启动真实 Tauri app。
+
+**2026-06-26 第二十四刀已完成**:
+
+- 跑 full Playwright app/browser suite:
+  - `bun run test`
+  - 303 passed。
+- 覆盖面包括 editor、properties panel、lowcode preview pane mock、validation panel、
+  workflow optional params、viewport zoom/pan 等现有 `openpencil` project E2E。
+- 本刀补齐 focused smoke 之外的全量 browser regression ACK;它仍不包含 `figma` project 或真实
+  Tauri app automation。
+
+**2026-06-26 第二十五刀已完成**:
+
+- 跑真实 Tauri automation debug app:
+  - `bun run tauri:automation:dev`
+  - 自动化 bridge 在 `9223` 监听,app MCP HTTP/WS 在 `7600` / `7601` 监听。
+- 使用 Hypothesi Tauri MCP CLI 完成 GUI ACK:
+  - `bunx tauri-mcp driver-session start --port 9223`
+  - `bunx tauri-mcp driver-session status`
+  - `bunx tauri-mcp ipc-get-backend-state`
+  - `bunx tauri-mcp manage-window --action list`
+  - `bunx tauri-mcp webview-dom-snapshot --type structure`
+  - `bunx tauri-mcp webview-execute-js --script "..."`
+  - `bunx tauri-mcp webview-get-styles --selector '#lowcode-preview' --properties display,visibility,width,height`
+  - `bunx tauri-mcp webview-wait-for --type selector --value '#lowcode-preview' --timeout 5000`
+  - `bunx tauri-mcp webview-screenshot --file test-results/tauri-mcp-screenshot.png`
+- 关键断言:
+  - backend state 返回 `OpenPencil` `0.13.2`,debug macOS Tauri `2.10.2`,`window_count: 1`。
+  - main window 可见并聚焦,URL 为 `http://localhost:1420/`。
+  - webview JS 返回 `hasTauri: true`、`hasLowcodePreview: true`,toolbar text 包含 Preview /
+    UI / Tailwind / shadcn / Theme / Light / Dark / i18n / Deploy。
+  - `#lowcode-preview` computed style 为 `display: flex`,`visibility: visible`。
+- 本刀是真实 Tauri debug app + webview automation bridge ACK,不是 Playwright/Tauri mock。
+
+**2026-06-26 第二十六刀已完成**:
+
+- 将真实 Tauri lowcode preview ACK 命令沉淀到 `docs/tauri-gui-automation.md`:
+  - 记录 Terminal 1 / Terminal 2 的顺序命令。
+  - 记录 session、backend、window、DOM、JS、style、wait 和 screenshot 的 expected signals。
+  - 明确 `test-results/` 为 ignored,截图不应提交。
+  - 记录 `driver-session start` 和 screenshot 不要并行跑,避免 active session race。
+- 跑 Tauri automation engine 合约测试:
+  - `bun test tests/engine/tauri/mcp-spawn.test.ts tests/engine/tauri/automation-files.test.ts`
+  - 3 pass,0 fail,6 expects。
+
+**2026-06-26 第二十七刀已完成**:
+
+- 修复 package tarball smoke gate 并跑通 `bun run test:packages`:
+  - `tools/package-quality/src/smoke.ts` 只从 `bun pm pack --quiet` 输出里选择 `.tgz` 行,避免把
+    `Packed size: ...` 当成 tarball 路径。
+  - smoke install 使用 temp-local `npm_config_cache`,不再受用户全局 `~/.npm` cache 权限污染影响。
+  - smoke install 同时打包私有 `@open-pencil/compiler` tarball,让 public CLI tarball 的 workspace
+    compiler dependency 在本地 smoke 中可解析,不去 npm registry 查找私有包。
+  - `@open-pencil/compiler` 发布态构建切到 `tsdown` unbundle 输出 `.mjs`,并把 default exports 指向
+    `dist/*.mjs`,修复 Node ESM extensionless relative import 问题。
+  - compiler runtime dependencies 补齐 `@tailwindcss/vite`、`@vitejs/plugin-react`、`vite` 和
+    `@noble/hashes`。
+  - `@iconify-json/lucide/icons.json` 改为标准 JSON import attribute,避免 Node ESM 缺少
+    `type: "json"`。
+- 验证:
+  - `bun --filter @open-pencil/compiler build` 通过。
+  - `bun run test:packages` 通过,输出 `Packed package smoke tests passed.`。
+
+**2026-06-26 第二十八刀已完成**:
+
+- 将真实 Tauri lowcode preview ACK 从手工 runbook 沉淀成 repo-local helper:
+  - 新增 `tools/lowcode/src/tauri-lowcode-preview-ack.ts`。
+  - 新增 root shim `scripts/tauri-mcp-lowcode-preview-ack.ts`。
+  - 新增 root script `tauri:mcp:lowcode-preview-ack`。
+  - `docs/tauri-gui-automation.md` 更新为优先使用 helper,手工命令保留作排障步骤。
+- helper 覆盖顺序:
+  - `driver-session start/status`
+  - `ipc-get-backend-state`
+  - `manage-window --action list`
+  - `webview-dom-snapshot`
+  - `webview-execute-js`
+  - `webview-get-styles`
+  - `webview-wait-for`
+  - `webview-screenshot`
+- 验证:
+  - `bun run tauri:mcp:lowcode-preview-ack --help` 通过。
+  - 未启动 Tauri app 时,`bun run tauri:mcp:lowcode-preview-ack --skip-screenshot`
+    给出清晰 `Tauri MCP driver session is not connected.` 错误。
+  - 真实 Tauri automation app 下,`bun run tauri:mcp:lowcode-preview-ack` 通过并写入 ignored
+    `test-results/tauri-mcp-screenshot.png`。
+  - `bun run lint:structure` / `CHOKIDAR_USEPOLLING=1 bun run check:arch` /
+    `bunx tsgo --noEmit` / `bun run test:tools` 通过。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
@@ -603,8 +831,37 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 多 visible stroke token stack 在 generated DOM 中可通过 layered `boxShadow` 保留 token
   colors,且可与原 drop / inner shadow effect 合并。**2026-06-26 第十三/十四刀已完成;由
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
+- Multi-stroke token fallback 的 stroke align 近似和 unsupported geometry 降级可预测:
+  `INSIDE` / `CENTER` 走 inset,`OUTSIDE` 走 outset;independent side weights / dash pattern
+  降级为 `borderColor` 并给出 warning。**2026-06-26 第十五刀已完成;由
+  `tests/engine/compiler/theme-stroke-geometry.test.ts` 覆盖。**
+- Generated runtime UI 的 theme switch、toast 和 confirm surface 消费 semantic theme/design
+  token。**2026-06-26 第十六刀已完成;由 `tests/engine/compiler/theme-css.test.ts`、
+  `tests/engine/compiler/toast.test.ts` 和 `tests/engine/compiler/confirm.test.ts` 覆盖。**
+- Validation runtime 的 error text surface 消费 semantic destructive token。
+  **2026-06-26 第十七刀已完成;由 `tests/engine/compiler/form-validation.test.ts` 覆盖。**
+- Validated field invalid state 和 overlay backdrop 消费 semantic token classes。
+  **2026-06-26 第十八刀已完成;由 `tests/engine/compiler/form-validation.test.ts` 和
+  `tests/engine/compiler/overlay.test.ts` 覆盖。**
+- Generated runtime UI 在真实 browser preview 中有 smoke ACK。**2026-06-26 第二十一刀已完成;
+  由 `tests/engine/compiler/preview/runtime-ui.test.ts` 覆盖。**
+- Full pre-commit gate `bun run check` 通过。**2026-06-26 第二十二刀已完成。**
+- Tauri preview pane mock ACK 通过。**2026-06-26 第二十三刀已完成;由
+  `tests/e2e/code/preview-pane-tauri.spec.ts` 覆盖。**
+- Full Playwright app/browser suite 通过。**2026-06-26 第二十四刀已完成;`bun run test`
+  303 passed。**
+- 真实 Tauri automation bridge 可连接并能读取 lowcode preview pane。**2026-06-26 第二十五刀
+  已完成;由 `tauri-mcp` session/backend/window/DOM/JS/style/wait/screenshot ACK 覆盖。**
+- 真实 Tauri automation ACK 有可复用 runbook,且 app automation spawn/file helper 合约测试通过。
+  **2026-06-26 第二十六刀已完成;见 `docs/tauri-gui-automation.md` 与
+  `tests/engine/tauri/**`。**
+- Package tarball smoke gate 通过,public packages 与私有 compiler runtime dependency 的 Node
+  安装/导入/bin 形态可执行。**2026-06-26 第二十七刀已完成;由 `bun run test:packages`
+  覆盖。**
+- 真实 Tauri lowcode preview ACK 可通过 repo-local helper 重复执行。**2026-06-26 第二十八刀
+  已完成;由 `bun run tauri:mcp:lowcode-preview-ack` 覆盖。**
 - 后续可继续做:Kiwi `VariableField` enum 升级 / Figma 官方 stop-level field 名确认、完整多
-  stroke 几何语义、更多非 dark mode 的 runtime UI。
+  stroke 几何语义、把真实 Tauri automation ACK 沉淀成可重复测试、更多 runtime UI polish。
 
 ---
 

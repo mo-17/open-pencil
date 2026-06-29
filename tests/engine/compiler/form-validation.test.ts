@@ -69,7 +69,11 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).toContain('aria-invalid={__fieldErrors[')
     expect(app).toContain('setDocState("email", e.target.value); await __validateFieldValue(')
     expect(app).toContain('onBlur={async (e) => { await __validateFieldValue(')
-    expect(app).toContain('<p className="text-sm text-red-600 mt-1" role="alert">{__fieldErrors[')
+    expect(app).toContain('? " border-destructive ring-1 ring-destructive" : "")')
+    expect(app).toContain(
+      '<p className="text-sm text-destructive mt-1" role="alert">{__fieldErrors['
+    )
+    expect(app).not.toContain('text-red-600')
     // runtime file
     expect(files.has('src/_lowcode_validation.tsx')).toBe(true)
     expect(files.get('src/_lowcode_validation.tsx') as string).toContain(
@@ -226,7 +230,7 @@ describe('compile — form validation (Phase 4 §19)', () => {
     const app = out.files.get('src/App.tsx') as string
     const k = JSON.stringify(input.id)
     expect(app).toContain(`${k}].some((id) => __fieldErrors[id])`)
-    expect(app).toContain('<div className="text-sm text-red-600 mt-1" role="alert">')
+    expect(app).toContain('<div className="text-sm text-destructive mt-1" role="alert">')
     expect(app).toContain('<p>Fix these fields</p>')
     expect(app).toContain(`<li key={id}>{__fieldErrors[id]}</li>`)
   })
@@ -271,8 +275,10 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(app).not.toContain('_lowcode_validation')
     expect(app).not.toContain('__validators')
     expect(app).not.toContain('aria-invalid')
+    expect(app).not.toContain('border-destructive')
     expect(out.files.has('src/_lowcode_validation.tsx')).toBe(false)
-    expect(out.files.get('src/index.css') as string).not.toContain('text-red-600')
+    expect(out.files.get('src/index.css') as string).not.toContain('text-destructive')
+    expect(out.files.get('src/index.css') as string).not.toContain('ring-destructive')
   })
 
   test('multiple validated fields in a form → one validator entry each + both in the form keys', () => {
@@ -416,7 +422,12 @@ describe('compile — form validation (Phase 4 §19)', () => {
   test('validation-error classes are seeded into the Tailwind safelist (index.css)', () => {
     const { files } = compileField({ required: true })
     const css = files.get('src/index.css') as string
-    expect(css).toContain('text-red-600')
+    expect(css).toContain('text-destructive')
+    expect(css).toContain('border-destructive')
+    expect(css).toContain('ring-destructive')
+    expect(css).toContain('@theme inline')
+    expect(css).toContain('--color-destructive')
+    expect(css).not.toContain('text-red-600')
   })
 
   test('component-internal validated fields get component-local validation glue', () => {

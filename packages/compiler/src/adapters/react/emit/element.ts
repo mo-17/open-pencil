@@ -16,7 +16,7 @@ import type {
 
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
 
-import { VALIDATION_ERROR_CLASS } from '../lowcode/validation'
+import { VALIDATION_ERROR_CLASS, VALIDATION_INVALID_FIELD_CLASS } from '../lowcode/validation'
 import type { UiKitAdapter } from '../ui-kit/types'
 import { emitEventHandler, emitFormSubmitHandler } from './event'
 import { setterName } from './state'
@@ -313,12 +313,12 @@ const OVERLAY_PANEL_CLASS: Record<IROverlay['kind'], string> = {
   tooltip: 'relative z-10 pointer-events-auto'
 }
 
+const OVERLAY_BACKDROP_CLASS = 'absolute inset-0 bg-foreground/50'
+
 export const OVERLAY_RUNTIME_CLASSES: readonly string[] = [
   ...Object.values(OVERLAY_SHELL_CLASS).flatMap((s) => s.split(/\s+/)),
   ...Object.values(OVERLAY_PANEL_CLASS).flatMap((s) => s.split(/\s+/)),
-  'absolute',
-  'inset-0',
-  'bg-black/50'
+  ...OVERLAY_BACKDROP_CLASS.split(/\s+/)
 ]
 
 /** Phase 4 §21: render a FRAME overlay as a conditional fixed shell. The IR
@@ -346,8 +346,8 @@ function emitOverlayElement(
     uiKit
   )
   const backdrop = overlay.closeOnBackdrop
-    ? `${backdropPad}<button type="button" aria-label="Close overlay" className="absolute inset-0 bg-black/50" onClick={() => setDocState(${JSON.stringify(overlay.openRef)}, false)} />`
-    : `${backdropPad}<div aria-hidden="true" className="absolute inset-0 bg-black/50" />`
+    ? `${backdropPad}<button type="button" aria-label="Close overlay" className="${OVERLAY_BACKDROP_CLASS}" onClick={() => setDocState(${JSON.stringify(overlay.openRef)}, false)} />`
+    : `${backdropPad}<div aria-hidden="true" className="${OVERLAY_BACKDROP_CLASS}" />`
   return [
     `${pad}{${overlay.openRef} && (`,
     `${shellPad}<div className="${OVERLAY_SHELL_CLASS[overlay.kind]}" role="presentation">`,
@@ -469,7 +469,7 @@ function formatAttrs(
 ): string {
   const parts: string[] = []
   const classAttr = classNameAttr(className, classNameProp, classNamePropFallback)
-  if (classAttr) parts.push(classAttr)
+  if (classAttr) parts.push(validationClassAttr(classAttr, validationKey))
   const styleAttr = stylePropAttr(attrs.style, styleProp, stylePropFallback)
   if (styleAttr) parts.push(styleAttr)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
@@ -496,6 +496,20 @@ function formatAttrs(
     })
   )
   return parts.join(' ')
+}
+
+function validationClassAttr(classAttr: string, validationKey: string | undefined): string {
+  if (validationKey === undefined) return classAttr
+  const k = JSON.stringify(validationKey)
+  if (classAttr.startsWith('className="') && classAttr.endsWith('"')) {
+    const className = classAttr.slice('className="'.length, -1)
+    return `className={${JSON.stringify(className)} + (__fieldErrors[${k}] ? " ${VALIDATION_INVALID_FIELD_CLASS}" : "")}`
+  }
+  if (classAttr.startsWith('className={') && classAttr.endsWith('}')) {
+    const expression = classAttr.slice('className={'.length, -1)
+    return `className={(${expression}) + (__fieldErrors[${k}] ? " ${VALIDATION_INVALID_FIELD_CLASS}" : "")}`
+  }
+  return classAttr
 }
 
 function classNameAttr(
