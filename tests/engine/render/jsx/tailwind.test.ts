@@ -225,6 +225,18 @@ describe('Tailwind JSX export', () => {
     expect(tw(graph, node.id)).toContain('rounded-[5px]')
   })
 
+  test('border radius — 20px stays an arbitrary radius instead of spacing scale', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('RECTANGLE', pageId(graph), {
+      width: 100,
+      height: 100,
+      cornerRadius: 20
+    })
+    const jsx = tw(graph, node.id)
+    expect(jsx).toContain('rounded-[20px]')
+    expect(jsx).not.toContain('rounded-5')
+  })
+
   test('independent corners', () => {
     const graph = makeGraph()
     const node = graph.createNode('RECTANGLE', pageId(graph), {
@@ -238,8 +250,10 @@ describe('Tailwind JSX export', () => {
       bottomLeftRadius: 8
     })
     const jsx = tw(graph, node.id)
-    expect(jsx).toMatch(/rounded/)
-    expect(jsx).toMatch(/rounded/)
+    expect(jsx).toContain('rounded-tl-[8px]')
+    expect(jsx).toContain('rounded-tr-[0px]')
+    expect(jsx).toContain('rounded-br-[0px]')
+    expect(jsx).toContain('rounded-bl-[8px]')
   })
 
   test('opacity and rotation', () => {
@@ -418,7 +432,8 @@ describe('Tailwind JSX export', () => {
 
     const jsx = tw(graph, frame.id)
     expect(jsx).toContain('<div')
-    expect(jsx).toContain('flex flex-col')
+    expect(jsx).toContain('flex')
+    expect(jsx).toContain('flex-col')
     expect(jsx).toContain('gap-2')
     expect(jsx).toMatch(/rounded/)
     expect(jsx).toContain('  <p')

@@ -638,6 +638,50 @@ function arbitraryClass(name: string, value: string): string {
   return `${name}-[${value.replace(/ /g, '_')}]`
 }
 
+const RADIUS_CLASS: Record<string, string> = {
+  '0px': 'rounded-none',
+  '2px': 'rounded-sm',
+  '4px': 'rounded',
+  '6px': 'rounded-md',
+  '8px': 'rounded-lg',
+  '12px': 'rounded-xl',
+  '16px': 'rounded-2xl',
+  '24px': 'rounded-3xl',
+  '9999px': 'rounded-full'
+}
+
+function roundedClasses(value: string | undefined): string[] {
+  if (!value) return []
+  const radii = expandBorderRadius(value)
+  if (!radii) return []
+  const [tl, tr, br, bl] = radii
+  if (tl === tr && tr === br && br === bl) {
+    return [RADIUS_CLASS[tl] ?? arbitraryClass('rounded', tl)]
+  }
+  return [
+    arbitraryClass('rounded-tl', tl),
+    arbitraryClass('rounded-tr', tr),
+    arbitraryClass('rounded-br', br),
+    arbitraryClass('rounded-bl', bl)
+  ]
+}
+
+function expandBorderRadius(value: string): [string, string, string, string] | null {
+  const parts = value.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]]
+  if (parts.length === 2) return [parts[0], parts[1], parts[0], parts[1]]
+  if (parts.length === 3) return [parts[0], parts[1], parts[2], parts[1]]
+  if (parts.length === 4) return [parts[0], parts[1], parts[2], parts[3]]
+  return null
+}
+
+function tailwindClassesFromStyle(style: Record<string, string>): string[] {
+  const twirlStyle = { ...style }
+  delete twirlStyle.borderRadius
+  const twirled = twirl(twirlStyle)
+  return [...(twirled ? twirled.split(' ') : []), ...roundedClasses(style.borderRadius)]
+}
+
 /**
  * Shared core of the variant emitters (responsive breakpoints and interaction
  * states): for each variant whose override is present, shallow-merge it onto the
@@ -666,8 +710,9 @@ function collectVariantClasses<V extends string>(
     const override = overrideFor(variant)
     if (!override) continue
     const variantStyle = nodeToStyle({ ...node, ...override }, graph, options)
-    const twirled = twirl(styleDelta(baseStyle, variantStyle, resetMap))
-    if (twirled) for (const cls of twirled.split(' ')) out.push(`${variant}:${cls}`)
+    for (const cls of tailwindClassesFromStyle(styleDelta(baseStyle, variantStyle, resetMap))) {
+      out.push(`${variant}:${cls}`)
+    }
     if (extra) out.push(...extra(variant, override, variantStyle))
   }
   return out
@@ -713,8 +758,7 @@ export function collectTailwindClasses(
   // (twirl can't express it; mirrors the clip-path bypass).
   extraClasses.push(...collectGradientClasses(node))
 
-  const twirlClasses = twirl(style)
-  const combined = twirlClasses ? twirlClasses.split(' ') : []
+  const combined = tailwindClassesFromStyle(style)
 
   if (style.display === 'grid') {
     const filtered = combined.filter((c) => c !== 'grid')

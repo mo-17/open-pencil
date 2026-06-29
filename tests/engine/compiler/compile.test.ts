@@ -78,6 +78,22 @@ describe('compile (public API, end-to-end)', () => {
     expect(appTsx).toContain('>Hello world</p>')
   })
 
+  test('preserves 20px corner radius with a valid Tailwind arbitrary class', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, { width: 100, height: 100, cornerRadius: 20 })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults()
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain('rounded-[20px]')
+    expect(appTsx).not.toContain('rounded-5')
+  })
+
   test("target='vue' returns target-not-implemented warning, no files", () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

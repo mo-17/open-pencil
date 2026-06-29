@@ -71,6 +71,14 @@ describe('collectResponsiveTailwindClasses (Phase 3 §7)', () => {
     expect(collectResponsiveTailwindClasses(node, graph)).toContain('md:gap-0')
   })
 
+  test('cornerRadius 20px override emits a valid arbitrary rounded utility', () => {
+    const graph = new SceneGraph()
+    const node = autoLayoutFrame(graph, { md: { cornerRadius: 20 } })
+    const out = collectResponsiveTailwindClasses(node, graph)
+    expect(out).toContain('md:rounded-[20px]')
+    expect(out).not.toContain('md:rounded-5')
+  })
+
   test('visible:false emits a breakpoint-prefixed hidden class', () => {
     const graph = new SceneGraph()
     const node = autoLayoutFrame(graph, { lg: { visible: false } })

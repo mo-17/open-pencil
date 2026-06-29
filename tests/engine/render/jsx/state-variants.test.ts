@@ -60,6 +60,14 @@ describe('collectStateTailwindClasses (Phase 4 §20)', () => {
     expect(collectStateTailwindClasses(node, graph)).toContain('disabled:opacity-50')
   })
 
+  test('hover cornerRadius 20px emits a valid arbitrary rounded utility', () => {
+    const graph = new SceneGraph()
+    const node = styledNode(graph, { stateOverrides: { hover: { cornerRadius: 20 } } })
+    const out = collectStateTailwindClasses(node, graph)
+    expect(out).toContain('hover:rounded-[20px]')
+    expect(out).not.toContain('hover:rounded-5')
+  })
+
   test('focus adds a border → `focus:border-…` utilities', () => {
     const graph = new SceneGraph()
     const node = styledNode(graph, {
