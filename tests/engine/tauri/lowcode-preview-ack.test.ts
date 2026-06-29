@@ -13,7 +13,12 @@ function output(stdout = '', stderr = '', success = true): SpawnOutput {
 
 function keyFor(command: string[]): string {
   const args = command[0] === 'bunx' ? command.slice(2) : command.slice(1)
-  if (args[0] === 'webview-execute-js') return 'webview-execute-js'
+  if (args[0] === 'webview-execute-js') {
+    const text = args.join(' ')
+    if (text.includes('getComputedStyle')) return 'webview-execute-js styles fallback'
+    if (text.includes('found: Boolean')) return 'webview-execute-js selector wait fallback'
+    return 'webview-execute-js'
+  }
   return args.join(' ')
 }
 
@@ -50,7 +55,14 @@ function makeDeps(options: {
     }),
     'webview-get-styles --selector #lowcode-preview --properties display,visibility,width,height':
       JSON.stringify({ display: 'flex', visibility: 'visible', width: '320px', height: '240px' }),
+    'webview-execute-js styles fallback': JSON.stringify({
+      display: 'flex',
+      visibility: 'visible',
+      width: '320px',
+      height: '240px'
+    }),
     'webview-wait-for --type selector --value #lowcode-preview --timeout 5000': 'Element found',
+    'webview-execute-js selector wait fallback': JSON.stringify({ found: true }),
     ...options.responses
   }
 
@@ -73,6 +85,7 @@ function makeDeps(options: {
       const response = responses[keyFor(command)]
       if (response === undefined)
         return output('', `Unexpected command: ${commandText(command)}`, false)
+      if (response.startsWith('ERROR:')) return output('', response.slice('ERROR:'.length), false)
       return output(response)
     }
   }
@@ -126,6 +139,44 @@ describe('Tauri lowcode preview ACK helper', () => {
       '--file',
       '/private/tmp/open-pencil/ack.png'
     ])
+  })
+
+  test('falls back to webview JS when style helper is unavailable', () => {
+    const deps = makeDeps({
+      responses: {
+        'webview-get-styles --selector #lowcode-preview --properties display,visibility,width,height':
+          'ERROR:window.__MCP__.resolveRef is not a function'
+      }
+    })
+
+    expect(runCli(['--skip-screenshot'], deps)).toBe(0)
+
+    expect(
+      deps.commands.some(
+        (command) =>
+          command[1] === 'webview-execute-js' && command.join(' ').includes('getComputedStyle')
+      )
+    ).toBe(true)
+    expect(deps.logs).toContain('OK #lowcode-preview is visible (flex, 320px x 240px)')
+  })
+
+  test('falls back to webview JS when selector wait helper is unavailable', () => {
+    const deps = makeDeps({
+      responses: {
+        'webview-wait-for --type selector --value #lowcode-preview --timeout 5000':
+          'ERROR:window.__MCP__.resolveRef is not a function'
+      }
+    })
+
+    expect(runCli(['--skip-screenshot'], deps)).toBe(0)
+
+    expect(
+      deps.commands.some(
+        (command) =>
+          command[1] === 'webview-execute-js' && command.join(' ').includes('found: Boolean')
+      )
+    ).toBe(true)
+    expect(deps.logs).toContain('OK selector wait found #lowcode-preview')
   })
 
   test('prints a concise error when the driver session is disconnected', () => {

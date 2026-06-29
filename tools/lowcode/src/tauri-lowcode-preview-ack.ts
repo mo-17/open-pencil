@@ -132,6 +132,47 @@ function logStep(message: string, deps: AckDeps): void {
   deps.log(`OK ${message}`)
 }
 
+function readElementStyles(selector: string, deps: AckDeps): Record<string, string> {
+  try {
+    return parseJson<Record<string, string>>(
+      'webview-get-styles',
+      runTauriMcp(
+        [
+          'webview-get-styles',
+          '--selector',
+          selector,
+          '--properties',
+          'display,visibility,width,height'
+        ],
+        deps
+      )
+    )
+  } catch {
+    const styleScript = `(() => { const el = document.querySelector(${JSON.stringify(selector)}); if (!el) return { display: 'none', visibility: 'hidden', width: '0px', height: '0px' }; const s = getComputedStyle(el); const r = el.getBoundingClientRect(); return { display: s.display, visibility: s.visibility, width: s.width || String(r.width) + 'px', height: s.height || String(r.height) + 'px' }; })()`
+    return parseJson<Record<string, string>>(
+      'webview-execute-js styles fallback',
+      runTauriMcp(['webview-execute-js', '--script', styleScript], deps)
+    )
+  }
+}
+
+function waitForSelector(selector: string, deps: AckDeps): void {
+  try {
+    const waitOutput = runTauriMcp(
+      ['webview-wait-for', '--type', 'selector', '--value', selector, '--timeout', '5000'],
+      deps
+    )
+    assert(waitOutput.includes('Element found'), `Selector wait failed:\n${waitOutput}`)
+  } catch {
+    const waitScript = `(() => ({ found: Boolean(document.querySelector(${JSON.stringify(selector)})) }))()`
+    const fallback = parseJson<{ found?: boolean }>(
+      'webview-execute-js selector wait fallback',
+      runTauriMcp(['webview-execute-js', '--script', waitScript], deps)
+    )
+    assert(fallback.found, `Selector wait failed: ${selector} was not found.`)
+  }
+}
+
 export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   deps.log(`OpenPencil Tauri lowcode preview ACK (port ${options.port})`)
 
@@ -194,19 +235,7 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
   )
   logStep('webview JS can see window.__TAURI__ and lowcode preview toolbar', deps)
 
-  const styles = parseJson<Record<string, string>>(
-    'webview-get-styles',
-    runTauriMcp(
-      [
-        'webview-get-styles',
-        '--selector',
-        options.selector,
-        '--properties',
-        'display,visibility,width,height'
-      ],
-      deps
-    )
-  )
+  const styles = readElementStyles(options.selector, deps)
   assert(
     styles.display && styles.display !== 'none',
     `${options.selector} display is ${styles.display}`
@@ -218,11 +247,7 @@ export function runAck(options: Options, deps: AckDeps = defaultDeps()): void {
     deps
   )
 
-  const waitOutput = runTauriMcp(
-    ['webview-wait-for', '--type', 'selector', '--value', options.selector, '--timeout', '5000'],
-    deps
-  )
-  assert(waitOutput.includes('Element found'), `Selector wait failed:\n${waitOutput}`)
+  waitForSelector(options.selector, deps)
   logStep(`selector wait found ${options.selector}`, deps)
 
   if (!options.skipScreenshot) {
