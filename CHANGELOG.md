@@ -31,6 +31,8 @@
   pre-optimize zustand in the lowcode preview dev server.
 - Verify generated lowcode runtime UI changes through the full check gate and the existing
   Tauri preview pane mock.
+- Clarify that preview bridge selection overlay colors are editor-only chrome, independent
+  from generated app theme tokens.
 - Verify generated lowcode runtime UI changes through the full Playwright app/browser suite.
 - Verify the real Tauri automation bridge can connect to the debug app and inspect the
   lowcode preview pane.

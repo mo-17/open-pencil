@@ -30,6 +30,11 @@ export function buildPreviewBridge(): string {
 
 const INBOUND_SOURCE = 'op-lowcode-editor'
 const OUTBOUND_SOURCE = 'op-lowcode-preview'
+// Editor-only preview selection chrome. Keep these fixed, high-contrast colors
+// independent from generated app theme tokens so the canvas↔preview bridge is
+// readable even when the user design overrides runtime CSS variables.
+const PREVIEW_SELECTION_OVERLAY_BORDER = '2px solid #4c8bf5'
+const PREVIEW_SELECTION_OVERLAY_BACKGROUND = '#4c8bf514'
 
 interface DocStore {
   getState: () => Record<string, unknown>
@@ -77,8 +82,8 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
   overlay.style.width = '0px'
   overlay.style.height = '0px'
   overlay.style.pointerEvents = 'none'
-  overlay.style.border = '2px solid #4c8bf5'
-  overlay.style.background = '#4c8bf514'
+  overlay.style.border = PREVIEW_SELECTION_OVERLAY_BORDER
+  overlay.style.background = PREVIEW_SELECTION_OVERLAY_BACKGROUND
   overlay.style.boxSizing = 'border-box'
   overlay.style.zIndex = '2147483647'
   overlay.style.display = 'none'

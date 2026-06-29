@@ -800,6 +800,17 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   - `bunx tsgo --noEmit` 通过。
   - `bun run test:tools` 通过。
 
+**2026-06-29 第三十刀已完成**:
+
+- 复查 `packages/compiler/src/adapters/react/preview-bridge.ts` 的 selection overlay 色值:
+  - 将 `#4c8bf5` / `#4c8bf514` 收敛为 `PREVIEW_SELECTION_OVERLAY_BORDER` /
+    `PREVIEW_SELECTION_OVERLAY_BACKGROUND`。
+  - 增加注释说明这是 editor-only preview selection chrome,应独立于 generated app theme tokens。
+  - 不把这层 debug/selection overlay 纳入 runtime semantic token CSS,避免用户设计主题影响编辑器
+    高亮可读性。
+- 验证:
+  - `bun test tests/engine/compiler/preview/bridge.test.ts` 通过。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
@@ -882,6 +893,9 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - Repo-local Tauri lowcode preview ACK helper 的 CLI contract 有 engine-level 覆盖。
   **2026-06-29 第二十九刀已完成;由
   `tests/engine/tauri/lowcode-preview-ack.test.ts` 覆盖。**
+- Preview bridge selection overlay 色值被明确为 editor-only chrome,不并入 generated app
+  theme token。**2026-06-29 第三十刀已完成;由
+  `tests/engine/compiler/preview/bridge.test.ts` 覆盖。**
 - 后续可继续做:Kiwi `VariableField` enum 升级 / Figma 官方 stop-level field 名确认、完整多
   stroke 几何语义、评估真实 Tauri automation helper 是否应进一步升级为可自启动/自清理的 GUI
   spec、更多 runtime UI polish。

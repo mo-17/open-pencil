@@ -34,6 +34,14 @@ describe('preview-bridge — select channel (regression)', () => {
     expect(bridge).toContain('updateOverlay()')
   })
 
+  test('selection overlay chrome stays independent from generated app theme tokens', () => {
+    expect(bridge).toContain('const PREVIEW_SELECTION_OVERLAY_BORDER =')
+    expect(bridge).toContain('const PREVIEW_SELECTION_OVERLAY_BACKGROUND =')
+    expect(bridge).toContain('overlay.style.border = PREVIEW_SELECTION_OVERLAY_BORDER')
+    expect(bridge).toContain('overlay.style.background = PREVIEW_SELECTION_OVERLAY_BACKGROUND')
+    expect(bridge).toContain('independent from generated app theme tokens')
+  })
+
   test('Alt/Option-click still posts outbound select', () => {
     expect(bridge).toContain('event.altKey')
     expect(bridge).toContain("type: 'select', id")
