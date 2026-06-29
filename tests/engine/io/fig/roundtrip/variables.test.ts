@@ -12,6 +12,11 @@ import {
 } from '@open-pencil/core'
 import { parseFigBuffer } from '@open-pencil/core/kiwi/fig/parse/core'
 
+import {
+  kiwiVariableFieldToBindingField,
+  variableBindingFieldToKiwi
+} from '#core/kiwi/fig/node-change/convert'
+
 import { expectDefined } from '#tests/helpers/assert'
 import { parseFixture } from '#tests/helpers/fig-fixtures'
 import { runsHeavyTests } from '#tests/helpers/test-utils'
@@ -25,6 +30,16 @@ function decodeExport(bytes: Uint8Array) {
 }
 
 describe('variable roundtrip', () => {
+  test('gradient stop variable field mapping is explicit and export-safe by default', () => {
+    expect(kiwiVariableFieldToBindingField('FILL_PAINT_2_GRADIENT_STOP_3_COLOR')).toBe(
+      'fills/2/gradientStops/3/color'
+    )
+    expect(variableBindingFieldToKiwi('fills/2/gradientStops/3/color')).toBeUndefined()
+    expect(
+      variableBindingFieldToKiwi('fills/2/gradientStops/3/color', { includeGradientStops: true })
+    ).toBe('FILL_PAINT_2_GRADIENT_STOP_3_COLOR')
+  })
+
   test('variables and collections survive export → re-import', async () => {
     await initCodec()
 

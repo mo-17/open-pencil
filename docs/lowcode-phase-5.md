@@ -811,6 +811,20 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 验证:
   - `bun test tests/engine/compiler/preview/bridge.test.ts` 通过。
 
+**2026-06-29 第三十一刀已完成**:
+
+- 将 gradient stop 变量绑定的 scene path → Kiwi dynamic field 映射补成显式 helper contract:
+  - `kiwiVariableFieldToBindingField('FILL_PAINT_N_GRADIENT_STOP_M_COLOR')` 继续导入为
+    `fills/N/gradientStops/M/color`。
+  - `variableBindingFieldToKiwi('fills/N/gradientStops/M/color')` 默认仍返回 `undefined`,
+    防止 serializer 误写 vendored Kiwi fixed enum 不支持的 dynamic `variableField`。
+  - 只有显式传入 `{ includeGradientStops: true }` 时,才返回
+    `FILL_PAINT_N_GRADIENT_STOP_M_COLOR`,方便后续 Kiwi schema enum 升级或官方字段确认后接入。
+- 新增 focused roundtrip test 锁定这个默认安全边界,避免未来重构把 stop-level binding
+  重新写进 `variableConsumptionMap`。
+- 本刀不改变 `.fig` export 行为:stop-level binding 仍走 `stopsVar.colorVar` + OpenPencil
+  `boundVariables` fallback。
+
 ### 5.3 风险
 
 - 与 shadcn theme tokens、Tailwind v4 `@theme` 交互复杂。
@@ -896,6 +910,9 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - Preview bridge selection overlay 色值被明确为 editor-only chrome,不并入 generated app
   theme token。**2026-06-29 第三十刀已完成;由
   `tests/engine/compiler/preview/bridge.test.ts` 覆盖。**
+- Gradient stop scene path → Kiwi dynamic field mapping 有显式 opt-in helper,默认不影响
+  schema-safe export。**2026-06-29 第三十一刀已完成;由
+  `tests/engine/io/fig/roundtrip/variables.test.ts` 覆盖。**
 - 后续可继续做:Kiwi `VariableField` enum 升级 / Figma 官方 stop-level field 名确认、完整多
   stroke 几何语义、评估真实 Tauri automation helper 是否应进一步升级为可自启动/自清理的 GUI
   spec、更多 runtime UI polish。

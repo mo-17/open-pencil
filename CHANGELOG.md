@@ -60,6 +60,8 @@
   `stopsVar` data plus the OpenPencil bound-variable fallback.
 - Read gradient stop color token bindings from raw `.fig` `variableConsumptionMap` entries while
   keeping export on the schema-safe `stopsVar` path.
+- Add an explicit opt-in Kiwi dynamic field mapper for gradient stop variable bindings while
+  keeping `.fig` export schema-safe by default.
 - Document and test `bind_variable` / `unbind_variable` support for gradient stop color token
   paths such as `fills/0/gradientStops/0/color`.
 - Add editor gradient-stop variable binding controls so fill stops can bind, create, display,

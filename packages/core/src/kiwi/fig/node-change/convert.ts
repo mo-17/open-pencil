@@ -105,9 +105,22 @@ export const VARIABLE_BINDING_FIELDS_INVERSE: Record<string, string> = Object.fr
 )
 
 const KIWI_GRADIENT_STOP_BINDING_FIELD = /^FILL_PAINT_(\d+)_GRADIENT_STOP_(\d+)_COLOR$/
+const SCENE_GRADIENT_STOP_BINDING_FIELD = /^fills\/(\d+)\/gradientStops\/(\d+)\/color$/
 
-export function variableBindingFieldToKiwi(field: string): string | undefined {
-  return VARIABLE_BINDING_FIELDS[field]
+interface VariableBindingFieldToKiwiOptions {
+  includeGradientStops?: boolean
+}
+
+export function variableBindingFieldToKiwi(
+  field: string,
+  options: VariableBindingFieldToKiwiOptions = {}
+): string | undefined {
+  const staticField = VARIABLE_BINDING_FIELDS[field]
+  if (staticField) return staticField
+  if (!options.includeGradientStops) return undefined
+  const match = field.match(SCENE_GRADIENT_STOP_BINDING_FIELD)
+  if (!match) return undefined
+  return `FILL_PAINT_${match[1]}_GRADIENT_STOP_${match[2]}_COLOR`
 }
 
 export function kiwiVariableFieldToBindingField(field: string): string | undefined {
