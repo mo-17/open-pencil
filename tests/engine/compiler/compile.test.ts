@@ -94,6 +94,34 @@ describe('compile (public API, end-to-end)', () => {
     expect(appTsx).not.toContain('rounded-5')
   })
 
+  test('preserves 20px stroke width with a valid Tailwind arbitrary class', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, {
+      width: 100,
+      height: 100,
+      strokes: [
+        {
+          color: { r: 1, g: 0, b: 0, a: 1 },
+          weight: 20,
+          opacity: 1,
+          visible: true,
+          align: 'INSIDE'
+        }
+      ]
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults()
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain('border-[20px]')
+    expect(appTsx).not.toContain('border-5')
+  })
+
   test("target='vue' returns target-not-implemented warning, no files", () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

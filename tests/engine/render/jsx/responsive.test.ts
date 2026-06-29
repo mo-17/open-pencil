@@ -79,6 +79,26 @@ describe('collectResponsiveTailwindClasses (Phase 3 §7)', () => {
     expect(out).not.toContain('md:rounded-5')
   })
 
+  test('stroke weight 20px override emits a valid arbitrary border utility', () => {
+    const graph = new SceneGraph()
+    const node = autoLayoutFrame(graph, {
+      md: {
+        strokes: [
+          {
+            color: { r: 1, g: 0, b: 0, a: 1 },
+            weight: 20,
+            opacity: 1,
+            visible: true,
+            align: 'INSIDE' as const
+          }
+        ]
+      }
+    })
+    const out = collectResponsiveTailwindClasses(node, graph)
+    expect(out).toContain('md:border-[20px]')
+    expect(out).not.toContain('md:border-5')
+  })
+
   test('visible:false emits a breakpoint-prefixed hidden class', () => {
     const graph = new SceneGraph()
     const node = autoLayoutFrame(graph, { lg: { visible: false } })

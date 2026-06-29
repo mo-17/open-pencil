@@ -650,6 +650,19 @@ const RADIUS_CLASS: Record<string, string> = {
   '9999px': 'rounded-full'
 }
 
+const BORDER_WIDTH_CLASS: Record<string, string> = {
+  '0px': 'border-0',
+  '1px': 'border',
+  '2px': 'border-2',
+  '4px': 'border-4',
+  '8px': 'border-8'
+}
+
+function borderWidthClasses(value: string | undefined): string[] {
+  if (!value) return []
+  return [BORDER_WIDTH_CLASS[value] ?? arbitraryClass('border', value)]
+}
+
 function roundedClasses(value: string | undefined): string[] {
   if (!value) return []
   const radii = expandBorderRadius(value)
@@ -677,9 +690,14 @@ function expandBorderRadius(value: string): [string, string, string, string] | n
 
 function tailwindClassesFromStyle(style: Record<string, string>): string[] {
   const twirlStyle = { ...style }
+  delete twirlStyle.borderWidth
   delete twirlStyle.borderRadius
   const twirled = twirl(twirlStyle)
-  return [...(twirled ? twirled.split(' ') : []), ...roundedClasses(style.borderRadius)]
+  return [
+    ...(twirled ? twirled.split(' ') : []),
+    ...borderWidthClasses(style.borderWidth),
+    ...roundedClasses(style.borderRadius)
+  ]
 }
 
 /**

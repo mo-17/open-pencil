@@ -90,6 +90,29 @@ describe('collectStateTailwindClasses (Phase 4 §20)', () => {
     expect(out.some((c) => c.startsWith('focus:border-'))).toBe(true)
   })
 
+  test('focus stroke weight 20px emits a valid arbitrary border utility', () => {
+    const graph = new SceneGraph()
+    const node = styledNode(graph, {
+      strokes: [],
+      stateOverrides: {
+        focus: {
+          strokes: [
+            {
+              color: { r: 1, g: 0, b: 0, a: 1 },
+              weight: 20,
+              opacity: 1,
+              visible: true,
+              align: 'INSIDE' as const
+            }
+          ]
+        }
+      }
+    })
+    const out = collectStateTailwindClasses(node, graph)
+    expect(out).toContain('focus:border-[20px]')
+    expect(out).not.toContain('focus:border-5')
+  })
+
   test('hover adds a shadow → `hover:shadow-…` utility', () => {
     const graph = new SceneGraph()
     const node = styledNode(graph, {

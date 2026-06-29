@@ -97,8 +97,8 @@
 
 ### Fixes
 
-- Preserve compiled 20px corner radii by emitting valid Tailwind arbitrary rounded utilities
-  instead of spacing-scale `rounded-5` classes.
+- Preserve compiled 20px corner radii and stroke widths by emitting valid Tailwind arbitrary
+  utilities instead of spacing-scale `rounded-5` / `border-5` classes.
 - Clip compiled lowcode card children to the parent rounded corners by emitting overflow clipping on card-like containers, with Tauri preview coverage for the rounded-parent path.
 - Show JSX in the Code panel when selecting lowcode Button, Input, and Select nodes, including their interactive text, placeholder, value, and options in OpenPencil and Tailwind formats.
 - Allow the CLI deploy command to accept the documented `--provider cloudflare` option.

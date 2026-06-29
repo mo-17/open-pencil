@@ -54,6 +54,24 @@ describe('Tailwind JSX export', () => {
     expect(jsx).toContain('h-25')
   })
 
+  test('layout spacing values intentionally use the spacing scale', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('FRAME', pageId(graph), {
+      x: 20,
+      y: 24,
+      width: 20,
+      height: 37,
+      layoutMode: 'VERTICAL',
+      itemSpacing: 24
+    })
+    const jsx = tw(graph, node.id)
+    expect(jsx).toContain('left-5')
+    expect(jsx).toContain('top-6')
+    expect(jsx).toContain('w-5')
+    expect(jsx).toContain('h-[37px]')
+    expect(jsx).toContain('gap-6')
+  })
+
   test('1px uses w-px', () => {
     const graph = makeGraph()
     const node = graph.createNode('RECTANGLE', pageId(graph), {
@@ -85,6 +103,26 @@ describe('Tailwind JSX export', () => {
     expect(jsx).toContain('bg-white')
     // twirlwind maps 2px border correctly
     expect(jsx).toContain('border-[#FF0000]')
+  })
+
+  test('stroke weight 20px stays an arbitrary border width instead of spacing scale', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('RECTANGLE', pageId(graph), {
+      width: 100,
+      height: 100,
+      strokes: [
+        {
+          color: { r: 1, g: 0, b: 0, a: 1 },
+          weight: 20,
+          opacity: 1,
+          visible: true,
+          align: 'INSIDE' as const
+        }
+      ]
+    })
+    const jsx = tw(graph, node.id)
+    expect(jsx).toContain('border-[20px]')
+    expect(jsx).not.toContain('border-5')
   })
 
   test('text node uses <p> with text classes', () => {
@@ -347,6 +385,27 @@ describe('Tailwind JSX export', () => {
       ]
     })
     expect(tw(graph, node.id)).toContain('blur-[4px]')
+  })
+
+  test('blur radius 20px stays an arbitrary blur utility instead of spacing scale', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('RECTANGLE', pageId(graph), {
+      width: 100,
+      height: 100,
+      effects: [
+        {
+          type: 'LAYER_BLUR',
+          color: { r: 0, g: 0, b: 0, a: 0 },
+          offset: { x: 0, y: 0 },
+          radius: 20,
+          spread: 0,
+          visible: true
+        }
+      ]
+    })
+    const jsx = tw(graph, node.id)
+    expect(jsx).toContain('blur-[20px]')
+    expect(jsx).not.toContain('blur-5')
   })
 
   test('font size — named values', () => {
