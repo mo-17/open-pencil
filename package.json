@@ -32,6 +32,7 @@
     "test:update": "playwright test --project=openpencil --update-snapshots",
     "test:figma": "playwright test --project=figma",
     "figma:debug": "open -a Figma --args --remote-debugging-port=9222",
+    "figma:web:debug": "open -na \"Google Chrome\" --args --remote-debugging-port=9222 '--remote-allow-origins=*' --user-data-dir=/private/tmp/figma-cdp-profile https://www.figma.com/files/recent",
     "test:unit": "bun test ./tests/engine",
     "test:coverage": "bun test --coverage ./tests/engine",
     "test:type-shapes": "bun tools/type-shapes/src/index.ts",

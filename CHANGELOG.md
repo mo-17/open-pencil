@@ -41,6 +41,8 @@
 - Add a repo-local Tauri MCP lowcode preview ACK helper for repeatable real-webview
   automation checks.
 - Add engine-level contract coverage for the repo-local Tauri MCP lowcode preview ACK helper.
+- Add a Figma Web CDP debug script and update Figma reference tests to work with the current
+  browser canvas structure.
 - Fix package tarball smoke coverage for the private compiler dependency, isolated npm
   cache use, compiler ESM output, and runtime package dependencies.
 - Map simple bound lowcode fill color variables to generated `var(--op-...)` inline styles.

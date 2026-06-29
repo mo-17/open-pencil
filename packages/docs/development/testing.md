@@ -34,11 +34,14 @@ The editor supports a test mode that hides UI chrome (toolbar, panels) for clean
 A separate Playwright project connects to Figma via Chrome DevTools Protocol to capture reference screenshots for pixel-perfect comparison.
 
 ```sh
-bun run figma:debug       # Launch Figma with debugging port
-bun run test:figma        # Connect to Figma, capture references
+bun run figma:web:debug   # Launch Figma Web in Chrome with debugging port
+bun run test:figma        # Connect to Figma Web, capture references
 ```
 
-Requires Figma desktop app running with `--remote-debugging-port=9222`.
+Requires the debug Chrome profile to be signed in to Figma with a
+`figma.com/design/...` file open. The legacy `bun run figma:debug` desktop path
+is kept for older Figma builds, but Figma Desktop 126.x no longer exposes a
+usable CDP endpoint even when launched with `--remote-debugging-port=9222`.
 
 ## Unit Tests
 

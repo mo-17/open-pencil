@@ -28,7 +28,7 @@ export class FigmaHelper {
   }
 
   get canvas() {
-    return this.page.locator('canvas.gpu-view-content')
+    return this.page.locator('canvas.gpu-view-content, .gpu-view-content canvas, canvas').first()
   }
 
   async screenshotCanvas() {
