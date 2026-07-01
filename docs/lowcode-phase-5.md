@@ -2615,6 +2615,49 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不把 map 节点状态持久化到 SceneGraph / localStorage。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.12 2026-07-01 第十二刀:Workflow graph map filters
+
+本刀给 HTML readonly map 增加本地过滤,让 workflow 变多时可以快速聚焦问题边或入口 workflow。
+过滤只影响 map 区域,不影响常驻 summary、issue 列表、entrypoint 列表或下方 relation groups。
+
+已完成:
+
+- `WorkflowsPanel.vue` 在 `lowcode-workflow-graph-map` 顶部新增 filter controls:
+  - `All`:显示全部 workflow map nodes 和 call edges。
+  - `Issues`:显示带 issue 的 workflow nodes;edge 只显示 missing target edge 或 cycle
+    issue nodes 之间的 edge。
+  - `Entries`:显示有 UI/event entrypoint 的 workflow nodes;edge 显示与这些入口 workflow
+    相连的 call edges。
+- 新增本地 `graphMapFilter` 状态和 computed map projections:
+  - `graphMapNodes`
+  - `graphMapEdges`
+  - `graphMapEmptyLabel()`
+- 保持 map filters local-only:
+  - 不写入 SceneGraph。
+  - 不写入 `.fig`。
+  - 不写入 localStorage。
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 `Issues` filter 只显示
+    `Save` issue node 和 missing edge。
+  - 同一用例验证 `Entries` filter 聚焦入口 workflow 并保留入口 workflow 的 outgoing edges。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不新增 workflow graph 数据结构字段。
+- 不过滤下方 readonly relation groups。
+- 不持久化 filter 状态。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

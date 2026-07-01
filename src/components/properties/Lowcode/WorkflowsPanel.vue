@@ -68,6 +68,46 @@ const workflowGraph = computed(() =>
   analyzeWorkflowGraph(workflows.value, { entrypoints: workflowEntrypoints.value })
 )
 const graphDetailsOpen = ref(false)
+type GraphMapFilter = 'all' | 'issues' | 'entries'
+const graphMapFilter = ref<GraphMapFilter>('all')
+const graphMapIssueIds = computed(
+  () => new Set(workflowGraph.value.issues.flatMap((issue) => issue.workflowIds))
+)
+const graphMapEntryIds = computed(
+  () =>
+    new Set(
+      workflowGraph.value.nodes
+        .filter((node) => node.entrypoints.length > 0)
+        .map((node) => node.id)
+    )
+)
+const graphMapNodes = computed(() => {
+  switch (graphMapFilter.value) {
+    case 'issues':
+      return workflowGraph.value.nodes.filter((node) => node.issues.length > 0)
+    case 'entries':
+      return workflowGraph.value.nodes.filter((node) => node.entrypoints.length > 0)
+    default:
+      return workflowGraph.value.nodes
+  }
+})
+const graphMapEdges = computed(() => {
+  switch (graphMapFilter.value) {
+    case 'issues':
+      return workflowGraph.value.edges.filter(
+        (edge) =>
+          !edge.toName ||
+          (graphMapIssueIds.value.has(edge.fromId) && graphMapIssueIds.value.has(edge.toId))
+      )
+    case 'entries':
+      return workflowGraph.value.edges.filter(
+        (edge) =>
+          graphMapEntryIds.value.has(edge.fromId) || graphMapEntryIds.value.has(edge.toId)
+      )
+    default:
+      return workflowGraph.value.edges
+  }
+})
 type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
 const workflowRowRefs = new Map<string, WorkflowRowHandle>()
 
@@ -132,6 +172,17 @@ function entrypointLabel(count: number): string {
 
 function workflowGraphNodeName(workflowId: string): string {
   return workflowGraph.value.nodes.find((node) => node.id === workflowId)?.name ?? workflowId
+}
+
+function graphMapEmptyLabel(): string {
+  switch (graphMapFilter.value) {
+    case 'issues':
+      return 'No issue edges.'
+    case 'entries':
+      return 'No entry edges.'
+    default:
+      return 'No workflow calls.'
+  }
 }
 
 function containingPageId(node: SceneNode): string | undefined {
@@ -227,9 +278,41 @@ function containingPageId(node: SceneNode): string | undefined {
         data-test-id="lowcode-workflow-graph-map"
         class="flex flex-col gap-1 border-l border-border pl-2 text-muted"
       >
+        <div
+          data-test-id="lowcode-workflow-graph-map-filter"
+          class="flex flex-wrap gap-1"
+        >
+          <button
+            type="button"
+            data-test-id="lowcode-workflow-graph-map-filter-all"
+            class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+            :class="graphMapFilter === 'all' ? 'bg-hover text-surface' : ''"
+            @click="graphMapFilter = 'all'"
+          >
+            All
+          </button>
+          <button
+            type="button"
+            data-test-id="lowcode-workflow-graph-map-filter-issues"
+            class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+            :class="graphMapFilter === 'issues' ? 'bg-hover text-surface' : ''"
+            @click="graphMapFilter = 'issues'"
+          >
+            Issues
+          </button>
+          <button
+            type="button"
+            data-test-id="lowcode-workflow-graph-map-filter-entries"
+            class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+            :class="graphMapFilter === 'entries' ? 'bg-hover text-surface' : ''"
+            @click="graphMapFilter = 'entries'"
+          >
+            Entries
+          </button>
+        </div>
         <div class="flex flex-wrap gap-1">
           <button
-            v-for="node in workflowGraph.nodes"
+            v-for="node in graphMapNodes"
             :key="node.id"
             type="button"
             data-test-id="lowcode-workflow-graph-map-node"
@@ -252,9 +335,9 @@ function containingPageId(node: SceneNode): string | undefined {
             </span>
           </button>
         </div>
-        <ul v-if="workflowGraph.edges.length > 0" class="flex flex-col gap-0.5">
+        <ul v-if="graphMapEdges.length > 0" class="flex flex-col gap-0.5">
           <li
-            v-for="edge in workflowGraph.edges"
+            v-for="edge in graphMapEdges"
             :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"
             data-test-id="lowcode-workflow-graph-map-edge"
             class="flex items-center justify-between gap-2"
@@ -275,7 +358,7 @@ function containingPageId(node: SceneNode): string | undefined {
           </li>
         </ul>
         <p v-else data-test-id="lowcode-workflow-graph-map-empty" class="text-[10px] text-muted">
-          No workflow calls.
+          {{ graphMapEmptyLabel() }}
         </p>
       </div>
       <ul v-if="graphDetailsOpen" class="flex flex-col gap-1.5 text-muted">

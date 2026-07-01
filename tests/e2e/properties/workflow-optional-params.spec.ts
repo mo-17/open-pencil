@@ -167,6 +167,20 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(1)).toContainText(
     'Save -> wf-missing missing'
   )
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-issues').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')).toContainText(
+    'issue'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toContainText(
+    'Save -> wf-missing missing'
+  )
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-entries').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node').first()).toContainText(
     'Save: 1 entry / 0 in / 2 out / 2 actions'
