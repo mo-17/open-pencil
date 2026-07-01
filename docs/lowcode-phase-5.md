@@ -3072,6 +3072,44 @@ details 后可以在同一区域读到问题类型、问题文本,并从 map 内
 - 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.24 2026-07-02 第二十四刀:Workflow graph map issue filter summary
+
+本刀补齐 graph map issue 区域和 All / Issues / Entries 过滤器之间的语义一致性。
+此前 node / edge 会随 filter 变化,但 issue group / clean state 仍读取全量
+`workflowGraph.issues`,容易让 Entries 子图显示不相关 issue。本刀让 issue summary
+和 clean copy 跟随当前 map filter。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapIssues`,作为 map 内 issue group 的过滤后数据源。
+  - Entries filter 只显示触达 entry workflows 的 issue。
+  - issue group 新增 `lowcode-workflow-graph-map-issue-summary`。
+  - issue summary 文案区分 `1 issue total`、`1 issue in issue filter`、以及
+    `1 issue touching entry workflows`。
+  - clean state 文案区分全量、Issues filter、Entries filter。
+  - All / Issues / Entries filter buttons 增加 `aria-pressed` 当前态。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 覆盖 diagnostics fixture 中 All / Issues / Entries 三种过滤下的 issue summary。
+  - 覆盖无 issue fixture 中 Entries / Issues filter 的 clean state 文案。
+  - 新增孤立 issue fixture,验证全量有 issue 但 Entries 子图显示 clean state。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不新增 issue severity / grouping schema。
+- 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

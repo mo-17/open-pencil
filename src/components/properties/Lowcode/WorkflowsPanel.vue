@@ -108,6 +108,16 @@ const graphMapEdges = computed(() => {
       return workflowGraph.value.edges
   }
 })
+const graphMapIssues = computed(() => {
+  switch (graphMapFilter.value) {
+    case 'entries':
+      return workflowGraph.value.issues.filter((issue) =>
+        issue.workflowIds.some((workflowId) => graphMapEntryIds.value.has(workflowId))
+      )
+    default:
+      return workflowGraph.value.issues
+  }
+})
 type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
 const workflowRowRefs = new Map<string, WorkflowRowHandle>()
 
@@ -246,6 +256,29 @@ function graphMapSummaryLabel(): string {
   )}`
 }
 
+function graphMapIssueSummaryLabel(): string {
+  const issueCount = countLabel(graphMapIssues.value.length, 'issue')
+  switch (graphMapFilter.value) {
+    case 'issues':
+      return `${issueCount} in issue filter`
+    case 'entries':
+      return `${issueCount} touching entry workflows`
+    default:
+      return `${issueCount} total`
+  }
+}
+
+function graphMapIssueCleanLabel(): string {
+  switch (graphMapFilter.value) {
+    case 'issues':
+      return 'No workflows with issues in this map.'
+    case 'entries':
+      return 'No entry workflow issues in this map.'
+    default:
+      return 'No graph issues in this map.'
+  }
+}
+
 function graphMapNodeEmptyLabel(): string {
   switch (graphMapFilter.value) {
     case 'issues':
@@ -368,6 +401,7 @@ function containingPageId(node: SceneNode): string | undefined {
               data-test-id="lowcode-workflow-graph-map-filter-all"
               class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
               :class="graphMapFilter === 'all' ? 'bg-hover text-surface' : ''"
+              :aria-pressed="graphMapFilter === 'all'"
               @click="graphMapFilter = 'all'"
             >
               All
@@ -377,6 +411,7 @@ function containingPageId(node: SceneNode): string | undefined {
               data-test-id="lowcode-workflow-graph-map-filter-issues"
               class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
               :class="graphMapFilter === 'issues' ? 'bg-hover text-surface' : ''"
+              :aria-pressed="graphMapFilter === 'issues'"
               @click="graphMapFilter = 'issues'"
             >
               Issues
@@ -386,6 +421,7 @@ function containingPageId(node: SceneNode): string | undefined {
               data-test-id="lowcode-workflow-graph-map-filter-entries"
               class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
               :class="graphMapFilter === 'entries' ? 'bg-hover text-surface' : ''"
+              :aria-pressed="graphMapFilter === 'entries'"
               @click="graphMapFilter = 'entries'"
             >
               Entries
@@ -396,12 +432,18 @@ function containingPageId(node: SceneNode): string | undefined {
           </span>
         </div>
         <ul
-          v-if="workflowGraph.issues.length > 0"
+          v-if="graphMapIssues.length > 0"
           data-test-id="lowcode-workflow-graph-map-issue-group"
           class="flex flex-col gap-0.5 rounded border border-red-500/30 bg-red-500/5 px-1 py-0.5 text-[10px]"
         >
           <li
-            v-for="(issue, index) in workflowGraph.issues"
+            data-test-id="lowcode-workflow-graph-map-issue-summary"
+            class="text-[9px] uppercase text-red-500/80"
+          >
+            {{ graphMapIssueSummaryLabel() }}
+          </li>
+          <li
+            v-for="(issue, index) in graphMapIssues"
             :key="`${issue.type}-${index}`"
             data-test-id="lowcode-workflow-graph-map-issue-row"
             class="flex items-center justify-between gap-2"
@@ -437,7 +479,7 @@ function containingPageId(node: SceneNode): string | undefined {
           data-test-id="lowcode-workflow-graph-map-issue-clean"
           class="rounded border border-border bg-hover/30 px-1 py-0.5 text-[10px] text-muted"
         >
-          No graph issues in this map.
+          {{ graphMapIssueCleanLabel() }}
         </p>
         <div v-if="graphMapNodes.length > 0" class="flex flex-wrap gap-1">
           <div
