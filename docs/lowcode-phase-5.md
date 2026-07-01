@@ -2348,6 +2348,50 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不把只读 graph summary 升级为可编辑 DAG。
 - 不改变 workflow compiler/IR 行为。
 
+### 13.5 2026-07-01 第五刀:Workflow graph event entrypoints
+
+本刀继续保持 workflow graph 为只读诊断 UI,补上页面/节点事件到 workflow 的入口统计。
+这样作者可以区分 workflow 是由 UI 事件触发、只被其他 workflow 内部调用,还是暂时没有事件入口。
+
+已完成:
+
+- `src/app/lowcode/workflow-graph.ts` 新增 `collectWorkflowEntrypoints()`:
+  - 从 `SceneNode.events` 扫描 `callWorkflow`。
+  - 递归扫描 `condition` / `confirm` 分支,以及 `apiCall` / `supabaseQuery` /
+    `supabaseMutation` 的 `onSuccess` / `onError` 分支。
+  - 记录来源 node、event name、action id 和 action path。
+  - 事件中引用 missing workflow 时生成只读 missing-workflow issue。
+- `analyzeWorkflowGraph()` 支持可选 entrypoint context:
+  - summary 显示 event entrypoint 总数。
+  - 每个 workflow node 记录自己的 `entrypoints`。
+  - 汇总 `workflowsWithoutEntrypoints`,用于提示没有 UI/event 入口的 workflow。
+- `WorkflowsPanel`:
+  - summary 从 `editor.graph.getAllNodes()` 收集事件入口。
+  - 常驻显示 `No event entry` 诊断行,并复用现有 `Jump` 定位到 workflow row。
+  - 展开 details 后每个 workflow 行显示 entry / in / out / action 摘要。
+- 覆盖:
+  - `tests/engine/app/lowcode/workflow-graph.test.ts` 覆盖事件入口收集、嵌套 action path、
+    missing event workflow reference 和无入口 workflow。
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 覆盖 summary entry count、
+    `No event entry` 提示和 details 中的 entry count。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不新增 workflow schema / SceneGraph 持久化字段。
+- 不改变 compiler inline/cycle warning/drop 语义。
+- 不做图布局、拖拽节点或连线编辑。
+- 不从 graph summary 反向定位到具体 event action row;本刀只跳到 workflow row。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

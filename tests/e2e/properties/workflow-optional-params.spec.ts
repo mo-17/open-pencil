@@ -40,6 +40,8 @@ async function setupWorkflowGraphDiagnostics() {
   return editor.page.evaluate(() => {
     const store = window.openPencil?.getStore?.()
     if (!store) throw new Error('OpenPencil store not initialized')
+    const page = store.graph.getNode(store.state.currentPageId)
+    if (!page) throw new Error('Current page not found')
 
     store.graph.updateNode(store.graph.rootId, {
       lowcodeWorkflows: [
@@ -57,6 +59,16 @@ async function setupWorkflowGraphDiagnostics() {
           actions: [{ id: 'toast', kind: 'toast', messageExpr: '"Saved"', variant: 'success' }]
         }
       ]
+    })
+    store.graph.createNode('BUTTON', page.id, {
+      name: 'Run save',
+      x: 120,
+      y: 120,
+      width: 140,
+      height: 40,
+      events: {
+        onClick: [{ id: 'event-call-save', kind: 'callWorkflow', workflowId: 'wf-save' }]
+      }
     })
     store.select([])
     store.requestRender()
@@ -119,17 +131,20 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await workflowsPanel.scrollIntoViewIfNeeded()
   await expect(workflowsPanel).toBeVisible()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-summary')).toContainText(
-    '2 workflows, 3 actions, 2 calls'
+    '2 workflows, 3 actions, 2 calls, 1 entry'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-issue')).toContainText(
     'Save calls a missing workflow'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint')).toContainText(
+    'No event entry: Notify'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(0)
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node').first()).toContainText(
-    'Save: 0 in / 2 out / 2 actions'
+    'Save: 1 entry / 0 in / 2 out / 2 actions'
   )
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-jump').click()

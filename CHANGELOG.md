@@ -85,6 +85,8 @@
 - Add a local-only expand/collapse control for lowcode workflow graph details.
 - Cover lowcode workflow graph expand/collapse and issue jump behavior with a targeted Playwright
   regression.
+- Show lowcode workflow graph event entrypoints from node events, including workflows with no
+  event entry.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

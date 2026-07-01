@@ -11,7 +11,7 @@ import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
-import { analyzeWorkflowGraph } from '@/app/lowcode/workflow-graph'
+import { analyzeWorkflowGraph, collectWorkflowEntrypoints } from '@/app/lowcode/workflow-graph'
 
 import WorkflowRow from './WorkflowRow.vue'
 
@@ -56,7 +56,12 @@ const analyticsConfigured = useSceneComputed<boolean>(() => {
   const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
   return config?.enabled !== false && !!config?.id?.trim()
 })
-const workflowGraph = computed(() => analyzeWorkflowGraph(workflows.value))
+const workflowEntrypoints = useSceneComputed(() =>
+  collectWorkflowEntrypoints([...editor.graph.getAllNodes()], workflows.value)
+)
+const workflowGraph = computed(() =>
+  analyzeWorkflowGraph(workflows.value, { entrypoints: workflowEntrypoints.value })
+)
 const graphDetailsOpen = ref(false)
 type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
 const workflowRowRefs = new Map<string, WorkflowRowHandle>()
@@ -101,6 +106,14 @@ function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicIns
   if (row) workflowRowRefs.set(workflowId, row as WorkflowRowHandle)
   else workflowRowRefs.delete(workflowId)
 }
+
+function entrypointLabel(count: number): string {
+  return count === 1 ? '1 entry' : `${count} entries`
+}
+
+function workflowGraphNodeName(workflowId: string): string {
+  return workflowGraph.value.nodes.find((node) => node.id === workflowId)?.name ?? workflowId
+}
 </script>
 
 <template>
@@ -129,7 +142,7 @@ function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicIns
       <div class="flex items-center justify-between gap-2">
         <p class="text-muted">
           {{ workflowGraph.workflowCount }} workflows, {{ workflowGraph.actionCount }} actions,
-          {{ workflowGraph.callCount }} calls
+          {{ workflowGraph.callCount }} calls, {{ entrypointLabel(workflowGraph.entrypointCount) }}
         </p>
         <button
           type="button"
@@ -160,6 +173,27 @@ function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicIns
           </button>
         </li>
       </ul>
+      <ul
+        v-if="workflowGraph.workflowsWithoutEntrypoints.length > 0"
+        class="flex flex-col gap-0.5 text-muted"
+      >
+        <li
+          v-for="workflowId in workflowGraph.workflowsWithoutEntrypoints"
+          :key="workflowId"
+          data-test-id="lowcode-workflow-graph-entrypoint"
+          class="flex items-center justify-between gap-2"
+        >
+          <span class="min-w-0">No event entry: {{ workflowGraphNodeName(workflowId) }}</span>
+          <button
+            type="button"
+            data-test-id="lowcode-workflow-graph-entrypoint-jump"
+            class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+            @click="jumpToWorkflow(workflowId)"
+          >
+            Jump
+          </button>
+        </li>
+      </ul>
       <ul v-if="graphDetailsOpen" class="flex flex-col gap-0.5 text-muted">
         <li
           v-for="node in workflowGraph.nodes"
@@ -169,7 +203,8 @@ function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicIns
         >
           <span class="min-w-0">
             {{ node.name }}:
-            {{ node.incoming.length }} in / {{ node.outgoing.length }} out /
+            {{ entrypointLabel(node.entrypoints.length) }} / {{ node.incoming.length }} in /
+            {{ node.outgoing.length }} out /
             {{ node.actionCount }} actions
           </span>
           <button

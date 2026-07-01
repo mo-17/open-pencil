@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { WorkflowDef } from '@open-pencil/core/scene-graph'
+import type { SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
 
-import { analyzeWorkflowGraph } from '@/app/lowcode/workflow-graph'
+import { analyzeWorkflowGraph, collectWorkflowEntrypoints } from '@/app/lowcode/workflow-graph'
 
 describe('lowcode workflow graph analysis', () => {
   test('counts nested actions and callWorkflow edges', () => {
@@ -73,6 +73,78 @@ describe('lowcode workflow graph analysis', () => {
         targetWorkflowId: 'wf-a'
       }
     ])
+  })
+
+  test('collects workflow entrypoints from node events', () => {
+    const workflows: WorkflowDef[] = [
+      { id: 'wf-save', name: 'Save', actions: [] },
+      { id: 'wf-notify', name: 'Notify', actions: [] }
+    ]
+    const node = {
+      id: 'button-1',
+      name: 'Submit',
+      events: {
+        onClick: [
+          {
+            id: 'condition',
+            kind: 'condition',
+            condExpr: 'true',
+            consequent: [{ id: 'call-save', kind: 'callWorkflow', workflowId: 'wf-save' }],
+            alternate: [{ id: 'call-missing', kind: 'callWorkflow', workflowId: 'wf-missing' }]
+          }
+        ]
+      }
+    } as SceneNode
+
+    const entrypoints = collectWorkflowEntrypoints([node], workflows)
+    const summary = analyzeWorkflowGraph(workflows, { entrypoints })
+
+    expect(entrypoints).toEqual([
+      {
+        workflowId: 'wf-save',
+        workflowName: 'Save',
+        nodeId: 'button-1',
+        nodeName: 'Submit',
+        eventName: 'onClick',
+        actionId: 'call-save',
+        actionPath: 'onClick[0]/consequent[0]'
+      },
+      {
+        workflowId: 'wf-missing',
+        workflowName: undefined,
+        nodeId: 'button-1',
+        nodeName: 'Submit',
+        eventName: 'onClick',
+        actionId: 'call-missing',
+        actionPath: 'onClick[0]/alternate[0]'
+      }
+    ])
+    expect(summary.entrypointCount).toBe(1)
+    expect(summary.workflowsWithoutEntrypoints).toEqual(['wf-notify'])
+    expect(summary.nodes).toMatchObject([
+      { id: 'wf-save', entrypoints: [{ nodeName: 'Submit', eventName: 'onClick' }] },
+      { id: 'wf-notify', entrypoints: [] }
+    ])
+    expect(summary.issues).toEqual([
+      {
+        type: 'missing-workflow',
+        message: 'Submit onClick calls a missing workflow (wf-missing)',
+        workflowIds: ['wf-missing']
+      }
+    ])
+  })
+
+  test('reports workflows without event entrypoints', () => {
+    const workflows: WorkflowDef[] = [
+      { id: 'wf-a', name: 'A', actions: [] },
+      { id: 'wf-b', name: 'B', actions: [] }
+    ]
+
+    const summary = analyzeWorkflowGraph(workflows, { entrypoints: [] })
+
+    expect(summary.entrypointCount).toBe(0)
+    expect(summary.workflowsWithoutEntrypoints).toEqual(['wf-a', 'wf-b'])
+    expect(summary.nodes.map((node) => node.entrypoints)).toEqual([[], []])
   })
 
   test('reports direct and indirect workflow cycles once', () => {

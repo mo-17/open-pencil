@@ -1,4 +1,4 @@
-import type { ActionDef, WorkflowDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
 
 export interface WorkflowGraphEdge {
   fromId: string
@@ -15,12 +15,23 @@ export interface WorkflowGraphIssue {
   targetWorkflowId?: string
 }
 
+export interface WorkflowGraphEntrypoint {
+  workflowId: string
+  workflowName?: string
+  nodeId: string
+  nodeName: string
+  eventName: EventName | string
+  actionId: string
+  actionPath: string
+}
+
 export interface WorkflowGraphNode {
   id: string
   name: string
   actionCount: number
   outgoing: WorkflowGraphEdge[]
   incoming: WorkflowGraphEdge[]
+  entrypoints: WorkflowGraphEntrypoint[]
   issues: WorkflowGraphIssue[]
 }
 
@@ -28,15 +39,52 @@ export interface WorkflowGraphSummary {
   workflowCount: number
   actionCount: number
   callCount: number
+  entrypointCount: number
+  workflowsWithoutEntrypoints: string[]
   nodes: WorkflowGraphNode[]
   edges: WorkflowGraphEdge[]
+  entrypoints: WorkflowGraphEntrypoint[]
   issues: WorkflowGraphIssue[]
 }
 
-export function analyzeWorkflowGraph(workflows: readonly WorkflowDef[]): WorkflowGraphSummary {
+export interface WorkflowGraphOptions {
+  entrypoints?: readonly WorkflowGraphEntrypoint[]
+}
+
+export function collectWorkflowEntrypoints(
+  nodes: readonly SceneNode[],
+  workflows: readonly WorkflowDef[]
+): WorkflowGraphEntrypoint[] {
+  const byId = new Map(workflows.map((workflow) => [workflow.id, workflow]))
+  const entrypoints: WorkflowGraphEntrypoint[] = []
+
+  for (const node of nodes) {
+    for (const [eventName, actions] of Object.entries(node.events ?? {})) {
+      collectEventEntrypoints(
+        actions,
+        {
+          nodeId: node.id,
+          nodeName: node.name || node.id,
+          eventName
+        },
+        byId,
+        entrypoints,
+        eventName
+      )
+    }
+  }
+
+  return entrypoints
+}
+
+export function analyzeWorkflowGraph(
+  workflows: readonly WorkflowDef[],
+  options: WorkflowGraphOptions = {}
+): WorkflowGraphSummary {
   const byId = new Map(workflows.map((workflow) => [workflow.id, workflow]))
   const edges: WorkflowGraphEdge[] = []
   const actionCounts = new Map<string, number>()
+  const entrypoints = [...(options.entrypoints ?? [])]
 
   for (const workflow of workflows) {
     actionCounts.set(workflow.id, collectCalls(workflow.actions, workflow, byId, edges))
@@ -44,19 +92,49 @@ export function analyzeWorkflowGraph(workflows: readonly WorkflowDef[]): Workflo
 
   const issues: WorkflowGraphIssue[] = [
     ...missingWorkflowIssues(edges),
+    ...missingEntrypointIssues(entrypoints),
     ...cycleIssues(workflows, edges)
   ]
   const nodes = workflows.map((workflow) =>
-    workflowNode(workflow, actionCounts.get(workflow.id) ?? 0, edges, issues)
+    workflowNode(workflow, actionCounts.get(workflow.id) ?? 0, edges, entrypoints, issues)
   )
 
   return {
     workflowCount: workflows.length,
     actionCount: [...actionCounts.values()].reduce((sum, count) => sum + count, 0),
     callCount: edges.length,
+    entrypointCount: entrypoints.filter((entrypoint) => byId.has(entrypoint.workflowId)).length,
+    workflowsWithoutEntrypoints: nodes
+      .filter((node) => node.entrypoints.length === 0)
+      .map((node) => node.id),
     nodes,
     edges,
+    entrypoints,
     issues
+  }
+}
+
+function collectEventEntrypoints(
+  actions: readonly ActionDef[] | undefined,
+  source: Pick<WorkflowGraphEntrypoint, 'nodeId' | 'nodeName' | 'eventName'>,
+  workflows: ReadonlyMap<string, WorkflowDef>,
+  entrypoints: WorkflowGraphEntrypoint[],
+  pathPrefix: string
+): void {
+  for (const [index, action] of (actions ?? []).entries()) {
+    const actionPath = `${pathPrefix}[${index}]`
+    if (action.kind === 'callWorkflow' && action.workflowId) {
+      entrypoints.push({
+        ...source,
+        workflowId: action.workflowId,
+        workflowName: workflows.get(action.workflowId)?.name,
+        actionId: action.id,
+        actionPath
+      })
+    }
+    for (const [branchName, branch] of actionBranches(action)) {
+      collectEventEntrypoints(branch, source, workflows, entrypoints, `${actionPath}/${branchName}`)
+    }
   }
 }
 
@@ -78,22 +156,28 @@ function collectCalls(
         actionId: action.id
       })
     }
-    for (const branch of actionBranches(action)) {
+    for (const [, branch] of actionBranches(action)) {
       actionCount += collectCalls(branch, workflow, workflows, edges)
     }
   }
   return actionCount
 }
 
-function actionBranches(action: ActionDef): readonly ActionDef[][] {
+function actionBranches(action: ActionDef): readonly [string, readonly ActionDef[] | undefined][] {
   switch (action.kind) {
     case 'apiCall':
     case 'supabaseQuery':
     case 'supabaseMutation':
-      return [action.onSuccess ?? [], action.onError ?? []]
+      return [
+        ['onSuccess', action.onSuccess],
+        ['onError', action.onError]
+      ]
     case 'condition':
     case 'confirm':
-      return [action.consequent, action.alternate ?? []]
+      return [
+        ['consequent', action.consequent],
+        ['alternate', action.alternate]
+      ]
     default:
       return []
   }
@@ -107,6 +191,18 @@ function missingWorkflowIssues(edges: readonly WorkflowGraphEdge[]): WorkflowGra
       message: `${edge.fromName} calls a missing workflow (${edge.toId})`,
       workflowIds: [edge.fromId, edge.toId],
       targetWorkflowId: edge.fromId
+    }))
+}
+
+function missingEntrypointIssues(
+  entrypoints: readonly WorkflowGraphEntrypoint[]
+): WorkflowGraphIssue[] {
+  return entrypoints
+    .filter((entrypoint) => !entrypoint.workflowName)
+    .map((entrypoint) => ({
+      type: 'missing-workflow',
+      message: `${entrypoint.nodeName} ${entrypoint.eventName} calls a missing workflow (${entrypoint.workflowId})`,
+      workflowIds: [entrypoint.workflowId]
     }))
 }
 
@@ -161,6 +257,7 @@ function workflowNode(
   workflow: WorkflowDef,
   actionCount: number,
   edges: readonly WorkflowGraphEdge[],
+  entrypoints: readonly WorkflowGraphEntrypoint[],
   issues: readonly WorkflowGraphIssue[]
 ): WorkflowGraphNode {
   return {
@@ -169,6 +266,7 @@ function workflowNode(
     actionCount,
     outgoing: edges.filter((edge) => edge.fromId === workflow.id),
     incoming: edges.filter((edge) => edge.toId === workflow.id),
+    entrypoints: entrypoints.filter((entrypoint) => entrypoint.workflowId === workflow.id),
     issues: issues.filter((issue) => issue.workflowIds.includes(workflow.id))
   }
 }
