@@ -70,6 +70,7 @@ const workflowGraph = computed(() =>
 const graphDetailsOpen = ref(false)
 type GraphMapFilter = 'all' | 'issues' | 'entries'
 const graphMapFilter = ref<GraphMapFilter>('all')
+const expandedGraphMapSourceIds = ref<Set<string>>(new Set())
 const graphMapIssueIds = computed(
   () => new Set(workflowGraph.value.issues.flatMap((issue) => issue.workflowIds))
 )
@@ -172,6 +173,17 @@ function entrypointLabel(count: number): string {
 
 function workflowGraphNodeName(workflowId: string): string {
   return workflowGraph.value.nodes.find((node) => node.id === workflowId)?.name ?? workflowId
+}
+
+function isGraphMapSourceExpanded(workflowId: string): boolean {
+  return expandedGraphMapSourceIds.value.has(workflowId)
+}
+
+function toggleGraphMapSources(workflowId: string): void {
+  const next = new Set(expandedGraphMapSourceIds.value)
+  if (next.has(workflowId)) next.delete(workflowId)
+  else next.add(workflowId)
+  expandedGraphMapSourceIds.value = next
 }
 
 function graphMapEmptyLabel(): string {
@@ -358,13 +370,43 @@ function containingPageId(node: SceneNode): string | undefined {
                 Source
               </button>
             </div>
-            <span
+            <button
               v-if="node.entrypoints.length > 1"
+              type="button"
               data-test-id="lowcode-workflow-graph-map-node-entrypoint-more"
-              class="text-[9px] text-muted"
+              class="self-start rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface"
+              @click="toggleGraphMapSources(node.id)"
             >
-              +{{ node.entrypoints.length - 1 }} more
-            </span>
+              {{
+                isGraphMapSourceExpanded(node.id)
+                  ? 'Hide sources'
+                  : `+${node.entrypoints.length - 1} more`
+              }}
+            </button>
+            <ul
+              v-if="node.entrypoints.length > 1 && isGraphMapSourceExpanded(node.id)"
+              data-test-id="lowcode-workflow-graph-map-node-entrypoint-list"
+              class="flex flex-col gap-0.5"
+            >
+              <li
+                v-for="entrypoint in node.entrypoints.slice(1)"
+                :key="`${entrypoint.nodeId}-${entrypoint.eventName}-${entrypoint.actionId}`"
+                data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra"
+                class="flex items-center justify-between gap-1 text-[9px]"
+              >
+                <span class="min-w-0 truncate">
+                  {{ entrypoint.nodeName }} {{ entrypoint.eventName }}
+                </span>
+                <button
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra-jump"
+                  class="shrink-0 rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface"
+                  @click="jumpToEntrypointSource(entrypoint)"
+                >
+                  Source
+                </button>
+              </li>
+            </ul>
           </div>
         </div>
         <ul v-if="graphMapEdges.length > 0" class="flex flex-col gap-0.5">

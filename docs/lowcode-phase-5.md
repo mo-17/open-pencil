@@ -2733,6 +2733,43 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不持久化 source overflow 状态。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.15 2026-07-01 第十五刀:Workflow graph map source list
+
+本刀把第十四刀的 overflow count 升级成 local-only 展开列表。作者点击 `+N more` 后,
+可以在 map node 内直接看到剩余 entrypoint sources,并对每条来源执行 `Source` 跳转。
+
+已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `expandedGraphMapSourceIds` 本地状态,用 `Set<string>` 记录展开的 workflow id。
+  - 新增 `toggleGraphMapSources()` / `isGraphMapSourceExpanded()`。
+  - `+N more` 改为按钮:
+    - 收起时显示 `+N more`。
+    - 展开时显示 `Hide sources`。
+  - 展开后显示 `node.entrypoints.slice(1)` 的来源列表。
+  - 每条 extra source 提供 `Source` 按钮,复用 `jumpToEntrypointSource()`。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证点击 `+1 more` 后显示 `Hide sources`。
+  - 验证 extra source `Quick save onClick` 可见。
+  - 验证 extra source 的 `Source` 跳转可选中 `Quick save` 并聚焦 `onClick[0]`。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不持久化展开状态到 SceneGraph / `.fig` / localStorage。
+- 不把展开状态同步到 relation groups。
+- 不新增 workflow graph 数据结构字段。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
