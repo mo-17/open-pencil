@@ -265,7 +265,7 @@ function setArg(param: string, value: string): void {
     :data-lowcode-action-id="action.id"
     :data-lowcode-action-path="actionPath"
     tabindex="-1"
-    class="flex flex-col gap-0.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
+    class="flex flex-col gap-0.5 rounded outline-none transition-colors focus-visible:ring-1 focus-visible:ring-accent"
   >
     <div class="flex items-center gap-1">
       <select

@@ -165,6 +165,13 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
       editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
     )
     .toBe('wf-save')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(
+        () => document.activeElement?.getAttribute('data-lowcode-focus-highlighted') ?? ''
+      )
+    )
+    .toBe('true')
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(0)
@@ -189,5 +196,12 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
       editor.page.evaluate(() => document.activeElement?.getAttribute('data-lowcode-action-path') ?? '')
     )
     .toBe('onClick[0]')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(
+        () => document.activeElement?.getAttribute('data-lowcode-focus-highlighted') ?? ''
+      )
+    )
+    .toBe('true')
   editor.canvas.assertNoErrors()
 })

@@ -8,6 +8,7 @@ import type {
   WorkflowDef
 } from '@open-pencil/core/scene-graph'
 
+import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 import ActionList from './ActionList.vue'
 
 /**
@@ -39,6 +40,7 @@ defineExpose({
   focusRow(): void {
     rowEl.value?.scrollIntoView({ block: 'nearest' })
     rowEl.value?.focus({ preventScroll: true })
+    flashLowcodeFocusHighlight(rowEl.value)
   }
 })
 
@@ -138,7 +140,7 @@ function setParamOptional(index: number, optional: boolean): void {
     data-test-id="lowcode-workflow-row"
     :data-workflow-id="workflow.id"
     tabindex="-1"
-    class="flex flex-col gap-1.5 rounded border border-border p-2"
+    class="flex flex-col gap-1.5 rounded border border-border p-2 transition-colors"
   >
     <div class="flex items-center gap-1">
       <input

@@ -8,6 +8,7 @@ import { useSectionUI } from '@/components/ui/section'
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import { clearLowcodeActionFocus, peekLowcodeActionFocus } from '@/app/lowcode/action-focus'
+import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 
 import ActionList from './ActionList.vue'
 
@@ -99,6 +100,7 @@ async function focusPendingActionRow(): Promise<void> {
   if (!row) return
   row.scrollIntoView({ block: 'nearest' })
   row.focus({ preventScroll: true })
+  flashLowcodeFocusHighlight(row)
   clearLowcodeActionFocus(target)
 }
 

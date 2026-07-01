@@ -2505,6 +2505,42 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不做拖拽 DAG 编辑。
 - 不持久化 graph details 展开状态或布局状态。
 
+### 13.9 2026-07-01 第九刀:Workflow graph focus highlights
+
+本刀给 workflow graph 的 Jump / Source 导航补一个短暂视觉落点。焦点已经能到目标 row,
+但没有高亮时作者仍需要在密集属性面板里寻找落点;本刀只加本地 transient highlight。
+
+已完成:
+
+- 新增 `src/app/lowcode/focus-highlight.ts`:
+  - 给目标 row 短暂加 `data-lowcode-focus-highlighted`。
+  - 同时加轻量 `ring-accent` / `bg-accent/10` class。
+  - 1.2s 后自动移除,不持久化。
+- `WorkflowRow.focusRow()`:
+  - 保持滚动和 focus 行为。
+  - 额外 flash workflow row。
+- `EventsPanel` action-row pending focus:
+  - 找到目标 action row 后滚动、focus 并 flash。
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 workflow Jump 和 Source
+    action row 都出现 transient highlight 标记。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不保存高亮状态到 SceneGraph / localStorage。
+- 不新增动画库。
+- 不做 SVG/HTML readonly graph layout。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
