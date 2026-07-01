@@ -112,6 +112,22 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
     ['2 edges', '1 edge']
   )
   await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
+  ).toHaveAttribute('aria-label', 'Jump to Alpha workflow action call-beta')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first().press('Enter')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+    )
+    .toBe('wf-a')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(
+        () => document.activeElement?.getAttribute('data-lowcode-focus-highlighted') ?? ''
+      )
+    )
+    .toBe('true')
+  await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue').first()
   ).toContainText('2 issues')
   await expect(

@@ -3314,6 +3314,44 @@ readable path `aria-label` 扩展到 action id。
 - 不新增拖拽排序、拖拽连线或节点位置编辑。
 - 不新增 SVG/canvas edge rendering。
 
+### 13.30 2026-07-02 第三十刀:Workflow graph map edge source action jump
+
+本刀继续 readonly edge source/action locating polish。上一刀已经把 edge row 标出
+`Action <actionId>`,但它仍只是静态 metadata。本刀把这个 action badge 升级为可点击
+source jump:从任何 edge 的 action badge 都能回到产生该调用的源 workflow row,并复用
+既有 row focus + temporary highlight。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapEdgeSourceActionJumpLabel(edge)`。
+  - `lowcode-workflow-graph-map-edge-action` 从静态 `span` 改为 button。
+  - normal / missing edge 都可从 action badge 跳回 `edge.fromId` 对应 workflow row。
+  - 保留 normal edge 的 target `Jump` 和 missing edge 的 `Source` 修复入口。
+  - 不改变 `WorkflowGraphEdge` schema,只使用已有 `fromId` / `actionId`。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证 action badge 的 source jump aria label。
+  - 验证按 Enter 后焦点回到源 workflow row。
+  - 验证源 workflow row 获得临时 highlighter。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 更新 missing edge action badge 的 title 断言为可执行 source jump 文案。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增 workflow graph schema 或 actionPath 字段。
+- 不做嵌套 workflow action row 精准定位。
+- 不新增拖拽排序、拖拽连线或节点位置编辑。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

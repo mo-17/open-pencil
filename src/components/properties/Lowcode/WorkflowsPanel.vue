@@ -243,6 +243,10 @@ function graphMapMissingEdgeSourceJumpLabel(edge: WorkflowGraphEdge): string {
   return `Jump to ${edge.fromName} workflow to fix missing ${edge.toId}`
 }
 
+function graphMapEdgeSourceActionJumpLabel(edge: WorkflowGraphEdge): string {
+  return `Jump to ${edge.fromName} workflow action ${edge.actionId}`
+}
+
 function graphMapEdgeTargetLabel(edge: WorkflowGraphEdge): string {
   return edge.toName ?? edge.toId
 }
@@ -763,14 +767,18 @@ function containingPageId(node: SceneNode): string | undefined {
                       missing
                     </span>
                   </span>
-                  <span
+                  <button
+                    type="button"
                     data-test-id="lowcode-workflow-graph-map-edge-action"
-                    :aria-label="graphMapEdgeActionLabel(edge)"
-                    :title="graphMapEdgeActionLabel(edge)"
-                    class="shrink-0 rounded bg-hover px-1 text-[9px] text-muted"
+                    :aria-label="graphMapEdgeSourceActionJumpLabel(edge)"
+                    :title="graphMapEdgeSourceActionJumpLabel(edge)"
+                    class="shrink-0 rounded bg-hover px-1 text-[9px] text-muted hover:text-surface focus:bg-hover focus:text-surface"
+                    @click="jumpToWorkflow(edge.fromId)"
+                    @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
+                    @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
                   >
                     {{ graphMapEdgeActionLabel(edge) }}
-                  </span>
+                  </button>
                 </span>
                 <button
                   v-if="edge.toName"

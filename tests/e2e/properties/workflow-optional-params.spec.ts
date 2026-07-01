@@ -358,7 +358,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').nth(1)
-  ).toHaveAttribute('title', 'Action call-missing')
+  ).toHaveAttribute('title', 'Jump to Save workflow action call-missing')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-issues').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
     '1 node, 1 edge'
