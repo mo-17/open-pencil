@@ -245,8 +245,8 @@ function graphMapSourceListId(workflowId: string): string {
   return `lowcode-workflow-graph-map-sources-${workflowId}`
 }
 
-function countLabel(count: number, singular: string): string {
-  return `${count} ${count === 1 ? singular : `${singular}s`}`
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
 }
 
 function graphMapSummaryLabel(): string {
@@ -258,14 +258,35 @@ function graphMapSummaryLabel(): string {
 
 function graphMapIssueSummaryLabel(): string {
   const issueCount = countLabel(graphMapIssues.value.length, 'issue')
+  const typeSummary = graphMapIssueTypeSummaryLabel(graphMapIssues.value)
+  const suffix = typeSummary ? ` · ${typeSummary}` : ''
   switch (graphMapFilter.value) {
     case 'issues':
-      return `${issueCount} in issue filter`
+      return `${issueCount} in issue filter${suffix}`
     case 'entries':
-      return `${issueCount} touching entry workflows`
+      return `${issueCount} touching entry workflows${suffix}`
     default:
-      return `${issueCount} total`
+      return `${issueCount} total${suffix}`
   }
+}
+
+function graphMapIssueTypeSummaryLabel(issues: readonly WorkflowGraphIssue[]): string {
+  const missingCount = issues.filter((issue) => issue.type === 'missing-workflow').length
+  const cycleCount = issues.filter((issue) => issue.type === 'cycle').length
+  return [
+    missingCount > 0 ? countLabel(missingCount, 'missing', 'missing') : '',
+    cycleCount > 0 ? countLabel(cycleCount, 'cycle') : ''
+  ]
+    .filter(Boolean)
+    .join(', ')
+}
+
+function graphMapNodeIssueLabel(count: number): string {
+  return countLabel(count, 'issue')
+}
+
+function graphMapNodeIssueTitle(nodeName: string, count: number): string {
+  return `${nodeName} has ${graphMapNodeIssueLabel(count)}`
 }
 
 function graphMapIssueCleanLabel(): string {
@@ -503,9 +524,11 @@ function containingPageId(node: SceneNode): string | undefined {
                 <span
                   v-if="node.issues.length > 0"
                   data-test-id="lowcode-workflow-graph-map-node-issue"
+                  :aria-label="graphMapNodeIssueTitle(node.name, node.issues.length)"
+                  :title="graphMapNodeIssueTitle(node.name, node.issues.length)"
                   class="shrink-0 text-red-500"
                 >
-                  issue
+                  {{ graphMapNodeIssueLabel(node.issues.length) }}
                 </span>
               </span>
               <span

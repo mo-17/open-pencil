@@ -106,6 +106,7 @@
 - Show compact workflow graph issue groups inside the graph map with keyboard-accessible jumps.
 - Show a clean workflow graph map issue state when no graph issues are present.
 - Show filter-aware workflow graph map issue summaries and clean-state copy.
+- Show missing/cycle issue type counts and pluralized node issue badges in the workflow graph map.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

@@ -3110,6 +3110,46 @@ details 后可以在同一区域读到问题类型、问题文本,并从 map 内
 - 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.25 2026-07-02 第二十五刀:Workflow graph map issue type/count polish
+
+本刀继续收敛 graph map issue 表达。此前 map issue summary 已经会跟随 filter,
+但只显示总数;node badge 也只显示固定 `issue` 文案。本刀补充 missing/cycle
+类型计数,并让 node badge 显示具体 issue 数量。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - `graphMapIssueSummaryLabel()` 追加 issue type breakdown。
+  - 新增 `graphMapIssueTypeSummaryLabel()` 统计 `missing-workflow` 和 `cycle`。
+  - `missing` 复数保持为 `missing`,避免显示 `missings`。
+  - map node issue badge 从固定 `issue` 改为 `1 issue` / `2 issues`。
+  - node issue badge 增加 `title` / `aria-label`,说明对应 workflow 有几个 graph issue。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 现有 diagnostics fixture 验证 `1 missing` breakdown。
+  - 现有 node issue badge 断言升级为 `1 issue` 和 `Save has 1 issue`。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 新增 focused mixed issue spec,避免继续撑大既有 optional params spec。
+  - 覆盖同一 graph 同时存在 missing workflow 和 cycle。
+  - 验证 summary 显示 `2 issues total · 1 missing, 1 cycle`。
+  - 验证 Issues filter 下 breakdown 仍跟随当前 filtered issue set。
+  - 验证 Alpha node badge 显示 `2 issues` 和 `Alpha has 2 issues`。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不新增 issue severity / grouping schema。
+- 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

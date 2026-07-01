@@ -228,6 +228,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
     '1 issue total'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
+    '1 missing'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-clean')).toHaveCount(0)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-type')).toContainText(
     'Missing'
@@ -338,7 +341,11 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel).toBeVisible()
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')).toContainText(
-    'issue'
+    '1 issue'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')).toHaveAttribute(
+    'title',
+    'Save has 1 issue'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
     'Notify'
@@ -364,10 +371,13 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
     '1 issue in issue filter'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
+    '1 missing'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')).toContainText(
-    'issue'
+    '1 issue'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toContainText(
@@ -392,6 +402,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
     '1 issue touching entry workflows'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
+    '1 missing'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
