@@ -2541,6 +2541,43 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不新增动画库。
 - 不做 SVG/HTML readonly graph layout。
 
+### 13.10 2026-07-01 第十刀:Workflow graph readonly map
+
+本刀把 workflow graph details 从纯文本分组再推进一步,增加一个 compact HTML readonly map。
+它不改变 workflow 数据模型,也不引入 canvas/SVG;目标是让作者先扫一眼 workflow 节点和调用边,
+再按需查看下方 Entries / Calls out / Called by 明细。
+
+已完成:
+
+- `WorkflowsPanel.vue` 在 graph details 展开时显示 `lowcode-workflow-graph-map`:
+  - workflow 节点以小按钮 pill 呈现,点击可 Jump 到对应 `WorkflowRow`。
+  - call edges 以 `from -> to` 列表呈现。
+  - known target edge 保留 Jump 操作。
+  - missing target edge 显示 `missing` 标记,并继续由上方 issue 文案承担诊断。
+- 保留第八刀的 readonly relation groups:
+  - `Entries`
+  - `Calls out`
+  - `Called by`
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 map 折叠/展开、节点数量、
+    edge 文案、missing 标记和 map edge Jump 聚焦。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不绘制 SVG/canvas 节点连线图。
+- 不做拖拽 DAG 编辑。
+- 不保存 map layout 到 SceneGraph / localStorage。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

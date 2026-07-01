@@ -222,6 +222,49 @@ function containingPageId(node: SceneNode): string | undefined {
           </button>
         </li>
       </ul>
+      <div
+        v-if="graphDetailsOpen"
+        data-test-id="lowcode-workflow-graph-map"
+        class="flex flex-col gap-1 border-l border-border pl-2 text-muted"
+      >
+        <div class="flex flex-wrap gap-1">
+          <button
+            v-for="node in workflowGraph.nodes"
+            :key="node.id"
+            type="button"
+            data-test-id="lowcode-workflow-graph-map-node"
+            class="max-w-full rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-hover hover:text-surface"
+            @click="jumpToWorkflow(node.id)"
+          >
+            {{ node.name }}
+          </button>
+        </div>
+        <ul v-if="workflowGraph.edges.length > 0" class="flex flex-col gap-0.5">
+          <li
+            v-for="edge in workflowGraph.edges"
+            :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"
+            data-test-id="lowcode-workflow-graph-map-edge"
+            class="flex items-center justify-between gap-2"
+          >
+            <span class="min-w-0">
+              {{ edge.fromName }} -> {{ edge.toName ?? edge.toId }}
+              <span v-if="!edge.toName" class="text-red-500">missing</span>
+            </span>
+            <button
+              v-if="edge.toName"
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-edge-jump"
+              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              @click="jumpToWorkflow(edge.toId)"
+            >
+              Jump
+            </button>
+          </li>
+        </ul>
+        <p v-else data-test-id="lowcode-workflow-graph-map-empty" class="text-[10px] text-muted">
+          No workflow calls.
+        </p>
+      </div>
       <ul v-if="graphDetailsOpen" class="flex flex-col gap-1.5 text-muted">
         <li
           v-for="node in workflowGraph.nodes"

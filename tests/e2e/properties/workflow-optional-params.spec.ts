@@ -139,9 +139,25 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint')).toContainText(
     'No event entry: Notify'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map')).toHaveCount(0)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(0)
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map')).toBeVisible()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(2)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').first()).toContainText(
+    'Save'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
+    'Notify'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').first()).toContainText(
+    'Save -> Notify'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(1)).toContainText(
+    'Save -> wf-missing missing'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node').first()).toContainText(
     'Save: 1 entry / 0 in / 2 out / 2 actions'
@@ -158,6 +174,13 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-in-edge')).toContainText(
     'from Save'
   )
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-jump').click()
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+    )
+    .toBe('wf-notify')
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-jump').click()
   await expect

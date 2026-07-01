@@ -91,6 +91,7 @@
 - Focus the specific source action row after jumping from a workflow graph entrypoint.
 - Group lowcode workflow graph details into readonly Entries, Calls out, and Called by sections.
 - Flash a temporary highlight on workflow and action rows reached from workflow graph navigation.
+- Add a compact readonly HTML map for lowcode workflow graph nodes and call edges.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.
