@@ -139,6 +139,25 @@ const graphMapNodeGroups = computed<GraphMapNodeGroup[]>(() => {
 
   return groups.filter((group) => group.nodes.length > 0)
 })
+type GraphMapEdgeGroupKind = 'calls' | 'missing'
+interface GraphMapEdgeGroup {
+  kind: GraphMapEdgeGroupKind
+  title: string
+  edges: WorkflowGraphEdge[]
+}
+const graphMapEdgeGroups = computed<GraphMapEdgeGroup[]>(() => {
+  const groups: GraphMapEdgeGroup[] = [
+    { kind: 'calls', title: 'Calls', edges: [] },
+    { kind: 'missing', title: 'Missing', edges: [] }
+  ]
+  const byKind = new Map(groups.map((group) => [group.kind, group]))
+
+  for (const edge of graphMapEdges.value) {
+    byKind.get(edge.toName ? 'calls' : 'missing')?.edges.push(edge)
+  }
+
+  return groups.filter((group) => group.edges.length > 0)
+})
 type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
 const workflowRowRefs = new Map<string, WorkflowRowHandle>()
 
@@ -325,6 +344,10 @@ function graphMapNodeGroupKind(node: WorkflowGraphNode): GraphMapNodeGroupKind {
 
 function graphMapGroupCountLabel(count: number): string {
   return countLabel(count, 'workflow')
+}
+
+function graphMapEdgeGroupCountLabel(count: number): string {
+  return countLabel(count, 'edge')
 }
 
 function graphMapIssueCleanLabel(): string {
@@ -676,53 +699,75 @@ function containingPageId(node: SceneNode): string | undefined {
         >
           {{ graphMapNodeEmptyLabel() }}
         </p>
-        <ul v-if="graphMapEdges.length > 0" class="flex flex-col gap-0.5">
-          <li
-            v-for="edge in graphMapEdges"
-            :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"
-            data-test-id="lowcode-workflow-graph-map-edge"
-            class="flex items-center justify-between gap-2"
+        <div
+          v-if="graphMapEdgeGroups.length > 0"
+          data-test-id="lowcode-workflow-graph-map-edge-groups"
+          class="grid gap-1 sm:grid-cols-2"
+        >
+          <section
+            v-for="group in graphMapEdgeGroups"
+            :key="group.kind"
+            data-test-id="lowcode-workflow-graph-map-edge-group"
+            :data-graph-map-edge-group="group.kind"
+            class="flex min-w-0 flex-col gap-1 rounded border border-border/70 bg-hover/20 p-1"
           >
-            <span class="min-w-0">
-              {{ edge.fromName }} -> {{ edge.toName ?? edge.toId }}
-              <span
-                v-if="!edge.toName"
-                data-test-id="lowcode-workflow-graph-map-edge-missing"
-                :aria-label="graphMapMissingEdgeLabel(edge)"
-                :title="graphMapMissingEdgeLabel(edge)"
-                class="rounded bg-red-500/10 px-1 text-red-500"
-              >
-                missing
+            <div class="flex items-center justify-between gap-2 text-[9px] uppercase text-muted">
+              <span data-test-id="lowcode-workflow-graph-map-edge-group-title">
+                {{ group.title }}
               </span>
-            </span>
-            <button
-              v-if="edge.toName"
-              type="button"
-              data-test-id="lowcode-workflow-graph-map-edge-jump"
-              :aria-label="graphMapEdgeJumpLabel(edge)"
-              :title="graphMapEdgeJumpLabel(edge)"
-              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-              @click="jumpToWorkflow(edge.toId)"
-              @keydown.enter.prevent="jumpToWorkflow(edge.toId)"
-              @keydown.space.prevent="jumpToWorkflow(edge.toId)"
-            >
-              Jump
-            </button>
-            <button
-              v-else
-              type="button"
-              data-test-id="lowcode-workflow-graph-map-edge-source-jump"
-              :aria-label="graphMapMissingEdgeSourceJumpLabel(edge)"
-              :title="graphMapMissingEdgeSourceJumpLabel(edge)"
-              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-              @click="jumpToWorkflow(edge.fromId)"
-              @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
-              @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
-            >
-              Source
-            </button>
-          </li>
-        </ul>
+              <span data-test-id="lowcode-workflow-graph-map-edge-group-count">
+                {{ graphMapEdgeGroupCountLabel(group.edges.length) }}
+              </span>
+            </div>
+            <ul class="flex flex-col gap-0.5">
+              <li
+                v-for="edge in group.edges"
+                :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"
+                data-test-id="lowcode-workflow-graph-map-edge"
+                class="flex items-center justify-between gap-2"
+              >
+                <span class="min-w-0">
+                  {{ edge.fromName }} -> {{ edge.toName ?? edge.toId }}
+                  <span
+                    v-if="!edge.toName"
+                    data-test-id="lowcode-workflow-graph-map-edge-missing"
+                    :aria-label="graphMapMissingEdgeLabel(edge)"
+                    :title="graphMapMissingEdgeLabel(edge)"
+                    class="rounded bg-red-500/10 px-1 text-red-500"
+                  >
+                    missing
+                  </span>
+                </span>
+                <button
+                  v-if="edge.toName"
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-map-edge-jump"
+                  :aria-label="graphMapEdgeJumpLabel(edge)"
+                  :title="graphMapEdgeJumpLabel(edge)"
+                  class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                  @click="jumpToWorkflow(edge.toId)"
+                  @keydown.enter.prevent="jumpToWorkflow(edge.toId)"
+                  @keydown.space.prevent="jumpToWorkflow(edge.toId)"
+                >
+                  Jump
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-map-edge-source-jump"
+                  :aria-label="graphMapMissingEdgeSourceJumpLabel(edge)"
+                  :title="graphMapMissingEdgeSourceJumpLabel(edge)"
+                  class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                  @click="jumpToWorkflow(edge.fromId)"
+                  @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
+                  @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
+                >
+                  Source
+                </button>
+              </li>
+            </ul>
+          </section>
+        </div>
         <p
           v-else-if="graphMapNodes.length > 0"
           data-test-id="lowcode-workflow-graph-map-edge-empty"

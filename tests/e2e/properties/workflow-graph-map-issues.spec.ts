@@ -105,6 +105,12 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-count')).toHaveText(
     ['2 workflows']
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-title')).toHaveText(
+    ['Calls', 'Missing']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-count')).toHaveText(
+    ['2 edges', '1 edge']
+  )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue').first()
   ).toContainText('2 issues')
@@ -121,6 +127,12 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
     '1 missing, 1 cycle'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-title')).toHaveText(
+    ['Calls', 'Missing']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-count')).toHaveText(
+    ['2 edges', '1 edge']
   )
   editor.canvas.assertNoErrors()
 })

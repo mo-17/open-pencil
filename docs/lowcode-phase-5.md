@@ -3194,6 +3194,46 @@ SVG/canvas edge rendering 或 workflow schema 扩展,只在现有 HTML map 上�
 - 不新增拖拽排序、拖拽连线或节点位置编辑。
 - 不新增 SVG/canvas edge rendering。
 
+### 13.27 2026-07-02 第二十七刀:Workflow graph map readonly edge grouping
+
+本刀继续 readonly DAG visual grouping,把 graph map 的 edge list 从单一列表拆成
+Calls / Missing 两组。目标是让作者一眼区分正常 workflow call 和需要修复的 missing
+workflow call,同时保留既有 Jump / Source 修复入口。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `GraphMapEdgeGroupKind` / `GraphMapEdgeGroup`。
+  - 新增 `graphMapEdgeGroups`,把当前 `graphMapEdges` 派生为 Calls / Missing 分组。
+  - 正常 edge 归入 `Calls`,missing target edge 归入 `Missing`。
+  - map edge 区域新增 `lowcode-workflow-graph-map-edge-groups`。
+  - 每组新增 `lowcode-workflow-graph-map-edge-group`、edge group title、edge group count。
+  - edge row 仍保留既有 `Jump` 和 missing `Source` 行为。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - diagnostics fixture 覆盖 All filter 下 `Calls` / `Missing` 分组。
+  - 覆盖 Issues filter 下仅显示 `Missing` edge group。
+  - 覆盖 Entries filter 下恢复 `Calls` / `Missing` edge groups。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - mixed missing/cycle fixture 覆盖 `Calls` / `Missing` 分组。
+  - 覆盖 Calls group `2 edges`,Missing group `1 edge`。
+  - 覆盖 Issues filter 下 edge grouping 仍跟随当前 filtered edge set。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不新增 workflow graph schema 或持久化 layout 数据。
+- 不新增拖拽排序、拖拽连线或节点位置编辑。
+- 不新增 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

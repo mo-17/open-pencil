@@ -325,6 +325,12 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-stats').nth(1)
   ).toContainText('0e / 1i / 0o / 1a')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-title')).toHaveText(
+    ['Calls', 'Missing']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-count')).toHaveText(
+    ['1 edge', '1 edge']
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').first()).toContainText(
     'Save -> Notify'
@@ -356,6 +362,12 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')).toContainText(
     '1 issue'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-title')).toHaveText(
+    ['Missing']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-count')).toHaveText(
+    ['1 edge']
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toContainText(
@@ -392,6 +404,12 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-title')).toHaveText(
+    ['Calls', 'Missing']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-count')).toHaveText(
+    ['1 edge', '1 edge']
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-jump').click()
   await expect
