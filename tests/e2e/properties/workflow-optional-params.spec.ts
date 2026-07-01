@@ -85,6 +85,37 @@ async function setupWorkflowGraphDiagnostics() {
   })
 }
 
+async function setupWorkflowGraphEntrypointOnly() {
+  return editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const page = store.graph.getNode(store.state.currentPageId)
+    if (!page) throw new Error('Current page not found')
+
+    store.graph.updateNode(store.graph.rootId, {
+      lowcodeWorkflows: [
+        {
+          id: 'wf-save',
+          name: 'Save',
+          actions: [{ id: 'toast', kind: 'toast', messageExpr: '"Saved"', variant: 'success' }]
+        }
+      ]
+    })
+    store.graph.createNode('BUTTON', page.id, {
+      name: 'Run save',
+      x: 120,
+      y: 120,
+      width: 140,
+      height: 40,
+      events: {
+        onClick: [{ id: 'event-call-save', kind: 'callWorkflow', workflowId: 'wf-save' }]
+      }
+    })
+    store.select([])
+    store.requestRender()
+  })
+}
+
 async function workflowSnapshot() {
   return editor.page.evaluate(() => {
     const store = window.openPencil?.getStore?.()
@@ -154,6 +185,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map')).toBeVisible()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '2 nodes, 2 edges'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').first()).toContainText(
     'Save'
@@ -253,6 +287,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     'Save -> wf-missing missing'
   )
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-issues').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '1 node, 1 edge'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')).toContainText(
@@ -263,6 +300,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     'Save -> wf-missing missing'
   )
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-entries').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '1 node, 2 edges'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
@@ -363,5 +403,43 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
       )
     )
     .toBe('true')
+  editor.canvas.assertNoErrors()
+})
+
+test('workflow graph map separates node and edge empty states', async () => {
+  await setupWorkflowGraphEntrypointOnly()
+  await editor.canvas.waitForRender()
+
+  const workflowsPanel = editor.page.getByTestId('lowcode-workflows-section')
+  await workflowsPanel.scrollIntoViewIfNeeded()
+  await expect(workflowsPanel).toBeVisible()
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
+
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '1 node, 0 edges'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-empty')).toHaveCount(0)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-empty')).toContainText(
+    'No workflow calls.'
+  )
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-entries').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '1 node, 0 edges'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-empty')).toContainText(
+    'No entry edges.'
+  )
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-issues').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '0 nodes, 0 edges'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(0)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-empty')).toContainText(
+    'No workflows with issues.'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-empty')).toHaveCount(0)
   editor.canvas.assertNoErrors()
 })

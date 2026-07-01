@@ -208,7 +208,29 @@ function graphMapSourceListId(workflowId: string): string {
   return `lowcode-workflow-graph-map-sources-${workflowId}`
 }
 
-function graphMapEmptyLabel(): string {
+function countLabel(count: number, singular: string): string {
+  return `${count} ${count === 1 ? singular : `${singular}s`}`
+}
+
+function graphMapSummaryLabel(): string {
+  return `${countLabel(graphMapNodes.value.length, 'node')}, ${countLabel(
+    graphMapEdges.value.length,
+    'edge'
+  )}`
+}
+
+function graphMapNodeEmptyLabel(): string {
+  switch (graphMapFilter.value) {
+    case 'issues':
+      return 'No workflows with issues.'
+    case 'entries':
+      return 'No workflows with entries.'
+    default:
+      return 'No workflows.'
+  }
+}
+
+function graphMapEdgeEmptyLabel(): string {
   switch (graphMapFilter.value) {
     case 'issues':
       return 'No issue edges.'
@@ -312,36 +334,41 @@ function containingPageId(node: SceneNode): string | undefined {
         data-test-id="lowcode-workflow-graph-map"
         class="flex flex-col gap-1 border-l border-border pl-2 text-muted"
       >
-        <div data-test-id="lowcode-workflow-graph-map-filter" class="flex flex-wrap gap-1">
-          <button
-            type="button"
-            data-test-id="lowcode-workflow-graph-map-filter-all"
-            class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-            :class="graphMapFilter === 'all' ? 'bg-hover text-surface' : ''"
-            @click="graphMapFilter = 'all'"
-          >
-            All
-          </button>
-          <button
-            type="button"
-            data-test-id="lowcode-workflow-graph-map-filter-issues"
-            class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-            :class="graphMapFilter === 'issues' ? 'bg-hover text-surface' : ''"
-            @click="graphMapFilter = 'issues'"
-          >
-            Issues
-          </button>
-          <button
-            type="button"
-            data-test-id="lowcode-workflow-graph-map-filter-entries"
-            class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-            :class="graphMapFilter === 'entries' ? 'bg-hover text-surface' : ''"
-            @click="graphMapFilter = 'entries'"
-          >
-            Entries
-          </button>
+        <div class="flex flex-wrap items-center justify-between gap-1">
+          <div data-test-id="lowcode-workflow-graph-map-filter" class="flex flex-wrap gap-1">
+            <button
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-filter-all"
+              class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              :class="graphMapFilter === 'all' ? 'bg-hover text-surface' : ''"
+              @click="graphMapFilter = 'all'"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-filter-issues"
+              class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              :class="graphMapFilter === 'issues' ? 'bg-hover text-surface' : ''"
+              @click="graphMapFilter = 'issues'"
+            >
+              Issues
+            </button>
+            <button
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-filter-entries"
+              class="rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              :class="graphMapFilter === 'entries' ? 'bg-hover text-surface' : ''"
+              @click="graphMapFilter = 'entries'"
+            >
+              Entries
+            </button>
+          </div>
+          <span data-test-id="lowcode-workflow-graph-map-summary" class="text-[9px] text-muted/80">
+            {{ graphMapSummaryLabel() }}
+          </span>
         </div>
-        <div class="flex flex-wrap gap-1">
+        <div v-if="graphMapNodes.length > 0" class="flex flex-wrap gap-1">
           <div
             v-for="node in graphMapNodes"
             :key="node.id"
@@ -442,6 +469,13 @@ function containingPageId(node: SceneNode): string | undefined {
             </ul>
           </div>
         </div>
+        <p
+          v-else
+          data-test-id="lowcode-workflow-graph-map-node-empty"
+          class="text-[10px] text-muted"
+        >
+          {{ graphMapNodeEmptyLabel() }}
+        </p>
         <ul v-if="graphMapEdges.length > 0" class="flex flex-col gap-0.5">
           <li
             v-for="edge in graphMapEdges"
@@ -464,8 +498,12 @@ function containingPageId(node: SceneNode): string | undefined {
             </button>
           </li>
         </ul>
-        <p v-else data-test-id="lowcode-workflow-graph-map-empty" class="text-[10px] text-muted">
-          {{ graphMapEmptyLabel() }}
+        <p
+          v-else-if="graphMapNodes.length > 0"
+          data-test-id="lowcode-workflow-graph-map-edge-empty"
+          class="text-[10px] text-muted"
+        >
+          {{ graphMapEdgeEmptyLabel() }}
         </p>
       </div>
       <ul v-if="graphDetailsOpen" class="flex flex-col gap-1.5 text-muted">

@@ -2882,6 +2882,48 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不新增 workflow graph 数据结构字段。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.19 2026-07-01 第十九刀:Workflow graph map density empty states
+
+本刀继续 polish workflow graph map 的密集视图。之前 map 的空状态跟 edge list 绑定,
+会让“有节点但没有边”的场景看起来像整个 map 为空。本刀把节点空态和边空态拆开,
+并在过滤器旁显示当前过滤后的 node / edge 计数。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `countLabel()` 和 `graphMapSummaryLabel()`。
+  - map filter 右侧显示 `N nodes, M edges` 摘要。
+  - 新增 `graphMapNodeEmptyLabel()` 和 `graphMapEdgeEmptyLabel()`。
+  - `graphMapNodes.length === 0` 时显示独立 node empty。
+  - `graphMapNodes.length > 0 && graphMapEdges.length === 0` 时显示独立 edge empty。
+  - 保留 All / Issues / Entries filter 的局部状态,不改 graph 数据结构。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 在现有 diagnostics fixture 覆盖 All / Issues / Entries 的 map summary:
+    - `2 nodes, 2 edges`
+    - `1 node, 1 edge`
+    - `1 node, 2 edges`
+  - 新增 entrypoint-only fixture,覆盖:
+    - 有 node 无 edge 时显示 `1 node, 0 edges` 和 `No workflow calls.`;
+    - Entries filter 显示 `No entry edges.`;
+    - Issues filter 显示 `0 nodes, 0 edges` 和 `No workflows with issues.`;
+    - 没有 node 时不再显示 edge empty。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
+- 不新增 workflow graph 数据结构字段。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
