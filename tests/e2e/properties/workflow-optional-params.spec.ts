@@ -146,6 +146,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node').first()).toContainText(
     'Save: 1 entry / 0 in / 2 out / 2 actions'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint-source')).toContainText(
+    'Entry: Run save onClick'
+  )
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-jump').click()
   await expect
@@ -156,5 +159,21 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(0)
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint-source-jump').click()
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => {
+        const store = window.openPencil?.getStore?.()
+        if (!store) return ''
+        const selected = [...store.state.selectedIds][0]
+        return selected ? store.graph.getNode(selected)?.name ?? '' : ''
+      })
+    )
+    .toBe('Run save')
+  await expect(editor.page.getByTestId('lowcode-events-section')).toBeVisible()
+  await expect(editor.page.getByTestId('lowcode-action-workflow')).toHaveValue('wf-save')
   editor.canvas.assertNoErrors()
 })

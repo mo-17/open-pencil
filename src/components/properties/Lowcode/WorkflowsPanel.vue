@@ -11,7 +11,11 @@ import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
-import { analyzeWorkflowGraph, collectWorkflowEntrypoints } from '@/app/lowcode/workflow-graph'
+import {
+  analyzeWorkflowGraph,
+  collectWorkflowEntrypoints,
+  type WorkflowGraphEntrypoint
+} from '@/app/lowcode/workflow-graph'
 
 import WorkflowRow from './WorkflowRow.vue'
 
@@ -102,6 +106,15 @@ function jumpToWorkflow(workflowId: string | undefined): void {
   workflowRowRefs.get(workflowId)?.focusRow()
 }
 
+function jumpToEntrypointSource(entrypoint: WorkflowGraphEntrypoint): void {
+  const node = editor.graph.getNode(entrypoint.nodeId)
+  if (!node) return
+  const pageId = containingPageId(node)
+  if (pageId && pageId !== editor.state.currentPageId) editor.switchPage(pageId)
+  editor.select([node.id])
+  editor.requestRender()
+}
+
 function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicInstance | null): void {
   if (row) workflowRowRefs.set(workflowId, row as WorkflowRowHandle)
   else workflowRowRefs.delete(workflowId)
@@ -113,6 +126,15 @@ function entrypointLabel(count: number): string {
 
 function workflowGraphNodeName(workflowId: string): string {
   return workflowGraph.value.nodes.find((node) => node.id === workflowId)?.name ?? workflowId
+}
+
+function containingPageId(node: SceneNode): string | undefined {
+  let current: SceneNode | undefined = node
+  while (current) {
+    if (current.type === 'CANVAS') return current.id
+    current = current.parentId ? editor.graph.getNode(current.parentId) : undefined
+  }
+  return undefined
 }
 </script>
 
@@ -194,27 +216,49 @@ function workflowGraphNodeName(workflowId: string): string {
           </button>
         </li>
       </ul>
-      <ul v-if="graphDetailsOpen" class="flex flex-col gap-0.5 text-muted">
+      <ul v-if="graphDetailsOpen" class="flex flex-col gap-1 text-muted">
         <li
           v-for="node in workflowGraph.nodes"
           :key="node.id"
           data-test-id="lowcode-workflow-graph-node"
-          class="flex items-center justify-between gap-2"
+          class="flex flex-col gap-0.5"
         >
-          <span class="min-w-0">
-            {{ node.name }}:
-            {{ entrypointLabel(node.entrypoints.length) }} / {{ node.incoming.length }} in /
-            {{ node.outgoing.length }} out /
-            {{ node.actionCount }} actions
-          </span>
-          <button
-            type="button"
-            data-test-id="lowcode-workflow-graph-node-jump"
-            class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-            @click="jumpToWorkflow(node.id)"
-          >
-            Jump
-          </button>
+          <div class="flex items-center justify-between gap-2">
+            <span class="min-w-0">
+              {{ node.name }}:
+              {{ entrypointLabel(node.entrypoints.length) }} / {{ node.incoming.length }} in /
+              {{ node.outgoing.length }} out /
+              {{ node.actionCount }} actions
+            </span>
+            <button
+              type="button"
+              data-test-id="lowcode-workflow-graph-node-jump"
+              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              @click="jumpToWorkflow(node.id)"
+            >
+              Jump
+            </button>
+          </div>
+          <ul v-if="node.entrypoints.length > 0" class="flex flex-col gap-0.5 pl-2">
+            <li
+              v-for="entrypoint in node.entrypoints"
+              :key="`${entrypoint.nodeId}-${entrypoint.eventName}-${entrypoint.actionId}`"
+              data-test-id="lowcode-workflow-graph-entrypoint-source"
+              class="flex items-center justify-between gap-2"
+            >
+              <span class="min-w-0">
+                Entry: {{ entrypoint.nodeName }} {{ entrypoint.eventName }}
+              </span>
+              <button
+                type="button"
+                data-test-id="lowcode-workflow-graph-entrypoint-source-jump"
+                class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+                @click="jumpToEntrypointSource(entrypoint)"
+              >
+                Source
+              </button>
+            </li>
+          </ul>
         </li>
       </ul>
     </div>

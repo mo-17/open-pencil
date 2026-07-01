@@ -2390,7 +2390,46 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不新增 workflow schema / SceneGraph 持久化字段。
 - 不改变 compiler inline/cycle warning/drop 语义。
 - 不做图布局、拖拽节点或连线编辑。
-- 不从 graph summary 反向定位到具体 event action row;本刀只跳到 workflow row。
+- 不从 graph summary 反向定位到具体 nested action row;本刀只汇总入口来源。
+
+### 13.6 2026-07-01 第六刀:Workflow graph source jumps
+
+本刀继续增强只读 workflow graph diagnostics,补上从 entrypoint 诊断回到来源节点事件编辑器的
+跳转。作者看到某个 workflow 有 UI/event 入口后,可以直接回到触发它的按钮/表单事件。
+
+已完成:
+
+- `WorkflowsPanel` 在 graph details 中列出每个 workflow 的 event entrypoint 来源:
+  - 来源 node name。
+  - event name。
+  - `Source` 按钮。
+- `Source` 按钮:
+  - 选择来源 node。
+  - 来源 node 不在当前 page 时先切到对应 page。
+  - 让右侧 Design panel 自然切到该 node 的 `EventsPanel`。
+- 保持数据模型不变:
+  - 不写入 SceneGraph / `.fig`。
+  - 不新增 workflow/action schema 字段。
+  - 不改变 compiler/runtime。
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 Source 行可见,点击后选中
+    `Run save` node,并显示该 node 的 `callWorkflow` event action。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不定位到 ActionList 内某个 nested action row;本刀只选择来源 node 并打开它的 event editor。
+- 不做可视化 DAG 布局、拖拽或连线编辑。
+- 不新增持久化或 localStorage 状态。
 
 ---
 
