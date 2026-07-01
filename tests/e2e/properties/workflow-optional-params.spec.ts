@@ -175,5 +175,10 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     .toBe('Run save')
   await expect(editor.page.getByTestId('lowcode-events-section')).toBeVisible()
   await expect(editor.page.getByTestId('lowcode-action-workflow')).toHaveValue('wf-save')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-lowcode-action-path') ?? '')
+    )
+    .toBe('onClick[0]')
   editor.canvas.assertNoErrors()
 })

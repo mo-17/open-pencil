@@ -20,13 +20,22 @@ import ActionRow from './ActionRow.vue'
  * so the full workflow tree is editable at any depth. Emits the whole new array
  * on every edit (the parent owns persistence / undo).
  */
-const { actions, pageStates, docStates, workflows, analyticsConfigured, addTestId } = defineProps<{
+const {
+  actions,
+  pageStates,
+  docStates,
+  workflows,
+  analyticsConfigured,
+  actionPathPrefix,
+  addTestId
+} = defineProps<{
   actions: readonly ActionDef[]
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
   /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
   workflows: readonly WorkflowDef[]
   analyticsConfigured?: boolean
+  actionPathPrefix?: string
   /** Test id for the add button (top-level keeps `lowcode-action-add`; nested
    *  branches pass a branch-specific id). */
   addTestId?: string
@@ -69,6 +78,7 @@ function add(): void {
         :doc-states="docStates"
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
+        :action-path="actionPathPrefix ? `${actionPathPrefix}[${i}]` : `[${i}]`"
         @update:action="replaceAt(i, $event)"
         @remove="removeAt(i)"
       />

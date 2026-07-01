@@ -2427,9 +2427,49 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 
 明确不做:
 
-- 不定位到 ActionList 内某个 nested action row;本刀只选择来源 node 并打开它的 event editor。
+- 不持久化 action focus 或高亮状态;Source 跳转只影响当前 UI 焦点。
 - 不做可视化 DAG 布局、拖拽或连线编辑。
 - 不新增持久化或 localStorage 状态。
+
+### 13.7 2026-07-01 第七刀:Workflow graph action-row focus
+
+本刀把第六刀的 Source 跳转补到具体 action row。作者从 entrypoint 诊断点击 Source 后,
+不仅会选中来源 node,还会把焦点落到对应的 `callWorkflow` action row。
+
+已完成:
+
+- 新增 `src/app/lowcode/action-focus.ts`:
+  - 保存一次性的 pending lowcode action focus target。
+  - target 包含 `nodeId`、`actionId` 和 `actionPath`。
+  - `EventsPanel` 成功聚焦后清除 pending target。
+- `ActionList` / `ActionRow`:
+  - 递归传递稳定 action path。
+  - 每个 action row 暴露 `data-lowcode-action-path` 和 `data-lowcode-action-id`。
+  - action row 可 programmatic focus,但不改变 persisted action 数据。
+- `EventsPanel`:
+  - 在本组件 root 内消费 pending focus target。
+  - 选中来源 node 后,等待事件 action rows 渲染,再滚动并 focus 对应 row。
+- `WorkflowsPanel`:
+  - Source 跳转时把 entrypoint 的 `actionPath` 一起传给 pending focus。
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 Source 后焦点落在
+    `data-lowcode-action-path="onClick[0]"` 的 action row。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不持久化 action focus / highlighter。
+- 不自动展开未来可能出现的折叠 action branch;当前递归 ActionList 本来就是展开渲染。
+- 不做可视化 DAG 布局、拖拽或连线编辑。
 
 ---
 

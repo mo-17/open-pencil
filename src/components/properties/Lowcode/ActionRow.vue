@@ -36,13 +36,14 @@ import ActionList from './ActionList.vue'
  * Controlled: takes the action via `action`, emits the edited replacement via
  * `update:action` (or `remove`). The parent list owns array identity.
  */
-const { action, pageStates, docStates, workflows, analyticsConfigured } = defineProps<{
+const { action, pageStates, docStates, workflows, analyticsConfigured, actionPath } = defineProps<{
   action: ActionDef
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
   /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
   workflows: readonly WorkflowDef[]
   analyticsConfigured?: boolean
+  actionPath: string
 }>()
 
 const emit = defineEmits<{
@@ -259,7 +260,13 @@ function setArg(param: string, value: string): void {
 </script>
 
 <template>
-  <li data-test-id="lowcode-action-row" class="flex flex-col gap-0.5">
+  <li
+    data-test-id="lowcode-action-row"
+    :data-lowcode-action-id="action.id"
+    :data-lowcode-action-path="actionPath"
+    tabindex="-1"
+    class="flex flex-col gap-0.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
+  >
     <div class="flex items-center gap-1">
       <select
         :value="action.kind"
@@ -1048,6 +1055,7 @@ function setArg(param: string, value: string): void {
         :doc-states="docStates"
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
+        :action-path-prefix="`${actionPath}/onSuccess`"
         add-test-id="lowcode-action-on-success-add"
         @update:actions="updateBranch('onSuccess', $event)"
       />
@@ -1058,6 +1066,7 @@ function setArg(param: string, value: string): void {
         :doc-states="docStates"
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
+        :action-path-prefix="`${actionPath}/onError`"
         add-test-id="lowcode-action-on-error-add"
         @update:actions="updateBranch('onError', $event)"
       />
@@ -1077,6 +1086,7 @@ function setArg(param: string, value: string): void {
         :doc-states="docStates"
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
+        :action-path-prefix="`${actionPath}/consequent`"
         add-test-id="lowcode-action-consequent-add"
         @update:actions="updateBranch('consequent', $event)"
       />
@@ -1089,6 +1099,7 @@ function setArg(param: string, value: string): void {
         :doc-states="docStates"
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
+        :action-path-prefix="`${actionPath}/alternate`"
         add-test-id="lowcode-action-alternate-add"
         @update:actions="updateBranch('alternate', $event)"
       />

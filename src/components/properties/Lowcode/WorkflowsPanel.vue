@@ -11,6 +11,7 @@ import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { requestLowcodeActionFocus } from '@/app/lowcode/action-focus'
 import {
   analyzeWorkflowGraph,
   collectWorkflowEntrypoints,
@@ -109,6 +110,11 @@ function jumpToWorkflow(workflowId: string | undefined): void {
 function jumpToEntrypointSource(entrypoint: WorkflowGraphEntrypoint): void {
   const node = editor.graph.getNode(entrypoint.nodeId)
   if (!node) return
+  requestLowcodeActionFocus({
+    nodeId: node.id,
+    actionId: entrypoint.actionId,
+    actionPath: entrypoint.actionPath
+  })
   const pageId = containingPageId(node)
   if (pageId && pageId !== editor.state.currentPageId) editor.switchPage(pageId)
   editor.select([node.id])

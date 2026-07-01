@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
@@ -7,6 +7,7 @@ import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
+import { clearLowcodeActionFocus, peekLowcodeActionFocus } from '@/app/lowcode/action-focus'
 
 import ActionList from './ActionList.vue'
 
@@ -23,6 +24,7 @@ const sectionCls = useSectionUI()
 const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 const presence = usePresenceTarget('events', () => selectedNode.value?.id)
+const rootEl = ref<HTMLElement | null>(null)
 
 // Phase 0 surfaces exactly one event slot per supported node type:
 //   BUTTON → onClick, FORM → onSubmit. Other interactive types come later.
@@ -82,11 +84,41 @@ function commitActions(next: ActionDef[]): void {
   }
   editor.updateNodeWithUndo(node.id, { events: eventsCopy }, 'Update events')
 }
+
+function selectorValue(value: string): string {
+  return value.replace(/["\\]/g, '\\$&')
+}
+
+async function focusPendingActionRow(): Promise<void> {
+  const target = peekLowcodeActionFocus(selectedNode.value?.id)
+  if (!target) return
+  await nextTick()
+  const row = rootEl.value?.querySelector<HTMLElement>(
+    `[data-lowcode-action-path="${selectorValue(target.actionPath)}"]`
+  )
+  if (!row) return
+  row.scrollIntoView({ block: 'nearest' })
+  row.focus({ preventScroll: true })
+  clearLowcodeActionFocus(target)
+}
+
+onMounted(() => {
+  void focusPendingActionRow()
+})
+
+watch(
+  () => [selectedNode.value?.id, actions.value.length],
+  () => {
+    void focusPendingActionRow()
+  },
+  { flush: 'post' }
+)
 </script>
 
 <template>
   <div
     v-if="eventName"
+    ref="rootEl"
     data-test-id="lowcode-events-section"
     :class="sectionCls.wrapper"
     @focusin="presence.onFocusIn"
@@ -106,6 +138,7 @@ function commitActions(next: ActionDef[]): void {
       :doc-states="docStates"
       :workflows="docWorkflows"
       :analytics-configured="analyticsConfigured"
+      :action-path-prefix="eventName ?? ''"
       add-test-id="lowcode-action-add"
       @update:actions="commitActions"
     />
