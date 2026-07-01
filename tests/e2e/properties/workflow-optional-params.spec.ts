@@ -189,6 +189,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     '2 nodes, 2 edges'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-group')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-clean')).toHaveCount(0)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-type')).toContainText(
     'Missing'
   )
@@ -461,6 +462,10 @@ test('workflow graph map separates node and edge empty states', async () => {
 
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
     '1 node, 0 edges'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-group')).toHaveCount(0)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-clean')).toContainText(
+    'No graph issues in this map.'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-empty')).toHaveCount(0)

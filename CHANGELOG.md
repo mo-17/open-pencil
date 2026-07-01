@@ -104,6 +104,7 @@
 - Add source-specific workflow graph map node/edge jump labels and explicit keyboard activation.
 - Add a source jump for missing workflow graph map edges so authors can quickly fix bad calls.
 - Show compact workflow graph issue groups inside the graph map with keyboard-accessible jumps.
+- Show a clean workflow graph map issue state when no graph issues are present.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

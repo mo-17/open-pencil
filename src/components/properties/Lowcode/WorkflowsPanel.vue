@@ -432,6 +432,13 @@ function containingPageId(node: SceneNode): string | undefined {
             </button>
           </li>
         </ul>
+        <p
+          v-else
+          data-test-id="lowcode-workflow-graph-map-issue-clean"
+          class="rounded border border-border bg-hover/30 px-1 py-0.5 text-[10px] text-muted"
+        >
+          No graph issues in this map.
+        </p>
         <div v-if="graphMapNodes.length > 0" class="flex flex-wrap gap-1">
           <div
             v-for="node in graphMapNodes"

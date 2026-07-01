@@ -3039,6 +3039,39 @@ details 后可以在同一区域读到问题类型、问题文本,并从 map 内
 - 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.23 2026-07-02 第二十三刀:Workflow graph map issue clean state
+
+本刀补齐第二十二刀的 clean state。此前 map 内有 issue 时会显示 compact issue group,
+但没有 issue 时 map 区域没有对应反馈。本刀在 map 内显示明确的 clean issue 状态,
+让作者知道当前 graph map 没有问题,而不是误以为 issue 组件未加载。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - `workflowGraph.issues.length === 0` 时显示 `lowcode-workflow-graph-map-issue-clean`。
+  - clean state 文案为 `No graph issues in this map.`。
+  - clean state 使用轻量边框/背景样式,与 issue group 占位层级一致。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 有 issue 的 diagnostics fixture 验证 clean state 不出现。
+  - entrypoint-only fixture 验证 issue group 不出现。
+  - entrypoint-only fixture 验证 clean state 文案。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不新增 issue severity / grouping schema。
+- 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
