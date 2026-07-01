@@ -170,6 +170,12 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
   ).toHaveAttribute('aria-expanded', 'false')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
+  ).toHaveAttribute('aria-label', 'Show 1 more sources for Save')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-jump')
+  ).toHaveAttribute('aria-label', 'Jump to Run save onClick source')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more').click()
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
@@ -178,8 +184,17 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
   ).toHaveAttribute('aria-expanded', 'true')
   await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
+  ).toHaveAttribute('aria-label', 'Hide additional sources for Save')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-list')
+  ).toHaveAttribute('aria-label', 'Additional sources for Save')
+  await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-extra')
   ).toContainText('Quick save onClick')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-extra-jump')
+  ).toHaveAttribute('aria-label', 'Jump to Quick save onClick source')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-extra-jump').focus()
   await editor.page.keyboard.press('Escape')
   await expect(
@@ -201,7 +216,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
         const store = window.openPencil?.getStore?.()
         if (!store) return ''
         const selected = [...store.state.selectedIds][0]
-        return selected ? store.graph.getNode(selected)?.name ?? '' : ''
+        return selected ? (store.graph.getNode(selected)?.name ?? '') : ''
       })
     )
     .toBe('Quick save')
@@ -221,9 +236,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await editor.canvas.waitForRender()
   await expect(workflowsPanel).toBeVisible()
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
-  await expect(
-    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')
-  ).toContainText('issue')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')).toContainText(
+    'issue'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
     'Notify'
   )
@@ -258,7 +273,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
         const store = window.openPencil?.getStore?.()
         if (!store) return ''
         const selected = [...store.state.selectedIds][0]
-        return selected ? store.graph.getNode(selected)?.name ?? '' : ''
+        return selected ? (store.graph.getNode(selected)?.name ?? '') : ''
       })
     )
     .toBe('Run save')
@@ -328,7 +343,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
         const store = window.openPencil?.getStore?.()
         if (!store) return ''
         const selected = [...store.state.selectedIds][0]
-        return selected ? store.graph.getNode(selected)?.name ?? '' : ''
+        return selected ? (store.graph.getNode(selected)?.name ?? '') : ''
       })
     )
     .toBe('Run save')
@@ -336,7 +351,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(editor.page.getByTestId('lowcode-action-workflow')).toHaveValue('wf-save')
   await expect
     .poll(() =>
-      editor.page.evaluate(() => document.activeElement?.getAttribute('data-lowcode-action-path') ?? '')
+      editor.page.evaluate(
+        () => document.activeElement?.getAttribute('data-lowcode-action-path') ?? ''
+      )
     )
     .toBe('onClick[0]')
   await expect

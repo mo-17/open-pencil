@@ -77,9 +77,7 @@ const graphMapIssueIds = computed(
 const graphMapEntryIds = computed(
   () =>
     new Set(
-      workflowGraph.value.nodes
-        .filter((node) => node.entrypoints.length > 0)
-        .map((node) => node.id)
+      workflowGraph.value.nodes.filter((node) => node.entrypoints.length > 0).map((node) => node.id)
     )
 )
 const graphMapNodes = computed(() => {
@@ -102,8 +100,7 @@ const graphMapEdges = computed(() => {
       )
     case 'entries':
       return workflowGraph.value.edges.filter(
-        (edge) =>
-          graphMapEntryIds.value.has(edge.fromId) || graphMapEntryIds.value.has(edge.toId)
+        (edge) => graphMapEntryIds.value.has(edge.fromId) || graphMapEntryIds.value.has(edge.toId)
       )
     default:
       return workflowGraph.value.edges
@@ -162,7 +159,10 @@ function jumpToEntrypointSource(entrypoint: WorkflowGraphEntrypoint): void {
   editor.requestRender()
 }
 
-function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicInstance | null): void {
+function setWorkflowRowRef(
+  workflowId: string,
+  row: Element | ComponentPublicInstance | null
+): void {
   if (row) workflowRowRefs.set(workflowId, row as WorkflowRowHandle)
   else workflowRowRefs.delete(workflowId)
 }
@@ -173,6 +173,14 @@ function entrypointLabel(count: number): string {
 
 function workflowGraphNodeName(workflowId: string): string {
   return workflowGraph.value.nodes.find((node) => node.id === workflowId)?.name ?? workflowId
+}
+
+function entrypointSourceLabel(entrypoint: WorkflowGraphEntrypoint): string {
+  return `${entrypoint.nodeName} ${entrypoint.eventName}`
+}
+
+function entrypointSourceJumpLabel(entrypoint: WorkflowGraphEntrypoint): string {
+  return `Jump to ${entrypointSourceLabel(entrypoint)} source`
 }
 
 function isGraphMapSourceExpanded(workflowId: string): boolean {
@@ -304,10 +312,7 @@ function containingPageId(node: SceneNode): string | undefined {
         data-test-id="lowcode-workflow-graph-map"
         class="flex flex-col gap-1 border-l border-border pl-2 text-muted"
       >
-        <div
-          data-test-id="lowcode-workflow-graph-map-filter"
-          class="flex flex-wrap gap-1"
-        >
+        <div data-test-id="lowcode-workflow-graph-map-filter" class="flex flex-wrap gap-1">
           <button
             type="button"
             data-test-id="lowcode-workflow-graph-map-filter-all"
@@ -373,12 +378,14 @@ function containingPageId(node: SceneNode): string | undefined {
               class="flex items-center justify-between gap-1 text-[9px]"
             >
               <span class="min-w-0 truncate">
-                {{ node.entrypoints[0].nodeName }} {{ node.entrypoints[0].eventName }}
+                {{ entrypointSourceLabel(node.entrypoints[0]) }}
               </span>
               <button
                 type="button"
                 data-test-id="lowcode-workflow-graph-map-node-entrypoint-jump"
-                class="shrink-0 rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface"
+                :aria-label="entrypointSourceJumpLabel(node.entrypoints[0])"
+                :title="entrypointSourceJumpLabel(node.entrypoints[0])"
+                class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
                 @click="jumpToEntrypointSource(node.entrypoints[0])"
               >
                 Source
@@ -390,7 +397,12 @@ function containingPageId(node: SceneNode): string | undefined {
               data-test-id="lowcode-workflow-graph-map-node-entrypoint-more"
               :aria-controls="graphMapSourceListId(node.id)"
               :aria-expanded="isGraphMapSourceExpanded(node.id)"
-              class="self-start rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface"
+              :aria-label="
+                isGraphMapSourceExpanded(node.id)
+                  ? `Hide additional sources for ${node.name}`
+                  : `Show ${node.entrypoints.length - 1} more sources for ${node.name}`
+              "
+              class="self-start rounded border border-transparent px-1 py-0.5 text-[9px] text-muted hover:border-border hover:bg-hover hover:text-surface focus:border-border focus:bg-hover focus:text-surface"
               @click="toggleGraphMapSources(node.id)"
             >
               {{
@@ -403,22 +415,25 @@ function containingPageId(node: SceneNode): string | undefined {
               v-if="node.entrypoints.length > 1 && isGraphMapSourceExpanded(node.id)"
               :id="graphMapSourceListId(node.id)"
               data-test-id="lowcode-workflow-graph-map-node-entrypoint-list"
-              class="flex flex-col gap-0.5"
+              :aria-label="`Additional sources for ${node.name}`"
+              class="ml-1 flex flex-col gap-0.5 border-l border-border pl-1"
               @keydown.escape.stop.prevent="collapseGraphMapSources(node.id, $event)"
             >
               <li
                 v-for="entrypoint in node.entrypoints.slice(1)"
                 :key="`${entrypoint.nodeId}-${entrypoint.eventName}-${entrypoint.actionId}`"
                 data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra"
-                class="flex items-center justify-between gap-1 text-[9px]"
+                class="flex items-center justify-between gap-1 rounded bg-hover/40 px-1 py-0.5 text-[9px]"
               >
                 <span class="min-w-0 truncate">
-                  {{ entrypoint.nodeName }} {{ entrypoint.eventName }}
+                  {{ entrypointSourceLabel(entrypoint) }}
                 </span>
                 <button
                   type="button"
                   data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra-jump"
-                  class="shrink-0 rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface"
+                  :aria-label="entrypointSourceJumpLabel(entrypoint)"
+                  :title="entrypointSourceJumpLabel(entrypoint)"
+                  class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
                   @click="jumpToEntrypointSource(entrypoint)"
                 >
                   Source
@@ -462,9 +477,8 @@ function containingPageId(node: SceneNode): string | undefined {
         >
           <div class="flex items-center justify-between gap-2">
             <span class="min-w-0">
-              {{ node.name }}:
-              {{ entrypointLabel(node.entrypoints.length) }} / {{ node.incoming.length }} in /
-              {{ node.outgoing.length }} out /
+              {{ node.name }}: {{ entrypointLabel(node.entrypoints.length) }} /
+              {{ node.incoming.length }} in / {{ node.outgoing.length }} out /
               {{ node.actionCount }} actions
             </span>
             <button
@@ -492,9 +506,7 @@ function containingPageId(node: SceneNode): string | undefined {
                 data-test-id="lowcode-workflow-graph-entrypoint-source"
                 class="flex items-center justify-between gap-2"
               >
-                <span class="min-w-0">
-                  {{ entrypoint.nodeName }} {{ entrypoint.eventName }}
-                </span>
+                <span class="min-w-0"> {{ entrypoint.nodeName }} {{ entrypoint.eventName }} </span>
                 <button
                   type="button"
                   data-test-id="lowcode-workflow-graph-entrypoint-source-jump"

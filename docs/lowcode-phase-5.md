@@ -2844,6 +2844,44 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不新增 workflow graph 数据结构字段。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.18 2026-07-01 第十八刀:Workflow graph map source-list visual labels
+
+本刀继续收口 source list 的可扫读性和可访问性。extra source list 仍是只读、本地展开状态,
+但列表现在有更清晰的分组边界,每个 `Source` 跳转也会暴露具体来源,避免多个同名按钮在辅助
+技术和测试里不可区分。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `entrypointSourceLabel()` 和 `entrypointSourceJumpLabel()` 复用 source 文案。
+  - 第一条 source 和 extra source 共用同一套来源标签。
+  - 第一条 / extra `Source` 按钮增加 source-specific `aria-label` 和 `title`。
+  - `+N more` / `Hide sources` toggle 增加具体 `aria-label`。
+  - extra source list 增加 `aria-label`。
+  - extra source list 增加左边界、缩进、行背景和稳定按钮宽度,提升密集 map node 内的扫读性。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证 collapsed toggle 的 `Show 1 more sources for Save`。
+  - 验证 expanded toggle 的 `Hide additional sources for Save`。
+  - 验证 source list 的 `Additional sources for Save`。
+  - 验证第一条和 extra source jump 的具体 `aria-label`。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不持久化展开状态到 SceneGraph / `.fig` / localStorage。
+- 不新增 focus trap 或 roving tabindex。
+- 不新增 workflow graph 数据结构字段。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
