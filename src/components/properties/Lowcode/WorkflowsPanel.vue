@@ -243,6 +243,14 @@ function graphMapMissingEdgeSourceJumpLabel(edge: WorkflowGraphEdge): string {
   return `Jump to ${edge.fromName} workflow to fix missing ${edge.toId}`
 }
 
+function graphMapEdgeTargetLabel(edge: WorkflowGraphEdge): string {
+  return edge.toName ?? edge.toId
+}
+
+function graphMapEdgePathLabel(edge: WorkflowGraphEdge): string {
+  return `${edge.fromName} calls ${graphMapEdgeTargetLabel(edge)}`
+}
+
 function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
   return issue.type === 'cycle' ? 'Cycle' : 'Missing'
 }
@@ -724,18 +732,32 @@ function containingPageId(node: SceneNode): string | undefined {
                 v-for="edge in group.edges"
                 :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"
                 data-test-id="lowcode-workflow-graph-map-edge"
+                :aria-label="graphMapEdgePathLabel(edge)"
                 class="flex items-center justify-between gap-2"
               >
-                <span class="min-w-0">
-                  {{ edge.fromName }} -> {{ edge.toName ?? edge.toId }}
+                <span class="flex min-w-0 items-center gap-1">
+                  <span data-test-id="lowcode-workflow-graph-map-edge-from" class="min-w-0">
+                    <span class="text-[9px] uppercase text-muted/80">From </span>
+                    <span class="ml-1">{{ edge.fromName }}</span>
+                  </span>
                   <span
-                    v-if="!edge.toName"
-                    data-test-id="lowcode-workflow-graph-map-edge-missing"
-                    :aria-label="graphMapMissingEdgeLabel(edge)"
-                    :title="graphMapMissingEdgeLabel(edge)"
-                    class="rounded bg-red-500/10 px-1 text-red-500"
+                    data-test-id="lowcode-workflow-graph-map-edge-arrow"
+                    class="shrink-0 text-muted/70"
                   >
-                    missing
+                    ->
+                  </span>
+                  <span data-test-id="lowcode-workflow-graph-map-edge-to" class="min-w-0">
+                    <span class="text-[9px] uppercase text-muted/80">To </span>
+                    <span class="ml-1">{{ graphMapEdgeTargetLabel(edge) }}</span>
+                    <span
+                      v-if="!edge.toName"
+                      data-test-id="lowcode-workflow-graph-map-edge-missing"
+                      :aria-label="graphMapMissingEdgeLabel(edge)"
+                      :title="graphMapMissingEdgeLabel(edge)"
+                      class="ml-1 rounded bg-red-500/10 px-1 text-red-500"
+                    >
+                      missing
+                    </span>
                   </span>
                 </span>
                 <button

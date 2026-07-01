@@ -3234,6 +3234,47 @@ workflow call,同时保留既有 Jump / Source 修复入口。
 - 不新增拖拽排序、拖拽连线或节点位置编辑。
 - 不新增 SVG/canvas edge rendering。
 
+### 13.28 2026-07-02 第二十八刀:Workflow graph map edge path labels
+
+本刀继续 readonly edge path / source-target polish。此前 edge row 仍主要是一段
+`Save -> Notify` 文本。本刀把 edge row 拆成结构化的 From / To 标签,并给 edge row
+增加 readable path `aria-label`,为后续真正的 edge path / DAG editor 做更稳定的 DOM
+锚点。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapEdgeTargetLabel(edge)`。
+  - 新增 `graphMapEdgePathLabel(edge)`。
+  - edge row 增加 `aria-label`,例如 `Save calls Notify`。
+  - edge row 新增 `lowcode-workflow-graph-map-edge-from`。
+  - edge row 新增 `lowcode-workflow-graph-map-edge-arrow`。
+  - edge row 新增 `lowcode-workflow-graph-map-edge-to`。
+  - missing badge 从整行文本后移到 To target 内,保留 `Missing workflow ...` 的
+    `aria-label` / `title`。
+  - 保留既有 normal `Jump` 和 missing `Source` 行为。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证 normal edge row `aria-label` 为 `Save calls Notify`。
+  - 验证 normal edge 的 `From Save` / `To Notify`。
+  - 验证 missing edge row `aria-label` 为 `Save calls wf-missing`。
+  - 验证 missing edge 的 `From Save` / `To wf-missing missing`。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (第一次提权 E2E 暴露 DOM text 为 `FromSave`;补真实空格后重跑通过)
+
+明确不做:
+
+- 不新增 workflow graph schema 或持久化 layout 数据。
+- 不新增拖拽排序、拖拽连线或节点位置编辑。
+- 不新增 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
