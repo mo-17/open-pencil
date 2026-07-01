@@ -41,6 +41,42 @@ async function setupWorkflowGraphMixedIssueTypes() {
   })
 }
 
+async function setupWorkflowGraphEntrypointWithIsolatedIssue() {
+  return editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const page = store.graph.getNode(store.state.currentPageId)
+    if (!page) throw new Error('Current page not found')
+
+    store.graph.updateNode(store.graph.rootId, {
+      lowcodeWorkflows: [
+        {
+          id: 'wf-entry',
+          name: 'Entry',
+          actions: [{ id: 'toast', kind: 'toast', messageExpr: '"Ready"', variant: 'success' }]
+        },
+        {
+          id: 'wf-orphan',
+          name: 'Orphan',
+          actions: [{ id: 'call-missing', kind: 'callWorkflow', workflowId: 'wf-missing' }]
+        }
+      ]
+    })
+    store.graph.createNode('BUTTON', page.id, {
+      name: 'Run entry',
+      x: 120,
+      y: 120,
+      width: 140,
+      height: 40,
+      events: {
+        onClick: [{ id: 'event-call-entry', kind: 'callWorkflow', workflowId: 'wf-entry' }]
+      }
+    })
+    store.select([])
+    store.requestRender()
+  })
+}
+
 test('workflow graph map issue summary separates missing and cycle counts', async () => {
   await setupWorkflowGraphMixedIssueTypes()
   await editor.canvas.waitForRender()
@@ -63,6 +99,12 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
     'Missing',
     'Cycle'
   ])
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-title')).toHaveText(
+    ['Issues']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-count')).toHaveText(
+    ['2 workflows']
+  )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue').first()
   ).toContainText('2 issues')
@@ -80,5 +122,53 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
     '1 missing, 1 cycle'
   )
+  editor.canvas.assertNoErrors()
+})
+
+test('workflow graph map issue clean state follows the entry filter', async () => {
+  await setupWorkflowGraphEntrypointWithIsolatedIssue()
+  await editor.canvas.waitForRender()
+
+  const workflowsPanel = editor.page.getByTestId('lowcode-workflows-section')
+  await workflowsPanel.scrollIntoViewIfNeeded()
+  await expect(workflowsPanel).toBeVisible()
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
+
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '2 nodes, 1 edge'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-group')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
+    '1 issue total'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-clean')).toHaveCount(0)
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-entries').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '1 node, 0 edges'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-title')).toHaveText(
+    ['Entries']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-count')).toHaveText(
+    ['1 workflow']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-group')).toHaveCount(0)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-clean')).toContainText(
+    'No entry workflow issues in this map.'
+  )
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-issues').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '1 node, 1 edge'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-title')).toHaveText(
+    ['Issues']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-group')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
+    '1 issue in issue filter'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-clean')).toHaveCount(0)
   editor.canvas.assertNoErrors()
 })

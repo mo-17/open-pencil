@@ -17,7 +17,8 @@ import {
   collectWorkflowEntrypoints,
   type WorkflowGraphEdge,
   type WorkflowGraphEntrypoint,
-  type WorkflowGraphIssue
+  type WorkflowGraphIssue,
+  type WorkflowGraphNode
 } from '@/app/lowcode/workflow-graph'
 
 import WorkflowRow from './WorkflowRow.vue'
@@ -117,6 +118,26 @@ const graphMapIssues = computed(() => {
     default:
       return workflowGraph.value.issues
   }
+})
+type GraphMapNodeGroupKind = 'issues' | 'entries' | 'called'
+interface GraphMapNodeGroup {
+  kind: GraphMapNodeGroupKind
+  title: string
+  nodes: WorkflowGraphNode[]
+}
+const graphMapNodeGroups = computed<GraphMapNodeGroup[]>(() => {
+  const groups: GraphMapNodeGroup[] = [
+    { kind: 'issues', title: 'Issues', nodes: [] },
+    { kind: 'entries', title: 'Entries', nodes: [] },
+    { kind: 'called', title: 'Called', nodes: [] }
+  ]
+  const byKind = new Map(groups.map((group) => [group.kind, group]))
+
+  for (const node of graphMapNodes.value) {
+    byKind.get(graphMapNodeGroupKind(node))?.nodes.push(node)
+  }
+
+  return groups.filter((group) => group.nodes.length > 0)
 })
 type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
 const workflowRowRefs = new Map<string, WorkflowRowHandle>()
@@ -287,6 +308,23 @@ function graphMapNodeIssueLabel(count: number): string {
 
 function graphMapNodeIssueTitle(nodeName: string, count: number): string {
   return `${nodeName} has ${graphMapNodeIssueLabel(count)}`
+}
+
+function graphMapNodeGroupKind(node: WorkflowGraphNode): GraphMapNodeGroupKind {
+  switch (graphMapFilter.value) {
+    case 'issues':
+      return 'issues'
+    case 'entries':
+      return 'entries'
+    default:
+      if (node.issues.length > 0) return 'issues'
+      if (node.entrypoints.length > 0) return 'entries'
+      return 'called'
+  }
+}
+
+function graphMapGroupCountLabel(count: number): string {
+  return countLabel(count, 'workflow')
 }
 
 function graphMapIssueCleanLabel(): string {
@@ -502,112 +540,134 @@ function containingPageId(node: SceneNode): string | undefined {
         >
           {{ graphMapIssueCleanLabel() }}
         </p>
-        <div v-if="graphMapNodes.length > 0" class="flex flex-wrap gap-1">
-          <div
-            v-for="node in graphMapNodes"
-            :key="node.id"
-            data-test-id="lowcode-workflow-graph-map-node"
-            class="flex max-w-full flex-col gap-0.5 rounded border border-border px-1.5 py-0.5 text-[10px]"
+        <div
+          v-if="graphMapNodeGroups.length > 0"
+          data-test-id="lowcode-workflow-graph-map-node-groups"
+          class="grid gap-1 sm:grid-cols-3"
+        >
+          <section
+            v-for="group in graphMapNodeGroups"
+            :key="group.kind"
+            data-test-id="lowcode-workflow-graph-map-node-group"
+            :data-graph-map-group="group.kind"
+            class="flex min-w-0 flex-col gap-1 rounded border border-border/70 bg-hover/20 p-1"
           >
-            <button
-              type="button"
-              data-test-id="lowcode-workflow-graph-map-node-jump"
-              :aria-label="graphMapNodeJumpLabel(node.name)"
-              :title="graphMapNodeJumpLabel(node.name)"
-              class="flex max-w-full flex-col gap-0.5 rounded text-left hover:text-surface focus:bg-hover focus:text-surface"
-              @click="jumpToWorkflow(node.id)"
-              @keydown.enter.prevent="jumpToWorkflow(node.id)"
-              @keydown.space.prevent="jumpToWorkflow(node.id)"
-            >
-              <span class="flex max-w-full items-center gap-1">
-                <span class="min-w-0 truncate">{{ node.name }}</span>
-                <span
-                  v-if="node.issues.length > 0"
-                  data-test-id="lowcode-workflow-graph-map-node-issue"
-                  :aria-label="graphMapNodeIssueTitle(node.name, node.issues.length)"
-                  :title="graphMapNodeIssueTitle(node.name, node.issues.length)"
-                  class="shrink-0 text-red-500"
-                >
-                  {{ graphMapNodeIssueLabel(node.issues.length) }}
-                </span>
+            <div class="flex items-center justify-between gap-2 text-[9px] uppercase text-muted">
+              <span data-test-id="lowcode-workflow-graph-map-node-group-title">
+                {{ group.title }}
               </span>
-              <span
-                data-test-id="lowcode-workflow-graph-map-node-stats"
-                class="text-[9px] text-muted"
-              >
-                {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
-                {{ node.outgoing.length }}o / {{ node.actionCount }}a
+              <span data-test-id="lowcode-workflow-graph-map-node-group-count">
+                {{ graphMapGroupCountLabel(group.nodes.length) }}
               </span>
-            </button>
-            <div
-              v-if="node.entrypoints.length > 0"
-              data-test-id="lowcode-workflow-graph-map-node-entrypoint"
-              class="flex items-center justify-between gap-1 text-[9px]"
-            >
-              <span class="min-w-0 truncate">
-                {{ entrypointSourceLabel(node.entrypoints[0]) }}
-              </span>
-              <button
-                type="button"
-                data-test-id="lowcode-workflow-graph-map-node-entrypoint-jump"
-                :aria-label="entrypointSourceJumpLabel(node.entrypoints[0])"
-                :title="entrypointSourceJumpLabel(node.entrypoints[0])"
-                class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                @click="jumpToEntrypointSource(node.entrypoints[0])"
-              >
-                Source
-              </button>
             </div>
-            <button
-              v-if="node.entrypoints.length > 1"
-              type="button"
-              data-test-id="lowcode-workflow-graph-map-node-entrypoint-more"
-              :aria-controls="graphMapSourceListId(node.id)"
-              :aria-expanded="isGraphMapSourceExpanded(node.id)"
-              :aria-label="
-                isGraphMapSourceExpanded(node.id)
-                  ? `Hide additional sources for ${node.name}`
-                  : `Show ${node.entrypoints.length - 1} more sources for ${node.name}`
-              "
-              class="self-start rounded border border-transparent px-1 py-0.5 text-[9px] text-muted hover:border-border hover:bg-hover hover:text-surface focus:border-border focus:bg-hover focus:text-surface"
-              @click="toggleGraphMapSources(node.id)"
-            >
-              {{
-                isGraphMapSourceExpanded(node.id)
-                  ? 'Hide sources'
-                  : `+${node.entrypoints.length - 1} more`
-              }}
-            </button>
-            <ul
-              v-if="node.entrypoints.length > 1 && isGraphMapSourceExpanded(node.id)"
-              :id="graphMapSourceListId(node.id)"
-              data-test-id="lowcode-workflow-graph-map-node-entrypoint-list"
-              :aria-label="`Additional sources for ${node.name}`"
-              class="ml-1 flex flex-col gap-0.5 border-l border-border pl-1"
-              @keydown.escape.stop.prevent="collapseGraphMapSources(node.id, $event)"
-            >
-              <li
-                v-for="entrypoint in node.entrypoints.slice(1)"
-                :key="`${entrypoint.nodeId}-${entrypoint.eventName}-${entrypoint.actionId}`"
-                data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra"
-                class="flex items-center justify-between gap-1 rounded bg-hover/40 px-1 py-0.5 text-[9px]"
+            <div class="flex flex-wrap gap-1">
+              <div
+                v-for="node in group.nodes"
+                :key="node.id"
+                data-test-id="lowcode-workflow-graph-map-node"
+                class="flex max-w-full flex-col gap-0.5 rounded border border-border px-1.5 py-0.5 text-[10px]"
               >
-                <span class="min-w-0 truncate">
-                  {{ entrypointSourceLabel(entrypoint) }}
-                </span>
                 <button
                   type="button"
-                  data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra-jump"
-                  :aria-label="entrypointSourceJumpLabel(entrypoint)"
-                  :title="entrypointSourceJumpLabel(entrypoint)"
-                  class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                  @click="jumpToEntrypointSource(entrypoint)"
+                  data-test-id="lowcode-workflow-graph-map-node-jump"
+                  :aria-label="graphMapNodeJumpLabel(node.name)"
+                  :title="graphMapNodeJumpLabel(node.name)"
+                  class="flex max-w-full flex-col gap-0.5 rounded text-left hover:text-surface focus:bg-hover focus:text-surface"
+                  @click="jumpToWorkflow(node.id)"
+                  @keydown.enter.prevent="jumpToWorkflow(node.id)"
+                  @keydown.space.prevent="jumpToWorkflow(node.id)"
                 >
-                  Source
+                  <span class="flex max-w-full items-center gap-1">
+                    <span class="min-w-0 truncate">{{ node.name }}</span>
+                    <span
+                      v-if="node.issues.length > 0"
+                      data-test-id="lowcode-workflow-graph-map-node-issue"
+                      :aria-label="graphMapNodeIssueTitle(node.name, node.issues.length)"
+                      :title="graphMapNodeIssueTitle(node.name, node.issues.length)"
+                      class="shrink-0 text-red-500"
+                    >
+                      {{ graphMapNodeIssueLabel(node.issues.length) }}
+                    </span>
+                  </span>
+                  <span
+                    data-test-id="lowcode-workflow-graph-map-node-stats"
+                    class="text-[9px] text-muted"
+                  >
+                    {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
+                    {{ node.outgoing.length }}o / {{ node.actionCount }}a
+                  </span>
                 </button>
-              </li>
-            </ul>
-          </div>
+                <div
+                  v-if="node.entrypoints.length > 0"
+                  data-test-id="lowcode-workflow-graph-map-node-entrypoint"
+                  class="flex items-center justify-between gap-1 text-[9px]"
+                >
+                  <span class="min-w-0 truncate">
+                    {{ entrypointSourceLabel(node.entrypoints[0]) }}
+                  </span>
+                  <button
+                    type="button"
+                    data-test-id="lowcode-workflow-graph-map-node-entrypoint-jump"
+                    :aria-label="entrypointSourceJumpLabel(node.entrypoints[0])"
+                    :title="entrypointSourceJumpLabel(node.entrypoints[0])"
+                    class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                    @click="jumpToEntrypointSource(node.entrypoints[0])"
+                  >
+                    Source
+                  </button>
+                </div>
+                <button
+                  v-if="node.entrypoints.length > 1"
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-map-node-entrypoint-more"
+                  :aria-controls="graphMapSourceListId(node.id)"
+                  :aria-expanded="isGraphMapSourceExpanded(node.id)"
+                  :aria-label="
+                    isGraphMapSourceExpanded(node.id)
+                      ? `Hide additional sources for ${node.name}`
+                      : `Show ${node.entrypoints.length - 1} more sources for ${node.name}`
+                  "
+                  class="self-start rounded border border-transparent px-1 py-0.5 text-[9px] text-muted hover:border-border hover:bg-hover hover:text-surface focus:border-border focus:bg-hover focus:text-surface"
+                  @click="toggleGraphMapSources(node.id)"
+                >
+                  {{
+                    isGraphMapSourceExpanded(node.id)
+                      ? 'Hide sources'
+                      : `+${node.entrypoints.length - 1} more`
+                  }}
+                </button>
+                <ul
+                  v-if="node.entrypoints.length > 1 && isGraphMapSourceExpanded(node.id)"
+                  :id="graphMapSourceListId(node.id)"
+                  data-test-id="lowcode-workflow-graph-map-node-entrypoint-list"
+                  :aria-label="`Additional sources for ${node.name}`"
+                  class="ml-1 flex flex-col gap-0.5 border-l border-border pl-1"
+                  @keydown.escape.stop.prevent="collapseGraphMapSources(node.id, $event)"
+                >
+                  <li
+                    v-for="entrypoint in node.entrypoints.slice(1)"
+                    :key="`${entrypoint.nodeId}-${entrypoint.eventName}-${entrypoint.actionId}`"
+                    data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra"
+                    class="flex items-center justify-between gap-1 rounded bg-hover/40 px-1 py-0.5 text-[9px]"
+                  >
+                    <span class="min-w-0 truncate">
+                      {{ entrypointSourceLabel(entrypoint) }}
+                    </span>
+                    <button
+                      type="button"
+                      data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra-jump"
+                      :aria-label="entrypointSourceJumpLabel(entrypoint)"
+                      :title="entrypointSourceJumpLabel(entrypoint)"
+                      class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                      @click="jumpToEntrypointSource(entrypoint)"
+                    >
+                      Source
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
         </div>
         <p
           v-else

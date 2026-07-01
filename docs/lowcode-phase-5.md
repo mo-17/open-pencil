@@ -3150,6 +3150,50 @@ details 后可以在同一区域读到问题类型、问题文本,并从 map 内
 - 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.26 2026-07-02 第二十六刀:Workflow graph map readonly DAG grouping
+
+本刀开始把 graph map 从纯节点列表推进到 readonly DAG visual grouping。仍不做拖拽、
+SVG/canvas edge rendering 或 workflow schema 扩展,只在现有 HTML map 上按当前 filter
+派生 Issues / Entries / Called 分组,帮助作者更快扫描 entry 起点、被调用节点和问题节点。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `WorkflowGraphNode` 类型导入。
+  - 新增 `GraphMapNodeGroupKind` / `GraphMapNodeGroup`。
+  - 新增 `graphMapNodeGroups`,把当前 `graphMapNodes` 派生为 readonly 分组。
+  - All filter 下节点优先归入 `Issues`,其次 `Entries`,最后 `Called`,同一节点只出现一次。
+  - Issues filter 下节点统一归入 `Issues` 组。
+  - Entries filter 下节点统一归入 `Entries` 组。
+  - map 节点区域新增 `lowcode-workflow-graph-map-node-groups`。
+  - 每组新增 `lowcode-workflow-graph-map-node-group`、group title、group count。
+  - 节点卡片仍复用既有 jump/source/issue badge 行为。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - diagnostics fixture 覆盖 All filter 下 `Issues` / `Called` 分组。
+  - 覆盖 Issues filter 下仅显示 `Issues` 组。
+  - 覆盖 Entries filter 下仅显示 `Entries` 组。
+  - entrypoint-only fixture 覆盖 clean graph 的 `Entries` 组。
+  - 将 isolated issue clean-state 边界迁出,避免该 spec 超过结构 lint 行数阈值。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - mixed missing/cycle fixture 覆盖 `Issues` 组和 `2 workflows` group count。
+  - isolated issue fixture 覆盖 Entries filter clean-state 时的 `Entries` 组。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不新增 workflow graph schema 或持久化 layout 数据。
+- 不新增拖拽排序、拖拽连线或节点位置编辑。
+- 不新增 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
