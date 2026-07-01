@@ -248,7 +248,11 @@ function graphMapEdgeTargetLabel(edge: WorkflowGraphEdge): string {
 }
 
 function graphMapEdgePathLabel(edge: WorkflowGraphEdge): string {
-  return `${edge.fromName} calls ${graphMapEdgeTargetLabel(edge)}`
+  return `${edge.fromName} calls ${graphMapEdgeTargetLabel(edge)} from action ${edge.actionId}`
+}
+
+function graphMapEdgeActionLabel(edge: WorkflowGraphEdge): string {
+  return `Action ${edge.actionId}`
 }
 
 function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
@@ -758,6 +762,14 @@ function containingPageId(node: SceneNode): string | undefined {
                     >
                       missing
                     </span>
+                  </span>
+                  <span
+                    data-test-id="lowcode-workflow-graph-map-edge-action"
+                    :aria-label="graphMapEdgeActionLabel(edge)"
+                    :title="graphMapEdgeActionLabel(edge)"
+                    class="shrink-0 rounded bg-hover px-1 text-[9px] text-muted"
+                  >
+                    {{ graphMapEdgeActionLabel(edge) }}
                   </span>
                 </span>
                 <button

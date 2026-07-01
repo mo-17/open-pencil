@@ -334,7 +334,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').first()).toHaveAttribute(
     'aria-label',
-    'Save calls Notify'
+    'Save calls Notify from action call-notify'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-from').first()).toContainText(
     'From Save'
@@ -342,17 +342,23 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-to').first()).toContainText(
     'To Notify'
   )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
+  ).toContainText('Action call-notify')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-jump')).toHaveAttribute(
     'aria-label',
     'Jump to Notify workflow from Save'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(1)).toHaveAttribute(
     'aria-label',
-    'Save calls wf-missing'
+    'Save calls wf-missing from action call-missing'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-to').nth(1)).toContainText(
     'To wf-missing missing'
   )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').nth(1)
+  ).toHaveAttribute('title', 'Action call-missing')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-issues').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
     '1 node, 1 edge'
@@ -383,13 +389,16 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveAttribute(
     'aria-label',
-    'Save calls wf-missing'
+    'Save calls wf-missing from action call-missing'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-from')).toContainText(
     'From Save'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-to')).toContainText(
     'To wf-missing missing'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action')).toContainText(
+    'Action call-missing'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-missing')).toHaveAttribute(
     'aria-label',

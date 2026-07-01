@@ -110,6 +110,7 @@
 - Group workflow graph map nodes into readonly Issues, Entries, and Called columns.
 - Group workflow graph map edges into readonly Calls and Missing sections.
 - Show structured From / To labels for workflow graph map edge rows.
+- Show workflow graph map edge action ids as readonly edge metadata.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

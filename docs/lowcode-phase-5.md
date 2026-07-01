@@ -3275,6 +3275,45 @@ workflow call,同时保留既有 Jump / Source 修复入口。
 - 不新增拖拽排序、拖拽连线或节点位置编辑。
 - 不新增 SVG/canvas edge rendering。
 
+### 13.29 2026-07-02 第二十九刀:Workflow graph map edge action metadata
+
+本刀继续 readonly edge action/source metadata polish。此前 edge row 已有 From / To
+结构化标签,但还看不到是哪一个 workflow action 产生了这条调用。本刀复用既有
+`WorkflowGraphEdge.actionId`,在 edge row 内显示只读 action badge,并把 edge row 的
+readable path `aria-label` 扩展到 action id。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - `graphMapEdgePathLabel(edge)` 从 `Save calls Notify` 扩展为
+    `Save calls Notify from action call-notify`。
+  - 新增 `graphMapEdgeActionLabel(edge)`。
+  - edge row 新增 `lowcode-workflow-graph-map-edge-action`。
+  - action badge 显示 `Action <actionId>`。
+  - action badge 增加 `aria-label` / `title`。
+  - 不改变 `WorkflowGraphEdge` schema,只使用已有 `actionId`。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - normal edge 验证 `Save calls Notify from action call-notify`。
+  - normal edge 验证 `Action call-notify`。
+  - missing edge 验证 `Save calls wf-missing from action call-missing`。
+  - missing edge 验证 `Action call-missing` 和 badge title。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不新增 workflow graph schema 或持久化 layout 数据。
+- 不新增拖拽排序、拖拽连线或节点位置编辑。
+- 不新增 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
