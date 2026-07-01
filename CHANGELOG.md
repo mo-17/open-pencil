@@ -89,6 +89,7 @@
   event entry.
 - Let workflow graph entrypoint diagnostics jump to the source node's event editor.
 - Focus the specific source action row after jumping from a workflow graph entrypoint.
+- Group lowcode workflow graph details into readonly Entries, Calls out, and Called by sections.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

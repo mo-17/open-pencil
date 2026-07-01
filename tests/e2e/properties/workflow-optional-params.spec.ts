@@ -147,7 +147,16 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     'Save: 1 entry / 0 in / 2 out / 2 actions'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint-source')).toContainText(
-    'Entry: Run save onClick'
+    'Run save onClick'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-out-edge').first()).toContainText(
+    'to Notify'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-out-edge').nth(1)).toContainText(
+    'to wf-missing'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-in-edge')).toContainText(
+    'from Save'
   )
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-jump').click()

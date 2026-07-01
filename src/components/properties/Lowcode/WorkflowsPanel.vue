@@ -222,12 +222,12 @@ function containingPageId(node: SceneNode): string | undefined {
           </button>
         </li>
       </ul>
-      <ul v-if="graphDetailsOpen" class="flex flex-col gap-1 text-muted">
+      <ul v-if="graphDetailsOpen" class="flex flex-col gap-1.5 text-muted">
         <li
           v-for="node in workflowGraph.nodes"
           :key="node.id"
           data-test-id="lowcode-workflow-graph-node"
-          class="flex flex-col gap-0.5"
+          class="flex flex-col gap-1 border-l border-border pl-2"
         >
           <div class="flex items-center justify-between gap-2">
             <span class="min-w-0">
@@ -245,26 +245,93 @@ function containingPageId(node: SceneNode): string | undefined {
               Jump
             </button>
           </div>
-          <ul v-if="node.entrypoints.length > 0" class="flex flex-col gap-0.5 pl-2">
-            <li
-              v-for="entrypoint in node.entrypoints"
-              :key="`${entrypoint.nodeId}-${entrypoint.eventName}-${entrypoint.actionId}`"
-              data-test-id="lowcode-workflow-graph-entrypoint-source"
-              class="flex items-center justify-between gap-2"
+          <div class="flex flex-col gap-0.5 pl-1">
+            <span class="text-[9px] uppercase text-muted/80">Entries</span>
+            <p
+              v-if="node.entrypoints.length === 0"
+              data-test-id="lowcode-workflow-graph-entry-empty"
+              class="text-[10px] text-muted"
             >
-              <span class="min-w-0">
-                Entry: {{ entrypoint.nodeName }} {{ entrypoint.eventName }}
-              </span>
-              <button
-                type="button"
-                data-test-id="lowcode-workflow-graph-entrypoint-source-jump"
-                class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-                @click="jumpToEntrypointSource(entrypoint)"
+              none
+            </p>
+            <ul v-else class="flex flex-col gap-0.5">
+              <li
+                v-for="entrypoint in node.entrypoints"
+                :key="`${entrypoint.nodeId}-${entrypoint.eventName}-${entrypoint.actionId}`"
+                data-test-id="lowcode-workflow-graph-entrypoint-source"
+                class="flex items-center justify-between gap-2"
               >
-                Source
-              </button>
-            </li>
-          </ul>
+                <span class="min-w-0">
+                  {{ entrypoint.nodeName }} {{ entrypoint.eventName }}
+                </span>
+                <button
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-entrypoint-source-jump"
+                  class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+                  @click="jumpToEntrypointSource(entrypoint)"
+                >
+                  Source
+                </button>
+              </li>
+            </ul>
+          </div>
+          <div class="flex flex-col gap-0.5 pl-1">
+            <span class="text-[9px] uppercase text-muted/80">Calls out</span>
+            <p
+              v-if="node.outgoing.length === 0"
+              data-test-id="lowcode-workflow-graph-out-empty"
+              class="text-[10px] text-muted"
+            >
+              none
+            </p>
+            <ul v-else class="flex flex-col gap-0.5">
+              <li
+                v-for="edge in node.outgoing"
+                :key="`${edge.actionId}-${edge.toId}`"
+                data-test-id="lowcode-workflow-graph-out-edge"
+                class="flex items-center justify-between gap-2"
+              >
+                <span class="min-w-0">to {{ edge.toName ?? edge.toId }}</span>
+                <button
+                  v-if="edge.toName"
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-edge-jump"
+                  class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+                  @click="jumpToWorkflow(edge.toId)"
+                >
+                  Jump
+                </button>
+              </li>
+            </ul>
+          </div>
+          <div class="flex flex-col gap-0.5 pl-1">
+            <span class="text-[9px] uppercase text-muted/80">Called by</span>
+            <p
+              v-if="node.incoming.length === 0"
+              data-test-id="lowcode-workflow-graph-in-empty"
+              class="text-[10px] text-muted"
+            >
+              none
+            </p>
+            <ul v-else class="flex flex-col gap-0.5">
+              <li
+                v-for="edge in node.incoming"
+                :key="`${edge.fromId}-${edge.actionId}`"
+                data-test-id="lowcode-workflow-graph-in-edge"
+                class="flex items-center justify-between gap-2"
+              >
+                <span class="min-w-0">from {{ edge.fromName }}</span>
+                <button
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-edge-jump"
+                  class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+                  @click="jumpToWorkflow(edge.fromId)"
+                >
+                  Jump
+                </button>
+              </li>
+            </ul>
+          </div>
         </li>
       </ul>
     </div>

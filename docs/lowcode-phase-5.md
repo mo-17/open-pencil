@@ -2471,6 +2471,40 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不自动展开未来可能出现的折叠 action branch;当前递归 ActionList 本来就是展开渲染。
 - 不做可视化 DAG 布局、拖拽或连线编辑。
 
+### 13.8 2026-07-01 第八刀:Workflow graph readonly relation groups
+
+本刀把 graph details 从单行计数升级成更可扫读的只读关系块。它仍不是 canvas/DAG editor,
+但作者可以直接看到每个 workflow 的入口、向外调用和被谁调用。
+
+已完成:
+
+- `WorkflowsPanel` graph details 按 workflow 分组显示:
+  - Header:entry / incoming / outgoing / action count。
+  - `Entries`:来自节点事件的 entrypoint,继续支持 `Source` 跳转并聚焦 action row。
+  - `Calls out`:本 workflow 调用的 workflow,存在目标时提供 `Jump`。
+  - `Called by`:调用本 workflow 的 workflow,提供 `Jump`。
+- 空关系显示 `none`,避免只有计数时作者不知道是哪一类为空。
+- missing workflow outgoing edge 仍显示目标 id,但不提供目标 `Jump`。
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 entry source、known outgoing、
+    missing outgoing 和 incoming relation 行。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不绘制 canvas / SVG 节点连线图。
+- 不做拖拽 DAG 编辑。
+- 不持久化 graph details 展开状态或布局状态。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
