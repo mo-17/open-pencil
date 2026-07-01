@@ -358,6 +358,13 @@ function containingPageId(node: SceneNode): string | undefined {
                 Source
               </button>
             </div>
+            <span
+              v-if="node.entrypoints.length > 1"
+              data-test-id="lowcode-workflow-graph-map-node-entrypoint-more"
+              class="text-[9px] text-muted"
+            >
+              +{{ node.entrypoints.length - 1 }} more
+            </span>
           </div>
         </div>
         <ul v-if="graphMapEdges.length > 0" class="flex flex-col gap-0.5">

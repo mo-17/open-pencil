@@ -95,6 +95,7 @@
 - Show entry, incoming, outgoing, action, and issue badges directly on lowcode workflow graph map nodes.
 - Add local All, Issues, and Entries filters to the lowcode workflow graph map.
 - Show workflow entrypoint source labels and Source jumps directly on lowcode workflow graph map nodes.
+- Show overflow counts when a lowcode workflow graph map node has multiple entrypoint sources.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

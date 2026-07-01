@@ -2695,6 +2695,44 @@ filter 中看到入口 workflow 时,不必再滚到下方 relation groups,可以
 - 不持久化 map source 展开状态。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.14 2026-07-01 第十四刀:Workflow graph map entrypoint overflow
+
+本刀补 map node 的多入口提示。第十三刀只把第一条 entrypoint source 提到 map node 上;当一个
+workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一个入口。本刀显示 overflow count,
+完整来源仍保留在下方 relation groups。
+
+已完成:
+
+- `WorkflowsPanel.vue`:
+  - 当 `node.entrypoints.length > 1` 时,在 map node source 行下方显示
+    `+<count> more`。
+  - 第一条来源仍保留 `Source` 跳转。
+  - 不新增展开态或持久化状态。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - workflow graph fixture 新增第二个按钮入口 `Quick save`。
+  - summary 现在验证 `2 entries`。
+  - map node stats 验证 `2e / 0i / 2o / 2a`。
+  - map node overflow 验证 `+1 more`。
+  - relation groups 中的 multi-source strict locator 收紧到 first source row。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过;修复
+  multi-source strict locator 后重跑通过)
+
+明确不做:
+
+- 不在 map node 内展开全部 entrypoints。
+- 不新增 workflow graph 数据结构字段。
+- 不持久化 source overflow 状态。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

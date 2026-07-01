@@ -70,6 +70,16 @@ async function setupWorkflowGraphDiagnostics() {
         onClick: [{ id: 'event-call-save', kind: 'callWorkflow', workflowId: 'wf-save' }]
       }
     })
+    store.graph.createNode('BUTTON', page.id, {
+      name: 'Quick save',
+      x: 120,
+      y: 180,
+      width: 140,
+      height: 40,
+      events: {
+        onClick: [{ id: 'event-call-save-quick', kind: 'callWorkflow', workflowId: 'wf-save' }]
+      }
+    })
     store.select([])
     store.requestRender()
   })
@@ -131,7 +141,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await workflowsPanel.scrollIntoViewIfNeeded()
   await expect(workflowsPanel).toBeVisible()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-summary')).toContainText(
-    '2 workflows, 3 actions, 2 calls, 1 entry'
+    '2 workflows, 3 actions, 2 calls, 2 entries'
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-issue')).toContainText(
     'Save calls a missing workflow'
@@ -150,10 +160,13 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-stats').first()
-  ).toContainText('1e / 0i / 2o / 2a')
+  ).toContainText('2e / 0i / 2o / 2a')
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint')
   ).toContainText('Run save onClick')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
+  ).toContainText('+1 more')
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')
   ).toContainText('issue')
@@ -213,11 +226,11 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node').first()).toContainText(
-    'Save: 1 entry / 0 in / 2 out / 2 actions'
+    'Save: 2 entries / 0 in / 2 out / 2 actions'
   )
-  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint-source')).toContainText(
-    'Run save onClick'
-  )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint-source').first()
+  ).toContainText('Run save onClick')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-out-edge').first()).toContainText(
     'to Notify'
   )
@@ -254,7 +267,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
 
   await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
-  await workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint-source-jump').click()
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-entrypoint-source-jump').first().click()
   await expect
     .poll(() =>
       editor.page.evaluate(() => {
