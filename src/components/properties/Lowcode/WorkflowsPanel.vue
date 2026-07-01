@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import type {
   DocumentStateDef,
@@ -57,6 +57,7 @@ const analyticsConfigured = useSceneComputed<boolean>(() => {
   return config?.enabled !== false && !!config?.id?.trim()
 })
 const workflowGraph = computed(() => analyzeWorkflowGraph(workflows.value))
+const graphDetailsOpen = ref(false)
 type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
 const workflowRowRefs = new Map<string, WorkflowRowHandle>()
 
@@ -125,10 +126,20 @@ function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicIns
       data-test-id="lowcode-workflow-graph-summary"
       class="mb-1 flex flex-col gap-1 border-l border-border pl-2 text-[10px]"
     >
-      <p class="text-muted">
-        {{ workflowGraph.workflowCount }} workflows, {{ workflowGraph.actionCount }} actions,
-        {{ workflowGraph.callCount }} calls
-      </p>
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-muted">
+          {{ workflowGraph.workflowCount }} workflows, {{ workflowGraph.actionCount }} actions,
+          {{ workflowGraph.callCount }} calls
+        </p>
+        <button
+          type="button"
+          data-test-id="lowcode-workflow-graph-toggle"
+          class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+          @click="graphDetailsOpen = !graphDetailsOpen"
+        >
+          {{ graphDetailsOpen ? 'Hide details' : 'Show details' }}
+        </button>
+      </div>
       <p v-if="workflowGraph.issues.length === 0" class="text-muted">No workflow graph issues.</p>
       <ul v-else class="flex flex-col gap-0.5 text-red-500">
         <li
@@ -149,7 +160,7 @@ function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicIns
           </button>
         </li>
       </ul>
-      <ul class="flex flex-col gap-0.5 text-muted">
+      <ul v-if="graphDetailsOpen" class="flex flex-col gap-0.5 text-muted">
         <li
           v-for="node in workflowGraph.nodes"
           :key="node.id"

@@ -82,6 +82,7 @@
   workflow references and cycles, and keeps the existing inline workflow runtime semantics.
 - Let the lowcode workflow graph summary jump from issues or per-workflow call counts to the
   corresponding workflow editor row.
+- Add a local-only expand/collapse control for lowcode workflow graph details.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

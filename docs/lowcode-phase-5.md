@@ -2287,6 +2287,38 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不做从 event action row 反向跳转到 workflow graph。
 - 不新增 E2E;后续如果继续做点击定位/折叠状态/图交互,再补对应 UI E2E。
 
+### 13.3 2026-07-01 第三刀:Workflow graph collapsible details
+
+本刀继续把 workflow graph 保持为只读诊断 UI,补上局部展开/收起,避免 workflow 很多时详情列表
+挤占整个 lowcode 面板。
+
+已完成:
+
+- `WorkflowsPanel` graph summary 常驻显示:
+  - workflow / action / call 总数。
+  - issue 列表仍常驻显示,避免隐藏 missing/cycle 风险。
+- 每个 workflow 的 in/out/action 详情改为本地展开态:
+  - 默认收起,只保留摘要和 issue。
+  - `Show details` / `Hide details` 只影响当前组件本地状态。
+  - 不写入 `SceneGraph`、不进 `.fig`、不跨 tab 持久化。
+- 保留第二刀的 `Jump` 能力;展开后每个 workflow node 摘要仍可跳转到对应 row。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun test tests/engine/compiler/call-workflow.test.ts tests/engine/compiler/ir/collect/workflow.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+
+明确不做:
+
+- 不改 `workflow-graph.ts` 分析算法。
+- 不改 workflow schema / ToolDef / compiler。
+- 不新增本地存储或跨 session 折叠状态。
+- 不做真正的图布局、拖拽或连线编辑。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
