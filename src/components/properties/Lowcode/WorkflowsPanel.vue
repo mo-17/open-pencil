@@ -233,10 +233,23 @@ function containingPageId(node: SceneNode): string | undefined {
             :key="node.id"
             type="button"
             data-test-id="lowcode-workflow-graph-map-node"
-            class="max-w-full rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-hover hover:text-surface"
+            class="flex max-w-full flex-col gap-0.5 rounded border border-border px-1.5 py-0.5 text-left text-[10px] hover:bg-hover hover:text-surface"
             @click="jumpToWorkflow(node.id)"
           >
-            {{ node.name }}
+            <span class="flex max-w-full items-center gap-1">
+              <span class="min-w-0 truncate">{{ node.name }}</span>
+              <span
+                v-if="node.issues.length > 0"
+                data-test-id="lowcode-workflow-graph-map-node-issue"
+                class="shrink-0 text-red-500"
+              >
+                issue
+              </span>
+            </span>
+            <span data-test-id="lowcode-workflow-graph-map-node-stats" class="text-[9px] text-muted">
+              {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
+              {{ node.outgoing.length }}o / {{ node.actionCount }}a
+            </span>
           </button>
         </div>
         <ul v-if="workflowGraph.edges.length > 0" class="flex flex-col gap-0.5">

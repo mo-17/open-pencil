@@ -2578,6 +2578,43 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不做拖拽 DAG 编辑。
 - 不保存 map layout 到 SceneGraph / localStorage。
 
+### 13.11 2026-07-01 第十一刀:Workflow graph map node density
+
+本刀继续增强第十刀的 HTML readonly map,把关键诊断信息直接压到 workflow node pill 上。
+作者不需要先读下方 relation groups,就能看出某个 workflow 是否有事件入口、被谁调用、
+向外调用多少、包含多少 action,以及是否带有 graph issue。
+
+已完成:
+
+- `WorkflowsPanel.vue` 的 `lowcode-workflow-graph-map-node` 改为两行 compact pill:
+  - 第一行显示 workflow name。
+  - 有 issue 的 node 显示红色 `issue` 标记。
+  - 第二行显示压缩计数:`<entry>e / <incoming>i / <outgoing>o / <actions>a`。
+- 这些标记全部来自现有 `WorkflowGraphNode`:
+  - `entrypoints.length`
+  - `incoming.length`
+  - `outgoing.length`
+  - `actionCount`
+  - `issues.length`
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 map node stats 和 issue badge。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不新增 workflow graph 数据结构字段。
+- 不把 map 节点状态持久化到 SceneGraph / localStorage。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

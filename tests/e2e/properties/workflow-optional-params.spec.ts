@@ -148,9 +148,18 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').first()).toContainText(
     'Save'
   )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-stats').first()
+  ).toContainText('1e / 0i / 2o / 2a')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')
+  ).toContainText('issue')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
     'Notify'
   )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-stats').nth(1)
+  ).toContainText('0e / 1i / 0o / 1a')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').first()).toContainText(
     'Save -> Notify'
