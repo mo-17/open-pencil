@@ -152,6 +152,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-stats').first()
   ).toContainText('1e / 0i / 2o / 2a')
   await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint')
+  ).toContainText('Run save onClick')
+  await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue')
   ).toContainText('issue')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
@@ -181,6 +184,33 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Save')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(2)
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-jump').click()
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => {
+        const store = window.openPencil?.getStore?.()
+        if (!store) return ''
+        const selected = [...store.state.selectedIds][0]
+        return selected ? store.graph.getNode(selected)?.name ?? '' : ''
+      })
+    )
+    .toBe('Run save')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(
+        () => document.activeElement?.getAttribute('data-lowcode-action-path') ?? ''
+      )
+    )
+    .toBe('onClick[0]')
+  await editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    store.select([])
+    store.requestRender()
+  })
+  await editor.canvas.waitForRender()
+  await expect(workflowsPanel).toBeVisible()
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node').first()).toContainText(
     'Save: 1 entry / 0 in / 2 out / 2 actions'

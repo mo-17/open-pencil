@@ -2658,6 +2658,43 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不持久化 filter 状态。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.13 2026-07-01 第十三刀:Workflow graph map entrypoint sources
+
+本刀把 entrypoint source density 提到 HTML readonly map node 上。作者在 map 的 `Entries`
+filter 中看到入口 workflow 时,不必再滚到下方 relation groups,可以直接看到第一个入口来源并跳转
+到来源节点的具体 action row。
+
+已完成:
+
+- `WorkflowsPanel.vue` 的 map node 从单个 button 拆成小型容器:
+  - 主区域仍可 Jump 到 workflow row。
+  - 有 entrypoint 的 node 显示第一条来源:`<nodeName> <eventName>`。
+  - 来源行提供 `Source` 按钮,复用现有 `jumpToEntrypointSource()`。
+- 保持 HTML 结构有效:
+  - 不在 button 内嵌套 button。
+  - workflow row Jump 和 source action Jump 分开。
+- 覆盖:
+  - `tests/e2e/properties/workflow-optional-params.spec.ts` 验证 map node 显示
+    `Run save onClick`。
+  - 同一用例验证 map-level `Source` 能选中 `Run save` node,并聚焦 `onClick[0]` action row。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不显示全部 entrypoints;map node 只显示第一条,完整列表仍在 relation groups 的 `Entries` 区。
+- 不新增 workflow graph 数据结构字段。
+- 不持久化 map source 展开状态。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

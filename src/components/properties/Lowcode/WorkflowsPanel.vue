@@ -311,29 +311,54 @@ function containingPageId(node: SceneNode): string | undefined {
           </button>
         </div>
         <div class="flex flex-wrap gap-1">
-          <button
+          <div
             v-for="node in graphMapNodes"
             :key="node.id"
-            type="button"
             data-test-id="lowcode-workflow-graph-map-node"
-            class="flex max-w-full flex-col gap-0.5 rounded border border-border px-1.5 py-0.5 text-left text-[10px] hover:bg-hover hover:text-surface"
-            @click="jumpToWorkflow(node.id)"
+            class="flex max-w-full flex-col gap-0.5 rounded border border-border px-1.5 py-0.5 text-[10px]"
           >
-            <span class="flex max-w-full items-center gap-1">
-              <span class="min-w-0 truncate">{{ node.name }}</span>
-              <span
-                v-if="node.issues.length > 0"
-                data-test-id="lowcode-workflow-graph-map-node-issue"
-                class="shrink-0 text-red-500"
-              >
-                issue
+            <button
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-node-jump"
+              class="flex max-w-full flex-col gap-0.5 text-left hover:text-surface"
+              @click="jumpToWorkflow(node.id)"
+            >
+              <span class="flex max-w-full items-center gap-1">
+                <span class="min-w-0 truncate">{{ node.name }}</span>
+                <span
+                  v-if="node.issues.length > 0"
+                  data-test-id="lowcode-workflow-graph-map-node-issue"
+                  class="shrink-0 text-red-500"
+                >
+                  issue
+                </span>
               </span>
-            </span>
-            <span data-test-id="lowcode-workflow-graph-map-node-stats" class="text-[9px] text-muted">
-              {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
-              {{ node.outgoing.length }}o / {{ node.actionCount }}a
-            </span>
-          </button>
+              <span
+                data-test-id="lowcode-workflow-graph-map-node-stats"
+                class="text-[9px] text-muted"
+              >
+                {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
+                {{ node.outgoing.length }}o / {{ node.actionCount }}a
+              </span>
+            </button>
+            <div
+              v-if="node.entrypoints.length > 0"
+              data-test-id="lowcode-workflow-graph-map-node-entrypoint"
+              class="flex items-center justify-between gap-1 text-[9px]"
+            >
+              <span class="min-w-0 truncate">
+                {{ node.entrypoints[0].nodeName }} {{ node.entrypoints[0].eventName }}
+              </span>
+              <button
+                type="button"
+                data-test-id="lowcode-workflow-graph-map-node-entrypoint-jump"
+                class="shrink-0 rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface"
+                @click="jumpToEntrypointSource(node.entrypoints[0])"
+              >
+                Source
+              </button>
+            </div>
+          </div>
         </div>
         <ul v-if="graphMapEdges.length > 0" class="flex flex-col gap-0.5">
           <li
