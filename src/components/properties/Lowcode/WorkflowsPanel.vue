@@ -186,11 +186,14 @@ function toggleGraphMapSources(workflowId: string): void {
   expandedGraphMapSourceIds.value = next
 }
 
-function collapseGraphMapSources(workflowId: string): void {
+function collapseGraphMapSources(workflowId: string, event?: KeyboardEvent): void {
   if (!expandedGraphMapSourceIds.value.has(workflowId)) return
+  const focusTarget =
+    event?.currentTarget instanceof HTMLElement ? event.currentTarget.previousElementSibling : null
   const next = new Set(expandedGraphMapSourceIds.value)
   next.delete(workflowId)
   expandedGraphMapSourceIds.value = next
+  if (focusTarget instanceof HTMLElement) focusTarget.focus()
 }
 
 function graphMapSourceListId(workflowId: string): string {
@@ -401,7 +404,7 @@ function containingPageId(node: SceneNode): string | undefined {
               :id="graphMapSourceListId(node.id)"
               data-test-id="lowcode-workflow-graph-map-node-entrypoint-list"
               class="flex flex-col gap-0.5"
-              @keydown.escape.stop.prevent="collapseGraphMapSources(node.id)"
+              @keydown.escape.stop.prevent="collapseGraphMapSources(node.id, $event)"
             >
               <li
                 v-for="entrypoint in node.entrypoints.slice(1)"

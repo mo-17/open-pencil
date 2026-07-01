@@ -185,6 +185,11 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
   ).toHaveAttribute('aria-expanded', 'false')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-test-id') ?? '')
+    )
+    .toBe('lowcode-workflow-graph-map-node-entrypoint-more')
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-list')
   ).toHaveCount(0)

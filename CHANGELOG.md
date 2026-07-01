@@ -98,6 +98,7 @@
 - Show overflow counts when a lowcode workflow graph map node has multiple entrypoint sources.
 - Let lowcode workflow graph map nodes expand overflow entrypoint sources with per-source jumps.
 - Add ARIA state and Escape collapse support to lowcode workflow graph map source lists.
+- Return focus to the workflow graph map source toggle after Escape collapses its source list.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

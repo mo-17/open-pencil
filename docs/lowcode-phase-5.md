@@ -2809,6 +2809,41 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不新增 workflow graph 数据结构字段。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.17 2026-07-01 第十七刀:Workflow graph map source-list focus return
+
+本刀收口第十六刀的键盘体验:作者在 extra source list 内按 Escape 收起后,焦点会回到对应
+`Hide sources` / `+N more` toggle,避免 list 被移除后浏览器焦点落到不可预期位置。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - `collapseGraphMapSources(workflowId, event?)` 接收键盘事件。
+  - 收起前从 list 的 `currentTarget.previousElementSibling` 捕获对应 source toggle。
+  - 收起 local-only 展开状态后,把焦点回落到该 toggle。
+  - template 的 Escape handler 传入 `$event`。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 聚焦 extra source `Source` 后按 Escape。
+  - 验证 `aria-expanded=false`。
+  - 验证 `document.activeElement` 回到 `lowcode-workflow-graph-map-node-entrypoint-more`。
+  - 验证列表已移除后仍可再次展开并跳转 extra source。
+
+已验证:
+
+- `git diff --check`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不持久化展开状态到 SceneGraph / `.fig` / localStorage。
+- 不新增 focus trap 或 roving tabindex。
+- 不新增 workflow graph 数据结构字段。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
