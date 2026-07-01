@@ -116,10 +116,36 @@ export interface HtmlMetadata {
   description?: string
   image?: string
   canonicalUrl?: string
+  head?: LowcodeHeadMetadata
+  customCss?: string
 }
 
 export interface HtmlMetadataOptions extends HtmlMetadata {
   pages?: Record<string, HtmlMetadata>
+}
+
+export type LowcodeHeadMetaKind = 'name' | 'property' | 'httpEquiv'
+export type LowcodeHeadLinkCrossOrigin = 'anonymous' | 'use-credentials'
+
+export interface LowcodeHeadMeta {
+  kind: LowcodeHeadMetaKind
+  key: string
+  content: string
+}
+
+export interface LowcodeHeadLink {
+  rel: string
+  href: string
+  as?: string
+  type?: string
+  media?: string
+  crossorigin?: LowcodeHeadLinkCrossOrigin
+}
+
+export interface LowcodeHeadMetadata {
+  meta?: LowcodeHeadMeta[]
+  link?: LowcodeHeadLink[]
+  styles?: string[]
 }
 
 export interface CompileWarning {

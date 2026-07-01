@@ -75,6 +75,26 @@ schema 债务,否则继续保持 pluginData 旁路。
 - 不默认做 plugin marketplace。
 - 不默认改低代码 pluginData key 或已发布 runtime symbol。
 
+### 1.4 2026-06-30 功能盘点与执行记录
+
+本轮按“能在本地完成的直接完成,需要真实账号/人工判断的留到最后手测”原则处理。
+使用 `gpt-5.3-codex-spark` 子代理做只读审计后,结论是:
+
+- **已落地**:优先完成 §10 Analytics / Tracking 第一刀。它是受控 provider 集成,比
+  custom script 注入风险更低,又能补齐发布后的运营闭环。
+- **已记录但暂不编码**:§11 Custom Code Escape Hatch 应先做 head/meta + custom CSS,
+  再评估 custom JS。直接开放任意 JS 会提前引入 XSS、preview iframe、CSP 和 deploy
+  provider 兼容问题。
+- **仍建议排在前面**:§4 文档 / onboarding 已有第一刀,后续需要继续补可复制示例;
+  §2 deploy lifecycle 还缺真实 provider rollback ACK 和更完整 environment contract;
+  §5 theme/tokens 已进入较深阶段,后续适合做真实模板回归。
+
+需要人工或真实外部凭据验证的事项统一留到收尾 checklist,不阻塞本地实现:
+
+- GA4 / Plausible / PostHog 真 property/project 的网络请求和 dashboard 入账。
+- 发布到真实 Netlify / Vercel / Cloudflare Pages 后的 CSP、script 加载和 page view 记录。
+- 编辑器 GUI 中 `Track event` 行的视觉和交互手感。
+
 ---
 
 ## 2. 应用发布生命周期
@@ -312,7 +332,14 @@ shadcn、deploy 多条线完成,但用户入口分散在 phase docs 和内部实
   第一刀已新增 `packages/docs/user-guide/lowcode-apps.md`,并从英文 docs 首页、
   User Guide 索引和英文 sidebar 挂入口。**
 - 示例 app / demo checklist:展示 Supabase 列表、表单校验、workflow、deploy。**2026-06-25
-  第一刀已在用户指南内加入 demo checklist;真实 demo 文件仍可后续补。**
+  第一刀已在用户指南内加入 demo checklist。2026-07-01 第二刀已新增
+  `packages/demos/lowcode/lowcode-onboarding-demo.fig` 和
+  `tools/lowcode/src/make/onboarding-demo.ts`,覆盖示例 Supabase query/mutation、表单校验、
+  workflow、analytics `trackEvent` / consent copy、i18n、shadcn/ui、custom head/CSS metadata,并由
+  `tests/engine/app/lowcode/onboarding-demo.test.ts` 验证无真实外部凭据。**
+  **2026-07-01 第三刀已把 Stripe checkout redirect trigger 纳入同一 onboarding fixture:
+  `Start checkout` 按钮调用示例 `/api/demo-checkout` endpoint,传递公开 `plan` / `email`
+  payload,错误写入 `checkoutError`;测试确认 generated source 不包含 Stripe secret。**
 - CHANGELOG Unreleased 补齐 Cloudflare deploy / Tauri automation / GUI ACK 等用户可见项。**2026-06-25
   第一刀已补 lowcode onboarding 文档项,并顺手修复 CLI `--provider cloudflare`
   入口校验。**
@@ -1080,11 +1107,238 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 - event action 可选 `trackEvent`。
 - deploy/build 时注入 script 和 runtime helper。
 
+**2026-06-30 第一刀已完成**:
+
+- 数据模型新增 `AnalyticsConfig` 和 `TrackEventAction`:
+  - root node 使用 `lowcodeAnalyticsConfig` 存 provider、tracking id、enabled、endpoint。
+  - action chain 支持 `{ kind: 'trackEvent', eventNameExpr, properties? }`。
+- 持久化继续走稳定 pluginData 旁路:
+  - `.fig` export/import 使用 `lowcode/analyticsConfig`。
+  - `trackEvent` 随既有 `lowcode/events` / `lowcode/workflows` JSON round-trip。
+- ToolDef / MCP / AI 边界已校验:
+  - provider 仅允许 `ga4` / `plausible` / `posthog`。
+  - tracking id 必须是非空字符串。
+  - `eventNameExpr` 和 property value 使用既有 expression parser。
+  - property key 必须是 JS identifier。
+- Compiler / React adapter 已 emit:
+  - 生成 `src/_lowcode_analytics.ts`。
+  - root analytics config 存在时 `main.tsx` side-effect import runtime 并自动发送
+    `page_view`。
+  - 事件链中使用 `trackEvent` 时页面 import `__opTrackEvent` 并按表达式生成 event
+    name/properties。
+  - 没有 provider config 但存在 `trackEvent` 时 runtime 生成 null config no-op,避免
+    编译失败或运行时报错。
+  - GA4、Plausible、PostHog 都先安装 queue/stub,避免 SDK 脚本加载前丢首个事件。
+- GUI 第一刀已补:
+  - Lowcode action factory 支持 `trackEvent`。
+  - ActionRow 显示 `Track event` 并允许编辑 event name expression。
+  - properties 复杂对象先保留给 MCP/JSON 工具,避免第一刀把 GUI 做成大表单。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 runtime emit、main side-effect import、
+    event helper import/properties emit、无 provider config no-op。
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 analytics config 与 trackEvent 经
+    `.fig` round-trip。
+
+**2026-06-30 第二刀已完成**:
+
+- 空选择态 `Services & Workflows` 增加 document-level `Analytics` 配置面板:
+  - provider 下拉支持 GA4 / Plausible / PostHog。
+  - 支持 enabled 开关、public tracking id、optional endpoint。
+  - `Clear` 清空 root `lowcodeAnalyticsConfig`。
+  - 空 id 不持久化 config,避免写入无效 analytics 配置。
+- `Track event` action GUI 增加 properties 编辑器:
+  - 每行编辑 property key 和 expression value。
+  - key 复用 payload entry identifier 校验。
+  - value 复用 expression parser 校验。
+- 覆盖:
+  - `tests/engine/app/lowcode/action-errors.test.ts` 覆盖 trackEvent properties 的 GUI 校验。
+
+**2026-06-30 第三刀已完成**:
+
+- Analytics config 面板增加 provider-specific authoring guard:
+  - GA4 id 使用 `G-...` placeholder 与格式提示。
+  - Plausible id 使用 domain placeholder 与格式提示。
+  - PostHog id 使用 `phc_...` placeholder 与格式提示。
+  - optional endpoint 仅对 Plausible / PostHog 开放,并校验 http(s) URL。
+  - provider 切到 GA4 时自动清空 endpoint,避免持久化运行时不会使用的字段。
+- `Track event` 行增加未配置 provider hint:
+  - 当 root analytics config 缺失、disabled 或 id 为空时,事件行提示发布前需要先配置
+    Analytics。
+  - 只提示,不阻断 authoring;runtime 仍保持 no-op。
+- TrackEvent properties 增加重名防护:
+  - 新增 property 时自动选择未占用 key。
+  - 用户把 key 改成已有 key 时自动追加后缀,避免 object 写回时静默覆盖旧属性。
+
+**2026-06-30 第四刀已完成**:
+
+- Analytics config 增加 `pageViews?: boolean`:
+  - 默认开启,不写入额外字段。
+  - 用户在 GUI 里关闭 `Track page views` 时持久化 `pageViews:false`。
+  - `update_lowcode_node` / `.fig` pluginData / compiler IR compact 均支持该字段。
+- Runtime 拆出 `__opTrackPageView()`:
+  - 初始加载仍按默认发送一次 `page_view`。
+  - `pageViews:false` 时不自动发送 page view,但 `trackEvent` 手动事件仍可用。
+- 多页 React router shell 增加 route-change tracker:
+  - 仅在多页 app 且 analytics config 存在、`pageViews !== false` 时 emit。
+  - tracker 跳过首次 mount,避免与 runtime 初始 `page_view` 重复。
+  - 后续 route path/search/hash 变化时发送 `page_view`。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖多页 route tracker 和
+    `pageViews:false` 的自动 page view 关闭。
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 `pageViews:false`
+    `.fig` round-trip。
+
+**2026-06-30 第五刀已完成**:
+
+- Analytics config 面板增加 provider-specific help:
+  - GA4 显示 `Measurement ID` 说明和官方文档链接。
+  - Plausible 显示 domain 说明、自托管 script endpoint 提示和官方文档链接。
+  - PostHog 显示 project API key 说明、host/region endpoint 提示和官方文档链接。
+- `Track event` 未配置 provider hint 升级为非阻断式发布提示:
+  - 明确指向空选择态 `Services & Workflows` 的 Analytics provider 配置。
+  - 仍允许继续编辑 event name / properties,保持无 provider 时 runtime no-op 的语义。
+- 浏览器级 ACK checklist 已补到 `docs/lowcode-gui-ack-test.md`:
+  - 覆盖 provider help / docs link / endpoint hint。
+  - 覆盖 `Track event` hint、properties、save/reopen、`Track page views` toggle。
+  - 将真实 GA4 / Plausible / PostHog dashboard 入账留作 live-provider 手测。
+- 覆盖:
+  - `tests/engine/app/lowcode/action-errors.test.ts` 覆盖 provider help mapping 和
+    missing-provider hint 不阻断有效 `trackEvent`。
+
+**2026-06-30 第六刀已完成**:
+
+- Analytics config 增加 privacy gates:
+  - `respectDoNotTrack?: boolean`:生成 runtime 读取 `navigator.doNotTrack` /
+    `navigator.msDoNotTrack` / `window.doNotTrack`,命中时不加载 provider script、不发送事件。
+  - `consentRequired?: boolean`:生成 runtime 默认 no-op,直到 app flow 调用
+    `__opGrantAnalyticsConsent()`。
+  - runtime 同时导出 `__opRevokeAnalyticsConsent()`,用于用户撤回 consent 后暂停后续事件。
+- GUI:
+  - Analytics 面板增加 `Respect Do Not Track` 和 `Require consent before tracking` 两个开关。
+  - 默认都关闭,保持既有 analytics 输出向后兼容。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 DNT / consent runtime gate emit。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 写入 privacy gates。
+  - `tests/engine/tools/lowcode/read.test.ts` 覆盖 ToolDef 读取 privacy gates。
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 `.fig` round-trip。
+
+**2026-07-01 第七刀已完成**:
+
+- Generated app 在 `consentRequired:true` 时自动挂载基础 Analytics consent banner:
+  - `src/_lowcode_analytics.ts` 导出 `LowcodeAnalyticsConsentBanner`。
+  - `src/main.tsx` 在 `<App />` 旁挂载该 banner。
+  - 用户点击 `Accept` 时调用 `__opGrantAnalyticsConsent()` 并加载 provider script。
+  - 用户点击 `Decline` 时调用 `__opRevokeAnalyticsConsent()` 并隐藏 banner。
+- 无 consent gate 的 analytics 输出仍保持 side-effect import,不生成可见 banner。
+- 本刀只提供基础 accept/decline template,不持久化用户偏好、不做多分类 preference center。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 consent banner 的生成、挂载和未开启
+    consent gate 时的缺省输出。
+
+**2026-07-01 第八刀已完成**:
+
+- 基础 Analytics consent banner 增加持久化偏好:
+  - 使用 provider/id scoped `localStorage` key,避免同域多个生成 app 互相污染。
+  - `Accept` 持久化 `granted`,后续加载直接允许 analytics setup。
+  - `Decline` 持久化 `denied`,后续加载保持 no-op。
+  - storage 不可用时降级为本次 page load 内有效,不阻断 app。
+- Banner 隐藏后保留一个小型 `Analytics preferences` 按钮:
+  - 用户可以重新打开偏好面板。
+  - 再次选择 `Accept` / `Decline` 会覆盖旧偏好。
+- 本刀仍不做多分类 preference center、品牌化 copy 或 region/legal preset。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 localStorage key、granted/denied 写入和
+    preferences 重开入口 emit。
+
+**2026-07-01 第九刀已完成**:
+
+- 基础 Analytics consent banner 升级为最小 preference center:
+  - 固定显示 `Necessary` 类别,说明 app 必需能力始终启用。
+  - 显示可切换的 `Analytics` 类别,控制是否允许 page views 和 explicit `trackEvent`。
+  - 操作区提供 `Decline all`、`Save preferences` 和 `Accept all`。
+  - `Analytics preferences` 重开入口会回到同一套分类选择 UI。
+- 本刀仍不做品牌化文案、region/legal preset、IAB TCF 或多 provider category policy。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 `Necessary` / `Analytics` 分类文案、
+    `Save preferences`、`Accept all` 和 `Decline all` emit。
+
+**2026-07-01 第十刀已完成**:
+
+- Analytics config 新增 `consentCopy?: AnalyticsConsentCopy`:
+  - `bannerText`:覆盖 generated consent banner 的主说明文案。
+  - `analyticsDescription`:覆盖 `Analytics` category 描述。
+  - `privacyPolicyUrl` / `privacyPolicyLabel`:在 banner 内渲染一个 policy link。
+  - 全部以纯文本 / href 输出,不支持 raw HTML。
+- GUI:
+  - `Require consent before tracking` 开启时,Analytics 面板显示 `Consent copy` 输入区。
+  - policy URL 只允许 `http(s)` 或 root-relative 路径,拒绝 `javascript:` 等不安全 URL。
+- Compiler:
+  - `src/_lowcode_analytics.ts` 从 config 读取 copy override。
+  - 未配置 copy 时保持默认文案和默认 preference center 行为。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 branded consent copy emit。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef trim 和 unsafe URL 拒绝。
+  - `tests/engine/tools/lowcode/read.test.ts` 覆盖 ToolDef read。
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 `.fig` round-trip。
+
+**2026-07-01 第十一刀已完成**:
+
+- Analytics config 新增 `consentAnalyticsDefault?: boolean`:
+  - 默认不写入时保持现状:generated preference center 的 `Analytics` category 初始勾选。
+  - 设置为 `false` 时,没有历史偏好时 `Analytics` category 初始不勾选。
+  - 已有 `localStorage` 偏好仍优先,不会被默认值覆盖。
+- GUI:
+  - `Require consent before tracking` 开启时,`Consent copy` 区域新增
+    `Analytics checked by default` 开关。
+  - 关闭该开关会持久化 `consentAnalyticsDefault:false`。
+- Compiler:
+  - `LowcodeAnalyticsConsentBanner` 初始化 checkbox 时读取 `consentAnalyticsDefault`。
+  - 用户仍必须点击 `Save preferences` / `Accept all` / `Decline all`;该字段只控制初始
+    checkbox state,不绕过 consent gate。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 unchecked default runtime emit。
+  - `tests/engine/tools/lowcode/modify.test.ts` / `read.test.ts` 覆盖 ToolDef 写读。
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 `.fig` round-trip。
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 onboarding fixture。
+
+**2026-07-01 第十二刀已完成**:
+
+- Analytics config 新增 `consentRegionPreset?: 'eea'`:
+  - 这是 generated app 的 opt-in starter preset,不是法律合规声明或 IAB TCF 实现。
+  - `eea` preset 在未显式覆盖时等价于 `consentRequired:true` +
+    `consentAnalyticsDefault:false`。
+  - 显式 `consentRequired` / `consentAnalyticsDefault` 仍优先,便于作者按产品和法务要求覆盖
+    preset。
+- GUI:
+  - Analytics 面板新增 `Consent preset` 下拉,提供 `Manual` 和
+    `EEA-style opt-in starter`。
+  - 选择 EEA preset 会预填 consent gate 和 unchecked Analytics category draft。
+- Compiler:
+  - Single-page / multi-page React adapter 都会在 effective consent required 时挂载
+    `LowcodeAnalyticsConsentBanner`。
+  - Runtime 新增 `effectiveConsentRequired()`,统一处理显式字段和 region preset fallback。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 preset-only banner emit 和显式覆盖 preset。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 preset 写入和非法 preset 拒绝。
+  - `tests/engine/tools/lowcode/read.test.ts` 覆盖 ToolDef read。
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 `.fig` round-trip。
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 onboarding fixture。
+
 ### 10.2 风险
 
 - CSP / privacy / cookie consent。
 - 不同 provider SDK 加载方式不同。
 - 不能把 analytics secret 写进 document。
+
+### 10.3 后续
+
+- 真实 provider ACK:分别用 GA4 / Plausible / PostHog 测一次 preview → build →
+  deploy 后 dashboard 入账。
+- 隐私/合规:当前已具备 DNT gate、generated-app consent API、基础 Necessary/Analytics
+  preference center、本地持久化偏好、品牌化文案、Analytics category 默认状态和 EEA-style
+  opt-in starter preset;后续可补 IAB TCF 或更复杂的 category policy。
+- CSP/deploy:确认 Netlify / Vercel / Cloudflare 默认 CSP 或用户自定义 header 下的
+  provider script allowlist。
 
 ---
 
@@ -1103,6 +1357,91 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 - preview iframe 安全边界。
 - AI 生成代码的可审计性。
 
+### 11.3 建议第一刀
+
+子代理审计建议 Custom Code 不要和 Analytics 初始批次混做。第一刀应只做:
+
+- document-level custom head snippets,限定 meta/link/style 这类静态标签;
+- document-level custom CSS,进入生成 app 的 `index.css` 尾部;
+- 不做 inline JS / external JS,直到 CSP、preview sandbox、审计 UI 和 deploy header 策略
+  写清楚。
+
+成功标准应先锁为“能补 meta/link/CSS 且 build 输出稳定”,不要一开始开放任意脚本。
+
+**2026-06-30 第一刀已完成**:
+
+- SceneGraph root-level 新增:
+  - `lowcodeHeadMetadata?: LowcodeHeadMetadata`
+  - `lowcodeCustomCss?: string`
+- `lowcodeHeadMetadata` 是结构化白名单,不是 raw HTML:
+  - `meta`:仅允许 `{ kind: 'name' | 'property' | 'httpEquiv', key, content }`。
+  - `link`:仅允许 `{ rel, href, as?, type?, media?, crossorigin? }`。
+  - `styles`:纯 CSS 片段数组,由 compiler 包成 `<style>`。
+- `.fig` 持久化:
+  - `lowcode/headMetadata` round-trip 受控 head metadata。
+  - `lowcode/customCss` round-trip custom CSS。
+  - 空值不写入,保持未使用该能力的文档输出稳定。
+- ToolDef / MCP / AI:
+  - `update_lowcode_node` 接受并校验 `lowcodeHeadMetadata` / `lowcodeCustomCss`。
+  - 拒绝未知 head 字段、非法 `kind`、空 rel/href/key/content、非法 `crossorigin`。
+  - `read_lowcode_node` 返回这两个 root-level 字段。
+- Compiler / React adapter:
+  - persisted root fields 会并入 `CompilerOptions.metadata`。
+  - `index.html` 输出受控 `<meta>` / `<link>` / `<style>`。
+  - `src/index.css` 末尾追加 `lowcodeCustomCss`,方便用户覆盖生成样式。
+  - `<style>` 内容会防止 `</style>` 逃逸。
+- 覆盖:
+  - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 head/css emit 和 style text escape。
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 `.fig` round-trip。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 写入与非法结构拒绝。
+  - `tests/engine/tools/lowcode/read.test.ts` 覆盖 ToolDef 读取。
+
+**2026-06-30 第二刀已完成**:
+
+- GUI:
+  - 空选择态 `Services & Workflows` 增加 `Custom head & CSS` 面板。
+  - 支持结构化编辑 `meta`、`link`、head `<style>` CSS 片段和 app-level custom CSS。
+  - 半填的 `meta` / `link` 行只保留为本地草稿,不会写入 root node。
+  - 空内容会清成 `undefined`,避免生成空 metadata container。
+  - Inspector filter 增加 `head` / `metadata` / `meta` / `link` / `custom` / `css` /
+    `stylesheet` / `style` / `csp` 关键词。
+- 覆盖:
+  - `tests/engine/app/lowcode/custom-code-panel.test.ts` 覆盖 GUI 草稿 hydrate、trim、
+    空值清理、link 可选字段和半填行 guard。
+- 手动 ACK:
+  - `docs/lowcode-gui-ack-test.md` 增加 Custom Head/CSS GUI checklist。
+
+**2026-07-01 第三刀已完成**:
+
+- `docs/lowcode-gui-ack-test.md` 增加 Custom Head/CSS CSP/deploy provider ACK 矩阵:
+  - 明确 Netlify / Vercel / Cloudflare Pages 的 live URL、CSP header、
+    report-only header、external link/preload、inline head style 和 app CSS 观察点。
+  - 明确需要在 Network / Elements / Console 中确认的内容。
+  - 明确失败时记录 provider、live URL、CSP/report-only headers、affected tag 和 exact
+    console error,同时不记录真实 provider token。
+- 本刀仍不执行真实 provider deploy;真实 host ACK 留给具备账号/站点/Token 的用户最后手测。
+
+**2026-07-01 第四刀已完成**:
+
+- Custom Head/CSS 面板新增静态 CSP 风险提示:
+  - head `<style>` 会提示 inline style 可能需要 nonce/hash 或 `style-src 'unsafe-inline'`。
+  - 外部 `stylesheet` link 会提示部署端 `style-src` allowlist。
+  - 外部 `preload` / `preconnect` 会按 `as` 推断 `style-src`、`font-src`、`img-src`、
+    `script-src` 或 `connect-src`。
+  - app-level custom CSS 中的外部 `@import` / `url(...)` 会提示部署端资源指令。
+- 风险提示只做发布前 warning,不阻断保存、编译或 preview;真实 CSP header 是否允许仍以
+  live deploy ACK 为准。
+- 覆盖:
+  - `tests/engine/app/lowcode/custom-code-panel.test.ts` 覆盖 inline style、external
+    stylesheet、preload font、custom CSS 外部资源和本地资源静默。
+
+### 11.4 后续
+
+- CSP/deploy ACK:按 `docs/lowcode-gui-ack-test.md` 的 provider matrix 验证 Netlify /
+  Vercel / Cloudflare Pages 对自定义 stylesheet / preload / inline style 的默认策略。
+- 安全策略:继续暂缓 inline JS / external JS,直到有审计 UI、preview sandbox 策略、provider
+  header 文档和更严格的脚本来源治理。
+
 ---
 
 ## 12. Stripe / Paid App Primitives
@@ -1117,6 +1456,747 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 - Stripe checkout action 只调用 server endpoint。
 - Supabase Edge Function template 作为推荐后端。
 - 文档明确 secret 只进 server env,不进 `.fig` / compiled SPA。
+
+### 12.3 2026-07-01 第一刀:Stripe checkout action v1
+
+本刀先完成静态 SPA 可安全承担的最小商业化动作:**发起 checkout session
+请求并跳转**。它不试图在前端保存 Stripe secret,也不生成 Stripe SDK / webhook /
+customer portal。
+
+已完成:
+
+- SceneGraph 新增 `StripeCheckoutAction`:
+  - `kind:'stripeCheckout'`
+  - `endpoint?: string`
+  - `payloadEntries?: { key:string; valueExpr:string }[]`
+  - `errorTarget?: string`
+- `update_lowcode_node` / workflow ToolDef 支持 `stripeCheckout`:
+  - `endpoint` 必须是非空安全 URL/template,和 `apiCall` 走同一 template 校验。
+  - `payloadEntries` 复用 expression payload contract:key 必须是 JS identifier,
+    且同一 action 内唯一;value 走表达式 parser。
+  - `errorTarget` 只能是字符串;真实 docState 存在性由 GUI / compiler collect 校验。
+- Compiler IR collect 支持:
+  - endpoint template 表达式解析;
+  - payload entry 表达式解析;
+  - docState / page state 读取收集;
+  - unknown identifier / missing endpoint / invalid payload warning;
+  - optional `errorTarget` 写入收集。
+- React adapter emit:
+  - `POST` 到 `endpoint`;
+  - `Content-Type: application/json`;
+  - body 为 payload entry 组成的 JSON object;
+  - 成功时读取 `data?.url ?? data?.checkoutUrl`;
+  - checkout URL 为非空 string 时 `window.location.assign(checkoutUrl)`;
+  - 失败时写入 `errorTarget`(如配置)并 `console.error("stripeCheckout failed:", err)`。
+- GUI:
+  - Action kind 下拉新增 `Stripe checkout`。
+  - ActionRow 支持 endpoint、payload entries、error target。
+  - GUI inline validation 覆盖 endpoint、payload entries、error target。
+  - 面板提示 secret key 只能放作者自己的 server endpoint,不能放进 document。
+
+明确不做:
+
+- 不存储 Stripe secret / restricted key / webhook signing secret。
+- 不把 Stripe key 写进 `.fig`、ActionDef 或 generated SPA。
+- 不引入 Stripe JS SDK。
+- 不生成 Supabase Edge Function 或任意后端代码。
+- 不做 webhook、subscription lifecycle、customer portal、retry、idempotency 或
+  server-side signature verification。
+- 不加 `onSuccess` / `onError` 分支;v1 只负责 redirect 和可选 errorTarget。
+
+测试覆盖:
+
+- `tests/engine/compiler/stripe-checkout.test.ts`
+  - collect endpoint template、payload entries、error target;
+  - emit POST / JSON body / checkout URL redirect;
+  - missing endpoint warning;
+  - 生成代码不包含 Stripe secret 示例字符串。
+- `tests/engine/tools/lowcode/modify.test.ts`
+  - ToolDef 接受合法 `stripeCheckout`;
+  - 拒绝空 endpoint;
+  - 拒绝 malformed payload entries。
+- `tests/engine/app/lowcode/action-errors.test.ts`
+  - GUI validation 接受合法 endpoint template / payload;
+  - 报告 endpoint、payload、errorTarget 错误。
+- `tests/engine/kiwi/lowcode/roundtrip.test.ts`
+  - `stripeCheckout` event 经真实 `.fig` export / parse round-trip。
+
+手动 ACK 留到最后:
+
+- 用一个本地或真实 backend endpoint 返回 `{ "url": "https://checkout.stripe.com/..." }`
+  或 `{ "checkoutUrl": "..." }`,确认 generated app 点击按钮后跳转。
+- 用 4xx/5xx 或无 URL 响应确认 `errorTarget` 写入并且页面不假装成功。
+- 确认 backend endpoint 只读取公开业务参数(如 priceId / quantity),Stripe secret 只在
+  server env 中存在。
+
+### 12.4 2026-07-01 第二刀:Supabase Edge Function demo template
+
+本刀补一个可复制的 server-side 示例,对齐 onboarding demo 的 `/api/demo-checkout`
+endpoint,但仍不把后端生成纳入 compiler。
+
+已完成:
+
+- 新增 `packages/demos/lowcode/supabase/functions/demo-checkout/index.ts`:
+  - Supabase Edge Function / Deno style `Deno.serve`。
+  - 只从 environment 读取 `STRIPE_SECRET_KEY`、`PUBLIC_SITE_URL` 和
+    `STRIPE_PRICE_STARTER` / `STRIPE_PRICE_PRO` / `STRIPE_PRICE_ENTERPRISE`。
+  - 接收 generated app POST 的公开 `plan` / `email` payload。
+  - 调用 Stripe Checkout Sessions REST API。
+  - 返回 `{ url }`,与 `stripeCheckout` action 的 redirect contract 对齐。
+  - 包含 CORS preflight handling,方便本地/静态 host 调试。
+- `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖:
+  - 模板文件存在;
+  - 使用 env var 而非硬编码 secret;
+  - 调用 `checkout/sessions`;
+  - 返回 `{ url }`;
+  - 不包含 `sk_test` / `sk_live`。
+- `packages/docs/user-guide/lowcode-apps.md` 和
+  `packages/demos/lowcode/README.md` 说明模板路径和 env vars。
+
+明确不做:
+
+- 不自动部署 Supabase Edge Function。
+- 不生成用户项目后端目录。
+- 不实现 webhook、subscription lifecycle、customer portal 或 idempotency key 管理。
+- 不在 `.fig` / generated SPA 中保存任何 Stripe secret。
+
+### 12.5 2026-07-01 第三刀:Stripe customer portal action v1
+
+本刀补齐生成 SPA 能安全承担的 billing portal 前端触发动作:**请求作者自己的
+Customer Portal endpoint 并跳转**。它仍不创建 portal session、不查 customer、不持有
+Stripe secret;这些都留在 server endpoint。
+
+已完成:
+
+- SceneGraph 新增 `StripeCustomerPortalAction`:
+  - `kind:'stripeCustomerPortal'`
+  - `endpoint?: string`
+  - `payloadEntries?: { key:string; valueExpr:string }[]`
+  - `errorTarget?: string`
+- `update_lowcode_node` / workflow ToolDef 支持 `stripeCustomerPortal`:
+  - 与 `stripeCheckout` 共用 endpoint / payloadEntries / errorTarget 校验。
+  - warning code 使用 `action-stripe-customer-portal-*`,不复用 checkout 诊断码。
+- Compiler:
+  - IR collect 解析 endpoint template 和 payload entry expressions。
+  - collect 记录 docState/pageState reads,`errorTarget` 写入,并对 missing endpoint /
+    invalid payload / unknown identifier 给 portal-specific warning。
+  - workflow 参数 substitution 覆盖 endpoint 和 payload entry expressions。
+  - React emit 对 endpoint 发起 `POST` + JSON body。
+  - 成功读取 `data?.url ?? data?.portalUrl`,非空 string 时
+    `window.location.assign(portalUrl)`。
+  - 失败时写入 `errorTarget`(如配置)并
+    `console.error("stripeCustomerPortal failed:", err)`。
+- GUI:
+  - Action kind 下拉新增 `Stripe customer portal`。
+  - ActionRow 复用 Stripe endpoint、payload entries、error target 编辑器。
+  - GUI inline validation 覆盖 endpoint、payload entries、error target。
+- 测试:
+  - `tests/engine/compiler/stripe-customer-portal.test.ts`
+  - `tests/engine/tools/lowcode/modify.test.ts`
+  - `tests/engine/app/lowcode/action-errors.test.ts`
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts`
+
+明确不做:
+
+- 不在前端创建 portal session 或查找 Stripe customer。
+- 不做 webhook、subscription lifecycle、retry 或 idempotency key 管理。
+- 不存储 Stripe secret / restricted key / webhook signing secret。
+
+手动 ACK 留到最后:
+
+- 用一个本地或真实 backend endpoint 返回 `{ "url": "https://billing.stripe.com/..." }`
+  或 `{ "portalUrl": "https://billing.stripe.com/..." }`,确认 generated app 点击按钮后跳转。
+- 用 4xx/5xx 或无 URL 响应确认 `errorTarget` 写入并且页面不假装成功。
+- 确认 portal endpoint 在 server-side 完成当前用户认证、customer lookup 和 session
+  creation;`.fig` / generated SPA 中不出现任何 Stripe secret 或 customer private data。
+
+### 12.6 2026-07-01 第五刀:Customer Portal Edge Function demo template
+
+本刀补上 `stripeCustomerPortal` action 对应的 server-side 示例,但仍不把后端生成纳入
+compiler。模板演示创建 Stripe Customer Portal session 的安全边界,并通过 Supabase
+Auth + service role 查询 `billing_customers` 获取 server-side customer mapping。
+
+已完成:
+
+- 新增 `packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts`:
+  - Supabase Edge Function / Deno style `Deno.serve`。
+  - 只从 environment 读取 `STRIPE_SECRET_KEY`、`PUBLIC_SITE_URL`。
+  - 只从 environment 读取 `SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`。
+  - 可选读取 `STRIPE_PORTAL_CONFIGURATION`。
+  - 要求 `Authorization: Bearer ...`,缺失时返回 400。
+  - 调 Supabase Auth `/auth/v1/user` 验证调用者。
+  - 用 service role 调 `/rest/v1/billing_customers` 查询 `stripe_customer_id`。
+  - 不从浏览器请求体信任 `customerId`。
+  - 调用 Stripe `POST /v1/billing_portal/sessions`。
+  - 传入 `customer` 和 `return_url`。
+  - 返回 `{ url }`,与 `stripeCustomerPortal` action redirect contract 对齐。
+- Onboarding demo:
+  - `tools/lowcode/src/make/onboarding-demo.ts` 新增 `portalError` docState。
+  - 新增 `Open billing portal button`,其 onClick 包含:
+    - `stripeCustomerPortal` → endpoint `/api/demo-customer-portal`,
+      payload `{ returnPath:"/account" }`,`errorTarget:'portalError'`;
+    - `trackEvent` → `"billing_portal_open"`。
+  - 已重建 `packages/demos/lowcode/lowcode-onboarding-demo.fig`。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 portal action、compiled
+    `portalUrl` redirect、模板 env/auth/customer lookup 提示和无 hardcoded secret。
+- 文档:
+  - `packages/demos/lowcode/README.md` 说明 portal template 路径和生产 customer lookup 边界。
+  - `packages/docs/user-guide/lowcode-apps.md` 说明 demo-only portal template 和
+    `url/portalUrl` redirect contract。
+  - `CHANGELOG.md` 已更新。
+
+明确不做:
+
+- 不自动部署 Customer Portal Edge Function。
+- 不生成用户项目 DB schema 或 profile/customer mapping 表。
+- 不把 customer id mapping、Stripe secret 或 portal configuration 写进前端。
+
+### 12.7 2026-07-01 第四刀:Stripe webhook/subscription lifecycle demo template
+
+本刀补齐真实付费闭环的 server-side 入口:**接收 Stripe webhook、校验签名、路由 checkout
+和 subscription lifecycle 事件**。它不进入 compiler 自动生成,也不把任何 webhook secret /
+Stripe secret 写入 `.fig` 或 generated SPA。
+
+已完成:
+
+- 新增 `packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts`:
+  - Supabase Edge Function / Deno style `Deno.serve`。
+  - 只从 environment 读取 `STRIPE_WEBHOOK_SECRET`。
+  - 只从 environment 读取 `SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`。
+  - 读取 `Stripe-Signature` header。
+  - 使用 Web Crypto `HMAC SHA-256` 校验 `t.payload` 的 `v1` signature。
+  - 默认 5 分钟 timestamp tolerance。
+  - 将 Stripe event 写入 Supabase REST `/billing_events`,字段包含 `stripe_event_id`、
+    `event_type`、`object_id` 和完整 `payload`。
+  - `billing_events.stripe_event_id` 主键冲突/HTTP 409 会返回 `duplicate`,避免 Stripe retry
+    重复执行事件分支。
+  - 支持 `checkout.session.completed`。
+  - 支持 `customer.subscription.created` / `updated` / `deleted`。
+  - 未识别事件返回 `{ received:true, result:'ignored' }`,保持 webhook retry 友好。
+  - 签名失败、缺少 event id、无效 JSON 等返回 400。
+  - 注释明确生产扩展 orders/subscriptions 表更新时应优先用数据库 RPC/事务把 event insert
+    和业务更新包起来。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 确认模板存在、读取 env secret、
+    校验 `Stripe-Signature`、覆盖 checkout/subscription 事件、写入 `billing_events`、
+    用 HTTP 409 识别 duplicate,且不包含 `sk_test` / `sk_live` / webhook secret 示例字符串。
+- 文档:
+  - `packages/demos/lowcode/README.md` 说明 webhook template 路径和 Stripe dashboard 注册。
+  - `packages/docs/user-guide/lowcode-apps.md` 说明 webhook template 使用 `billing_events`
+    durable idempotency,生产扩展 subscription/order updates 时应保持事务语义。
+  - `CHANGELOG.md` 已更新。
+
+明确不做:
+
+- 不自动部署 webhook endpoint。
+- 不生成用户项目 DB schema。
+- 不处理真实订单/订阅表更新;模板只记录 webhook event 并给出扩展事务边界。
+- 不把 `STRIPE_WEBHOOK_SECRET` / `STRIPE_SECRET_KEY` 写进前端或文档 fixture。
+
+手动 ACK 留到最后:
+
+- 用 Stripe CLI 或 dashboard test webhook 命中部署后的 endpoint。
+- 确认合法签名返回 200,错误签名返回 400。
+- 确认 `checkout.session.completed` 和 `customer.subscription.*` 事件被路由到预期分支。
+- 确认重复发送同一个 Stripe event id 时返回 `duplicate`,且 `billing_events` 只保留一条记录。
+- 如果在生产里扩展订单/订阅表更新,确认 event 记录和业务更新通过 RPC/事务保持一致。
+
+### 12.8 2026-07-01 第六刀:Durable billing schema template
+
+本刀把 webhook/customer portal 模板中的“生产需持久化”从文字提醒补成可复制的
+Supabase SQL 起点。它仍不自动部署、不写入 generated SPA、不保存任何 Stripe secret。
+
+已完成:
+
+- 新增 `packages/demos/lowcode/supabase/schema/billing.sql`:
+  - `billing_customers`
+    - `user_id uuid primary key references auth.users(id)`
+    - `stripe_customer_id text not null unique`
+    - client-side authenticated 用户只能 select 自己的映射。
+  - `billing_subscriptions`
+    - `stripe_subscription_id text primary key`
+    - `user_id`
+    - `stripe_customer_id`
+    - `status`
+    - `current_period_end`
+    - `cancel_at_period_end`
+    - `plan`
+    - `metadata`
+    - client-side authenticated 用户只能 select 自己的订阅。
+  - `billing_events`
+    - `stripe_event_id text primary key`,作为 webhook durable idempotency guard。
+    - `event_type`
+    - `object_id`
+    - `processed_at`
+    - `payload`
+    - 不创建 client-facing policy;只给 server-side webhook/service role 写入。
+  - 基础索引和 RLS 开启。
+- 模板引用:
+  - `demo-stripe-webhook/index.ts` 的 production note 指向
+    `supabase/schema/billing.sql`。
+  - `demo-customer-portal/index.ts` 的 customer mapping note 指向
+    `supabase/schema/billing.sql`。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 SQL 文件存在、三张表、
+    event id primary key、RLS policies、service role 提示,且不包含 `sk_test` /
+    `sk_live` / `whsec_`。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 schema 路径和用途。
+
+明确不做:
+
+- 不自动 apply SQL。
+- 不生成用户项目 migration。
+- 不承诺完整 SaaS 账务模型;这里只是 customer/subscription/event 起点。
+- 不把 service role key 或 Stripe secret 写入任何前端文件。
+
+### 12.9 2026-07-01 第七刀:Subscription webhook RPC transaction template
+
+本刀把上一刀的“生产扩展 orders/subscriptions 表更新时应优先用数据库 RPC/事务”补成可复制
+的最小 RPC 起点。它仍不生成完整 SaaS 账务系统,只覆盖 Stripe subscription lifecycle 的
+event + subscription upsert 事务。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增
+  `public.record_stripe_subscription_event(...)`:
+  - `security definer` + `set search_path = public`。
+  - 先检查 `billing_events.stripe_event_id`,重复 event 返回 `duplicate`。
+  - 要求 `billing_customers` 已有 `stripe_customer_id -> user_id` 映射,否则抛错让 webhook
+    retry/报警,避免把未知 customer 写成孤儿 subscription。
+  - 在同一函数事务中插入 `billing_events`,并 upsert `billing_subscriptions`。
+  - `billing_subscriptions` 冲突时更新 `status`、`current_period_end`、
+    `cancel_at_period_end`、`plan`、`metadata` 和 `updated_at`。
+  - `revoke all` from `public` / `anon` / `authenticated`,预期只由 service-role Edge
+    Function 调用。
+- `demo-stripe-webhook/index.ts` 更新:
+  - `checkout.session.completed` 和 ignored events 继续走普通 `billing_events` insert。
+  - `customer.subscription.created` / `updated` / `deleted` 改为调用
+    `/rest/v1/rpc/record_stripe_subscription_event`。
+  - RPC 返回 `duplicate` 时直接返回 webhook result `duplicate`,不重复执行事件分支。
+  - Stripe `current_period_end` 从 unix seconds 转 ISO timestamptz 参数。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 webhook RPC endpoint、subscription
+    参数映射、schema RPC、`security definer`、subscription upsert、duplicate/recorded 返回和
+    function 权限 revoke。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 schema 已包含 subscription RPC 起点。
+
+明确不做:
+
+- 不创建 `billing_customers` 映射;checkout/customer 创建逻辑仍由作者后端按产品流程处理。
+- 不建 orders/invoices/payments/entitlements 表。
+- 不自动部署 Edge Function 或自动 apply SQL。
+- 不把 service role key 或 Stripe secret 写入前端、`.fig` 或 generated source。
+
+### 12.10 2026-07-01 第八刀:Checkout customer mapping template
+
+本刀补上 subscription RPC 所依赖的 customer mapping 起点:**checkout Edge Function 在登录用户
+场景下创建/复用 Stripe Customer,并写入 `billing_customers`**。匿名 demo 调用仍保留原来的
+`customer_email` fallback,方便本地演示。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/functions/demo-checkout/index.ts` 更新:
+  - 可选读取 `Authorization: Bearer ...`。
+  - 有 bearer token 时,用 `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` 调 Supabase Auth
+    `/auth/v1/user` 验证当前用户。
+  - 查询 `/rest/v1/billing_customers` 复用既有 `stripe_customer_id`。
+  - 无映射时调用 Stripe `POST /v1/customers` 创建 customer。
+  - 用 service role upsert `billing_customers?on_conflict=user_id`,保存
+    `user_id`、`stripe_customer_id` 和 email。
+  - 创建 Checkout Session 时,登录用户传 `customer`;匿名 demo fallback 仍传
+    `customer_email`。
+  - 新增 `STRIPE_CHECKOUT_MODE=payment|subscription`,默认 `subscription`,用于和
+    subscription webhook / portal / `billing_subscriptions` demo 闭环对齐;一次性付款可显式切回
+    `payment`。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 checkout template 的 Supabase env、
+    Auth 验证、customer lookup、Stripe customer creation、`billing_customers` upsert、
+    checkout `customer` / `customer_email` 分支和 checkout mode override。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 authenticated checkout customer mapping。
+
+明确不做:
+
+- 不要求 generated demo 必须登录;无 bearer token 时仍允许匿名 email checkout。
+- 不自动创建 orders、invoices 或 payments 表。
+- 不把 service role key、Stripe secret 或 Stripe customer id 写入 `.fig` / generated SPA。
+
+### 12.11 2026-07-01 第九刀:Billing entitlement read model template
+
+本刀补一个 generated app 可直接查询的最小 entitlement read model,让付费闭环从
+checkout/customer mapping → subscription webhook → app-readable entitlement 更完整。它仍只是 demo
+schema 起点,不是完整套餐权限系统。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_entitlements`:
+  - `user_id uuid primary key references auth.users(id)`。
+  - `active boolean not null default false`。
+  - `plan`、`status`、`stripe_subscription_id`、`current_period_end`、`metadata`、`updated_at`。
+  - `billing_entitlements_active_idx` 方便后台筛选 active entitlement。
+  - RLS enabled,authenticated 用户只能 select 自己的 entitlement。
+- `record_stripe_subscription_event(...)` 更新:
+  - 在同一 service-role RPC 事务里,继 `billing_events` insert 和 `billing_subscriptions` upsert
+    后继续 upsert `billing_entitlements`。
+  - `status in ('active','trialing')` 时 entitlement `active=true`,其它状态为 false。
+  - `plan`、`status`、`stripe_subscription_id`、`current_period_end`、`metadata` 跟随最新
+    subscription event 刷新。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 entitlement table、active default、
+    RPC entitlement insert、active/trialing 判断、user_id upsert 和 RLS select-own policy。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 schema 已包含 app-readable entitlement 起点。
+
+明确不做:
+
+- 不定义多 entitlement / feature flag / usage quota 模型。
+- 不自动把 generated app 页面绑定到 `billing_entitlements`;作者仍需按产品页面选择 Supabase query。
+- 不创建 orders/payments/refunds 表。
+
+### 12.12 2026-07-01 第十刀:Billing invoice read model template
+
+本刀补一个最小 invoice/payment read model,让 Stripe invoice webhook 能落到 Supabase,供 generated
+app 或后台页面查询账单历史。它仍不处理税务、退款、usage-based billing 或完整订单模型。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_invoices`:
+  - `stripe_invoice_id text primary key`。
+  - `user_id`、`stripe_customer_id`、`stripe_subscription_id`。
+  - `status`、`paid`、`amount_due`、`amount_paid`、`currency`。
+  - `hosted_invoice_url`、`invoice_pdf`、`period_start`、`period_end`、`metadata`、`updated_at`。
+  - `billing_invoices_user_id_idx` 和 `billing_invoices_customer_idx`。
+  - RLS enabled,authenticated 用户只能 select 自己的 invoices。
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增
+  `public.record_stripe_invoice_event(...)`:
+  - `security definer` + `set search_path = public`。
+  - 先检查 `billing_events.stripe_event_id`,重复 event 返回 `duplicate`。
+  - 要求 `billing_customers` 已有 `stripe_customer_id -> user_id` 映射。
+  - 同一事务中插入 `billing_events` 并 upsert `billing_invoices`。
+  - `revoke all` from `public` / `anon` / `authenticated`,预期只由 service-role Edge Function
+    调用。
+- `demo-stripe-webhook/index.ts` 更新:
+  - 支持 `invoice.paid` 和 `invoice.payment_failed`。
+  - 调用 `/rest/v1/rpc/record_stripe_invoice_event`。
+  - 记录 `amount_due` / `amount_paid` / `currency` / hosted invoice URL / invoice PDF /
+    billing period 等 read-model 字段。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 invoice webhook event、RPC endpoint、
+    invoice 参数映射、schema table、RPC、upsert 和 RLS policy。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 invoice read model 起点。
+
+明确不做:
+
+- 不创建 orders/tax/usage records 表。
+- 不自动把 generated app 页面绑定到 `billing_invoices`;作者仍需按产品页面选择 Supabase query。
+- 不处理 Stripe invoice 全量字段;只保留 demo/read-model 所需最小字段。
+
+### 12.13 2026-07-01 第十一刀:Billing payment/refund read model template
+
+本刀补 payment/refund read model,让 Stripe payment intent 和 charge refund webhook 能落到
+Supabase,供 generated app 或后台页面查询付款/退款历史。它仍不做争议、税务、usage-based billing
+或完整订单状态机。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_payments`:
+  - `stripe_payment_intent_id text primary key`。
+  - `user_id`、`stripe_customer_id`、`status`、`amount`、`currency`。
+  - `latest_charge_id`、`receipt_email`、`metadata`、`updated_at`。
+  - `billing_payments_user_id_idx` / `billing_payments_customer_idx`。
+  - RLS enabled,authenticated 用户只能 select 自己的 payments。
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_refunds`:
+  - `stripe_charge_id text primary key`。
+  - `user_id`、`stripe_customer_id`、`stripe_payment_intent_id`。
+  - `refunded`、`amount`、`amount_refunded`、`currency`、`receipt_url`、`metadata`、`updated_at`。
+  - `billing_refunds_user_id_idx` / `billing_refunds_customer_idx`。
+  - RLS enabled,authenticated 用户只能 select 自己的 refunds。
+- 新增 `public.record_stripe_payment_event(...)` 和 `public.record_stripe_refund_event(...)`:
+  - `security definer` + `set search_path = public`。
+  - 先检查 `billing_events.stripe_event_id`,重复 event 返回 `duplicate`。
+  - 要求 `billing_customers` 已有 `stripe_customer_id -> user_id` 映射。
+  - 同一事务中插入 `billing_events` 并 upsert 对应 read-model 表。
+  - `revoke all` from `public` / `anon` / `authenticated`,预期只由 service-role Edge Function
+    调用。
+- `demo-stripe-webhook/index.ts` 更新:
+  - 支持 `payment_intent.succeeded` / `payment_intent.payment_failed`。
+  - 支持 `charge.refunded`。
+  - 调用 `/rest/v1/rpc/record_stripe_payment_event` 和
+    `/rest/v1/rpc/record_stripe_refund_event`。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 payment/refund webhook events、
+    RPC endpoints、参数映射、schema tables、RPCs、upsert 和 RLS policies。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 payment/refund read model 起点。
+
+明确不做:
+
+- 不创建 tax/disputes/usage records 表。
+- 不自动把 generated app 页面绑定到 `billing_payments` / `billing_refunds`;作者仍需按产品页面选择
+  Supabase query。
+- 不处理 Stripe PaymentIntent/Charge 全量字段;只保留 demo/read-model 所需最小字段。
+
+### 12.14 2026-07-01 第十二刀:Billing orders read model template
+
+本刀补一个最小 order read model,把 invoice/payment/refund 事件汇总到 `billing_orders`,方便
+generated app 或后台页面按用户查询订单视角。它仍不做发货、税务、争议、usage 或复杂订单状态机。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_orders`:
+  - `order_key text primary key`,由 `invoice:<id>` / `payment:<id>` / `charge:<id>` 组成。
+  - `user_id`、`stripe_customer_id`、`stripe_subscription_id`、`stripe_invoice_id`、
+    `stripe_payment_intent_id`、`stripe_charge_id`。
+  - `status`、`fulfillment_status`、`amount_total`、`amount_paid`、`amount_refunded`、
+    `currency`、`plan`、`metadata`、`updated_at`。
+  - `billing_orders_user_id_idx` / `billing_orders_customer_idx`。
+  - RLS enabled,authenticated 用户只能 select 自己的 orders。
+- `record_stripe_invoice_event(...)` 更新:
+  - upsert `billing_invoices` 后,同步 upsert `billing_orders` 的 `invoice:<invoice_id>` row。
+- `record_stripe_payment_event(...)` 更新:
+  - upsert `billing_payments` 后,同步 upsert `billing_orders` 的
+    `payment:<payment_intent_id>` row。
+- `record_stripe_refund_event(...)` 更新:
+  - upsert `billing_refunds` 后,优先更新 `payment:<payment_intent_id>` order row;缺少 payment
+    intent 时 fallback 到 `charge:<charge_id>`。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 `billing_orders` table、order keys、
+    invoice/payment/refund RPC 写入、`on conflict (order_key)` upsert 和 RLS policy。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 order read model 起点。
+
+明确不做:
+
+- 不实现发货、履约工作流、税务、争议、usage records 或完整订单状态机。
+- 不自动把 generated app 页面绑定到 `billing_orders`;作者仍需按产品页面选择 Supabase query。
+- 不把 `billing_orders` 作为真实账务总账;它只是 demo/read-model 汇总视图。
+
+### 12.15 2026-07-01 第十三刀:Stripe webhook out-of-order read-model hardening
+
+本刀修补真实 Stripe 环境里的一个顺序假设:Stripe webhook 不保证事件按 subscription →
+invoice → payment → refund 顺序送达。读模型应该能先记录自己收到的事件,再由后续事件补齐
+关联视图,而不是因为跨事件外键缺失直接失败。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 顶部补充 webhook 乱序说明。
+- `billing_invoices.stripe_subscription_id` 改为普通 `text`,不再引用
+  `billing_subscriptions(stripe_subscription_id)`。
+- `billing_refunds.stripe_payment_intent_id` 改为普通 `text`,不再引用
+  `billing_payments(stripe_payment_intent_id)`。
+- `billing_orders` 已经使用普通 Stripe id 文本字段,保持不变。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖乱序注释,并断言 invoice/refund
+    表片段不会重新引入对应跨事件 foreign key。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 schema 有意让跨事件 read-model id
+    tolerant to out-of-order delivery。
+
+明确不做:
+
+- 不取消 `billing_customers` 映射约束;webhook 仍需要先能把 Stripe customer 映射回 Supabase user。
+- 不实现异步 backfill job;后续事件到达时由现有 RPC/upsert 刷新对应 read model。
+- 不把 demo schema 升级成完整账务 ledger。
+
+### 12.16 2026-07-01 第十四刀:Billing dispute read model template
+
+本刀补 Stripe dispute/read-model 起点,让拒付/争议事件进入 Supabase 可查询状态。它只记录
+dispute 状态、金额、原因和 evidence due date,不实现证据提交、申诉工作流或完整风控后台。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_disputes`:
+  - `stripe_dispute_id text primary key`。
+  - `user_id`、`stripe_customer_id`、`stripe_charge_id`、`stripe_payment_intent_id`。
+  - `status`、`reason`、`amount`、`currency`、`disputed_at`、`evidence_due_by`、
+    `metadata`、`updated_at`。
+  - `billing_disputes_user_id_idx` / `billing_disputes_customer_idx` /
+    `billing_disputes_status_idx`。
+  - RLS enabled,authenticated 用户只能 select 自己的 disputes。
+- 新增 `public.record_stripe_dispute_event(...)`:
+  - 同一事务中插入 `billing_events` 并 upsert `billing_disputes`。
+  - 尝试从 `billing_orders`、`billing_refunds`、`billing_payments` 反查 `user_id` /
+    `stripe_customer_id`。
+  - 如果 dispute 先于本地 charge/payment/order 映射到达,仍记录 dispute row;用户侧 RLS
+    会等后续映射/自定义 backfill 后才可见。
+- `packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts` 更新:
+  - 支持 `charge.dispute.created`、`charge.dispute.updated`、`charge.dispute.closed`。
+  - 调用 `/rest/v1/rpc/record_stripe_dispute_event`。
+  - 记录 dispute id、charge id、payment intent id、status、reason、amount、currency、
+    created time 和 evidence due date。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 dispute webhook events、RPC
+    endpoint、参数映射、schema table、RPC、upsert 和 RLS policy。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 dispute read model 起点。
+
+明确不做:
+
+- 不提交 dispute evidence,不调用 Stripe dispute update/close API。
+- 不实现风控、通知、发货暂停或内部工单状态机。
+- 不自动把 generated app 页面绑定到 `billing_disputes`;作者仍需按产品页面选择 Supabase query。
+
+### 12.17 2026-07-01 第十五刀:Billing tax summary read model template
+
+本刀补最小 tax summary read model,让 Stripe invoice webhook 中的 automatic tax 和
+`total_taxes` 聚合进入 Supabase。它服务于订单/发票详情展示和后续报表起点,不做税务申报、
+jurisdiction 归集或税务供应商结算。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_tax_summaries`:
+  - `stripe_invoice_id text primary key`,并引用 `billing_invoices(stripe_invoice_id)`。
+  - `user_id`、`stripe_customer_id`。
+  - `automatic_tax_enabled`、`automatic_tax_status`、`automatic_tax_provider`。
+  - `tax_amount`、`currency`、`total_taxes jsonb`、`updated_at`。
+  - `billing_tax_summaries_user_id_idx` / `billing_tax_summaries_customer_idx`。
+  - RLS enabled,authenticated 用户只能 select 自己的 tax summary rows。
+- `record_stripe_invoice_event(...)` 更新:
+  - 在 upsert `billing_invoices` 后,同一事务 upsert `billing_tax_summaries`。
+  - 保留 Stripe invoice `total_taxes` 原始 JSON,并额外存 `tax_amount` 便于列表查询。
+- `packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts` 更新:
+  - `Invoice` 接口覆盖 `automatic_tax` 和 `total_taxes`。
+  - `sumInvoiceTaxAmount()` 从 `total_taxes[].amount` 计算 tax summary amount。
+  - invoice RPC payload 传递 automatic tax 状态、provider、tax amount 和 `total_taxes`。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 invoice tax 参数映射、tax summary
+    table、RPC 写入和 RLS policy。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 tax summary read model 起点。
+
+明确不做:
+
+- 不实现税务申报、税区报表、税务供应商 settlement 或会计总账。
+- 不展开 `total_taxes` 为逐 jurisdiction 行;需要时可基于保留的 JSON 后续派生。
+- 不自动把 generated app 页面绑定到 `billing_tax_summaries`;作者仍需按产品页面选择 Supabase
+  query。
+
+### 12.18 2026-07-01 第十六刀:Billing usage summary read model template
+
+本刀补 invoice line 级 usage summary read model,把 Stripe invoice webhook 中随 invoice 一起返回的
+line item 用量/数量快照落到 Supabase。它用于账单详情和用量账单可视化起点,不做 Meter Events
+上报、实时计量或 Stripe usage record 写入。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/schema/billing.sql` 新增 `billing_usage_summaries`:
+  - `stripe_invoice_line_id text primary key`。
+  - `stripe_invoice_id` 引用 `billing_invoices(stripe_invoice_id)`。
+  - `user_id`、`stripe_customer_id`、`stripe_subscription_id`、`stripe_subscription_item_id`。
+  - `stripe_price_id`、`stripe_product_id`、`quantity_decimal`、`amount`、`currency`。
+  - `period_start`、`period_end`、`description`、`metadata`、`raw_line`、`updated_at`。
+  - `billing_usage_summaries_user_id_idx` / `billing_usage_summaries_customer_idx` /
+    `billing_usage_summaries_invoice_idx`。
+  - RLS enabled,authenticated 用户只能 select 自己的 usage rows。
+- `record_stripe_invoice_event(...)` 更新:
+  - 新增 `p_usage_lines jsonb` 参数。
+  - 在 upsert `billing_tax_summaries` 后,同一事务从 `jsonb_array_elements(p_usage_lines)`
+    upsert `billing_usage_summaries`。
+- `packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts` 更新:
+  - `Invoice` 接口覆盖 `lines.data`。
+  - 新增 `InvoiceLineItem` 和 `invoiceUsageLines()`。
+  - usage payload 保留 line id、subscription item、price/product、quantity decimal、period、
+    amount/currency、metadata 和 raw line。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 invoice usage 参数映射、usage
+    summary table、RPC 写入和 RLS policy。
+- 文档:
+  - `packages/demos/lowcode/README.md` 和
+    `packages/docs/user-guide/lowcode-apps.md` 说明 usage summary read model 起点。
+
+明确不做:
+
+- 不调用 Stripe Meter Events / Usage Records API。
+- 不在 demo webhook 里自动分页拉取完整 invoice lines;生产 invoice 可能超过 webhook payload
+  内置 line 快照时,需要在 server-side endpoint 里补拉 Stripe invoice lines 后再视为完整。
+- 不实现实时计量、配额扣减、用量告警或账单预测。
+- 不自动把 generated app 页面绑定到 `billing_usage_summaries`;作者仍需按产品页面选择 Supabase
+  query。
+
+### 12.19 2026-07-01 第十七刀:Phase 5 operator ACK checklist
+
+本刀把前面分散在 Analytics、Custom Head/CSS、Onboarding demo、Stripe paid actions 和 billing
+webhook 小节里的手动验证,整理成一张上线前 operator checklist。它不新增 runtime/schema 能力,
+但把需要真实账号、真实部署或人工观察的验证集中到可执行顺序里。
+
+已完成:
+
+- `docs/lowcode-gui-ack-test.md` 新增 `Phase 5 Operator ACK`:
+  - Preflight 覆盖 git 状态、schema apply、Edge Function 部署和 server env keep-out。
+  - Analytics 覆盖真实 provider script、dashboard 入账、consent gate 和 DNT。
+  - Custom Head/CSS 覆盖 deployed HTML/CSS、CSP/report-only header 和 console 结果。
+  - Onboarding demo 覆盖 desktop app 打开、validation、Supabase query、workflow、i18n、
+    shadcn/ui、analytics consent copy 和 secret absence。
+  - Stripe paid actions 覆盖 checkout/customer portal 匿名与登录路径、server-side customer
+    mapping、错误写入 state target。
+  - Stripe webhook 覆盖 checkout、subscription、invoice、tax summary、usage summary、
+    payment、refund、dispute、out-of-order delivery、duplicate idempotency、bad signature 和
+    RLS。
+  - Operator pass/fail criteria 明确只记录安全事实,不记录 secret/customer private data。
+- Closeout 小节同步要求把 operator ACK 结果写回 Phase 5 doc / changelog / prompt。
+
+明确不做:
+
+- 不执行真实 provider ACK;真实账号、真实 Stripe/Supabase project 和部署 URL 留给用户最后测试。
+- 不把 secret/token 写进仓库或 handoff。
+- 不把 operator checklist 变成自动化脚本;它是最后人工/真实服务验证入口。
+
+### 12.20 2026-07-01 第十八刀:Phase 5 pre-stage audit
+
+本刀不新增 runtime 能力,而是把当前 Phase 5 §10/§11/§12 大批量变更收束到可提交状态前的
+自动审计。目标是确认文档声称的 demo/template/schema/test 文件在工作树里真实存在,并把
+最后需要用户真实账号验证的项目留在 operator ACK。
+
+已完成:
+
+- 使用 `gpt-5.3-codex-spark` 子代理做只读收口审计;旧子代理线程已回收后重新派发,主线程未
+  把阻塞性实现委托出去。
+- 核对当前工作树存在:
+  - `packages/demos/lowcode/lowcode-onboarding-demo.fig`
+  - `packages/demos/lowcode/supabase/functions/demo-checkout/index.ts`
+  - `packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts`
+  - `packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts`
+  - `packages/demos/lowcode/supabase/schema/billing.sql`
+  - `tests/engine/app/lowcode/action-errors.test.ts`
+  - `tests/engine/app/lowcode/custom-code-panel.test.ts`
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts`
+  - `tests/engine/compiler/analytics.test.ts`
+  - `tests/engine/compiler/stripe-checkout.test.ts`
+  - `tests/engine/compiler/stripe-customer-portal.test.ts`
+- 重新跑 focused gate:
+  - `bun test tests/engine/app/lowcode/onboarding-demo.test.ts`
+  - `bun test tests/engine/compiler/stripe-checkout.test.ts tests/engine/compiler/stripe-customer-portal.test.ts tests/engine/compiler/analytics.test.ts tests/engine/app/lowcode/action-errors.test.ts tests/engine/app/lowcode/custom-code-panel.test.ts`
+  - `bun test tests/engine/kiwi/lowcode/roundtrip.test.ts tests/engine/tools/lowcode/modify.test.ts tests/engine/tools/lowcode/read.test.ts tests/engine/compiler/seo-metadata.test.ts`
+- 重新跑收口 hygiene:
+  - `git diff --check`
+  - `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- 当前最稳的下一步不是继续扩大功能面,而是 operator ACK 或显式 stage/review 当前 diff。
+
+提交前 keep-out:
+
+- 不提交 `.codegraph/`。
+- 不提交 `prompt.md`。
+- 不用 `git add -A`;按文件显式 stage 当前 Phase 5 相关路径。
+
+明确不做:
+
+- 不执行真实 provider/Stripe/Supabase ACK。
+- 不把 inline JS / external JS escape hatch 提前并入当前批次。
+- 不把 Analytics IAB TCF、多分类 policy 或更复杂 preference center 混进当前收口。
 
 ---
 

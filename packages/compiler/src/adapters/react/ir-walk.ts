@@ -206,6 +206,12 @@ export function pageUsesConfirm(ir: IRTree): boolean {
   return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'confirm')))
 }
 
+/** Phase 5 §10: a page uses analytics when any event chain contains
+ *  `trackEvent`, including nested condition/confirm branches. */
+export function pageUsesAnalytics(ir: IRTree): boolean {
+  return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'trackEvent')))
+}
+
 /** The nested handler chains of a branch-carrying handler (`condition` /
  *  `confirm`), or null for leaf handlers — lets predicates descend both
  *  branch kinds uniformly. */

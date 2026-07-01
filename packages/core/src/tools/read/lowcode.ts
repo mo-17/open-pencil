@@ -15,9 +15,11 @@
 import type { FigmaAPI } from '#core/figma-api'
 import type {
   ActionDef,
+  AnalyticsConfig,
   BindingExpr,
   DocumentStateDef,
   EventName,
+  LowcodeHeadMetadata,
   LayoutMode,
   LowcodeTranslations,
   SeoMetadata,
@@ -71,6 +73,12 @@ export interface LowcodeNodeRead {
   /** Root defaults or page override: static HTML SEO metadata used by the
    *  compiler when CompilerOptions.metadata does not override it. */
   lowcodeSeoMetadata?: SeoMetadata
+  /** Root-only: analytics provider config for generated lowcode output. */
+  lowcodeAnalyticsConfig?: AnalyticsConfig
+  /** Root-only: controlled custom head metadata for generated lowcode output. */
+  lowcodeHeadMetadata?: LowcodeHeadMetadata
+  /** Root-only: custom CSS appended to generated `src/index.css`. */
+  lowcodeCustomCss?: string
   /** Root-only: document-level translation catalog (Phase 3 §9 v7). Always
    *  undefined on non-root nodes; use `readTranslations` for the canonical
    *  access. */
@@ -97,6 +105,9 @@ function buildLowcodeRead(node: {
   lowcodeDocumentState?: DocumentStateDef[]
   lowcodeSupabaseConfig?: SupabaseConfig
   lowcodeSeoMetadata?: SeoMetadata
+  lowcodeAnalyticsConfig?: AnalyticsConfig
+  lowcodeHeadMetadata?: LowcodeHeadMetadata
+  lowcodeCustomCss?: string
   lowcodeTranslations?: LowcodeTranslations
   lowcodeWorkflows?: WorkflowDef[]
 }): LowcodeNodeRead {
@@ -116,6 +127,10 @@ function buildLowcodeRead(node: {
   if (node.lowcodeSupabaseConfig !== undefined)
     out.lowcodeSupabaseConfig = node.lowcodeSupabaseConfig
   if (node.lowcodeSeoMetadata !== undefined) out.lowcodeSeoMetadata = node.lowcodeSeoMetadata
+  if (node.lowcodeAnalyticsConfig !== undefined)
+    out.lowcodeAnalyticsConfig = node.lowcodeAnalyticsConfig
+  if (node.lowcodeHeadMetadata !== undefined) out.lowcodeHeadMetadata = node.lowcodeHeadMetadata
+  if (node.lowcodeCustomCss !== undefined) out.lowcodeCustomCss = node.lowcodeCustomCss
   if (node.lowcodeTranslations !== undefined) out.lowcodeTranslations = node.lowcodeTranslations
   if (node.lowcodeWorkflows !== undefined) out.lowcodeWorkflows = node.lowcodeWorkflows
   return out

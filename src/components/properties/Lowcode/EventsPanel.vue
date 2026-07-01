@@ -58,6 +58,11 @@ const docWorkflows = useSceneComputed<WorkflowDef[]>(() => {
   return root?.lowcodeWorkflows ?? []
 })
 
+const analyticsConfigured = useSceneComputed<boolean>(() => {
+  const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
+  return config?.enabled !== false && !!config?.id?.trim()
+})
+
 const actions = useSceneComputed<ActionDef[]>(() => {
   const node = selectedNode.value
   const name = eventName.value
@@ -100,6 +105,7 @@ function commitActions(next: ActionDef[]): void {
       :page-states="pageStates"
       :doc-states="docStates"
       :workflows="docWorkflows"
+      :analytics-configured="analyticsConfigured"
       add-test-id="lowcode-action-add"
       @update:actions="commitActions"
     />

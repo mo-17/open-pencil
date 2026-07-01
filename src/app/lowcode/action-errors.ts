@@ -30,10 +30,12 @@ export interface ActionErrors {
   to?: string
   url?: string
   body?: string
+  endpoint?: string
   table?: string
   payload?: string
   filters?: Map<number, string>
   entries?: Map<number, PayloadEntryError>
+  properties?: Map<number, PayloadEntryError>
   payloadSourceConflict?: boolean
   email?: string
   password?: string
@@ -184,6 +186,21 @@ function supabaseMutationErrors(
   return e
 }
 
+function stripeRedirectErrors(
+  action: Extract<ActionDef, { kind: 'stripeCheckout' | 'stripeCustomerPortal' }>,
+  ctx: ActionValidationCtx
+): ActionErrors {
+  const e: ActionErrors = {}
+  const endpoint = validateUrlTemplate(action.endpoint ?? '')
+  if (!endpoint.ok) e.endpoint = endpoint.reason
+  if (action.errorTarget && !ctx.validDocStateNames.has(action.errorTarget)) {
+    e.target = 'error target no longer exists'
+  }
+  const entries = payloadEntryErrors(action.payloadEntries)
+  if (entries) e.entries = entries
+  return e
+}
+
 function supabaseAuthErrors(
   action: Extract<ActionDef, { kind: 'supabaseAuth' }>,
   ctx: ActionValidationCtx
@@ -203,7 +220,7 @@ function supabaseAuthErrors(
 }
 
 function flatWorkflowErrors(
-  action: Extract<ActionDef, { kind: 'toast' | 'clipboard' | 'delay' }>
+  action: Extract<ActionDef, { kind: 'toast' | 'clipboard' | 'trackEvent' | 'delay' }>
 ): ActionErrors {
   if (action.kind === 'toast') {
     const r = validateExpression(action.messageExpr ?? '')
@@ -212,6 +229,18 @@ function flatWorkflowErrors(
   if (action.kind === 'clipboard') {
     const r = validateExpression(action.valueExpr ?? '')
     return r.ok ? {} : { expr: r.reason ?? 'invalid expression' }
+  }
+  if (action.kind === 'trackEvent') {
+    const r = validateExpression(action.eventNameExpr ?? '')
+    const e: ActionErrors = r.ok ? {} : { expr: r.reason ?? 'invalid expression' }
+    const properties = payloadEntryErrors(
+      Object.entries(action.properties ?? {}).map(([key, valueExpr]) => ({
+        key,
+        valueExpr
+      }))
+    )
+    if (properties) e.properties = properties
+    return e
   }
   const ms = action.ms
   return ms === undefined || (Number.isFinite(ms) && ms >= 0) ? {} : { ms: 'must be ≥ 0' }
@@ -272,7 +301,15 @@ export function computeActionErrors(action: ActionDef, ctx: ActionValidationCtx)
   if (action.kind === 'supabaseQuery') return supabaseQueryErrors(action, ctx)
   if (action.kind === 'supabaseMutation') return supabaseMutationErrors(action)
   if (action.kind === 'supabaseAuth') return supabaseAuthErrors(action, ctx)
-  if (action.kind === 'toast' || action.kind === 'clipboard' || action.kind === 'delay') {
+  if (action.kind === 'stripeCheckout' || action.kind === 'stripeCustomerPortal') {
+    return stripeRedirectErrors(action, ctx)
+  }
+  if (
+    action.kind === 'toast' ||
+    action.kind === 'clipboard' ||
+    action.kind === 'trackEvent' ||
+    action.kind === 'delay'
+  ) {
     return flatWorkflowErrors(action)
   }
   if (action.kind === 'condition' || action.kind === 'confirm') return controlFlowErrors(action)

@@ -4,7 +4,12 @@ import {
   substituteIdents
 } from '@open-pencil/core/lowcode-validation'
 
-import type { IREventHandler } from '../types'
+import type {
+  IRStripeCheckoutHandler,
+  IRStripeCustomerPortalHandler,
+  IRTrackEventHandler,
+  IREventHandler
+} from '../types'
 
 /** Phase 3 §10 v6: recompute the `references` list of a handler whose AST(s)
  *  have just been substituted. Unions the identifier references across every
@@ -36,6 +41,11 @@ export function substituteHandler(
   handler: IREventHandler,
   bindings: ReadonlyMap<string, ExprAst>
 ): IREventHandler {
+  if (isSimpleAstHandler(handler)) return substituteSimpleAstHandler(handler, bindings)
+  if (handler.kind === 'trackEvent') return substituteTrackEventHandler(handler, bindings)
+  if (handler.kind === 'stripeCheckout' || handler.kind === 'stripeCustomerPortal') {
+    return substituteStripeRedirectHandler(handler, bindings)
+  }
   switch (handler.kind) {
     case 'delay':
     case 'stop':
@@ -46,13 +56,6 @@ export function substituteHandler(
       return handler.params
         ? { ...handler, params: handler.params.map((p) => substituteFilter(p, bindings)) }
         : handler
-    case 'setState':
-    case 'setVariable':
-    case 'toast':
-    case 'clipboard': {
-      const ast = substituteIdents(handler.ast, bindings)
-      return { ...handler, ast, references: refsOf(ast) }
-    }
     case 'apiCall':
       return { ...handler, url: substituteIdents(handler.url, bindings) }
     case 'supabaseQuery':
@@ -99,6 +102,59 @@ export function substituteHandler(
       const _exhaustive: never = handler
       return _exhaustive
     }
+  }
+}
+
+type SimpleAstHandler = Extract<
+  IREventHandler,
+  { kind: 'setState' | 'setVariable' | 'toast' | 'clipboard' }
+>
+
+function isSimpleAstHandler(handler: IREventHandler): handler is SimpleAstHandler {
+  return (
+    handler.kind === 'setState' ||
+    handler.kind === 'setVariable' ||
+    handler.kind === 'toast' ||
+    handler.kind === 'clipboard'
+  )
+}
+
+function substituteSimpleAstHandler(
+  handler: SimpleAstHandler,
+  bindings: ReadonlyMap<string, ExprAst>
+): SimpleAstHandler {
+  const ast = substituteIdents(handler.ast, bindings)
+  return { ...handler, ast, references: refsOf(ast) }
+}
+
+function substituteTrackEventHandler(
+  handler: IRTrackEventHandler,
+  bindings: ReadonlyMap<string, ExprAst>
+): IRTrackEventHandler {
+  const eventAst = substituteIdents(handler.eventAst, bindings)
+  return {
+    ...handler,
+    eventAst,
+    references: refsOf(eventAst),
+    properties: handler.properties?.map((prop) => {
+      const ast = substituteIdents(prop.ast, bindings)
+      return { ...prop, ast, references: refsOf(ast) }
+    })
+  }
+}
+
+function substituteStripeRedirectHandler(
+  handler: IRStripeCheckoutHandler | IRStripeCustomerPortalHandler,
+  bindings: ReadonlyMap<string, ExprAst>
+): IRStripeCheckoutHandler | IRStripeCustomerPortalHandler {
+  const endpoint = substituteIdents(handler.endpoint, bindings)
+  return {
+    ...handler,
+    endpoint,
+    payloadEntries: handler.payloadEntries?.map((entry) => {
+      const ast = substituteIdents(entry.ast, bindings)
+      return { ...entry, ast, references: refsOf(ast) }
+    })
   }
 }
 

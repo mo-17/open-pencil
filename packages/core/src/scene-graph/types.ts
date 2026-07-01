@@ -66,6 +66,71 @@ export interface SeoMetadata {
   canonicalUrl?: string
 }
 
+export type LowcodeHeadMetaKind = 'name' | 'property' | 'httpEquiv'
+export type LowcodeHeadLinkCrossOrigin = 'anonymous' | 'use-credentials'
+
+export interface LowcodeHeadMeta {
+  kind: LowcodeHeadMetaKind
+  key: string
+  content: string
+}
+
+export interface LowcodeHeadLink {
+  rel: string
+  href: string
+  as?: string
+  type?: string
+  media?: string
+  crossorigin?: LowcodeHeadLinkCrossOrigin
+}
+
+export interface LowcodeHeadMetadata {
+  meta?: LowcodeHeadMeta[]
+  link?: LowcodeHeadLink[]
+  styles?: string[]
+}
+
+export type AnalyticsProvider = 'ga4' | 'plausible' | 'posthog'
+export type AnalyticsConsentRegionPreset = 'eea'
+
+export interface AnalyticsConsentCopy {
+  /** Short banner body copy. Rendered as plain text in the generated app. */
+  bannerText?: string
+  /** Optional override for the Analytics category description. */
+  analyticsDescription?: string
+  /** Optional privacy/cookie policy URL. Rendered as an href, not raw HTML. */
+  privacyPolicyUrl?: string
+  /** Optional link label for `privacyPolicyUrl`. */
+  privacyPolicyLabel?: string
+}
+
+export interface AnalyticsConfig {
+  enabled?: boolean
+  provider: AnalyticsProvider
+  /** GA4 measurement id, Plausible domain, or PostHog project API key. */
+  id: string
+  /** Optional provider host/script endpoint. Defaults are provider-specific. */
+  endpoint?: string
+  /** Auto-send page_view on app load and route changes. Defaults to true. */
+  pageViews?: boolean
+  /** Honor browser/user Do Not Track signals. Defaults to false for backward compatibility. */
+  respectDoNotTrack?: boolean
+  /**
+   * Require generated-app code to call `__opGrantAnalyticsConsent()` before loading
+   * provider scripts or sending events. Defaults to false.
+   */
+  consentRequired?: boolean
+  /**
+   * Starter preset for generated consent defaults. This is not legal advice; it
+   * only pre-fills runtime behavior that authors can override explicitly.
+   */
+  consentRegionPreset?: AnalyticsConsentRegionPreset
+  /** Initial checked state for the optional Analytics category. Defaults to true. */
+  consentAnalyticsDefault?: boolean
+  /** Plain-text copy overrides for the generated consent preference banner. */
+  consentCopy?: AnalyticsConsentCopy
+}
+
 export type HandleMirroring = 'NONE' | 'ANGLE' | 'ANGLE_AND_LENGTH'
 export type WindingRule = 'NONZERO' | 'EVENODD'
 
@@ -578,6 +643,19 @@ export interface SceneNode {
   // carries document defaults; page CANVAS nodes may carry a single-page
   // override. Persisted via §12 pluginData under `lowcode/seoMetadata`.
   lowcodeSeoMetadata?: SeoMetadata
+  // ── Lowcode (Phase 5 §10) ──
+  // Document-level analytics config for generated lowcode output. Root-only,
+  // public identifiers only (GA measurement id / Plausible domain / PostHog
+  // project API key), never a secret. Persisted via §12 pluginData under
+  // `lowcode/analyticsConfig`.
+  lowcodeAnalyticsConfig?: AnalyticsConfig
+  // ── Lowcode (Phase 5 §11) ──
+  // Controlled custom-code escape hatch for generated lowcode output. Root-only.
+  // `lowcodeHeadMetadata` is deliberately structured instead of raw HTML, so the
+  // compiler can emit only whitelisted <meta>, <link>, and <style> tags. Custom
+  // CSS is appended to `src/index.css`; arbitrary JS/raw scripts stay out of scope.
+  lowcodeHeadMetadata?: LowcodeHeadMetadata
+  lowcodeCustomCss?: string
   // ── Lowcode (Phase 3 §7) ──
   // Per-breakpoint layout overrides. Bubble-style responsive design via
   // Tailwind viewport prefixes (`md:` / `lg:` …). Only the layout-affecting
@@ -1057,6 +1135,42 @@ export interface ClipboardAction {
   valueExpr?: string
 }
 
+/** Phase 5 §10: send an analytics event through the generated
+ * `_lowcode_analytics` runtime. `eventNameExpr` uses the same restricted
+ * expression sub-language as toast/clipboard values; optional property
+ * values are also expressions in the current event scope. The document-level
+ * `lowcodeAnalyticsConfig` chooses the provider and public id. */
+export interface TrackEventAction {
+  id: string
+  kind: 'trackEvent'
+  eventNameExpr?: string
+  properties?: Record<string, string>
+}
+
+/** Phase 5 §12: start a Stripe Checkout flow through the app author's own
+ * server endpoint. The generated SPA never receives a Stripe secret key; it
+ * POSTs optional expression-valued payload fields to `endpoint` and redirects
+ * to the returned `{ url }` / `{ checkoutUrl }`. */
+export interface StripeCheckoutAction {
+  id: string
+  kind: 'stripeCheckout'
+  endpoint?: string
+  payloadEntries?: SupabasePayloadEntry[]
+  errorTarget?: string
+}
+
+/** Phase 5 §12: open a Stripe Customer Portal session through the app author's
+ * own server endpoint. Mirrors `StripeCheckoutAction` but expects a returned
+ * `{ url }` / `{ portalUrl }` that sends the current customer to billing
+ * management. Secret keys and customer lookup stay server-side. */
+export interface StripeCustomerPortalAction {
+  id: string
+  kind: 'stripeCustomerPortal'
+  endpoint?: string
+  payloadEntries?: SupabasePayloadEntry[]
+  errorTarget?: string
+}
+
 /** Phase 3 §10 v4: invoke a named, reusable workflow (`WorkflowDef`) by id. The
  *  referenced workflow's action chain is expanded **inline** at the call site by
  *  the IR collect pass (`resolveBranch` with the caller's context), so a workflow
@@ -1102,6 +1216,9 @@ export type ActionDef =
   | ToastAction
   | ConfirmAction
   | ClipboardAction
+  | TrackEventAction
+  | StripeCheckoutAction
+  | StripeCustomerPortalAction
   | CallWorkflowAction
 
 export type ActionKind = ActionDef['kind']

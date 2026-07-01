@@ -151,7 +151,7 @@ All commands support `--json` for machine-readable output.
 
 ### Build lowcode apps
 
-OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app. The lowcode compiler preserves layout, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, i18n catalogs, and optional shadcn/ui components.
+OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app. The lowcode compiler preserves layout, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, Stripe checkout and customer portal redirects through your own server endpoints, i18n catalogs, analytics hooks, controlled custom head/CSS metadata, and optional shadcn/ui components.
 
 ```sh
 openpencil compile app.fig -o generated-app
@@ -174,7 +174,9 @@ VERCEL_TOKEN=... openpencil deploy app.fig --provider vercel --site my-project
 CLOUDFLARE_API_TOKEN=... openpencil deploy app.fig --provider cloudflare --account-id <account-id> --site my-pages-project
 ```
 
-For Supabase-backed apps, override production credentials at build/deploy time with `--supabase-url` and `--supabase-anon-key`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. See the [Lowcode Apps guide](https://openpencil.dev/user-guide/lowcode-apps) for the full path from preview to deploy.
+For Supabase-backed apps, override production credentials at build/deploy time with `--supabase-url` and `--supabase-anon-key`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Stripe checkout actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `checkoutUrl`; Stripe customer portal actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `portalUrl`. Stripe secret keys, webhook handling, subscriptions, and customer lookup stay on your server, never in the document or generated SPA. Lowcode analytics supports GA4, Plausible, and PostHog configuration stored in the document plus `trackEvent` actions, optional page views, Do Not Track, and a generated consent banner with local preference persistence, configurable copy, a configurable Analytics default state, and an EEA-style opt-in starter preset. Custom head/CSS support is limited to structured `<meta>`, `<link>`, `<style>`, and `index.css` output; arbitrary JavaScript is intentionally out of scope. See the [Lowcode Apps guide](https://openpencil.dev/user-guide/lowcode-apps) for the full path from preview to deploy.
+
+For a safe end-to-end example, open or rebuild `packages/demos/lowcode/lowcode-onboarding-demo.fig`; it exercises Supabase, validation, workflows, Stripe checkout redirects through a demo endpoint, analytics hooks, i18n, shadcn/ui, and custom head/CSS using example provider values only.
 
 ## AI & MCP
 

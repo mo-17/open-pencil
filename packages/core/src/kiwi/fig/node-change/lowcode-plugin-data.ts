@@ -15,10 +15,12 @@
 import type { NodeChange } from '#core/kiwi/fig/codec'
 import type {
   ActionDef,
+  AnalyticsConfig,
   BindingExpr,
   DocumentStateDef,
   EventName,
   GridPosition,
+  LowcodeHeadMetadata,
   LibraryRef,
   LowcodeTranslations,
   NodeType,
@@ -62,6 +64,14 @@ export const LOWCODE_SUPABASE_CONFIG_KEY = 'lowcode/supabaseConfig'
 /** Phase 5 §3: static SEO metadata for compiler HTML output. Root node carries
  *  document defaults; page CANVAS nodes may carry single-page overrides. */
 export const LOWCODE_SEO_METADATA_KEY = 'lowcode/seoMetadata'
+/** Phase 5 §10: document-level analytics provider config. Root node only.
+ *  Value is the JSON-encoded AnalyticsConfig object with public ids only. */
+export const LOWCODE_ANALYTICS_CONFIG_KEY = 'lowcode/analyticsConfig'
+/** Phase 5 §11: controlled custom head metadata. Root node only; structured
+ *  whitelist for <meta>, <link>, and <style>, never raw script/html. */
+export const LOWCODE_HEAD_METADATA_KEY = 'lowcode/headMetadata'
+/** Phase 5 §11: generated-app custom CSS appended to src/index.css. */
+export const LOWCODE_CUSTOM_CSS_KEY = 'lowcode/customCss'
 /** Round-trip fix: `LayoutSizing` carries `'FILL'`, but the vendored Figma
  *  `StackSize` enum only has FIXED / RESIZE_TO_FIT(+implicit) — so on save
  *  `serialize.ts` collapses HUG→RESIZE_TO_FIT and **everything else (incl.
@@ -158,6 +168,9 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_FREE_LAYOUT_KEY,
   LOWCODE_SUPABASE_CONFIG_KEY,
   LOWCODE_SEO_METADATA_KEY,
+  LOWCODE_ANALYTICS_CONFIG_KEY,
+  LOWCODE_HEAD_METADATA_KEY,
+  LOWCODE_CUSTOM_CSS_KEY,
   LOWCODE_AXIS_SIZING_KEY,
   LOWCODE_COUNTER_ALIGN_CONTENT_KEY,
   LOWCODE_GRID_POSITION_KEY,
@@ -205,13 +218,7 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   if (node.layoutMode === 'FREE') {
     entries.push(makeEntry(LOWCODE_FREE_LAYOUT_KEY, true))
   }
-  // Phase 3 §2: Supabase config on the root node. Absent → no entry written
-  // → legacy .fig files without Supabase wiring stay byte-identical.
-  if (isSupabaseConfig(node.lowcodeSupabaseConfig)) {
-    entries.push(makeEntry(LOWCODE_SUPABASE_CONFIG_KEY, node.lowcodeSupabaseConfig))
-  }
-  const seoMetadata = seoMetadataPayload(node.lowcodeSeoMetadata)
-  if (seoMetadata) entries.push(makeEntry(LOWCODE_SEO_METADATA_KEY, seoMetadata))
+  entries.push(...serializeDocumentConfigFields(node))
   // Round-trip fix: persist FILL axis sizing the vendored StackSize enum can't
   // hold. Only the FILL axes are written; if neither is FILL no entry is
   // emitted, keeping legacy .fig output byte-identical.
@@ -266,6 +273,24 @@ function serializeLibraryFields(node: SceneNode): PluginDataEntry[] {
   return entries
 }
 
+function serializeDocumentConfigFields(node: SceneNode): PluginDataEntry[] {
+  const entries: PluginDataEntry[] = []
+  if (isSupabaseConfig(node.lowcodeSupabaseConfig)) {
+    entries.push(makeEntry(LOWCODE_SUPABASE_CONFIG_KEY, node.lowcodeSupabaseConfig))
+  }
+  const seoMetadata = seoMetadataPayload(node.lowcodeSeoMetadata)
+  if (seoMetadata) entries.push(makeEntry(LOWCODE_SEO_METADATA_KEY, seoMetadata))
+  if (isAnalyticsConfig(node.lowcodeAnalyticsConfig)) {
+    entries.push(makeEntry(LOWCODE_ANALYTICS_CONFIG_KEY, node.lowcodeAnalyticsConfig))
+  }
+  const headMetadata = headMetadataPayload(node.lowcodeHeadMetadata)
+  if (headMetadata) entries.push(makeEntry(LOWCODE_HEAD_METADATA_KEY, headMetadata))
+  if (typeof node.lowcodeCustomCss === 'string' && node.lowcodeCustomCss.trim() !== '') {
+    entries.push(makeEntry(LOWCODE_CUSTOM_CSS_KEY, node.lowcodeCustomCss.trim()))
+  }
+  return entries
+}
+
 function libraryComponentPayload(node: SceneNode): JsonObject | null {
   const payload: JsonObject = {}
   if (typeof node.libraryComponentKey === 'string' && node.libraryComponentKey !== '') {
@@ -287,6 +312,29 @@ function seoMetadataPayload(value: SeoMetadata | undefined): SeoMetadata | null 
     const fieldValue = value[key]
     if (typeof fieldValue === 'string' && fieldValue !== '') payload[key] = fieldValue
   }
+  return Object.keys(payload).length > 0 ? payload : null
+}
+
+function headMetadataPayload(value: LowcodeHeadMetadata | undefined): LowcodeHeadMetadata | null {
+  if (!value) return null
+  const payload: LowcodeHeadMetadata = {}
+  const meta = value.meta
+    ?.filter((entry) => entry.key.trim() !== '' && entry.content.trim() !== '')
+    .map((entry) => ({ kind: entry.kind, key: entry.key.trim(), content: entry.content.trim() }))
+  const link = value.link
+    ?.filter((entry) => entry.rel.trim() !== '' && entry.href.trim() !== '')
+    .map((entry) => ({
+      rel: entry.rel.trim(),
+      href: entry.href.trim(),
+      ...(entry.as?.trim() ? { as: entry.as.trim() } : {}),
+      ...(entry.type?.trim() ? { type: entry.type.trim() } : {}),
+      ...(entry.media?.trim() ? { media: entry.media.trim() } : {}),
+      ...(entry.crossorigin ? { crossorigin: entry.crossorigin } : {})
+    }))
+  const styles = value.styles?.map((style) => style.trim()).filter(Boolean)
+  if (meta?.length) payload.meta = meta
+  if (link?.length) payload.link = link
+  if (styles?.length) payload.styles = styles
   return Object.keys(payload).length > 0 ? payload : null
 }
 
@@ -434,6 +482,90 @@ function isSeoMetadata(value: unknown): value is SeoMetadata {
   )
 }
 
+function isAnalyticsConfig(value: unknown): value is AnalyticsConfig {
+  if (!isPlainRecord(value)) return false
+  if (value.enabled !== undefined && typeof value.enabled !== 'boolean') return false
+  if (value.pageViews !== undefined && typeof value.pageViews !== 'boolean') return false
+  if (value.respectDoNotTrack !== undefined && typeof value.respectDoNotTrack !== 'boolean')
+    return false
+  if (value.consentRequired !== undefined && typeof value.consentRequired !== 'boolean')
+    return false
+  if (
+    value.consentRegionPreset !== undefined &&
+    !['eea'].includes(String(value.consentRegionPreset))
+  )
+    return false
+  if (
+    value.consentAnalyticsDefault !== undefined &&
+    typeof value.consentAnalyticsDefault !== 'boolean'
+  )
+    return false
+  if (value.consentCopy !== undefined && !isAnalyticsConsentCopy(value.consentCopy)) return false
+  if (!['ga4', 'plausible', 'posthog'].includes(String(value.provider))) return false
+  return (
+    typeof value.id === 'string' &&
+    value.id !== '' &&
+    (value.endpoint === undefined || typeof value.endpoint === 'string')
+  )
+}
+
+function isAnalyticsConsentCopy(value: unknown): value is AnalyticsConfig['consentCopy'] {
+  if (!isPlainRecord(value)) return false
+  return (
+    optionalString(value.bannerText) &&
+    optionalString(value.analyticsDescription) &&
+    optionalString(value.privacyPolicyUrl) &&
+    optionalString(value.privacyPolicyLabel)
+  )
+}
+
+function isHeadMetadata(value: unknown): value is LowcodeHeadMetadata {
+  if (!isPlainRecord(value)) return false
+  if (value.meta !== undefined && !isHeadMetaEntries(value.meta)) return false
+  if (value.link !== undefined && !isHeadLinkEntries(value.link)) return false
+  if (value.styles !== undefined && !isStringArray(value.styles)) return false
+  return true
+}
+
+function isHeadMetaEntries(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isPlainRecord(entry) &&
+        ['name', 'property', 'httpEquiv'].includes(String(entry.kind)) &&
+        typeof entry.key === 'string' &&
+        entry.key.trim() !== '' &&
+        typeof entry.content === 'string' &&
+        entry.content.trim() !== ''
+    )
+  )
+}
+
+function isHeadLinkEntries(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isPlainRecord(entry) &&
+        typeof entry.rel === 'string' &&
+        entry.rel.trim() !== '' &&
+        typeof entry.href === 'string' &&
+        entry.href.trim() !== '' &&
+        optionalString(entry.as) &&
+        optionalString(entry.type) &&
+        optionalString(entry.media) &&
+        (entry.crossorigin === undefined ||
+          entry.crossorigin === 'anonymous' ||
+          entry.crossorigin === 'use-credentials')
+    )
+  )
+}
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+}
+
 function makeEntry(key: string, value: unknown): PluginDataEntry {
   return { pluginId: OPEN_PENCIL_PLUGIN_ID, key, value: JSON.stringify(value) }
 }
@@ -488,6 +620,14 @@ export interface ExtractedLowcodeAndPluginData {
    *  node values are document defaults; page CANVAS values are single-page
    *  overrides. */
   lowcodeSeoMetadata?: SeoMetadata
+  /** Phase 5 §10: analytics provider config restored from
+   *  `lowcode/analyticsConfig`. */
+  lowcodeAnalyticsConfig?: AnalyticsConfig
+  /** Phase 5 §11: controlled custom head metadata restored from
+   *  `lowcode/headMetadata`. */
+  lowcodeHeadMetadata?: LowcodeHeadMetadata
+  /** Phase 5 §11: custom CSS restored from `lowcode/customCss`. */
+  lowcodeCustomCss?: string
   /** Round-trip fix: FILL axes restored from `lowcode/axisSizing`. Callers
    *  override the kiwi-restored (FIXED) sizing for whichever axis is present. */
   primaryAxisSizingOverride?: 'FILL'
@@ -626,6 +766,18 @@ function assignLowcodeContentField(
 ): boolean {
   if (key === LOWCODE_SEO_METADATA_KEY) {
     if (isSeoMetadata(value)) target.lowcodeSeoMetadata = value
+    return true
+  }
+  if (key === LOWCODE_ANALYTICS_CONFIG_KEY) {
+    if (isAnalyticsConfig(value)) target.lowcodeAnalyticsConfig = value
+    return true
+  }
+  if (key === LOWCODE_HEAD_METADATA_KEY) {
+    if (isHeadMetadata(value)) target.lowcodeHeadMetadata = value
+    return true
+  }
+  if (key === LOWCODE_CUSTOM_CSS_KEY) {
+    if (typeof value === 'string' && value.trim() !== '') target.lowcodeCustomCss = value
     return true
   }
   if (key === LOWCODE_TRANSLATIONS_KEY) {

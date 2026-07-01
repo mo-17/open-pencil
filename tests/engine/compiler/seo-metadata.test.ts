@@ -102,7 +102,11 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
       lowcodeSeoMetadata: {
         title: 'Root Title',
         description: 'Root description.'
-      }
+      },
+      lowcodeHeadMetadata: {
+        meta: [{ kind: 'name', key: 'theme-color', content: '#2563eb' }]
+      },
+      lowcodeCustomCss: '.root-custom { color: CanvasText; }'
     })
     graph.updateNode(pageId, {
       lowcodeSeoMetadata: {
@@ -117,10 +121,13 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
       options: withDefaults({ packageName: 'seo-app' })
     })
     const html = out.files.get('index.html') as string
+    const css = out.files.get('src/index.css') as string
 
     expect(html).toContain('<title>Page Title</title>')
     expect(html).toContain('<meta name="description" content="Page description." />')
+    expect(html).toContain('<meta name="theme-color" content="#2563eb" />')
     expect(html).not.toContain('Root Title')
+    expect(css).toContain('.root-custom { color: CanvasText; }')
   })
 
   test('explicit CompilerOptions.metadata overrides persisted metadata', () => {
@@ -162,5 +169,44 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     expect(html).toContain(
       '<meta name="description" content="Use &quot;quotes&quot; and &lt;tags&gt;." />'
     )
+  })
+
+  test('emits controlled custom head metadata and custom CSS from the root node', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeHeadMetadata: {
+        meta: [
+          { kind: 'name', key: 'theme-color', content: '#111827' },
+          { kind: 'httpEquiv', key: 'x-ua-compatible', content: 'IE=edge' }
+        ],
+        link: [
+          {
+            rel: 'preconnect',
+            href: 'https://cdn.example.com',
+            crossorigin: 'anonymous'
+          }
+        ],
+        styles: ['body::before { content: "</style>"; }']
+      },
+      lowcodeCustomCss: 'body { scroll-behavior: smooth; }'
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'seo-app' })
+    })
+    const html = out.files.get('index.html') as string
+    const css = out.files.get('src/index.css') as string
+
+    expect(html).toContain('<meta name="theme-color" content="#111827" />')
+    expect(html).toContain('<meta http-equiv="x-ua-compatible" content="IE=edge" />')
+    expect(html).toContain(
+      '<link rel="preconnect" href="https://cdn.example.com" crossorigin="anonymous" />'
+    )
+    expect(html).toContain('<style>body::before { content: "<\\/style>"; }</style>')
+    expect(html).not.toContain('alert(')
+    expect(css.trim().endsWith('body { scroll-behavior: smooth; }')).toBe(true)
   })
 })

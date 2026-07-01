@@ -12,7 +12,9 @@ import FillSection from './properties/FillSection.vue'
 import InspectorFilter from './properties/InspectorFilter.vue'
 import InspectorSection from './properties/InspectorSection.vue'
 import LayoutSection from './properties/LayoutSection/LayoutSection.vue'
+import AnalyticsConfigPanel from './properties/Lowcode/AnalyticsConfigPanel.vue'
 import ComponentPropsPanel from './properties/Lowcode/ComponentPropsPanel.vue'
+import CustomCodePanel from './properties/Lowcode/CustomCodePanel.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
 import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
@@ -136,7 +138,21 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
     'backend',
     'workflow',
     'events',
-    'actions'
+    'actions',
+    'analytics',
+    'tracking',
+    'ga4',
+    'plausible',
+    'posthog',
+    'head',
+    'metadata',
+    'meta',
+    'link',
+    'custom',
+    'css',
+    'stylesheet',
+    'style',
+    'csp'
   ],
   'lowcode-document-content': ['lowcode', 'document', 'translation', 'i18n', 'locale'],
   'assets-variables': ['assets', 'libraries', 'library', 'variables', 'tokens']
@@ -447,6 +463,8 @@ const emptyHasMatches = computed(
       title="Services & Workflows"
     >
       <SupabaseConfigPanel />
+      <AnalyticsConfigPanel />
+      <CustomCodePanel />
       <WorkflowsPanel />
     </InspectorSection>
     <InspectorSection

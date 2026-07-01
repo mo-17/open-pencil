@@ -19,13 +19,14 @@ import ActionList from './ActionList.vue'
  * itself contain control-flow / result branches and even nested `callWorkflow`s.
  * Emits the whole new workflow on every edit; the panel owns persistence / undo.
  */
-const { workflow, workflows, pages, pageStates, docStates } = defineProps<{
+const { workflow, workflows, pages, pageStates, docStates, analyticsConfigured } = defineProps<{
   workflow: WorkflowDef
   /** The full workflow list, so a nested `callWorkflow` can target peers. */
   workflows: readonly WorkflowDef[]
   pages: readonly { id: string; name: string }[]
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
+  analyticsConfigured?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -236,6 +237,7 @@ function setParamOptional(index: number, optional: boolean): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :analytics-configured="analyticsConfigured"
         add-test-id="lowcode-workflow-action-add"
         @update:actions="updateActions"
       />

@@ -49,6 +49,11 @@ const docStates = useSceneComputed<DocumentStateDef[]>(() => {
   return root?.lowcodeDocumentState ?? []
 })
 
+const analyticsConfigured = useSceneComputed<boolean>(() => {
+  const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
+  return config?.enabled !== false && !!config?.id?.trim()
+})
+
 function commit(next: WorkflowDef[]): void {
   editor.updateNodeWithUndo(
     editor.graph.rootId,
@@ -108,6 +113,7 @@ function pageStatesFor(workflow: WorkflowDef): StateDef[] {
         :pages="pages"
         :page-states="pageStatesFor(wf)"
         :doc-states="docStates"
+        :analytics-configured="analyticsConfigured"
         @update:workflow="updateWorkflow(wf.id, $event)"
         @remove="removeWorkflow(wf.id)"
       />

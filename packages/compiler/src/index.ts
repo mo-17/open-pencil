@@ -1,4 +1,4 @@
-import type { SceneGraph, SeoMetadata } from '@open-pencil/core/scene-graph'
+import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/core/scene-graph'
 
 import { buildComponentRegistry } from './ir/collect/components'
 import { collectComponents, collectTree } from './ir/collect/tree'
@@ -118,7 +118,12 @@ function metadataFromGraph(
   graph: SceneGraph,
   pageIds: readonly string[]
 ): HtmlMetadataOptions | undefined {
-  const rootMetadata = compactSeoMetadata(graph.getNode(graph.rootId)?.lowcodeSeoMetadata)
+  const root = graph.getNode(graph.rootId)
+  const rootMetadata = compactRootMetadata(
+    root?.lowcodeSeoMetadata,
+    root?.lowcodeHeadMetadata,
+    root?.lowcodeCustomCss
+  )
   const pages: Record<string, SeoMetadata> = {}
   for (const pageId of pageIds) {
     const pageMetadata = compactSeoMetadata(graph.getNode(pageId)?.lowcodeSeoMetadata)
@@ -126,6 +131,19 @@ function metadataFromGraph(
   }
   if (!rootMetadata && Object.keys(pages).length === 0) return undefined
   return Object.keys(pages).length > 0 ? { ...rootMetadata, pages } : rootMetadata
+}
+
+function compactRootMetadata(
+  seo: SeoMetadata | undefined,
+  head: LowcodeHeadMetadata | undefined,
+  customCss: string | undefined
+): HtmlMetadataOptions | undefined {
+  const metadata: HtmlMetadataOptions = { ...compactSeoMetadata(seo) }
+  const cleanHead = compactHeadMetadata(head)
+  const cleanCss = customCss?.trim()
+  if (cleanHead) metadata.head = cleanHead
+  if (cleanCss) metadata.customCss = cleanCss
+  return Object.keys(metadata).length > 0 ? metadata : undefined
 }
 
 function mergeMetadataOptions(
@@ -163,5 +181,34 @@ function compactSeoMetadata(value: SeoMetadata | undefined): SeoMetadata | undef
       out[key] = fieldValue.trim()
     }
   }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function compactHeadMetadata(
+  value: LowcodeHeadMetadata | undefined
+): LowcodeHeadMetadata | undefined {
+  if (!value) return undefined
+  const meta = value.meta
+    ?.map((entry) => ({
+      kind: entry.kind,
+      key: entry.key.trim(),
+      content: entry.content.trim()
+    }))
+    .filter((entry) => entry.key && entry.content)
+  const link = value.link
+    ?.map((entry) => ({
+      rel: entry.rel.trim(),
+      href: entry.href.trim(),
+      ...(entry.as?.trim() ? { as: entry.as.trim() } : {}),
+      ...(entry.type?.trim() ? { type: entry.type.trim() } : {}),
+      ...(entry.media?.trim() ? { media: entry.media.trim() } : {}),
+      ...(entry.crossorigin ? { crossorigin: entry.crossorigin } : {})
+    }))
+    .filter((entry) => entry.rel && entry.href)
+  const styles = value.styles?.map((style) => style.trim()).filter(Boolean)
+  const out: LowcodeHeadMetadata = {}
+  if (meta?.length) out.meta = meta
+  if (link?.length) out.link = link
+  if (styles?.length) out.styles = styles
   return Object.keys(out).length > 0 ? out : undefined
 }

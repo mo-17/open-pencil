@@ -26,12 +26,14 @@ import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
 import { OVERLAY_RUNTIME_CLASSES } from './emit/element'
 import {
+  pageUsesAnalytics,
   pageUsesConfirm,
   pageUsesToast,
   referencedComponentNames,
   referencedLucideIconNames,
   stripNavigateForSinglePage
 } from './ir-walk'
+import { buildLowcodeAnalyticsRuntime } from './lowcode/analytics'
 import { buildLowcodeConfirmRuntime, CONFIRM_RUNTIME_CLASSES } from './lowcode/confirm'
 import {
   buildI18nCoverageReport,
@@ -80,6 +82,7 @@ const LOWCODE_TOAST_FILE = 'src/_lowcode_toast.tsx'
 const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
 const LOWCODE_VALIDATION_FILE = 'src/_lowcode_validation.tsx'
 const LOWCODE_THEME_FILE = 'src/_lowcode_theme.tsx'
+const LOWCODE_ANALYTICS_FILE = 'src/_lowcode_analytics.ts'
 const LOWCODE_RUNTIME_THEME_UTILITY_RE =
   /(?:^|:)(?:accent|bg|text|border|ring)-(?:background|foreground|primary|primary-foreground|secondary|secondary-foreground|muted-foreground|destructive|destructive-foreground|border|ring)(?:\/|$)/
 const LOWCODE_RUNTIME_THEME_CSS = `@layer base {
@@ -245,6 +248,9 @@ function emitSinglePage(
   const toastActive = pageUsesToast(cleaned)
   const confirmActive = pageUsesConfirm(cleaned)
   const validationActive = validationActiveIn([cleaned], components)
+  const analyticsActive = analyticsActiveIn([cleaned])
+  const analyticsConsentBanner =
+    analyticsActive && analyticsRequiresConsent(cleaned.analyticsConfig)
   const translations = cleaned.translations
   const sourceLocale = resolveSourceLocale(options)
   const targetLocales = resolveTargetLocales(options.locales, translations, sourceLocale)
@@ -270,7 +276,10 @@ function emitSinglePage(
     translations,
     toastActive,
     confirmActive,
-    validationActive
+    validationActive,
+    analyticsActive,
+    analyticsConfig: cleaned.analyticsConfig,
+    analyticsConsentBanner
   })
   emitComponentFiles(files, components, options.devMode, uiKit)
   files.set(
@@ -282,6 +291,7 @@ function emitSinglePage(
       lowcodeToastImportPath: './_lowcode_toast',
       lowcodeConfirmImportPath: './_lowcode_confirm',
       lowcodeValidationImportPath: './_lowcode_validation',
+      lowcodeAnalyticsImportPath: './_lowcode_analytics',
       componentImportPrefix: './components/',
       uiKit
     })
@@ -294,6 +304,8 @@ function emitSinglePage(
     toastActive,
     confirmActive,
     validationActive,
+    analyticsActive,
+    analyticsConsentBanner,
     kit,
     resolveIndexMetadata([cleaned], options)
   )
@@ -319,12 +331,17 @@ function emitMultiPage(
   emitAssets(files, collectAssets(irs, components))
   const docStates = irs[0]?.docStates ?? []
   const supabaseConfig = irs[0]?.supabaseConfig
+  const analyticsConfig = irs.find((ir) => ir.analyticsConfig)?.analyticsConfig
   const translations = irs.find((ir) => ir.translations)?.translations
   const messages = collectMessages(irs, components)
   const i18nActive = options.i18n === true && messages.size > 0
   const toastActive = irs.some((ir) => pageUsesToast(ir))
   const confirmActive = irs.some((ir) => pageUsesConfirm(ir))
   const validationActive = validationActiveIn(irs, components)
+  const analyticsActive = analyticsActiveIn(irs)
+  const analyticsRouteTracking =
+    analyticsConfig !== undefined && analyticsConfig.pageViews !== false && analyticsActive
+  const analyticsConsentBanner = analyticsActive && analyticsRequiresConsent(analyticsConfig)
   const sourceLocale = resolveSourceLocale(options)
   const targetLocales = resolveTargetLocales(options.locales, translations, sourceLocale)
   const extraDeps: Record<string, string> = {
@@ -347,10 +364,17 @@ function emitMultiPage(
     translations,
     toastActive,
     confirmActive,
-    validationActive
+    validationActive,
+    analyticsActive,
+    analyticsConfig,
+    analyticsRouteTracking,
+    analyticsConsentBanner
   })
   emitComponentFiles(files, components, options.devMode, uiKit)
-  files.set('src/App.tsx', buildRouterApp(infos, { devMode: options.devMode }))
+  files.set(
+    'src/App.tsx',
+    buildRouterApp(infos, { devMode: options.devMode, analyticsRouteTracking })
+  )
   for (const info of infos) {
     files.set(
       `src/pages/${info.file}`,
@@ -361,6 +385,7 @@ function emitMultiPage(
         lowcodeToastImportPath: '../_lowcode_toast',
         lowcodeConfirmImportPath: '../_lowcode_confirm',
         lowcodeValidationImportPath: '../_lowcode_validation',
+        lowcodeAnalyticsImportPath: '../_lowcode_analytics',
         componentImportPrefix: '../components/',
         uiKit
       })
@@ -374,6 +399,8 @@ function emitMultiPage(
     toastActive,
     confirmActive,
     validationActive,
+    analyticsActive,
+    analyticsConsentBanner,
     kit,
     resolveIndexMetadata(irs, options)
   )
@@ -422,6 +449,15 @@ function validationActiveIn(irs: readonly IRTree[], components: readonly Compone
   )
 }
 
+function analyticsActiveIn(irs: readonly IRTree[]): boolean {
+  return irs.some((ir) => ir.analyticsConfig !== undefined || pageUsesAnalytics(ir))
+}
+
+function analyticsRequiresConsent(config: IRTree['analyticsConfig']): boolean {
+  if (config?.consentRequired !== undefined) return config.consentRequired
+  return config?.consentRegionPreset === 'eea'
+}
+
 /** Phase 3 §9: emit the i18n runtime + source-locale catalog when i18n is
  *  active. The app body's `<FormattedMessage>` calls come from the IR
  *  (`IRText.messageId`); main.tsx wraps `<App/>` in `<I18nProvider>`.
@@ -443,6 +479,10 @@ interface LowcodeRuntimeEmit {
   toastActive: boolean
   confirmActive: boolean
   validationActive: boolean
+  analyticsActive: boolean
+  analyticsConfig: IRTree['analyticsConfig']
+  analyticsRouteTracking?: boolean
+  analyticsConsentBanner?: boolean
 }
 
 /** Emit every on-demand lowcode runtime file (doc-state store, Supabase client,
@@ -455,6 +495,13 @@ function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: Lowcode
   maybeEmitLowcodeToastRuntime(files, e.toastActive)
   maybeEmitLowcodeConfirmRuntime(files, e.confirmActive)
   maybeEmitLowcodeValidationRuntime(files, e.validationActive)
+  maybeEmitLowcodeAnalyticsRuntime(
+    files,
+    e.analyticsActive,
+    e.analyticsConfig,
+    e.analyticsRouteTracking,
+    e.analyticsConsentBanner
+  )
 }
 
 function maybeEmitI18n(
@@ -566,6 +613,20 @@ function maybeEmitLowcodeSupabaseRuntime(
   files.set('.env.example', buildSupabaseEnvExample(config))
 }
 
+function maybeEmitLowcodeAnalyticsRuntime(
+  files: Map<string, string | Uint8Array>,
+  analyticsActive: boolean,
+  config: IRTree['analyticsConfig'],
+  routeTracking = false,
+  consentBanner = false
+): void {
+  if (!analyticsActive) return
+  files.set(
+    LOWCODE_ANALYTICS_FILE,
+    buildLowcodeAnalyticsRuntime(config, routeTracking, consentBanner)
+  )
+}
+
 /**
  * Project-shape files that are identical between single-page and multi-page
  * emissions. Lives next to the dispatch so it stays in sync with both
@@ -579,6 +640,8 @@ function setSharedProjectFiles(
   toast: boolean,
   confirm: boolean,
   validation: boolean,
+  analytics: boolean,
+  analyticsConsentBanner: boolean,
   kit: { themeCss: string; active: boolean },
   metadata?: HtmlMetadata
 ): void {
@@ -611,7 +674,15 @@ function setSharedProjectFiles(
   if (themeActive) files.set(LOWCODE_THEME_FILE, buildLowcodeThemeRuntime())
   files.set(
     'src/main.tsx',
-    buildMainTsx(i18n, toast, confirm, themeActive, resolveThemeSwitchPosition(options))
+    buildMainTsx(
+      i18n,
+      toast,
+      confirm,
+      themeActive,
+      resolveThemeSwitchPosition(options),
+      analytics,
+      analyticsConsentBanner
+    )
   )
   const themeCss = [
     options.themeCss,
@@ -620,7 +691,7 @@ function setSharedProjectFiles(
   ]
     .filter(Boolean)
     .join('\n')
-  files.set('src/index.css', buildIndexCss(safelist, themeCss))
+  files.set('src/index.css', buildIndexCss(safelist, themeCss, metadata?.customCss))
   files.set('.gitignore', buildGitignore())
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())
@@ -643,8 +714,10 @@ function cleanMetadata(metadata: HtmlMetadata | undefined): HtmlMetadata | undef
   const description = cleanMetadataText(metadata.description)
   const image = cleanMetadataText(metadata.image)
   const canonicalUrl = cleanMetadataText(metadata.canonicalUrl)
-  if (!title && !description && !image && !canonicalUrl) return undefined
-  return { title, description, image, canonicalUrl }
+  const head = cleanHeadMetadata(metadata.head)
+  const customCss = cleanMetadataText(metadata.customCss)
+  if (!title && !description && !image && !canonicalUrl && !head && !customCss) return undefined
+  return { title, description, image, canonicalUrl, head, customCss }
 }
 
 function mergeMetadata(
@@ -653,12 +726,46 @@ function mergeMetadata(
 ): HtmlMetadata | undefined {
   if (!base) return override
   if (!override) return base
-  return { ...base, ...override }
+  const merged: HtmlMetadata = { ...base }
+  if (override.title) merged.title = override.title
+  if (override.description) merged.description = override.description
+  if (override.image) merged.image = override.image
+  if (override.canonicalUrl) merged.canonicalUrl = override.canonicalUrl
+  if (override.head) merged.head = override.head
+  if (override.customCss) merged.customCss = override.customCss
+  return merged
 }
 
 function cleanMetadataText(value: string | undefined): string | undefined {
   const trimmed = value?.trim()
   return trimmed ? trimmed : undefined
+}
+
+function cleanHeadMetadata(head: HtmlMetadata['head']): HtmlMetadata['head'] | undefined {
+  if (!head) return undefined
+  const meta = head.meta
+    ?.map((entry) => ({
+      kind: entry.kind,
+      key: entry.key.trim(),
+      content: entry.content.trim()
+    }))
+    .filter((entry) => entry.key && entry.content)
+  const link = head.link
+    ?.map((entry) => ({
+      rel: entry.rel.trim(),
+      href: entry.href.trim(),
+      ...(entry.as?.trim() ? { as: entry.as.trim() } : {}),
+      ...(entry.type?.trim() ? { type: entry.type.trim() } : {}),
+      ...(entry.media?.trim() ? { media: entry.media.trim() } : {}),
+      ...(entry.crossorigin ? { crossorigin: entry.crossorigin } : {})
+    }))
+    .filter((entry) => entry.rel && entry.href)
+  const styles = head.styles?.map((style) => style.trim()).filter(Boolean)
+  const out: NonNullable<HtmlMetadata['head']> = {}
+  if (meta?.length) out.meta = meta
+  if (link?.length) out.link = link
+  if (styles?.length) out.styles = styles
+  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function emitAssets(files: Map<string, string | Uint8Array>, assets: readonly IRAsset[]): void {

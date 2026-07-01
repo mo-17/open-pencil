@@ -72,6 +72,41 @@
 - Add collapsible, remembered Inspector sections to the Design panel so dense property groups can be folded without changing document data.
 - Add an Inspector property filter to narrow dense Design panel groups by section name or common control keywords.
 - Add user-facing lowcode app onboarding docs covering preview, compile, build, Supabase overrides, i18n, shadcn/ui, and deploy.
+- Add lowcode analytics support for GA4, Plausible, and PostHog, including persisted document config, `trackEvent` actions, generated runtime helpers, and onboarding docs.
+- Add lowcode analytics authoring controls for document-level provider config and `trackEvent` property expressions.
+- Add lowcode analytics authoring guards for provider-specific ids, endpoints, missing provider hints, and duplicate event property names.
+- Add optional lowcode analytics page-view tracking for initial loads and multi-page route changes.
+- Add lowcode analytics provider help links and GUI ACK steps for GA4, Plausible, and PostHog authoring.
+- Add lowcode analytics privacy gates for browser Do Not Track and generated-app consent flows.
+- Add a generated lowcode analytics consent banner when tracking requires consent.
+- Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
+- Add a generated lowcode analytics preference center with Necessary and Analytics categories.
+- Add configurable lowcode analytics consent banner copy and privacy-policy links.
+- Add a configurable default checked state for the generated lowcode Analytics consent category.
+- Add an EEA-style lowcode analytics consent preset that starts generated apps in opt-in mode.
+- Add controlled lowcode custom head and CSS output for generated apps without enabling arbitrary JavaScript.
+- Add root-level lowcode Custom Head/CSS authoring controls for structured meta/link/style tags and app CSS.
+- Add Custom Head/CSS CSP and deploy-provider ACK guidance for Netlify, Vercel, and Cloudflare Pages.
+- Add Custom Head/CSS pre-deploy CSP risk hints for inline styles, external stylesheet/preload links, and external CSS resources.
+- Add a generated lowcode onboarding demo fixture covering Supabase, validation, workflows, Stripe checkout, analytics hooks, i18n, shadcn/ui, and custom head/CSS without real external credentials.
+- Add Stripe checkout lowcode actions that POST JSON to an author-owned endpoint and redirect to a returned checkout URL without storing Stripe secrets in documents or generated apps.
+- Add a Supabase Edge Function checkout template for the lowcode onboarding demo that reads Stripe keys from server-side environment variables only.
+- Extend the Supabase checkout template to verify authenticated users, create or reuse Stripe Customers, and upsert `billing_customers` before redirecting to Checkout.
+- Add Stripe customer portal lowcode actions that POST JSON to an author-owned endpoint and redirect to a returned billing portal URL.
+- Add a Supabase Edge Function customer portal template and onboarding demo button for server-created Stripe billing portal sessions.
+- Wire the customer portal template to Supabase Auth and server-side `billing_customers` lookup instead of trusting browser-provided customer ids.
+- Add a Supabase Edge Function Stripe webhook template for checkout and subscription lifecycle events with signature verification and durable `billing_events` idempotency.
+- Add a Supabase billing schema template for Stripe customer mappings, subscriptions, and durable webhook event idempotency.
+- Add a Supabase service-role RPC template for Stripe subscription webhook events that records the event and upserts subscription state in one transaction.
+- Add a Supabase billing entitlement read-model template that refreshes app-readable subscription access in the same webhook transaction.
+- Add a Supabase billing invoice read-model template and Stripe invoice webhook RPC for paid/failed invoice history.
+- Add Supabase billing payment and refund read-model templates with Stripe payment/refund webhook RPCs.
+- Add a Supabase billing orders read-model template that summarizes invoice, payment, and refund webhook updates.
+- Harden the Supabase Stripe billing read-model schema for out-of-order webhook delivery by avoiding cross-event foreign keys on invoice subscription and refund payment intent ids.
+- Add a Supabase billing dispute read-model template and Stripe dispute webhook RPC for charge dispute status tracking.
+- Add a Supabase billing tax summary read-model template that records Stripe invoice automatic tax and total tax amounts.
+- Add a Supabase billing usage summary read-model template that records Stripe invoice line quantity and subscription item snapshots.
+- Add a Phase 5 lowcode operator ACK checklist covering analytics, custom head/CSS, onboarding, Stripe paid actions, and billing webhook read models.
 - Add JSX authoring support for components, component sets, and instances.
 - Add type-validated `bindVariable`/`unbindVariable` with event emission and indexed binding format (`fills/N/color` instead of `fills[N]`).
 - Add `unbind_variable` MCP tool for removing variable bindings.

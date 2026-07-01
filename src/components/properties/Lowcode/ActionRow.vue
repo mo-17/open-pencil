@@ -12,13 +12,14 @@ import type {
 } from '@open-pencil/core/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
-import { ACTION_KINDS, makeAction } from './action-factory'
+import { ANALYTICS_TRACK_EVENT_CONFIG_HINT } from '@/app/lowcode/analytics-help'
 import {
   authNeedsEmail,
   authNeedsPassword,
   computeActionErrors,
   type ActionErrors
-} from './action-errors'
+} from '@/app/lowcode/action-errors'
+import { ACTION_KINDS, makeAction } from './action-factory'
 // ActionRow ↔ ActionList are mutually recursive components (a row renders nested
 // branch lists, a list renders rows) — the import cycle is intentional and
 // resolved lazily at render time, the canonical Vue recursive-component pattern.
@@ -35,12 +36,13 @@ import ActionList from './ActionList.vue'
  * Controlled: takes the action via `action`, emits the edited replacement via
  * `update:action` (or `remove`). The parent list owns array identity.
  */
-const { action, pageStates, docStates, workflows } = defineProps<{
+const { action, pageStates, docStates, workflows, analyticsConfigured } = defineProps<{
   action: ActionDef
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
   /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
   workflows: readonly WorkflowDef[]
+  analyticsConfigured?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -94,6 +96,9 @@ function actionKindLabel(kind: ActionKind): string {
   if (kind === 'condition') return 'If (condition)'
   if (kind === 'confirm') return 'Confirm'
   if (kind === 'callWorkflow') return 'Call workflow'
+  if (kind === 'trackEvent') return 'Track event'
+  if (kind === 'stripeCheckout') return 'Stripe checkout'
+  if (kind === 'stripeCustomerPortal') return 'Stripe customer portal'
   return kind
 }
 
@@ -133,6 +138,75 @@ function removeEntry(index: number): void {
 }
 function updateEntry(index: number, p: Partial<SupabasePayloadEntry>): void {
   updateEntries((cur) => cur.map((e, i) => (i === index ? { ...e, ...p } : e)))
+}
+
+type TrackProperty = SupabasePayloadEntry
+
+const trackProperties = computed<TrackProperty[]>(() => {
+  if (action.kind !== 'trackEvent') return []
+  return Object.entries(action.properties ?? {}).map(([key, valueExpr]) => ({ key, valueExpr }))
+})
+
+function updateTrackProperties(next: (current: TrackProperty[]) => TrackProperty[]): void {
+  if (action.kind !== 'trackEvent') return
+  const entries = next(trackProperties.value)
+  const properties: Record<string, string> = {}
+  for (const entry of entries) properties[entry.key] = entry.valueExpr
+  patch({
+    properties: Object.keys(properties).length > 0 ? properties : undefined
+  } as Partial<ActionDef>)
+}
+function uniqueTrackPropertyKey(base: string, index?: number): string {
+  const stem = base.trim() || 'prop'
+  const existing = new Set(
+    trackProperties.value
+      .filter((_, i) => i !== index)
+      .map((entry) => entry.key)
+      .filter(Boolean)
+  )
+  if (!existing.has(stem)) return stem
+  let suffix = 2
+  while (existing.has(`${stem}_${suffix}`)) suffix += 1
+  return `${stem}_${suffix}`
+}
+function addTrackProperty(): void {
+  updateTrackProperties((cur) => [
+    ...cur,
+    { key: uniqueTrackPropertyKey(`prop${cur.length + 1}`), valueExpr: '' }
+  ])
+}
+function removeTrackProperty(index: number): void {
+  updateTrackProperties((cur) => cur.filter((_, i) => i !== index))
+}
+function updateTrackProperty(index: number, p: Partial<TrackProperty>): void {
+  updateTrackProperties((cur) =>
+    cur.map((entry, i) =>
+      i === index
+        ? {
+            ...entry,
+            ...p,
+            ...(p.key !== undefined ? { key: uniqueTrackPropertyKey(p.key, index) } : {})
+          }
+        : entry
+    )
+  )
+}
+
+function updateStripePayloadEntries(
+  next: (current: SupabasePayloadEntry[]) => SupabasePayloadEntry[]
+): void {
+  if (action.kind !== 'stripeCheckout' && action.kind !== 'stripeCustomerPortal') return
+  const entries = next(action.payloadEntries ?? [])
+  patch({ payloadEntries: entries.length > 0 ? entries : undefined } as Partial<ActionDef>)
+}
+function addStripePayloadEntry(): void {
+  updateStripePayloadEntries((cur) => [...cur, { key: `item${cur.length + 1}`, valueExpr: '' }])
+}
+function removeStripePayloadEntry(index: number): void {
+  updateStripePayloadEntries((cur) => cur.filter((_, i) => i !== index))
+}
+function updateStripePayloadEntry(index: number, p: Partial<SupabasePayloadEntry>): void {
+  updateStripePayloadEntries((cur) => cur.map((e, i) => (i === index ? { ...e, ...p } : e)))
 }
 
 // §10 v9/v10 nested branches. consequent is required (always an array); the
@@ -451,6 +525,48 @@ function setArg(param: string, value: string): void {
         />
       </template>
 
+      <template v-else-if="action.kind === 'trackEvent'">
+        <span class="text-[11px] text-muted">track</span>
+        <input
+          :value="action.eventNameExpr ?? ''"
+          aria-label="Analytics event name"
+          :aria-invalid="errors.expr ? 'true' : undefined"
+          data-test-id="lowcode-action-track-event-name"
+          spellcheck="false"
+          placeholder='"signup_click"'
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+            errors.expr ? 'border-red-500' : 'border-border'
+          ]"
+          @change="patch({ eventNameExpr: ($event.target as HTMLInputElement).value })"
+        />
+      </template>
+
+      <template
+        v-else-if="action.kind === 'stripeCheckout' || action.kind === 'stripeCustomerPortal'"
+      >
+        <span class="text-[11px] text-muted">
+          {{ action.kind === 'stripeCheckout' ? 'checkout' : 'portal' }}
+        </span>
+        <input
+          :value="action.endpoint ?? ''"
+          :aria-label="
+            action.kind === 'stripeCheckout'
+              ? 'Stripe checkout endpoint'
+              : 'Stripe customer portal endpoint'
+          "
+          :aria-invalid="errors.endpoint ? 'true' : undefined"
+          data-test-id="lowcode-action-stripe-endpoint"
+          spellcheck="false"
+          :placeholder="action.kind === 'stripeCheckout' ? '/api/checkout' : '/api/customer-portal'"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+            errors.endpoint ? 'border-red-500' : 'border-border'
+          ]"
+          @change="patch({ endpoint: ($event.target as HTMLInputElement).value })"
+        />
+      </template>
+
       <template v-else-if="action.kind === 'delay'">
         <span class="text-[11px] text-muted">wait</span>
         <input
@@ -578,6 +694,158 @@ function setArg(param: string, value: string): void {
       ]"
       @change="patch({ passwordExpr: ($event.target as HTMLInputElement).value })"
     />
+
+    <div
+      v-if="action.kind === 'trackEvent'"
+      data-test-id="lowcode-action-track-event-properties"
+      class="flex flex-col gap-1 pl-1"
+    >
+      <p
+        v-if="!analyticsConfigured"
+        data-test-id="lowcode-action-track-event-config-hint"
+        title="Open the empty-selection Services & Workflows panel to add a GA4, Plausible, or PostHog provider id."
+        class="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500"
+      >
+        {{ ANALYTICS_TRACK_EVENT_CONFIG_HINT }}
+      </p>
+      <label v-if="trackProperties.length > 0" class="text-[10px] text-muted">properties</label>
+      <div
+        v-for="(entry, i) in trackProperties"
+        :key="i"
+        data-test-id="lowcode-action-track-event-property"
+        class="flex items-center gap-1"
+      >
+        <input
+          :value="entry.key"
+          aria-label="Analytics property key"
+          :aria-invalid="errors.properties?.get(i)?.keyError ? 'true' : undefined"
+          data-test-id="lowcode-action-track-event-property-key"
+          spellcheck="false"
+          placeholder="plan"
+          :class="[
+            'w-20 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+            errors.properties?.get(i)?.keyError ? 'border-red-500' : 'border-border'
+          ]"
+          @change="updateTrackProperty(i, { key: ($event.target as HTMLInputElement).value })"
+        />
+        <input
+          :value="entry.valueExpr"
+          aria-label="Analytics property value"
+          :aria-invalid="errors.properties?.get(i)?.valueError ? 'true' : undefined"
+          data-test-id="lowcode-action-track-event-property-value"
+          spellcheck="false"
+          placeholder="selectedPlan"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+            errors.properties?.get(i)?.valueError ? 'border-red-500' : 'border-border'
+          ]"
+          @change="
+            updateTrackProperty(i, {
+              valueExpr: ($event.target as HTMLInputElement).value
+            })
+          "
+        />
+        <button
+          type="button"
+          aria-label="Remove analytics property"
+          data-test-id="lowcode-action-track-event-property-remove"
+          class="rounded p-0.5 text-muted hover:bg-hover hover:text-surface"
+          @click="removeTrackProperty(i)"
+        >
+          <icon-lucide-x class="size-3" />
+        </button>
+      </div>
+      <button
+        type="button"
+        data-test-id="lowcode-action-track-event-property-add"
+        class="self-start rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
+        @click="addTrackProperty"
+      >
+        + property
+      </button>
+    </div>
+
+    <div
+      v-if="action.kind === 'stripeCheckout' || action.kind === 'stripeCustomerPortal'"
+      data-test-id="lowcode-action-stripe-payload"
+      class="flex flex-col gap-1 pl-1"
+    >
+      <p class="rounded border border-border bg-panel px-2 py-1 text-[10px] text-muted">
+        Calls your server endpoint. Put Stripe secret keys only on that server, never in this
+        document.
+      </p>
+      <label v-if="(action.payloadEntries?.length ?? 0) > 0" class="text-[10px] text-muted">
+        payload
+      </label>
+      <div
+        v-for="(entry, i) in action.payloadEntries ?? []"
+        :key="i"
+        data-test-id="lowcode-action-stripe-payload-entry"
+        class="flex items-center gap-1"
+      >
+        <input
+          :value="entry.key"
+          aria-label="Stripe payload key"
+          :aria-invalid="errors.entries?.get(i)?.keyError ? 'true' : undefined"
+          data-test-id="lowcode-action-stripe-payload-key"
+          spellcheck="false"
+          placeholder="priceId"
+          :class="[
+            'w-24 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+            errors.entries?.get(i)?.keyError ? 'border-red-500' : 'border-border'
+          ]"
+          @change="updateStripePayloadEntry(i, { key: ($event.target as HTMLInputElement).value })"
+        />
+        <input
+          :value="entry.valueExpr"
+          aria-label="Stripe payload value"
+          :aria-invalid="errors.entries?.get(i)?.valueError ? 'true' : undefined"
+          data-test-id="lowcode-action-stripe-payload-value"
+          spellcheck="false"
+          placeholder="selectedPriceId"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+            errors.entries?.get(i)?.valueError ? 'border-red-500' : 'border-border'
+          ]"
+          @change="
+            updateStripePayloadEntry(i, {
+              valueExpr: ($event.target as HTMLInputElement).value
+            })
+          "
+        />
+        <button
+          type="button"
+          aria-label="Remove Stripe payload entry"
+          data-test-id="lowcode-action-stripe-payload-remove"
+          class="rounded p-0.5 text-muted hover:bg-hover hover:text-surface"
+          @click="removeStripePayloadEntry(i)"
+        >
+          <icon-lucide-x class="size-3" />
+        </button>
+      </div>
+      <button
+        type="button"
+        data-test-id="lowcode-action-stripe-payload-add"
+        class="self-start rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
+        @click="addStripePayloadEntry"
+      >
+        + payload
+      </button>
+      <select
+        :value="action.errorTarget ?? ''"
+        :aria-label="
+          action.kind === 'stripeCheckout'
+            ? 'Stripe checkout error target'
+            : 'Stripe customer portal error target'
+        "
+        data-test-id="lowcode-action-stripe-error-target"
+        class="self-start rounded border border-border bg-input px-1.5 py-0.5 text-[11px] text-surface outline-none focus:border-accent"
+        @change="patch({ errorTarget: ($event.target as HTMLSelectElement).value || undefined })"
+      >
+        <option value="">No error target</option>
+        <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
+      </select>
+    </div>
 
     <template v-if="action.kind === 'supabaseQuery'">
       <input
@@ -779,6 +1047,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :analytics-configured="analyticsConfigured"
         add-test-id="lowcode-action-on-success-add"
         @update:actions="updateBranch('onSuccess', $event)"
       />
@@ -788,6 +1057,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :analytics-configured="analyticsConfigured"
         add-test-id="lowcode-action-on-error-add"
         @update:actions="updateBranch('onError', $event)"
       />
@@ -806,6 +1076,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :analytics-configured="analyticsConfigured"
         add-test-id="lowcode-action-consequent-add"
         @update:actions="updateBranch('consequent', $event)"
       />
@@ -817,6 +1088,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :analytics-configured="analyticsConfigured"
         add-test-id="lowcode-action-alternate-add"
         @update:actions="updateBranch('alternate', $event)"
       />

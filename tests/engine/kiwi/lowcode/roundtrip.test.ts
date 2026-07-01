@@ -11,6 +11,8 @@ import type { ActionDef } from '@open-pencil/core/scene-graph'
 
 setDefaultTimeout(30_000)
 
+const CHECKOUT_ENDPOINT = `/api/\${priceId}/checkout`
+
 /**
  * Phase 1 §12 success criteria #1 + #3: state / bindings / events /
  * interactiveProps survive a real `.fig` export → parse round-trip; .fig
@@ -108,6 +110,33 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimported.getPages()[0].lowcodeSeoMetadata).toEqual(pageMetadata)
   })
 
+  test('Phase 5 §11: root custom head metadata and CSS round-trip through .fig', async () => {
+    const graph = new SceneGraph()
+    const headMetadata = {
+      meta: [{ kind: 'name' as const, key: 'theme-color', content: '#111827' }],
+      link: [
+        {
+          rel: 'preconnect',
+          href: 'https://cdn.example.com',
+          crossorigin: 'anonymous' as const
+        }
+      ],
+      styles: [':root { color-scheme: light; }']
+    }
+    graph.updateNode(graph.rootId, {
+      lowcodeHeadMetadata: headMetadata,
+      lowcodeCustomCss: 'body { scroll-behavior: smooth; }'
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+
+    expect(reimported.getNode(reimported.rootId)?.lowcodeHeadMetadata).toEqual(headMetadata)
+    expect(reimported.getNode(reimported.rootId)?.lowcodeCustomCss).toBe(
+      'body { scroll-behavior: smooth; }'
+    )
+  })
+
   test('BUTTON with events + interactiveProps round-trips through .fig (including NodeType)', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
@@ -164,6 +193,74 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     const reimported = await parseFigFile(bytes.buffer)
     const btn = findByName(reimported, 'wf-btn')
     expect(btn.events).toEqual({ onClick })
+  })
+
+  test('Phase 5 §12 stripeCheckout action survives round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd-error', name: 'checkoutError', type: 'object', defaultValue: null }
+      ]
+    })
+    graph.updateNode(page.id, {
+      state: [
+        { id: 's-price', name: 'priceId', type: 'string', defaultValue: 'price_basic' },
+        { id: 's-qty', name: 'qty', type: 'number', defaultValue: 1 }
+      ]
+    })
+    const onClick: ActionDef[] = [
+      {
+        id: 'checkout-1',
+        kind: 'stripeCheckout',
+        endpoint: CHECKOUT_ENDPOINT,
+        payloadEntries: [
+          { key: 'priceId', valueExpr: 'priceId' },
+          { key: 'quantity', valueExpr: 'qty' }
+        ],
+        errorTarget: 'checkoutError'
+      }
+    ]
+    graph.createNode('BUTTON', page.id, { name: 'checkout-btn', events: { onClick } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const btn = findByName(reimported, 'checkout-btn')
+    expect(btn.events).toEqual({ onClick })
+    expect(reimported.getNode(reimported.rootId)?.lowcodeDocumentState).toEqual([
+      { id: 'd-error', name: 'checkoutError', type: 'object', defaultValue: null }
+    ])
+  })
+
+  test('Phase 5 §12 stripeCustomerPortal action survives round-trip', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd-error', name: 'portalError', type: 'object', defaultValue: null }
+      ]
+    })
+    graph.updateNode(page.id, {
+      state: [{ id: 's-customer', name: 'customerId', type: 'string', defaultValue: 'cus_123' }]
+    })
+    const onClick: ActionDef[] = [
+      {
+        id: 'portal-1',
+        kind: 'stripeCustomerPortal',
+        endpoint: '/api/customer-portal',
+        payloadEntries: [{ key: 'customerId', valueExpr: 'customerId' }],
+        errorTarget: 'portalError'
+      }
+    ]
+    graph.createNode('BUTTON', page.id, { name: 'portal-btn', events: { onClick } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const btn = findByName(reimported, 'portal-btn')
+    expect(btn.events).toEqual({ onClick })
+    expect(reimported.getNode(reimported.rootId)?.lowcodeDocumentState).toEqual([
+      { id: 'd-error', name: 'portalError', type: 'object', defaultValue: null }
+    ])
   })
 
   test('Phase 4 §16.2 navigate route params survive round-trip (events JSON blob, zero codec change)', async () => {
@@ -889,5 +986,66 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     const reimported = await parseFigFile(bytes.buffer)
 
     expect(reimported.getNode(reimported.rootId)?.lowcodeWorkflows).toEqual(workflows)
+  })
+
+  test('analytics config and trackEvent actions round-trip through .fig (Phase 5 §10)', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeAnalyticsConfig: {
+        provider: 'posthog',
+        id: 'ph_project',
+        endpoint: 'https://eu.posthog.com',
+        pageViews: false,
+        respectDoNotTrack: true,
+        consentRegionPreset: 'eea',
+        consentRequired: true,
+        consentAnalyticsDefault: false,
+        consentCopy: {
+          bannerText: 'Acme uses analytics to improve onboarding.',
+          analyticsDescription: 'Optional product analytics only.',
+          privacyPolicyUrl: '/privacy',
+          privacyPolicyLabel: 'Privacy notice'
+        }
+      }
+    })
+    const btn = graph.createNode('BUTTON', page.id, { interactiveProps: { text: 'Track' } })
+    btn.events = {
+      onClick: [
+        {
+          id: 'track',
+          kind: 'trackEvent',
+          eventNameExpr: '"signup_click"',
+          properties: { plan: '"pro"' }
+        }
+      ]
+    }
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const importedButton = [...reimported.getAllNodes()].find((node) => node.type === 'BUTTON')
+
+    expect(reimported.getNode(reimported.rootId)?.lowcodeAnalyticsConfig).toEqual({
+      provider: 'posthog',
+      id: 'ph_project',
+      endpoint: 'https://eu.posthog.com',
+      pageViews: false,
+      respectDoNotTrack: true,
+      consentRegionPreset: 'eea',
+      consentRequired: true,
+      consentAnalyticsDefault: false,
+      consentCopy: {
+        bannerText: 'Acme uses analytics to improve onboarding.',
+        analyticsDescription: 'Optional product analytics only.',
+        privacyPolicyUrl: '/privacy',
+        privacyPolicyLabel: 'Privacy notice'
+      }
+    })
+    expect(importedButton?.events?.onClick?.[0]).toEqual({
+      id: 'track',
+      kind: 'trackEvent',
+      eventNameExpr: '"signup_click"',
+      properties: { plan: '"pro"' }
+    })
   })
 })

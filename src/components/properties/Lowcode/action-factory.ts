@@ -38,6 +38,9 @@ export const ACTION_KINDS: ActionKind[] = [
   'confirm',
   'toast',
   'clipboard',
+  'trackEvent',
+  'stripeCheckout',
+  'stripeCustomerPortal',
   'delay',
   'stop',
   'callWorkflow'
@@ -99,6 +102,13 @@ const FACTORIES: Record<ActionKind, (id: string, ctx: ActionFactoryCtx) => Actio
   confirm: (id) => ({ id, kind: 'confirm', messageExpr: '"Are you sure?"', consequent: [] }),
   toast: (id) => ({ id, kind: 'toast', messageExpr: '"Done"', variant: 'info' }),
   clipboard: (id) => ({ id, kind: 'clipboard', valueExpr: '' }),
+  trackEvent: (id) => ({ id, kind: 'trackEvent', eventNameExpr: '"event_name"' }),
+  stripeCheckout: (id) => ({ id, kind: 'stripeCheckout', endpoint: '/api/checkout' }),
+  stripeCustomerPortal: (id) => ({
+    id,
+    kind: 'stripeCustomerPortal',
+    endpoint: '/api/customer-portal'
+  }),
   delay: (id) => ({ id, kind: 'delay', ms: 500 }),
   stop: (id) => ({ id, kind: 'stop' }),
   // §10 v11 — a fresh callWorkflow has no target yet; the row's workflow

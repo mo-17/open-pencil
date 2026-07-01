@@ -3,10 +3,13 @@ import type {
   IRConfirmHandler,
   IREventHandler,
   IRNavigateHandler,
+  IRStripeCheckoutHandler,
+  IRStripeCustomerPortalHandler,
   IRSupabaseAuthHandler,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
   IRSupabaseQueryHandler,
+  IRTrackEventHandler,
   IRToastHandler
 } from '#compiler/ir/types'
 
@@ -22,7 +25,8 @@ const SIMPLE_STATEMENT_KINDS = new Set<IREventHandler['kind']>([
   'navigate',
   'setVariable',
   'toast',
-  'clipboard'
+  'clipboard',
+  'trackEvent'
 ])
 
 /** Handler kinds whose emit contains an `await` — they force `async () =>`.
@@ -31,6 +35,8 @@ const SIMPLE_STATEMENT_KINDS = new Set<IREventHandler['kind']>([
  *  unconditionally awaits `__opConfirm`, so it sits in this set directly. */
 const ASYNC_KINDS = new Set<IREventHandler['kind']>([
   'apiCall',
+  'stripeCheckout',
+  'stripeCustomerPortal',
   'supabaseQuery',
   'supabaseMutation',
   'supabaseAuth',
@@ -48,7 +54,8 @@ const NEEDS_SEMICOLON = new Set<IREventHandler['kind']>([
   'delay',
   'stop',
   'toast',
-  'clipboard'
+  'clipboard',
+  'trackEvent'
 ])
 
 /** Phase 3 §10: an arrow is `async` when any handler — at any nesting depth
@@ -165,6 +172,48 @@ function emitToast(h: IRToastHandler): string {
   return `__opToast(${message}, ${JSON.stringify(h.variant)}, ${opts})`
 }
 
+function emitTrackEvent(h: IRTrackEventHandler): string {
+  const eventName = emitExpression(h.eventAst)
+  if (!h.properties || h.properties.length === 0) return `__opTrackEvent(${eventName})`
+  const props = h.properties
+    .map((prop) => `${JSON.stringify(prop.key)}: ${emitExpression(prop.ast)}`)
+    .join(', ')
+  return `__opTrackEvent(${eventName}, { ${props} })`
+}
+
+function emitStripeCheckout(h: IRStripeCheckoutHandler): string {
+  return emitStripeRedirect(h, 'checkoutUrl', 'stripeCheckout')
+}
+
+function emitStripeCustomerPortal(h: IRStripeCustomerPortalHandler): string {
+  return emitStripeRedirect(h, 'portalUrl', 'stripeCustomerPortal')
+}
+
+function emitStripeRedirect(
+  h: IRStripeCheckoutHandler | IRStripeCustomerPortalHandler,
+  namedUrlKey: 'checkoutUrl' | 'portalUrl',
+  actionName: 'stripeCheckout' | 'stripeCustomerPortal'
+): string {
+  const endpoint = emitExpression(h.endpoint)
+  const payload = h.payloadEntries?.length
+    ? `{ ${h.payloadEntries
+        .map((entry) => `${JSON.stringify(entry.key)}: ${emitExpression(entry.ast)}`)
+        .join(', ')} }`
+    : '{}'
+  const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, err); ` : ''
+  const urlLocal = namedUrlKey
+  return (
+    `try { ` +
+    `const res = await fetch(${endpoint}, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(${payload}) }); ` +
+    `const data = await res.json(); ` +
+    `if (!res.ok) throw data; ` +
+    `const ${urlLocal} = data?.url ?? data?.${namedUrlKey}; ` +
+    `if (typeof ${urlLocal} !== "string" || ${urlLocal} === "") throw new Error("${actionName} response missing url"); ` +
+    `window.location.assign(${urlLocal}) ` +
+    `} catch (err) { ${errorWrite}console.error("${actionName} failed:", err) }`
+  )
+}
+
 /** Phase 3 §10 v3 / v5: emit a `confirm` handler as an `if (await __opConfirm(…))`
  *  block. Custom button labels (§10 v5) ride in an options object; a confirm
  *  with no labels stays byte-identical to the §10 v3 output. */
@@ -246,6 +295,10 @@ function emitHandlerStatement(h: IREventHandler): string {
     }
     case 'apiCall':
       return emitApiCall(h)
+    case 'stripeCheckout':
+      return emitStripeCheckout(h)
+    case 'stripeCustomerPortal':
+      return emitStripeCustomerPortal(h)
     case 'supabaseQuery':
       return emitSupabaseQuery(h)
     case 'supabaseMutation':
@@ -275,6 +328,8 @@ function emitHandlerStatement(h: IREventHandler): string {
       // Phase 3 §10 v3: copy to the clipboard, fire-and-forget (the returned
       // promise is intentionally not awaited — no runtime surface).
       return `navigator.clipboard.writeText(${emitExpression(h.ast)})`
+    case 'trackEvent':
+      return emitTrackEvent(h)
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)

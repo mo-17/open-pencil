@@ -66,7 +66,27 @@ describe('read_lowcode_node', () => {
     graph.updateNode(graph.rootId, {
       lowcodeDocumentState: docStates,
       lowcodeSupabaseConfig: config,
-      lowcodeSeoMetadata: { title: 'Launch', description: 'Fast page' }
+      lowcodeSeoMetadata: { title: 'Launch', description: 'Fast page' },
+      lowcodeAnalyticsConfig: {
+        provider: 'ga4',
+        id: 'G-TEST123',
+        respectDoNotTrack: true,
+        consentRegionPreset: 'eea',
+        consentRequired: true,
+        consentAnalyticsDefault: false,
+        consentCopy: {
+          bannerText: 'Acme uses analytics.',
+          analyticsDescription: 'Optional analytics only.',
+          privacyPolicyUrl: '/privacy',
+          privacyPolicyLabel: 'Privacy notice'
+        }
+      },
+      lowcodeHeadMetadata: {
+        meta: [{ kind: 'name', key: 'theme-color', content: '#111827' }],
+        link: [{ rel: 'preconnect', href: 'https://cdn.example.com' }],
+        styles: [':root { color-scheme: light; }']
+      },
+      lowcodeCustomCss: 'body { scroll-behavior: smooth; }'
     })
     const tool = getTool('read_lowcode_node')
     const result = tool.execute(figma, { id: graph.rootId }) as Result<LowcodeNodeRead>
@@ -78,6 +98,26 @@ describe('read_lowcode_node', () => {
       title: 'Launch',
       description: 'Fast page'
     })
+    expect(result.data.lowcodeAnalyticsConfig).toEqual({
+      provider: 'ga4',
+      id: 'G-TEST123',
+      respectDoNotTrack: true,
+      consentRegionPreset: 'eea',
+      consentRequired: true,
+      consentAnalyticsDefault: false,
+      consentCopy: {
+        bannerText: 'Acme uses analytics.',
+        analyticsDescription: 'Optional analytics only.',
+        privacyPolicyUrl: '/privacy',
+        privacyPolicyLabel: 'Privacy notice'
+      }
+    })
+    expect(result.data.lowcodeHeadMetadata).toEqual({
+      meta: [{ kind: 'name', key: 'theme-color', content: '#111827' }],
+      link: [{ rel: 'preconnect', href: 'https://cdn.example.com' }],
+      styles: [':root { color-scheme: light; }']
+    })
+    expect(result.data.lowcodeCustomCss).toBe('body { scroll-behavior: smooth; }')
   })
 
   test('returns ok:false with a descriptive error when the id is missing', () => {

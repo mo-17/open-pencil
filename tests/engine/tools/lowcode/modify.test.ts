@@ -12,6 +12,7 @@ type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string
 const FAKE_ANON_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiJ9.fake'
 const FAKE_SERVICE_ROLE_JWT =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9yb2xlIn0.fake'
+const CHECKOUT_ENDPOINT = `/api/\${priceId}/checkout`
 
 /**
  * Phase 3 §3 step 3 — lowcode modify tools.
@@ -110,6 +111,140 @@ describe('update_lowcode_node', () => {
     if (result.ok) return
     expect(result.error).toContain('canonicalURL')
     expect(graph.getNode(graph.rootId)?.lowcodeSeoMetadata).toBeUndefined()
+  })
+
+  test('accepts analytics privacy gates', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeAnalyticsConfig: {
+          provider: 'ga4',
+          id: ' G-TEST123 ',
+          pageViews: false,
+          respectDoNotTrack: true,
+          consentRegionPreset: 'eea',
+          consentRequired: true,
+          consentAnalyticsDefault: false,
+          consentCopy: {
+            bannerText: ' Acme uses analytics. ',
+            analyticsDescription: ' Optional analytics only. ',
+            privacyPolicyUrl: ' /privacy ',
+            privacyPolicyLabel: ' Privacy notice '
+          }
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data?.updated).toEqual(['lowcodeAnalyticsConfig'])
+    expect(graph.getNode(graph.rootId)?.lowcodeAnalyticsConfig).toEqual({
+      provider: 'ga4',
+      id: 'G-TEST123',
+      pageViews: false,
+      respectDoNotTrack: true,
+      consentRegionPreset: 'eea',
+      consentRequired: true,
+      consentAnalyticsDefault: false,
+      consentCopy: {
+        bannerText: 'Acme uses analytics.',
+        analyticsDescription: 'Optional analytics only.',
+        privacyPolicyUrl: '/privacy',
+        privacyPolicyLabel: 'Privacy notice'
+      }
+    })
+  })
+
+  test('rejects unknown analytics consent region presets', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeAnalyticsConfig: {
+          provider: 'ga4',
+          id: 'G-TEST123',
+          consentRegionPreset: 'worldwide'
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('consentRegionPreset')
+    expect(graph.getNode(graph.rootId)?.lowcodeAnalyticsConfig).toBeUndefined()
+  })
+
+  test('rejects unsafe analytics consent policy URLs', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeAnalyticsConfig: {
+          provider: 'ga4',
+          id: 'G-TEST123',
+          consentRequired: true,
+          consentCopy: {
+            privacyPolicyUrl: `java${'script'}:alert(1)`
+          }
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('privacyPolicyUrl')
+    expect(graph.getNode(graph.rootId)?.lowcodeAnalyticsConfig).toBeUndefined()
+  })
+
+  test('accepts controlled lowcodeHeadMetadata and custom CSS', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeHeadMetadata: {
+          meta: [{ kind: 'name', key: '  theme-color ', content: ' #111827 ' }],
+          link: [
+            {
+              rel: ' stylesheet ',
+              href: ' https://cdn.example.com/theme.css ',
+              crossorigin: 'anonymous'
+            }
+          ],
+          styles: [' :root { color-scheme: light; } ']
+        },
+        lowcodeCustomCss: ' body { scroll-behavior: smooth; } '
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data?.updated.sort()).toEqual(['lowcodeCustomCss', 'lowcodeHeadMetadata'])
+    expect(graph.getNode(graph.rootId)?.lowcodeHeadMetadata).toEqual({
+      meta: [{ kind: 'name', key: 'theme-color', content: '#111827' }],
+      link: [
+        {
+          rel: 'stylesheet',
+          href: 'https://cdn.example.com/theme.css',
+          crossorigin: 'anonymous'
+        }
+      ],
+      styles: [':root { color-scheme: light; }']
+    })
+    expect(graph.getNode(graph.rootId)?.lowcodeCustomCss).toBe('body { scroll-behavior: smooth; }')
+  })
+
+  test('rejects unsafe or malformed lowcodeHeadMetadata', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeHeadMetadata: {
+          script: ['alert(1)'],
+          meta: [{ kind: 'script', key: 'x', content: 'y' }]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('script')
+    expect(graph.getNode(graph.rootId)?.lowcodeHeadMetadata).toBeUndefined()
   })
 
   test('accepts stateOverrides for interaction-state styling', () => {
@@ -928,6 +1063,142 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toContain('valueExpr')
+  })
+
+  test('update_lowcode_node accepts stripeCheckout actions (§12 first knife)', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    const result = tool.execute(
+      figma,
+      {
+        id: btn.id,
+        patch_json: JSON.stringify({
+          events: {
+            onClick: [
+              {
+                id: 'checkout-1',
+                kind: 'stripeCheckout',
+                endpoint: CHECKOUT_ENDPOINT,
+                payloadEntries: [
+                  { key: 'priceId', valueExpr: 'priceId' },
+                  { key: 'quantity', valueExpr: 'qty' }
+                ],
+                errorTarget: 'checkoutError'
+              }
+            ]
+          }
+        })
+      },
+      { editor }
+    ) as Result<{ id: string; updated: string[] }>
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual({
+      id: 'checkout-1',
+      kind: 'stripeCheckout',
+      endpoint: CHECKOUT_ENDPOINT,
+      payloadEntries: [
+        { key: 'priceId', valueExpr: 'priceId' },
+        { key: 'quantity', valueExpr: 'qty' }
+      ],
+      errorTarget: 'checkoutError'
+    })
+  })
+
+  test('update_lowcode_node accepts stripeCustomerPortal actions (§12 portal knife)', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const tool = getTool('update_lowcode_node')
+    const result = tool.execute(
+      figma,
+      {
+        id: btn.id,
+        patch_json: JSON.stringify({
+          events: {
+            onClick: [
+              {
+                id: 'portal-1',
+                kind: 'stripeCustomerPortal',
+                endpoint: '/api/customer-portal',
+                payloadEntries: [{ key: 'customerId', valueExpr: 'customerId' }],
+                errorTarget: 'checkoutError'
+              }
+            ]
+          }
+        })
+      },
+      { editor }
+    ) as Result<{ id: string; updated: string[] }>
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual({
+      id: 'portal-1',
+      kind: 'stripeCustomerPortal',
+      endpoint: '/api/customer-portal',
+      payloadEntries: [{ key: 'customerId', valueExpr: 'customerId' }],
+      errorTarget: 'checkoutError'
+    })
+  })
+
+  test('update_lowcode_node rejects stripeCheckout without a usable endpoint', () => {
+    const { figma } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [{ id: 'checkout-1', kind: 'stripeCheckout', endpoint: '' }]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('endpoint')
+  })
+
+  test('update_lowcode_node rejects stripeCustomerPortal without a usable endpoint', () => {
+    const { figma } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [{ id: 'portal-1', kind: 'stripeCustomerPortal', endpoint: '' }]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('endpoint')
+  })
+
+  test('update_lowcode_node rejects malformed stripeCheckout payload entries', () => {
+    const { figma } = setupEditorToolTest()
+    const btn = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: btn.id,
+      patch_json: JSON.stringify({
+        events: {
+          onClick: [
+            {
+              id: 'checkout-1',
+              kind: 'stripeCheckout',
+              endpoint: '/api/checkout',
+              payloadEntries: [{ key: 'bad-key', valueExpr: 'priceId +' }]
+            }
+          ]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('payloadEntries')
   })
 
   test('runBatch (begin/commit) at dispatch layer collapses N tool pushes into 1 undo entry', () => {

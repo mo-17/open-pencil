@@ -30,11 +30,14 @@ import type {
   IRNavigateParam,
   IRSetVariableHandler,
   IRStateDecl,
+  IRStripeCheckoutHandler,
+  IRStripeCustomerPortalHandler,
   IRSupabaseAuthHandler,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
   IRSupabasePayloadEntry,
   IRSupabaseQueryHandler,
+  IRTrackEventHandler,
   IRToastHandler,
   IRWarning,
   ValueUpdateMode
@@ -738,6 +741,32 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
       return resolveConfirm(action, ctx)
     case 'clipboard':
       return resolveClipboard(action, ctx)
+    case 'trackEvent':
+      return resolveTrackEvent(action, ctx)
+    case 'stripeCheckout':
+      return resolveStripeRedirect(
+        ctx.node,
+        ctx.eventName,
+        action,
+        'stripeCheckout',
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
+    case 'stripeCustomerPortal':
+      return resolveStripeRedirect(
+        ctx.node,
+        ctx.eventName,
+        action,
+        'stripeCustomerPortal',
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
     case 'callWorkflow':
       // Phase 3 §10 v4: expanded inline by resolveBranch before it reaches
       // dispatchAction, so this arm is unreachable — present only to keep the
@@ -783,19 +812,13 @@ function recordWrites(handler: IREventHandler, docStateWrites: Set<string> | und
     case 'supabaseAuth':
       if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
       return
-    case 'setState':
-    case 'navigate':
-    // Phase 3 §10: condition writes are recorded per nested handler while its
-    // branches are resolved (resolveBranch); delay / stop write nothing.
-    // Phase 3 §10 v2: toast reads (its message expr) but writes no docState.
-    // Phase 3 §10 v3: confirm's nested branches are recorded per handler while
-    // its branches resolve (resolveBranch); clipboard reads but writes nothing.
-    case 'condition':
-    case 'delay':
-    case 'stop':
-    case 'toast':
-    case 'confirm':
-    case 'clipboard':
+    case 'stripeCheckout':
+    case 'stripeCustomerPortal':
+      if (handler.errorTarget) docStateWrites.add(handler.errorTarget)
+      return
+    default:
+      // Non-writing handlers either read state only, write page-local state, or
+      // have nested branches whose writes were recorded during resolveBranch.
       break
   }
 }
@@ -1072,6 +1095,97 @@ function resolveApiCall(
   }
 }
 
+type StripeRedirectAction = Extract<
+  ActionDef,
+  { kind: 'stripeCheckout' | 'stripeCustomerPortal' }
+>
+type IRStripeRedirectHandler = IRStripeCheckoutHandler | IRStripeCustomerPortalHandler
+
+function stripeRedirectCode(kind: StripeRedirectAction['kind']): string {
+  return kind === 'stripeCheckout' ? 'action-stripe-checkout' : 'action-stripe-customer-portal'
+}
+
+function resolveStripeRedirect(
+  node: SceneNode,
+  eventName: EventName,
+  action: StripeRedirectAction,
+  kind: StripeRedirectAction['kind'],
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): IRStripeRedirectHandler | null {
+  const code = stripeRedirectCode(kind)
+  const rawEndpoint = action.endpoint?.trim() ?? ''
+  if (rawEndpoint === '') {
+    warnings.push({
+      code: `${code}-missing-endpoint`,
+      message: `node ${node.id} ${eventName} ${kind} has no endpoint`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const endpoint = parseTemplate(rawEndpoint)
+  if (!endpoint.ok) {
+    warnings.push({
+      code: `${code}-invalid-endpoint`,
+      message: `node ${node.id} ${eventName} ${kind} endpoint "${rawEndpoint}" → ${endpoint.error}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  if (endpoint.references.has(PREV_IDENT)) {
+    warnings.push({
+      code: 'expression-prev-out-of-context',
+      message: `node ${node.id} ${eventName} ${kind} endpoint references ${PREV_IDENT}; ${PREV_IDENT} is only valid inside setState / setVariable valueExpr`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const unknown = unknownIdentifiers(endpoint.references, states, inScope, docStates)
+  if (unknown.length > 0) {
+    warnings.push({
+      code: `${code}-unknown-identifier`,
+      message: `node ${node.id} ${eventName} ${kind} endpoint references unknown identifier(s): ${unknown.join(', ')}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  const payloadEntries = resolveStripeRedirectPayloadEntries(
+    node,
+    eventName,
+    action,
+    kind,
+    states,
+    inScope,
+    docStates,
+    docStateReads,
+    warnings
+  )
+  if (payloadEntries === null) return null
+  const errorTarget =
+    action.errorTarget === undefined
+      ? undefined
+      : resolveDocStateTarget(
+          node,
+          eventName,
+          code,
+          action.errorTarget,
+          docStates,
+          warnings,
+          false
+        )
+  if (errorTarget === null) return null
+  registerDocStateReads(endpoint.references, docStates, docStateReads)
+  return {
+    kind,
+    endpoint: endpoint.ast,
+    ...(payloadEntries.length > 0 ? { payloadEntries } : {}),
+    errorTarget
+  } as IRStripeRedirectHandler
+}
+
 function resolveNavigate(
   node: SceneNode,
   eventName: EventName,
@@ -1187,6 +1301,14 @@ const CLIPBOARD_DESC: ExprActionDesc = {
   code: 'action-clipboard',
   missingCode: 'action-clipboard-missing-value',
   invalidCode: 'action-clipboard-invalid-value'
+}
+
+const TRACK_EVENT_DESC: ExprActionDesc = {
+  label: 'trackEvent',
+  field: 'eventNameExpr',
+  code: 'action-track-event',
+  missingCode: 'action-track-event-missing-name',
+  invalidCode: 'action-track-event-invalid-name'
 }
 
 /** Parse + validate the read-context expression carried by an
@@ -1360,6 +1482,39 @@ function resolveClipboard(
     kind: 'clipboard',
     ast: lowered.ast,
     references: lowered.references
+  }
+}
+
+/** Phase 5 §10: lower a tracking event. Provider config is emitted separately
+ *  on IRTree; the runtime no-ops when a document intentionally has no provider
+ *  yet, so authoring event wiring can happen before deploy config is known. */
+function resolveTrackEvent(
+  action: Extract<ActionDef, { kind: 'trackEvent' }>,
+  ctx: ResolveCtx
+): IRTrackEventHandler | null {
+  const lowered = lowerActionExpr(action.eventNameExpr, ctx, TRACK_EVENT_DESC)
+  if (!lowered) return null
+  const properties: IRTrackEventHandler['properties'] = []
+  for (const [key, expr] of Object.entries(action.properties ?? {})) {
+    const prop = lowerActionExpr(expr, ctx, trackEventPropertyDesc(key))
+    if (!prop) return null
+    properties.push({ key, ast: prop.ast, references: prop.references })
+  }
+  return {
+    kind: 'trackEvent',
+    eventAst: lowered.ast,
+    references: lowered.references,
+    ...(properties.length > 0 ? { properties } : {})
+  }
+}
+
+function trackEventPropertyDesc(key: string): ExprActionDesc {
+  return {
+    label: 'trackEvent',
+    field: `properties.${key}`,
+    code: 'action-track-event-property',
+    missingCode: 'action-track-event-property-missing-value',
+    invalidCode: 'action-track-event-property-invalid-value'
   }
 }
 
@@ -1865,6 +2020,87 @@ function resolvePayloadEntries(
         node,
         refCtx,
         'action-supabase-mutation',
+        warnings
+      )
+    ) {
+      return null
+    }
+    registerDocStateReads(parsed.references, docStates, docStateReads)
+    out.push({ key, ast: parsed.ast, references: [...parsed.references] })
+  }
+  return out
+}
+
+function resolveStripeRedirectPayloadEntries(
+  node: SceneNode,
+  eventName: EventName,
+  action: StripeRedirectAction,
+  kind: StripeRedirectAction['kind'],
+  states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
+  warnings: IRWarning[]
+): IRSupabasePayloadEntry[] | null {
+  const code = stripeRedirectCode(kind)
+  const out: IRSupabasePayloadEntry[] = []
+  const seenKeys = new Set<string>()
+  const raw = action.payloadEntries ?? []
+  for (let i = 0; i < raw.length; i++) {
+    const entry = raw[i]
+    const key = entry.key.trim()
+    if (key === '') {
+      warnings.push({
+        code: `${code}-entry-missing-key`,
+        message: `node ${node.id} ${eventName} ${kind} payloadEntries[${i}] has no key`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (!PAYLOAD_ENTRY_KEY_RE.test(key)) {
+      warnings.push({
+        code: `${code}-entry-invalid-key`,
+        message: `node ${node.id} ${eventName} ${kind} payloadEntries[${i}] key "${key}" must be a JS identifier`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (seenKeys.has(key)) {
+      warnings.push({
+        code: `${code}-entry-duplicate-key`,
+        message: `node ${node.id} ${eventName} ${kind} payloadEntries[${i}] duplicates key "${key}"`,
+        nodeId: node.id
+      })
+      return null
+    }
+    seenKeys.add(key)
+    const exprSrc = entry.valueExpr.trim()
+    if (exprSrc === '') {
+      warnings.push({
+        code: `${code}-entry-missing-value`,
+        message: `node ${node.id} ${eventName} ${kind} payloadEntries[${i}] "${key}" has no valueExpr`,
+        nodeId: node.id
+      })
+      return null
+    }
+    const parsed = parseExpression(exprSrc)
+    if (!parsed.ok) {
+      warnings.push({
+        code: `${code}-entry-invalid-value`,
+        message: `node ${node.id} ${eventName} ${kind} payloadEntries[${i}] "${key}" valueExpr "${exprSrc}" → ${parsed.error}`,
+        nodeId: node.id
+      })
+      return null
+    }
+    if (
+      !checkExprRefs(
+        parsed.references,
+        states,
+        inScope,
+        docStates,
+        node,
+        `${eventName} ${code} payloadEntries[${i}]`,
+        code,
         warnings
       )
     ) {

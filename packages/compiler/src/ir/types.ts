@@ -592,6 +592,9 @@ export type IREventHandler =
   | IRToastHandler
   | IRConfirmHandler
   | IRClipboardHandler
+  | IRTrackEventHandler
+  | IRStripeCheckoutHandler
+  | IRStripeCustomerPortalHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector
@@ -844,6 +847,39 @@ export interface IRClipboardHandler {
   references: string[]
 }
 
+/** Phase 5 §10: send an analytics event through `_lowcode_analytics`.
+ *  `eventAst` resolves to the event name; each property value is also a
+ *  parsed expression so generated code can pass state/docState values. */
+export interface IRTrackEventHandler {
+  kind: 'trackEvent'
+  eventAst: ExprAst
+  references: string[]
+  properties?: IRTrackEventProperty[]
+}
+
+export type IRTrackEventProperty = IRSupabasePayloadEntry
+
+/** Phase 5 §12: POST to an author-owned checkout endpoint and redirect to the
+ * returned Stripe Checkout URL. Payload entries reuse the safe expression-key
+ * shape from Supabase mutations; no Stripe secret ever appears in generated
+ * client code. */
+export interface IRStripeCheckoutHandler {
+  kind: 'stripeCheckout'
+  endpoint: ExprAst
+  payloadEntries?: IRSupabasePayloadEntry[]
+  errorTarget?: string
+}
+
+/** Phase 5 §12: POST to an author-owned Customer Portal endpoint and redirect
+ * to the returned Stripe billing portal URL. Shares the frontend-only redirect
+ * contract with checkout; all Stripe secret/customer lookup work is server-side. */
+export interface IRStripeCustomerPortalHandler {
+  kind: 'stripeCustomerPortal'
+  endpoint: ExprAst
+  payloadEntries?: IRSupabasePayloadEntry[]
+  errorTarget?: string
+}
+
 /** A page-level state declaration. Adapter emits `useState(defaultValue)`. */
 export interface IRStateDecl {
   /** Underlying StateDef id. Adapters do not need it, but it helps debug. */
@@ -938,6 +974,9 @@ export interface IRTree {
    *  whether to emit `_lowcode_supabase.ts` and inject the supabase-js
    *  dependency. Undefined when the document has no Supabase wiring. */
   supabaseConfig?: IRSupabaseConfig
+  /** Phase 5 §10: document-level analytics provider config from the root node.
+   *  Undefined when no generated analytics runtime should be emitted. */
+  analyticsConfig?: IRAnalyticsConfig
   /** Phase 3 §9 v7: document-level translation catalog from the root SceneNode,
    *  lifted into every IRTree from the same compile. The adapter pre-fills each
    *  target `locales/<code>.json` from this (missing entries fall back to the
@@ -954,6 +993,29 @@ export interface IRTree {
  *  the adapter layer never reaches into core. Locale code → (source message
  *  string → translated string). */
 export type IRTranslations = Record<string, Record<string, string>>
+
+export type IRAnalyticsProvider = 'ga4' | 'plausible' | 'posthog'
+export type IRAnalyticsConsentRegionPreset = 'eea'
+
+export interface IRAnalyticsConfig {
+  enabled?: boolean
+  provider: IRAnalyticsProvider
+  id: string
+  endpoint?: string
+  pageViews?: boolean
+  respectDoNotTrack?: boolean
+  consentRequired?: boolean
+  consentRegionPreset?: IRAnalyticsConsentRegionPreset
+  consentAnalyticsDefault?: boolean
+  consentCopy?: IRAnalyticsConsentCopy
+}
+
+export interface IRAnalyticsConsentCopy {
+  bannerText?: string
+  analyticsDescription?: string
+  privacyPolicyUrl?: string
+  privacyPolicyLabel?: string
+}
 
 /** Phase 3 §2: IR-local mirror of `SupabaseConfig` from scene-graph, so the
  *  adapter layer never has to reach into core. Same shape — anonKey is the

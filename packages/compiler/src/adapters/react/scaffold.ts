@@ -9,6 +9,7 @@ import {
   hasTranslatableText,
   pageHasNavigateHandler,
   pageHasNavigateParams,
+  pageUsesAnalytics,
   pageUsesConfirm,
   pageUsesSupabase,
   pageUsesToast,
@@ -71,6 +72,8 @@ interface BuildPageOptions {
    *  `'../_lowcode_validation'` for multi-page. Only consulted when the page has
    *  a validated field. */
   lowcodeValidationImportPath: string
+  /** Phase 5 §10: relative path to `src/_lowcode_analytics.ts`. */
+  lowcodeAnalyticsImportPath: string
   /** Phase 3 §8: relative path prefix to `src/components/` from this file —
    *  `'./components/'` for single-page App.tsx, `'../components/'` for page
    *  modules. Component imports are emitted only for the refs the page uses. */
@@ -108,6 +111,10 @@ interface BuildAppOptions {
    *  to `'./_lowcode_validation'` (single-page); multi-page pages pass
    *  `'../_lowcode_validation'` explicitly. */
   lowcodeValidationImportPath?: string
+  /** Phase 5 §10: see `BuildPageOptions.lowcodeAnalyticsImportPath`. */
+  lowcodeAnalyticsImportPath?: string
+  /** Phase 5 §10: multi-page router shell should fire page_view on route changes. */
+  analyticsRouteTracking?: boolean
   /** Phase 3 §8: see `BuildPageOptions.componentImportPrefix`. Defaults to
    *  `'./components/'` (single-page); multi-page pages pass `'../components/'`. */
   componentImportPrefix?: string
@@ -133,6 +140,7 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? './_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? './_lowcode_confirm',
     lowcodeValidationImportPath: options.lowcodeValidationImportPath ?? './_lowcode_validation',
+    lowcodeAnalyticsImportPath: options.lowcodeAnalyticsImportPath ?? './_lowcode_analytics',
     componentImportPrefix: options.componentImportPrefix ?? './components/',
     uiKit: options.uiKit ?? null,
     // Single-page App.tsx is not wrapped in a router → no `useParams` context.
@@ -154,6 +162,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? '../_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? '../_lowcode_confirm',
     lowcodeValidationImportPath: options.lowcodeValidationImportPath ?? '../_lowcode_validation',
+    lowcodeAnalyticsImportPath: options.lowcodeAnalyticsImportPath ?? '../_lowcode_analytics',
     componentImportPrefix: options.componentImportPrefix ?? '../components/',
     uiKit: options.uiKit ?? null,
     // Multi-page modules render inside `<BrowserRouter>` → `useParams` is valid.
@@ -168,16 +177,23 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
 export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildAppOptions): string {
   const bridgeImport = options.devMode ? `import './__preview-bridge'\n` : ''
   const routerImport = `import { BrowserRouter, Route, Routes } from 'react-router-dom'\n`
+  const analyticsImport = options.analyticsRouteTracking
+    ? `import { LowcodeAnalyticsRouteTracker } from './_lowcode_analytics'\n`
+    : ''
   const pageImports = infos
     .map((info) => `import ${info.component} from './pages/${info.slug}'`)
     .join('\n')
-  const importBlock = `${bridgeImport}${routerImport}${pageImports}\n\n`
+  const importBlock = `${bridgeImport}${routerImport}${analyticsImport}${pageImports}\n\n`
   const routes = infos
     .map((info) => `        <Route path="${info.route}" element={<${info.component} />} />`)
     .join('\n')
+  const analyticsTracker = options.analyticsRouteTracking
+    ? `      <LowcodeAnalyticsRouteTracker />\n`
+    : ''
   return `${importBlock}export default function App() {
   return (
     <BrowserRouter>
+${analyticsTracker}
       <Routes>
 ${routes}
       </Routes>
@@ -259,6 +275,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     lowcodeToastImportPath,
     lowcodeConfirmImportPath,
     lowcodeValidationImportPath,
+    lowcodeAnalyticsImportPath,
     componentImportPrefix,
     uiKit,
     routerAvailable
@@ -282,7 +299,8 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     supabase: lowcodeSupabaseImportPath,
     toast: lowcodeToastImportPath,
     confirm: lowcodeConfirmImportPath,
-    validation: lowcodeValidationImportPath
+    validation: lowcodeValidationImportPath,
+    analytics: lowcodeAnalyticsImportPath
   })
   // Phase 3 §8: import the components this page references.
   const componentNames = referencedComponentNames(ir.children)
@@ -385,7 +403,7 @@ ${body}
  *  cyclomatic-complexity gate (each gate is its own branch). */
 function buildLowcodeRuntimeImports(
   ir: IRTree,
-  paths: { supabase: string; toast: string; confirm: string; validation: string }
+  paths: { supabase: string; toast: string; confirm: string; validation: string; analytics: string }
 ): string {
   const supabase = pageUsesSupabase(ir)
     ? `import { getSupabaseClient } from '${paths.supabase}'\n`
@@ -396,7 +414,10 @@ function buildLowcodeRuntimeImports(
     (ir.validatedFields?.length ?? 0) > 0
       ? `import { ${validationImportNames(ir.validatedFields ?? []).join(', ')} } from '${paths.validation}'\n`
       : ''
-  return supabase + toast + confirm + validation
+  const analytics = pageUsesAnalytics(ir)
+    ? `import { __opTrackEvent } from '${paths.analytics}'\n`
+    : ''
+  return supabase + toast + confirm + validation + analytics
 }
 
 function validationImportNames(

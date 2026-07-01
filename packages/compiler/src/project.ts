@@ -71,7 +71,11 @@ export default defineConfig({
 /** Phase 3 §15: `themeCss` (the UI kit's Tailwind v4 theme block) is inserted
  *  right after the Tailwind import so the kit's semantic color utilities
  *  (`bg-primary`, …) resolve. Empty → byte-identical. */
-export function buildIndexCss(safelistClasses: readonly string[] = [], themeCss = ''): string {
+export function buildIndexCss(
+  safelistClasses: readonly string[] = [],
+  themeCss = '',
+  customCss = ''
+): string {
   // Tailwind v4's content auto-detection relies on Vite's module graph and a
   // filesystem glob under the project root. Our preview dev-server serves the
   // emitted project from an in-memory VFS, so the glob finds nothing on disk
@@ -84,9 +88,10 @@ export function buildIndexCss(safelistClasses: readonly string[] = [], themeCss 
   // Phase 3 §15: the theme block goes right after the import so its `@theme`
   // tokens register before any `@source inline` utility generation.
   const head = `@import "tailwindcss";\n` + (themeCss ? `\n${themeCss}` : '')
-  if (safelistClasses.length === 0) return head
+  const tail = customCss ? `\n${customCss}\n` : ''
+  if (safelistClasses.length === 0) return `${head}${tail}`
   const joined = safelistClasses.join(' ').replace(/"/g, '\\"')
-  return `${head}@source inline("${joined}");\n`
+  return `${head}@source inline("${joined}");\n${tail}`
 }
 
 /** Phase 3 §15: `withAlias` adds the `@/* → ./src/*` path mapping so the inlined
@@ -157,12 +162,49 @@ function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
     lines.push(`    <link rel="canonical" href="${escapeHtml(canonicalUrl)}" />`)
     lines.push(metaTag('property', 'og:url', canonicalUrl))
   }
+  lines.push(...customHeadTags(metadata))
   if (lines.length === 0) return ''
   return `${lines.join('\n')}\n`
 }
 
 function metaTag(kind: 'name' | 'property', key: string, content: string): string {
   return `    <meta ${kind}="${escapeHtml(key)}" content="${escapeHtml(content)}" />`
+}
+
+function customHeadTags(metadata: HtmlMetadata): string[] {
+  const head = metadata.head
+  if (!head) return []
+  const lines: string[] = []
+  for (const meta of head.meta ?? []) {
+    const key = cleanMetadataText(meta.key)
+    const content = cleanMetadataText(meta.content)
+    if (!key || !content) continue
+    const attr = meta.kind === 'httpEquiv' ? 'http-equiv' : meta.kind
+    lines.push(`    <meta ${attr}="${escapeHtml(key)}" content="${escapeHtml(content)}" />`)
+  }
+  for (const link of head.link ?? []) {
+    const rel = cleanMetadataText(link.rel)
+    const href = cleanMetadataText(link.href)
+    if (!rel || !href) continue
+    const attrs = [
+      ['rel', rel],
+      ['href', href],
+      ['as', cleanMetadataText(link.as)],
+      ['type', cleanMetadataText(link.type)],
+      ['media', cleanMetadataText(link.media)],
+      ['crossorigin', link.crossorigin]
+    ].filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+    lines.push(`    <link ${attrs.map(([k, v]) => `${k}="${escapeHtml(v)}"`).join(' ')} />`)
+  }
+  for (const style of head.styles ?? []) {
+    const css = style.trim()
+    if (css) lines.push(`    <style>${escapeStyleText(css)}</style>`)
+  }
+  return lines
+}
+
+function escapeStyleText(css: string): string {
+  return css.replace(/<\/style/gi, '<\\/style')
 }
 
 function cleanMetadataText(value: unknown): string | undefined {
@@ -185,7 +227,9 @@ export function buildMainTsx(
   toast = false,
   confirm = false,
   theme = false,
-  themeSwitchPosition?: LowcodeThemeSwitchPosition | false
+  themeSwitchPosition?: LowcodeThemeSwitchPosition | false,
+  analytics = false,
+  analyticsConsentBanner = false
 ): string {
   const i18nImport = i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
   const toastImport = toast ? `import { ToastHost } from './_lowcode_toast'\n` : ''
@@ -196,6 +240,7 @@ export function buildMainTsx(
         themeSwitchEnabled ? ', LowcodeThemeSwitch' : ''
       } } from './_lowcode_theme'\n`
     : ''
+  const analyticsImport = buildAnalyticsImport(analytics, analyticsConsentBanner)
   let app = '<App />'
   if (i18n) app = `<I18nProvider>\n      ${app}\n    </I18nProvider>`
   const themeSwitch =
@@ -207,22 +252,43 @@ export function buildMainTsx(
       themeSwitchEnabled ? `\n      ${themeSwitch}` : ''
     }\n    </LowcodeThemeProvider>`
   }
-  const toastChild = toast ? `\n    <ToastHost />` : ''
-  const confirmChild = confirm ? `\n    <ConfirmHost />` : ''
+  const runtimeChildren = buildMainRuntimeChildren(toast, confirm, analyticsConsentBanner)
   return `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-${i18nImport}${toastImport}${confirmImport}${themeImport}import './index.css'
+${i18nImport}${toastImport}${confirmImport}${themeImport}${analyticsImport}import './index.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
 
 createRoot(root).render(
   <StrictMode>
-    ${app}${toastChild}${confirmChild}
+    ${app}${runtimeChildren}
   </StrictMode>
 )
 `
+}
+
+function buildAnalyticsImport(analytics: boolean, consentBanner: boolean): string {
+  if (consentBanner) {
+    return `import { LowcodeAnalyticsConsentBanner } from './_lowcode_analytics'\n`
+  }
+  return analytics ? `import './_lowcode_analytics'\n` : ''
+}
+
+function buildMainRuntimeChildren(
+  toast: boolean,
+  confirm: boolean,
+  analyticsConsent: boolean
+): string {
+  return [
+    toast ? '<ToastHost />' : '',
+    confirm ? '<ConfirmHost />' : '',
+    analyticsConsent ? '<LowcodeAnalyticsConsentBanner />' : ''
+  ]
+    .filter(Boolean)
+    .map((child) => `\n    ${child}`)
+    .join('')
 }
 
 export function buildGitignore(): string {

@@ -39,8 +39,10 @@ import {
 import type {
   ActionDef,
   ActionKind,
+  AnalyticsConfig,
   BindingExpr,
   EventName,
+  LowcodeHeadMetadata,
   LowcodeTranslations,
   SceneNode,
   SeoMetadata,
@@ -80,6 +82,11 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   // Phase 3 §10 v3 confirm dialog + clipboard
   'confirm',
   'clipboard',
+  // Phase 5 §10 analytics event
+  'trackEvent',
+  // Phase 5 §12 paid app primitive
+  'stripeCheckout',
+  'stripeCustomerPortal',
   // Phase 3 §10 v4 named workflow invocation
   'callWorkflow'
 ])
@@ -154,7 +161,10 @@ const PATCH_KEYS = new Set([
   'renderCondition',
   'lowcodeDocumentState',
   'lowcodeSupabaseConfig',
-  'lowcodeSeoMetadata'
+  'lowcodeSeoMetadata',
+  'lowcodeAnalyticsConfig',
+  'lowcodeHeadMetadata',
+  'lowcodeCustomCss'
 ])
 
 function fail(error: string): { ok: false; error: string } {
@@ -378,6 +388,10 @@ function validatePerKindFields(
   if (kind === 'delay') return validateDelayAction(where, value)
   if (kind === 'toast') return validateToastAction(where, value)
   if (kind === 'clipboard') return validateClipboardAction(where, value)
+  if (kind === 'trackEvent') return validateTrackEventAction(where, value)
+  if (kind === 'stripeCheckout' || kind === 'stripeCustomerPortal') {
+    return validateStripeRedirectAction(where, value)
+  }
   if (kind === 'callWorkflow') return validateCallWorkflowAction(where, value)
   return { ok: true }
 }
@@ -521,6 +535,49 @@ function validateClipboardAction(
 ): { ok: true } | { ok: false; error: string } {
   if (value.valueExpr !== undefined && typeof value.valueExpr !== 'string') {
     return failAt(where, '.valueExpr must be a string')
+  }
+  return { ok: true }
+}
+
+/** Phase 5 §10: `trackEvent.eventNameExpr` and each property value are
+ * expressions, so malformed analytics events are rejected before persistence. */
+function validateTrackEventAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (value.eventNameExpr !== undefined) {
+    if (typeof value.eventNameExpr !== 'string') {
+      return failAt(where, '.eventNameExpr must be a string')
+    }
+    const r = validateExpression(value.eventNameExpr)
+    if (!r.ok) return failAt(where, `.eventNameExpr — ${r.reason}`)
+  }
+  if (value.properties === undefined) return { ok: true }
+  if (!isPlainObject(value.properties)) return failAt(where, '.properties must be an object')
+  for (const [key, expr] of Object.entries(value.properties)) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(key)) {
+      return failAt(where, `.properties.${key} key must be a JS identifier`)
+    }
+    if (typeof expr !== 'string') return failAt(where, `.properties.${key} must be a string`)
+    const r = validateExpression(expr)
+    if (!r.ok) return failAt(where, `.properties.${key} — ${r.reason}`)
+  }
+  return { ok: true }
+}
+
+function validateStripeRedirectAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (typeof value.endpoint !== 'string' || value.endpoint.trim() === '') {
+    return failAt(where, '.endpoint must be a non-empty string')
+  }
+  const endpoint = validateUrlTemplate(value.endpoint)
+  if (!endpoint.ok) return failAt(where, `.endpoint — ${endpoint.reason}`)
+  const entries = validateSupabasePayloadEntries(where, value.payloadEntries)
+  if (!entries.ok) return entries
+  if (value.errorTarget !== undefined && typeof value.errorTarget !== 'string') {
+    return failAt(where, '.errorTarget must be a string')
   }
   return { ok: true }
 }
@@ -755,6 +812,22 @@ function buildActionFromValidated(
       // Phase 3 §10 v3: valueExpr carries through verbatim; expression
       // validation happens in IR collect (resolveClipboard).
       return { id, kind, valueExpr: raw.valueExpr as string | undefined }
+    case 'trackEvent':
+      return {
+        id,
+        kind,
+        eventNameExpr: raw.eventNameExpr as string | undefined,
+        properties: raw.properties as Record<string, string> | undefined
+      }
+    case 'stripeCheckout':
+    case 'stripeCustomerPortal':
+      return {
+        id,
+        kind,
+        endpoint: raw.endpoint as string | undefined,
+        payloadEntries: raw.payloadEntries as SupabasePayloadEntry[] | undefined,
+        errorTarget: raw.errorTarget as string | undefined
+      }
     case 'callWorkflow':
       // Phase 3 §10 v4: workflowId carries through verbatim; existence + cycle
       // checks happen at IR collect (expandWorkflow). Phase 3 §10 v6: args
@@ -1288,6 +1361,304 @@ function applySeoMetadataField(
   return { ok: true }
 }
 
+const ANALYTICS_PROVIDERS = new Set(['ga4', 'plausible', 'posthog'])
+const KNOWN_ANALYTICS_CONFIG_KEYS = new Set([
+  'enabled',
+  'provider',
+  'id',
+  'endpoint',
+  'pageViews',
+  'respectDoNotTrack',
+  'consentRequired',
+  'consentRegionPreset',
+  'consentAnalyticsDefault',
+  'consentCopy'
+])
+const ANALYTICS_CONSENT_REGION_PRESETS = new Set(['eea'])
+const ANALYTICS_BOOLEAN_CONFIG_KEYS = [
+  'enabled',
+  'pageViews',
+  'respectDoNotTrack',
+  'consentRequired',
+  'consentAnalyticsDefault'
+] as const
+const KNOWN_ANALYTICS_CONSENT_COPY_KEYS = new Set([
+  'bannerText',
+  'analyticsDescription',
+  'privacyPolicyUrl',
+  'privacyPolicyLabel'
+])
+
+function parseAnalyticsConfig(
+  raw: unknown,
+  what: string
+): { ok: true; config: AnalyticsConfig } | { ok: false; error: string } {
+  if (!isPlainObject(raw)) return fail(`${what} must be an object or null`)
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_ANALYTICS_CONFIG_KEYS.has(key)) {
+      return fail(
+        `${what}.${key} is not supported — allowed: ${[...KNOWN_ANALYTICS_CONFIG_KEYS].join(' / ')}`
+      )
+    }
+  }
+  if (!ANALYTICS_PROVIDERS.has(String(raw.provider))) {
+    return fail(`${what}.provider must be one of ga4 / plausible / posthog`)
+  }
+  if (typeof raw.id !== 'string' || raw.id.trim() === '') {
+    return fail(`${what}.id must be a non-empty string`)
+  }
+  const config: AnalyticsConfig = {
+    provider: raw.provider as AnalyticsConfig['provider'],
+    id: raw.id.trim()
+  }
+  for (const key of ANALYTICS_BOOLEAN_CONFIG_KEYS) {
+    const r = parseOptionalBoolean(raw, key, what)
+    if (!r.ok) return r
+    if (r.value !== undefined) config[key] = r.value
+  }
+  if (raw.consentRegionPreset !== undefined) {
+    if (!ANALYTICS_CONSENT_REGION_PRESETS.has(String(raw.consentRegionPreset))) {
+      return fail(`${what}.consentRegionPreset must be one of eea`)
+    }
+    config.consentRegionPreset = raw.consentRegionPreset as AnalyticsConfig['consentRegionPreset']
+  }
+  const endpoint = parseOptionalTrimmedString(raw, 'endpoint', what)
+  if (!endpoint.ok) return endpoint
+  if (endpoint.value) config.endpoint = endpoint.value
+  const copy = parseOptionalAnalyticsConsentCopy(raw, what)
+  if (!copy.ok) return copy
+  if (copy.value) config.consentCopy = copy.value
+  return { ok: true, config }
+}
+
+function parseOptionalBoolean(
+  raw: Record<string, unknown>,
+  key: (typeof ANALYTICS_BOOLEAN_CONFIG_KEYS)[number],
+  what: string
+): { ok: true; value: boolean | undefined } | { ok: false; error: string } {
+  const value = raw[key]
+  if (value === undefined) return { ok: true, value: undefined }
+  if (typeof value !== 'boolean') return fail(`${what}.${key} must be a boolean`)
+  return { ok: true, value }
+}
+
+function parseOptionalTrimmedString(
+  raw: Record<string, unknown>,
+  key: string,
+  what: string
+): { ok: true; value: string | undefined } | { ok: false; error: string } {
+  const value = raw[key]
+  if (value === undefined) return { ok: true, value: undefined }
+  if (typeof value !== 'string') return fail(`${what}.${key} must be a string`)
+  const trimmed = value.trim()
+  return { ok: true, value: trimmed || undefined }
+}
+
+function parseOptionalAnalyticsConsentCopy(
+  raw: Record<string, unknown>,
+  what: string
+): { ok: true; value: AnalyticsConfig['consentCopy'] } | { ok: false; error: string } {
+  if (raw.consentCopy === undefined) return { ok: true, value: undefined }
+  const r = parseAnalyticsConsentCopy(raw.consentCopy, `${what}.consentCopy`)
+  if (!r.ok) return r
+  return { ok: true, value: Object.keys(r.copy).length > 0 ? r.copy : undefined }
+}
+
+function parseAnalyticsConsentCopy(
+  raw: unknown,
+  what: string
+): { ok: true; copy: NonNullable<AnalyticsConfig['consentCopy']> } | { ok: false; error: string } {
+  if (!isPlainObject(raw)) return fail(`${what} must be an object`)
+  for (const key of Object.keys(raw)) {
+    if (!KNOWN_ANALYTICS_CONSENT_COPY_KEYS.has(key)) {
+      return fail(
+        `${what}.${key} is not supported — allowed: ${[...KNOWN_ANALYTICS_CONSENT_COPY_KEYS].join(' / ')}`
+      )
+    }
+  }
+
+  const copy: NonNullable<AnalyticsConfig['consentCopy']> = {}
+  for (const key of KNOWN_ANALYTICS_CONSENT_COPY_KEYS) {
+    const value = raw[key]
+    if (value === undefined) continue
+    if (typeof value !== 'string') return fail(`${what}.${key} must be a string`)
+    const trimmed = value.trim()
+    if (trimmed) copy[key as keyof NonNullable<AnalyticsConfig['consentCopy']>] = trimmed
+  }
+  if (copy.privacyPolicyUrl && !isSafePolicyUrl(copy.privacyPolicyUrl)) {
+    return fail(`${what}.privacyPolicyUrl must be http(s) or root-relative`)
+  }
+  return { ok: true, copy }
+}
+
+function isSafePolicyUrl(value: string): boolean {
+  if (value.startsWith('/')) return !value.startsWith('//')
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function applyAnalyticsConfigField(
+  raw: Record<string, unknown>,
+  patch: Partial<SceneNode>
+): FieldResult {
+  if (!('lowcodeAnalyticsConfig' in raw)) return { ok: true }
+  if (raw.lowcodeAnalyticsConfig === null) {
+    patch.lowcodeAnalyticsConfig = undefined
+    return { ok: true }
+  }
+  const r = parseAnalyticsConfig(raw.lowcodeAnalyticsConfig, 'lowcodeAnalyticsConfig')
+  if (!r.ok) return r
+  patch.lowcodeAnalyticsConfig = r.config
+  return { ok: true }
+}
+
+const HEAD_META_KINDS = new Set(['name', 'property', 'httpEquiv'])
+const HEAD_LINK_CROSSORIGIN = new Set(['anonymous', 'use-credentials'])
+
+function parseHeadMetadata(
+  raw: unknown,
+  what: string
+): { ok: true; metadata: LowcodeHeadMetadata } | { ok: false; error: string } {
+  if (!isPlainObject(raw)) return fail(`${what} must be an object or null`)
+  const metadata: LowcodeHeadMetadata = {}
+  for (const key of Object.keys(raw)) {
+    if (key !== 'meta' && key !== 'link' && key !== 'styles') {
+      return fail(`${what}.${key} is not supported — allowed: meta / link / styles`)
+    }
+  }
+  if (raw.meta !== undefined) {
+    if (!Array.isArray(raw.meta)) return fail(`${what}.meta must be an array`)
+    const meta = parseHeadMetaEntries(raw.meta, `${what}.meta`)
+    if (!meta.ok) return meta
+    if (meta.entries.length > 0) metadata.meta = meta.entries
+  }
+  if (raw.link !== undefined) {
+    if (!Array.isArray(raw.link)) return fail(`${what}.link must be an array`)
+    const link = parseHeadLinkEntries(raw.link, `${what}.link`)
+    if (!link.ok) return link
+    if (link.entries.length > 0) metadata.link = link.entries
+  }
+  if (raw.styles !== undefined) {
+    if (!Array.isArray(raw.styles)) return fail(`${what}.styles must be an array`)
+    const styles: string[] = []
+    raw.styles.forEach((entry, index) => {
+      if (typeof entry === 'string' && entry.trim() !== '') styles.push(entry.trim())
+      else if (typeof entry !== 'string')
+        throw new Error(`${what}.styles[${index}] must be a string`)
+    })
+    if (styles.length > 0) metadata.styles = styles
+  }
+  return { ok: true, metadata }
+}
+
+function parseHeadMetaEntries(
+  entries: unknown[],
+  what: string
+): { ok: true; entries: NonNullable<LowcodeHeadMetadata['meta']> } | { ok: false; error: string } {
+  const out: NonNullable<LowcodeHeadMetadata['meta']> = []
+  for (const [index, entry] of entries.entries()) {
+    if (!isPlainObject(entry)) return fail(`${what}[${index}] must be an object`)
+    for (const key of Object.keys(entry)) {
+      if (key !== 'kind' && key !== 'key' && key !== 'content') {
+        return fail(`${what}[${index}].${key} is not supported`)
+      }
+    }
+    if (!HEAD_META_KINDS.has(String(entry.kind))) {
+      return fail(`${what}[${index}].kind must be name / property / httpEquiv`)
+    }
+    if (typeof entry.key !== 'string' || entry.key.trim() === '') {
+      return fail(`${what}[${index}].key must be a non-empty string`)
+    }
+    if (typeof entry.content !== 'string' || entry.content.trim() === '') {
+      return fail(`${what}[${index}].content must be a non-empty string`)
+    }
+    out.push({
+      kind: entry.kind as NonNullable<LowcodeHeadMetadata['meta']>[number]['kind'],
+      key: entry.key.trim(),
+      content: entry.content.trim()
+    })
+  }
+  return { ok: true, entries: out }
+}
+
+function parseHeadLinkEntries(
+  entries: unknown[],
+  what: string
+): { ok: true; entries: NonNullable<LowcodeHeadMetadata['link']> } | { ok: false; error: string } {
+  const out: NonNullable<LowcodeHeadMetadata['link']> = []
+  for (const [index, entry] of entries.entries()) {
+    if (!isPlainObject(entry)) return fail(`${what}[${index}] must be an object`)
+    for (const key of Object.keys(entry)) {
+      if (!['rel', 'href', 'as', 'type', 'media', 'crossorigin'].includes(key)) {
+        return fail(`${what}[${index}].${key} is not supported`)
+      }
+    }
+    if (typeof entry.rel !== 'string' || entry.rel.trim() === '') {
+      return fail(`${what}[${index}].rel must be a non-empty string`)
+    }
+    if (typeof entry.href !== 'string' || entry.href.trim() === '') {
+      return fail(`${what}[${index}].href must be a non-empty string`)
+    }
+    if (entry.crossorigin !== undefined && !HEAD_LINK_CROSSORIGIN.has(String(entry.crossorigin))) {
+      return fail(`${what}[${index}].crossorigin must be anonymous / use-credentials`)
+    }
+    const link: NonNullable<LowcodeHeadMetadata['link']>[number] = {
+      rel: entry.rel.trim(),
+      href: entry.href.trim()
+    }
+    for (const key of ['as', 'type', 'media'] as const) {
+      if (entry[key] !== undefined) {
+        if (typeof entry[key] !== 'string') return fail(`${what}[${index}].${key} must be a string`)
+        const trimmed = entry[key].trim()
+        if (trimmed) link[key] = trimmed
+      }
+    }
+    if (entry.crossorigin) {
+      link.crossorigin = entry.crossorigin as NonNullable<
+        LowcodeHeadMetadata['link']
+      >[number]['crossorigin']
+    }
+    out.push(link)
+  }
+  return { ok: true, entries: out }
+}
+
+function applyHeadMetadataField(
+  raw: Record<string, unknown>,
+  patch: Partial<SceneNode>
+): FieldResult {
+  if (!('lowcodeHeadMetadata' in raw)) return { ok: true }
+  if (raw.lowcodeHeadMetadata === null) {
+    patch.lowcodeHeadMetadata = undefined
+    return { ok: true }
+  }
+  try {
+    const r = parseHeadMetadata(raw.lowcodeHeadMetadata, 'lowcodeHeadMetadata')
+    if (!r.ok) return r
+    patch.lowcodeHeadMetadata = Object.keys(r.metadata).length > 0 ? r.metadata : undefined
+    return { ok: true }
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err))
+  }
+}
+
+function applyCustomCssField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
+  if (!('lowcodeCustomCss' in raw)) return { ok: true }
+  if (raw.lowcodeCustomCss === null) {
+    patch.lowcodeCustomCss = undefined
+    return { ok: true }
+  }
+  if (typeof raw.lowcodeCustomCss !== 'string')
+    return fail('lowcodeCustomCss must be a string or null')
+  const css = raw.lowcodeCustomCss.trim()
+  patch.lowcodeCustomCss = css ? css : undefined
+  return { ok: true }
+}
+
 const FIELD_APPLIERS = [
   applyStateField,
   applyBindingsField,
@@ -1297,7 +1668,10 @@ const FIELD_APPLIERS = [
   applyRenderConditionField,
   applyDocStateField,
   applySupabaseConfigField,
-  applySeoMetadataField
+  applySeoMetadataField,
+  applyAnalyticsConfigField,
+  applyHeadMetadataField,
+  applyCustomCssField
 ]
 
 // Phase 3 §3.v7 — reject a DATEPICKER whose interactiveProps carry a
@@ -1400,13 +1774,13 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
-    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. Page state entries may include Phase 4 §27.2 computedExpr; computed page state is emitted as read-only derived state, so setState and controlled bindings cannot write to it. Phase 4 §20 stateOverrides accepts hover/focus/active/disabled appearance overrides over fills/strokes/cornerRadius/opacity/effects; the compiler emits Tailwind pseudo-state classes such as hover:bg-* or disabled:opacity-50. Phase 4 §19 interactiveProps.validation and validationSummary are schema-checked at this tool boundary: patterns must compile, numeric rules must be finite, customExpr/urlExpr must parse, async validators require exactly one non-empty url or urlExpr and method GET/POST, and unknown validation keys are rejected. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / writable page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object), computed page state, and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id'`, declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
+    "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only), lowcodeSeoMetadata, lowcodeAnalyticsConfig (root only), lowcodeHeadMetadata (root only), lowcodeCustomCss (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. Phase 5 §11 lowcodeHeadMetadata accepts only structured { meta?: [{ kind: 'name' | 'property' | 'httpEquiv', key, content }], link?: [{ rel, href, as?, type?, media?, crossorigin? }], styles?: string[] }; lowcodeCustomCss is appended to generated src/index.css. Raw scripts / arbitrary JS are intentionally not supported. Phase 5 §10 lowcodeAnalyticsConfig accepts { provider: 'ga4' | 'plausible' | 'posthog', id, enabled?, endpoint?, pageViews?, respectDoNotTrack?, consentRequired?, consentRegionPreset?, consentAnalyticsDefault?, consentCopy? } where consentRegionPreset currently supports 'eea' as an opt-in starter preset and consentCopy may include plain bannerText, analyticsDescription, privacyPolicyUrl, and privacyPolicyLabel; policy URLs must be http(s) or root-relative. trackEvent actions accept eventNameExpr plus optional expression-valued properties. Page state entries may include Phase 4 §27.2 computedExpr; computed page state is emitted as read-only derived state, so setState and controlled bindings cannot write to it. Phase 4 §20 stateOverrides accepts hover/focus/active/disabled appearance overrides over fills/strokes/cornerRadius/opacity/effects; the compiler emits Tailwind pseudo-state classes such as hover:bg-* or disabled:opacity-50. Phase 4 §19 interactiveProps.validation and validationSummary are schema-checked at this tool boundary: patterns must compile, numeric rules must be finite, customExpr/urlExpr must parse, async validators require exactly one non-empty url or urlExpr and method GET/POST, and unknown validation keys are rejected. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / writable page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object), computed page state, and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 5 §12): `stripeCheckout` and `stripeCustomerPortal` actions are frontend redirect triggers only — `{ kind: 'stripeCheckout' | 'stripeCustomerPortal', endpoint, payloadEntries?, errorTarget? }`. The generated app POSTs JSON to the author's own server endpoint; checkout expects `{ url }` or `{ checkoutUrl }`, while customer portal expects `{ url }` or `{ portalUrl }`, then redirects with `window.location.assign`. Secret keys, price/customer creation, webhooks, subscription lifecycle, retries, and idempotency stay on the author's server and are never stored in ActionDef / .fig / generated code. `endpoint` uses the same safe template parser as apiCall, `payloadEntries` are expression-valued JSON fields with unique identifier keys, and `errorTarget` optionally captures request/response failures. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id', declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },
     patch_json: {
       type: 'string',
       description:
-        'JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig, lowcodeSeoMetadata}. Use null as a value to clear a field.',
+        'JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig, lowcodeSeoMetadata, lowcodeAnalyticsConfig, lowcodeHeadMetadata, lowcodeCustomCss}. lowcodeAnalyticsConfig accepts respectDoNotTrack, consentRequired, consentRegionPreset, consentAnalyticsDefault, and consentCopy plain-text banner options. Use null as a value to clear a field.',
       required: true
     }
   },
@@ -1722,7 +2096,7 @@ export const setWorkflows = defineTool({
   name: 'set_workflows',
   mutates: true,
   description:
-    'Replace the root node\'s lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node\'s event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so runtime page-local state still belongs to the calling component scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string "null" or \'[]\' to clear all workflows. Shape: [{ id, name, pageId?, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), pageId is an optional page scope used by editor/tool validation for page-local state, params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow\'s expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, optionalParams (Phase 3 §10 v8, optional) is an array of declared parameter names that may be omitted even without a default (each resolves to the literal `undefined` in the body rather than dropping the call), and actions is an ActionDef array (same shape as a node\'s event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: \'[{"id":"wf-notify","name":"Notify","params":["msg"],"actions":[{"id":"a1","kind":"toast","messageExpr":"msg","variant":"success"}]}]\' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: \'null\' }) → { ok: true, data: { workflows: 0, actions: 0 } }.',
+    'Replace the root node\'s lowcodeWorkflows list wholesale (Phase 3 §10 v4). Workflows are named, reusable action chains that any node\'s event handler — or another workflow — invokes by id via a `callWorkflow` action; the compiler expands the chain INLINE at each call site (no emitted function), so runtime page-local state still belongs to the calling component scope. Pass the FULL list — workflows omitted from the JSON are deleted. Pass the literal string "null" or \'[]\' to clear all workflows. Shape: [{ id, name, pageId?, params?, actions }] where id is a non-empty unique string (referenced by callWorkflow.workflowId), name is a human label (editor/debug only, not emitted), pageId is an optional page scope used by editor/tool validation for page-local state, params (Phase 3 §10 v6, optional) is an array of unique identifier strings the workflow\'s expressions may reference, paramDefaults (Phase 3 §10 v7, optional) is an object mapping a subset of those parameter names to default expression strings — a callWorkflow that omits the arg for a parameter with a default uses the default (caller-scope expression) instead of being dropped, optionalParams (Phase 3 §10 v8, optional) is an array of declared parameter names that may be omitted even without a default (each resolves to the literal `undefined` in the body rather than dropping the call), and actions is an ActionDef array (same shape as a node\'s event handler chain — supports setState/navigate/setVariable/apiCall/supabase*/condition/delay/stop/toast/confirm/clipboard/trackEvent/stripeCheckout/stripeCustomerPortal and nested callWorkflow). To pass arguments, a callWorkflow action carries `args: { paramName: expressionString }` (caller-scope expressions); at compile time each parameter identifier in the workflow body is replaced by its argument expression. Every action is validated recursively; a malformed action or a duplicate id/param is rejected (no silent drops). Workflow existence + cycle (A→B→A) + missing/unknown argument checks happen at compile time (dropped with a warning), not here. One call → one undo entry. Example: set_workflows({ workflows_json: \'[{"id":"wf-notify","name":"Notify","params":["msg"],"actions":[{"id":"a1","kind":"toast","messageExpr":"msg","variant":"success"}]}]\' }) → { ok: true, data: { workflows: 1, actions: 1 } }. Clear example: set_workflows({ workflows_json: \'null\' }) → { ok: true, data: { workflows: 0, actions: 0 } }.',
   params: {
     workflows_json: {
       type: 'string',

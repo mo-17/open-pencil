@@ -17,6 +17,7 @@ import {
   parseVariantName,
   type Effect,
   type Fill,
+  type AnalyticsConfig,
   type NodeType,
   type SceneGraph,
   type SceneNode,
@@ -112,6 +113,9 @@ export function collectTree(
   // adapter can decide to emit `_lowcode_supabase.ts` without re-reading
   // the SceneGraph (which it doesn't have access to from `emit(irs, opts)`).
   const supabaseConfig = graph.getNode(graph.rootId)?.lowcodeSupabaseConfig
+  const analyticsConfig = compactAnalyticsConfig(
+    graph.getNode(graph.rootId)?.lowcodeAnalyticsConfig
+  )
   // Phase 3 §9 v7: lift root-level translation catalog onto the tree so the
   // adapter pre-fills `locales/<code>.json` from authored translations.
   const translations = graph.getNode(graph.rootId)?.lowcodeTranslations
@@ -130,6 +134,7 @@ export function collectTree(
       docStateReads: [],
       docStateWrites: [],
       supabaseConfig,
+      analyticsConfig,
       translations,
       warnings
     }
@@ -199,10 +204,53 @@ export function collectTree(
     listQueries: listQueries.length > 0 ? listQueries : undefined,
     validatedFields: validatedFields.length > 0 ? validatedFields : undefined,
     supabaseConfig,
+    analyticsConfig,
     translations,
     warnings,
     ...(assets.size > 0 ? { assets: [...assets.values()] } : {})
   }
+}
+
+function compactAnalyticsConfig(value: AnalyticsConfig | undefined): AnalyticsConfig | undefined {
+  if (!value || value.enabled === false) return undefined
+  const id = value.id.trim()
+  if (id === '') return undefined
+  const endpoint = value.endpoint?.trim()
+  return {
+    provider: value.provider,
+    id,
+    ...(value.enabled === true ? { enabled: true } : {}),
+    ...(value.pageViews === false ? { pageViews: false } : {}),
+    ...(value.respectDoNotTrack === true ? { respectDoNotTrack: true } : {}),
+    ...(value.consentRegionPreset ? { consentRegionPreset: value.consentRegionPreset } : {}),
+    ...(value.consentRequired === true ||
+    (value.consentRegionPreset && value.consentRequired === false)
+      ? { consentRequired: value.consentRequired }
+      : {}),
+    ...(value.consentAnalyticsDefault === false ||
+    (value.consentRegionPreset && value.consentAnalyticsDefault === true)
+      ? { consentAnalyticsDefault: value.consentAnalyticsDefault }
+      : {}),
+    ...(endpoint ? { endpoint } : {}),
+    ...(value.consentCopy ? { consentCopy: compactAnalyticsConsentCopy(value.consentCopy) } : {})
+  }
+}
+
+function compactAnalyticsConsentCopy(
+  value: AnalyticsConfig['consentCopy']
+): AnalyticsConfig['consentCopy'] {
+  if (!value) return undefined
+  const bannerText = value.bannerText?.trim()
+  const analyticsDescription = value.analyticsDescription?.trim()
+  const privacyPolicyUrl = value.privacyPolicyUrl?.trim()
+  const privacyPolicyLabel = value.privacyPolicyLabel?.trim()
+  const copy = {
+    ...(bannerText ? { bannerText } : {}),
+    ...(analyticsDescription ? { analyticsDescription } : {}),
+    ...(privacyPolicyUrl ? { privacyPolicyUrl } : {}),
+    ...(privacyPolicyLabel ? { privacyPolicyLabel } : {})
+  }
+  return Object.keys(copy).length > 0 ? copy : undefined
 }
 
 /** Phase 4 §16.1: lift + validate a page's dynamic route pattern. Returns the
