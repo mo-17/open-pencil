@@ -184,6 +184,14 @@ function graphMapEdgeJumpLabel(edge: WorkflowGraphEdge): string {
   return `Jump to ${edge.toName ?? edge.toId} workflow from ${edge.fromName}`
 }
 
+function graphMapMissingEdgeLabel(edge: WorkflowGraphEdge): string {
+  return `Missing workflow ${edge.toId} called from ${edge.fromName}`
+}
+
+function graphMapMissingEdgeSourceJumpLabel(edge: WorkflowGraphEdge): string {
+  return `Jump to ${edge.fromName} workflow to fix missing ${edge.toId}`
+}
+
 function entrypointSourceLabel(entrypoint: WorkflowGraphEntrypoint): string {
   return `${entrypoint.nodeName} ${entrypoint.eventName}`
 }
@@ -498,7 +506,15 @@ function containingPageId(node: SceneNode): string | undefined {
           >
             <span class="min-w-0">
               {{ edge.fromName }} -> {{ edge.toName ?? edge.toId }}
-              <span v-if="!edge.toName" class="text-red-500">missing</span>
+              <span
+                v-if="!edge.toName"
+                data-test-id="lowcode-workflow-graph-map-edge-missing"
+                :aria-label="graphMapMissingEdgeLabel(edge)"
+                :title="graphMapMissingEdgeLabel(edge)"
+                class="rounded bg-red-500/10 px-1 text-red-500"
+              >
+                missing
+              </span>
             </span>
             <button
               v-if="edge.toName"
@@ -512,6 +528,19 @@ function containingPageId(node: SceneNode): string | undefined {
               @keydown.space.prevent="jumpToWorkflow(edge.toId)"
             >
               Jump
+            </button>
+            <button
+              v-else
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-edge-source-jump"
+              :aria-label="graphMapMissingEdgeSourceJumpLabel(edge)"
+              :title="graphMapMissingEdgeSourceJumpLabel(edge)"
+              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+              @click="jumpToWorkflow(edge.fromId)"
+              @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
+              @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
+            >
+              Source
             </button>
           </li>
         </ul>

@@ -2962,6 +2962,43 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不新增 workflow graph 数据结构字段。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.21 2026-07-02 第二十一刀:Workflow graph map missing-edge source jump
+
+本刀继续 polish workflow graph map 的缺失目标边。此前 missing edge 只显示红色 `missing`,
+作者仍需要自己在 graph 里找到是哪一个 workflow 发起了坏引用。本刀给 missing edge 增加
+可键盘访问的 `Source` 跳转,直接回到发起坏引用的 workflow row。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapMissingEdgeLabel(edge)`。
+  - 新增 `graphMapMissingEdgeSourceJumpLabel(edge)`。
+  - missing badge 增加 `data-test-id`、source-specific `aria-label` 和 `title`。
+  - missing badge 改成轻量 pill 样式,在密集 edge list 中更容易扫描。
+  - missing edge 增加 `Source` 按钮,跳回 `edge.fromId` workflow。
+  - missing edge `Source` 按钮支持 `Enter` / `Space`,复用 `jumpToWorkflow(edge.fromId)`。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证 missing badge 的 `Missing workflow wf-missing called from Save`。
+  - 验证 missing edge source jump 的 `Jump to Save workflow to fix missing wf-missing`。
+  - 用 `Enter` 激活 missing edge source jump,验证焦点回到 `wf-save` workflow row。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不自动修复 missing workflowId。
+- 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
+- 不新增 workflow graph 数据结构字段。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
