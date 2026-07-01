@@ -167,13 +167,28 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
   ).toContainText('+1 more')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
+  ).toHaveAttribute('aria-expanded', 'false')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more').click()
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
   ).toContainText('Hide sources')
   await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
+  ).toHaveAttribute('aria-expanded', 'true')
+  await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-extra')
   ).toContainText('Quick save onClick')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-extra-jump').focus()
+  await editor.page.keyboard.press('Escape')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more')
+  ).toHaveAttribute('aria-expanded', 'false')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-list')
+  ).toHaveCount(0)
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-more').click()
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint-extra-jump').click()
   await expect
     .poll(() =>

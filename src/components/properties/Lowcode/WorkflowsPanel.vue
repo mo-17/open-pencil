@@ -186,6 +186,17 @@ function toggleGraphMapSources(workflowId: string): void {
   expandedGraphMapSourceIds.value = next
 }
 
+function collapseGraphMapSources(workflowId: string): void {
+  if (!expandedGraphMapSourceIds.value.has(workflowId)) return
+  const next = new Set(expandedGraphMapSourceIds.value)
+  next.delete(workflowId)
+  expandedGraphMapSourceIds.value = next
+}
+
+function graphMapSourceListId(workflowId: string): string {
+  return `lowcode-workflow-graph-map-sources-${workflowId}`
+}
+
 function graphMapEmptyLabel(): string {
   switch (graphMapFilter.value) {
     case 'issues':
@@ -374,6 +385,8 @@ function containingPageId(node: SceneNode): string | undefined {
               v-if="node.entrypoints.length > 1"
               type="button"
               data-test-id="lowcode-workflow-graph-map-node-entrypoint-more"
+              :aria-controls="graphMapSourceListId(node.id)"
+              :aria-expanded="isGraphMapSourceExpanded(node.id)"
               class="self-start rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface"
               @click="toggleGraphMapSources(node.id)"
             >
@@ -385,8 +398,10 @@ function containingPageId(node: SceneNode): string | undefined {
             </button>
             <ul
               v-if="node.entrypoints.length > 1 && isGraphMapSourceExpanded(node.id)"
+              :id="graphMapSourceListId(node.id)"
               data-test-id="lowcode-workflow-graph-map-node-entrypoint-list"
               class="flex flex-col gap-0.5"
+              @keydown.escape.stop.prevent="collapseGraphMapSources(node.id)"
             >
               <li
                 v-for="entrypoint in node.entrypoints.slice(1)"

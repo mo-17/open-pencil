@@ -2770,6 +2770,45 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不新增 workflow graph 数据结构字段。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.16 2026-07-01 第十六刀:Workflow graph map source-list keyboard polish
+
+本刀给第十五刀的 source list 补可访问性和键盘收起能力。展开仍是 local-only UI 状态,
+但按钮现在会暴露 ARIA 展开状态,并允许作者在 extra source list 内按 Escape 收起。
+
+已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `collapseGraphMapSources(workflowId)`。
+  - 新增 `graphMapSourceListId(workflowId)`。
+  - `+N more` / `Hide sources` 按钮增加:
+    - `aria-expanded`
+    - `aria-controls`
+  - 展开的 extra source list 增加稳定 `id`。
+  - extra source list 内支持 `Escape` 收起,并阻止事件继续冒泡。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证按钮初始 `aria-expanded=false`。
+  - 展开后验证 `aria-expanded=true`。
+  - 聚焦 extra source `Source` 按钮后按 Escape。
+  - 验证列表收起且 `aria-expanded=false`。
+  - 再次展开后继续验证 extra source jump。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+
+明确不做:
+
+- 不持久化展开状态到 SceneGraph / `.fig` / localStorage。
+- 不自动移动焦点回展开按钮;当前只收起列表。
+- 不新增 workflow graph 数据结构字段。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
