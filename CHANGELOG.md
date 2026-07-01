@@ -83,6 +83,8 @@
 - Let the lowcode workflow graph summary jump from issues or per-workflow call counts to the
   corresponding workflow editor row.
 - Add a local-only expand/collapse control for lowcode workflow graph details.
+- Cover lowcode workflow graph expand/collapse and issue jump behavior with a targeted Playwright
+  regression.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

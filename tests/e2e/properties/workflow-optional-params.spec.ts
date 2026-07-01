@@ -36,6 +36,33 @@ async function setupWorkflowWithCaller() {
   })
 }
 
+async function setupWorkflowGraphDiagnostics() {
+  return editor.page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+
+    store.graph.updateNode(store.graph.rootId, {
+      lowcodeWorkflows: [
+        {
+          id: 'wf-save',
+          name: 'Save',
+          actions: [
+            { id: 'call-notify', kind: 'callWorkflow', workflowId: 'wf-notify' },
+            { id: 'call-missing', kind: 'callWorkflow', workflowId: 'wf-missing' }
+          ]
+        },
+        {
+          id: 'wf-notify',
+          name: 'Notify',
+          actions: [{ id: 'toast', kind: 'toast', messageExpr: '"Saved"', variant: 'success' }]
+        }
+      ]
+    })
+    store.select([])
+    store.requestRender()
+  })
+}
+
 async function workflowSnapshot() {
   return editor.page.evaluate(() => {
     const store = window.openPencil?.getStore?.()
@@ -81,5 +108,38 @@ test('workflow panel authors optional callWorkflow params', async () => {
   await expect(editor.page.getByTestId('lowcode-action-workflow-arg-error')).toContainText(
     'msg: argument required'
   )
+  editor.canvas.assertNoErrors()
+})
+
+test('workflow graph details expand and issue jump focuses the workflow row', async () => {
+  await setupWorkflowGraphDiagnostics()
+  await editor.canvas.waitForRender()
+
+  const workflowsPanel = editor.page.getByTestId('lowcode-workflows-section')
+  await workflowsPanel.scrollIntoViewIfNeeded()
+  await expect(workflowsPanel).toBeVisible()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-summary')).toContainText(
+    '2 workflows, 3 actions, 2 calls'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-issue')).toContainText(
+    'Save calls a missing workflow'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(0)
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(2)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node').first()).toContainText(
+    'Save: 0 in / 2 out / 2 actions'
+  )
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-jump').click()
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+    )
+    .toBe('wf-save')
+
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-toggle').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-node')).toHaveCount(0)
   editor.canvas.assertNoErrors()
 })

@@ -2319,6 +2319,35 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不新增本地存储或跨 session 折叠状态。
 - 不做真正的图布局、拖拽或连线编辑。
 
+### 13.4 2026-07-01 第四刀:Workflow graph UI regression
+
+本刀不新增产品行为,只把第二/第三刀的可见 UI 行为固定到 targeted Playwright 回归里。
+
+已完成:
+
+- `tests/e2e/properties/workflow-optional-params.spec.ts` 增加 workflow graph 回归:
+  - 构造两个 workflow,其中一个调用存在的 workflow,同时调用一个 missing workflow。
+  - 验证 summary 显示 `2 workflows, 3 actions, 2 calls`。
+  - 验证 missing workflow issue 常驻可见。
+  - 验证 graph node details 默认收起。
+  - 点击 `Show details` 后显示每个 workflow 的 in/out/action 摘要。
+  - 点击 issue `Jump` 后 focus 到发起调用的 workflow row。
+  - 点击 `Hide details` 后 node details 再次收起。
+
+已验证:
+
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (需本地端口监听权限;沙箱内首次因 `listen EPERM ::1:1420` 失败,升级权限后通过)
+- `bunx tsgo --noEmit`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+
+明确不做:
+
+- 不新增全量 Playwright 回归。
+- 不把只读 graph summary 升级为可编辑 DAG。
+- 不改变 workflow compiler/IR 行为。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
