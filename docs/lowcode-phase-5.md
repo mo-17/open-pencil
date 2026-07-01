@@ -2210,6 +2210,48 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - cycle detection / branching / join semantics;
 - UI complexity 与 Tauri/browser E2E 成本。
 
+### 13.1 2026-07-01 第一刀:Workflow graph diagnostics
+
+本刀不做拖拽式 DAG editor,先补 authoring 诊断视图。它复用现有 `WorkflowDef.actions`
+和 `callWorkflow.workflowId` 关系,帮助作者在进入图编辑前看清工作流调用图。
+
+已完成:
+
+- 新增 `src/app/lowcode/workflow-graph.ts`:
+  - 统计 workflow 数、嵌套 action 数和 `callWorkflow` 边数。
+  - 为每个 workflow 汇总 incoming / outgoing 边和本 workflow 相关 issue。
+  - 递归扫描 `condition` / `confirm` 分支,以及 `apiCall` / `supabaseQuery` /
+    `supabaseMutation` 的 `onSuccess` / `onError` 分支。
+  - 发现 missing workflow references。
+  - 发现直接和间接 cycle,且同一个 cycle 只报告一次。
+- `WorkflowsPanel` 在已有链式编辑器上方显示只读 graph summary:
+  - 总 workflow / action / call 数。
+  - “No workflow graph issues” 或具体 missing/cycle issue。
+  - 每个 workflow 的 in/out/action 摘要。
+- 保持 runtime/compiler 语义不变:
+  - `callWorkflow` 仍由 compiler inline 展开。
+  - cycle/unknown workflow 的 compile-time warning/drop 行为不变。
+  - 不新增 schema 字段或 emitted runtime surface。
+- 覆盖:
+  - `tests/engine/app/lowcode/workflow-graph.test.ts` 覆盖嵌套分支统计、missing reference、
+    direct/indirect cycle。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun test tests/engine/compiler/call-workflow.test.ts tests/engine/compiler/ir/collect/workflow.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+
+明确不做:
+
+- 不做拖拽节点/连线编辑器。
+- 不改变 `WorkflowDef` / `ActionDef` schema。
+- 不改变 compile-time inline/cycle warning 行为。
+- 不新增 E2E;本刀为纯 helper + 轻量 panel summary,后续若加点击定位/折叠图视图再补 UI E2E。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

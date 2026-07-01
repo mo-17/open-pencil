@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type {
   DocumentStateDef,
   SceneNode,
@@ -9,6 +10,7 @@ import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { analyzeWorkflowGraph } from '@/app/lowcode/workflow-graph'
 
 import WorkflowRow from './WorkflowRow.vue'
 
@@ -53,6 +55,7 @@ const analyticsConfigured = useSceneComputed<boolean>(() => {
   const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
   return config?.enabled !== false && !!config?.id?.trim()
 })
+const workflowGraph = computed(() => analyzeWorkflowGraph(workflows.value))
 
 function commit(next: WorkflowDef[]): void {
   editor.updateNodeWithUndo(
@@ -104,7 +107,39 @@ function pageStatesFor(workflow: WorkflowDef): StateDef[] {
       No workflows yet. A workflow is a reusable action chain callable from any event.
     </p>
 
-    <ul v-else class="flex flex-col gap-2">
+    <div
+      v-if="workflows.length > 0"
+      data-test-id="lowcode-workflow-graph-summary"
+      class="mb-1 flex flex-col gap-1 border-l border-border pl-2 text-[10px]"
+    >
+      <p class="text-muted">
+        {{ workflowGraph.workflowCount }} workflows, {{ workflowGraph.actionCount }} actions,
+        {{ workflowGraph.callCount }} calls
+      </p>
+      <p v-if="workflowGraph.issues.length === 0" class="text-muted">No workflow graph issues.</p>
+      <ul v-else class="flex flex-col gap-0.5 text-red-500">
+        <li
+          v-for="(issue, index) in workflowGraph.issues"
+          :key="`${issue.type}-${index}`"
+          data-test-id="lowcode-workflow-graph-issue"
+        >
+          {{ issue.message }}
+        </li>
+      </ul>
+      <ul class="flex flex-col gap-0.5 text-muted">
+        <li
+          v-for="node in workflowGraph.nodes"
+          :key="node.id"
+          data-test-id="lowcode-workflow-graph-node"
+        >
+          {{ node.name }}:
+          {{ node.incoming.length }} in / {{ node.outgoing.length }} out /
+          {{ node.actionCount }} actions
+        </li>
+      </ul>
+    </div>
+
+    <ul v-if="workflows.length > 0" class="flex flex-col gap-2">
       <WorkflowRow
         v-for="wf in workflows"
         :key="wf.id"

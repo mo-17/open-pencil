@@ -78,6 +78,8 @@
 - Add optional lowcode analytics page-view tracking for initial loads and multi-page route changes.
 - Add lowcode analytics provider help links and GUI ACK steps for GA4, Plausible, and PostHog authoring.
 - Add lowcode analytics privacy gates for browser Do Not Track and generated-app consent flows.
+- Add a lowcode workflow graph diagnostic summary that counts workflow calls, surfaces missing
+  workflow references and cycles, and keeps the existing inline workflow runtime semantics.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.
