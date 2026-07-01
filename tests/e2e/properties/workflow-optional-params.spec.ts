@@ -192,9 +192,19 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').first()).toContainText(
     'Save'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-jump').first()).toHaveAttribute(
+    'aria-label',
+    'Jump to Save workflow'
+  )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-stats').first()
   ).toContainText('2e / 0i / 2o / 2a')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-jump').first().press('Enter')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+    )
+    .toBe('wf-save')
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-entrypoint')
   ).toContainText('Run save onClick')
@@ -283,6 +293,10 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').first()).toContainText(
     'Save -> Notify'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-jump')).toHaveAttribute(
+    'aria-label',
+    'Jump to Notify workflow from Save'
+  )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(1)).toContainText(
     'Save -> wf-missing missing'
   )
@@ -350,7 +364,7 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
     'from Save'
   )
 
-  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-jump').click()
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-jump').press('Enter')
   await expect
     .poll(() =>
       editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')

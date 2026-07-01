@@ -15,6 +15,7 @@ import { requestLowcodeActionFocus } from '@/app/lowcode/action-focus'
 import {
   analyzeWorkflowGraph,
   collectWorkflowEntrypoints,
+  type WorkflowGraphEdge,
   type WorkflowGraphEntrypoint
 } from '@/app/lowcode/workflow-graph'
 
@@ -173,6 +174,14 @@ function entrypointLabel(count: number): string {
 
 function workflowGraphNodeName(workflowId: string): string {
   return workflowGraph.value.nodes.find((node) => node.id === workflowId)?.name ?? workflowId
+}
+
+function graphMapNodeJumpLabel(nodeName: string): string {
+  return `Jump to ${nodeName} workflow`
+}
+
+function graphMapEdgeJumpLabel(edge: WorkflowGraphEdge): string {
+  return `Jump to ${edge.toName ?? edge.toId} workflow from ${edge.fromName}`
 }
 
 function entrypointSourceLabel(entrypoint: WorkflowGraphEntrypoint): string {
@@ -378,8 +387,12 @@ function containingPageId(node: SceneNode): string | undefined {
             <button
               type="button"
               data-test-id="lowcode-workflow-graph-map-node-jump"
-              class="flex max-w-full flex-col gap-0.5 text-left hover:text-surface"
+              :aria-label="graphMapNodeJumpLabel(node.name)"
+              :title="graphMapNodeJumpLabel(node.name)"
+              class="flex max-w-full flex-col gap-0.5 rounded text-left hover:text-surface focus:bg-hover focus:text-surface"
               @click="jumpToWorkflow(node.id)"
+              @keydown.enter.prevent="jumpToWorkflow(node.id)"
+              @keydown.space.prevent="jumpToWorkflow(node.id)"
             >
               <span class="flex max-w-full items-center gap-1">
                 <span class="min-w-0 truncate">{{ node.name }}</span>
@@ -491,8 +504,12 @@ function containingPageId(node: SceneNode): string | undefined {
               v-if="edge.toName"
               type="button"
               data-test-id="lowcode-workflow-graph-map-edge-jump"
-              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              :aria-label="graphMapEdgeJumpLabel(edge)"
+              :title="graphMapEdgeJumpLabel(edge)"
+              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
               @click="jumpToWorkflow(edge.toId)"
+              @keydown.enter.prevent="jumpToWorkflow(edge.toId)"
+              @keydown.space.prevent="jumpToWorkflow(edge.toId)"
             >
               Jump
             </button>

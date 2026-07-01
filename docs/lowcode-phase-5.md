@@ -2924,6 +2924,44 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不新增 workflow graph 数据结构字段。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.20 2026-07-01 第二十刀:Workflow graph map jump keyboard labels
+
+本刀继续收口 workflow graph map 的键盘可达性。map node 和 edge 的 `Jump` 控件此前能点,
+但缺少具体目标标签,且键盘激活依赖浏览器原生按钮行为。本刀给这些 jump 控件补明确目标文案,
+并把 Enter / Space 显式接到同一跳转行为。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapNodeJumpLabel(nodeName)`。
+  - 新增 `graphMapEdgeJumpLabel(edge)`。
+  - map node jump 增加 source-specific `aria-label` / `title`。
+  - map edge jump 增加 source-specific `aria-label` / `title`。
+  - map node / edge jump 增加 focus 状态样式。
+  - map node / edge jump 显式处理 `Enter` / `Space` 键盘激活,复用 `jumpToWorkflow()`。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证 map node jump 的 `Jump to Save workflow`。
+  - 用 `Enter` 激活 map node jump,验证焦点到 `wf-save` workflow row。
+  - 验证 map edge jump 的 `Jump to Notify workflow from Save`。
+  - 用 `Enter` 激活 map edge jump,验证焦点到 `wf-notify` workflow row。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (沙箱内首次因 `listen EPERM ::1:1420` 失败;首次提权暴露 native key activation 不稳定,
+  改为显式 `keydown.enter/space` 后通过)
+
+明确不做:
+
+- 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
+- 不新增 workflow graph 数据结构字段。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
