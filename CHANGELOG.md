@@ -113,6 +113,7 @@
 - Show workflow graph map edge action ids as readonly edge metadata.
 - Let workflow graph map edge action badges jump back to the source workflow row.
 - Focus the exact source workflow action row from workflow graph map edge action badges.
+- Show source action kind and branch context badges on workflow graph map edges.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.

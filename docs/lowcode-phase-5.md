@@ -3400,6 +3400,54 @@ analysis 为 edge 生成与 `ActionRow` DOM 一致的 `actionPath`,再由 Workfl
 - 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
 - 不新增 SVG/canvas edge rendering。
 
+### 13.32 2026-07-02 第三十二刀:Workflow graph edge source context badges
+
+本刀继续只读 map 的 edge source action context polish。上一刀已经能从 edge action
+badge 精准跳到 source action row,但 map 本身还看不出这条调用是在 root action chain,
+还是嵌套在 condition / api result branch 中。本刀给 edge row 增加 source action kind
+和 branch context badges,让作者在不跳转的情况下也能先判断调用来源。
+
+本刀已完成:
+
+- `workflow-graph.ts`:
+  - `WorkflowGraphEdge` 新增运行时 `actionKind`。
+  - `collectCalls()` 在记录 edge 时写入 source action `kind`。
+  - 不改变 SceneGraph / `.fig` / `.pen` schema。
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapEdgeActionKindLabel(edge)`。
+  - 新增 `graphMapEdgeBranchLabel(edge)` / `graphMapEdgeBranchTitle(edge)`。
+  - edge row 新增 `lowcode-workflow-graph-map-edge-action-kind`。
+  - edge row 新增 `lowcode-workflow-graph-map-edge-branch`。
+  - 顶层 action 显示 `Root`;嵌套 branch 显示 `Then` / `Else` / `On success` /
+    `On error`。
+  - action jump badge 仍保留精准定位 source action row。
+- `tests/engine/app/lowcode/workflow-graph.test.ts`:
+  - 验证 edge 记录 `actionKind:'callWorkflow'`。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 将 mixed issue fixture 的 `call-beta` 放入 condition `consequent`。
+  - 验证 action jump aria label 包含 `[0]/consequent[0]`。
+  - 验证 kind badge title 为 `Kind callWorkflow`。
+  - 验证 branch badge title 为 `Then branch at [0]/consequent[0]`。
+  - 验证 Enter 后焦点落到嵌套 action row。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证顶层 edge 显示 `callWorkflow` kind 和 `Root branch at [0]`。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+- 不新增 SVG/canvas edge rendering。
+- 不把 branch context 写入持久化文档数据。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

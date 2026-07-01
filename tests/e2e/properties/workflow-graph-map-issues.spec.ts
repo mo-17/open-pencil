@@ -15,7 +15,12 @@ async function setupWorkflowGraphMixedIssueTypes() {
           id: 'wf-a',
           name: 'Alpha',
           actions: [
-            { id: 'call-beta', kind: 'callWorkflow', workflowId: 'wf-b' },
+            {
+              id: 'gate-beta',
+              kind: 'condition',
+              condExpr: 'true',
+              consequent: [{ id: 'call-beta', kind: 'callWorkflow', workflowId: 'wf-b' }]
+            },
             { id: 'call-missing', kind: 'callWorkflow', workflowId: 'wf-missing' }
           ]
         },
@@ -113,7 +118,16 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
-  ).toHaveAttribute('aria-label', 'Jump to Alpha workflow action call-beta at [0]')
+  ).toHaveAttribute(
+    'aria-label',
+    'Jump to Alpha workflow action call-beta at [0]/consequent[0]'
+  )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action-kind').first()
+  ).toHaveAttribute('title', 'Kind callWorkflow')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-branch').first()
+  ).toHaveAttribute('title', 'Then branch at [0]/consequent[0]')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first().press('Enter')
   await expect
     .poll(() =>
@@ -121,7 +135,7 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
         () => document.activeElement?.getAttribute('data-lowcode-action-path') ?? ''
       )
     )
-    .toBe('[0]')
+    .toBe('[0]/consequent[0]')
   await expect
     .poll(() =>
       editor.page.evaluate(

@@ -37,7 +37,8 @@ describe('lowcode workflow graph analysis', () => {
       toId: 'wf-b',
       toName: 'Notify',
       actionId: 'call-b',
-      actionPath: '[0]/consequent[0]'
+      actionPath: '[0]/consequent[0]',
+      actionKind: 'callWorkflow'
     })
     expect(summary.nodes).toMatchObject([
       {

@@ -7,6 +7,7 @@ export interface WorkflowGraphEdge {
   toName?: string
   actionId: string
   actionPath: string
+  actionKind: ActionDef['kind']
 }
 
 export interface WorkflowGraphIssue {
@@ -157,7 +158,8 @@ function collectCalls(
         toId: action.workflowId,
         toName: workflows.get(action.workflowId)?.name,
         actionId: action.id,
-        actionPath
+        actionPath,
+        actionKind: action.kind
       })
     }
     for (const [branchName, branch] of actionBranches(action)) {

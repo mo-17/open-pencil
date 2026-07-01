@@ -345,6 +345,12 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
   ).toContainText('Action call-notify')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action-kind').first()
+  ).toContainText('callWorkflow')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-branch').first()
+  ).toHaveAttribute('title', 'Root branch at [0]')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-jump')).toHaveAttribute(
     'aria-label',
     'Jump to Notify workflow from Save'

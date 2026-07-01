@@ -269,6 +269,31 @@ function graphMapEdgeActionLabel(edge: WorkflowGraphEdge): string {
   return `Action ${edge.actionId}`
 }
 
+function graphMapEdgeActionKindLabel(edge: WorkflowGraphEdge): string {
+  return `Kind ${edge.actionKind}`
+}
+
+function graphMapEdgeBranchLabel(edge: WorkflowGraphEdge): string {
+  if (!edge.actionPath.includes('/')) return 'Root'
+  const branch = edge.actionPath.split('/').at(-1)?.replace(/\[\d+\]$/, '') ?? ''
+  switch (branch) {
+    case 'consequent':
+      return 'Then'
+    case 'alternate':
+      return 'Else'
+    case 'onSuccess':
+      return 'On success'
+    case 'onError':
+      return 'On error'
+    default:
+      return branch || 'Nested'
+  }
+}
+
+function graphMapEdgeBranchTitle(edge: WorkflowGraphEdge): string {
+  return `${graphMapEdgeBranchLabel(edge)} branch at ${edge.actionPath}`
+}
+
 function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
   return issue.type === 'cycle' ? 'Cycle' : 'Missing'
 }
@@ -789,6 +814,22 @@ function containingPageId(node: SceneNode): string | undefined {
                   >
                     {{ graphMapEdgeActionLabel(edge) }}
                   </button>
+                  <span
+                    data-test-id="lowcode-workflow-graph-map-edge-action-kind"
+                    :aria-label="graphMapEdgeActionKindLabel(edge)"
+                    :title="graphMapEdgeActionKindLabel(edge)"
+                    class="shrink-0 rounded bg-hover/70 px-1 text-[9px] text-muted"
+                  >
+                    {{ edge.actionKind }}
+                  </span>
+                  <span
+                    data-test-id="lowcode-workflow-graph-map-edge-branch"
+                    :aria-label="graphMapEdgeBranchTitle(edge)"
+                    :title="graphMapEdgeBranchTitle(edge)"
+                    class="shrink-0 rounded border border-border/70 px-1 text-[9px] text-muted"
+                  >
+                    {{ graphMapEdgeBranchLabel(edge) }}
+                  </span>
                 </span>
                 <button
                   v-if="edge.toName"
