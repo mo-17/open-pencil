@@ -2999,6 +2999,46 @@ workflow 被多个 UI/event 入口触发时,作者还需要知道这里不止一
 - 不新增 workflow graph 数据结构字段。
 - 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
 
+### 13.22 2026-07-02 第二十二刀:Workflow graph map issue group
+
+本刀继续 polish workflow graph map 的 issue 视图。此前 map 区域只显示节点、边和 missing badge,
+具体 issue message 仍主要在 summary 顶部。本刀在 map 内加入 compact issue group,让作者展开
+details 后可以在同一区域读到问题类型、问题文本,并从 map 内直接跳到可修复的 workflow。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `WorkflowGraphIssue` 类型导入。
+  - 新增 `graphMapIssueTypeLabel(issue)`。
+  - 新增 `graphMapIssueJumpLabel(issue)`。
+  - map 内新增 `lowcode-workflow-graph-map-issue-group`。
+  - 每条 issue 显示 compact type pill 和 issue message。
+  - 有 `targetWorkflowId` 的 issue 提供 map 内 `Jump` 按钮。
+  - map issue jump 支持 `Enter` / `Space`,复用 `jumpToWorkflow()`。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 验证 map issue group 存在。
+  - 验证 issue type 显示 `Missing`。
+  - 验证 issue message 显示 `Save calls a missing workflow (wf-missing)`。
+  - 验证 map issue jump 的 source-specific `aria-label`。
+  - 用 `Enter` 激活 map issue jump,验证焦点回到 `wf-save` workflow row。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts --project=openpencil`
+  (提权后通过;本地 Vite webServer 仍需要端口监听权限)
+
+明确不做:
+
+- 不新增 issue severity / grouping schema。
+- 不自动修复 missing workflowId。
+- 不持久化 filter / 展开状态到 SceneGraph / `.fig` / localStorage。
+- 不做拖拽 DAG 编辑或 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

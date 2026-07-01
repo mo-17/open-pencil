@@ -16,7 +16,8 @@ import {
   analyzeWorkflowGraph,
   collectWorkflowEntrypoints,
   type WorkflowGraphEdge,
-  type WorkflowGraphEntrypoint
+  type WorkflowGraphEntrypoint,
+  type WorkflowGraphIssue
 } from '@/app/lowcode/workflow-graph'
 
 import WorkflowRow from './WorkflowRow.vue'
@@ -190,6 +191,15 @@ function graphMapMissingEdgeLabel(edge: WorkflowGraphEdge): string {
 
 function graphMapMissingEdgeSourceJumpLabel(edge: WorkflowGraphEdge): string {
   return `Jump to ${edge.fromName} workflow to fix missing ${edge.toId}`
+}
+
+function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
+  return issue.type === 'cycle' ? 'Cycle' : 'Missing'
+}
+
+function graphMapIssueJumpLabel(issue: WorkflowGraphIssue): string {
+  const target = issue.targetWorkflowId ? workflowGraphNodeName(issue.targetWorkflowId) : 'target'
+  return `Jump to ${target} workflow for issue: ${issue.message}`
 }
 
 function entrypointSourceLabel(entrypoint: WorkflowGraphEntrypoint): string {
@@ -385,6 +395,43 @@ function containingPageId(node: SceneNode): string | undefined {
             {{ graphMapSummaryLabel() }}
           </span>
         </div>
+        <ul
+          v-if="workflowGraph.issues.length > 0"
+          data-test-id="lowcode-workflow-graph-map-issue-group"
+          class="flex flex-col gap-0.5 rounded border border-red-500/30 bg-red-500/5 px-1 py-0.5 text-[10px]"
+        >
+          <li
+            v-for="(issue, index) in workflowGraph.issues"
+            :key="`${issue.type}-${index}`"
+            data-test-id="lowcode-workflow-graph-map-issue-row"
+            class="flex items-center justify-between gap-2"
+          >
+            <span class="min-w-0">
+              <span
+                data-test-id="lowcode-workflow-graph-map-issue-type"
+                class="mr-1 rounded bg-red-500/10 px-1 text-red-500"
+              >
+                {{ graphMapIssueTypeLabel(issue) }}
+              </span>
+              <span data-test-id="lowcode-workflow-graph-map-issue-message">
+                {{ issue.message }}
+              </span>
+            </span>
+            <button
+              v-if="issue.targetWorkflowId"
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-issue-jump"
+              :aria-label="graphMapIssueJumpLabel(issue)"
+              :title="graphMapIssueJumpLabel(issue)"
+              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+              @click="jumpToWorkflow(issue.targetWorkflowId)"
+              @keydown.enter.prevent="jumpToWorkflow(issue.targetWorkflowId)"
+              @keydown.space.prevent="jumpToWorkflow(issue.targetWorkflowId)"
+            >
+              Jump
+            </button>
+          </li>
+        </ul>
         <div v-if="graphMapNodes.length > 0" class="flex flex-wrap gap-1">
           <div
             v-for="node in graphMapNodes"

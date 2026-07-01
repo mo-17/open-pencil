@@ -188,6 +188,23 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
     '2 nodes, 2 edges'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-group')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-type')).toContainText(
+    'Missing'
+  )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-message')
+  ).toContainText('Save calls a missing workflow (wf-missing)')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-jump')).toHaveAttribute(
+    'aria-label',
+    'Jump to Save workflow for issue: Save calls a missing workflow (wf-missing)'
+  )
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-jump').press('Enter')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+    )
+    .toBe('wf-save')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').first()).toContainText(
     'Save'
