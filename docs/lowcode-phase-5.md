@@ -3352,6 +3352,54 @@ source jump:从任何 edge 的 action badge 都能回到产生该调用的源 wo
 - 不做嵌套 workflow action row 精准定位。
 - 不新增拖拽排序、拖拽连线或节点位置编辑。
 
+### 13.31 2026-07-02 第三十一刀:Workflow graph edge actionPath focus
+
+本刀把上一刀的 source row jump 继续收窄到 exact source action row。Workflow graph edge
+此前已经知道 `actionId`,但 workflow 内部 action 可能嵌套在 condition / confirm /
+onSuccess / onError 分支里,只跳到 workflow row 仍需要人工再找一次。本刀让 graph
+analysis 为 edge 生成与 `ActionRow` DOM 一致的 `actionPath`,再由 WorkflowRow 暴露
+`focusAction(actionPath)` 复用既有 temporary highlight。
+
+本刀已完成:
+
+- `workflow-graph.ts`:
+  - `WorkflowGraphEdge` 新增运行时 `actionPath`。
+  - `collectCalls()` 递归时生成 `[index]` / `[index]/branch[index]` path。
+  - path 格式与 `ActionList` / `ActionRow` 的 `data-lowcode-action-path` 保持一致。
+- `WorkflowRow.vue`:
+  - 新增 `focusAction(actionPath)` expose。
+  - 根据 `data-lowcode-action-path` 查询 action row。
+  - 命中后 scroll / focus / temporary highlight;未命中时由上层回退到 row focus。
+- `WorkflowsPanel.vue`:
+  - edge action badge 调用 `jumpToWorkflowAction(edge)`。
+  - action badge 的 `aria-label` / `title` 增加 actionPath,例如
+    `Jump to Save workflow action call-missing at [1]`。
+  - 保留 normal target `Jump` 和 missing `Source`。
+- `tests/engine/app/lowcode/workflow-graph.test.ts`:
+  - 验证嵌套 workflow call edge 生成 `[0]/consequent[0]`。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证 action badge aria label 带 `[0]`。
+  - 验证 Enter 后焦点落在具体 action row 的 `data-lowcode-action-path`。
+  - 验证 action row 获得 temporary highlighter。
+- `tests/e2e/properties/workflow-optional-params.spec.ts`:
+  - 更新 missing edge action badge title 为带 actionPath 的 source action jump 文案。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不把 actionPath 写入 SceneGraph / `.fig` / `.pen` 持久化数据。
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+- 不新增 SVG/canvas edge rendering。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

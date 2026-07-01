@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 
 import type {
   ActionDef,
@@ -36,11 +36,26 @@ const emit = defineEmits<{
 }>()
 const rowEl = ref<HTMLElement | null>(null)
 
+function selectorValue(value: string): string {
+  return value.replace(/["\\]/g, '\\$&')
+}
+
 defineExpose({
   focusRow(): void {
     rowEl.value?.scrollIntoView({ block: 'nearest' })
     rowEl.value?.focus({ preventScroll: true })
     flashLowcodeFocusHighlight(rowEl.value)
+  },
+  async focusAction(actionPath: string): Promise<boolean> {
+    await nextTick()
+    const actionRow = rowEl.value?.querySelector<HTMLElement>(
+      `[data-lowcode-action-path="${selectorValue(actionPath)}"]`
+    )
+    if (!actionRow) return false
+    actionRow.scrollIntoView({ block: 'nearest' })
+    actionRow.focus({ preventScroll: true })
+    flashLowcodeFocusHighlight(actionRow)
+    return true
   }
 })
 

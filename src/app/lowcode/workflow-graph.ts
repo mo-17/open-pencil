@@ -6,6 +6,7 @@ export interface WorkflowGraphEdge {
   toId: string
   toName?: string
   actionId: string
+  actionPath: string
 }
 
 export interface WorkflowGraphIssue {
@@ -142,10 +143,12 @@ function collectCalls(
   actions: readonly ActionDef[] | undefined,
   workflow: WorkflowDef,
   workflows: ReadonlyMap<string, WorkflowDef>,
-  edges: WorkflowGraphEdge[]
+  edges: WorkflowGraphEdge[],
+  pathPrefix = ''
 ): number {
   let actionCount = 0
-  for (const action of actions ?? []) {
+  for (const [index, action] of (actions ?? []).entries()) {
+    const actionPath = `${pathPrefix}[${index}]`
     actionCount += 1
     if (action.kind === 'callWorkflow' && action.workflowId) {
       edges.push({
@@ -153,11 +156,12 @@ function collectCalls(
         fromName: workflow.name || workflow.id,
         toId: action.workflowId,
         toName: workflows.get(action.workflowId)?.name,
-        actionId: action.id
+        actionId: action.id,
+        actionPath
       })
     }
-    for (const [, branch] of actionBranches(action)) {
-      actionCount += collectCalls(branch, workflow, workflows, edges)
+    for (const [branchName, branch] of actionBranches(action)) {
+      actionCount += collectCalls(branch, workflow, workflows, edges, `${actionPath}/${branchName}`)
     }
   }
   return actionCount

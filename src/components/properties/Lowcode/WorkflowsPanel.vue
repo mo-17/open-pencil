@@ -158,7 +158,10 @@ const graphMapEdgeGroups = computed<GraphMapEdgeGroup[]>(() => {
 
   return groups.filter((group) => group.edges.length > 0)
 })
-type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
+type WorkflowRowHandle = ComponentPublicInstance & {
+  focusRow: () => void
+  focusAction: (actionPath: string) => Promise<boolean>
+}
 const workflowRowRefs = new Map<string, WorkflowRowHandle>()
 
 function commit(next: WorkflowDef[]): void {
@@ -195,6 +198,13 @@ function pageStatesFor(workflow: WorkflowDef): StateDef[] {
 function jumpToWorkflow(workflowId: string | undefined): void {
   if (!workflowId) return
   workflowRowRefs.get(workflowId)?.focusRow()
+}
+
+async function jumpToWorkflowAction(edge: WorkflowGraphEdge): Promise<void> {
+  const row = workflowRowRefs.get(edge.fromId)
+  if (!row) return
+  if (await row.focusAction(edge.actionPath)) return
+  row.focusRow()
 }
 
 function jumpToEntrypointSource(entrypoint: WorkflowGraphEntrypoint): void {
@@ -244,7 +254,7 @@ function graphMapMissingEdgeSourceJumpLabel(edge: WorkflowGraphEdge): string {
 }
 
 function graphMapEdgeSourceActionJumpLabel(edge: WorkflowGraphEdge): string {
-  return `Jump to ${edge.fromName} workflow action ${edge.actionId}`
+  return `Jump to ${edge.fromName} workflow action ${edge.actionId} at ${edge.actionPath}`
 }
 
 function graphMapEdgeTargetLabel(edge: WorkflowGraphEdge): string {
@@ -773,9 +783,9 @@ function containingPageId(node: SceneNode): string | undefined {
                     :aria-label="graphMapEdgeSourceActionJumpLabel(edge)"
                     :title="graphMapEdgeSourceActionJumpLabel(edge)"
                     class="shrink-0 rounded bg-hover px-1 text-[9px] text-muted hover:text-surface focus:bg-hover focus:text-surface"
-                    @click="jumpToWorkflow(edge.fromId)"
-                    @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
-                    @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
+                    @click="jumpToWorkflowAction(edge)"
+                    @keydown.enter.prevent="jumpToWorkflowAction(edge)"
+                    @keydown.space.prevent="jumpToWorkflowAction(edge)"
                   >
                     {{ graphMapEdgeActionLabel(edge) }}
                   </button>

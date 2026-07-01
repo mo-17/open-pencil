@@ -113,13 +113,15 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
-  ).toHaveAttribute('aria-label', 'Jump to Alpha workflow action call-beta')
+  ).toHaveAttribute('aria-label', 'Jump to Alpha workflow action call-beta at [0]')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first().press('Enter')
   await expect
     .poll(() =>
-      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+      editor.page.evaluate(
+        () => document.activeElement?.getAttribute('data-lowcode-action-path') ?? ''
+      )
     )
-    .toBe('wf-a')
+    .toBe('[0]')
   await expect
     .poll(() =>
       editor.page.evaluate(
