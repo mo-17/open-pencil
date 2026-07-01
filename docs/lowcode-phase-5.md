@@ -2252,6 +2252,41 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
 - 不改变 compile-time inline/cycle warning 行为。
 - 不新增 E2E;本刀为纯 helper + 轻量 panel summary,后续若加点击定位/折叠图视图再补 UI E2E。
 
+### 13.2 2026-07-01 第二刀:Workflow graph jump targets
+
+本刀继续保持只读诊断视图,补上从 summary/issue 回到链式 workflow editor 的定位能力。
+
+已完成:
+
+- `WorkflowGraphIssue` 新增 `targetWorkflowId`:
+  - missing workflow reference 定位到发起调用的 workflow。
+  - cycle issue 定位到 cycle path 的第一个 workflow。
+- `WorkflowRow` 通过 Vue template ref 暴露 `focusRow()`:
+  - 调用时滚动到 row,并把 focus 放到 row root。
+  - 遵守 Vue 结构 lint,不在组件里使用 `document.querySelector`。
+- `WorkflowsPanel`:
+  - issue 行增加 `Jump` 按钮。
+  - 每个 workflow graph node 摘要增加 `Jump` 按钮。
+  - 使用组件 refs 定位,不改变 workflow 数据。
+- 覆盖:
+  - `tests/engine/app/lowcode/workflow-graph.test.ts` 覆盖 missing/cycle 的
+    `targetWorkflowId`。
+
+已验证:
+
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun test tests/engine/compiler/call-workflow.test.ts tests/engine/compiler/ir/collect/workflow.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+- `git diff --check`
+
+明确不做:
+
+- 不做折叠式图视图或画布图布局。
+- 不做从 event action row 反向跳转到 workflow graph。
+- 不新增 E2E;后续如果继续做点击定位/折叠状态/图交互,再补对应 UI E2E。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

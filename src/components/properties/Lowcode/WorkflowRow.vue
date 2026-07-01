@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import type {
   ActionDef,
@@ -33,6 +33,14 @@ const emit = defineEmits<{
   'update:workflow': [WorkflowDef]
   remove: []
 }>()
+const rowEl = ref<HTMLElement | null>(null)
+
+defineExpose({
+  focusRow(): void {
+    rowEl.value?.scrollIntoView({ block: 'nearest' })
+    rowEl.value?.focus({ preventScroll: true })
+  }
+})
 
 // Mirrors `validateWorkflowParams` in tools/modify/lowcode.ts: a plain
 // identifier, deliberately excluding `$` so a param never shadows $prev / $event
@@ -126,7 +134,10 @@ function setParamOptional(index: number, optional: boolean): void {
 
 <template>
   <li
+    ref="rowEl"
     data-test-id="lowcode-workflow-row"
+    :data-workflow-id="workflow.id"
+    tabindex="-1"
     class="flex flex-col gap-1.5 rounded border border-border p-2"
   >
     <div class="flex items-center gap-1">

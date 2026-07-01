@@ -12,6 +12,7 @@ export interface WorkflowGraphIssue {
   type: 'missing-workflow' | 'cycle'
   message: string
   workflowIds: string[]
+  targetWorkflowId?: string
 }
 
 export interface WorkflowGraphNode {
@@ -104,7 +105,8 @@ function missingWorkflowIssues(edges: readonly WorkflowGraphEdge[]): WorkflowGra
     .map((edge) => ({
       type: 'missing-workflow',
       message: `${edge.fromName} calls a missing workflow (${edge.toId})`,
-      workflowIds: [edge.fromId, edge.toId]
+      workflowIds: [edge.fromId, edge.toId],
+      targetWorkflowId: edge.fromId
     }))
 }
 
@@ -136,7 +138,8 @@ function cycleIssues(
         issues.push({
           type: 'cycle',
           message: `Workflow cycle: ${cycle.map((entry) => names.get(entry) ?? entry).join(' -> ')}`,
-          workflowIds: cycle
+          workflowIds: cycle,
+          targetWorkflowId: cycle[0]
         })
       }
       return

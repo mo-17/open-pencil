@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import type {
   DocumentStateDef,
   SceneNode,
@@ -56,6 +57,8 @@ const analyticsConfigured = useSceneComputed<boolean>(() => {
   return config?.enabled !== false && !!config?.id?.trim()
 })
 const workflowGraph = computed(() => analyzeWorkflowGraph(workflows.value))
+type WorkflowRowHandle = ComponentPublicInstance & { focusRow: () => void }
+const workflowRowRefs = new Map<string, WorkflowRowHandle>()
 
 function commit(next: WorkflowDef[]): void {
   editor.updateNodeWithUndo(
@@ -86,6 +89,16 @@ function removeWorkflow(id: string): void {
 function pageStatesFor(workflow: WorkflowDef): StateDef[] {
   const pageId = workflow.pageId ?? editor.state.currentPageId
   return pages.value.find((page) => page.id === pageId)?.state ?? []
+}
+
+function jumpToWorkflow(workflowId: string | undefined): void {
+  if (!workflowId) return
+  workflowRowRefs.get(workflowId)?.focusRow()
+}
+
+function setWorkflowRowRef(workflowId: string, row: Element | ComponentPublicInstance | null): void {
+  if (row) workflowRowRefs.set(workflowId, row as WorkflowRowHandle)
+  else workflowRowRefs.delete(workflowId)
 }
 </script>
 
@@ -122,8 +135,18 @@ function pageStatesFor(workflow: WorkflowDef): StateDef[] {
           v-for="(issue, index) in workflowGraph.issues"
           :key="`${issue.type}-${index}`"
           data-test-id="lowcode-workflow-graph-issue"
+          class="flex items-center justify-between gap-2"
         >
-          {{ issue.message }}
+          <span class="min-w-0">{{ issue.message }}</span>
+          <button
+            v-if="issue.targetWorkflowId"
+            type="button"
+            data-test-id="lowcode-workflow-graph-jump"
+            class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+            @click="jumpToWorkflow(issue.targetWorkflowId)"
+          >
+            Jump
+          </button>
         </li>
       </ul>
       <ul class="flex flex-col gap-0.5 text-muted">
@@ -131,10 +154,21 @@ function pageStatesFor(workflow: WorkflowDef): StateDef[] {
           v-for="node in workflowGraph.nodes"
           :key="node.id"
           data-test-id="lowcode-workflow-graph-node"
+          class="flex items-center justify-between gap-2"
         >
-          {{ node.name }}:
-          {{ node.incoming.length }} in / {{ node.outgoing.length }} out /
-          {{ node.actionCount }} actions
+          <span class="min-w-0">
+            {{ node.name }}:
+            {{ node.incoming.length }} in / {{ node.outgoing.length }} out /
+            {{ node.actionCount }} actions
+          </span>
+          <button
+            type="button"
+            data-test-id="lowcode-workflow-graph-node-jump"
+            class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+            @click="jumpToWorkflow(node.id)"
+          >
+            Jump
+          </button>
         </li>
       </ul>
     </div>
@@ -149,6 +183,7 @@ function pageStatesFor(workflow: WorkflowDef): StateDef[] {
         :page-states="pageStatesFor(wf)"
         :doc-states="docStates"
         :analytics-configured="analyticsConfigured"
+        :ref="(row) => setWorkflowRowRef(wf.id, row)"
         @update:workflow="updateWorkflow(wf.id, $event)"
         @remove="removeWorkflow(wf.id)"
       />

@@ -69,7 +69,8 @@ describe('lowcode workflow graph analysis', () => {
       {
         type: 'missing-workflow',
         message: 'Save calls a missing workflow (wf-missing)',
-        workflowIds: ['wf-a', 'wf-missing']
+        workflowIds: ['wf-a', 'wf-missing'],
+        targetWorkflowId: 'wf-a'
       }
     ])
   })
@@ -104,12 +105,14 @@ describe('lowcode workflow graph analysis', () => {
       {
         type: 'cycle',
         message: 'Workflow cycle: A -> B -> C -> A',
-        workflowIds: ['wf-a', 'wf-b', 'wf-c', 'wf-a']
+        workflowIds: ['wf-a', 'wf-b', 'wf-c', 'wf-a'],
+        targetWorkflowId: 'wf-a'
       },
       {
         type: 'cycle',
         message: 'Workflow cycle: Self -> Self',
-        workflowIds: ['wf-d', 'wf-d']
+        workflowIds: ['wf-d', 'wf-d'],
+        targetWorkflowId: 'wf-d'
       }
     ])
   })
