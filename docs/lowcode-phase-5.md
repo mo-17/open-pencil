@@ -3633,6 +3633,42 @@ Enter 正向循环当前可见 result,Shift+Enter 反向循环,并在 map 内高
 - 不把 Enter 导航变成 workflow/action jump。
 - 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
 
+### 13.37 2026-07-02 第三十七刀:Workflow graph map active match jump
+
+本刀把上一刀的 active match navigation 接到现有 jump 行为上。普通 Enter 仍只在 search result
+里循环定位;只有显式按 Ctrl/Cmd+Enter 时,才跳到当前 active match 对应的 workflow row 或
+source action row。状态仍是 local-only,不进入文档 schema。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - `handleGraphMapSearchEnter(event)` 新增 Ctrl/Cmd+Enter 分支。
+  - 新增 `jumpToActiveGraphMapSearchMatch()`:
+    - active node match 复用 `jumpToWorkflow(node.id)`;
+    - active edge match 复用 `jumpToWorkflowAction(edge)`;
+    - 没有 active match 时 no-op。
+  - 普通 Enter / Shift+Enter 继续只负责 result 循环与高亮。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证 active Beta node 上 Ctrl/Cmd+Enter 聚焦 Beta workflow row。
+  - 验证 active call-beta edge 上 Ctrl/Cmd+Enter 聚焦源 action row。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不把普通 Enter 改为 jump。
+- 不新增全局 keyboard shortcut 或 search result navigator。
+- 不持久化 active match、search query 或快捷键偏好。
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

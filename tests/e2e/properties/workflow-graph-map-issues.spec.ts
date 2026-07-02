@@ -218,6 +218,16 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
     'Beta'
   )
+  await editor.page.keyboard.press('ControlOrMeta+Enter')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-test-id') ?? '')
+    )
+    .toBe('lowcode-workflow-row')
+  await expect
+    .poll(() => editor.page.evaluate(() => document.activeElement?.textContent ?? ''))
+    .toContain('Beta')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-search').focus()
   await editor.page.keyboard.press('Escape')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search')).toHaveValue('')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toHaveCount(0)
@@ -248,6 +258,18 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-branch').first()
   ).toHaveAttribute('title', 'Then branch at [0]/consequent[0]')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-search').fill('call-beta')
+  await editor.page.keyboard.press('Enter')
+  await editor.page.keyboard.press('Enter')
+  await editor.page.keyboard.press('Enter')
+  await editor.page.keyboard.press('ControlOrMeta+Enter')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(
+        () => document.activeElement?.getAttribute('data-lowcode-action-path') ?? ''
+      )
+    )
+    .toBe('[0]/consequent[0]')
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first().press('Enter')
   await expect
     .poll(() =>
@@ -263,6 +285,8 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
       )
     )
     .toBe('true')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-clear').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toHaveCount(0)
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-issue').first()
   ).toContainText('2 issues')

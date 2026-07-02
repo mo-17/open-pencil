@@ -516,12 +516,28 @@ function handleGraphMapSearchEscape(event: KeyboardEvent): void {
 function handleGraphMapSearchEnter(event: KeyboardEvent): void {
   if (!graphMapSearchTerm.value) return
   event.preventDefault()
+  if (event.metaKey || event.ctrlKey) {
+    jumpToActiveGraphMapSearchMatch()
+    return
+  }
   activeGraphMapSearchMatchId.value = nextGraphMapSearchMatchId(
     graphMapNodes.value,
     graphMapEdges.value,
     activeGraphMapSearchMatchId.value,
     event.shiftKey
   )
+}
+
+async function jumpToActiveGraphMapSearchMatch(): Promise<void> {
+  const activeId = activeGraphMapSearchMatchId.value
+  if (!activeId) return
+  const node = graphMapNodes.value.find((candidate) => graphMapNodeSearchMatchId(candidate) === activeId)
+  if (node) {
+    jumpToWorkflow(node.id)
+    return
+  }
+  const edge = graphMapEdges.value.find((candidate) => graphMapEdgeSearchMatchId(candidate) === activeId)
+  if (edge) await jumpToWorkflowAction(edge)
 }
 
 function isActiveGraphMapNodeSearchMatch(node: WorkflowGraphNode): boolean {

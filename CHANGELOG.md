@@ -118,6 +118,7 @@
 - Add local workflow graph map search across workflow names, ids, edge targets, and action metadata.
 - Add keyboard focus and Escape clearing behavior for workflow graph map search.
 - Add local Enter navigation and active-match highlighting for workflow graph map search results.
+- Let workflow graph map search jump from the active result with Ctrl/Cmd+Enter.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.
