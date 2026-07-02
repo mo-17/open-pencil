@@ -80,10 +80,26 @@ export function graphMapSearchMatchPositionLabel(
   return ` · ${index + 1}/${matches.length} ${match?.kind ?? 'result'}`
 }
 
+export function formatGraphMapSearchSummary(
+  nodes: readonly WorkflowGraphNode[],
+  edges: readonly WorkflowGraphEdge[],
+  query: string,
+  currentId: string | null
+): string {
+  const position = graphMapSearchMatchPositionLabel(nodes, edges, currentId)
+  return `${countLabel(nodes.length, 'node')}, ${countLabel(edges.length, 'edge')} matching "${query.trim()}"${position}`
+}
+
 export function isGraphMapTextInputTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tag = target.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+}
+
+export function scrollGraphMapActiveMatchIntoView(root: HTMLElement | null): void {
+  root
+    ?.querySelector('[data-graph-map-active-match="true"]')
+    ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 }
 
 function graphMapSearchMatches(
@@ -94,4 +110,8 @@ function graphMapSearchMatches(
     ...nodes.map((node) => ({ id: graphMapNodeSearchMatchId(node), kind: 'node' as const })),
     ...edges.map((edge) => ({ id: graphMapEdgeSearchMatchId(edge), kind: 'edge' as const }))
   ]
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`
 }

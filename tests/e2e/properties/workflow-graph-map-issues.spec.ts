@@ -186,6 +186,15 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
     '2 nodes, 1 edge matching "call-beta"'
   )
+  await editor.page.evaluate(() => {
+    const pageWindow = window as Window & { __workflowGraphMapScrollCalls?: number }
+    pageWindow.__workflowGraphMapScrollCalls = 0
+    const originalScrollIntoView = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function scrollIntoViewSpy(options?: boolean | ScrollIntoViewOptions) {
+      pageWindow.__workflowGraphMapScrollCalls = (pageWindow.__workflowGraphMapScrollCalls ?? 0) + 1
+      originalScrollIntoView.call(this, options)
+    }
+  })
   await editor.page.keyboard.press('Enter')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(0)).toHaveAttribute(
     'data-graph-map-active-match',
@@ -230,6 +239,15 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
     '2/3 node'
   )
+  await expect
+    .poll(() =>
+      editor.page.evaluate(
+        () =>
+          (window as Window & { __workflowGraphMapScrollCalls?: number })
+            .__workflowGraphMapScrollCalls ?? 0
+      )
+    )
+    .toBeGreaterThanOrEqual(4)
   await editor.page.keyboard.press('ControlOrMeta+Enter')
   await expect
     .poll(() =>

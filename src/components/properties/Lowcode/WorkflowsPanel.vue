@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import type {
   DocumentStateDef,
@@ -23,14 +23,15 @@ import {
 
 import WorkflowRow from './WorkflowRow.vue'
 import {
+  formatGraphMapSearchSummary,
   graphMapEdgeBranchLabel,
   graphMapEdgeMatchesSearch,
   graphMapEdgeSearchMatchId,
   graphMapNodeMatchesSearch,
   graphMapNodeSearchMatchId,
-  graphMapSearchMatchPositionLabel,
   isGraphMapTextInputTarget,
-  nextGraphMapSearchMatchId
+  nextGraphMapSearchMatchId,
+  scrollGraphMapActiveMatchIntoView
 } from './workflow-graph-map-search'
 
 /**
@@ -85,6 +86,7 @@ type GraphMapFilter = 'all' | 'issues' | 'entries'
 const graphMapFilter = ref<GraphMapFilter>('all')
 const graphMapSearchQuery = ref('')
 const graphMapSearchInput = ref<HTMLInputElement | null>(null)
+const graphMapRoot = ref<HTMLElement | null>(null)
 const activeGraphMapSearchMatchId = ref<string | null>(null)
 const expandedGraphMapSourceIds = ref<Set<string>>(new Set())
 const collapsedGraphMapNodeGroupKinds = ref<Set<GraphMapNodeGroupKind>>(new Set())
@@ -474,10 +476,6 @@ function graphMapEdgeGroupToggleLabel(group: GraphMapEdgeGroup): string {
   return `${isGraphMapEdgeGroupCollapsed(group.kind) ? 'Show' : 'Hide'} ${group.title} edge group`
 }
 
-function graphMapEdgeGroupCountLabel(count: number): string {
-  return countLabel(count, 'edge')
-}
-
 function clearGraphMapSearch(): void {
   graphMapSearchQuery.value = ''
   activeGraphMapSearchMatchId.value = null
@@ -522,6 +520,9 @@ function handleGraphMapSearchEnter(event: KeyboardEvent): void {
     activeGraphMapSearchMatchId.value,
     event.shiftKey
   )
+  if (activeGraphMapSearchMatchId.value) {
+    void nextTick(() => scrollGraphMapActiveMatchIntoView(graphMapRoot.value))
+  }
 }
 
 async function jumpToActiveGraphMapSearchMatch(): Promise<void> {
@@ -546,15 +547,12 @@ function isActiveGraphMapEdgeSearchMatch(edge: WorkflowGraphEdge): boolean {
 
 function graphMapSearchSummaryLabel(): string {
   if (!graphMapSearchTerm.value) return ''
-  const position = graphMapSearchMatchPositionLabel(
+  return formatGraphMapSearchSummary(
     graphMapNodes.value,
     graphMapEdges.value,
+    graphMapSearchQuery.value,
     activeGraphMapSearchMatchId.value
   )
-  return `${countLabel(graphMapNodes.value.length, 'node')}, ${countLabel(
-    graphMapEdges.value.length,
-    'edge'
-  )} matching "${graphMapSearchQuery.value.trim()}"${position}`
 }
 
 function graphMapIssueCleanLabel(): string {
@@ -680,6 +678,7 @@ function containingPageId(node: SceneNode): string | undefined {
       </ul>
       <div
         v-if="graphDetailsOpen"
+        ref="graphMapRoot"
         data-test-id="lowcode-workflow-graph-map"
         class="flex flex-col gap-1 border-l border-border pl-2 text-muted"
         @keydown="handleGraphMapKeydown"
@@ -976,7 +975,7 @@ function containingPageId(node: SceneNode): string | undefined {
               </span>
               <span class="flex items-center gap-1">
                 <span data-test-id="lowcode-workflow-graph-map-edge-group-count">
-                  {{ graphMapEdgeGroupCountLabel(group.edges.length) }}
+                  {{ countLabel(group.edges.length, 'edge') }}
                 </span>
                 <button
                   type="button"

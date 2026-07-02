@@ -3708,6 +3708,45 @@ search summary 中追加 active result position,例如 `1/3 node`、`3/3 edge`�
 - 不持久化 active match、search query 或快捷键偏好。
 - 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
 
+### 13.39 2026-07-02 第三十九刀:Workflow graph map active match visibility
+
+本刀继续 polish active match 可见性。上一刀能显示当前 active result position,但在长 map
+里循环结果时,高亮项仍可能在滚动区域外。本刀在 active match 变化后,让 map 将当前
+highlight 滚入最近可见区域。
+
+本刀已完成:
+
+- `workflow-graph-map-search.ts`:
+  - 新增 `scrollGraphMapActiveMatchIntoView(root)`。
+  - 新增 `formatGraphMapSearchSummary(...)`,让 summary 文案留在 helper 中,避免继续推高
+    `WorkflowsPanel.vue` 行数。
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapRoot` ref。
+  - graph map root div 绑定 `ref="graphMapRoot"`。
+  - `handleGraphMapSearchEnter(event)` 在产生 active match 后,通过 `nextTick` 调用
+    `scrollGraphMapActiveMatchIntoView(graphMapRoot.value)`。
+  - 移除 `graphMapEdgeGroupCountLabel()` 薄包装,避免新增 max-lines warning。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 在 search navigation 流程中 spy `Element.prototype.scrollIntoView`。
+  - 验证 Enter / Shift+Enter 循环 active match 时触发滚入视野行为。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增全局 result navigator。
+- 不持久化 active match、search query 或快捷键偏好。
+- 不改变普通 Enter / Ctrl-Cmd+Enter 的既有语义。
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
