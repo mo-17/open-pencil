@@ -1709,6 +1709,34 @@ environment value 被带进 Stripe session 创建请求。
 - 不改变 generated SPA 和 Edge Function 的 response contract。
 - 不把 Stripe secret、service role key 或 customer id mapping 写进前端。
 
+### 12.6.3 2026-07-02 第八刀补充:Stripe Edge Function Supabase URL guard
+
+本刀补齐 demo Supabase Edge Function 模板调用 Supabase Auth / REST / RPC 前的
+`SUPABASE_URL` guard。上一刀已保护 Stripe return URL 的 public site origin;这一刀把
+server-side Supabase endpoint 也收紧为 http(s) origin,避免畸形 environment value 被拼到
+Auth、REST 或 RPC 请求里。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/functions/demo-checkout/index.ts`:
+  - `supabaseRestConfig()` 改为通过 `new URL(env('SUPABASE_URL'))` 解析 Supabase URL。
+  - 只允许 `http:` / `https:` protocol,并统一返回 origin。
+- `packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts`:
+  - 新增集中 `supabaseRestConfig()` helper。
+  - Auth user lookup 与 `billing_customers` lookup 复用同一组 service-role headers 和
+    已验证 Supabase origin。
+- `packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts`:
+  - Webhook read-model REST/RPC helper 同样验证 `SUPABASE_URL` 为 http(s) origin。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖三个 Edge Function template 的
+    `SUPABASE_URL` http(s) guard。
+
+明确不做:
+
+- 不自动调用真实 Supabase 或 Stripe。
+- 不改变 Edge Function request/response contract。
+- 不把 service role key、Stripe secret 或 customer id mapping 写进前端。
+
 ### 12.7 2026-07-01 第四刀:Stripe webhook/subscription lifecycle demo template
 
 本刀补齐真实付费闭环的 server-side 入口:**接收 Stripe webhook、校验签名、路由 checkout

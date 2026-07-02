@@ -57,16 +57,31 @@ function publicSiteUrl(): string {
   return siteUrl.origin
 }
 
+function supabaseRestConfig(): { url: string; headers: Record<string, string> } {
+  const url = new URL(env('SUPABASE_URL'))
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('SUPABASE_URL must be an http(s) URL')
+  }
+  const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY')
+  return {
+    url: url.origin,
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json'
+    }
+  }
+}
+
 async function requireAuthenticatedUser(request: Request): Promise<SupabaseUser> {
   const auth = request.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) {
     throw new Error('Authorization bearer token required')
   }
-  const supabaseUrl = env('SUPABASE_URL')
-  const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY')
-  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+  const supabase = supabaseRestConfig()
+  const response = await fetch(`${supabase.url}/auth/v1/user`, {
     headers: {
-      apikey: serviceRoleKey,
+      apikey: supabase.headers.apikey,
       Authorization: auth
     }
   })
@@ -78,17 +93,16 @@ async function requireAuthenticatedUser(request: Request): Promise<SupabaseUser>
 }
 
 async function lookupStripeCustomerId(user: SupabaseUser): Promise<string> {
-  const supabaseUrl = env('SUPABASE_URL')
-  const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY')
+  const supabase = supabaseRestConfig()
   const query = new URLSearchParams({
     select: 'stripe_customer_id',
     user_id: `eq.${user.id}`,
     limit: '1'
   })
-  const response = await fetch(`${supabaseUrl}/rest/v1/billing_customers?${query}`, {
+  const response = await fetch(`${supabase.url}/rest/v1/billing_customers?${query}`, {
     headers: {
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`,
+      apikey: supabase.headers.apikey,
+      Authorization: supabase.headers.Authorization,
       Accept: 'application/json'
     }
   })

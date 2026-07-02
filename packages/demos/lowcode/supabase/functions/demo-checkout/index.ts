@@ -69,11 +69,18 @@ function publicSiteUrl(): string {
   return siteUrl.origin
 }
 
+function supabaseUrl(): string {
+  const url = new URL(env('SUPABASE_URL'))
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('SUPABASE_URL must be an http(s) URL')
+  }
+  return url.origin
+}
+
 function supabaseRestConfig(): { url: string; headers: Record<string, string> } {
-  const supabaseUrl = env('SUPABASE_URL').replace(/\/+$/, '')
   const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY')
   return {
-    url: supabaseUrl,
+    url: supabaseUrl(),
     headers: {
       apikey: serviceRoleKey,
       Authorization: `Bearer ${serviceRoleKey}`,
