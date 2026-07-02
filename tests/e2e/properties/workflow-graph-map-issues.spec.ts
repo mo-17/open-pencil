@@ -175,6 +175,26 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
     '2 nodes, 3 edges'
   )
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-filter-all').focus()
+  await editor.page.keyboard.press('/')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-test-id') ?? '')
+    )
+    .toBe('lowcode-workflow-graph-map-search')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-search').fill('call-beta')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
+    '2 nodes, 1 edge matching "call-beta"'
+  )
+  await editor.page.keyboard.press('Escape')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search')).toHaveValue('')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toHaveCount(0)
+  await editor.page.keyboard.press('Escape')
+  await expect
+    .poll(() =>
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-test-id') ?? '')
+    )
+    .not.toBe('lowcode-workflow-graph-map-search')
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
   ).toHaveAttribute(

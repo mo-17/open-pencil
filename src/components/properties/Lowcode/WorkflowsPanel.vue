@@ -74,6 +74,7 @@ const graphDetailsOpen = ref(false)
 type GraphMapFilter = 'all' | 'issues' | 'entries'
 const graphMapFilter = ref<GraphMapFilter>('all')
 const graphMapSearchQuery = ref('')
+const graphMapSearchInput = ref<HTMLInputElement | null>(null)
 const expandedGraphMapSourceIds = ref<Set<string>>(new Set())
 const collapsedGraphMapNodeGroupKinds = ref<Set<GraphMapNodeGroupKind>>(new Set())
 const collapsedGraphMapEdgeGroupKinds = ref<Set<GraphMapEdgeGroupKind>>(new Set())
@@ -487,6 +488,33 @@ function clearGraphMapSearch(): void {
   graphMapSearchQuery.value = ''
 }
 
+function focusGraphMapSearch(): void {
+  graphMapSearchInput.value?.focus()
+  graphMapSearchInput.value?.select()
+}
+
+function isTextInputTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+}
+
+function handleGraphMapKeydown(event: KeyboardEvent): void {
+  if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+  if (isTextInputTarget(event.target)) return
+  event.preventDefault()
+  focusGraphMapSearch()
+}
+
+function handleGraphMapSearchEscape(event: KeyboardEvent): void {
+  event.preventDefault()
+  if (graphMapSearchQuery.value) {
+    clearGraphMapSearch()
+    return
+  }
+  graphMapSearchInput.value?.blur()
+}
+
 function graphMapNodeMatchesSearch(node: WorkflowGraphNode, term: string): boolean {
   return [
     node.id,
@@ -643,6 +671,7 @@ function containingPageId(node: SceneNode): string | undefined {
         v-if="graphDetailsOpen"
         data-test-id="lowcode-workflow-graph-map"
         class="flex flex-col gap-1 border-l border-border pl-2 text-muted"
+        @keydown="handleGraphMapKeydown"
       >
         <div class="flex flex-wrap items-center justify-between gap-1">
           <div data-test-id="lowcode-workflow-graph-map-filter" class="flex flex-wrap gap-1">
@@ -679,13 +708,15 @@ function containingPageId(node: SceneNode): string | undefined {
           </div>
           <div class="flex min-w-0 items-center justify-end gap-1">
             <input
+              ref="graphMapSearchInput"
               :value="graphMapSearchQuery"
               aria-label="Search workflow graph map"
               data-test-id="lowcode-workflow-graph-map-search"
-              placeholder="Search workflow/action"
+              placeholder="Search workflow/action (/)"
               spellcheck="false"
               class="w-40 min-w-0 rounded border border-border bg-input px-2 py-0.5 text-[10px] text-surface outline-none focus:border-accent"
               @input="graphMapSearchQuery = ($event.target as HTMLInputElement).value"
+              @keydown.escape.stop="handleGraphMapSearchEscape"
             />
             <button
               v-if="graphMapSearchTerm"

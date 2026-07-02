@@ -3545,6 +3545,49 @@ metadata badge 后,复杂 graph 会变得难扫。本刀先做组级 collapse,�
 - 不新增 SVG/canvas edge rendering。
 - 不持久化 search query。
 
+### 13.35 2026-07-02 第三十五刀:Workflow graph map search keyboard focus
+
+本刀继续 polish workflow graph map search 的可达性。上一刀新增 search 后,鼠标可用但键盘用户
+还需要 tab 到输入框。本刀给 map 区域增加 `/` 聚焦 search 的本地快捷入口,并让 Escape
+在 search 内先清空 query,再次 Escape 退出输入框。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapSearchInput` ref。
+  - 新增 `focusGraphMapSearch()`。
+  - 新增 `isTextInputTarget(target)`。
+  - 新增 `handleGraphMapKeydown(event)`:
+    - map 内按 `/` 聚焦 search;
+    - 在 input / textarea / select / contenteditable 内不拦截;
+    - meta / ctrl / alt 组合键不拦截。
+  - 新增 `handleGraphMapSearchEscape(event)`:
+    - search 有 query 时先清空;
+    - search 已空时 blur。
+  - search placeholder 更新为 `Search workflow/action (/)`。
+  - 不持久化快捷键或 search query。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证 map 内按 `/` 聚焦 search。
+  - 验证搜索 `call-beta` 后显示 matching summary。
+  - 验证第一次 Escape 清空 search。
+  - 验证第二次 Escape 让 search 失焦。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增全局快捷键系统。
+- 不持久化 search query 或快捷键偏好。
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
