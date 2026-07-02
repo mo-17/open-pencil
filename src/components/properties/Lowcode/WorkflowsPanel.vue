@@ -73,6 +73,7 @@ const workflowGraph = computed(() =>
 const graphDetailsOpen = ref(false)
 type GraphMapFilter = 'all' | 'issues' | 'entries'
 const graphMapFilter = ref<GraphMapFilter>('all')
+const graphMapSearchQuery = ref('')
 const expandedGraphMapSourceIds = ref<Set<string>>(new Set())
 const collapsedGraphMapNodeGroupKinds = ref<Set<GraphMapNodeGroupKind>>(new Set())
 const collapsedGraphMapEdgeGroupKinds = ref<Set<GraphMapEdgeGroupKind>>(new Set())
@@ -85,7 +86,8 @@ const graphMapEntryIds = computed(
       workflowGraph.value.nodes.filter((node) => node.entrypoints.length > 0).map((node) => node.id)
     )
 )
-const graphMapNodes = computed(() => {
+const graphMapSearchTerm = computed(() => graphMapSearchQuery.value.trim().toLowerCase())
+const graphMapBaseNodes = computed(() => {
   switch (graphMapFilter.value) {
     case 'issues':
       return workflowGraph.value.nodes.filter((node) => node.issues.length > 0)
@@ -95,7 +97,7 @@ const graphMapNodes = computed(() => {
       return workflowGraph.value.nodes
   }
 })
-const graphMapEdges = computed(() => {
+const graphMapBaseEdges = computed(() => {
   switch (graphMapFilter.value) {
     case 'issues':
       return workflowGraph.value.edges.filter(
@@ -111,7 +113,43 @@ const graphMapEdges = computed(() => {
       return workflowGraph.value.edges
   }
 })
-const graphMapIssues = computed(() => {
+const graphMapMatchedEdges = computed(() => {
+  const term = graphMapSearchTerm.value
+  if (!term) return []
+  return graphMapBaseEdges.value.filter((edge) => graphMapEdgeMatchesSearch(edge, term))
+})
+const graphMapMatchedNodeIds = computed(() => {
+  const term = graphMapSearchTerm.value
+  if (!term) return new Set<string>()
+  return new Set(
+    graphMapBaseNodes.value
+      .filter((node) => graphMapNodeMatchesSearch(node, term))
+      .map((node) => node.id)
+  )
+})
+const graphMapNodes = computed(() => {
+  const term = graphMapSearchTerm.value
+  if (!term) return graphMapBaseNodes.value
+  const edgeNodeIds = new Set<string>()
+  for (const edge of graphMapMatchedEdges.value) {
+    edgeNodeIds.add(edge.fromId)
+    edgeNodeIds.add(edge.toId)
+  }
+  return graphMapBaseNodes.value.filter(
+    (node) => graphMapMatchedNodeIds.value.has(node.id) || edgeNodeIds.has(node.id)
+  )
+})
+const graphMapEdges = computed(() => {
+  const term = graphMapSearchTerm.value
+  if (!term) return graphMapBaseEdges.value
+  return graphMapBaseEdges.value.filter(
+    (edge) =>
+      graphMapEdgeMatchesSearch(edge, term) ||
+      graphMapMatchedNodeIds.value.has(edge.fromId) ||
+      graphMapMatchedNodeIds.value.has(edge.toId)
+  )
+})
+const graphMapBaseIssues = computed(() => {
   switch (graphMapFilter.value) {
     case 'entries':
       return workflowGraph.value.issues.filter((issue) =>
@@ -120,6 +158,18 @@ const graphMapIssues = computed(() => {
     default:
       return workflowGraph.value.issues
   }
+})
+const graphMapIssues = computed(() => {
+  const term = graphMapSearchTerm.value
+  if (!term) return graphMapBaseIssues.value
+  const nodeIds = new Set(graphMapNodes.value.map((node) => node.id))
+  const hasDirectNodeMatch = graphMapMatchedNodeIds.value.size > 0
+  return graphMapBaseIssues.value.filter(
+    (issue) =>
+      issue.message.toLowerCase().includes(term) ||
+      issue.workflowIds.some((workflowId) => workflowId.toLowerCase().includes(term)) ||
+      (hasDirectNodeMatch && issue.workflowIds.some((workflowId) => nodeIds.has(workflowId)))
+  )
 })
 type GraphMapNodeGroupKind = 'issues' | 'entries' | 'called'
 interface GraphMapNodeGroup {
@@ -433,6 +483,41 @@ function graphMapEdgeGroupCountLabel(count: number): string {
   return countLabel(count, 'edge')
 }
 
+function clearGraphMapSearch(): void {
+  graphMapSearchQuery.value = ''
+}
+
+function graphMapNodeMatchesSearch(node: WorkflowGraphNode, term: string): boolean {
+  return [
+    node.id,
+    node.name,
+    ...node.entrypoints.map((entrypoint) => entrypoint.nodeName),
+    ...node.entrypoints.map((entrypoint) => entrypoint.eventName),
+    ...node.entrypoints.map((entrypoint) => entrypoint.actionId)
+  ].some((value) => value.toLowerCase().includes(term))
+}
+
+function graphMapEdgeMatchesSearch(edge: WorkflowGraphEdge, term: string): boolean {
+  return [
+    edge.fromId,
+    edge.fromName,
+    edge.toId,
+    edge.toName ?? '',
+    edge.actionId,
+    edge.actionPath,
+    edge.actionKind,
+    graphMapEdgeBranchLabel(edge)
+  ].some((value) => value.toLowerCase().includes(term))
+}
+
+function graphMapSearchSummaryLabel(): string {
+  if (!graphMapSearchTerm.value) return ''
+  return `${countLabel(graphMapNodes.value.length, 'node')}, ${countLabel(
+    graphMapEdges.value.length,
+    'edge'
+  )} matching "${graphMapSearchQuery.value.trim()}"`
+}
+
 function graphMapIssueCleanLabel(): string {
   switch (graphMapFilter.value) {
     case 'issues':
@@ -592,10 +677,39 @@ function containingPageId(node: SceneNode): string | undefined {
               Entries
             </button>
           </div>
+          <div class="flex min-w-0 items-center justify-end gap-1">
+            <input
+              :value="graphMapSearchQuery"
+              aria-label="Search workflow graph map"
+              data-test-id="lowcode-workflow-graph-map-search"
+              placeholder="Search workflow/action"
+              spellcheck="false"
+              class="w-40 min-w-0 rounded border border-border bg-input px-2 py-0.5 text-[10px] text-surface outline-none focus:border-accent"
+              @input="graphMapSearchQuery = ($event.target as HTMLInputElement).value"
+            />
+            <button
+              v-if="graphMapSearchTerm"
+              type="button"
+              data-test-id="lowcode-workflow-graph-map-search-clear"
+              aria-label="Clear workflow graph map search"
+              title="Clear workflow graph map search"
+              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+              @click="clearGraphMapSearch"
+            >
+              Clear
+            </button>
+          </div>
           <span data-test-id="lowcode-workflow-graph-map-summary" class="text-[9px] text-muted/80">
             {{ graphMapSummaryLabel() }}
           </span>
         </div>
+        <p
+          v-if="graphMapSearchTerm"
+          data-test-id="lowcode-workflow-graph-map-search-summary"
+          class="text-[9px] text-muted"
+        >
+          {{ graphMapSearchSummaryLabel() }}
+        </p>
         <ul
           v-if="graphMapIssues.length > 0"
           data-test-id="lowcode-workflow-graph-map-issue-group"

@@ -3495,6 +3495,56 @@ metadata badge 后,复杂 graph 会变得难扫。本刀先做组级 collapse,�
 - 不新增 SVG/canvas edge rendering。
 - 不持久化 group collapse 状态。
 
+### 13.34 2026-07-02 第三十四刀:Workflow graph map search
+
+本刀继续处理只读 workflow graph map 的密度与定位问题。上一刀提供 group collapse,
+但复杂 graph 中作者仍需要按 workflow / action 快速收敛视图。本刀新增本地 search,
+在当前 All / Issues / Entries filter 结果上继续过滤 nodes / edges / issues。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `graphMapSearchQuery` 和 `graphMapSearchTerm`。
+  - 将 map 数据拆为 base/result:
+    - `graphMapBaseNodes`;
+    - `graphMapBaseEdges`;
+    - `graphMapBaseIssues`;
+    - `graphMapNodes`;
+    - `graphMapEdges`;
+    - `graphMapIssues`。
+  - 新增 `graphMapMatchedEdges` / `graphMapMatchedNodeIds`。
+  - 新增 `graphMapNodeMatchesSearch(node, term)`。
+  - 新增 `graphMapEdgeMatchesSearch(edge, term)`。
+  - 新增 `graphMapSearchSummaryLabel()` 和 `clearGraphMapSearch()`。
+  - 搜索 workflow node 时保留相连 edges。
+  - 搜索 edge action/target 时保留 edge 两端可见 workflow nodes。
+  - issue group 跟随 search term 收窄。
+  - map header 新增 `lowcode-workflow-graph-map-search`。
+  - 有 query 时显示 `lowcode-workflow-graph-map-search-summary` 和 Clear 按钮。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证搜索 `wf-missing` 后 map summary 变为 `1 node, 1 edge`。
+  - 验证 search summary 显示匹配 query。
+  - 验证 node list 收敛到 `Alpha`。
+  - 验证 edge group 收敛到 `Missing`。
+  - 验证 issue summary 收敛到 `1 issue total`。
+  - 验证 Clear 后恢复 `2 nodes, 3 edges`。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+- 不新增 SVG/canvas edge rendering。
+- 不持久化 search query。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

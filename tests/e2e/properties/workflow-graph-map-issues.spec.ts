@@ -154,6 +154,27 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   )
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-toggle').first().click()
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(3)
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-search').fill('wf-missing')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
+    '1 node, 1 edge matching "wf-missing"'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '1 node, 1 edge'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toContainText('Alpha')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-title')).toHaveText(
+    ['Missing']
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-summary')).toContainText(
+    '1 issue total'
+  )
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-clear').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toHaveCount(0)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-summary')).toContainText(
+    '2 nodes, 3 edges'
+  )
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
   ).toHaveAttribute(

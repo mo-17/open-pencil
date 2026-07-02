@@ -115,6 +115,7 @@
 - Focus the exact source workflow action row from workflow graph map edge action badges.
 - Show source action kind and branch context badges on workflow graph map edges.
 - Let workflow graph map node and edge groups collapse to keep dense maps scannable.
+- Add local workflow graph map search across workflow names, ids, edge targets, and action metadata.
 - Add a generated lowcode analytics consent banner when tracking requires consent.
 - Persist generated lowcode analytics consent choices locally and expose a preferences reopen control.
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.
