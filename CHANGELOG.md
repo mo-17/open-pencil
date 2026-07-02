@@ -16,6 +16,7 @@
 - Describe Vercel rollback readiness through project, production alias, and owner-scope metadata gaps.
 - Show missing rollback contract fields in lowcode deploy history rows without invoking provider APIs.
 - Emit lowcode design-token CSS variables from SceneGraph variable modes into generated `src/index.css`, including `.dark` mode blocks.
+- Resolve lowcode design-token aliases across variable collections by matching mode names when mode ids differ.
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.
 - Let generated lowcode theme switches be hidden or positioned at publish time.

@@ -87,6 +87,55 @@ function addColorOnlyThemeVariables() {
   return graph
 }
 
+function addCrossCollectionAliasThemeVariables() {
+  const graph = makeSceneGraph()
+  graph.addCollection({
+    id: 'col-palette',
+    name: 'Palette',
+    modes: [
+      { modeId: 'palette-light', name: 'Light' },
+      { modeId: 'palette-dark', name: 'Dark' }
+    ],
+    defaultModeId: 'palette-light',
+    variableIds: ['var-palette-primary']
+  })
+  graph.addVariable({
+    id: 'var-palette-primary',
+    name: 'primary',
+    type: 'COLOR',
+    collectionId: 'col-palette',
+    valuesByMode: {
+      'palette-light': { r: 0.2, g: 0.4, b: 0.8, a: 1 } satisfies Color,
+      'palette-dark': { r: 0.8, g: 0.9, b: 1, a: 1 } satisfies Color
+    },
+    description: '',
+    hiddenFromPublishing: false
+  })
+  graph.addCollection({
+    id: 'col-semantic',
+    name: 'Semantic',
+    modes: [
+      { modeId: 'semantic-light', name: 'Light' },
+      { modeId: 'semantic-dark', name: 'Dark' }
+    ],
+    defaultModeId: 'semantic-light',
+    variableIds: ['var-semantic-accent']
+  })
+  graph.addVariable({
+    id: 'var-semantic-accent',
+    name: 'color/accent',
+    type: 'COLOR',
+    collectionId: 'col-semantic',
+    valuesByMode: {
+      'semantic-light': { aliasId: 'var-palette-primary' },
+      'semantic-dark': { aliasId: 'var-palette-primary' }
+    },
+    description: '',
+    hiddenFromPublishing: false
+  })
+  return graph
+}
+
 function solidFill(color: Color, opacity = 1): Fill {
   return { type: 'SOLID', color, opacity, visible: true }
 }
@@ -147,6 +196,14 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(css).toContain('--op-lowcode-theme-accent: var(--op-brand-theme-color-primary);')
     expect(css).toContain('--op-lowcode-theme-surface:')
     expect(css).not.toContain('--op-lowcode-theme-radius:')
+  })
+
+  test('resolves cross-collection aliases by matching mode names', () => {
+    const css = buildDesignTokenThemeCss(addCrossCollectionAliasThemeVariables())
+
+    expect(css).toContain('--op-semantic-color-accent: #3366CC;')
+    expect(css).toContain(':root[data-theme="dark"], .dark {')
+    expect(css).toContain('--op-semantic-color-accent: #CCE6FF;')
   })
 
   test('compile injects design token theme css into index.css', () => {
