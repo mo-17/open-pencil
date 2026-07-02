@@ -165,6 +165,8 @@ describe('lowcode onboarding demo fixture', () => {
     expect(source).toContain("siteUrl.protocol !== 'http:'")
     expect(source).toContain("siteUrl.protocol !== 'https:'")
     expect(source).toContain('PUBLIC_SITE_URL must be an http(s) URL')
+    expect(source).toContain("returnPath.startsWith('//')")
+    expect(source).toContain('returnPath must be a root-relative path')
     expect(source).toContain('return_url: portalReturnUrl(input)')
     expect(source).toContain('return json({ url })')
     expect(source).toContain('do not trust a customerId sent from the browser')

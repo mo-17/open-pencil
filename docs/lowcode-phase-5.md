@@ -1760,6 +1760,28 @@ Auth、REST 或 RPC 请求里。
 - 不自动调用真实 Stripe。
 - 不把 price id、secret key 或 customer id mapping 写进 generated SPA。
 
+### 12.6.5 2026-07-02 第十刀补充:Stripe customer portal return path hardening
+
+本刀收紧 demo Customer Portal Edge Function 的 `returnPath` 边界。此前模板只检查
+`returnPath.startsWith('/')`,会放过 `//example.com` 这类 protocol-relative URL;
+`new URL(returnPath, PUBLIC_SITE_URL)` 会把它解析到外站 origin。现在模板只接受单斜杠
+root-relative path。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts`:
+  - `portalReturnUrl(input)` 继续默认返回 `/account`。
+  - 显式拒绝不以 `/` 开头或以 `//` 开头的 `returnPath`。
+  - 错误文案更新为 `returnPath must be a root-relative path`。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 protocol-relative guard。
+
+明确不做:
+
+- 不改变 generated app 的 `stripeCustomerPortal` action contract。
+- 不自动调用真实 Stripe Customer Portal。
+- 不把 customer id mapping、Stripe secret 或 portal configuration 写进前端。
+
 ### 12.7 2026-07-01 第四刀:Stripe webhook/subscription lifecycle demo template
 
 本刀补齐真实付费闭环的 server-side 入口:**接收 Stripe webhook、校验签名、路由 checkout

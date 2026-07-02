@@ -118,8 +118,8 @@ function portalReturnUrl(input: CustomerPortalRequest): string {
   const siteUrl = publicSiteUrl()
   const returnPath = typeof input.returnPath === 'string' ? input.returnPath.trim() : ''
   if (!returnPath) return new URL('/account', siteUrl).toString()
-  if (!returnPath.startsWith('/')) {
-    throw new Error('returnPath must be root-relative')
+  if (!returnPath.startsWith('/') || returnPath.startsWith('//')) {
+    throw new Error('returnPath must be a root-relative path')
   }
   return new URL(returnPath, siteUrl).toString()
 }
