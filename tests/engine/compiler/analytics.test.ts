@@ -232,6 +232,7 @@ describe('compile — analytics runtime wiring (Phase 5 §10)', () => {
     )
     expect(runtime).toContain('return true')
     expect(runtime).toContain('href: copy.privacyPolicyUrl')
+    expect(runtime).toContain("rel: 'noopener noreferrer'")
     expect(runtime).toContain('privacyPolicyLabel')
   })
 

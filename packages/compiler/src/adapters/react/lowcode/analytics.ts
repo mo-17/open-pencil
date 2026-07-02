@@ -125,7 +125,7 @@ export function LowcodeAnalyticsConsentBanner(): ReturnType<typeof createElement
             {
               href: copy.privacyPolicyUrl,
               target: '_blank',
-              rel: 'noreferrer',
+              rel: 'noopener noreferrer',
               style: {
                 color: '#2563eb',
                 fontSize: '12px',

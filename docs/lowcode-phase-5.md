@@ -1281,6 +1281,14 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
   - `tests/engine/tools/lowcode/read.test.ts` 覆盖 ToolDef read。
   - `tests/engine/kiwi/lowcode/roundtrip.test.ts` 覆盖 `.fig` round-trip。
 
+**2026-07-02 第十刀补充:consent policy link noopener polish 已完成**:
+
+- Generated analytics consent banner 的 privacy-policy link 已显式输出
+  `target="_blank"` + `rel="noopener noreferrer"`。
+- 仍只接受现有安全 URL 输入路径;不新增 schema 字段,不支持 raw HTML。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 runtime emit。
+
 **2026-07-01 第十一刀已完成**:
 
 - Analytics config 新增 `consentAnalyticsDefault?: boolean`:
