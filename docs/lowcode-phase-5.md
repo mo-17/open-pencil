@@ -1660,6 +1660,29 @@ Auth + service role 查询 `billing_customers` 获取 server-side customer mappi
 - 不生成用户项目 DB schema 或 profile/customer mapping 表。
 - 不把 customer id mapping、Stripe secret 或 portal configuration 写进前端。
 
+### 12.6.1 2026-07-02 第六刀补充:Stripe redirect URL protocol guard
+
+本刀补齐 generated SPA 的 frontend redirect guard。Checkout / Customer Portal 的服务端
+endpoint 仍由 app author 持有,但前端在拿到 `{ url }` / `{ checkoutUrl }` / `{ portalUrl }`
+后,不再直接把任意非空字符串传给 `window.location.assign`。
+
+已完成:
+
+- `packages/compiler/src/adapters/react/emit/event.ts`:
+  - `stripeCheckout` / `stripeCustomerPortal` 共享的 redirect emit 使用
+    `new URL(returnedUrl, window.location.href)` 解析返回值。
+  - 只允许 `http:` / `https:` protocol。
+  - 非 http(s) URL 会抛出 action-specific error,并走既有 catch / `errorTarget` 路径。
+- 测试:
+  - `tests/engine/compiler/stripe-checkout.test.ts` 覆盖 checkout URL guard emit。
+  - `tests/engine/compiler/stripe-customer-portal.test.ts` 覆盖 portal URL guard emit。
+
+明确不做:
+
+- 不自动调用真实 Stripe。
+- 不改变 server endpoint contract。
+- 不把 Stripe secret 或 customer id mapping 写进 generated SPA。
+
 ### 12.7 2026-07-01 第四刀:Stripe webhook/subscription lifecycle demo template
 
 本刀补齐真实付费闭环的 server-side 入口:**接收 Stripe webhook、校验签名、路由 checkout

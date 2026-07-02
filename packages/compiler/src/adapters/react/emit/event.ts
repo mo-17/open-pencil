@@ -209,7 +209,9 @@ function emitStripeRedirect(
     `if (!res.ok) throw data; ` +
     `const ${urlLocal} = data?.url ?? data?.${namedUrlKey}; ` +
     `if (typeof ${urlLocal} !== "string" || ${urlLocal} === "") throw new Error("${actionName} response missing url"); ` +
-    `window.location.assign(${urlLocal}) ` +
+    `const nextUrl = new URL(${urlLocal}, window.location.href); ` +
+    `if (nextUrl.protocol !== "https:" && nextUrl.protocol !== "http:") throw new Error("${actionName} response url must be http(s)"); ` +
+    `window.location.assign(nextUrl.toString()) ` +
     `} catch (err) { ${errorWrite}console.error("${actionName} failed:", err) }`
   )
 }

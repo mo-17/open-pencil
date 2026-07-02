@@ -139,6 +139,7 @@
 - Add Stripe customer portal lowcode actions that POST JSON to an author-owned endpoint and redirect to a returned billing portal URL.
 - Add a Supabase Edge Function customer portal template and onboarding demo button for server-created Stripe billing portal sessions.
 - Wire the customer portal template to Supabase Auth and server-side `billing_customers` lookup instead of trusting browser-provided customer ids.
+- Require generated Stripe checkout and customer portal redirects to resolve to http(s) URLs.
 - Add a Supabase Edge Function Stripe webhook template for checkout and subscription lifecycle events with signature verification and durable `billing_events` idempotency.
 - Add a Supabase billing schema template for Stripe customer mappings, subscriptions, and durable webhook event idempotency.
 - Add a Supabase service-role RPC template for Stripe subscription webhook events that records the event and upserts subscription state in one transaction.
