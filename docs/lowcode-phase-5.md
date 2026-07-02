@@ -3669,6 +3669,45 @@ source action row。状态仍是 local-only,不进入文档 schema。
 - 不持久化 active match、search query 或快捷键偏好。
 - 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
 
+### 13.38 2026-07-02 第三十八刀:Workflow graph map search active result position
+
+本刀继续 polish active match 可见性。上一刀已经可以用 Ctrl/Cmd+Enter 从 active result
+jump,但 search summary 只显示总量,用户需要自己数当前 highlight 是第几个结果。本刀在
+search summary 中追加 active result position,例如 `1/3 node`、`3/3 edge`。
+
+本刀已完成:
+
+- `workflow-graph-map-search.ts`:
+  - `GraphMapSearchMatch` 增加 `kind`。
+  - 新增 `graphMapSearchMatchPositionLabel(nodes, edges, currentId)`:
+    - active match 不存在时返回空字符串;
+    - active match 存在时返回当前序号、总数和 result kind。
+  - `isGraphMapTextInputTarget(target)` 移入 helper,避免继续推高 `WorkflowsPanel.vue` 行数。
+- `WorkflowsPanel.vue`:
+  - search summary 追加 active position suffix。
+  - map `/` 快捷键继续复用 text-input target guard。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证 Enter 后 summary 显示 `1/3 node`。
+  - 验证第二次 Enter 后 summary 显示 `2/3 node`。
+  - 验证第三次 Enter 后 summary 显示 `3/3 edge`。
+  - 验证 Shift+Enter 后 summary 回到 `2/3 node`。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增全局 result count widget。
+- 不持久化 active match、search query 或快捷键偏好。
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

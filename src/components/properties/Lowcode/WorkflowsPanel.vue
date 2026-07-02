@@ -28,6 +28,8 @@ import {
   graphMapEdgeSearchMatchId,
   graphMapNodeMatchesSearch,
   graphMapNodeSearchMatchId,
+  graphMapSearchMatchPositionLabel,
+  isGraphMapTextInputTarget,
   nextGraphMapSearchMatchId
 } from './workflow-graph-map-search'
 
@@ -491,15 +493,9 @@ function focusGraphMapSearch(): void {
   graphMapSearchInput.value?.select()
 }
 
-function isTextInputTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  const tag = target.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
-}
-
 function handleGraphMapKeydown(event: KeyboardEvent): void {
   if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
-  if (isTextInputTarget(event.target)) return
+  if (isGraphMapTextInputTarget(event.target)) return
   event.preventDefault()
   focusGraphMapSearch()
 }
@@ -550,10 +546,15 @@ function isActiveGraphMapEdgeSearchMatch(edge: WorkflowGraphEdge): boolean {
 
 function graphMapSearchSummaryLabel(): string {
   if (!graphMapSearchTerm.value) return ''
+  const position = graphMapSearchMatchPositionLabel(
+    graphMapNodes.value,
+    graphMapEdges.value,
+    activeGraphMapSearchMatchId.value
+  )
   return `${countLabel(graphMapNodes.value.length, 'node')}, ${countLabel(
     graphMapEdges.value.length,
     'edge'
-  )} matching "${graphMapSearchQuery.value.trim()}"`
+  )} matching "${graphMapSearchQuery.value.trim()}"${position}`
 }
 
 function graphMapIssueCleanLabel(): string {

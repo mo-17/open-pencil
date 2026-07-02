@@ -194,6 +194,9 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(0)).toContainText(
     'Alpha'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
+    '1/3 node'
+  )
   await editor.page.keyboard.press('Enter')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toHaveAttribute(
     'data-graph-map-active-match',
@@ -201,6 +204,9 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
     'Beta'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
+    '2/3 node'
   )
   await editor.page.keyboard.press('Enter')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(0)).toHaveAttribute(
@@ -210,6 +216,9 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(0)).toContainText(
     'Action call-beta'
   )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
+    '3/3 edge'
+  )
   await editor.page.keyboard.press('Shift+Enter')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toHaveAttribute(
     'data-graph-map-active-match',
@@ -217,6 +226,9 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
     'Beta'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
+    '2/3 node'
   )
   await editor.page.keyboard.press('ControlOrMeta+Enter')
   await expect

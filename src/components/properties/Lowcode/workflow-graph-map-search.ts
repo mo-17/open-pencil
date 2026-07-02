@@ -2,6 +2,7 @@ import type { WorkflowGraphEdge, WorkflowGraphNode } from '@/app/lowcode/workflo
 
 type GraphMapSearchMatch = {
   id: string
+  kind: 'node' | 'edge'
 }
 
 export function graphMapNodeSearchMatchId(node: WorkflowGraphNode): string {
@@ -67,12 +68,30 @@ export function nextGraphMapSearchMatchId(
   return matches[normalizedIndex]?.id ?? null
 }
 
+export function graphMapSearchMatchPositionLabel(
+  nodes: readonly WorkflowGraphNode[],
+  edges: readonly WorkflowGraphEdge[],
+  currentId: string | null
+): string {
+  const matches = graphMapSearchMatches(nodes, edges)
+  const index = matches.findIndex((match) => match.id === currentId)
+  if (index === -1) return ''
+  const match = matches[index]
+  return ` · ${index + 1}/${matches.length} ${match?.kind ?? 'result'}`
+}
+
+export function isGraphMapTextInputTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable
+}
+
 function graphMapSearchMatches(
   nodes: readonly WorkflowGraphNode[],
   edges: readonly WorkflowGraphEdge[]
 ): GraphMapSearchMatch[] {
   return [
-    ...nodes.map((node) => ({ id: graphMapNodeSearchMatchId(node) })),
-    ...edges.map((edge) => ({ id: graphMapEdgeSearchMatchId(edge) }))
+    ...nodes.map((node) => ({ id: graphMapNodeSearchMatchId(node), kind: 'node' as const })),
+    ...edges.map((edge) => ({ id: graphMapEdgeSearchMatchId(edge), kind: 'edge' as const }))
   ]
 }
