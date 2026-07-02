@@ -1683,6 +1683,32 @@ endpoint 仍由 app author 持有,但前端在拿到 `{ url }` / `{ checkoutUrl 
 - 不改变 server endpoint contract。
 - 不把 Stripe secret 或 customer id mapping 写进 generated SPA。
 
+### 12.6.2 2026-07-02 第七刀补充:Stripe Edge Function public site URL guard
+
+本刀补齐 demo Supabase Edge Function 模板自身的 return URL guard。Generated SPA
+已经会拒绝非 http(s) redirect,但 Checkout / Customer Portal server template 也应该在
+拼出 `success_url` / `cancel_url` / `return_url` 前验证 `PUBLIC_SITE_URL`,避免错误或危险的
+environment value 被带进 Stripe session 创建请求。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/functions/demo-checkout/index.ts`:
+  - 新增 `publicSiteUrl()` helper,通过 `new URL(env('PUBLIC_SITE_URL'))` 解析并只允许
+    `http:` / `https:` protocol。
+  - Checkout `success_url` / `cancel_url` 改为从已验证的 origin 生成,不再直接字符串拼接。
+- `packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts`:
+  - 复用同样的 `publicSiteUrl()` guard。
+  - Customer Portal `return_url` 继续要求 browser payload 的 `returnPath` 为 root-relative。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖两个 Edge Function template 的
+    `PUBLIC_SITE_URL` http(s) guard 和 Checkout return URL 生成方式。
+
+明确不做:
+
+- 不自动调用真实 Stripe。
+- 不改变 generated SPA 和 Edge Function 的 response contract。
+- 不把 Stripe secret、service role key 或 customer id mapping 写进前端。
+
 ### 12.7 2026-07-01 第四刀:Stripe webhook/subscription lifecycle demo template
 
 本刀补齐真实付费闭环的 server-side 入口:**接收 Stripe webhook、校验签名、路由 checkout

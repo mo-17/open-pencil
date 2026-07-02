@@ -49,6 +49,14 @@ function env(name: string): string {
   return value
 }
 
+function publicSiteUrl(): string {
+  const siteUrl = new URL(env('PUBLIC_SITE_URL'))
+  if (siteUrl.protocol !== 'http:' && siteUrl.protocol !== 'https:') {
+    throw new Error('PUBLIC_SITE_URL must be an http(s) URL')
+  }
+  return siteUrl.origin
+}
+
 async function requireAuthenticatedUser(request: Request): Promise<SupabaseUser> {
   const auth = request.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) {
@@ -93,7 +101,7 @@ async function lookupStripeCustomerId(user: SupabaseUser): Promise<string> {
 }
 
 function portalReturnUrl(input: CustomerPortalRequest): string {
-  const siteUrl = env('PUBLIC_SITE_URL')
+  const siteUrl = publicSiteUrl()
   const returnPath = typeof input.returnPath === 'string' ? input.returnPath.trim() : ''
   if (!returnPath) return new URL('/account', siteUrl).toString()
   if (!returnPath.startsWith('/')) {

@@ -61,6 +61,14 @@ function checkoutMode(): string {
   return CHECKOUT_MODES.has(mode) ? mode : 'subscription'
 }
 
+function publicSiteUrl(): string {
+  const siteUrl = new URL(env('PUBLIC_SITE_URL'))
+  if (siteUrl.protocol !== 'http:' && siteUrl.protocol !== 'https:') {
+    throw new Error('PUBLIC_SITE_URL must be an http(s) URL')
+  }
+  return siteUrl.origin
+}
+
 function supabaseRestConfig(): { url: string; headers: Record<string, string> } {
   const supabaseUrl = env('SUPABASE_URL').replace(/\/+$/, '')
   const serviceRoleKey = env('SUPABASE_SERVICE_ROLE_KEY')
@@ -176,13 +184,13 @@ async function customerIdForAuthenticatedUser(
 
 async function createCheckoutSession(input: CheckoutRequest, customerId: string | null): Promise<string> {
   const secretKey = env('STRIPE_SECRET_KEY')
-  const origin = env('PUBLIC_SITE_URL')
+  const siteUrl = publicSiteUrl()
   const plan = typeof input.plan === 'string' ? input.plan : 'starter'
   const email = typeof input.email === 'string' ? input.email.trim() : ''
   const body = new URLSearchParams({
     mode: checkoutMode(),
-    success_url: `${origin}/checkout/success`,
-    cancel_url: `${origin}/checkout/cancel`,
+    success_url: new URL('/checkout/success', siteUrl).toString(),
+    cancel_url: new URL('/checkout/cancel', siteUrl).toString(),
     'line_items[0][price]': priceIdForPlan(plan),
     'line_items[0][quantity]': '1',
     'metadata[plan]': plan
