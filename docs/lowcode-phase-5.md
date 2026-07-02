@@ -3448,6 +3448,53 @@ badge 精准跳到 source action row,但 map 本身还看不出这条调用是�
 - 不新增 SVG/canvas edge rendering。
 - 不把 branch context 写入持久化文档数据。
 
+### 13.33 2026-07-02 第三十三刀:Workflow graph map group collapse
+
+本刀开始处理只读 workflow graph map 的密度问题。此前 map 已经有 Issues / Entries /
+Called node groups 和 Calls / Missing edge groups,但 group 内容会全部展开;继续添加
+metadata badge 后,复杂 graph 会变得难扫。本刀先做组级 collapse,让作者能保留标题与
+计数,临时收起不关心的节点或边。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `collapsedGraphMapNodeGroupKinds` 和 `collapsedGraphMapEdgeGroupKinds`。
+  - 新增 node group collapse helpers:
+    - `isGraphMapNodeGroupCollapsed(kind)`;
+    - `toggleGraphMapNodeGroup(kind)`;
+    - `graphMapNodeGroupToggleLabel(group)`。
+  - 新增 edge group collapse helpers:
+    - `isGraphMapEdgeGroupCollapsed(kind)`;
+    - `toggleGraphMapEdgeGroup(kind)`;
+    - `graphMapEdgeGroupToggleLabel(group)`。
+  - node group header 新增 `lowcode-workflow-graph-map-node-group-toggle`。
+  - edge group header 新增 `lowcode-workflow-graph-map-edge-group-toggle`。
+  - toggle 提供 `aria-expanded`、`aria-label`、`title`。
+  - 折叠后保留 group title/count,隐藏 group 内容。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证 node group 默认展开。
+  - 验证 node group 折叠后 node card 隐藏、count 保留。
+  - 验证 node group 可重新展开。
+  - 验证 edge group 默认展开。
+  - 验证 Calls edge group 折叠后只剩 Missing edge rows、count 保留。
+  - 验证 edge group 可重新展开。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+- 不新增 SVG/canvas edge rendering。
+- 不持久化 group collapse 状态。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

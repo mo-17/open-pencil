@@ -74,6 +74,8 @@ const graphDetailsOpen = ref(false)
 type GraphMapFilter = 'all' | 'issues' | 'entries'
 const graphMapFilter = ref<GraphMapFilter>('all')
 const expandedGraphMapSourceIds = ref<Set<string>>(new Set())
+const collapsedGraphMapNodeGroupKinds = ref<Set<GraphMapNodeGroupKind>>(new Set())
+const collapsedGraphMapEdgeGroupKinds = ref<Set<GraphMapEdgeGroupKind>>(new Set())
 const graphMapIssueIds = computed(
   () => new Set(workflowGraph.value.issues.flatMap((issue) => issue.workflowIds))
 )
@@ -393,8 +395,38 @@ function graphMapNodeGroupKind(node: WorkflowGraphNode): GraphMapNodeGroupKind {
   }
 }
 
+function isGraphMapNodeGroupCollapsed(kind: GraphMapNodeGroupKind): boolean {
+  return collapsedGraphMapNodeGroupKinds.value.has(kind)
+}
+
+function toggleGraphMapNodeGroup(kind: GraphMapNodeGroupKind): void {
+  const next = new Set(collapsedGraphMapNodeGroupKinds.value)
+  if (next.has(kind)) next.delete(kind)
+  else next.add(kind)
+  collapsedGraphMapNodeGroupKinds.value = next
+}
+
+function graphMapNodeGroupToggleLabel(group: GraphMapNodeGroup): string {
+  return `${isGraphMapNodeGroupCollapsed(group.kind) ? 'Show' : 'Hide'} ${group.title} workflow group`
+}
+
 function graphMapGroupCountLabel(count: number): string {
   return countLabel(count, 'workflow')
+}
+
+function isGraphMapEdgeGroupCollapsed(kind: GraphMapEdgeGroupKind): boolean {
+  return collapsedGraphMapEdgeGroupKinds.value.has(kind)
+}
+
+function toggleGraphMapEdgeGroup(kind: GraphMapEdgeGroupKind): void {
+  const next = new Set(collapsedGraphMapEdgeGroupKinds.value)
+  if (next.has(kind)) next.delete(kind)
+  else next.add(kind)
+  collapsedGraphMapEdgeGroupKinds.value = next
+}
+
+function graphMapEdgeGroupToggleLabel(group: GraphMapEdgeGroup): string {
+  return `${isGraphMapEdgeGroupCollapsed(group.kind) ? 'Show' : 'Hide'} ${group.title} edge group`
 }
 
 function graphMapEdgeGroupCountLabel(count: number): string {
@@ -630,11 +662,24 @@ function containingPageId(node: SceneNode): string | undefined {
               <span data-test-id="lowcode-workflow-graph-map-node-group-title">
                 {{ group.title }}
               </span>
-              <span data-test-id="lowcode-workflow-graph-map-node-group-count">
-                {{ graphMapGroupCountLabel(group.nodes.length) }}
+              <span class="flex items-center gap-1">
+                <span data-test-id="lowcode-workflow-graph-map-node-group-count">
+                  {{ graphMapGroupCountLabel(group.nodes.length) }}
+                </span>
+                <button
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-map-node-group-toggle"
+                  :aria-expanded="!isGraphMapNodeGroupCollapsed(group.kind)"
+                  :aria-label="graphMapNodeGroupToggleLabel(group)"
+                  :title="graphMapNodeGroupToggleLabel(group)"
+                  class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                  @click="toggleGraphMapNodeGroup(group.kind)"
+                >
+                  {{ isGraphMapNodeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
+                </button>
               </span>
             </div>
-            <div class="flex flex-wrap gap-1">
+            <div v-if="!isGraphMapNodeGroupCollapsed(group.kind)" class="flex flex-wrap gap-1">
               <div
                 v-for="node in group.nodes"
                 :key="node.id"
@@ -766,11 +811,24 @@ function containingPageId(node: SceneNode): string | undefined {
               <span data-test-id="lowcode-workflow-graph-map-edge-group-title">
                 {{ group.title }}
               </span>
-              <span data-test-id="lowcode-workflow-graph-map-edge-group-count">
-                {{ graphMapEdgeGroupCountLabel(group.edges.length) }}
+              <span class="flex items-center gap-1">
+                <span data-test-id="lowcode-workflow-graph-map-edge-group-count">
+                  {{ graphMapEdgeGroupCountLabel(group.edges.length) }}
+                </span>
+                <button
+                  type="button"
+                  data-test-id="lowcode-workflow-graph-map-edge-group-toggle"
+                  :aria-expanded="!isGraphMapEdgeGroupCollapsed(group.kind)"
+                  :aria-label="graphMapEdgeGroupToggleLabel(group)"
+                  :title="graphMapEdgeGroupToggleLabel(group)"
+                  class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                  @click="toggleGraphMapEdgeGroup(group.kind)"
+                >
+                  {{ isGraphMapEdgeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
+                </button>
               </span>
             </div>
-            <ul class="flex flex-col gap-0.5">
+            <ul v-if="!isGraphMapEdgeGroupCollapsed(group.kind)" class="flex flex-col gap-0.5">
               <li
                 v-for="edge in group.edges"
                 :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"

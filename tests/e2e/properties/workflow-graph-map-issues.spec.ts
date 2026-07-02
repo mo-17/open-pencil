@@ -110,12 +110,50 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-count')).toHaveText(
     ['2 workflows']
   )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-toggle')
+  ).toHaveAttribute('aria-label', 'Hide Issues workflow group')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-toggle')
+  ).toHaveAttribute('aria-expanded', 'true')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-toggle').click()
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-toggle')
+  ).toHaveAttribute('aria-label', 'Show Issues workflow group')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-toggle')
+  ).toHaveAttribute('aria-expanded', 'false')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(0)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-count')).toHaveText(
+    ['2 workflows']
+  )
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-toggle').click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node')).toHaveCount(2)
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-title')).toHaveText(
     ['Calls', 'Missing']
   )
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-count')).toHaveText(
     ['2 edges', '1 edge']
   )
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-toggle').first()
+  ).toHaveAttribute('aria-label', 'Hide Calls edge group')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-toggle').first()
+  ).toHaveAttribute('aria-expanded', 'true')
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-toggle').first().click()
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-toggle').first()
+  ).toHaveAttribute('aria-label', 'Show Calls edge group')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-toggle').first()
+  ).toHaveAttribute('aria-expanded', 'false')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(1)
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-count')).toHaveText(
+    ['2 edges', '1 edge']
+  )
+  await workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-group-toggle').first().click()
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge')).toHaveCount(3)
   await expect(
     workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge-action').first()
   ).toHaveAttribute(
