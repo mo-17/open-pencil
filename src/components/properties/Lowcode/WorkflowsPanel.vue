@@ -22,6 +22,14 @@ import {
 } from '@/app/lowcode/workflow-graph'
 
 import WorkflowRow from './WorkflowRow.vue'
+import {
+  graphMapEdgeBranchLabel,
+  graphMapEdgeMatchesSearch,
+  graphMapEdgeSearchMatchId,
+  graphMapNodeMatchesSearch,
+  graphMapNodeSearchMatchId,
+  nextGraphMapSearchMatchId
+} from './workflow-graph-map-search'
 
 /**
  * Phase 3 §10 v11 — document-level named-workflow manager. Workflows live on the
@@ -75,6 +83,7 @@ type GraphMapFilter = 'all' | 'issues' | 'entries'
 const graphMapFilter = ref<GraphMapFilter>('all')
 const graphMapSearchQuery = ref('')
 const graphMapSearchInput = ref<HTMLInputElement | null>(null)
+const activeGraphMapSearchMatchId = ref<string | null>(null)
 const expandedGraphMapSourceIds = ref<Set<string>>(new Set())
 const collapsedGraphMapNodeGroupKinds = ref<Set<GraphMapNodeGroupKind>>(new Set())
 const collapsedGraphMapEdgeGroupKinds = ref<Set<GraphMapEdgeGroupKind>>(new Set())
@@ -326,23 +335,6 @@ function graphMapEdgeActionKindLabel(edge: WorkflowGraphEdge): string {
   return `Kind ${edge.actionKind}`
 }
 
-function graphMapEdgeBranchLabel(edge: WorkflowGraphEdge): string {
-  if (!edge.actionPath.includes('/')) return 'Root'
-  const branch = edge.actionPath.split('/').at(-1)?.replace(/\[\d+\]$/, '') ?? ''
-  switch (branch) {
-    case 'consequent':
-      return 'Then'
-    case 'alternate':
-      return 'Else'
-    case 'onSuccess':
-      return 'On success'
-    case 'onError':
-      return 'On error'
-    default:
-      return branch || 'Nested'
-  }
-}
-
 function graphMapEdgeBranchTitle(edge: WorkflowGraphEdge): string {
   return `${graphMapEdgeBranchLabel(edge)} branch at ${edge.actionPath}`
 }
@@ -486,6 +478,12 @@ function graphMapEdgeGroupCountLabel(count: number): string {
 
 function clearGraphMapSearch(): void {
   graphMapSearchQuery.value = ''
+  activeGraphMapSearchMatchId.value = null
+}
+
+function setGraphMapSearchQuery(value: string): void {
+  graphMapSearchQuery.value = value
+  activeGraphMapSearchMatchId.value = null
 }
 
 function focusGraphMapSearch(): void {
@@ -515,27 +513,23 @@ function handleGraphMapSearchEscape(event: KeyboardEvent): void {
   graphMapSearchInput.value?.blur()
 }
 
-function graphMapNodeMatchesSearch(node: WorkflowGraphNode, term: string): boolean {
-  return [
-    node.id,
-    node.name,
-    ...node.entrypoints.map((entrypoint) => entrypoint.nodeName),
-    ...node.entrypoints.map((entrypoint) => entrypoint.eventName),
-    ...node.entrypoints.map((entrypoint) => entrypoint.actionId)
-  ].some((value) => value.toLowerCase().includes(term))
+function handleGraphMapSearchEnter(event: KeyboardEvent): void {
+  if (!graphMapSearchTerm.value) return
+  event.preventDefault()
+  activeGraphMapSearchMatchId.value = nextGraphMapSearchMatchId(
+    graphMapNodes.value,
+    graphMapEdges.value,
+    activeGraphMapSearchMatchId.value,
+    event.shiftKey
+  )
 }
 
-function graphMapEdgeMatchesSearch(edge: WorkflowGraphEdge, term: string): boolean {
-  return [
-    edge.fromId,
-    edge.fromName,
-    edge.toId,
-    edge.toName ?? '',
-    edge.actionId,
-    edge.actionPath,
-    edge.actionKind,
-    graphMapEdgeBranchLabel(edge)
-  ].some((value) => value.toLowerCase().includes(term))
+function isActiveGraphMapNodeSearchMatch(node: WorkflowGraphNode): boolean {
+  return activeGraphMapSearchMatchId.value === graphMapNodeSearchMatchId(node)
+}
+
+function isActiveGraphMapEdgeSearchMatch(edge: WorkflowGraphEdge): boolean {
+  return activeGraphMapSearchMatchId.value === graphMapEdgeSearchMatchId(edge)
 }
 
 function graphMapSearchSummaryLabel(): string {
@@ -715,7 +709,8 @@ function containingPageId(node: SceneNode): string | undefined {
               placeholder="Search workflow/action (/)"
               spellcheck="false"
               class="w-40 min-w-0 rounded border border-border bg-input px-2 py-0.5 text-[10px] text-surface outline-none focus:border-accent"
-              @input="graphMapSearchQuery = ($event.target as HTMLInputElement).value"
+              @input="setGraphMapSearchQuery(($event.target as HTMLInputElement).value)"
+              @keydown.enter.stop="handleGraphMapSearchEnter"
               @keydown.escape.stop="handleGraphMapSearchEscape"
             />
             <button
@@ -829,7 +824,13 @@ function containingPageId(node: SceneNode): string | undefined {
                 v-for="node in group.nodes"
                 :key="node.id"
                 data-test-id="lowcode-workflow-graph-map-node"
-                class="flex max-w-full flex-col gap-0.5 rounded border border-border px-1.5 py-0.5 text-[10px]"
+                :data-graph-map-active-match="isActiveGraphMapNodeSearchMatch(node) ? 'true' : undefined"
+                class="flex max-w-full flex-col gap-0.5 rounded border px-1.5 py-0.5 text-[10px]"
+                :class="
+                  isActiveGraphMapNodeSearchMatch(node)
+                    ? 'border-accent bg-accent/10 text-surface'
+                    : 'border-border'
+                "
               >
                 <button
                   type="button"
@@ -978,8 +979,14 @@ function containingPageId(node: SceneNode): string | undefined {
                 v-for="edge in group.edges"
                 :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"
                 data-test-id="lowcode-workflow-graph-map-edge"
+                :data-graph-map-active-match="isActiveGraphMapEdgeSearchMatch(edge) ? 'true' : undefined"
                 :aria-label="graphMapEdgePathLabel(edge)"
-                class="flex items-center justify-between gap-2"
+                class="flex items-center justify-between gap-2 rounded border px-1 py-0.5"
+                :class="
+                  isActiveGraphMapEdgeSearchMatch(edge)
+                    ? 'border-accent bg-accent/10 text-surface'
+                    : 'border-transparent'
+                "
               >
                 <span class="flex min-w-0 items-center gap-1">
                   <span data-test-id="lowcode-workflow-graph-map-edge-from" class="min-w-0">

@@ -186,9 +186,50 @@ test('workflow graph map issue summary separates missing and cycle counts', asyn
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toContainText(
     '2 nodes, 1 edge matching "call-beta"'
   )
+  await editor.page.keyboard.press('Enter')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(0)).toHaveAttribute(
+    'data-graph-map-active-match',
+    'true'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(0)).toContainText(
+    'Alpha'
+  )
+  await editor.page.keyboard.press('Enter')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toHaveAttribute(
+    'data-graph-map-active-match',
+    'true'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
+    'Beta'
+  )
+  await editor.page.keyboard.press('Enter')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(0)).toHaveAttribute(
+    'data-graph-map-active-match',
+    'true'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(0)).toContainText(
+    'Action call-beta'
+  )
+  await editor.page.keyboard.press('Shift+Enter')
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toHaveAttribute(
+    'data-graph-map-active-match',
+    'true'
+  )
+  await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)).toContainText(
+    'Beta'
+  )
   await editor.page.keyboard.press('Escape')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search')).toHaveValue('')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-search-summary')).toHaveCount(0)
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(0)
+  ).not.toHaveAttribute('data-graph-map-active-match', 'true')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-node').nth(1)
+  ).not.toHaveAttribute('data-graph-map-active-match', 'true')
+  await expect(
+    workflowsPanel.getByTestId('lowcode-workflow-graph-map-edge').nth(0)
+  ).not.toHaveAttribute('data-graph-map-active-match', 'true')
   await editor.page.keyboard.press('Escape')
   await expect
     .poll(() =>

@@ -3588,6 +3588,51 @@ metadata badge 后,复杂 graph 会变得难扫。本刀先做组级 collapse,�
 - 不持久化 search query 或快捷键偏好。
 - 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
 
+### 13.36 2026-07-02 第三十六刀:Workflow graph map search active match navigation
+
+本刀继续 polish workflow graph map search 的键盘体验。上一刀可以用 `/` 聚焦 search,但搜索后
+只能看筛选结果,不能在结果间快速定位。本刀给 search 输入框增加 local-only Enter 导航:
+Enter 正向循环当前可见 result,Shift+Enter 反向循环,并在 map 内高亮当前 active match。
+
+本刀已完成:
+
+- `WorkflowsPanel.vue`:
+  - 新增 `activeGraphMapSearchMatchId` ref。
+  - 新增 `setGraphMapSearchQuery(value)`,搜索内容变化时重置 active match。
+  - `clearGraphMapSearch()` 同步清空 active match。
+  - 新增 `handleGraphMapSearchEnter(event)`:
+    - Enter 激活下一个 result;
+    - Shift+Enter 激活上一个 result;
+    - 没有 query 或没有 result 时不产生持久状态。
+  - node card 和 edge row 新增 `data-graph-map-active-match` 与 active 高亮样式。
+- `workflow-graph-map-search.ts`:
+  - 新增 node / edge search match id helpers。
+  - 承载 node / edge search matching 与 edge branch label helpers,避免继续推高
+    `WorkflowsPanel.vue` 行数。
+  - 新增 `nextGraphMapSearchMatchId(...)`,基于当前 `graphMapNodes` / `graphMapEdges`
+    生成 local-only result order。
+- `tests/e2e/properties/workflow-graph-map-issues.spec.ts`:
+  - 验证搜索 `call-beta` 后 Enter 依次高亮 Alpha node、Beta node、call-beta edge。
+  - 验证 Shift+Enter 可反向回到 Beta node。
+  - 验证 Escape 清空 search 时同时清掉 active match。
+
+已验证:
+
+- `git diff --check`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun run lint:structure`
+- `bun run test -- tests/e2e/properties/workflow-optional-params.spec.ts tests/e2e/properties/workflow-graph-map-issues.spec.ts --project=openpencil`
+  (普通沙箱下仍会被 Vite `listen EPERM ::1:1420` 拦截,提权后通过)
+
+明确不做:
+
+- 不新增全局 search result navigator。
+- 不持久化 active match、search query 或快捷键偏好。
+- 不把 Enter 导航变成 workflow/action jump。
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+
 ---
 
 ## 14. Mobile / Native Export Strategy
