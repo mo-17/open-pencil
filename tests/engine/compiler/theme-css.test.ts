@@ -92,10 +92,7 @@ function addCrossCollectionAliasThemeVariables() {
   graph.addCollection({
     id: 'col-palette',
     name: 'Palette',
-    modes: [
-      { modeId: 'palette-light', name: 'Light' },
-      { modeId: 'palette-dark', name: 'Dark' }
-    ],
+    modes: [{ modeId: 'palette-light', name: 'Light' }, { modeId: 'palette-dark', name: 'Dark' }],
     defaultModeId: 'palette-light',
     variableIds: ['var-palette-primary']
   })
@@ -114,10 +111,7 @@ function addCrossCollectionAliasThemeVariables() {
   graph.addCollection({
     id: 'col-semantic',
     name: 'Semantic',
-    modes: [
-      { modeId: 'semantic-light', name: 'Light' },
-      { modeId: 'semantic-dark', name: 'Dark' }
-    ],
+    modes: [{ modeId: 'semantic-light', name: 'Light' }, { modeId: 'semantic-dark', name: 'Dark' }],
     defaultModeId: 'semantic-light',
     variableIds: ['var-semantic-accent']
   })
@@ -199,11 +193,19 @@ describe('Phase 5 §5 design token theme CSS', () => {
   })
 
   test('resolves cross-collection aliases by matching mode names', () => {
-    const css = buildDesignTokenThemeCss(addCrossCollectionAliasThemeVariables())
+    const graph = addCrossCollectionAliasThemeVariables()
+    const css = buildDesignTokenThemeCss(graph)
 
     expect(css).toContain('--op-semantic-color-accent: #3366CC;')
     expect(css).toContain(':root[data-theme="dark"], .dark {')
     expect(css).toContain('--op-semantic-color-accent: #CCE6FF;')
+
+    const palette = graph.variables.get('var-palette-primary')
+    if (!palette) throw new Error('palette variable missing')
+    palette.hiddenFromPublishing = true
+    const hiddenCss = buildDesignTokenThemeCss(graph)
+    expect(hiddenCss).not.toContain('--op-palette-primary:')
+    expect(hiddenCss).toContain('--op-semantic-color-accent: #CCE6FF;')
   })
 
   test('compile injects design token theme css into index.css', () => {

@@ -98,7 +98,7 @@ function sortedVariables(
 ): Variable[] | [] {
   return collection.variableIds
     .map((id) => variables.get(id))
-    .filter((variable): variable is Variable => !!variable)
+    .filter((variable): variable is Variable => !!variable && !variable.hiddenFromPublishing)
     .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
 }
 

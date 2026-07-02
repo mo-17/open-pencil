@@ -870,6 +870,8 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
 - 跨 variable collection 的 alias 在 mode id 不同但 mode name 相同的真实模板中能正确解析
   dark token,不回退到目标 collection 的默认 mode。**2026-07-02 已由
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
+- `hiddenFromPublishing` 变量不会作为 CSS token 发布,但公开 semantic alias 仍可解析到隐藏
+  palette token 的值。**2026-07-02 已由 `tests/engine/compiler/theme-css.test.ts` 覆盖。**
 - 无 variables 时不引入额外 theme block。**2026-06-25 已覆盖。**
 - 显式 `CompilerOptions.themeCss` 与自动 token CSS 合并顺序稳定。**2026-06-25 已覆盖。**
 - Preview pane 可切换 light/dark,emitted runtime 暴露 `ThemeProvider` / `useTheme` hook。
