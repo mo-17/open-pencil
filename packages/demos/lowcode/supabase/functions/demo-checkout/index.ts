@@ -51,9 +51,16 @@ function env(name: string): string {
   return value
 }
 
+function normalizePlan(plan: unknown): string {
+  return typeof plan === 'string' && ALLOWED_PLANS.has(plan) ? plan : 'starter'
+}
+
 function priceIdForPlan(plan: string): string {
-  const normalized = ALLOWED_PLANS.has(plan) ? plan : 'starter'
-  return env(`STRIPE_PRICE_${normalized.toUpperCase()}`)
+  const priceId = env(`STRIPE_PRICE_${plan.toUpperCase()}`)
+  if (!priceId.startsWith('price_')) {
+    throw new Error(`STRIPE_PRICE_${plan.toUpperCase()} must be a Stripe price id`)
+  }
+  return priceId
 }
 
 function checkoutMode(): string {
@@ -192,7 +199,7 @@ async function customerIdForAuthenticatedUser(
 async function createCheckoutSession(input: CheckoutRequest, customerId: string | null): Promise<string> {
   const secretKey = env('STRIPE_SECRET_KEY')
   const siteUrl = publicSiteUrl()
-  const plan = typeof input.plan === 'string' ? input.plan : 'starter'
+  const plan = normalizePlan(input.plan)
   const email = typeof input.email === 'string' ? input.email.trim() : ''
   const body = new URLSearchParams({
     mode: checkoutMode(),

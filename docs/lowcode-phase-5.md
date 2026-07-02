@@ -1737,6 +1737,29 @@ Auth、REST 或 RPC 请求里。
 - 不改变 Edge Function request/response contract。
 - 不把 service role key、Stripe secret 或 customer id mapping 写进前端。
 
+### 12.6.4 2026-07-02 第九刀补充:Stripe checkout plan normalization guard
+
+本刀修补 demo checkout Edge Function 的 plan 一致性。此前非法 `plan` 会在
+`priceIdForPlan()` 里回退到 starter price,但 `metadata[plan]` 仍写入 browser payload
+里的原始值;这会让后续 webhook/read-model 看到的 plan 元数据与真实 price 不一致。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/functions/demo-checkout/index.ts`:
+  - 新增 `normalizePlan(plan)` helper,只接受 `starter` / `pro` / `enterprise`。
+  - `createCheckoutSession()` 的 price lookup 与 `metadata[plan]` 共享同一个 normalized plan。
+  - `priceIdForPlan(plan)` 现在要求 `STRIPE_PRICE_*` env 以 `price_` 开头,避免错误 env
+    值静默进入 Checkout Session 请求。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 checkout template 的 plan
+    normalization 和 Stripe price id guard。
+
+明确不做:
+
+- 不改变 generated app 传参 contract;browser 仍只传公开业务字段 `plan` / `email`。
+- 不自动调用真实 Stripe。
+- 不把 price id、secret key 或 customer id mapping 写进 generated SPA。
+
 ### 12.7 2026-07-01 第四刀:Stripe webhook/subscription lifecycle demo template
 
 本刀补齐真实付费闭环的 server-side 入口:**接收 Stripe webhook、校验签名、路由 checkout

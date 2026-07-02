@@ -142,6 +142,7 @@
 - Require generated Stripe checkout and customer portal redirects to resolve to http(s) URLs.
 - Require demo Stripe Edge Function `PUBLIC_SITE_URL` values to resolve to http(s) origins before building Checkout and Customer Portal return URLs.
 - Require demo Stripe Edge Function `SUPABASE_URL` values to resolve to http(s) origins before calling Supabase Auth, REST, or RPC endpoints.
+- Normalize demo Stripe checkout plan metadata from the same allowlist used for price lookup and require configured Stripe price ids.
 - Add a Supabase Edge Function Stripe webhook template for checkout and subscription lifecycle events with signature verification and durable `billing_events` idempotency.
 - Add a Supabase billing schema template for Stripe customer mappings, subscriptions, and durable webhook event idempotency.
 - Add a Supabase service-role RPC template for Stripe subscription webhook events that records the event and upserts subscription state in one transaction.
