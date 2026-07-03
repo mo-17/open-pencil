@@ -51,6 +51,14 @@ function env(name: string): string {
   return value
 }
 
+function stripeSecretKey(): string {
+  const secretKey = env('STRIPE_SECRET_KEY')
+  if (!secretKey.startsWith('sk_')) {
+    throw new Error('STRIPE_SECRET_KEY must be a Stripe secret key')
+  }
+  return secretKey
+}
+
 function normalizePlan(plan: unknown): string {
   return typeof plan === 'string' && ALLOWED_PLANS.has(plan) ? plan : 'starter'
 }
@@ -137,7 +145,7 @@ async function lookupStripeCustomerId(userId: string): Promise<string | null> {
 }
 
 async function createStripeCustomer(email: string): Promise<string> {
-  const secretKey = env('STRIPE_SECRET_KEY')
+  const secretKey = stripeSecretKey()
   const body = new URLSearchParams()
   if (email) body.set('email', email)
 
@@ -197,7 +205,7 @@ async function customerIdForAuthenticatedUser(
 }
 
 async function createCheckoutSession(input: CheckoutRequest, customerId: string | null): Promise<string> {
-  const secretKey = env('STRIPE_SECRET_KEY')
+  const secretKey = stripeSecretKey()
   const siteUrl = publicSiteUrl()
   const plan = normalizePlan(input.plan)
   const email = typeof input.email === 'string' ? input.email.trim() : ''

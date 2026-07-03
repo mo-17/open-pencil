@@ -1809,6 +1809,31 @@ root-relative path。
 - 不自动调用真实 Stripe Customer Portal。
 - 不把 customer id mapping、Stripe secret 或 portal configuration 写进前端。
 
+### 12.6.6 2026-07-03 第十一刀补充:Stripe Edge Function env id guards
+
+本刀继续补非账号依赖的 template/security guard。此前 demo checkout / customer portal
+Edge Function 只要求 `STRIPE_SECRET_KEY` / `STRIPE_PORTAL_CONFIGURATION` 存在,但不检查
+是否像 Stripe 对应 id;这类 env 错配会推迟到 Stripe API 调用时才暴露。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/functions/demo-checkout/index.ts`:
+  - 新增 `stripeSecretKey()` helper。
+  - `STRIPE_SECRET_KEY` 必须以 `sk_` 开头,否则在发起 Customer / Checkout Session 请求前
+    抛出明确错误。
+  - `createStripeCustomer()` 和 `createCheckoutSession()` 复用同一 guard。
+- `packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts`:
+  - 新增同样的 `stripeSecretKey()` helper。
+  - `STRIPE_PORTAL_CONFIGURATION` 若配置,必须以 `bpc_` 开头。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 checkout / portal template 中的
+    secret key guard 和 portal configuration guard。
+
+明确不做:
+
+- 不把任何真实 `sk_*` / `bpc_*` 值写进仓库或 generated app。
+- 不自动调用真实 Stripe;live key / test key 行为仍留到 Phase 5 Operator ACK 手测。
+
 ### 12.7 2026-07-01 第四刀:Stripe webhook/subscription lifecycle demo template
 
 本刀补齐真实付费闭环的 server-side 入口:**接收 Stripe webhook、校验签名、路由 checkout

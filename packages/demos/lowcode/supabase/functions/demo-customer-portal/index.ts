@@ -49,6 +49,14 @@ function env(name: string): string {
   return value
 }
 
+function stripeSecretKey(): string {
+  const secretKey = env('STRIPE_SECRET_KEY')
+  if (!secretKey.startsWith('sk_')) {
+    throw new Error('STRIPE_SECRET_KEY must be a Stripe secret key')
+  }
+  return secretKey
+}
+
 function publicSiteUrl(): string {
   const siteUrl = new URL(env('PUBLIC_SITE_URL'))
   if (siteUrl.protocol !== 'http:' && siteUrl.protocol !== 'https:') {
@@ -128,13 +136,18 @@ async function createCustomerPortalSession(
   input: CustomerPortalRequest,
   customerId: string
 ): Promise<string> {
-  const secretKey = env('STRIPE_SECRET_KEY')
+  const secretKey = stripeSecretKey()
   const body = new URLSearchParams({
     customer: customerId,
     return_url: portalReturnUrl(input)
   })
   const configuration = Deno.env.get('STRIPE_PORTAL_CONFIGURATION')?.trim()
-  if (configuration) body.set('configuration', configuration)
+  if (configuration) {
+    if (!configuration.startsWith('bpc_')) {
+      throw new Error('STRIPE_PORTAL_CONFIGURATION must be a Stripe billing portal configuration id')
+    }
+    body.set('configuration', configuration)
+  }
 
   const response = await fetch(`${STRIPE_API_BASE}/billing_portal/sessions`, {
     method: 'POST',

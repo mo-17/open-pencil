@@ -109,6 +109,9 @@ describe('lowcode onboarding demo fixture', () => {
   test('ships a server-side checkout template without embedded Stripe secrets', async () => {
     const source = await Bun.file(CHECKOUT_FUNCTION_PATH).text()
     expect(source).toContain("env('STRIPE_SECRET_KEY')")
+    expect(source).toContain('function stripeSecretKey()')
+    expect(source).toContain("secretKey.startsWith('sk_')")
+    expect(source).toContain('STRIPE_SECRET_KEY must be a Stripe secret key')
     expect(source).toContain("env('SUPABASE_URL')")
     expect(source).toContain("env('SUPABASE_SERVICE_ROLE_KEY')")
     expect(source).toContain('Deno.env.get(name)')
@@ -147,6 +150,9 @@ describe('lowcode onboarding demo fixture', () => {
   test('ships a server-side customer portal template without embedded Stripe secrets', async () => {
     const source = await Bun.file(CUSTOMER_PORTAL_FUNCTION_PATH).text()
     expect(source).toContain("env('STRIPE_SECRET_KEY')")
+    expect(source).toContain('function stripeSecretKey()')
+    expect(source).toContain("secretKey.startsWith('sk_')")
+    expect(source).toContain('STRIPE_SECRET_KEY must be a Stripe secret key')
     expect(source).toContain("env('PUBLIC_SITE_URL')")
     expect(source).toContain("env('SUPABASE_URL')")
     expect(source).toContain("env('SUPABASE_SERVICE_ROLE_KEY')")
@@ -171,6 +177,10 @@ describe('lowcode onboarding demo fixture', () => {
     expect(source).toContain('return json({ url })')
     expect(source).toContain('do not trust a customerId sent from the browser')
     expect(source).toContain('STRIPE_PORTAL_CONFIGURATION')
+    expect(source).toContain("configuration.startsWith('bpc_')")
+    expect(source).toContain(
+      'STRIPE_PORTAL_CONFIGURATION must be a Stripe billing portal configuration id'
+    )
     expect(source).toContain('supabase/schema/billing.sql')
     expect(source).not.toContain('DEMO_STRIPE_CUSTOMER_ID')
     expect(source).not.toContain('sk_test')
