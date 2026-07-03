@@ -263,6 +263,20 @@ describe('update_lowcode_node', () => {
     expect(graph.getNode(graph.rootId)?.lowcodeHeadMetadata).toBeUndefined()
   })
 
+  test('rejects unsafe lowcodeCustomCss URL protocols', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeCustomCss: `.hero { background-image: url(${`java${'script'}:alert(1)`}); }`
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('lowcodeCustomCss')
+    expect(graph.getNode(graph.rootId)?.lowcodeCustomCss).toBeUndefined()
+  })
+
   test('accepts stateOverrides for interaction-state styling', () => {
     const { figma, graph } = setupToolTest()
     const rect = figma.createRectangle()

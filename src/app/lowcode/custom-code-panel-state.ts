@@ -5,6 +5,10 @@ import type {
   LowcodeHeadMetaKind,
   LowcodeHeadMetadata
 } from '@open-pencil/core/scene-graph'
+import {
+  unsafeLowcodeCustomCssUrls,
+  validateLowcodeCustomCss
+} from '@open-pencil/core/lowcode-validation'
 
 export const LOWCODE_HEAD_META_KINDS: LowcodeHeadMetaKind[] = ['name', 'property', 'httpEquiv']
 
@@ -77,7 +81,7 @@ export function buildCustomCodePatch(draft: CustomCodeDraft): CustomCodePatch {
   const customCss = draft.customCss.trim()
   return {
     lowcodeHeadMetadata: Object.keys(head).length > 0 ? head : undefined,
-    lowcodeCustomCss: customCss ? customCss : undefined
+    lowcodeCustomCss: customCss && validateLowcodeCustomCss(customCss).ok ? customCss : undefined
   }
 }
 
@@ -94,6 +98,10 @@ export function hasIncompleteCustomCodeRows(draft: CustomCodeDraft): boolean {
       return (rel || href) && (!rel || !href)
     })
   )
+}
+
+export function hasUnsafeCustomCodeUrls(draft: CustomCodeDraft): boolean {
+  return unsafeLowcodeCustomCssUrls(draft.customCss).length > 0
 }
 
 export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCspRisk[] {
@@ -136,6 +144,13 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       id: `custom-css-url:${url}`,
       title: 'Custom CSS references an external resource',
       detail: `${url} must be allowed by the deployed host CSP resource directives.`
+    })
+  }
+  for (const url of unsafeLowcodeCustomCssUrls(customCss)) {
+    risks.push({
+      id: `custom-css-unsafe-url:${url}`,
+      title: 'Custom CSS URL protocol will not be persisted',
+      detail: `${url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.`
     })
   }
 

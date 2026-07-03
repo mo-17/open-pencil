@@ -240,4 +240,23 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     expect(html).not.toContain('rel="canonical"')
     expect(html).not.toContain('property="og:url"')
   })
+
+  test('skips unsafe persisted custom CSS URLs at compile time', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const unsafeCss = `.hero { background-image: url(${['java', 'script:alert(1)'].join('')}); }`
+    graph.updateNode(graph.rootId, {
+      lowcodeCustomCss: unsafeCss
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'seo-app' })
+    })
+    const css = out.files.get('src/index.css') as string
+
+    expect(css).not.toContain(unsafeCss)
+    expect(css).not.toContain('alert(1)')
+  })
 })

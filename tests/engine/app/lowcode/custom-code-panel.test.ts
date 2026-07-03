@@ -4,7 +4,8 @@ import {
   analyzeCustomCodeCspRisks,
   buildCustomCodePatch,
   draftFromCustomCode,
-  hasIncompleteCustomCodeRows
+  hasIncompleteCustomCodeRows,
+  hasUnsafeCustomCodeUrls
 } from '@/app/lowcode/custom-code-panel-state'
 
 describe('lowcode custom code panel state', () => {
@@ -78,6 +79,20 @@ describe('lowcode custom code panel state', () => {
     ])
   })
 
+  test('drops unsafe custom CSS URL protocols from panel patches', () => {
+    const unsafeCss = `.hero { background-image: url(${`java${'script'}:alert(1)`}); }`
+    const draft = {
+      meta: [],
+      link: [],
+      stylesText: '',
+      customCss: unsafeCss
+    }
+    const patch = buildCustomCodePatch(draft)
+
+    expect(hasUnsafeCustomCodeUrls(draft)).toBe(true)
+    expect(patch.lowcodeCustomCss).toBeUndefined()
+  })
+
   test('flags partially filled rows so the panel can keep them as local draft', () => {
     expect(
       hasIncompleteCustomCodeRows({
@@ -135,6 +150,20 @@ describe('lowcode custom code panel state', () => {
       'custom-css-url:https://cdn.example/bg.png'
     ])
     expect(risks[2]?.detail).toContain('font-src')
+  })
+
+  test('reports unsafe custom CSS URL protocols before persistence', () => {
+    const risks = analyzeCustomCodeCspRisks({
+      meta: [],
+      link: [],
+      stylesText: '',
+      customCss: `.hero { background-image: url("${`data${':'}image/svg+xml,<svg></svg>`}"); }`
+    })
+
+    expect(risks.map((risk) => risk.id)).toEqual([
+      'custom-css-unsafe-url:data:image/svg+xml,<svg></svg>'
+    ])
+    expect(risks[0]?.title).toContain('will not be persisted')
   })
 
   test('keeps local-only custom resources quiet', () => {

@@ -19,6 +19,7 @@ import {
   emptyHeadLink,
   emptyHeadMeta,
   hasIncompleteCustomCodeRows,
+  hasUnsafeCustomCodeUrls,
   LOWCODE_HEAD_LINK_CROSS_ORIGINS,
   LOWCODE_HEAD_META_KINDS
 } from '@/app/lowcode/custom-code-panel-state'
@@ -69,7 +70,7 @@ function commitDraft(): void {
     stylesText: stylesText.value,
     customCss: customCssText.value
   }
-  if (hasIncompleteCustomCodeRows(draft)) return
+  if (hasIncompleteCustomCodeRows(draft) || hasUnsafeCustomCodeUrls(draft)) return
   const patch = buildCustomCodePatch(draft)
   editor.updateNodeWithUndo(editor.graph.rootId, patch, 'Update custom code')
 }

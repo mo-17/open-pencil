@@ -1,4 +1,5 @@
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/core/scene-graph'
+import { validateLowcodeCustomCss } from '@open-pencil/core/lowcode-validation'
 
 import { buildComponentRegistry } from './ir/collect/components'
 import { collectComponents, collectTree } from './ir/collect/tree'
@@ -142,7 +143,7 @@ function compactRootMetadata(
   const cleanHead = compactHeadMetadata(head)
   const cleanCss = customCss?.trim()
   if (cleanHead) metadata.head = cleanHead
-  if (cleanCss) metadata.customCss = cleanCss
+  if (cleanCss && validateLowcodeCustomCss(cleanCss).ok) metadata.customCss = cleanCss
   return Object.keys(metadata).length > 0 ? metadata : undefined
 }
 

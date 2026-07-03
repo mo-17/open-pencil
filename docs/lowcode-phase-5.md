@@ -1488,6 +1488,24 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
   - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝危险 link href。
   - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler 输出端跳过危险 link。
 
+**2026-07-03 第六刀已完成**:
+
+- Custom CSS 的 `@import` / `url(...)` 现在有协议 guard:
+  - 共享校验位于 `@open-pencil/core/lowcode-validation`,避免 editor / ToolDef / compiler 三处
+    规则漂移。
+  - GUI patch helper 会丢弃 `javascript:` / `data:` / `file:` 等显式非白名单 scheme 的
+    custom CSS,面板提交前也会阻断,保留本地草稿和风险提示。
+  - `update_lowcode_node` 会拒绝危险 `lowcodeCustomCss`,避免 AI / MCP 写入路径绕过 GUI。
+  - compiler 会跳过旧文档或导入数据里的危险 persisted custom CSS,避免写入 generated
+    `src/index.css`。
+- 允许 `http:` / `https:`、协议相对资源、相对路径、root-relative path 和 fragment;暂不把
+  `data:` URL 纳入 custom CSS 白名单。
+- 覆盖:
+  - `tests/engine/app/lowcode/custom-code-panel.test.ts` 覆盖 GUI helper 过滤危险 CSS URL 和
+    风险提示。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝危险 custom CSS。
+  - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler 跳过危险 persisted custom CSS。
+
 ### 11.4 后续
 
 - CSP/deploy ACK:按 `docs/lowcode-gui-ack-test.md` 的 provider matrix 验证 Netlify /

@@ -31,6 +31,7 @@ import {
   normalizeSupabaseMutationPayloadJson,
   validateDatePickerProps,
   validateExpression,
+  validateLowcodeCustomCss,
   validateStateName,
   validateSupabaseConfig,
   validateSupabasePayloadEntries,
@@ -1670,6 +1671,10 @@ function applyCustomCssField(raw: Record<string, unknown>, patch: Partial<SceneN
   if (typeof raw.lowcodeCustomCss !== 'string')
     return fail('lowcodeCustomCss must be a string or null')
   const css = raw.lowcodeCustomCss.trim()
+  if (css) {
+    const result = validateLowcodeCustomCss(css)
+    if (!result.ok) return fail(`lowcodeCustomCss ${result.reason ?? 'is unsafe'}`)
+  }
   patch.lowcodeCustomCss = css ? css : undefined
   return { ok: true }
 }

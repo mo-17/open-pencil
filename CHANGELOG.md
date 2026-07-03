@@ -49,6 +49,8 @@
 - Add engine-level contract coverage for the repo-local Tauri MCP lowcode preview ACK helper.
 - Report invalid `callWorkflow` argument contracts in the lowcode workflow graph diagnostics.
 - Focus the source workflow action when jumping from actionable workflow graph issues.
+- Reject unsafe URL protocols in lowcode Custom CSS before editor/tool persistence and
+  generated CSS emission.
 - Add a Figma Web CDP debug script and update Figma reference tests to work with the current
   browser canvas structure.
 - Fix package tarball smoke coverage for the private compiler dependency, isolated npm
