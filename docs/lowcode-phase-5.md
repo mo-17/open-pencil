@@ -340,6 +340,9 @@ shadcn、deploy 多条线完成,但用户入口分散在 phase docs 和内部实
   **2026-07-01 第三刀已把 Stripe checkout redirect trigger 纳入同一 onboarding fixture:
   `Start checkout` 按钮调用示例 `/api/demo-checkout` endpoint,传递公开 `plan` / `email`
   payload,错误写入 `checkoutError`;测试确认 generated source 不包含 Stripe secret。**
+  **2026-07-03 已补真实 fixture 回归:测试直接读取已提交
+  `packages/demos/lowcode/lowcode-onboarding-demo.fig`,确认 Supabase / analytics / Stripe
+  checkout / customer portal action 仍在,并用当前 compiler contract 编译通过。**
 - CHANGELOG Unreleased 补齐 Cloudflare deploy / Tauri automation / GUI ACK 等用户可见项。**2026-06-25
   第一刀已补 lowcode onboarding 文档项,并顺手修复 CLI `--provider cloudflare`
   入口校验。**
@@ -2388,6 +2391,13 @@ webhook 小节里的手动验证,整理成一张上线前 operator checklist。�
   - `bun test tests/engine/app/lowcode/onboarding-demo.test.ts`
   - `bun test tests/engine/compiler/stripe-checkout.test.ts tests/engine/compiler/stripe-customer-portal.test.ts tests/engine/compiler/analytics.test.ts tests/engine/app/lowcode/action-errors.test.ts tests/engine/app/lowcode/custom-code-panel.test.ts`
   - `bun test tests/engine/kiwi/lowcode/roundtrip.test.ts tests/engine/tools/lowcode/modify.test.ts tests/engine/tools/lowcode/read.test.ts tests/engine/compiler/seo-metadata.test.ts`
+- 2026-07-03 追加真实 fixture 回归:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 现在直接读取已提交
+    `packages/demos/lowcode/lowcode-onboarding-demo.fig`。
+  - 断言该 fixture 仍包含示例 Supabase config、analytics consent、Stripe checkout action 和
+    customer portal action。
+  - 使用 `compile()` + 当前 onboarding compiler options 编译该 fixture,避免生成器更新后忘记
+    重建 demo `.fig`。
 - 重新跑收口 hygiene:
   - `git diff --check`
   - `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)

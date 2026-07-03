@@ -156,6 +156,7 @@
 - Require the demo Stripe webhook signing secret environment variable to match Stripe's
   webhook secret prefix without embedding example secrets.
 - Add a Supabase billing schema template for Stripe customer mappings, subscriptions, and durable webhook event idempotency.
+- Add regression coverage that reads the checked-in lowcode onboarding `.fig` fixture and compiles it with the current generator contract.
 - Cover every demo Stripe service-role RPC with regression checks for fixed `search_path` and revoked public/authenticated access.
 - Add a Supabase service-role RPC template for Stripe subscription webhook events that records the event and upserts subscription state in one transaction.
 - Add a Supabase billing entitlement read-model template that refreshes app-readable subscription access in the same webhook transaction.

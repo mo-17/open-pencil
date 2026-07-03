@@ -1,16 +1,25 @@
 import { describe, expect, test } from 'bun:test'
+import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
+import { compile, withDefaults } from '@open-pencil/compiler'
 
 import {
   buildLowcodeOnboardingDemo,
   compileLowcodeOnboardingDemo
 } from '#tools/lowcode/src/make/onboarding-demo'
 
+const ONBOARDING_DEMO_FIG_PATH = 'packages/demos/lowcode/lowcode-onboarding-demo.fig'
 const CHECKOUT_FUNCTION_PATH = 'packages/demos/lowcode/supabase/functions/demo-checkout/index.ts'
 const CUSTOMER_PORTAL_FUNCTION_PATH =
   'packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts'
 const WEBHOOK_FUNCTION_PATH =
   'packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts'
 const BILLING_SCHEMA_PATH = 'packages/demos/lowcode/supabase/schema/billing.sql'
+
+async function readOnboardingDemoFixture() {
+  const io = new IORegistry(BUILTIN_IO_FORMATS)
+  const data = new Uint8Array(await Bun.file(ONBOARDING_DEMO_FIG_PATH).arrayBuffer())
+  return (await io.readDocument({ name: ONBOARDING_DEMO_FIG_PATH, data })).graph
+}
 
 describe('lowcode onboarding demo fixture', () => {
   test('covers the documented onboarding capabilities without external secrets', () => {
@@ -64,6 +73,48 @@ describe('lowcode onboarding demo fixture', () => {
       endpoint: '/api/demo-customer-portal',
       errorTarget: 'portalError'
     })
+  })
+
+  test('keeps the checked-in onboarding demo fig aligned with the generator', async () => {
+    const graph = await readOnboardingDemoFixture()
+    const root = graph.getNode(graph.rootId)
+    expect(root?.lowcodeSupabaseConfig).toMatchObject({
+      url: 'https://example.supabase.co',
+      anonKey: 'eyJ.onboarding-demo.anon'
+    })
+    expect(root?.lowcodeAnalyticsConfig).toMatchObject({
+      provider: 'plausible',
+      consentRequired: true
+    })
+    const checkoutButton = [...graph.getAllNodes()].find(
+      (node) => node.name === 'Start checkout button'
+    )
+    const portalButton = [...graph.getAllNodes()].find(
+      (node) => node.name === 'Open billing portal button'
+    )
+    expect(checkoutButton?.events?.onClick?.[0]).toMatchObject({
+      kind: 'stripeCheckout',
+      endpoint: '/api/demo-checkout',
+      errorTarget: 'checkoutError'
+    })
+    expect(portalButton?.events?.onClick?.[0]).toMatchObject({
+      kind: 'stripeCustomerPortal',
+      endpoint: '/api/demo-customer-portal',
+      errorTarget: 'portalError'
+    })
+    const out = compile({
+      graph,
+      pageIds: graph.getPages().map((page) => page.id),
+      options: withDefaults({
+        packageName: 'openpencil-lowcode-onboarding',
+        i18n: true,
+        locales: ['zh-CN'],
+        uiKit: 'shadcn'
+      })
+    })
+    expect(out.warnings).toEqual([])
+    expect(out.files.get('src/App.tsx')).toContain('/api/demo-checkout')
+    expect(out.files.get('src/App.tsx')).toContain('/api/demo-customer-portal')
   })
 
   test('compiles into validation, Supabase, Stripe checkout, analytics, i18n, and shadcn runtime files', () => {
