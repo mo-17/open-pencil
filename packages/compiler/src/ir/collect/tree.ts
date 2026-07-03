@@ -1474,6 +1474,15 @@ function cssColorForPaintBinding(
 function cssVarForBinding(node: SceneNode, ctx: WalkCtx, path: string): string | undefined {
   const variableId = node.boundVariables[path]
   if (!variableId) return undefined
+  const variable = ctx.graph.variables.get(variableId)
+  if (variable?.hiddenFromPublishing) {
+    ctx.warnings.push({
+      code: 'design-token-binding-hidden',
+      message: `${node.type} ${node.id} binding ${path} references hidden design token ${variableId}; static style fallback used`,
+      nodeId: node.id
+    })
+    return undefined
+  }
   const cssVar = designTokenCssVariableName(ctx.graph, variableId)
   if (cssVar) return cssVar
   ctx.warnings.push({

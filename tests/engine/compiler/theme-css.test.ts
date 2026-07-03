@@ -525,12 +525,13 @@ describe('Phase 5 §5 design token theme CSS', () => {
     expect(component).toContain('style={tokenBadgeStyle}')
   })
 
-  test('compile warns when a bound design token cannot be resolved', () => {
+  test('compile warns and falls back when a bound design token is hidden', () => {
     const graph = addThemeVariables()
     const pageId = firstPageId(graph)
-    const rect = createRect(graph, pageId, { name: 'Missing Token' })
+    const rect = createRect(graph, pageId, { name: 'Hidden Token' })
     rect.fills = [solidFill({ r: 0.2, g: 0.4, b: 0.8, a: 1 })]
-    rect.boundVariables = { ...rect.boundVariables, 'fills/0/color': 'var-missing' }
+    Object.assign(graph.variables.get('var-primary') ?? {}, { hiddenFromPublishing: true })
+    graph.bindVariable(rect.id, 'fills/0/color', 'var-primary')
 
     const out = compile({
       graph,
@@ -538,10 +539,12 @@ describe('Phase 5 §5 design token theme CSS', () => {
       options: withDefaults({ packageName: 'theme-demo' })
     })
 
-    const warning = out.warnings.find((item) => item.code === 'design-token-binding-missing')
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain('bg-[#3366CC]')
+    expect(appTsx).not.toContain('var(--op-brand-theme-color-primary)')
+    const warning = out.warnings.find((item) => item.code === 'design-token-binding-hidden')
     expect(warning?.nodeId).toBe(rect.id)
-    expect(warning?.message).toContain('fills/0/color')
-    expect(warning?.message).toContain('var-missing')
+    expect(warning?.message).toContain('var-primary')
   })
 
   test('shadcn composed controls preserve bound fill variable styles', () => {

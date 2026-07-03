@@ -448,6 +448,8 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   `style?: CSSProperties`,让 instance/component usage site 的 root bound token style 不再丢失。
 - 找不到 collection/token 的 binding 现在会产生 `design-token-binding-missing` warning,
   不再静默跳过。
+- 直接绑定 `hiddenFromPublishing` token 的节点现在会产生 `design-token-binding-hidden`
+  warning,并回退到静态样式,避免 generated app 引用未发布的 `var(--op-...)`。
 - 本刀仍不扩展 core binding path:不支持 `fills/0/gradientStops/0/color` 这类 gradient stop
   token binding;component 内部子节点 override 仍只有 `text` / `className` prop 通道,完整
   child style prop 另开后续设计。
@@ -872,6 +874,9 @@ shadcn/ui、Tailwind、Figma variables 已经提供基础,但低代码 app 还�
   `tests/engine/compiler/theme-css.test.ts` 覆盖。**
 - `hiddenFromPublishing` 变量不会作为 CSS token 发布,但公开 semantic alias 仍可解析到隐藏
   palette token 的值。**2026-07-02 已由 `tests/engine/compiler/theme-css.test.ts` 覆盖。**
+- 节点若直接绑定隐藏 design token,generated DOM 不会输出悬空 CSS var,而是回退静态样式并
+  返回 `design-token-binding-hidden` warning。**2026-07-03 已由
+  `tests/engine/compiler/theme-css.test.ts` 覆盖。**
 - 无 variables 时不引入额外 theme block。**2026-06-25 已覆盖。**
 - 显式 `CompilerOptions.themeCss` 与自动 token CSS 合并顺序稳定。**2026-06-25 已覆盖。**
 - Preview pane 可切换 light/dark,emitted runtime 暴露 `ThemeProvider` / `useTheme` hook。

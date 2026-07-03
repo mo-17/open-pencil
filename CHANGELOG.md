@@ -18,6 +18,8 @@
 - Emit lowcode design-token CSS variables from SceneGraph variable modes into generated `src/index.css`, including `.dark` mode blocks.
 - Resolve lowcode design-token aliases across variable collections by matching mode names when mode ids differ.
 - Skip hidden lowcode design-token variables in generated CSS while still resolving public aliases to them.
+- Fall back to static styles and warn when generated lowcode nodes bind directly to hidden
+  design-token variables.
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.
 - Let generated lowcode theme switches be hidden or positioned at publish time.
