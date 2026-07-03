@@ -86,6 +86,51 @@ describe('stripeCheckout action (Phase 5 §12)', () => {
     expect(out).not.toContain('sk_test')
   })
 
+  test('includeAuthToken emits Supabase bearer header lookup', () => {
+    const { graph, pageId } = setupGraph([
+      {
+        id: 'checkout',
+        kind: 'stripeCheckout',
+        endpoint: '/api/checkout',
+        includeAuthToken: true
+      }
+    ])
+    graph.updateNode(graph.rootId, {
+      lowcodeSupabaseConfig: {
+        url: 'https://example.supabase.co',
+        anonKey: 'anon-key'
+      }
+    })
+    const handler = firstStripeHandler(graph, pageId)
+    if (!handler) throw new Error('missing stripeCheckout handler')
+
+    const out = emitEventHandler([handler])
+    expect(out).toContain('await getSupabaseClient().auth.getSession()')
+    expect(out).toContain(
+      'const authHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}'
+    )
+    expect(out).toContain('headers: { "Content-Type": "application/json", ...authHeaders }')
+  })
+
+  test('includeAuthToken without Supabase config drops the handler with a warning', () => {
+    const { graph, pageId } = setupGraph([
+      {
+        id: 'checkout',
+        kind: 'stripeCheckout',
+        endpoint: '/api/checkout',
+        includeAuthToken: true
+      }
+    ])
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    if (!button || button.kind !== 'element') throw new Error('expected button element')
+
+    expect(button.events?.onClick).toBeUndefined()
+    expect(ir.warnings).toContainEqual(
+      expect.objectContaining({ code: 'action-stripe-checkout-auth-token-without-supabase' })
+    )
+  })
+
   test('missing endpoint drops the handler with a warning', () => {
     const { graph, pageId } = setupGraph([{ id: 'checkout', kind: 'stripeCheckout' }])
     const ir = collectTree(graph, pageId)

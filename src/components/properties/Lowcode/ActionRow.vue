@@ -781,6 +781,19 @@ function setArg(param: string, value: string): void {
         Calls your server endpoint. Put Stripe secret keys only on that server, never in this
         document.
       </p>
+      <label class="flex items-center gap-1 text-[11px] text-muted">
+        <input
+          type="checkbox"
+          :checked="action.includeAuthToken ?? false"
+          data-test-id="lowcode-action-stripe-auth-token"
+          @change="
+            patch({
+              includeAuthToken: ($event.target as HTMLInputElement).checked || undefined
+            })
+          "
+        />
+        Send Supabase bearer token
+      </label>
       <label v-if="(action.payloadEntries?.length ?? 0) > 0" class="text-[10px] text-muted">
         payload
       </label>

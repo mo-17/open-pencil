@@ -161,6 +161,9 @@ Author the action with:
   as `/api/${priceId}/checkout`.
 - **Payload entries** — JSON fields such as `priceId` or `quantity`; each value is a lowcode
   expression.
+- **Send Supabase bearer token** — optional. When enabled and the document has a valid Supabase
+  config, the generated app reads the current Supabase session and adds `Authorization: Bearer ...`
+  if the user is signed in. Leave it off for public or anonymous endpoints.
 - **Error target** — optional document state that receives request/response failures.
 
 Keep all Stripe secret keys, webhook signing secrets, idempotency, subscription lifecycle, portal
@@ -183,7 +186,8 @@ variables on the Edge Function, not in the lowcode document:
   Checkout prices.
 
 The template posts to Stripe's Checkout Sessions API and returns `{ url }`, which is the response
-shape the lowcode `stripeCheckout` action redirects to. If the request includes a Supabase bearer
+shape the lowcode `stripeCheckout` action redirects to. Enable **Send Supabase bearer token** on
+the checkout action to exercise the logged-in path: if the request includes a Supabase bearer
 token, the template verifies the user, creates or reuses a Stripe Customer, upserts
 `billing_customers`, and passes `customer` to Stripe Checkout. Anonymous demo calls still use
 `customer_email` only.
@@ -191,7 +195,8 @@ token, the template verifies the user, creates or reuses a Stripe Customer, upse
 For customer billing management, the demo folder includes a server-side portal template at
 `packages/demos/lowcode/supabase/functions/demo-customer-portal/index.ts`. A generated
 `stripeCustomerPortal` action can call that endpoint and redirect to the returned `{ url }` or
-`{ portalUrl }`. The template verifies the caller through Supabase Auth and reads
+`{ portalUrl }`. Enable **Send Supabase bearer token** for this action. The template verifies the
+caller through Supabase Auth and reads
 `billing_customers.stripe_customer_id` with `SUPABASE_SERVICE_ROLE_KEY`; production endpoints must
 keep that service role key server-side and must not trust a browser-sent customer id.
 

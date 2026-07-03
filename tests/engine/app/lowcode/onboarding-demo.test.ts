@@ -63,6 +63,7 @@ describe('lowcode onboarding demo fixture', () => {
     expect(checkoutButton?.events?.onClick?.[0]).toMatchObject({
       kind: 'stripeCheckout',
       endpoint: '/api/demo-checkout',
+      includeAuthToken: true,
       errorTarget: 'checkoutError'
     })
     const portalButton = [...graph.getAllNodes()].find(
@@ -71,6 +72,7 @@ describe('lowcode onboarding demo fixture', () => {
     expect(portalButton?.events?.onClick?.[0]).toMatchObject({
       kind: 'stripeCustomerPortal',
       endpoint: '/api/demo-customer-portal',
+      includeAuthToken: true,
       errorTarget: 'portalError'
     })
   })
@@ -95,11 +97,13 @@ describe('lowcode onboarding demo fixture', () => {
     expect(checkoutButton?.events?.onClick?.[0]).toMatchObject({
       kind: 'stripeCheckout',
       endpoint: '/api/demo-checkout',
+      includeAuthToken: true,
       errorTarget: 'checkoutError'
     })
     expect(portalButton?.events?.onClick?.[0]).toMatchObject({
       kind: 'stripeCustomerPortal',
       endpoint: '/api/demo-customer-portal',
+      includeAuthToken: true,
       errorTarget: 'portalError'
     })
     const out = compile({
@@ -133,6 +137,8 @@ describe('lowcode onboarding demo fixture', () => {
     expect(app).toContain('getSupabaseClient().from("leads").insert')
     expect(app).toContain('validateValue')
     expect(app).toContain('fetch("/api/demo-checkout"')
+    expect(app).toContain('await getSupabaseClient().auth.getSession()')
+    expect(app).toContain('Authorization: `Bearer ${session.access_token}`')
     expect(app).toContain('window.location.assign(nextUrl.toString())')
     expect(app).toContain('fetch("/api/demo-customer-portal"')
     expect(app).toContain('const portalUrl = data?.url ?? data?.portalUrl')

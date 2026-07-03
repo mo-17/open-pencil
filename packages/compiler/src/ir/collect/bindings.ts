@@ -1152,6 +1152,14 @@ function resolveStripeRedirect(
     })
     return null
   }
+  if (action.includeAuthToken === true && !docStates.has('$currentUser')) {
+    warnings.push({
+      code: `${code}-auth-token-without-supabase`,
+      message: `node ${node.id} ${eventName} ${kind} includeAuthToken requires a valid document Supabase config`,
+      nodeId: node.id
+    })
+    return null
+  }
   const payloadEntries = resolveStripeRedirectPayloadEntries(
     node,
     eventName,
@@ -1182,6 +1190,7 @@ function resolveStripeRedirect(
     kind,
     endpoint: endpoint.ast,
     ...(payloadEntries.length > 0 ? { payloadEntries } : {}),
+    ...(action.includeAuthToken === true ? { includeAuthToken: true } : {}),
     errorTarget
   } as IRStripeRedirectHandler
 }

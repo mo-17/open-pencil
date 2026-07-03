@@ -218,6 +218,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
           { key: 'priceId', valueExpr: 'priceId' },
           { key: 'quantity', valueExpr: 'qty' }
         ],
+        includeAuthToken: true,
         errorTarget: 'checkoutError'
       }
     ]
@@ -249,6 +250,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
         kind: 'stripeCustomerPortal',
         endpoint: '/api/customer-portal',
         payloadEntries: [{ key: 'customerId', valueExpr: 'customerId' }],
+        includeAuthToken: true,
         errorTarget: 'portalError'
       }
     ]

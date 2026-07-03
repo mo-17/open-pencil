@@ -202,9 +202,20 @@ function emitStripeRedirect(
     : '{}'
   const errorWrite = h.errorTarget ? `setDocState(${JSON.stringify(h.errorTarget)}, err); ` : ''
   const urlLocal = namedUrlKey
+  const authSession = h.includeAuthToken
+    ? 'const { data: { session } } = await getSupabaseClient().auth.getSession(); '
+    : ''
+  const authHeaders = h.includeAuthToken
+    ? 'const authHeaders = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}; '
+    : ''
+  const headers = h.includeAuthToken
+    ? `{ "Content-Type": "application/json", ...authHeaders }`
+    : '{ "Content-Type": "application/json" }'
   return (
     `try { ` +
-    `const res = await fetch(${endpoint}, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(${payload}) }); ` +
+    authSession +
+    authHeaders +
+    `const res = await fetch(${endpoint}, { method: "POST", headers: ${headers}, body: JSON.stringify(${payload}) }); ` +
     `const data = await res.json(); ` +
     `if (!res.ok) throw data; ` +
     `const ${urlLocal} = data?.url ?? data?.${namedUrlKey}; ` +

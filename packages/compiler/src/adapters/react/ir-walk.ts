@@ -180,7 +180,11 @@ export function pageUsesSupabase(ir: IRTree): boolean {
     treeHasHandler(
       c,
       (h) =>
-        h.kind === 'supabaseQuery' || h.kind === 'supabaseMutation' || h.kind === 'supabaseAuth'
+        h.kind === 'supabaseQuery' ||
+        h.kind === 'supabaseMutation' ||
+        h.kind === 'supabaseAuth' ||
+        ((h.kind === 'stripeCheckout' || h.kind === 'stripeCustomerPortal') &&
+          h.includeAuthToken === true)
     )
   )
 }

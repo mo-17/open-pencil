@@ -1100,6 +1100,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
                   { key: 'priceId', valueExpr: 'priceId' },
                   { key: 'quantity', valueExpr: 'qty' }
                 ],
+                includeAuthToken: true,
                 errorTarget: 'checkoutError'
               }
             ]
@@ -1119,6 +1120,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
         { key: 'priceId', valueExpr: 'priceId' },
         { key: 'quantity', valueExpr: 'qty' }
       ],
+      includeAuthToken: true,
       errorTarget: 'checkoutError'
     })
   })
@@ -1139,6 +1141,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
                 kind: 'stripeCustomerPortal',
                 endpoint: '/api/customer-portal',
                 payloadEntries: [{ key: 'customerId', valueExpr: 'customerId' }],
+                includeAuthToken: true,
                 errorTarget: 'checkoutError'
               }
             ]
@@ -1155,6 +1158,7 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
       kind: 'stripeCustomerPortal',
       endpoint: '/api/customer-portal',
       payloadEntries: [{ key: 'customerId', valueExpr: 'customerId' }],
+      includeAuthToken: true,
       errorTarget: 'checkoutError'
     })
   })

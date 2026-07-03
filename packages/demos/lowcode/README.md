@@ -24,15 +24,17 @@ server-side Supabase Edge Function example lives at
 `supabase/functions/demo-checkout/index.ts`. Configure Stripe secrets only in that function's
 environment variables; do not copy them into `.fig` files or generated SPA source. When the
 generated app sends a Supabase bearer token, the template verifies the user, creates or reuses a
-Stripe Customer, upserts `billing_customers`, and passes `customer` to Checkout. Anonymous demo
-calls still fall back to `customer_email`. Set `STRIPE_CHECKOUT_MODE=payment` for one-time prices;
-the template defaults to `subscription` to match the webhook and portal examples.
+Stripe Customer, upserts `billing_customers`, and passes `customer` to Checkout. The checked-in
+demo action enables the bearer-token option; if no Supabase session exists, calls still fall back
+to `customer_email`. Set `STRIPE_CHECKOUT_MODE=payment` for one-time prices; the template defaults
+to `subscription` to match the webhook and portal examples.
 
 The Stripe customer portal example lives at
 `supabase/functions/demo-customer-portal/index.ts`. Point a `stripeCustomerPortal` action at it
 when you need a server-created billing portal session. It verifies the caller through Supabase
 Auth and reads `billing_customers.stripe_customer_id` with a server-side service role key instead
-of trusting a browser-sent `customerId`.
+of trusting a browser-sent `customerId`. The checked-in demo portal action enables the bearer-token
+option because this endpoint is authenticated.
 
 The minimal Supabase billing schema example lives at `supabase/schema/billing.sql`. It creates
 `billing_customers`, `billing_subscriptions`, `billing_entitlements`, `billing_invoices`,

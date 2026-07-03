@@ -576,6 +576,9 @@ function validateStripeRedirectAction(
   if (!endpoint.ok) return failAt(where, `.endpoint — ${endpoint.reason}`)
   const entries = validateSupabasePayloadEntries(where, value.payloadEntries)
   if (!entries.ok) return entries
+  if (value.includeAuthToken !== undefined && typeof value.includeAuthToken !== 'boolean') {
+    return failAt(where, '.includeAuthToken must be a boolean')
+  }
   if (value.errorTarget !== undefined && typeof value.errorTarget !== 'string') {
     return failAt(where, '.errorTarget must be a string')
   }
@@ -826,6 +829,7 @@ function buildActionFromValidated(
         kind,
         endpoint: raw.endpoint as string | undefined,
         payloadEntries: raw.payloadEntries as SupabasePayloadEntry[] | undefined,
+        includeAuthToken: raw.includeAuthToken as boolean | undefined,
         errorTarget: raw.errorTarget as string | undefined
       }
     case 'callWorkflow':

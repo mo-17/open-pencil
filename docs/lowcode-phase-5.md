@@ -2053,6 +2053,42 @@ event + subscription upsert 事务。
 - 不自动创建 orders、invoices 或 payments 表。
 - 不把 service role key、Stripe secret 或 Stripe customer id 写入 `.fig` / generated SPA。
 
+### 12.10.1 2026-07-03 第八刀补充:Stripe paid action Supabase bearer token
+
+本刀补齐 generated SPA 到 authenticated billing Edge Function 的前端半闭环。此前 checkout
+template 已支持 `Authorization: Bearer ...` 登录路径,customer portal template 也要求 bearer
+token,但 `stripeCheckout` / `stripeCustomerPortal` action 只会 POST JSON,无法从生成 app 直接跑通
+authenticated customer mapping / portal lookup。
+
+已完成:
+
+- `StripeCheckoutAction` / `StripeCustomerPortalAction` 新增 `includeAuthToken?: boolean`。
+- Compiler IR collect:
+  - 字段为 `true` 时进入 IR handler。
+  - 若文档没有有效 Supabase config,drop handler 并给出 action-specific
+    `*-auth-token-without-supabase` warning,避免生成缺失 `_lowcode_supabase.ts` 的代码。
+- React emit:
+  - `includeAuthToken:true` 时调用 `getSupabaseClient().auth.getSession()`。
+  - 有 `session.access_token` 时把 `Authorization: Bearer ...` 合并进 Stripe action POST
+    headers。
+  - 无 session 时仍只发 JSON headers,让 demo checkout 的匿名 `customer_email` fallback 继续可用。
+- GUI:
+  - Stripe checkout / customer portal action row 新增 `Send Supabase bearer token` checkbox。
+- Onboarding demo:
+  - `Start checkout` 和 `Open billing portal` action 均开启 `includeAuthToken:true`。
+- 测试:
+  - `tests/engine/compiler/stripe-checkout.test.ts`
+  - `tests/engine/compiler/stripe-customer-portal.test.ts`
+  - `tests/engine/tools/lowcode/modify.test.ts`
+  - `tests/engine/kiwi/lowcode/roundtrip.test.ts`
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts`
+
+明确不做:
+
+- 不把 service role key、Stripe secret、customer id 或 Supabase session 内容写入 `.fig`。
+- 不要求用户必须登录才能 checkout;是否要求认证仍由作者 server endpoint 决定。
+- 不自动部署 Supabase Edge Function 或 apply billing schema。
+
 ### 12.11 2026-07-01 第九刀:Billing entitlement read model template
 
 本刀补一个 generated app 可直接查询的最小 entitlement read model,让付费闭环从

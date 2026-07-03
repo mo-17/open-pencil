@@ -1150,24 +1150,31 @@ export interface TrackEventAction {
 /** Phase 5 §12: start a Stripe Checkout flow through the app author's own
  * server endpoint. The generated SPA never receives a Stripe secret key; it
  * POSTs optional expression-valued payload fields to `endpoint` and redirects
- * to the returned `{ url }` / `{ checkoutUrl }`. */
+ * to the returned `{ url }` / `{ checkoutUrl }`. When `includeAuthToken` is
+ * true, generated apps attach the current Supabase session bearer token if one
+ * exists so server templates can map the authenticated user to a Stripe
+ * customer. */
 export interface StripeCheckoutAction {
   id: string
   kind: 'stripeCheckout'
   endpoint?: string
   payloadEntries?: SupabasePayloadEntry[]
+  includeAuthToken?: boolean
   errorTarget?: string
 }
 
 /** Phase 5 §12: open a Stripe Customer Portal session through the app author's
  * own server endpoint. Mirrors `StripeCheckoutAction` but expects a returned
  * `{ url }` / `{ portalUrl }` that sends the current customer to billing
- * management. Secret keys and customer lookup stay server-side. */
+ * management. `includeAuthToken` mirrors checkout and is usually enabled for
+ * portal endpoints, because customer lookup must stay server-side. Secret keys
+ * and customer lookup stay server-side. */
 export interface StripeCustomerPortalAction {
   id: string
   kind: 'stripeCustomerPortal'
   endpoint?: string
   payloadEntries?: SupabasePayloadEntry[]
+  includeAuthToken?: boolean
   errorTarget?: string
 }
 

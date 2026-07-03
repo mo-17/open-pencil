@@ -321,6 +321,7 @@ function buildAnalyticsPanel(graph: SceneGraph, parentId: string): void {
       kind: 'stripeCustomerPortal',
       endpoint: '/api/demo-customer-portal',
       payloadEntries: [{ key: 'returnPath', valueExpr: '"/account"' }],
+      includeAuthToken: true,
       errorTarget: 'portalError'
     },
     {
@@ -355,6 +356,7 @@ function buildCheckoutPanel(graph: SceneGraph, parentId: string): void {
         { key: 'plan', valueExpr: 'plan' },
         { key: 'email', valueExpr: 'email' }
       ],
+      includeAuthToken: true,
       errorTarget: 'checkoutError'
     },
     {

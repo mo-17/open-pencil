@@ -862,11 +862,14 @@ export type IRTrackEventProperty = IRSupabasePayloadEntry
 /** Phase 5 §12: POST to an author-owned checkout endpoint and redirect to the
  * returned Stripe Checkout URL. Payload entries reuse the safe expression-key
  * shape from Supabase mutations; no Stripe secret ever appears in generated
- * client code. */
+ * client code. `includeAuthToken` lets generated apps attach the current
+ * Supabase bearer token to author-owned endpoints when a valid Supabase config
+ * exists on the document. */
 export interface IRStripeCheckoutHandler {
   kind: 'stripeCheckout'
   endpoint: ExprAst
   payloadEntries?: IRSupabasePayloadEntry[]
+  includeAuthToken?: boolean
   errorTarget?: string
 }
 
@@ -877,6 +880,7 @@ export interface IRStripeCustomerPortalHandler {
   kind: 'stripeCustomerPortal'
   endpoint: ExprAst
   payloadEntries?: IRSupabasePayloadEntry[]
+  includeAuthToken?: boolean
   errorTarget?: string
 }
 

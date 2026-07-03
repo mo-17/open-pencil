@@ -148,6 +148,8 @@
 - Add Stripe customer portal lowcode actions that POST JSON to an author-owned endpoint and redirect to a returned billing portal URL.
 - Add a Supabase Edge Function customer portal template and onboarding demo button for server-created Stripe billing portal sessions.
 - Wire the customer portal template to Supabase Auth and server-side `billing_customers` lookup instead of trusting browser-provided customer ids.
+- Let Stripe checkout and customer portal actions optionally attach the current Supabase bearer
+  token so generated apps can call authenticated billing endpoints.
 - Require generated Stripe checkout and customer portal redirects to resolve to http(s) URLs.
 - Require demo Stripe Edge Function `PUBLIC_SITE_URL` values to resolve to http(s) origins before building Checkout and Customer Portal return URLs.
 - Require demo Stripe Edge Function `SUPABASE_URL` values to resolve to http(s) origins before calling Supabase Auth, REST, or RPC endpoints.
