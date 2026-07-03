@@ -209,4 +209,20 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     expect(html).not.toContain('alert(')
     expect(css.trim().endsWith('body { scroll-behavior: smooth; }')).toBe(true)
   })
+
+  test('skips unsafe custom head link href protocols at emit time', () => {
+    const { html } = compileIndexHtml({
+      metadata: {
+        head: {
+          link: [
+            { rel: 'stylesheet', href: `java${'script'}:alert(1)` },
+            { rel: 'preconnect', href: 'https://cdn.example.com' }
+          ]
+        }
+      }
+    })
+
+    expect(html).not.toContain('alert(1)')
+    expect(html).toContain('<link rel="preconnect" href="https://cdn.example.com" />')
+  })
 })

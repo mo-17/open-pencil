@@ -185,7 +185,7 @@ function customHeadTags(metadata: HtmlMetadata): string[] {
   for (const link of head.link ?? []) {
     const rel = cleanMetadataText(link.rel)
     const href = cleanMetadataText(link.href)
-    if (!rel || !href) continue
+    if (!rel || !href || !isSafeHeadLinkHref(href)) continue
     const attrs = [
       ['rel', rel],
       ['href', href],
@@ -211,6 +211,12 @@ function cleanMetadataText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
   const trimmed = value.trim()
   return trimmed === '' ? undefined : trimmed
+}
+
+function isSafeHeadLinkHref(value: string): boolean {
+  if (/^(?:https?|mailto|tel):/i.test(value)) return true
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false
+  return true
 }
 
 /** Phase 3 §9: when `i18n` is true, wrap `<App/>` in the `<I18nProvider>` the

@@ -62,6 +62,22 @@ describe('lowcode custom code panel state', () => {
     })
   })
 
+  test('drops unsafe custom head link href protocols from panel patches', () => {
+    const patch = buildCustomCodePatch({
+      meta: [],
+      link: [
+        { rel: 'stylesheet', href: `java${'script'}:alert(1)` },
+        { rel: 'preconnect', href: 'https://cdn.example.com' }
+      ],
+      stylesText: '',
+      customCss: ''
+    })
+
+    expect(patch.lowcodeHeadMetadata?.link).toEqual([
+      { rel: 'preconnect', href: 'https://cdn.example.com' }
+    ])
+  })
+
   test('flags partially filled rows so the panel can keep them as local draft', () => {
     expect(
       hasIncompleteCustomCodeRows({

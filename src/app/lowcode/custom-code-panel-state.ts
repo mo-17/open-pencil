@@ -62,7 +62,7 @@ export function buildCustomCodePatch(draft: CustomCodeDraft): CustomCodePatch {
 
   const link = draft.link
     .map((entry) => compactHeadLink(entry))
-    .filter((entry) => entry.rel && entry.href)
+    .filter((entry) => entry.rel && isSafeHeadLinkHref(entry.href))
 
   const styles = draft.stylesText
     .split(/\n{2,}/)
@@ -160,6 +160,14 @@ function compactHeadLink(entry: LowcodeHeadLink): LowcodeHeadLink {
 
 function isExternalUrl(value: string): boolean {
   return /^https?:\/\//i.test(value) || value.startsWith('//')
+}
+
+function isSafeHeadLinkHref(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (/^(?:https?|mailto|tel):/i.test(trimmed)) return true
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return false
+  return true
 }
 
 function cspDirectiveForLink(link: LowcodeHeadLink): string {

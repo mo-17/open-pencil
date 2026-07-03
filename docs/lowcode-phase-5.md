@@ -1453,12 +1453,29 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
   - `tests/engine/app/lowcode/custom-code-panel.test.ts` 覆盖 inline style、external
     stylesheet、preload font、custom CSS 外部资源和本地资源静默。
 
+**2026-07-03 第五刀已完成**:
+
+- Custom Head/CSS 的 `link.href` 现在有协议 guard:
+  - GUI patch helper 会丢弃 `javascript:` / `data:` / `vbscript:` 等显式非白名单
+    scheme 的 link 行。
+  - `update_lowcode_node` 会拒绝危险 `lowcodeHeadMetadata.link[].href`,避免 AI / MCP
+    写入路径绕过 GUI。
+  - compiler `index.html` emit 端也会跳过危险 link href,覆盖旧文档或直接
+    `CompilerOptions.metadata` 输入。
+- 允许 `http:` / `https:` / `mailto:` / `tel:`、相对路径、root-relative path、fragment
+  和协议相对资源;暂不开放 script link 语义或 raw JS。
+- 覆盖:
+  - `tests/engine/app/lowcode/custom-code-panel.test.ts` 覆盖 GUI helper 过滤危险 link。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝危险 link href。
+  - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler 输出端跳过危险 link。
+
 ### 11.4 后续
 
 - CSP/deploy ACK:按 `docs/lowcode-gui-ack-test.md` 的 provider matrix 验证 Netlify /
   Vercel / Cloudflare Pages 对自定义 stylesheet / preload / inline style 的默认策略。
 - 安全策略:继续暂缓 inline JS / external JS,直到有审计 UI、preview sandbox 策略、provider
-  header 文档和更严格的脚本来源治理。
+  header 文档和更严格的脚本来源治理;即使后续开放,也应复用当前 link href 协议 guard 的
+  allowlist 思路。
 
 ---
 

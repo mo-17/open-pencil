@@ -1603,6 +1603,9 @@ function parseHeadLinkEntries(
     if (typeof entry.href !== 'string' || entry.href.trim() === '') {
       return fail(`${what}[${index}].href must be a non-empty string`)
     }
+    if (!isSafeHeadLinkHref(entry.href)) {
+      return fail(`${what}[${index}].href must be http(s), mailto, tel, or relative`)
+    }
     if (entry.crossorigin !== undefined && !HEAD_LINK_CROSSORIGIN.has(String(entry.crossorigin))) {
       return fail(`${what}[${index}].crossorigin must be anonymous / use-credentials`)
     }
@@ -1625,6 +1628,14 @@ function parseHeadLinkEntries(
     out.push(link)
   }
   return { ok: true, entries: out }
+}
+
+function isSafeHeadLinkHref(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+  if (/^(?:https?|mailto|tel):/i.test(trimmed)) return true
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return false
+  return true
 }
 
 function applyHeadMetadataField(

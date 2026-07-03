@@ -136,6 +136,8 @@
 - Add root-level lowcode Custom Head/CSS authoring controls for structured meta/link/style tags and app CSS.
 - Add Custom Head/CSS CSP and deploy-provider ACK guidance for Netlify, Vercel, and Cloudflare Pages.
 - Add Custom Head/CSS pre-deploy CSP risk hints for inline styles, external stylesheet/preload links, and external CSS resources.
+- Guard Custom Head/CSS link `href` protocols in the editor, AI ToolDef, and generated
+  `index.html` output.
 - Add a generated lowcode onboarding demo fixture covering Supabase, validation, workflows, Stripe checkout, analytics hooks, i18n, shadcn/ui, and custom head/CSS without real external credentials.
 - Add Stripe checkout lowcode actions that POST JSON to an author-owned endpoint and redirect to a returned checkout URL without storing Stripe secrets in documents or generated apps.
 - Add a Supabase Edge Function checkout template for the lowcode onboarding demo that reads Stripe keys from server-side environment variables only.
