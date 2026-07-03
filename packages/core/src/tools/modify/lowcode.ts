@@ -1543,15 +1543,27 @@ function parseHeadMetadata(
   }
   if (raw.styles !== undefined) {
     if (!Array.isArray(raw.styles)) return fail(`${what}.styles must be an array`)
-    const styles: string[] = []
-    raw.styles.forEach((entry, index) => {
-      if (typeof entry === 'string' && entry.trim() !== '') styles.push(entry.trim())
-      else if (typeof entry !== 'string')
-        throw new Error(`${what}.styles[${index}] must be a string`)
-    })
-    if (styles.length > 0) metadata.styles = styles
+    const styles = parseHeadStyleEntries(raw.styles, `${what}.styles`)
+    if (!styles.ok) return styles
+    if (styles.entries.length > 0) metadata.styles = styles.entries
   }
   return { ok: true, metadata }
+}
+
+function parseHeadStyleEntries(
+  entries: unknown[],
+  what: string
+): { ok: true; entries: string[] } | { ok: false; error: string } {
+  const styles: string[] = []
+  for (const [index, entry] of entries.entries()) {
+    if (typeof entry !== 'string') return fail(`${what}[${index}] must be a string`)
+    const style = entry.trim()
+    if (!style) continue
+    const result = validateLowcodeCustomCss(style)
+    if (!result.ok) return fail(`${what}[${index}] ${result.reason ?? 'is unsafe'}`)
+    styles.push(style)
+  }
+  return { ok: true, entries: styles }
 }
 
 function parseHeadMetaEntries(

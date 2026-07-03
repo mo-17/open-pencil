@@ -281,6 +281,22 @@ describe('update_lowcode_node', () => {
     expect(graph.getNode(graph.rootId)?.lowcodeHeadMetadata).toBeUndefined()
   })
 
+  test('rejects unsafe lowcodeHeadMetadata style URL protocols', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeHeadMetadata: {
+          styles: [`.hero { background-image: url(${`java${'script'}:alert(1)`}); }`]
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('styles')
+    expect(graph.getNode(graph.rootId)?.lowcodeHeadMetadata).toBeUndefined()
+  })
+
   test('rejects unsafe lowcodeCustomCss URL protocols', () => {
     const { figma, graph } = setupToolTest()
     const result = getTool('update_lowcode_node').execute(figma, {

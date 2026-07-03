@@ -93,6 +93,20 @@ describe('lowcode custom code panel state', () => {
     expect(patch.lowcodeCustomCss).toBeUndefined()
   })
 
+  test('drops unsafe head style URL protocols from panel patches', () => {
+    const draft = {
+      meta: [],
+      link: [],
+      stylesText: `.hero { background-image: url(${`java${'script'}:alert(1)`}); }`,
+      customCss: '.safe { color: CanvasText; }'
+    }
+    const patch = buildCustomCodePatch(draft)
+
+    expect(hasUnsafeCustomCodeUrls(draft)).toBe(true)
+    expect(patch.lowcodeHeadMetadata).toBeUndefined()
+    expect(patch.lowcodeCustomCss).toBe('.safe { color: CanvasText; }')
+  })
+
   test('flags partially filled rows so the panel can keep them as local draft', () => {
     expect(
       hasIncompleteCustomCodeRows({
@@ -164,6 +178,19 @@ describe('lowcode custom code panel state', () => {
       'custom-css-unsafe-url:data:image/svg+xml,<svg></svg>'
     ])
     expect(risks[0]?.title).toContain('will not be persisted')
+  })
+
+  test('reports unsafe head style URL protocols before persistence', () => {
+    const risks = analyzeCustomCodeCspRisks({
+      meta: [],
+      link: [],
+      stylesText: `.hero { background-image: url("${`data${':'}image/svg+xml,<svg></svg>`}"); }`,
+      customCss: ''
+    })
+
+    expect(risks.map((risk) => risk.id)).toContain(
+      'head-style-unsafe-url:data:image/svg+xml,<svg></svg>'
+    )
   })
 
   test('keeps local-only custom resources quiet', () => {

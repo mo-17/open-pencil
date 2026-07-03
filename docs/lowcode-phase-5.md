@@ -1524,6 +1524,21 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
   - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝危险 custom CSS。
   - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler 跳过危险 persisted custom CSS。
 
+**2026-07-03 第七刀已完成**:
+
+- Custom Head `<style>` snippets 的 `@import` / `url(...)` 现在复用 Custom CSS 协议 guard:
+  - GUI patch helper 会丢弃危险 head style snippets,面板提交前也会阻断,保留本地草稿和风险提示。
+  - `update_lowcode_node` 会拒绝危险 `lowcodeHeadMetadata.styles`,避免 AI / MCP 写入路径绕过 GUI。
+  - compiler 会跳过旧文档或导入数据里的危险 persisted head styles,避免写入 generated
+    `index.html`。
+- 与 app-level custom CSS 保持同一白名单:允许 `http:` / `https:`、协议相对资源、相对路径、
+  root-relative path 和 fragment;暂不把 `data:` URL 纳入 head style 白名单。
+- 覆盖:
+  - `tests/engine/app/lowcode/custom-code-panel.test.ts` 覆盖 GUI helper 过滤危险 head style URL
+    和风险提示。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝危险 head style URL。
+  - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler 跳过危险 head style URL。
+
 ### 11.4 后续
 
 - CSP/deploy ACK:按 `docs/lowcode-gui-ack-test.md` 的 provider matrix 验证 Netlify /

@@ -226,6 +226,21 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     expect(html).toContain('<link rel="preconnect" href="https://cdn.example.com" />')
   })
 
+  test('skips unsafe custom head style URLs at emit time', () => {
+    const unsafeStyle = `.hero { background-image: url(${['java', 'script:alert(1)'].join('')}); }`
+    const { html } = compileIndexHtml({
+      metadata: {
+        head: {
+          styles: [unsafeStyle, ':root { color-scheme: light; }']
+        }
+      }
+    })
+
+    expect(html).not.toContain(unsafeStyle)
+    expect(html).not.toContain('alert(1)')
+    expect(html).toContain('<style>:root { color-scheme: light; }</style>')
+  })
+
   test('skips unsafe canonical URLs at emit time', () => {
     const unsafeCanonicalUrl = ['java', 'script:alert(1)'].join('')
     const { html } = compileIndexHtml({

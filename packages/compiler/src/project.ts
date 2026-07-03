@@ -1,3 +1,5 @@
+import { validateLowcodeCustomCss } from '@open-pencil/core/lowcode-validation'
+
 import type { CompilerOptions, HtmlMetadata, LowcodeThemeSwitchPosition } from './types'
 
 const REACT_DEP_VERSIONS = {
@@ -200,7 +202,9 @@ function customHeadTags(metadata: HtmlMetadata): string[] {
   }
   for (const style of head.styles ?? []) {
     const css = style.trim()
-    if (css) lines.push(`    <style>${escapeStyleText(css)}</style>`)
+    if (css && validateLowcodeCustomCss(css).ok) {
+      lines.push(`    <style>${escapeStyleText(css)}</style>`)
+    }
   }
   return lines
 }

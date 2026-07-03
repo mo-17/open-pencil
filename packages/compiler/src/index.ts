@@ -206,7 +206,9 @@ function compactHeadMetadata(
       ...(entry.crossorigin ? { crossorigin: entry.crossorigin } : {})
     }))
     .filter((entry) => entry.rel && entry.href)
-  const styles = value.styles?.map((style) => style.trim()).filter(Boolean)
+  const styles = value.styles
+    ?.map((style) => style.trim())
+    .filter((style) => style && validateLowcodeCustomCss(style).ok)
   const out: LowcodeHeadMetadata = {}
   if (meta?.length) out.meta = meta
   if (link?.length) out.link = link

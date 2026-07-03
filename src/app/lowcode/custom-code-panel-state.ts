@@ -71,7 +71,7 @@ export function buildCustomCodePatch(draft: CustomCodeDraft): CustomCodePatch {
   const styles = draft.stylesText
     .split(/\n{2,}/)
     .map((style) => style.trim())
-    .filter(Boolean)
+    .filter((style) => style && validateLowcodeCustomCss(style).ok)
 
   const head: LowcodeHeadMetadata = {}
   if (meta.length > 0) head.meta = meta
@@ -101,7 +101,7 @@ export function hasIncompleteCustomCodeRows(draft: CustomCodeDraft): boolean {
 }
 
 export function hasUnsafeCustomCodeUrls(draft: CustomCodeDraft): boolean {
-  return unsafeLowcodeCustomCssUrls(draft.customCss).length > 0
+  return unsafeLowcodeCustomCssUrls(`${draft.stylesText}\n${draft.customCss}`).length > 0
 }
 
 export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCspRisk[] {
@@ -114,6 +114,13 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       title: 'Inline head styles may require CSP allowance',
       detail:
         'Hosts with strict CSP must allow inline styles by nonce/hash or style-src unsafe-inline.'
+    })
+  }
+  for (const url of unsafeLowcodeCustomCssUrls(styles)) {
+    risks.push({
+      id: `head-style-unsafe-url:${url}`,
+      title: 'Head style URL protocol will not be persisted',
+      detail: `${url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.`
     })
   }
 
