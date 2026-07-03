@@ -314,6 +314,9 @@ Phase 4 已经能把编译产物部署到 Netlify / Vercel / Cloudflare Pages,�
   emit description/OG/canonical。**
 - 无 metadata 时输出 byte-stable 或最小漂移。**2026-06-25 已保持默认
   `buildIndexHtml()` 输出不插入额外 tags。**
+- 旧文档 / 导入数据中的 canonical URL 不应把危险 scheme 写进 generated HTML。**2026-07-03
+  已在 compiler `buildMetadataTags()` 输出端过滤 canonical URL,只保留 `http(s)` 或
+  root-relative path,并由 `tests/engine/compiler/seo-metadata.test.ts` 覆盖。**
 
 ---
 

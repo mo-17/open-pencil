@@ -150,7 +150,9 @@ function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
   const title = cleanMetadataText(metadata.title)
   const description = cleanMetadataText(metadata.description)
   const image = cleanMetadataText(metadata.image)
-  const canonicalUrl = cleanMetadataText(metadata.canonicalUrl)
+  const rawCanonicalUrl = cleanMetadataText(metadata.canonicalUrl)
+  const canonicalUrl =
+    rawCanonicalUrl && isSafeCanonicalUrl(rawCanonicalUrl) ? rawCanonicalUrl : undefined
   const lines: string[] = []
   if (description) {
     lines.push(metaTag('name', 'description', description))
@@ -217,6 +219,12 @@ function isSafeHeadLinkHref(value: string): boolean {
   if (/^(?:https?|mailto|tel):/i.test(value)) return true
   if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false
   return true
+}
+
+function isSafeCanonicalUrl(value: string): boolean {
+  if (/^https?:/i.test(value)) return true
+  if (value.startsWith('/')) return !value.startsWith('//')
+  return false
 }
 
 /** Phase 3 §9: when `i18n` is true, wrap `<App/>` in the `<I18nProvider>` the

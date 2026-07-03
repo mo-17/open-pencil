@@ -5,6 +5,7 @@
 ### Changed
 
 - Add compiler support for persisted static lowcode SEO metadata in generated `index.html`, including title, description, Open Graph image, canonical URL fields, `.fig` / `.pen` import coverage, and AI ToolDef read/write support.
+- Drop unsafe generated lowcode canonical URLs when compiling imported or stale metadata.
 - Add lowcode deploy lifecycle labels for preview, staging, and production, plus local deploy history and provider dashboard rollback links.
 - Let lowcode deploy history restore provider, environment, site, UI kit, and i18n fields for a guarded redeploy/rollback draft.
 - Store lowcode deploy artifact labels and structured build option snapshots in local deploy history.

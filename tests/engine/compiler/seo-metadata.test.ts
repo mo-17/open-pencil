@@ -225,4 +225,19 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     expect(html).not.toContain('alert(1)')
     expect(html).toContain('<link rel="preconnect" href="https://cdn.example.com" />')
   })
+
+  test('skips unsafe canonical URLs at emit time', () => {
+    const unsafeCanonicalUrl = ['java', 'script:alert(1)'].join('')
+    const { html } = compileIndexHtml({
+      metadata: {
+        title: 'Launch Page',
+        canonicalUrl: unsafeCanonicalUrl
+      }
+    })
+
+    expect(html).toContain('<title>Launch Page</title>')
+    expect(html).not.toContain(unsafeCanonicalUrl)
+    expect(html).not.toContain('rel="canonical"')
+    expect(html).not.toContain('property="og:url"')
+  })
 })
