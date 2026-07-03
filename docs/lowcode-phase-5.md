@@ -4016,6 +4016,45 @@ highlight 滚入最近可见区域。
 - 不改变普通 Enter / Ctrl-Cmd+Enter 的既有语义。
 - 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
 
+### 13.40 2026-07-03 第四十刀:Workflow graph call argument diagnostics
+
+本刀继续保持 workflow graph 为只读诊断视图,补上 `callWorkflow` 参数合同问题。此前图上能看到
+workflow call edge,但如果 call 缺少必填参数、传了多余参数或参数表达式无法解析,边仍会显示为
+正常调用;实际 compiler collect 会 warning/drop 或 warning,作者需要展开 action row 才能发现。
+
+本刀已完成:
+
+- `src/app/lowcode/workflow-graph.ts`:
+  - `WorkflowGraphIssue.type` 新增 `call-args`。
+  - `analyzeWorkflowGraph()` 在收集 `callWorkflow` 边时同步检查目标 workflow 的 `params` /
+    `paramDefaults` / `optionalParams`。
+  - 报告:
+    - 多余 args:`extra "name"`。
+    - 缺少必填 args:`missing "name"`。
+    - 无法解析的 arg expression:`invalid "name"`。
+  - `targetWorkflowId` 指向发起调用的 source workflow,方便 graph issue jump 回到可修复位置。
+- `WorkflowsPanel.vue`:
+  - map issue badge 显示 `Args`。
+  - issue summary 会把 `call-args` 计入 `arg issue`。
+- `tests/engine/app/lowcode/workflow-graph.test.ts`:
+  - 覆盖 extra / missing / invalid arg 三类诊断。
+  - 断言 source workflow node 会挂载这些 issue。
+
+已验证:
+
+- `git diff --check`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts`
+- `bun test tests/engine/app/lowcode/workflow-graph.test.ts tests/engine/app/lowcode/onboarding-demo.test.ts`
+- `bunx tsgo --noEmit`
+- `bun run check:vue`
+- `bun run lint:structure` (仅既有 19 个 max-lines warnings,0 errors)
+
+明确不做:
+
+- 不改变 compiler 的 `callWorkflow` inline / warning / drop 行为。
+- 不做跨页面 page-state/docState 作用域解析;graph 只做参数合同和表达式 parse 级诊断。
+- 不新增 workflow graph 拖拽排序、拖拽连线或 action reparent。
+
 ---
 
 ## 14. Mobile / Native Export Strategy

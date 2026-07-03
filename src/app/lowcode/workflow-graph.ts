@@ -1,4 +1,5 @@
 import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
+import { validateExpression } from '@open-pencil/core/lowcode-validation'
 
 export interface WorkflowGraphEdge {
   fromId: string
@@ -11,7 +12,7 @@ export interface WorkflowGraphEdge {
 }
 
 export interface WorkflowGraphIssue {
-  type: 'missing-workflow' | 'cycle'
+  type: 'missing-workflow' | 'cycle' | 'call-args'
   message: string
   workflowIds: string[]
   targetWorkflowId?: string
@@ -85,16 +86,21 @@ export function analyzeWorkflowGraph(
 ): WorkflowGraphSummary {
   const byId = new Map(workflows.map((workflow) => [workflow.id, workflow]))
   const edges: WorkflowGraphEdge[] = []
+  const callArgIssues: WorkflowGraphIssue[] = []
   const actionCounts = new Map<string, number>()
   const entrypoints = [...(options.entrypoints ?? [])]
 
   for (const workflow of workflows) {
-    actionCounts.set(workflow.id, collectCalls(workflow.actions, workflow, byId, edges))
+    actionCounts.set(
+      workflow.id,
+      collectCalls(workflow.actions, workflow, byId, edges, callArgIssues)
+    )
   }
 
   const issues: WorkflowGraphIssue[] = [
     ...missingWorkflowIssues(edges),
     ...missingEntrypointIssues(entrypoints),
+    ...callArgIssues,
     ...cycleIssues(workflows, edges)
   ]
   const nodes = workflows.map((workflow) =>
@@ -145,6 +151,7 @@ function collectCalls(
   workflow: WorkflowDef,
   workflows: ReadonlyMap<string, WorkflowDef>,
   edges: WorkflowGraphEdge[],
+  callArgIssues: WorkflowGraphIssue[],
   pathPrefix = ''
 ): number {
   let actionCount = 0
@@ -152,21 +159,73 @@ function collectCalls(
     const actionPath = `${pathPrefix}[${index}]`
     actionCount += 1
     if (action.kind === 'callWorkflow' && action.workflowId) {
+      const target = workflows.get(action.workflowId)
       edges.push({
         fromId: workflow.id,
         fromName: workflow.name || workflow.id,
         toId: action.workflowId,
-        toName: workflows.get(action.workflowId)?.name,
+        toName: target?.name,
         actionId: action.id,
         actionPath,
         actionKind: action.kind
       })
+      if (target) callArgIssues.push(...callWorkflowArgIssues(action, workflow, target))
     }
     for (const [branchName, branch] of actionBranches(action)) {
-      actionCount += collectCalls(branch, workflow, workflows, edges, `${actionPath}/${branchName}`)
+      actionCount += collectCalls(
+        branch,
+        workflow,
+        workflows,
+        edges,
+        callArgIssues,
+        `${actionPath}/${branchName}`
+      )
     }
   }
   return actionCount
+}
+
+function callWorkflowArgIssues(
+  action: Extract<ActionDef, { kind: 'callWorkflow' }>,
+  source: WorkflowDef,
+  target: WorkflowDef
+): WorkflowGraphIssue[] {
+  const problems = callWorkflowArgProblems(action, target)
+  if (problems.length === 0) return []
+  const sourceName = source.name || source.id
+  const targetName = target.name || target.id
+  return [
+    {
+      type: 'call-args',
+      message: `${sourceName} calls ${targetName} with invalid arguments: ${problems.join(', ')}`,
+      workflowIds: [source.id, target.id],
+      targetWorkflowId: source.id
+    }
+  ]
+}
+
+function callWorkflowArgProblems(
+  action: Extract<ActionDef, { kind: 'callWorkflow' }>,
+  workflow: WorkflowDef
+): string[] {
+  const params = workflow.params ?? []
+  const args = action.args ?? {}
+  const defaults = workflow.paramDefaults ?? {}
+  const optional = new Set(workflow.optionalParams)
+  const problems: string[] = []
+  for (const key of Object.keys(args)) {
+    if (!params.includes(key)) problems.push(`extra "${key}"`)
+  }
+  for (const param of params) {
+    const raw = Object.hasOwn(args, param) ? args[param] : ''
+    if (raw.trim() === '') {
+      if (!Object.hasOwn(defaults, param) && !optional.has(param)) problems.push(`missing "${param}"`)
+      continue
+    }
+    const result = validateExpression(raw)
+    if (!result.ok) problems.push(`invalid "${param}"`)
+  }
+  return problems
 }
 
 function actionBranches(action: ActionDef): readonly [string, readonly ActionDef[] | undefined][] {

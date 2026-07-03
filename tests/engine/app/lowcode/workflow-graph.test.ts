@@ -149,6 +149,62 @@ describe('lowcode workflow graph analysis', () => {
     expect(summary.nodes.map((node) => node.entrypoints)).toEqual([[], []])
   })
 
+  test('reports callWorkflow argument contract issues', () => {
+    const workflows: WorkflowDef[] = [
+      {
+        id: 'wf-source',
+        name: 'Source',
+        actions: [
+          {
+            id: 'call-target',
+            kind: 'callWorkflow',
+            workflowId: 'wf-target',
+            args: {
+              badExtra: '"unused"',
+              message: ''
+            }
+          },
+          {
+            id: 'call-invalid',
+            kind: 'callWorkflow',
+            workflowId: 'wf-invalid',
+            args: { count: '1 +' }
+          }
+        ]
+      },
+      {
+        id: 'wf-target',
+        name: 'Target',
+        params: ['message', 'optionalNote'],
+        optionalParams: ['optionalNote'],
+        actions: []
+      },
+      {
+        id: 'wf-invalid',
+        name: 'Invalid',
+        params: ['count'],
+        actions: []
+      }
+    ]
+
+    const summary = analyzeWorkflowGraph(workflows)
+
+    expect(summary.issues).toContainEqual({
+      type: 'call-args',
+      message:
+        'Source calls Target with invalid arguments: extra "badExtra", missing "message"',
+      workflowIds: ['wf-source', 'wf-target'],
+      targetWorkflowId: 'wf-source'
+    })
+    expect(summary.issues).toContainEqual({
+      type: 'call-args',
+      message: 'Source calls Invalid with invalid arguments: invalid "count"',
+      workflowIds: ['wf-source', 'wf-invalid'],
+      targetWorkflowId: 'wf-source'
+    })
+    expect(summary.nodes.find((node) => node.id === 'wf-source')?.issues).toHaveLength(2)
+  })
+
   test('reports direct and indirect workflow cycles once', () => {
     const workflows: WorkflowDef[] = [
       {

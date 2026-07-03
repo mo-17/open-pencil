@@ -344,7 +344,7 @@ function graphMapEdgeBranchTitle(edge: WorkflowGraphEdge): string {
 }
 
 function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
-  return issue.type === 'cycle' ? 'Cycle' : 'Missing'
+  return issue.type === 'cycle' ? 'Cycle' : (issue.type === 'call-args' ? 'Args' : 'Missing')
 }
 
 function graphMapIssueJumpLabel(issue: WorkflowGraphIssue): string {
@@ -412,15 +412,16 @@ function graphMapIssueSummaryLabel(): string {
 
 function graphMapIssueTypeSummaryLabel(issues: readonly WorkflowGraphIssue[]): string {
   const missingCount = issues.filter((issue) => issue.type === 'missing-workflow').length
+  const argCount = issues.filter((issue) => issue.type === 'call-args').length
   const cycleCount = issues.filter((issue) => issue.type === 'cycle').length
   return [
     missingCount > 0 ? countLabel(missingCount, 'missing', 'missing') : '',
+    argCount > 0 ? countLabel(argCount, 'arg issue') : '',
     cycleCount > 0 ? countLabel(cycleCount, 'cycle') : ''
   ]
     .filter(Boolean)
     .join(', ')
 }
-
 function graphMapNodeIssueLabel(count: number): string {
   return countLabel(count, 'issue')
 }

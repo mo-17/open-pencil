@@ -138,7 +138,7 @@ describe('lowcode onboarding demo fixture', () => {
     expect(app).toContain('validateValue')
     expect(app).toContain('fetch("/api/demo-checkout"')
     expect(app).toContain('await getSupabaseClient().auth.getSession()')
-    expect(app).toContain('Authorization: `Bearer ${session.access_token}`')
+    expect(app).toContain(['Authorization: `Bearer ', '{session.access_token}`'].join('$'))
     expect(app).toContain('window.location.assign(nextUrl.toString())')
     expect(app).toContain('fetch("/api/demo-customer-portal"')
     expect(app).toContain('const portalUrl = data?.url ?? data?.portalUrl')
