@@ -77,6 +77,27 @@ describe('compile — analytics runtime wiring (Phase 5 §10)', () => {
     expect(runtime).toContain('if (config?.pageViews !== false) __opTrackPageView()')
   })
 
+  test('invalid persisted analytics config is skipped with a warning', () => {
+    const graph = makeSceneGraph('Analytics')
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeAnalyticsConfig: {
+        provider: 'plausible',
+        id: 'example.com',
+        endpoint: ['java', 'script:alert(1)'].join('')
+      }
+    })
+
+    const out = compileAnalytics(graph, pageId)
+
+    expect(out.files.has('src/_lowcode_analytics.ts')).toBe(false)
+    expect(out.warnings).toContainEqual({
+      code: 'analytics-config-invalid',
+      message:
+        'root lowcodeAnalyticsConfig is invalid: endpoint must be http(s); analytics runtime skipped'
+    })
+  })
+
   test('trackEvent action imports helper and emits dynamic event properties', () => {
     const { graph, pageId } = graphWithButton([
       {

@@ -1318,6 +1318,24 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 - 覆盖:
   - `tests/engine/compiler/analytics.test.ts` 覆盖 unsafe policy URL 被 generated runtime 丢弃。
 
+**2026-07-03 第十刀补充:analytics config compiler guard 已完成**:
+
+- Analytics config 的结构安全校验已抽到 `@open-pencil/core/lowcode-validation`:
+  - 校验 provider 必须是 `ga4` / `plausible` / `posthog`。
+  - 校验 id 非空。
+  - 校验 endpoint 必须是 `http(s)`。
+  - 校验 consent preset 只接受 `eea`。
+  - 校验 consent policy URL 只接受 `http(s)` 或 root-relative path。
+- `update_lowcode_node` 继续保留严格 shape 检查,并复用共享 validator,补齐此前 endpoint
+  只 trim 不拒绝危险 protocol 的缺口。
+- Compiler collect 层现在会在输出前再次校验旧 `.fig` / 导入数据里的
+  `lowcodeAnalyticsConfig`;不合法时发出 `analytics-config-invalid` warning 并跳过 analytics
+  runtime,避免生成 app 带着无效 provider / endpoint 启动。
+- 覆盖:
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝 unsafe analytics endpoint。
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 invalid persisted analytics config 被跳过并
+    产生 warning。
+
 **2026-07-01 第十一刀已完成**:
 
 - Analytics config 新增 `consentAnalyticsDefault?: boolean`:

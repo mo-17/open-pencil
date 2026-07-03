@@ -194,6 +194,24 @@ describe('update_lowcode_node', () => {
     expect(graph.getNode(graph.rootId)?.lowcodeAnalyticsConfig).toBeUndefined()
   })
 
+  test('rejects unsafe analytics endpoint URLs', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeAnalyticsConfig: {
+          provider: 'plausible',
+          id: 'example.com',
+          endpoint: `java${'script'}:alert(1)`
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('endpoint')
+    expect(graph.getNode(graph.rootId)?.lowcodeAnalyticsConfig).toBeUndefined()
+  })
+
   test('accepts controlled lowcodeHeadMetadata and custom CSS', () => {
     const { figma, graph } = setupToolTest()
     const result = getTool('update_lowcode_node').execute(figma, {

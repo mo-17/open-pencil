@@ -28,7 +28,9 @@
  */
 import type { FigmaAPI } from '#core/figma-api'
 import {
+  isSafeAnalyticsPolicyUrl,
   normalizeSupabaseMutationPayloadJson,
+  validateAnalyticsConfig,
   validateDatePickerProps,
   validateExpression,
   validateLowcodeCustomCss,
@@ -1433,6 +1435,8 @@ function parseAnalyticsConfig(
   const copy = parseOptionalAnalyticsConsentCopy(raw, what)
   if (!copy.ok) return copy
   if (copy.value) config.consentCopy = copy.value
+  const safe = validateAnalyticsConfig(config)
+  if (!safe.ok) return fail(`${what}.${safe.reason ?? 'is invalid'}`)
   return { ok: true, config }
 }
 
@@ -1490,20 +1494,10 @@ function parseAnalyticsConsentCopy(
     const trimmed = value.trim()
     if (trimmed) copy[key as keyof NonNullable<AnalyticsConfig['consentCopy']>] = trimmed
   }
-  if (copy.privacyPolicyUrl && !isSafePolicyUrl(copy.privacyPolicyUrl)) {
+  if (copy.privacyPolicyUrl && !isSafeAnalyticsPolicyUrl(copy.privacyPolicyUrl)) {
     return fail(`${what}.privacyPolicyUrl must be http(s) or root-relative`)
   }
   return { ok: true, copy }
-}
-
-function isSafePolicyUrl(value: string): boolean {
-  if (value.startsWith('/')) return !value.startsWith('//')
-  try {
-    const url = new URL(value)
-    return url.protocol === 'http:' || url.protocol === 'https:'
-  } catch {
-    return false
-  }
 }
 
 function applyAnalyticsConfigField(

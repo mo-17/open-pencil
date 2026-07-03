@@ -35,6 +35,8 @@ export {
 
 export { decodeJwtPayload, detectServiceRole, validateSupabaseConfig } from './supabase-config'
 
+export { isSafeAnalyticsPolicyUrl, validateAnalyticsConfig } from './analytics-config'
+
 export {
   lowcodeCustomCssUrls,
   unsafeLowcodeCustomCssUrls,

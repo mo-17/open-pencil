@@ -11,6 +11,7 @@ import {
   parseExpression,
   parseTemplate,
   PREV_IDENT,
+  validateAnalyticsConfig,
   validateDatePickerProps,
   validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
@@ -116,7 +117,7 @@ export function collectTree(
   // Phase 3 §2: lift root-level supabaseConfig onto the tree so the React
   // adapter can decide to emit `_lowcode_supabase.ts` without re-reading
   // the SceneGraph (which it doesn't have access to from `emit(irs, opts)`).
-  const analyticsConfig = compactAnalyticsConfig(root?.lowcodeAnalyticsConfig)
+  const analyticsConfig = compactAnalyticsConfig(root?.lowcodeAnalyticsConfig, warnings)
   // Phase 3 §9 v7: lift root-level translation catalog onto the tree so the
   // adapter pre-fills `locales/<code>.json` from authored translations.
   const translations = graph.getNode(graph.rootId)?.lowcodeTranslations
@@ -212,12 +213,15 @@ export function collectTree(
   }
 }
 
-function compactAnalyticsConfig(value: AnalyticsConfig | undefined): AnalyticsConfig | undefined {
+function compactAnalyticsConfig(
+  value: AnalyticsConfig | undefined,
+  warnings: IRWarning[]
+): AnalyticsConfig | undefined {
   if (!value || value.enabled === false) return undefined
   const id = value.id.trim()
   if (id === '') return undefined
   const endpoint = value.endpoint?.trim()
-  return {
+  const config: AnalyticsConfig = {
     provider: value.provider,
     id,
     ...(value.enabled === true ? { enabled: true } : {}),
@@ -235,6 +239,15 @@ function compactAnalyticsConfig(value: AnalyticsConfig | undefined): AnalyticsCo
     ...(endpoint ? { endpoint } : {}),
     ...(value.consentCopy ? { consentCopy: compactAnalyticsConsentCopy(value.consentCopy) } : {})
   }
+  const result = validateAnalyticsConfig(config)
+  if (!result.ok) {
+    warnings.push({
+      code: 'analytics-config-invalid',
+      message: `root lowcodeAnalyticsConfig is invalid: ${result.reason}; analytics runtime skipped`
+    })
+    return undefined
+  }
+  return config
 }
 
 function compactSupabaseConfig(
