@@ -242,7 +242,11 @@ function compactAnalyticsConsentCopy(
   if (!value) return undefined
   const bannerText = value.bannerText?.trim()
   const analyticsDescription = value.analyticsDescription?.trim()
-  const privacyPolicyUrl = value.privacyPolicyUrl?.trim()
+  const rawPrivacyPolicyUrl = value.privacyPolicyUrl?.trim()
+  const privacyPolicyUrl =
+    rawPrivacyPolicyUrl && isSafeAnalyticsPolicyUrl(rawPrivacyPolicyUrl)
+      ? rawPrivacyPolicyUrl
+      : undefined
   const privacyPolicyLabel = value.privacyPolicyLabel?.trim()
   const copy = {
     ...(bannerText ? { bannerText } : {}),
@@ -251,6 +255,16 @@ function compactAnalyticsConsentCopy(
     ...(privacyPolicyLabel ? { privacyPolicyLabel } : {})
   }
   return Object.keys(copy).length > 0 ? copy : undefined
+}
+
+function isSafeAnalyticsPolicyUrl(value: string): boolean {
+  if (value.startsWith('/')) return !value.startsWith('//')
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 /** Phase 4 §16.1: lift + validate a page's dynamic route pattern. Returns the

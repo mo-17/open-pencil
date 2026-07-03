@@ -130,6 +130,7 @@
 - Add a generated lowcode analytics preference center with Necessary and Analytics categories.
 - Add configurable lowcode analytics consent banner copy and privacy-policy links.
 - Add explicit noopener protection to generated lowcode analytics privacy-policy links.
+- Drop unsafe generated lowcode analytics privacy-policy links when compiling imported or stale documents.
 - Add a configurable default checked state for the generated lowcode Analytics consent category.
 - Add an EEA-style lowcode analytics consent preset that starts generated apps in opt-in mode.
 - Add controlled lowcode custom head and CSS output for generated apps without enabling arbitrary JavaScript.

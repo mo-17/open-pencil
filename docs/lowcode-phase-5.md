@@ -1302,6 +1302,16 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
 - 覆盖:
   - `tests/engine/compiler/analytics.test.ts` 覆盖 runtime emit。
 
+**2026-07-03 第十刀补充:consent policy link compiler guard 已完成**:
+
+- Compiler collect 层现在会在输出前再次过滤 `consentCopy.privacyPolicyUrl`:
+  - 只保留 `http(s)` URL 或 root-relative path。
+  - 丢弃 `javascript:`、`data:`、protocol-relative URL 等旧文档 / 导入数据里的危险值。
+  - 其它纯文本 consent copy 字段继续保留,避免因为旧 policy URL 破坏整个 preference copy。
+- 这与 GUI / ToolDef 的输入 guard 对齐,并覆盖绕过入口的 stale `.fig` 场景。
+- 覆盖:
+  - `tests/engine/compiler/analytics.test.ts` 覆盖 unsafe policy URL 被 generated runtime 丢弃。
+
 **2026-07-01 第十一刀已完成**:
 
 - Analytics config 新增 `consentAnalyticsDefault?: boolean`:
