@@ -1984,6 +1984,10 @@ event + subscription upsert 事务。
   - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 webhook RPC endpoint、subscription
     参数映射、schema RPC、`security definer`、subscription upsert、duplicate/recorded 返回和
     function 权限 revoke。
+  - 2026-07-03 追加回归锁定:所有 Stripe service-role RPC 都必须保留
+    `security definer`、`set search_path = public` 和
+    `revoke all ... from public, anon, authenticated`,避免后续模板扩展时放松函数搜索路径或
+    client-facing 调用面。
 - 文档:
   - `packages/demos/lowcode/README.md` 和
     `packages/docs/user-guide/lowcode-apps.md` 说明 schema 已包含 subscription RPC 起点。

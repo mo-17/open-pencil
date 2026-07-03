@@ -335,6 +335,24 @@ describe('lowcode onboarding demo fixture', () => {
     expect(source).toContain('billing_orders_select_own')
     expect(source).toContain('service role key')
     expect(source).toContain('Stripe does not guarantee webhook delivery order')
+    for (const functionName of [
+      'record_stripe_subscription_event',
+      'record_stripe_invoice_event',
+      'record_stripe_payment_event',
+      'record_stripe_refund_event',
+      'record_stripe_dispute_event'
+    ]) {
+      const functionSource = source.slice(
+        source.indexOf(`create or replace function public.${functionName}`),
+        source.indexOf(`comment on function public.${functionName}`)
+      )
+      expect(functionSource).toContain('security definer')
+      expect(functionSource).toContain('set search_path = public')
+      expect(functionSource).toContain(
+        `revoke all on function public.${functionName}`
+      )
+      expect(functionSource).toContain('from public, anon, authenticated')
+    }
     const invoicesTable = source.slice(
       source.indexOf('create table if not exists public.billing_invoices'),
       source.indexOf('create table if not exists public.billing_payments')
