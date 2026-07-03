@@ -1884,6 +1884,27 @@ Stripe secret 写入 `.fig` 或 generated SPA。
 - 确认重复发送同一个 Stripe event id 时返回 `duplicate`,且 `billing_events` 只保留一条记录。
 - 如果在生产里扩展订单/订阅表更新,确认 event 记录和业务更新通过 RPC/事务保持一致。
 
+### 12.7.1 2026-07-03 补充:Webhook signing secret env guard
+
+本刀补 webhook template 的非账号依赖安全边界。此前 `STRIPE_WEBHOOK_SECRET` 只要求存在,
+但不检查是否像 Stripe webhook signing secret;错误 env 会推迟到 HMAC 校验阶段才暴露。
+
+已完成:
+
+- `packages/demos/lowcode/supabase/functions/demo-stripe-webhook/index.ts`:
+  - 新增 `stripeWebhookSecret()` helper。
+  - `STRIPE_WEBHOOK_SECRET` 必须匹配 Stripe webhook signing secret prefix,否则在 HMAC
+    校验前抛出明确错误。
+  - prefix 在源码中拆分保存,继续避免仓库里出现连续 webhook secret 示例字符串。
+- 测试:
+  - `tests/engine/app/lowcode/onboarding-demo.test.ts` 覆盖 helper、prefix guard 和错误文案,
+    同时继续断言模板不包含连续 webhook secret 示例字符串。
+
+明确不做:
+
+- 不写入任何真实 webhook secret。
+- 不自动调用 Stripe CLI / dashboard test webhook;真实签名 ACK 仍留到最后手测。
+
 ### 12.8 2026-07-01 第六刀:Durable billing schema template
 
 本刀把 webhook/customer portal 模板中的“生产需持久化”从文字提醒补成可复制的

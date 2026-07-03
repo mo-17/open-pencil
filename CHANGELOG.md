@@ -153,6 +153,8 @@
 - Require demo Stripe Edge Function secret/config environment variables to match Stripe id
   prefixes before calling Checkout or Customer Portal APIs.
 - Add a Supabase Edge Function Stripe webhook template for checkout and subscription lifecycle events with signature verification and durable `billing_events` idempotency.
+- Require the demo Stripe webhook signing secret environment variable to match Stripe's
+  webhook secret prefix without embedding example secrets.
 - Add a Supabase billing schema template for Stripe customer mappings, subscriptions, and durable webhook event idempotency.
 - Add a Supabase service-role RPC template for Stripe subscription webhook events that records the event and upserts subscription state in one transaction.
 - Add a Supabase billing entitlement read-model template that refreshes app-readable subscription access in the same webhook transaction.

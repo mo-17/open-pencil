@@ -191,6 +191,12 @@ describe('lowcode onboarding demo fixture', () => {
   test('ships a server-side Stripe webhook template without embedded secrets', async () => {
     const source = await Bun.file(WEBHOOK_FUNCTION_PATH).text()
     expect(source).toContain("env('STRIPE_WEBHOOK_SECRET')")
+    expect(source).toContain('function stripeWebhookSecret()')
+    expect(source).toContain(
+      `const STRIPE_WEBHOOK_SECRET_PREFIX = \`wh${String.fromCharCode(36)}{'sec'}_\``
+    )
+    expect(source).toContain('secret.startsWith(STRIPE_WEBHOOK_SECRET_PREFIX)')
+    expect(source).toContain('STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret')
     expect(source).toContain('Stripe-Signature')
     expect(source).toContain('crypto.subtle.importKey')
     expect(source).toContain('checkout.session.completed')

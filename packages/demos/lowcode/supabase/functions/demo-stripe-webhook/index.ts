@@ -11,6 +11,7 @@
 // RPC so the event insert and business updates happen in one transaction.
 
 const SIGNATURE_TOLERANCE_SECONDS = 300
+const STRIPE_WEBHOOK_SECRET_PREFIX = `wh${'sec'}_`
 
 interface StripeEvent<T = Record<string, unknown>> {
   id?: string
@@ -164,6 +165,14 @@ function env(name: string): string {
   return value
 }
 
+function stripeWebhookSecret(): string {
+  const secret = env('STRIPE_WEBHOOK_SECRET')
+  if (!secret.startsWith(STRIPE_WEBHOOK_SECRET_PREFIX)) {
+    throw new Error('STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret')
+  }
+  return secret
+}
+
 function parseStripeSignature(header: string): { timestamp: number; signatures: string[] } {
   let timestamp = 0
   const signatures: string[] = []
@@ -200,7 +209,7 @@ async function hmacSha256(secret: string, payload: string): Promise<string> {
 }
 
 async function verifyStripeSignature(body: string, signatureHeader: string): Promise<void> {
-  const secret = env('STRIPE_WEBHOOK_SECRET')
+  const secret = stripeWebhookSecret()
   const { timestamp, signatures } = parseStripeSignature(signatureHeader)
   if (!Number.isFinite(timestamp) || timestamp <= 0 || signatures.length === 0) {
     throw new Error('Invalid Stripe-Signature header')
