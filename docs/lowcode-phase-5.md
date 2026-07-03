@@ -4057,6 +4057,32 @@ workflow call edge,但如果 call 缺少必填参数、传了多余参数或参�
 
 ---
 
+### 13.41 2026-07-03 第四十一刀:Workflow graph issue action jumps
+
+本刀把 graph issue 的 jump 从 workflow 级收窄到 action 级。上一刀已经能诊断
+`callWorkflow` 参数合同错误,但 issue 只记录 `targetWorkflowId`;用户点 `Jump` 时只能回到
+source workflow row,还需要自己在 action list 中找具体调用。现在 actionable issue 会携带
+`actionId` / `actionPath`,并复用已有 `WorkflowRow.focusAction()` 定位到源 action。
+
+已完成:
+
+- `WorkflowGraphIssue` 新增可选 `actionId` / `actionPath`。
+- workflow 内部 `missing-workflow` issue 会记录缺失调用的源 action。
+- `call-args` issue 会记录参数错误调用的源 action。
+- `WorkflowsPanel.vue` 的 summary / map issue `Jump` 按钮会优先聚焦
+  `issue.actionPath`,失败时回退到 workflow row。
+- `tests/engine/app/lowcode/workflow-graph.test.ts` 覆盖 missing workflow 和 call args 的
+  action-level issue metadata。
+
+明确不做:
+
+- 不改变 node event entrypoint missing issue 的跳转;它们的 source 是画布 node event,
+  已有独立 entrypoint source jump 路径。
+- 不改变 compiler/runtime 的 `callWorkflow` 行为。
+- 不新增拖拽连线、action reparent 或 workflow DAG 编辑 schema。
+
+---
+
 ## 14. Mobile / Native Export Strategy
 
 不直接从现有 React web adapter 混改。先做路线评估:

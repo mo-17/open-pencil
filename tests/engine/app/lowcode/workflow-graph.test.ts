@@ -72,7 +72,9 @@ describe('lowcode workflow graph analysis', () => {
         type: 'missing-workflow',
         message: 'Save calls a missing workflow (wf-missing)',
         workflowIds: ['wf-a', 'wf-missing'],
-        targetWorkflowId: 'wf-a'
+        targetWorkflowId: 'wf-a',
+        actionId: 'call-missing',
+        actionPath: '[0]'
       }
     ])
   })
@@ -194,13 +196,17 @@ describe('lowcode workflow graph analysis', () => {
       message:
         'Source calls Target with invalid arguments: extra "badExtra", missing "message"',
       workflowIds: ['wf-source', 'wf-target'],
-      targetWorkflowId: 'wf-source'
+      targetWorkflowId: 'wf-source',
+      actionId: 'call-target',
+      actionPath: '[0]'
     })
     expect(summary.issues).toContainEqual({
       type: 'call-args',
       message: 'Source calls Invalid with invalid arguments: invalid "count"',
       workflowIds: ['wf-source', 'wf-invalid'],
-      targetWorkflowId: 'wf-source'
+      targetWorkflowId: 'wf-source',
+      actionId: 'call-invalid',
+      actionPath: '[1]'
     })
     expect(summary.nodes.find((node) => node.id === 'wf-source')?.issues).toHaveLength(2)
   })

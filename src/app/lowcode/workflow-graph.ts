@@ -16,6 +16,8 @@ export interface WorkflowGraphIssue {
   message: string
   workflowIds: string[]
   targetWorkflowId?: string
+  actionId?: string
+  actionPath?: string
 }
 
 export interface WorkflowGraphEntrypoint {
@@ -169,7 +171,7 @@ function collectCalls(
         actionPath,
         actionKind: action.kind
       })
-      if (target) callArgIssues.push(...callWorkflowArgIssues(action, workflow, target))
+      if (target) callArgIssues.push(...callWorkflowArgIssues(action, workflow, target, actionPath))
     }
     for (const [branchName, branch] of actionBranches(action)) {
       actionCount += collectCalls(
@@ -188,7 +190,8 @@ function collectCalls(
 function callWorkflowArgIssues(
   action: Extract<ActionDef, { kind: 'callWorkflow' }>,
   source: WorkflowDef,
-  target: WorkflowDef
+  target: WorkflowDef,
+  actionPath: string
 ): WorkflowGraphIssue[] {
   const problems = callWorkflowArgProblems(action, target)
   if (problems.length === 0) return []
@@ -199,7 +202,9 @@ function callWorkflowArgIssues(
       type: 'call-args',
       message: `${sourceName} calls ${targetName} with invalid arguments: ${problems.join(', ')}`,
       workflowIds: [source.id, target.id],
-      targetWorkflowId: source.id
+      targetWorkflowId: source.id,
+      actionId: action.id,
+      actionPath
     }
   ]
 }
@@ -255,7 +260,9 @@ function missingWorkflowIssues(edges: readonly WorkflowGraphEdge[]): WorkflowGra
       type: 'missing-workflow',
       message: `${edge.fromName} calls a missing workflow (${edge.toId})`,
       workflowIds: [edge.fromId, edge.toId],
-      targetWorkflowId: edge.fromId
+      targetWorkflowId: edge.fromId,
+      actionId: edge.actionId,
+      actionPath: edge.actionPath
     }))
 }
 

@@ -261,16 +261,16 @@ function pageStatesFor(workflow: WorkflowDef): StateDef[] {
   return pages.value.find((page) => page.id === pageId)?.state ?? []
 }
 
-function jumpToWorkflow(workflowId: string | undefined): void {
+async function jumpToWorkflow(workflowId: string | undefined, actionPath?: string): Promise<void> {
   if (!workflowId) return
-  workflowRowRefs.get(workflowId)?.focusRow()
+  const row = workflowRowRefs.get(workflowId)
+  if (!row) return
+  if (actionPath && (await row.focusAction(actionPath))) return
+  row.focusRow()
 }
 
 async function jumpToWorkflowAction(edge: WorkflowGraphEdge): Promise<void> {
-  const row = workflowRowRefs.get(edge.fromId)
-  if (!row) return
-  if (await row.focusAction(edge.actionPath)) return
-  row.focusRow()
+  await jumpToWorkflow(edge.fromId, edge.actionPath)
 }
 
 function jumpToEntrypointSource(entrypoint: WorkflowGraphEntrypoint): void {
@@ -349,6 +349,7 @@ function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
 
 function graphMapIssueJumpLabel(issue: WorkflowGraphIssue): string {
   const target = issue.targetWorkflowId ? workflowGraphNodeName(issue.targetWorkflowId) : 'target'
+  if (issue.actionId) return `Jump to ${target} workflow action ${issue.actionId} for issue`
   return `Jump to ${target} workflow for issue: ${issue.message}`
 }
 
@@ -650,7 +651,7 @@ function containingPageId(node: SceneNode): string | undefined {
             type="button"
             data-test-id="lowcode-workflow-graph-jump"
             class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
-            @click="jumpToWorkflow(issue.targetWorkflowId)"
+            @click="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
           >
             Jump
           </button>
@@ -788,9 +789,9 @@ function containingPageId(node: SceneNode): string | undefined {
               :aria-label="graphMapIssueJumpLabel(issue)"
               :title="graphMapIssueJumpLabel(issue)"
               class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-              @click="jumpToWorkflow(issue.targetWorkflowId)"
-              @keydown.enter.prevent="jumpToWorkflow(issue.targetWorkflowId)"
-              @keydown.space.prevent="jumpToWorkflow(issue.targetWorkflowId)"
+              @click="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
+              @keydown.enter.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
+              @keydown.space.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
             >
               Jump
             </button>

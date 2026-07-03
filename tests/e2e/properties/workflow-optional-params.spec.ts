@@ -164,7 +164,7 @@ test('workflow panel authors optional callWorkflow params', async () => {
   editor.canvas.assertNoErrors()
 })
 
-test('workflow graph details expand and issue jump focuses the workflow row', async () => {
+test('workflow graph details expand and issue jump focuses the source action row', async () => {
   await setupWorkflowGraphDiagnostics()
   await editor.canvas.waitForRender()
 
@@ -204,14 +204,14 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   ).toContainText('Save calls a missing workflow (wf-missing)')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-jump')).toHaveAttribute(
     'aria-label',
-    'Jump to Save workflow for issue: Save calls a missing workflow (wf-missing)'
+    'Jump to Save workflow action call-missing for issue'
   )
   await workflowsPanel.getByTestId('lowcode-workflow-graph-map-issue-jump').press('Enter')
   await expect
     .poll(() =>
-      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-lowcode-action-path') ?? '')
     )
-    .toBe('wf-save')
+    .toBe('[1]')
   await expect(workflowsPanel.getByTestId('lowcode-workflow-graph-map-node-group-title')).toHaveText([
     'Issues',
     'Called'
@@ -498,9 +498,9 @@ test('workflow graph details expand and issue jump focuses the workflow row', as
   await workflowsPanel.getByTestId('lowcode-workflow-graph-jump').click()
   await expect
     .poll(() =>
-      editor.page.evaluate(() => document.activeElement?.getAttribute('data-workflow-id') ?? '')
+      editor.page.evaluate(() => document.activeElement?.getAttribute('data-lowcode-action-path') ?? '')
     )
-    .toBe('wf-save')
+    .toBe('[1]')
   await expect
     .poll(() =>
       editor.page.evaluate(
