@@ -118,6 +118,31 @@ describe('React adapter — emit lowcode Supabase runtime + dep inject (Phase 3 
     expect(pkg.dependencies['@supabase/supabase-js']).toBeUndefined()
   })
 
+  test('invalid imported supabaseConfig warns and skips runtime emit', () => {
+    const graph = new SceneGraph()
+    const pageId = graph.getPages()[0].id
+    graph.updateNode(graph.rootId, {
+      lowcodeSupabaseConfig: {
+        url: ['java', 'script:alert(1)'].join(''),
+        anonKey: SAMPLE_CONFIG.anonKey
+      }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const out = reactAdapter.emit([ir], BASE_OPTIONS)
+    const pkg = JSON.parse(out.files.get('package.json') as string)
+
+    expect(ir.supabaseConfig).toBeUndefined()
+    expect(ir.docStates.some((state) => state.name === '$currentUser')).toBe(false)
+    expect(ir.warnings).toContainEqual(
+      expect.objectContaining({
+        code: 'supabase-config-invalid'
+      })
+    )
+    expect(out.files.has('src/_lowcode_supabase.ts')).toBe(false)
+    expect(pkg.dependencies['@supabase/supabase-js']).toBeUndefined()
+  })
+
   test('document with supabaseConfig (single-page) → emits _lowcode_supabase.ts + supabase-js dep', () => {
     const graph = new SceneGraph()
     graph.updateNode(graph.rootId, { lowcodeSupabaseConfig: SAMPLE_CONFIG })

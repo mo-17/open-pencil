@@ -346,6 +346,9 @@ shadcn、deploy 多条线完成,但用户入口分散在 phase docs 和内部实
   **2026-07-03 已补真实 fixture 回归:测试直接读取已提交
   `packages/demos/lowcode/lowcode-onboarding-demo.fig`,确认 Supabase / analytics / Stripe
   checkout / customer portal action 仍在,并用当前 compiler contract 编译通过。**
+  **2026-07-03 已补 Supabase config 旧数据兜底:compiler collect 阶段复用共享
+  `validateSupabaseConfig()`,非法 URL / service_role key 不再生成 `_lowcode_supabase.ts`
+  或 `$currentUser` built-in,而是输出 warning。**
 - CHANGELOG Unreleased 补齐 Cloudflare deploy / Tauri automation / GUI ACK 等用户可见项。**2026-06-25
   第一刀已补 lowcode onboarding 文档项,并顺手修复 CLI `--provider cloudflare`
   入口校验。**

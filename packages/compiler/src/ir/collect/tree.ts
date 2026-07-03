@@ -11,7 +11,8 @@ import {
   parseExpression,
   parseTemplate,
   PREV_IDENT,
-  validateDatePickerProps
+  validateDatePickerProps,
+  validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
 import {
   parseVariantName,
@@ -22,6 +23,7 @@ import {
   type SceneGraph,
   type SceneNode,
   type Stroke,
+  type SupabaseConfig,
   type WorkflowDef
 } from '@open-pencil/core/scene-graph'
 
@@ -103,7 +105,9 @@ export function collectTree(
       nodeId: pageId
     })
   }
-  const docStates = collectDocStates(graph, warnings)
+  const root = graph.getNode(graph.rootId)
+  const supabaseConfig = compactSupabaseConfig(root?.lowcodeSupabaseConfig, warnings)
+  const docStates = collectDocStates(graph, warnings, supabaseConfig !== undefined)
   const docStatesByName = indexDocStatesByName(docStates)
   const docStateReads = new Set<string>()
   const docStateWrites = new Set<string>()
@@ -112,10 +116,7 @@ export function collectTree(
   // Phase 3 §2: lift root-level supabaseConfig onto the tree so the React
   // adapter can decide to emit `_lowcode_supabase.ts` without re-reading
   // the SceneGraph (which it doesn't have access to from `emit(irs, opts)`).
-  const supabaseConfig = graph.getNode(graph.rootId)?.lowcodeSupabaseConfig
-  const analyticsConfig = compactAnalyticsConfig(
-    graph.getNode(graph.rootId)?.lowcodeAnalyticsConfig
-  )
+  const analyticsConfig = compactAnalyticsConfig(root?.lowcodeAnalyticsConfig)
   // Phase 3 §9 v7: lift root-level translation catalog onto the tree so the
   // adapter pre-fills `locales/<code>.json` from authored translations.
   const translations = graph.getNode(graph.rootId)?.lowcodeTranslations
@@ -236,6 +237,38 @@ function compactAnalyticsConfig(value: AnalyticsConfig | undefined): AnalyticsCo
   }
 }
 
+function compactSupabaseConfig(
+  value: SupabaseConfig | undefined,
+  warnings: IRWarning[]
+): SupabaseConfig | undefined {
+  if (!value) return undefined
+  const config: SupabaseConfig = {
+    url: value.url.trim(),
+    anonKey: value.anonKey.trim(),
+    ...(value.schema?.trim() ? { schema: value.schema.trim() } : {})
+  }
+  const result = validateSupabaseConfig(config)
+  if (!result.ok) {
+    warnings.push({
+      code: 'supabase-config-invalid',
+      message: `root lowcodeSupabaseConfig is invalid: ${result.reason}; Supabase runtime skipped`
+    })
+    return undefined
+  }
+  return config
+}
+
+function hasValidSupabaseConfig(value: SupabaseConfig | undefined): boolean {
+  if (!value) return false
+  return (
+    validateSupabaseConfig({
+      url: value.url.trim(),
+      anonKey: value.anonKey.trim(),
+      ...(value.schema?.trim() ? { schema: value.schema.trim() } : {})
+    }).ok
+  )
+}
+
 function compactAnalyticsConsentCopy(
   value: AnalyticsConfig['consentCopy']
 ): AnalyticsConfig['consentCopy'] {
@@ -336,7 +369,10 @@ export function collectComponents(
 ): { defs: ComponentDef[]; warnings: IRWarning[] } {
   const warnings: IRWarning[] = []
   // Discard doc-state warnings here — they're already surfaced per page.
-  const docStates = indexDocStatesByName(collectDocStates(graph, []))
+  const root = graph.getNode(graph.rootId)
+  const docStates = indexDocStatesByName(
+    collectDocStates(graph, [], hasValidSupabaseConfig(root?.lowcodeSupabaseConfig))
+  )
   const workflows = liftWorkflows(graph)
   const defs: ComponentDef[] = []
   for (const [componentId, meta] of components) {
@@ -644,12 +680,16 @@ interface WalkCtx {
  *  built-in `$currentUser` doc-state so user pages can bind to auth session
  *  values. `$` is a reserved name prefix (rejected by `validateStateName`),
  *  so collisions with user-declared docStates aren't possible. */
-function collectDocStates(graph: SceneGraph, warnings: IRWarning[]): IRDocStateDecl[] {
+function collectDocStates(
+  graph: SceneGraph,
+  warnings: IRWarning[],
+  includeCurrentUser = false
+): IRDocStateDecl[] {
   const root = graph.getNode(graph.rootId)
   const decls = root?.lowcodeDocumentState ?? []
   const out: IRDocStateDecl[] = []
   const seen = new Set<string>()
-  if (root?.lowcodeSupabaseConfig) {
+  if (includeCurrentUser) {
     const builtIn = currentUserBuiltIn()
     seen.add(builtIn.name)
     out.push(builtIn)
