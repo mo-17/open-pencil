@@ -1,5 +1,8 @@
+import {
+  validateLowcodeCustomCss,
+  validateLowcodeHeadMeta
+} from '@open-pencil/core/lowcode-validation'
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/core/scene-graph'
-import { validateLowcodeCustomCss } from '@open-pencil/core/lowcode-validation'
 
 import { buildComponentRegistry } from './ir/collect/components'
 import { collectComponents, collectTree } from './ir/collect/tree'
@@ -195,7 +198,12 @@ function compactHeadMetadata(
       key: entry.key.trim(),
       content: entry.content.trim()
     }))
-    .filter((entry) => entry.key && entry.content)
+    .filter(
+      (entry) =>
+        entry.key &&
+        entry.content &&
+        validateLowcodeHeadMeta(entry.kind, entry.key, entry.content).ok
+    )
   const link = value.link
     ?.map((entry) => ({
       rel: entry.rel.trim(),

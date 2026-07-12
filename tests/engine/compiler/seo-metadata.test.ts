@@ -226,6 +226,49 @@ describe('compile — static SEO metadata (Phase 5 §3)', () => {
     expect(html).toContain('<link rel="preconnect" href="https://cdn.example.com" />')
   })
 
+  test('skips unsafe custom head meta refresh URLs at emit time', () => {
+    const unsafeRefresh = `0;url=${['java', 'script:alert(1)'].join('')}`
+    const { html } = compileIndexHtml({
+      metadata: {
+        head: {
+          meta: [
+            { kind: 'httpEquiv', key: 'refresh', content: unsafeRefresh },
+            { kind: 'name', key: 'theme-color', content: '#111827' }
+          ]
+        }
+      }
+    })
+
+    expect(html).not.toContain(unsafeRefresh)
+    expect(html).not.toContain('alert(1)')
+    expect(html).toContain('<meta name="theme-color" content="#111827" />')
+  })
+
+  test('skips unsafe persisted custom head meta refresh URLs at compile time', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const unsafeRefresh = `0;url=${['java', 'script:alert(1)'].join('')}`
+    graph.updateNode(graph.rootId, {
+      lowcodeHeadMetadata: {
+        meta: [
+          { kind: 'httpEquiv', key: 'refresh', content: unsafeRefresh },
+          { kind: 'name', key: 'theme-color', content: '#111827' }
+        ]
+      }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'seo-app' })
+    })
+    const html = out.files.get('index.html') as string
+
+    expect(html).not.toContain(unsafeRefresh)
+    expect(html).not.toContain('alert(1)')
+    expect(html).toContain('<meta name="theme-color" content="#111827" />')
+  })
+
   test('skips unsafe custom head style URLs at emit time', () => {
     const unsafeStyle = `.hero { background-image: url(${['java', 'script:alert(1)'].join('')}); }`
     const { html } = compileIndexHtml({

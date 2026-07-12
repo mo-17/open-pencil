@@ -1,3 +1,9 @@
+import {
+  unsafeLowcodeCustomCssUrls,
+  unsafeLowcodeHeadMetaRefreshUrl,
+  validateLowcodeHeadMeta,
+  validateLowcodeCustomCss
+} from '@open-pencil/core/lowcode-validation'
 import type {
   LowcodeHeadLink,
   LowcodeHeadLinkCrossOrigin,
@@ -5,10 +11,6 @@ import type {
   LowcodeHeadMetaKind,
   LowcodeHeadMetadata
 } from '@open-pencil/core/scene-graph'
-import {
-  unsafeLowcodeCustomCssUrls,
-  validateLowcodeCustomCss
-} from '@open-pencil/core/lowcode-validation'
 
 export const LOWCODE_HEAD_META_KINDS: LowcodeHeadMetaKind[] = ['name', 'property', 'httpEquiv']
 
@@ -62,7 +64,12 @@ export function buildCustomCodePatch(draft: CustomCodeDraft): CustomCodePatch {
       key: entry.key.trim(),
       content: entry.content.trim()
     }))
-    .filter((entry) => entry.key && entry.content)
+    .filter(
+      (entry) =>
+        entry.key &&
+        entry.content &&
+        validateLowcodeHeadMeta(entry.kind, entry.key, entry.content).ok
+    )
 
   const link = draft.link
     .map((entry) => compactHeadLink(entry))
@@ -101,7 +108,12 @@ export function hasIncompleteCustomCodeRows(draft: CustomCodeDraft): boolean {
 }
 
 export function hasUnsafeCustomCodeUrls(draft: CustomCodeDraft): boolean {
-  return unsafeLowcodeCustomCssUrls(`${draft.stylesText}\n${draft.customCss}`).length > 0
+  return (
+    unsafeLowcodeCustomCssUrls(`${draft.stylesText}\n${draft.customCss}`).length > 0 ||
+    draft.meta.some(
+      (entry) => unsafeLowcodeHeadMetaRefreshUrl(entry.kind, entry.key, entry.content) !== undefined
+    )
+  )
 }
 
 export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCspRisk[] {
@@ -121,6 +133,15 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       id: `head-style-unsafe-url:${url}`,
       title: 'Head style URL protocol will not be persisted',
       detail: `${url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.`
+    })
+  }
+  for (const meta of draft.meta) {
+    const url = unsafeLowcodeHeadMetaRefreshUrl(meta.kind, meta.key, meta.content)
+    if (!url) continue
+    risks.push({
+      id: `head-meta-refresh-unsafe-url:${url}`,
+      title: 'Meta refresh URL protocol will not be persisted',
+      detail: `${url} uses a protocol outside the allowed http(s) or relative URL set.`
     })
   }
 

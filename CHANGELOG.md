@@ -53,6 +53,8 @@
   generated CSS emission.
 - Reject unsafe URL protocols in lowcode Custom Head style snippets before editor/tool
   persistence and generated HTML emission.
+- Reject unsafe URL protocols in lowcode Custom Head meta refresh URLs before editor/tool
+  persistence and generated HTML emission.
 - Skip invalid imported lowcode analytics configs at compiler collect time instead of emitting
   a broken analytics runtime.
 - Add a Figma Web CDP debug script and update Figma reference tests to work with the current

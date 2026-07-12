@@ -34,6 +34,7 @@ import {
   validateDatePickerProps,
   validateExpression,
   validateLowcodeCustomCss,
+  validateLowcodeHeadMeta,
   validateStateName,
   validateSupabaseConfig,
   validateSupabasePayloadEntries,
@@ -1587,10 +1588,15 @@ function parseHeadMetaEntries(
     if (typeof entry.content !== 'string' || entry.content.trim() === '') {
       return fail(`${what}[${index}].content must be a non-empty string`)
     }
+    const kind = entry.kind as NonNullable<LowcodeHeadMetadata['meta']>[number]['kind']
+    const key = entry.key.trim()
+    const content = entry.content.trim()
+    const result = validateLowcodeHeadMeta(kind, key, content)
+    if (!result.ok) return fail(`${what}[${index}] ${result.reason ?? 'is unsafe'}`)
     out.push({
-      kind: entry.kind as NonNullable<LowcodeHeadMetadata['meta']>[number]['kind'],
-      key: entry.key.trim(),
-      content: entry.content.trim()
+      kind,
+      key,
+      content
     })
   }
   return { ok: true, entries: out }

@@ -1539,6 +1539,24 @@ editor / MCP / `.fig` 兼容路径。升格 Kiwi schema 不解锁用户功能。
   - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝危险 head style URL。
   - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler 跳过危险 head style URL。
 
+**2026-07-03 第八刀已完成**:
+
+- Custom Head `meta http-equiv="refresh"` 的 `url=` 现在有协议 guard:
+  - 共享校验位于 `@open-pencil/core/lowcode-validation`,避免 editor / ToolDef / compiler 三处
+    规则漂移。
+  - GUI patch helper 会丢弃危险 refresh meta,面板提交前也会阻断,保留本地草稿和风险提示。
+  - `update_lowcode_node` 会拒绝危险 `lowcodeHeadMetadata.meta` refresh URL。
+  - compiler 会跳过旧文档或导入数据里的危险 persisted refresh meta;final `index.html` emit 层
+    也会过滤 direct `CompilerOptions.metadata.head.meta` 输入。
+- 允许 `http:` / `https:`、相对路径和 root-relative path;拒绝 protocol-relative、
+  `javascript:`、`data:`、`file:` 等跳转目标。
+- 覆盖:
+  - `tests/engine/app/lowcode/custom-code-panel.test.ts` 覆盖 GUI helper 过滤危险 refresh URL
+    和风险提示。
+  - `tests/engine/tools/lowcode/modify.test.ts` 覆盖 ToolDef 拒绝危险 refresh URL。
+  - `tests/engine/compiler/seo-metadata.test.ts` 覆盖 compiler 跳过 direct / persisted 危险
+    refresh URL。
+
 ### 11.4 后续
 
 - CSP/deploy ACK:按 `docs/lowcode-gui-ack-test.md` 的 provider matrix 验证 Netlify /

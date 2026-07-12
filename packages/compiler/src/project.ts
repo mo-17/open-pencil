@@ -1,4 +1,7 @@
-import { validateLowcodeCustomCss } from '@open-pencil/core/lowcode-validation'
+import {
+  validateLowcodeCustomCss,
+  validateLowcodeHeadMeta
+} from '@open-pencil/core/lowcode-validation'
 
 import type { CompilerOptions, HtmlMetadata, LowcodeThemeSwitchPosition } from './types'
 
@@ -183,6 +186,7 @@ function customHeadTags(metadata: HtmlMetadata): string[] {
     const key = cleanMetadataText(meta.key)
     const content = cleanMetadataText(meta.content)
     if (!key || !content) continue
+    if (!validateLowcodeHeadMeta(meta.kind, key, content).ok) continue
     const attr = meta.kind === 'httpEquiv' ? 'http-equiv' : meta.kind
     lines.push(`    <meta ${attr}="${escapeHtml(key)}" content="${escapeHtml(content)}" />`)
   }

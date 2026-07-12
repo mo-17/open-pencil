@@ -79,6 +79,28 @@ describe('lowcode custom code panel state', () => {
     ])
   })
 
+  test('drops unsafe meta refresh URL protocols from panel patches', () => {
+    const draft = {
+      meta: [
+        {
+          kind: 'httpEquiv' as const,
+          key: 'refresh',
+          content: `0;url=${`java${'script'}:alert(1)`}`
+        },
+        { kind: 'name' as const, key: 'theme-color', content: '#111827' }
+      ],
+      link: [],
+      stylesText: '',
+      customCss: ''
+    }
+    const patch = buildCustomCodePatch(draft)
+
+    expect(hasUnsafeCustomCodeUrls(draft)).toBe(true)
+    expect(patch.lowcodeHeadMetadata?.meta).toEqual([
+      { kind: 'name', key: 'theme-color', content: '#111827' }
+    ])
+  })
+
   test('drops unsafe custom CSS URL protocols from panel patches', () => {
     const unsafeCss = `.hero { background-image: url(${`java${'script'}:alert(1)`}); }`
     const draft = {
@@ -178,6 +200,25 @@ describe('lowcode custom code panel state', () => {
       'custom-css-unsafe-url:data:image/svg+xml,<svg></svg>'
     ])
     expect(risks[0]?.title).toContain('will not be persisted')
+  })
+
+  test('reports unsafe meta refresh URL protocols before persistence', () => {
+    const risks = analyzeCustomCodeCspRisks({
+      meta: [
+        {
+          kind: 'httpEquiv',
+          key: 'refresh',
+          content: `0; url=${`data${':'}text/html,<script>alert(1)</script>`}`
+        }
+      ],
+      link: [],
+      stylesText: '',
+      customCss: ''
+    })
+
+    expect(risks.map((risk) => risk.id)).toContain(
+      'head-meta-refresh-unsafe-url:data:text/html,<script>alert(1)</script>'
+    )
   })
 
   test('reports unsafe head style URL protocols before persistence', () => {

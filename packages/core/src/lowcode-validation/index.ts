@@ -43,6 +43,8 @@ export {
   validateLowcodeCustomCss
 } from './custom-css'
 
+export { unsafeLowcodeHeadMetaRefreshUrl, validateLowcodeHeadMeta } from './head-metadata'
+
 export { PAYLOAD_ENTRY_KEY_RE, validateSupabasePayloadEntries } from './supabase-payload-entries'
 
 export {
