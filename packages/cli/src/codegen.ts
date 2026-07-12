@@ -11,7 +11,7 @@ import process from 'node:process'
 import { compile, withDefaults } from '@open-pencil/compiler'
 import type { CompileWarning, CompilerOutput, UiKitName } from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
-import type { SceneNode } from '@open-pencil/core/scene-graph'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { bold, fmtList, ok, printError } from '#cli/format'
 import { loadDocument } from '#cli/headless'

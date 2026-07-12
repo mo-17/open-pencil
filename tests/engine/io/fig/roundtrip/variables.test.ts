@@ -10,7 +10,7 @@ import {
   type Color,
   type NodeChange
 } from '@open-pencil/core'
-import { parseFigBuffer } from '@open-pencil/core/kiwi/fig/parse/core'
+import { parseFigBuffer } from '@open-pencil/kiwi/fig/parse'
 
 import {
   kiwiVariableFieldToBindingField,

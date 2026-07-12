@@ -6,7 +6,7 @@ import type { CompileWarning, CompilerOptions } from '../types'
  * in later phases) implements this and registers itself in `select-adapter.ts`.
  *
  * Adapter modules MUST NOT import from `ir/collect/**` or
- * `@open-pencil/core/scene-graph` directly — adapters only consume the IR
+ * `@open-pencil/scene-graph` directly — adapters only consume the IR
  * types from `ir/types.ts`.
  */
 export interface FrameworkAdapter {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import ScrubInput from '@/components/ScrubInput.vue'
-import BoundVariableButton from '@/components/properties/BoundVariableButton.vue'
-import VariablePickerPopover from '@/components/properties/VariablePickerPopover.vue'
+import ScrubInput from '@/components/inputs/ScrubInput.vue'
+import BoundVariableButton from '@/components/variable-binding/BoundVariableButton.vue'
+import VariablePickerPopover from '@/components/variable-binding/VariablePickerPopover.vue'
 import { useI18n, useNumberVariableBinding } from '@open-pencil/vue'
 
 import type { NumberBindingPath } from '@open-pencil/vue'

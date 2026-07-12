@@ -9,7 +9,7 @@
 
 import { blake3 } from '@noble/hashes/blake3'
 
-import type { JsonObject } from '@open-pencil/core/types'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 export interface DeployTarget {
   provider: 'netlify' | 'vercel' | 'cloudflare'

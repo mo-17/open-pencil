@@ -1,15 +1,16 @@
 import {
+  isAutoLayoutMode,
+  type LayoutMode,
+  type SceneGraph,
+  type SceneNode
+} from '@open-pencil/scene-graph'
+
+import {
   raw,
   updateNode,
   type NodeProxyInternals,
   type ProxyThis
 } from '#core/figma-api/accessor-utils'
-import {
-  isAutoLayoutMode,
-  type LayoutMode,
-  type SceneGraph,
-  type SceneNode
-} from '#core/scene-graph'
 
 function graph(target: ProxyThis, internals: NodeProxyInternals): SceneGraph {
   return target[internals.graph] as SceneGraph

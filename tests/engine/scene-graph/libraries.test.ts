@@ -7,7 +7,7 @@ import {
   importLibraryComponent,
   publishLibraryComponent,
   SceneGraph
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 describe('team-library scene-graph helpers (Phase 4 §14)', () => {
   test('publishes a component with a deterministic subtree version', () => {

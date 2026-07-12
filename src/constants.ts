@@ -1,3 +1,5 @@
+import { IS_BROWSER, IS_TAURI } from '@open-pencil/core/constants'
+
 import ACP_DESIGN_CONTEXT from '@/app/ai/acp/design-context.md'
 
 export {
@@ -59,7 +61,7 @@ export {
   RULER_MAJOR_TOLERANCE
 } from '@open-pencil/core/constants'
 
-import type { Color } from '@open-pencil/core/types'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 
 export const TRYSTERO_APP_ID = 'openpencil'
 export const ROOM_ID_LENGTH = 8
@@ -69,6 +71,14 @@ export const ROOM_ID_CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789'
 // it can't connect even with the right appId + roomId. 26 chars over the
 // 36-symbol alphabet ≈ 134 bits, far beyond the 8-char roomId.
 export const ROOM_KEY_LENGTH = 26
+
+export const WEB_APP_ORIGIN = 'https://app.openpencil.dev'
+
+export function getShareUrl(roomId: string, roomKey?: string): string {
+  const base = IS_TAURI || !IS_BROWSER ? WEB_APP_ORIGIN : window.location.origin
+  const url = `${base}/share/${roomId}`
+  return roomKey ? `${url}#k=${roomKey}` : url
+}
 
 export const PEER_COLORS: Color[] = [
   { r: 0.96, g: 0.26, b: 0.21, a: 1 },
@@ -86,7 +96,7 @@ export const PEER_COLORS: Color[] = [
 // read side (`yNodeToProps`) MUST list each one here to parse it back —
 // anything missing arrives at remote peers as a raw JSON string (silent
 // corruption). When you add a new object-valued field to SceneNode, add it
-// here too; `tests/engine/collab/yjs-roundtrip.test.ts` guards against drift.
+// here too; `tests/engine/collab/yjs/roundtrip.test.ts` guards against drift.
 // Phase 3 §4.1: added the lowcode fields, which were silently corrupting in
 // multi-user editing because they were never whitelisted.
 export const YJS_JSON_FIELDS = new Set([
@@ -104,9 +114,16 @@ export const YJS_JSON_FIELDS = new Set([
   'interactiveProps',
   'renderCondition',
   'lowcodeDocumentState',
-  'lowcodeSupabaseConfig'
+  'lowcodeSupabaseConfig',
+  'lowcodeSeoMetadata',
+  'lowcodeAnalyticsConfig',
+  'lowcodeHeadMetadata',
+  'responsiveOverrides',
+  'stateOverrides',
+  'lowcodeTranslations',
+  'lowcodeWorkflows',
+  'lowcodeLibraries'
 ])
-
 export {
   DEFAULT_SHAPE_FILL,
   DEFAULT_FRAME_FILL,

@@ -3,7 +3,7 @@ import { chromium } from '@playwright/test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer } from '@open-pencil/compiler/dev-server'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message)

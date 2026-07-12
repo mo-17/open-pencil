@@ -5,7 +5,7 @@ import {
   collectTailwindClasses,
   type TailwindClassOptions
 } from '@open-pencil/core/io/formats/jsx'
-import type { SceneGraph, SceneNode } from '@open-pencil/core/scene-graph'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 export interface CompilerStyleOptions {
   rtlLogicalProperties?: boolean

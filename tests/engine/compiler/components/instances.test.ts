@@ -37,7 +37,9 @@ describe('compile — components / instances (Phase 3 §8)', () => {
     })
     const comp = out.files.get('src/components/CardBadge.tsx') as string
     expect(comp).toBeDefined()
-    expect(comp).toContain('export default function CardBadge({ className }: CardBadgeProps)')
+    expect(comp).toContain(
+      'export default function CardBadge({ className, style }: CardBadgeProps)'
+    )
     expect(comp).toContain('>Badge</p>')
   })
 

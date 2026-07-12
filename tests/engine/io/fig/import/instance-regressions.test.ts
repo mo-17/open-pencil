@@ -164,7 +164,8 @@ describe('derived instance layout regressions', () => {
       b: 0.9215686321258545,
       a: 1
     })
-    expect(linkText?.figmaDerivedTextGlyphs?.length).toBeGreaterThan(0)
+    // The source glyphs spell "Link" and must be discarded after the override becomes "browse".
+    expect(linkText?.figmaDerivedTextGlyphs).toBeNull()
 
     const input = previewChild(graph, nodes, 'Input')
     const inputRoot = childNamed(graph, input, '_input')

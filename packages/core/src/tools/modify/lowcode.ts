@@ -1,3 +1,23 @@
+import type {
+  ActionDef,
+  ActionKind,
+  AnalyticsConfig,
+  BindingExpr,
+  EventName,
+  LowcodeHeadMetadata,
+  LowcodeTranslations,
+  SceneNode,
+  SeoMetadata,
+  StateDef,
+  StateOverrides,
+  StateValueType,
+  SupabaseConfig,
+  SupabaseFilter,
+  SupabasePayloadEntry,
+  ToastAction,
+  WorkflowDef
+} from '@open-pencil/scene-graph'
+
 /**
  * Phase 3 §3 step 3 — lowcode modify tools.
  *
@@ -40,25 +60,6 @@ import {
   validateSupabasePayloadEntries,
   validateUrlTemplate
 } from '#core/lowcode-validation'
-import type {
-  ActionDef,
-  ActionKind,
-  AnalyticsConfig,
-  BindingExpr,
-  EventName,
-  LowcodeHeadMetadata,
-  LowcodeTranslations,
-  SceneNode,
-  SeoMetadata,
-  StateDef,
-  StateOverrides,
-  StateValueType,
-  SupabaseConfig,
-  SupabaseFilter,
-  SupabasePayloadEntry,
-  ToastAction,
-  WorkflowDef
-} from '#core/scene-graph'
 
 type BindingKind = BindingExpr['kind']
 // `SupabaseFilter.op` is an inline literal union on the interface; mirror
@@ -1424,11 +1425,15 @@ function parseAnalyticsConfig(
     if (!r.ok) return r
     if (r.value !== undefined) config[key] = r.value
   }
-  if (raw.consentRegionPreset !== undefined) {
-    if (!ANALYTICS_CONSENT_REGION_PRESETS.has(String(raw.consentRegionPreset))) {
+  const consentRegionPreset = raw.consentRegionPreset
+  if (consentRegionPreset !== undefined) {
+    if (
+      typeof consentRegionPreset !== 'string' ||
+      !ANALYTICS_CONSENT_REGION_PRESETS.has(consentRegionPreset)
+    ) {
       return fail(`${what}.consentRegionPreset must be one of eea`)
     }
-    config.consentRegionPreset = raw.consentRegionPreset as AnalyticsConfig['consentRegionPreset']
+    config.consentRegionPreset = consentRegionPreset as AnalyticsConfig['consentRegionPreset']
   }
   const endpoint = parseOptionalTrimmedString(raw, 'endpoint', what)
   if (!endpoint.ok) return endpoint
@@ -1623,8 +1628,11 @@ function parseHeadLinkEntries(
     if (!isSafeHeadLinkHref(entry.href)) {
       return fail(`${what}[${index}].href must be http(s), mailto, tel, or relative`)
     }
-    if (entry.crossorigin !== undefined && !HEAD_LINK_CROSSORIGIN.has(String(entry.crossorigin))) {
-      return fail(`${what}[${index}].crossorigin must be anonymous / use-credentials`)
+    const crossorigin = entry.crossorigin
+    if (crossorigin !== undefined) {
+      if (typeof crossorigin !== 'string' || !HEAD_LINK_CROSSORIGIN.has(crossorigin)) {
+        return fail(`${what}[${index}].crossorigin must be anonymous / use-credentials`)
+      }
     }
     const link: NonNullable<LowcodeHeadMetadata['link']>[number] = {
       rel: entry.rel.trim(),
@@ -1637,8 +1645,8 @@ function parseHeadLinkEntries(
         if (trimmed) link[key] = trimmed
       }
     }
-    if (entry.crossorigin) {
-      link.crossorigin = entry.crossorigin as NonNullable<
+    if (crossorigin) {
+      link.crossorigin = crossorigin as NonNullable<
         LowcodeHeadMetadata['link']
       >[number]['crossorigin']
     }

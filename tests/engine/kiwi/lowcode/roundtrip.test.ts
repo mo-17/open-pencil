@@ -7,7 +7,7 @@ import {
   SceneGraph,
   type SceneNode
 } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 setDefaultTimeout(30_000)
 

@@ -8,7 +8,7 @@ import {
   parseTemplate,
   substitutePrev
 } from '@open-pencil/core/lowcode-validation'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 2 §4 step 4 — cross-walker regression (经验 A).

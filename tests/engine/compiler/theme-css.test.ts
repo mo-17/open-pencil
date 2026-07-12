@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildDesignTokenThemeCss } from '@open-pencil/compiler/theme-css'
-import type { Effect, Fill, Stroke } from '@open-pencil/core/scene-graph'
-import type { Color } from '@open-pencil/core/types'
+import type { Effect, Fill, Stroke } from '@open-pencil/scene-graph'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 
 import { createRect, firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -92,7 +92,10 @@ function addCrossCollectionAliasThemeVariables() {
   graph.addCollection({
     id: 'col-palette',
     name: 'Palette',
-    modes: [{ modeId: 'palette-light', name: 'Light' }, { modeId: 'palette-dark', name: 'Dark' }],
+    modes: [
+      { modeId: 'palette-light', name: 'Light' },
+      { modeId: 'palette-dark', name: 'Dark' }
+    ],
     defaultModeId: 'palette-light',
     variableIds: ['var-palette-primary']
   })
@@ -111,7 +114,10 @@ function addCrossCollectionAliasThemeVariables() {
   graph.addCollection({
     id: 'col-semantic',
     name: 'Semantic',
-    modes: [{ modeId: 'semantic-light', name: 'Light' }, { modeId: 'semantic-dark', name: 'Dark' }],
+    modes: [
+      { modeId: 'semantic-light', name: 'Light' },
+      { modeId: 'semantic-dark', name: 'Dark' }
+    ],
     defaultModeId: 'semantic-light',
     variableIds: ['var-semantic-accent']
   })

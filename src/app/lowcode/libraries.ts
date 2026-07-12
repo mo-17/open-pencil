@@ -8,7 +8,7 @@ import {
   type LibraryManifest,
   type LibraryRef,
   type LibraryUpdateStatus
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 const io = new IORegistry(BUILTIN_IO_FORMATS)
 

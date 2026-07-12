@@ -10,7 +10,7 @@ import type {
 } from '#compiler/ir/types'
 
 import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §10 — workflow-orchestration collect: `condition` (recursive

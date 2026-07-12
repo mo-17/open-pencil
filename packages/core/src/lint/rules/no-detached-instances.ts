@@ -1,5 +1,6 @@
+import { isAutoLayoutMode } from '@open-pencil/scene-graph'
+
 import { defineRule } from '#core/lint/rule'
-import { isAutoLayoutMode } from '#core/scene-graph'
 const PATTERNS = [
   /^(button|btn)/i,
   /^(input|field|text-?field)/i,

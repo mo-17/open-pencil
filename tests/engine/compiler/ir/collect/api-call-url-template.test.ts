@@ -4,7 +4,7 @@ import { collectTree } from '#compiler/ir/collect/tree'
 import type { IRApiCallHandler } from '#compiler/ir/types'
 
 import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 2 §4 — `apiCall` URL templating. The URL is parsed as a `${}`

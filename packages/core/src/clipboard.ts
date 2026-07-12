@@ -1,11 +1,18 @@
 import { inflateSync, deflateSync } from 'fflate'
 
+import { initCodec, getCompiledSchema, getSchemaBytes } from '@open-pencil/kiwi/fig/codec'
+import type { NodeChange as KiwiNodeChange } from '@open-pencil/kiwi/fig/codec'
+import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi/schema-runtime'
+import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+
 import { shapeTextForClipboard } from './canvas/text'
-import { initCodec, getCompiledSchema, getSchemaBytes } from './kiwi/fig/codec'
-import type { NodeChange as KiwiNodeChange } from './kiwi/fig/codec'
 import { populateAndApplyOverrides } from './kiwi/fig/instance-overrides'
 import type { InstanceNodeChange } from './kiwi/fig/instance-overrides'
-import { nodeChangeToProps, sortChildren } from './kiwi/fig/node-change/convert'
+import {
+  nodeChangeToProps,
+  shouldImportTextAsAutoSize,
+  sortChildren
+} from './kiwi/fig/node-change/convert'
 import {
   sceneNodeToKiwi,
   buildFigKiwi,
@@ -15,9 +22,7 @@ import {
   makeCanvasNodeChange,
   buildFontDigestMap
 } from './kiwi/fig/node-change/serialize'
-import { decodeBinarySchema, compileSchema, ByteBuffer } from './kiwi/schema-runtime'
 import { randomInt } from './random'
-import type { SceneGraph, SceneNode } from './scene-graph'
 import { buildDerivedTextDataV4 } from './text/derived-text/clipboard'
 
 interface FigmaClipboardMeta {
@@ -242,6 +247,9 @@ export function importClipboardNodes(
 
     const { nodeType, ...props } = nodeChangeToProps(nc, blobs)
     if (nodeType === 'DOCUMENT' || nodeType === 'VARIABLE') return
+    if (shouldImportTextAsAutoSize(nc, guidMap.get(parentMap.get(figmaId) ?? ''))) {
+      props.textAutoResize = 'WIDTH_AND_HEIGHT'
+    }
 
     if (ourParentId === targetParentId) {
       props.x = (props.x ?? 0) + offsetX

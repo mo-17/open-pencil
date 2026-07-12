@@ -4,8 +4,8 @@ import type {
   Variable,
   VariableCollection,
   VariableValue
-} from '@open-pencil/core/scene-graph'
-import type { Color } from '@open-pencil/core/types'
+} from '@open-pencil/scene-graph'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 
 type ThemeModeLines = Map<string, { name: string; lines: string[] }>
 

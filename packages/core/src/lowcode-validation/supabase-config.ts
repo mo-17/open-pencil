@@ -8,8 +8,8 @@
  * side (banner shows) and dangerous on the tool side (key persists), so
  * one source.
  */
-import type { SupabaseConfig } from '#core/scene-graph'
-import type { JsonObject } from '#core/types'
+import type { SupabaseConfig } from '@open-pencil/scene-graph'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import type { ValidationResult } from './validate'
 

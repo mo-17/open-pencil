@@ -3,7 +3,8 @@ import { resolve } from 'node:path'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
+import { fontManager } from '@open-pencil/core/text'
+import { SceneGraph } from '@open-pencil/scene-graph'
 import type {
   ActionDef,
   Color,
@@ -11,8 +12,7 @@ import type {
   Fill,
   SceneNode,
   WorkflowDef
-} from '@open-pencil/core/scene-graph'
-import { fontManager } from '@open-pencil/core/text'
+} from '@open-pencil/scene-graph'
 
 export const LOWCODE_ONBOARDING_DEMO_PATH = 'packages/demos/lowcode/lowcode-onboarding-demo.fig'
 

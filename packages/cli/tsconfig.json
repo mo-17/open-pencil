@@ -5,15 +5,9 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "declaration": true,
     "paths": {
-      "#cli/*": ["./src/*"],
-      "#core/*": ["../core/src/*"],
-      "@open-pencil/core": ["../core/src/index.ts"],
-      "@open-pencil/core/*": ["../core/src/*"]
-    },
-    "outDir": "dist",
-    "rootDir": "src"
+      "#cli/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

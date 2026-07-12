@@ -6,7 +6,7 @@ import type {
   ResponsiveBreakpoint,
   ResponsiveOverride,
   ResponsiveOverrides
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 

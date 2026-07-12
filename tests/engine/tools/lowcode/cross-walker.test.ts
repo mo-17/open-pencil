@@ -5,7 +5,7 @@ import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { initCodec } from '@open-pencil/core'
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
-import { SceneGraph, type DocumentStateDef, type StateDef } from '@open-pencil/core/scene-graph'
+import { SceneGraph, type DocumentStateDef, type StateDef } from '@open-pencil/scene-graph'
 
 import { ALL_TOOLS, getTool, setupToolTest } from '#tests/helpers/tools'
 

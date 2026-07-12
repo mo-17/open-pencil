@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 
 import { useI18n, useSelectionState, useEditorCommands } from '@open-pencil/vue'
 
-import VariablesDialog from './VariablesDialog.vue'
+import VariablesDialog from './variables/VariablesDialog.vue'
 import BooleanOperationsControl from './properties/BooleanOperationsControl.vue'
 import AppearanceSection from './properties/AppearanceSection.vue'
 import EffectsSection from './properties/EffectsSection.vue'
@@ -268,7 +268,7 @@ const emptyHasMatches = computed(
       v-show="showMultiPosition"
       id="position"
       :highlighted="sectionHighlighted('position', panels.position)"
-      :title="panels.position"
+      :label="panels.position"
     >
       <PositionSection />
     </InspectorSection>
@@ -276,7 +276,7 @@ const emptyHasMatches = computed(
       v-show="showMultiAppearance"
       id="appearance"
       :highlighted="sectionHighlighted('appearance', panels.appearance)"
-      :title="panels.appearance"
+      :label="panels.appearance"
     >
       <AppearanceSection />
       <FillSection />
@@ -287,7 +287,7 @@ const emptyHasMatches = computed(
       v-show="showMultiExport"
       id="export"
       :highlighted="sectionHighlighted('export', panels.export)"
-      :title="panels.export"
+      :label="panels.export"
     >
       <ExportSection />
     </InspectorSection>
@@ -322,7 +322,7 @@ const emptyHasMatches = computed(
       v-show="showSinglePosition"
       id="position"
       :highlighted="sectionHighlighted('position', panels.position)"
-      :title="panels.position"
+      :label="panels.position"
     >
       <PositionSection />
     </InspectorSection>
@@ -331,7 +331,7 @@ const emptyHasMatches = computed(
       v-show="showSingleLayout"
       id="layout"
       :highlighted="sectionHighlighted('layout', panels.layout)"
-      :title="panels.layout"
+      :label="panels.layout"
     >
       <LayoutSection />
     </InspectorSection>
@@ -341,7 +341,7 @@ const emptyHasMatches = computed(
       v-show="showSingleComponent"
       id="component"
       :highlighted="sectionHighlighted('component', 'Component')"
-      title="Component"
+      label="Component"
     >
       <div class="flex flex-col gap-1 border-b border-border px-3 py-2">
         <button
@@ -366,7 +366,7 @@ const emptyHasMatches = computed(
       v-show="showSingleAppearance"
       id="appearance"
       :highlighted="sectionHighlighted('appearance', panels.appearance)"
-      :title="panels.appearance"
+      :label="panels.appearance"
     >
       <AppearanceSection />
       <TypographySection v-if="node.type === 'TEXT'" />
@@ -379,7 +379,7 @@ const emptyHasMatches = computed(
       v-show="showSingleLowcodeBindings"
       id="lowcode-bindings"
       :highlighted="sectionHighlighted('lowcode-bindings', 'Bindings')"
-      title="Bindings"
+      label="Bindings"
     >
       <TextBindingPanel v-if="node.type === 'TEXT' || node.type === 'BUTTON'" />
       <ValueBindingPanel v-if="hasValueBinding" />
@@ -390,7 +390,7 @@ const emptyHasMatches = computed(
       v-show="showSingleLowcodeEvents"
       id="lowcode-events"
       :highlighted="sectionHighlighted('lowcode-events', 'Events')"
-      title="Events"
+      label="Events"
     >
       <EventsPanel v-if="hasEvents" />
     </InspectorSection>
@@ -399,7 +399,7 @@ const emptyHasMatches = computed(
       v-show="showSingleLowcodeValidation"
       id="lowcode-validation"
       :highlighted="sectionHighlighted('lowcode-validation', 'Validation')"
-      title="Validation"
+      label="Validation"
     >
       <ValidationPanel v-if="hasValidation" />
     </InspectorSection>
@@ -408,7 +408,7 @@ const emptyHasMatches = computed(
       v-show="showSingleLowcodeAdvanced"
       id="lowcode-advanced"
       :highlighted="sectionHighlighted('lowcode-advanced', 'Advanced')"
-      title="Advanced"
+      label="Advanced"
     >
       <InteractivePropsPanel v-if="node.type in INTERACTIVE_PROP_FIELDS" />
       <ListPanel v-if="node.type === 'LIST'" />
@@ -420,7 +420,7 @@ const emptyHasMatches = computed(
       v-show="showSingleExport"
       id="export"
       :highlighted="sectionHighlighted('export', panels.export)"
-      :title="panels.export"
+      :label="panels.export"
     >
       <ExportSection />
     </InspectorSection>
@@ -443,7 +443,7 @@ const emptyHasMatches = computed(
       v-show="showEmptyPage"
       id="page"
       :highlighted="sectionHighlighted('page', panels.page)"
-      :title="panels.page"
+      :label="panels.page"
     >
       <PageSection />
     </InspectorSection>
@@ -451,7 +451,7 @@ const emptyHasMatches = computed(
       v-show="showEmptyLowcodeState"
       id="lowcode-document-state"
       :highlighted="sectionHighlighted('lowcode-document-state', 'Lowcode State')"
-      title="Lowcode State"
+      label="Lowcode State"
     >
       <StatePanel />
       <DocumentStatePanel />
@@ -460,7 +460,7 @@ const emptyHasMatches = computed(
       v-show="showEmptyLowcodeServices"
       id="lowcode-document-services"
       :highlighted="sectionHighlighted('lowcode-document-services', 'Services & Workflows')"
-      title="Services & Workflows"
+      label="Services & Workflows"
     >
       <SupabaseConfigPanel />
       <AnalyticsConfigPanel />
@@ -471,7 +471,7 @@ const emptyHasMatches = computed(
       v-show="showEmptyLowcodeContent"
       id="lowcode-document-content"
       :highlighted="sectionHighlighted('lowcode-document-content', 'Content & i18n')"
-      title="Content & i18n"
+      label="Content & i18n"
     >
       <TranslationsPanel />
     </InspectorSection>
@@ -479,7 +479,7 @@ const emptyHasMatches = computed(
       v-show="showEmptyAssets"
       id="assets-variables"
       :highlighted="sectionHighlighted('assets-variables', 'Assets & Variables')"
-      title="Assets & Variables"
+      label="Assets & Variables"
     >
       <LibrariesPanel />
       <VariablesSection @open-dialog="variablesOpen = true" />
@@ -488,7 +488,7 @@ const emptyHasMatches = computed(
       v-show="showEmptyExport"
       id="export"
       :highlighted="sectionHighlighted('export', panels.export)"
-      :title="panels.export"
+      :label="panels.export"
     >
       <ExportSection />
     </InspectorSection>

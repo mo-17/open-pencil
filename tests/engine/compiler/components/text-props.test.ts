@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import type { SceneGraph } from '@open-pencil/core/scene-graph'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -64,7 +64,7 @@ describe('compile — components text-override props (Phase 3 §8 v2)', () => {
     const comp = out.files.get('src/components/Card.tsx') as string
     expect(comp).toContain('title?: string')
     expect(comp).toContain(
-      'export default function Card({ className, title = "Default" }: CardProps)'
+      'export default function Card({ className, style, title = "Default" }: CardProps)'
     )
     // body renders the prop, not the literal master text
     expect(comp).toContain('{title}')

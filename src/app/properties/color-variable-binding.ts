@@ -1,4 +1,4 @@
-import type { Color, Variable } from '@open-pencil/core/scene-graph'
+import type { Color, Variable } from '@open-pencil/scene-graph'
 
 export type ColorVariableBindingApi = {
   store: {

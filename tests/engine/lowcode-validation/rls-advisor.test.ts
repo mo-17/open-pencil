@@ -5,7 +5,7 @@ import {
   buildRlsPolicySql,
   collectRlsRequirements
 } from '@open-pencil/core/lowcode-validation'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §3.v8 step 1 — direct unit coverage for the RLS policy advisor.

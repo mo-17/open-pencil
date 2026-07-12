@@ -1,4 +1,4 @@
-import type { AnalyticsConfig } from '#core/scene-graph'
+import type { AnalyticsConfig } from '@open-pencil/scene-graph'
 
 import type { ValidationResult } from './validate'
 

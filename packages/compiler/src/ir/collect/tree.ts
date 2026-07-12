@@ -26,7 +26,7 @@ import {
   type Stroke,
   type SupabaseConfig,
   type WorkflowDef
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 import { tailwindClassName, type CompilerStyleOptions } from '../style'
 import type {
@@ -273,13 +273,11 @@ function compactSupabaseConfig(
 
 function hasValidSupabaseConfig(value: SupabaseConfig | undefined): boolean {
   if (!value) return false
-  return (
-    validateSupabaseConfig({
-      url: value.url.trim(),
-      anonKey: value.anonKey.trim(),
-      ...(value.schema?.trim() ? { schema: value.schema.trim() } : {})
-    }).ok
-  )
+  return validateSupabaseConfig({
+    url: value.url.trim(),
+    anonKey: value.anonKey.trim(),
+    ...(value.schema?.trim() ? { schema: value.schema.trim() } : {})
+  }).ok
 }
 
 function compactAnalyticsConsentCopy(

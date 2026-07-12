@@ -10,7 +10,9 @@ export function requestLowcodeActionFocus(target: LowcodeActionFocusTarget): voi
   pendingTarget = target
 }
 
-export function peekLowcodeActionFocus(nodeId: string | undefined): LowcodeActionFocusTarget | null {
+export function peekLowcodeActionFocus(
+  nodeId: string | undefined
+): LowcodeActionFocusTarget | null {
   if (!nodeId || pendingTarget?.nodeId !== nodeId) return null
   return pendingTarget
 }

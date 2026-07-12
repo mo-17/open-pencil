@@ -2,8 +2,8 @@
 import { computed } from 'vue'
 
 import { validateExpression } from '@open-pencil/core/lowcode-validation'
-import type { BindingExpr } from '@open-pencil/core/scene-graph'
-import type { JsonObject } from '@open-pencil/core/types'
+import type { BindingExpr } from '@open-pencil/scene-graph'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 

@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { expect, test, useEditorSetup } from '#tests/e2e/fixtures'
+import { cliSourcePath } from '#tests/helpers/paths'
 
 const editor = useEditorSetup()
+const CLI = cliSourcePath('index.ts')
 
 let fixtureDir = ''
 let importedPath = ''
@@ -21,7 +23,7 @@ test.beforeAll(async () => {
 
   runBunEval(`
     import { BUILTIN_IO_FORMATS, IORegistry } from "@open-pencil/core/io";
-    import { SceneGraph } from "@open-pencil/core/scene-graph";
+    import { SceneGraph } from "@open-pencil/scene-graph";
 
     const io = new IORegistry(BUILTIN_IO_FORMATS);
 
@@ -201,7 +203,7 @@ function runBunEval(code: string): void {
 }
 
 function runCli(args: string[]): void {
-  const result = spawnSync('bun', ['packages/cli/src/index.ts', ...args], {
+  const result = spawnSync('bun', [CLI, ...args], {
     cwd: process.cwd(),
     encoding: 'utf8'
   })

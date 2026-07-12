@@ -12,7 +12,7 @@ import {
   type LibraryUpdateCheck,
   type SceneGraph,
   type SceneNode
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 import { requireFile } from '#cli/app-client'
 import { bold, fmtList, ok, printError } from '#cli/format'

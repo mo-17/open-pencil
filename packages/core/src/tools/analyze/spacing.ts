@@ -1,6 +1,7 @@
 import { orderBy } from 'es-toolkit/array'
 
-import { isAutoLayoutMode } from '#core/scene-graph'
+import { isAutoLayoutMode } from '@open-pencil/scene-graph'
+
 import { defineTool } from '#core/tools/schema'
 
 export const analyzeSpacing = defineTool({

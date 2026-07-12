@@ -1,7 +1,7 @@
 import {
+  compactLowcodeHeadMetadata,
   unsafeLowcodeCustomCssUrls,
   unsafeLowcodeHeadMetaRefreshUrl,
-  validateLowcodeHeadMeta,
   validateLowcodeCustomCss
 } from '@open-pencil/core/lowcode-validation'
 import type {
@@ -10,7 +10,7 @@ import type {
   LowcodeHeadMeta,
   LowcodeHeadMetaKind,
   LowcodeHeadMetadata
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 export const LOWCODE_HEAD_META_KINDS: LowcodeHeadMetaKind[] = ['name', 'property', 'httpEquiv']
 
@@ -58,36 +58,14 @@ export function draftFromCustomCode(
 }
 
 export function buildCustomCodePatch(draft: CustomCodeDraft): CustomCodePatch {
-  const meta = draft.meta
-    .map((entry) => ({
-      kind: entry.kind,
-      key: entry.key.trim(),
-      content: entry.content.trim()
-    }))
-    .filter(
-      (entry) =>
-        entry.key &&
-        entry.content &&
-        validateLowcodeHeadMeta(entry.kind, entry.key, entry.content).ok
-    )
-
-  const link = draft.link
-    .map((entry) => compactHeadLink(entry))
-    .filter((entry) => entry.rel && isSafeHeadLinkHref(entry.href))
-
-  const styles = draft.stylesText
-    .split(/\n{2,}/)
-    .map((style) => style.trim())
-    .filter((style) => style && validateLowcodeCustomCss(style).ok)
-
-  const head: LowcodeHeadMetadata = {}
-  if (meta.length > 0) head.meta = meta
-  if (link.length > 0) head.link = link
-  if (styles.length > 0) head.styles = styles
-
+  const head = compactLowcodeHeadMetadata({
+    meta: draft.meta,
+    link: draft.link,
+    styles: draft.stylesText.split(/\n{2,}/)
+  })
   const customCss = draft.customCss.trim()
   return {
-    lowcodeHeadMetadata: Object.keys(head).length > 0 ? head : undefined,
+    lowcodeHeadMetadata: head,
     lowcodeCustomCss: customCss && validateLowcodeCustomCss(customCss).ok ? customCss : undefined
   }
 }
@@ -185,32 +163,8 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
   return dedupeRisks(risks)
 }
 
-function compactHeadLink(entry: LowcodeHeadLink): LowcodeHeadLink {
-  const link: LowcodeHeadLink = {
-    rel: entry.rel.trim(),
-    href: entry.href.trim()
-  }
-  const asValue = entry.as?.trim()
-  const type = entry.type?.trim()
-  const media = entry.media?.trim()
-  const crossorigin = entry.crossorigin
-  if (asValue) link.as = asValue
-  if (type) link.type = type
-  if (media) link.media = media
-  if (crossorigin) link.crossorigin = crossorigin
-  return link
-}
-
 function isExternalUrl(value: string): boolean {
   return /^https?:\/\//i.test(value) || value.startsWith('//')
-}
-
-function isSafeHeadLinkHref(value: string): boolean {
-  const trimmed = value.trim()
-  if (!trimmed) return false
-  if (/^(?:https?|mailto|tel):/i.test(trimmed)) return true
-  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return false
-  return true
 }
 
 function cspDirectiveForLink(link: LowcodeHeadLink): string {

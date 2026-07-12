@@ -1,0 +1,23 @@
+{
+  "move": "Przesuń",
+  "frame": "Ramka",
+  "section": "Sekcja",
+  "rectangle": "Prostokąt",
+  "ellipse": "Elipsa",
+  "line": "Linia",
+  "polygon": "Wielokąt",
+  "star": "Gwiazda",
+  "pen": "Pióro",
+  "text": "Tekst",
+  "hand": "Dłoń",
+  "input": "Pole tekstowe",
+  "button": "Przycisk",
+  "selectField": "Wybór",
+  "checkbox": "Pole wyboru",
+  "form": "Formularz",
+  "list": "Lista",
+  "textarea": "Pole tekstowe",
+  "radio": "Przycisk opcji",
+  "switch": "Przełącznik",
+  "datepicker": "Wybór daty"
+}

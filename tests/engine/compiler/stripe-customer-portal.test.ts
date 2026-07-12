@@ -4,7 +4,7 @@ import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/even
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRStripeCustomerPortalHandler } from '@open-pencil/compiler/ir/types'
 import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 function setupGraph(onClick: ActionDef[]): { graph: SceneGraph; pageId: string } {
   const graph = new SceneGraph()

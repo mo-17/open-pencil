@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
-import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -141,7 +141,7 @@ watch(
       :workflows="docWorkflows"
       :analytics-configured="analyticsConfigured"
       :action-path-prefix="eventName ?? ''"
-      add-test-id="lowcode-action-add"
+      data-test-id="lowcode-action-add"
       @update:actions="commitActions"
     />
   </div>

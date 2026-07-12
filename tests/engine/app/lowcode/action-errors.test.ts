@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 import { computeActionErrors } from '@/app/lowcode/action-errors'
 import {

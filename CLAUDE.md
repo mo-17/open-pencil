@@ -42,7 +42,11 @@ bun open-pencil eval <file> -c "<js>"
 
 | Package | Role |
 |---|---|
-| `packages/core` (`@open-pencil/core`) | Engine: scene graph, Skia/CanvasKit renderer, Yoga layout, Kiwi codec for `.fig`, editor core, tools registry, FigmaAPI, RPC, lint, profiler. **Zero DOM deps** — runs headless in Bun. |
+| `packages/scene-graph` (`@open-pencil/scene-graph`) | Framework-agnostic node/domain types, graph storage, variables, libraries, geometry, copy, snap, and undo. |
+| `packages/pen` / `packages/kiwi` / `packages/fig` | Standalone `.pen` conversion and lower-level `.fig`/Kiwi codecs. |
+| `packages/core` (`@open-pencil/core`) | Engine: Skia/CanvasKit renderer, Yoga layout, editor core, IO, tools registry, FigmaAPI, RPC, lint, profiler, and lowcode validation. **Zero DOM deps** — runs headless in Bun. |
+| `packages/dom-css` (`@open-pencil/dom-css`) | DOM/CSS/Tailwind/JSX import and HTML export pipelines. |
+| `packages/compiler` (`@open-pencil/compiler`) | Private SceneGraph-to-IR compiler and React/Vite/Tailwind emitter used by lowcode preview/build/deploy. |
 | `packages/vue` (`@open-pencil/vue`) | Headless Vue 3 SDK (Reka UI-style) — renderless components + composables. App is one consumer. |
 | `packages/cli` (`@open-pencil/cli`) | Headless CLI (`citty` + `agentfmt`). Connects to running desktop via RPC when no file arg. |
 | `packages/mcp` (`@open-pencil/mcp`) | MCP server, stdio + Hono HTTP. All ToolDefs auto-registered. |
@@ -50,7 +54,7 @@ bun open-pencil eval <file> -c "<js>"
 | `src/` | Tauri/Vite Vue app. App-specific code under `src/app/{editor,document,ai,collab,shell,tabs,demo,automation,tauri}`. |
 | `desktop/` | Tauri v2 (Rust). |
 
-**Subpath exports of `@open-pencil/core`** isolate heavy deps. The app imports targeted paths (`@open-pencil/core/scene-graph`, `/canvaskit`, `/kiwi`, `/editor`, `/tools`, etc.) — see `AGENTS.md` for the full table. **The runtime `canvaskit-wasm` import exists only in `canvaskit.ts`**; everywhere else uses `import type` and the CanvasKit instance is passed as a parameter.
+**Public engine exports** isolate heavy dependencies. Graph/domain types come from `@open-pencil/scene-graph` (with `/primitives`, `/geometry`, `/snap`, and `/undo` subpaths); editor, renderer, IO, and tools come from targeted `@open-pencil/core/*` paths. See `AGENTS.md` for the full table. **The runtime `canvaskit-wasm` import exists only in `canvaskit.ts`**; everywhere else uses `import type` and the CanvasKit instance is passed as a parameter.
 
 **Editor core** (`packages/core/src/editor/`) is 13 modules sharing an `EditorContext`. Each module is a factory `createXxxActions(ctx) => { ... }`; `create.ts` assembles them. `Editor = ReturnType<typeof createEditor>`. State mutations go through `ctx.setSelectedIds()` / `ctx.setActiveTool()` (never direct assignment) so the nanoevents bus fires consistently. The Vue SDK exposes `useEditorEvent(event, handler)` for auto-disposing subscriptions. The app session in `src/app/editor/session/create.ts` is a thin Vue wrapper around `createEditor()`.
 
@@ -68,12 +72,12 @@ bun open-pencil eval <file> -c "<js>"
 - **Test placement is enforced**: E2E → `tests/e2e/**/*.spec.ts`; Figma automation → `tests/figma/**/*.spec.ts`; engine/unit → `tests/engine/**/*.test.ts`; helpers → `tests/helpers/**`. Don't commit `*.tmp.*` or `*.profile.*`. If a test asserts internal graph state, it belongs in engine/unit, not E2E.
 - **File naming** (Reka UI-inspired): PascalCase folders+files for Vue components (`ColorPicker/ColorPickerRoot.vue`); kebab-case/lowercase for non-component domains (`scene-graph/`, `figma-api/`). When a domain grows to 2+ files, **create a subfolder** instead of sibling files with repeated prefixes — `selection/hit-test.ts` not `selection-hit-test.ts`. Oxlint and Steiger enforce this.
 - **No `Math.random()` anywhere** — use `crypto.getRandomValues()`. No `any`. No `!` non-null assertions. Use `culori` for color math.
-- **No inline type literals** when a named type exists — use `Color`, `Vector`, `SceneNode`, `Fill`, `Stroke`, `Effect` from `@open-pencil/core/scene-graph`.
+- **No inline type literals** when a named type exists — use domain types from `@open-pencil/scene-graph` and primitives from `@open-pencil/scene-graph/primitives`.
 - **Editor commands** (`packages/vue/src/editor/commands/registry.ts`) are the canonical source for shortcut display tokens. Store portable shortcuts like `MOD+SHIFT+H`; render with `formatShortcut()`. **Labels and i18n strings must not contain shortcut text** — Steiger enforces this for `packages/vue/src/i18n/messages.ts` and locale JSON.
 - **Shared menu schema** in `src/app/shell/menu/schema.ts` drives both browser (`AppMenu.vue`) and Tauri native menus. Run `bun run generate:tauri-menu` after editing it (Tauri also runs this from `tauri.conf.json` via `beforeDevCommand`/`beforeBuildCommand`).
 - **CLI output** must use `agentfmt` helpers from `packages/cli/src/format.ts` (`fmtList`, `fmtTree`, `fmtNode`, etc.); every command must support `--json`. Don't hand-roll `console.log` formatting.
 - **MCP-only tools** (`open_file`, `new_document`, `save_file`, `get_codegen_prompt`) are registered directly in `packages/mcp/src/server.ts`, not as ToolDefs. File-access tools are gated on `OPENPENCIL_MCP_ROOT` being set.
-- **`packages/core/src/kiwi/kiwi-schema/` is vendored** — don't modify.
+- **`packages/kiwi/src/schema-runtime/` is vendored** — don't modify.
 - **Test fixtures** (`tests/fixtures/*.fig`) are Git LFS. Use `git push --no-verify` to skip the slow LFS hook unless `.fig` fixtures changed.
 - **Tauri `IS_TAURI` constant** lives in `packages/core/src/constants.ts` — don't inline `'__TAURI_INTERNALS__' in window`.
 

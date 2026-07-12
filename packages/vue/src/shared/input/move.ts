@@ -6,7 +6,7 @@ import { findMoveDropTarget, reparentOutsideNodes } from '#vue/shared/input/drop
 export { duplicateAndDrag } from '#vue/shared/input/duplicate-drag'
 import { AUTO_LAYOUT_BREAK_THRESHOLD } from '@open-pencil/core/constants'
 import type { Editor } from '@open-pencil/core/editor'
-import { isAutoLayoutMode } from '@open-pencil/core/scene-graph'
+import { isAutoLayoutMode } from '@open-pencil/scene-graph'
 
 import { applyMoveSnap } from '#vue/shared/input/move-snap'
 import type { DragMove } from '#vue/shared/input/types'

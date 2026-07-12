@@ -82,17 +82,35 @@ describe('conflict reporting through the apply path (Phase 3 §4.5)', () => {
     graphB.nodes.delete(nodeB.id)
     nodeB.id = nodeA.id
     graphB.nodes.set(nodeA.id, nodeB)
+    const stateA = { currentPageId: firstPageId(graphA) }
+    const stateB = { currentPageId: firstPageId(graphB) }
+    const storeA = {
+      graph: graphA,
+      state: stateA,
+      requestRender: noop,
+      switchPage(pageId: string) {
+        stateA.currentPageId = pageId
+      }
+    }
+    const storeB = {
+      graph: graphB,
+      state: stateB,
+      requestRender: noop,
+      switchPage(pageId: string) {
+        stateB.currentPageId = pageId
+      }
+    }
 
     const conflictsB: string[] = []
     const syncA = createYjsGraphSync({
-      getStore: () => ({ graph: graphA, requestRender: noop }),
+      getStore: () => storeA,
       getYdoc: () => docA,
       getYnodes: () => ynodesA,
       getYimages: () => null,
       setSuppressYjsEvents: noop
     })
     const syncB = createYjsGraphSync({
-      getStore: () => ({ graph: graphB, requestRender: noop }),
+      getStore: () => storeB,
       getYdoc: () => docB,
       getYnodes: () => ynodesB,
       getYimages: () => null,
@@ -100,7 +118,7 @@ describe('conflict reporting through the apply path (Phase 3 §4.5)', () => {
       getConflictHandler: () => (kind: string) => conflictsB.push(kind)
     })
     registerYjsObservers({
-      store: { graph: graphB, requestRender: noop },
+      store: storeB,
       ynodes: ynodesB,
       yimages: docB.getMap('images'),
       getSuppressYjsEvents: () => false,

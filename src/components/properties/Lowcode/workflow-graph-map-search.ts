@@ -38,7 +38,11 @@ export function graphMapEdgeMatchesSearch(edge: WorkflowGraphEdge, term: string)
 
 export function graphMapEdgeBranchLabel(edge: WorkflowGraphEdge): string {
   if (!edge.actionPath.includes('/')) return 'Root'
-  const branch = edge.actionPath.split('/').at(-1)?.replace(/\[\d+\]$/, '') ?? ''
+  const branch =
+    edge.actionPath
+      .split('/')
+      .at(-1)
+      ?.replace(/\[\d+\]$/, '') ?? ''
   switch (branch) {
     case 'consequent':
       return 'Then'
@@ -77,7 +81,7 @@ export function graphMapSearchMatchPositionLabel(
   const index = matches.findIndex((match) => match.id === currentId)
   if (index === -1) return ''
   const match = matches[index]
-  return ` · ${index + 1}/${matches.length} ${match?.kind ?? 'result'}`
+  return ` · ${index + 1}/${matches.length} ${match.kind}`
 }
 
 export function formatGraphMapSearchSummary(

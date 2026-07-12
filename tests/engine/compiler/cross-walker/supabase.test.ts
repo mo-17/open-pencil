@@ -5,7 +5,7 @@ import { stripNavigateForSinglePage } from '@open-pencil/compiler/adapters/react
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRNode } from '@open-pencil/compiler/ir/types'
 import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §2 step 5 — cross-walker regression (experiences A + G).

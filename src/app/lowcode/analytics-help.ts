@@ -1,4 +1,4 @@
-import type { AnalyticsProvider } from '@open-pencil/core/scene-graph'
+import type { AnalyticsProvider } from '@open-pencil/scene-graph'
 
 export interface AnalyticsProviderHelp {
   idLabel: string

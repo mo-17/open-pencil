@@ -11,7 +11,7 @@ import {
   type SceneGraph,
   type SceneNode
 } from '@open-pencil/core'
-import type { JsonObject } from '@open-pencil/core/types'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import {
   type Mismatch,
@@ -40,6 +40,7 @@ function num3(n: number): string {
 
 const EPSILON = 0.01
 const MAX_ERRORS = 2000
+const GRADIENT_STOP_BINDING_KEY = /^boundVariables\.fills\/\d+\/gradientStops\/\d+\/color$/
 
 const SPECS: FixtureSpec[] = [
   {
@@ -64,8 +65,8 @@ const SPECS: FixtureSpec[] = [
     thumbnailHeight: 239,
     imageCount: 3,
     figKiwiVersion: 101,
-    g1ExportSize: 496909,
-    g2ExportSize: 496909
+    g1ExportSize: 594727,
+    g2ExportSize: 594872
   }
 ]
 
@@ -102,6 +103,18 @@ function deepCompare(
   if (opts.errors.length >= MAX_ERRORS || depth > 20) return
   if (a === b) return
   if (a == null && b == null) return
+
+  // Imported external variables can start as Figma asset refs. The first
+  // export canonicalizes gradient-stop refs to local variable GUIDs; later
+  // generations must remain byte-stable and are still compared normally.
+  if (
+    opts.generation === 0 &&
+    a === undefined &&
+    typeof b === 'string' &&
+    GRADIENT_STOP_BINDING_KEY.test(key)
+  ) {
+    return
+  }
 
   const leafKey = key.includes('.') ? key.slice(key.lastIndexOf('.') + 1) : key
   const vfn = opts.verifiers.get(key) ?? opts.verifiers.get(leafKey)

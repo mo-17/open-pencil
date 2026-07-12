@@ -273,20 +273,22 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   }
 
   status.value = { kind: 'starting' }
-  void startPreviewSidecar()
-    .then((handle) => {
+  async function launchPreviewSidecar(): Promise<void> {
+    try {
+      const handle = await startPreviewSidecar()
       if (cancelled) {
-        void handle.dispose()
-        return
+        await handle.dispose()
+      } else {
+        sidecar = handle
+        status.value = { kind: 'ready', url: handle.url }
+        recompileAndPush()
       }
-      sidecar = handle
-      status.value = { kind: 'ready', url: handle.url }
-      recompileAndPush()
-    })
-    .catch((e: unknown) => {
+    } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e)
       status.value = { kind: 'error', message }
-    })
+    }
+  }
+  void launchPreviewSidecar()
 
   const stopDebounced = watchDebounced(
     () => store.state.sceneVersion,

@@ -7,7 +7,7 @@ import {
   publishLibraryComponent,
   SceneGraph,
   type LibraryManifest
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 import {
   cloneSceneGraphForLibraryUndo,

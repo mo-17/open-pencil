@@ -34,6 +34,9 @@ function installFontFaceMocks() {
 afterEach(async () => {
   await clearTauriMocks()
   vi.restoreAllMocks()
+  fontManager.setDownloadedFontCache(null)
+  fontManager.setHostFallbackFontLoader(null)
+  fontManager.setWebFontFetch(null)
   Reflect.deleteProperty(globalThis, 'document')
   Reflect.deleteProperty(globalThis, 'FontFace')
 })
@@ -46,6 +49,7 @@ describe('Tauri font helpers', () => {
     })
 
     const { listFamilies, listFonts } = await import('@/app/editor/fonts')
+    vi.spyOn(fontManager, 'listFamilyOptions').mockResolvedValue([])
 
     await expect(listFamilies()).resolves.toEqual([{ family: 'System UI', source: 'local' }])
     await expect(listFonts()).resolves.toEqual([

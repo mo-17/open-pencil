@@ -1,3 +1,19 @@
+import type {
+  ActionDef,
+  AnalyticsConfig,
+  BindingExpr,
+  DocumentStateDef,
+  EventName,
+  LowcodeHeadMetadata,
+  LayoutMode,
+  LowcodeTranslations,
+  SeoMetadata,
+  StateDef,
+  StateOverrides,
+  SupabaseConfig,
+  WorkflowDef
+} from '@open-pencil/scene-graph'
+
 /**
  * Phase 3 §3 step 2 — lowcode read tools.
  *
@@ -13,21 +29,6 @@
  * of `tools/read/**` uses.
  */
 import type { FigmaAPI } from '#core/figma-api'
-import type {
-  ActionDef,
-  AnalyticsConfig,
-  BindingExpr,
-  DocumentStateDef,
-  EventName,
-  LowcodeHeadMetadata,
-  LayoutMode,
-  LowcodeTranslations,
-  SeoMetadata,
-  StateDef,
-  StateOverrides,
-  SupabaseConfig,
-  WorkflowDef
-} from '#core/scene-graph'
 import { defineTool } from '#core/tools/schema'
 
 /** Read shape returned by `readLowcodeNode`. Every lowcode field stays

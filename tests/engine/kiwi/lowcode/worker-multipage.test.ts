@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 import { exportFigFile, initCodec, SceneGraph } from '@open-pencil/core'
+import { parseFigBuffer } from '@open-pencil/kiwi/fig/parse'
 
 import { importNodeChanges } from '#core/kiwi/fig/import'
-import { parseFigBuffer } from '#core/kiwi/fig/parse/core'
 import { deserializeSceneGraph, serializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
 
 setDefaultTimeout(30_000)

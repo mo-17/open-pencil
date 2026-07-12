@@ -57,7 +57,7 @@ async function installGoogleFontsMock(page: Page, families = ['Inter', 'OpenPenc
   }, families)
 }
 
-test('font picker preloads Google fonts and selects local fonts after first-open access', async ({
+test('font picker selects local fonts without direct browser provider requests', async ({
   page
 }) => {
   await installGoogleFontsMock(page)
@@ -82,13 +82,11 @@ test('font picker preloads Google fonts and selects local fonts after first-open
   })
 
   const textId = await openTypographyForText(page)
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as Window & { __googleFontsFetchCount?: number }).__googleFontsFetchCount
-      )
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __googleFontsFetchCount?: number }).__googleFontsFetchCount
     )
-    .toBe(1)
+  ).toBe(0)
   await openFontPicker(page)
 
   await expect(
@@ -108,7 +106,7 @@ test('font picker preloads Google fonts and selects local fonts after first-open
     .toBe('OpenPencil Local Font')
 })
 
-test('font picker lists Google fonts when local font API is unavailable', async ({ page }) => {
+test('font picker keeps bundled fonts when local font API is unavailable', async ({ page }) => {
   await installGoogleFontsMock(page)
   await page.addInitScript(() => {
     Reflect.deleteProperty(window, 'queryLocalFonts')
@@ -117,24 +115,19 @@ test('font picker lists Google fonts when local font API is unavailable', async 
   await openTypographyForText(page)
   await openFontPicker(page)
 
+  await expect(page.getByTestId('font-picker-item').filter({ hasText: 'Inter' })).toBeVisible()
   await expect(
     page.getByTestId('font-picker-item').filter({ hasText: 'OpenPencil Google Font' })
-  ).toBeVisible()
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as Window & { __googleFontPreviewFetchCount?: number })
-            .__googleFontPreviewFetchCount
-      )
+  ).toHaveCount(0)
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __googleFontsFetchCount?: number }).__googleFontsFetchCount
     )
-    .toBeGreaterThan(0)
+  ).toBe(0)
   await expect(page.getByText('Local fonts are not available in this browser.')).toHaveCount(0)
 })
 
-test('font picker still lists Google fonts when local font permission is rejected', async ({
-  page
-}) => {
+test('font picker keeps bundled fonts when local font permission is rejected', async ({ page }) => {
   await installGoogleFontsMock(page)
   await page.addInitScript(() => {
     Object.defineProperty(window, 'queryLocalFonts', {
@@ -148,9 +141,10 @@ test('font picker still lists Google fonts when local font permission is rejecte
   await openTypographyForText(page)
   await openFontPicker(page)
 
+  await expect(page.getByTestId('font-picker-item').filter({ hasText: 'Inter' })).toBeVisible()
   await expect(
     page.getByTestId('font-picker-item').filter({ hasText: 'OpenPencil Google Font' })
-  ).toBeVisible()
+  ).toHaveCount(0)
   await expect(page.getByText('Local font access is blocked for this site.')).toHaveCount(0)
 })
 

@@ -1,7 +1,7 @@
 import { type ComputedRef, type InjectionKey, type Ref, inject, provide } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
-import type { LayoutMode } from '@open-pencil/core/scene-graph'
+import type { LayoutMode } from '@open-pencil/scene-graph'
 
 export interface LayerNode {
   id: string
@@ -29,7 +29,7 @@ export interface LayerTreeContext {
   editor: Editor
   items: Ref<LayerNode[]>
   expanded: Ref<string[]>
-  treeKey: Ref<number>
+  treeVersion: Ref<number>
   selectedIds: ComputedRef<Set<string>>
   indentPerLevel: number
   draggingId: Ref<string | null>

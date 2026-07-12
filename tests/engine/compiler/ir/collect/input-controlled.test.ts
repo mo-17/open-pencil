@@ -2,12 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
-import type {
-  ActionDef,
-  BindingExpr,
-  DocumentStateDef,
-  StateDef
-} from '@open-pencil/core/scene-graph'
+import type { ActionDef, BindingExpr, DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §3.x — INPUT controlled-input wiring via `bindings.value`. When a

@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { compile, withDefaults } from '@open-pencil/compiler'
 
 import {
   buildLowcodeOnboardingDemo,
   compileLowcodeOnboardingDemo
 } from '#tools/lowcode/src/make/onboarding-demo'
+
+import { compile, withDefaults } from '@open-pencil/compiler'
+import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
 
 const ONBOARDING_DEMO_FIG_PATH = 'packages/demos/lowcode/lowcode-onboarding-demo.fig'
 const CHECKOUT_FUNCTION_PATH = 'packages/demos/lowcode/supabase/functions/demo-checkout/index.ts'
@@ -177,7 +178,7 @@ describe('lowcode onboarding demo fixture', () => {
     expect(source).toContain('SUPABASE_URL must be an http(s) URL')
     expect(source).toContain('function normalizePlan(plan: unknown)')
     expect(source).toContain('STRIPE_CHECKOUT_MODE')
-    expect(source).toContain("mode: checkoutMode()")
+    expect(source).toContain('mode: checkoutMode()')
     expect(source).toContain("['payment', 'subscription']")
     expect(source).toContain('optionalAuthenticatedUser(request)')
     expect(source).toContain('/auth/v1/user')
@@ -190,7 +191,7 @@ describe('lowcode onboarding demo fixture', () => {
     expect(source).toContain('Anonymous demo')
     expect(source).toContain('STRIPE_PRICE_')
     expect(source).toContain("priceId.startsWith('price_')")
-    expect(source).toContain("const plan = normalizePlan(input.plan)")
+    expect(source).toContain('const plan = normalizePlan(input.plan)')
     expect(source).toContain('checkout/sessions')
     expect(source).toContain('function publicSiteUrl()')
     expect(source).toContain("env('PUBLIC_SITE_URL')")
@@ -289,7 +290,9 @@ describe('lowcode onboarding demo fixture', () => {
     expect(source).toContain('p_tax_amount: sumInvoiceTaxAmount(invoice.total_taxes)')
     expect(source).toContain('p_total_taxes: invoice.total_taxes ?? []')
     expect(source).toContain('p_usage_lines: invoiceUsageLines(invoice)')
-    expect(source).toContain('subscriptionItem: line.parent?.subscription_item_details?.subscription_item')
+    expect(source).toContain(
+      'subscriptionItem: line.parent?.subscription_item_details?.subscription_item'
+    )
     expect(source).toContain('quantityDecimal: line.quantity_decimal ?? null')
     expect(source).toContain('p_hosted_invoice_url: invoice.hosted_invoice_url')
     expect(source).toContain('p_stripe_payment_intent_id: payment.id')
@@ -299,7 +302,9 @@ describe('lowcode onboarding demo fixture', () => {
     expect(source).toContain('p_amount_refunded: charge.amount_refunded')
     expect(source).toContain('p_stripe_dispute_id: dispute.id')
     expect(source).toContain('p_stripe_charge_id: stripeId(dispute.charge)')
-    expect(source).toContain('p_evidence_due_by: stripeTimestampToIso(dispute.evidence_details?.due_by)')
+    expect(source).toContain(
+      'p_evidence_due_by: stripeTimestampToIso(dispute.evidence_details?.due_by)'
+    )
     expect(source).toContain('payload: event')
     expect(source).toContain('response.status === 409')
     expect(source).toContain("return 'duplicate'")
@@ -405,9 +410,7 @@ describe('lowcode onboarding demo fixture', () => {
       )
       expect(functionSource).toContain('security definer')
       expect(functionSource).toContain('set search_path = public')
-      expect(functionSource).toContain(
-        `revoke all on function public.${functionName}`
-      )
+      expect(functionSource).toContain(`revoke all on function public.${functionName}`)
       expect(functionSource).toContain('from public, anon, authenticated')
     }
     const invoicesTable = source.slice(

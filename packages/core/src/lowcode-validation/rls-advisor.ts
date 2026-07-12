@@ -24,7 +24,7 @@
  * does NOT auto-generate ownership predicates; see §2 decision (j) for the
  * "no RLS = wide open" security warning this comment echoes.
  */
-import type { ActionDef, WorkflowDef } from '#core/scene-graph'
+import type { ActionDef, WorkflowDef } from '@open-pencil/scene-graph'
 
 /** The four Postgres RLS-relevant SQL commands a policy can target. */
 export type SqlCommand = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'

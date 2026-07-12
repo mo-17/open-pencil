@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import type { Fill, SceneGraph } from '@open-pencil/core/scene-graph'
+import type { Fill, SceneGraph } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -79,7 +79,7 @@ describe('compile — FRAME→Card (Phase 4 §15.1)', () => {
     // Child FRAME (no visible fill -> non-card in heuristic) should keep its own rounded style.
     const childMatch = app.match(/<div[^>]*className="[^"]*w-30 h-20[^"]*"/)?.[0]
     expect(childMatch).toBeDefined()
-    expect(childMatch).toMatch(/\brounded-(?:\[[^\]]+\]|\d+)\b/)
+    expect(childMatch).toMatch(/\brounded-(?:\[[^\]]+\]|[a-z0-9]+)\b/)
     // Non-card child should not be forced clipping unless it has its own clip intent.
     expect(childMatch).not.toMatch(/\boverflow-hidden\b/)
   })

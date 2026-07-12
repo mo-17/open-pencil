@@ -12,7 +12,7 @@
 // Step 1 (this file's serialize side) wires the save path; step 2 adds the
 // read side in convert.ts.
 
-import type { NodeChange } from '#core/kiwi/fig/codec'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import type {
   ActionDef,
   AnalyticsConfig,
@@ -33,8 +33,10 @@ import type {
   StateOverrides,
   SupabaseConfig,
   WorkflowDef
-} from '#core/scene-graph'
-import type { JsonObject } from '#core/types'
+} from '@open-pencil/scene-graph'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+
+import { compactLowcodeHeadMetadata } from '#core/lowcode-validation'
 
 import { OPEN_PENCIL_PLUGIN_ID } from './plugin-data'
 
@@ -283,7 +285,7 @@ function serializeDocumentConfigFields(node: SceneNode): PluginDataEntry[] {
   if (isAnalyticsConfig(node.lowcodeAnalyticsConfig)) {
     entries.push(makeEntry(LOWCODE_ANALYTICS_CONFIG_KEY, node.lowcodeAnalyticsConfig))
   }
-  const headMetadata = headMetadataPayload(node.lowcodeHeadMetadata)
+  const headMetadata = compactLowcodeHeadMetadata(node.lowcodeHeadMetadata)
   if (headMetadata) entries.push(makeEntry(LOWCODE_HEAD_METADATA_KEY, headMetadata))
   if (typeof node.lowcodeCustomCss === 'string' && node.lowcodeCustomCss.trim() !== '') {
     entries.push(makeEntry(LOWCODE_CUSTOM_CSS_KEY, node.lowcodeCustomCss.trim()))
@@ -312,29 +314,6 @@ function seoMetadataPayload(value: SeoMetadata | undefined): SeoMetadata | null 
     const fieldValue = value[key]
     if (typeof fieldValue === 'string' && fieldValue !== '') payload[key] = fieldValue
   }
-  return Object.keys(payload).length > 0 ? payload : null
-}
-
-function headMetadataPayload(value: LowcodeHeadMetadata | undefined): LowcodeHeadMetadata | null {
-  if (!value) return null
-  const payload: LowcodeHeadMetadata = {}
-  const meta = value.meta
-    ?.filter((entry) => entry.key.trim() !== '' && entry.content.trim() !== '')
-    .map((entry) => ({ kind: entry.kind, key: entry.key.trim(), content: entry.content.trim() }))
-  const link = value.link
-    ?.filter((entry) => entry.rel.trim() !== '' && entry.href.trim() !== '')
-    .map((entry) => ({
-      rel: entry.rel.trim(),
-      href: entry.href.trim(),
-      ...(entry.as?.trim() ? { as: entry.as.trim() } : {}),
-      ...(entry.type?.trim() ? { type: entry.type.trim() } : {}),
-      ...(entry.media?.trim() ? { media: entry.media.trim() } : {}),
-      ...(entry.crossorigin ? { crossorigin: entry.crossorigin } : {})
-    }))
-  const styles = value.styles?.map((style) => style.trim()).filter(Boolean)
-  if (meta?.length) payload.meta = meta
-  if (link?.length) payload.link = link
-  if (styles?.length) payload.styles = styles
   return Object.keys(payload).length > 0 ? payload : null
 }
 
@@ -490,11 +469,7 @@ function isAnalyticsConfig(value: unknown): value is AnalyticsConfig {
     return false
   if (value.consentRequired !== undefined && typeof value.consentRequired !== 'boolean')
     return false
-  if (
-    value.consentRegionPreset !== undefined &&
-    !['eea'].includes(String(value.consentRegionPreset))
-  )
-    return false
+  if (value.consentRegionPreset !== undefined && value.consentRegionPreset !== 'eea') return false
   if (
     value.consentAnalyticsDefault !== undefined &&
     typeof value.consentAnalyticsDefault !== 'boolean'

@@ -8,7 +8,7 @@ import type {
   SupabaseFilter,
   SupabasePayloadEntry,
   WorkflowDef
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §10 v10 — pure per-action validation for the recursive workflow

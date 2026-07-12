@@ -22,6 +22,8 @@ import type {
   LowcodeThemeSwitchPosition
 } from '#compiler/types'
 
+import { compactLowcodeHeadMetadata } from '@open-pencil/core/lowcode-validation'
+
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
 import { OVERLAY_RUNTIME_CLASSES } from './emit/element'
@@ -714,7 +716,7 @@ function cleanMetadata(metadata: HtmlMetadata | undefined): HtmlMetadata | undef
   const description = cleanMetadataText(metadata.description)
   const image = cleanMetadataText(metadata.image)
   const canonicalUrl = cleanMetadataText(metadata.canonicalUrl)
-  const head = cleanHeadMetadata(metadata.head)
+  const head = compactLowcodeHeadMetadata(metadata.head)
   const customCss = cleanMetadataText(metadata.customCss)
   if (!title && !description && !image && !canonicalUrl && !head && !customCss) return undefined
   return { title, description, image, canonicalUrl, head, customCss }
@@ -739,33 +741,6 @@ function mergeMetadata(
 function cleanMetadataText(value: string | undefined): string | undefined {
   const trimmed = value?.trim()
   return trimmed ? trimmed : undefined
-}
-
-function cleanHeadMetadata(head: HtmlMetadata['head']): HtmlMetadata['head'] | undefined {
-  if (!head) return undefined
-  const meta = head.meta
-    ?.map((entry) => ({
-      kind: entry.kind,
-      key: entry.key.trim(),
-      content: entry.content.trim()
-    }))
-    .filter((entry) => entry.key && entry.content)
-  const link = head.link
-    ?.map((entry) => ({
-      rel: entry.rel.trim(),
-      href: entry.href.trim(),
-      ...(entry.as?.trim() ? { as: entry.as.trim() } : {}),
-      ...(entry.type?.trim() ? { type: entry.type.trim() } : {}),
-      ...(entry.media?.trim() ? { media: entry.media.trim() } : {}),
-      ...(entry.crossorigin ? { crossorigin: entry.crossorigin } : {})
-    }))
-    .filter((entry) => entry.rel && entry.href)
-  const styles = head.styles?.map((style) => style.trim()).filter(Boolean)
-  const out: NonNullable<HtmlMetadata['head']> = {}
-  if (meta?.length) out.meta = meta
-  if (link?.length) out.link = link
-  if (styles?.length) out.styles = styles
-  return Object.keys(out).length > 0 ? out : undefined
 }
 
 function emitAssets(files: Map<string, string | Uint8Array>, assets: readonly IRAsset[]): void {

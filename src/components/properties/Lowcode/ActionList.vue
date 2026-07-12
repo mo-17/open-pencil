@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import type {
-  ActionDef,
-  DocumentStateDef,
-  StateDef,
-  WorkflowDef
-} from '@open-pencil/core/scene-graph'
+import { computed, useAttrs } from 'vue'
+
+import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
 import { makeAction } from './action-factory'
@@ -20,32 +17,29 @@ import ActionRow from './ActionRow.vue'
  * so the full workflow tree is editable at any depth. Emits the whole new array
  * on every edit (the parent owns persistence / undo).
  */
-const {
-  actions,
-  pageStates,
-  docStates,
-  workflows,
-  analyticsConfigured,
-  actionPathPrefix,
-  addTestId
-} = defineProps<{
-  actions: readonly ActionDef[]
-  pageStates: readonly StateDef[]
-  docStates: readonly DocumentStateDef[]
-  /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
-  workflows: readonly WorkflowDef[]
-  analyticsConfigured?: boolean
-  actionPathPrefix?: string
-  /** Test id for the add button (top-level keeps `lowcode-action-add`; nested
-   *  branches pass a branch-specific id). */
-  addTestId?: string
-}>()
+const { actions, pageStates, docStates, workflows, analyticsConfigured, actionPathPrefix } =
+  defineProps<{
+    actions: readonly ActionDef[]
+    pageStates: readonly StateDef[]
+    docStates: readonly DocumentStateDef[]
+    /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
+    workflows: readonly WorkflowDef[]
+    analyticsConfigured?: boolean
+    actionPathPrefix?: string
+  }>()
+
+defineOptions({ inheritAttrs: false })
 
 const emit = defineEmits<{
   'update:actions': [ActionDef[]]
 }>()
 
 const { panels } = useI18n()
+const attrs = useAttrs()
+const addDataTestId = computed(() => {
+  const testId = attrs['data-test-id']
+  return typeof testId === 'string' ? testId : 'lowcode-action-add'
+})
 
 function replaceAt(index: number, next: ActionDef): void {
   emit(
@@ -85,7 +79,7 @@ function add(): void {
     </ul>
     <button
       type="button"
-      :data-test-id="addTestId ?? 'lowcode-action-add'"
+      :data-test-id="addDataTestId"
       class="self-start rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
       @click="add"
     >

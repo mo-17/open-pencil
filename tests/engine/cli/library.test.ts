@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
-import type { LibraryManifest, SceneNode } from '@open-pencil/core/scene-graph'
+import { SceneGraph } from '@open-pencil/scene-graph'
+import type { LibraryManifest, SceneNode } from '@open-pencil/scene-graph'
 
 import { cliSourcePath } from '#tests/helpers/paths'
 import { heavy } from '#tests/helpers/test-utils'

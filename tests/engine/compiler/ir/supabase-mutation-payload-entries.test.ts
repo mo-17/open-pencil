@@ -5,7 +5,7 @@ import type { IREventHandler, IRSupabaseMutationHandler } from '#compiler/ir/typ
 
 import { emitEventHandler } from '@open-pencil/compiler/adapters/react/emit/event'
 import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §3.v2 step 2 — `supabaseMutation.payloadEntries` IR collect +

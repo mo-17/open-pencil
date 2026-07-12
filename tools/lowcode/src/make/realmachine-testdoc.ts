@@ -16,9 +16,9 @@
 //   bun tools/lowcode/src/make/realmachine-testdoc.ts
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
-import type { ActionDef, Color, Fill, SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
 import { fontManager } from '@open-pencil/core/text'
+import { SceneGraph } from '@open-pencil/scene-graph'
+import type { ActionDef, Color, Fill, SceneNode, WorkflowDef } from '@open-pencil/scene-graph'
 
 await fontManager.loadFont('Inter', 'Regular')
 await fontManager.loadFont('Inter', 'SemiBold')

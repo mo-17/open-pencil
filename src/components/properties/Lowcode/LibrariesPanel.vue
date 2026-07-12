@@ -5,7 +5,7 @@ import {
   acceptLibraryUpdate,
   type LibraryManifest,
   type SceneGraph
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 import { computeAllLayouts } from '@open-pencil/core/layout'
 import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'

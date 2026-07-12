@@ -11,7 +11,7 @@ import {
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRSupabaseConfig } from '@open-pencil/compiler/ir/types'
 import { SceneGraph } from '@open-pencil/core'
-import type { SupabaseConfig } from '@open-pencil/core/scene-graph'
+import type { SupabaseConfig } from '@open-pencil/scene-graph'
 
 const BASE_OPTIONS: CompilerOptions = {
   packageName: 'demo',

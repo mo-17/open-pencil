@@ -5,12 +5,14 @@
 //   return t.execute(figma, args)
 // (lowcode mutate tools intentionally hit the no-undo fallback path here
 // because the editor is not injected outside `src/app/ai/**` — §3.v2.2 #b.)
+import { writeFile } from 'node:fs/promises'
 
 import { defineCommand } from 'citty'
 
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 
 import { isAppMode, requireFile, rpc } from '#cli/app-client'
+import { appTargetOptions, appTargetRpcArgs } from '#cli/app-target'
 import { printError } from '#cli/format'
 import { loadDocument } from '#cli/headless'
 
@@ -48,6 +50,7 @@ export default defineCommand({
       description: 'Write to a different file',
       required: false
     },
+    ...appTargetOptions,
     json: { type: 'boolean', description: 'Output as JSON' },
     quiet: { type: 'boolean', alias: 'q', description: 'Suppress output' }
   },
@@ -66,7 +69,7 @@ export default defineCommand({
     }
 
     if (isAppMode(args.file)) {
-      const result = await rpc('eval', { code })
+      const result = await rpc('eval', { code, ...appTargetRpcArgs(args) })
       if (!args.quiet && result !== undefined && result !== null) {
         printResult(result, !!args.json)
       }
@@ -104,7 +107,7 @@ export default defineCommand({
       const io = new IORegistry(BUILTIN_IO_FORMATS)
       const outPath = args.output ? args.output : file
       const result = await io.writeDocument('fig', graph)
-      await Bun.write(outPath, result.data as Uint8Array)
+      await writeFile(outPath, result.data as Uint8Array)
       if (!args.quiet) {
         console.error(`Written to ${outPath}`)
       }

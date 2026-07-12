@@ -16,7 +16,7 @@ import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 type DemoName = 'basic' | 'form' | 'interactive'
 

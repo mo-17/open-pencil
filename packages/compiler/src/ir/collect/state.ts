@@ -3,7 +3,7 @@ import {
   PREV_IDENT,
   validateStateName
 } from '@open-pencil/core/lowcode-validation'
-import type { SceneNode, StateDef } from '@open-pencil/core/scene-graph'
+import type { SceneNode, StateDef } from '@open-pencil/scene-graph'
 
 import type { IRDocStateDecl, IRStateDecl, IRWarning } from '../types'
 import { registerDocStateReads, unknownIdentifiers } from './bindings'

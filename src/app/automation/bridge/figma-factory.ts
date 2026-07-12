@@ -1,12 +1,15 @@
 import { FigmaAPI } from '@open-pencil/core/figma-api'
 
 import type { EditorStore } from '@/app/editor/active-store'
-import { listFonts } from '@/app/editor/fonts'
+import { listFamilies, listFonts } from '@/app/editor/fonts'
 
-export function makeFigmaFromStore(store: EditorStore): FigmaAPI {
+export function makeFigmaFromStore(
+  store: EditorStore,
+  pageId = store.state.currentPageId
+): FigmaAPI {
   const api = new FigmaAPI(store.graph)
   api.setRenderer(store.renderer ?? null)
-  api.currentPage = api.wrapNode(store.state.currentPageId)
+  api.currentPage = api.wrapNode(pageId)
   api.currentPage.selection = [...store.state.selectedIds]
     .map((id) => api.getNodeById(id))
     .filter((n): n is NonNullable<typeof n> => n !== null)
@@ -20,10 +23,15 @@ export function makeFigmaFromStore(store: EditorStore): FigmaAPI {
   api.exportImage = (nodeIds, opts) =>
     store.renderExportImage(nodeIds, opts.scale ?? 1, opts.format ?? 'PNG')
   api.listAvailableFontsAsync = async () => {
-    const fonts = await listFonts()
-    return fonts.flatMap(({ family, styles }) =>
+    const [systemFonts, familyOptions] = await Promise.all([listFonts(), listFamilies()])
+    const fonts = systemFonts.flatMap(({ family, styles }) =>
       styles.map((style) => ({ fontName: { family, style } }))
     )
+    const seenFamilies = new Set(systemFonts.map(({ family }) => family))
+    for (const { family } of familyOptions) {
+      if (!seenFamilies.has(family)) fonts.push({ fontName: { family, style: 'Regular' } })
+    }
+    return fonts
   }
   return api
 }

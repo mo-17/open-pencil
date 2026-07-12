@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
-import type { StateDef } from '@open-pencil/core/scene-graph'
+import type { StateDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 2 §2 — setState picks `mode: 'functional'` when valueExpr references

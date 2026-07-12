@@ -6,12 +6,12 @@ import { readLocalStorageText, writeLocalStorageText } from '@/app/cache'
 
 const {
   id,
-  title,
+  label,
   defaultOpen = true,
   highlighted = false
 } = defineProps<{
   id: string
-  title: string
+  label: string
   defaultOpen?: boolean
   highlighted?: boolean
 }>()
@@ -46,7 +46,7 @@ watch(open, (next) => {
       <icon-lucide-chevron-down
         class="size-3 transition-transform [[data-state=closed]>&]:-rotate-90"
       />
-      <span class="min-w-0 truncate">{{ title }}</span>
+      <span class="min-w-0 truncate">{{ label }}</span>
     </CollapsibleTrigger>
     <CollapsibleContent
       :data-test-id="`inspector-section-content-${id}`"

@@ -1,7 +1,5 @@
-import { normalizeColor } from '#core/color'
-import { BLACK } from '#core/constants'
-import type { Paint, Effect as KiwiEffect } from '#core/kiwi/fig/codec'
-import { guidToString } from '#core/kiwi/fig/node-change/guid'
+import type { Paint, Effect as KiwiEffect } from '@open-pencil/kiwi/fig/codec'
+import { guidToString } from '@open-pencil/kiwi/fig/guid'
 import type {
   Fill,
   FillType,
@@ -12,8 +10,11 @@ import type {
   GradientTransform,
   StrokeCap,
   StrokeJoin
-} from '#core/scene-graph'
-import type { Color, Matrix } from '#core/types'
+} from '@open-pencil/scene-graph'
+import type { Color, Matrix } from '@open-pencil/scene-graph/primitives'
+
+import { normalizeColor } from '#core/color'
+import { BLACK } from '#core/constants'
 
 const convertColor = normalizeColor
 

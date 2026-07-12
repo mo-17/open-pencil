@@ -4,8 +4,8 @@ import { chromium, type Browser, type Page } from '@playwright/test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
-import type { SceneGraph } from '@open-pencil/core/scene-graph'
-import type { Color } from '@open-pencil/core/types'
+import type { SceneGraph } from '@open-pencil/scene-graph'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 

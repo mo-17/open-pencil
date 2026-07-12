@@ -1,9 +1,4 @@
-import type {
-  ActionDef,
-  ActionKind,
-  DocumentStateDef,
-  StateDef
-} from '@open-pencil/core/scene-graph'
+import type { ActionDef, ActionKind, DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §10 v10 — shared `ActionDef` factory + kind list for the recursive

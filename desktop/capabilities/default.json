@@ -14,6 +14,9 @@
     "mcp-bridge:default",
     "mcp-bridge:allow-script-result",
     "webdriver-automation:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-html",
+    "clipboard-manager:allow-write-text",
     {
       "identifier": "fs:allow-read-file",
       "allow": [{ "path": "**" }]

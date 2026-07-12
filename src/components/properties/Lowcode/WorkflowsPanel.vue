@@ -1,14 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
-import type {
-  DocumentStateDef,
-  SceneNode,
-  StateDef,
-  WorkflowDef
-} from '@open-pencil/core/scene-graph'
+import type { DocumentStateDef, SceneNode, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
+import Tip from '@/components/ui/Tip.vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { requestLowcodeActionFocus } from '@/app/lowcode/action-focus'
@@ -344,7 +340,8 @@ function graphMapEdgeBranchTitle(edge: WorkflowGraphEdge): string {
 }
 
 function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
-  return issue.type === 'cycle' ? 'Cycle' : (issue.type === 'call-args' ? 'Args' : 'Missing')
+  if (issue.type === 'cycle') return 'Cycle'
+  return issue.type === 'call-args' ? 'Args' : 'Missing'
 }
 
 function graphMapIssueJumpLabel(issue: WorkflowGraphIssue): string {
@@ -530,12 +527,16 @@ function handleGraphMapSearchEnter(event: KeyboardEvent): void {
 async function jumpToActiveGraphMapSearchMatch(): Promise<void> {
   const activeId = activeGraphMapSearchMatchId.value
   if (!activeId) return
-  const node = graphMapNodes.value.find((candidate) => graphMapNodeSearchMatchId(candidate) === activeId)
+  const node = graphMapNodes.value.find(
+    (candidate) => graphMapNodeSearchMatchId(candidate) === activeId
+  )
   if (node) {
     jumpToWorkflow(node.id)
     return
   }
-  const edge = graphMapEdges.value.find((candidate) => graphMapEdgeSearchMatchId(candidate) === activeId)
+  const edge = graphMapEdges.value.find(
+    (candidate) => graphMapEdgeSearchMatchId(candidate) === activeId
+  )
   if (edge) await jumpToWorkflowAction(edge)
 }
 
@@ -731,17 +732,17 @@ function containingPageId(node: SceneNode): string | undefined {
               @keydown.enter.stop="handleGraphMapSearchEnter"
               @keydown.escape.stop="handleGraphMapSearchEscape"
             />
-            <button
-              v-if="graphMapSearchTerm"
-              type="button"
-              data-test-id="lowcode-workflow-graph-map-search-clear"
-              aria-label="Clear workflow graph map search"
-              title="Clear workflow graph map search"
-              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-              @click="clearGraphMapSearch"
-            >
-              Clear
-            </button>
+            <Tip v-if="graphMapSearchTerm" label="Clear workflow graph map search">
+              <button
+                type="button"
+                data-test-id="lowcode-workflow-graph-map-search-clear"
+                aria-label="Clear workflow graph map search"
+                class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                @click="clearGraphMapSearch"
+              >
+                Clear
+              </button>
+            </Tip>
           </div>
           <span data-test-id="lowcode-workflow-graph-map-summary" class="text-[9px] text-muted/80">
             {{ graphMapSummaryLabel() }}
@@ -782,19 +783,19 @@ function containingPageId(node: SceneNode): string | undefined {
                 {{ issue.message }}
               </span>
             </span>
-            <button
-              v-if="issue.targetWorkflowId"
-              type="button"
-              data-test-id="lowcode-workflow-graph-map-issue-jump"
-              :aria-label="graphMapIssueJumpLabel(issue)"
-              :title="graphMapIssueJumpLabel(issue)"
-              class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-              @click="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
-              @keydown.enter.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
-              @keydown.space.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
-            >
-              Jump
-            </button>
+            <Tip v-if="issue.targetWorkflowId" :label="graphMapIssueJumpLabel(issue)">
+              <button
+                type="button"
+                data-test-id="lowcode-workflow-graph-map-issue-jump"
+                :aria-label="graphMapIssueJumpLabel(issue)"
+                class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                @click="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
+                @keydown.enter.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
+                @keydown.space.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
+              >
+                Jump
+              </button>
+            </Tip>
           </li>
         </ul>
         <p
@@ -824,17 +825,18 @@ function containingPageId(node: SceneNode): string | undefined {
                 <span data-test-id="lowcode-workflow-graph-map-node-group-count">
                   {{ graphMapGroupCountLabel(group.nodes.length) }}
                 </span>
-                <button
-                  type="button"
-                  data-test-id="lowcode-workflow-graph-map-node-group-toggle"
-                  :aria-expanded="!isGraphMapNodeGroupCollapsed(group.kind)"
-                  :aria-label="graphMapNodeGroupToggleLabel(group)"
-                  :title="graphMapNodeGroupToggleLabel(group)"
-                  class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                  @click="toggleGraphMapNodeGroup(group.kind)"
-                >
-                  {{ isGraphMapNodeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
-                </button>
+                <Tip :label="graphMapNodeGroupToggleLabel(group)">
+                  <button
+                    type="button"
+                    data-test-id="lowcode-workflow-graph-map-node-group-toggle"
+                    :aria-expanded="!isGraphMapNodeGroupCollapsed(group.kind)"
+                    :aria-label="graphMapNodeGroupToggleLabel(group)"
+                    class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                    @click="toggleGraphMapNodeGroup(group.kind)"
+                  >
+                    {{ isGraphMapNodeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
+                  </button>
+                </Tip>
               </span>
             </div>
             <div v-if="!isGraphMapNodeGroupCollapsed(group.kind)" class="flex flex-wrap gap-1">
@@ -842,7 +844,9 @@ function containingPageId(node: SceneNode): string | undefined {
                 v-for="node in group.nodes"
                 :key="node.id"
                 data-test-id="lowcode-workflow-graph-map-node"
-                :data-graph-map-active-match="isActiveGraphMapNodeSearchMatch(node) ? 'true' : undefined"
+                :data-graph-map-active-match="
+                  isActiveGraphMapNodeSearchMatch(node) ? 'true' : undefined
+                "
                 class="flex max-w-full flex-col gap-0.5 rounded border px-1.5 py-0.5 text-[10px]"
                 :class="
                   isActiveGraphMapNodeSearchMatch(node)
@@ -850,36 +854,40 @@ function containingPageId(node: SceneNode): string | undefined {
                     : 'border-border'
                 "
               >
-                <button
-                  type="button"
-                  data-test-id="lowcode-workflow-graph-map-node-jump"
-                  :aria-label="graphMapNodeJumpLabel(node.name)"
-                  :title="graphMapNodeJumpLabel(node.name)"
-                  class="flex max-w-full flex-col gap-0.5 rounded text-left hover:text-surface focus:bg-hover focus:text-surface"
-                  @click="jumpToWorkflow(node.id)"
-                  @keydown.enter.prevent="jumpToWorkflow(node.id)"
-                  @keydown.space.prevent="jumpToWorkflow(node.id)"
-                >
-                  <span class="flex max-w-full items-center gap-1">
-                    <span class="min-w-0 truncate">{{ node.name }}</span>
-                    <span
-                      v-if="node.issues.length > 0"
-                      data-test-id="lowcode-workflow-graph-map-node-issue"
-                      :aria-label="graphMapNodeIssueTitle(node.name, node.issues.length)"
-                      :title="graphMapNodeIssueTitle(node.name, node.issues.length)"
-                      class="shrink-0 text-red-500"
-                    >
-                      {{ graphMapNodeIssueLabel(node.issues.length) }}
-                    </span>
-                  </span>
-                  <span
-                    data-test-id="lowcode-workflow-graph-map-node-stats"
-                    class="text-[9px] text-muted"
+                <Tip :label="graphMapNodeJumpLabel(node.name)">
+                  <button
+                    type="button"
+                    data-test-id="lowcode-workflow-graph-map-node-jump"
+                    :aria-label="graphMapNodeJumpLabel(node.name)"
+                    class="flex max-w-full flex-col gap-0.5 rounded text-left hover:text-surface focus:bg-hover focus:text-surface"
+                    @click="jumpToWorkflow(node.id)"
+                    @keydown.enter.prevent="jumpToWorkflow(node.id)"
+                    @keydown.space.prevent="jumpToWorkflow(node.id)"
                   >
-                    {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
-                    {{ node.outgoing.length }}o / {{ node.actionCount }}a
-                  </span>
-                </button>
+                    <span class="flex max-w-full items-center gap-1">
+                      <span class="min-w-0 truncate">{{ node.name }}</span>
+                      <Tip
+                        v-if="node.issues.length > 0"
+                        :label="graphMapNodeIssueTitle(node.name, node.issues.length)"
+                      >
+                        <span
+                          data-test-id="lowcode-workflow-graph-map-node-issue"
+                          :aria-label="graphMapNodeIssueTitle(node.name, node.issues.length)"
+                          class="shrink-0 text-red-500"
+                        >
+                          {{ graphMapNodeIssueLabel(node.issues.length) }}
+                        </span>
+                      </Tip>
+                    </span>
+                    <span
+                      data-test-id="lowcode-workflow-graph-map-node-stats"
+                      class="text-[9px] text-muted"
+                    >
+                      {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
+                      {{ node.outgoing.length }}o / {{ node.actionCount }}a
+                    </span>
+                  </button>
+                </Tip>
                 <div
                   v-if="node.entrypoints.length > 0"
                   data-test-id="lowcode-workflow-graph-map-node-entrypoint"
@@ -888,16 +896,17 @@ function containingPageId(node: SceneNode): string | undefined {
                   <span class="min-w-0 truncate">
                     {{ entrypointSourceLabel(node.entrypoints[0]) }}
                   </span>
-                  <button
-                    type="button"
-                    data-test-id="lowcode-workflow-graph-map-node-entrypoint-jump"
-                    :aria-label="entrypointSourceJumpLabel(node.entrypoints[0])"
-                    :title="entrypointSourceJumpLabel(node.entrypoints[0])"
-                    class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                    @click="jumpToEntrypointSource(node.entrypoints[0])"
-                  >
-                    Source
-                  </button>
+                  <Tip :label="entrypointSourceJumpLabel(node.entrypoints[0])">
+                    <button
+                      type="button"
+                      data-test-id="lowcode-workflow-graph-map-node-entrypoint-jump"
+                      :aria-label="entrypointSourceJumpLabel(node.entrypoints[0])"
+                      class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                      @click="jumpToEntrypointSource(node.entrypoints[0])"
+                    >
+                      Source
+                    </button>
+                  </Tip>
                 </div>
                 <button
                   v-if="node.entrypoints.length > 1"
@@ -936,16 +945,17 @@ function containingPageId(node: SceneNode): string | undefined {
                     <span class="min-w-0 truncate">
                       {{ entrypointSourceLabel(entrypoint) }}
                     </span>
-                    <button
-                      type="button"
-                      data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra-jump"
-                      :aria-label="entrypointSourceJumpLabel(entrypoint)"
-                      :title="entrypointSourceJumpLabel(entrypoint)"
-                      class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                      @click="jumpToEntrypointSource(entrypoint)"
-                    >
-                      Source
-                    </button>
+                    <Tip :label="entrypointSourceJumpLabel(entrypoint)">
+                      <button
+                        type="button"
+                        data-test-id="lowcode-workflow-graph-map-node-entrypoint-extra-jump"
+                        :aria-label="entrypointSourceJumpLabel(entrypoint)"
+                        class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                        @click="jumpToEntrypointSource(entrypoint)"
+                      >
+                        Source
+                      </button>
+                    </Tip>
                   </li>
                 </ul>
               </div>
@@ -979,17 +989,18 @@ function containingPageId(node: SceneNode): string | undefined {
                 <span data-test-id="lowcode-workflow-graph-map-edge-group-count">
                   {{ countLabel(group.edges.length, 'edge') }}
                 </span>
-                <button
-                  type="button"
-                  data-test-id="lowcode-workflow-graph-map-edge-group-toggle"
-                  :aria-expanded="!isGraphMapEdgeGroupCollapsed(group.kind)"
-                  :aria-label="graphMapEdgeGroupToggleLabel(group)"
-                  :title="graphMapEdgeGroupToggleLabel(group)"
-                  class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                  @click="toggleGraphMapEdgeGroup(group.kind)"
-                >
-                  {{ isGraphMapEdgeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
-                </button>
+                <Tip :label="graphMapEdgeGroupToggleLabel(group)">
+                  <button
+                    type="button"
+                    data-test-id="lowcode-workflow-graph-map-edge-group-toggle"
+                    :aria-expanded="!isGraphMapEdgeGroupCollapsed(group.kind)"
+                    :aria-label="graphMapEdgeGroupToggleLabel(group)"
+                    class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                    @click="toggleGraphMapEdgeGroup(group.kind)"
+                  >
+                    {{ isGraphMapEdgeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
+                  </button>
+                </Tip>
               </span>
             </div>
             <ul v-if="!isGraphMapEdgeGroupCollapsed(group.kind)" class="flex flex-col gap-0.5">
@@ -997,7 +1008,9 @@ function containingPageId(node: SceneNode): string | undefined {
                 v-for="edge in group.edges"
                 :key="`${edge.fromId}-${edge.actionId}-${edge.toId}`"
                 data-test-id="lowcode-workflow-graph-map-edge"
-                :data-graph-map-active-match="isActiveGraphMapEdgeSearchMatch(edge) ? 'true' : undefined"
+                :data-graph-map-active-match="
+                  isActiveGraphMapEdgeSearchMatch(edge) ? 'true' : undefined
+                "
                 :aria-label="graphMapEdgePathLabel(edge)"
                 class="flex items-center justify-between gap-2 rounded border px-1 py-0.5"
                 :class="
@@ -1020,71 +1033,74 @@ function containingPageId(node: SceneNode): string | undefined {
                   <span data-test-id="lowcode-workflow-graph-map-edge-to" class="min-w-0">
                     <span class="text-[9px] uppercase text-muted/80">To </span>
                     <span class="ml-1">{{ graphMapEdgeTargetLabel(edge) }}</span>
-                    <span
-                      v-if="!edge.toName"
-                      data-test-id="lowcode-workflow-graph-map-edge-missing"
-                      :aria-label="graphMapMissingEdgeLabel(edge)"
-                      :title="graphMapMissingEdgeLabel(edge)"
-                      class="ml-1 rounded bg-red-500/10 px-1 text-red-500"
-                    >
-                      missing
-                    </span>
+                    <Tip v-if="!edge.toName" :label="graphMapMissingEdgeLabel(edge)">
+                      <span
+                        data-test-id="lowcode-workflow-graph-map-edge-missing"
+                        :aria-label="graphMapMissingEdgeLabel(edge)"
+                        class="ml-1 rounded bg-red-500/10 px-1 text-red-500"
+                      >
+                        missing
+                      </span>
+                    </Tip>
                   </span>
+                  <Tip :label="graphMapEdgeSourceActionJumpLabel(edge)">
+                    <button
+                      type="button"
+                      data-test-id="lowcode-workflow-graph-map-edge-action"
+                      :aria-label="graphMapEdgeSourceActionJumpLabel(edge)"
+                      class="shrink-0 rounded bg-hover px-1 text-[9px] text-muted hover:text-surface focus:bg-hover focus:text-surface"
+                      @click="jumpToWorkflowAction(edge)"
+                      @keydown.enter.prevent="jumpToWorkflowAction(edge)"
+                      @keydown.space.prevent="jumpToWorkflowAction(edge)"
+                    >
+                      {{ graphMapEdgeActionLabel(edge) }}
+                    </button>
+                  </Tip>
+                  <Tip :label="graphMapEdgeActionKindLabel(edge)">
+                    <span
+                      data-test-id="lowcode-workflow-graph-map-edge-action-kind"
+                      :aria-label="graphMapEdgeActionKindLabel(edge)"
+                      class="shrink-0 rounded bg-hover/70 px-1 text-[9px] text-muted"
+                    >
+                      {{ edge.actionKind }}
+                    </span>
+                  </Tip>
+                  <Tip :label="graphMapEdgeBranchTitle(edge)">
+                    <span
+                      data-test-id="lowcode-workflow-graph-map-edge-branch"
+                      :aria-label="graphMapEdgeBranchTitle(edge)"
+                      class="shrink-0 rounded border border-border/70 px-1 text-[9px] text-muted"
+                    >
+                      {{ graphMapEdgeBranchLabel(edge) }}
+                    </span>
+                  </Tip>
+                </span>
+                <Tip v-if="edge.toName" :label="graphMapEdgeJumpLabel(edge)">
                   <button
                     type="button"
-                    data-test-id="lowcode-workflow-graph-map-edge-action"
-                    :aria-label="graphMapEdgeSourceActionJumpLabel(edge)"
-                    :title="graphMapEdgeSourceActionJumpLabel(edge)"
-                    class="shrink-0 rounded bg-hover px-1 text-[9px] text-muted hover:text-surface focus:bg-hover focus:text-surface"
-                    @click="jumpToWorkflowAction(edge)"
-                    @keydown.enter.prevent="jumpToWorkflowAction(edge)"
-                    @keydown.space.prevent="jumpToWorkflowAction(edge)"
+                    data-test-id="lowcode-workflow-graph-map-edge-jump"
+                    :aria-label="graphMapEdgeJumpLabel(edge)"
+                    class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                    @click="jumpToWorkflow(edge.toId)"
+                    @keydown.enter.prevent="jumpToWorkflow(edge.toId)"
+                    @keydown.space.prevent="jumpToWorkflow(edge.toId)"
                   >
-                    {{ graphMapEdgeActionLabel(edge) }}
+                    Jump
                   </button>
-                  <span
-                    data-test-id="lowcode-workflow-graph-map-edge-action-kind"
-                    :aria-label="graphMapEdgeActionKindLabel(edge)"
-                    :title="graphMapEdgeActionKindLabel(edge)"
-                    class="shrink-0 rounded bg-hover/70 px-1 text-[9px] text-muted"
+                </Tip>
+                <Tip v-else :label="graphMapMissingEdgeSourceJumpLabel(edge)">
+                  <button
+                    type="button"
+                    data-test-id="lowcode-workflow-graph-map-edge-source-jump"
+                    :aria-label="graphMapMissingEdgeSourceJumpLabel(edge)"
+                    class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
+                    @click="jumpToWorkflow(edge.fromId)"
+                    @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
+                    @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
                   >
-                    {{ edge.actionKind }}
-                  </span>
-                  <span
-                    data-test-id="lowcode-workflow-graph-map-edge-branch"
-                    :aria-label="graphMapEdgeBranchTitle(edge)"
-                    :title="graphMapEdgeBranchTitle(edge)"
-                    class="shrink-0 rounded border border-border/70 px-1 text-[9px] text-muted"
-                  >
-                    {{ graphMapEdgeBranchLabel(edge) }}
-                  </span>
-                </span>
-                <button
-                  v-if="edge.toName"
-                  type="button"
-                  data-test-id="lowcode-workflow-graph-map-edge-jump"
-                  :aria-label="graphMapEdgeJumpLabel(edge)"
-                  :title="graphMapEdgeJumpLabel(edge)"
-                  class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                  @click="jumpToWorkflow(edge.toId)"
-                  @keydown.enter.prevent="jumpToWorkflow(edge.toId)"
-                  @keydown.space.prevent="jumpToWorkflow(edge.toId)"
-                >
-                  Jump
-                </button>
-                <button
-                  v-else
-                  type="button"
-                  data-test-id="lowcode-workflow-graph-map-edge-source-jump"
-                  :aria-label="graphMapMissingEdgeSourceJumpLabel(edge)"
-                  :title="graphMapMissingEdgeSourceJumpLabel(edge)"
-                  class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
-                  @click="jumpToWorkflow(edge.fromId)"
-                  @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
-                  @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
-                >
-                  Source
-                </button>
+                    Source
+                  </button>
+                </Tip>
               </li>
             </ul>
           </section>

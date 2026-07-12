@@ -9,8 +9,8 @@ import {
   type PluginDataEntry,
   type SceneNode
 } from '@open-pencil/core'
+import type { PluginData } from '@open-pencil/kiwi/fig/codec'
 
-import type { PluginData } from '#core/kiwi/fig/codec'
 import {
   extractLowcodeAndPluginData,
   LOWCODE_LIBRARIES_KEY,

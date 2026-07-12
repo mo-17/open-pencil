@@ -4,8 +4,8 @@ import {
   type SceneGraph,
   type SceneNode,
   type VectorNetwork
-} from '#core/scene-graph'
-import { copyGeometryPaths } from '#core/scene-graph/copy'
+} from '@open-pencil/scene-graph'
+import { copyGeometryPaths } from '@open-pencil/scene-graph/copy'
 
 import { buildClonesMap } from './sync'
 import type { OverrideContext } from './types'

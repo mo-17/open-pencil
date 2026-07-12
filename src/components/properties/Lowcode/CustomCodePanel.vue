@@ -7,7 +7,7 @@ import type {
   LowcodeHeadMeta,
   LowcodeHeadMetaKind,
   LowcodeHeadMetadata
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 

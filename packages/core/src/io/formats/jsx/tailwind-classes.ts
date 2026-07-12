@@ -1,7 +1,5 @@
 import { twirl } from 'twirlwind'
 
-import { colorToCSSCompact } from '#core/color'
-import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import type {
   Fill,
   GridTrack,
@@ -9,7 +7,10 @@ import type {
   ResponsiveBreakpoint,
   SceneGraph,
   SceneNode
-} from '#core/scene-graph'
+} from '@open-pencil/scene-graph'
+
+import { colorToCSSCompact } from '#core/color'
+import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { resolveNodeTextDirection } from '#core/text/direction'
 
 import { formatColor, formatTrack, getNodeContext, solidFillColor, solidStroke } from './helpers'

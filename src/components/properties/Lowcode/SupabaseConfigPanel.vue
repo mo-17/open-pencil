@@ -7,7 +7,7 @@ import {
   collectRlsRequirements,
   detectServiceRole
 } from '@open-pencil/core/lowcode-validation'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 

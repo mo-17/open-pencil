@@ -1,5 +1,5 @@
 import type { Editor } from '@open-pencil/core/editor'
-import { isAutoLayoutMode } from '@open-pencil/core/scene-graph'
+import { isAutoLayoutMode } from '@open-pencil/scene-graph'
 
 import type { DragOriginal as MoveOriginal } from '#vue/shared/input/drag-original'
 import { duplicateAndDrag } from '#vue/shared/input/duplicate-drag'

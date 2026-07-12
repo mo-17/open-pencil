@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
-import type { DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
+import type { DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 2 §4 — a Document State name may be referenced from a read-context

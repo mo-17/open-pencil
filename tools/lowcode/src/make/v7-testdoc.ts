@@ -17,9 +17,9 @@
 //   bun tools/lowcode/src/make/v7-testdoc.ts
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
-import type { Color, Fill, Stroke, SceneGraph as Graph } from '@open-pencil/core/scene-graph'
 import { fontManager } from '@open-pencil/core/text'
+import { SceneGraph } from '@open-pencil/scene-graph'
+import type { Color, Fill, Stroke, SceneGraph as Graph } from '@open-pencil/scene-graph'
 
 const graph = new SceneGraph()
 const pageId = graph.getPages()[0].id

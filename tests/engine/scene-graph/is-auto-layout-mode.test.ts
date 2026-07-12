@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/core/scene-graph'
+import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/scene-graph'
 
 /**
  * Phase 2 §6 step 1 — the helper that gates every "is this an auto-layout

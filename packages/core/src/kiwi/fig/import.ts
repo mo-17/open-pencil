@@ -1,7 +1,10 @@
 import { isNotNil } from 'es-toolkit/predicate'
 
+import type { NodeChange, VariableDataValuesEntry, Color, GUID } from '@open-pencil/kiwi/fig/codec'
+import { SceneGraph } from '@open-pencil/scene-graph'
+import type { SceneNode, VariableType, VariableValue } from '@open-pencil/scene-graph'
+
 import { BLACK } from '#core/constants'
-import type { NodeChange, VariableDataValuesEntry, Color, GUID } from '#core/kiwi/fig/codec'
 import { populateAndApplyOverrides } from '#core/kiwi/fig/instance-overrides'
 import type { InstanceNodeChange } from '#core/kiwi/fig/instance-overrides'
 import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
@@ -9,13 +12,12 @@ import {
   guidToString,
   kiwiVariableFieldToBindingField,
   nodeChangeToProps,
+  shouldImportTextAsAutoSize,
   sortChildren,
   setVariableColorResolver
 } from '#core/kiwi/fig/node-change/convert'
 import { extractLowcodeAndPluginData } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import { applyStyleRefsToFields } from '#core/kiwi/fig/node-change/style-refs'
-import { SceneGraph } from '#core/scene-graph'
-import type { SceneNode, VariableType, VariableValue } from '#core/scene-graph'
 
 type AssetRef = { key: string; version?: string }
 type AliasRef = { guid?: GUID; assetRef?: AssetRef }
@@ -471,6 +473,9 @@ export function importNodeChanges(
 
     const { nodeType, ...props } = nodeChangeToProps(nc, blobs)
     if (nodeType === 'DOCUMENT' || nodeType === 'VARIABLE' || nc.type === 'VARIABLE_SET') return
+    if (shouldImportTextAsAutoSize(nc, changeMap.get(parentMap.get(ncId) ?? ''))) {
+      props.textAutoResize = 'WIDTH_AND_HEIGHT'
+    }
 
     const parentId = canvasIdToPageId.get(graphParentId) ?? graphParentId
     const node = graph.createNode(nodeType, parentId, props)

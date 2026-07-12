@@ -9,7 +9,7 @@ import type {
 } from '#compiler/ir/types'
 
 import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
+import type { ActionDef, SupabaseConfig } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §2 step 2 — Supabase IR collect.

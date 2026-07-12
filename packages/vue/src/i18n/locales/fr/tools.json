@@ -1,0 +1,23 @@
+{
+  "move": "Déplacer",
+  "frame": "Cadre",
+  "section": "Section",
+  "rectangle": "Rectangle",
+  "ellipse": "Ellipse",
+  "line": "Ligne",
+  "polygon": "Polygone",
+  "star": "Étoile",
+  "pen": "Plume",
+  "text": "Texte",
+  "hand": "Main",
+  "input": "Saisie",
+  "button": "Bouton",
+  "selectField": "Sélecteur",
+  "checkbox": "Case",
+  "form": "Formulaire",
+  "list": "Liste",
+  "textarea": "Zone de texte",
+  "radio": "Bouton radio",
+  "switch": "Interrupteur",
+  "datepicker": "Sélecteur de date"
+}

@@ -3,13 +3,14 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 import {
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogOverlay,
   DialogPortal,
   DialogRoot,
   DialogTitle
 } from 'reka-ui'
 
-import type { SceneNode } from '@open-pencil/core/scene-graph'
+import type { SceneNode } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
 import { nodeIcon } from '@/app/editor/icons'
@@ -181,7 +182,7 @@ function insertSelectedAsset() {
       <AppInput
         v-model="query"
         type="search"
-        test-id="assets-search"
+        data-test-id="assets-search"
         size="sm"
         :placeholder="panels.searchLocalComponents"
       />
@@ -280,6 +281,9 @@ function insertSelectedAsset() {
           data-test-id="asset-details-dialog"
           :class="dialog.content"
         >
+          <DialogDescription class="sr-only">
+            {{ selectedAsset.description || `${selectedAsset.name} component asset` }}
+          </DialogDescription>
           <div class="flex items-center justify-between border-b border-border px-4 py-3">
             <div class="flex min-w-0 items-center gap-2">
               <component

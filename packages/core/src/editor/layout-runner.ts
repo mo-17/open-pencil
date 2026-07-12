@@ -1,5 +1,6 @@
+import { isAutoLayoutMode, type SceneGraph } from '@open-pencil/scene-graph'
+
 import { computeAllLayouts, computeLayout } from '#core/layout'
-import { isAutoLayoutMode, type SceneGraph } from '#core/scene-graph'
 
 export function createLayoutRunner(getGraph: () => SceneGraph) {
   function runLayoutForNode(id: string) {

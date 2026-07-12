@@ -4,6 +4,12 @@
 
 ### Changed
 
+- Add Figma-style page management, including rename/delete actions and drag-and-drop page reordering.
+- Add DOM/CSS import and authoring across the app, CLI, and SDK, plus Tailwind and standalone HTML export.
+- Add richer Design JSX authoring for components, variables, structured fills, gradients, shadows, and blur effects.
+- Add overlap analysis for layout collisions and overflowing children through CLI, AI tools, and MCP.
+- Add saved per-node export settings, desktop image drag-and-drop, and document/page targeting for live automation.
+- Publish SceneGraph, Pen, Kiwi, Fig, and DOM/CSS through dedicated workspace package boundaries.
 - Add compiler support for persisted static lowcode SEO metadata in generated `index.html`, including title, description, Open Graph image, canonical URL fields, `.fig` / `.pen` import coverage, and AI ToolDef read/write support.
 - Drop unsafe generated lowcode canonical URLs when compiling imported or stale metadata.
 - Skip invalid imported lowcode Supabase configs at compiler collect time instead of emitting a broken Supabase runtime.
@@ -208,6 +214,12 @@
 
 ### Fixes
 
+- Improve CJK fallback rendering, imported Figma text sizing, and auto-layout reflow after child/component changes.
+- Restore desktop clipboard behavior and public collaboration links, and sync current document content to joiners.
+- Fix `.fig` GUID collisions, group/boolean resize scaling, Hangul IME composition, and mutable clone data sharing.
+- Improve large layer-tree responsiveness, AI provider connection testing, and published package type resolution.
+- Improve Figma import fidelity for groups, booleans, instances, rotated vectors, text fills, grids, guides, patterns, and noise.
+- Fix file-backed CLI commands under Node and improve overlap analysis accuracy.
 - Preserve compiled 20px corner radii and stroke widths by emitting valid Tailwind arbitrary
   utilities instead of spacing-scale `rounded-5` / `border-5` classes.
 - Clip compiled lowcode card children to the parent rounded corners by emitting overflow clipping on card-like containers, with Tauri preview coverage for the rounded-parent path.

@@ -5,7 +5,7 @@ import { unzlibSync } from 'fflate'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
-import type { SceneGraph } from '@open-pencil/core/scene-graph'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -178,19 +178,14 @@ describe('preview browser pixels — image and visual fills (Phase 4 §24)', () 
 })
 
 async function waitForImages(page: Page): Promise<void> {
-  await page.waitForFunction(() => {
-    return [...document.images].every((img) => img.complete && img.naturalWidth > 0)
-  })
-  await page.evaluate(
+  await page.waitForFunction(
     () =>
-      new Promise((resolve) => {
-        requestAnimationFrame(() => resolve(null))
-      })
-  )
-  await page.evaluate(
-    () =>
-      new Promise((resolve) => {
-        requestAnimationFrame(() => resolve(null))
+      new Promise<boolean>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            resolve([...document.images].every((img) => img.complete && img.naturalWidth > 0))
+          })
+        })
       })
   )
 }

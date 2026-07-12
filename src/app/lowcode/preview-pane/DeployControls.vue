@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 import { openExternalLink } from '@/app/shell/ui'
+import Tip from '@/components/ui/Tip.vue'
 
 import {
   deployArtifactLabel,
@@ -175,15 +176,16 @@ applyEnvironmentPreset(environment.value)
 
 <template>
   <div class="relative">
-    <button
-      type="button"
-      data-test-id="lowcode-deploy-toggle"
-      class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
-      title="Deploy"
-      @click="toggle"
-    >
-      Deploy
-    </button>
+    <Tip label="Deploy">
+      <button
+        type="button"
+        data-test-id="lowcode-deploy-toggle"
+        class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
+        @click="toggle"
+      >
+        Deploy
+      </button>
+    </Tip>
 
     <div
       v-if="open"
@@ -347,11 +349,15 @@ applyEnvironmentPreset(environment.value)
                 open
               </button>
             </div>
-            <div class="truncate" :title="artifactLabel(entry)">{{ artifactLabel(entry) }}</div>
+            <Tip :label="artifactLabel(entry)">
+              <div class="truncate">{{ artifactLabel(entry) }}</div>
+            </Tip>
             <div class="truncate">{{ buildOptionsLabel(entry) }}</div>
-            <div class="truncate" :title="rollbackContractTitle(entry)">
-              {{ rollbackContractLabel(entry) }}
-            </div>
+            <Tip :label="rollbackContractTitle(entry)">
+              <div class="truncate">
+                {{ rollbackContractLabel(entry) }}
+              </div>
+            </Tip>
             <div class="truncate">Deploy {{ entry.deployId }}</div>
             <div class="truncate">
               Rollback:

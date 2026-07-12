@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { Color, Variable } from '@open-pencil/core/scene-graph'
+import type { Color, Variable } from '@open-pencil/scene-graph'
 
 import { boundGradientStopColor } from '@/app/properties/color-variable-binding'
 import type { GradientStopColorVariableBindingApi } from '@/app/properties/color-variable-binding'

@@ -6,10 +6,12 @@ import build from './commands/build'
 import compile from './commands/compile'
 import convert from './commands/convert'
 import deploy from './commands/deploy'
+import documents from './commands/documents'
 import evalCmd from './commands/eval'
 import exportCmd from './commands/export'
 import find from './commands/find'
 import formats from './commands/formats'
+import importCmd from './commands/import'
 import info from './commands/info'
 import library from './commands/library'
 import lint from './commands/lint'
@@ -34,8 +36,10 @@ const main = defineCommand({
     compile,
     convert,
     deploy,
+    documents,
     eval: evalCmd,
     export: exportCmd,
+    import: importCmd,
     find,
     formats,
     info,

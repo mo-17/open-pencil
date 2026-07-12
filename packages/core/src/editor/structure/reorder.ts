@@ -1,6 +1,7 @@
+import { isAutoLayoutMode } from '@open-pencil/scene-graph'
+
 import type { EditorContext } from '#core/editor/types'
 import { computeLayout } from '#core/layout'
-import { isAutoLayoutMode } from '#core/scene-graph'
 
 export function createStructureReorderActions(ctx: EditorContext) {
   function doReorderChild(nodeId: string, parentId: string, insertIndex: number) {

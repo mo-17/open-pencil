@@ -1,6 +1,7 @@
+import { isAutoLayoutMode } from '@open-pencil/scene-graph'
+
 import { defineRule } from '#core/lint/rule'
 import { isMultipleOf, SPACING_SCALE } from '#core/lint/utils'
-import { isAutoLayoutMode } from '#core/scene-graph'
 
 export default defineRule({
   meta: {

@@ -8,6 +8,7 @@ import type { IRTree } from '@open-pencil/compiler/ir/types'
 import { useCollabInjected } from '@/app/collab/use'
 import type { PreviewDocStatePayload } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
+import Tip from '@/components/ui/Tip.vue'
 
 import DeployControls from './DeployControls.vue'
 import { useCompileOnChange, type PreviewUiKit } from './use-compile-on-change'
@@ -263,35 +264,42 @@ onBeforeUnmount(() => {
     <div class="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-2">
       <span class="truncate text-xs text-muted">Preview · {{ statusLabel }}</span>
       <div class="flex shrink-0 items-center gap-1">
-        <label class="flex items-center gap-1 text-xs text-muted" title="Preview UI components">
-          <span>UI</span>
-          <select
-            v-model="previewUiKit"
-            data-test-id="lowcode-preview-uikit"
-            class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
-          >
-            <option value="none">Tailwind</option>
-            <option value="shadcn">shadcn</option>
-          </select>
-        </label>
-        <label class="flex items-center gap-1 text-xs text-muted" title="Preview theme">
-          <span>Theme</span>
-          <select
-            v-model="previewTheme"
-            data-test-id="lowcode-preview-theme"
-            class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
-          >
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </label>
-        <label
-          class="flex h-6 items-center gap-1 rounded px-1 text-xs text-muted hover:bg-hover"
-          title="Preview i18n"
-        >
-          <input v-model="previewI18nEnabled" type="checkbox" data-test-id="lowcode-preview-i18n" />
-          <span>i18n</span>
-        </label>
+        <Tip label="Preview UI components">
+          <label class="flex items-center gap-1 text-xs text-muted">
+            <span>UI</span>
+            <select
+              v-model="previewUiKit"
+              data-test-id="lowcode-preview-uikit"
+              class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
+            >
+              <option value="none">Tailwind</option>
+              <option value="shadcn">shadcn</option>
+            </select>
+          </label>
+        </Tip>
+        <Tip label="Preview theme">
+          <label class="flex items-center gap-1 text-xs text-muted">
+            <span>Theme</span>
+            <select
+              v-model="previewTheme"
+              data-test-id="lowcode-preview-theme"
+              class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
+            >
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+        </Tip>
+        <Tip label="Preview i18n">
+          <label class="flex h-6 items-center gap-1 rounded px-1 text-xs text-muted hover:bg-hover">
+            <input
+              v-model="previewI18nEnabled"
+              type="checkbox"
+              data-test-id="lowcode-preview-i18n"
+            />
+            <span>i18n</span>
+          </label>
+        </Tip>
         <input
           v-if="previewI18nEnabled"
           v-model="previewLocalesInput"
@@ -301,15 +309,16 @@ onBeforeUnmount(() => {
           class="h-6 w-20 rounded border border-border bg-input px-1 text-xs text-surface"
         />
         <DeployControls />
-        <button
-          v-if="url"
-          type="button"
-          class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
-          :title="`Reload (${url})`"
-          @click="reload"
-        >
-          ↻
-        </button>
+        <Tip :label="url ? `Reload (${url})` : undefined">
+          <button
+            v-if="url"
+            type="button"
+            class="rounded px-2 py-0.5 text-xs text-muted hover:bg-hover hover:text-surface"
+            @click="reload"
+          >
+            ↻
+          </button>
+        </Tip>
       </div>
     </div>
     <div class="relative flex-1 bg-white">
@@ -319,7 +328,7 @@ onBeforeUnmount(() => {
         ref="iframeEl"
         :src="url"
         class="absolute inset-0 size-full border-0"
-        title="lowcode preview"
+        aria-label="lowcode preview"
         @load="onIframeLoad"
       />
       <div

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
+import type { SceneNode, WorkflowDef } from '@open-pencil/scene-graph'
 
 import { analyzeWorkflowGraph, collectWorkflowEntrypoints } from '@/app/lowcode/workflow-graph'
 
@@ -193,8 +193,7 @@ describe('lowcode workflow graph analysis', () => {
 
     expect(summary.issues).toContainEqual({
       type: 'call-args',
-      message:
-        'Source calls Target with invalid arguments: extra "badExtra", missing "message"',
+      message: 'Source calls Target with invalid arguments: extra "badExtra", missing "message"',
       workflowIds: ['wf-source', 'wf-target'],
       targetWorkflowId: 'wf-source',
       actionId: 'call-target',

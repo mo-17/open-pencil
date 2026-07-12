@@ -1,8 +1,9 @@
-import type { SceneGraph } from '#core/scene-graph'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import {
   analyzeClustersCommand,
   analyzeColorsCommand,
+  analyzeOverlapsCommand,
   analyzeSpacingCommand,
   analyzeTypographyCommand
 } from './analyze-commands'
@@ -16,6 +17,16 @@ import {
 } from './read-commands'
 import type { RpcCommand } from './types'
 import { variablesCommand } from './variables-command'
+
+export type AutomationDocumentSummary = {
+  id: string
+  name: string
+  path?: string
+  active: boolean
+  current_page_id: string
+  current_page_name: string
+  pages: Array<{ id: string; name: string }>
+}
 
 export type { RpcCommand } from './types'
 export * from './read-commands'
@@ -33,7 +44,8 @@ export const ALL_RPC_COMMANDS = [
   analyzeColorsCommand,
   analyzeTypographyCommand,
   analyzeSpacingCommand,
-  analyzeClustersCommand
+  analyzeClustersCommand,
+  analyzeOverlapsCommand
 ] as RpcCommand[]
 
 export function executeRpcCommand(graph: SceneGraph, name: string, args: unknown): unknown {

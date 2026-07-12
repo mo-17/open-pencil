@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 
-import type {
-  ActionDef,
-  DocumentStateDef,
-  StateDef,
-  WorkflowDef
-} from '@open-pencil/core/scene-graph'
+import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 
 import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 import ActionList from './ActionList.vue'
@@ -266,7 +261,7 @@ function setParamOptional(index: number, optional: boolean): void {
         :doc-states="docStates"
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
-        add-test-id="lowcode-workflow-action-add"
+        data-test-id="lowcode-workflow-action-add"
         @update:actions="updateActions"
       />
     </div>

@@ -11,6 +11,7 @@ import { DEFAULT_COLLAB_STATE, useCollabInjected } from '@/app/collab/use'
 import type { RemotePeer } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { toast } from '@/app/shell/ui'
+import { getShareUrl } from '@/constants'
 
 function createCollabPanelContext() {
   const route = useRoute()
@@ -33,8 +34,7 @@ function createCollabPanelContext() {
   // reaches a server; the bare roomId alone no longer grants access.
   const shareUrl = computed(() => {
     if (!state.value.roomId) return ''
-    const base = `${window.location.origin}/share/${state.value.roomId}`
-    return state.value.roomKey ? `${base}#k=${state.value.roomKey}` : base
+    return getShareUrl(state.value.roomId, state.value.roomKey || undefined)
   })
   const isJoining = computed(() => !!pendingRoomId.value && !state.value.connected)
 
@@ -57,7 +57,7 @@ function createCollabPanelContext() {
     collab.setLocalName(nameDraft.value.trim())
     const { roomId, key } = collab.shareCurrentDoc()
     void router.push(`/share/${roomId}`)
-    void copy(`${window.location.origin}/share/${roomId}#k=${key}`)
+    void copy(getShareUrl(roomId, key))
     toast.info('Link copied to clipboard')
     popoverOpen.value = false
   }

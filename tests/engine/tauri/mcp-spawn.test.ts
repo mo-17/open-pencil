@@ -4,11 +4,17 @@ import { spawnMCPIfNeeded } from '@/app/automation/mcp/spawn'
 
 import { clearTauriMocks, installTauriMockWindow, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
+const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+
 afterEach(async () => {
   await clearTauriMocks()
   vi.restoreAllMocks()
   Reflect.deleteProperty(globalThis, 'window')
-  Reflect.deleteProperty(globalThis, 'navigator')
+  if (originalNavigatorDescriptor) {
+    Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor)
+  } else {
+    Reflect.deleteProperty(globalThis, 'navigator')
+  }
   Reflect.deleteProperty(globalThis, 'location')
 })
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { ActionDef, DocumentStateDef, SupabaseConfig } from '@open-pencil/core/scene-graph'
 import type { LowcodeNodeRead } from '@open-pencil/core/tools'
+import type { ActionDef, DocumentStateDef, SupabaseConfig } from '@open-pencil/scene-graph'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 

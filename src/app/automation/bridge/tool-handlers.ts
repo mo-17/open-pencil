@@ -3,12 +3,12 @@ import type { Editor } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import { computeAllLayouts } from '@open-pencil/core/layout'
 import { ALL_TOOLS } from '@open-pencil/core/tools'
-import type { JsonObject } from '@open-pencil/core/types'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
-import type { EditorStore } from '@/app/editor/active-store'
+import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 
-type FigmaFactory = () => FigmaAPI
+type FigmaFactory = (store: AutomationTarget['store'], pageId?: string) => FigmaAPI
 
 /** Phase 3 §3.v2: tools that opt into editor-backed undo (push UndoEntry +
  *  participate in `runBatch`). Anything not listed here calls
@@ -22,17 +22,18 @@ const EDITOR_UNDO_TOOLS = new Set<string>([
 
 export function createAutomationToolHandler(makeFigma: FigmaFactory) {
   async function handleToolRender(
-    store: EditorStore,
+    target: AutomationTarget,
     toolArgs: Record<string, unknown>
   ): Promise<unknown> {
+    const store = target.store
     const tree = toolArgs.tree as Parameters<typeof renderTreeNode>[1]
     const result = await renderTreeNode(store.graph, tree, {
-      parentId: (toolArgs.parent_id as string | undefined) ?? store.state.currentPageId,
+      parentId: (toolArgs.parent_id as string | undefined) ?? target.pageId,
       x: toolArgs.x as number | undefined,
       y: toolArgs.y as number | undefined
     })
     await ensureGraphFonts(store.graph, [result.id])
-    computeAllLayouts(store.graph, store.state.currentPageId)
+    computeAllLayouts(store.graph, target.pageId)
     store.requestRender()
     store.flashNodes([result.id])
     return {
@@ -41,31 +42,29 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     }
   }
 
-  return async function handleTool(store: EditorStore, args: unknown): Promise<unknown> {
+  return async function handleTool(target: AutomationTarget, args: unknown): Promise<unknown> {
     const toolName = (args as { name?: string }).name
     const toolArgs = (args as { args?: Record<string, unknown> }).args ?? {}
     if (!toolName) throw new Error('Missing "name" in args')
 
     if (toolName === 'render' && toolArgs.tree) {
-      return handleToolRender(store, toolArgs)
+      return handleToolRender(target, toolArgs)
     }
 
     const def = ALL_TOOLS.find((t) => t.name === toolName)
     if (!def) throw new Error(`Unknown tool: ${toolName}`)
-    const figma = makeFigma()
-    const editor: Editor = store
+    const store = target.store
+    const figma = makeFigma(store, target.pageId)
     const result = await runWithUndoBatch(store, def.name, () =>
-      def.execute(figma, toolArgs, { editor })
+      EDITOR_UNDO_TOOLS.has(def.name)
+        ? def.execute(figma, toolArgs, { editor: store })
+        : def.execute(figma, toolArgs)
     )
 
-    if (figma.currentPageId !== store.state.currentPageId) {
-      void store.switchPage(figma.currentPageId)
-    }
-
     if (def.mutates) {
-      const pageNode = store.graph.getNode(store.state.currentPageId)
+      const pageNode = store.graph.getNode(figma.currentPageId)
       if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds)
-      computeAllLayouts(store.graph, store.state.currentPageId)
+      computeAllLayouts(store.graph, figma.currentPageId)
       store.requestRender()
       store.flashNodes(extractNodeIds(result))
     }
@@ -78,7 +77,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
  *  flash side-effect collapses into a single Cmd+Z entry. Tools not
  *  in `EDITOR_UNDO_TOOLS` keep the legacy no-batch path. */
 async function runWithUndoBatch<T>(
-  store: EditorStore,
+  store: Editor,
   toolName: string,
   fn: () => T | Promise<T>
 ): Promise<T> {

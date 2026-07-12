@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { DocumentStateDef, StateValueType } from '@open-pencil/core/scene-graph'
+import type { DocumentStateDef, StateValueType } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 

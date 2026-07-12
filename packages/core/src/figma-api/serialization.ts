@@ -1,4 +1,4 @@
-import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '#core/scene-graph'
+import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 import type { NodeProxyHost } from './proxy'
 

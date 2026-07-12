@@ -27,7 +27,7 @@ import IconToggleLeft from '~icons/lucide/toggle-left'
 import IconTriangle from '~icons/lucide/triangle'
 import IconType from '~icons/lucide/type'
 
-import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/core/scene-graph'
+import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/scene-graph'
 
 import type { Tool } from '@/app/editor/session'
 

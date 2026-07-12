@@ -1,4 +1,5 @@
-import { publishLibraryComponent } from '#core/scene-graph'
+import { publishLibraryComponent } from '@open-pencil/scene-graph'
+
 import { defineTool } from '#core/tools/schema'
 
 type PublishComponentData = Exclude<ReturnType<typeof publishLibraryComponent>, { error: string }>

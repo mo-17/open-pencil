@@ -1,7 +1,8 @@
 import type { Canvas, Paint } from 'canvaskit-wasm'
 
+import type { Fill, SceneNode, StyleRun, TextDecorationStyle } from '@open-pencil/scene-graph'
+
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
-import type { Fill, SceneNode, StyleRun, TextDecorationStyle } from '#core/scene-graph'
 import { fontManager, weightToStyle } from '#core/text/fonts'
 import { fontCoversTextSync } from '#core/text/opentype'
 import { geometryBlobToPath } from '#core/vector'
@@ -234,7 +235,7 @@ export function shouldLiveShapeOverDerivedGlyphs(node: SceneNode): boolean {
   return (
     fontManager.isStyleLoaded(family, style) &&
     !fontCoversTextSync(family, style, node.text) &&
-    hasRequiredFallbackFonts(node.text)
+    hasRequiredFallbackFonts(node)
   )
 }
 

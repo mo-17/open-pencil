@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import { SceneGraph } from '@open-pencil/core'
-import type { DocumentStateDef, StateDef } from '@open-pencil/core/scene-graph'
+import type { DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 2 §2 — `bindings.ts` step 2: setVariable used to warn-and-drop. It

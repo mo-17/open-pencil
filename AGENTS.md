@@ -8,7 +8,12 @@ Vue 3 + CanvasKit (Skia WASM) + Yoga WASM design editor. Tauri v2 desktop, also 
 
 Bun workspace with focused packages:
 
-- `packages/core` — `@open-pencil/core`: scene graph, renderer, layout, codec, kiwi, IO, clipboard, vector, snap, undo, lowcode validation, and ToolDef operations. Zero DOM deps; runs headless in Bun.
+- `packages/scene-graph` — `@open-pencil/scene-graph`: framework-agnostic node types, graph storage, variables, libraries, copy/snap/undo, and geometry primitives.
+- `packages/pen` — `@open-pencil/pen`: `.pen` parsing and SceneGraph conversion.
+- `packages/kiwi` — `@open-pencil/kiwi`: standalone Kiwi schema runtime, `.fig` codec, container, GUID, and protocol helpers.
+- `packages/fig` — `@open-pencil/fig`: lower-level `.fig` container API.
+- `packages/core` — `@open-pencil/core`: renderer, layout, IO, clipboard, vector, lowcode validation, and ToolDef operations. Zero DOM deps; runs headless in Bun.
+- `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
 - `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into a framework-neutral IR, then emits runnable Vite + React + TypeScript + Tailwind projects, preview VFS, static builds, and deploy bundles.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
@@ -16,16 +21,20 @@ Bun workspace with focused packages:
 - `packages/docs` — `@open-pencil/docs`: VitePress documentation site. Run with `bun run docs:dev`.
 - `packages/demos` — demo media/assets only, not a published workspace package.
 
-The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
+The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, document, AI, lowcode preview, collaboration, shell, tabs, demo, and automation code lives under `src/app/*`. The app consumes `@open-pencil/scene-graph`, `@open-pencil/core`, `@open-pencil/compiler`, and `@open-pencil/vue` through public workspace exports.
 
-### Core subpath exports
+### Public engine exports
 
-`@open-pencil/core` exposes domain-specific subpath exports for targeted imports. The main `"."` entry re-exports everything for backward compatibility.
+`@open-pencil/scene-graph` owns graph data and geometry. `@open-pencil/core` builds editor, renderer, IO, and automation behavior on top and exposes targeted subpaths.
 
 | Subpath                                | What                                                                                  | Heavy dep isolated        |
 | -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------- |
 | `@open-pencil/core`                    | everything (barrel)                                                                   | all                       |
-| `@open-pencil/core/scene-graph`        | SceneGraph, node types, hit-test, copy, snap, undo                                    | —                         |
+| `@open-pencil/scene-graph`             | SceneGraph, node/domain types, variables, libraries, hit-test, copy                   | —                         |
+| `@open-pencil/scene-graph/primitives`  | shared primitive types: `GUID`, `Color`, `Vector`, `Matrix`, `Rect`                   | —                         |
+| `@open-pencil/scene-graph/geometry`    | geometry and math helpers                                                             | —                         |
+| `@open-pencil/scene-graph/snap`        | snapping helpers and types                                                            | —                         |
+| `@open-pencil/scene-graph/undo`        | SceneGraph undo manager                                                               | —                         |
 | `@open-pencil/core/color`              | parseColor, colorToHex, color management, OkHCL                                       | culori                    |
 | `@open-pencil/core/text`               | fonts, text editor, style runs, direction                                             | —                         |
 | `@open-pencil/core/vector`             | vector network encode/decode, bezier math                                             | —                         |
@@ -52,8 +61,6 @@ The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, doc
 | `@open-pencil/core/constants`          | shared runtime constants such as `IS_TAURI`                                           | —                         |
 | `@open-pencil/core/random`             | crypto-backed random helpers                                                          | —                         |
 | `@open-pencil/core/xpath`              | XPath selector support for querying design nodes                                      | fontoxpath                |
-| `@open-pencil/core/types`              | shared primitive types: `GUID`, `Color`, `Vector`, `Matrix`, `Rect`                   | —                         |
-| `@open-pencil/core/geometry`           | geometry/math helpers                                                                 | —                         |
 
 Runtime `canvaskit-wasm` import exists only in `canvaskit.ts` — all other files use `import type`. CanvasKit instance is passed as a parameter everywhere.
 
@@ -283,7 +290,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
 ## Lowcode compiler
 
 - `packages/compiler` is private and is the source of truth for design-to-code output. Data flow is one-way: `SceneGraph` → `packages/compiler/src/ir/**` → `packages/compiler/src/adapters/**`.
-- `packages/compiler/src/ir/**` must not import adapters. `packages/compiler/src/adapters/**` must not import `@open-pencil/core/scene-graph`; adapters consume only IR types. Steiger enforces this with `open-pencil/no-cross-layer-in-compiler`.
+- `packages/compiler/src/ir/**` must not import adapters. `packages/compiler/src/adapters/**` must not import `@open-pencil/scene-graph`; adapters consume only IR types. Steiger enforces this with `open-pencil/no-cross-layer-in-compiler`.
 - Public compiler entrypoints: `compile()`, `withDefaults()`, lowcode validators re-exported from `@open-pencil/core/lowcode-validation`, route helpers, VFS/dev-server/build/deploy subpaths.
 - React adapter output is Vite + React + TypeScript + Tailwind. It supports multi-page `react-router-dom`, preview bridge `data-node-id` wiring, i18n via `react-intl`, optional shadcn UI kit emission, Supabase auth/data helpers, workflows, validation, uploads, and static builds.
 - Preview pane code lives in `src/app/lowcode/preview-pane/`. In Tauri, it spawns `bun packages/compiler/src/dev-server.ts --root <repo>` through the shell allowlist name `lowcode-preview`; the browser bundle must not statically import compiler dev-server/build/deploy code.
@@ -354,9 +361,9 @@ Use `scripts/` only for tiny compatibility entrypoint shims that import `../tool
 - No `any` — use proper types, generics, declaration merging
 - No `!` non-null assertions — use guards, `?.`, `??`
 - No `Math.random()` — use `crypto.getRandomValues()` everywhere
-- No inline type definitions when a named type exists — use `Color` not `{ r: number; g: number; b: number; a: number }`, use `Vector` not `{ x: number; y: number }`, use `SceneNode` / `Effect` / `Fill` / `Stroke` from `@open-pencil/core/scene-graph` instead of re-spelling their shapes inline
-- Shared types (GUID, Color, Vector, Matrix, Rect) live in `packages/core/src/types.ts`
-- Domain types (SceneNode, Fill, Stroke, Effect, BlendMode, etc.) live in `packages/core/src/scene-graph/` and are exported from `@open-pencil/core/scene-graph`
+- No inline type definitions when a named type exists — use `Color` not `{ r: number; g: number; b: number; a: number }`, use `Vector` not `{ x: number; y: number }`, use `SceneNode` / `Effect` / `Fill` / `Stroke` from `@open-pencil/scene-graph` instead of re-spelling their shapes inline
+- Shared types (GUID, Color, Vector, Matrix, Rect) are exported from `@open-pencil/scene-graph/primitives`
+- Domain types (SceneNode, Fill, Stroke, Effect, BlendMode, etc.) live in `packages/scene-graph/src/` and are exported from `@open-pencil/scene-graph`
 - Window API extensions (showOpenFilePicker, queryLocalFonts) live in `src/global.d.ts` and `packages/core/src/global.d.ts`
 - Use `culori` for color conversions — don't reimplement parseColor/colorToRgba
 - Use `@vueuse/core` hooks — prefer higher-level composables (`useBreakpoints`, `useEventListener`, `onClickOutside`, etc.) over raw APIs (`useMediaQuery`, manual `addEventListener`)
@@ -364,7 +371,7 @@ Use `scripts/` only for tiny compatibility entrypoint shims that import `../tool
 - No module-level mutable state in components — use the editor store
 - Prefer `tw-animate-css` for animations — don't hand-write `<style>` transition keyframes
 - No duplicated component logic — if two components share data (icon maps, util functions, constants), export from one place and import in both
-- `packages/core/src/kiwi/schema-runtime/` contains the vendored Kiwi codec runtime; keep runtime changes minimal and prefer wrappers/helpers for project-specific validation
+- `packages/kiwi/src/schema-runtime/` contains the vendored Kiwi codec runtime; keep runtime changes minimal and prefer wrappers/helpers for project-specific validation
 - Core code must guard browser APIs: `typeof window !== 'undefined'`, `typeof document === 'undefined'`
 - Constants in `src/constants.ts` — no magic numbers in components or composables
 

@@ -1,5 +1,5 @@
 import { type DatePickerIssue, validateDatePickerProps } from '@open-pencil/core/lowcode-validation'
-import type { SceneNode } from '@open-pencil/core/scene-graph'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 // Phase 3 §3.v6 — declarative schema for the generic InteractiveProps editor.
 //

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import { colorToHexRaw, parseColor } from '@open-pencil/core/color'
-import type { Fill, SceneNode } from '@open-pencil/core/scene-graph'
+import type { Fill, SceneNode } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 
 import AppSelect from '@/components/ui/AppSelect.vue'
@@ -218,6 +218,8 @@ function resetFill(row: FillPropRow): void {
         <label class="text-[10px] text-muted">{{ propName }}</label>
         <AppSelect
           :model-value="currentVariantValues[propName] ?? ''"
+          :label="propName"
+          data-test-id="app-select-trigger"
           :options="[...options].map((v) => ({ value: v, label: v }))"
           @update:model-value="switchVariant(propName, $event)"
         />

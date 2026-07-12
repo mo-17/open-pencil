@@ -9,10 +9,11 @@ import type {
   SupabaseFilter,
   SupabasePayloadEntry,
   WorkflowDef
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
 import { ANALYTICS_TRACK_EVENT_CONFIG_HINT } from '@/app/lowcode/analytics-help'
+import Tip from '@/components/ui/Tip.vue'
 import {
   authNeedsEmail,
   authNeedsPassword,
@@ -707,14 +708,17 @@ function setArg(param: string, value: string): void {
       data-test-id="lowcode-action-track-event-properties"
       class="flex flex-col gap-1 pl-1"
     >
-      <p
+      <Tip
         v-if="!analyticsConfigured"
-        data-test-id="lowcode-action-track-event-config-hint"
-        title="Open the empty-selection Services & Workflows panel to add a GA4, Plausible, or PostHog provider id."
-        class="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500"
+        label="Open the empty-selection Services & Workflows panel to add a GA4, Plausible, or PostHog provider id."
       >
-        {{ ANALYTICS_TRACK_EVENT_CONFIG_HINT }}
-      </p>
+        <p
+          data-test-id="lowcode-action-track-event-config-hint"
+          class="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-500"
+        >
+          {{ ANALYTICS_TRACK_EVENT_CONFIG_HINT }}
+        </p>
+      </Tip>
       <label v-if="trackProperties.length > 0" class="text-[10px] text-muted">properties</label>
       <div
         v-for="(entry, i) in trackProperties"
@@ -1069,7 +1073,7 @@ function setArg(param: string, value: string): void {
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/onSuccess`"
-        add-test-id="lowcode-action-on-success-add"
+        data-test-id="lowcode-action-on-success-add"
         @update:actions="updateBranch('onSuccess', $event)"
       />
       <label class="text-[10px] text-muted">on error</label>
@@ -1080,7 +1084,7 @@ function setArg(param: string, value: string): void {
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/onError`"
-        add-test-id="lowcode-action-on-error-add"
+        data-test-id="lowcode-action-on-error-add"
         @update:actions="updateBranch('onError', $event)"
       />
     </div>
@@ -1100,7 +1104,7 @@ function setArg(param: string, value: string): void {
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/consequent`"
-        add-test-id="lowcode-action-consequent-add"
+        data-test-id="lowcode-action-consequent-add"
         @update:actions="updateBranch('consequent', $event)"
       />
       <label class="text-[10px] text-muted">{{
@@ -1113,7 +1117,7 @@ function setArg(param: string, value: string): void {
         :workflows="workflows"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/alternate`"
-        add-test-id="lowcode-action-alternate-add"
+        data-test-id="lowcode-action-alternate-add"
         @update:actions="updateBranch('alternate', $event)"
       />
     </div>
@@ -1128,9 +1132,9 @@ function setArg(param: string, value: string): void {
       <label class="text-[10px] text-muted">arguments</label>
       <div v-for="arg in callWorkflowArgs" :key="arg.name" class="flex flex-col gap-0.5">
         <div class="flex items-center gap-1">
-          <label class="w-20 shrink-0 truncate text-[11px] text-muted" :title="arg.name">{{
-            arg.name
-          }}</label>
+          <Tip :label="arg.name">
+            <label class="w-20 shrink-0 truncate text-[11px] text-muted">{{ arg.name }}</label>
+          </Tip>
           <input
             :value="arg.value"
             :aria-label="`Argument ${arg.name}`"

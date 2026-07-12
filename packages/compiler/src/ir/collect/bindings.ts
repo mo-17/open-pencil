@@ -14,7 +14,7 @@ import type {
   EventName,
   SceneNode,
   WorkflowDef
-} from '@open-pencil/core/scene-graph'
+} from '@open-pencil/scene-graph'
 
 import type {
   IRApiCallHandler,
@@ -1095,10 +1095,7 @@ function resolveApiCall(
   }
 }
 
-type StripeRedirectAction = Extract<
-  ActionDef,
-  { kind: 'stripeCheckout' | 'stripeCustomerPortal' }
->
+type StripeRedirectAction = Extract<ActionDef, { kind: 'stripeCheckout' | 'stripeCustomerPortal' }>
 type IRStripeRedirectHandler = IRStripeCheckoutHandler | IRStripeCustomerPortalHandler
 
 function stripeRedirectCode(kind: StripeRedirectAction['kind']): string {
@@ -1175,15 +1172,7 @@ function resolveStripeRedirect(
   const errorTarget =
     action.errorTarget === undefined
       ? undefined
-      : resolveDocStateTarget(
-          node,
-          eventName,
-          code,
-          action.errorTarget,
-          docStates,
-          warnings,
-          false
-        )
+      : resolveDocStateTarget(node, eventName, code, action.errorTarget, docStates, warnings, false)
   if (errorTarget === null) return null
   registerDocStateReads(endpoint.references, docStates, docStateReads)
   return {

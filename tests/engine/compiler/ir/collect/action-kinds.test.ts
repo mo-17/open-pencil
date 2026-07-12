@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, test } from 'bun:test'
 import { collectTree } from '#compiler/ir/collect/tree'
 
 import { SceneGraph, initCodec } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/core/scene-graph'
+import type { ActionDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 1 §7.4 — exercise the discriminated-union dispatch in

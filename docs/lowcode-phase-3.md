@@ -3130,7 +3130,7 @@ lowcode 字段 `state`/`bindings`/`events`/`interactiveProps`/`renderCondition`/
 #### 4.1.3 改动
 
 - 🔁 `src/constants.ts` `YJS_JSON_FIELDS` += 7 lowcode 字段(注释说明:写/读必须对称,新增 object 字段必须进此集)
-- ➕ `tests/engine/collab/yjs-roundtrip.test.ts`(新):guard —— 带全 lowcode 字段的节点 `syncNodePropsToYMap → yNodeToProps` deep-equal + 每个 object 字段 typeof==='object' 断言
+- ➕ `tests/engine/collab/yjs/roundtrip.test.ts`(新):guard —— 带全 lowcode 字段的节点 `syncNodePropsToYMap → yNodeToProps` deep-equal + 每个 object 字段 typeof==='object' 断言
 - **0** 写侧 / awareness / room / session 改动
 
 #### 4.1.4 成功标准 + Tauri ACK

@@ -6,9 +6,10 @@
  * and MCP (JSON Schema) are generated from these definitions.
  */
 
+import type { SceneNode } from '@open-pencil/scene-graph'
+
 import type { Editor } from '#core/editor'
 import type { FigmaAPI, FigmaNodeProxy } from '#core/figma-api'
-import type { SceneNode } from '#core/scene-graph'
 
 export type ParamType = 'string' | 'number' | 'boolean' | 'color' | 'string[]'
 

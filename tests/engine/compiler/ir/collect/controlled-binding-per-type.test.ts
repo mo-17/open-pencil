@@ -3,12 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { resolveValueBinding } from '@open-pencil/compiler/ir/collect/bindings'
 import type { IRDocStateDecl, IRStateDecl, IRWarning } from '@open-pencil/compiler/ir/types'
 import { SceneGraph } from '@open-pencil/core'
-import type {
-  BindingExpr,
-  DocumentStateDef,
-  SceneNode,
-  StateDef
-} from '@open-pencil/core/scene-graph'
+import type { BindingExpr, DocumentStateDef, SceneNode, StateDef } from '@open-pencil/scene-graph'
 
 /**
  * Phase 3 §3.v4 step 2 — `resolveValueBinding` per-node-type targetType

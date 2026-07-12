@@ -1,7 +1,7 @@
 import { tailwindClassName, type CompilerStyleOptions } from '#compiler/ir/style'
 import type { ComponentProp, VariantAxis } from '#compiler/ir/types'
 
-import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/core/scene-graph'
+import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
 /** Phase 3 §8 v2/v3 — the prop(s) a single master descendant is parameterized
  *  by: `text` (`:text` override → `{prop}` content), `className`

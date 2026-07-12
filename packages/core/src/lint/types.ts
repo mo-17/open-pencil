@@ -1,4 +1,4 @@
-import type { LayoutMode } from '#core/scene-graph'
+import type { LayoutMode } from '@open-pencil/scene-graph'
 
 export type Severity = 'error' | 'warning' | 'info' | 'off'
 

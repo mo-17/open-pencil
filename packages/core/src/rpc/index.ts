@@ -21,5 +21,8 @@ export type {
   SpacingValue,
   AnalyzeClustersArgs,
   AnalyzeClustersResult,
-  TypographyStyle
+  AnalyzeOverlapsArgs,
+  AnalyzeOverlapsResult,
+  TypographyStyle,
+  AutomationDocumentSummary
 } from './commands'

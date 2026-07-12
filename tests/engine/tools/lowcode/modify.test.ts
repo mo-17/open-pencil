@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
 import { FigmaAPI } from '@open-pencil/core/figma-api'
-import { SceneGraph } from '@open-pencil/core/scene-graph'
-import type { JsonObject } from '@open-pencil/core/types'
+import { SceneGraph } from '@open-pencil/scene-graph'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 

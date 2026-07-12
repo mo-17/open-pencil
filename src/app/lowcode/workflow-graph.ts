@@ -1,5 +1,5 @@
-import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/core/scene-graph'
 import { validateExpression } from '@open-pencil/core/lowcode-validation'
+import type { ActionDef, EventName, SceneNode, WorkflowDef } from '@open-pencil/scene-graph'
 
 export interface WorkflowGraphEdge {
   fromId: string
@@ -25,7 +25,7 @@ export interface WorkflowGraphEntrypoint {
   workflowName?: string
   nodeId: string
   nodeName: string
-  eventName: EventName | string
+  eventName: EventName
   actionId: string
   actionPath: string
 }
@@ -64,7 +64,10 @@ export function collectWorkflowEntrypoints(
   const entrypoints: WorkflowGraphEntrypoint[] = []
 
   for (const node of nodes) {
-    for (const [eventName, actions] of Object.entries(node.events ?? {})) {
+    for (const [eventName, actions] of Object.entries(node.events ?? {}) as [
+      EventName,
+      ActionDef[]
+    ][]) {
       collectEventEntrypoints(
         actions,
         {
@@ -224,7 +227,8 @@ function callWorkflowArgProblems(
   for (const param of params) {
     const raw = Object.hasOwn(args, param) ? args[param] : ''
     if (raw.trim() === '') {
-      if (!Object.hasOwn(defaults, param) && !optional.has(param)) problems.push(`missing "${param}"`)
+      if (!Object.hasOwn(defaults, param) && !optional.has(param))
+        problems.push(`missing "${param}"`)
       continue
     }
     const result = validateExpression(raw)
@@ -346,6 +350,8 @@ function workflowNode(
 function normalizeCycleKey(cycle: readonly string[]): string {
   const nodes = cycle.slice(0, -1)
   if (nodes.length === 0) return ''
-  const rotations = nodes.map((_, index) => [...nodes.slice(index), ...nodes.slice(0, index)].join('\0'))
+  const rotations = nodes.map((_, index) =>
+    [...nodes.slice(index), ...nodes.slice(0, index)].join('\0')
+  )
   return rotations.sort()[0]
 }

@@ -1,4 +1,4 @@
-import type { Color } from '@open-pencil/core/types'
+import type { Color } from '@open-pencil/scene-graph/primitives'
 
 /** Phase 3 §4.4 — the lowcode property panel a peer is actively editing.
  *  One per Lowcode/*.vue panel. Drives "who's editing what" presence. */

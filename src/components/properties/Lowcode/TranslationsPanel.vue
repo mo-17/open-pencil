@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-import type { LowcodeTranslations, SceneNode } from '@open-pencil/core/scene-graph'
+import type { LowcodeTranslations, SceneNode } from '@open-pencil/scene-graph'
 import { useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
+import Tip from '@/components/ui/Tip.vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 
@@ -160,7 +161,9 @@ function setTranslation(locale: string, source: string, value: string): void {
           data-test-id="lowcode-translations-row"
           class="flex flex-col gap-0.5"
         >
-          <span class="truncate text-[10px] text-muted" :title="source">{{ source }}</span>
+          <Tip :label="source">
+            <span class="truncate text-[10px] text-muted">{{ source }}</span>
+          </Tip>
           <input
             :value="translations[currentLocale]?.[source] ?? ''"
             :aria-label="`Translation of ${source}`"
