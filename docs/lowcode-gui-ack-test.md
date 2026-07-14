@@ -6,6 +6,7 @@
 > 2026-07-01 update: add the Phase 5 §12 Stripe checkout/customer portal GUI/runtime ACK checklist.
 > 2026-07-01 update: add the Phase 5 operator ACK checklist for Analytics, Custom Head/CSS,
 > onboarding, and Stripe billing webhooks.
+> 2026-07-14 update: refresh package-split imports and record the automated local Libraries ACK.
 
 ## 0. Scope
 
@@ -50,6 +51,28 @@ Expected:
 - Local head is at least `2c64609b feat(app): restore netlify deploys` for the Netlify restore ACK, or a later intended commit.
 - Remote `upstream/lowcode-rebaseline` points at the same commit if the branch has already been pushed.
 
+### 2026-07-14 automated compatibility ACK
+
+After merging `official/master` at `1750199b`, SceneGraph imports moved from the removed legacy core
+subpath to `@open-pencil/scene-graph`. The executable fixture, lowcode implementation notes, and
+public documentation now use the current package/source paths, guarded by
+`tests/engine/docs/lowcode-public-imports.test.ts`.
+
+Verified locally:
+
+- `bun run build:packages` completed successfully.
+- The section 2 fixture commands created the library and consumer documents, published v1 and v2,
+  imported `component-card`, and reported `outdated` from `library check`.
+- `bunx playwright test tests/e2e/properties/libraries-panel.spec.ts --project=openpencil` passed,
+  including manifest load, library file load, accept update, `Hello` -> `Updated`, undo, and redo.
+- A browser smoke pass confirmed the root Analytics and Custom Head/CSS authoring controls render,
+  provider-specific Analytics fields react to the selected configuration, and the EEA consent
+  preset exposes its consent copy fields.
+
+This is an automated local ACK only. Save/reopen checks, Tauri preview, real Analytics ingestion,
+live deploy CSP headers, Stripe/Supabase backends, and provider credentials remain in the manual
+handoff sections below and are not marked complete here.
+
 ## 2. Prepare §14 Fixture Files
 
 Create a repeatable local fixture directory:
@@ -64,7 +87,7 @@ Create `library.fig` and `consumer.fig`:
 ```sh
 bun --eval '
 import { BUILTIN_IO_FORMATS, IORegistry } from "@open-pencil/core/io";
-import { SceneGraph } from "@open-pencil/core/scene-graph";
+import { SceneGraph } from "@open-pencil/scene-graph";
 
 const io = new IORegistry(BUILTIN_IO_FORMATS);
 

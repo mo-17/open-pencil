@@ -161,7 +161,7 @@ Phase 2 §3 落了通用 `apiCall`(REST + fetch + setDocState),但 lowcode 平�
 **SceneNode(root CANVAS / document-level)**:
 
 ```ts
-// packages/core/src/scene-graph/types.ts
+// packages/scene-graph/src/types.ts
 export interface SupabaseConfig {
   url: string;        // https://xxx.supabase.co
   anonKey: string;    // 可公开 OK,RLS 在 DB 层兜底
@@ -175,7 +175,7 @@ lowcodeSupabaseConfig?: SupabaseConfig;
 **`ActionDef` union 加两 kind**:
 
 ```ts
-// packages/core/src/scene-graph/types.ts
+// packages/scene-graph/src/types.ts
 export interface SupabaseQueryAction {
   kind: 'supabaseQuery';
   table: string;
@@ -262,9 +262,9 @@ export function useSupabaseAuth() {
 
 | 路径 | 改动 |
 |---|---|
-| `packages/core/src/scene-graph/types.ts` | `SupabaseConfig` / `SupabaseQueryAction` / `SupabaseMutationAction` / `SupabaseFilter` 接口;`ActionDef` union 加两 kind;`SceneNode.lowcodeSupabaseConfig?` 字段 |
-| `packages/core/src/scene-graph/lowcode/plugin-data.ts` | `lowcode/supabaseConfig` key 进 `LOWCODE_PLUGIN_KEYS`;serialize / deserialize hook;JSON encode |
-| `packages/core/src/scene-graph/lowcode/validate.ts` | `validateStateName` 加 `^\$` 拒绝(`$` 是保留前缀)|
+| `packages/scene-graph/src/types.ts` | `SupabaseConfig` / `SupabaseQueryAction` / `SupabaseMutationAction` / `SupabaseFilter` 接口;`ActionDef` union 加两 kind;`SceneNode.lowcodeSupabaseConfig?` 字段 |
+| `packages/core/src/kiwi/fig/node-change/lowcode-plugin-data.ts` | `lowcode/supabaseConfig` key 进 `LOWCODE_PLUGIN_KEYS`;serialize / deserialize hook;JSON encode |
+| `packages/core/src/lowcode-validation/validate.ts` | `validateStateName` 加 `^\$` 拒绝(`$` 是保留前缀)|
 | `packages/compiler/src/collect/bindings.ts` | `resolveActions` 加 `case 'supabaseQuery'` + `case 'supabaseMutation'`;新 `IRSupabaseQueryHandler` / `IRSupabaseMutationHandler` 进 `IREventHandler` union(`never`-exhaustive,couples collect+emit per Phase 2 §3 pattern);auto-register `$currentUser` 进 `docStateDefs` 当 root 有 supabaseConfig 时 |
 | `packages/compiler/src/emit/event.ts` | 两新 handler 的 emit:supabaseQuery → `const { data, error } = await supabase.from(...).select(...).eq(...)...; setDocState(...);`;supabaseMutation 同形态;async 风格沿用 §3 apiCall |
 | `packages/compiler/src/adapters/react/lowcode-supabase.ts` | 新文件:生成 `_lowcode_supabase.ts` template(client singleton + auth integration);仅 root supabaseConfig 存在时 emit |
@@ -332,7 +332,7 @@ export function useSupabaseAuth() {
 | `d623529` | 设计 | §2 详细设计 + 8 主决定 + 10 次级默认锁定 |
 | `556fd35` | 1 | schema + persistence:`SupabaseConfig` / `SupabaseQueryAction` / `SupabaseMutationAction` / `SupabaseFilter`;`SceneNode.lowcodeSupabaseConfig?`;pluginData 旁路 + `validateStateName` reject `^\$`;16 case 测试 |
 | `48bb0e1` | 2 | compiler IR + emit + preview-resolve;`@supabase/supabase-js@^2.100.0` 进 `packages/compiler` devDeps;31 case 测试 |
-| `1628915` | 3 | `_lowcode_supabase.ts` runtime template + 条件 emit + `useSupabaseAuth` + `$currentUser` auth-state 同步;`IRTree.supabaseConfig` + `IRSupabaseConfig` IR-local mirror(守 `adapters/** ↛ core/scene-graph` arch 边界);12 case 测试 |
+| `1628915` | 3 | `_lowcode_supabase.ts` runtime template + 条件 emit + `useSupabaseAuth` + `$currentUser` auth-state 同步;`IRTree.supabaseConfig` + `IRSupabaseConfig` IR-local mirror(守 `adapters/** ↛ @open-pencil/scene-graph` arch 边界);12 case 测试 |
 | `cbc7b5f` | 4 | editor UI:`SupabaseConfigPanel.vue` + `EventsPanel.vue` 加 2 kind 表单 + filter list editor + `AuthControls.vue`(info-toast shim,真 onClick 推 §2.v2);33 新 `panels.*` i18n key × 7 locale |
 | `a84ff02` | 5a | walker checklist 二轮 sweep(emit/event.ts `never` exhaustive switch + recordWrites + dispatchAction + EventsPanel.errorsFor 全覆盖)+ `cross-walker/supabase.test.ts` 6 场景回归 |
 | `75ac999` | 5b fix | Test connection endpoint:`/rest/v1/` → `/auth/v1/settings` + surface response body |
@@ -466,7 +466,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 ### 3.4 内部实现拆解
 
 **校验共享路径**(step 1):
-- editor(`SupabaseConfigPanel.vue` / `EventsPanel.vue` / `DocumentStatePanel.vue`)直接 `import { validateXxx } from '@open-pencil/core/lowcode-validation'`(架构边界:`src/components/properties/Lowcode/** ↛ @open-pencil/core/scene-graph` 已有 → `@open-pencil/core/lowcode-validation` 新增 subpath export,scaffold + 适配 已落)
+- editor(`SupabaseConfigPanel.vue` / `EventsPanel.vue` / `DocumentStatePanel.vue`)直接 `import { validateXxx } from '@open-pencil/core/lowcode-validation'`(架构边界:domain types 从 `@open-pencil/scene-graph` 取,校验逻辑从 `@open-pencil/core/lowcode-validation` 取;scaffold + 适配 已落)
 - tool(`packages/core/src/tools/modify/lowcode.ts`)从同一 subpath import
 - 校验失败统一返 `ValidationResult: { ok: false; reason: string }` —— 与既有 `Phase 2 §2 step 4 新观察 #2` 经验对齐
 
@@ -507,7 +507,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 | Step | 任务 | 验收 / commit message |
 |---|---|---|
-| 1 | shared validators 提取:`@open-pencil/core/lowcode-validation` subpath + 5 个 validator 文件 + barrel;`packages/core/src/scene-graph/lowcode/state.ts` re-export `validateStateName`;`SupabaseConfigPanel.vue` 改 import 共享版;5 个 validator 单测 | `bun test ./tests/engine/lowcode-validation/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — shared lowcode validators (§3 Phase 3)` |
+| 1 | shared validators 提取:`@open-pencil/core/lowcode-validation` subpath + 5 个 validator 文件 + barrel;`packages/core/src/lowcode-validation/validate.ts` 提供 `validateStateName`;`SupabaseConfigPanel.vue` 改 import 共享版;5 个 validator 单测 | `bun test ./tests/engine/lowcode-validation/` 全绿;`bun run check` 全绿;`feat(lowcode): step 1 — shared lowcode validators (§3 Phase 3)` |
 | 2 | `tools/read/lowcode.ts` 3 read tool + `tools/lowcode-shapes.ts` Read shape + 集成测试 | `bun test ./tests/engine/tools/lowcode/read.test.ts` 全绿;`bun run check` 全绿;`feat(lowcode): step 2 — lowcode read tools (§3 Phase 3)` |
 | 3 | `tools/modify/lowcode.ts` 3 modify tool + Patch shape + 集成测试 + 进 ALL_TOOLS;tool description 各 ≥ 300 字 含示例 | `bun test ./tests/engine/tools/lowcode/modify.test.ts` 全绿;`bun run check` 全绿;`feat(lowcode): step 3 — lowcode modify tools (§3 Phase 3)` |
 | 4 | walker checklist round-2 + `tests/engine/tools/lowcode/cross-walker.test.ts`(updateLowcodeNode mega patch → collectTree → emit / Properties 反应全链路覆盖) | `bun test ./tests/engine/tools/lowcode/` 全绿;`bun run check` 全绿;`test(lowcode): step 4 — lowcode tool cross-walker (§3 Phase 3)` |
@@ -647,7 +647,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 
 | 文件 | 改 |
 |---|---|
-| `packages/core/src/scene-graph/types.ts` | `SupabaseMutationAction` 加 `payloadEntries?: { key: string; valueExpr: string }[]` |
+| `packages/scene-graph/src/types.ts` | `SupabaseMutationAction` 加 `payloadEntries?: { key: string; valueExpr: string }[]` |
 | `packages/core/src/tools/schema.ts` | `ToolDef.execute` + `defineTool` 入参签名加第 3 位 `ctx?: { editor?: Editor }`;既有 tool 0 改(typescript 优化:`ctx` 可省) |
 | `packages/core/src/tools/modify/lowcode.ts` | 3 mutate tool 实现拆 with-editor / fallback 分支;新 helper `pushFieldUpdate` |
 | `packages/core/src/lowcode-validation/validate.ts` | `validateActions`(或对应入口)新增 `normalizeEmptyPayloadJson`:trim 后 === '{}' / '[]' → '' |
@@ -779,7 +779,7 @@ setSupabaseConfig: (config: SupabaseConfig | undefined) => { ok: true } | { ok: 
 - **A + G** Walker union widening — §3.v2 step 2 加 `payloadEntries`,IR `bindings.ts` resolvePayloadEntries + emit `emitMutationPayload` 双侧 sweep,7 IR + 4 emit + cross-walker 钉死,**0 漏 case**(经验 A 完整 work)
 - **C** No-swallow — both-present `payload-source-conflict` warn + `'{}'` normalize 两端 surface,**ACK #3 / #6 正面印证**:Console warn 即诊断信号;若静默 drop / coerce,ACK 全靠肉眼对 Dashboard 数据,debug 不可能
 - **H** Tauri 实测找设计层洞 — 本期 §3.v2 设计阶段已沿用 §3.8 新经验 J(反向核),没踩 §3.x 那种基础事实洞,但 Tauri 实测**找到 2 个 UI 缺口**(ACK #1/#2 用户反馈)。这两个 unit + cross-walker **不可能发现**,仍只 Tauri 可见。**继续印证**:UX-end-to-end 必须人眼 + 鼠标手验
-- **I** Module-resolve / new-symbol cross-walker — §3.v2 step 2 加 `SupabasePayloadEntry` interface 跨 4 包(`core/scene-graph` decl / `compiler/ir` collect / `compiler/emit/react` walker / `core/tools` validator),cross-walker `useDocState` import 行 +/- 双向断言;ACK #2 端到端 Dashboard 写入印证完整链路;**沿用未踩坑**
+- **I** Module-resolve / new-symbol cross-walker — §3.v2 step 2 加 `SupabasePayloadEntry` interface 跨 4 包(`@open-pencil/scene-graph` decl / `compiler/ir` collect / `compiler/emit/react` walker / `core/tools` validator),cross-walker `useDocState` import 行 +/- 双向断言;ACK #2 端到端 Dashboard 写入印证完整链路;**沿用未踩坑**
 - **J**(原候选,本期升正经验)— 反向核已写进 §3.v2.5 ACK 表(6 项 × 设计阶段反向核技术依赖),Tauri 实测期没踩**任何**「链路根本不存在」型洞;唯有 ACK #1/#2 的 UI 缺口属于「scope 内不验,本就推 §3.v3」类。**经验 J 从候选转正**
 
 #### §3.v2 follow-up(推 §3.v3 候选池)
@@ -1586,7 +1586,7 @@ if ((node.type === 'RADIO' || isCheckboxGroup(node)) &&
 #### `interactive-fields.ts`(新)
 
 ```ts
-import type { SceneNode } from '@open-pencil/core/scene-graph'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 export type FieldKind = 'text' | 'boolean' | 'date' | 'string-array' | 'enum'
 
@@ -1716,7 +1716,7 @@ import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vu
 
 #### Surprise 列表(1 个,工具链非功能)
 
-1. **`scripts/make-v5-testdoc.ts` 触发 `no-script-core-barrel-imports`**(step 1)—— §3.v5 用 `bun run` 直跑、从没被 lint;step 1 跑 `bun run check` 时 `lint:structure` 扫 `scripts/`(+`tests/`)发现它用了 `@open-pencil/core` barrel import,报 error 卡住整个 gate。Fix:改 `@open-pencil/core/scene-graph` subpath。**教训:`scripts/` 下的 untracked 文件也进 `lint:structure` 扫描范围 —— 一次性脚本也得 lint-clean,否则卡 gate**(经验 I 邻域:gate 的扫描面比"我改的文件"大)。非 §3.v6 功能 surprise。
+1. **`scripts/make-v5-testdoc.ts` 触发 `no-script-core-barrel-imports`**(step 1)—— §3.v5 用 `bun run` 直跑、从没被 lint;step 1 跑 `bun run check` 时 `lint:structure` 扫 `scripts/`(+`tests/`)发现它用了 `@open-pencil/core` barrel import,报 error 卡住整个 gate。Fix:改 `@open-pencil/scene-graph` 公开入口。**教训:`scripts/` 下的 untracked 文件也进 `lint:structure` 扫描范围 —— 一次性脚本也得 lint-clean,否则卡 gate**(经验 I 邻域:gate 的扫描面比"我改的文件"大)。非 §3.v6 功能 surprise。
 
 #### 经验印证
 
@@ -1987,7 +1987,7 @@ export const INTERACTIVE_PROP_VALIDATORS: Partial<Record<SceneNode['type'], (ip:
 | # | 决定 | 理由 |
 |---|---|---|
 | a | **形态 = 静态 usage-driven 策略顾问**(用户 2026-05-29 AskUserQuestion ACK):扫描文档全部 supabase action,聚合「每表 → anon 所需操作集」→ 生成最小 anon RLS policy SQL + footgun 提示。**0 网络 / 0 破坏 / 确定性**。**不做实时探测(B)**:silent-0-row footgun 本质无法靠 anon REST 可靠探测,且 PostgREST RLS 运行时语义无 live 实例不可 probe(经验 K) | 直击 surprise #5;诚实于「可探测的边界」 |
-| b | **共享纯函数** `collectRlsRequirements(actions: ActionDef[]): RlsTableRequirement[]` 落 `@open-pencil/core/lowcode-validation/rls-advisor.ts` + barrel 导出。**输入 = 已收集的 action 列表(不吃 graph API)**,纯逻辑全可单测;panel 侧用一个 thin walker 收集 root subtree 全部 `node.events` 的 action 喂进去 | 经验 I 单源,沿 §3.v3/v7 validator 先例;保持 lowcode-validation framework-agnostic(只 `import type { ActionDef } from '#core/scene-graph'`) |
+| b | **共享纯函数** `collectRlsRequirements(actions: ActionDef[]): RlsTableRequirement[]` 落 `@open-pencil/core/lowcode-validation/rls-advisor.ts` + barrel 导出。**输入 = 已收集的 action 列表(不吃 graph API)**,纯逻辑全可单测;panel 侧用一个 thin walker 收集 root subtree 全部 `node.events` 的 action 喂进去 | 经验 I 单源,沿 §3.v3/v7 validator 先例;保持 lowcode-validation framework-agnostic(只 `import type { ActionDef } from '@open-pencil/scene-graph'`) |
 | c | **operation → SQL command 映射**:`supabaseQuery` → `SELECT`;mutation `insert`→`INSERT` / `update`→`UPDATE` / `delete`→`DELETE` / **`upsert`→{`INSERT`,`UPDATE`}**(footgun 核心:upsert 缺 UPDATE 静默 INSERT 重复行)| upsert 双命令是用户最易踩的洞,显式拆开 |
 | d | **SQL 生成**:每表一 block = `ALTER TABLE "<t>" ENABLE ROW LEVEL SECURITY;` + 每 command 一条 `CREATE POLICY "<t>_<cmd>_anon" ON "<t>" FOR <CMD> TO anon, authenticated <子句>;`。**USING / WITH CHECK 矩阵据 Postgres RLS 文档确定**(经验 K,文档化 PG 语义,非 probe):`SELECT`/`DELETE` → 仅 `USING (true)`;`INSERT` → 仅 `WITH CHECK (true)`;`UPDATE` → `USING (true) WITH CHECK (true)` | 标准 Postgres RLS 命令-子句矩阵;Tauri ACK #6 由用户在真 Supabase SQL editor 验跑通 |
 | e | **target role = `anon, authenticated`**:emit 始终用 anon key(未登录);登录后 supabase-js 自动带 user JWT → role 变 `authenticated`。两者都需 policy 才不被挡 | 覆盖两种运行时身份;呼应 §2 `$currentUser` auth 同步 |
@@ -2036,7 +2036,7 @@ export function collectRlsRequirements(actions: ActionDef[]): RlsTableRequiremen
 export function buildRlsPolicySql(req: RlsTableRequirement): string  // 一表整 block SQL
 ```
 
-- ➕ **新文件** `packages/core/src/lowcode-validation/rls-advisor.ts`(纯逻辑,全可单测;只 `import type { ActionDef, SupabaseQueryAction, SupabaseMutationAction } from '#core/scene-graph'`)
+- ➕ **新文件** `packages/core/src/lowcode-validation/rls-advisor.ts`(纯逻辑,全可单测;只 `import type { ActionDef, SupabaseQueryAction, SupabaseMutationAction } from '@open-pencil/scene-graph'`)
 - 🔁 **barrel** `lowcode-validation/index.ts` 加导出 `collectRlsRequirements` / `buildRlsPolicySql` / `RlsTableRequirement` / `SqlCommand`
 - 🔁 **UI panel** `src/components/properties/Lowcode/SupabaseConfigPanel.vue`:新折叠子区,thin walker 收集 `editor.graph` 全节点 `events` 的 action → `collectRlsRequirements` → 渲染每表 block + `buildRlsPolicySql` + Copy
 - ➕ **i18n** 4 key × 8 文件
@@ -2237,7 +2237,7 @@ export function buildRlsPolicySql(req: RlsTableRequirement): string {
 ### 2.v2.3 公开 API / Schema 改动
 
 ```ts
-// packages/core/src/scene-graph/types.ts
+// packages/scene-graph/src/types.ts
 export interface SupabaseAuthAction {
   id: string
   kind: 'supabaseAuth'
@@ -2421,7 +2421,7 @@ function emitSupabaseAuth(h: IRSupabaseAuthHandler): string {
 ### 2.v3.3 公开 API / Schema 改动
 
 ```ts
-// packages/core/src/scene-graph/types.ts
+// packages/scene-graph/src/types.ts
 export interface SupabaseAuthAction {
   id: string
   kind: 'supabaseAuth'
@@ -2590,7 +2590,7 @@ signUp 按钮初次点击 **无 network 无报错** → 逐层排查(确认门�
 ### 2.v4.3 公开 API / Schema 改动
 
 ```ts
-// packages/core/src/scene-graph/types.ts — operation union 扩到 5(无新字段)
+// packages/scene-graph/src/types.ts — operation union 扩到 5(无新字段)
 operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword'
 ```
 
@@ -4017,7 +4017,7 @@ variant 在 scene-graph = COMPONENT_SET 容器的 COMPONENT 子节点,子名形�
 
 CODE COMPLETE 2026-06-02。符合设计,几处机械修正:
 
-- **核心公开面新增**:`parseVariantName` 原只经 `#core/scene-graph/variant-name`(package-local alias)用,compiler 够不到 → 从 `scene-graph/index.ts` barrel **re-export**(`@open-pencil/core/scene-graph`),纯 util,稳定。否决在 compiler 重写(jscpd threshold 0 会判 clone)。
+- **核心公开面新增**:`parseVariantName` 原只在 scene-graph package 内部使用,compiler 够不到 → 从 `packages/scene-graph/src/index.ts` barrel **re-export**(现为 `@open-pencil/scene-graph`),纯 util,稳定。否决在 compiler 重写(jscpd threshold 0 会判 clone)。
 - **registry 三类扫描**:plain COMPONENT(parent 非 SET)走 v2/v3;variant 子(parent 是 COMPONENT_SET)**跳过**(经 SET 出);COMPONENT_SET 有 instanced variant → 注册 `{variants:{axes,cases}}`。instance→SET 经 `instance.componentId→variant子→parentId→已注册SET` 走查,**不另存 map**。
 - **emit switch**:`const __variant = \`${size}|${state}\``+ 其余 if-guard + 默认(首 variant)兜底 return,各 case 包 `<div className={className}>`。string-union prop 类型 `JSON.stringify`(双引号)——测试断言对齐 `"Large" | "Small"`(非单引号)。default 全 = 默认轴值的 instance → 0 props(`variantProps` 省略 == 默认的轴)。
 - **lint 两修**:`meta.variants!` non-null assertion 禁 → 闭包外 `const variantMeta = meta.variants`;`defaultCase ?`(destructure 后类型非可选)always-truthy → 加 `variants.length===0` 早返 + 直用 `defaultCase`。

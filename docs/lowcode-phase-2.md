@@ -62,7 +62,7 @@
 
 ### 2.1 现状与问题
 
-- `SetVariableAction`(`packages/core/src/scene-graph/types.ts:486`)在 Phase 1 §7.4 落了判别联合 slot(`targetName` + `valueExpr`),编辑器 EventsPanel 也给了 input UI,但 compiler `bindings.ts:152` 永远 `warn + drop`。用户在 EventsPanel 看到 "not yet emitted — compiles to a warning" 的 amber stub。
+- `SetVariableAction`(`packages/scene-graph/src/types.ts:486`)在 Phase 1 §7.4 落了判别联合 slot(`targetName` + `valueExpr`),编辑器 EventsPanel 也给了 input UI,但 compiler `bindings.ts:152` 永远 `warn + drop`。用户在 EventsPanel 看到 "not yet emitted — compiles to a warning" 的 amber stub。
 - `BindingExpr` 只有 `'literal' | 'ref' | 'expr'` 三种 kind,**没有**绑全局变量的路径。
 - `StateDef[]` 只能挂 CANVAS(页面)/ BUTTON / FORM / TEXT 等 4 个 NodeType 上,且语义是**页面级 `useState`**;Bubble 风格的"跨页全局 K-V"无法表达。
 - OpenPencil 现有 `Variable` / `VariableCollection`(`types.ts:405-429`)是 **Figma-style 设计 token**(`COLOR / FLOAT / STRING / BOOLEAN`,多 mode,绑节点属性,编译时常量替换),且已进 vendored Kiwi schema、有 MCP tool、有 Vue 组件 ABI —— 跟 Bubble 风格的运行时变量是**完全两个东西**,不能复用类型。
@@ -149,7 +149,7 @@ SceneGraph (root "Document"):
 
 ### 2.3 公开 API / Schema 改动
 
-**SceneGraph types(`packages/core/src/scene-graph/types.ts`)**:
+**SceneGraph types(`packages/scene-graph/src/types.ts`)**:
 
 ```ts
 /** Phase 2 §2: document-level "Document State" variable declarations,
@@ -478,7 +478,7 @@ SceneGraph (root "Document"):
 
 ### 3.3 公开 API / Schema 改动
 
-**SceneGraph types(`packages/core/src/scene-graph/types.ts`)**:
+**SceneGraph types(`packages/scene-graph/src/types.ts`)**:
 
 ```ts
 /** Phase 2 §3: fire an HTTP request on an event and write the parsed JSON
@@ -898,7 +898,7 @@ export interface IRApiCallHandler {
 
 ### 6.3 公开 API / Schema 改动
 
-**SceneGraph(`packages/core/src/scene-graph/`)**:
+**SceneGraph(`packages/scene-graph/src/`)**:
 
 ```ts
 // types.ts — LayoutMode 联合追加 FREE
@@ -1297,7 +1297,7 @@ bridge 模板字面值 tsgo 不检 —— 字符串内的 dispatch 是「非 tsg
 
 ### 8.3 公开 API / Schema 改动
 
-**SceneGraph(`packages/core/src/scene-graph/`)**:
+**SceneGraph(`packages/scene-graph/src/`)**:
 
 ```ts
 // types.ts — NodeType 联合追加
@@ -1405,7 +1405,7 @@ export type NodeType =
 当前 IR / SceneGraph 不能表达两种最基础的动态结构:
 
 - **条件渲染** —— 不能说"`isLoggedIn` 为真才渲染这个 BUTTON"。所有可见节点(`visible === true`)都无条件出现在 JSX 树里。
-- **列表渲染** —— 不能说"对 `users` 数组的每一项渲染一份这个 FRAME"。`LIST` 节点(`packages/core/src/scene-graph/types.ts:80`)与 `interactiveProps.dataSourceRef: null`(`node-defaults.ts:224`)从 Phase 0 起就预留了字段,但 `ir/collect/tree.ts` 既没有读 `dataSourceRef`,也没有把 LIST 视作迭代节点 —— LIST 当前 emit 出来就是个 `<div>` + 静态子节点。
+- **列表渲染** —— 不能说"对 `users` 数组的每一项渲染一份这个 FRAME"。`LIST` 节点(`packages/scene-graph/src/types.ts:80`)与 `interactiveProps.dataSourceRef: null`(`node-defaults.ts:224`)从 Phase 0 起就预留了字段,但 `ir/collect/tree.ts` 既没有读 `dataSourceRef`,也没有把 LIST 视作迭代节点 —— LIST 当前 emit 出来就是个 `<div>` + 静态子节点。
 
 后果:用户只能编 staticly-shaped 页面。**Bubble 用户实际诉求里频次排第二(仅次于 API)** —— "用户列表 / 商品列表 / 评论列表"全做不出来;"登录后显示 X、否则显示 Y"全做不出来。
 
@@ -1457,7 +1457,7 @@ SceneGraph (page Home):
 
 ### 9.3 公开 API / Schema 改动
 
-**SceneGraph types(`packages/core/src/scene-graph/types.ts`):**
+**SceneGraph types(`packages/scene-graph/src/types.ts`):**
 
 ```ts
 export interface SceneNode {

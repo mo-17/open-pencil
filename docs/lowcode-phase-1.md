@@ -568,7 +568,7 @@ export function compile(input: CompilerInput): CompilerOutput {
 
 ### 12.1 现状与问题
 
-`SceneNode` 类型上已声明 4 个 lowcode 字段（`packages/core/src/scene-graph/types.ts:383-386`）：
+`SceneNode` 类型上已声明 4 个 lowcode 字段（`packages/scene-graph/src/types.ts:383-386`）：
 
 ```ts
 state?: StateDef[]

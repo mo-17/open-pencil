@@ -76,10 +76,10 @@ Le code source du moteur core se trouve dans `packages/core/src/`. Le code propr
 
 | Fichier | Objectif |
 |---------|----------|
-| `packages/core/src/scene-graph/` | Graphe de scène : nœuds, variables, instances, hit testing |
+| `packages/scene-graph/src/` | Graphe de scène : nœuds, variables, instances, hit testing |
 | `packages/core/src/canvas/renderer.ts` | Pipeline de rendu CanvasKit |
 | `packages/core/src/layout.ts` | Adaptateur layout Yoga |
-| `packages/core/src/scene-graph/undo.ts` | Gestionnaire annuler/rétablir |
+| `packages/scene-graph/src/undo.ts` | Gestionnaire annuler/rétablir |
 | `packages/core/src/clipboard.ts` | Presse-papiers compatible Figma |
 | `packages/core/src/vector/` | Modèle de réseau vectoriel |
 | `packages/core/src/io/formats/raster/render.ts` | Export d'image hors-écran (PNG/JPG/WEBP) |

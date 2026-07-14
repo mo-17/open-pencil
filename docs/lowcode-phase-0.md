@@ -48,7 +48,7 @@
 
 ### 2.2 NodeType 扩展
 
-`packages/core/src/scene-graph/types.ts`:
+`packages/scene-graph/src/types.ts`:
 
 ```ts
 export type NodeType =
@@ -271,7 +271,7 @@ packages/compiler/
 
 ```ts
 // packages/compiler/src/index.ts
-import type { SceneGraph } from '@open-pencil/core/scene-graph'
+import type { SceneGraph } from '@open-pencil/scene-graph'
 
 export interface CompilerInput {
   graph: SceneGraph
@@ -561,7 +561,7 @@ src/
 1. ✅ ~~批准本设计文档~~ 已锁定 8 项决定
 2. **建立 `lowcode-phase-0` 分支** — 主线继续 OpenPencil 自身演进，新分支专做扩展
 3. **第一个可落地 PR — 周 1 工程师 A 任务**：
-   - 在 `packages/core/src/scene-graph/types.ts` 添加 `StateDef` / `BindingExpr` / `ActionDef` / `EventName` 类型
+   - 在 `packages/scene-graph/src/types.ts` 添加 `StateDef` / `BindingExpr` / `ActionDef` / `EventName` 类型
    - 在 `SceneNode` 添加 optional 字段 `state` / `bindings` / `events` / `interactiveProps`
    - `NodeType` union 添加 6 个新值
    - `node-defaults.ts` 为 6 个新 type 设 defaults

@@ -1164,7 +1164,7 @@ bun test \
 
 **实现**:
 
-- 新增 `packages/core/src/scene-graph/libraries.ts`:
+- 新增 `packages/scene-graph/src/libraries.ts`:
   - `publishLibraryComponent(graph, options)`
   - `componentSubtreeVersion(graph, componentId)`
   - `LibraryManifest` / `LibraryComponentManifestEntry` / publish result types
@@ -1201,14 +1201,14 @@ bun test \
 
 **实现**:
 
-- `packages/core/src/scene-graph/libraries.ts` 新增 `importLibraryComponent(options)`:
+- `packages/scene-graph/src/libraries.ts` 新增 `importLibraryComponent(options)`:
   - 输入:`sourceGraph`, `targetGraph`, `manifest`, `componentKey`,可选 `parentId` / `source` override。
   - manifest key 命中后优先按 `nodeId` 找源组件;若 nodeId 漂移,回退按 `libraryComponentKey/componentKey` 搜索 COMPONENT / COMPONENT_SET。
   - 克隆源 component subtree 到消费 graph 的目标 page/parent,重新生成 node id/source metadata。
   - root cached master 写入 `componentKey/libraryComponentKey/libraryId/libraryVersion/libraryReadonly:true`。
   - 复制 subtree 引用的 image assets 到 targetGraph.images。
   - root `lowcodeLibraries` upsert 对应 `LibraryRef`,同 key 重导入只更新 version、不重复追加。
-- 导出 `ImportLibraryComponentOptions` / `ImportLibraryComponentResult` 到 `@open-pencil/core/scene-graph`。
+- 导出 `ImportLibraryComponentOptions` / `ImportLibraryComponentResult` 到 `@open-pencil/scene-graph`。
 
 **验证**:
 
@@ -1238,7 +1238,7 @@ bun test \
   - 结构相同时按位置原地更新 cached master subtree,保留 child ids,让现有 instance child `componentId` 不断链。
   - 结构变化时替换 children,返回 warning:`Component structure changed; existing instance overrides were not remapped`。
   - 复制 image assets,更新 cached master `libraryVersion`,upsert root `lowcodeLibraries`,并调用 `targetGraph.syncInstances(cachedMaster.id)`。
-- 导出 `LibraryUpdateStatus` / `LibraryUpdateCheck` / check/accept options/result 到 `@open-pencil/core/scene-graph`。
+- 导出 `LibraryUpdateStatus` / `LibraryUpdateCheck` / check/accept options/result 到 `@open-pencil/scene-graph`。
 
 **验证**:
 

@@ -76,10 +76,10 @@ Il codice sorgente del motore core si trova in `packages/core/src/`. Il codice s
 
 | File | Scopo |
 |------|-------|
-| `packages/core/src/scene-graph/` | Grafo scena: nodi, variabili, istanze, hit testing |
+| `packages/scene-graph/src/` | Grafo scena: nodi, variabili, istanze, hit testing |
 | `packages/core/src/canvas/renderer.ts` | Pipeline di rendering CanvasKit |
 | `packages/core/src/layout.ts` | Adattatore layout Yoga |
-| `packages/core/src/scene-graph/undo.ts` | Gestore annulla/ripristina |
+| `packages/scene-graph/src/undo.ts` | Gestore annulla/ripristina |
 | `packages/core/src/clipboard.ts` | Appunti compatibili con Figma |
 | `packages/core/src/vector/` | Modello rete vettoriale |
 | `packages/core/src/io/formats/raster/render.ts` | Export immagine offscreen (PNG/JPG/WEBP) |

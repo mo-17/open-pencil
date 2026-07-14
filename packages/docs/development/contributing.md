@@ -74,10 +74,10 @@ Core engine source lives in `packages/core/src/`. App-specific editor, document,
 
 | File | Purpose |
 |------|---------|
-| `packages/core/src/scene-graph/` | Scene graph: nodes, variables, instances, hit testing |
+| `packages/scene-graph/src/` | Scene graph: nodes, variables, instances, hit testing |
 | `packages/core/src/canvas/renderer.ts` | CanvasKit rendering pipeline |
 | `packages/core/src/layout.ts` | Yoga layout adapter |
-| `packages/core/src/scene-graph/undo.ts` | Undo/redo manager |
+| `packages/scene-graph/src/undo.ts` | Undo/redo manager |
 | `packages/core/src/clipboard.ts` | Figma-compatible clipboard |
 | `packages/core/src/vector/` | Vector network model |
 | `packages/core/src/io/formats/raster/render.ts` | Offscreen image export (PNG/JPG/WEBP) |

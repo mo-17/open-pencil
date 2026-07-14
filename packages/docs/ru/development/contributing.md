@@ -76,10 +76,10 @@ bun run check
 
 | Файл | Назначение |
 |------|------------|
-| `packages/core/src/scene-graph/` | Граф сцены: узлы, переменные, экземпляры, проверка попадания |
+| `packages/scene-graph/src/` | Граф сцены: узлы, переменные, экземпляры, проверка попадания |
 | `packages/core/src/canvas/renderer.ts` | Конвейер отрисовки CanvasKit |
 | `packages/core/src/layout.ts` | Адаптер компоновки Yoga |
-| `packages/core/src/scene-graph/undo.ts` | Менеджер отмены/повтора |
+| `packages/scene-graph/src/undo.ts` | Менеджер отмены/повтора |
 | `packages/core/src/clipboard.ts` | Figma-совместимый буфер обмена |
 | `packages/core/src/vector/` | Модель векторных сетей |
 | `packages/core/src/io/formats/raster/render.ts` | Внеэкранный экспорт изображений (PNG/JPG/WEBP) |

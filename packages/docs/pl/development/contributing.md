@@ -76,10 +76,10 @@ Kod źródłowy silnika core znajduje się w `packages/core/src/`. Kod aplikacyj
 
 | Plik | Cel |
 |------|-----|
-| `packages/core/src/scene-graph/` | Graf sceny: węzły, zmienne, instancje, hit testing |
+| `packages/scene-graph/src/` | Graf sceny: węzły, zmienne, instancje, hit testing |
 | `packages/core/src/canvas/renderer.ts` | Pipeline renderowania CanvasKit |
 | `packages/core/src/layout.ts` | Adapter layoutu Yoga |
-| `packages/core/src/scene-graph/undo.ts` | Menedżer cofnij/ponów |
+| `packages/scene-graph/src/undo.ts` | Menedżer cofnij/ponów |
 | `packages/core/src/clipboard.ts` | Schowek kompatybilny z Figmą |
 | `packages/core/src/vector/` | Model sieci wektorowej |
 | `packages/core/src/io/formats/raster/render.ts` | Eksport obrazu offscreen (PNG/JPG/WEBP) |

@@ -223,8 +223,8 @@ These are parsed or visible in Figma docs and most likely to cause visible diffe
 
 | Concern                      | Files                                                                                                          |
 | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Scene graph fields           | `packages/core/src/scene-graph/types.ts`                                                                       |
-| Source metadata invalidation | `packages/core/src/scene-graph/source-metadata.ts`                                                             |
+| Scene graph fields           | `packages/scene-graph/src/types.ts`                                                                            |
+| Source metadata invalidation | `packages/scene-graph/src/source-metadata.ts`                                                                  |
 | Kiwi import mapping          | `packages/core/src/kiwi/fig/node-change/convert.ts`                                                            |
 | Kiwi export mapping          | `packages/core/src/kiwi/fig/node-change/export-node.ts`, `packages/core/src/kiwi/fig/node-change/serialize.ts` |
 | Kiwi schema                  | `packages/core/src/kiwi/fig/codec/schema/fig.kiwi`, `tests/engine/io/fig/import/schema-coverage.test.ts`       |

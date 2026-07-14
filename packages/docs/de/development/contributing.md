@@ -73,10 +73,10 @@ Der Core-Engine-Quellcode lebt in `packages/core/src/`. App-spezifischer Editor-
 
 | Datei | Zweck |
 |-------|-------|
-| `packages/core/src/scene-graph/` | Szenengraph: Knoten, Variablen, Instanzen, Hit-Testing |
+| `packages/scene-graph/src/` | Szenengraph: Knoten, Variablen, Instanzen, Hit-Testing |
 | `packages/core/src/canvas/renderer.ts` | CanvasKit-Rendering-Pipeline |
 | `packages/core/src/layout.ts` | Yoga-Layout-Adapter |
-| `packages/core/src/scene-graph/undo.ts` | Rückgängig/Wiederherstellen-Manager |
+| `packages/scene-graph/src/undo.ts` | Rückgängig/Wiederherstellen-Manager |
 | `packages/core/src/clipboard.ts` | Figma-kompatible Zwischenablage |
 | `packages/core/src/vector/` | Vektornetzwerk-Modell |
 | `packages/core/src/kiwi/binary/codec.ts` | Kiwi-Binär-Encoder/Decoder |

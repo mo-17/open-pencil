@@ -76,10 +76,10 @@ El código fuente del motor core vive en `packages/core/src/`. El código espec�
 
 | Archivo | Propósito |
 |---------|-----------|
-| `packages/core/src/scene-graph/` | Grafo de escena: nodos, variables, instancias, hit testing |
+| `packages/scene-graph/src/` | Grafo de escena: nodos, variables, instancias, hit testing |
 | `packages/core/src/canvas/renderer.ts` | Pipeline de renderizado CanvasKit |
 | `packages/core/src/layout.ts` | Adaptador de layout Yoga |
-| `packages/core/src/scene-graph/undo.ts` | Gestor de deshacer/rehacer |
+| `packages/scene-graph/src/undo.ts` | Gestor de deshacer/rehacer |
 | `packages/core/src/clipboard.ts` | Portapapeles compatible con Figma |
 | `packages/core/src/vector/` | Modelo de red vectorial |
 | `packages/core/src/io/formats/raster/render.ts` | Exportación de imagen offscreen (PNG/JPG/WEBP) |
