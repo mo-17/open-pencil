@@ -1,5 +1,6 @@
 import { describe, expect, mock, spyOn, test } from 'bun:test'
 
+import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { PluginData } from '@open-pencil/kiwi/fig/codec'
 import type { PluginDataEntry, SceneNode } from '@open-pencil/scene-graph'
 
@@ -15,7 +16,6 @@ import {
   LOWCODE_STATE_KEY,
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 
 /**
  * `serializeLowcodeFields` only reads a handful of fields, so test inputs

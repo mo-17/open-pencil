@@ -55,7 +55,7 @@ bun run check
 ### Convenciones
 
 - **Nombres de archivo** — kebab-case (`scene-graph.ts`, `use-canvas-input.ts`)
-- **Componentes** — PascalCase Vue SFCs (`EditorCanvas.vue`, `ScrubInput.vue`)
+- **Componentes** — PascalCase Vue SFCs (`EditorCanvas.vue`, `NumberField.vue`)
 - **Constantes** — SCREAMING_SNAKE_CASE
 - **Funciones/variables** — camelCase
 - **Tipos/interfaces** — PascalCase
@@ -76,15 +76,15 @@ El código fuente del motor core vive en `packages/core/src/`. El código espec�
 
 | Archivo | Propósito |
 |---------|-----------|
-| `packages/scene-graph/src/` | Grafo de escena: nodos, variables, instancias, hit testing |
+| `packages/scene-graph/src/` | Grafo de escena: nodos, variables, instancias, hit testing y deshacer |
 | `packages/core/src/canvas/renderer.ts` | Pipeline de renderizado CanvasKit |
-| `packages/core/src/layout.ts` | Adaptador de layout Yoga |
-| `packages/scene-graph/src/undo.ts` | Gestor de deshacer/rehacer |
+| `packages/core/src/layout/` | Adaptador de layout Yoga |
 | `packages/core/src/clipboard.ts` | Portapapeles compatible con Figma |
 | `packages/core/src/vector/` | Modelo de red vectorial |
 | `packages/core/src/io/formats/raster/render.ts` | Exportación de imagen offscreen (PNG/JPG/WEBP) |
-| `packages/core/src/kiwi/binary/codec.ts` | Codificador/decodificador binario Kiwi |
-| `packages/core/src/kiwi/fig-import.ts` | Lógica de importación de archivos .fig |
+| `packages/kiwi/src/schema-runtime/` | Runtime de esquema y códec binario Kiwi |
+| `packages/fig/src/node-change/` | Política de conversión entre SceneGraph y Figma NodeChange |
+| `packages/core/src/io/formats/fig/` | Orquestación de lectura/escritura .fig para la app |
 | `packages/cli/src/index.ts` | Punto de entrada del CLI |
 | `packages/core/src/tools/` | Definiciones unificadas de herramientas (IA, MCP, CLI) |
 | `packages/core/src/figma-api/` | Implementación de Figma Plugin API |

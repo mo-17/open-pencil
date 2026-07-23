@@ -2,13 +2,13 @@ import { tv } from 'tailwind-variants'
 
 export const menu = tv({
   slots: {
-    content: 'z-50 rounded-lg border border-border bg-panel p-1 shadow-lg',
-    item: 'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none select-none data-[disabled]:cursor-default data-[disabled]:text-muted/50 data-[highlighted]:bg-hover',
+    content: 'z-50 rounded-xl bg-panel p-1 shadow-[0_8px_30px_rgb(0_0_0/0.4)]',
+    item: 'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[11px] outline-none select-none data-[disabled]:cursor-default data-[disabled]:text-muted/50 data-[highlighted]:bg-hover',
     separator: 'mx-1 my-1 h-px bg-border',
     shortcut: 'text-[11px] text-muted',
     icon: 'size-3 text-muted',
     subTrigger:
-      'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none select-none'
+      'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[11px] outline-none select-none'
   },
   variants: {
     tone: {
@@ -37,7 +37,7 @@ export const menu = tv({
   }
 })
 
-interface MenuUi {
+interface MenuUI {
   content?: string
   item?: string
   separator?: string
@@ -46,7 +46,7 @@ interface MenuUi {
   subTrigger?: string
 }
 
-export function useMenuUI(ui?: MenuUi) {
+export function useMenuUI(ui?: MenuUI) {
   const cls = menu()
   return {
     content: cls.content({ class: ui?.content }),

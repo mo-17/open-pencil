@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Added
+
+- Import HTML, CSS, Tailwind, and JSX as editable documents from the app, CLI, and SDK, and export standalone browser-ready HTML with compiled CSS and optional external assets.
+- Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, and blur effects.
+- Manage pages with rename, delete, and drag-to-reorder actions in the Pages panel.
+- Inspect and edit constraints, stroke caps and joins, corner smoothing, shared styles, component properties, blend modes, masks, advanced typography, and per-node export settings from the Design panel.
+- Find overlapping layers and overflowing children from the CLI, AI tools, and MCP.
+- Use Figma-style number-key opacity shortcuts: `1`–`9` set 10%–90%, `0` sets 100%, and two-digit sequences set exact values.
+- Drag image files directly into the desktop app and paste Figma layers with their remote image fills.
+- Drag with the Text tool to create a fixed-size text box, or click to create auto-width text.
+- Target a specific open document and page from live CLI and MCP automation, including sessions with multiple documents.
+- Test OpenAI-compatible provider connections from AI settings with clearer setup errors.
+- Build custom property panels with new Vue SDK number fields, bindable values, property sections, segmented controls, property lists, color models, fill controls, and gradient primitives.
+
 ### Changed
 
 - Add Figma-style page management, including rename/delete actions and drag-and-drop page reordering.
@@ -211,8 +225,13 @@
 - Debounce lowcode remote field validation on blur and cancel stale remote requests before applying field errors.
 - Validate lowcode form validation configs at the AI tool boundary before persisting interactive props.
 - Avoid emitting localStorage persistence helpers when no document state is marked persistent.
+- Redesign the editor chrome and Design panel with denser aligned controls, clearer selection and section states, improved menus and overlays, consistent light/dark theming, and better keyboard and screen-reader behavior.
+- Scale the Layers panel to documents with thousands of nodes through virtualized rows, faster incremental updates, stable expansion, range selection, and scroll-to-selection.
+- Resolve fonts before text appears, with language-aware CJK and Arabic fallback, character-specific remote subsets, and more reliable rendering as fonts load.
+- Open and save large `.fig` documents substantially faster while preserving original metadata and user edits; corrupted compressed data now reports an error instead of being opened as valid content.
+- Publish SceneGraph, Pen, Kiwi, Fig, DOM/CSS, and Vue functionality through clearer package APIs, with expanded SDK documentation and examples.
 
-### Fixes
+### Fixed
 
 - Improve CJK fallback rendering, imported Figma text sizing, and auto-layout reflow after child/component changes.
 - Restore desktop clipboard behavior and public collaboration links, and sync current document content to joiners.
@@ -238,6 +257,23 @@
 - Improve Figma boolean imports by preserving XOR operations as editable exclude nodes and falling back to imported fill geometry when boolean path reconstruction cannot produce a path.
 - Preserve rotated Figma transform origins for imported vector nodes.
 - Render complex text fills through vector glyph outlines so imported Figma text can use the normal fill pipeline for gradients, images, patterns, and other non-solid paints.
+- Keep desktop text visible across the scene and overlay canvases, refresh it after local fonts load, and preserve rendering when a requested italic face is unavailable (#395).
+- Honor node-scoped variable modes in `.fig` files so light and dark component examples keep their intended colors.
+- Preserve nested instance text, visibility, and paint overrides across repeated children and component swaps in `.fig` files.
+- Improve `.fig` import and rendering fidelity for groups, booleans, instances, rotated vectors, complex text fills, auto-sized text, layout grids, page guides, patterns, noise effects, masks, and canvas backgrounds.
+- Preserve pages, components, prototype and library metadata, export settings, unsupported effects, and other unrelated Figma data when editing and resaving `.fig` files.
+- Prevent duplicate generated IDs from corrupting `.fig` round trips.
+- Match Figma auto-layout reflow after deleting children, hiding optional instance slots, or syncing component changes.
+- Make group and boolean-operation children scale with their parent during resize.
+- Restore desktop copy, cut, and paste when browser clipboard events are unavailable.
+- Keep duplicated layers independent instead of sharing mutable fills, strokes, bindings, overrides, or vector data, and remove stale bindings when paints are deleted.
+- Preserve Hangul IME composition while editing text.
+- Share public app links from the desktop collaboration panel and send the current document to newly joined collaborators.
+- Resolve published package types correctly for TypeScript consumers and keep file-backed CLI commands working under Node.
+
+### Security
+
+- Update the collaboration WebSocket dependency to address a protocol-length advisory.
 
 ## 0.13.2 — 2026-05-30
 

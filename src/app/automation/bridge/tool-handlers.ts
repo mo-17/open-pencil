@@ -32,7 +32,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
       x: toolArgs.x as number | undefined,
       y: toolArgs.y as number | undefined
     })
-    await ensureGraphFonts(store.graph, [result.id])
+    await ensureGraphFonts(store.graph, [result.id], store.renderer)
     computeAllLayouts(store.graph, target.pageId)
     store.requestRender()
     store.flashNodes([result.id])
@@ -63,7 +63,7 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
 
     if (def.mutates) {
       const pageNode = store.graph.getNode(figma.currentPageId)
-      if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds)
+      if (pageNode) await ensureGraphFonts(store.graph, pageNode.childIds, store.renderer)
       computeAllLayouts(store.graph, figma.currentPageId)
       store.requestRender()
       store.flashNodes(extractNodeIds(result))

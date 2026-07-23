@@ -1,6 +1,13 @@
+/* eslint-disable max-lines -- FIG export orchestration keeps shared GUID state in one pipeline */
 import type { CanvasKit } from 'canvaskit-wasm'
 import { deflateSync, inflateSync } from 'fflate'
 
+import { compressFigDataSync } from '@open-pencil/fig'
+import {
+  buildComponentPropIndex,
+  mergePluginData,
+  stringToGuid
+} from '@open-pencil/fig/node-change'
 import { initCodec, getCompiledSchema, getSchemaBytes } from '@open-pencil/kiwi/fig/codec'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi/schema-runtime'
@@ -11,9 +18,7 @@ import type { SkiaRenderer } from '#core/canvas'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
 import { renderThumbnail } from '#core/io/formats/raster'
 import { populateAllLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
-import { stringToGuid } from '#core/kiwi/fig/node-change/convert'
 import { serializeLowcodeFields } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
-import { mergePluginData } from '#core/kiwi/fig/node-change/plugin-data'
 import {
   sceneNodeToKiwi,
   fractionalPosition,
@@ -22,8 +27,6 @@ import {
   makeDocumentNodeChange,
   makeCanvasNodeChange
 } from '#core/kiwi/fig/node-change/serialize'
-
-import { compressFigDataSync } from './compress'
 
 const THUMBNAIL_1X1 = Uint8Array.from(
   atob(
@@ -107,26 +110,55 @@ async function renderFigThumbnail(
   )
 }
 
+function assignVariableGuid(
+  id: string,
+  localIdCounter: { value: number },
+  assignedGuidValues: Set<string>,
+  nodeSourceGuidValues: Set<string>
+): GUID {
+  if (/^\d+:\d+$/.test(id) && !assignedGuidValues.has(id) && !nodeSourceGuidValues.has(id)) {
+    const guid = stringToGuid(id)
+    assignedGuidValues.add(id)
+    return guid
+  }
+  const guid = { sessionID: 0, localID: localIdCounter.value++ }
+  assignedGuidValues.add(`${guid.sessionID}:${guid.localID}`)
+  return guid
+}
+
 function assignVariableGuids(
   graph: SceneGraph,
   localIdCounter: { value: number },
   varIdToGuid: Map<string, GUID>,
   modeIdToGuid: Map<string, GUID>,
-  assignedGuidValues: Set<string>
+  assignedGuidValues: Set<string>,
+  nodeSourceGuidValues: Set<string>
 ): void {
   for (const [colId, col] of graph.variableCollections) {
-    const colGuid = { sessionID: 0, localID: localIdCounter.value++ }
+    const colGuid = assignVariableGuid(
+      colId,
+      localIdCounter,
+      assignedGuidValues,
+      nodeSourceGuidValues
+    )
     varIdToGuid.set(colId, colGuid)
-    assignedGuidValues.add(`${colGuid.sessionID}:${colGuid.localID}`)
     for (const mode of col.modes) {
-      const modeGuid = { sessionID: 0, localID: localIdCounter.value++ }
+      const modeGuid = assignVariableGuid(
+        mode.modeId,
+        localIdCounter,
+        assignedGuidValues,
+        nodeSourceGuidValues
+      )
       modeIdToGuid.set(mode.modeId, modeGuid)
-      assignedGuidValues.add(`${modeGuid.sessionID}:${modeGuid.localID}`)
     }
     for (const varId of col.variableIds) {
-      const varGuid = { sessionID: 0, localID: localIdCounter.value++ }
+      const varGuid = assignVariableGuid(
+        varId,
+        localIdCounter,
+        assignedGuidValues,
+        nodeSourceGuidValues
+      )
       varIdToGuid.set(varId, varGuid)
-      assignedGuidValues.add(`${varGuid.sessionID}:${varGuid.localID}`)
     }
   }
 }
@@ -278,17 +310,16 @@ function buildCanvasEntries(
       }
     )
     applyImportedCanvasFields(page, canvasNc)
-    if (page.internalOnly) canvasNc.internalOnly = true
-    // Phase 1 §12: pages bypass sceneNodeToKiwi, so page-scoped lowcode state
-    // (the common case) is attached here.
     const pageLowcode = serializeLowcodeFields(page)
     if (pageLowcode.length > 0) {
       canvasNc.pluginData = mergePluginData([...page.pluginData, ...pageLowcode])
     }
+    if (page.internalOnly) canvasNc.internalOnly = true
     canvasEntries.push({ page, canvasGuid, canvasNc })
   }
 
-  if (graph.variableCollections.size > 0 && internalCanvasGuid === null) {
+  const hasSharedStyles = [...graph.nodes.values()].some((node) => node.sharedStyleType !== null)
+  if ((graph.variableCollections.size > 0 || hasSharedStyles) && internalCanvasGuid === null) {
     internalCanvasGuid = { sessionID: 0, localID: localIdCounter.value++ }
     assignedGuidValues.add(`${internalCanvasGuid.sessionID}:${internalCanvasGuid.localID}`)
     canvasEntries.push({
@@ -307,46 +338,55 @@ function buildCanvasEntries(
   return { canvasEntries, internalCanvasGuid }
 }
 
-function resolveFigExportSchema(graph: SceneGraph): {
-  compiled: ReturnType<typeof getCompiledSchema>
-  schemaDeflated: Uint8Array
-} {
-  if (!graph.figSchemaDeflated) {
-    return {
-      compiled: getCompiledSchema(),
-      schemaDeflated: deflateSync(getSchemaBytes())
-    }
-  }
-
-  const schemaBytes = inflateSync(graph.figSchemaDeflated)
-  const figSchema = decodeBinarySchema(new ByteBuffer(schemaBytes))
-  return {
-    compiled: compileSchema(figSchema) as ReturnType<typeof getCompiledSchema>,
-    schemaDeflated: graph.figSchemaDeflated
-  }
+interface InternalResourceContext {
+  graph: SceneGraph
+  nodeChanges: KiwiNodeChange[]
+  internalCanvasGuid: GUID | null
+  localIdCounter: { value: number }
+  blobs: Uint8Array[]
+  nodeIdToGuid: Map<string, GUID>
+  fontDigestMap: Map<string, Uint8Array>
+  varIdToGuid: Map<string, GUID>
+  modeIdToGuid: Map<string, GUID>
+  glyphBlobMap: Map<string, number>
+  blobIndexByHex: Map<string, number>
+  assignedGuidValues: Set<string>
+  componentPropertyDefinitionsById: ReturnType<typeof buildComponentPropIndex>
 }
 
-function advanceCounterPastImportedSourceIds(
-  graph: SceneGraph,
-  localIdCounter: { value: number }
-): void {
-  // Scan ALL imported source.ids BEFORE any new GUID assignment to find
-  // max sessionID:0 and sessionID:1 localID values. This guarantees the
-  // counter is past every imported GUID before any canvas, variable, or
-  // node claims a new counter-based GUID — preventing collisions.
-  let maxLocalId0 = localIdCounter.value - 1
-  let maxLocalId1 = localIdCounter.value - 1
-  for (const node of graph.nodes.values()) {
-    if (!node.source.id) continue
-    const g = stringToGuid(node.source.id)
-    if (g.sessionID === 0 && g.localID > maxLocalId0) {
-      maxLocalId0 = g.localID
-    }
-    if (g.sessionID === 1 && g.localID > maxLocalId1) {
-      maxLocalId1 = g.localID
-    }
+function appendInternalResources(context: InternalResourceContext): void {
+  const { graph, internalCanvasGuid, nodeChanges } = context
+  if (!internalCanvasGuid) return
+  const sharedStyleNodes = [...graph.nodes.values()].filter((node) => node.sharedStyleType !== null)
+  for (let index = 0; index < sharedStyleNodes.length; index++) {
+    nodeChanges.push(
+      ...sceneNodeToKiwi(
+        sharedStyleNodes[index],
+        internalCanvasGuid,
+        index,
+        context.localIdCounter,
+        graph,
+        context.blobs,
+        context.nodeIdToGuid,
+        context.fontDigestMap,
+        context.varIdToGuid,
+        context.glyphBlobMap,
+        context.blobIndexByHex,
+        context.assignedGuidValues,
+        context.componentPropertyDefinitionsById,
+        context.modeIdToGuid
+      )
+    )
   }
-  localIdCounter.value = Math.max(localIdCounter.value, maxLocalId0 + 1, maxLocalId1 + 1)
+  if (graph.variableCollections.size > 0) {
+    appendVariableNodeChanges(
+      graph,
+      nodeChanges,
+      internalCanvasGuid,
+      context.varIdToGuid,
+      context.modeIdToGuid
+    )
+  }
 }
 
 export async function exportFigFile(
@@ -365,7 +405,17 @@ export async function exportFigFile(
   // subset, and using our schema to encode would produce field IDs that don't
   // align with the embedded schema. By compiling and using the original
   // schema, we improve the roundtrip-ability... This requires further work.
-  const { compiled, schemaDeflated } = resolveFigExportSchema(graph)
+  let compiled: ReturnType<typeof getCompiledSchema>
+  let schemaDeflated: Uint8Array
+  if (graph.figSchemaDeflated) {
+    const schemaBytes = inflateSync(graph.figSchemaDeflated)
+    const figSchema = decodeBinarySchema(new ByteBuffer(schemaBytes))
+    compiled = compileSchema(figSchema) as ReturnType<typeof getCompiledSchema>
+    schemaDeflated = graph.figSchemaDeflated
+  } else {
+    compiled = getCompiledSchema()
+    schemaDeflated = deflateSync(getSchemaBytes())
+  }
 
   const docGuid = { sessionID: 0, localID: 0 }
   const localIdCounter = { value: 2 }
@@ -374,9 +424,6 @@ export async function exportFigFile(
   const rootNode = graph.getNode(graph.rootId)
   if (rootNode) {
     Object.assign(documentNc, rootNode.source.fig.rawNodeFields)
-    // Phase 2 §2 / §3 §2: document-level lowcode fields (lowcodeDocumentState,
-    // lowcodeSupabaseConfig) live on the root SceneNode but the DOCUMENT change
-    // bypasses sceneNodeToKiwi, so attach the pluginData here.
     const rootLowcode = serializeLowcodeFields(rootNode)
     if (rootLowcode.length > 0) {
       documentNc.pluginData = mergePluginData([...rootNode.pluginData, ...rootLowcode])
@@ -396,8 +443,28 @@ export async function exportFigFile(
   const fontDigestMap = await buildFontDigestMap(graph)
   const glyphBlobMap = new Map<string, number>()
   const blobIndexByHex = new Map<string, number>()
+  const componentPropertyDefinitionsById = buildComponentPropIndex(graph)
 
-  advanceCounterPastImportedSourceIds(graph, localIdCounter)
+  // Scan ALL imported source.ids BEFORE any new GUID assignment to find
+  // max sessionID:0 and sessionID:1 localID values. This guarantees the
+  // counter is past every imported GUID before any canvas, variable, or
+  // node claims a new counter-based GUID — preventing collisions.
+  let maxLocalId0 = localIdCounter.value - 1
+  let maxLocalId1 = localIdCounter.value - 1
+  const nodeSourceGuidValues = new Set<string>()
+  for (const node of graph.nodes.values()) {
+    if (node.source.id) {
+      nodeSourceGuidValues.add(node.source.id)
+      const g = stringToGuid(node.source.id)
+      if (g.sessionID === 0 && g.localID > maxLocalId0) {
+        maxLocalId0 = g.localID
+      }
+      if (g.sessionID === 1 && g.localID > maxLocalId1) {
+        maxLocalId1 = g.localID
+      }
+    }
+  }
+  localIdCounter.value = Math.max(localIdCounter.value, maxLocalId0 + 1, maxLocalId1 + 1)
 
   const { canvasEntries, internalCanvasGuid } = buildCanvasEntries(
     graph,
@@ -410,7 +477,14 @@ export async function exportFigFile(
 
   // Assign variable GUIDs AFTER canvas entries so that source.id-derived
   // canvas GUIDs don't collide with generated variable GUIDs.
-  assignVariableGuids(graph, localIdCounter, varIdToGuid, modeIdToGuid, assignedGuidValues)
+  assignVariableGuids(
+    graph,
+    localIdCounter,
+    varIdToGuid,
+    modeIdToGuid,
+    assignedGuidValues,
+    nodeSourceGuidValues
+  )
 
   for (const entry of canvasEntries) nodeChanges.push(entry.canvasNc)
 
@@ -434,15 +508,29 @@ export async function exportFigFile(
           varIdToGuid,
           glyphBlobMap,
           blobIndexByHex,
-          assignedGuidValues
+          assignedGuidValues,
+          componentPropertyDefinitionsById,
+          modeIdToGuid
         )
       )
     }
   }
 
-  if (graph.variableCollections.size > 0 && internalCanvasGuid) {
-    appendVariableNodeChanges(graph, nodeChanges, internalCanvasGuid, varIdToGuid, modeIdToGuid)
-  }
+  appendInternalResources({
+    graph,
+    nodeChanges,
+    internalCanvasGuid,
+    localIdCounter,
+    blobs,
+    nodeIdToGuid,
+    fontDigestMap,
+    varIdToGuid,
+    modeIdToGuid,
+    glyphBlobMap,
+    blobIndexByHex,
+    assignedGuidValues,
+    componentPropertyDefinitionsById
+  })
 
   const msg: Record<string, unknown> = {
     type: 'NODE_CHANGES',
@@ -493,7 +581,7 @@ export async function exportFigFile(
   return compressFigData(schemaDeflated, kiwiData, thumbnailPng, metaJson, imageEntries, version)
 }
 
-export { compressFigDataSync } from './compress'
+export { compressFigDataSync } from '@open-pencil/fig'
 
 function canUseWorker(): boolean {
   return typeof Worker !== 'undefined' && IS_BROWSER

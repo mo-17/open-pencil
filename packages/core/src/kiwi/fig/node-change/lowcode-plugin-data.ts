@@ -12,6 +12,7 @@
 // Step 1 (this file's serialize side) wires the save path; step 2 adds the
 // read side in convert.ts.
 
+import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import type {
   ActionDef,
@@ -37,8 +38,6 @@ import type {
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import { compactLowcodeHeadMetadata } from '#core/lowcode-validation'
-
-import { OPEN_PENCIL_PLUGIN_ID } from './plugin-data'
 
 export const LOWCODE_STATE_KEY = 'lowcode/state'
 export const LOWCODE_BINDINGS_KEY = 'lowcode/bindings'

@@ -15,6 +15,7 @@
   "bringToFront": "最前面へ移動",
   "sendToBack": "最背面へ移動",
   "moveToPage": "ページへ移動",
+  "setOpacity": "不透明度を設定",
   "zoomTo100": "100%にズーム",
   "zoomToFit": "画面に合わせる",
   "zoomToSelection": "選択範囲にズーム",
@@ -31,5 +32,7 @@
   "flipVertical": "垂直方向に反転",
   "flattenSelection": "フラット化",
   "outlineText": "テキストのアウトライン化",
-  "outlineStroke": "線の境界線をプレビュー (パスのアウトライン化)"
+  "outlineStroke": "線の境界線をプレビュー (パスのアウトライン化)",
+  "useAsMask": "マスクとして使用",
+  "removeMask": "マスクを解除"
 }

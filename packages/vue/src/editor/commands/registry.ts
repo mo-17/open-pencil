@@ -33,6 +33,11 @@ export const EDITOR_COMMAND_METADATA = {
   'selection.goToMainComponent': {},
   'selection.createInstance': {},
   'selection.wrapInAutoLayout': { shortcut: 'SHIFT+A', keybinding: 'Shift+KeyA' },
+  'selection.toggleMask': {
+    shortcut: 'MOD+ALT+M',
+    keybinding: ['Control+Meta+KeyM', '$mod+Alt+KeyM'],
+    contextTestId: 'context-toggle-mask'
+  },
   'selection.bringToFront': {
     shortcut: ']',
     keybinding: 'BracketRight',
@@ -91,6 +96,7 @@ export const EDITOR_COMMAND_METADATA = {
   'selection.outlineText': { contextTestId: 'context-outline-text' },
   'selection.outlineStroke': { contextTestId: 'context-outline-stroke' },
   'selection.moveToPage': {},
+  'selection.setOpacity': { shortcut: '1-9, 0' },
   'view.zoom100': { keybinding: '$mod+Digit0' },
   'view.zoomFit': { keybinding: ['$mod+Digit1', 'Shift+Digit1'] },
   'view.zoomSelection': { keybinding: ['$mod+Digit2', 'Shift+Digit2'] }

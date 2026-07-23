@@ -16,6 +16,8 @@ export const commandMessageDefaults = {
   detachInstance: 'Detach instance',
   goToMainComponent: 'Go to main component',
   addAutoLayout: 'Add auto layout',
+  useAsMask: 'Use as mask',
+  removeMask: 'Remove mask',
   bringToFront: 'Bring to front',
   sendToBack: 'Send to back',
   showHide: 'Show/Hide',
@@ -31,6 +33,7 @@ export const commandMessageDefaults = {
   flipHorizontal: 'Flip horizontal',
   flipVertical: 'Flip vertical',
   moveToPage: 'Move to page',
+  setOpacity: 'Set opacity',
   zoomTo100: 'Zoom to 100%',
   zoomToFit: 'Zoom to fit',
   zoomToSelection: 'Zoom to selection'

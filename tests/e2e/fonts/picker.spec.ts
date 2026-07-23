@@ -39,17 +39,24 @@ async function installGoogleFontsMock(page: Page, families = ['Inter', 'OpenPenc
         win.__googleFontPreviewFetchCount = (win.__googleFontPreviewFetchCount ?? 0) + 1
         return new Response(new ArrayBuffer(8), { status: 200 })
       }
-      if (url.startsWith('https://www.googleapis.com/webfonts/v1/webfonts')) {
-        if (!url.includes('family='))
-          win.__googleFontsFetchCount = (win.__googleFontsFetchCount ?? 0) + 1
+      if (url.startsWith('https://fonts.google.com/metadata/fonts')) {
+        win.__googleFontsFetchCount = (win.__googleFontsFetchCount ?? 0) + 1
         return new Response(
           JSON.stringify({
-            items: googleFamilies.map((family) => ({
+            familyMetadataList: googleFamilies.map((family) => ({
               family,
-              files: { regular: `https://fonts.openpencil.test/${encodeURIComponent(family)}.ttf` }
+              axes: [],
+              fonts: { '400': {} }
             }))
           }),
           { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      }
+      if (url.startsWith('https://fonts.googleapis.com/css2')) {
+        const family = new URL(url).searchParams.get('family')?.split(':')[0] ?? 'Inter'
+        return new Response(
+          `@font-face { font-family: '${family}'; font-style: normal; font-weight: 400; src: url(https://fonts.openpencil.test/${encodeURIComponent(family)}.ttf) format('truetype'); }`,
+          { status: 200, headers: { 'content-type': 'text/css' } }
         )
       }
       return originalFetch(input, init)
@@ -57,9 +64,7 @@ async function installGoogleFontsMock(page: Page, families = ['Inter', 'OpenPenc
   }, families)
 }
 
-test('font picker selects local fonts without direct browser provider requests', async ({
-  page
-}) => {
+test('font picker selects local fonts without browser web-font access', async ({ page }) => {
   await installGoogleFontsMock(page)
   await page.addInitScript(() => {
     Object.defineProperty(window, 'queryLocalFonts', {
@@ -104,9 +109,16 @@ test('font picker selects local fonts without direct browser provider requests',
       }, textId)
     )
     .toBe('OpenPencil Local Font')
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __googleFontsFetchCount?: number }).__googleFontsFetchCount
+    )
+  ).toBe(0)
 })
 
-test('font picker keeps bundled fonts when local font API is unavailable', async ({ page }) => {
+test('font picker keeps bundled fonts when local and web fonts are unavailable', async ({
+  page
+}) => {
   await installGoogleFontsMock(page)
   await page.addInitScript(() => {
     Reflect.deleteProperty(window, 'queryLocalFonts')
@@ -146,6 +158,11 @@ test('font picker keeps bundled fonts when local font permission is rejected', a
     page.getByTestId('font-picker-item').filter({ hasText: 'OpenPencil Google Font' })
   ).toHaveCount(0)
   await expect(page.getByText('Local font access is blocked for this site.')).toHaveCount(0)
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __googleFontsFetchCount?: number }).__googleFontsFetchCount
+    )
+  ).toBe(0)
 })
 
 test('font picker keeps bundled Inter available when local and Google fonts are unavailable', async ({

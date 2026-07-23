@@ -10,12 +10,11 @@ import {
   type Color,
   type NodeChange
 } from '@open-pencil/core'
-import { parseFigBuffer } from '@open-pencil/kiwi/fig/parse'
-
+import { parseFigBuffer } from '@open-pencil/fig'
 import {
   kiwiVariableFieldToBindingField,
   variableBindingFieldToKiwi
-} from '#core/kiwi/fig/node-change/convert'
+} from '@open-pencil/fig/node-change'
 
 import { expectDefined } from '#tests/helpers/assert'
 import { parseFixture } from '#tests/helpers/fig-fixtures'
@@ -297,6 +296,78 @@ describe('variable roundtrip', () => {
 
     expect(entry).toBeUndefined()
     expect(exportedRect.fillPaints?.[0]?.stopsVar?.[0]?.colorVar?.value?.alias?.guid).toBeDefined()
+  })
+
+  test('node-scoped variable modes survive export → re-import', async () => {
+    await initCodec()
+
+    const graph = new SceneGraph()
+    graph.addCollection({
+      id: '4:55',
+      name: 'Theme',
+      modes: [
+        { modeId: '4:1', name: 'Light' },
+        { modeId: '4:2', name: 'Dark' }
+      ],
+      defaultModeId: '4:1',
+      variableIds: []
+    })
+    graph.addVariable({
+      id: '5:1',
+      name: 'Background',
+      type: 'COLOR',
+      collectionId: '4:55',
+      valuesByMode: {
+        '4:1': { r: 1, g: 1, b: 1, a: 1 },
+        '4:2': { r: 0, g: 0, b: 0, a: 1 }
+      },
+      description: '',
+      hiddenFromPublishing: false
+    })
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, {
+      name: 'Dark scope',
+      variableModes: { '4:55': '4:2' }
+    })
+    graph.createNode('RECTANGLE', frame.id, { name: 'Scoped child' })
+
+    const exported = await exportFigFile(graph)
+    const reimported = await parseFigFile(exported.buffer as ArrayBuffer)
+    const importedFrame = expectDefined(
+      [...reimported.getAllNodes()].find((node) => node.name === 'Dark scope'),
+      'dark scope'
+    )
+    const importedChild = expectDefined(
+      [...reimported.getAllNodes()].find((node) => node.name === 'Scoped child'),
+      'scoped child'
+    )
+
+    const importedBackground = expectDefined(
+      [...reimported.variables.values()].find((variable) => variable.name === 'Background'),
+      'background variable'
+    )
+    const importedCollection = expectDefined(
+      reimported.variableCollections.get(importedBackground.collectionId),
+      'theme collection'
+    )
+    const importedDarkMode = expectDefined(
+      importedCollection.modes.find((mode) => mode.name === 'Dark'),
+      'dark mode'
+    )
+    expect(importedCollection.id).toBe('4:55')
+    expect(importedBackground.id).toBe('5:1')
+    expect(importedDarkMode.modeId).toBe('4:2')
+    expect(importedFrame.variableModes).toEqual({
+      [importedCollection.id]: importedDarkMode.modeId
+    })
+    expect(reimported.resolveColorVariableForNode(importedChild.id, importedBackground.id)).toEqual(
+      {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 1
+      }
+    )
   })
 
   test.if(runsHeavyTests)(

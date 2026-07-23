@@ -7,12 +7,12 @@ const section = tv({
   }
 })
 
-interface SectionUi {
+interface SectionUI {
   wrapper?: string
   label?: string
 }
 
-export function useSectionUI(ui?: SectionUi) {
+export function useSectionUI(ui?: SectionUI) {
   const cls = section()
   return {
     wrapper: cls.wrapper({ class: ui?.wrapper }),

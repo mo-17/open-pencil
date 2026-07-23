@@ -15,6 +15,7 @@
   "bringToFront": "In den Vordergrund",
   "sendToBack": "In den Hintergrund",
   "moveToPage": "Auf Seite verschieben",
+  "setOpacity": "Deckkraft festlegen",
   "zoomTo100": "Zoom 100 %",
   "zoomToFit": "Einpassen",
   "zoomToSelection": "Auswahl einpassen",
@@ -31,5 +32,7 @@
   "flipVertical": "Vertikal spiegeln",
   "flattenSelection": "Abflachen",
   "outlineText": "Text in Pfade umwandeln",
-  "outlineStroke": "Kontur in Pfad umwandeln"
+  "outlineStroke": "Kontur in Pfad umwandeln",
+  "useAsMask": "Als Maske verwenden",
+  "removeMask": "Maske entfernen"
 }

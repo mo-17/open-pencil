@@ -15,6 +15,7 @@
   "bringToFront": "Przenieś na wierzch",
   "sendToBack": "Przenieś na spód",
   "moveToPage": "Przenieś na stronę",
+  "setOpacity": "Ustaw krycie",
   "zoomTo100": "Zoom 100%",
   "zoomToFit": "Dopasuj do ekranu",
   "zoomToSelection": "Zoom do zaznaczenia",
@@ -31,5 +32,7 @@
   "flipVertical": "Odbij pionowo",
   "flattenSelection": "Spłaszcz",
   "outlineText": "Kontur tekstu",
-  "outlineStroke": "Kontur obrysu"
+  "outlineStroke": "Kontur obrysu",
+  "useAsMask": "Użyj jako maski",
+  "removeMask": "Usuń maskę"
 }

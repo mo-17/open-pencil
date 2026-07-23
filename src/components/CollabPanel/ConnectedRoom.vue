@@ -15,7 +15,7 @@ const collab = useCollabPanelContext()
       :model-value="collab.shareUrl"
       readonly
       data-test-id="collab-room-link"
-      :ui="{ base: 'min-w-0 flex-1' }"
+      class="min-w-0 flex-1"
       @focus="selectTarget($event)"
     />
     <button

@@ -8,7 +8,7 @@ async function dragSlider(
   testId: string,
   ratio: number
 ) {
-  const slider = page.getByTestId(testId).locator('input[type="range"]')
+  const slider = page.getByTestId(testId).getByRole('slider')
   const box = await slider.boundingBox()
   if (!box) throw new Error(`Missing slider: ${testId}`)
   const y = box.y + box.height / 2
@@ -43,8 +43,9 @@ async function selectDemoCard(page: Parameters<typeof test>[0]['page'], canvas: 
   })
   await canvas.waitForRender()
 
-  await expect(page.getByTestId('design-panel-single')).toBeVisible()
-  await expect(page.getByTestId('design-node-header')).toContainText('Card')
+  const designPanel = page.getByTestId('design-panel-single')
+  await expect(designPanel).toBeVisible()
+  await expect(designPanel.getByRole('heading', { name: 'Card' })).toBeVisible()
 }
 
 async function getSelectedFill(page: Parameters<typeof test>[0]['page']) {

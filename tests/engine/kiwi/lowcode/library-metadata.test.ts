@@ -9,6 +9,7 @@ import {
   type PluginDataEntry,
   type SceneNode
 } from '@open-pencil/core'
+import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { PluginData } from '@open-pencil/kiwi/fig/codec'
 
 import {
@@ -17,7 +18,6 @@ import {
   LOWCODE_LIBRARY_COMPONENT_KEY,
   serializeLowcodeFields
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 
 setDefaultTimeout(30_000)
 

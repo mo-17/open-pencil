@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import IconButton from '@/components/ui/IconButton.vue'
-import PanelSection from '@/components/ui/PanelSection.vue'
+import PanelSection from '@/components/ui/panel/PanelSection.vue'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -23,17 +23,9 @@ const { panels } = useI18n()
 </script>
 
 <template>
-  <PanelSection
-    :label="panels.variables"
-    data-test-id="variables-section"
-    :ui="{ label: 'font-medium text-surface' }"
-  >
+  <PanelSection :label="panels.variables" :empty="!hasVariables">
     <template #actions>
-      <IconButton
-        :label="panels.openVariables"
-        data-test-id="variables-section-open"
-        @click="emit('openDialog')"
-      >
+      <IconButton :label="panels.openVariables" @click="emit('openDialog')">
         <icon-lucide-settings-2 class="size-3.5" />
       </IconButton>
     </template>

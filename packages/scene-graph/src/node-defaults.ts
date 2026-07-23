@@ -1,9 +1,9 @@
 import { BLACK, DEFAULT_FONT_FAMILY, DEFAULT_STROKE_MITER_LIMIT } from './constants'
 import type { Color } from './primitives'
-import type { Fill, NodeType, SceneNode, Stroke } from './types'
+import type { Fill, NodeType, SceneNode, SourceMetadata, Stroke } from './types'
 
-// Lowcode (Phase 0) visual defaults — make interactive nodes visible on canvas
-// without depending on theme tokens. Roughly Tailwind gray-100/300, blue-500.
+// Lowcode interactive nodes should be visible immediately without relying on
+// generated-app theme tokens.
 const LIGHT_GRAY: Color = { r: 0.949, g: 0.949, b: 0.957, a: 1 }
 const BORDER_GRAY: Color = { r: 0.82, g: 0.835, b: 0.859, a: 1 }
 const PRIMARY_BLUE: Color = { r: 0.231, g: 0.51, b: 0.965, a: 1 }
@@ -24,6 +24,26 @@ const strokeSolid = (color: Color, weight = 1): Stroke => ({
   align: 'INSIDE'
 })
 
+export function createDefaultSourceMetadata(): SourceMetadata {
+  return {
+    format: null,
+    id: null,
+    orderKey: null,
+    editedFields: [],
+    fig: {
+      rawSize: null,
+      rawTransform: null,
+      rawNodeFields: {},
+      layout: null,
+      symbolOverrides: [],
+      componentPropAssignments: [],
+      derivedSymbolData: [],
+      derivedSymbolDataLayoutVersion: null,
+      uniformScaleFactor: null
+    }
+  }
+}
+
 export function createDefaultNode(
   generateId: () => string,
   type: NodeType,
@@ -40,27 +60,19 @@ export function createDefaultNode(
     width: 100,
     height: 100,
     rotation: 0,
-    source: {
-      format: null,
-      id: null,
-      orderKey: null,
-      fig: {
-        rawSize: null,
-        rawTransform: null,
-        rawNodeFields: {},
-        layout: null,
-        symbolOverrides: [],
-        componentPropAssignments: [],
-        derivedSymbolData: [],
-        derivedSymbolDataLayoutVersion: null,
-        uniformScaleFactor: null
-      }
-    },
+    source: createDefaultSourceMetadata(),
     figmaDerivedLayout: null,
     fills:
       type === 'TEXT' ? [{ type: 'SOLID' as const, color: BLACK, opacity: 1, visible: true }] : [],
     strokes: [],
     effects: [],
+    layoutGrids: [],
+    fillStyleId: null,
+    strokeStyleId: null,
+    textStyleId: null,
+    effectStyleId: null,
+    gridStyleId: null,
+    sharedStyleType: null,
     opacity: 1,
     cornerRadius: 0,
     topLeftRadius: 0,
@@ -79,6 +91,7 @@ export function createDefaultNode(
     italic: false,
     textAlignHorizontal: 'LEFT',
     textDirection: 'AUTO',
+    textLanguage: null,
     leadingTrim: 'NONE',
     lineHeight: null,
     letterSpacing: 0,
@@ -150,6 +163,8 @@ export function createDefaultNode(
     componentId: null,
     overrides: {},
     componentPropertyDefinitions: [],
+    componentPropertyReferences: [],
+    componentPropertyAssignments: {},
     componentPropertyValues: {},
     componentKey: null,
     libraryComponentKey: undefined,
@@ -167,6 +182,7 @@ export function createDefaultNode(
     symbolLinks: [],
     variantPropSpecs: [],
     boundVariables: {},
+    variableModes: {},
     exportSettings: [],
     pluginData: [],
     pluginRelaunchData: [],
@@ -221,7 +237,6 @@ function interactiveDefaults(type: NodeType): Partial<SceneNode> {
         strokes: [strokeSolid(BORDER_GRAY, 1.5)],
         interactiveProps: { checked: false }
       }
-    // Phase 2 §8 — four more interactive components. All emit native HTML.
     case 'RADIO':
       return {
         width: 200,

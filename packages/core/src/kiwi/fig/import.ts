@@ -1,56 +1,62 @@
 import { isNotNil } from 'es-toolkit/predicate'
 
-import type { NodeChange, VariableDataValuesEntry, Color, GUID } from '@open-pencil/kiwi/fig/codec'
-import { SceneGraph } from '@open-pencil/scene-graph'
-import type { SceneNode, VariableType, VariableValue } from '@open-pencil/scene-graph'
-
-import { BLACK } from '#core/constants'
-import { populateAndApplyOverrides } from '#core/kiwi/fig/instance-overrides'
-import type { InstanceNodeChange } from '#core/kiwi/fig/instance-overrides'
-import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
+import { populateAndApplyOverrides } from '@open-pencil/fig/instance-overrides'
+import type { InstanceNodeChange } from '@open-pencil/fig/instance-overrides'
 import {
+  applyStyleRefsToFields,
   guidToString,
   kiwiVariableFieldToBindingField,
   nodeChangeToProps,
   shouldImportTextAsAutoSize,
   sortChildren,
   setVariableColorResolver
-} from '#core/kiwi/fig/node-change/convert'
-import { extractLowcodeAndPluginData } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
-import { applyStyleRefsToFields } from '#core/kiwi/fig/node-change/style-refs'
+} from '@open-pencil/fig/node-change'
+import type { NodeChange, VariableDataValuesEntry, Color, GUID } from '@open-pencil/kiwi/fig/codec'
+import { SceneGraph } from '@open-pencil/scene-graph'
+import type { SceneNode, VariableType, VariableValue } from '@open-pencil/scene-graph'
+
+import { BLACK } from '#core/constants'
+import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
+import {
+  extractLowcodeAndPluginData,
+  reapplyInstanceOverrides
+} from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 
 type AssetRef = { key: string; version?: string }
 type AliasRef = { guid?: GUID; assetRef?: AssetRef }
 
-/** Pages (CANVAS) and the root (DOCUMENT) bypass `nodeChangeToProps`, so their
- *  lowcode pluginData (page state / documentState / supabaseConfig) is absorbed
- *  here. Mirrors the export-side hook in io/formats/fig/export.ts. */
-function assignImportedLowcodeFields(node: SceneNode, nc: NodeChange): void {
-  const ex = extractLowcodeAndPluginData(nc)
-  if (ex.state) node.state = ex.state
-  if (ex.bindings) node.bindings = ex.bindings
-  if (ex.events) node.events = ex.events
-  if (ex.interactiveProps) node.interactiveProps = ex.interactiveProps
-  if (ex.renderCondition !== undefined) node.renderCondition = ex.renderCondition
-  if (ex.lowcodeDocumentState) node.lowcodeDocumentState = ex.lowcodeDocumentState
-  if (ex.lowcodeSupabaseConfig) node.lowcodeSupabaseConfig = ex.lowcodeSupabaseConfig
-  if (ex.lowcodeSeoMetadata) node.lowcodeSeoMetadata = ex.lowcodeSeoMetadata
-  if (ex.lowcodeAnalyticsConfig) node.lowcodeAnalyticsConfig = ex.lowcodeAnalyticsConfig
-  if (ex.lowcodeHeadMetadata) node.lowcodeHeadMetadata = ex.lowcodeHeadMetadata
-  if (ex.lowcodeCustomCss) node.lowcodeCustomCss = ex.lowcodeCustomCss
-  if (ex.lowcodeTranslations) node.lowcodeTranslations = ex.lowcodeTranslations
-  if (ex.lowcodeWorkflows) node.lowcodeWorkflows = ex.lowcodeWorkflows
-  if (ex.lowcodeRoutePattern) node.lowcodeRoutePattern = ex.lowcodeRoutePattern
-  if (ex.lowcodeRequiresAuth) node.lowcodeRequiresAuth = ex.lowcodeRequiresAuth
-  if (ex.lowcodeAuthRedirect) node.lowcodeAuthRedirect = ex.lowcodeAuthRedirect
-  if (ex.lowcodeLibraries) node.lowcodeLibraries = ex.lowcodeLibraries
+function importedLowcodeProps(nc: NodeChange): {
+  nodeTypeOverride?: SceneNode['type']
+  props: Partial<SceneNode>
+} {
+  const {
+    nodeTypeOverride,
+    freeLayoutOverride,
+    primaryAxisSizingOverride,
+    counterAxisSizingOverride,
+    counterAxisAlignContentOverride,
+    gridPositionOverride,
+    ...props
+  } = extractLowcodeAndPluginData(nc)
+  return {
+    nodeTypeOverride,
+    props: {
+      ...props,
+      ...(freeLayoutOverride ? { layoutMode: 'FREE' as const } : {}),
+      ...(primaryAxisSizingOverride ? { primaryAxisSizing: primaryAxisSizingOverride } : {}),
+      ...(counterAxisSizingOverride ? { counterAxisSizing: counterAxisSizingOverride } : {}),
+      ...(counterAxisAlignContentOverride
+        ? { counterAxisAlignContent: counterAxisAlignContentOverride }
+        : {}),
+      ...(gridPositionOverride ? { gridPosition: gridPositionOverride } : {})
+    }
+  }
 }
 
 function applyImportedCanvasMetadata(
   page: ReturnType<SceneGraph['addPage']>,
   canvasNc: NodeChange
 ) {
-  assignImportedLowcodeFields(page, canvasNc)
   page.source.format = 'fig'
   page.source.orderKey = canvasNc.parentIndex?.position ?? null
   if (canvasNc.backgroundColor)
@@ -61,6 +67,7 @@ function applyImportedCanvasMetadata(
   page.source.fig.rawNodeFields.strokeJoin = canvasNc.strokeJoin
   page.source.fig.rawNodeFields.strokeWeight = canvasNc.strokeWeight
   if (canvasNc.pageType) page.source.fig.rawNodeFields.pageType = canvasNc.pageType
+  Object.assign(page, importedLowcodeProps(canvasNc).props)
 }
 
 function applyImportedDocumentMetadata(graph: SceneGraph, docNc: NodeChange | undefined) {
@@ -69,7 +76,7 @@ function applyImportedDocumentMetadata(graph: SceneGraph, docNc: NodeChange | un
   rootNode.source.format = 'fig'
   rootNode.source.fig.rawNodeFields.strokeJoin = docNc.strokeJoin
   rootNode.source.fig.rawNodeFields.strokeWeight = docNc.strokeWeight
-  assignImportedLowcodeFields(rootNode, docNc)
+  Object.assign(rootNode, importedLowcodeProps(docNc).props)
 }
 
 function assetRefKey(assetRef: AssetRef): string {
@@ -417,7 +424,7 @@ function applyStyleRefs(changeMap: Map<string, NodeChange>): void {
 }
 
 export interface FigImportOptions {
-  populate?: 'all' | 'first-page'
+  populate?: 'all' | 'first-page' | 'none'
 }
 
 function rememberLazyFigImportContext(
@@ -433,6 +440,19 @@ function rememberLazyFigImportContext(
     blobs,
     populatedRootIds: new Set(populatedRootIds)
   })
+}
+
+function componentPageIdsForLazyPopulation(graph: SceneGraph): Set<string> {
+  const pageIds = new Set<string>()
+  for (const node of graph.getAllNodes()) {
+    if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') continue
+    let current = node.parentId ? graph.getNode(node.parentId) : undefined
+    while (current?.parentId && current.type !== 'CANVAS') {
+      current = graph.getNode(current.parentId)
+    }
+    if (current?.type === 'CANVAS') pageIds.add(current.id)
+  }
+  return pageIds
 }
 
 export function importNodeChanges(
@@ -471,7 +491,11 @@ export function importNodeChanges(
     const nc = changeMap.get(ncId)
     if (!nc) return
 
-    const { nodeType, ...props } = nodeChangeToProps(nc, blobs)
+    const { nodeType: figNodeType, ...figProps } = nodeChangeToProps(nc, blobs)
+    const lowcode = importedLowcodeProps(nc)
+    const nodeType = lowcode.nodeTypeOverride ?? figNodeType
+    const props = { ...figProps, ...lowcode.props }
+    if (props.sharedStyleType) props.internalOnly = true
     if (nodeType === 'DOCUMENT' || nodeType === 'VARIABLE' || nc.type === 'VARIABLE_SET') return
     if (shouldImportTextAsAutoSize(nc, changeMap.get(parentMap.get(ncId) ?? ''))) {
       props.textAutoResize = 'WIDTH_AND_HEIGHT'
@@ -495,27 +519,25 @@ export function importNodeChanges(
   applyVariantPropSpecs(graph)
 
   const firstPageId = graph.getPages()[0]?.id
-  const componentPageIds = new Set<string>()
-  for (const node of graph.getAllNodes()) {
-    if (node.type !== 'COMPONENT' && node.type !== 'COMPONENT_SET') continue
-    let current = node.parentId ? graph.getNode(node.parentId) : undefined
-    while (current?.parentId && current.type !== 'CANVAS') current = graph.getNode(current.parentId)
-    if (current?.type === 'CANVAS') componentPageIds.add(current.id)
-  }
+  const componentPageIds =
+    options.populate === 'first-page' ? componentPageIdsForLazyPopulation(graph) : new Set<string>()
   const activeRootIds =
     options.populate === 'first-page'
       ? [firstPageId, ...componentPageIds].filter(isNotNil)
       : undefined
 
-  graph.preserveSourceMetadataDuring(() => {
-    populateAndApplyOverrides(
-      graph,
-      changeMap as Map<string, InstanceNodeChange>,
-      guidToNodeId,
-      blobs,
-      activeRootIds
-    )
-  })
+  if (options.populate !== 'none') {
+    graph.preserveSourceMetadataDuring(() => {
+      populateAndApplyOverrides(
+        graph,
+        changeMap as Map<string, InstanceNodeChange>,
+        guidToNodeId,
+        blobs,
+        activeRootIds
+      )
+      reapplyInstanceOverrides(graph)
+    })
+  }
 
   if (activeRootIds)
     rememberLazyFigImportContext(graph, changeMap, guidToNodeId, blobs, activeRootIds)

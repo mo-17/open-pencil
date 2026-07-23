@@ -2,6 +2,11 @@ import path from 'node:path'
 
 import { parse as parseVueSfc } from 'vue/compiler-sfc'
 
+import { noCrossPackageReexportShims } from './cross-package-reexport-shims.ts'
+import {
+  noDynamicTailwindStateClasses,
+  noVueTemplateUiHooksOrSvg
+} from './dynamic-tailwind-classes.ts'
 import {
   collectFolders,
   createFileRule,
@@ -386,6 +391,34 @@ function vuePropName(prop: VueTemplateNode) {
   return null
 }
 
+const SHARED_TEST_ID_ALLOWLIST = new Set([
+  'packages/vue/src/primitives/ColorPicker/ColorPickerRoot.vue'
+])
+
+const noProductionTestIdsInSharedLayers = createTextRule(
+  'open-pencil/no-production-test-ids-in-shared-layers',
+  (sourceRel, content) => {
+    const inSharedLayer =
+      sourceRel.startsWith('src/components/ui/') ||
+      sourceRel.startsWith('packages/vue/src/primitives/')
+    const isFixture = sourceRel.includes('/demo/') || sourceRel.endsWith('.stories.ts')
+    if (!inSharedLayer || isFixture || SHARED_TEST_ID_ALLOWLIST.has(sourceRel)) return []
+
+    const diagnostics: Array<{ message: string; line?: number; column?: number }> = []
+    for (const match of content.matchAll(/\b(?:data-test-id|v-test-id|testId|testHook)\b/gu)) {
+      const before = content.slice(0, match.index)
+      const lines = before.split('\n')
+      diagnostics.push({
+        message:
+          'Shared UI and SDK primitives must expose accessible semantics, data-slot anatomy, and domain state instead of production test IDs.',
+        line: lines.length,
+        column: lines.at(-1)?.length ?? 0
+      })
+    }
+    return diagnostics
+  }
+)
+
 const noNativeTitleAttributesInVue = createTextRule(
   'open-pencil/no-native-title-attributes-in-vue',
   (sourceRel, content) => {
@@ -489,6 +522,7 @@ export const openPencilArchitecturePlugin = {
   meta: { name: 'open-pencil-architecture', version: '0.0.0' },
   ruleDefinitions: [
     preferDomainFoldersOverFilenamePrefixes,
+    noCrossPackageReexportShims,
     scriptsAreEntrypointShims,
     strictToolsLayout,
     strictTestFilePlacement,
@@ -508,6 +542,9 @@ export const openPencilArchitecturePlugin = {
     noNonUiImportsInSharedUi,
     noAppImportsInSharedUi,
     noPropertyPanelInternalsOutsidePanel,
+    noProductionTestIdsInSharedLayers,
+    noDynamicTailwindStateClasses,
+    noVueTemplateUiHooksOrSvg,
     noNativeTitleAttributesInVue,
     noShortcutTextInLabels,
     noHardcodedMacOSShortcutGlyphs,

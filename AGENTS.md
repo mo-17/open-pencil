@@ -9,10 +9,10 @@ Vue 3 + CanvasKit (Skia WASM) + Yoga WASM design editor. Tauri v2 desktop, also 
 Bun workspace with focused packages:
 
 - `packages/scene-graph` — `@open-pencil/scene-graph`: framework-agnostic node types, graph storage, variables, libraries, copy/snap/undo, and geometry primitives.
-- `packages/pen` — `@open-pencil/pen`: `.pen` parsing and SceneGraph conversion.
-- `packages/kiwi` — `@open-pencil/kiwi`: standalone Kiwi schema runtime, `.fig` codec, container, GUID, and protocol helpers.
-- `packages/fig` — `@open-pencil/fig`: lower-level `.fig` container API.
-- `packages/core` — `@open-pencil/core`: renderer, layout, IO, clipboard, vector, lowcode validation, and ToolDef operations. Zero DOM deps; runs headless in Bun.
+- `packages/pen` — `@open-pencil/pen`: Pencil.dev `.pen` document model, parser, and SceneGraph import adapter.
+- `packages/kiwi` — `@open-pencil/kiwi`: pure Kiwi schema/runtime/protocol package. Owns low-level Figma Kiwi codec/container/parse helpers and stays SceneGraph-agnostic.
+- `packages/fig` — `@open-pencil/fig`: `.fig` archive/parser package owning Figma-specific SceneGraph conversion, raw metadata policy, and component/instance interpretation. Core keeps format-neutral IO registration and runtime rendering/font integration.
+- `packages/core` — `@open-pencil/core`: renderer, layout, editor core, Figma API, tools, clipboard, vector conversion, lowcode validation, and app/CLI-facing document I/O. Keeps browser DOM out of core.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
 - `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into a framework-neutral IR, then emits runnable Vite + React + TypeScript + Tailwind projects, preview VFS, static builds, and deploy bundles.
@@ -26,6 +26,8 @@ The root app (`src/`) is the Tauri/Vite desktop editor. App-specific editor, doc
 ### Public engine exports
 
 `@open-pencil/scene-graph` owns graph data and geometry. `@open-pencil/core` builds editor, renderer, IO, and automation behavior on top and exposes targeted subpaths.
+
+Use public package exports across package/app boundaries. Do not import workspace package internals from app code. Do not create cross-package re-export shim files whose only purpose is forwarding another package's API. Import the owning package directly at call sites; public compatibility barrels may re-export the owner directly when preserving an established package API.
 
 | Subpath                                | What                                                                                  | Heavy dep isolated        |
 | -------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------- |
@@ -116,6 +118,10 @@ All selection mutations in core use `ctx.setSelectedIds()` and all tool changes 
 Vue SDK provides `useEditorEvent(event, handler)` composable (`packages/vue/src/editor/events/use.ts`) that auto-disposes on scope cleanup.
 
 The app editor session (`src/app/editor/session/create.ts`) is a thin Vue wrapper: creates `shallowReactive` state, calls `createEditor()`, and assembles app-specific modules for document I/O, autosave, export, vector edit, pen resume, flashes, profiler, mobile clipboard, lowcode preview state, and shell integration. Tabs live in `src/app/tabs/`; active editor access lives in `src/app/editor/active-store/`.
+
+Headless SDK fields compose variable/token binding through `BindingProvider` and the `BindableValue` primitives in `packages/vue/src/controls/binding-provider/` and `packages/vue/src/primitives/BindableValue/`. Keep numeric interaction in `NumberField`; providers own binding lookup, mutation, and undo batching.
+
+Property-panel anatomy in `packages/vue/src/primitives/PropertySection/`, `SegmentedControl/`, and `PropertyList/` is controlled and editor-agnostic. Connect PropertyList events to OpenPencil selection and undo through `useEditorPropertyList()` or an app adapter; never call `useEditor()` from these primitives.
 
 ## Commands
 
@@ -221,7 +227,7 @@ bun run test           # Playwright E2E
 - `CHANGELOG.md` — all user-facing changes, grouped by version. "Unreleased" section at top for in-progress work.
 - `README.md` — user-facing: features, getting started, CLI, project structure. No implementation details.
 - `AGENTS.md` (this file) — contributor/agent reference: architecture, conventions, how to release.
-- `packages/docs/` — VitePress site deployed at `openpencil.dev`. User guide, SDK, automation, reference, and development docs.
+- `packages/docs/` — VitePress site deployed at `openpencil.dev`. User guide, SDK, automation, reference, and development docs. Do not create English placeholder copies under locale directories; until a real translation exists, localized navigation should link to the canonical English page.
 - `docs/lowcode-phase-*.md` — implementation/design notes for the lowcode compiler phases. Keep durable public docs in `packages/docs/**`; only add root-level Markdown by deliberately updating the Steiger allowlist.
 - `docs/tauri-gui-automation.md` — local Tauri GUI automation setup for hypothesi MCP bridge and tauri-webdriver.
 
@@ -441,11 +447,25 @@ Self-review checklist:
 - `computeAllLayouts()` must be called after demo creation and after opening .fig files
 - Yoga WASM handles flexbox; CSS Grid blocked on upstream (facebook/yoga#1893)
 - Auto-layout creation (Shift+A) must recompute layout immediately to update selection bounds
+- Editing a Hug/Fill width or height switches only that axis to Fixed on the first value mutation; focus stays non-destructive, and mode plus value changes belong to one undo transaction
 
 ## UI
 
+### Component structure
+
+- `src/components/ui/**` is the app design-system layer: reusable visual primitives, wrappers around Reka UI primitives, low-level styled controls, and UI class helpers. These files must not import app services/stores or feature panels.
+- `src/components/Shell/**` is for app shell chrome and global app services rendered as components (menu bar, toast viewport, update/status chrome). Shell components may use app shell/editor stores.
+- `src/components/properties/**`, `src/components/chat/**`, `src/components/LayerTree/**`, `src/components/Toolbar/**`, and similar folders are feature/domain component namespaces. Keep feature-specific controls there unless they are genuinely reusable UI primitives.
+- Treat existing root-level picker/input/control components as migration candidates when touched; do not expand that pattern.
+- Property-panel composition uses `PanelGrid`, `PanelFieldGroup`, `PanelItemRow`, and `PropertyItemRow`; do not reintroduce generic row wrappers such as the removed `PanelRow`. Variable-capable fields compose `BindableValue` providers, and fill UIs compose `FillRoot` / `FillSwatch` with a consumer-owned popover rather than rebuilding a combined picker wrapper.
+- Test locators follow Playwright's user-facing priority: role/name, label, and text first. Multi-part components expose scoped `data-slot` anatomy; app concepts use semantic attributes such as `data-property`, `data-command`, and `data-node-id` when accessible identity is insufficient. Reserve `data-test-id` for rare integration boundaries such as the canvas/editor host, never add `testId`/`testHook` props, and do not manufacture globally unique compound IDs inside shared components.
+
 - Use reka-ui for UI components (Splitter, ContextMenu, DropdownMenu, etc.)
-- Vue UI styling APIs must follow the existing `:ui` / `tailwind-variants` slot pattern. Do not add one-off `fooClass`, `barClass`, `emptyActionClass`, etc. props to components; define a typed `Ui` object with named slots and merge through the local `use*UI()` helper or a `ui` prop.
+- Vue UI styling APIs follow the Nuxt UI architecture: static Tailwind Variants themes live under `src/theme/**` with `slots`, `variants`, `compoundVariants`, and `defaultVariants`; components resolve the theme with `tv()` and merge per-instance `ui` overrides at each rendered slot. Single-root components expose `class` rather than a one-slot `ui` object. Do not add one-off `fooClass`, `barClass`, `emptyActionClass`, etc. props. Use `UI` casing in type names (`SelectUI`, not `SelectUi`).
+- Steiger parses Vue templates and rejects visual-state Tailwind utility branches, template-time `use*UI()` calls, and raw SVG app icons. Bind semantic state through `data-*` attributes and resolve typed theme variants in script instead of bypassing the rule.
+- Storybook is the internal component-state workshop (`bun run storybook`, `bun run build-storybook`), while VitePress is the canonical public SDK documentation. Colocate `*.stories.ts` with app UI components and use toolbar themes for light/dark states instead of adding test-only routes or showcase pages to the app.
+- Reuse colocated Vue demo components between Storybook and VitePress rather than maintaining separate examples. Style shared demos with Tailwind; the docs theme scans Vue SDK primitive demos through its dedicated Tailwind source.
+- Public component API tables are generated from Vue source and JSDoc with `vue-component-meta`; do not manually duplicate props, events, slots, or exposed APIs in Markdown. SDK examples are processed by VitePress Twoslash and must resolve against the public `@open-pencil/vue` API.
 - Do not pass imperative setters/actions through slots as `:set-*`, `:update-*`, `:request-*`, `:toggle-*`, etc. unless the component is explicitly a renderless primitive whose whole contract is slot actions. Prefer `v-model`, emitted events, normal component props, or owned default UI. For DOM refs/focus, use VueUse (`templateRef`, `unrefElement`, `useFocus`, etc.) instead of ref callback plumbing through slots.
 - App wrappers around SDK primitives should compose a single `ui` object from shared UI helpers (`useSelectUI`, `usePopoverUI`, etc.) rather than bypassing the design system with raw Tailwind strings spread across multiple props.
 - Editor commands share `packages/vue/src/editor/commands/registry.ts` as the canonical source for shortcut display tokens, keyboard bindings, and context-menu test IDs. Store portable shortcuts such as `MOD+D`, `MOD+SHIFT+H`, and `MOD+ALT+K`; format them with `formatShortcut()` at render time so macOS shows `⌘`/`⌥` and Windows/Linux show `Ctrl`/`Alt`.
@@ -460,23 +480,24 @@ Self-review checklist:
 - Number input spinner hiding is global CSS in `app.css`, not per-component
 - ScrubInput (drag-to-change number) — cursor and pointerdown on outer container, not inner spans
 - Icons: use unplugin-icons with Iconify/Lucide (`<icon-lucide-*>`) — don't use raw SVG or Unicode symbols
-- App menu (`src/components/AppMenu.vue`) — browser-only menu bar using reka-ui Menubar components; Tauri uses native menus, so menu is hidden when `IS_TAURI` is true
-- Sections are draggable by title pill, not by the area to the right of the title
-- CSS `contain: paint layout style` on side panels to isolate repaints from WebGL canvas
+- App menu (`src/components/Shell/AppMenu.vue`) — browser-only menu bar using reka-ui Menubar components; Tauri uses native menus, so menu is hidden when `IS_TAURI` is true
+- Binding-aware fields must not mutate or detach on focus. Start detach/edit-variable transactions only on the first actual value mutation; opening the variable picker is also non-destructive.
+- Preserve established UI gotchas in nearby components before refactoring: splitter handle sizing, NumberField pointer ownership, section drag targets, side-panel containment, and global number-spinner styling.
 
 ## File format
 
 - `@open-pencil/core/io` owns document/export format registration through `IORegistry` and `BUILTIN_IO_FORMATS`; app, CLI, and tests should route `.fig`, `.pen`, SVG, raster, and JSX operations through it when possible.
-- .fig files use Kiwi binary codec — protocol/schema helpers live under `packages/core/src/kiwi/fig/codec/`
-- `.pen` is the OpenPencil document format exposed through `@open-pencil/core/io/formats/pen` and accepted by compiler/CLI workflows.
-- `NodeChange` is the central type for Kiwi encode/decode
-- Vector data uses reverse-engineered `vectorNetworkBlob` binary format — encoder/decoder in `packages/core/src/vector/`
-- showOpenFilePicker/showSaveFilePicker are File System Access API (Chrome/Edge), not Tauri-only — code has fallbacks
-- Safari save: no File System Access API → uses `<a>` download link with deferred `revokeObjectURL`. SafariBanner warns users about limitations.
-- Tauri detection: `IS_TAURI` constant from `packages/core/src/constants.ts` — don't use `'__TAURI_INTERNALS__' in window` inline
-- .fig export: compression with fflate (browser) or Tauri Rust commands
-- Test .fig round-trip by exporting and reimporting in Figma
-- Test fixtures (`tests/fixtures/*.fig`) are Git LFS — use `git push --no-verify` to skip the slow LFS pre-push hook. Use regular `git push` only when `.fig` fixtures changed.
+- `.fig` files use Figma's Kiwi schema and `NodeChange[]` records. Low-level schema/runtime/codec/container helpers live in `packages/kiwi/src/fig/**` and `packages/kiwi/src/schema-runtime/**`; complete `.fig` archive parsing lives in `packages/fig`.
+- `@open-pencil/fig` owns SceneGraph ⇄ NodeChange conversion in `packages/fig/src/node-change/**`, component/instance interpretation in `packages/fig/src/instance-overrides/**`, and effective raw metadata policy in `packages/fig/src/source-metadata.ts`.
+- Core owns `.fig` IO orchestration in `packages/core/src/io/formats/fig/**`, runtime font/glyph integration, workers, and CanvasKit thumbnails. Keep Fig behavior covered by package-local tests and dist smoke.
+- `.pen` is the OpenPencil document format accepted by compiler/CLI workflows.
+- Vector data uses reverse-engineered `vectorNetworkBlob` binary format — encoder/decoder in `packages/core/src/vector/` and scene-graph vector-network types in `@open-pencil/scene-graph`.
+- `showOpenFilePicker` / `showSaveFilePicker` are File System Access API (Chrome/Edge), not Tauri-only; code must keep browser fallbacks.
+- Safari save: no File System Access API → use an `<a>` download fallback with deferred `revokeObjectURL`. SafariBanner warns users about limitations.
+- Tauri detection: use `IS_TAURI` from `@open-pencil/core/constants` / `src/constants.ts`; don't inline `__TAURI_INTERNALS__` checks.
+- `.fig` export compression uses fflate in browser paths and Tauri Rust commands where available.
+- Test `.fig` round-trip by exporting and reimporting in Figma when changing file-format behavior.
+- Test fixtures (`tests/fixtures/*.fig`) are Git LFS. If no `.fig` fixtures changed, `git push --no-verify` can skip the slow LFS pre-push hook; use regular `git push` when fixtures changed.
 
 ## Tauri
 

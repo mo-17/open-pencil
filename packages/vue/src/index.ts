@@ -73,8 +73,9 @@ export type { TestId } from '#vue/testing/test-id'
 /** Property-panel composables. */
 export { usePosition } from '#vue/controls/position/use'
 export { useLayout } from '#vue/controls/layout/use'
-export type { SizeLimitProp } from '#vue/controls/layout/helpers'
+export type { LayoutAxis, SizeLimitProp } from '#vue/controls/layout/helpers'
 export { useAppearance } from '#vue/controls/appearance/use'
+export { useMask } from '#vue/controls/mask/use'
 export { useTypography } from '#vue/controls/typography/use'
 export type { UseTypographyOptions } from '#vue/controls/typography/use'
 export { useExport } from '#vue/document/export/use'
@@ -89,7 +90,23 @@ export type {
   UseVariableBindingOptions
 } from '#vue/controls/variable-binding/use'
 export { useEffectsControls } from '#vue/controls/effects/use'
+export { useSharedStyleBinding } from '#vue/controls/shared-style/use'
 export { useStrokeControls } from '#vue/controls/stroke/use'
+export {
+  applySolidFillColor,
+  applySolidStrokeColor,
+  BUILT_IN_COLOR_FORMATS,
+  fromPercent,
+  toPercent,
+  useColorModel
+} from '#vue/controls/color-model'
+export type {
+  BuiltInColorFormat,
+  ColorFieldFormat,
+  ColorFieldOption,
+  OkHCLControls,
+  UseColorModelOptions
+} from '#vue/controls/color-model'
 export { useOkHCL } from '#vue/controls/okhcl/use'
 
 /** Variables, page navigation, and picker helpers. */
@@ -98,57 +115,232 @@ export { useVariablesDialogState } from '#vue/variables/dialog/use'
 export { useVariablesEditor } from '#vue/variables/editor/use'
 export { useVariablesTable } from '#vue/variables/table/use'
 export { usePageList } from '#vue/primitives/PageList/usePageList'
-export { useFillPicker } from '#vue/primitives/FillPicker/useFillPicker'
+export {
+  fillCategory,
+  fillIsTransparent,
+  fillSwatchBackground,
+  useFill
+} from '#vue/primitives/Fill'
+export type { FillActions, FillCategory } from '#vue/primitives/Fill'
 export { useGradientStops } from '#vue/primitives/GradientEditor/useGradientStops'
 export { useFontPicker } from '#vue/primitives/FontPicker/useFontPicker'
 
 /** Headless structural primitives and their local contexts. */
 export { CanvasRoot, CanvasSurface, useCanvasContext } from '#vue/canvas'
 export type { CanvasContext } from '#vue/canvas'
+export { ColorInputRoot, ColorPickerRoot } from '#vue/primitives/ColorPicker'
 export {
-  ColorInputRoot,
-  ColorPickerRoot,
-  createColorPickerModel,
-  createOkHCLSliderGradientModel,
-  createOkHCLSliderPreviewModel,
-  createSliderGradientModel,
-  createSliderPreviewModel,
-  fromPercent,
-  rekaToAppColor,
-  toPercent,
-  updateAlpha,
-  updateHSBChannel,
-  updateHSLChannel,
-  updateHue,
-  updateRGBChannel,
-  applySolidFillColor,
-  applySolidStrokeColor
-} from '#vue/primitives/ColorPicker'
-export type { ColorFieldFormat, OkHCLControls } from '#vue/primitives/ColorPicker'
-export { FillPickerRoot } from '#vue/primitives/FillPicker'
+  ChannelSliderRoot,
+  ChannelSliderThumb,
+  ChannelSliderTrack
+} from '#vue/primitives/ChannelSlider'
+export type {
+  ChannelSliderOrientation,
+  ChannelSliderPartProps,
+  ChannelSliderRootProps,
+  ChannelSliderRootSlotProps,
+  ChannelSliderThumbSlotProps
+} from '#vue/primitives/ChannelSlider'
+export { FillRoot, FillSwatch } from '#vue/primitives/Fill'
+export type {
+  FillRootSlotProps,
+  FillRootSlots,
+  FillSwatchProps,
+  FillSwatchSlotProps,
+  FillSwatchSlots
+} from '#vue/primitives/Fill'
 export { FontPickerRoot } from '#vue/primitives/FontPicker'
-export type { FontFamilyOption, FontPickerUi } from '#vue/primitives/FontPicker'
+export type { FontFamilyOption, FontPickerUI } from '#vue/primitives/FontPicker'
 export {
   GradientEditorRoot,
   GradientEditorBar,
   GradientEditorStop
 } from '#vue/primitives/GradientEditor'
-export { LayerTreeRoot, LayerTreeItem, useLayerTree } from '#vue/primitives/LayerTree'
-export type { LayerDragInstruction, LayerTreeContext, LayerNode } from '#vue/primitives/LayerTree'
+export type {
+  GradientEditorStopActions,
+  GradientEditorStopProps,
+  GradientEditorStopSlotProps,
+  GradientEditorStopSlots
+} from '#vue/primitives/GradientEditor'
+export {
+  buildLayerTreeModel,
+  indexLayerNodes,
+  layerSelectionForTarget,
+  LayerTreeItem,
+  LayerTreeRoot,
+  patchLayerNode,
+  useLayerTree,
+  visibleLayerRows
+} from '#vue/primitives/LayerTree'
+export type {
+  LayerDragInstruction,
+  LayerNode,
+  LayerRow,
+  LayerSelectionMode,
+  LayerTreeContext,
+  LayerTreeVirtualizer
+} from '#vue/primitives/LayerTree'
 export { LayoutControlsRoot, useLayoutControlsContext } from '#vue/primitives/LayoutControls'
-export type { LayoutControlsContext } from '#vue/primitives/LayoutControls'
+export type {
+  LayoutControlsContext,
+  LayoutControlsRootSlotProps,
+  LayoutControlsRootSlots
+} from '#vue/primitives/LayoutControls'
 export { AppearanceControlsRoot } from '#vue/primitives/AppearanceControls'
+export type {
+  AppearanceControlsActions,
+  AppearanceControlsRootSlotProps,
+  AppearanceControlsRootSlots
+} from '#vue/primitives/AppearanceControls'
+export { ConstraintsControlRoot } from '#vue/primitives/ConstraintsControl'
+export type {
+  ConstraintsControlActions,
+  ConstraintsControlRootSlotProps,
+  ConstraintsControlRootSlots
+} from '#vue/primitives/ConstraintsControl'
+export {
+  constraintPins,
+  isConstraintEligible,
+  toggleConstraintPin,
+  useConstraints
+} from '#vue/controls/constraints'
+export type { ConstraintAxis, ConstraintEdge, ConstraintValue } from '#vue/controls/constraints'
+export {
+  compatibleComponentPropertyDefinitions,
+  instanceSwapOptions,
+  mergedComponentPropertyValue,
+  useComponentProperties
+} from '#vue/controls/component-props'
+export type {
+  ComponentPropertyControl,
+  ComponentPropertyOption
+} from '#vue/controls/component-props'
+export type { CornerGeometryKey, CornerRadiusKey } from '#vue/controls/appearance/types'
 export { PageListRoot } from '#vue/primitives/PageList'
 export { PositionControlsRoot } from '#vue/primitives/PositionControls'
-export { PropertyListRoot, PropertyListItem, usePropertyList } from '#vue/primitives/PropertyList'
-export type { PropertyListContext } from '#vue/primitives/PropertyList'
+export { useEditorPropertyList } from '#vue/controls/property-list'
 export {
-  ScrubInputRoot,
-  ScrubInputField,
-  ScrubInputDisplay,
-  useScrubInput
-} from '#vue/primitives/ScrubInput'
-export type { ScrubInputContext } from '#vue/primitives/ScrubInput'
+  PropertyListRoot,
+  PropertyListItem,
+  PropertyListAdd,
+  PropertyListRemove,
+  PropertyListVisibility,
+  usePropertyList
+} from '#vue/primitives/PropertyList'
+export type {
+  PropertyListActions,
+  PropertyListContext,
+  PropertyListIdentity,
+  PropertyListItemActions,
+  PropertyListItemFor,
+  PropertyListItemMap,
+  PropertyListItemSlotProps,
+  PropertyListKey,
+  PropertyListPartProps,
+  PropertyListPatchFor,
+  PropertyListRootProps,
+  PropertyListRootSlotProps,
+  PropertyListRootSlots
+} from '#vue/primitives/PropertyList'
+export {
+  PropertySectionRoot,
+  PropertySectionHeader,
+  PropertySectionTitle,
+  PropertySectionActions,
+  PropertySectionContent,
+  PropertySectionEmptyAction,
+  usePropertySection
+} from '#vue/primitives/PropertySection'
+export type {
+  PropertySectionActionAPI,
+  PropertySectionContext,
+  PropertySectionPartProps,
+  PropertySectionRootProps,
+  PropertySectionRootSlots,
+  PropertySectionSlotProps,
+  PropertySectionStateAttrs
+} from '#vue/primitives/PropertySection'
+export {
+  SegmentedControlRoot,
+  SegmentedControlItem,
+  useSegmentedControl
+} from '#vue/primitives/SegmentedControl'
+export type {
+  SegmentedControlContext,
+  SegmentedControlItemProps,
+  SegmentedControlItemSlotProps,
+  SegmentedControlItemSlots,
+  SegmentedControlMode,
+  SegmentedControlOrientation,
+  SegmentedControlRootProps,
+  SegmentedControlRootSlots
+} from '#vue/primitives/SegmentedControl'
+export {
+  BindableValueRoot,
+  BindableValueTrigger,
+  BindableValuePicker,
+  useBindableValue,
+  useOptionalBindableValue
+} from '#vue/primitives/BindableValue'
+export type {
+  BindableValueActions,
+  BindableValueContext,
+  BindableValueRootProps,
+  BindableValueRootSlots,
+  BindableValueSlotProps,
+  BindableValueStateAttrs,
+  BindableValueTriggerProps
+} from '#vue/primitives/BindableValue'
+export {
+  provideBindingProvider,
+  useBindingProvider,
+  useOpenPencilBindingProvider,
+  useNumberBindingProvider,
+  useColorBindingProvider
+} from '#vue/controls/binding-provider'
+export type {
+  BindingMutationSource,
+  BindingProvider,
+  BindingState,
+  BindingTarget,
+  BoundEditPolicy,
+  OpenPencilBindingProviderOptions
+} from '#vue/controls/binding-provider'
+export {
+  NumberFieldRoot,
+  NumberFieldInput,
+  NumberFieldValue,
+  NumberFieldLeading,
+  NumberFieldUnit,
+  NumberFieldTrailing,
+  NumberFieldMenu,
+  useNumberField
+} from '#vue/primitives/NumberField'
+export type {
+  NumberFieldActions,
+  NumberFieldContext,
+  NumberFieldEditPolicy,
+  NumberFieldMutationSource,
+  NumberFieldRootAttrs,
+  NumberFieldRootEmits,
+  NumberFieldRootProps,
+  NumberFieldRootSlots,
+  NumberFieldSlotProps,
+  NumberFieldState,
+  NumberFieldStateAttrs,
+  NumberFieldValueSlots
+} from '#vue/primitives/NumberField'
+export {
+  clampNumberValue,
+  evaluateNumberExpression,
+  normalizeNumberValue,
+  stepNumberValue
+} from '#vue/controls/number-expression'
+export type {
+  NumberExpressionError,
+  NumberExpressionOptions,
+  NumberExpressionResult
+} from '#vue/controls/number-expression'
 export { TypographyControlsRoot } from '#vue/primitives/TypographyControls'
 export { ToolbarRoot, ToolbarItem, useToolbar } from '#vue/primitives/Toolbar'
 export type { ToolbarContext } from '#vue/primitives/Toolbar'

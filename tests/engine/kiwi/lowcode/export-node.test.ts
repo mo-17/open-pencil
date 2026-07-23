@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
 import { initCodec, SceneGraph, sceneNodeToKiwi } from '@open-pencil/core'
+import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { StateDef } from '@open-pencil/scene-graph'
 
 import {
@@ -11,7 +12,6 @@ import {
   LOWCODE_STATE_OVERRIDES_KEY,
   LOWCODE_STATE_KEY
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
-import { OPEN_PENCIL_PLUGIN_ID } from '#core/kiwi/fig/node-change/plugin-data'
 
 beforeAll(async () => {
   await initCodec()

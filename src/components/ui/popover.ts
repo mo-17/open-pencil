@@ -2,21 +2,21 @@ import { tv } from 'tailwind-variants'
 
 export const popover = tv({
   slots: {
-    content: 'z-[100] rounded-lg border border-border bg-panel shadow-xl',
+    content: 'z-[100] rounded-xl bg-panel shadow-[0_8px_30px_rgb(0_0_0/0.4)]',
     header: '',
     body: '',
     footer: ''
   }
 })
 
-interface PopoverUi {
+interface PopoverUI {
   content?: string
   header?: string
   body?: string
   footer?: string
 }
 
-export function usePopoverUI(ui?: PopoverUi) {
+export function usePopoverUI(ui?: PopoverUI) {
   const cls = popover()
   return {
     content: cls.content({ class: ui?.content }),

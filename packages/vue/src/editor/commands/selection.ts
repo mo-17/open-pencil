@@ -1,7 +1,27 @@
+import type { SceneNode } from '@open-pencil/scene-graph'
+
 import type { EditorCommandMapOptions } from './context'
 import type { EditorCommand, EditorCommandId } from './types'
 
 type SelectionCommandId = Extract<EditorCommandId, `selection.${string}`>
+
+function selectedMaskTarget(nodes: SceneNode[], editor: EditorCommandMapOptions['editor']) {
+  if (nodes.length === 0) return null
+  if (nodes.length === 1) return nodes[0]
+
+  const [first] = nodes
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const selectedParents = new Set(nodes.map((node) => node.parentId))
+  if (selectedParents.size !== 1) return first
+  const parentId = first.parentId
+  if (!parentId) return first
+
+  for (const sibling of editor.graph.getChildren(parentId)) {
+    const selected = byId.get(sibling.id)
+    if (selected) return selected
+  }
+  return first
+}
 
 export function createSelectionCommands({
   editor,
@@ -9,7 +29,8 @@ export function createSelectionCommands({
   capabilities,
   messages: t,
   otherPages,
-  moveSelectionToPage
+  moveSelectionToPage,
+  getOpacityTarget
 }: EditorCommandMapOptions): Record<SelectionCommandId, EditorCommand> {
   return {
     'selection.selectAll': {
@@ -110,6 +131,23 @@ export function createSelectionCommands({
       },
       enabled: capabilities.canWrapInAutoLayout,
       run: () => editor.wrapInAutoLayout()
+    },
+    'selection.toggleMask': {
+      id: 'selection.toggleMask',
+      get label() {
+        const target = selectedMaskTarget(editor.getSelectedNodes(), editor)
+        return target?.isMask ? t.value.removeMask : t.value.useAsMask
+      },
+      enabled: capabilities.canToggleMask,
+      run: () => {
+        const target = selectedMaskTarget(editor.getSelectedNodes(), editor)
+        if (!target) return
+        editor.updateNodeWithUndo(
+          target.id,
+          { isMask: !target.isMask },
+          target.isMask ? 'Remove mask' : 'Use as mask'
+        )
+      }
     },
     'selection.bringToFront': {
       id: 'selection.bringToFront',
@@ -223,6 +261,17 @@ export function createSelectionCommands({
       enabled: capabilities.canMoveToPage,
       run: () => {
         moveSelectionToPage(otherPages.value[0].id)
+      }
+    },
+    'selection.setOpacity': {
+      id: 'selection.setOpacity',
+      get label() {
+        return t.value.setOpacity
+      },
+      enabled: capabilities.canSetOpacity,
+      run: () => {
+        const target = getOpacityTarget()
+        editor.setOpacity(target.value, target.coalesceKey)
       }
     }
   }
