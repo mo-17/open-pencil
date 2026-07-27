@@ -26,6 +26,7 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
 - **Design-to-code export** — export selections as JSX/Tailwind, generate token outputs, and map designs into component-oriented code workflows
+- **Code-based motion** — apply bounded animation presets, preview them without changing document geometry, edit timing and triggers through the inspector or AI/MCP, and compile them to CSS/WAAPI with reduced-motion handling
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase actions, workflows, i18n, shadcn/ui output, preview, build, and deploy flows
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
 - **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence, and follow mode

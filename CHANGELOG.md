@@ -8,6 +8,10 @@
 
 ### Added
 
+- Author bounded, code-based node motion with reusable presets, multi-selection inspector controls,
+  non-destructive CanvasKit preview, reduced-motion policies, and AI/MCP read-write tools.
+- Compile node motion into generated React projects with CSS keyframes for mount/loop tracks and a
+  small WAAPI runtime for hover, press, focus, click, and in-view triggers.
 - Figma-style Assets panel browsing with component thumbnails, grid/list views, page grouping, context actions, and drag-to-canvas insertion.
 - Import HTML, CSS, Tailwind, and JSX as editable documents from the app, CLI, and SDK, and export standalone browser-ready HTML with compiled CSS and optional external assets.
 - Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, and blur effects.
@@ -28,6 +32,10 @@
 
 ### Changed
 
+- Preserve imported Figma interaction, media, animation, and timeline payloads byte-for-byte across
+  `.fig` saves, including nested opaque fields and schema-aware node reference remapping. A
+  fail-closed adapter can generate Figma Motion Plugin API operations for the supported single-track
+  mount subset; OpenPencil does not synthesize undocumented native timeline payloads.
 - Render lowcode Button labels on the canvas, preserve static List children in generated previews, and keep Line SVGs at their authored geometry.
 - Embed and align real offline CJK glyph outlines for Figma-compatible lowcode labels, and avoid incomplete glyph caches in `.fig` and Figma clipboard exports so translated controls remain visible and correctly positioned without selection.
 - Match Figma-compatible Button labels to OpenPencil's dark control foreground instead of forcing white text.
