@@ -22,6 +22,7 @@ import type {
   Stroke,
   StyleRun
 } from './'
+import { cloneMotionSpec } from './motion'
 import { createDefaultSourceMetadata } from './node-defaults'
 import { cloneVectorNetwork } from './vector-network'
 
@@ -177,24 +178,24 @@ export function cloneNodeProps(
   mode: NodeCloneMode = 'deep'
 ): Partial<SceneNode> {
   const { id: _, parentId: _p, childIds: _c, ...rest } = src
-  if (mode === 'fig-import') {
-    return {
-      ...rest,
-      ...(componentId !== null ? { componentId } : {}),
-      source: createDefaultSourceMetadata(),
-      boundVariables: { ...src.boundVariables },
-      variableModes: { ...src.variableModes },
-      overrides: Object.keys(src.overrides).length > 0 ? structuredClone(src.overrides) : {},
-      componentPropertyAssignments: { ...src.componentPropertyAssignments },
-      componentPropertyValues: { ...src.componentPropertyValues }
-    }
-  }
-  return {
+  const common = {
     ...rest,
     ...(componentId !== null ? { componentId } : {}),
+    ...(src.motion ? { motion: cloneMotionSpec(src.motion) } : {}),
     boundVariables: { ...src.boundVariables },
     variableModes: { ...src.variableModes },
     overrides: Object.keys(src.overrides).length > 0 ? structuredClone(src.overrides) : {},
+    componentPropertyAssignments: { ...src.componentPropertyAssignments },
+    componentPropertyValues: { ...src.componentPropertyValues }
+  }
+  if (mode === 'fig-import') {
+    return {
+      ...common,
+      source: createDefaultSourceMetadata()
+    }
+  }
+  return {
+    ...common,
     fills: copyOpt(src.fills, (value) => markCopySource(value, copyFills(value))),
     strokes: copyOpt(src.strokes, (value) => markCopySource(value, copyStrokes(value))),
     effects: copyOpt(src.effects, (value) => markCopySource(value, copyEffects(value))),
@@ -213,14 +214,12 @@ export function cloneNodeProps(
     gridTemplateRows: copySpread(src.gridTemplateRows),
     componentPropertyDefinitions: copyPropertyDefs(src.componentPropertyDefinitions),
     componentPropertyReferences: copySpread(src.componentPropertyReferences),
-    componentPropertyAssignments: { ...src.componentPropertyAssignments },
     symbolLinks: copySpread(src.symbolLinks),
     variantPropSpecs: copySpread(src.variantPropSpecs),
     pluginData: copySpread(src.pluginData),
     pluginRelaunchData: copySpread(src.pluginRelaunchData),
     exportSettings: copySpread(src.exportSettings),
     lowcodeLibraries: copyLibraryRefs(src.lowcodeLibraries),
-    componentPropertyValues: { ...src.componentPropertyValues },
     figmaDerivedLayout: src.figmaDerivedLayout ? { ...src.figmaDerivedLayout } : null,
     arcData: src.arcData ? copyArcData(src.arcData) : null,
     vectorNetwork: src.vectorNetwork ? cloneVectorNetwork(src.vectorNetwork) : null,

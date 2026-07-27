@@ -31,6 +31,8 @@ export function createDefaultSourceMetadata(): SourceMetadata {
     orderKey: null,
     editedFields: [],
     fig: {
+      rawNodeType: null,
+      rawStructuralFieldPresence: null,
       rawSize: null,
       rawTransform: null,
       rawNodeFields: {},

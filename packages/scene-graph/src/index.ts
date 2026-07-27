@@ -9,6 +9,7 @@ export * from './constants'
 export * from './geometry'
 export * from './font-style'
 export * from './shared-styles'
+export * from './motion'
 export { default as TransformMatrix } from './matrix'
 export type { Mat3 } from './matrix'
 export { UndoManager, type UndoEntry, type UndoManagerOptions } from './undo'
@@ -85,6 +86,8 @@ export class SceneGraph {
   figKiwiVersion: number | null = null
   /** Deflated kiwi schema bytes from the original .fig file, preserved for roundtrip fidelity. */
   figSchemaDeflated: Uint8Array | null = null
+  /** Opaque Kiwi Message.objectAnimations payload retained for .fig roundtrip fidelity. */
+  figMessageObjectAnimations: unknown = null
   documentColorSpace: DocumentColorSpace = 'display-p3'
   readonly emitter: Emitter<SceneGraphEvents> = createNanoEvents()
   private absPosCache = new Map<string, Vector>()

@@ -1,3 +1,4 @@
+import type { MotionSpec } from './motion'
 import type { Color, Matrix, Rect, Vector } from './primitives'
 
 export interface SceneGraphEvents {
@@ -42,7 +43,21 @@ export interface LibraryRef {
   importedComponents: LibraryImportedComponent[]
 }
 
+export type FigmaRawStructuralField =
+  | 'name'
+  | 'visible'
+  | 'opacity'
+  | 'size'
+  | 'transform'
+  | 'frameMaskDisabled'
+
+export type FigmaRawStructuralFieldPresence = Record<FigmaRawStructuralField, boolean>
+
 export interface FigmaSourcePayload {
+  /** Original Kiwi node type when OpenPencil projects an unsupported Figma node as a rectangle. */
+  rawNodeType: string | null
+  /** Presence map used to avoid inventing rectangle fields on projected opaque Figma nodes. */
+  rawStructuralFieldPresence: FigmaRawStructuralFieldPresence | null
   rawSize: Vector | null
   rawTransform: Matrix | null
   rawNodeFields: Record<string, unknown>
@@ -495,6 +510,8 @@ export interface SceneNode {
   gridStyleId: string | null
   sharedStyleType: SharedStyleType | null
   opacity: number
+  /** Declarative, bounded MotionSpec v1. Absent nodes retain static behavior. */
+  motion?: MotionSpec
 
   cornerRadius: number
   topLeftRadius: number

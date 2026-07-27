@@ -1,6 +1,7 @@
 import type { SceneGraph, SceneNode } from './'
 import { cloneNodeProps, copyEffects, copyFills, copyStrokes, copyStyleRuns } from './copy'
 import type { NodeCloneMode } from './copy'
+import { cloneMotionSpec } from './motion'
 
 export type { NodeCloneMode } from './copy'
 
@@ -42,7 +43,8 @@ const INSTANCE_SYNC_PROPS: (keyof SceneNode)[] = [
   'borderBottomWeight',
   'borderLeftWeight',
   'boundVariables',
-  'variableModes'
+  'variableModes',
+  'motion'
 ]
 
 function setSceneProp<K extends keyof SceneNode>(
@@ -74,6 +76,9 @@ function copyProp(
   } else if (key === 'gridPosition') {
     // Shallow copy the grid position object — all fields are primitives
     setSceneProp(target, key, source.gridPosition ? { ...source.gridPosition } : null)
+  } else if (key === 'motion') {
+    if (source.motion) setSceneProp(target, key, cloneMotionSpec(source.motion))
+    else Reflect.deleteProperty(target, key)
   } else {
     const value = source[key]
     setSceneProp(target, key, Array.isArray(value) ? structuredClone(value) : value)
@@ -227,6 +232,10 @@ export function swapInstanceComponent(
 
   const previousComponent = instance.componentId ? graph.nodes.get(instance.componentId) : undefined
   const updates: Partial<SceneNode> = { componentId }
+  const shouldClearMotion =
+    instance.motion !== undefined &&
+    component.motion === undefined &&
+    !('motion' in instance.overrides)
   for (const key of INSTANCE_SYNC_PROPS) {
     if (key in instance.overrides) continue
     copyProp(updates, component, key)
@@ -236,6 +245,7 @@ export function swapInstanceComponent(
   const childIds = Array.from(instance.childIds)
   for (const childId of childIds) graph.deleteNode(childId)
   graph.updateNode(instanceId, updates)
+  if (shouldClearMotion) graph.clearNodeFields(instanceId, ['motion'])
   cloneChildrenWithMapping(graph, componentId, instanceId)
 }
 
