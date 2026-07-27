@@ -3,9 +3,8 @@ import { randomUUID } from 'node:crypto'
 import type { WebSocket } from 'ws'
 
 import type { RpcJsonObject } from '#mcp/json'
+import { resolveBrowserRpcTimeoutMs, rpcTimeoutMessage } from '#mcp/rpc-timeout'
 import type { PendingRequest } from '#mcp/rpc-types'
-
-const RPC_TIMEOUT = 20_000
 
 const APP_NOT_CONNECTED_MESSAGE =
   'OpenPencil app is not connected. STOP and tell the user: "The OpenPencil desktop app is not running, no document is open, or the desktop app is connected to a different MCP server. Please start OpenPencil, open a document, and try again." Do NOT attempt to start the app yourself or retry automatically.'
@@ -103,10 +102,11 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
       }
       const id = randomUUID()
       const settle = createSettler(resolve, reject)
+      const timeoutMs = resolveBrowserRpcTimeoutMs(body)
       const timer = setTimeout(() => {
         pending.delete(id)
-        settle.reject(new Error(`RPC timeout (${Math.round(RPC_TIMEOUT / 1000)}s)`))
-      }, RPC_TIMEOUT)
+        settle.reject(new Error(rpcTimeoutMessage(timeoutMs)))
+      }, timeoutMs)
       pending.set(id, { resolve: settle.resolve, reject: settle.reject, timer })
       try {
         ws.send(JSON.stringify({ type: 'request', id, ...body }))

@@ -1,5 +1,6 @@
 import { WebSocket } from 'ws'
 
+import { resolveStdioRpcTimeoutMs, rpcTimeoutMessage } from '#mcp/rpc-timeout'
 import type { PendingRequest } from '#mcp/rpc-types'
 
 type StdioRpcBridgeOptions = {
@@ -9,7 +10,6 @@ type StdioRpcBridgeOptions = {
   onMalformedMessage?: () => void
 }
 
-const RPC_TIMEOUT = 30_000
 const DISCONNECTED_MESSAGE =
   'OpenPencil app is not connected. ' +
   'STOP and tell the user: "The OpenPencil desktop app is not running or no document is open. ' +
@@ -95,10 +95,11 @@ export function createStdioRpcBridge({
         return
       }
       const id = crypto.randomUUID()
+      const timeoutMs = resolveStdioRpcTimeoutMs(body)
       const timer = setTimeout(() => {
         pending.delete(id)
-        reject(new Error('RPC timeout (30s)'))
-      }, RPC_TIMEOUT)
+        reject(new Error(rpcTimeoutMessage(timeoutMs)))
+      }, timeoutMs)
       pending.set(id, { resolve, reject, timer })
       ws.send(JSON.stringify({ type: 'request', id, ...body }))
     })
