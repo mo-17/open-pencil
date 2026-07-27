@@ -3,7 +3,7 @@ import { normalizeFontFamily, weightToStyle } from '@open-pencil/scene-graph'
 import { effectiveFigmaRawNodeFields } from '../source-metadata'
 import { fractionalPosition, mapToFigmaType } from './basics'
 import { bytesToHex, hexToBytes } from './bytes'
-import { variableBindingFieldToKiwi } from './convert'
+import { isFigmaOpaqueNodeType, variableBindingFieldToKiwi } from './convert'
 import { alignGeneratedSingleLineGlyphs, generatedBaselineWithinLine } from './derived/alignment'
 import { buildDerivedTextData as buildSharedDerivedTextData } from './derived/data'
 import { buildDerivedTextFontMetaData } from './derived/font-metadata'
@@ -508,7 +508,13 @@ export function sceneNodeToKiwi(
     fractionalPosition,
     getExportNode: (exportNode) => runtime.getExportNode?.(exportNode, graph) ?? exportNode,
     mapToFigmaType: (exportNode) => {
-      const defaultType = mapToFigmaType(exportNode.type)
+      const rawNodeType = exportNode.source.fig.rawNodeType
+      const defaultType =
+        exportNode.source.format === 'fig' &&
+        exportNode.type === 'RECTANGLE' &&
+        isFigmaOpaqueNodeType(rawNodeType)
+          ? rawNodeType
+          : mapToFigmaType(exportNode.type)
       return runtime.getExportNodeType?.(exportNode, defaultType, graph) ?? defaultType
     },
     getExportChildren: (exportNode) =>

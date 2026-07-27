@@ -2,7 +2,7 @@ import { inflateSync } from 'fflate'
 import { decompress as zstdDecompress } from 'fzstd'
 
 import { decodeBinarySchema, compileSchema, ByteBuffer } from '../schema-runtime'
-import type { FigmaMessage, NodeChange } from './codec'
+import type { FigmaMessage, FigmaObjectAnimationList, NodeChange } from './codec'
 import { isZstdCompressed } from './protocol'
 
 export type { NodeChange } from './codec'
@@ -90,6 +90,8 @@ export function parseFigKiwiContainer(data: Uint8Array): FigKiwiPayload | null {
 export interface FigKiwiDecodeResult {
   nodeChanges: NodeChange[]
   blobs: Uint8Array[]
+  /** Message-level object animations, separate from NodeChange.objectAnimations. */
+  objectAnimations: FigmaObjectAnimationList | null
   figKiwiVersion: number
   /** Deflated kiwi schema bytes from the original file (for roundtrip fidelity). */
   figSchemaDeflated: Uint8Array
@@ -119,6 +121,7 @@ export function decodeFigKiwiCanvas(data: Uint8Array): FigKiwiDecodeResult {
   return {
     nodeChanges,
     blobs,
+    objectAnimations: message.objectAnimations ?? null,
     figKiwiVersion: payload.version,
     figSchemaDeflated: payload.schemaDeflated
   }

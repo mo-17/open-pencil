@@ -283,6 +283,14 @@ export interface PluginRelaunchData {
   isDeleted: boolean
 }
 
+/** Message-level object-animation payload stored outside NodeChange entries. */
+export interface FigmaObjectAnimationList {
+  entries?: Array<{
+    targetNodeId?: GUID
+    animation?: Record<string, unknown>
+  }>
+}
+
 export interface NodeChange {
   [key: string]: unknown
   guid?: GUID
@@ -454,6 +462,7 @@ export interface FigmaMessage {
   reconnectSequenceNumber?: number
   nodeChanges?: NodeChange[]
   blobs?: Array<{ bytes: Uint8Array }>
+  objectAnimations?: FigmaObjectAnimationList
 }
 
 /**

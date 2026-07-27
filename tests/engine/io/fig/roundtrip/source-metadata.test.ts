@@ -1,8 +1,19 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
 
-import { exportFigFile, initCodec, parseFigFile, SceneGraph } from '@open-pencil/core'
+import {
+  exportFigFile,
+  importNodeChanges,
+  initCodec,
+  parseFigFile,
+  SceneGraph
+} from '@open-pencil/core'
 import { effectiveFigmaRawNodeFields, parseFigBuffer } from '@open-pencil/fig'
-import { guidToString } from '@open-pencil/fig/node-change'
+import {
+  FIGMA_OPAQUE_NODE_TYPES,
+  guidToString,
+  nodeChangeToProps
+} from '@open-pencil/fig/node-change'
+import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 
 function decodeExport(bytes: Uint8Array) {
   return parseFigBuffer(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength))
@@ -220,6 +231,9 @@ describe('fig roundtrip source metadata', () => {
     ]
     frame.source.fig.rawNodeFields.prototypeStartNodeID = { sessionID: 4, localID: 900 }
     frame.source.fig.rawNodeFields.transitionInfo = { type: 'DISSOLVE', duration: 0.2 }
+    const prototypeStart = graph.createNode('FRAME', page.id, { name: 'Prototype start' })
+    prototypeStart.source.format = 'fig'
+    prototypeStart.source.id = '4:900'
 
     const decoded = decodeExport(await exportFigFile(graph))
     const exported = decoded.nodeChanges.find(
@@ -232,6 +246,279 @@ describe('fig roundtrip source metadata', () => {
     expect(exported?.exportSettings).toEqual(frame.source.fig.rawNodeFields.exportSettings)
     expect(exported?.prototypeStartNodeID).toEqual({ sessionID: 4, localID: 900 })
     expect(exported?.transitionInfo?.type).toBe('DISSOLVE')
+  })
+
+  test('preserves imported motion metadata and nested keyframe blobs through G0 to G1 to G2', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const timelineId = { sessionID: 8, localID: 100 }
+    const containingTimelineId = { sessionID: 8, localID: 101 }
+    const presetId = { sessionID: 8, localID: 102 }
+    const trackId = { sessionID: 8, localID: 103 }
+    const animationStyleId = { sessionID: 8, localID: 104 }
+    const targetId = { sessionID: 8, localID: 105 }
+    const interactionId = { sessionID: 8, localID: 106 }
+    const glyphBlob = new Uint8Array([0x47, 0x4c, 0x59, 0x50, 0x48])
+    const imageBlob = new Uint8Array([0x49, 0x4d, 0x41, 0x47, 0x45])
+    const motionFields: Record<string, unknown> = {
+      styleAnimations: [{ animationPresetId: { guid: presetId } }],
+      objectAnimations: [
+        {
+          id: interactionId,
+          event: { interactionType: 'ON_CLICK' },
+          actions: [
+            {
+              connectionType: 'OBJECT_ANIMATION',
+              animationType: 'FADE',
+              animationTargetId: targetId,
+              animationPhase: 'OUT'
+            }
+          ]
+        }
+      ],
+      transitionShouldSmartAnimate: true,
+      motionTransform: {
+        translation: { x: 12, y: 24 },
+        rotation: 0.5,
+        scale: { x: 1.25, y: 0.75 },
+        shearX: 0.125
+      },
+      timelinePosition: 125_000n,
+      keyframeValue: {
+        value: {
+          textDataValue: {
+            characters: '动',
+            glyphs: [
+              {
+                commandsBlob: 0,
+                position: { x: 1, y: 2 },
+                fontSize: 16,
+                firstCharacter: 0,
+                advance: 8,
+                rotation: 0
+              }
+            ]
+          }
+        },
+        valueType: 'TEXT_DATA'
+      },
+      keyframeValueRef: {
+        value: {
+          imageValue: {
+            image: { hash: new Uint8Array([1, 2, 3]), name: 'keyframe.png', dataBlob: 1 }
+          }
+        },
+        dataType: 'IMAGE',
+        resolvedDataType: 'IMAGE'
+      },
+      interpolationType: 'BEZIER',
+      bezierHandles: { p1x: 0.25, p1y: 0.125, p2x: 0.75, p2y: 0.875 },
+      easingData: {
+        easingType: 'CUSTOM_CUBIC',
+        easingValue: {
+          bezierEasing: { p1x: 0.25, p1y: 0.125, p2x: 0.75, p2y: 0.875 }
+        }
+      },
+      keyframeOperation: 'OFFSET',
+      timelinePositionType: 'RELATIVE',
+      isClip: true,
+      clipId: trackId,
+      timelineDuration: 2_000_000n,
+      timelineOffset: 250_000n,
+      timelineDisabled: true,
+      playbackStyle: 'BOOMERANG',
+      timelineDefinitions: {
+        entries: [
+          {
+            id: timelineId,
+            data: { durationUs: 2_000_000n, defaultTimeline: true, playbackStyle: 'LOOP' }
+          }
+        ]
+      },
+      timelineAssignments: {
+        entries: [
+          {
+            key: { assignedTimelineId: timelineId, containingTimelineId },
+            value: { offsetUs: 250_000n, disabled: true }
+          }
+        ]
+      },
+      animationPresets: {
+        presets: [{ animationPresetId: { guid: presetId }, timelineDefId: timelineId }]
+      },
+      styleIdsForAnimation: [
+        {
+          id: trackId,
+          timelineDefId: timelineId,
+          animationStyleId: { guid: animationStyleId },
+          timelineOffset: 250_000n
+        }
+      ],
+      backingAnimationPresetId: { guid: presetId },
+      transitionOverrides: {
+        all: [
+          {
+            id: trackId,
+            duration: 0.5,
+            delay: 0.25,
+            easing: {
+              easingType: 'CUSTOM_CUBIC',
+              easingValue: {
+                bezierEasing: { p1x: 0.25, p1y: 0.125, p2x: 0.75, p2y: 0.875 }
+              }
+            },
+            createdAtMs: 1_024n,
+            interactionIDs: [interactionId],
+            disabled: true
+          }
+        ]
+      },
+      useLegacySmartAnimate: true
+    }
+    const g0 = {
+      guid: { sessionID: 8, localID: 200 },
+      phase: 'CREATED',
+      type: 'RECTANGLE',
+      name: 'Imported motion node',
+      ...motionFields
+    } as NodeChange
+
+    const imported = nodeChangeToProps(g0, [glyphBlob, imageBlob])
+    const rect = graph.createNode('RECTANGLE', page.id, { name: g0.name })
+    if (!imported.source) throw new Error('Expected imported Figma source metadata')
+    rect.source = imported.source
+    const animationTarget = graph.createNode('RECTANGLE', page.id, { name: 'Animation target' })
+    animationTarget.source.format = 'fig'
+    animationTarget.source.id = '8:105'
+
+    const expectMotionNode = (decoded: ReturnType<typeof decodeExport>) => {
+      const exported = decoded.nodeChanges.find(
+        (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '8:200'
+      )
+      expect(exported).toBeDefined()
+
+      for (const [field, value] of Object.entries(motionFields)) {
+        if (field === 'keyframeValue' || field === 'keyframeValueRef') continue
+        expect(exported?.[field]).toEqual(value)
+      }
+
+      const keyframeValue = exported?.keyframeValue as {
+        value?: {
+          textDataValue?: { characters?: string; glyphs?: Array<{ commandsBlob?: number }> }
+        }
+        valueType?: string
+      }
+      expect(keyframeValue.valueType).toBe('TEXT_DATA')
+      expect(keyframeValue.value?.textDataValue?.characters).toBe('动')
+      const blobIndex = keyframeValue.value?.textDataValue?.glyphs?.[0]?.commandsBlob
+      expect(typeof blobIndex).toBe('number')
+      expect(decoded.blobs[blobIndex as number]).toEqual(glyphBlob)
+
+      const keyframeValueRef = exported?.keyframeValueRef as {
+        value?: { imageValue?: { image?: { dataBlob?: number; name?: string } } }
+        dataType?: string
+        resolvedDataType?: string
+      }
+      expect(keyframeValueRef.dataType).toBe('IMAGE')
+      expect(keyframeValueRef.resolvedDataType).toBe('IMAGE')
+      expect(keyframeValueRef.value?.imageValue?.image?.name).toBe('keyframe.png')
+      const imageBlobIndex = keyframeValueRef.value?.imageValue?.image?.dataBlob
+      expect(typeof imageBlobIndex).toBe('number')
+      expect(decoded.blobs[imageBlobIndex as number]).toEqual(imageBlob)
+    }
+
+    const g1Bytes = await exportFigFile(graph)
+    expectMotionNode(decodeExport(g1Bytes))
+
+    const g2Graph = await parseFigFile(
+      g1Bytes.buffer.slice(g1Bytes.byteOffset, g1Bytes.byteOffset + g1Bytes.byteLength)
+    )
+    expectMotionNode(decodeExport(await exportFigFile(g2Graph)))
+  })
+
+  test('preserves opaque Figma node types and structural field presence through G0 to G1 to G2', async () => {
+    const opaqueTypes = FIGMA_OPAQUE_NODE_TYPES
+    const documentGuid = { sessionID: 0, localID: 0 }
+    const canvasGuid = { sessionID: 0, localID: 1 }
+    const graph = importNodeChanges(
+      [
+        {
+          guid: documentGuid,
+          phase: 'CREATED',
+          type: 'DOCUMENT',
+          name: 'Document'
+        },
+        {
+          guid: canvasGuid,
+          parentIndex: { guid: documentGuid, position: 'a' },
+          phase: 'CREATED',
+          type: 'CANVAS',
+          name: 'Opaque node page'
+        },
+        ...opaqueTypes.map(
+          (type, index): NodeChange => ({
+            guid: { sessionID: 8, localID: 300 + index },
+            parentIndex: { guid: canvasGuid, position: String.fromCharCode(97 + index) },
+            phase: 'CREATED',
+            type
+          })
+        ),
+        {
+          guid: { sessionID: 8, localID: 399 },
+          parentIndex: { guid: canvasGuid, position: 'z' },
+          phase: 'CREATED',
+          type: 'MEDIA',
+          name: 'Explicit media',
+          visible: false,
+          opacity: 0.5,
+          size: { x: 80, y: 40 },
+          transform: { m00: 1, m01: 0, m02: 12, m10: 0, m11: 1, m12: 24 },
+          frameMaskDisabled: false
+        }
+      ],
+      []
+    )
+
+    const expectOpaqueNodes = (decoded: ReturnType<typeof decodeExport>) => {
+      for (const [index, type] of opaqueTypes.entries()) {
+        const exported = decoded.nodeChanges.find(
+          (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === `8:${300 + index}`
+        )
+        expect(exported?.type).toBe(type)
+        if (!exported) throw new Error(`Expected exported ${type}`)
+        for (const field of [
+          'name',
+          'visible',
+          'opacity',
+          'size',
+          'transform',
+          'frameMaskDisabled'
+        ]) {
+          expect(field in exported).toBe(false)
+        }
+      }
+
+      const explicitMedia = decoded.nodeChanges.find(
+        (nodeChange) => nodeChange.guid && guidToString(nodeChange.guid) === '8:399'
+      )
+      expect(explicitMedia).toMatchObject({
+        type: 'MEDIA',
+        name: 'Explicit media',
+        visible: false,
+        opacity: 0.5,
+        size: { x: 80, y: 40 },
+        transform: { m00: 1, m01: 0, m02: 12, m10: 0, m11: 1, m12: 24 },
+        frameMaskDisabled: false
+      })
+    }
+
+    const g1Bytes = await exportFigFile(graph)
+    expectOpaqueNodes(decodeExport(g1Bytes))
+
+    const g2Graph = await parseFigFile(
+      g1Bytes.buffer.slice(g1Bytes.byteOffset, g1Bytes.byteOffset + g1Bytes.byteLength)
+    )
+    expectOpaqueNodes(decodeExport(await exportFigFile(g2Graph)))
   })
 
   test('preserves unrelated raw metadata when visual fields are edited', () => {

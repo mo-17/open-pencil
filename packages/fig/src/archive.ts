@@ -1,6 +1,6 @@
 import { unzipSync, zipSync, type Zippable } from 'fflate'
 
-import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import type { FigmaObjectAnimationList, NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { buildFigKiwi } from '@open-pencil/kiwi/fig/container'
 import { decodeFigKiwiCanvas } from '@open-pencil/kiwi/fig/parse'
 
@@ -21,6 +21,8 @@ export interface WriteFigArchiveInput {
 export interface FigParseResult {
   nodeChanges: NodeChange[]
   blobs: Uint8Array[]
+  /** Message-level object animations, separate from NodeChange.objectAnimations. */
+  objectAnimations: FigmaObjectAnimationList | null
   images: Array<[string, Uint8Array]>
   figKiwiVersion: number
   /** Deflated Kiwi schema bytes from the original file, retained for round-trip fidelity. */

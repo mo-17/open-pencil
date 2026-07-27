@@ -23,6 +23,43 @@ import {
 
 export type KiwiNodeChange = NodeChange & Record<string, unknown>
 
+const OPAQUE_STRUCTURAL_FIELD_EDIT_KEYS = {
+  name: ['name'],
+  visible: ['visible'],
+  opacity: ['opacity'],
+  size: ['width', 'height'],
+  transform: ['x', 'y', 'rotation', 'flipX', 'flipY'],
+  frameMaskDisabled: ['clipsContent']
+} as const
+
+type OpaqueStructuralField = keyof typeof OPAQUE_STRUCTURAL_FIELD_EDIT_KEYS
+
+function deleteOpaqueStructuralField(
+  nodeChange: KiwiNodeChange,
+  field: OpaqueStructuralField
+): void {
+  switch (field) {
+    case 'name':
+      delete nodeChange.name
+      break
+    case 'visible':
+      delete nodeChange.visible
+      break
+    case 'opacity':
+      delete nodeChange.opacity
+      break
+    case 'size':
+      delete nodeChange.size
+      break
+    case 'transform':
+      delete nodeChange.transform
+      break
+    case 'frameMaskDisabled':
+      delete nodeChange.frameMaskDisabled
+      break
+  }
+}
+
 type KiwiBooleanOperation = NonNullable<NodeChange['booleanOperation']>
 
 function toKiwiBooleanOperation(operation: SceneNode['booleanOperation']): KiwiBooleanOperation {
@@ -260,7 +297,7 @@ function materializeSafeVariableMap(
   return { entries: entries.map((entry) => materializeFigmaPayload(entry, blobs, options)) }
 }
 
-interface MaterializeFigmaPayloadOptions {
+export interface MaterializeFigmaPayloadOptions {
   blobIndexByHex?: Map<string, number>
   includePaintVariables?: boolean
   includeVariableMaps?: boolean
@@ -295,7 +332,7 @@ function normalizeFigmaPayloadValue(key: string, value: unknown): unknown {
   return value
 }
 
-function materializeFigmaPayload(
+export function materializeFigmaPayload(
   value: unknown,
   blobs: Uint8Array[],
   options: MaterializeFigmaPayloadOptions = {}
@@ -441,6 +478,19 @@ function applyRawFigmaNodeFields(
     // Skip any key already set on nc — explicit serialization takes priority
     if (key in nc) continue
     nc[key] = materialized[key]
+  }
+}
+
+function suppressAbsentOpaqueStructuralFields(node: SceneNode, nc: KiwiNodeChange): void {
+  if (!node.source.fig.rawNodeType) return
+  const presence = node.source.fig.rawStructuralFieldPresence
+  if (!presence) return
+  const editedFields = new Set(node.source.editedFields)
+  for (const field of Object.keys(OPAQUE_STRUCTURAL_FIELD_EDIT_KEYS) as OpaqueStructuralField[]) {
+    if (presence[field]) continue
+    const editKeys = OPAQUE_STRUCTURAL_FIELD_EDIT_KEYS[field]
+    if (editKeys.some((editKey) => editedFields.has(editKey))) continue
+    deleteOpaqueStructuralField(nc, field)
   }
 }
 
@@ -874,6 +924,7 @@ export function sceneNodeToKiwiWithContext(
   if (node.pluginRelaunchData.length > 0) {
     nc.pluginRelaunchData = serializePluginRelaunchData(node.pluginRelaunchData)
   }
+  suppressAbsentOpaqueStructuralFields(node, nc)
 
   const result: KiwiNodeChange[] = [nc]
   const children =

@@ -16,11 +16,13 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
     blobs,
     images: imageEntries,
     figKiwiVersion,
-    figSchemaDeflated
+    figSchemaDeflated,
+    objectAnimations
   } = parseFigBuffer(buffer)
   const graph = importNodeChanges(nodeChanges, blobs, new Map(imageEntries), options)
   graph.figKiwiVersion = figKiwiVersion
   graph.figSchemaDeflated = figSchemaDeflated
+  graph.figMessageObjectAnimations = objectAnimations
   return graph
 }
 

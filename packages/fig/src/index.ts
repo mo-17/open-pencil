@@ -12,6 +12,18 @@ export {
   readEffectiveFigmaRawField,
   staleFigmaRawFields
 } from './source-metadata'
+export {
+  buildFigmaMotionPluginScript,
+  createFigmaNativeMotionPlan,
+  type FigmaNativeMotionEasing,
+  type FigmaNativeMotionFieldName,
+  type FigmaNativeMotionIssue,
+  type FigmaNativeMotionKeyframe,
+  type FigmaNativeMotionOperation,
+  type FigmaNativeMotionOptions,
+  type FigmaNativeMotionPlan,
+  type FigmaNativeMotionWarning
+} from './motion-native'
 
 import {
   FIG_KIWI_DEFAULT_VERSION,

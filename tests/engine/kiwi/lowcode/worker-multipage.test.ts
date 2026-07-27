@@ -36,11 +36,14 @@ describe('worker-path multi-page round-trip (Tauri reopen reproducer)', () => {
    */
   async function parseViaSimulatedWorker(graph: SceneGraph): Promise<SceneGraph> {
     const bytes = await exportFigFile(graph)
-    const { nodeChanges, blobs, images, figKiwiVersion } = parseFigBuffer(bytes.buffer)
+    const { nodeChanges, blobs, images, figKiwiVersion, figSchemaDeflated, objectAnimations } =
+      parseFigBuffer(bytes.buffer)
     const built = importNodeChanges(nodeChanges, blobs, new Map(images), {
       populate: 'first-page'
     })
     built.figKiwiVersion = figKiwiVersion
+    built.figSchemaDeflated = figSchemaDeflated
+    built.figMessageObjectAnimations = objectAnimations
     const serialized = serializeSceneGraph(built)
     const cloned = structuredClone(serialized)
     return deserializeSceneGraph(cloned)
@@ -92,6 +95,35 @@ describe('worker-path multi-page round-trip (Tauri reopen reproducer)', () => {
     void homeText
     void aboutRect
     void aboutText
+  })
+
+  test('Message.objectAnimations survives the worker serialization boundary', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const target = graph.createNode('RECTANGLE', page.id, {
+      name: 'worker-animation-target',
+      width: 80,
+      height: 40
+    })
+    target.source.format = 'fig'
+    target.source.id = '61:3'
+    const objectAnimations = {
+      entries: [
+        {
+          targetNodeId: { sessionID: 61, localID: 3 },
+          animation: {
+            connectionType: 'OBJECT_ANIMATION',
+            animationType: 'FADE',
+            animationTargetId: { sessionID: 61, localID: 3 },
+            animationPhase: 'OUT'
+          }
+        }
+      ]
+    }
+    graph.figMessageObjectAnimations = objectAnimations
+
+    const reimported = await parseViaSimulatedWorker(graph)
+    expect(reimported.figMessageObjectAnimations).toEqual(objectAnimations)
   })
 
   test('three pages with lowcode state on each stay isolated across worker boundary', async () => {

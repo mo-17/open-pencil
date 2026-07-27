@@ -5,7 +5,11 @@ import { deflateSync, inflateSync } from 'fflate'
 import { compressFigDataSync } from '@open-pencil/fig'
 import {
   buildComponentPropIndex,
+  guidToString,
+  materializeFigmaPayload,
   mergePluginData,
+  remapFigmaMessageObjectAnimations,
+  remapFigmaNodeReferences,
   stringToGuid,
   type FigNodeChangeExportRuntime
 } from '@open-pencil/fig/node-change'
@@ -32,6 +36,10 @@ import {
   makeDocumentNodeChange,
   makeCanvasNodeChange
 } from '#core/kiwi/fig/node-change/serialize'
+import {
+  FIGMA_CANVAS_METADATA_FIELD_KEYS,
+  FIGMA_DOCUMENT_METADATA_FIELD_KEYS
+} from '#core/kiwi/fig/root-metadata'
 
 interface CompatibleFigProjection {
   runtime: FigNodeChangeExportRuntime
@@ -100,14 +108,43 @@ function resolveFigSchema(graph: SceneGraph): FigSchemaContext {
   }
 }
 
-function makeExportDocumentNodeChange(graph: SceneGraph, docGuid: GUID): KiwiNodeChange {
+function applyPreservedRootMetadata(
+  rawNodeFields: Record<string, unknown>,
+  nodeChange: KiwiNodeChange,
+  fields: readonly (keyof NodeChange)[],
+  blobs: Uint8Array[],
+  blobIndexByHex: Map<string, number>
+): void {
+  for (const field of fields) {
+    const value = rawNodeFields[field]
+    if (value === undefined) continue
+    nodeChange[field] = materializeFigmaPayload(value, blobs, {
+      blobIndexByHex,
+      includePaintVariables: true,
+      includeVariableMaps: true
+    })
+  }
+}
+
+function makeExportDocumentNodeChange(
+  graph: SceneGraph,
+  docGuid: GUID,
+  blobs: Uint8Array[],
+  blobIndexByHex: Map<string, number>
+): KiwiNodeChange {
   const documentNc = makeDocumentNodeChange(docGuid, graph.documentColorSpace)
   const rootNode = graph.getNode(graph.rootId)
   if (!rootNode) return documentNc
 
-  Object.assign(documentNc, rootNode.source.fig.rawNodeFields)
+  applyPreservedRootMetadata(
+    rootNode.source.fig.rawNodeFields,
+    documentNc,
+    FIGMA_DOCUMENT_METADATA_FIELD_KEYS,
+    blobs,
+    blobIndexByHex
+  )
   const rootLowcode = serializeLowcodeFields(rootNode)
-  if (rootLowcode.length > 0) {
+  if (rootNode.pluginData.length > 0 || rootLowcode.length > 0) {
     documentNc.pluginData = mergePluginData([...rootNode.pluginData, ...rootLowcode])
   }
   return documentNc
@@ -129,6 +166,73 @@ function advanceCounterPastSourceGuids(
   }
   localIdCounter.value = Math.max(localIdCounter.value, maxLocalId0 + 1, maxLocalId1 + 1)
   return sourceGuidValues
+}
+
+function owningCanvasId(graph: SceneGraph, nodeId: string): string | null {
+  let current = graph.getNode(nodeId)
+  while (current) {
+    if (current.type === 'CANVAS') return current.id
+    current = current.parentId ? graph.getNode(current.parentId) : undefined
+  }
+  return null
+}
+
+function remapExportedFigmaNodeReferences(
+  graph: SceneGraph,
+  nodeChanges: KiwiNodeChange[],
+  nodeIdToGuid: ReadonlyMap<string, GUID>,
+  documentGuid: GUID
+): unknown {
+  const emittedGuidToNodeId = new Map<string, string>()
+  for (const [nodeId, guid] of nodeIdToGuid) emittedGuidToNodeId.set(guidToString(guid), nodeId)
+  emittedGuidToNodeId.set(guidToString(documentGuid), graph.rootId)
+
+  const sourceGuidToNodeIds = new Map<string, string[]>()
+  for (const node of graph.getAllNodes()) {
+    const sourceGuid = node.source.id
+    if (!sourceGuid || !nodeIdToGuid.has(node.id)) continue
+    const candidates = sourceGuidToNodeIds.get(sourceGuid)
+    if (candidates) candidates.push(node.id)
+    else sourceGuidToNodeIds.set(sourceGuid, [node.id])
+  }
+
+  const canvasIdByNodeId = new Map<string, string | null>()
+  const getCanvasId = (nodeId: string): string | null => {
+    if (canvasIdByNodeId.has(nodeId)) return canvasIdByNodeId.get(nodeId) ?? null
+    const canvasId = owningCanvasId(graph, nodeId)
+    canvasIdByNodeId.set(nodeId, canvasId)
+    return canvasId
+  }
+
+  for (const nodeChange of nodeChanges) {
+    if (!nodeChange.guid) continue
+    const ownerNodeId = emittedGuidToNodeId.get(guidToString(nodeChange.guid))
+    if (!ownerNodeId) continue
+
+    remapFigmaNodeReferences(nodeChange, (sourceGuid) => {
+      const candidates = sourceGuidToNodeIds.get(guidToString(sourceGuid)) ?? []
+      if (candidates.length === 0) return null
+      if (candidates.length === 1) return nodeIdToGuid.get(candidates[0]) ?? null
+      if (candidates.includes(ownerNodeId)) return nodeIdToGuid.get(ownerNodeId) ?? null
+
+      const ownerCanvasId = getCanvasId(ownerNodeId)
+      const scopedCandidates = candidates.filter(
+        (candidateId) => getCanvasId(candidateId) === ownerCanvasId
+      )
+      return scopedCandidates.length === 1 ? (nodeIdToGuid.get(scopedCandidates[0]) ?? null) : null
+    })
+  }
+
+  if (graph.figMessageObjectAnimations === null) return null
+  return remapFigmaMessageObjectAnimations(
+    structuredClone(graph.figMessageObjectAnimations),
+    (sourceGuid) => {
+      const candidates = sourceGuidToNodeIds.get(guidToString(sourceGuid)) ?? []
+      if (candidates.length === 1) return nodeIdToGuid.get(candidates[0]) ?? null
+      if (candidates.length > 1) return null
+      return guidToString(sourceGuid) === guidToString(documentGuid) ? documentGuid : null
+    }
+  )
 }
 
 interface CanvasExportEntry {
@@ -340,24 +444,21 @@ function appendVariablesForCollection(
   }
 }
 
-function applyImportedCanvasFields(page: FigExportPage, canvasNc: KiwiNodeChange): void {
+function applyImportedCanvasFields(
+  page: FigExportPage,
+  canvasNc: KiwiNodeChange,
+  blobs: Uint8Array[],
+  blobIndexByHex: Map<string, number>
+): void {
   if (!page.source.id) return
   if (!('pageType' in page.source.fig.rawNodeFields)) delete canvasNc.pageType
-  if ('backgroundColor' in page.source.fig.rawNodeFields) {
-    canvasNc.backgroundColor = structuredClone(page.source.fig.rawNodeFields.backgroundColor)
-  }
-  if ('backgroundPaints' in page.source.fig.rawNodeFields) {
-    canvasNc.backgroundPaints = structuredClone(
-      page.source.fig.rawNodeFields.backgroundPaints
-    ) as NodeChange['backgroundPaints']
-  }
-  if ('guides' in page.source.fig.rawNodeFields) {
-    canvasNc.guides = structuredClone(page.source.fig.rawNodeFields.guides)
-  }
-  const strokeJoin = page.source.fig.rawNodeFields.strokeJoin
-  if (typeof strokeJoin === 'string') canvasNc.strokeJoin = strokeJoin
-  const strokeWeight = page.source.fig.rawNodeFields.strokeWeight
-  if (typeof strokeWeight === 'number') canvasNc.strokeWeight = strokeWeight
+  applyPreservedRootMetadata(
+    page.source.fig.rawNodeFields,
+    canvasNc,
+    FIGMA_CANVAS_METADATA_FIELD_KEYS,
+    blobs,
+    blobIndexByHex
+  )
 }
 
 function buildCanvasEntries(
@@ -366,7 +467,9 @@ function buildCanvasEntries(
   docGuid: GUID,
   localIdCounter: { value: number },
   nodeIdToGuid: Map<string, GUID>,
-  assignedGuidValues: Set<string>
+  assignedGuidValues: Set<string>,
+  blobs: Uint8Array[],
+  blobIndexByHex: Map<string, number>
 ): { canvasEntries: CanvasExportEntry[]; internalCanvasGuid: GUID | null } {
   const canvasEntries: CanvasExportEntry[] = []
   let internalCanvasGuid: GUID | null = null
@@ -402,9 +505,9 @@ function buildCanvasEntries(
         backgroundEnabled: true
       }
     )
-    applyImportedCanvasFields(page, canvasNc)
+    applyImportedCanvasFields(page, canvasNc, blobs, blobIndexByHex)
     const pageLowcode = serializeLowcodeFields(page)
-    if (pageLowcode.length > 0) {
+    if (page.pluginData.length > 0 || pageLowcode.length > 0) {
       canvasNc.pluginData = mergePluginData([...page.pluginData, ...pageLowcode])
     }
     if (page.internalOnly) canvasNc.internalOnly = true
@@ -531,10 +634,12 @@ export async function exportFigFileWithOptions(
   const docGuid = { sessionID: 0, localID: 0 }
   const localIdCounter = { value: 2 }
 
-  const documentNc = makeExportDocumentNodeChange(graph, docGuid)
+  const blobs: Uint8Array[] = []
+  const blobIndexByHex = new Map<string, number>()
+
+  const documentNc = makeExportDocumentNodeChange(graph, docGuid, blobs, blobIndexByHex)
   const nodeChanges: KiwiNodeChange[] = [documentNc]
 
-  const blobs: Uint8Array[] = []
   const pages = graph.getPages(true)
   const nodeIdToGuid = new Map<string, GUID>()
   const assignedGuidValues = new Set<string>()
@@ -549,7 +654,6 @@ export async function exportFigFileWithOptions(
   const runtime = compatibleProjection?.runtime ?? createCoreFigExportRuntime()
   const fontDigestMap = await buildFontDigestMap(graph, compatibleProjection?.nodes)
   const glyphBlobMap = new Map<string, number>()
-  const blobIndexByHex = new Map<string, number>()
   const componentPropertyDefinitionsById = buildComponentPropIndex(graph)
 
   // Scan ALL imported source.ids BEFORE any new GUID assignment to find
@@ -564,7 +668,9 @@ export async function exportFigFileWithOptions(
     docGuid,
     localIdCounter,
     nodeIdToGuid,
-    assignedGuidValues
+    assignedGuidValues,
+    blobs,
+    blobIndexByHex
   )
 
   // Assign variable GUIDs AFTER canvas entries so that source.id-derived
@@ -626,6 +732,13 @@ export async function exportFigFileWithOptions(
     runtime
   })
 
+  const messageObjectAnimations = remapExportedFigmaNodeReferences(
+    graph,
+    nodeChanges,
+    nodeIdToGuid,
+    docGuid
+  )
+
   const msg: Record<string, unknown> = {
     type: 'NODE_CHANGES',
     sessionID: 0,
@@ -636,6 +749,7 @@ export async function exportFigFileWithOptions(
   if (blobs.length > 0) {
     msg.blobs = blobs.map((bytes) => ({ bytes }))
   }
+  if (messageObjectAnimations !== null) msg.objectAnimations = messageObjectAnimations
 
   const kiwiData = compiled.encodeMessage(msg)
 

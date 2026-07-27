@@ -14,6 +14,7 @@
 
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import { validateMotionSpec } from '@open-pencil/scene-graph'
 import type {
   ActionDef,
   AnalyticsConfig,
@@ -24,6 +25,7 @@ import type {
   LowcodeHeadMetadata,
   LibraryRef,
   LowcodeTranslations,
+  MotionSpec,
   NodeType,
   PluginDataEntry,
   ResponsiveOverrides,
@@ -142,6 +144,11 @@ export const LOWCODE_REQUIRES_AUTH_KEY = 'lowcode/requiresAuth'
  *  (e.g. `/login`). Absent ≡ the `/login` default. */
 export const LOWCODE_AUTH_REDIRECT_KEY = 'lowcode/authRedirect'
 
+/** Declarative MotionSpec v1 for a single node. The value is strictly
+ * validated on both import and export; malformed or future-version entries
+ * stay in ordinary pluginData so a newer OpenPencil can recover them. */
+export const LOWCODE_MOTION_KEY = 'lowcode/motion'
+
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
   'INPUT',
@@ -184,7 +191,8 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_LIBRARIES_KEY,
   LOWCODE_ROUTE_PATTERN_KEY,
   LOWCODE_REQUIRES_AUTH_KEY,
-  LOWCODE_AUTH_REDIRECT_KEY
+  LOWCODE_AUTH_REDIRECT_KEY,
+  LOWCODE_MOTION_KEY
 ])
 
 /**
@@ -259,6 +267,23 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // / authRedirect) fields — grouped out to keep this function under the
   // complexity limit. Appended last so legacy .fig output stays byte-identical.
   entries.push(...serializeRoutingAuthFields(node))
+  if (node.motion != null) {
+    const hasInertRawMotion = node.pluginData.some(
+      (entry) => entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_MOTION_KEY
+    )
+    if (hasInertRawMotion) {
+      // A canonical raw entry reaches SceneNode.pluginData only when this
+      // version could not safely interpret it (malformed or future version).
+      // Preserve that payload as the single canonical value and do not make a
+      // second current-version entry executable by accident.
+      console.warn(
+        '[lowcode] structured motion conflicts with inert raw lowcode/motion; preserving the raw payload and suppressing the structured value'
+      )
+    } else {
+      const validated = validateMotionSpec(node.motion)
+      if (validated.success) entries.push(makeEntry(LOWCODE_MOTION_KEY, validated.value))
+    }
+  }
   return entries
 }
 
@@ -570,6 +595,9 @@ function isNonEmpty(value: unknown): boolean {
  */
 export interface ExtractedLowcodeAndPluginData {
   pluginData: PluginDataEntry[]
+  /** Strictly validated MotionSpec v1. Invalid or unsupported future versions
+   *  are intentionally left in pluginData instead of being executed. */
+  motion?: MotionSpec
   /** Override for `mapNodeType`'s 'RECTANGLE' fallback. Present only when
    *  the SceneNode was one of the lowcode interactive types on save. */
   nodeTypeOverride?: NodeType
@@ -658,9 +686,10 @@ export function extractLowcodeAndPluginData(
   const pluginData: PluginDataEntry[] = []
   const result: ExtractedLowcodeAndPluginData = { pluginData }
   for (const entry of nc.pluginData ?? []) {
+    const preservedEntry = { pluginId: entry.pluginID, key: entry.key, value: entry.value }
     const isOurs = entry.pluginID === OPEN_PENCIL_PLUGIN_ID && LOWCODE_PLUGIN_KEYS.has(entry.key)
     if (!isOurs) {
-      pluginData.push({ pluginId: entry.pluginID, key: entry.key, value: entry.value })
+      pluginData.push(preservedEntry)
       continue
     }
     let parsed: unknown
@@ -668,7 +697,20 @@ export function extractLowcodeAndPluginData(
       parsed = JSON.parse(entry.value)
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
+      if (entry.key === LOWCODE_MOTION_KEY) {
+        console.warn(
+          `[lowcode] failed to parse pluginData "${entry.key}": ${reason}; preserving inert entry`
+        )
+        pluginData.push(preservedEntry)
+        continue
+      }
       console.warn(`[lowcode] failed to parse pluginData "${entry.key}": ${reason}; dropping entry`)
+      continue
+    }
+    if (entry.key === LOWCODE_MOTION_KEY) {
+      const validated = validateMotionSpec(parsed)
+      if (validated.success) result.motion = validated.value
+      else pluginData.push(preservedEntry)
       continue
     }
     assignLowcodeField(result, entry.key, parsed)

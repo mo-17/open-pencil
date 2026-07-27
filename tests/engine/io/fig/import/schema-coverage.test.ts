@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs'
 
 import ts from 'typescript'
 
-import { FIGMA_RAW_NODE_FIELD_KEYS } from '@open-pencil/fig/node-change'
+import {
+  FIGMA_INTERACTION_MEDIA_MOTION_RAW_FIELD_KEYS,
+  FIGMA_RAW_NODE_FIELD_KEYS
+} from '@open-pencil/fig/node-change'
 import { parseSchema } from '@open-pencil/kiwi/schema-runtime'
 
 interface SchemaField {
@@ -31,14 +34,18 @@ type SchemaCoverageBucket =
 const SCHEMA_PATH = 'packages/kiwi/src/fig/schema/fig.kiwi'
 const CODEC_PATH = 'packages/kiwi/src/fig/codec.ts'
 
-function nodeChangeSchemaFields(): SchemaField[] {
+function schemaFields(definitionName: string): SchemaField[] {
   const schema = parseSchema(readFileSync(SCHEMA_PATH, 'utf8'))
-  const nodeChange = schema.definitions.find((definition) => definition.name === 'NodeChange')
-  if (!nodeChange) throw new Error('NodeChange message is missing from fig.kiwi')
-  return nodeChange.fields.map((field) => ({ name: field.name, type: field.type }))
+  const definition = schema.definitions.find((candidate) => candidate.name === definitionName)
+  if (!definition) throw new Error(`${definitionName} message is missing from fig.kiwi`)
+  return definition.fields.map((field) => ({ name: field.name, type: field.type }))
 }
 
-function modeledNodeChangeFields(): Set<string> {
+function nodeChangeSchemaFields(): SchemaField[] {
+  return schemaFields('NodeChange')
+}
+
+function modeledInterfaceFields(interfaceName: string): Set<string> {
   const source = ts.createSourceFile(
     CODEC_PATH,
     readFileSync(CODEC_PATH, 'utf8'),
@@ -48,7 +55,7 @@ function modeledNodeChangeFields(): Set<string> {
   const fields = new Set<string>()
 
   function visit(node: ts.Node): void {
-    if (ts.isInterfaceDeclaration(node) && node.name.text === 'NodeChange') {
+    if (ts.isInterfaceDeclaration(node) && node.name.text === interfaceName) {
       for (const member of node.members) {
         if (ts.isPropertySignature(member) && member.name && ts.isIdentifier(member.name)) {
           fields.add(member.name.text)
@@ -60,6 +67,10 @@ function modeledNodeChangeFields(): Set<string> {
 
   visit(source)
   return fields
+}
+
+function modeledNodeChangeFields(): Set<string> {
+  return modeledInterfaceFields('NodeChange')
 }
 
 function includesAny(value: string, parts: string[]): boolean {
@@ -353,6 +364,18 @@ function classifyField(
 }
 
 describe('Figma Kiwi schema coverage', () => {
+  test('models the Message-level objectAnimations field separately from NodeChange', () => {
+    const messageObjectAnimations = schemaFields('Message').find(
+      (field) => field.name === 'objectAnimations'
+    )
+
+    expect(messageObjectAnimations).toEqual({
+      name: 'objectAnimations',
+      type: 'ObjectAnimationList'
+    })
+    expect(modeledInterfaceFields('FigmaMessage').has('objectAnimations')).toBe(true)
+  })
+
   test('classifies every NodeChange schema field', () => {
     const modeled = modeledNodeChangeFields()
     const rawPreserved = new Set<string>(FIGMA_RAW_NODE_FIELD_KEYS)
@@ -375,19 +398,19 @@ describe('Figma Kiwi schema coverage', () => {
     ).toEqual({
       modeled: 112,
       schemaTag: 60,
-      internalBookkeeping: 17,
-      rawPreserved: 53,
-      styleLibraryMetadata: 39,
-      componentInstanceMetadata: 33,
+      internalBookkeeping: 16,
+      rawPreserved: 109,
+      styleLibraryMetadata: 36,
+      componentInstanceMetadata: 32,
       textMetadata: 23,
       slideFigjamMetadata: 39,
-      visualGeometryMetadata: 38,
-      layoutMetadata: 29,
-      prototypeConnectorMetadata: 32,
+      visualGeometryMetadata: 34,
+      layoutMetadata: 24,
+      prototypeConnectorMetadata: 11,
       variableDevMetadata: 14,
       widgetMetadata: 11,
       codeCmsAiMetadata: 67,
-      mediaMotionMetadata: 23
+      mediaMotionMetadata: 2
     })
   })
 
@@ -420,5 +443,9 @@ describe('Figma Kiwi schema coverage', () => {
     expect(covered('gridChildVerticalAlign')).toBe(true)
     expect(covered('gridChildHorizontalAlign')).toBe(true)
     expect(covered('slideThemeMap')).toBe(true)
+    expect(FIGMA_INTERACTION_MEDIA_MOTION_RAW_FIELD_KEYS).toHaveLength(59)
+    for (const field of FIGMA_INTERACTION_MEDIA_MOTION_RAW_FIELD_KEYS) {
+      expect(covered(field)).toBe(true)
+    }
   })
 })

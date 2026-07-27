@@ -518,11 +518,14 @@ function verifyFixture(spec: FixtureSpec): void {
       }
     })
 
-    test('G0->G1 schema bytes identical', async () => {
-      await ensureG1()
+    test('G0->G1->G2 schema bytes identical', async () => {
+      await ensureG2()
       const g1Chunks = parseFigKiwiChunks(unzipSync(g1Export)['canvas.fig'])
       if (!g1Chunks) throw new Error('G1 canvas.fig chunks not found')
-      expect(g1Chunks[0].byteLength).toBe(g0Chunks[0].byteLength)
+      const g2Chunks = parseFigKiwiChunks(unzipSync(g2Export)['canvas.fig'])
+      if (!g2Chunks) throw new Error('G2 canvas.fig chunks not found')
+      expect(g1Chunks[0]).toEqual(g0Chunks[0])
+      expect(g2Chunks[0]).toEqual(g0Chunks[0])
     })
 
     test('G1 export size', async () => {

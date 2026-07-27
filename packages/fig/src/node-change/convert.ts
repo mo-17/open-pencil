@@ -177,6 +177,22 @@ const NODE_TYPE_MAP: Record<string, NodeType | 'DOCUMENT' | 'VARIABLE'> = {
   SHAPE_WITH_TEXT: 'SHAPE_WITH_TEXT'
 }
 
+export const FIGMA_OPAQUE_NODE_TYPES = [
+  'MEDIA',
+  'EMBEDDED_PROTOTYPE',
+  'KEYFRAME',
+  'KEYFRAME_TRACK',
+  'ANIMATION_PRESET_INSTANCE'
+] as const
+
+export type FigmaOpaqueNodeType = (typeof FIGMA_OPAQUE_NODE_TYPES)[number]
+
+const FIGMA_OPAQUE_NODE_TYPE_SET: ReadonlySet<string> = new Set(FIGMA_OPAQUE_NODE_TYPES)
+
+export function isFigmaOpaqueNodeType(type: unknown): type is FigmaOpaqueNodeType {
+  return typeof type === 'string' && FIGMA_OPAQUE_NODE_TYPE_SET.has(type)
+}
+
 function mapNodeType(type?: string): NodeType | 'DOCUMENT' | 'VARIABLE' {
   if (type) return NODE_TYPE_MAP[type] ?? 'RECTANGLE'
   return 'RECTANGLE'
@@ -1002,17 +1018,20 @@ export function sortChildren(
   })
 }
 
-interface PreservedFigmaBlob {
+export interface PreservedFigmaBlob {
   __openPencilFigmaBlob: Uint8Array
 }
 
-function preserveFigmaPayloadBlobs(value: unknown, blobs: Uint8Array[]): unknown {
-  if (value instanceof Uint8Array) return value
+export function preserveFigmaPayloadBlobs(value: unknown, blobs: Uint8Array[]): unknown {
+  if (value instanceof Uint8Array) return new Uint8Array(value)
   if (Array.isArray(value)) return value.map((item) => preserveFigmaPayloadBlobs(item, blobs))
   if (!value || typeof value !== 'object') return value
   const result: Record<string, unknown> = {}
   for (const [key, child] of Object.entries(value)) {
-    if ((key === 'commandsBlob' || key === 'vectorNetworkBlob') && typeof child === 'number') {
+    if (
+      (key === 'commandsBlob' || key === 'vectorNetworkBlob' || key === 'dataBlob') &&
+      typeof child === 'number'
+    ) {
       const blob: unknown = blobs[child]
       if (blob == null) {
         result[key] = child
@@ -1020,7 +1039,7 @@ function preserveFigmaPayloadBlobs(value: unknown, blobs: Uint8Array[]): unknown
         result[key] = {
           __openPencilFigmaBlob:
             blob instanceof Uint8Array
-              ? blob
+              ? new Uint8Array(blob)
               : new Uint8Array(Object.values(blob as Record<string, number>))
         } satisfies PreservedFigmaBlob
       }
@@ -1030,6 +1049,74 @@ function preserveFigmaPayloadBlobs(value: unknown, blobs: Uint8Array[]): unknown
   }
   return result
 }
+
+/**
+ * Opaque interaction, media, and motion payloads shared by ordinary nodes and
+ * root/canvas importers. GUID references are intentionally retained verbatim;
+ * remapping them needs a schema-aware ownership policy rather than a generic
+ * recursive rewrite.
+ */
+export const FIGMA_INTERACTION_MEDIA_MOTION_RAW_FIELD_KEYS = [
+  'styleAnimations',
+  'transitionNodeID',
+  'prototypeStartNodeID',
+  'prototypeBackgroundColor',
+  'transitionInfo',
+  'transitionType',
+  'transitionDuration',
+  'easingType',
+  'scrollDirection',
+  'scrollOffset',
+  'scrollContractedState',
+  'transitionPreserveScroll',
+  'connectionType',
+  'connectionURL',
+  'prototypeDevice',
+  'scrollBehavior',
+  'interactionType',
+  'transitionTimeout',
+  'interactionMaintained',
+  'interactionDuration',
+  'destinationIsOverlay',
+  'transitionShouldSmartAnimate',
+  'prototypeInteractions',
+  'objectAnimations',
+  'navigationType',
+  'overlayPositionType',
+  'overlayRelativePosition',
+  'overlayBackgroundInteraction',
+  'overlayBackgroundAppearance',
+  'keyTrigger',
+  'voiceEventPhrase',
+  'prototypeStartingPoint',
+  'isEmbeddedPrototype',
+  'embedData',
+  'richMediaData',
+  'videoPlayback',
+  'behaviors',
+  'motionTransform',
+  'timelinePosition',
+  'keyframeValue',
+  'keyframeValueRef',
+  'interpolationType',
+  'bezierHandles',
+  'easingData',
+  'keyframeOperation',
+  'timelinePositionType',
+  'isClip',
+  'clipId',
+  'timelineDuration',
+  'timelineOffset',
+  'timelineDisabled',
+  'playbackStyle',
+  'timelineDefinitions',
+  'timelineAssignments',
+  'animationPresets',
+  'styleIdsForAnimation',
+  'backingAnimationPresetId',
+  'transitionOverrides',
+  'useLegacySmartAnimate'
+] as const satisfies readonly (keyof NodeChange)[]
 
 export const FIGMA_RAW_NODE_FIELD_KEYS = [
   'styleIdForFill',
@@ -1116,9 +1203,7 @@ export const FIGMA_RAW_NODE_FIELD_KEYS = [
   'strokePaints',
   'effects',
   'sectionStatusInfo',
-  'prototypeStartNodeID',
-  'prototypeInteractions',
-  'transitionInfo',
+  ...FIGMA_INTERACTION_MEDIA_MOTION_RAW_FIELD_KEYS,
   'codeSyntax',
   'lockMode',
   'slideThemeMap',
@@ -1134,13 +1219,28 @@ export const FIGMA_RAW_NODE_FIELD_KEYS = [
 function extractFigmaRawGeometry(
   nc: NodeChange,
   blobs: Uint8Array[]
-): Pick<SceneNode['source']['fig'], 'rawSize' | 'rawTransform' | 'rawNodeFields'> {
+): Pick<
+  SceneNode['source']['fig'],
+  'rawNodeType' | 'rawStructuralFieldPresence' | 'rawSize' | 'rawTransform' | 'rawNodeFields'
+> {
   const rawNodeFields: Record<string, unknown> = {}
   for (const key of FIGMA_RAW_NODE_FIELD_KEYS) {
     const value = nc[key]
     if (value !== undefined) rawNodeFields[key] = preserveFigmaPayloadBlobs(value, blobs)
   }
+  const rawNodeType = isFigmaOpaqueNodeType(nc.type) ? nc.type : null
   return {
+    rawNodeType,
+    rawStructuralFieldPresence: rawNodeType
+      ? {
+          name: nc.name !== undefined,
+          visible: nc.visible !== undefined,
+          opacity: nc.opacity !== undefined,
+          size: nc.size !== undefined,
+          transform: nc.transform !== undefined,
+          frameMaskDisabled: nc.frameMaskDisabled !== undefined
+        }
+      : null,
     rawSize: nc.size ? { ...nc.size } : null,
     rawTransform: nc.transform ? { ...nc.transform } : null,
     rawNodeFields

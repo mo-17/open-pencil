@@ -14,8 +14,11 @@ import {
   decodeVectorNetworkBlob,
   encodePathCommandsBlob,
   encodeVectorNetworkBlob,
+  FIGMA_OPAQUE_NODE_TYPES,
+  materializeFigmaPayload,
   mapTextDecoration,
   nodeChangeToProps,
+  preserveFigmaPayloadBlobs,
   setVariableColorResolver
 } from '../src/node-change'
 
@@ -55,7 +58,7 @@ describe('@open-pencil/fig NodeChange policy', () => {
     setVariableColorResolver(() => ({ r: 1, g: 0, b: 0, a: 0.4 }))
     try {
       const paint = {
-        type: 'SOLID',
+        type: 'SOLID' as const,
         color: { r: 0, g: 0, b: 0, a: 1 },
         colorVar: { value: { alias: { guid: { sessionID: 1, localID: 2 } } } }
       }
@@ -118,7 +121,7 @@ describe('@open-pencil/fig NodeChange policy', () => {
       ]
     )
 
-    expect(props.fillGeometry[0]?.windingRule).toBe('EVENODD')
+    expect(props.fillGeometry?.[0]?.windingRule).toBe('EVENODD')
   })
 
   test('round-trips vector network blobs with handle mirroring', () => {
@@ -161,5 +164,123 @@ describe('@open-pencil/fig NodeChange policy', () => {
       fields
     )
     expect(fields.fillPaints).toEqual([{ type: 'SOLID', visible: true }])
+  })
+
+  test('projects opaque Figma node types to rectangles while retaining their source type', () => {
+    expect(FIGMA_OPAQUE_NODE_TYPES).toHaveLength(5)
+    for (const type of FIGMA_OPAQUE_NODE_TYPES) {
+      const props = nodeChangeToProps({ type } as NodeChange, [])
+      expect(props.nodeType).toBe('RECTANGLE')
+      expect(props.source?.fig.rawNodeType).toBe(type)
+      expect(props.source?.fig.rawStructuralFieldPresence).toEqual({
+        name: false,
+        visible: false,
+        opacity: false,
+        size: false,
+        transform: false,
+        frameMaskDisabled: false
+      })
+    }
+  })
+
+  test('deep-clones motion payloads and materializes nested keyframe blobs', () => {
+    const glyphBlob = new Uint8Array([0x4d, 0x4f, 0x54, 0x4e])
+    const imageBlob = new Uint8Array([0x49, 0x4d, 0x47])
+    const keyframeValue = {
+      value: {
+        textDataValue: {
+          characters: '动',
+          glyphs: [
+            {
+              commandsBlob: 0,
+              position: { x: 1, y: 2 },
+              fontSize: 16,
+              firstCharacter: 0,
+              advance: 8,
+              rotation: 0
+            }
+          ]
+        }
+      },
+      valueType: 'TEXT_DATA'
+    }
+    const motionTransform = {
+      translation: { x: 12, y: 24 },
+      rotation: 0.5,
+      scale: { x: 1.2, y: 0.8 },
+      shearX: 0.1
+    }
+
+    const props = nodeChangeToProps(
+      {
+        type: 'RECTANGLE',
+        keyframeValue,
+        keyframeValueRef: {
+          value: {
+            imageValue: {
+              image: { hash: new Uint8Array([1, 2]), name: 'keyframe.png', dataBlob: 1 }
+            }
+          },
+          dataType: 'IMAGE',
+          resolvedDataType: 'IMAGE'
+        },
+        motionTransform
+      } as NodeChange,
+      [glyphBlob, imageBlob]
+    )
+    const raw = props.source?.fig.rawNodeFields
+    if (!raw) throw new Error('Expected raw Figma node fields to be preserved')
+    const preservedKeyframe = raw.keyframeValue as {
+      value: {
+        textDataValue: {
+          glyphs: Array<{ commandsBlob: { __openPencilFigmaBlob: Uint8Array } }>
+        }
+      }
+    }
+    const preservedTransform = raw?.motionTransform as typeof motionTransform
+    const preservedBlob =
+      preservedKeyframe.value.textDataValue.glyphs[0].commandsBlob.__openPencilFigmaBlob
+    const preservedImageBlob = (
+      raw.keyframeValueRef as {
+        value: {
+          imageValue: {
+            image: { dataBlob: { __openPencilFigmaBlob: Uint8Array } }
+          }
+        }
+      }
+    ).value.imageValue.image.dataBlob.__openPencilFigmaBlob
+
+    expect(preservedKeyframe).not.toBe(keyframeValue)
+    expect(preservedKeyframe.value).not.toBe(keyframeValue.value)
+    expect(preservedTransform).not.toBe(motionTransform)
+    expect(preservedBlob).not.toBe(glyphBlob)
+    expect(preservedBlob).toEqual(glyphBlob)
+    expect(preservedImageBlob).not.toBe(imageBlob)
+    expect(preservedImageBlob).toEqual(imageBlob)
+
+    glyphBlob[0] = 0
+    imageBlob[0] = 0
+    keyframeValue.value.textDataValue.characters = '改'
+    motionTransform.translation.x = 99
+    expect(preservedBlob).toEqual(new Uint8Array([0x4d, 0x4f, 0x54, 0x4e]))
+    expect(preservedImageBlob).toEqual(new Uint8Array([0x49, 0x4d, 0x47]))
+    const rawKeyframeValue = raw?.keyframeValue as
+      | { value: { textDataValue: { characters: string } } }
+      | undefined
+    expect(rawKeyframeValue?.value.textDataValue.characters).toBe('动')
+    expect(preservedTransform.translation.x).toBe(12)
+
+    const blobs: Uint8Array[] = []
+    const materialized = materializeFigmaPayload(preservedKeyframe, blobs, {
+      blobIndexByHex: new Map()
+    }) as typeof keyframeValue
+    expect(materialized.value.textDataValue.glyphs[0].commandsBlob).toBe(0)
+    expect(blobs).toEqual([new Uint8Array([0x4d, 0x4f, 0x54, 0x4e])])
+
+    const directClone = preserveFigmaPayloadBlobs({ bytes: preservedBlob }, []) as {
+      bytes: Uint8Array
+    }
+    expect(directClone.bytes).not.toBe(preservedBlob)
+    expect(directClone.bytes).toEqual(preservedBlob)
   })
 })

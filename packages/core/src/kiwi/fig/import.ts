@@ -7,6 +7,7 @@ import {
   guidToString,
   kiwiVariableFieldToBindingField,
   nodeChangeToProps,
+  preserveFigmaPayloadBlobs,
   shouldImportTextAsAutoSize,
   sortChildren,
   setVariableColorResolver
@@ -22,6 +23,10 @@ import {
   extractLowcodeAndPluginData,
   reapplyInstanceOverrides
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import {
+  FIGMA_CANVAS_METADATA_FIELD_KEYS,
+  FIGMA_DOCUMENT_METADATA_FIELD_KEYS
+} from '#core/kiwi/fig/root-metadata'
 
 type AssetRef = { key: string; version?: string }
 type AliasRef = { guid?: GUID; assetRef?: AssetRef }
@@ -56,27 +61,47 @@ function importedLowcodeProps(nc: NodeChange): {
 
 function applyImportedCanvasMetadata(
   page: ReturnType<SceneGraph['addPage']>,
-  canvasNc: NodeChange
+  canvasNc: NodeChange,
+  blobs: Uint8Array[]
 ) {
   page.source.format = 'fig'
   page.source.orderKey = canvasNc.parentIndex?.position ?? null
-  if (canvasNc.backgroundColor)
-    page.source.fig.rawNodeFields.backgroundColor = structuredClone(canvasNc.backgroundColor)
-  if (canvasNc.backgroundPaints)
-    page.source.fig.rawNodeFields.backgroundPaints = structuredClone(canvasNc.backgroundPaints)
-  if (canvasNc.guides) page.source.fig.rawNodeFields.guides = structuredClone(canvasNc.guides)
-  page.source.fig.rawNodeFields.strokeJoin = canvasNc.strokeJoin
-  page.source.fig.rawNodeFields.strokeWeight = canvasNc.strokeWeight
-  if (canvasNc.pageType) page.source.fig.rawNodeFields.pageType = canvasNc.pageType
+  preserveImportedRootMetadata(
+    page.source.fig.rawNodeFields,
+    canvasNc,
+    FIGMA_CANVAS_METADATA_FIELD_KEYS,
+    blobs
+  )
   Object.assign(page, importedLowcodeProps(canvasNc).props)
 }
 
-function applyImportedDocumentMetadata(graph: SceneGraph, docNc: NodeChange | undefined) {
+function preserveImportedRootMetadata(
+  target: Record<string, unknown>,
+  nodeChange: NodeChange,
+  fields: readonly (keyof NodeChange)[],
+  blobs: Uint8Array[]
+): void {
+  for (const field of fields) {
+    const value = nodeChange[field]
+    if (value === undefined) continue
+    target[field] = structuredClone(preserveFigmaPayloadBlobs(value, blobs))
+  }
+}
+
+function applyImportedDocumentMetadata(
+  graph: SceneGraph,
+  docNc: NodeChange | undefined,
+  blobs: Uint8Array[]
+) {
   const rootNode = graph.getNode(graph.rootId)
   if (!docNc || !rootNode) return
   rootNode.source.format = 'fig'
-  rootNode.source.fig.rawNodeFields.strokeJoin = docNc.strokeJoin
-  rootNode.source.fig.rawNodeFields.strokeWeight = docNc.strokeWeight
+  preserveImportedRootMetadata(
+    rootNode.source.fig.rawNodeFields,
+    docNc,
+    FIGMA_DOCUMENT_METADATA_FIELD_KEYS,
+    blobs
+  )
   Object.assign(rootNode, importedLowcodeProps(docNc).props)
 }
 
@@ -333,7 +358,8 @@ function importPages(
   childrenMap: Map<string, string[]>,
   created: Set<string>,
   canvasIdToPageId: Map<string, string>,
-  createSceneNode: (ncId: string, graphParentId: string) => void
+  createSceneNode: (ncId: string, graphParentId: string) => void,
+  blobs: Uint8Array[]
 ): void {
   let docId: string | null = null
   for (const [id, nc] of changeMap) {
@@ -344,7 +370,7 @@ function importPages(
   }
 
   if (docId) {
-    applyImportedDocumentMetadata(graph, changeMap.get(docId))
+    applyImportedDocumentMetadata(graph, changeMap.get(docId), blobs)
 
     for (const canvasId of childrenMap.get(docId) ?? []) {
       const canvasNc = changeMap.get(canvasId)
@@ -352,7 +378,7 @@ function importPages(
       if (canvasNc.type === 'CANVAS') {
         const page = graph.addPage(canvasNc.name ?? 'Page')
         page.source.id = canvasId
-        applyImportedCanvasMetadata(page, canvasNc)
+        applyImportedCanvasMetadata(page, canvasNc, blobs)
         canvasIdToPageId.set(canvasId, page.id)
         if (canvasNc.internalOnly) page.internalOnly = true
         created.add(canvasId)
@@ -532,7 +558,16 @@ export function importNodeChanges(
     }
   }
 
-  importPages(graph, changeMap, parentMap, childrenMap, created, canvasIdToPageId, createSceneNode)
+  importPages(
+    graph,
+    changeMap,
+    parentMap,
+    childrenMap,
+    created,
+    canvasIdToPageId,
+    createSceneNode,
+    blobs
+  )
 
   importCollections(changeMap, graph)
   importVariableEntries(changeMap, parentMap, graph, assetRefs)

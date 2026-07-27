@@ -26,6 +26,7 @@ export interface SerializedSceneGraph {
   instanceIndex: Array<[string, string[]]>
   figKiwiVersion: number | null
   figSchemaDeflated: Uint8Array | null
+  figMessageObjectAnimations: unknown
   documentColorSpace: DocumentColorSpace
   lazyFigImport?: SerializedLazyFigImportContext
 }
@@ -42,6 +43,7 @@ export function serializeSceneGraph(graph: SceneGraph): SerializedSceneGraph {
     instanceIndex: [...graph.instanceIndex].map(([id, nodeIds]) => [id, [...nodeIds]]),
     figKiwiVersion: graph.figKiwiVersion,
     figSchemaDeflated: graph.figSchemaDeflated,
+    figMessageObjectAnimations: graph.figMessageObjectAnimations,
     documentColorSpace: graph.documentColorSpace,
     lazyFigImport: lazyFigImport
       ? {
@@ -97,6 +99,7 @@ export function deserializeSceneGraph(data: SerializedSceneGraph): SceneGraph {
   graph.instanceIndex = new Map(data.instanceIndex.map(([id, nodeIds]) => [id, new Set(nodeIds)]))
   graph.figKiwiVersion = data.figKiwiVersion
   graph.figSchemaDeflated = data.figSchemaDeflated
+  graph.figMessageObjectAnimations = data.figMessageObjectAnimations
   graph.documentColorSpace = data.documentColorSpace
   if (data.lazyFigImport) {
     setLazyFigImportContext(graph, {
