@@ -40,22 +40,22 @@ export function createNodeActions(ctx: EditorContext) {
       ...changes,
       ...textAutoResizeChanges(node, changes)
     })
-    const previous = pick(
-      node,
-      Object.keys(nextChanges) as (keyof SceneNode)[]
-    ) as Partial<SceneNode>
-    ctx.graph.updateNode(id, nextChanges)
-    ctx.runLayoutForNode(id)
+    const keys = Object.keys(nextChanges) as (keyof SceneNode)[]
+    const previous = pick(node, keys) as Partial<SceneNode>
+    const apply = (patch: Partial<SceneNode>) => {
+      const clearKeys = keys.filter((key) => patch[key] === undefined)
+      const setPatch = Object.fromEntries(
+        keys.filter((key) => patch[key] !== undefined).map((key) => [key, patch[key]])
+      ) as Partial<SceneNode>
+      if (Object.keys(setPatch).length > 0) ctx.graph.updateNode(id, setPatch)
+      if (clearKeys.length > 0) ctx.graph.clearNodeFields(id, clearKeys)
+      ctx.runLayoutForNode(id)
+    }
+    apply(nextChanges)
     ctx.undo.push({
       label,
-      forward: () => {
-        ctx.graph.updateNode(id, nextChanges)
-        ctx.runLayoutForNode(id)
-      },
-      inverse: () => {
-        ctx.graph.updateNode(id, previous)
-        ctx.runLayoutForNode(id)
-      }
+      forward: () => apply(nextChanges),
+      inverse: () => apply(previous)
     })
     ctx.requestRender()
   }

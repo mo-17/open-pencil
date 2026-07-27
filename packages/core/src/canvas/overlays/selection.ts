@@ -93,6 +93,7 @@ export function drawSelection(
   selectedIds: Set<string>,
   overlays: RenderOverlays
 ): void {
+  // MotionVisualState is deliberately ignored in v1: editor chrome reflects authored geometry.
   if (selectedIds.size === 0) return
   const nodeEditId = overlays.nodeEditState?.nodeId ?? null
 

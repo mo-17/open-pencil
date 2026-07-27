@@ -12,5 +12,7 @@ export type {
   EditorOptions,
   EditorState,
   FigmaClipboardImageResolver,
+  MotionPreviewState,
+  MotionPreviewTarget,
   Tool
 } from './types'

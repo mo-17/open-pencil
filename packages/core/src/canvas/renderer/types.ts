@@ -2,6 +2,7 @@ import type { VectorRegion, VectorVertex } from '@open-pencil/scene-graph'
 import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
+import type { MotionVisualState } from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
 
 export interface RulerTheme {
@@ -12,6 +13,8 @@ export interface RulerTheme {
 }
 
 export interface RenderOverlays {
+  /** Ephemeral scene-only motion deltas; absent from static render/export paths. */
+  motionVisualStates?: ReadonlyMap<string, MotionVisualState>
   hoveredNodeId?: string | null
   enteredContainerId?: string | null
   editingTextId?: string | null

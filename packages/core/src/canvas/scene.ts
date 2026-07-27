@@ -3,9 +3,10 @@ import type { Canvas, Path } from 'canvaskit-wasm'
 
 import type { SceneNode, SceneGraph, Fill } from '@open-pencil/scene-graph'
 import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
-import type { Color } from '@open-pencil/scene-graph/primitives'
+import type { Color, Rect } from '@open-pencil/scene-graph/primitives'
 
 import { DROP_HIGHLIGHT_ALPHA, DROP_HIGHLIGHT_STROKE, SECTION_CORNER_RADIUS } from '#core/constants'
+import { MOTION_VISUAL_IDENTITY, type MotionVisualState } from '#core/motion'
 import { transformTextCase } from '#core/text/case'
 import { fontManager } from '#core/text/fonts'
 import { vectorNetworkToCenterlinePath } from '#core/vector'
@@ -44,7 +45,49 @@ function drawVisibleFills(
     r.fillPaint.setBlendMode(r.ck.BlendMode.SrcOver)
   }
 }
-function isCulled(r: SkiaRenderer, node: SceneNode, absX: number, absY: number): boolean {
+function motionVisual(overlays: RenderOverlays, nodeId: string): MotionVisualState {
+  return overlays.motionVisualStates?.get(nodeId) ?? MOTION_VISUAL_IDENTITY
+}
+
+function hasMotionGeometry(visual: MotionVisualState): boolean {
+  return (
+    visual.x !== 0 ||
+    visual.y !== 0 ||
+    visual.scaleX !== 1 ||
+    visual.scaleY !== 1 ||
+    visual.rotate !== 0
+  )
+}
+
+function hasMotionScaleOrRotation(visual: MotionVisualState): boolean {
+  return visual.scaleX !== 1 || visual.scaleY !== 1 || visual.rotate !== 0
+}
+
+function subtreeHasMotionGeometry(
+  graph: SceneGraph,
+  nodeId: string,
+  overlays: RenderOverlays
+): boolean {
+  const states = overlays.motionVisualStates
+  if (!states || states.size === 0) return false
+  for (const [targetId, visual] of states) {
+    if (!hasMotionGeometry(visual)) continue
+    let current = graph.getNode(targetId)
+    while (current) {
+      if (current.id === nodeId) return true
+      current = current.parentId ? graph.getNode(current.parentId) : undefined
+    }
+  }
+  return false
+}
+
+function isCulled(
+  r: SkiaRenderer,
+  node: SceneNode,
+  absX: number,
+  absY: number,
+  visual: MotionVisualState
+): boolean {
   const canCull =
     node.childIds.length === 0 ||
     ((node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE') &&
@@ -52,12 +95,14 @@ function isCulled(r: SkiaRenderer, node: SceneNode, absX: number, absY: number):
   if (!canCull) return false
 
   const vp = r.worldViewport
-  const bw = node.width
-  const bh = node.height
-  if (node.rotation !== 0) {
+  const bw = node.width * Math.abs(visual.scaleX)
+  const bh = node.height * Math.abs(visual.scaleY)
+  const scaledX = absX + (node.width - bw) / 2
+  const scaledY = absY + (node.height - bh) / 2
+  if (node.rotation + visual.rotate !== 0) {
     const diag = Math.hypot(bw, bh)
-    const cx = absX + bw / 2
-    const cy = absY + bh / 2
+    const cx = absX + node.width / 2
+    const cy = absY + node.height / 2
     return (
       cx - diag / 2 > vp.x + vp.w ||
       cy - diag / 2 > vp.y + vp.h ||
@@ -65,7 +110,9 @@ function isCulled(r: SkiaRenderer, node: SceneNode, absX: number, absY: number):
       cy + diag / 2 < vp.y
     )
   }
-  return absX > vp.x + vp.w || absY > vp.y + vp.h || absX + bw < vp.x || absY + bh < vp.y
+  return (
+    scaledX > vp.x + vp.w || scaledY > vp.y + vp.h || scaledX + bw < vp.x || scaledY + bh < vp.y
+  )
 }
 
 function applyNodeTransforms(
@@ -73,7 +120,8 @@ function applyNodeTransforms(
   canvas: Canvas,
   node: SceneNode,
   nodeId: string,
-  overlays: RenderOverlays
+  overlays: RenderOverlays,
+  visual: MotionVisualState
 ): void {
   const rotation =
     overlays.rotationPreview?.nodeId === nodeId ? overlays.rotationPreview.angle : node.rotation
@@ -85,6 +133,15 @@ function applyNodeTransforms(
   if (node.flipX || node.flipY) {
     canvas.translate(node.flipX ? node.width : 0, node.flipY ? node.height : 0)
     canvas.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1)
+  }
+
+  if (visual.rotate !== 0) {
+    canvas.rotate(visual.rotate, node.width / 2, node.height / 2)
+  }
+  if (visual.scaleX !== 1 || visual.scaleY !== 1) {
+    canvas.translate(node.width / 2, node.height / 2)
+    canvas.scale(visual.scaleX, visual.scaleY)
+    canvas.translate(-node.width / 2, -node.height / 2)
   }
 }
 function renderNodeContent(
@@ -124,11 +181,40 @@ function renderMaskNodeContent(
   nodeId: string,
   overlays: RenderOverlays
 ): void {
+  const visual = motionVisual(overlays, nodeId)
+  const opacity = Math.min(1, Math.max(0, node.opacity * visual.opacity))
   canvas.save()
-  canvas.translate(node.x, node.y)
-  applyNodeTransforms(r, canvas, node, nodeId, overlays)
+  canvas.translate(node.x + visual.x, node.y + visual.y)
+  if (opacity < 1) {
+    r.opacityPaint.setAlphaf(opacity)
+    r.opacityPaint.setBlendMode(r.ck.BlendMode.SrcOver)
+    canvas.saveLayer(r.opacityPaint, null)
+  }
+  applyNodeTransforms(r, canvas, node, nodeId, overlays, visual)
   renderNodeContent(r, canvas, graph, node, nodeId, {})
+  if (opacity < 1) {
+    canvas.restore()
+    r.opacityPaint.setAlphaf(1)
+  }
   canvas.restore()
+}
+
+function motionBounds(node: SceneNode, overlays: RenderOverlays): Rect {
+  const visual = motionVisual(overlays, node.id)
+  const width = node.width * Math.abs(visual.scaleX)
+  const height = node.height * Math.abs(visual.scaleY)
+  const centerX = node.x + visual.x + node.width / 2
+  const centerY = node.y + visual.y + node.height / 2
+  if (node.rotation + visual.rotate !== 0) {
+    const diagonal = Math.hypot(width, height)
+    return {
+      x: centerX - diagonal / 2,
+      y: centerY - diagonal / 2,
+      width: diagonal,
+      height: diagonal
+    }
+  }
+  return { x: centerX - width / 2, y: centerY - height / 2, width, height }
 }
 
 function renderChildIds(
@@ -138,7 +224,8 @@ function renderChildIds(
   childIds: string[],
   overlays: RenderOverlays,
   absX: number,
-  absY: number
+  absY: number,
+  ancestorHasMotionTransform: boolean
 ): void {
   renderMaskedChildIds(
     r,
@@ -148,7 +235,8 @@ function renderChildIds(
       const child = graph.getNode(childId)
       return child?.visible && child.isMask ? child.maskType : null
     },
-    (childId) => r.renderNode(canvas, graph, childId, overlays, absX, absY),
+    (childId) =>
+      r.renderNode(canvas, graph, childId, overlays, absX, absY, ancestorHasMotionTransform),
     (childId) => {
       const child = graph.getNode(childId)
       if (child) renderMaskNodeContent(r, canvas, graph, child, childId, overlays)
@@ -156,7 +244,7 @@ function renderChildIds(
     (childId) => {
       const child = graph.getNode(childId)
       if (!child) return null
-      return { x: child.x, y: child.y, width: child.width, height: child.height }
+      return motionBounds(child, overlays)
     }
   )
 }
@@ -168,7 +256,8 @@ function renderChildren(
   node: SceneNode,
   overlays: RenderOverlays,
   absX: number,
-  absY: number
+  absY: number,
+  ancestorHasMotionTransform: boolean
 ): void {
   if (node.type === 'BOOLEAN_OPERATION') return
   const isClippableContainer =
@@ -188,12 +277,113 @@ function renderChildren(
     } else {
       canvas.clipRect(r.ck.LTRBRect(0, 0, node.width, node.height), r.ck.ClipOp.Intersect, true)
     }
-    renderChildIds(r, canvas, graph, node.childIds, overlays, absX, absY)
+    renderChildIds(
+      r,
+      canvas,
+      graph,
+      node.childIds,
+      overlays,
+      absX,
+      absY,
+      ancestorHasMotionTransform
+    )
     canvas.restore()
   } else {
-    renderChildIds(r, canvas, graph, node.childIds, overlays, absX, absY)
+    renderChildIds(
+      r,
+      canvas,
+      graph,
+      node.childIds,
+      overlays,
+      absX,
+      absY,
+      ancestorHasMotionTransform
+    )
   }
 }
+
+function beginNodeOpacityLayer(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  node: SceneNode,
+  nodeId: string,
+  overlays: RenderOverlays,
+  visual: MotionVisualState
+): boolean {
+  const effectiveOpacity = Math.min(1, Math.max(0, node.opacity * visual.opacity))
+  const needsLayer = effectiveOpacity < 1 || needsIsolatedBlendLayer(node.blendMode)
+  if (!needsLayer) return false
+
+  const bounds = computeDescendantVisualBounds(
+    [nodeId],
+    (id) => graph.getNode(id) ?? undefined,
+    (id) => graph.getAbsolutePosition(id)
+  )
+  // Only this subtree can invalidate the authored compositing bounds. Motion elsewhere
+  // on the canvas must not turn every isolated layer into an unbounded saveLayer.
+  const hasAnimatedGeometry = subtreeHasMotionGeometry(graph, nodeId, overlays)
+  const authoredPosition = graph.getAbsolutePosition(nodeId)
+  let layerBounds: Parameters<Canvas['saveLayer']>[1]
+  if (hasAnimatedGeometry) {
+    layerBounds = null
+  } else if (bounds) {
+    layerBounds = r.ck.LTRBRect(
+      bounds.minX - authoredPosition.x,
+      bounds.minY - authoredPosition.y,
+      bounds.maxX - authoredPosition.x,
+      bounds.maxY - authoredPosition.y
+    )
+  } else {
+    layerBounds = r.ck.LTRBRect(0, 0, node.width, node.height)
+  }
+  r.opacityPaint.setAlphaf(effectiveOpacity)
+  r.opacityPaint.setBlendMode(figmaBlendModeToSkia(r.ck, node.blendMode))
+  canvas.saveLayer(r.opacityPaint, layerBounds)
+  return true
+}
+
+function endNodeOpacityLayer(r: SkiaRenderer, canvas: Canvas, active: boolean): void {
+  if (!active) return
+  canvas.restore()
+  r.opacityPaint.setAlphaf(1)
+  r.opacityPaint.setBlendMode(r.ck.BlendMode.SrcOver)
+}
+
+function beginNodeBlurLayer(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  node: SceneNode,
+  nodeId: string,
+  overlays: RenderOverlays
+): boolean {
+  const layerBlur = node.effects.find(
+    (effect) =>
+      effect.visible && (effect.type === 'LAYER_BLUR' || effect.type === 'FOREGROUND_BLUR')
+  )
+  if (!layerBlur) return false
+
+  r.effectLayerPaint.setImageFilter(null)
+  r.effectLayerPaint.setColorFilter(null)
+  r.effectLayerPaint.setBlendMode(r.ck.BlendMode.SrcOver)
+  r.effectLayerPaint.setImageFilter(r.getCachedBlur(layerBlur.radius / 2))
+  const blurPadding = layerBlur.radius * 2
+  const blurBounds = subtreeHasMotionGeometry(graph, nodeId, overlays)
+    ? null
+    : r.ck.LTRBRect(-blurPadding, -blurPadding, node.width + blurPadding, node.height + blurPadding)
+  canvas.saveLayer(r.effectLayerPaint, blurBounds)
+  return true
+}
+
+function endNodeBlurLayer(r: SkiaRenderer, canvas: Canvas, active: boolean): void {
+  if (!active) return
+  canvas.restore()
+  r.effectLayerPaint.setImageFilter(null)
+  r.effectLayerPaint.setColorFilter(null)
+  r.effectLayerPaint.setBlendMode(r.ck.BlendMode.SrcOver)
+}
+
 export function renderNode(
   r: SkiaRenderer,
   canvas: Canvas,
@@ -201,7 +391,8 @@ export function renderNode(
   nodeId: string,
   overlays: RenderOverlays,
   parentAbsX = 0,
-  parentAbsY = 0
+  parentAbsY = 0,
+  ancestorHasMotionTransform = false
 ): void {
   const node = graph.getNode(nodeId)
   if (
@@ -219,71 +410,37 @@ export function renderNode(
 
   r._nodeCount++
 
-  const absX = parentAbsX + node.x
-  const absY = parentAbsY + node.y
+  const visual = motionVisual(overlays, nodeId)
+  const absX = parentAbsX + node.x + visual.x
+  const absY = parentAbsY + node.y + visual.y
 
-  if (isCulled(r, node, absX, absY)) {
+  if (!ancestorHasMotionTransform && isCulled(r, node, absX, absY, visual)) {
     r._culledCount++
     return
   }
 
   canvas.save()
-  canvas.translate(node.x, node.y)
+  canvas.translate(node.x + visual.x, node.y + visual.y)
 
-  const needsNodeLayer = node.opacity < 1 || needsIsolatedBlendLayer(node.blendMode)
-  if (needsNodeLayer) {
-    const bounds = computeDescendantVisualBounds(
-      [nodeId],
-      (id) => graph.getNode(id) ?? undefined,
-      (id) => graph.getAbsolutePosition(id)
-    )
-    const layerBounds = bounds
-      ? r.ck.LTRBRect(
-          bounds.minX - absX,
-          bounds.minY - absY,
-          bounds.maxX - absX,
-          bounds.maxY - absY
-        )
-      : r.ck.LTRBRect(0, 0, node.width, node.height)
-    r.opacityPaint.setAlphaf(node.opacity)
-    r.opacityPaint.setBlendMode(figmaBlendModeToSkia(r.ck, node.blendMode))
-    canvas.saveLayer(r.opacityPaint, layerBounds)
-  }
+  const hasNodeLayer = beginNodeOpacityLayer(r, canvas, graph, node, nodeId, overlays, visual)
+  const hasBlurLayer = beginNodeBlurLayer(r, canvas, graph, node, nodeId, overlays)
 
-  const layerBlur = node.effects.find(
-    (e) => e.visible && (e.type === 'LAYER_BLUR' || e.type === 'FOREGROUND_BLUR')
-  )
-  if (layerBlur) {
-    // Entry guard: reset shared paint to known state
-    r.effectLayerPaint.setImageFilter(null)
-    r.effectLayerPaint.setColorFilter(null)
-    r.effectLayerPaint.setBlendMode(r.ck.BlendMode.SrcOver)
-
-    r.effectLayerPaint.setImageFilter(r.getCachedBlur(layerBlur.radius / 2))
-    const blurPadding = layerBlur.radius * 2
-    canvas.saveLayer(
-      r.effectLayerPaint,
-      r.ck.LTRBRect(-blurPadding, -blurPadding, node.width + blurPadding, node.height + blurPadding)
-    )
-  }
-
-  applyNodeTransforms(r, canvas, node, nodeId, overlays)
+  applyNodeTransforms(r, canvas, node, nodeId, overlays, visual)
   renderNodeContent(r, canvas, graph, node, nodeId, overlays)
   drawLayoutGrids(r, canvas, node)
-  renderChildren(r, canvas, graph, node, overlays, absX, absY)
+  renderChildren(
+    r,
+    canvas,
+    graph,
+    node,
+    overlays,
+    absX,
+    absY,
+    ancestorHasMotionTransform || hasMotionScaleOrRotation(visual)
+  )
 
-  if (layerBlur) {
-    canvas.restore()
-    // Exit guard: ensure shared paint is in clean state
-    r.effectLayerPaint.setImageFilter(null)
-    r.effectLayerPaint.setColorFilter(null)
-    r.effectLayerPaint.setBlendMode(r.ck.BlendMode.SrcOver)
-  }
-  if (needsNodeLayer) {
-    canvas.restore()
-    r.opacityPaint.setAlphaf(1)
-    r.opacityPaint.setBlendMode(r.ck.BlendMode.SrcOver)
-  }
+  endNodeBlurLayer(r, canvas, hasBlurLayer)
+  endNodeOpacityLayer(r, canvas, hasNodeLayer)
   canvas.restore()
 }
 

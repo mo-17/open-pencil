@@ -41,6 +41,7 @@ import ValidationPanel from './properties/Lowcode/ValidationPanel.vue'
 import ValueBindingPanel from './properties/Lowcode/ValueBindingPanel.vue'
 import WorkflowsPanel from './properties/Lowcode/WorkflowsPanel.vue'
 import MaskSection from './properties/MaskSection.vue'
+import MotionSection from './properties/MotionSection.vue'
 import PageSection from './properties/PageSection.vue'
 import ConstraintsSection from './properties/constraints/ConstraintsSection.vue'
 import PositionSection from './properties/PositionSection.vue'
@@ -146,6 +147,7 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
     'text',
     'color'
   ],
+  motion: ['motion', 'animation', 'transition', 'keyframe', 'preset', '动效', '动画'],
   'lowcode-bindings': [
     'lowcode',
     'binding',
@@ -211,12 +213,14 @@ const showMultiComponent = computed(
 )
 const showMultiPosition = computed(() => sectionMatches('position', panels.value.position))
 const showMultiAppearance = computed(() => sectionMatches('appearance', panels.value.appearance))
+const showMultiMotion = computed(() => sectionMatches('motion', panels.value.motion))
 const showMultiExport = computed(() => sectionMatches('export', panels.value.export))
 const multiHasMatches = computed(
   () =>
     showMultiComponent.value ||
     showMultiPosition.value ||
     showMultiAppearance.value ||
+    showMultiMotion.value ||
     showMultiExport.value
 )
 
@@ -230,6 +234,7 @@ const showSingleComponent = computed(
   () => node.value?.type === 'INSTANCE' && sectionMatches('component', 'Component')
 )
 const showSingleAppearance = computed(() => sectionMatches('appearance', panels.value.appearance))
+const showSingleMotion = computed(() => sectionMatches('motion', panels.value.motion))
 const showSingleLowcodeBindings = computed(
   () => hasLowcodeBindings.value && sectionMatches('lowcode-bindings', 'Bindings')
 )
@@ -247,6 +252,7 @@ const singleHasMatches = computed(
     showSingleLayout.value ||
     showSingleComponent.value ||
     showSingleAppearance.value ||
+    showSingleMotion.value ||
     showSingleLowcodeBindings.value ||
     showSingleLowcodeEvents.value ||
     showSingleLowcodeValidation.value ||
@@ -331,6 +337,14 @@ const emptyHasMatches = computed(
       <FillSection />
       <StrokeSection />
       <EffectsSection />
+    </InspectorSection>
+    <InspectorSection
+      v-show="showMultiMotion"
+      id="motion"
+      :label="panels.motion"
+      :highlighted="sectionHighlighted('motion', panels.motion)"
+    >
+      <MotionSection />
     </InspectorSection>
     <InspectorSection
       v-show="showMultiExport"
@@ -433,6 +447,15 @@ const emptyHasMatches = computed(
       <FillSection />
       <StrokeSection />
       <EffectsSection />
+    </InspectorSection>
+
+    <InspectorSection
+      v-show="showSingleMotion"
+      id="motion"
+      :label="panels.motion"
+      :highlighted="sectionHighlighted('motion', panels.motion)"
+    >
+      <MotionSection />
     </InspectorSection>
 
     <InspectorSection

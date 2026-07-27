@@ -5,6 +5,7 @@ export { randomHex, randomInt, randomIndex } from './random'
 
 export * from './constants'
 export * from './lowcode-deployment'
+export * from './motion'
 
 export { createDefaultEditorState, createEditor, EDITOR_TOOLS, TOOL_SHORTCUTS } from './editor'
 export type {
@@ -15,6 +16,8 @@ export type {
   EditorState,
   EditorToolDef,
   FigmaClipboardImageResolver,
+  MotionPreviewState,
+  MotionPreviewTarget,
   Tool
 } from './editor'
 

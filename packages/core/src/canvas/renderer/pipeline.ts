@@ -54,6 +54,7 @@ export function renderFromEditorState(
     graph,
     state.selectedIds,
     {
+      motionVisualStates: state.motionPreview?.visuals,
       hoveredNodeId: state.hoveredNodeId,
       enteredContainerId: state.enteredContainerId,
       editingTextId: state.editingTextId,
@@ -79,8 +80,9 @@ export function renderFromEditorState(
   )
 }
 
-function hasVolatileOverlay(overlays: RenderOverlays): boolean {
+export function hasVolatileOverlay(overlays: RenderOverlays): boolean {
   return (
+    (overlays.motionVisualStates?.size ?? 0) > 0 ||
     overlays.dropTargetId != null ||
     overlays.rotationPreview != null ||
     overlays.editingTextId != null ||
@@ -228,6 +230,7 @@ export function render(
     )
     r.drawEnteredContainer(canvas, graph, overlays.enteredContainerId)
     p.beginPhase('render:selection')
+    // Motion preview is scene-only in v1; selection chrome stays on authored bounds.
     r.drawSelection(canvas, graph, selectedIds, overlays)
     p.endPhase('render:selection')
     r.drawFlashes(canvas, graph)

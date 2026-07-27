@@ -24,6 +24,7 @@ import { createComponentActions } from './components'
 import { createGraphEventSubscription } from './graph-events'
 import { createGraphReadActions } from './graph-reads'
 import { createLayoutRunner } from './layout-runner'
+import { createMotionPreviewActions } from './motion-preview'
 import { createNodeActions } from './nodes'
 import { createPageActions } from './pages'
 import { createSelectionActions } from './selection'
@@ -55,6 +56,12 @@ export function createEditor(options?: EditorOptions) {
       if (IS_BROWSER) return { width: window.innerWidth, height: window.innerHeight }
       return { width: 800, height: 600 }
     })
+  const _prefersReducedMotion =
+    options?.prefersReducedMotion ??
+    (() =>
+      IS_BROWSER &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   let _ck: CanvasKit | null = null
   let _renderer: SkiaRenderer | null = null
   const _renderers = new Set<SkiaRenderer>()
@@ -140,6 +147,7 @@ export function createEditor(options?: EditorOptions) {
     loadFont: _loadFont,
     resolveFigmaClipboardImages: options?.resolveFigmaClipboardImages ?? null,
     getViewportSize: _getViewportSize,
+    prefersReducedMotion: _prefersReducedMotion,
     getCk: () => _ck,
     getRenderer: () => _renderer,
     getTextEditor: () => _textEditor,
@@ -164,6 +172,7 @@ export function createEditor(options?: EditorOptions) {
   const undoActions = createUndoActions(ctx)
   const text = createTextActions(ctx)
   const nodes = createNodeActions(ctx)
+  const motionPreview = createMotionPreviewActions(ctx)
   const variables = createVariableActions(ctx)
   const alignment = createAlignmentActions(ctx)
   const clipboardBridge = createClipboardBridge(clipboard, selection)
@@ -197,6 +206,7 @@ export function createEditor(options?: EditorOptions) {
     state.currentPageId = _graph.getPages()[0]?.id ?? _graph.rootId
     setSelectedIds(new Set())
     state.hoveredNodeId = null
+    state.motionPreview = null
     pages.clearPageViewports()
     emitEditorEvent('graph:replaced', _graph)
     if (previousPageId !== state.currentPageId) {
@@ -247,6 +257,9 @@ export function createEditor(options?: EditorOptions) {
 
     // Nodes (update, layout)
     ...nodes,
+
+    // Ephemeral motion preview (never mutates the SceneGraph)
+    ...motionPreview,
 
     // Alignment (align, flip, rotate)
     ...alignment,

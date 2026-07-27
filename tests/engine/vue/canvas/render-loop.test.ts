@@ -6,7 +6,14 @@ import { createCanvasRenderLoop } from '#vue/canvas/surface/render-loop'
 
 type EditorEventName = keyof EditorEvents
 
-type TestEditor = Pick<Editor, 'state' | 'onEditorEvent'>
+type TestEditor = Pick<
+  Editor,
+  | 'state'
+  | 'onEditorEvent'
+  | 'isMotionPreviewActive'
+  | 'updateMotionPreviewFrame'
+  | 'stopMotionPreview'
+>
 
 function createFrameScheduler() {
   let nextId = 1
@@ -27,10 +34,10 @@ function createFrameScheduler() {
     get pendingCount() {
       return callbacks.size
     },
-    flush() {
+    flush(timestampMs = 0) {
       const pending = [...callbacks]
       callbacks.clear()
-      for (const [id, callback] of pending) callback(id)
+      for (const [, callback] of pending) callback(timestampMs)
     },
     restore() {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame
@@ -41,6 +48,10 @@ function createFrameScheduler() {
 
 function createEditor() {
   const handlers = new Map<EditorEventName, Set<(...args: never[]) => void>>()
+  let motionActive = false
+  let motionResults: boolean[] = []
+  const motionTimestamps: number[] = []
+  let motionStops = 0
   const editor: TestEditor = {
     state: {
       loading: false,
@@ -52,6 +63,18 @@ function createEditor() {
       listeners.add(handler as (...args: never[]) => void)
       handlers.set(event, listeners)
       return () => listeners.delete(handler as (...args: never[]) => void)
+    },
+    isMotionPreviewActive() {
+      return motionActive
+    },
+    updateMotionPreviewFrame(timestampMs) {
+      motionTimestamps.push(timestampMs)
+      return motionResults.shift() ?? true
+    },
+    stopMotionPreview() {
+      motionActive = false
+      motionStops++
+      for (const handler of handlers.get('repaint:requested') ?? []) handler()
     }
   }
 
@@ -59,6 +82,14 @@ function createEditor() {
     editor: editor as Editor,
     emit(event: EditorEventName) {
       for (const handler of handlers.get(event) ?? []) handler()
+    },
+    startMotion(results: boolean[]) {
+      motionActive = true
+      motionResults = [...results]
+    },
+    motionTimestamps,
+    get motionStops() {
+      return motionStops
     }
   }
 }
@@ -202,6 +233,53 @@ describe('canvas render loop', () => {
       emit('render:requested')
       scheduler.flush()
       expect(renders).toBe(0)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('renders every active motion frame and clears finite playback after its final frame', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const harness = createEditor()
+      let renders = 0
+      createCanvasRenderLoop(harness.editor, () => renders++)
+      harness.startMotion([true, false])
+
+      harness.emit('repaint:requested')
+      scheduler.flush(1_000)
+      expect(renders).toBe(1)
+      expect(scheduler.pendingCount).toBe(1)
+
+      scheduler.flush(1_016)
+      expect(renders).toBe(2)
+      expect(harness.motionStops).toBe(1)
+      expect(harness.motionTimestamps).toEqual([1_000, 1_016])
+
+      // stopMotionPreview requests one authored-state repaint after the final sampled frame.
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.flush(1_032)
+      expect(renders).toBe(3)
+      expect(scheduler.pendingCount).toBe(0)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('keeps overlay-only surfaces from advancing shared motion state', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const harness = createEditor()
+      let renders = 0
+      createCanvasRenderLoop(harness.editor, () => renders++, { layer: 'overlays' })
+      harness.startMotion([true])
+
+      harness.emit('repaint:requested')
+      scheduler.flush(500)
+
+      expect(renders).toBe(1)
+      expect(harness.motionTimestamps).toEqual([])
+      expect(scheduler.pendingCount).toBe(0)
     } finally {
       scheduler.restore()
     }

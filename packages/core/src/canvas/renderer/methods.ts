@@ -151,9 +151,19 @@ const rendererMethods: ThisType<SkiaRenderer> = {
     nodeId: string,
     overlays: RenderOverlays,
     parentAbsX?: number,
-    parentAbsY?: number
+    parentAbsY?: number,
+    ancestorHasMotionTransform?: boolean
   ): void {
-    SceneRender.renderNode(this, canvas, graph, nodeId, overlays, parentAbsX, parentAbsY)
+    SceneRender.renderNode(
+      this,
+      canvas,
+      graph,
+      nodeId,
+      overlays,
+      parentAbsX,
+      parentAbsY,
+      ancestorHasMotionTransform
+    )
   },
 
   renderSection(canvas: Canvas, node: SceneNode, graph: SceneGraph): void {

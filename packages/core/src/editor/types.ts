@@ -1,6 +1,8 @@
 import type { CanvasKit } from 'canvaskit-wasm'
 
 import type {
+  MotionSpec,
+  MotionTrigger,
   SceneGraph,
   SceneGraphEvents,
   SceneNode,
@@ -13,6 +15,7 @@ import type { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
 import type { RenderOverlays } from '#core/canvas/renderer/types'
+import type { MotionVisualState } from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
 
 export type Tool =
@@ -37,6 +40,20 @@ export type Tool =
   | 'TEXTAREA'
   | 'DATEPICKER'
   | 'SWITCH'
+
+export interface MotionPreviewTarget {
+  readonly nodeId: string
+  readonly spec: MotionSpec
+}
+
+export interface MotionPreviewState {
+  readonly targets: readonly MotionPreviewTarget[]
+  readonly trigger: MotionTrigger
+  readonly prefersReducedMotion: boolean
+  readonly startedAtMs: number | null
+  readonly visuals: ReadonlyMap<string, MotionVisualState>
+  readonly finished: boolean
+}
 
 export interface EditorState {
   activeTool: Tool
@@ -95,6 +112,7 @@ export interface EditorState {
   nodeEditState?: RenderOverlays['nodeEditState'] | null
   cursorCanvasX?: number | null
   cursorCanvasY?: number | null
+  motionPreview: MotionPreviewState | null
 }
 
 export interface ClipboardImageResolution {
@@ -130,6 +148,7 @@ export interface EditorOptions {
   loadFont?: (family: string, style: string, characters?: string) => Promise<ArrayBuffer | null>
   resolveFigmaClipboardImages?: FigmaClipboardImageResolver
   getViewportSize?: () => { width: number; height: number }
+  prefersReducedMotion?: () => boolean
   skipInitialGraphSetup?: boolean
 }
 
@@ -141,6 +160,7 @@ export interface EditorContext {
   loadFont: (family: string, style: string, characters?: string) => Promise<ArrayBuffer | null>
   resolveFigmaClipboardImages: FigmaClipboardImageResolver | null
   getViewportSize: () => { width: number; height: number }
+  prefersReducedMotion: () => boolean
   getCk: () => CanvasKit | null
   getRenderer: () => SkiaRenderer | null
   getTextEditor: () => TextEditor | null
