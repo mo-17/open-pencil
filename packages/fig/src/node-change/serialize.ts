@@ -4,7 +4,9 @@ import { effectiveFigmaRawNodeFields } from '../source-metadata'
 import { fractionalPosition, mapToFigmaType } from './basics'
 import { bytesToHex, hexToBytes } from './bytes'
 import { variableBindingFieldToKiwi } from './convert'
-import { buildDerivedTextData as buildSharedDerivedTextData } from './derived-text-data'
+import { alignGeneratedSingleLineGlyphs, generatedBaselineWithinLine } from './derived/alignment'
+import { buildDerivedTextData as buildSharedDerivedTextData } from './derived/data'
+import { buildDerivedTextFontMetaData } from './derived/font-metadata'
 import { EMPTY_EXPORT_RUNTIME, type FigNodeChangeExportRuntime } from './export-runtime'
 import { applyFontFeaturesToKiwi } from './font/features'
 import { weightToFigmaStyle } from './font/style'
@@ -61,35 +63,17 @@ function buildDerivedTextData(
   glyphBlobMap: Map<string, number>,
   runtime: FigNodeChangeExportRuntime
 ): NodeChange['derivedTextData'] {
-  const fontMeta: NonNullable<NodeChange['derivedTextData']>['fontMetaData'] = []
-  const seen = new Set<string>()
-
-  const addFont = (family: string, weight: number, italic: boolean) => {
-    const style = weightToStyle(weight, italic)
-    const normalized = normalizeFontFamily(family)
-    const key = `${normalized}|${style}`
-    if (seen.has(key)) return
-    seen.add(key)
-    fontMeta.push({
-      key: { family: normalized, style: weightToFigmaStyle(weight, italic), postscript: '' },
-      fontLineHeight: 1.2,
-      fontDigest: digestMap.get(key),
-      fontStyle: italic ? 'ITALIC' : 'NORMAL',
-      fontWeight: weight
-    })
-  }
-
-  addFont(node.fontFamily, node.fontWeight, node.italic)
-  for (const run of node.styleRuns) {
-    addFont(
-      run.style.fontFamily ?? node.fontFamily,
-      run.style.fontWeight ?? node.fontWeight,
-      run.style.italic ?? node.italic
-    )
-  }
+  const fontMeta = buildDerivedTextFontMetaData(node, digestMap, runtime)
 
   const lineHeight = node.lineHeight ?? Math.ceil(node.fontSize * 1.2)
-  const glyphAdvance = node.text.length > 0 ? node.width / Math.max(node.text.length, 1) : 0
+  const verticalMetrics = runtime.getFontVerticalMetrics?.(
+    normalizeFontFamily(node.fontFamily),
+    weightToStyle(node.fontWeight, node.italic),
+    node.fontSize
+  )
+  const baselineWithinLine = generatedBaselineWithinLine(lineHeight, verticalMetrics)
+  const characterCount = Array.from(node.text).length
+  const glyphAdvance = characterCount > 0 ? node.width / characterCount : 0
 
   const derivedGlyphs = node.figmaDerivedTextGlyphs ?? []
   const glyphs =
@@ -118,26 +102,33 @@ function buildDerivedTextData(
             glyphBlobMap,
             encodePathCommandsBlob(glyph.commands, node.fontSize)
           ),
-          position: { x: glyph.x || index * glyphAdvance, y: lineHeight },
+          position: { x: glyph.x, y: baselineWithinLine },
           fontSize: node.fontSize,
           firstCharacter: index,
-          advance: glyph.advance || glyphAdvance,
+          advance: glyph.advance,
           rotation: 0
         }))
 
-  const logicalIndexToCharacterOffsetMap = Array.from(
-    { length: node.text.length + 1 },
-    (_, index) => index * glyphAdvance
-  )
+  const generatedAlignment =
+    derivedGlyphs.length === 0 ? alignGeneratedSingleLineGlyphs(node, glyphs, lineHeight) : null
+
+  const logicalIndexToCharacterOffsetMap =
+    generatedAlignment?.logicalOffsets.length === characterCount
+      ? generatedAlignment.logicalOffsets
+      : Array.from({ length: characterCount }, (_, index) => index * glyphAdvance)
 
   return buildSharedDerivedTextData({
     node,
     glyphs,
     fontMetaData: fontMeta,
-    baseline: lineHeight,
-    width: node.width,
-    lineHeight,
-    lineAscent: Math.max(lineHeight - node.fontSize * 0.2, 0),
+    baseline: generatedAlignment?.baselineY ?? baselineWithinLine,
+    baselineX: generatedAlignment?.baselineX,
+    baselineLineY: generatedAlignment?.lineY,
+    width: generatedAlignment?.lineWidth ?? node.width,
+    lineHeight: Math.max(lineHeight, verticalMetrics?.naturalLineHeight ?? 0),
+    lineAscent: Math.floor(
+      verticalMetrics?.ascent ?? Math.max(lineHeight - node.fontSize * 0.2, 0)
+    ),
     logicalIndexToCharacterOffsetMap
   })
 }
@@ -494,7 +485,13 @@ export function sceneNodeToKiwi(
     assetRefToVarGuid,
     componentPropertyDefinitionsById,
     fractionalPosition,
-    mapToFigmaType,
+    getExportNode: (exportNode) => runtime.getExportNode?.(exportNode, graph) ?? exportNode,
+    mapToFigmaType: (exportNode) => {
+      const defaultType = mapToFigmaType(exportNode.type)
+      return runtime.getExportNodeType?.(exportNode, defaultType, graph) ?? defaultType
+    },
+    getExportChildren: (exportNode) =>
+      runtime.getExportChildren?.(exportNode, graph) ?? graph.getChildren(exportNode.id),
     fillToKiwiPaint,
     safeColor,
     computeExportTransform,

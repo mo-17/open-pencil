@@ -60,7 +60,9 @@ interface SceneNodeToKiwiContext {
   assetRefToVarGuid?: Map<string, GUID>
   componentPropertyDefinitionsById: ReadonlyMap<string, ComponentPropertyDefinition>
   fractionalPosition: (index: number) => string
-  mapToFigmaType: (type: SceneNode['type']) => string
+  getExportNode: (node: SceneNode) => SceneNode
+  mapToFigmaType: (node: SceneNode) => string
+  getExportChildren: (node: SceneNode) => readonly SceneNode[]
   fillToKiwiPaint: (fill: SceneNode['fills'][number]) => Paint
   safeColor: (color: Color) => Color
   computeExportTransform: (node: SceneNode) => Matrix
@@ -799,12 +801,13 @@ function applyNodeVisualProps(
 }
 
 export function sceneNodeToKiwiWithContext(
-  node: SceneNode,
+  sourceNode: SceneNode,
   parentGuid: GUID,
   childIndex: number,
   localIdCounter: { value: number },
   context: SceneNodeToKiwiContext
 ): KiwiNodeChange[] {
+  const node = context.getExportNode(sourceNode)
   const guid = getOrCreateNodeGuid(context, node.id, localIdCounter) ?? {
     sessionID: 1,
     localID: localIdCounter.value++
@@ -818,7 +821,7 @@ export function sceneNodeToKiwiWithContext(
       guid: parentGuid,
       position: node.source.orderKey ?? context.fractionalPosition(childIndex)
     },
-    type: context.mapToFigmaType(node.type),
+    type: context.mapToFigmaType(node),
     name: node.name,
     visible: node.visible,
     opacity: node.opacity,
@@ -876,7 +879,7 @@ export function sceneNodeToKiwiWithContext(
   const children =
     node.type === 'INSTANCE'
       ? []
-      : context.graph.getChildren(node.id).filter((child) => !child.internalOnly)
+      : context.getExportChildren(node).filter((child) => !child.internalOnly)
   for (let i = 0; i < children.length; i++) {
     result.push(...context.sceneNodeToKiwi(children[i], guid, i, localIdCounter, context))
   }

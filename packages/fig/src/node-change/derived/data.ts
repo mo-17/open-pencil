@@ -3,9 +3,11 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 
 interface DerivedTextDataOptions {
   node: SceneNode
-  glyphs: NonNullable<NodeChange['derivedTextData']>['glyphs']
+  glyphs: NonNullable<NonNullable<NodeChange['derivedTextData']>['glyphs']>
   fontMetaData: NonNullable<NodeChange['derivedTextData']>['fontMetaData']
   baseline: number
+  baselineX?: number
+  baselineLineY?: number
   width: number
   lineHeight: number
   lineAscent: number
@@ -21,14 +23,15 @@ export function buildDerivedTextData(
     baselines: options.baselines ?? [
       {
         firstCharacter: 0,
-        endCharacter: Math.max(options.node.text.length - 1, 0),
-        position: { x: 0, y: options.baseline },
+        endCharacter: Array.from(options.node.text).length,
+        position: { x: options.baselineX ?? 0, y: options.baseline },
         width: options.width,
+        ...(options.baselineLineY === undefined ? {} : { lineY: options.baselineLineY }),
         lineHeight: options.lineHeight,
         lineAscent: options.lineAscent
       }
     ],
-    glyphs: options.glyphs,
+    ...(options.glyphs.length > 0 ? { glyphs: options.glyphs } : {}),
     fontMetaData: options.fontMetaData,
     logicalIndexToCharacterOffsetMap: options.logicalIndexToCharacterOffsetMap,
     derivedLines: [{ directionality: 'LTR' }],

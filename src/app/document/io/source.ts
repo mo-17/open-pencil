@@ -1,5 +1,5 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
-import { exportFigFile } from '@open-pencil/core/io/formats/fig'
+import { exportFigFileWithOptions } from '@open-pencil/core/io/formats/fig'
 
 import { createAutosave } from '@/app/document/autosave'
 import {
@@ -51,7 +51,11 @@ export function createDocumentSourceActions({
   getRenderer
 }: DocumentSourceOptions) {
   function buildFigFile() {
-    return exportFigFile(editor.graph, undefined, getRenderer() ?? undefined, state.currentPageId)
+    return exportFigFileWithOptions(editor.graph, {
+      renderer: getRenderer() ?? undefined,
+      thumbnailPageId: state.currentPageId,
+      profile: 'figma-compatible'
+    })
   }
 
   const { saveFigFile, saveFigFileAs, writeFile } = createSaveActions({

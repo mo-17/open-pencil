@@ -65,9 +65,13 @@ export interface IOContext {
   renderer?: SkiaRenderer
 }
 
+export const FIG_EXPORT_PROFILES = ['roundtrip', 'figma-compatible'] as const
+export type FigExportProfile = (typeof FIG_EXPORT_PROFILES)[number]
+
 export interface FigWriteOptions {
   thumbnailPageId?: string
   renderThumbnail?: boolean
+  profile?: FigExportProfile
 }
 
 export interface RasterExportOptions {

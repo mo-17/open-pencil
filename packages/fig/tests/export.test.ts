@@ -10,6 +10,64 @@ import {
   type FigNodeChangeExportRuntime
 } from '../src/node-change'
 
+const ALIGNMENT_RUNTIME: FigNodeChangeExportRuntime = {
+  getGlyphOutlineMetrics: () => [
+    { commands: [{ type: 'M', x: 0, y: 0 }], x: 0, advance: 10 },
+    { commands: [{ type: 'M', x: 0, y: 0 }], x: 10, advance: 10 }
+  ],
+  getFontVerticalMetrics: () => ({ ascent: 14, descent: 2, naturalLineHeight: 16 })
+}
+
+function required<T>(value: T | null | undefined, label: string): T {
+  if (value == null) throw new Error(`Expected ${label}`)
+  return value
+}
+
+function expectGeneratedTextAlignment(
+  alignment: 'LEFT' | 'CENTER' | 'RIGHT',
+  offset: number
+): void {
+  const graph = new SceneGraph()
+  const text = graph.createNode('TEXT', graph.getPages()[0].id, {
+    text: 'AB',
+    width: 100,
+    height: 40,
+    fontSize: 16,
+    textAlignHorizontal: alignment,
+    textAlignVertical: 'CENTER'
+  })
+  const [change] = sceneNodeToKiwi(
+    text,
+    { sessionID: 1, localID: 1 },
+    0,
+    { value: 2 },
+    graph,
+    [],
+    undefined,
+    new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]]),
+    undefined,
+    new Map(),
+    undefined,
+    undefined,
+    ALIGNMENT_RUNTIME
+  )
+  const derived = required(change.derivedTextData, 'derived text data')
+  const glyphs = required(derived.glyphs, 'derived glyphs')
+  const baseline = required(derived.baselines?.[0], 'derived baseline')
+
+  expect(glyphs.map((glyph) => glyph.position.x)).toEqual([offset, offset + 10])
+  expect(baseline.position).toEqual({ x: offset, y: 26 })
+  expect(baseline.width).toBe(20)
+  expect(baseline.lineY).toBe(10)
+  expect(baseline.lineHeight).toBe(20)
+  expect(baseline.endCharacter).toBe(2)
+  expect(baseline.lineAscent).toBe(14)
+  expect(glyphs.map((glyph) => glyph.position.y)).toEqual([26, 26])
+  expect(glyphs.map((glyph) => glyph.advance)).toEqual([0.625, 0.625])
+  expect(derived.logicalIndexToCharacterOffsetMap).toEqual([0, 10])
+  expect(derived.layoutSize).toEqual({ x: 100, y: 40 })
+}
+
 describe('@open-pencil/fig SceneGraph export policy', () => {
   test('maps node types and sibling positions deterministically', () => {
     expect(mapToFigmaType('COMPONENT')).toBe('SYMBOL')
@@ -88,5 +146,143 @@ describe('@open-pencil/fig SceneGraph export policy', () => {
 
     expect(change.derivedTextData?.glyphs).toHaveLength(1)
     expect(blobs).toHaveLength(1)
+  })
+
+  test('bakes horizontal text alignment into generated glyph positions', () => {
+    const expectedOffsets = { LEFT: 0, CENTER: 40, RIGHT: 80 } as const
+    for (const [alignment, offset] of Object.entries(expectedOffsets)) {
+      expectGeneratedTextAlignment(alignment as keyof typeof expectedOffsets, offset)
+    }
+  })
+
+  test('excludes trailing whitespace and uses Unicode code-point indices', () => {
+    const graph = new SceneGraph()
+    const text = graph.createNode('TEXT', graph.getPages()[0].id, {
+      text: '🐸 ',
+      width: 100,
+      height: 40,
+      fontSize: 16,
+      textAlignHorizontal: 'CENTER',
+      textAlignVertical: 'CENTER'
+    })
+    const [change] = sceneNodeToKiwi(
+      text,
+      { sessionID: 1, localID: 1 },
+      0,
+      { value: 2 },
+      graph,
+      [],
+      undefined,
+      new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]]),
+      undefined,
+      new Map(),
+      undefined,
+      undefined,
+      ALIGNMENT_RUNTIME
+    )
+    const derived = required(change.derivedTextData, 'derived text data')
+    const glyphs = required(derived.glyphs, 'derived glyphs')
+    const baseline = required(derived.baselines?.[0], 'derived baseline')
+
+    expect(glyphs.map((glyph) => glyph.position.x)).toEqual([45, 55])
+    expect(baseline.position.x).toBe(45)
+    expect(baseline.width).toBe(20)
+    expect(baseline.endCharacter).toBe(2)
+    expect(glyphs.map((glyph) => glyph.firstCharacter)).toEqual([0, 1])
+    expect(derived.logicalIndexToCharacterOffsetMap).toEqual([0, 10])
+  })
+
+  test('preserves zero-advance generated glyph metrics', () => {
+    const graph = new SceneGraph()
+    const text = graph.createNode('TEXT', graph.getPages()[0].id, {
+      text: 'A\u0301',
+      width: 100,
+      height: 20,
+      fontSize: 16,
+      textAlignHorizontal: 'CENTER'
+    })
+    const runtime: FigNodeChangeExportRuntime = {
+      getGlyphOutlineMetrics: () => [
+        { commands: [{ type: 'M', x: 0, y: 0 }], x: 0, advance: 10 },
+        { commands: [{ type: 'M', x: 0, y: 0 }], x: 10, advance: 0 }
+      ]
+    }
+    const [change] = sceneNodeToKiwi(
+      text,
+      { sessionID: 1, localID: 1 },
+      0,
+      { value: 2 },
+      graph,
+      [],
+      undefined,
+      new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]]),
+      undefined,
+      new Map(),
+      undefined,
+      undefined,
+      runtime
+    )
+    const glyphs = required(change.derivedTextData?.glyphs, 'derived glyphs')
+
+    expect(glyphs.map((glyph) => glyph.position.x)).toEqual([45, 55])
+    expect(glyphs.map((glyph) => glyph.advance)).toEqual([0.625, 0])
+  })
+
+  test('keeps derived text metadata but omits the glyph field when outlines are unavailable', () => {
+    const graph = new SceneGraph()
+    const text = graph.createNode('TEXT', graph.getPages()[0].id, {
+      text: '整理行囊',
+      width: 80,
+      height: 20,
+      fontSize: 16
+    })
+    const blobs: Uint8Array[] = []
+
+    const [change] = sceneNodeToKiwi(
+      text,
+      { sessionID: 1, localID: 1 },
+      0,
+      { value: 2 },
+      graph,
+      blobs,
+      undefined,
+      new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]])
+    )
+
+    expect(change.textData?.characters).toBe('整理行囊')
+    expect(change.derivedTextData).toBeDefined()
+    expect(Object.hasOwn(change.derivedTextData ?? {}, 'glyphs')).toBe(false)
+    expect(change.derivedTextData?.fontMetaData).toHaveLength(1)
+    expect(change.derivedTextData?.layoutSize).toEqual({ x: 80, y: 20 })
+    expect(blobs).toHaveLength(0)
+  })
+
+  test('preserves imported derived glyphs without runtime outlines', () => {
+    const graph = new SceneGraph()
+    const commandsBlob = new Uint8Array([1, 2, 3])
+    const text = graph.createNode('TEXT', graph.getPages()[0].id, {
+      text: 'A',
+      width: 20,
+      height: 20,
+      fontSize: 16,
+      textAlignHorizontal: 'CENTER',
+      figmaDerivedTextGlyphs: [{ commandsBlob, x: 0, y: 16, fontSize: 16 }]
+    })
+    const blobs: Uint8Array[] = []
+
+    const [change] = sceneNodeToKiwi(
+      text,
+      { sessionID: 1, localID: 1 },
+      0,
+      { value: 2 },
+      graph,
+      blobs,
+      undefined,
+      new Map([['Inter|Regular', new Uint8Array([1, 2, 3])]])
+    )
+
+    expect(change.derivedTextData?.glyphs).toHaveLength(1)
+    expect(change.derivedTextData?.glyphs?.[0]?.position?.x).toBe(0)
+    expect(blobs).toEqual([commandsBlob])
   })
 })

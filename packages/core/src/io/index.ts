@@ -10,7 +10,14 @@ export {
   svgFormat,
   jsxFormat
 } from './formats'
-export { exportFigFile, parseFigFile, readFigFile, type ParseFigFileOptions } from './formats/fig'
+export {
+  exportFigFile,
+  exportFigFileWithOptions,
+  parseFigFile,
+  readFigFile,
+  type ExportFigFileOptions,
+  type ParseFigFileOptions
+} from './formats/fig'
 export { parsePenFile, readPenFile } from '@open-pencil/pen'
 export { sceneNodeToJSX, selectionToJSX, type JSXFormat } from './formats/jsx'
 export {
@@ -37,6 +44,7 @@ export type {
   ExportRequest,
   ExportResult,
   IOContext,
+  FigExportProfile,
   FigWriteOptions,
   RasterExportOptions,
   SVGExportOptions,
@@ -45,3 +53,4 @@ export type {
   IOFormatExportOptions,
   IOFormatAdapter
 } from './types'
+export { FIG_EXPORT_PROFILES } from './types'

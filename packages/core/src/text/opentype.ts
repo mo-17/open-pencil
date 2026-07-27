@@ -107,6 +107,12 @@ export interface GlyphOutlineMetrics {
   advance: number
 }
 
+export interface FontVerticalMetrics {
+  ascent: number
+  descent: number
+  naturalLineHeight: number
+}
+
 export type FontGlyphCoverage = 'has' | 'missing' | 'unknown'
 
 export function fontGlyphCoverageSync(
@@ -162,6 +168,24 @@ export function getGlyphOutlineMetricsSync(
     x += advance
     return metrics
   })
+}
+
+export function getFontVerticalMetricsSync(
+  family: string,
+  style: string,
+  fontSize: number
+): FontVerticalMetrics | null {
+  const font = getParsedFont(family, style)
+  if (!font || font.unitsPerEm <= 0) return null
+
+  const scale = fontSize / font.unitsPerEm
+  const ascent = font.ascender * scale
+  const descent = Math.abs(font.descender * scale)
+  return {
+    ascent,
+    descent,
+    naturalLineHeight: ascent + descent
+  }
 }
 
 export async function probeGlyphOutlineCommands(

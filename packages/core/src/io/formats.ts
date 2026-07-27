@@ -2,7 +2,7 @@ import { parsePenFile } from '@open-pencil/pen'
 
 import { sceneNodeToJSX, selectionToJSX } from '#core/design-jsx'
 
-import { exportFigFile, parseFigFile } from './formats/fig'
+import { exportFigFileWithOptions, parseFigFile } from './formats/fig'
 import { headlessRenderNodes, renderNodesToImage, type RasterExportFormat } from './formats/raster'
 import { renderNodesToSVG } from './formats/svg'
 import { extractExportGraph, findPageId } from './subgraph'
@@ -165,13 +165,11 @@ export const figFormat: IOFormatAdapter = {
     return { graph, sourceFormat: 'fig' }
   },
   async writeDocument(graph, options?: FigWriteOptions, context?: IOContext) {
-    const data = await exportFigFile(
-      graph,
-      context?.canvasKit,
-      context?.renderer,
-      options?.thumbnailPageId,
-      options?.renderThumbnail ?? false
-    )
+    const data = await exportFigFileWithOptions(graph, {
+      ...context,
+      ...options,
+      profile: options?.profile ?? 'roundtrip'
+    })
     return {
       format: 'fig',
       mimeType: 'application/octet-stream',
@@ -181,13 +179,12 @@ export const figFormat: IOFormatAdapter = {
   },
   async exportContent(request, options?: FigWriteOptions, context?: IOContext) {
     const extracted = extractExportGraph(request.graph, request.target)
-    const data = await exportFigFile(
-      extracted.graph,
-      context?.canvasKit,
-      context?.renderer,
-      options?.thumbnailPageId ?? extracted.pageId ?? undefined,
-      options?.renderThumbnail ?? false
-    )
+    const data = await exportFigFileWithOptions(extracted.graph, {
+      ...context,
+      ...options,
+      thumbnailPageId: options?.thumbnailPageId ?? extracted.pageId ?? undefined,
+      profile: options?.profile ?? 'figma-compatible'
+    })
     return {
       format: 'fig',
       mimeType: 'application/octet-stream',

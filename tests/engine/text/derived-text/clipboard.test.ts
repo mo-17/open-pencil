@@ -81,6 +81,12 @@ describe('clipboard derived text export', () => {
   test('preserves shaped multiline baselines for Figma text editing', async () => {
     await initCodec()
 
+    const font = expectDefined(
+      await fontManager.fetchBundledFont('/Inter-Bold.ttf'),
+      'bundled Inter font'
+    )
+    fontManager.markLoaded('Inter', 'Bold', font)
+
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     const text = graph.createNode('TEXT', page.id, {
@@ -88,10 +94,11 @@ describe('clipboard derived text export', () => {
       text: 'Analytics Overview',
       width: 360,
       height: 136,
-      fontFamily: 'Missing Preview Font',
+      fontFamily: 'Inter',
       fontSize: 56,
       fontWeight: 700
     })
+    const blobs: Uint8Array[] = []
 
     const derived = expectDefined(
       await buildDerivedTextDataV4(
@@ -128,7 +135,7 @@ describe('clipboard derived text export', () => {
           ],
           logicalIndexToCharacterOffsetMap: Array.from({ length: 19 }, () => 0)
         },
-        null
+        blobs
       ),
       'derived text'
     )
@@ -138,6 +145,49 @@ describe('clipboard derived text export', () => {
     expect(derived.baselines[1].firstCharacter).toBe(10)
     expect(derived.baselines[1].position.y).toBe(122.36)
     expect(derived.layoutSize).toEqual({ x: 360, y: 136 })
+    expect(blobs.length).toBeGreaterThan(0)
+  })
+
+  test('omits an incomplete glyph cache when the font cannot cover Chinese text', async () => {
+    await initCodec()
+
+    const font = await Bun.file('tests/fixtures/fonts/NotoNaskhArabic-Regular.ttf').arrayBuffer()
+    fontManager.markLoaded('Clipboard Latin Only', 'Regular', font)
+
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const text = graph.createNode('TEXT', page.id, {
+      name: '整理行囊',
+      text: '整理行囊',
+      width: 120,
+      height: 24,
+      fontFamily: 'Clipboard Latin Only',
+      fontSize: 16,
+      fontWeight: 400
+    })
+    const blobs: Uint8Array[] = []
+
+    const derived = await buildDerivedTextDataV4(
+      text,
+      await buildFontDigestMap(graph),
+      {
+        lineHeight: 20,
+        lineAscent: 15,
+        lineWidth: 64,
+        baseline: 16,
+        glyphs: [
+          { firstCharacter: 0, x: 0, y: 16, advance: 16 },
+          { firstCharacter: 1, x: 16, y: 16, advance: 16 },
+          { firstCharacter: 2, x: 32, y: 16, advance: 16 },
+          { firstCharacter: 3, x: 48, y: 16, advance: 16 }
+        ],
+        logicalIndexToCharacterOffsetMap: [0, 16, 32, 48, 64]
+      },
+      blobs
+    )
+
+    expect(derived).toBeUndefined()
+    expect(blobs).toHaveLength(0)
   })
 
   test('uses Figma font style names in metadata', async () => {

@@ -81,7 +81,7 @@ describe('buildFigmaClipboardHTML', () => {
     expect(textNode.derivedTextData?.derivedLines).toEqual([{ directionality: 'LTR' }])
   })
 
-  it('encodes fallback derived text metrics when outline fonts are unavailable', async () => {
+  it('omits derived text cache when outline fonts are unavailable', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     graph.createNode('TEXT', page.id, {
@@ -101,14 +101,10 @@ describe('buildFigmaClipboardHTML', () => {
     const html = await buildFigmaClipboardHTML(graph.getChildren(page.id), graph)
     const parsed = await parseFigmaClipboard(html)
     const textNode = parsed?.nodes.find((node) => node.type === 'TEXT')
-    const baseline = textNode?.derivedTextData?.baselines?.[0]
 
     expect(textNode?.textUserLayoutVersion).toBe(5)
     expect(textNode?.textAutoResize).toBe('NONE')
-    expect(textNode?.derivedTextData?.glyphs?.length).toBe('Analytics Overview'.length)
-    expect(baseline?.width).toBe(552)
-    expect(baseline?.lineHeight).toBe(67)
-    expect(textNode?.derivedTextData?.layoutSize).toEqual({ x: 552, y: 70 })
+    expect(textNode?.derivedTextData).toBeUndefined()
   })
 
   it('encodes auto-layout frames', async () => {

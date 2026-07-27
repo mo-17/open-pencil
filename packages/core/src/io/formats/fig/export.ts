@@ -6,20 +6,25 @@ import { compressFigDataSync } from '@open-pencil/fig'
 import {
   buildComponentPropIndex,
   mergePluginData,
-  stringToGuid
+  stringToGuid,
+  type FigNodeChangeExportRuntime
 } from '@open-pencil/fig/node-change'
 import { initCodec, getCompiledSchema, getSchemaBytes } from '@open-pencil/kiwi/fig/codec'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi/schema-runtime'
-import type { SceneGraph, VariableValue } from '@open-pencil/scene-graph'
+import type { SceneGraph, SceneNode, VariableValue } from '@open-pencil/scene-graph'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 import type { SkiaRenderer } from '#core/canvas'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
+import { projectLowcodeNodeForFigma } from '#core/io/formats/fig/lowcode-projection'
+import { prepareFigmaProjectionFonts } from '#core/io/formats/fig/projection-fonts'
 import { renderThumbnail } from '#core/io/formats/raster'
+import type { FigWriteOptions, IOContext } from '#core/io/types'
 import { populateAllLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
 import { serializeLowcodeFields } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import {
+  createCoreFigExportRuntime,
   sceneNodeToKiwi,
   fractionalPosition,
   buildFontDigestMap,
@@ -27,6 +32,43 @@ import {
   makeDocumentNodeChange,
   makeCanvasNodeChange
 } from '#core/kiwi/fig/node-change/serialize'
+
+interface CompatibleFigProjection {
+  runtime: FigNodeChangeExportRuntime
+  nodes: SceneNode[]
+}
+
+function createCompatibleFigProjection(graph: SceneGraph): CompatibleFigProjection {
+  const plansByNodeId = new Map<
+    string,
+    NonNullable<ReturnType<typeof projectLowcodeNodeForFigma>>
+  >()
+  const nodes: SceneNode[] = []
+
+  for (const node of graph.getAllNodes()) {
+    const plan = projectLowcodeNodeForFigma(node, graph.getChildren(node.id))
+    if (!plan) continue
+    nodes.push(...plan.allNodes)
+    for (const projectedNode of plan.allNodes) plansByNodeId.set(projectedNode.id, plan)
+  }
+
+  return {
+    nodes,
+    runtime: createCoreFigExportRuntime({
+      getExportNode(node) {
+        const plan = plansByNodeId.get(node.id)
+        return plan?.sourceNodeId === node.id ? plan.root : node
+      },
+      getExportChildren(node, runtimeGraph) {
+        const plan = plansByNodeId.get(node.id)
+        if (!plan) return runtimeGraph.getChildren(node.id)
+        const authoredChildren =
+          node.id === plan.sourceNodeId ? runtimeGraph.getChildren(plan.sourceNodeId) : []
+        return plan.childrenFor(node, authoredChildren)
+      }
+    })
+  }
+}
 
 const THUMBNAIL_1X1 = Uint8Array.from(
   atob(
@@ -37,6 +79,57 @@ const THUMBNAIL_1X1 = Uint8Array.from(
 
 type KiwiNodeChange = NodeChange & Record<string, unknown>
 type FigExportPage = ReturnType<SceneGraph['getPages']>[number]
+
+interface FigSchemaContext {
+  compiled: ReturnType<typeof getCompiledSchema>
+  schemaDeflated: Uint8Array
+}
+
+function resolveFigSchema(graph: SceneGraph): FigSchemaContext {
+  if (!graph.figSchemaDeflated) {
+    return {
+      compiled: getCompiledSchema(),
+      schemaDeflated: deflateSync(getSchemaBytes())
+    }
+  }
+  const schemaBytes = inflateSync(graph.figSchemaDeflated)
+  const figSchema = decodeBinarySchema(new ByteBuffer(schemaBytes))
+  return {
+    compiled: compileSchema(figSchema) as ReturnType<typeof getCompiledSchema>,
+    schemaDeflated: graph.figSchemaDeflated
+  }
+}
+
+function makeExportDocumentNodeChange(graph: SceneGraph, docGuid: GUID): KiwiNodeChange {
+  const documentNc = makeDocumentNodeChange(docGuid, graph.documentColorSpace)
+  const rootNode = graph.getNode(graph.rootId)
+  if (!rootNode) return documentNc
+
+  Object.assign(documentNc, rootNode.source.fig.rawNodeFields)
+  const rootLowcode = serializeLowcodeFields(rootNode)
+  if (rootLowcode.length > 0) {
+    documentNc.pluginData = mergePluginData([...rootNode.pluginData, ...rootLowcode])
+  }
+  return documentNc
+}
+
+function advanceCounterPastSourceGuids(
+  graph: SceneGraph,
+  localIdCounter: { value: number }
+): Set<string> {
+  let maxLocalId0 = localIdCounter.value - 1
+  let maxLocalId1 = localIdCounter.value - 1
+  const sourceGuidValues = new Set<string>()
+  for (const node of graph.nodes.values()) {
+    if (!node.source.id) continue
+    sourceGuidValues.add(node.source.id)
+    const guid = stringToGuid(node.source.id)
+    if (guid.sessionID === 0) maxLocalId0 = Math.max(maxLocalId0, guid.localID)
+    if (guid.sessionID === 1) maxLocalId1 = Math.max(maxLocalId1, guid.localID)
+  }
+  localIdCounter.value = Math.max(localIdCounter.value, maxLocalId0 + 1, maxLocalId1 + 1)
+  return sourceGuidValues
+}
 
 interface CanvasExportEntry {
   page: FigExportPage
@@ -352,6 +445,7 @@ interface InternalResourceContext {
   blobIndexByHex: Map<string, number>
   assignedGuidValues: Set<string>
   componentPropertyDefinitionsById: ReturnType<typeof buildComponentPropIndex>
+  runtime: FigNodeChangeExportRuntime
 }
 
 function appendInternalResources(context: InternalResourceContext): void {
@@ -374,7 +468,8 @@ function appendInternalResources(context: InternalResourceContext): void {
         context.blobIndexByHex,
         context.assignedGuidValues,
         context.componentPropertyDefinitionsById,
-        context.modeIdToGuid
+        context.modeIdToGuid,
+        context.runtime
       )
     )
   }
@@ -389,13 +484,39 @@ function appendInternalResources(context: InternalResourceContext): void {
   }
 }
 
-export async function exportFigFile(
+export type ExportFigFileOptions = FigWriteOptions & IOContext
+
+/**
+ * Backward-compatible positional API. It intentionally keeps the historical
+ * roundtrip profile; Figma-targeted callers use exportFigFileWithOptions.
+ */
+export function exportFigFile(
   graph: SceneGraph,
   ck?: CanvasKit,
   renderer?: SkiaRenderer,
   pageId?: string,
   renderHeadlessThumbnail = false
 ): Promise<Uint8Array> {
+  return exportFigFileWithOptions(graph, {
+    canvasKit: ck,
+    renderer,
+    thumbnailPageId: pageId,
+    renderThumbnail: renderHeadlessThumbnail,
+    profile: 'roundtrip'
+  })
+}
+
+export async function exportFigFileWithOptions(
+  graph: SceneGraph,
+  options: ExportFigFileOptions = {}
+): Promise<Uint8Array> {
+  const {
+    canvasKit: ck,
+    renderer,
+    thumbnailPageId: pageId,
+    renderThumbnail: renderHeadlessThumbnail = false
+  } = options
+  const profile = options.profile ?? 'roundtrip'
   populateAllLazyFigImportRoots(graph)
   await initCodec()
 
@@ -405,30 +526,12 @@ export async function exportFigFile(
   // subset, and using our schema to encode would produce field IDs that don't
   // align with the embedded schema. By compiling and using the original
   // schema, we improve the roundtrip-ability... This requires further work.
-  let compiled: ReturnType<typeof getCompiledSchema>
-  let schemaDeflated: Uint8Array
-  if (graph.figSchemaDeflated) {
-    const schemaBytes = inflateSync(graph.figSchemaDeflated)
-    const figSchema = decodeBinarySchema(new ByteBuffer(schemaBytes))
-    compiled = compileSchema(figSchema) as ReturnType<typeof getCompiledSchema>
-    schemaDeflated = graph.figSchemaDeflated
-  } else {
-    compiled = getCompiledSchema()
-    schemaDeflated = deflateSync(getSchemaBytes())
-  }
+  const { compiled, schemaDeflated } = resolveFigSchema(graph)
 
   const docGuid = { sessionID: 0, localID: 0 }
   const localIdCounter = { value: 2 }
 
-  const documentNc = makeDocumentNodeChange(docGuid, graph.documentColorSpace)
-  const rootNode = graph.getNode(graph.rootId)
-  if (rootNode) {
-    Object.assign(documentNc, rootNode.source.fig.rawNodeFields)
-    const rootLowcode = serializeLowcodeFields(rootNode)
-    if (rootLowcode.length > 0) {
-      documentNc.pluginData = mergePluginData([...rootNode.pluginData, ...rootLowcode])
-    }
-  }
+  const documentNc = makeExportDocumentNodeChange(graph, docGuid)
   const nodeChanges: KiwiNodeChange[] = [documentNc]
 
   const blobs: Uint8Array[] = []
@@ -440,7 +543,11 @@ export async function exportFigFile(
   assignedGuidValues.add(`${docGuid.sessionID}:${docGuid.localID}`)
   const varIdToGuid = new Map<string, GUID>()
   const modeIdToGuid = new Map<string, GUID>()
-  const fontDigestMap = await buildFontDigestMap(graph)
+  const compatibleProjection =
+    profile === 'figma-compatible' ? createCompatibleFigProjection(graph) : null
+  if (compatibleProjection) await prepareFigmaProjectionFonts(compatibleProjection.nodes)
+  const runtime = compatibleProjection?.runtime ?? createCoreFigExportRuntime()
+  const fontDigestMap = await buildFontDigestMap(graph, compatibleProjection?.nodes)
   const glyphBlobMap = new Map<string, number>()
   const blobIndexByHex = new Map<string, number>()
   const componentPropertyDefinitionsById = buildComponentPropIndex(graph)
@@ -449,22 +556,7 @@ export async function exportFigFile(
   // max sessionID:0 and sessionID:1 localID values. This guarantees the
   // counter is past every imported GUID before any canvas, variable, or
   // node claims a new counter-based GUID — preventing collisions.
-  let maxLocalId0 = localIdCounter.value - 1
-  let maxLocalId1 = localIdCounter.value - 1
-  const nodeSourceGuidValues = new Set<string>()
-  for (const node of graph.nodes.values()) {
-    if (node.source.id) {
-      nodeSourceGuidValues.add(node.source.id)
-      const g = stringToGuid(node.source.id)
-      if (g.sessionID === 0 && g.localID > maxLocalId0) {
-        maxLocalId0 = g.localID
-      }
-      if (g.sessionID === 1 && g.localID > maxLocalId1) {
-        maxLocalId1 = g.localID
-      }
-    }
-  }
-  localIdCounter.value = Math.max(localIdCounter.value, maxLocalId0 + 1, maxLocalId1 + 1)
+  const nodeSourceGuidValues = advanceCounterPastSourceGuids(graph, localIdCounter)
 
   const { canvasEntries, internalCanvasGuid } = buildCanvasEntries(
     graph,
@@ -510,7 +602,8 @@ export async function exportFigFile(
           blobIndexByHex,
           assignedGuidValues,
           componentPropertyDefinitionsById,
-          modeIdToGuid
+          modeIdToGuid,
+          runtime
         )
       )
     }
@@ -529,7 +622,8 @@ export async function exportFigFile(
     glyphBlobMap,
     blobIndexByHex,
     assignedGuidValues,
-    componentPropertyDefinitionsById
+    componentPropertyDefinitionsById,
+    runtime
   })
 
   const msg: Record<string, unknown> = {

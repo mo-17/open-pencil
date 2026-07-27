@@ -7,7 +7,7 @@ import {
 import { parseVariantName } from '@open-pencil/scene-graph/variant-name'
 /* eslint-disable max-lines -- kiwi↔scene conversion helpers are tightly coupled */
 
-import { convertFigmaDerivedTextGlyphs } from './derived-text-glyphs'
+import { convertFigmaDerivedTextGlyphs } from './derived/glyphs'
 import { convertFontFeatures } from './font/features'
 import { convertFontVariations } from './font/variations'
 import { convertEffects, convertFills, convertStrokes } from './paint'

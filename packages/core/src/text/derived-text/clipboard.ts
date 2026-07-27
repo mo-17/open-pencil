@@ -9,7 +9,11 @@ import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
 import { normalizeFontFamily, weightToStyle } from '@open-pencil/scene-graph'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-import { type GlyphOutlineMetrics, getGlyphOutlineMetricsSync } from '#core/text/opentype'
+import {
+  fontCoversTextSync,
+  type GlyphOutlineMetrics,
+  getGlyphOutlineMetricsSync
+} from '#core/text/opentype'
 
 function computeWordWrapBreaks(
   text: string,
@@ -127,6 +131,17 @@ function computeLineBreaks(
   return computeFallbackBreaks(node.text, textGlyphs, fallbackAdvance, node.width)
 }
 
+function completeGlyphMetrics(
+  node: SceneNode,
+  style: string,
+  blobs?: Uint8Array[]
+): GlyphOutlineMetrics[] | null {
+  if (node.text.length === 0) return []
+  if (!blobs || !fontCoversTextSync(node.fontFamily, style, node.text)) return null
+  const glyphMetrics = getGlyphOutlineMetricsSync(node.fontFamily, style, node.text, node.fontSize)
+  return glyphMetrics && glyphMetrics.length > 0 ? glyphMetrics : null
+}
+
 export async function buildDerivedTextDataV4(
   node: SceneNode,
   digestMap: Map<string, Uint8Array>,
@@ -137,8 +152,15 @@ export async function buildDerivedTextDataV4(
   const normalizedFamily = normalizeFontFamily(node.fontFamily)
   const key = `${normalizedFamily}|${style}`
   const lineHeightFallback = node.lineHeight ?? Math.ceil(node.fontSize * 1.2)
-  const glyphMetrics =
-    getGlyphOutlineMetricsSync(node.fontFamily, style, node.text, node.fontSize) ?? []
+  const glyphMetrics = completeGlyphMetrics(node, style, blobs)
+
+  // Figma treats derivedTextData as a drawable glyph cache while the text node
+  // is not being edited. Publishing glyph entries without outline blobs marks
+  // that cache as present but leaves it with nothing to paint; Figma only
+  // live-shapes the text after the node is selected. Omit the whole cache when
+  // we cannot encode complete outlines so Figma lays out the editable text from
+  // textData immediately. Shaped baselines alone are not a safe partial cache.
+  if (!glyphMetrics) return undefined
 
   const fallbackAdvance = node.text.length > 0 ? node.width / Math.max(node.text.length, 1) : 0
   const textGlyphs = buildTextGlyphs(node.text, glyphMetrics, fallbackAdvance, node.fontSize)

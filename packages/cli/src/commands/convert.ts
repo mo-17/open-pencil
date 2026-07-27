@@ -51,7 +51,11 @@ export default defineCommand({
 
     const file = requireFile(args.file)
     const graph = await loadDocument(file)
-    const result = await io.writeDocument(format, graph)
+    const result = await io.writeDocument(
+      format,
+      graph,
+      format === 'fig' ? { profile: 'figma-compatible' } : undefined
+    )
     const output = args.output ? resolve(args.output) : defaultOutput(file, format)
     await writeFile(output, result.data as Uint8Array)
     console.log(ok(`Converted ${file} → ${output}`))

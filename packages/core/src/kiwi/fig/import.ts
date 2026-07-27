@@ -17,6 +17,7 @@ import type { SceneNode, VariableType, VariableValue } from '@open-pencil/scene-
 
 import { BLACK } from '#core/constants'
 import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
+import { collapseFigmaProjectionChildren } from '#core/kiwi/fig/node-change/figma-projection'
 import {
   extractLowcodeAndPluginData,
   reapplyInstanceOverrides
@@ -494,7 +495,28 @@ export function importNodeChanges(
     const { nodeType: figNodeType, ...figProps } = nodeChangeToProps(nc, blobs)
     const lowcode = importedLowcodeProps(nc)
     const nodeType = lowcode.nodeTypeOverride ?? figNodeType
-    const props = { ...figProps, ...lowcode.props }
+    const projection = collapseFigmaProjectionChildren(
+      nodeType,
+      getChildren(ncId),
+      {
+        getNode: (id) => changeMap.get(id),
+        getChildren
+      },
+      lowcode.props.interactiveProps
+    )
+    const hasInteractivePropsPatch = Object.keys(projection.interactivePropsPatch).length > 0
+    const props = {
+      ...figProps,
+      ...lowcode.props,
+      ...(hasInteractivePropsPatch
+        ? {
+            interactiveProps: {
+              ...lowcode.props.interactiveProps,
+              ...projection.interactivePropsPatch
+            }
+          }
+        : {})
+    }
     if (props.sharedStyleType) props.internalOnly = true
     if (nodeType === 'DOCUMENT' || nodeType === 'VARIABLE' || nc.type === 'VARIABLE_SET') return
     if (shouldImportTextAsAutoSize(nc, changeMap.get(parentMap.get(ncId) ?? ''))) {
@@ -505,7 +527,7 @@ export function importNodeChanges(
     const node = graph.createNode(nodeType, parentId, props)
     guidToNodeId.set(ncId, node.id)
 
-    for (const childId of getChildren(ncId)) {
+    for (const childId of projection.childIds) {
       createSceneNode(childId, node.id)
     }
   }

@@ -1,2 +1,8 @@
 export { readFigFile, parseFigFile, type ParseFigFileOptions } from './read'
-export { exportFigFile, compressFigData, compressFigDataSync } from './write'
+export {
+  exportFigFile,
+  exportFigFileWithOptions,
+  compressFigData,
+  compressFigDataSync,
+  type ExportFigFileOptions
+} from './write'
