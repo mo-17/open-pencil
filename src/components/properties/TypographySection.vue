@@ -88,7 +88,7 @@ function featureEnabled(features: Array<{ tag: string; enabled: boolean }>, tag:
         </Tip>
       </div>
 
-      <PanelGrid columns="two" class="mb-3">
+      <PanelGrid :columns="2" class="mb-3">
         <PanelFieldGroup :label="panels.fontWeight">
           <AppSelect
             :label="panels.fontWeight"
@@ -111,7 +111,7 @@ function featureEnabled(features: Array<{ tag: string; enabled: boolean }>, tag:
         </PanelFieldGroup>
       </PanelGrid>
 
-      <PanelGrid columns="two" class="mb-3">
+      <PanelGrid :columns="2" class="mb-3">
         <PanelFieldGroup :label="panels.lineHeight">
           <VariableNumberField
             :model-value="
@@ -241,7 +241,7 @@ function featureEnabled(features: Array<{ tag: string; enabled: boolean }>, tag:
         </div>
       </PanelFieldGroup>
 
-      <PanelGrid columns="two" class="mb-3">
+      <PanelGrid :columns="2" class="mb-3">
         <PanelFieldGroup :label="panels.textCase">
           <AppSelect
             :label="panels.textCase"

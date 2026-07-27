@@ -20,7 +20,8 @@ type ChatSessionOptions = {
   isConfigured: ComputedRef<boolean>
   isACPProvider: ComputedRef<boolean>
   providerID: Ref<AIProviderID>
-  apiKey: Ref<string>
+  credentialsReady: Promise<void>
+  resolveAPIKey: (providerID: AIProviderID) => Promise<string | null>
   modelID: Ref<string>
   customModelID: Ref<string>
   customBaseURL: Ref<string>
@@ -124,7 +125,8 @@ export function createChatSessionManager({
   isConfigured,
   isACPProvider,
   providerID,
-  apiKey,
+  credentialsReady,
+  resolveAPIKey,
   modelID,
   customModelID,
   customBaseURL,
@@ -203,15 +205,19 @@ export function createChatSessionManager({
     }
   }
 
-  function createTransport(store: EditorStore) {
+  async function createTransport(store: EditorStore) {
     resetAcpDiagnostics()
     acpConfigOptions.value = []
     if (overrideTransport) return overrideTransport()
 
+    const activeProviderID = providerID.value
+    const apiKey = await resolveAPIKey(activeProviderID)
+    if (!apiKey) throw new Error('AI provider credential is unavailable')
+
     return createToolLoopTransport({
       store,
-      providerID: providerID.value,
-      apiKey: apiKey.value,
+      providerID: activeProviderID,
+      apiKey,
       modelID: modelID.value,
       customModelID: customModelID.value,
       customBaseURL: customBaseURL.value,
@@ -224,6 +230,12 @@ export function createChatSessionManager({
     store: EditorStore,
     generation: number
   ): Promise<Chat<UIMessage> | null> {
+    await credentialsReady
+    if (generation !== chatInitializationGeneration || store !== getActiveEditorStore()) {
+      return ensureChat()
+    }
+    if (!isConfigured.value) return null
+
     const messages = currentChatMessages.get(store)
     resetAcpDiagnostics()
 
@@ -232,7 +244,7 @@ export function createChatSessionManager({
       transport = await createActiveACPTransport()
     } else {
       await detachACPTransport()
-      transport = createTransport(store)
+      transport = await createTransport(store)
     }
 
     if (generation !== chatInitializationGeneration || store !== getActiveEditorStore()) {
@@ -247,8 +259,6 @@ export function createChatSessionManager({
   }
 
   function ensureChat(): Promise<Chat<UIMessage> | null> {
-    if (!isConfigured.value) return Promise.resolve(null)
-
     const store = getActiveEditorStore()
     if (currentChatStore === store && chat && !transportDirty) return Promise.resolve(chat)
 

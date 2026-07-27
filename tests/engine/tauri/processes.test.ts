@@ -7,10 +7,17 @@ import { checkForAppUpdate } from '@/app/shell/updater'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
+const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
+
 afterEach(async () => {
   await clearTauriMocks()
   vi.restoreAllMocks()
   Reflect.deleteProperty(globalThis, 'window')
+  if (originalNavigatorDescriptor) {
+    Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor)
+  } else {
+    Reflect.deleteProperty(globalThis, 'navigator')
+  }
 })
 
 describe('Tauri process helpers', () => {
@@ -23,7 +30,7 @@ describe('Tauri process helpers', () => {
         expect(args).toMatchObject({
           program: 'agent-cli',
           args: ['--stdio'],
-          options: { encoding: 'raw' }
+          options: { encoding: 'raw', env: {} }
         })
         onEvent = (args as { onEvent: { onmessage: (event: unknown) => void } }).onEvent.onmessage
         return 42
@@ -54,6 +61,33 @@ describe('Tauri process helpers', () => {
     ])
     expect(calls[1]?.args).toEqual({ pid: 42, buffer: [4, 5] })
     expect(calls[2]?.args).toEqual({ cmd: 'killChild', pid: 42 })
+  })
+
+  test('starts Windows ACP command shims through cmd', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+    })
+    await mockTauriIPC((cmd, args) => {
+      if (cmd === 'plugin:shell|spawn') {
+        expect(args).toMatchObject({
+          program: 'cmd',
+          args: ['/c', 'agent-cli', '--stdio'],
+          options: { encoding: 'raw', env: {} }
+        })
+        return 44
+      }
+      return null
+    })
+
+    const process = await spawnAcpProcess({
+      command: 'agent-cli',
+      args: ['--stdio'],
+      logId: 'test',
+      destroying: () => false,
+      onUnexpectedClose: vi.fn()
+    })
+    await process.child.kill()
   })
 
   test('signals unexpected ACP process close to the output stream', async () => {

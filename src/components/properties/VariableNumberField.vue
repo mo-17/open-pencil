@@ -3,7 +3,7 @@ import { computed, useAttrs } from 'vue'
 import { BindableValueRoot, useI18n, useNumberBindingProvider } from '@open-pencil/vue'
 
 import NumberField from '@/components/inputs/NumberField.vue'
-import VariableBindingPicker from '@/components/properties/binding/VariableBindingPicker.vue'
+import VariableBindingPicker from '@/components/variable-binding/VariableBindingPicker.vue'
 import { BindingPill, useBindingFieldUI } from '@/components/ui/binding'
 
 import type { BindingTarget, NumberBindingPath } from '@open-pencil/vue'

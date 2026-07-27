@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import { computed, ref } from 'vue'
@@ -6,11 +6,16 @@ import { computed, ref } from 'vue'
 import type { AIProviderID } from '@open-pencil/core/constants'
 
 import { createChatSessionManager } from '@/app/ai/chat/transports'
+import * as automationMcp from '@/app/automation/mcp/spawn'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
 type EditorStore = ReturnType<typeof getActiveEditorStore>
+
+beforeEach(() => {
+  vi.spyOn(automationMcp, 'getAutomationAuthToken').mockResolvedValue('test-automation-token')
+})
 
 afterEach(async () => {
   await clearTauriMocks()
@@ -90,7 +95,8 @@ describe('ACP chat session manager', () => {
       isConfigured: computed(() => true),
       isACPProvider: computed(() => true),
       providerID: ref<AIProviderID>('acp:codex'),
-      apiKey: ref(''),
+      credentialsReady: Promise.resolve(),
+      resolveAPIKey: async () => null,
       modelID: ref(''),
       customModelID: ref(''),
       customBaseURL: ref(''),
@@ -110,6 +116,7 @@ describe('ACP chat session manager', () => {
     const [firstChat, secondChat] = await Promise.all([first, second])
     expect(firstChat).toBe(secondChat)
     expect(spawnCount).toBe(1)
+    expect(automationMcp.getAutomationAuthToken).toHaveBeenCalledTimes(1)
     expect(methods).toEqual(['initialize', 'session/new'])
     expect(manager.acpConfigOptions.value).toEqual(initialOptions)
 
@@ -179,7 +186,8 @@ describe('ACP chat session manager', () => {
       isConfigured: computed(() => true),
       isACPProvider: computed(() => true),
       providerID: ref<AIProviderID>('acp:codex'),
-      apiKey: ref(''),
+      credentialsReady: Promise.resolve(),
+      resolveAPIKey: async () => null,
       modelID: ref(''),
       customModelID: ref(''),
       customBaseURL: ref(''),

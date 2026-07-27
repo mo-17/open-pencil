@@ -38,6 +38,11 @@ function contextItem(testId: string) {
   return editor.page.getByTestId(testId)
 }
 
+async function closeContextMenu() {
+  await editor.page.keyboard.press('Escape')
+  await expect(contextMenu()).toBeHidden()
+}
+
 test('right-click on empty canvas shows context menu without selection items disabled', async () => {
   await rightClickShape(500, 400)
 
@@ -46,7 +51,7 @@ test('right-click on empty canvas shows context menu without selection items dis
   const copyItem = contextItem('context-copy')
   await expect(copyItem).toBeVisible()
 
-  await editor.page.keyboard.press('Escape')
+  await closeContextMenu()
 })
 
 test('draw shape and right-click selects it', async () => {
@@ -62,7 +67,7 @@ test('draw shape and right-click selects it', async () => {
 
   expect(await getSelectedCount()).toBe(1)
   await expect(contextMenu()).toBeVisible()
-  await editor.page.keyboard.press('Escape')
+  await closeContextMenu()
 })
 
 test('context menu shows expected items', async () => {
@@ -84,13 +89,18 @@ test('context menu shows expected items', async () => {
   await expect(contextItem('context-outline-stroke')).toBeVisible()
   await expect(contextItem('context-boolean-union')).toHaveCount(0)
 
-  await editor.page.keyboard.press('Escape')
+  await closeContextMenu()
 })
 
 test('duplicate via context menu works', async () => {
+  await editor.canvas.clearCanvas()
+  await editor.canvas.drawRect(200, 200, 120, 80)
+  await editor.canvas.waitForRender()
+
   const countBefore = (await getPageChildren()).length
 
   await rightClickShape(250, 230)
+  await expect(contextMenu()).toBeVisible()
   await contextItem('context-duplicate').click()
   await editor.canvas.waitForRender()
 
@@ -225,7 +235,7 @@ test('outline stroke is disabled for fill-only shapes', async () => {
   const item = contextItem('context-outline-stroke')
   await expect(item).toBeVisible()
   await expect(item).toHaveAttribute('data-disabled', '')
-  await editor.page.keyboard.press('Escape')
+  await closeContextMenu()
 })
 
 test('Copy/Paste as submenu exists', async () => {
@@ -242,5 +252,5 @@ test('Copy/Paste as submenu exists', async () => {
   await expect(contextItem('context-copy-as-svg')).toBeVisible()
   await expect(contextItem('context-copy-as-jsx')).toBeVisible()
 
-  await editor.page.keyboard.press('Escape')
+  await closeContextMenu()
 })

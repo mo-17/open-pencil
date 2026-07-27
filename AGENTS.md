@@ -123,6 +123,14 @@ Headless SDK fields compose variable/token binding through `BindingProvider` and
 
 Property-panel anatomy in `packages/vue/src/primitives/PropertySection/`, `SegmentedControl/`, and `PropertyList/` is controlled and editor-agnostic. Connect PropertyList events to OpenPencil selection and undo through `useEditorPropertyList()` or an app adapter; never call `useEditor()` from these primitives.
 
+### Settings and credentials
+
+Credential persistence lives under `src/app/settings/credentials/`. Settings components receive `CredentialManager` and may inspect status, replace, or clear credentials; runtime adapters receive `CredentialResolver`. Components must not read saved secrets or keep them in long-lived reactive refs. Non-secret provider preferences remain in normal settings storage.
+
+Tauri stores secrets in the native system credential store through `desktop/src/credentials.rs`; browser sessions default to memory and may explicitly opt into WebCrypto-encrypted IndexedDB storage. Native failures must never silently fall back to browser or plaintext storage. New integration credentials use stable `CredentialRef` values and join the unified Settings surface rather than adding feature-local key forms.
+
+App dialogs compose the Reka-backed components under `src/components/ui/dialog/` and the typed theme in `src/theme/dialog.ts`. Do not repeat portal, overlay, content, header, or footer infrastructure in feature dialogs.
+
 ## Commands
 
 - `bun run dev` — Vite web app dev server
@@ -285,10 +293,11 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - AI adapter (`packages/core/src/tools/ai-adapter.ts`): `toolsToAI()` converts ToolDefs → valibot schemas + Vercel AI `tool()` wrappers
 - `src/app/ai/tools/index.ts` intentionally uses `CORE_TOOLS` to keep chat schemas small. Only add a tool to `CORE_TOOLS` when it is common enough for default AI chat; otherwise put it in `EXTENDED_TOOLS`.
 - CLI commands (`packages/cli/src/commands/`) are **not** generated from ToolDefs — they have custom agentfmt formatting, tree walking, pagination. The `eval` command is the CLI's access to all ToolDef operations via FigmaAPI.
-- MCP adapter (`packages/mcp/src/server.ts` + `tool/registration.ts`): `startServer()` creates unified HTTP + WebSocket server. Registers `ALL_TOOLS` as MCP tools (zod schemas). Single HTTP entry point: `index.ts` (Hono + Streamable HTTP with sessions). Browser connects over WebSocket RPC; MCP tool calls are proxied through the running app.
+- MCP adapter (`packages/mcp/src/server.ts` + `tool/registration.ts`): `startServer()` creates the HTTP/WebSocket server and registers `ALL_TOOLS` as MCP tools (zod schemas). Listener lifecycle and session ownership live under `packages/mcp/src/server/`; the stdio client bridge lives under `packages/mcp/src/stdio/`.
+- Local MCP transport discovery lives under `packages/mcp/src/transport/`: macOS/Linux prefer an owner-only Unix socket, Windows uses localhost TCP, and `mcp.json` advertises the active transport and token. Keep transport tests grouped under `tests/engine/mcp/{server,stdio,transport}/`, shared MCP fixtures under `tests/helpers/mcp/`, and test discovery paths isolated from the user's runtime file.
 - MCP-only tools (`open_file`, `new_document`, `save_file`, `get_codegen_prompt`) are registered directly in `packages/mcp/src/tool/registration.ts`, not as ToolDefs — they need Node.js fs access or don't operate on the scene graph
 - `open_file` and `new_document` are only registered when `OPENPENCIL_MCP_ROOT` is set (path scoping for security)
-- Export tools (`export_image`, `export_svg`, `get_jsx`) accept an optional `path` param — when provided and `OPENPENCIL_MCP_ROOT` is set, the MCP server writes output to disk and returns `{ written, byteLength }` instead of the raw data
+- Export tools (`export_image`, `export_svg`, `get_jsx`) accept an optional `path` param — when provided and `OPENPENCIL_MCP_ROOT` is set, the MCP server writes output to disk and returns `{ written, byteLength }` instead of the raw data. Path checks must resolve symlinks before filesystem access.
 - Core prompts (`CODEGEN_PROMPT`, `JSX_REFERENCE`) live as markdown files in `packages/core/src/tools/prompts/`, loaded via raw-md bundler plugin; app chat/ACP prompts live under `src/app/ai/**` markdown files.
 - To add a new tool: add a `defineTool()` in the appropriate domain file, export it from the domain barrel, add it to `CORE_TOOLS` or `EXTENDED_TOOLS` intentionally. MCP and CLI eval see `ALL_TOOLS`; app AI chat sees only `CORE_TOOLS`.
 - `FigmaAPI` (`packages/core/src/figma-api/`) is the execution target for all tools — Figma Plugin API compatible, uses Symbols for hidden internals

@@ -86,11 +86,12 @@ function onActionTap(item: ToolbarActionItem) {
 </script>
 
 <template>
-  <ToolbarRoot v-slot="{ tools, activeTool, actions }">
+  <ToolbarRoot v-slot="{ tools, activeTool, flyoutSelections, actions }">
     <DesktopToolbar
       v-if="!isMobile"
       :tools="tools"
       :active-tool="activeTool"
+      :flyout-selections="flyoutSelections"
       :tool-icons="toolIcons"
       :tool-labels="toolLabels"
       :tool-shortcuts="toolShortcuts"
@@ -102,6 +103,7 @@ function onActionTap(item: ToolbarActionItem) {
       v-else
       :tools="tools"
       :active-tool="activeTool"
+      :flyout-selections="flyoutSelections"
       :tool-icons="toolIcons"
       :tool-labels="toolLabels"
       :tool-shortcuts="toolShortcuts"

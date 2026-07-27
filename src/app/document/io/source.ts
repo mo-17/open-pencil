@@ -9,6 +9,7 @@ import {
 } from '@/app/document/io/names'
 import { createSaveActions } from '@/app/document/io/save'
 import { createDocumentSourceState } from '@/app/document/io/source-state'
+import type { DocumentSourceIdentity } from '@/app/document/io/types'
 
 type DocumentSourceState = EditorState & {
   documentName: string
@@ -28,6 +29,7 @@ type DocumentSourceOptions = {
   setFilePath: (path: string | null) => void
   getDownloadName: () => string | null
   setDownloadName: (name: string | null) => void
+  setSourceIdentity: (identity: DocumentSourceIdentity) => void
   getSavedVersion: () => number
   setSavedVersion: (version: number) => void
   setLastWriteTime: (time: number) => void
@@ -45,6 +47,7 @@ export function createDocumentSourceActions({
   setFilePath,
   getDownloadName,
   setDownloadName,
+  setSourceIdentity,
   getSavedVersion,
   setSavedVersion,
   setLastWriteTime,
@@ -67,6 +70,7 @@ export function createDocumentSourceActions({
     setFileHandle,
     getDownloadName,
     setDownloadName,
+    setSourceIdentity,
     setSavedVersion,
     setLastWriteTime,
     startWatchingFile: () => {
@@ -78,7 +82,9 @@ export function createDocumentSourceActions({
     state,
     getSavedVersion,
     hasWritableSource: () => !!getFileHandle() || !!getFilePath(),
-    saveCurrentDocument: async () => writeFile(await buildFigFile())
+    saveCurrentDocument: async () => {
+      await writeFile(await buildFigFile())
+    }
   })
 
   function setDocumentSource(
@@ -92,6 +98,7 @@ export function createDocumentSourceActions({
     setFileHandle(isFig ? (handle ?? null) : null)
     setFilePath(isFig ? (path ?? null) : null)
     setDownloadName(figDownloadName(fileName, sourceFormat))
+    setSourceIdentity({ handle: handle ?? null, path: path ?? null })
     setSavedVersion(state.sceneVersion)
     if (isFig && (handle || path)) {
       void startWatchingFile()

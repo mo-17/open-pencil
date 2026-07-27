@@ -1,12 +1,19 @@
-import { afterEach, describe, expect, test, vi } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
 
 import { buildOpenPencilMcpServerConfig, type ACPChatTransport } from '@/app/ai/acp/transport'
 import { createACPTransport } from '@/app/ai/chat/transports'
+import * as automationMcp from '@/app/automation/mcp/spawn'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
+
+const TEST_AUTOMATION_AUTH_TOKEN = 'test-automation-token'
+
+beforeEach(() => {
+  vi.spyOn(automationMcp, 'getAutomationAuthToken').mockResolvedValue(TEST_AUTOMATION_AUTH_TOKEN)
+})
 
 afterEach(async () => {
   await clearTauriMocks()
@@ -134,34 +141,21 @@ const TEST_CONFIG_OPTIONS: SessionConfigOption[] = [
 ]
 
 describe('Tauri ACP transport', () => {
-  test('runs the source stdio MCP bridge with Bun in development', () => {
-    expect(
-      buildOpenPencilMcpServerConfig('/Users/tester', {
-        isDev: true,
-        projectRoot: '/workspace/open-pencil'
-      })
-    ).toEqual({
+  test('connects ACP agents to the authenticated desktop HTTP MCP server', () => {
+    expect(buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN)).toEqual({
+      type: 'http',
       name: 'open-pencil',
-      command: 'bun',
-      args: ['/workspace/open-pencil/packages/mcp/src/stdio.ts'],
-      env: [
-        { name: 'HOST', value: '127.0.0.1' },
-        { name: 'WS_PORT', value: '7601' },
-        { name: 'OPENPENCIL_MCP_ROOT', value: '/Users/tester' }
-      ]
+      url: 'http://127.0.0.1:7600/mcp',
+      headers: [{ name: 'Authorization', value: `Bearer ${TEST_AUTOMATION_AUTH_TOKEN}` }]
     })
   })
 
-  test('runs the installed stdio MCP bridge in production', () => {
-    expect(buildOpenPencilMcpServerConfig('/Users/tester', { isDev: false })).toEqual({
+  test('omits the authorization header when MCP authentication is disabled', () => {
+    expect(buildOpenPencilMcpServerConfig(null)).toEqual({
+      type: 'http',
       name: 'open-pencil',
-      command: 'openpencil-mcp',
-      args: [],
-      env: [
-        { name: 'HOST', value: '127.0.0.1' },
-        { name: 'WS_PORT', value: '7601' },
-        { name: 'OPENPENCIL_MCP_ROOT', value: '/Users/tester' }
-      ]
+      url: 'http://127.0.0.1:7600/mcp',
+      headers: []
     })
   })
 
@@ -283,7 +277,12 @@ describe('Tauri ACP transport', () => {
     })
 
     await transport.connect()
+    expect(automationMcp.getAutomationAuthToken).toHaveBeenCalledTimes(1)
     expect(requests.map((request) => request.method)).toEqual(['initialize', 'session/new'])
+    expect(requests.find((request) => request.method === 'session/new')?.params).toMatchObject({
+      cwd: '/Users/tester',
+      mcpServers: [buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN)]
+    })
     expect(configSnapshots.at(-1)).toEqual(startupUpdateOptions)
 
     await transport.setSessionConfigOption('model', 'gpt-5.6-terra')

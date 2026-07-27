@@ -17,6 +17,14 @@ test.beforeAll(async ({ browser }) => {
   await canvas.waitForInit()
 })
 
+test.beforeEach(async () => {
+  const picker = page.locator('[data-picker-content]')
+  if (await picker.isVisible().catch(() => false)) {
+    await page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+  }
+})
+
 test.afterAll(async () => {
   await page.close()
 })
@@ -172,7 +180,7 @@ test('hsb saturation and brightness sliders both affect fill color', async () =>
   ).toBe(true)
 
   const beforeB = await getSelectedFill()
-  await dragSlider('color-slider-hsb-b', 0.9)
+  await dragSlider('color-slider-hsb-b', 0.45)
   const afterB = await getSelectedFill()
   expect(afterB).not.toBeNull()
   expect(

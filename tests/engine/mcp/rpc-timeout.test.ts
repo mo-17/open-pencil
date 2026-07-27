@@ -13,7 +13,7 @@ describe('MCP RPC timeout policy', () => {
     const stdioTimeoutMs = resolveStdioRpcTimeoutMs(request)
 
     expect(browserTimeoutMs).toBe(30_000)
-    expect(stdioTimeoutMs).toBe(40_000)
+    expect(stdioTimeoutMs).toBe(50_000)
     expect(stdioTimeoutMs).toBeGreaterThan(browserTimeoutMs)
   })
 
@@ -25,7 +25,7 @@ describe('MCP RPC timeout policy', () => {
 
       expect(browserTimeoutMs).toBe(120_000)
       expect(browserTimeoutMs).toBeGreaterThanOrEqual(60_000)
-      expect(stdioTimeoutMs).toBe(130_000)
+      expect(stdioTimeoutMs).toBe(140_000)
       expect(stdioTimeoutMs).toBeGreaterThan(browserTimeoutMs)
     }
   })
@@ -35,7 +35,7 @@ describe('MCP RPC timeout policy', () => {
       'RPC timeout (120s)'
     )
     expect(rpcTimeoutMessage(resolveStdioRpcTimeoutMs({ command: 'tool' }))).toBe(
-      'RPC timeout (130s)'
+      'RPC timeout (140s)'
     )
   })
 })

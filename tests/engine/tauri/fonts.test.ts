@@ -8,7 +8,8 @@ afterEach(async () => {
   await clearTauriMocks()
   vi.restoreAllMocks()
   fontManager.setDownloadedFontCache(null)
-  fontManager.setHostFallbackFontLoader(null)
+  // The app font module owns this process-wide loader and configures it once.
+  // Keep it installed while mockTauriIPC swaps the active IPC handler per test.
   fontManager.setWebFontFetch(null)
   Reflect.deleteProperty(globalThis, 'document')
   Reflect.deleteProperty(globalThis, 'FontFace')

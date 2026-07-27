@@ -167,6 +167,7 @@ export function buildComponent(jsxString: string): React.ComponentType {
     const Form = 'form', List = 'list', Radio = 'radio', Textarea = 'textarea'
     const DatePicker = 'datepicker', Switch = 'switch'
     const Icon = 'icon'
+    const svg = 'svg'
     const dropShadow = __helpers.dropShadow
     const innerShadow = __helpers.innerShadow
     const layerBlur = __helpers.layerBlur

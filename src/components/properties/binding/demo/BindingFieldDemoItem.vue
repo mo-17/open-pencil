@@ -7,7 +7,7 @@ import {
   NumberFieldValue
 } from '@open-pencil/vue'
 
-import VariableBindingPicker from '@/components/properties/binding/VariableBindingPicker.vue'
+import VariableBindingPicker from '@/components/variable-binding/VariableBindingPicker.vue'
 import { BindingPill } from '@/components/ui/binding'
 
 const {

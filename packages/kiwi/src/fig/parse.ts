@@ -74,7 +74,14 @@ export function parseFigKiwiContainer(data: Uint8Array): FigKiwiPayload | null {
   if (isZstdCompressed(compressed)) {
     dataRaw = zstdDecompress(compressed)
   } else {
-    dataRaw = inflateSync(compressed)
+    try {
+      dataRaw = inflateSync(compressed)
+    } catch {
+      // Legacy fig-kiwi payloads may store the data chunk uncompressed.
+      // Only recover from the ambiguous deflate branch: zstd corruption and
+      // container framing errors must continue to surface to the caller.
+      dataRaw = compressed
+    }
   }
 
   return { schemaDeflated: chunks[0], dataRaw, version }

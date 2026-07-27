@@ -1,8 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/core'
-
-import { nodeChangeToProps } from '#core/kiwi/fig/node-change/convert'
+import { nodeChangeToProps } from '@open-pencil/fig/node-change'
 
 import { expectDefined } from '#tests/helpers/assert'
 

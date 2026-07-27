@@ -76,6 +76,7 @@ export function createEditorStoreModules(
     saveFigFile: documentIO.saveFigFile,
     saveFigFileAs: documentIO.saveFigFileAs,
     getDocumentFilePath: documentIO.getDocumentFilePath,
+    getSourceIdentity: documentIO.getSourceIdentity,
     setDocumentSource: documentIO.setDocumentSource,
     getDocumentPath: documentIO.getDocumentPath,
     setPlannedFilePath: documentIO.setPlannedFilePath,

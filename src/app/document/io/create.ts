@@ -71,6 +71,7 @@ export function createDocumentIOActions(
     // .fig so it can hand it to the `open-pencil deploy` CLI.
     getDocumentPath: sourceState.getFilePath,
     getDocumentFilePath: sourceState.getFilePath,
+    getSourceIdentity: sourceState.getSourceIdentity,
     setDocumentSource: sourceActions.setDocumentSource,
     setPlannedFilePath: sourceActions.setPlannedFilePath,
     startWatchingCurrentFile: sourceActions.startWatchingCurrentFile,

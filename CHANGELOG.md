@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- Center text glyphs within explicit line-height leading in CanvasKit paragraph rendering.
+
 ### Added
 
+- Figma-style Assets panel browsing with component thumbnails, grid/list views, page grouping, context actions, and drag-to-canvas insertion.
 - Import HTML, CSS, Tailwind, and JSX as editable documents from the app, CLI, and SDK, and export standalone browser-ready HTML with compiled CSS and optional external assets.
 - Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, and blur effects.
 - Manage pages with rename, delete, and drag-to-reorder actions in the Pages panel.
@@ -14,9 +19,12 @@
 - Drag with the Text tool to create a fixed-size text box, or click to create auto-width text.
 - Target a specific open document and page from live CLI and MCP automation, including sessions with multiple documents.
 - Test OpenAI-compatible provider connections from AI settings with clearer setup errors.
-- Build custom property panels with new Vue SDK number fields, bindable values, property sections, segmented controls, property lists, color models, fill controls, and gradient primitives.
+- Build custom property panels with new Vue SDK number fields, bindable values, property sections, responsive property grids, segmented controls, property lists, color models, fill controls, and gradient primitives.
 - Save lowcode buttons, inputs, forms, lists, and the other interactive controls as editable Figma-native visual layers while retaining their OpenPencil semantics for round-trip import.
 - Let built-in AI and Design JSX create all ten real lowcode control node types with validated interactive properties instead of visual Frame substitutes.
+- Manage AI, agent, and media credentials from unified Settings, using the system credential store on desktop and optional encrypted storage in the browser.
+- Connect local MCP clients through automatically discovered private Unix sockets on macOS and Linux, with localhost TCP fallback. (#338)
+- Create centered frames from current Figma-style device and asset presets, or resize selected frames from the Design panel while preserving their names.
 
 ### Changed
 
@@ -238,6 +246,7 @@
 - Debounce lowcode remote field validation on blur and cancel stale remote requests before applying field errors.
 - Validate lowcode form validation configs at the AI tool boundary before persisting interactive props.
 - Avoid emitting localStorage persistence helpers when no document state is marked persistent.
+- Choose Freeform, vertical, horizontal, or grid flow directly from the contextual Layout section, with sizing grouped alongside it and current Layout guide terminology.
 - Redesign the editor chrome and Design panel with denser aligned controls, clearer selection and section states, improved menus and overlays, consistent light/dark theming, and better keyboard and screen-reader behavior.
 - Scale the Layers panel to documents with thousands of nodes through virtualized rows, faster incremental updates, stable expansion, range selection, and scroll-to-selection.
 - Resolve fonts before text appears, with language-aware CJK and Arabic fallback, character-specific remote subsets, and more reliable rendering as fonts load.
@@ -270,19 +279,24 @@
 - Improve Figma boolean imports by preserving XOR operations as editable exclude nodes and falling back to imported fill geometry when boolean path reconstruction cannot produce a path.
 - Preserve rotated Figma transform origins for imported vector nodes.
 - Render complex text fills through vector glyph outlines so imported Figma text can use the normal fill pipeline for gradients, images, patterns, and other non-solid paints.
+- Keep MCP file access inside its configured root even when paths contain symlinks, and harden local authentication token checks. (#338)
 - Keep desktop text visible across the scene and overlay canvases, refresh it after local fonts load, and preserve rendering when a requested italic face is unavailable (#395).
 - Honor node-scoped variable modes in `.fig` files so light and dark component examples keep their intended colors.
-- Preserve nested instance text, visibility, and paint overrides across repeated children and component swaps in `.fig` files.
+- Preserve nested instance text, visibility, paint, geometry, and clipping across repeated children and component swaps in `.fig` files.
 - Improve `.fig` import and rendering fidelity for groups, booleans, instances, rotated vectors, complex text fills, auto-sized text, layout grids, page guides, patterns, noise effects, masks, and canvas backgrounds.
 - Preserve pages, components, prototype and library metadata, export settings, unsupported effects, and other unrelated Figma data when editing and resaving `.fig` files.
 - Prevent duplicate generated IDs from corrupting `.fig` round trips.
+- Populate lazy `.fig` pages for file-mode CLI inspection, preserve the whole document when exporting FIG unless a page is explicitly requested, and expose vector paths and variable modes to Plugin API scripts.
 - Match Figma auto-layout reflow after deleting children, hiding optional instance slots, or syncing component changes.
 - Make group and boolean-operation children scale with their parent during resize.
 - Restore desktop copy, cut, and paste when browser clipboard events are unavailable.
+- Show only the most specific tooltip when property controls contain nested actions.
+- Start globally installed ACP agents correctly on Windows instead of reporting them as unavailable (#361).
 - Keep duplicated layers independent instead of sharing mutable fills, strokes, bindings, overrides, or vector data, and remove stale bindings when paints are deleted.
 - Preserve Hangul IME composition while editing text.
 - Share public app links from the desktop collaboration panel and send the current document to newly joined collaborators.
 - Resolve published package types correctly for TypeScript consumers and keep file-backed CLI commands working under Node.
+- Reuse the existing tab when reopening a file through its desktop path or browser file handle, avoiding duplicate watchers and conflicting saves (#297).
 
 ### Security
 

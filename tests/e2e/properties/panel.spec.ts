@@ -5,6 +5,14 @@ import { getPageChildren, getSelectedNode } from '#tests/helpers/store'
 
 const editor = useEditorSetup()
 
+test.beforeEach(async () => {
+  const picker = editor.page.locator('[data-picker-content]')
+  if (await picker.isVisible().catch(() => false)) {
+    await editor.page.keyboard.press('Escape')
+    await expect(picker).toBeHidden()
+  }
+})
+
 test('property sections are always expanded (no collapse on title click)', async () => {
   await editor.canvas.clearCanvas()
   await editor.canvas.drawRect(200, 200, 80, 80)
@@ -66,6 +74,32 @@ test('appearance fields share control height and show variable actions', async (
   )
   expect(colorBox.width).toBeGreaterThanOrEqual(42)
   expect(opacityBox.width).toBeGreaterThanOrEqual(40)
+})
+
+test('property fields show only the most specific tooltip', async () => {
+  await editor.canvas.clearCanvas()
+  await editor.canvas.drawRect(200, 200, 80, 80)
+
+  const widthField = propertyField(editor.page, 'width')
+  const variableTrigger = widthField.getByRole('button', { name: 'Apply variable' })
+  const tooltips = editor.page.getByRole('tooltip')
+
+  await widthField.hover({ position: { x: 40, y: 12 } })
+  await expect(tooltips).toHaveText('Width')
+  await expect(tooltips).toHaveCount(1)
+
+  await variableTrigger.hover()
+  await expect(tooltips).toHaveText('Apply variable')
+  await expect(tooltips).toHaveCount(1)
+
+  await editor.page.mouse.move(500, 400)
+  await variableTrigger.focus()
+  await expect(tooltips).toHaveText('Apply variable')
+  await expect(tooltips).toHaveCount(1)
+
+  await propertyField(editor.page, 'height').hover({ position: { x: 40, y: 12 } })
+  await expect(tooltips).toHaveText('Height')
+  await expect(tooltips).toHaveCount(1)
 })
 
 test('NumberField drag changes X position', async () => {
@@ -386,9 +420,9 @@ test('gradient stop color can bind, create, and detach variables', async () => {
 
   await openGradientStopEditor()
   await editor.page.getByTestId('fill-gradient-stop-apply-variable-0').click()
-  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0-create').click()
+  await editor.page.getByText(/Create color variable from #?[0-9A-F]{6}/).click()
   await editor.page.getByPlaceholder('Variable name').fill('Gradient/created-stop')
-  await editor.page.getByTestId('fill-gradient-stop-apply-variable-0-create').click()
+  await editor.page.getByRole('button', { name: 'Create', exact: true }).click()
   await editor.canvas.waitForRender()
 
   await openGradientStopEditor()

@@ -60,4 +60,15 @@ describe('parseFigKiwiContainer: decompression failures', () => {
 
     expect(parseFigKiwiContainer(out)).toBeNull()
   })
+
+  test('throws when a chunk length exceeds the remaining container bytes', () => {
+    const header = new TextEncoder().encode('fig-kiwi')
+    const out = new Uint8Array(8 + 4 + 4 + 2)
+    const view = new DataView(out.buffer, out.byteOffset, out.byteLength)
+    out.set(header)
+    view.setUint32(8, 101, true)
+    view.setUint32(12, 16, true)
+
+    expect(() => parseFigKiwiContainer(out)).toThrow('declares length 16 but only 2 bytes remain')
+  })
 })

@@ -2,7 +2,7 @@ import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclie
 import type {
   Agent,
   Client,
-  McpServerStdio,
+  McpServer,
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionConfigOption,
@@ -11,8 +11,7 @@ import type {
 } from '@agentclientprotocol/sdk'
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 
-import { AUTOMATION_WS_PORT } from '@open-pencil/core/constants'
-import type { ACPAgentDef } from '@open-pencil/core/constants'
+import { AUTOMATION_HTTP_PORT, type ACPAgentDef } from '@open-pencil/core/constants'
 
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
 
@@ -61,8 +60,6 @@ interface ACPChatTransportOptions {
 
 const MAX_LOG_AGE_MS = 5 * 60 * 1000
 const IS_DEV = import.meta.env.DEV
-const OPENPENCIL_MCP_HOST = '127.0.0.1'
-const OPENPENCIL_MCP_SOURCE = 'packages/mcp/src/stdio.ts'
 const TRANSPORT_DESTROYED_MESSAGE = 'ACP transport was destroyed.'
 const AGENT_EXITED_MESSAGE = 'Agent process exited unexpectedly.'
 
@@ -123,28 +120,12 @@ export function hasAcpDebugEntries(): boolean {
   return acpDebugLog.length > 0
 }
 
-interface OpenPencilMcpServerConfigOptions {
-  isDev?: boolean
-  projectRoot?: string
-}
-
-export function buildOpenPencilMcpServerConfig(
-  cwd: string,
-  options: OpenPencilMcpServerConfigOptions = {}
-): McpServerStdio {
-  const isDev = options.isDev ?? IS_DEV
-  const devEntry = isDev
-    ? `${options.projectRoot ?? __OPENPENCIL_PROJECT_ROOT__}/${OPENPENCIL_MCP_SOURCE}`
-    : null
+export function buildOpenPencilMcpServerConfig(authToken: string | null): McpServer {
   return {
+    type: 'http',
     name: 'open-pencil',
-    command: devEntry ? 'bun' : 'openpencil-mcp',
-    args: devEntry ? [devEntry] : [],
-    env: [
-      { name: 'HOST', value: OPENPENCIL_MCP_HOST },
-      { name: 'WS_PORT', value: String(AUTOMATION_WS_PORT) },
-      { name: 'OPENPENCIL_MCP_ROOT', value: cwd }
-    ]
+    url: `http://127.0.0.1:${AUTOMATION_HTTP_PORT}/mcp`,
+    headers: authToken ? [{ name: 'Authorization', value: `Bearer ${authToken}` }] : []
   }
 }
 
@@ -526,6 +507,10 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
     const connection = new ClientSideConnection((_agent: Agent) => clientImpl, stream)
     try {
+      const { getAutomationAuthToken } = await import('@/app/automation/mcp/spawn')
+      const automationAuthToken = await getAutomationAuthToken()
+      if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
+
       const initializeResult = await requestWithLifecycle(lifecycle, () =>
         connection.initialize({
           protocolVersion: PROTOCOL_VERSION,
@@ -539,7 +524,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       const sessionResult = await requestWithLifecycle(lifecycle, () =>
         connection.newSession({
           cwd: this.cwd,
-          mcpServers: [buildOpenPencilMcpServerConfig(this.cwd)]
+          mcpServers: [buildOpenPencilMcpServerConfig(automationAuthToken)]
         })
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
@@ -586,7 +571,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       if (this.requestLifecycle === lifecycle) this.requestLifecycle = null
       if (this.pendingChild === child) {
         this.pendingChild = null
-        void child.kill()
+        await child.kill().catch(() => undefined)
       }
       throw new Error(message)
     }

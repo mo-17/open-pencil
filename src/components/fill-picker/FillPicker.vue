@@ -24,11 +24,15 @@ function tabClass(active: boolean) {
 const {
   fill,
   okhcl = null,
-  swatchBackground
+  swatchBackground,
+  selectedNodeIds = [],
+  fillIndex = null
 } = defineProps<{
   fill: Fill
   okhcl?: OkHCLControls | null
   swatchBackground?: string
+  selectedNodeIds?: string[]
+  fillIndex?: number | null
 }>()
 const emit = defineEmits<{
   update: [fill: Fill]
@@ -52,7 +56,7 @@ function cancelFromEscape(event: KeyboardEvent) {
           type="button"
           :aria-label="panels.fill"
           data-test-id="fill-picker-swatch"
-          class="size-5 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+          class="size-4 shrink-0 cursor-pointer rounded-sm border-0 bg-transparent p-0"
         >
           <FillSwatch :fill="fill" class="size-full" v-slot="swatch">
             <span
@@ -114,6 +118,8 @@ function cancelFromEscape(event: KeyboardEvent) {
           <GradientEditor
             v-if="root.category === 'GRADIENT'"
             :fill="root.fill"
+            :selected-node-ids="selectedNodeIds"
+            :fill-index="fillIndex"
             @update="emit('update', $event)"
           />
 
