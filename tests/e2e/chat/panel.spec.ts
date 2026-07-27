@@ -78,13 +78,25 @@ async function injectMockTransport(page: Page) {
                 toolCallId,
                 toolName: 'create_shape',
                 output: {
-                  id: '0:99',
-                  type: 'FRAME',
-                  x: 100,
-                  y: 100,
-                  width: 200,
-                  height: 150,
-                  name: 'Card'
+                  result: {
+                    content: [
+                      {
+                        type: 'text',
+                        text: JSON.stringify({
+                          id: '0:99',
+                          type: 'FRAME',
+                          x: 100,
+                          y: 100,
+                          width: 200,
+                          height: 150,
+                          name: 'Card'
+                        })
+                      }
+                    ],
+                    structuredContent: null,
+                    _meta: null
+                  },
+                  error: null
                 }
               })
             }
@@ -195,7 +207,7 @@ test('model selector is visible and clickable', async () => {
   await expect(page.getByRole('option', { name: /Claude Sonnet 4\.6/ })).toBeHidden()
 })
 
-test('tool calls render in assistant message', async () => {
+test('successful ACP tool envelopes render as done', async () => {
   await chatInput().fill('Create a frame')
   await chatInput().press('Enter')
 
@@ -204,9 +216,10 @@ test('tool calls render in assistant message', async () => {
       timeout: 30000
     })
   } else {
-    await expect(page.getByText('Create Shape')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('Done')).toBeVisible()
-    await expect(page.getByText('Created a frame', { exact: false })).toBeVisible()
+    const toolCall = page.getByTestId('chat-tool-call').filter({ hasText: 'Create Shape' })
+    await expect(toolCall).toBeVisible({ timeout: 5000 })
+    await expect(toolCall.getByText('Done', { exact: true })).toBeVisible()
+    await expect(toolCall.getByText('Error', { exact: true })).toHaveCount(0)
   }
 })
 

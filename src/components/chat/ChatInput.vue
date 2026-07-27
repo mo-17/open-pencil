@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { TooltipProvider } from 'reka-ui'
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 
+import { useChatDraft } from '@/app/ai/chat/drafts'
+import AcpConfigSelect from '@/components/chat/AcpConfigSelect.vue'
 import ProviderModelSelect from '@/components/chat/ProviderModelSelect.vue'
 import ProviderSettings from '@/components/chat/ProviderSettings/ProviderSettings.vue'
 import AppInput from '@/components/ui/AppInput.vue'
@@ -11,22 +13,25 @@ import { useAIChat } from '@/app/ai/chat/use'
 import { useI18n } from '@open-pencil/vue'
 
 import { ACP_AGENTS } from '@open-pencil/core/constants'
+import { activeTab } from '@/app/tabs'
 
 const { providerID, providerDef, modelID, customModelID } = useAIChat()
 const { dialogs } = useI18n()
 
-const { status } = defineProps<{
+const { status, initializing = false } = defineProps<{
   status: 'ready' | 'submitted' | 'streaming' | 'error'
+  initializing?: boolean
 }>()
 
 const emit = defineEmits<{
-  submit: [text: string]
+  submit: [text: string, restoreInput: () => void]
   stop: []
 }>()
 
-const input = ref('')
+const input = useChatDraft(() => activeTab.value?.store)
 
 const isStreaming = computed(() => status === 'streaming' || status === 'submitted')
+const isBusy = computed(() => initializing || isStreaming.value)
 const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
 const acpAgentName = computed(() => {
   const agentId = providerID.value.replace('acp:', '')
@@ -60,10 +65,13 @@ const selectedModelName = computed(() => {
 
 function handleSubmit(e: Event) {
   e.preventDefault()
-  const text = input.value.trim()
+  const requestedInput = useChatDraft(activeTab.value?.store)
+  const text = requestedInput.value.trim()
   if (!text) return
-  emit('submit', text)
-  input.value = ''
+  requestedInput.value = ''
+  emit('submit', text, () => {
+    if (!requestedInput.value.trim()) requestedInput.value = text
+  })
 }
 </script>
 
@@ -73,10 +81,15 @@ function handleSubmit(e: Event) {
       <!-- Model selector & settings -->
       <div class="mb-1.5 flex items-center gap-1">
         <template v-if="isACPProvider">
-          <div class="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted">
+          <div
+            class="flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-[10px] text-muted"
+            data-test-id="chat-acp-agent-label"
+          >
             <icon-lucide-bot class="size-3" />
             {{ acpAgentName }}
           </div>
+          <AcpConfigSelect category="model" :disabled="isBusy" />
+          <AcpConfigSelect category="thought_level" :disabled="isBusy" />
         </template>
         <template v-else-if="isCustomProvider || usesCustomModel">
           <div
@@ -103,7 +116,7 @@ function handleSubmit(e: Event) {
           data-test-id="chat-input"
           :placeholder="dialogs.describeChange"
           class="min-w-0 flex-1 placeholder:text-muted"
-          :disabled="isStreaming"
+          :disabled="isBusy"
           @paste.stop
           @copy.stop
           @cut.stop
@@ -123,7 +136,7 @@ function handleSubmit(e: Event) {
             type="submit"
             data-test-id="chat-send-button"
             :class="sendButton.base"
-            :disabled="!input.trim()"
+            :disabled="initializing || !input.trim()"
           >
             <icon-lucide-send class="size-3" />
           </button>

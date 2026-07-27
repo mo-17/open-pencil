@@ -4,9 +4,13 @@ import { buildDebugLog } from '@open-pencil/core/tools'
 import type { ToolDebugLog, ToolLogEntry } from '@open-pencil/core/tools'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
+import { formatAcpDiagnostics, getAcpDiagnostics } from '@/app/ai/acp/diagnostics'
 import { getStepUsages, getToolLogEntries } from '@/app/ai/tools'
 
 export function formatTokenUsage(): string {
+  const acp = getAcpDiagnostics()
+  if (acp.active) return formatAcpDiagnostics(acp)
+
   const steps = getStepUsages()
   if (steps.length === 0) return '  (no usage data — provider may not report it)'
 
@@ -105,14 +109,14 @@ function diffNodeSnapshots(
 export function formatDiagnostics(log: ToolDebugLog): string {
   const sections: string[] = []
 
-  sections.push(`Total tool calls: ${log.entries.length}`)
-  sections.push(`Total result payload: ${(log.totalResultBytes / 1024).toFixed(1)} KB`)
+  sections.push(`Direct/local tool executions: ${log.entries.length}`)
+  sections.push(`Direct/local total result payload: ${(log.totalResultBytes / 1024).toFixed(1)} KB`)
 
   const mutatingCalls = log.entries.filter((e) => e.mutates)
   const errorCalls = log.entries.filter((e) => e.error)
-  sections.push(`Mutating calls: ${mutatingCalls.length}`)
+  sections.push(`Direct/local mutating calls: ${mutatingCalls.length}`)
   if (errorCalls.length > 0) {
-    sections.push(`Errors: ${errorCalls.length}`)
+    sections.push(`Direct/local errors: ${errorCalls.length}`)
   }
 
   if (log.duplicates.length > 0) {
@@ -199,7 +203,7 @@ function formatMessageStats(messages: UIMessage[]): string {
 
   const lines = [
     `Messages: ${messages.length} (${userMessages} user, ${assistantMessages} assistant)`,
-    `Tool invocations in messages: ${toolCalls}`,
+    `Tool parts in messages (provider-reported/rendered): ${toolCalls}`,
     `Total text content: ${(totalTextLength / 1024).toFixed(1)} KB (~${Math.ceil(totalTextLength / 4)} tokens approx)`
   ]
   return lines.join('\n')
@@ -229,9 +233,11 @@ export function serializeChatLog(messages: UIMessage[]): string {
   sections.push(formatMessageStats(messages))
   sections.push('')
 
-  sections.push('=== TOOL EXECUTION LOG ===')
+  sections.push('=== DIRECT/LOCAL TOOL EXECUTION LOG ===')
   if (toolLog.length === 0) {
-    sections.push('  (no tool calls recorded)')
+    sections.push(
+      '  (no direct/local tool executions recorded; ACP tools appear in the conversation)'
+    )
   } else {
     for (let i = 0; i < toolLog.length; i++) {
       sections.push(formatLogEntry(toolLog[i], i))

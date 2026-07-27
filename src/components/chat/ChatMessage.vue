@@ -7,6 +7,8 @@ import 'vue-stream-markdown/index.css'
 
 import type { UIDataTypes, UIMessage, UIMessagePart, UITools } from 'ai'
 
+import { hasErrorOutput, toolErrorText, toolState } from '@/app/ai/chat/tool-presentation'
+
 const { message } = defineProps<{ message: UIMessage }>()
 
 type ToolPart = Extract<UIMessagePart<UIDataTypes, UITools>, { toolCallId: string }>
@@ -14,23 +16,9 @@ type ToolPart = Extract<UIMessagePart<UIDataTypes, UITools>, { toolCallId: strin
 function toolDisplayName(part: ToolPart): string {
   return getToolName(part)
     .replace(/^mcp__[^_]+__/, '')
+    .replace(/^mcp\.[^.]+\./, '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase())
-}
-
-function hasErrorOutput(part: ToolPart): boolean {
-  return (
-    part.state === 'output-available' &&
-    typeof part.output === 'object' &&
-    part.output !== null &&
-    'error' in part.output
-  )
-}
-
-function toolState(part: ToolPart): 'pending' | 'done' | 'error' {
-  if (part.state === 'output-error' || hasErrorOutput(part)) return 'error'
-  if (part.state === 'output-available') return 'done'
-  return 'pending'
 }
 
 function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): string {
@@ -48,7 +36,11 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
       <template v-if="message.role === 'assistant'">
         <template v-for="(part, i) in message.parts" :key="partKey(part, i)">
           <!-- Tool call -->
-          <div v-if="isToolUIPart(part)" class="rounded-lg border border-border bg-canvas p-2">
+          <div
+            v-if="isToolUIPart(part)"
+            data-test-id="chat-tool-call"
+            class="rounded-lg border border-border bg-canvas p-2"
+          >
             <CollapsibleRoot>
               <CollapsibleTrigger
                 class="flex w-full items-center gap-2 rounded px-1 py-0.5 hover:bg-hover"
@@ -90,10 +82,10 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
                 class="data-[state=closed]:collapsible-up data-[state=open]:collapsible-down overflow-hidden text-[10px]"
               >
                 <pre class="mt-1 overflow-x-auto rounded bg-input p-2 text-muted">{{
-                  part.state === 'output-error' && part.errorText
-                    ? part.errorText
+                  part.state === 'output-error'
+                    ? toolErrorText(part)
                     : hasErrorOutput(part)
-                      ? (part.output as { error: string }).error
+                      ? toolErrorText(part)
                       : JSON.stringify(part.output, null, 2)
                 }}</pre>
               </CollapsibleContent>

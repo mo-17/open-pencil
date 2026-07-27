@@ -4,6 +4,7 @@ import { refAutoReset, useClipboard } from '@vueuse/core'
 import { computed, markRaw, nextTick, ref, watch } from 'vue'
 
 import { getAcpDebugText, clearAcpDebugLog, hasAcpDebugEntries } from '@/app/ai/acp/transport'
+import { useChatSubmissionPending } from '@/app/ai/chat/drafts'
 import { copyChatLog } from '@/app/ai/debug'
 import { clearToolLogEntries, didHitStepLimit } from '@/app/ai/tools'
 import { activeTab } from '@/app/tabs'
@@ -22,20 +23,28 @@ import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 const IS_DEV = import.meta.env.DEV
 
-const { isConfigured, ensureChat, resetChat } = useAIChat()
+const { isConfigured, providerID, ensureChat, resetChat } = useAIChat()
 const { copy } = useClipboard()
 const { dialogs } = useI18n()
 
 const chat = ref<Chat<UIMessage> | null>(null)
+const submissionPending = useChatSubmissionPending(() => activeTab.value?.store)
+let refreshGeneration = 0
 
-void ensureChat()
-  .then((c) => {
-    if (c) chat.value = markRaw(c)
-    return undefined
-  })
-  .catch((error: unknown) => {
+async function refreshChat() {
+  const generation = ++refreshGeneration
+  try {
+    const nextChat = await ensureChat()
+    if (generation !== refreshGeneration) return
+    chat.value = nextChat ? markRaw(nextChat) : null
+  } catch (error) {
+    if (generation !== refreshGeneration) return
+    chat.value = null
     toast.error(error instanceof Error ? error.message : 'Failed to initialize chat')
-  })
+  }
+}
+
+void refreshChat()
 const messagesEnd = ref<HTMLDivElement>()
 const debugCopied = refAutoReset(false, 1500)
 const acpLogCopied = refAutoReset(false, 1500)
@@ -77,28 +86,56 @@ watch(
     if (error) toast.error(error.message)
   }
 )
-watch(
-  () => activeTab.value?.id,
-  async () => {
-    const nextChat = await ensureChat()
-    chat.value = nextChat ? markRaw(nextChat) : null
-  }
-)
+watch([() => activeTab.value?.id, providerID], refreshChat)
 
-async function handleSubmit(text: string) {
-  if (status.value === 'streaming' || status.value === 'submitted') return
-  try {
-    const c = await ensureChat()
-    if (c) chat.value = markRaw(c)
-  } catch (e) {
-    console.error('Failed to initialize chat:', e)
-    toast.error(e instanceof Error ? e.message : String(e))
+async function handleSubmit(text: string, restoreInput: () => void = () => undefined) {
+  const requestedTab = activeTab.value
+  const requestedSubmissionPending = useChatSubmissionPending(requestedTab?.store)
+  if (
+    requestedSubmissionPending.value ||
+    status.value === 'streaming' ||
+    status.value === 'submitted'
+  ) {
+    restoreInput()
     return
   }
-  chat.value?.sendMessage({ text }).catch((e: unknown) => {
-    console.error('Chat error:', e)
-    toast.error(e instanceof Error ? e.message : String(e))
-  })
+  requestedSubmissionPending.value = true
+  const requestedTabId = requestedTab?.id
+  const requestedProviderID = providerID.value
+  try {
+    let c: Chat<UIMessage> | null
+    try {
+      c = await ensureChat()
+    } catch (error) {
+      restoreInput()
+      console.error('Failed to initialize chat:', error)
+      toast.error(error instanceof Error ? error.message : String(error))
+      return
+    }
+    if (activeTab.value?.id !== requestedTabId || providerID.value !== requestedProviderID) {
+      restoreInput()
+      toast.error('The chat context changed before the message was sent. Please try again.')
+      return
+    }
+    if (!c) {
+      chat.value = null
+      restoreInput()
+      return
+    }
+    if (c.status === 'submitted' || c.status === 'streaming') {
+      restoreInput()
+      return
+    }
+    chat.value = markRaw(c)
+    try {
+      await c.sendMessage({ text })
+    } catch (error) {
+      console.error('Chat error:', error)
+      toast.error(error instanceof Error ? error.message : String(error))
+    }
+  } finally {
+    requestedSubmissionPending.value = false
+  }
 }
 
 function handleStop() {
@@ -117,11 +154,12 @@ async function handleCopyAcpLog() {
   acpLogCopied.value = true
 }
 
-function handleClearChat() {
+async function handleClearChat() {
   chat.value = null
   resetChat()
   clearToolLogEntries()
   clearAcpDebugLog()
+  await refreshChat()
 }
 </script>
 
@@ -220,7 +258,12 @@ function handleClearChat() {
         </AppTextButton>
       </div>
 
-      <ChatInput :status="status" @submit="handleSubmit" @stop="handleStop" />
+      <ChatInput
+        :status="status"
+        :initializing="submissionPending"
+        @submit="handleSubmit"
+        @stop="handleStop"
+      />
 
       <AcpPermissionDialog />
     </template>

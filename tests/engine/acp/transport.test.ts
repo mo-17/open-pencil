@@ -1,11 +1,210 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { SessionUpdate } from '@agentclientprotocol/sdk'
+import type {
+  ClientSideConnection,
+  SessionConfigOption,
+  SessionNotification,
+  SessionUpdate,
+  SetSessionConfigOptionRequest
+} from '@agentclientprotocol/sdk'
 
+import {
+  beginAcpDiagnostics,
+  getAcpDiagnostics,
+  recordAcpConfigOptions,
+  recordAcpNewSession,
+  resetAcpDiagnostics
+} from '@/app/ai/acp/diagnostics'
 import { mapUpdate } from '@/app/ai/acp/map-update'
-import { formatConnectionError, buildCrashChunks } from '@/app/ai/acp/transport'
+import {
+  buildCrashChunks,
+  createSessionUpdateBuffer,
+  formatConnectionError,
+  requestACPConfigOption
+} from '@/app/ai/acp/transport'
 
 const TEXT_ID = 'text-1'
+
+describe('createSessionUpdateBuffer', () => {
+  test('replays session-setup notifications after the stream handler is ready', () => {
+    const buffer = createSessionUpdateBuffer()
+    const received: SessionNotification[] = []
+    const startupFailure: SessionNotification = {
+      sessionId: 'session-1',
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'mcp_startup.open-pencil',
+        title: 'mcp__open-pencil__startup',
+        kind: 'other',
+        status: 'failed'
+      }
+    }
+
+    buffer.push(startupFailure)
+    expect(received).toEqual([])
+
+    buffer.setHandler((notification) => received.push(notification))
+    buffer.flush()
+    expect(received).toEqual([startupFailure])
+
+    const laterUpdate: SessionNotification = {
+      sessionId: 'session-1',
+      update: { sessionUpdate: 'available_commands_update', availableCommands: [] }
+    }
+    buffer.push(laterUpdate)
+    expect(received).toEqual([startupFailure, laterUpdate])
+  })
+
+  test('drops late notifications after a prompt handler is detached', () => {
+    const buffer = createSessionUpdateBuffer()
+    const firstPrompt: SessionNotification[] = []
+    const nextPrompt: SessionNotification[] = []
+    const lateUpdate: SessionNotification = {
+      sessionId: 'session-1',
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'late response from the cancelled prompt' }
+      }
+    }
+
+    buffer.setHandler((notification) => firstPrompt.push(notification))
+    buffer.flush()
+    buffer.setHandler(null)
+    buffer.push(lateUpdate)
+
+    buffer.setHandler((notification) => nextPrompt.push(notification))
+    buffer.flush()
+    expect(firstPrompt).toEqual([])
+    expect(nextPrompt).toEqual([])
+  })
+})
+
+describe('requestACPConfigOption', () => {
+  test('sends the session config request and returns the complete refreshed option set', async () => {
+    let received: SetSessionConfigOptionRequest | undefined
+    const refreshedOptions: SessionConfigOption[] = [
+      {
+        type: 'select',
+        id: 'model',
+        name: 'Model',
+        category: 'model',
+        currentValue: 'gpt-5.6-terra',
+        options: [{ value: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' }]
+      },
+      {
+        type: 'select',
+        id: 'reasoning_effort',
+        name: 'Reasoning effort',
+        category: 'thought_level',
+        currentValue: 'medium',
+        options: [
+          { value: 'low', name: 'Low' },
+          { value: 'medium', name: 'Medium' }
+        ]
+      }
+    ]
+    const connection: Pick<ClientSideConnection, 'setSessionConfigOption'> = {
+      async setSessionConfigOption(params) {
+        received = params
+        return { configOptions: refreshedOptions }
+      }
+    }
+
+    const result = await requestACPConfigOption(connection, {
+      sessionId: 'session-1',
+      configId: 'model',
+      value: 'gpt-5.6-terra'
+    })
+
+    expect(received).toEqual({
+      sessionId: 'session-1',
+      configId: 'model',
+      value: 'gpt-5.6-terra'
+    })
+    expect(result).toBe(refreshedOptions)
+  })
+})
+
+describe('ACP config diagnostics', () => {
+  test('clears missing categories from complete option snapshots', () => {
+    resetAcpDiagnostics()
+    beginAcpDiagnostics('Codex')
+    recordAcpConfigOptions([
+      {
+        type: 'select',
+        id: 'model',
+        name: 'Model',
+        category: 'model',
+        currentValue: 'gpt-5.6-sol',
+        options: [{ value: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' }]
+      },
+      {
+        type: 'select',
+        id: 'reasoning_effort',
+        name: 'Reasoning effort',
+        category: 'thought_level',
+        currentValue: 'high',
+        options: [{ value: 'high', name: 'High' }]
+      }
+    ])
+    expect(getAcpDiagnostics()).toMatchObject({
+      modelId: 'gpt-5.6-sol',
+      thoughtLevel: 'high'
+    })
+
+    recordAcpConfigOptions([])
+    expect(getAcpDiagnostics().modelId).toBeUndefined()
+    expect(getAcpDiagnostics().thoughtLevel).toBeUndefined()
+    resetAcpDiagnostics()
+  })
+
+  test('uses the legacy new-session model only when config options omit a model', () => {
+    resetAcpDiagnostics()
+    beginAcpDiagnostics('Codex')
+    recordAcpNewSession({
+      sessionId: 'session-1',
+      configOptions: [
+        {
+          type: 'select',
+          id: 'reasoning_effort',
+          name: 'Reasoning effort',
+          category: 'thought_level',
+          currentValue: 'medium',
+          options: [{ value: 'medium', name: 'Medium' }]
+        }
+      ],
+      models: {
+        currentModelId: 'legacy-model',
+        availableModels: []
+      }
+    })
+    expect(getAcpDiagnostics()).toMatchObject({
+      modelId: 'legacy-model',
+      thoughtLevel: 'medium'
+    })
+
+    recordAcpNewSession({
+      sessionId: 'session-2',
+      configOptions: [
+        {
+          type: 'select',
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          currentValue: 'config-model',
+          options: [{ value: 'config-model', name: 'Config model' }]
+        }
+      ],
+      models: {
+        currentModelId: 'stale-legacy-model',
+        availableModels: []
+      }
+    })
+    expect(getAcpDiagnostics().modelId).toBe('config-model')
+    expect(getAcpDiagnostics().thoughtLevel).toBeUndefined()
+    resetAcpDiagnostics()
+  })
+})
 
 describe('mapUpdate', () => {
   test('agent_message_chunk with non-empty text starts text and emits delta', () => {
@@ -55,6 +254,14 @@ describe('mapUpdate', () => {
       delta: 'thinking...'
     })
     expect(result.chunks[2].type).toBe('reasoning-end')
+  })
+
+  test('agent_thought_chunk skips whitespace-only protocol separators', () => {
+    const update: SessionUpdate = {
+      sessionUpdate: 'agent_thought_chunk',
+      content: { type: 'text', text: '\n\n' }
+    }
+    expect(mapUpdate(update, TEXT_ID, false).chunks).toEqual([])
   })
 
   test('tool_call emits tool-input-start', () => {
@@ -110,6 +317,74 @@ describe('mapUpdate', () => {
     expect(result.chunks[0]).toMatchObject({ toolName: 'unknown' })
   })
 
+  test('tool_call completed emits input and output in the initial update', () => {
+    const update: SessionUpdate = {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc-completed',
+      title: 'calculate',
+      kind: 'other',
+      status: 'completed',
+      rawInput: { expression: '2 + 2' },
+      rawOutput: { result: 4 }
+    }
+    const result = mapUpdate(update, TEXT_ID, false)
+    expect(result.chunks).toEqual([
+      {
+        type: 'tool-input-start',
+        toolCallId: 'tc-completed',
+        toolName: 'calculate',
+        providerExecuted: true,
+        title: 'calculate'
+      },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'tc-completed',
+        toolName: 'calculate',
+        input: { expression: '2 + 2' },
+        providerExecuted: true,
+        title: 'calculate'
+      },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'tc-completed',
+        output: { result: 4 },
+        providerExecuted: true
+      }
+    ])
+  })
+
+  test('tool_call failed emits the error in the initial update', () => {
+    const update: SessionUpdate = {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'mcp_startup.open-pencil',
+      title: 'mcp__open-pencil__startup',
+      kind: 'other',
+      status: 'failed',
+      content: [
+        {
+          type: 'content',
+          content: { type: 'text', text: 'MCP server timed out after 30 seconds' }
+        }
+      ]
+    }
+    const result = mapUpdate(update, TEXT_ID, false)
+    expect(result.chunks).toEqual([
+      {
+        type: 'tool-input-start',
+        toolCallId: 'mcp_startup.open-pencil',
+        toolName: 'mcp__open-pencil__startup',
+        providerExecuted: true,
+        title: 'mcp__open-pencil__startup'
+      },
+      {
+        type: 'tool-output-error',
+        toolCallId: 'mcp_startup.open-pencil',
+        errorText: 'MCP server timed out after 30 seconds',
+        providerExecuted: true
+      }
+    ])
+  })
+
   test('tool_call_update completed emits tool-output-available', () => {
     const update: SessionUpdate = {
       sessionUpdate: 'tool_call_update',
@@ -141,6 +416,28 @@ describe('mapUpdate', () => {
         type: 'tool-output-error',
         toolCallId: 'tc-1',
         errorText: 'Node not found',
+        providerExecuted: true
+      }
+    ])
+  })
+
+  test('tool_call_update failed extracts an MCP error from rawOutput', () => {
+    const update: SessionUpdate = {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'tc-timeout',
+      status: 'failed',
+      rawOutput: {
+        result: {
+          content: [{ type: 'text', text: '{"error":"RPC timeout (20s)"}' }],
+          error: null
+        }
+      }
+    }
+    expect(mapUpdate(update, TEXT_ID, false).chunks).toEqual([
+      {
+        type: 'tool-output-error',
+        toolCallId: 'tc-timeout',
+        errorText: 'RPC timeout (20s)',
         providerExecuted: true
       }
     ])
@@ -206,6 +503,11 @@ describe('formatConnectionError', () => {
   test('non-Error values converted to string', () => {
     const msg = formatConnectionError('raw string error')
     expect(msg).toBe('raw string error')
+  })
+
+  test('ACP JSON-RPC error objects preserve their message', () => {
+    const msg = formatConnectionError({ code: -32602, message: 'Invalid model' })
+    expect(msg).toBe('Invalid model')
   })
 })
 

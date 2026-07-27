@@ -30,12 +30,13 @@ interface SelectGroupDef<TValue extends string | number> {
 interface AppGroupedSelectProps<TValue extends string | number> {
   groups: SelectGroupDef<TValue>[]
   displayValue: string
+  disabled?: boolean
   ui?: ComponentUI<AppGroupedSelectTheme>
 }
 
 defineOptions({ inheritAttrs: false })
 
-const { groups, displayValue, ui } = defineProps<AppGroupedSelectProps<T>>()
+const { groups, displayValue, disabled = false, ui } = defineProps<AppGroupedSelectProps<T>>()
 
 const modelValue = defineModel<T>({ required: true })
 
@@ -43,7 +44,7 @@ const styles = tv(theme)()
 </script>
 
 <template>
-  <SelectRoot v-model="modelValue">
+  <SelectRoot v-model="modelValue" :disabled="disabled">
     <SelectTrigger v-bind="$attrs" :class="styles.trigger({ class: ui?.trigger })">
       <slot name="value">{{ displayValue }}</slot>
       <icon-lucide-chevron-down class="size-2.5 shrink-0 text-muted" />
