@@ -1,3 +1,4 @@
+import { LOWCODE_INTRINSIC_ELEMENTS } from './lowcode'
 import { node, type BaseProps, type TextProps, type TreeNode } from './tree'
 
 type Child = TreeNode | string
@@ -70,6 +71,46 @@ export function Instance(
   return withChildren('instance', props, children)
 }
 
+export function Button(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('button', props, children)
+}
+
+export function Input(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('input', props, children)
+}
+
+export function Select(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('select', props, children)
+}
+
+export function Checkbox(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('checkbox', props, children)
+}
+
+export function Form(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('form', props, children)
+}
+
+export function List(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('list', props, children)
+}
+
+export function Radio(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('radio', props, children)
+}
+
+export function Textarea(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('textarea', props, children)
+}
+
+export function DatePicker(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('datepicker', props, children)
+}
+
+export function Switch(props: BaseProps, ...children: Child[]): TreeNode {
+  return withChildren('switch', props, children)
+}
+
 export const View = Frame
 export const Rect = Rectangle
 export const Page = Frame
@@ -87,5 +128,6 @@ export const INTRINSIC_ELEMENTS = [
   'section',
   'component',
   'component-set',
-  'instance'
+  'instance',
+  ...LOWCODE_INTRINSIC_ELEMENTS
 ] as const

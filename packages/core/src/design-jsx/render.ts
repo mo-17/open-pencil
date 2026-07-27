@@ -5,6 +5,7 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 import type { RenderOptions as RenderJSXOptions } from '#core/design-jsx/types'
 
 import { backgroundBlur, dropShadow, foregroundBlur, innerShadow, layerBlur } from './effects'
+import { LOWCODE_SUPPORTED_PROP_NAMES } from './lowcode'
 import * as React from './mini-react'
 import {
   angularGradient,
@@ -14,7 +15,7 @@ import {
   radialGradient,
   solid
 } from './paints'
-import { renderTree, type RenderResult } from './renderer'
+import { renderTree, type RenderResult, validateTreeForRender } from './renderer'
 import { isTreeNode, resolveToTree, type TreeNode } from './tree'
 
 /**
@@ -127,7 +128,8 @@ const SUPPORTED_PROPS = new Set([
   'bind',
   'component',
   'componentId',
-  'of'
+  'of',
+  ...LOWCODE_SUPPORTED_PROP_NAMES
 ])
 
 function stripHtmlComments(jsxString: string): string {
@@ -161,6 +163,9 @@ export function buildComponent(jsxString: string): React.ComponentType {
     const Line = 'line', Star = 'star', Polygon = 'polygon', Vector = 'vector'
     const Group = 'group', Section = 'section', View = 'frame', Rect = 'rectangle'
     const Component = 'component', ComponentSet = 'component-set', Instance = 'instance'
+    const Button = 'button', Input = 'input', Select = 'select', Checkbox = 'checkbox'
+    const Form = 'form', List = 'list', Radio = 'radio', Textarea = 'textarea'
+    const DatePicker = 'datepicker', Switch = 'switch'
     const Icon = 'icon'
     const dropShadow = __helpers.dropShadow
     const innerShadow = __helpers.innerShadow
@@ -228,6 +233,10 @@ export async function renderJSX(
     throw new Error('JSX must return a Figma element (Frame, Text, etc)')
   }
 
+  // Preflight the complete resolved tree before rendering fragment roots one
+  // by one, so a later invalid lowcode control cannot leave earlier siblings.
+  validateTreeForRender(tree)
+
   const warnings = unsupportedPropWarnings(tree)
 
   if (tree.type === '' && tree.children.length > 0) {
@@ -239,12 +248,14 @@ export async function renderJSX(
     if (results.length === 0) {
       throw new Error('JSX must return a Figma element (Frame, Text, etc)')
     }
-    if (warnings.length > 0) results[0].warnings = warnings
+    if (warnings.length > 0) {
+      results[0].warnings = [...(results[0].warnings ?? []), ...warnings]
+    }
     return results
   }
 
   const result = await renderTree(graph, tree, options)
-  if (warnings.length > 0) result.warnings = warnings
+  if (warnings.length > 0) result.warnings = [...(result.warnings ?? []), ...warnings]
   return [result]
 }
 

@@ -51,8 +51,8 @@ import {
   isSafeAnalyticsPolicyUrl,
   normalizeSupabaseMutationPayloadJson,
   validateAnalyticsConfig,
-  validateDatePickerProps,
   validateExpression,
+  validateInteractiveProps,
   validateLowcodeCustomCss,
   validateLowcodeHeadMeta,
   validateStateName,
@@ -123,32 +123,6 @@ const KNOWN_STATE_OVERRIDE_KEYS = new Set([
   'opacity',
   'effects'
 ])
-
-const KNOWN_VALIDATION_KEYS = new Set([
-  'required',
-  'pattern',
-  'minLength',
-  'maxLength',
-  'min',
-  'max',
-  'customExpr',
-  'messages',
-  'async'
-])
-
-const KNOWN_VALIDATION_MESSAGE_KEYS = new Set([
-  'required',
-  'pattern',
-  'minLength',
-  'maxLength',
-  'min',
-  'max',
-  'custom'
-])
-
-const KNOWN_VALIDATION_ASYNC_KEYS = new Set(['url', 'urlExpr', 'method', 'message'])
-
-const KNOWN_VALIDATION_SUMMARY_KEYS = new Set(['enabled', 'title'])
 
 const KNOWN_FILTER_OPS = new Set<FilterOp>(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'])
 
@@ -1052,175 +1026,8 @@ function applyInteractivePropsField(
     return { ok: true }
   }
   if (!isPlainObject(raw.interactiveProps)) return fail('interactiveProps must be an object')
-  const r = validateInteractivePropsBoundary(raw.interactiveProps)
-  if (!r.ok) return r
   patch.interactiveProps = raw.interactiveProps
   return { ok: true }
-}
-
-function validateInteractivePropsBoundary(ip: Record<string, unknown>): FieldResult {
-  if ('validation' in ip) {
-    const r = validateFieldValidationConfig(ip.validation)
-    if (!r.ok) return r
-  }
-  if ('validationSummary' in ip) {
-    const r = validateValidationSummaryConfig(ip.validationSummary)
-    if (!r.ok) return r
-  }
-  return { ok: true }
-}
-
-function validateFieldValidationConfig(raw: unknown): FieldResult {
-  if (raw === null) return { ok: true }
-  if (!isPlainObject(raw)) return fail('interactiveProps.validation must be an object or null')
-  for (const key of Object.keys(raw)) {
-    if (!KNOWN_VALIDATION_KEYS.has(key)) {
-      return fail(
-        `interactiveProps.validation.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_KEYS].join(' / ')}`
-      )
-    }
-  }
-  if ('required' in raw && typeof raw.required !== 'boolean') {
-    return fail('interactiveProps.validation.required must be a boolean')
-  }
-  const pattern = validateValidationPattern(raw.pattern)
-  if (!pattern.ok) return pattern
-  const numbers = validateValidationNumbers(raw)
-  if (!numbers.ok) return numbers
-  const custom = validateValidationCustomExpr(raw.customExpr)
-  if (!custom.ok) return custom
-  const messages = validateValidationMessages(raw.messages)
-  if (!messages.ok) return messages
-  const async = validateAsyncValidationConfig(raw.async)
-  if (!async.ok) return async
-  return { ok: true }
-}
-
-function validateValidationPattern(raw: unknown): FieldResult {
-  if (raw === undefined || raw === null) return { ok: true }
-  if (typeof raw !== 'string') return fail('interactiveProps.validation.pattern must be a string')
-  if (!isValidRegex(raw)) {
-    return fail('interactiveProps.validation.pattern must compile as a regular expression')
-  }
-  return { ok: true }
-}
-
-function validateValidationNumbers(raw: Record<string, unknown>): FieldResult {
-  for (const key of ['minLength', 'maxLength', 'min', 'max'] as const) {
-    if (raw[key] === undefined || raw[key] === null) continue
-    if (typeof raw[key] !== 'number' || !Number.isFinite(raw[key])) {
-      return fail(`interactiveProps.validation.${key} must be a finite number`)
-    }
-  }
-  return { ok: true }
-}
-
-function validateValidationCustomExpr(raw: unknown): FieldResult {
-  if (raw === undefined || raw === null) return { ok: true }
-  if (typeof raw !== 'string')
-    return fail('interactiveProps.validation.customExpr must be a string')
-  const r = validateExpression(raw)
-  if (!r.ok) return fail(`interactiveProps.validation.customExpr — ${r.reason}`)
-  return { ok: true }
-}
-
-function validateValidationMessages(raw: unknown): FieldResult {
-  if (raw === undefined || raw === null) return { ok: true }
-  if (!isPlainObject(raw)) return fail('interactiveProps.validation.messages must be an object')
-  for (const [key, value] of Object.entries(raw)) {
-    if (!KNOWN_VALIDATION_MESSAGE_KEYS.has(key)) {
-      return fail(
-        `interactiveProps.validation.messages.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_MESSAGE_KEYS].join(' / ')}`
-      )
-    }
-    if (typeof value !== 'string') {
-      return fail(`interactiveProps.validation.messages.${key} must be a string`)
-    }
-  }
-  return { ok: true }
-}
-
-function validateAsyncValidationConfig(raw: unknown): FieldResult {
-  if (raw === undefined || raw === null) return { ok: true }
-  if (!isPlainObject(raw)) return fail('interactiveProps.validation.async must be an object')
-  for (const key of Object.keys(raw)) {
-    if (!KNOWN_VALIDATION_ASYNC_KEYS.has(key)) {
-      return fail(
-        `interactiveProps.validation.async.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_ASYNC_KEYS].join(' / ')}`
-      )
-    }
-  }
-  const url = validateAsyncValidationUrl(raw)
-  if (!url.ok) return url
-  const method = validateAsyncValidationMethod(raw.method)
-  if (!method.ok) return method
-  if (raw.message !== undefined && raw.message !== null && typeof raw.message !== 'string') {
-    return fail('interactiveProps.validation.async.message must be a string')
-  }
-  return { ok: true }
-}
-
-function validateAsyncValidationUrl(raw: Record<string, unknown>): FieldResult {
-  const hasUrl = typeof raw.url === 'string' && raw.url.trim() !== ''
-  const hasUrlExpr = typeof raw.urlExpr === 'string' && raw.urlExpr.trim() !== ''
-  if (raw.url !== undefined && raw.url !== null && typeof raw.url !== 'string') {
-    return fail('interactiveProps.validation.async.url must be a string')
-  }
-  if (raw.urlExpr !== undefined && raw.urlExpr !== null && typeof raw.urlExpr !== 'string') {
-    return fail('interactiveProps.validation.async.urlExpr must be a string')
-  }
-  if (hasUrl && hasUrlExpr) {
-    return fail('interactiveProps.validation.async must use either url or urlExpr, not both')
-  }
-  if (!hasUrl && !hasUrlExpr) {
-    return fail('interactiveProps.validation.async requires a non-empty url or urlExpr')
-  }
-  if (!hasUrlExpr) return { ok: true }
-  const r = validateExpression(String(raw.urlExpr))
-  if (!r.ok) return fail(`interactiveProps.validation.async.urlExpr — ${r.reason}`)
-  return { ok: true }
-}
-
-function validateAsyncValidationMethod(raw: unknown): FieldResult {
-  if (raw === undefined || raw === null) return { ok: true }
-  if (typeof raw !== 'string')
-    return fail('interactiveProps.validation.async.method must be GET or POST')
-  const method = raw.trim().toUpperCase()
-  if (method !== 'GET' && method !== 'POST') {
-    return fail('interactiveProps.validation.async.method must be GET or POST')
-  }
-  return { ok: true }
-}
-
-function validateValidationSummaryConfig(raw: unknown): FieldResult {
-  if (raw === null || typeof raw === 'boolean') return { ok: true }
-  if (!isPlainObject(raw)) {
-    return fail('interactiveProps.validationSummary must be a boolean, object, or null')
-  }
-  for (const key of Object.keys(raw)) {
-    if (!KNOWN_VALIDATION_SUMMARY_KEYS.has(key)) {
-      return fail(
-        `interactiveProps.validationSummary.${key} is not supported — allowed: ${[...KNOWN_VALIDATION_SUMMARY_KEYS].join(' / ')}`
-      )
-    }
-  }
-  if (raw.enabled !== undefined && typeof raw.enabled !== 'boolean') {
-    return fail('interactiveProps.validationSummary.enabled must be a boolean')
-  }
-  if (raw.title !== undefined && raw.title !== null && typeof raw.title !== 'string') {
-    return fail('interactiveProps.validationSummary.title must be a string')
-  }
-  return { ok: true }
-}
-
-function isValidRegex(src: string): boolean {
-  try {
-    // eslint-disable-next-line no-new
-    new RegExp(src)
-    return true
-  } catch {
-    return false
-  }
 }
 
 function validateStateOverrides(raw: unknown): StateOverridesResult {
@@ -1714,20 +1521,6 @@ const FIELD_APPLIERS = [
   applyCustomCssField
 ]
 
-// Phase 3 §3.v7 — reject a DATEPICKER whose interactiveProps carry a
-// malformed date (decision §3.v7.2 f: format errors hard-fail at the tool
-// boundary, same as payloadEntries). Range-inverted / value-out-of-range are
-// NOT rejected here — they're warn-and-keep (decision h), surfaced as IR
-// warnings at compile time, not tool errors.
-function checkDatePickerFields(ip: Record<string, unknown>): FieldResult {
-  for (const issue of validateDatePickerProps(ip)) {
-    if (issue.code.startsWith('datepicker-invalid') && issue.key) {
-      return fail(`interactiveProps.${issue.key} must be a valid YYYY-MM-DD date`)
-    }
-  }
-  return { ok: true }
-}
-
 /**
  * Validate a partial lowcode patch and build the `Partial<SceneNode>`
  * payload to hand to `graph.updateNode`. Unknown keys are rejected
@@ -1748,9 +1541,11 @@ function buildPatch(
     const r = apply(raw, patch)
     if (!r.ok) return r
   }
-  if (nodeType === 'DATEPICKER' && isPlainObject(patch.interactiveProps)) {
-    const r = checkDatePickerFields(patch.interactiveProps)
-    if (!r.ok) return r
+  if (isPlainObject(patch.interactiveProps)) {
+    const issue = validateInteractiveProps(nodeType, patch.interactiveProps).find(
+      (candidate) => candidate.severity === 'error'
+    )
+    if (issue) return fail(issue.reason)
   }
   return { ok: true, data: patch }
 }

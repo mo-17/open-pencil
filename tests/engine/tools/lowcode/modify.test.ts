@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- public lowcode mutation boundary coverage stays grouped by tool */
 import { describe, expect, test } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
@@ -556,6 +557,35 @@ describe('update_lowcode_node', () => {
     })
     // decision f: range relationships don't hard-fail at the tool boundary
     expect(run({ min: '2026-12-31', max: '2026-01-01' }).ok).toBe(true)
+  })
+
+  test('rejects known interactiveProps type mismatches without mutating nodes', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const cases = [
+      ['BUTTON', { text: 42 }, 'interactiveProps.text'],
+      ['INPUT', { placeholder: false }, 'interactiveProps.placeholder'],
+      ['TEXTAREA', { value: [] }, 'interactiveProps.value'],
+      ['SELECT', { options: ['Admin', 7] }, 'interactiveProps.options'],
+      ['RADIO', { groupName: true }, 'interactiveProps.groupName'],
+      ['CHECKBOX', { checked: 'yes' }, 'interactiveProps.checked'],
+      ['SWITCH', { checked: 1 }, 'interactiveProps.checked'],
+      ['DATEPICKER', { min: false }, 'interactiveProps.min']
+    ] as const
+
+    for (const [nodeType, interactiveProps, expectedPath] of cases) {
+      const node = graph.createNode(nodeType, pageId)
+      const before = structuredClone(node.interactiveProps)
+      const result = getTool('update_lowcode_node').execute(figma, {
+        id: node.id,
+        patch_json: JSON.stringify({ interactiveProps })
+      }) as Result<{ id: string; updated: string[] }>
+
+      expect(result.ok).toBe(false)
+      if (result.ok) continue
+      expect(result.error).toContain(expectedPath)
+      expect(graph.getNode(node.id)?.interactiveProps).toEqual(before)
+    }
   })
 
   test('accepts valid form validation and summary interactiveProps (§19)', () => {

@@ -6,7 +6,7 @@ After completing a design, give a **2–3 line** summary: frame size, accent col
 
 The `render` tool takes JSX and produces design nodes. JavaScript expressions (map, ternaries, Array.from) work inside JSX. **Each render call must have exactly ONE root element.** To add multiple siblings to the same parent, use separate render calls or wrap in a Fragment-like parent Frame.
 
-Available elements: Frame, Text, Rectangle, Ellipse, Line, Star, Polygon, Group, Section, Component, Icon.
+Available elements: Frame, Text, Rectangle, Ellipse, Line, Star, Polygon, Vector, Group, Section, Component, ComponentSet, Instance, Icon, Button, Input, Select, Checkbox, Form, List, Radio, Textarea, DatePicker, Switch.
 
 All styling is done via props — no `style`, `className`, or CSS. Colors are hex only (#RRGGBB or #RRGGBBAA).
 
@@ -29,6 +29,22 @@ These are ALL available props. Nothing else exists.
 **Shapes:** points={N} (Star/Polygon), innerRadius={N} (Star). All shapes need `bg` or `stroke` — invisible without.
 
 **Identity:** name="string" for the layers panel.
+
+## Lowcode controls
+
+When the requested UI is interactive or intended for lowcode compilation, create a real lowcode node. **Never substitute a Frame, Rectangle, or inferred semantic role for Button/Input/Select/Checkbox/Form/List/Radio/Textarea/DatePicker/Switch.** Decorative wrappers may still be Frames.
+
+- `<Button text="Save" />` or `<Button>Save</Button>`
+- `<Input placeholder="Email" value="" />`, `<Textarea placeholder="Message" value="" />`
+- `<Select options={['A', 'B']} value="A" />`
+- `<Checkbox checked />`, `<Switch checked />`
+- `<Radio options={['A', 'B']} value="A" groupName="plan" />`
+- `<DatePicker value="2026-07-27" min="2026-01-01" max="2026-12-31" />`
+- `<Form flex="col" gap={12}>...</Form>` and `<List flex="col">...</List>` are containers and accept children.
+
+Every control also accepts `interactiveProps={{...}}` for advanced JSON-safe properties such as validation, validationSummary, optionsSource, upload, or list dataSourceRef. Direct props override the same keys in `interactiveProps`; Button child text overrides both. Invalid validation schemas and malformed DATEPICKER dates are rejected before a node is created.
+
+After `render`, use the returned real control ID with `update_lowcode_node` to add bindings, events, state overrides, render conditions, or other behavior. Do not describe a visual Frame as a button and then wire it as if its type had changed.
 
 ## Layout rules
 
@@ -78,7 +94,7 @@ Fonts are loaded automatically — use any Google Fonts family (Inter, Georgia, 
 
 ## Prohibited
 
-No style={{}}, className, CSS. No named colors or rgb(). No percentage values. No TypeScript casts. No Math.random(). No `Math.` prefix in calc — use `floor(x)` not `Math.floor(x)`. No emoji in UI elements (use `<Icon>` instead) — emoji renders as □.
+No style={{}}, className, CSS. No named colors or rgb(). No percentage values. No TypeScript casts. No Math.random(). No `Math.` prefix in calc — use `floor(x)` not `Math.floor(x)`. No emoji in UI elements (use `<Icon>` instead) — emoji renders as □. No Frame/Rectangle substitutes for functional lowcode controls.
 
 ## Common patterns
 

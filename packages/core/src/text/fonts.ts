@@ -436,7 +436,10 @@ export class FontManager {
     if (targetFamilies.length === 0 || characters) {
       const results = await Promise.allSettled(
         manifest.remoteFamilies.map(async (family) => {
-          const data = await this.loadRemoteFont(family, 'Regular', characters)
+          // A remote fallback family may also have a bundled, cached, or host
+          // face (notably the bundled Noto Sans SC). Resolve through the full
+          // font chain so CJK controls can render without network access.
+          const data = await this.loadFont(family, 'Regular', characters)
           return data ? family : null
         })
       )

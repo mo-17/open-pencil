@@ -12,11 +12,23 @@ export {
   Component,
   ComponentSet,
   Instance,
+  Button,
+  Input,
+  Select,
+  Checkbox,
+  Form,
+  List,
+  Radio,
+  Textarea,
+  DatePicker,
+  Switch,
   View,
   Rect,
   Page,
   INTRINSIC_ELEMENTS
 } from './components'
+
+export { LOWCODE_INTRINSIC_ELEMENTS, type LowcodeNodeType } from './lowcode'
 
 export {
   type TreeNode,

@@ -4,6 +4,7 @@ import { SceneGraph } from '@open-pencil/core'
 import {
   collectGraphFontRequirements,
   fontManager,
+  missingGraphFontScripts,
   textNeededFallbackScripts
 } from '@open-pencil/core/text'
 
@@ -16,6 +17,25 @@ describe('font fallback coverage indexing', () => {
     const graph = new SceneGraph()
     const node = graph.createNode('TEXT', pageId(graph), { text: 'abc', textCase: 'UPPER' })
     expect(collectGraphFontRequirements(graph, [node.id]).characters).toBe('ABC')
+  })
+
+  test('includes a lowcode BUTTON label in font and fallback preflight', async () => {
+    const family = `ButtonLatin_${Date.now()}`
+    const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    fontManager.markLoaded(family, 'Regular', data)
+    const graph = new SceneGraph()
+    const node = graph.createNode('BUTTON', pageId(graph), {
+      fontFamily: family,
+      fontWeight: 400,
+      interactiveProps: { text: '整理行囊' }
+    })
+
+    const requirements = collectGraphFontRequirements(graph, [node.id])
+
+    expect(requirements.characters).toBe('整理行囊')
+    expect(requirements.nodes).toHaveLength(1)
+    expect(requirements.nodes[0]).toMatchObject({ id: node.id, type: 'TEXT', text: '整理行囊' })
+    expect(missingGraphFontScripts(requirements)).toContain('cjk-sc')
   })
 
   test('detects supplementary-plane Han code points', async () => {

@@ -21,4 +21,13 @@ describe('offline CJK fallback (bundled Noto Sans SC)', () => {
     // A real CJK font is multi-MB; a stub/pointer or a failed fetch would not be.
     expect(data.byteLength).toBeGreaterThan(1_000_000)
   })
+
+  test('the CJK fallback pack reuses the bundled face without network', async () => {
+    const fm = new FontManager()
+
+    const families = await fm.ensureFallbackPack(['cjk-sc'], '整理行囊')
+
+    expect(families['cjk-sc']).toContain('Noto Sans SC')
+    expect(fm.getCJKFallbackFamilies()).toContain('Noto Sans SC')
+  })
 })

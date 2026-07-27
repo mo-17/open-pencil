@@ -4,6 +4,7 @@ import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { transformTextCase } from '#core/text/case'
 import { cjkFallbackScriptForLanguage, type FontFallbackScript } from '#core/text/fallbacks'
 import { weightToStyle } from '#core/text/font-style'
+import { buttonLabelTextNode } from '#core/text/lowcode'
 
 export function collectGraphFontKeys(
   graph: SceneGraph,
@@ -13,13 +14,14 @@ export function collectGraphFontKeys(
   const collect = (nodeId: string) => {
     const node = graph.getNode(nodeId)
     if (!node) return
-    if (node.type === 'TEXT') {
-      const family = node.fontFamily || DEFAULT_FONT_FAMILY
-      fontKeys.add(`${family}\0${weightToStyle(node.fontWeight || 400, node.italic)}`)
-      for (const run of node.styleRuns) {
+    const textNode = buttonLabelTextNode(node) ?? node
+    if (textNode.type === 'TEXT') {
+      const family = textNode.fontFamily || DEFAULT_FONT_FAMILY
+      fontKeys.add(`${family}\0${weightToStyle(textNode.fontWeight || 400, textNode.italic)}`)
+      for (const run of textNode.styleRuns) {
         const runFamily = run.style.fontFamily ?? family
-        const weight = run.style.fontWeight ?? node.fontWeight
-        const italic = run.style.italic ?? node.italic
+        const weight = run.style.fontWeight ?? textNode.fontWeight
+        const italic = run.style.italic ?? textNode.italic
         fontKeys.add(`${runFamily}\0${weightToStyle(weight, italic)}`)
       }
     }
@@ -61,12 +63,13 @@ export function collectGraphFontRequirements(
   const collect = (nodeId: string) => {
     const node = graph.getNode(nodeId)
     if (!node) return
-    nodes.push(node)
-    if (node.type === 'TEXT') {
+    const textNode = buttonLabelTextNode(node) ?? node
+    nodes.push(textNode)
+    if (textNode.type === 'TEXT') {
       let index = 0
-      for (const character of transformTextCase(node.text, node.textCase)) {
+      for (const character of transformTextCase(textNode.text, textNode.textCase)) {
         characters.add(character)
-        const script = fallbackScriptForCharacter(character, textLanguageAt(node, index))
+        const script = fallbackScriptForCharacter(character, textLanguageAt(textNode, index))
         if (script) scripts.add(script)
         index += character.length
       }

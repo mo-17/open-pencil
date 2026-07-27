@@ -13,6 +13,12 @@ import { createIconFromPaths } from '#core/icons/render'
 import { computeAllLayouts } from '#core/layout'
 import { randomHex } from '#core/random'
 
+import {
+  isLowcodeNodeType,
+  LOWCODE_TYPE_MAP,
+  prepareLowcodeProps,
+  type PreparedLowcodeProps
+} from './lowcode'
 import { applySizeOverrides, propsToOverrides } from './props-overrides'
 import { isTreeNode } from './tree'
 import type { TreeNode } from './tree'
@@ -48,7 +54,8 @@ const TYPE_MAP: Partial<Record<string, NodeType>> = {
   h3: 'TEXT',
   h4: 'TEXT',
   h5: 'TEXT',
-  h6: 'TEXT'
+  h6: 'TEXT',
+  ...LOWCODE_TYPE_MAP
 }
 
 export interface RenderResult {
@@ -65,8 +72,11 @@ export async function renderTree(
   options: RenderOptions = {}
 ): Promise<RenderResult> {
   const parentId = options.parentId ?? graph.getPages()[0].id
+  const warnings: string[] = []
+  const lowcodeProps = new Map<TreeNode, PreparedLowcodeProps>()
+  preflightLowcodeTree(tree, lowcodeProps, warnings)
 
-  const result = await renderNode(graph, tree, parentId)
+  const result = await renderNode(graph, tree, parentId, lowcodeProps)
 
   if (options.x !== undefined) graph.updateNode(result.id, { x: options.x })
   if (options.y !== undefined) graph.updateNode(result.id, { y: options.y })
@@ -77,8 +87,41 @@ export async function renderTree(
     id: result.id,
     name: result.name,
     type: result.type,
-    childIds: result.childIds
+    childIds: result.childIds,
+    ...(warnings.length > 0 ? { warnings } : {})
   }
+}
+
+function buttonTextFromTree(tree: TreeNode, nodeType: NodeType): string | undefined {
+  if (nodeType !== 'BUTTON' || tree.children.length === 0) return undefined
+  if (!tree.children.every((child) => typeof child === 'string')) return undefined
+  return tree.children.join('')
+}
+
+function preflightLowcodeTree(
+  tree: TreeNode,
+  preparedByTree: Map<TreeNode, PreparedLowcodeProps>,
+  warnings: string[]
+): void {
+  const nodeType = TYPE_MAP[tree.type.toLowerCase()]
+  if (nodeType && isLowcodeNodeType(nodeType)) {
+    const prepared = prepareLowcodeProps(
+      nodeType,
+      tree.type,
+      tree.props,
+      buttonTextFromTree(tree, nodeType)
+    )
+    preparedByTree.set(tree, prepared)
+    warnings.push(...prepared.warnings)
+  }
+  for (const child of tree.children) {
+    if (isTreeNode(child)) preflightLowcodeTree(child, preparedByTree, warnings)
+  }
+}
+
+/** Validate every lowcode node before a JSX render starts mutating the graph. */
+export function validateTreeForRender(tree: TreeNode): void {
+  preflightLowcodeTree(tree, new Map(), [])
 }
 
 interface PreparedProps {
@@ -346,11 +389,28 @@ async function renderInstanceNode(
   return instance
 }
 
-async function renderNode(graph: SceneGraph, tree: TreeNode, parentId: string): Promise<SceneNode> {
-  if (tree.type === 'icon') return renderIconNode(graph, tree, parentId)
-  if (tree.type === 'instance') return renderInstanceNode(graph, tree, parentId)
+function applyPreparedLowcodeProps(
+  graph: SceneGraph,
+  node: SceneNode,
+  prepared: PreparedLowcodeProps | undefined
+): void {
+  if (!prepared?.interactiveProps) return
+  graph.updateNode(node.id, {
+    interactiveProps: { ...node.interactiveProps, ...prepared.interactiveProps }
+  })
+}
 
-  const nodeType = TYPE_MAP[tree.type]
+async function renderNode(
+  graph: SceneGraph,
+  tree: TreeNode,
+  parentId: string,
+  lowcodeProps: Map<TreeNode, PreparedLowcodeProps>
+): Promise<SceneNode> {
+  const elementType = tree.type.toLowerCase()
+  if (elementType === 'icon') return renderIconNode(graph, tree, parentId)
+  if (elementType === 'instance') return renderInstanceNode(graph, tree, parentId)
+
+  const nodeType = TYPE_MAP[elementType]
   if (!nodeType) throw new Error(`Unknown element: <${tree.type}>`)
 
   const parent = graph.getNode(parentId)
@@ -359,6 +419,7 @@ async function renderNode(graph: SceneGraph, tree: TreeNode, parentId: string): 
   const isText = nodeType === 'TEXT'
   const { props, bindings } = preparePropsForRender(graph, tree.props, isText)
   const overrides = propsToOverrides(props, isText, parentLayout)
+  const preparedLowcode = lowcodeProps.get(tree)
 
   if (isText) {
     const childText = tree.children.filter((c): c is string => typeof c === 'string').join('')
@@ -369,12 +430,13 @@ async function renderNode(graph: SceneGraph, tree: TreeNode, parentId: string): 
   }
 
   const node = graph.createNode(nodeType, parentId, overrides)
+  applyPreparedLowcodeProps(graph, node, preparedLowcode)
   applyBindings(graph, node.id, bindings)
 
   for (const child of tree.children) {
     if (typeof child === 'string') continue
     if (isTreeNode(child)) {
-      await renderNode(graph, child, node.id)
+      await renderNode(graph, child, node.id, lowcodeProps)
     }
   }
 

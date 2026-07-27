@@ -60,6 +60,13 @@ export {
 } from './datepicker-props'
 
 export {
+  type InteractivePropsIssue,
+  type InteractivePropsIssueSeverity,
+  isInteractivePropsObject,
+  validateInteractiveProps
+} from './interactive-props'
+
+export {
   type RlsTableRequirement,
   type SqlCommand,
   buildRlsPolicySql,

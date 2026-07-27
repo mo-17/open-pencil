@@ -31,6 +31,17 @@ export namespace JSX {
     component: BaseProps
     'component-set': BaseProps
     instance: BaseProps & { component?: string; componentId?: string; of?: string }
+    button: BaseProps
+    input: BaseProps
+    select: BaseProps
+    checkbox: BaseProps
+    form: BaseProps
+    list: BaseProps
+    radio: BaseProps
+    textarea: BaseProps
+    datepicker: BaseProps
+    'date-picker': BaseProps
+    switch: BaseProps
   }
 
   export interface ElementChildrenAttribute {

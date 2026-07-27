@@ -8,7 +8,7 @@ const MAX_JSX_LENGTH = 12_000
 export const getJsx = defineTool({
   name: 'get_jsx',
   description:
-    'Get JSX representation of a node and its children. Compact round-trip format — same syntax as the render tool.',
+    'Get a structural JSX projection of a node and its children using the render tool syntax. It preserves visible hierarchy, layout, appearance, real lowcode control tags, and interactiveProps, but intentionally omits lowcode behavior fields such as bindings, events, stateOverrides, and renderCondition. Use read_lowcode_node to inspect those fields and update_lowcode_node to write them; use .fig for full semantic persistence.',
   params: {
     id: { type: 'string', description: 'Node ID', required: true },
     path: {

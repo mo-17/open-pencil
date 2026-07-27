@@ -13,6 +13,7 @@ import { vectorNetworkToCenterlinePath } from '#core/vector'
 import { figmaBlendModeToSkia, needsIsolatedBlendLayer } from './blend'
 import { renderBooleanOperation } from './boolean'
 import { drawLayoutGrids } from './layout-grids'
+import { renderButtonLabel } from './lowcode'
 import { renderMaskedChildIds } from './masks'
 import type { SkiaRenderer, RenderOverlays } from './renderer'
 import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shapes'
@@ -600,6 +601,7 @@ export function renderShapeUncached(
     drawNodeStroke(r, canvas, node, rect, hasRadius, stroke, color, sg, vectorPaths, vectorStroke)
   })
   r.renderEffects(canvas, node, rect, hasRadius, 'front', shadowChild)
+  if (node.type === 'BUTTON') renderButtonLabel(r, canvas, node)
 }
 
 function isGradientFill(fill?: Fill): boolean {

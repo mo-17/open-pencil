@@ -4,7 +4,7 @@ export const render = defineTool({
   name: 'render',
   mutates: true,
   description:
-    'Render JSX to design nodes. Use replace_id to swap a skeleton placeholder with real content (keeps position in parent). Example: <Frame name="Card" w={320} h="hug" flex="col" gap={16} p={24} bg="#FFF" rounded={16}><Text size={18} weight="bold">Title</Text></Frame>',
+    'Render JSX to design nodes, including real lowcode BUTTON/INPUT/SELECT/CHECKBOX/FORM/LIST/RADIO/TEXTAREA/DATEPICKER/SWITCH nodes through the matching PascalCase tags. Never use a Frame as a functional-control substitute. Lowcode tags accept direct control props plus a validated interactiveProps object; use update_lowcode_node after render for bindings/events. Use replace_id to swap a skeleton placeholder with real content (keeps position in parent). Example: <Form flex="col" gap={12}><Input placeholder="Email" /><Button>Submit</Button></Form>',
   params: {
     replace_id: {
       type: 'string',
@@ -17,7 +17,12 @@ export const render = defineTool({
     },
     x: { type: 'number', description: 'X position of the root node' },
     y: { type: 'number', description: 'Y position of the root node' },
-    jsx: { type: 'string', description: 'JSX string to render', required: true }
+    jsx: {
+      type: 'string',
+      description:
+        'JSX string to render. Functional controls must use Button/Input/Select/Checkbox/Form/List/Radio/Textarea/DatePicker/Switch, not Frame substitutes.',
+      required: true
+    }
   },
   execute: async (figma, args) => {
     const { renderJSX } = await import('#core/design-jsx/render.js')

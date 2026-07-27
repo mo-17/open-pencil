@@ -2,22 +2,57 @@
 
 ## Elements
 
-| Tag       | Description                            |
-| --------- | -------------------------------------- |
-| Frame     | Container / auto-layout frame          |
-| Rectangle | Rectangle shape                        |
-| Ellipse   | Circle / ellipse shape                 |
-| Text      | Text node (children = text content)    |
-| Line      | Line shape                             |
-| Star      | Star shape                             |
-| Polygon   | Polygon shape (default 3 sides)        |
-| Vector    | Vector path                            |
-| Group     | Group container                        |
-| Section   | Section (like Frame, for organization) |
-| Component | Component definition                   |
-| Icon      | Iconify icon (requires name prop)      |
+| Tag        | Description                              |
+| ---------- | ---------------------------------------- |
+| Frame      | Container / auto-layout frame            |
+| Rectangle  | Rectangle shape                          |
+| Ellipse    | Circle / ellipse shape                   |
+| Text       | Text node (children = text content)      |
+| Line       | Line shape                               |
+| Star       | Star shape                               |
+| Polygon    | Polygon shape (default 3 sides)          |
+| Vector     | Vector path                              |
+| Group      | Group container                          |
+| Section    | Section (like Frame, for organization)   |
+| Component  | Component definition                     |
+| Icon       | Iconify icon (requires name prop)        |
+| Button     | Lowcode button (`BUTTON`)                |
+| Input      | Lowcode single-line input (`INPUT`)      |
+| Select     | Lowcode select (`SELECT`)                |
+| Checkbox   | Lowcode checkbox/group (`CHECKBOX`)      |
+| Form       | Lowcode form container (`FORM`)          |
+| List       | Lowcode repeated-list container (`LIST`) |
+| Radio      | Lowcode radio group (`RADIO`)            |
+| Textarea   | Lowcode multiline input (`TEXTAREA`)     |
+| DatePicker | Lowcode date input (`DATEPICKER`)        |
+| Switch     | Lowcode switch (`SWITCH`)                |
 
 Aliases: View = Frame, Rect = Rectangle
+
+## Lowcode Control Props
+
+Lowcode tags create the corresponding SceneGraph `NodeType`; they are not visual Frames with inferred roles. Use the real tag whenever the design must remain interactive or compile as lowcode.
+
+| Element          | Convenience props                                              |
+| ---------------- | -------------------------------------------------------------- |
+| Button           | `text`; string children also set the label and take precedence |
+| Input, Textarea  | `placeholder`, `value`                                         |
+| Select           | `options: string[]`, `value`                                   |
+| Checkbox, Switch | `checked: boolean`                                             |
+| Checkbox         | `options: string[]` for group mode                             |
+| Radio            | `options: string[]`, `value`, `groupName`                      |
+| DatePicker       | `value`, `min`, `max` as ISO `YYYY-MM-DD`                      |
+| Form, List       | Container children; use normal layout props                    |
+
+All ten tags accept `interactiveProps={{...}}` for JSON-safe advanced properties. Direct convenience props override duplicate keys in the object, and Button child text overrides both. The renderer validates field-validation schemas and DATEPICKER dates before creating any node. Exported JSX and `get_jsx` are structural projections: they retain visible structure and `interactiveProps`, but not `bindings`, `events`, `stateOverrides`, or `renderCondition`. Use `read_lowcode_node` to inspect those fields and `update_lowcode_node` after rendering to write them.
+
+```jsx
+<Form name="Signup" w={320} flex="col" gap={12} p={16}>
+  <Input name="Email" placeholder="Email address" />
+  <Select name="Plan" options={['Free', 'Pro']} value="Free" />
+  <Button name="Submit">Create account</Button>
+</Form>
+```
 
 ## Layout Props
 
