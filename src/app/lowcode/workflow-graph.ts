@@ -14,11 +14,35 @@ export interface WorkflowGraphEdge {
 export interface WorkflowGraphIssue {
   type: 'missing-workflow' | 'cycle' | 'call-args'
   message: string
+  /** Structured copy for presentation layers that need localized issue text. */
+  i18n?: WorkflowGraphIssueI18n
   workflowIds: string[]
   targetWorkflowId?: string
   actionId?: string
   actionPath?: string
 }
+
+export type WorkflowGraphCallArgProblem = {
+  kind: 'extra' | 'missing' | 'invalid'
+  param: string
+  message: string
+}
+
+export type WorkflowGraphIssueI18n =
+  | { code: 'missing-workflow-call'; sourceName: string; workflowId: string }
+  | {
+      code: 'missing-workflow-entrypoint'
+      nodeName: string
+      eventName: EventName
+      workflowId: string
+    }
+  | {
+      code: 'call-args'
+      sourceName: string
+      targetName: string
+      problems: WorkflowGraphCallArgProblem[]
+    }
+  | { code: 'cycle'; names: string[] }
 
 export interface WorkflowGraphEntrypoint {
   workflowId: string
@@ -54,6 +78,16 @@ export interface WorkflowGraphSummary {
 
 export interface WorkflowGraphOptions {
   entrypoints?: readonly WorkflowGraphEntrypoint[]
+}
+
+function withWorkflowGraphIssueI18n(
+  issue: WorkflowGraphIssue,
+  i18n: WorkflowGraphIssueI18n
+): WorkflowGraphIssue {
+  // Keep the legacy enumerable result shape stable for API consumers and tests;
+  // presentation layers can still read the structured localization metadata.
+  Object.defineProperty(issue, 'i18n', { value: i18n, enumerable: false })
+  return issue
 }
 
 export function collectWorkflowEntrypoints(
@@ -201,38 +235,42 @@ function callWorkflowArgIssues(
   const sourceName = source.name || source.id
   const targetName = target.name || target.id
   return [
-    {
-      type: 'call-args',
-      message: `${sourceName} calls ${targetName} with invalid arguments: ${problems.join(', ')}`,
-      workflowIds: [source.id, target.id],
-      targetWorkflowId: source.id,
-      actionId: action.id,
-      actionPath
-    }
+    withWorkflowGraphIssueI18n(
+      {
+        type: 'call-args',
+        message: `${sourceName} calls ${targetName} with invalid arguments: ${problems.map((problem) => problem.message).join(', ')}`,
+        workflowIds: [source.id, target.id],
+        targetWorkflowId: source.id,
+        actionId: action.id,
+        actionPath
+      },
+      { code: 'call-args', sourceName, targetName, problems }
+    )
   ]
 }
 
 function callWorkflowArgProblems(
   action: Extract<ActionDef, { kind: 'callWorkflow' }>,
   workflow: WorkflowDef
-): string[] {
+): WorkflowGraphCallArgProblem[] {
   const params = workflow.params ?? []
   const args = action.args ?? {}
   const defaults = workflow.paramDefaults ?? {}
   const optional = new Set(workflow.optionalParams)
-  const problems: string[] = []
+  const problems: WorkflowGraphCallArgProblem[] = []
   for (const key of Object.keys(args)) {
-    if (!params.includes(key)) problems.push(`extra "${key}"`)
+    if (!params.includes(key))
+      problems.push({ kind: 'extra', param: key, message: `extra "${key}"` })
   }
   for (const param of params) {
     const raw = Object.hasOwn(args, param) ? args[param] : ''
     if (raw.trim() === '') {
       if (!Object.hasOwn(defaults, param) && !optional.has(param))
-        problems.push(`missing "${param}"`)
+        problems.push({ kind: 'missing', param, message: `missing "${param}"` })
       continue
     }
     const result = validateExpression(raw)
-    if (!result.ok) problems.push(`invalid "${param}"`)
+    if (!result.ok) problems.push({ kind: 'invalid', param, message: `invalid "${param}"` })
   }
   return problems
 }
@@ -260,14 +298,23 @@ function actionBranches(action: ActionDef): readonly [string, readonly ActionDef
 function missingWorkflowIssues(edges: readonly WorkflowGraphEdge[]): WorkflowGraphIssue[] {
   return edges
     .filter((edge) => !edge.toName)
-    .map((edge) => ({
-      type: 'missing-workflow',
-      message: `${edge.fromName} calls a missing workflow (${edge.toId})`,
-      workflowIds: [edge.fromId, edge.toId],
-      targetWorkflowId: edge.fromId,
-      actionId: edge.actionId,
-      actionPath: edge.actionPath
-    }))
+    .map((edge) =>
+      withWorkflowGraphIssueI18n(
+        {
+          type: 'missing-workflow',
+          message: `${edge.fromName} calls a missing workflow (${edge.toId})`,
+          workflowIds: [edge.fromId, edge.toId],
+          targetWorkflowId: edge.fromId,
+          actionId: edge.actionId,
+          actionPath: edge.actionPath
+        },
+        {
+          code: 'missing-workflow-call',
+          sourceName: edge.fromName,
+          workflowId: edge.toId
+        }
+      )
+    )
 }
 
 function missingEntrypointIssues(
@@ -275,11 +322,21 @@ function missingEntrypointIssues(
 ): WorkflowGraphIssue[] {
   return entrypoints
     .filter((entrypoint) => !entrypoint.workflowName)
-    .map((entrypoint) => ({
-      type: 'missing-workflow',
-      message: `${entrypoint.nodeName} ${entrypoint.eventName} calls a missing workflow (${entrypoint.workflowId})`,
-      workflowIds: [entrypoint.workflowId]
-    }))
+    .map((entrypoint) =>
+      withWorkflowGraphIssueI18n(
+        {
+          type: 'missing-workflow',
+          message: `${entrypoint.nodeName} ${entrypoint.eventName} calls a missing workflow (${entrypoint.workflowId})`,
+          workflowIds: [entrypoint.workflowId]
+        },
+        {
+          code: 'missing-workflow-entrypoint',
+          nodeName: entrypoint.nodeName,
+          eventName: entrypoint.eventName,
+          workflowId: entrypoint.workflowId
+        }
+      )
+    )
 }
 
 function cycleIssues(
@@ -307,12 +364,18 @@ function cycleIssues(
       const key = normalizeCycleKey(cycle)
       if (!seenCycles.has(key)) {
         seenCycles.add(key)
-        issues.push({
-          type: 'cycle',
-          message: `Workflow cycle: ${cycle.map((entry) => names.get(entry) ?? entry).join(' -> ')}`,
-          workflowIds: cycle,
-          targetWorkflowId: cycle[0]
-        })
+        const cycleNames = cycle.map((entry) => names.get(entry) ?? entry)
+        issues.push(
+          withWorkflowGraphIssueI18n(
+            {
+              type: 'cycle',
+              message: `Workflow cycle: ${cycleNames.join(' -> ')}`,
+              workflowIds: cycle,
+              targetWorkflowId: cycle[0]
+            },
+            { code: 'cycle', names: cycleNames }
+          )
+        )
       }
       return
     }

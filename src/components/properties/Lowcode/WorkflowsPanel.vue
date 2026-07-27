@@ -2,7 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import type { DocumentStateDef, SceneNode, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
-import { useSceneComputed } from '@open-pencil/vue'
+import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 import Tip from '@/components/ui/Tip.vue'
 
@@ -19,12 +19,13 @@ import {
 
 import WorkflowRow from './WorkflowRow.vue'
 import {
-  formatGraphMapSearchSummary,
   graphMapEdgeBranchLabel,
+  graphMapEdgeBranchKind,
   graphMapEdgeMatchesSearch,
   graphMapEdgeSearchMatchId,
   graphMapNodeMatchesSearch,
   graphMapNodeSearchMatchId,
+  graphMapSearchMatchPosition,
   isGraphMapTextInputTarget,
   nextGraphMapSearchMatchId,
   scrollGraphMapActiveMatchIntoView
@@ -42,6 +43,7 @@ import {
  */
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
+const { panels } = useI18n()
 
 const workflows = useSceneComputed<WorkflowDef[]>(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
@@ -57,7 +59,7 @@ interface WorkflowPage {
 const pages = useSceneComputed<WorkflowPage[]>(() => {
   return editor.graph.getPages().map((page: SceneNode) => ({
     id: page.id,
-    name: page.name || 'Page',
+    name: page.name || panels.value.lowcodeWorkflowUnnamedPage,
     state: page.state ?? []
   }))
 })
@@ -126,7 +128,9 @@ const graphMapBaseEdges = computed(() => {
 const graphMapMatchedEdges = computed(() => {
   const term = graphMapSearchTerm.value
   if (!term) return []
-  return graphMapBaseEdges.value.filter((edge) => graphMapEdgeMatchesSearch(edge, term))
+  return graphMapBaseEdges.value.filter((edge) =>
+    graphMapEdgeMatchesSearch(edge, term, localizedGraphMapEdgeBranchLabel(edge))
+  )
 })
 const graphMapMatchedNodeIds = computed(() => {
   const term = graphMapSearchTerm.value
@@ -154,7 +158,7 @@ const graphMapEdges = computed(() => {
   if (!term) return graphMapBaseEdges.value
   return graphMapBaseEdges.value.filter(
     (edge) =>
-      graphMapEdgeMatchesSearch(edge, term) ||
+      graphMapEdgeMatchesSearch(edge, term, localizedGraphMapEdgeBranchLabel(edge)) ||
       graphMapMatchedNodeIds.value.has(edge.fromId) ||
       graphMapMatchedNodeIds.value.has(edge.toId)
   )
@@ -176,7 +180,7 @@ const graphMapIssues = computed(() => {
   const hasDirectNodeMatch = graphMapMatchedNodeIds.value.size > 0
   return graphMapBaseIssues.value.filter(
     (issue) =>
-      issue.message.toLowerCase().includes(term) ||
+      localizedWorkflowGraphIssue(issue).toLowerCase().includes(term) ||
       issue.workflowIds.some((workflowId) => workflowId.toLowerCase().includes(term)) ||
       (hasDirectNodeMatch && issue.workflowIds.some((workflowId) => nodeIds.has(workflowId)))
   )
@@ -189,9 +193,9 @@ interface GraphMapNodeGroup {
 }
 const graphMapNodeGroups = computed<GraphMapNodeGroup[]>(() => {
   const groups: GraphMapNodeGroup[] = [
-    { kind: 'issues', title: 'Issues', nodes: [] },
-    { kind: 'entries', title: 'Entries', nodes: [] },
-    { kind: 'called', title: 'Called', nodes: [] }
+    { kind: 'issues', title: panels.value.lowcodeWorkflowGraphNodeGroupIssues, nodes: [] },
+    { kind: 'entries', title: panels.value.lowcodeWorkflowGraphNodeGroupEntries, nodes: [] },
+    { kind: 'called', title: panels.value.lowcodeWorkflowGraphNodeGroupCalled, nodes: [] }
   ]
   const byKind = new Map(groups.map((group) => [group.kind, group]))
 
@@ -209,8 +213,8 @@ interface GraphMapEdgeGroup {
 }
 const graphMapEdgeGroups = computed<GraphMapEdgeGroup[]>(() => {
   const groups: GraphMapEdgeGroup[] = [
-    { kind: 'calls', title: 'Calls', edges: [] },
-    { kind: 'missing', title: 'Missing', edges: [] }
+    { kind: 'calls', title: panels.value.lowcodeWorkflowGraphEdgeGroupCalls, edges: [] },
+    { kind: 'missing', title: panels.value.lowcodeWorkflowGraphEdgeGroupMissing, edges: [] }
   ]
   const byKind = new Map(groups.map((group) => [group.kind, group]))
 
@@ -239,7 +243,7 @@ function addWorkflow(): void {
     ...workflows.value,
     {
       id: crypto.randomUUID(),
-      name: 'Workflow',
+      name: panels.value.lowcodeWorkflowDefaultName,
       pageId: editor.state.currentPageId,
       actions: []
     }
@@ -292,7 +296,57 @@ function setWorkflowRowRef(
 }
 
 function entrypointLabel(count: number): string {
-  return count === 1 ? '1 entry' : `${count} entries`
+  return count === 1
+    ? panels.value.lowcodeWorkflowEntryCountOne({ count })
+    : panels.value.lowcodeWorkflowEntryCountMany({ count })
+}
+
+function workflowCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowCountOne({ count })
+    : panels.value.lowcodeWorkflowCountMany({ count })
+}
+
+function actionCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowActionCountOne({ count })
+    : panels.value.lowcodeWorkflowActionCountMany({ count })
+}
+
+function callCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowCallCountOne({ count })
+    : panels.value.lowcodeWorkflowCallCountMany({ count })
+}
+
+function graphNodeCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowGraphNodeCountOne({ count })
+    : panels.value.lowcodeWorkflowGraphNodeCountMany({ count })
+}
+
+function graphEdgeCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowGraphEdgeCountOne({ count })
+    : panels.value.lowcodeWorkflowGraphEdgeCountMany({ count })
+}
+
+function graphIssueCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowGraphIssueCountOne({ count })
+    : panels.value.lowcodeWorkflowGraphIssueCountMany({ count })
+}
+
+function graphArgIssueCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowGraphArgIssueCountOne({ count })
+    : panels.value.lowcodeWorkflowGraphArgIssueCountMany({ count })
+}
+
+function graphCycleCountLabel(count: number): string {
+  return count === 1
+    ? panels.value.lowcodeWorkflowGraphCycleCountOne({ count })
+    : panels.value.lowcodeWorkflowGraphCycleCountMany({ count })
 }
 
 function workflowGraphNodeName(workflowId: string): string {
@@ -300,23 +354,36 @@ function workflowGraphNodeName(workflowId: string): string {
 }
 
 function graphMapNodeJumpLabel(nodeName: string): string {
-  return `Jump to ${nodeName} workflow`
+  return panels.value.lowcodeWorkflowGraphNodeJump({ name: nodeName })
 }
 
 function graphMapEdgeJumpLabel(edge: WorkflowGraphEdge): string {
-  return `Jump to ${edge.toName ?? edge.toId} workflow from ${edge.fromName}`
+  return panels.value.lowcodeWorkflowGraphTargetJump({
+    target: edge.toName ?? edge.toId,
+    source: edge.fromName
+  })
 }
 
 function graphMapMissingEdgeLabel(edge: WorkflowGraphEdge): string {
-  return `Missing workflow ${edge.toId} called from ${edge.fromName}`
+  return panels.value.lowcodeWorkflowGraphMissingCall({
+    workflowId: edge.toId,
+    source: edge.fromName
+  })
 }
 
 function graphMapMissingEdgeSourceJumpLabel(edge: WorkflowGraphEdge): string {
-  return `Jump to ${edge.fromName} workflow to fix missing ${edge.toId}`
+  return panels.value.lowcodeWorkflowGraphMissingFixJump({
+    source: edge.fromName,
+    workflowId: edge.toId
+  })
 }
 
 function graphMapEdgeSourceActionJumpLabel(edge: WorkflowGraphEdge): string {
-  return `Jump to ${edge.fromName} workflow action ${edge.actionId} at ${edge.actionPath}`
+  return panels.value.lowcodeWorkflowGraphEdgeActionJump({
+    source: edge.fromName,
+    actionId: edge.actionId,
+    path: edge.actionPath
+  })
 }
 
 function graphMapEdgeTargetLabel(edge: WorkflowGraphEdge): string {
@@ -324,30 +391,104 @@ function graphMapEdgeTargetLabel(edge: WorkflowGraphEdge): string {
 }
 
 function graphMapEdgePathLabel(edge: WorkflowGraphEdge): string {
-  return `${edge.fromName} calls ${graphMapEdgeTargetLabel(edge)} from action ${edge.actionId}`
+  return panels.value.lowcodeWorkflowGraphEdgePath({
+    source: edge.fromName,
+    target: graphMapEdgeTargetLabel(edge),
+    actionId: edge.actionId
+  })
 }
 
 function graphMapEdgeActionLabel(edge: WorkflowGraphEdge): string {
-  return `Action ${edge.actionId}`
+  return panels.value.lowcodeWorkflowGraphAction({ actionId: edge.actionId })
 }
 
 function graphMapEdgeActionKindLabel(edge: WorkflowGraphEdge): string {
-  return `Kind ${edge.actionKind}`
+  return panels.value.lowcodeWorkflowGraphKind({ kind: edge.actionKind })
 }
 
 function graphMapEdgeBranchTitle(edge: WorkflowGraphEdge): string {
-  return `${graphMapEdgeBranchLabel(edge)} branch at ${edge.actionPath}`
+  return panels.value.lowcodeWorkflowGraphBranchAt({
+    branch: localizedGraphMapEdgeBranchLabel(edge),
+    path: edge.actionPath
+  })
+}
+
+function localizedGraphMapEdgeBranchLabel(edge: WorkflowGraphEdge): string {
+  switch (graphMapEdgeBranchKind(edge)) {
+    case 'root':
+      return panels.value.lowcodeWorkflowGraphBranchRoot
+    case 'then':
+      return panels.value.lowcodeWorkflowGraphBranchThen
+    case 'else':
+      return panels.value.lowcodeWorkflowGraphBranchElse
+    case 'success':
+      return panels.value.lowcodeWorkflowGraphBranchSuccess
+    case 'error':
+      return panels.value.lowcodeWorkflowGraphBranchError
+    case 'nested':
+      return panels.value.lowcodeWorkflowGraphBranchNested
+    default:
+      return graphMapEdgeBranchLabel(edge)
+  }
 }
 
 function graphMapIssueTypeLabel(issue: WorkflowGraphIssue): string {
-  if (issue.type === 'cycle') return 'Cycle'
-  return issue.type === 'call-args' ? 'Args' : 'Missing'
+  if (issue.type === 'cycle') return panels.value.lowcodeWorkflowIssueTypeCycle
+  return issue.type === 'call-args'
+    ? panels.value.lowcodeWorkflowIssueTypeArgs
+    : panels.value.lowcodeWorkflowIssueTypeMissing
+}
+
+function localizedWorkflowGraphIssue(issue: WorkflowGraphIssue): string {
+  const copy = issue.i18n
+  if (!copy) return issue.message
+  switch (copy.code) {
+    case 'missing-workflow-call':
+      return panels.value.lowcodeWorkflowIssueMissingCall({
+        source: copy.sourceName,
+        workflowId: copy.workflowId
+      })
+    case 'missing-workflow-entrypoint':
+      return panels.value.lowcodeWorkflowIssueMissingEntrypoint({
+        node: copy.nodeName,
+        event: copy.eventName,
+        workflowId: copy.workflowId
+      })
+    case 'call-args': {
+      const problems = copy.problems
+        .map((problem) => {
+          if (problem.kind === 'extra')
+            return panels.value.lowcodeWorkflowIssueArgExtra({ param: problem.param })
+          if (problem.kind === 'missing')
+            return panels.value.lowcodeWorkflowIssueArgMissing({ param: problem.param })
+          return panels.value.lowcodeWorkflowIssueArgInvalid({ param: problem.param })
+        })
+        .join(', ')
+      return panels.value.lowcodeWorkflowIssueInvalidArgs({
+        source: copy.sourceName,
+        target: copy.targetName,
+        problems
+      })
+    }
+    case 'cycle':
+      return panels.value.lowcodeWorkflowIssueCycle({ cycle: copy.names.join(' -> ') })
+  }
 }
 
 function graphMapIssueJumpLabel(issue: WorkflowGraphIssue): string {
-  const target = issue.targetWorkflowId ? workflowGraphNodeName(issue.targetWorkflowId) : 'target'
-  if (issue.actionId) return `Jump to ${target} workflow action ${issue.actionId} for issue`
-  return `Jump to ${target} workflow for issue: ${issue.message}`
+  const target = issue.targetWorkflowId
+    ? workflowGraphNodeName(issue.targetWorkflowId)
+    : graphMapEdgeTargetLabelFallback()
+  if (issue.actionId)
+    return panels.value.lowcodeWorkflowIssueJumpAction({ target, actionId: issue.actionId })
+  return panels.value.lowcodeWorkflowIssueJump({
+    target,
+    message: localizedWorkflowGraphIssue(issue)
+  })
+}
+
+function graphMapEdgeTargetLabelFallback(): string {
+  return panels.value.lowcodeWorkflowGraphTo
 }
 
 function entrypointSourceLabel(entrypoint: WorkflowGraphEntrypoint): string {
@@ -355,7 +496,9 @@ function entrypointSourceLabel(entrypoint: WorkflowGraphEntrypoint): string {
 }
 
 function entrypointSourceJumpLabel(entrypoint: WorkflowGraphEntrypoint): string {
-  return `Jump to ${entrypointSourceLabel(entrypoint)} source`
+  return panels.value.lowcodeWorkflowGraphSourceJump({
+    source: entrypointSourceLabel(entrypoint)
+  })
 }
 
 function isGraphMapSourceExpanded(workflowId: string): boolean {
@@ -383,28 +526,24 @@ function graphMapSourceListId(workflowId: string): string {
   return `lowcode-workflow-graph-map-sources-${workflowId}`
 }
 
-function countLabel(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`
-}
-
 function graphMapSummaryLabel(): string {
-  return `${countLabel(graphMapNodes.value.length, 'node')}, ${countLabel(
-    graphMapEdges.value.length,
-    'edge'
-  )}`
+  return panels.value.lowcodeWorkflowGraphSummaryCounts({
+    nodes: graphNodeCountLabel(graphMapNodes.value.length),
+    edges: graphEdgeCountLabel(graphMapEdges.value.length)
+  })
 }
 
 function graphMapIssueSummaryLabel(): string {
-  const issueCount = countLabel(graphMapIssues.value.length, 'issue')
+  const count = graphIssueCountLabel(graphMapIssues.value.length)
   const typeSummary = graphMapIssueTypeSummaryLabel(graphMapIssues.value)
-  const suffix = typeSummary ? ` · ${typeSummary}` : ''
+  const types = typeSummary ? ` · ${typeSummary}` : ''
   switch (graphMapFilter.value) {
     case 'issues':
-      return `${issueCount} in issue filter${suffix}`
+      return panels.value.lowcodeWorkflowGraphIssueSummaryIssues({ count, types })
     case 'entries':
-      return `${issueCount} touching entry workflows${suffix}`
+      return panels.value.lowcodeWorkflowGraphIssueSummaryEntries({ count, types })
     default:
-      return `${issueCount} total${suffix}`
+      return panels.value.lowcodeWorkflowGraphIssueSummaryAll({ count, types })
   }
 }
 
@@ -413,19 +552,22 @@ function graphMapIssueTypeSummaryLabel(issues: readonly WorkflowGraphIssue[]): s
   const argCount = issues.filter((issue) => issue.type === 'call-args').length
   const cycleCount = issues.filter((issue) => issue.type === 'cycle').length
   return [
-    missingCount > 0 ? countLabel(missingCount, 'missing', 'missing') : '',
-    argCount > 0 ? countLabel(argCount, 'arg issue') : '',
-    cycleCount > 0 ? countLabel(cycleCount, 'cycle') : ''
+    missingCount > 0 ? panels.value.lowcodeWorkflowGraphMissingCount({ count: missingCount }) : '',
+    argCount > 0 ? graphArgIssueCountLabel(argCount) : '',
+    cycleCount > 0 ? graphCycleCountLabel(cycleCount) : ''
   ]
     .filter(Boolean)
     .join(', ')
 }
 function graphMapNodeIssueLabel(count: number): string {
-  return countLabel(count, 'issue')
+  return graphIssueCountLabel(count)
 }
 
 function graphMapNodeIssueTitle(nodeName: string, count: number): string {
-  return `${nodeName} has ${graphMapNodeIssueLabel(count)}`
+  return panels.value.lowcodeWorkflowGraphNodeIssues({
+    name: nodeName,
+    count: graphIssueCountLabel(count)
+  })
 }
 
 function graphMapNodeGroupKind(node: WorkflowGraphNode): GraphMapNodeGroupKind {
@@ -453,11 +595,13 @@ function toggleGraphMapNodeGroup(kind: GraphMapNodeGroupKind): void {
 }
 
 function graphMapNodeGroupToggleLabel(group: GraphMapNodeGroup): string {
-  return `${isGraphMapNodeGroupCollapsed(group.kind) ? 'Show' : 'Hide'} ${group.title} workflow group`
+  return isGraphMapNodeGroupCollapsed(group.kind)
+    ? panels.value.lowcodeWorkflowGraphShowWorkflowGroup({ title: group.title })
+    : panels.value.lowcodeWorkflowGraphHideWorkflowGroup({ title: group.title })
 }
 
 function graphMapGroupCountLabel(count: number): string {
-  return countLabel(count, 'workflow')
+  return workflowCountLabel(count)
 }
 
 function isGraphMapEdgeGroupCollapsed(kind: GraphMapEdgeGroupKind): boolean {
@@ -472,7 +616,9 @@ function toggleGraphMapEdgeGroup(kind: GraphMapEdgeGroupKind): void {
 }
 
 function graphMapEdgeGroupToggleLabel(group: GraphMapEdgeGroup): string {
-  return `${isGraphMapEdgeGroupCollapsed(group.kind) ? 'Show' : 'Hide'} ${group.title} edge group`
+  return isGraphMapEdgeGroupCollapsed(group.kind)
+    ? panels.value.lowcodeWorkflowGraphShowEdgeGroup({ title: group.title })
+    : panels.value.lowcodeWorkflowGraphHideEdgeGroup({ title: group.title })
 }
 
 function clearGraphMapSearch(): void {
@@ -550,45 +696,92 @@ function isActiveGraphMapEdgeSearchMatch(edge: WorkflowGraphEdge): boolean {
 
 function graphMapSearchSummaryLabel(): string {
   if (!graphMapSearchTerm.value) return ''
-  return formatGraphMapSearchSummary(
+  const position = graphMapSearchMatchPosition(
     graphMapNodes.value,
     graphMapEdges.value,
-    graphMapSearchQuery.value,
     activeGraphMapSearchMatchId.value
   )
+  const positionLabel = position
+    ? panels.value.lowcodeWorkflowGraphSearchPosition({
+        index: position.index,
+        total: position.total,
+        kind:
+          position.kind === 'node'
+            ? panels.value.lowcodeWorkflowGraphSearchKindNode
+            : panels.value.lowcodeWorkflowGraphSearchKindEdge
+      })
+    : ''
+  return panels.value.lowcodeWorkflowGraphSearchSummary({
+    nodes: graphNodeCountLabel(graphMapNodes.value.length),
+    edges: graphEdgeCountLabel(graphMapEdges.value.length),
+    query: graphMapSearchQuery.value.trim(),
+    position: positionLabel
+  })
 }
 
 function graphMapIssueCleanLabel(): string {
   switch (graphMapFilter.value) {
     case 'issues':
-      return 'No workflows with issues in this map.'
+      return panels.value.lowcodeWorkflowGraphNoIssuesIssues
     case 'entries':
-      return 'No entry workflow issues in this map.'
+      return panels.value.lowcodeWorkflowGraphNoIssuesEntries
     default:
-      return 'No graph issues in this map.'
+      return panels.value.lowcodeWorkflowGraphNoIssuesAll
   }
 }
 
 function graphMapNodeEmptyLabel(): string {
   switch (graphMapFilter.value) {
     case 'issues':
-      return 'No workflows with issues.'
+      return panels.value.lowcodeWorkflowGraphNoNodesIssues
     case 'entries':
-      return 'No workflows with entries.'
+      return panels.value.lowcodeWorkflowGraphNoNodesEntries
     default:
-      return 'No workflows.'
+      return panels.value.lowcodeWorkflowGraphNoNodesAll
   }
 }
 
 function graphMapEdgeEmptyLabel(): string {
   switch (graphMapFilter.value) {
     case 'issues':
-      return 'No issue edges.'
+      return panels.value.lowcodeWorkflowGraphNoEdgesIssues
     case 'entries':
-      return 'No entry edges.'
+      return panels.value.lowcodeWorkflowGraphNoEdgesEntries
     default:
-      return 'No workflow calls.'
+      return panels.value.lowcodeWorkflowGraphNoEdgesAll
   }
+}
+
+function graphMapAdditionalSourcesToggleLabel(node: WorkflowGraphNode): string {
+  return isGraphMapSourceExpanded(node.id)
+    ? panels.value.lowcodeWorkflowGraphHideAdditionalSources({ name: node.name })
+    : panels.value.lowcodeWorkflowGraphShowMoreSources({
+        count: node.entrypoints.length - 1,
+        name: node.name
+      })
+}
+
+function graphMapAdditionalSourcesLabel(nodeName: string): string {
+  return panels.value.lowcodeWorkflowGraphAdditionalSources({ name: nodeName })
+}
+
+function graphMapNodeStatsLabel(node: WorkflowGraphNode): string {
+  return panels.value.lowcodeWorkflowGraphNodeStats({
+    entries: node.entrypoints.length,
+    incoming: node.incoming.length,
+    outgoing: node.outgoing.length,
+    actions: node.actionCount
+  })
+}
+
+function graphNodeDetailLabel(node: WorkflowGraphNode): string {
+  return panels.value.lowcodeWorkflowGraphNodeDetail({
+    name: node.name,
+    entries: entrypointLabel(node.entrypoints.length),
+    incoming: node.incoming.length,
+    outgoing: node.outgoing.length,
+    actions: actionCountLabel(node.actionCount)
+  })
 }
 
 function containingPageId(node: SceneNode): string | undefined {
@@ -604,19 +797,19 @@ function containingPageId(node: SceneNode): string | undefined {
 <template>
   <div data-test-id="lowcode-workflows-section" :class="sectionCls.wrapper">
     <div class="mb-1.5 flex items-center justify-between">
-      <label class="text-[11px] text-muted">Workflows</label>
+      <label class="text-[11px] text-muted">{{ panels.lowcodeWorkflows }}</label>
       <button
         type="button"
         data-test-id="lowcode-workflow-add"
         class="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
         @click="addWorkflow"
       >
-        + Workflow
+        {{ panels.lowcodeWorkflowAdd }}
       </button>
     </div>
 
     <p v-if="workflows.length === 0" class="text-[11px] text-muted">
-      No workflows yet. A workflow is a reusable action chain callable from any event.
+      {{ panels.lowcodeWorkflowsEmpty }}
     </p>
 
     <div
@@ -626,8 +819,14 @@ function containingPageId(node: SceneNode): string | undefined {
     >
       <div class="flex items-center justify-between gap-2">
         <p class="text-muted">
-          {{ workflowGraph.workflowCount }} workflows, {{ workflowGraph.actionCount }} actions,
-          {{ workflowGraph.callCount }} calls, {{ entrypointLabel(workflowGraph.entrypointCount) }}
+          {{
+            panels.lowcodeWorkflowGraphSummary({
+              workflows: workflowCountLabel(workflowGraph.workflowCount),
+              actions: actionCountLabel(workflowGraph.actionCount),
+              calls: callCountLabel(workflowGraph.callCount),
+              entries: entrypointLabel(workflowGraph.entrypointCount)
+            })
+          }}
         </p>
         <button
           type="button"
@@ -635,10 +834,14 @@ function containingPageId(node: SceneNode): string | undefined {
           class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
           @click="graphDetailsOpen = !graphDetailsOpen"
         >
-          {{ graphDetailsOpen ? 'Hide details' : 'Show details' }}
+          {{
+            graphDetailsOpen ? panels.lowcodeWorkflowHideDetails : panels.lowcodeWorkflowShowDetails
+          }}
         </button>
       </div>
-      <p v-if="workflowGraph.issues.length === 0" class="text-muted">No workflow graph issues.</p>
+      <p v-if="workflowGraph.issues.length === 0" class="text-muted">
+        {{ panels.lowcodeWorkflowGraphNoIssues }}
+      </p>
       <ul v-else class="flex flex-col gap-0.5 text-red-500">
         <li
           v-for="(issue, index) in workflowGraph.issues"
@@ -646,7 +849,7 @@ function containingPageId(node: SceneNode): string | undefined {
           data-test-id="lowcode-workflow-graph-issue"
           class="flex items-center justify-between gap-2"
         >
-          <span class="min-w-0">{{ issue.message }}</span>
+          <span class="min-w-0">{{ localizedWorkflowGraphIssue(issue) }}</span>
           <button
             v-if="issue.targetWorkflowId"
             type="button"
@@ -654,7 +857,7 @@ function containingPageId(node: SceneNode): string | undefined {
             class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
             @click="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
           >
-            Jump
+            {{ panels.lowcodeWorkflowJump }}
           </button>
         </li>
       </ul>
@@ -668,14 +871,16 @@ function containingPageId(node: SceneNode): string | undefined {
           data-test-id="lowcode-workflow-graph-entrypoint"
           class="flex items-center justify-between gap-2"
         >
-          <span class="min-w-0">No event entry: {{ workflowGraphNodeName(workflowId) }}</span>
+          <span class="min-w-0">
+            {{ panels.lowcodeWorkflowNoEventEntry({ name: workflowGraphNodeName(workflowId) }) }}
+          </span>
           <button
             type="button"
             data-test-id="lowcode-workflow-graph-entrypoint-jump"
             class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
             @click="jumpToWorkflow(workflowId)"
           >
-            Jump
+            {{ panels.lowcodeWorkflowJump }}
           </button>
         </li>
       </ul>
@@ -696,7 +901,7 @@ function containingPageId(node: SceneNode): string | undefined {
               :aria-pressed="graphMapFilter === 'all'"
               @click="graphMapFilter = 'all'"
             >
-              All
+              {{ panels.lowcodeWorkflowGraphFilterAll }}
             </button>
             <button
               type="button"
@@ -706,7 +911,7 @@ function containingPageId(node: SceneNode): string | undefined {
               :aria-pressed="graphMapFilter === 'issues'"
               @click="graphMapFilter = 'issues'"
             >
-              Issues
+              {{ panels.lowcodeWorkflowGraphFilterIssues }}
             </button>
             <button
               type="button"
@@ -716,31 +921,31 @@ function containingPageId(node: SceneNode): string | undefined {
               :aria-pressed="graphMapFilter === 'entries'"
               @click="graphMapFilter = 'entries'"
             >
-              Entries
+              {{ panels.lowcodeWorkflowGraphFilterEntries }}
             </button>
           </div>
           <div class="flex min-w-0 items-center justify-end gap-1">
             <input
               ref="graphMapSearchInput"
               :value="graphMapSearchQuery"
-              aria-label="Search workflow graph map"
+              :aria-label="panels.lowcodeWorkflowGraphSearch"
               data-test-id="lowcode-workflow-graph-map-search"
-              placeholder="Search workflow/action (/)"
+              :placeholder="panels.lowcodeWorkflowGraphSearchPlaceholder"
               spellcheck="false"
               class="w-40 min-w-0 rounded border border-border bg-input px-2 py-0.5 text-[10px] text-surface outline-none focus:border-accent"
               @input="setGraphMapSearchQuery(($event.target as HTMLInputElement).value)"
               @keydown.enter.stop="handleGraphMapSearchEnter"
               @keydown.escape.stop="handleGraphMapSearchEscape"
             />
-            <Tip v-if="graphMapSearchTerm" label="Clear workflow graph map search">
+            <Tip v-if="graphMapSearchTerm" :label="panels.lowcodeWorkflowGraphSearchClearAria">
               <button
                 type="button"
                 data-test-id="lowcode-workflow-graph-map-search-clear"
-                aria-label="Clear workflow graph map search"
+                :aria-label="panels.lowcodeWorkflowGraphSearchClearAria"
                 class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
                 @click="clearGraphMapSearch"
               >
-                Clear
+                {{ panels.lowcodeWorkflowGraphSearchClear }}
               </button>
             </Tip>
           </div>
@@ -780,7 +985,7 @@ function containingPageId(node: SceneNode): string | undefined {
                 {{ graphMapIssueTypeLabel(issue) }}
               </span>
               <span data-test-id="lowcode-workflow-graph-map-issue-message">
-                {{ issue.message }}
+                {{ localizedWorkflowGraphIssue(issue) }}
               </span>
             </span>
             <Tip v-if="issue.targetWorkflowId" :label="graphMapIssueJumpLabel(issue)">
@@ -793,7 +998,7 @@ function containingPageId(node: SceneNode): string | undefined {
                 @keydown.enter.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
                 @keydown.space.prevent="jumpToWorkflow(issue.targetWorkflowId, issue.actionPath)"
               >
-                Jump
+                {{ panels.lowcodeWorkflowJump }}
               </button>
             </Tip>
           </li>
@@ -834,7 +1039,11 @@ function containingPageId(node: SceneNode): string | undefined {
                     class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
                     @click="toggleGraphMapNodeGroup(group.kind)"
                   >
-                    {{ isGraphMapNodeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
+                    {{
+                      isGraphMapNodeGroupCollapsed(group.kind)
+                        ? panels.lowcodeWorkflowGraphShow
+                        : panels.lowcodeWorkflowGraphHide
+                    }}
                   </button>
                 </Tip>
               </span>
@@ -883,8 +1092,7 @@ function containingPageId(node: SceneNode): string | undefined {
                       data-test-id="lowcode-workflow-graph-map-node-stats"
                       class="text-[9px] text-muted"
                     >
-                      {{ node.entrypoints.length }}e / {{ node.incoming.length }}i /
-                      {{ node.outgoing.length }}o / {{ node.actionCount }}a
+                      {{ graphMapNodeStatsLabel(node) }}
                     </span>
                   </button>
                 </Tip>
@@ -904,7 +1112,7 @@ function containingPageId(node: SceneNode): string | undefined {
                       class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
                       @click="jumpToEntrypointSource(node.entrypoints[0])"
                     >
-                      Source
+                      {{ panels.lowcodeWorkflowGraphSource }}
                     </button>
                   </Tip>
                 </div>
@@ -914,25 +1122,23 @@ function containingPageId(node: SceneNode): string | undefined {
                   data-test-id="lowcode-workflow-graph-map-node-entrypoint-more"
                   :aria-controls="graphMapSourceListId(node.id)"
                   :aria-expanded="isGraphMapSourceExpanded(node.id)"
-                  :aria-label="
-                    isGraphMapSourceExpanded(node.id)
-                      ? `Hide additional sources for ${node.name}`
-                      : `Show ${node.entrypoints.length - 1} more sources for ${node.name}`
-                  "
+                  :aria-label="graphMapAdditionalSourcesToggleLabel(node)"
                   class="self-start rounded border border-transparent px-1 py-0.5 text-[9px] text-muted hover:border-border hover:bg-hover hover:text-surface focus:border-border focus:bg-hover focus:text-surface"
                   @click="toggleGraphMapSources(node.id)"
                 >
                   {{
                     isGraphMapSourceExpanded(node.id)
-                      ? 'Hide sources'
-                      : `+${node.entrypoints.length - 1} more`
+                      ? panels.lowcodeWorkflowGraphHideSources
+                      : panels.lowcodeWorkflowGraphMoreSources({
+                          count: node.entrypoints.length - 1
+                        })
                   }}
                 </button>
                 <ul
                   v-if="node.entrypoints.length > 1 && isGraphMapSourceExpanded(node.id)"
                   :id="graphMapSourceListId(node.id)"
                   data-test-id="lowcode-workflow-graph-map-node-entrypoint-list"
-                  :aria-label="`Additional sources for ${node.name}`"
+                  :aria-label="graphMapAdditionalSourcesLabel(node.name)"
                   class="ml-1 flex flex-col gap-0.5 border-l border-border pl-1"
                   @keydown.escape.stop.prevent="collapseGraphMapSources(node.id, $event)"
                 >
@@ -953,7 +1159,7 @@ function containingPageId(node: SceneNode): string | undefined {
                         class="min-w-11 shrink-0 rounded px-1 py-0.5 text-center text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
                         @click="jumpToEntrypointSource(entrypoint)"
                       >
-                        Source
+                        {{ panels.lowcodeWorkflowGraphSource }}
                       </button>
                     </Tip>
                   </li>
@@ -987,7 +1193,7 @@ function containingPageId(node: SceneNode): string | undefined {
               </span>
               <span class="flex items-center gap-1">
                 <span data-test-id="lowcode-workflow-graph-map-edge-group-count">
-                  {{ countLabel(group.edges.length, 'edge') }}
+                  {{ graphEdgeCountLabel(group.edges.length) }}
                 </span>
                 <Tip :label="graphMapEdgeGroupToggleLabel(group)">
                   <button
@@ -998,7 +1204,11 @@ function containingPageId(node: SceneNode): string | undefined {
                     class="rounded px-1 py-0.5 text-[9px] text-muted hover:bg-hover hover:text-surface focus:bg-hover focus:text-surface"
                     @click="toggleGraphMapEdgeGroup(group.kind)"
                   >
-                    {{ isGraphMapEdgeGroupCollapsed(group.kind) ? 'Show' : 'Hide' }}
+                    {{
+                      isGraphMapEdgeGroupCollapsed(group.kind)
+                        ? panels.lowcodeWorkflowGraphShow
+                        : panels.lowcodeWorkflowGraphHide
+                    }}
                   </button>
                 </Tip>
               </span>
@@ -1021,7 +1231,9 @@ function containingPageId(node: SceneNode): string | undefined {
               >
                 <span class="flex min-w-0 items-center gap-1">
                   <span data-test-id="lowcode-workflow-graph-map-edge-from" class="min-w-0">
-                    <span class="text-[9px] uppercase text-muted/80">From </span>
+                    <span class="text-[9px] uppercase text-muted/80">
+                      {{ panels.lowcodeWorkflowGraphFrom + ' ' }}
+                    </span>
                     <span class="ml-1">{{ edge.fromName }}</span>
                   </span>
                   <span
@@ -1031,7 +1243,9 @@ function containingPageId(node: SceneNode): string | undefined {
                     ->
                   </span>
                   <span data-test-id="lowcode-workflow-graph-map-edge-to" class="min-w-0">
-                    <span class="text-[9px] uppercase text-muted/80">To </span>
+                    <span class="text-[9px] uppercase text-muted/80">
+                      {{ panels.lowcodeWorkflowGraphTo + ' ' }}
+                    </span>
                     <span class="ml-1">{{ graphMapEdgeTargetLabel(edge) }}</span>
                     <Tip v-if="!edge.toName" :label="graphMapMissingEdgeLabel(edge)">
                       <span
@@ -1039,7 +1253,7 @@ function containingPageId(node: SceneNode): string | undefined {
                         :aria-label="graphMapMissingEdgeLabel(edge)"
                         class="ml-1 rounded bg-red-500/10 px-1 text-red-500"
                       >
-                        missing
+                        {{ ' ' + panels.lowcodeWorkflowGraphMissing }}
                       </span>
                     </Tip>
                   </span>
@@ -1071,7 +1285,7 @@ function containingPageId(node: SceneNode): string | undefined {
                       :aria-label="graphMapEdgeBranchTitle(edge)"
                       class="shrink-0 rounded border border-border/70 px-1 text-[9px] text-muted"
                     >
-                      {{ graphMapEdgeBranchLabel(edge) }}
+                      {{ localizedGraphMapEdgeBranchLabel(edge) }}
                     </span>
                   </Tip>
                 </span>
@@ -1085,7 +1299,7 @@ function containingPageId(node: SceneNode): string | undefined {
                     @keydown.enter.prevent="jumpToWorkflow(edge.toId)"
                     @keydown.space.prevent="jumpToWorkflow(edge.toId)"
                   >
-                    Jump
+                    {{ panels.lowcodeWorkflowJump }}
                   </button>
                 </Tip>
                 <Tip v-else :label="graphMapMissingEdgeSourceJumpLabel(edge)">
@@ -1098,7 +1312,7 @@ function containingPageId(node: SceneNode): string | undefined {
                     @keydown.enter.prevent="jumpToWorkflow(edge.fromId)"
                     @keydown.space.prevent="jumpToWorkflow(edge.fromId)"
                   >
-                    Source
+                    {{ panels.lowcodeWorkflowGraphSource }}
                   </button>
                 </Tip>
               </li>
@@ -1122,9 +1336,7 @@ function containingPageId(node: SceneNode): string | undefined {
         >
           <div class="flex items-center justify-between gap-2">
             <span class="min-w-0">
-              {{ node.name }}: {{ entrypointLabel(node.entrypoints.length) }} /
-              {{ node.incoming.length }} in / {{ node.outgoing.length }} out /
-              {{ node.actionCount }} actions
+              {{ graphNodeDetailLabel(node) }}
             </span>
             <button
               type="button"
@@ -1132,17 +1344,19 @@ function containingPageId(node: SceneNode): string | undefined {
               class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
               @click="jumpToWorkflow(node.id)"
             >
-              Jump
+              {{ panels.lowcodeWorkflowJump }}
             </button>
           </div>
           <div class="flex flex-col gap-0.5 pl-1">
-            <span class="text-[9px] uppercase text-muted/80">Entries</span>
+            <span class="text-[9px] uppercase text-muted/80">
+              {{ panels.lowcodeWorkflowGraphEntries }}
+            </span>
             <p
               v-if="node.entrypoints.length === 0"
               data-test-id="lowcode-workflow-graph-entry-empty"
               class="text-[10px] text-muted"
             >
-              none
+              {{ panels.lowcodeWorkflowGraphNone }}
             </p>
             <ul v-else class="flex flex-col gap-0.5">
               <li
@@ -1158,19 +1372,21 @@ function containingPageId(node: SceneNode): string | undefined {
                   class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
                   @click="jumpToEntrypointSource(entrypoint)"
                 >
-                  Source
+                  {{ panels.lowcodeWorkflowGraphSource }}
                 </button>
               </li>
             </ul>
           </div>
           <div class="flex flex-col gap-0.5 pl-1">
-            <span class="text-[9px] uppercase text-muted/80">Calls out</span>
+            <span class="text-[9px] uppercase text-muted/80">
+              {{ panels.lowcodeWorkflowGraphCallsOut }}
+            </span>
             <p
               v-if="node.outgoing.length === 0"
               data-test-id="lowcode-workflow-graph-out-empty"
               class="text-[10px] text-muted"
             >
-              none
+              {{ panels.lowcodeWorkflowGraphNone }}
             </p>
             <ul v-else class="flex flex-col gap-0.5">
               <li
@@ -1179,7 +1395,9 @@ function containingPageId(node: SceneNode): string | undefined {
                 data-test-id="lowcode-workflow-graph-out-edge"
                 class="flex items-center justify-between gap-2"
               >
-                <span class="min-w-0">to {{ edge.toName ?? edge.toId }}</span>
+                <span class="min-w-0">
+                  {{ panels.lowcodeWorkflowGraphToTarget({ target: edge.toName ?? edge.toId }) }}
+                </span>
                 <button
                   v-if="edge.toName"
                   type="button"
@@ -1187,19 +1405,21 @@ function containingPageId(node: SceneNode): string | undefined {
                   class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
                   @click="jumpToWorkflow(edge.toId)"
                 >
-                  Jump
+                  {{ panels.lowcodeWorkflowJump }}
                 </button>
               </li>
             </ul>
           </div>
           <div class="flex flex-col gap-0.5 pl-1">
-            <span class="text-[9px] uppercase text-muted/80">Called by</span>
+            <span class="text-[9px] uppercase text-muted/80">
+              {{ panels.lowcodeWorkflowGraphCalledBy }}
+            </span>
             <p
               v-if="node.incoming.length === 0"
               data-test-id="lowcode-workflow-graph-in-empty"
               class="text-[10px] text-muted"
             >
-              none
+              {{ panels.lowcodeWorkflowGraphNone }}
             </p>
             <ul v-else class="flex flex-col gap-0.5">
               <li
@@ -1208,14 +1428,16 @@ function containingPageId(node: SceneNode): string | undefined {
                 data-test-id="lowcode-workflow-graph-in-edge"
                 class="flex items-center justify-between gap-2"
               >
-                <span class="min-w-0">from {{ edge.fromName }}</span>
+                <span class="min-w-0">
+                  {{ panels.lowcodeWorkflowGraphFromSource({ source: edge.fromName }) }}
+                </span>
                 <button
                   type="button"
                   data-test-id="lowcode-workflow-graph-edge-jump"
                   class="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
                   @click="jumpToWorkflow(edge.fromId)"
                 >
-                  Jump
+                  {{ panels.lowcodeWorkflowJump }}
                 </button>
               </li>
             </ul>

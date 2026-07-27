@@ -2,6 +2,8 @@ import { params } from '@nanostores/i18n'
 
 import { i18n } from '#vue/i18n/create'
 
+import { lowcodeDocumentPanelMessageDefaults } from './panels-lowcode-document'
+
 export const panelMessageDefaults = {
   untitled: 'Untitled',
   nodeCopyString: ' copy',
@@ -392,6 +394,7 @@ export const panelMessageDefaults = {
     'Sends a reset email linking back to this app. The link -> set-new-password flow can only be tested in a real deployment; preview just fires the request.',
   lowcodeActionAuthUpdateNote:
     'Sets a new password for the currently signed-in user (works after sign-in or after a reset link lands).',
+  ...lowcodeDocumentPanelMessageDefaults,
   resizing: 'Resizing',
   resizeAutoWidth: 'Auto width',
   resizeAutoHeight: 'Auto height',

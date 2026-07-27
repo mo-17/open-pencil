@@ -185,6 +185,18 @@ describe('lowcode custom code panel state', () => {
       'custom-css-url:https://cdn.example/theme.css',
       'custom-css-url:https://cdn.example/bg.png'
     ])
+    expect(risks.map((risk) => risk.kind)).toEqual([
+      'inlineHeadStyle',
+      'externalStylesheet',
+      'externalLink',
+      'customCssExternalResource',
+      'customCssExternalResource'
+    ])
+    expect(risks[2]).toMatchObject({
+      url: 'https://cdn.example/fonts/inter.woff2',
+      rel: 'preload',
+      directive: 'font-src'
+    })
     expect(risks[2]?.detail).toContain('font-src')
   })
 
@@ -199,6 +211,10 @@ describe('lowcode custom code panel state', () => {
     expect(risks.map((risk) => risk.id)).toEqual([
       'custom-css-unsafe-url:data:image/svg+xml,<svg></svg>'
     ])
+    expect(risks[0]).toMatchObject({
+      kind: 'customCssUnsafeUrl',
+      url: 'data:image/svg+xml,<svg></svg>'
+    })
     expect(risks[0]?.title).toContain('will not be persisted')
   })
 
@@ -219,6 +235,10 @@ describe('lowcode custom code panel state', () => {
     expect(risks.map((risk) => risk.id)).toContain(
       'head-meta-refresh-unsafe-url:data:text/html,<script>alert(1)</script>'
     )
+    expect(risks[0]).toMatchObject({
+      kind: 'metaRefreshUnsafeUrl',
+      url: 'data:text/html,<script>alert(1)</script>'
+    })
   })
 
   test('reports unsafe head style URL protocols before persistence', () => {
@@ -232,6 +252,10 @@ describe('lowcode custom code panel state', () => {
     expect(risks.map((risk) => risk.id)).toContain(
       'head-style-unsafe-url:data:image/svg+xml,<svg></svg>'
     )
+    expect(risks.find((risk) => risk.kind === 'headStyleUnsafeUrl')).toMatchObject({
+      kind: 'headStyleUnsafeUrl',
+      url: 'data:image/svg+xml,<svg></svg>'
+    })
   })
 
   test('keeps local-only custom resources quiet', () => {

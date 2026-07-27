@@ -7,7 +7,7 @@ import {
   type SceneGraph
 } from '@open-pencil/scene-graph'
 import { computeAllLayouts } from '@open-pencil/core/layout'
-import { useSceneComputed } from '@open-pencil/vue'
+import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { getActiveEditorStore, useEditorStore } from '@/app/editor/active-store'
@@ -15,11 +15,13 @@ import {
   cloneSceneGraphForLibraryUndo,
   libraryPanelRows,
   parseLibraryManifestText,
-  readLibraryGraphFile
+  readLibraryGraphFile,
+  type LibraryPanelStatus
 } from '@/app/lowcode/libraries'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
+const { panels } = useI18n()
 
 const manifest = ref<LibraryManifest | null>(null)
 const libraryGraph = shallowRef<SceneGraph | null>(null)
@@ -98,11 +100,14 @@ function acceptUpdate(componentKey: string): void {
   })
   acceptMessage.value =
     result.warnings.length > 0
-      ? `Accepted ${result.component.key}. ${result.warnings.join(' ')}`
-      : `Accepted ${result.component.key}.`
+      ? panels.value.lowcodeLibrariesAcceptedWithWarnings({
+          componentKey: result.component.key,
+          warnings: result.warnings.join(' ')
+        })
+      : panels.value.lowcodeLibrariesAccepted({ componentKey: result.component.key })
 }
 
-function statusClass(status: string): string {
+function statusClass(status: LibraryPanelStatus): string {
   switch (status) {
     case 'outdated':
       return 'text-amber-400'
@@ -115,41 +120,60 @@ function statusClass(status: string): string {
       return 'text-muted'
   }
 }
+
+function statusLabel(status: LibraryPanelStatus): string {
+  switch (status) {
+    case 'outdated':
+      return panels.value.lowcodeLibrariesStatusOutdated
+    case 'up-to-date':
+      return panels.value.lowcodeLibrariesStatusUpToDate
+    case 'missing-manifest':
+      return panels.value.lowcodeLibrariesStatusMissingManifest
+    case 'missing-cached-master':
+      return panels.value.lowcodeLibrariesStatusMissingCachedMaster
+    case 'unknown':
+      return panels.value.lowcodeLibrariesStatusUnknown
+  }
+}
 </script>
 
 <template>
   <div data-test-id="lowcode-libraries-section" :class="sectionCls.wrapper">
     <div class="mb-1.5 flex items-center justify-between">
-      <label class="text-[11px] text-muted">Libraries</label>
-      <span class="text-[10px] text-muted">{{ rows.length }} imports</span>
+      <label class="text-[11px] text-muted">{{ panels.lowcodeLibraries }}</label>
+      <span class="text-[10px] text-muted">
+        {{ panels.lowcodeLibrariesImportCount({ count: String(rows.length) }) }}
+      </span>
     </div>
 
     <p v-if="!hasLibraries" data-test-id="lowcode-libraries-empty" class="text-[11px] text-muted">
-      No imported library components yet.
+      {{ panels.lowcodeLibrariesEmpty }}
     </p>
 
     <div class="mb-2 grid grid-cols-2 gap-1.5">
       <label
         class="cursor-pointer rounded border border-border px-2 py-1 text-center text-[11px] text-muted hover:bg-hover hover:text-surface"
       >
-        Manifest
+        {{ panels.lowcodeLibrariesManifest }}
         <input
           type="file"
           accept=".json,application/json"
           class="hidden"
           data-test-id="lowcode-library-manifest-file"
+          :aria-label="panels.lowcodeLibrariesManifestFileAria"
           @change="loadManifest"
         />
       </label>
       <label
         class="cursor-pointer rounded border border-border px-2 py-1 text-center text-[11px] text-muted hover:bg-hover hover:text-surface"
       >
-        Library file
+        {{ panels.lowcodeLibrariesLibraryFile }}
         <input
           type="file"
           accept=".fig,.pen"
           class="hidden"
           data-test-id="lowcode-library-source-file"
+          :aria-label="panels.lowcodeLibrariesLibraryFileAria"
           @change="loadLibrary"
         />
       </label>
@@ -157,10 +181,10 @@ function statusClass(status: string): string {
 
     <div class="mb-2 flex flex-col gap-0.5 text-[10px] text-muted">
       <p v-if="manifestName" data-test-id="lowcode-library-manifest-name" class="truncate">
-        Manifest: {{ manifestName }}
+        {{ panels.lowcodeLibrariesManifestLoaded({ name: manifestName }) }}
       </p>
       <p v-if="libraryName" data-test-id="lowcode-library-source-name" class="truncate">
-        Library: {{ libraryName }}
+        {{ panels.lowcodeLibrariesLibraryLoaded({ name: libraryName }) }}
       </p>
       <p v-if="manifestError" data-test-id="lowcode-library-manifest-error" class="text-red-400">
         {{ manifestError }}
@@ -197,15 +221,19 @@ function statusClass(status: string): string {
             class="shrink-0 text-[10px]"
             :class="statusClass(row.status)"
           >
-            {{ row.status }}
+            {{ statusLabel(row.status) }}
           </span>
         </div>
         <dl class="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-1 gap-y-0.5 text-[10px]">
-          <dt class="text-muted">Current</dt>
-          <dd class="truncate text-surface">{{ row.currentVersion ?? 'missing' }}</dd>
-          <dt class="text-muted">Latest</dt>
-          <dd class="truncate text-surface">{{ row.latestVersion ?? 'unknown' }}</dd>
-          <dt class="text-muted">Source</dt>
+          <dt class="text-muted">{{ panels.lowcodeLibrariesCurrent }}</dt>
+          <dd class="truncate text-surface">
+            {{ row.currentVersion ?? panels.lowcodeLibrariesMissing }}
+          </dd>
+          <dt class="text-muted">{{ panels.lowcodeLibrariesLatest }}</dt>
+          <dd class="truncate text-surface">
+            {{ row.latestVersion ?? panels.lowcodeLibrariesUnknown }}
+          </dd>
+          <dt class="text-muted">{{ panels.lowcodeLibrariesSource }}</dt>
           <dd class="truncate text-surface">{{ row.sourceRef }}</dd>
         </dl>
         <button
@@ -213,9 +241,10 @@ function statusClass(status: string): string {
           data-test-id="lowcode-library-accept"
           class="mt-1.5 w-full rounded px-2 py-1 text-left text-[11px] text-muted hover:bg-hover hover:text-surface disabled:cursor-not-allowed disabled:opacity-40"
           :disabled="row.status !== 'outdated' || !canAccept"
+          :aria-label="panels.lowcodeLibrariesAcceptUpdateAria({ componentKey: row.componentKey })"
           @click="acceptUpdate(row.componentKey)"
         >
-          Accept update
+          {{ panels.lowcodeLibrariesAcceptUpdate }}
         </button>
       </li>
     </ul>

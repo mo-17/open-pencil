@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 
 import type { LowcodeTranslations, SceneNode } from '@open-pencil/scene-graph'
-import { useSceneComputed } from '@open-pencil/vue'
+import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 import Tip from '@/components/ui/Tip.vue'
 
@@ -15,6 +15,7 @@ import { useEditorStore } from '@/app/editor/active-store'
 // pre-fills each emitted `src/locales/<loc>.json` from here when i18n is on.
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
+const { panels } = useI18n()
 
 const translations = useSceneComputed<LowcodeTranslations>(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
@@ -95,16 +96,16 @@ function setTranslation(locale: string, source: string, value: string): void {
 <template>
   <div data-test-id="lowcode-translations-section" :class="sectionCls.wrapper">
     <div class="mb-1.5 flex items-center justify-between">
-      <label class="text-[11px] text-muted">Translations</label>
+      <label class="text-[11px] text-muted">{{ panels.lowcodeTranslations }}</label>
     </div>
 
     <div class="mb-2 flex items-center gap-1">
       <input
         v-model="newLocale"
         type="text"
-        aria-label="New target locale"
+        :aria-label="panels.lowcodeTranslationsNewLocale"
         data-test-id="lowcode-translations-new-locale"
-        placeholder="add locale, e.g. ar"
+        :placeholder="panels.lowcodeTranslationsNewLocalePlaceholder"
         class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
         @keydown.enter="addLocale"
       />
@@ -114,19 +115,19 @@ function setTranslation(locale: string, source: string, value: string): void {
         class="rounded px-1.5 py-1 text-[11px] text-muted hover:bg-hover hover:text-surface"
         @click="addLocale"
       >
-        + add
+        + {{ panels.lowcodeTranslationsAdd }}
       </button>
     </div>
 
     <p v-if="locales.length === 0" class="text-[11px] text-muted">
-      Add a target locale to translate the document's text into.
+      {{ panels.lowcodeTranslationsEmpty }}
     </p>
 
     <template v-else>
       <div class="mb-2 flex items-center gap-1">
         <select
           :value="currentLocale"
-          aria-label="Locale to edit"
+          :aria-label="panels.lowcodeTranslationsEditLocale"
           data-test-id="lowcode-translations-locale"
           class="min-w-0 flex-1 rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
           @change="activeLocale = ($event.target as HTMLSelectElement).value"
@@ -137,7 +138,7 @@ function setTranslation(locale: string, source: string, value: string): void {
         </select>
         <button
           type="button"
-          :aria-label="`Remove ${currentLocale}`"
+          :aria-label="panels.lowcodeTranslationsRemoveLocale({ locale: currentLocale })"
           data-test-id="lowcode-translations-remove-locale"
           class="rounded p-1 text-muted hover:bg-hover hover:text-surface"
           @click="removeLocale(currentLocale)"
@@ -151,7 +152,7 @@ function setTranslation(locale: string, source: string, value: string): void {
         data-test-id="lowcode-translations-empty"
         class="text-[11px] text-muted"
       >
-        No translatable text in this document yet.
+        {{ panels.lowcodeTranslationsNoText }}
       </p>
 
       <ul v-else class="flex flex-col gap-1.5">
@@ -166,7 +167,7 @@ function setTranslation(locale: string, source: string, value: string): void {
           </Tip>
           <input
             :value="translations[currentLocale]?.[source] ?? ''"
-            :aria-label="`Translation of ${source}`"
+            :aria-label="panels.lowcodeTranslationsValue({ source })"
             data-test-id="lowcode-translations-value"
             spellcheck="false"
             :placeholder="source"

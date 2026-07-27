@@ -6,7 +6,7 @@ import type {
   AnalyticsConsentRegionPreset,
   AnalyticsProvider
 } from '@open-pencil/scene-graph'
-import { useSceneComputed } from '@open-pencil/vue'
+import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -35,6 +35,7 @@ const DEFAULT_ANALYTICS_DRAFT = {
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
+const { panels } = useI18n()
 
 const config = useSceneComputed<AnalyticsConfig | undefined>(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
@@ -66,21 +67,47 @@ const idPlaceholder = computed(() => {
 const endpointPlaceholder = computed(() => {
   if (providerDraft.value === 'plausible') return 'https://plausible.io/js/script.js'
   if (providerDraft.value === 'posthog') return 'https://app.posthog.com'
-  return 'Not used by GA4'
+  return panels.value.lowcodeAnalyticsEndpointGa4Unused
 })
 
 const endpointEnabled = computed(() => providerDraft.value !== 'ga4')
-const providerHelp = computed(() => analyticsProviderHelp(providerDraft.value))
+const providerHelp = computed(() => {
+  const help = analyticsProviderHelp(providerDraft.value)
+  if (providerDraft.value === 'ga4') {
+    return {
+      ...help,
+      idLabel: panels.value.lowcodeAnalyticsGa4IdLabel,
+      idHint: panels.value.lowcodeAnalyticsGa4IdHint,
+      endpointHint: panels.value.lowcodeAnalyticsGa4EndpointHint
+    }
+  }
+  if (providerDraft.value === 'plausible') {
+    return {
+      ...help,
+      idLabel: panels.value.lowcodeAnalyticsPlausibleIdLabel,
+      idHint: panels.value.lowcodeAnalyticsPlausibleIdHint,
+      endpointHint: panels.value.lowcodeAnalyticsPlausibleEndpointHint
+    }
+  }
+  return {
+    ...help,
+    idLabel: panels.value.lowcodeAnalyticsPosthogIdLabel,
+    idHint: panels.value.lowcodeAnalyticsPosthogIdHint,
+    endpointHint: panels.value.lowcodeAnalyticsPosthogEndpointHint
+  }
+})
 
 const idError = computed(() => {
   const id = idDraft.value.trim()
   if (!id) return ''
-  if (providerDraft.value === 'ga4' && !GA4_ID_RE.test(id)) return 'GA4 id should look like G-...'
+  if (providerDraft.value === 'ga4' && !GA4_ID_RE.test(id)) {
+    return panels.value.lowcodeAnalyticsGa4IdError
+  }
   if (providerDraft.value === 'plausible' && !PLAUSIBLE_DOMAIN_RE.test(id)) {
-    return 'Plausible id should be a domain such as example.com'
+    return panels.value.lowcodeAnalyticsPlausibleIdError
   }
   if (providerDraft.value === 'posthog' && !POSTHOG_KEY_RE.test(id)) {
-    return 'PostHog project API keys usually start with phc_'
+    return panels.value.lowcodeAnalyticsPosthogIdError
   }
   return ''
 })
@@ -90,16 +117,18 @@ const endpointError = computed(() => {
   if (!endpoint || !endpointEnabled.value) return ''
   try {
     const url = new URL(endpoint)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? '' : 'Endpoint must be http(s)'
+    return url.protocol === 'http:' || url.protocol === 'https:'
+      ? ''
+      : panels.value.lowcodeAnalyticsEndpointProtocolError
   } catch {
-    return 'Endpoint must be a valid URL'
+    return panels.value.lowcodeAnalyticsEndpointUrlError
   }
 })
 
 const consentPolicyUrlError = computed(() => {
   const url = consentPolicyUrlDraft.value.trim()
   if (!url) return ''
-  return isSafePolicyUrl(url) ? '' : 'Policy URL must be http(s) or start with /'
+  return isSafePolicyUrl(url) ? '' : panels.value.lowcodeAnalyticsPolicyUrlError
 })
 
 watch(
@@ -285,7 +314,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
 <template>
   <div data-test-id="lowcode-analytics-config-section" :class="sectionCls.wrapper">
     <div class="mb-1.5 flex items-center justify-between">
-      <label class="text-[11px] text-muted">Analytics</label>
+      <label class="text-[11px] text-muted">{{ panels.lowcodeAnalytics }}</label>
       <button
         v-if="config"
         type="button"
@@ -293,7 +322,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
         class="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
         @click="clearConfig"
       >
-        Clear
+        {{ panels.lowcodeAnalyticsClear }}
       </button>
     </div>
 
@@ -305,7 +334,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
           data-test-id="lowcode-analytics-enabled"
           @change="updateEnabled(($event.target as HTMLInputElement).checked)"
         />
-        Enabled
+        {{ panels.lowcodeAnalyticsEnabled }}
       </label>
       <label class="flex items-center gap-1 pl-1 text-[11px] text-muted">
         <input
@@ -314,7 +343,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
           data-test-id="lowcode-analytics-page-views"
           @change="updatePageViews(($event.target as HTMLInputElement).checked)"
         />
-        Track page views
+        {{ panels.lowcodeAnalyticsTrackPageViews }}
       </label>
       <label class="flex items-center gap-1 pl-1 text-[11px] text-muted">
         <input
@@ -323,13 +352,13 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
           data-test-id="lowcode-analytics-respect-dnt"
           @change="updateRespectDoNotTrack(($event.target as HTMLInputElement).checked)"
         />
-        Respect Do Not Track
+        {{ panels.lowcodeAnalyticsRespectDnt }}
       </label>
       <label class="grid gap-1 text-[11px] text-muted">
-        <span class="pl-1">Consent preset</span>
+        <span class="pl-1">{{ panels.lowcodeAnalyticsConsentPreset }}</span>
         <select
           :value="consentRegionPresetDraft"
-          aria-label="Analytics consent preset"
+          :aria-label="panels.lowcodeAnalyticsConsentPreset"
           data-test-id="lowcode-analytics-consent-preset"
           class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
           @change="
@@ -338,8 +367,8 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
             )
           "
         >
-          <option value="">Manual</option>
-          <option value="eea">EEA-style opt-in starter</option>
+          <option value="">{{ panels.lowcodeAnalyticsConsentManual }}</option>
+          <option value="eea">{{ panels.lowcodeAnalyticsConsentEea }}</option>
         </select>
       </label>
       <label class="flex items-center gap-1 pl-1 text-[11px] text-muted">
@@ -349,14 +378,16 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
           data-test-id="lowcode-analytics-consent-required"
           @change="updateConsentRequired(($event.target as HTMLInputElement).checked)"
         />
-        Require consent before tracking
+        {{ panels.lowcodeAnalyticsConsentRequired }}
       </label>
       <div
         v-if="consentRequiredDraft"
         data-test-id="lowcode-analytics-consent-copy"
         class="grid gap-1.5 rounded border border-border bg-panel px-2 py-2"
       >
-        <label class="text-[10px] uppercase tracking-normal text-muted">Consent copy</label>
+        <label class="text-[10px] uppercase tracking-normal text-muted">
+          {{ panels.lowcodeAnalyticsConsentCopy }}
+        </label>
         <label class="flex items-center gap-1 pl-1 text-[11px] text-muted">
           <input
             type="checkbox"
@@ -364,30 +395,30 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
             data-test-id="lowcode-analytics-consent-default"
             @change="updateConsentAnalyticsDefault(($event.target as HTMLInputElement).checked)"
           />
-          Analytics checked by default
+          {{ panels.lowcodeAnalyticsConsentDefault }}
         </label>
         <textarea
           v-model="consentBannerTextDraft"
-          aria-label="Analytics consent banner text"
+          :aria-label="panels.lowcodeAnalyticsConsentBanner"
           data-test-id="lowcode-analytics-consent-banner-text"
           spellcheck="false"
-          placeholder="This app uses analytics to understand usage. You can choose which optional tracking is allowed."
+          :placeholder="panels.lowcodeAnalyticsConsentBannerPlaceholder"
           class="min-h-16 w-full resize-y rounded border border-border bg-input px-2 py-1 text-[11px] text-surface outline-none focus:border-accent"
           @change="updateConsentCopy"
         />
         <input
           v-model="consentAnalyticsDescriptionDraft"
-          aria-label="Analytics consent category description"
+          :aria-label="panels.lowcodeAnalyticsConsentDescription"
           data-test-id="lowcode-analytics-consent-description"
           spellcheck="false"
-          placeholder="Helps the team understand page views and explicit tracked events."
+          :placeholder="panels.lowcodeAnalyticsConsentDescriptionPlaceholder"
           class="min-w-0 rounded border border-border bg-input px-2 py-1 text-[11px] text-surface outline-none focus:border-accent"
           @change="updateConsentCopy"
         />
         <div class="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-1">
           <input
             v-model="consentPolicyUrlDraft"
-            aria-label="Analytics consent policy URL"
+            :aria-label="panels.lowcodeAnalyticsConsentPolicyUrl"
             :aria-invalid="consentPolicyUrlError ? 'true' : undefined"
             data-test-id="lowcode-analytics-consent-policy-url"
             spellcheck="false"
@@ -400,10 +431,10 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
           />
           <input
             v-model="consentPolicyLabelDraft"
-            aria-label="Analytics consent policy label"
+            :aria-label="panels.lowcodeAnalyticsConsentPolicyLabel"
             data-test-id="lowcode-analytics-consent-policy-label"
             spellcheck="false"
-            placeholder="Privacy policy"
+            :placeholder="panels.lowcodeAnalyticsConsentPolicyLabelPlaceholder"
             class="min-w-0 rounded border border-border bg-input px-2 py-1 text-[11px] text-surface outline-none focus:border-accent"
             @change="updateConsentCopy"
           />
@@ -411,7 +442,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
       </div>
       <select
         :value="providerDraft"
-        aria-label="Analytics provider"
+        :aria-label="panels.lowcodeAnalyticsProvider"
         data-test-id="lowcode-analytics-provider"
         class="rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
         @change="updateProvider(($event.target as HTMLSelectElement).value as AnalyticsProvider)"
@@ -433,12 +464,12 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
           data-test-id="lowcode-analytics-provider-docs"
           class="ml-1 text-accent hover:underline"
         >
-          Docs
+          {{ panels.lowcodeAnalyticsDocs }}
         </a>
       </p>
       <input
         v-model="idDraft"
-        aria-label="Analytics id"
+        :aria-label="providerHelp.idLabel"
         :aria-invalid="idError ? 'true' : undefined"
         data-test-id="lowcode-analytics-id"
         spellcheck="false"
@@ -454,7 +485,7 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
       </p>
       <input
         v-model="endpointDraft"
-        aria-label="Analytics endpoint"
+        :aria-label="panels.lowcodeAnalyticsEndpoint"
         :aria-invalid="endpointError ? 'true' : undefined"
         data-test-id="lowcode-analytics-endpoint"
         :disabled="!endpointEnabled"
@@ -491,19 +522,17 @@ function effectiveConsentAnalyticsDefault(config: AnalyticsConfig | undefined): 
     </p>
 
     <p data-test-id="lowcode-analytics-note" class="mt-1.5 text-[10px] text-muted">
-      Stores public GA4, Plausible, or PostHog client ids only. Do not paste provider admin tokens
-      here.
+      {{ panels.lowcodeAnalyticsNote }}
     </p>
     <p data-test-id="lowcode-analytics-privacy-note" class="mt-1 text-[10px] text-muted">
-      Consent mode exports __opGrantAnalyticsConsent() and __opRevokeAnalyticsConsent() for your
-      generated app flows.
+      {{ panels.lowcodeAnalyticsPrivacyNote }}
     </p>
     <p
       v-if="!idDraft.trim()"
       data-test-id="lowcode-analytics-id-note"
       class="mt-1 text-[10px] text-muted"
     >
-      Add an id to persist this analytics config.
+      {{ panels.lowcodeAnalyticsMissingIdNote }}
     </p>
   </div>
 </template>

@@ -8,7 +8,7 @@ import type {
   LowcodeHeadMetaKind,
   LowcodeHeadMetadata
 } from '@open-pencil/scene-graph'
-import { useSceneComputed } from '@open-pencil/vue'
+import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -21,11 +21,13 @@ import {
   hasIncompleteCustomCodeRows,
   hasUnsafeCustomCodeUrls,
   LOWCODE_HEAD_LINK_CROSS_ORIGINS,
-  LOWCODE_HEAD_META_KINDS
+  LOWCODE_HEAD_META_KINDS,
+  type CustomCodeCspRisk
 } from '@/app/lowcode/custom-code-panel-state'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
+const { panels } = useI18n()
 
 const headMetadata = useSceneComputed<LowcodeHeadMetadata | undefined>(() => {
   const root = editor.graph.getNode(editor.graph.rootId)
@@ -50,6 +52,60 @@ const cspRisks = computed(() =>
     customCss: customCssText.value
   })
 )
+const localizedCspRisks = computed(() => cspRisks.value.map(localizeCspRisk))
+
+function localizeCspRisk(risk: CustomCodeCspRisk): CustomCodeCspRisk {
+  const url = risk.url ?? ''
+  switch (risk.kind) {
+    case 'inlineHeadStyle':
+      return {
+        ...risk,
+        title: panels.value.lowcodeCustomCodeCspInlineStyleTitle,
+        detail: panels.value.lowcodeCustomCodeCspInlineStyleDetail
+      }
+    case 'headStyleUnsafeUrl':
+      return {
+        ...risk,
+        title: panels.value.lowcodeCustomCodeCspHeadStyleUnsafeTitle,
+        detail: panels.value.lowcodeCustomCodeCspHeadStyleUnsafeDetail({ url })
+      }
+    case 'metaRefreshUnsafeUrl':
+      return {
+        ...risk,
+        title: panels.value.lowcodeCustomCodeCspMetaRefreshUnsafeTitle,
+        detail: panels.value.lowcodeCustomCodeCspMetaRefreshUnsafeDetail({ url })
+      }
+    case 'externalStylesheet':
+      return {
+        ...risk,
+        title: panels.value.lowcodeCustomCodeCspExternalStylesheetTitle,
+        detail: panels.value.lowcodeCustomCodeCspExternalStylesheetDetail({ url })
+      }
+    case 'externalLink': {
+      const directive = risk.directive ?? ''
+      return {
+        ...risk,
+        title: panels.value.lowcodeCustomCodeCspExternalLinkTitle({
+          rel: risk.rel ?? '',
+          directive
+        }),
+        detail: panels.value.lowcodeCustomCodeCspExternalLinkDetail({ url, directive })
+      }
+    }
+    case 'customCssExternalResource':
+      return {
+        ...risk,
+        title: panels.value.lowcodeCustomCodeCspExternalResourceTitle,
+        detail: panels.value.lowcodeCustomCodeCspExternalResourceDetail({ url })
+      }
+    case 'customCssUnsafeUrl':
+      return {
+        ...risk,
+        title: panels.value.lowcodeCustomCodeCspCustomCssUnsafeTitle,
+        detail: panels.value.lowcodeCustomCodeCspCustomCssUnsafeDetail({ url })
+      }
+  }
+}
 
 watch(
   [() => headMetadata.value, () => customCss.value],
@@ -125,7 +181,7 @@ function clearAll(): void {
 <template>
   <div data-test-id="lowcode-custom-code-section" :class="sectionCls.wrapper">
     <div class="mb-1.5 flex items-center justify-between">
-      <label class="text-[11px] text-muted">Custom head & CSS</label>
+      <label class="text-[11px] text-muted">{{ panels.lowcodeCustomCode }}</label>
       <button
         v-if="headMetadata || customCss"
         type="button"
@@ -133,29 +189,31 @@ function clearAll(): void {
         class="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
         @click="clearAll"
       >
-        Clear
+        {{ panels.lowcodeCustomCodeClear }}
       </button>
     </div>
 
     <div class="mb-2 flex items-center justify-between">
-      <span class="text-[10px] uppercase tracking-normal text-muted">Meta</span>
+      <span class="text-[10px] uppercase tracking-normal text-muted">
+        {{ panels.lowcodeCustomCodeMeta }}
+      </span>
       <button
         type="button"
         data-test-id="lowcode-custom-head-meta-add"
         class="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
         @click="addMeta"
       >
-        + Meta
+        + {{ panels.lowcodeCustomCodeAddMeta }}
       </button>
     </div>
     <p v-if="metaRows.length === 0" class="mb-2 text-[11px] text-muted">
-      Add structured meta tags for SEO, CSP, or social previews.
+      {{ panels.lowcodeCustomCodeMetaEmpty }}
     </p>
     <div v-for="(entry, index) in metaRows" :key="index" class="mb-2 flex flex-col gap-1">
       <div class="flex gap-1">
         <select
           :value="entry.kind"
-          aria-label="Meta kind"
+          :aria-label="panels.lowcodeCustomCodeMetaKind"
           data-test-id="lowcode-custom-head-meta-kind"
           class="w-[88px] rounded border border-border bg-input px-1 py-1 text-[11px] text-surface outline-none focus:border-accent"
           @change="
@@ -170,7 +228,7 @@ function clearAll(): void {
         </select>
         <input
           :value="entry.key"
-          aria-label="Meta key"
+          :aria-label="panels.lowcodeCustomCodeMetaKey"
           data-test-id="lowcode-custom-head-meta-key"
           placeholder="viewport"
           spellcheck="false"
@@ -179,7 +237,7 @@ function clearAll(): void {
         />
         <button
           type="button"
-          aria-label="Remove meta"
+          :aria-label="panels.lowcodeCustomCodeRemoveMeta"
           data-test-id="lowcode-custom-head-meta-remove"
           class="w-7 rounded text-[11px] text-muted hover:bg-hover hover:text-surface"
           @click="removeMeta(index)"
@@ -189,7 +247,7 @@ function clearAll(): void {
       </div>
       <input
         :value="entry.content"
-        aria-label="Meta content"
+        :aria-label="panels.lowcodeCustomCodeMetaContent"
         data-test-id="lowcode-custom-head-meta-content"
         placeholder="width=device-width, initial-scale=1"
         spellcheck="false"
@@ -199,24 +257,26 @@ function clearAll(): void {
     </div>
 
     <div class="mb-2 mt-3 flex items-center justify-between">
-      <span class="text-[10px] uppercase tracking-normal text-muted">Links</span>
+      <span class="text-[10px] uppercase tracking-normal text-muted">
+        {{ panels.lowcodeCustomCodeLinks }}
+      </span>
       <button
         type="button"
         data-test-id="lowcode-custom-head-link-add"
         class="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
         @click="addLink"
       >
-        + Link
+        + {{ panels.lowcodeCustomCodeAddLink }}
       </button>
     </div>
     <p v-if="linkRows.length === 0" class="mb-2 text-[11px] text-muted">
-      Add structured link tags for icons, preload, or external stylesheets.
+      {{ panels.lowcodeCustomCodeLinkEmpty }}
     </p>
     <div v-for="(entry, index) in linkRows" :key="index" class="mb-2 flex flex-col gap-1">
       <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_28px] gap-1">
         <input
           :value="entry.rel"
-          aria-label="Link rel"
+          :aria-label="panels.lowcodeCustomCodeLinkRel"
           data-test-id="lowcode-custom-head-link-rel"
           placeholder="stylesheet"
           spellcheck="false"
@@ -225,7 +285,7 @@ function clearAll(): void {
         />
         <input
           :value="entry.href"
-          aria-label="Link href"
+          :aria-label="panels.lowcodeCustomCodeLinkHref"
           data-test-id="lowcode-custom-head-link-href"
           placeholder="https://..."
           spellcheck="false"
@@ -234,7 +294,7 @@ function clearAll(): void {
         />
         <button
           type="button"
-          aria-label="Remove link"
+          :aria-label="panels.lowcodeCustomCodeRemoveLink"
           data-test-id="lowcode-custom-head-link-remove"
           class="rounded text-[11px] text-muted hover:bg-hover hover:text-surface"
           @click="removeLink(index)"
@@ -245,7 +305,7 @@ function clearAll(): void {
       <div class="grid grid-cols-2 gap-1">
         <input
           :value="entry.as ?? ''"
-          aria-label="Link as"
+          :aria-label="panels.lowcodeCustomCodeLinkAs"
           data-test-id="lowcode-custom-head-link-as"
           placeholder="as"
           spellcheck="false"
@@ -254,7 +314,7 @@ function clearAll(): void {
         />
         <input
           :value="entry.type ?? ''"
-          aria-label="Link type"
+          :aria-label="panels.lowcodeCustomCodeLinkType"
           data-test-id="lowcode-custom-head-link-type"
           placeholder="type"
           spellcheck="false"
@@ -263,7 +323,7 @@ function clearAll(): void {
         />
         <input
           :value="entry.media ?? ''"
-          aria-label="Link media"
+          :aria-label="panels.lowcodeCustomCodeLinkMedia"
           data-test-id="lowcode-custom-head-link-media"
           placeholder="media"
           spellcheck="false"
@@ -272,7 +332,7 @@ function clearAll(): void {
         />
         <select
           :value="entry.crossorigin ?? ''"
-          aria-label="Link crossorigin"
+          :aria-label="panels.lowcodeCustomCodeLinkCrossorigin"
           data-test-id="lowcode-custom-head-link-crossorigin"
           class="min-w-0 rounded border border-border bg-input px-1 py-1 text-[11px] text-surface outline-none focus:border-accent"
           @change="
@@ -283,7 +343,7 @@ function clearAll(): void {
             })
           "
         >
-          <option value="">no CORS</option>
+          <option value="">{{ panels.lowcodeCustomCodeNoCors }}</option>
           <option
             v-for="crossorigin in LOWCODE_HEAD_LINK_CROSS_ORIGINS"
             :key="crossorigin"
@@ -296,11 +356,11 @@ function clearAll(): void {
     </div>
 
     <label class="mb-1 mt-3 block text-[10px] uppercase tracking-normal text-muted">
-      Head styles
+      {{ panels.lowcodeCustomCodeHeadStyles }}
     </label>
     <textarea
       :value="stylesText"
-      aria-label="Head styles"
+      :aria-label="panels.lowcodeCustomCodeHeadStyles"
       data-test-id="lowcode-custom-head-styles"
       spellcheck="false"
       placeholder=":root { color-scheme: light; }"
@@ -309,11 +369,11 @@ function clearAll(): void {
     />
 
     <label class="mb-1 mt-3 block text-[10px] uppercase tracking-normal text-muted">
-      App CSS
+      {{ panels.lowcodeCustomCodeAppCss }}
     </label>
     <textarea
       :value="customCssText"
-      aria-label="Custom CSS"
+      :aria-label="panels.lowcodeCustomCodeAppCss"
       data-test-id="lowcode-custom-css"
       spellcheck="false"
       placeholder=".app-shell { scroll-behavior: smooth; }"
@@ -326,9 +386,11 @@ function clearAll(): void {
       data-test-id="lowcode-custom-code-csp-risks"
       class="mt-2 rounded border border-border bg-hover/40 px-2 py-1.5 text-[10px] text-muted"
     >
-      <div class="mb-1 font-medium text-surface">Deploy CSP checks</div>
+      <div class="mb-1 font-medium text-surface">
+        {{ panels.lowcodeCustomCodeDeployCspChecks }}
+      </div>
       <ul class="list-disc space-y-1 pl-4">
-        <li v-for="risk in cspRisks" :key="risk.id">
+        <li v-for="risk in localizedCspRisks" :key="risk.id">
           <span class="font-medium text-surface">{{ risk.title }}</span>
           <span class="block">{{ risk.detail }}</span>
         </li>
@@ -336,8 +398,7 @@ function clearAll(): void {
     </div>
 
     <p data-test-id="lowcode-custom-code-note" class="mt-1.5 text-[10px] text-muted">
-      Structured meta, link, and style output only. Scripts and raw HTML are intentionally not
-      emitted.
+      {{ panels.lowcodeCustomCodeNote }}
     </p>
   </div>
 </template>

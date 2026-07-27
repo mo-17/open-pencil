@@ -77,6 +77,12 @@ describe('lowcode workflow graph analysis', () => {
         actionPath: '[0]'
       }
     ])
+    expect(summary.issues[0]?.i18n).toEqual({
+      code: 'missing-workflow-call',
+      sourceName: 'Save',
+      workflowId: 'wf-missing'
+    })
+    expect(Object.keys(summary.issues[0] ?? {})).not.toContain('i18n')
   })
 
   test('collects workflow entrypoints from node events', () => {
@@ -136,6 +142,12 @@ describe('lowcode workflow graph analysis', () => {
         workflowIds: ['wf-missing']
       }
     ])
+    expect(summary.issues[0]?.i18n).toEqual({
+      code: 'missing-workflow-entrypoint',
+      nodeName: 'Submit',
+      eventName: 'onClick',
+      workflowId: 'wf-missing'
+    })
   })
 
   test('reports workflows without event entrypoints', () => {
@@ -207,6 +219,15 @@ describe('lowcode workflow graph analysis', () => {
       actionId: 'call-invalid',
       actionPath: '[1]'
     })
+    expect(summary.issues.find((issue) => issue.actionId === 'call-target')?.i18n).toEqual({
+      code: 'call-args',
+      sourceName: 'Source',
+      targetName: 'Target',
+      problems: [
+        { kind: 'extra', param: 'badExtra', message: 'extra "badExtra"' },
+        { kind: 'missing', param: 'message', message: 'missing "message"' }
+      ]
+    })
     expect(summary.nodes.find((node) => node.id === 'wf-source')?.issues).toHaveLength(2)
   })
 
@@ -249,6 +270,10 @@ describe('lowcode workflow graph analysis', () => {
         workflowIds: ['wf-d', 'wf-d'],
         targetWorkflowId: 'wf-d'
       }
+    ])
+    expect(summary.issues.map((issue) => issue.i18n)).toEqual([
+      { code: 'cycle', names: ['A', 'B', 'C', 'A'] },
+      { code: 'cycle', names: ['Self', 'Self'] }
     ])
   })
 })

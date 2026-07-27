@@ -2,6 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 
 import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
+import { useI18n } from '@open-pencil/vue'
 
 import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 import ActionList from './ActionList.vue'
@@ -29,6 +30,7 @@ const emit = defineEmits<{
   'update:workflow': [WorkflowDef]
   remove: []
 }>()
+const { panels } = useI18n()
 const rowEl = ref<HTMLElement | null>(null)
 
 function selectorValue(value: string): string {
@@ -79,9 +81,9 @@ const paramErrors = computed<Map<number, string>>(() => {
   const out = new Map<number, string>()
   const seen = new Set<string>()
   paramRows.value.forEach((r, i) => {
-    if (r.name.trim() === '') out.set(i, 'name required')
-    else if (!PARAM_RE.test(r.name)) out.set(i, 'invalid identifier')
-    else if (seen.has(r.name)) out.set(i, 'duplicate')
+    if (r.name.trim() === '') out.set(i, panels.value.lowcodeWorkflowParamNameRequired)
+    else if (!PARAM_RE.test(r.name)) out.set(i, panels.value.lowcodeWorkflowParamInvalidIdentifier)
+    else if (seen.has(r.name)) out.set(i, panels.value.lowcodeWorkflowParamDuplicate)
     else seen.add(r.name)
   })
   return out
@@ -155,7 +157,7 @@ function setParamOptional(index: number, optional: boolean): void {
     <div class="flex items-center gap-1">
       <input
         :value="workflow.name"
-        aria-label="Workflow name"
+        :aria-label="panels.lowcodeWorkflowName"
         data-test-id="lowcode-workflow-name"
         spellcheck="false"
         class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
@@ -163,17 +165,17 @@ function setParamOptional(index: number, optional: boolean): void {
       />
       <select
         :value="workflow.pageId ?? ''"
-        aria-label="Workflow page scope"
+        :aria-label="panels.lowcodeWorkflowPageScope"
         data-test-id="lowcode-workflow-page"
         class="max-w-28 rounded border border-border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent"
         @change="setPageId(($event.target as HTMLSelectElement).value)"
       >
-        <option value="">current page</option>
+        <option value="">{{ panels.lowcodeWorkflowCurrentPage }}</option>
         <option v-for="page in pages" :key="page.id" :value="page.id">{{ page.name }}</option>
       </select>
       <button
         type="button"
-        aria-label="Remove workflow"
+        :aria-label="panels.lowcodeWorkflowRemove"
         data-test-id="lowcode-workflow-remove"
         class="rounded p-1 text-muted hover:bg-hover hover:text-surface"
         @click="emit('remove')"
@@ -184,14 +186,14 @@ function setParamOptional(index: number, optional: boolean): void {
 
     <div class="flex flex-col gap-1 border-l border-border pl-2">
       <div class="flex items-center justify-between">
-        <label class="text-[10px] text-muted">parameters</label>
+        <label class="text-[10px] text-muted">{{ panels.lowcodeWorkflowParameters }}</label>
         <button
           type="button"
           data-test-id="lowcode-workflow-param-add"
           class="rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
           @click="addParam"
         >
-          + param
+          {{ panels.lowcodeWorkflowAddParameter }}
         </button>
       </div>
       <div
@@ -203,7 +205,7 @@ function setParamOptional(index: number, optional: boolean): void {
         <div class="flex items-center gap-1">
           <input
             :value="p.name"
-            aria-label="Parameter name"
+            :aria-label="panels.lowcodeWorkflowParameterName"
             :aria-invalid="paramErrors.has(i) ? 'true' : undefined"
             data-test-id="lowcode-workflow-param-name"
             spellcheck="false"
@@ -215,10 +217,10 @@ function setParamOptional(index: number, optional: boolean): void {
           />
           <input
             :value="p.default"
-            aria-label="Parameter default expression"
+            :aria-label="panels.lowcodeWorkflowParameterDefault"
             data-test-id="lowcode-workflow-param-default"
             spellcheck="false"
-            placeholder="default (optional)"
+            :placeholder="panels.lowcodeWorkflowParameterDefaultPlaceholder"
             class="min-w-0 flex-1 rounded border border-border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent"
             @change="setParamDefault(i, ($event.target as HTMLInputElement).value)"
           />
@@ -226,16 +228,16 @@ function setParamOptional(index: number, optional: boolean): void {
             <input
               type="checkbox"
               :checked="p.optional"
-              aria-label="Optional parameter"
+              :aria-label="panels.lowcodeWorkflowParameterOptional"
               data-test-id="lowcode-workflow-param-optional"
               class="size-3 accent-accent"
               @change="setParamOptional(i, ($event.target as HTMLInputElement).checked)"
             />
-            optional
+            {{ panels.lowcodeWorkflowOptional }}
           </label>
           <button
             type="button"
-            aria-label="Remove parameter"
+            :aria-label="panels.lowcodeWorkflowRemoveParameter"
             data-test-id="lowcode-workflow-param-remove"
             class="rounded p-1 text-muted hover:bg-hover hover:text-surface"
             @click="removeParam(i)"
@@ -254,7 +256,7 @@ function setParamOptional(index: number, optional: boolean): void {
     </div>
 
     <div class="flex flex-col gap-1 border-l border-border pl-2">
-      <label class="text-[10px] text-muted">actions</label>
+      <label class="text-[10px] text-muted">{{ panels.lowcodeWorkflowActions }}</label>
       <ActionList
         :actions="workflow.actions"
         :page-states="pageStates"

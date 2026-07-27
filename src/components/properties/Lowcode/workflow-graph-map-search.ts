@@ -5,6 +5,21 @@ type GraphMapSearchMatch = {
   kind: 'node' | 'edge'
 }
 
+export type GraphMapEdgeBranchKind =
+  | 'root'
+  | 'then'
+  | 'else'
+  | 'success'
+  | 'error'
+  | 'nested'
+  | 'custom'
+
+export interface GraphMapSearchPosition {
+  index: number
+  total: number
+  kind: 'node' | 'edge'
+}
+
 export function graphMapNodeSearchMatchId(node: WorkflowGraphNode): string {
   return `node:${node.id}`
 }
@@ -23,7 +38,11 @@ export function graphMapNodeMatchesSearch(node: WorkflowGraphNode, term: string)
   ].some((value) => value.toLowerCase().includes(term))
 }
 
-export function graphMapEdgeMatchesSearch(edge: WorkflowGraphEdge, term: string): boolean {
+export function graphMapEdgeMatchesSearch(
+  edge: WorkflowGraphEdge,
+  term: string,
+  localizedBranchLabel = graphMapEdgeBranchLabel(edge)
+): boolean {
   return [
     edge.fromId,
     edge.fromName,
@@ -32,12 +51,29 @@ export function graphMapEdgeMatchesSearch(edge: WorkflowGraphEdge, term: string)
     edge.actionId,
     edge.actionPath,
     edge.actionKind,
-    graphMapEdgeBranchLabel(edge)
+    graphMapEdgeBranchLabel(edge),
+    localizedBranchLabel
   ].some((value) => value.toLowerCase().includes(term))
 }
 
 export function graphMapEdgeBranchLabel(edge: WorkflowGraphEdge): string {
-  if (!edge.actionPath.includes('/')) return 'Root'
+  const kind = graphMapEdgeBranchKind(edge)
+  if (kind === 'root') return 'Root'
+  if (kind === 'then') return 'Then'
+  if (kind === 'else') return 'Else'
+  if (kind === 'success') return 'On success'
+  if (kind === 'error') return 'On error'
+  if (kind === 'nested') return 'Nested'
+  const branch =
+    edge.actionPath
+      .split('/')
+      .at(-1)
+      ?.replace(/\[\d+\]$/, '') ?? ''
+  return branch || 'Nested'
+}
+
+export function graphMapEdgeBranchKind(edge: WorkflowGraphEdge): GraphMapEdgeBranchKind {
+  if (!edge.actionPath.includes('/')) return 'root'
   const branch =
     edge.actionPath
       .split('/')
@@ -45,15 +81,15 @@ export function graphMapEdgeBranchLabel(edge: WorkflowGraphEdge): string {
       ?.replace(/\[\d+\]$/, '') ?? ''
   switch (branch) {
     case 'consequent':
-      return 'Then'
+      return 'then'
     case 'alternate':
-      return 'Else'
+      return 'else'
     case 'onSuccess':
-      return 'On success'
+      return 'success'
     case 'onError':
-      return 'On error'
+      return 'error'
     default:
-      return branch || 'Nested'
+      return branch ? 'custom' : 'nested'
   }
 }
 
@@ -77,11 +113,21 @@ export function graphMapSearchMatchPositionLabel(
   edges: readonly WorkflowGraphEdge[],
   currentId: string | null
 ): string {
+  const position = graphMapSearchMatchPosition(nodes, edges, currentId)
+  if (!position) return ''
+  return ` · ${position.index}/${position.total} ${position.kind}`
+}
+
+export function graphMapSearchMatchPosition(
+  nodes: readonly WorkflowGraphNode[],
+  edges: readonly WorkflowGraphEdge[],
+  currentId: string | null
+): GraphMapSearchPosition | null {
   const matches = graphMapSearchMatches(nodes, edges)
   const index = matches.findIndex((match) => match.id === currentId)
-  if (index === -1) return ''
+  if (index === -1) return null
   const match = matches[index]
-  return ` · ${index + 1}/${matches.length} ${match.kind}`
+  return { index: index + 1, total: matches.length, kind: match.kind }
 }
 
 export function formatGraphMapSearchSummary(

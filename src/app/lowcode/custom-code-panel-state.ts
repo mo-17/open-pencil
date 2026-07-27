@@ -33,6 +33,17 @@ export interface CustomCodePatch {
 
 export interface CustomCodeCspRisk {
   id: string
+  kind:
+    | 'inlineHeadStyle'
+    | 'headStyleUnsafeUrl'
+    | 'metaRefreshUnsafeUrl'
+    | 'externalStylesheet'
+    | 'externalLink'
+    | 'customCssExternalResource'
+    | 'customCssUnsafeUrl'
+  url?: string
+  rel?: string
+  directive?: string
   title: string
   detail: string
 }
@@ -101,6 +112,7 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
   if (styles) {
     risks.push({
       id: 'inline-head-style',
+      kind: 'inlineHeadStyle',
       title: 'Inline head styles may require CSP allowance',
       detail:
         'Hosts with strict CSP must allow inline styles by nonce/hash or style-src unsafe-inline.'
@@ -109,6 +121,8 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
   for (const url of unsafeLowcodeCustomCssUrls(styles)) {
     risks.push({
       id: `head-style-unsafe-url:${url}`,
+      kind: 'headStyleUnsafeUrl',
+      url,
       title: 'Head style URL protocol will not be persisted',
       detail: `${url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.`
     })
@@ -118,6 +132,8 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
     if (!url) continue
     risks.push({
       id: `head-meta-refresh-unsafe-url:${url}`,
+      kind: 'metaRefreshUnsafeUrl',
+      url,
       title: 'Meta refresh URL protocol will not be persisted',
       detail: `${url} uses a protocol outside the allowed http(s) or relative URL set.`
     })
@@ -130,6 +146,8 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
     if (rel === 'stylesheet') {
       risks.push({
         id: `external-stylesheet:${href}`,
+        kind: 'externalStylesheet',
+        url: href,
         title: 'External stylesheet needs style-src allowlist',
         detail: `${href} must be allowed by the deployed host CSP.`
       })
@@ -139,6 +157,10 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
       const directive = cspDirectiveForLink(link)
       risks.push({
         id: `external-${rel}:${href}`,
+        kind: 'externalLink',
+        url: href,
+        rel,
+        directive,
         title: `External ${rel} may need ${directive} allowlist`,
         detail: `${href} must be allowed by ${directive} or the matching resource directive.`
       })
@@ -148,6 +170,8 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
   for (const url of cssExternalUrls(customCss)) {
     risks.push({
       id: `custom-css-url:${url}`,
+      kind: 'customCssExternalResource',
+      url,
       title: 'Custom CSS references an external resource',
       detail: `${url} must be allowed by the deployed host CSP resource directives.`
     })
@@ -155,6 +179,8 @@ export function analyzeCustomCodeCspRisks(draft: CustomCodeDraft): CustomCodeCsp
   for (const url of unsafeLowcodeCustomCssUrls(customCss)) {
     risks.push({
       id: `custom-css-unsafe-url:${url}`,
+      kind: 'customCssUnsafeUrl',
+      url,
       title: 'Custom CSS URL protocol will not be persisted',
       detail: `${url} uses a protocol outside the allowed http(s), protocol-relative, or relative URL set.`
     })
