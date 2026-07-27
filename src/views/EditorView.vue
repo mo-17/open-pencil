@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, provide, ref } from 'vue'
+import { computed, onMounted, onUnmounted, provide, ref } from 'vue'
 import { useEventListener, useUrlSearchParams } from '@vueuse/core'
 import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
@@ -8,6 +8,7 @@ import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'reka-ui'
 import { useViewportKind, formatShortcut, useI18n } from '@open-pencil/vue'
 import { useKeyboard } from '@/app/shell/keyboard/use'
 import {
+  editorPanelDefaultSizes,
   loadEditorLayout,
   previewPanelDefaultSize,
   saveEditorLayout
@@ -77,9 +78,17 @@ useEventListener(
 const automationCleanup = ref<(() => void) | null>(null)
 const mcpCleanup = ref<(() => void) | null>(null)
 const fileAssociationCleanup = ref<(() => void) | null>(null)
-const initialEditorLayout = loadEditorLayout()
-const initialPreviewSize = previewPanelDefaultSize(initialEditorLayout)
 const showPreviewPane = isTauri()
+const editorLayout = ref(loadEditorLayout())
+const previewSize = computed(() => previewPanelDefaultSize(editorLayout.value))
+const editorPanelSizes = computed(() =>
+  editorPanelDefaultSizes(editorLayout.value, showPreviewPane)
+)
+
+function handleEditorLayout(layout: number[]): void {
+  editorLayout.value = [...layout]
+  saveEditorLayout(layout)
+}
 
 type PendingOpenFile = {
   path: string
@@ -139,11 +148,11 @@ onUnmounted(() => {
       :key="activeTab?.id"
       direction="horizontal"
       class="flex-1 overflow-hidden"
-      @layout="saveEditorLayout"
+      @layout="handleEditorLayout"
     >
       <SplitterPanel
         id="layers"
-        :default-size="initialEditorLayout[0]"
+        :default-size="editorPanelSizes[0]"
         :min-size="10"
         :max-size="30"
         class="flex"
@@ -156,7 +165,7 @@ onUnmounted(() => {
       >
         <div class="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2" />
       </SplitterResizeHandle>
-      <SplitterPanel id="canvas" :default-size="initialEditorLayout[1]" :min-size="30" class="flex">
+      <SplitterPanel id="canvas" :default-size="editorPanelSizes[1]" :min-size="30" class="flex">
         <div class="relative flex min-w-0 flex-1">
           <EditorCanvas />
           <Toolbar />
@@ -167,7 +176,7 @@ onUnmounted(() => {
       </SplitterResizeHandle>
       <SplitterPanel
         id="properties"
-        :default-size="initialEditorLayout[2]"
+        :default-size="editorPanelSizes[2]"
         :min-size="10"
         :max-size="30"
         class="flex flex-col"
@@ -185,12 +194,34 @@ onUnmounted(() => {
         </SplitterResizeHandle>
         <SplitterPanel
           id="lowcode-preview"
-          :default-size="initialPreviewSize"
+          :default-size="previewSize"
           :min-size="12"
           :max-size="50"
+          :collapsed-size="2"
+          collapsible
           class="flex"
         >
-          <PreviewPane />
+          <template #default="{ isCollapsed, collapse, expand }">
+            <div
+              v-if="isCollapsed"
+              class="flex min-w-0 flex-1 flex-col items-center border-l border-border bg-panel pt-2"
+            >
+              <Tip label="Open compiler preview">
+                <button
+                  type="button"
+                  data-test-id="lowcode-preview-open"
+                  aria-label="Open compiler preview"
+                  aria-controls="lowcode-preview-pane"
+                  :aria-expanded="false"
+                  class="flex size-7 cursor-pointer items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
+                  @click="expand"
+                >
+                  <icon-lucide-panel-right-open class="size-4" />
+                </button>
+              </Tip>
+            </div>
+            <PreviewPane v-else @close="collapse" />
+          </template>
         </SplitterPanel>
       </template>
     </SplitterGroup>

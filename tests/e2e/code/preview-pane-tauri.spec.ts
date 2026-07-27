@@ -116,6 +116,56 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
   await page.close()
 })
 
+test('Tauri compiler preview can be closed, restored, and stays closed after reload', async ({
+  browser
+}) => {
+  const page = await browser.newPage()
+  await installTauriPreviewMock(page)
+  await page.goto('/')
+  await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
+  await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
+
+  const pane = page.getByTestId('lowcode-preview-pane')
+  const close = page.getByTestId('lowcode-preview-close')
+  await expect(pane).toBeVisible()
+  await expect(close).toHaveAttribute('aria-expanded', 'true')
+  await close.click()
+
+  await expect(pane).toHaveCount(0)
+  const open = page.getByTestId('lowcode-preview-open')
+  await expect(open).toBeVisible()
+  await expect(open).toHaveAttribute('aria-expanded', 'false')
+
+  // Switching documents re-keys the SplitterGroup. The in-memory layout must
+  // follow its latest emitted value so this remount does not reopen preview.
+  await page.keyboard.press('Meta+T')
+  await expect(page.getByTestId('tabbar-tab')).toHaveCount(2)
+  await expect(open).toBeVisible()
+  await page.getByTestId('tabbar-tab').first().click()
+  await expect(open).toBeVisible()
+
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        ((window as TauriWindow).__OP_PREVIEW_STDIN__ ?? []).some((raw) => {
+          try {
+            return (JSON.parse(raw) as { type?: unknown }).type === 'close'
+          } catch {
+            return false
+          }
+        })
+      )
+    )
+    .toBe(true)
+  await page.reload()
+  await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
+  await expect(page.getByTestId('lowcode-preview-open')).toBeVisible()
+  await page.getByTestId('lowcode-preview-open').click()
+  await expect(pane).toBeVisible()
+  await expect(page.getByTestId('lowcode-preview-close')).toBeVisible()
+  await page.close()
+})
+
 test('Tauri preview compiles rounded card parents with overflow clipping', async ({ browser }) => {
   const page = await browser.newPage()
   await installTauriPreviewMock(page)

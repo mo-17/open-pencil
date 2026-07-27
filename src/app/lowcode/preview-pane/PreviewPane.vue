@@ -13,6 +13,8 @@ import Tip from '@/components/ui/Tip.vue'
 import DeployControls from './DeployControls.vue'
 import { useCompileOnChange, type PreviewUiKit } from './use-compile-on-change'
 
+const emit = defineEmits<{ close: [] }>()
+
 // docs/lowcode-phase-0.md §5.4 + Phase 2 §7 — bridge protocol over postMessage.
 // Message kinds: 'select' (overlay highlight, Alt/Option-click round-trip),
 // 'navigate' (editor↔iframe page sync), and Phase 3 §4.6 'docState' (runtime
@@ -258,6 +260,7 @@ onBeforeUnmount(() => {
 
 <template>
   <aside
+    id="lowcode-preview-pane"
     data-test-id="lowcode-preview-pane"
     class="flex min-w-0 flex-1 flex-col overflow-hidden border-l border-border bg-panel"
   >
@@ -317,6 +320,19 @@ onBeforeUnmount(() => {
             @click="reload"
           >
             ↻
+          </button>
+        </Tip>
+        <Tip label="Close compiler preview">
+          <button
+            type="button"
+            data-test-id="lowcode-preview-close"
+            aria-label="Close compiler preview"
+            aria-controls="lowcode-preview-pane"
+            :aria-expanded="true"
+            class="flex size-6 cursor-pointer items-center justify-center rounded text-muted outline-none transition-colors hover:bg-hover hover:text-surface focus-visible:ring-1 focus-visible:ring-accent"
+            @click="emit('close')"
+          >
+            <icon-lucide-panel-right-close class="size-3.5" />
           </button>
         </Tip>
       </div>
