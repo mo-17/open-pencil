@@ -39,6 +39,25 @@ Export uses <kbd>⌘</kbd><kbd>S</kbd> (Save) and <kbd>⇧</kbd><kbd>⌘</kbd><k
 
 Compression uses Zstd via Tauri Rust command on desktop, with deflate fallback in the browser.
 
+### Export Profiles
+
+OpenPencil supports two `.fig` export profiles:
+
+- `roundtrip` keeps the historical OpenPencil-oriented node mapping. The positional `exportFigFile()` API and document-oriented `IORegistry.writeDocument()` use this profile by default.
+- `figma-compatible` projects OpenPencil-only interactive controls into native Figma `FRAME`, `TEXT`, `RECTANGLE`, and `ELLIPSE` trees. App Save / Save As, explicit `.fig` exports, and CLI conversion to `.fig` use this profile.
+
+Use the profile-aware API when choosing explicitly:
+
+```ts
+import { exportFigFileWithOptions } from '@open-pencil/core/io'
+
+const bytes = await exportFigFileWithOptions(graph, {
+  profile: 'figma-compatible'
+})
+```
+
+Every generated child carries a versioned `open-pencil` plugin-data marker. The lowcode root keeps its original type and semantics in plugin data. On import, OpenPencil removes only marked generated subtrees, preserves real Figma-authored children, and safely merges supported text edits back into `interactiveProps`.
+
 ## Kiwi Binary Codec
 
 The codec handles Figma's 194-definition Kiwi schema with `NodeChange` as the central type (~390 fields). Key components:

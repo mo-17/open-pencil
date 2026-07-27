@@ -13,7 +13,7 @@ Open-source design editor. Opens `.fig` and `.pen` design files, includes built-
 **macOS (Homebrew):**
 
 ```sh
-brew install openpencil
+brew install --cask openpencil
 ```
 
 Or download from the [releases page](https://github.com/open-pencil/open-pencil/releases/latest), or [use the web app](https://app.openpencil.dev) — no install needed.
@@ -21,14 +21,14 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 ## What it does
 
 - **Opens `.fig` and `.pen` files** — read and write native Figma files, open supported Pencil documents from the app or OS file browser, copy & paste nodes between apps
-- **AI builds designs** — describe what you want in chat, 90+ tools create and modify nodes. Connect OpenRouter, Anthropic, OpenAI, Google AI, Z.ai, MiniMax, or compatible endpoints
+- **AI builds designs** — describe what you want in chat with a curated set of common design operations, including real buttons, inputs, forms, lists, and other lowcode controls. Connect OpenRouter, Anthropic, OpenAI, Google AI, DeepSeek, Z.ai, MiniMax, or compatible endpoints
 - **Fully programmable** — headless CLI, XPath queries, Figma Plugin API via `eval`, MCP server for AI agents, and desktop agent integrations for Claude Code, Codex, and Gemini CLI
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
 - **Design-to-code export** — export selections as JSX/Tailwind, generate token outputs, and map designs into component-oriented code workflows
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase actions, workflows, i18n, shadcn/ui output, preview, build, and deploy flows
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
-- **Real-time collaboration** — P2P via WebRTC, no server, no account. Cursors, presence, follow mode
+- **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence, and follow mode
 - **Auto layout & CSS Grid** — flex and grid layout via Yoga WASM, with gap, padding, alignment, track sizing
 - **~7 MB desktop app** — Tauri v2 for macOS, Windows, Linux. Also runs in the browser as a PWA
 
@@ -73,16 +73,17 @@ openpencil query design.fig "//SECTION//TEXT"                       # Text insid
 
 ### Export
 
-Render to PNG, JPG, WEBP, SVG, `.fig`, or JSX — or export selections/pages as `.fig` and convert whole documents between supported formats:
+Render to PNG, JPG, WEBP, SVG, PDF, JSX, HTML, or `.fig` — or export selections/pages as `.fig` and convert whole documents between supported formats:
 
 ```sh
 openpencil export design.fig                           # PNG
 openpencil export design.fig -f jpg -s 2 -q 90        # JPG at 2x, quality 90
 openpencil export design.fig -f fig --page "Page 1"   # Export a page as .fig
+openpencil export design.fig -f pdf                     # PDF
 openpencil export design.fig -f jsx --style tailwind   # Tailwind JSX
 openpencil export design.fig -f html --css tailwind    # Tailwind HTML fragment
 openpencil export design.fig -f html --html standalone --assets external # HTML + assets
-openpencil convert design.pen output.fig               # Convert between document formats
+openpencil convert design.pen -f fig -o output.fig     # Convert between document formats
 openpencil import page.html --css styles.css -o page.fig # HTML/CSS → editable .fig
 ```
 
@@ -156,7 +157,7 @@ openpencil export -f png                      # Screenshot the current canvas
 openpencil eval -c "figma.currentPage.name"   # Query the editor
 ```
 
-All commands support `--json` for machine-readable output.
+Applicable inspect and report commands support `--json` for machine-readable output.
 
 ### Build lowcode apps
 
@@ -191,7 +192,7 @@ For a safe end-to-end example, open or rebuild `packages/demos/lowcode/lowcode-o
 
 ### Built-in chat
 
-Press <kbd>⌘</kbd><kbd>J</kbd> to open the AI assistant. It has 100+ tools that can create shapes, set fills and strokes, manage auto-layout, work with components and variables, run boolean operations, analyze design tokens, and export assets. Bring your own API key for OpenRouter, Anthropic, OpenAI, Google AI, Z.ai, MiniMax, or compatible endpoints. No backend, no account.
+Press <kbd>⌘</kbd><kbd>J</kbd> to open the AI assistant. Its curated built-in tool set covers common work such as rendering and editing nodes, fills, strokes, text, auto-layout, structure changes, and lowcode state. Advanced component, variable, vector, analysis, and export operations are available through coding-agent and MCP integrations. Bring your own API key for OpenRouter, Anthropic, OpenAI, Google AI, DeepSeek, Z.ai, MiniMax, or compatible endpoints. No OpenPencil account or hosted backend is required.
 
 ### Coding agents (desktop)
 
@@ -212,7 +213,7 @@ Use Claude Code, Codex, or Gemini CLI directly in the chat panel. The agent conn
 
 ### MCP server
 
-Connect Claude Code, Cursor, Windsurf, or any MCP client to inspect, modify, and export design documents headlessly. 100+ tools. [Full docs →](https://openpencil.dev/reference/mcp-tools)
+Connect Claude Code, Cursor, Windsurf, or any MCP client to inspect, modify, and export design documents through 100+ operations. The server connects to a running OpenPencil app for live-document operations. [Full docs →](https://openpencil.dev/programmable/mcp-server)
 
 **Stdio** (Claude Code, Cursor, Windsurf):
 
@@ -236,10 +237,12 @@ For other MCP clients:
 **HTTP** (scripts, CI):
 
 ```sh
-openpencil-mcp-http   # http://localhost:3100/mcp
+openpencil-mcp-http   # http://127.0.0.1:7600/mcp
 ```
 
-**File access:** Set `OPENPENCIL_MCP_ROOT` to scope file operations (`open_file`, `new_document`, export `path` param) to a directory. Defaults to the current working directory.
+By default, the HTTP endpoint is `http://127.0.0.1:7600/mcp` and the app bridge uses `ws://127.0.0.1:7601`.
+
+**File access:** Set `OPENPENCIL_MCP_ROOT` to scope file operations (`open_file`, `new_document`, export `path` param) to a directory. It defaults to the server's current working directory.
 
 ### AI agent skill
 
@@ -255,18 +258,18 @@ For documentation-aware agents, the docs site publishes [llms.txt](https://openp
 
 ## Collaboration
 
-Share a link to co-edit in real time. No server, no account — peers connect directly via WebRTC.
+Share a generated invite link to co-edit in real time. Document updates travel peer-to-peer over WebRTC; connection establishment may use signaling, STUN, or TURN services.
 
 1. Click the share button in the top-right panel
-2. Share the generated link (`app.openpencil.dev/share/<room-id>`)
+2. Share the complete generated invite link (including its access key)
 3. Collaborators see your cursor, selection, and edits in real time
 4. Click a peer's avatar to follow their viewport
 
 ## Why
 
-Figma is a closed platform that actively fights programmatic access. Their MCP server is read-only. [figma-use](https://github.com/dannote/figma-use) added full read/write automation via CDP — then [Figma 126 killed CDP](https://forum.figma.com/report-a-problem-6/remote-debugging-port-not-working-in-figma-desktop-126-1-2-50858). Your design files are in a proprietary binary format that only their software can fully read. Your workflows break when they decide to ship a point release.
+OpenPencil is built for teams and developers who want an inspectable, programmable design stack instead of a workflow tied to one hosted editor. It is MIT-licensed, reads and writes `.fig` files natively, and exposes the same document model through the app, CLI, Vue SDK, and automation tools.
 
-OpenPencil is the alternative: open source (MIT), reads .fig files natively, every operation is scriptable, and your data never leaves your machine.
+Core editing is local-first and requires no OpenPencil account or hosted backend. Optional AI APIs, collaboration connection services and peers, web-font and stock-photo providers, and deployment providers receive the requests or data needed for the features you choose.
 
 See the [roadmap](https://openpencil.dev/development/roadmap) for product direction and current Figma compatibility gaps.
 
@@ -282,12 +285,12 @@ bun run tauri dev  # Desktop app (requires Rust)
 
 ### Quality gates
 
-| Command | Description |
-|---------|-------------|
-| `bun run check` | Lint + typecheck |
-| `bun run test` | E2E visual regression |
-| `bun run test:unit` | Unit tests |
-| `bun run format` | Code formatting |
+| Command             | Description                                                       |
+| ------------------- | ----------------------------------------------------------------- |
+| `bun run check`     | Package build, lint, type, i18n, package, and architecture checks |
+| `bun run test`      | Playwright app and visual regression tests                        |
+| `bun run test:unit` | Bun engine unit tests                                             |
+| `bun run format`    | Format the repository with oxfmt                                  |
 
 ### Project structure
 
@@ -300,9 +303,11 @@ packages/
   core/           @open-pencil/core — editor engine, renderer, layout, tools, RPC, document I/O
   dom-css/        @open-pencil/dom-css — HTML/CSS/Tailwind to editable design documents
   vue/            @open-pencil/vue — headless Vue SDK
+  compiler/       @open-pencil/compiler — private design-to-code compiler for React/Tailwind apps
   cli/            @open-pencil/cli — headless CLI
   mcp/            @open-pencil/mcp — MCP server (stdio + HTTP)
   docs/           Documentation site (openpencil.dev)
+  demos/          Demo media and example assets
 src/              Vue app (editor shell, AI, collaboration, document I/O)
 desktop/          Tauri v2 desktop app (Rust + config)
 tests/            E2E, visual, engine, and integration tests
@@ -310,15 +315,17 @@ tests/            E2E, visual, engine, and integration tests
 
 ### Tech stack
 
-| Layer | Tech |
-|-------|------|
-| Rendering | Skia (CanvasKit WASM) |
-| Layout | Yoga WASM (flex + grid via [fork](https://github.com/open-pencil/yoga/tree/grid)) |
-| UI | Vue 3, Reka UI, Tailwind CSS 4 |
-| File format | Kiwi binary + Zstd + ZIP |
-| Collaboration | Trystero (WebRTC P2P) + Yjs (CRDT) |
-| Desktop | Tauri v2 |
-| AI/MCP | Multi-provider (Anthropic, OpenAI, Google AI, OpenRouter), MCP SDK, Hono |
+| Layer          | Tech                                                                               |
+| -------------- | ---------------------------------------------------------------------------------- |
+| Rendering      | Skia (CanvasKit WASM)                                                              |
+| Layout         | Yoga WASM (flex + grid via [fork](https://github.com/open-pencil/yoga/tree/grid))  |
+| UI             | Vue 3, Reka UI, Tailwind CSS 4                                                     |
+| Build tooling  | Bun workspaces, Vite 8, TypeScript                                                 |
+| File format    | Kiwi binary + Zstd + ZIP                                                           |
+| Collaboration  | Trystero (WebRTC P2P) + Yjs (CRDT)                                                 |
+| Desktop        | Tauri v2                                                                           |
+| AI/MCP         | Multi-provider (Anthropic, OpenAI, Google AI, DeepSeek, OpenRouter), MCP SDK, Hono |
+| Lowcode output | Vite, React, TypeScript, Tailwind CSS                                              |
 
 ### Desktop builds
 

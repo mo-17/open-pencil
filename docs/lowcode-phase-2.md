@@ -855,6 +855,11 @@ export interface IRApiCallHandler {
 > **本节即对 Phase 1 §1.5 决定 #3「只针对 CANVAS → 直接子项一层」+ #5「Phase 1 不引入 `layoutMode: 'FREE'`」两条锁的显式推翻(scope change)**;Phase 1 §1.5 仍记录历史,但行为以本节为准。
 >
 > **状态:🔒 已收尾(2026-05-24 Tauri verified)**。
+> **2026-07-26 编译一致性修正**：生成代码现在也把嵌套 `layoutMode: 'NONE'`
+> 视为坐标容器，并为 `NONE` / `FREE` 与含 ABSOLUTE 子项的容器建立本地
+> positioning context。原因是画布对非 auto-layout 容器始终按子项 `x/y` 渲染；
+> 旧 emit 走普通文档流会让场景元素纵向堆叠并被 `overflow-hidden` 裁掉。
+> `FREE` 仍保留为显式低代码创作与持久化标记；本修正仅统一渲染语义。
 
 ### 6.1 现状与问题
 

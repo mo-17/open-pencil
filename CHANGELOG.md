@@ -15,9 +15,20 @@
 - Target a specific open document and page from live CLI and MCP automation, including sessions with multiple documents.
 - Test OpenAI-compatible provider connections from AI settings with clearer setup errors.
 - Build custom property panels with new Vue SDK number fields, bindable values, property sections, segmented controls, property lists, color models, fill controls, and gradient primitives.
+- Save lowcode buttons, inputs, forms, lists, and the other interactive controls as editable Figma-native visual layers while retaining their OpenPencil semantics for round-trip import.
+- Let built-in AI and Design JSX create all ten real lowcode control node types with validated interactive properties instead of visual Frame substitutes.
 
 ### Changed
 
+- Render lowcode Button labels on the canvas, preserve static List children in generated previews, and keep Line SVGs at their authored geometry.
+- Embed and align real offline CJK glyph outlines for Figma-compatible lowcode labels, and avoid incomplete glyph caches in `.fig` and Figma clipboard exports so translated controls remain visible and correctly positioned without selection.
+- Match Figma-compatible Button labels to OpenPencil's dark control foreground instead of forcing white text.
+- Connect ACP agents to OpenPencil through the stdio MCP bridge, expose dynamic session model and
+  reasoning controls, surface terminal startup failures, and report ACP model, token, and context
+  diagnostics without mixing them with local tool execution counts.
+- Preserve ACP commentary, tool, and final-answer ordering, hide internal Guardian reviews, retain
+  concrete tool errors, display successful MCP result envelopes accurately, and give long-running
+  MCP tools enough time to finish without false failures.
 - Add Figma-style page management, including rename/delete actions and drag-and-drop page reordering.
 - Add DOM/CSS import and authoring across the app, CLI, and SDK, plus Tailwind and standalone HTML export.
 - Add richer Design JSX authoring for components, variables, structured fills, gradients, shadows, and blur effects.
@@ -43,6 +54,8 @@
 - Fall back to static styles and warn when generated lowcode nodes bind directly to hidden
   design-token variables.
 - Add an emitted lowcode theme runtime with `LowcodeThemeProvider` / `useTheme`, and a Preview pane light/dark theme switch.
+- Let the desktop compiler preview collapse to a persistent restore rail, preserve nested free-positioned scene coordinates in generated code, and keep HUG icon rows at their designed size.
+- Localize the Analytics, Custom head/CSS, Workflows, Translations, and Libraries document controls, including validation, graph diagnostics, statuses, accessibility labels, and CSP feedback, for Simplified Chinese.
 - Add a generated-app light/dark theme switch when lowcode theme CSS is emitted.
 - Let generated lowcode theme switches be hidden or positioned at publish time.
 - Let generated lowcode runtime UI surfaces consume theme/design tokens, including the

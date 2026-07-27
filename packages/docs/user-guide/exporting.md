@@ -70,7 +70,11 @@ Saved files are compressed and include a thumbnail image for preview in file bro
 
 ### Round-trip Compatibility
 
-Files exported from OpenPencil can be opened in Figma, and vice versa. The .fig format preserves all node types, properties, fills, strokes, effects, vector data, and layout settings.
+Files exported from OpenPencil can be opened in Figma, and vice versa. Standard Figma layers preserve their properties, fills, strokes, effects, vector data, and layout settings.
+
+OpenPencil's interactive lowcode controls do not have equivalent Figma node types. When saving or exporting for Figma, OpenPencil therefore writes buttons, inputs, text areas, selects, date pickers, checkboxes, radio groups, switches, forms, and lists as editable native `FRAME`, `TEXT`, `RECTANGLE`, and `ELLIPSE` layers. Their behavior and lowcode settings remain in OpenPencil plugin data.
+
+When that file is opened again in OpenPencil, the generated visual layers are folded back into the original controls. Text edited in Figma is synchronized back for supported fields such as button labels, input values, and placeholders; option arrays and other behavior remain protected by the persisted semantic data.
 
 ## Keyboard Shortcuts
 
