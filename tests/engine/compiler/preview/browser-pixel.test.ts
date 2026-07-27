@@ -206,6 +206,7 @@ interface LayoutFidelityIds {
 }
 
 describe('preview browser pixels — image and visual fills (Phase 4 §24)', () => {
+  const hookTimeoutMs = 30_000
   let server: PreviewServer | null = null
   let browser: Browser | null = null
   let page: Page | null = null
@@ -214,16 +215,22 @@ describe('preview browser pixels — image and visual fills (Phase 4 §24)', () 
     server = await createPreviewServer({})
     browser = await chromium.launch()
     page = await browser.newPage({ viewport: { width: 360, height: 220 }, deviceScaleFactor: 1 })
-  })
+  }, hookTimeoutMs)
 
   afterEach(async () => {
-    if (page) await page.close()
-    if (browser) await browser.close()
-    if (server) await server.close()
-    page = null
-    browser = null
-    server = null
-  })
+    try {
+      if (page) await page.close()
+    } finally {
+      try {
+        if (browser) await browser.close()
+      } finally {
+        if (server) await server.close()
+        page = null
+        browser = null
+        server = null
+      }
+    }
+  }, hookTimeoutMs)
 
   test('renders picture, multi-background, image-fill, and blend pixels', async () => {
     if (!server || !page) throw new Error('missing preview test runtime')

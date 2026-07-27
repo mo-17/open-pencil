@@ -144,6 +144,7 @@ function buildRuntimeUiSmokeFiles(): Map<string, string | Uint8Array> {
 }
 
 describe('preview browser runtime UI smoke (Phase 5 §5)', () => {
+  const hookTimeoutMs = 30_000
   let server: PreviewServer | null = null
   let browser: Browser | null = null
   let page: Page | null = null
@@ -152,16 +153,22 @@ describe('preview browser runtime UI smoke (Phase 5 §5)', () => {
     server = await createPreviewServer({})
     browser = await chromium.launch()
     page = await browser.newPage({ viewport: { width: 720, height: 520 }, deviceScaleFactor: 1 })
-  })
+  }, hookTimeoutMs)
 
   afterEach(async () => {
-    if (page) await page.close()
-    if (browser) await browser.close()
-    if (server) await server.close()
-    page = null
-    browser = null
-    server = null
-  })
+    try {
+      if (page) await page.close()
+    } finally {
+      try {
+        if (browser) await browser.close()
+      } finally {
+        if (server) await server.close()
+        page = null
+        browser = null
+        server = null
+      }
+    }
+  }, hookTimeoutMs)
 
   test('renders theme switch, toast, and confirm token surfaces', async () => {
     const currentPage = await loadRuntimeUi(server, page)
