@@ -9,6 +9,13 @@ export {
   readWorkflows,
   type LowcodeNodeRead
 } from './read/lowcode'
+export {
+  listMotionPresets,
+  readMotion,
+  summarizeMotion,
+  type MotionRead,
+  type MotionSummary
+} from './read/motion'
 export { findNodes, getNode, getPageTree } from './read/nodes'
 export { getCurrentPage, listPages, pageBounds, switchPage } from './read/pages'
 export { queryNodes } from './read/query'

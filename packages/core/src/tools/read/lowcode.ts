@@ -1,3 +1,4 @@
+import { cloneMotionSpec } from '@open-pencil/scene-graph'
 import type {
   ActionDef,
   AnalyticsConfig,
@@ -7,6 +8,7 @@ import type {
   LowcodeHeadMetadata,
   LayoutMode,
   LowcodeTranslations,
+  MotionSpec,
   SeoMetadata,
   StateDef,
   StateOverrides,
@@ -30,6 +32,8 @@ import type {
  */
 import type { FigmaAPI } from '#core/figma-api'
 import { defineTool } from '#core/tools/schema'
+
+import { summarizeMotion, type MotionSummary } from './motion'
 
 /** Read shape returned by `readLowcodeNode`. Every lowcode field stays
  *  optional — a node with no wiring returns just `id` / `type` / `name`,
@@ -64,6 +68,9 @@ export interface LowcodeNodeRead {
   /** Phase 4 §20: per-interaction-state appearance overrides, emitted as
    *  Tailwind pseudo-state classes (`hover:*`, `focus:*`, ...). */
   stateOverrides?: StateOverrides
+  /** Declarative bounded MotionSpec v1 plus a compact indexable summary. */
+  motion?: MotionSpec
+  motionSummary?: MotionSummary
   /** Root-only: document-level state declarations. Always undefined on
    *  non-root nodes (decision §2.2 #a); use `readDocStates` for the
    *  canonical access. */
@@ -103,6 +110,7 @@ function buildLowcodeRead(node: {
   interactiveProps?: Record<string, unknown>
   renderCondition?: string
   stateOverrides?: StateOverrides
+  motion?: MotionSpec
   lowcodeDocumentState?: DocumentStateDef[]
   lowcodeSupabaseConfig?: SupabaseConfig
   lowcodeSeoMetadata?: SeoMetadata
@@ -124,6 +132,10 @@ function buildLowcodeRead(node: {
   if (node.interactiveProps !== undefined) out.interactiveProps = node.interactiveProps
   if (node.renderCondition !== undefined) out.renderCondition = node.renderCondition
   if (node.stateOverrides !== undefined) out.stateOverrides = node.stateOverrides
+  if (node.motion !== undefined) {
+    out.motion = cloneMotionSpec(node.motion)
+    out.motionSummary = summarizeMotion(out.motion)
+  }
   if (node.lowcodeDocumentState !== undefined) out.lowcodeDocumentState = node.lowcodeDocumentState
   if (node.lowcodeSupabaseConfig !== undefined)
     out.lowcodeSupabaseConfig = node.lowcodeSupabaseConfig
@@ -144,7 +156,7 @@ function getRoot(figma: FigmaAPI) {
 export const readLowcodeNode = defineTool({
   name: 'read_lowcode_node',
   description:
-    "Read the lowcode-specific fields of a single SceneNode: state declarations, channel bindings, event handlers (onClick / onChange / onSubmit / onFocus / onBlur), interactive component props, Phase 4 §20 stateOverrides, renderCondition expression, layoutMode (FREE = Phase 2 freeLayout override), and the root-only documentState / supabaseConfig snapshots. Returns the node's pencil-design metadata (id / type / name) alongside every lowcode field that is currently set; fields that the SceneNode itself stores as undefined are omitted from the result so AI prompts can tell 'never configured' apart from 'configured but empty'. Non-recursive — children are not included; call again per child id. Use read_doc_states for the canonical document-state read and read_supabase_config for the canonical Supabase config read. Example: read_lowcode_node({ id: 'node-42' }) → { ok: true, data: { id: 'node-42', type: 'BUTTON', name: 'Submit', layoutMode: 'NONE', interactiveProps: { text: 'Click me' }, stateOverrides: { hover: { opacity: 0.9 } }, events: { onClick: [{ id: 'a-1', kind: 'navigate', to: '/next' }] } } }. Failure shape: { ok: false, error: <reason> } when the id does not match any node.",
+    "Read the lowcode-specific fields of a single SceneNode: state declarations, channel bindings, event handlers, interactive component props, stateOverrides, renderCondition, layoutMode, and declarative MotionSpec v1 (full bounded spec plus compact motionSummary), together with root-only documentState / supabaseConfig snapshots. Fields stored as undefined are omitted so AI can distinguish 'never configured' from an authored empty value. Non-recursive — children are not included; call again per child id. Use read_motion for a focused motion read. Failure shape: { ok: false, error: <reason> } when the id does not match any node.",
   params: {
     id: { type: 'string', description: 'Node id', required: true }
   },

@@ -3,6 +3,8 @@ import { calc } from './calc'
 import { render } from './create'
 import { describe } from './describe'
 import {
+  applyMotionPreset,
+  clearMotion,
   setDocStates,
   setFill,
   setLayout,
@@ -15,6 +17,7 @@ import {
   setTranslations,
   setWorkflows,
   updateLowcodeNode,
+  updateMotion,
   updateNode
 } from './modify'
 import {
@@ -22,8 +25,10 @@ import {
   getJsx,
   getNode,
   getSelection,
+  listMotionPresets,
   readDocStates,
   readLowcodeNode,
+  readMotion,
   readSupabaseConfig,
   readTranslations,
   readWorkflows
@@ -49,6 +54,8 @@ export const CORE_TOOLS: ToolDef[] = [
   readSupabaseConfig,
   readTranslations,
   readWorkflows,
+  readMotion,
+  listMotionPresets,
   // Create
   render,
   // Modify
@@ -66,6 +73,9 @@ export const CORE_TOOLS: ToolDef[] = [
   setSupabaseConfig,
   setTranslations,
   setWorkflows,
+  applyMotionPreset,
+  updateMotion,
+  clearMotion,
   // Structure
   deleteNode,
   reparentNode,

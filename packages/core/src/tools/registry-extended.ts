@@ -7,7 +7,7 @@ import {
   diffCreate,
   diffShow
 } from './analyze'
-import { designToComponentMap, designToTokens } from './codegen'
+import { designToComponentMap, designToTokens, getFigmaMotionAdapter } from './codegen'
 import {
   createComponent,
   createInstance,
@@ -193,5 +193,6 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   diffShow,
   // Codegen
   designToTokens,
-  designToComponentMap
+  designToComponentMap,
+  getFigmaMotionAdapter
 ]

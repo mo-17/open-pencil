@@ -9,6 +9,7 @@ export {
   setWorkflows,
   updateLowcodeNode
 } from './modify/lowcode'
+export { applyMotionPreset, clearMotion, updateMotion } from './modify/motion'
 export { setFill, setImageFill, setStroke } from './modify/paint'
 export { setBlend, setLocked, setStrokeAlign, setVisible } from './modify/state'
 export { setFont, setFontRange, setText, setTextProperties, setTextResize } from './modify/text'
