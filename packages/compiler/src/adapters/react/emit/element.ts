@@ -17,6 +17,7 @@ import type {
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
 
 import { VALIDATION_ERROR_CLASS, VALIDATION_INVALID_FIELD_CLASS } from '../lowcode/validation'
+import { motionToken } from '../motion/key'
 import type { UiKitAdapter } from '../ui-kit/types'
 import { emitEventHandler, emitFormSubmitHandler } from './event'
 import { setterName } from './state'
@@ -209,6 +210,7 @@ function tagOpenParts(
     node.attrs,
     node.events,
     devMode ? node.sourceId : undefined,
+    node.motion ? motionToken(node.motion) : undefined,
     node.controlled,
     node.upload,
     node.classNameProp,
@@ -269,6 +271,7 @@ function emitLucideIconElement(node: IRElement, indent: number, devMode: boolean
     node.attrs,
     node.events,
     devMode ? node.sourceId : undefined,
+    node.motion ? motionToken(node.motion) : undefined,
     undefined,
     undefined,
     node.classNameProp,
@@ -456,6 +459,7 @@ function formatAttrs(
   attrs: Record<string, IRAttrValue>,
   events: Partial<Record<IREventName, IREventHandler[]>> | undefined,
   nodeId: string | undefined,
+  motionKey: string | undefined,
   controlled: IRControlledInput | undefined,
   upload: IRUpload | undefined,
   classNameProp?: string,
@@ -473,6 +477,7 @@ function formatAttrs(
   const styleAttr = stylePropAttr(attrs.style, styleProp, stylePropFallback)
   if (styleAttr) parts.push(styleAttr)
   if (nodeId !== undefined) parts.push(`data-node-id="${escapeAttr(nodeId)}"`)
+  if (motionKey !== undefined) parts.push(`data-op-motion="${motionKey}"`)
   for (const [key, value] of Object.entries(attrs)) {
     if (key === 'style' && styleAttr) continue
     parts.push(formatAttr(key, value))
@@ -840,6 +845,7 @@ function componentRefAttrs(
   if (node.className) attrs.push(`className="${escapeAttr(node.className)}"`)
   if (node.styleAttr) attrs.push(`style={${formatStyleAttr(node.styleAttr.declarations)}}`)
   attrs.push(...node.props.map(componentRefPropAttr))
+  if (node.motion) attrs.push(`__opMotionKey="${motionToken(node.motion)}"`)
   if (devMode) attrs.push(`data-node-id="${node.sourceId}"`)
   return attrs.length > 0 ? ` ${attrs.join(' ')}` : ''
 }

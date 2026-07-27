@@ -63,6 +63,8 @@ import {
   VALIDATION_ERROR_CLASSES,
   VALIDATION_INVALID_FIELD_CLASSES
 } from './lowcode/validation'
+import { buildMotionPlan } from './motion/scan'
+import type { ReactMotionPlan } from './motion/types'
 import { buildPreviewBridge } from './preview-bridge'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import { buildAppTsx, buildPageModule, buildRouterApp, PAGE_WRAPPER_CLASSES } from './scaffold'
@@ -147,10 +149,14 @@ function emitComponentFiles(
   files: Map<string, string | Uint8Array>,
   components: readonly ComponentDef[],
   devMode: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UiKitAdapter | null,
+  animatedComponentNames: ReadonlySet<string>
 ): void {
   for (const def of components) {
-    files.set(`src/components/${def.name}.tsx`, buildComponentModule(def, devMode, uiKit))
+    files.set(
+      `src/components/${def.name}.tsx`,
+      buildComponentModule(def, devMode, uiKit, animatedComponentNames.has(def.name))
+    )
   }
 }
 
@@ -238,6 +244,7 @@ function emitSinglePage(
   // Phase 3 §8 v10: drop components no page (transitively) references, so an
   // all-inlined master (e.g. §8 v9 deep-override) leaves no orphan module/class.
   const components = reachableComponents([cleaned], allComponents)
+  const motion = buildMotionPlan([cleaned], components)
   // Phase 3 §15: emit the UI kit's inlined sources for the components rendered
   // here (sets files; returns deps + theme to fold in below).
   const uiKit = resolveUiKit(options)
@@ -283,7 +290,8 @@ function emitSinglePage(
     analyticsConfig: cleaned.analyticsConfig,
     analyticsConsentBanner
   })
-  emitComponentFiles(files, components, options.devMode, uiKit)
+  emitMotionFiles(files, motion)
+  emitComponentFiles(files, components, options.devMode, uiKit, motion.animatedComponentNames)
   files.set(
     'src/App.tsx',
     buildAppTsx(cleaned, {
@@ -308,6 +316,7 @@ function emitSinglePage(
     validationActive,
     analyticsActive,
     analyticsConsentBanner,
+    motion,
     kit,
     resolveIndexMetadata([cleaned], options)
   )
@@ -327,6 +336,7 @@ function emitMultiPage(
   const files = new Map<string, string | Uint8Array>()
   // Phase 3 §8 v10: prune components unreferenced across all pages (see emitSinglePage).
   const components = reachableComponents(irs, allComponents)
+  const motion = buildMotionPlan(irs, components)
   // Phase 3 §15: emit the UI kit's inlined sources across all pages.
   const uiKit = resolveUiKit(options)
   const kit = applyUiKit(files, irs, components, uiKit)
@@ -372,7 +382,8 @@ function emitMultiPage(
     analyticsRouteTracking,
     analyticsConsentBanner
   })
-  emitComponentFiles(files, components, options.devMode, uiKit)
+  emitMotionFiles(files, motion)
+  emitComponentFiles(files, components, options.devMode, uiKit, motion.animatedComponentNames)
   files.set(
     'src/App.tsx',
     buildRouterApp(infos, { devMode: options.devMode, analyticsRouteTracking })
@@ -403,6 +414,7 @@ function emitMultiPage(
     validationActive,
     analyticsActive,
     analyticsConsentBanner,
+    motion,
     kit,
     resolveIndexMetadata(irs, options)
   )
@@ -644,6 +656,7 @@ function setSharedProjectFiles(
   validation: boolean,
   analytics: boolean,
   analyticsConsentBanner: boolean,
+  motion: ReactMotionPlan,
   kit: { themeCss: string; active: boolean },
   metadata?: HtmlMetadata
 ): void {
@@ -683,7 +696,9 @@ function setSharedProjectFiles(
       themeActive,
       resolveThemeSwitchPosition(options),
       analytics,
-      analyticsConsentBanner
+      analyticsConsentBanner,
+      motion.css !== undefined,
+      motion.runtime !== undefined
     )
   )
   const themeCss = [
@@ -698,6 +713,11 @@ function setSharedProjectFiles(
   if (options.devMode) {
     files.set('src/__preview-bridge.ts', buildPreviewBridge())
   }
+}
+
+function emitMotionFiles(files: Map<string, string | Uint8Array>, motion: ReactMotionPlan): void {
+  if (motion.css !== undefined) files.set('src/__motion.css', motion.css)
+  if (motion.runtime !== undefined) files.set('src/__motion-runtime.ts', motion.runtime)
 }
 
 function resolveIndexMetadata(

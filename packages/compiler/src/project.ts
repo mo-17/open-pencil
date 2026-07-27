@@ -251,7 +251,9 @@ export function buildMainTsx(
   theme = false,
   themeSwitchPosition?: LowcodeThemeSwitchPosition | false,
   analytics = false,
-  analyticsConsentBanner = false
+  analyticsConsentBanner = false,
+  motionCss = false,
+  motionRuntime = false
 ): string {
   const i18nImport = i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
   const toastImport = toast ? `import { ToastHost } from './_lowcode_toast'\n` : ''
@@ -263,6 +265,7 @@ export function buildMainTsx(
       } } from './_lowcode_theme'\n`
     : ''
   const analyticsImport = buildAnalyticsImport(analytics, analyticsConsentBanner)
+  const motionImports = buildMotionImports(motionCss, motionRuntime)
   let app = '<App />'
   if (i18n) app = `<I18nProvider>\n      ${app}\n    </I18nProvider>`
   const themeSwitch =
@@ -278,7 +281,7 @@ export function buildMainTsx(
   return `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-${i18nImport}${toastImport}${confirmImport}${themeImport}${analyticsImport}import './index.css'
+${i18nImport}${toastImport}${confirmImport}${themeImport}${analyticsImport}${motionImports}import './index.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
@@ -289,6 +292,12 @@ createRoot(root).render(
   </StrictMode>
 )
 `
+}
+
+function buildMotionImports(css: boolean, runtime: boolean): string {
+  return `${css ? `import './__motion.css'\n` : ''}${
+    runtime ? `import './__motion-runtime'\n` : ''
+  }`
 }
 
 function buildAnalyticsImport(analytics: boolean, consentBanner: boolean): string {

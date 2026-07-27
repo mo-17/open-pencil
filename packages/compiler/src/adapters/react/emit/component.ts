@@ -26,7 +26,8 @@ import { emitElement } from './element'
 export function buildComponentModule(
   def: ComponentDef,
   devMode: boolean,
-  uiKit: UiKitAdapter | null = null
+  uiKit: UiKitAdapter | null = null,
+  motionBoundary = false
 ): string {
   // Phase 3 §9: a component body with i18n-tagged visible text needs
   // FormattedMessage; §9 v3: a translated attribute (placeholder) needs useIntl.
@@ -53,7 +54,7 @@ export function buildComponentModule(
     lucideImport
       ? `${reactImport}${lowcodeStateImport}${validationImport}${i18nImport}${kitImportBlock}${lucideImport}\n`
       : ''
-  return importBlock + buildComponentBody(def, devMode, usesIntl, uiKit)
+  return importBlock + buildComponentBody(def, devMode, usesIntl, uiKit, motionBoundary)
 }
 
 /** All body nodes of a component def (plain children + every variant subtree).
@@ -80,36 +81,41 @@ function buildComponentBody(
   def: ComponentDef,
   devMode: boolean,
   usesIntl: boolean,
-  uiKit: UiKitAdapter | null
+  uiKit: UiKitAdapter | null,
+  motionBoundary: boolean
 ): string {
   // Phase 3 §9 v3: the `const intl = useIntl()` hook line (empty when the body
   // has no translated attribute → byte-identical to the pre-§9-v3 output).
   const hookBlock = buildComponentHookBlock(def, usesIntl)
   // Phase 3 §8 v4: a COMPONENT_SET emits per-axis variant props + a subtree
   // switch instead of the single shared body.
-  if (def.variantAxes && def.variants) return buildVariantModule(def, devMode, hookBlock, uiKit)
+  if (def.variantAxes && def.variants) {
+    return buildVariantModule(def, devMode, hookBlock, uiKit, motionBoundary)
+  }
   // Phase 3 §8 v2: one optional string prop per text-override slot, each
   // defaulting to the master child's text so clean usages (`<Name />`) render
   // unchanged. The body's matching TEXT nodes were collected as `{prop}`.
   const propLines = def.props.map(componentPropLine).join('')
-  const header = componentPropsHeader(def.name, propLines)
+  const header = componentPropsHeader(def.name, propLines, motionBoundary)
   const destructure = [
     'className',
     'style',
+    ...(motionBoundary ? ['__opMotionKey'] : []),
     ...def.props.map((p) =>
       p.kind === 'style' ? p.name : `${p.name} = ${JSON.stringify(p.defaultValue)}`
     )
   ].join(', ')
+  const motionAttr = motionBoundary ? ' data-op-motion={__opMotionKey}' : ''
   if (def.children.length === 0) {
     return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
-${hookBlock}  return <div className={className} style={style} />
+${hookBlock}  return <div className={className} style={style}${motionAttr} />
 }
 `
   }
   const body = def.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
 ${hookBlock}  return (
-    <div className={className} style={style}>
+    <div className={className} style={style}${motionAttr}>
 ${body}
     </div>
   )
@@ -127,7 +133,8 @@ function buildVariantModule(
   def: ComponentDef,
   devMode: boolean,
   hookBlock: string,
-  uiKit: UiKitAdapter | null
+  uiKit: UiKitAdapter | null,
+  motionBoundary: boolean
 ): string {
   const axes = def.variantAxes ?? []
   const variants = def.variants ?? []
@@ -139,18 +146,21 @@ function buildVariantModule(
     .map((a) => `\n  ${a.name}?: ${a.options.map((o) => JSON.stringify(o)).join(' | ')}`)
     .join('')
   const propLines = axisLines + def.props.map(componentPropLine).join('')
-  const header = componentPropsHeader(def.name, propLines)
+  const header = componentPropsHeader(def.name, propLines, motionBoundary)
   const destructure = [
     'className',
     'style',
+    ...(motionBoundary ? ['__opMotionKey'] : []),
     ...axes.map((a) => `${a.name} = ${JSON.stringify(a.defaultValue)}`),
     ...def.props.map((p) => p.name)
   ].join(', ')
+  const motionAttr = motionBoundary ? ' data-op-motion={__opMotionKey}' : ''
   // A registered SET always has ≥1 variant, but guard so the slice below is
   // sound and the fallback never references an undefined case.
   if (variants.length === 0) {
-    return `${header}export default function ${def.name}({ className, style }: ${def.name}Props) {
-  return <div className={className} style={style} />
+    const emptyDestructure = motionBoundary ? 'className, style, __opMotionKey' : 'className, style'
+    return `${header}export default function ${def.name}({ ${emptyDestructure} }: ${def.name}Props) {
+  return <div className={className} style={style}${motionAttr} />
 }
 `
   }
@@ -159,20 +169,21 @@ function buildVariantModule(
   const guards = rest
     .map(
       (v) => `  if (__variant === ${JSON.stringify(v.key)}) {
-    return ${variantBody(v, devMode, uiKit)}
+    return ${variantBody(v, devMode, uiKit, motionBoundary)}
   }
 `
     )
     .join('')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
 ${hookBlock}  const __variant = ${key}
-${guards}  return ${variantBody(defaultCase, devMode, uiKit)}
+${guards}  return ${variantBody(defaultCase, devMode, uiKit, motionBoundary)}
 }
 `
 }
 
-function componentPropsHeader(name: string, propLines: string): string {
-  return `interface ${name}Props {\n  className?: string\n  style?: CSSProperties${propLines}\n}\n\n`
+function componentPropsHeader(name: string, propLines: string, motionBoundary: boolean): string {
+  const motionProp = motionBoundary ? '\n  __opMotionKey?: string' : ''
+  return `interface ${name}Props {\n  className?: string\n  style?: CSSProperties${motionProp}${propLines}\n}\n\n`
 }
 
 function componentPropLine(prop: ComponentProp): string {
@@ -216,11 +227,19 @@ function buildComponentHookBlock(def: ComponentDef, usesIntl: boolean): string {
 }
 
 /** Render one variant's `<div className={className}>…</div>` return value. */
-function variantBody(variant: VariantCase, devMode: boolean, uiKit: UiKitAdapter | null): string {
-  if (variant.children.length === 0) return '<div className={className} style={style} />'
+function variantBody(
+  variant: VariantCase,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null,
+  motionBoundary: boolean
+): string {
+  const motionAttr = motionBoundary ? ' data-op-motion={__opMotionKey}' : ''
+  if (variant.children.length === 0) {
+    return `<div className={className} style={style}${motionAttr} />`
+  }
   const body = variant.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `(
-    <div className={className} style={style}>
+    <div className={className} style={style}${motionAttr}>
 ${body}
     </div>
   )`

@@ -1,4 +1,5 @@
 import { controlledWriteCall } from '#compiler/adapters/react/emit/element'
+import { motionToken } from '#compiler/adapters/react/motion/key'
 import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compiler/ir/types'
 
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
@@ -371,6 +372,7 @@ function rootAttrParts(node: IRElement, ctx: KitEmitCtx): string[] {
     parts.push(`style={${formatStyleAttr(style.declarations)}}`)
   }
   if (ctx.devMode) parts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  if (node.motion) parts.push(`data-op-motion="${motionToken(node.motion)}"`)
   return parts
 }
 

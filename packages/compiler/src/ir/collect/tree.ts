@@ -80,6 +80,7 @@ import {
   instanceHasDeepOverride,
   overrideKind
 } from './components'
+import { collectNodeMotion } from './motion'
 import { collectPageStates, indexStatesById, resolveComputedStates } from './state'
 
 /**
@@ -572,11 +573,13 @@ function refOf(
   ctx: WalkCtx
 ): IRComponentRef {
   const styleDeclarations = boundVariableStyleDeclarations(node, ctx)
+  const motion = collectNodeMotion(node, ctx.warnings)
   return {
     kind: 'componentRef',
     sourceId: node.id,
     name,
     className: tailwindClassName(node, ctx.graph, ctx.styleOptions),
+    ...(motion ? { motion } : {}),
     ...(hasStyleDeclarations(styleDeclarations)
       ? { styleAttr: { kind: 'styleAttr', declarations: styleDeclarations } }
       : {}),
@@ -1195,9 +1198,11 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // it in `<Card>`. Kit-agnostic — the plain emit ignores it (byte-identical).
   const semantics = resolveElementSemantics(node, ctx)
 
+  const motion = collectNodeMotion(node, ctx.warnings)
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
+    ...(motion ? { motion } : {}),
     tag: semantics.link ? 'a' : tag,
     className,
     ...propOverrides,
@@ -2623,9 +2628,11 @@ function buildImageElement(
     ctx.docStateReads,
     ctx.workflows
   )
+  const motion = collectNodeMotion(node, ctx.warnings)
   return {
     kind: 'element',
     sourceId: node.id,
+    ...(motion ? { motion } : {}),
     tag: 'img',
     className: joinClass(className, image.objectFitClass),
     attrs: {},

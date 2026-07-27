@@ -5,6 +5,21 @@
 
 import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
+import type { IRMotion } from './motion'
+
+export type {
+  IRMotion,
+  IRMotionDirection,
+  IRMotionEasing,
+  IRMotionExit,
+  IRMotionFill,
+  IRMotionKeyframe,
+  IRMotionTiming,
+  IRMotionTrack,
+  IRMotionTrigger,
+  IRReducedMotion
+} from './motion'
+
 export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList | IRComponentRef
 
 /**
@@ -27,6 +42,8 @@ export interface IRComponentRef {
   /** Inline style declarations for the usage root, e.g. bound design-token
    *  colors that cannot be represented as static Tailwind classes. */
   styleAttr?: IRStyleAttr
+  /** Validated motion behavior applied to this component usage boundary. */
+  motion?: IRMotion
   /** Phase 3 §8 v2 — text-override prop values this usage passes
    *  (`<Name title="new" />`). Empty for the master and clean instances (they
    *  fall back to the component's per-prop defaults). */
@@ -120,6 +137,8 @@ export interface IRElement {
   /** SceneNode id this IR node was derived from. Adapters may emit this as a
    *  `data-node-id` attribute later for canvas↔preview highlighting. */
   sourceId: string
+  /** Validated, framework-neutral motion behavior for this element. */
+  motion?: IRMotion
   /** Lowercase HTML tag for the adapter to emit (e.g. 'div', 'input'). */
   tag: string
   /** Space-separated Tailwind class string. Empty string when no classes.
