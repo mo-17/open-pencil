@@ -11,8 +11,9 @@ import { SceneGraph, initCodec } from '@open-pencil/core'
  * referenced state is array-typed, and packages the LIST's first visible
  * child as an `IRList { arrayName, itemName, indexName, template }` placed
  * as the sole child of the LIST's outer `<div>` IRElement. Datasource /
- * template failures degrade to an empty LIST div with a warning
- * (decision §9.2 #7).
+ * template failures degrade to the authored static children with a warning.
+ * A LIST without a datasource is a plain visual container, so all of its
+ * authored children are preserved.
  */
 describe('collectTree — LIST directive (Phase 2 §9)', () => {
   beforeAll(async () => {
@@ -83,19 +84,23 @@ describe('collectTree — LIST directive (Phase 2 §9)', () => {
     expect(ir.warnings).toEqual([])
   })
 
-  test('dataSourceRef=null → list-no-datasource warning + empty LIST div', () => {
+  test('dataSourceRef=null → every authored child is emitted statically', () => {
     const { graph, pageId } = makeListGraph({ dataSourceRef: null })
     const ir = collectTree(graph, pageId)
     const listEl = ir.children[0] as IRElement
-    expect(listEl.children).toEqual([])
-    expect(ir.warnings.some((w) => w.code === 'list-no-datasource')).toBe(true)
+    expect(listEl.children).toHaveLength(1)
+    expect(listEl.children[0].kind).toBe('element')
+    expect((listEl.children[0] as IRElement).children).toEqual([
+      { kind: 'text', value: 'fallback' }
+    ])
+    expect(ir.warnings.some((w) => w.code === 'list-no-datasource')).toBe(false)
   })
 
   test('dataSourceRef stateId points to a non-array state → list-bad-datasource-type warning', () => {
     const { graph, pageId } = makeListGraph({ arrayState: 'number' })
     const ir = collectTree(graph, pageId)
     const listEl = ir.children[0] as IRElement
-    expect(listEl.children).toEqual([])
+    expect(listEl.children).toHaveLength(1)
     expect(ir.warnings.some((w) => w.code === 'list-bad-datasource-type')).toBe(true)
   })
 
@@ -105,7 +110,7 @@ describe('collectTree — LIST directive (Phase 2 §9)', () => {
     })
     const ir = collectTree(graph, pageId)
     const listEl = ir.children[0] as IRElement
-    expect(listEl.children).toEqual([])
+    expect(listEl.children).toHaveLength(1)
     expect(ir.warnings.some((w) => w.code === 'list-unknown-datasource')).toBe(true)
   })
 

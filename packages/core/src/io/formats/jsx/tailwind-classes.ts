@@ -1,12 +1,13 @@
 import { twirl } from 'twirlwind'
 
-import type {
-  Fill,
-  GridTrack,
-  InteractionState,
-  ResponsiveBreakpoint,
-  SceneGraph,
-  SceneNode
+import {
+  isAutoLayoutMode,
+  type Fill,
+  type GridTrack,
+  type InteractionState,
+  type ResponsiveBreakpoint,
+  type SceneGraph,
+  type SceneNode
 } from '@open-pencil/scene-graph'
 
 import { colorToCSSCompact } from '#core/color'
@@ -130,6 +131,12 @@ function applyPadding(
   else style.padding = `${px(pt)} ${px(pr)} ${px(pb)} ${px(pl)}`
 }
 
+function needsLocalPositioningContext(node: SceneNode, graph: SceneGraph): boolean {
+  if (node.childIds.length === 0) return false
+  if (!isAutoLayoutMode(node.layoutMode)) return true
+  return node.childIds.some((childId) => graph.getNode(childId)?.layoutPositioning === 'ABSOLUTE')
+}
+
 function applyLayoutStyle(
   style: Record<string, string>,
   node: SceneNode,
@@ -155,12 +162,15 @@ function applyLayoutStyle(
   if (ctx.parentIsAutoLayout && node.layoutGrow > 0) style.flexGrow = '1'
   if (ctx.isAutoLayout) applyPadding(style, node, options)
 
-  // Phase 2 §6: free positioning fires for two cases that share the same
-  // CSS shape — parent opts the whole container into free layout (CANVAS
-  // implicitly, or any FRAME with `layoutMode === 'FREE'`), OR a single
-  // child opts itself out of the parent's auto-layout via Figma's existing
-  // `layoutPositioning: 'ABSOLUTE'` field (canvas-side Yoga + drag/snap
-  // honored it before; this is the emit honor that closes the gap).
+  // Absolute descendants must resolve x/y inside their own design container,
+  // not against the generated page root. `absolute` below overrides this for
+  // a container that is itself freely positioned while still establishing the
+  // same containing block for its children.
+  if (needsLocalPositioningContext(node, graph)) style.position = 'relative'
+
+  // Free positioning fires for two cases that share the same CSS shape: a
+  // non-auto-layout parent positions all children from stored x/y coordinates,
+  // or one child opts out of auto-layout through layoutPositioning=ABSOLUTE.
   if (ctx.parentIsFreeLayout || node.layoutPositioning === 'ABSOLUTE') {
     style.position = 'absolute'
     style.left = px(node.x)

@@ -4,16 +4,27 @@ import { compile, withDefaults } from '@open-pencil/compiler'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
+function openingTagForNode(source: string, nodeId: string): string {
+  const marker = `data-node-id="${nodeId}"`
+  const markerIndex = source.indexOf(marker)
+  if (markerIndex === -1) throw new Error(`Missing emitted node ${nodeId}`)
+  const start = source.lastIndexOf('<', markerIndex)
+  const end = source.indexOf('>', markerIndex)
+  if (start === -1 || end === -1) throw new Error(`Malformed emitted node ${nodeId}`)
+  return source.slice(start, end + 1)
+}
+
 /**
  * Phase 2 §6 — `layoutMode: 'FREE'` parent toggle + `layoutPositioning:
- * 'ABSOLUTE'` per-child opt-out emit honor. Tests cover the four canonical
+ * 'ABSOLUTE'` per-child opt-out emit honor. Tests cover the five canonical
  * cases for absolute positioning emit:
  *
  *   1. CANVAS direct child  → absolute (Phase 1 §1 regression — still works)
- *   2. FREE FRAME child     → absolute (§6 decision #3 — parent-level toggle)
- *   3. ABSOLUTE child       → absolute (§6 邻近 — emit honor for the existing
+ *   2. NONE FRAME child     → absolute (legacy editor coordinate container)
+ *   3. FREE FRAME child     → absolute (§6 decision #3 — parent-level toggle)
+ *   4. ABSOLUTE child       → absolute (§6 邻近 — emit honor for the existing
  *                                       Figma field)
- *   4. Auto-layout child    → flex item (no false positives)
+ *   5. Auto-layout child    → flex item (no false positives)
  */
 
 describe("compile — `layoutMode: 'FREE'` (Phase 2 §6 parent-level)", () => {
@@ -53,6 +64,49 @@ describe("compile — `layoutMode: 'FREE'` (Phase 2 §6 parent-level)", () => {
     expect(buttonMatches[0]).toContain('absolute')
     expect(buttonMatches[0]).toMatch(/\bleft-10\b/) // 40px → 10 spacing units
     expect(buttonMatches[0]).toMatch(/\btop-15\b/) // 60px → 15 spacing units
+  })
+
+  test('a legacy NONE frame preserves nested canvas coordinates', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const column = graph.createNode('FRAME', pageId, {
+      name: 'Column',
+      width: 300,
+      height: 300,
+      layoutMode: 'VERTICAL'
+    })
+    const scene = graph.createNode('FRAME', column.id, {
+      name: 'Coordinate scene',
+      width: 280,
+      height: 240,
+      // NONE is the SceneGraph/editor default for a coordinate container.
+      layoutMode: 'NONE',
+      clipsContent: true
+    })
+    const frog = graph.createNode('RECTANGLE', scene.id, {
+      name: 'Frog',
+      x: 40,
+      y: 60,
+      width: 80,
+      height: 90
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'legacy-coordinate-scene' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    const sceneTag = openingTagForNode(app, scene.id)
+    const frogTag = openingTagForNode(app, frog.id)
+
+    // The scene is a containing block even though it remains a normal child
+    // of the outer auto-layout column. Its descendants keep editor-local x/y.
+    expect(sceneTag).toContain('relative')
+    expect(sceneTag).toContain('overflow-hidden')
+    expect(frogTag).toContain('absolute')
+    expect(frogTag).toContain('left-10')
+    expect(frogTag).toContain('top-15')
   })
 
   test('CANVAS is implicitly FREE — Phase 1 §1 regression stays green', () => {
@@ -159,7 +213,13 @@ describe("compile — `layoutPositioning: 'ABSOLUTE'` per-child opt-out (Phase 2
   test('an ABSOLUTE child of an auto-layout FRAME emits absolute + left/top', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    const row = graph.createNode('FRAME', pageId, {
+    const column = graph.createNode('FRAME', pageId, {
+      name: 'Column',
+      width: 400,
+      height: 160,
+      layoutMode: 'VERTICAL'
+    })
+    const row = graph.createNode('FRAME', column.id, {
       name: 'Row',
       width: 400,
       height: 80,
@@ -186,6 +246,7 @@ describe("compile — `layoutPositioning: 'ABSOLUTE'` per-child opt-out (Phase 2
       options: withDefaults({ packageName: 'abs-in-flex' })
     })
     const app = out.files.get('src/App.tsx') as string
+    expect(openingTagForNode(app, row.id)).toContain('relative')
     const buttonMatches = app.match(/<button[^>]*className="([^"]*)"/g) ?? []
     expect(buttonMatches.length).toBe(3)
     const absMatches = buttonMatches.filter((m) => /\babsolute\b/.test(m))

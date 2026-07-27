@@ -16,6 +16,7 @@ import {
   validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
 import {
+  isAutoLayoutMode,
   parseVariantName,
   type Effect,
   type Fill,
@@ -864,6 +865,11 @@ const VECTOR_FOLDABLE_CONTAINERS: ReadonlySet<NodeType> = new Set([
 function isVectorIcon(node: SceneNode, graph: SceneGraph): boolean {
   if (SVG_SHAPE_TYPES.has(node.type)) return true
   if (!VECTOR_FOLDABLE_CONTAINERS.has(node.type)) return false
+  // An auto-layout container of several icons is layout, not one icon. Folding
+  // it removes the children that provide HUG sizing and leaves a 100%-sized SVG
+  // with no intrinsic wrapper dimensions (the browser expands it to 300×150).
+  // Imported multi-path icon wrappers use non-auto layout and still fold.
+  if (isAutoLayoutMode(node.layoutMode)) return false
   const visibleChildren = graph.getChildren(node.id).filter((c) => c.visible)
   return visibleChildren.length > 0 && visibleChildren.every((c) => isVectorIcon(c, graph))
 }
@@ -1620,14 +1626,37 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
   }
 
   if (node.type === 'LIST') {
-    const irList = collectListDirective(node, ctx)
-    if (irList) children.push(irList)
-  } else if (CONTAINER_TYPES_FOR_RECURSION.has(node.type)) {
-    for (const child of ctx.graph.getChildren(node.id)) {
-      if (!shouldEmitChild(child, ctx)) continue
-      const ir = nodeToIR(child, ctx)
-      if (ir) children.push(ir)
+    const dataSourceRef = (node.interactiveProps as { dataSourceRef?: unknown } | undefined)
+      ?.dataSourceRef
+    // A LIST is also a visual authoring container. Only switch it into dynamic
+    // template mode when the author actually configured a datasource. This
+    // preserves ordinary LIST children (including multiple rows) in compiled
+    // output while keeping the established first-child template semantics for
+    // real state/document/Supabase-backed lists.
+    if (dataSourceRef == null) {
+      collectAuthoredChildren(node, ctx, children)
+      return
     }
+
+    const irList = collectListDirective(node, ctx)
+    if (irList) {
+      children.push(irList)
+    } else {
+      // A broken dynamic reference should not erase the author's canvas. Keep
+      // the warning from collectListDirective, then degrade to the static
+      // children so preview remains visually faithful and recoverable.
+      collectAuthoredChildren(node, ctx, children)
+    }
+  } else if (CONTAINER_TYPES_FOR_RECURSION.has(node.type)) {
+    collectAuthoredChildren(node, ctx, children)
+  }
+}
+
+function collectAuthoredChildren(node: SceneNode, ctx: WalkCtx, children: IRNode[]): void {
+  for (const child of ctx.graph.getChildren(node.id)) {
+    if (!shouldEmitChild(child, ctx)) continue
+    const ir = nodeToIR(child, ctx)
+    if (ir) children.push(ir)
   }
 }
 
@@ -3172,7 +3201,7 @@ function resolveListArrayName(
   }
   ctx.warnings.push({
     code: 'list-no-datasource',
-    message: `LIST ${node.id} has no array-typed dataSourceRef; nothing will render`,
+    message: `LIST ${node.id} has no array-typed dataSourceRef; authored children will render statically`,
     nodeId: node.id
   })
   return null
@@ -3182,7 +3211,7 @@ function resolveListArrayName(
  * Phase 2 §9: resolve a LIST node's interactiveProps datasource + template.
  * Returns an `IRList` when datasource is a valid array-typed state ref AND
  * the LIST has at least one visible child to use as the template; otherwise
- * warns and returns null (caller emits an empty LIST container).
+ * warns and returns null (caller preserves the authored children statically).
  */
 function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
   const ip = (node.interactiveProps ?? {}) as {
@@ -3261,7 +3290,7 @@ function resolveListSupabaseQuery(
   if (!ctx.docStates.has(CURRENT_USER_IDENT)) {
     ctx.warnings.push({
       code: 'list-query-no-supabase',
-      message: `LIST ${node.id} has a Supabase query datasource but the document has no Supabase config; nothing will render`,
+      message: `LIST ${node.id} has a Supabase query datasource but the document has no Supabase config; authored children will render statically`,
       nodeId: node.id
     })
     return null

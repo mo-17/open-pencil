@@ -11,6 +11,21 @@ export interface CompilerStyleOptions {
   rtlLogicalProperties?: boolean
 }
 
+/**
+ * The core JSX exporter renders LINE as a CSS bar: it replaces the authored
+ * width/height with the diagonal length/stroke weight and rotates the wrapper.
+ * The compiler, however, emits LINE geometry as an inline SVG. Applying that
+ * CSS conversion as well rotates and distorts the SVG a second time (a 1x60
+ * vertical line becomes a 60x2 wrapper containing a 1x60 viewBox).
+ *
+ * Treat LINE as a generic vector only while collecting compiler layout styles.
+ * This keeps its authored bounds and rotation; the inline SVG remains the sole
+ * owner of the line's endpoint geometry and stroke paint.
+ */
+function compilerStyleNode(node: SceneNode): SceneNode {
+  return node.type === 'LINE' ? { ...node, type: 'VECTOR' } : node
+}
+
 function coreTailwindOptions(options: CompilerStyleOptions = {}): TailwindClassOptions {
   return { logicalProperties: options.rtlLogicalProperties === true }
 }
@@ -79,18 +94,19 @@ export function tailwindClassName(
   options: CompilerStyleOptions = {}
 ): string {
   const tailwindOptions = coreTailwindOptions(options)
-  const baseClasses = collectTailwindClasses(node, graph, tailwindOptions)
+  const styleNode = compilerStyleNode(node)
+  const baseClasses = collectTailwindClasses(styleNode, graph, tailwindOptions)
   const base = node.type === 'SWITCH' ? switchBaseClasses(baseClasses) : baseClasses.join(' ')
   const styled =
     node.type === 'SWITCH' ? (base === '' ? SWITCH_CLASSES : `${base} ${SWITCH_CLASSES}`) : base
   // §7 responsive overrides re-derive a breakpoint-prefixed diff in core (same
   // SceneNode → Tailwind translation), appended after the base/SWITCH styling.
-  const responsive = collectResponsiveTailwindClasses(node, graph, tailwindOptions).join(' ')
+  const responsive = collectResponsiveTailwindClasses(styleNode, graph, tailwindOptions).join(' ')
   let combined = styled
   if (responsive !== '') combined = styled === '' ? responsive : `${styled} ${responsive}`
   // §20 interaction states re-derive a pseudo-class-prefixed diff in core (same
   // SceneNode → Tailwind translation), appended after the base/responsive styling.
-  const states = collectStateTailwindClasses(node, graph, tailwindOptions).join(' ')
+  const states = collectStateTailwindClasses(styleNode, graph, tailwindOptions).join(' ')
   if (states !== '') combined = combined === '' ? states : `${combined} ${states}`
   // §26 layout primitives ride interactiveProps.layout and append after base /
   // responsive / state classes so author intent wins for positioning layers.

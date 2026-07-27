@@ -1,6 +1,7 @@
+/* eslint-disable max-lines -- JSX export round-trip coverage stays grouped by public format */
 import { describe, expect, test } from 'bun:test'
 
-import { SceneGraph, sceneNodeToJSX, selectionToJSX } from '@open-pencil/core'
+import { SceneGraph, renderJSX, sceneNodeToJSX, selectionToJSX } from '@open-pencil/core'
 
 function makeGraph() {
   const graph = new SceneGraph()
@@ -135,6 +136,327 @@ describe('sceneNodeToJSX', () => {
     expect(tailwind).toContain('defaultValue="JP"')
     expect(tailwind).toContain('<option value="US">US</option>')
     expect(tailwind).toContain('<option value="JP">JP</option>')
+  })
+
+  test('all lowcode node types preserve direct props and advanced interactiveProps', () => {
+    const graph = makeGraph()
+    const parent = pageId(graph)
+    const nodes = {
+      button: graph.createNode('BUTTON', parent, {
+        interactiveProps: { text: 'Launch', uiKit: { variant: 'primary' } }
+      }),
+      input: graph.createNode('INPUT', parent, {
+        interactiveProps: {
+          placeholder: 'Email',
+          value: 'ada@example.com',
+          validation: { required: true }
+        }
+      }),
+      select: graph.createNode('SELECT', parent, {
+        interactiveProps: {
+          options: ['Draft', 'Published'],
+          value: 'Published',
+          optionsSource: { kind: 'docStateRef', docStateName: 'statuses' }
+        }
+      }),
+      checkbox: graph.createNode('CHECKBOX', parent, {
+        interactiveProps: { checked: true, uiKit: { primitive: 'checkbox' } }
+      }),
+      form: graph.createNode('FORM', parent, {
+        interactiveProps: { validationSummary: { enabled: true, title: 'Fix fields' } }
+      }),
+      list: graph.createNode('LIST', parent, {
+        interactiveProps: {
+          dataSourceRef: { kind: 'stateRef', stateId: 'items' },
+          itemName: 'entry',
+          indexName: 'entryIndex'
+        }
+      }),
+      radio: graph.createNode('RADIO', parent, {
+        interactiveProps: {
+          options: ['Yes', 'No'],
+          value: 'Yes',
+          groupName: 'answer',
+          analytics: { field: 'answer' }
+        }
+      }),
+      textarea: graph.createNode('TEXTAREA', parent, {
+        interactiveProps: {
+          placeholder: 'Notes',
+          value: 'Draft',
+          validation: { maxLength: 500 }
+        }
+      }),
+      datepicker: graph.createNode('DATEPICKER', parent, {
+        interactiveProps: {
+          value: '2026-07-27',
+          min: '2026-01-01',
+          max: '2026-12-31',
+          validation: { required: true }
+        }
+      }),
+      switchNode: graph.createNode('SWITCH', parent, {
+        interactiveProps: { checked: true, featureFlag: 'new-navigation' }
+      })
+    }
+
+    const button = sceneNodeToJSX(nodes.button.id, graph)
+    expect(button).toContain('<Button')
+    expect(button).toContain('interactiveProps={{"uiKit":{"variant":"primary"}}}')
+    expect(button).toContain('>Launch</Button>')
+
+    const input = sceneNodeToJSX(nodes.input.id, graph)
+    expect(input).toContain('<Input')
+    expect(input).toContain('placeholder="Email"')
+    expect(input).toContain('value="ada@example.com"')
+    expect(input).toContain('interactiveProps={{"validation":{"required":true}}}')
+
+    const select = sceneNodeToJSX(nodes.select.id, graph)
+    expect(select).toContain('<Select')
+    expect(select).toContain('options={["Draft","Published"]}')
+    expect(select).toContain('value="Published"')
+    expect(select).toContain(
+      'interactiveProps={{"optionsSource":{"kind":"docStateRef","docStateName":"statuses"}}}'
+    )
+
+    expect(sceneNodeToJSX(nodes.checkbox.id, graph)).toContain('<Checkbox')
+    expect(sceneNodeToJSX(nodes.checkbox.id, graph)).toContain('checked')
+    expect(sceneNodeToJSX(nodes.form.id, graph)).toContain('<Form')
+    expect(sceneNodeToJSX(nodes.form.id, graph)).toContain(
+      'interactiveProps={{"validationSummary":{"enabled":true,"title":"Fix fields"}}}'
+    )
+    expect(sceneNodeToJSX(nodes.list.id, graph)).toContain('<List')
+    expect(sceneNodeToJSX(nodes.list.id, graph)).toContain(
+      'interactiveProps={{"dataSourceRef":{"kind":"stateRef","stateId":"items"},"itemName":"entry","indexName":"entryIndex"}}'
+    )
+
+    const radio = sceneNodeToJSX(nodes.radio.id, graph)
+    expect(radio).toContain('<Radio')
+    expect(radio).toContain('options={["Yes","No"]}')
+    expect(radio).toContain('value="Yes"')
+    expect(radio).toContain('groupName="answer"')
+    expect(radio).toContain('interactiveProps={{"analytics":{"field":"answer"}}}')
+
+    const textarea = sceneNodeToJSX(nodes.textarea.id, graph)
+    expect(textarea).toContain('<Textarea')
+    expect(textarea).toContain('placeholder="Notes"')
+    expect(textarea).toContain('value="Draft"')
+    expect(textarea).toContain('interactiveProps={{"validation":{"maxLength":500}}}')
+
+    const datepicker = sceneNodeToJSX(nodes.datepicker.id, graph)
+    expect(datepicker).toContain('<DatePicker')
+    expect(datepicker).toContain('value="2026-07-27"')
+    expect(datepicker).toContain('min="2026-01-01"')
+    expect(datepicker).toContain('max="2026-12-31"')
+    expect(datepicker).toContain('interactiveProps={{"validation":{"required":true}}}')
+
+    const switchNode = sceneNodeToJSX(nodes.switchNode.id, graph)
+    expect(switchNode).toContain('<Switch')
+    expect(switchNode).toContain('checked')
+    expect(switchNode).toContain('interactiveProps={{"featureFlag":"new-navigation"}}')
+  })
+
+  test('all lowcode node types survive an OpenPencil JSX round trip', async () => {
+    const source = makeGraph()
+    const root = source.createNode('FRAME', pageId(source), { name: 'Round-trip controls' })
+    source.createNode('BUTTON', root.id, {
+      name: 'Submit',
+      interactiveProps: { text: 'Save' }
+    })
+    source.createNode('INPUT', root.id, {
+      name: 'Email',
+      interactiveProps: {
+        placeholder: 'Email address',
+        value: 'ada@example.com',
+        validation: { required: true }
+      }
+    })
+    source.createNode('SELECT', root.id, {
+      name: 'Role',
+      interactiveProps: { options: ['Admin', 'Editor'], value: 'Editor' }
+    })
+    source.createNode('CHECKBOX', root.id, {
+      name: 'Topics',
+      interactiveProps: { options: ['News', 'Events'], checked: true }
+    })
+    source.createNode('FORM', root.id, {
+      name: 'Profile form',
+      interactiveProps: { validationSummary: { enabled: true, title: 'Fix fields' } }
+    })
+    source.createNode('LIST', root.id, {
+      name: 'Results',
+      interactiveProps: {
+        dataSourceRef: { kind: 'stateRef', stateId: 'items' },
+        itemName: 'entry',
+        indexName: 'entryIndex'
+      }
+    })
+    source.createNode('RADIO', root.id, {
+      name: 'Plan',
+      interactiveProps: { options: ['Free', 'Pro'], value: 'Pro', groupName: 'plans' }
+    })
+    source.createNode('TEXTAREA', root.id, {
+      name: 'Bio',
+      interactiveProps: { placeholder: 'About you', value: 'Hello' }
+    })
+    source.createNode('DATEPICKER', root.id, {
+      name: 'Birthday',
+      interactiveProps: { value: '2026-07-27', min: '2020-01-01', max: '2030-01-01' }
+    })
+    source.createNode('SWITCH', root.id, {
+      name: 'Alerts',
+      interactiveProps: { checked: true }
+    })
+
+    const target = makeGraph()
+    const [rendered] = await renderJSX(target, sceneNodeToJSX(root.id, source))
+    const renderedRoot = target.getNode(rendered.id)
+    expect(renderedRoot).toBeDefined()
+
+    const children = (renderedRoot?.childIds ?? []).map((id) => target.getNode(id))
+    expect(children.map((node) => node?.type)).toEqual([
+      'BUTTON',
+      'INPUT',
+      'SELECT',
+      'CHECKBOX',
+      'FORM',
+      'LIST',
+      'RADIO',
+      'TEXTAREA',
+      'DATEPICKER',
+      'SWITCH'
+    ])
+
+    expect(children[0]?.interactiveProps).toMatchObject({ text: 'Save' })
+    expect(children[1]?.interactiveProps).toMatchObject({
+      placeholder: 'Email address',
+      value: 'ada@example.com',
+      validation: { required: true }
+    })
+    expect(children[2]?.interactiveProps).toMatchObject({
+      options: ['Admin', 'Editor'],
+      value: 'Editor'
+    })
+    expect(children[3]?.interactiveProps).toMatchObject({
+      options: ['News', 'Events'],
+      checked: true
+    })
+    expect(children[4]?.interactiveProps).toMatchObject({
+      validationSummary: { enabled: true, title: 'Fix fields' }
+    })
+    expect(children[5]?.interactiveProps).toMatchObject({
+      dataSourceRef: { kind: 'stateRef', stateId: 'items' },
+      itemName: 'entry',
+      indexName: 'entryIndex'
+    })
+    expect(children[6]?.interactiveProps).toMatchObject({
+      options: ['Free', 'Pro'],
+      value: 'Pro',
+      groupName: 'plans'
+    })
+    expect(children[7]?.interactiveProps).toMatchObject({
+      placeholder: 'About you',
+      value: 'Hello'
+    })
+    expect(children[8]?.interactiveProps).toMatchObject({
+      value: '2026-07-27',
+      min: '2020-01-01',
+      max: '2030-01-01'
+    })
+    expect(children[9]?.interactiveProps).toMatchObject({ checked: true })
+  })
+
+  test('escaped string props and select options survive export and render', async () => {
+    const source = makeGraph()
+    const root = source.createNode('FRAME', pageId(source), { name: 'Escaped values' })
+    const fieldValue = 'Say "hello" from C:\\temp\nnext line'
+    const optionValue = 'Choice "A" at C:\\tmp\nsecond line'
+    source.createNode('INPUT', root.id, {
+      name: 'Escaped input',
+      interactiveProps: { placeholder: fieldValue, value: fieldValue }
+    })
+    const select = source.createNode('SELECT', root.id, {
+      name: 'Escaped select',
+      interactiveProps: { options: [optionValue, 'Plain'], value: optionValue }
+    })
+
+    const jsx = sceneNodeToJSX(root.id, source)
+    expect(jsx).toContain(`placeholder={${JSON.stringify(fieldValue)}}`)
+    expect(jsx).toContain(`value={${JSON.stringify(optionValue)}}`)
+
+    const target = makeGraph()
+    const [rendered] = await renderJSX(target, jsx)
+    const children = target.getChildren(rendered.id)
+    expect(children[0]?.interactiveProps).toMatchObject({
+      placeholder: fieldValue,
+      value: fieldValue
+    })
+    expect(children[1]?.interactiveProps).toMatchObject({
+      options: [optionValue, 'Plain'],
+      value: optionValue
+    })
+
+    const tailwind = sceneNodeToJSX(select.id, source, 'tailwind')
+    expect(tailwind).toContain(`<option value={${JSON.stringify(optionValue)}}>`)
+  })
+
+  test('all lowcode node types use semantic HTML tags in tailwind format', () => {
+    const graph = makeGraph()
+    const parent = pageId(graph)
+    const button = graph.createNode('BUTTON', parent, { interactiveProps: { text: 'Save' } })
+    const input = graph.createNode('INPUT', parent, {
+      interactiveProps: { placeholder: 'Email', value: 'ada@example.com' }
+    })
+    const select = graph.createNode('SELECT', parent, {
+      interactiveProps: { options: ['A', 'B'], value: 'B' }
+    })
+    const checkbox = graph.createNode('CHECKBOX', parent, {
+      interactiveProps: { checked: true }
+    })
+    const form = graph.createNode('FORM', parent)
+    const list = graph.createNode('LIST', parent)
+    const radio = graph.createNode('RADIO', parent, {
+      interactiveProps: { options: ['Yes', 'No'], value: 'Yes', groupName: 'answer' }
+    })
+    const textarea = graph.createNode('TEXTAREA', parent, {
+      interactiveProps: { placeholder: 'Notes', value: 'Draft' }
+    })
+    const datepicker = graph.createNode('DATEPICKER', parent, {
+      interactiveProps: { value: '2026-07-27', min: '2026-01-01', max: '2026-12-31' }
+    })
+    const switchNode = graph.createNode('SWITCH', parent, {
+      interactiveProps: { checked: true }
+    })
+
+    expect(sceneNodeToJSX(button.id, graph, 'tailwind')).toContain('type="button"')
+    expect(sceneNodeToJSX(input.id, graph, 'tailwind')).toContain('type="text"')
+    expect(sceneNodeToJSX(select.id, graph, 'tailwind')).toContain('<select')
+    expect(sceneNodeToJSX(checkbox.id, graph, 'tailwind')).toContain('type="checkbox"')
+    expect(sceneNodeToJSX(form.id, graph, 'tailwind')).toContain('<form')
+    expect(sceneNodeToJSX(list.id, graph, 'tailwind')).toContain('<div')
+
+    const radioJsx = sceneNodeToJSX(radio.id, graph, 'tailwind')
+    expect(radioJsx).toContain('<div')
+    expect(radioJsx).toContain('role="radiogroup"')
+    expect(radioJsx).toContain('type="radio"')
+    expect(radioJsx).toContain('name="answer"')
+    expect(radioJsx).toContain('defaultChecked')
+
+    const textareaJsx = sceneNodeToJSX(textarea.id, graph, 'tailwind')
+    expect(textareaJsx).toContain('<textarea')
+    expect(textareaJsx).toContain('placeholder="Notes"')
+    expect(textareaJsx).toContain('defaultValue="Draft"')
+
+    const datepickerJsx = sceneNodeToJSX(datepicker.id, graph, 'tailwind')
+    expect(datepickerJsx).toContain('type="date"')
+    expect(datepickerJsx).toContain('defaultValue="2026-07-27"')
+    expect(datepickerJsx).toContain('min="2026-01-01"')
+    expect(datepickerJsx).toContain('max="2026-12-31"')
+
+    const switchJsx = sceneNodeToJSX(switchNode.id, graph, 'tailwind')
+    expect(switchJsx).toContain('type="checkbox"')
+    expect(switchJsx).toContain('role="switch"')
+    expect(switchJsx).toContain('defaultChecked')
   })
 
   test('rtl text node', () => {

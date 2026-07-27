@@ -52,7 +52,10 @@ export function escapeJSXText(text: string): string {
 }
 
 export function formatProp(key: string, value: unknown): string {
-  if (typeof value === 'string') return `${key}="${value}"`
+  if (typeof value === 'string') {
+    if (/["\\\r\n]/.test(value)) return `${key}={${JSON.stringify(value)}}`
+    return `${key}="${value}"`
+  }
   if (typeof value === 'number') return `${key}={${value}}`
   if (typeof value === 'boolean') return value ? key : `${key}={false}`
   return `${key}={${JSON.stringify(value)}}`
@@ -66,12 +69,13 @@ export function getNodeContext(node: SceneNode, graph: SceneGraph) {
     isFlex: node.layoutMode === 'HORIZONTAL' || node.layoutMode === 'VERTICAL',
     parentIsAutoLayout: parent ? isAutoLayoutMode(parent.layoutMode) : false,
     parentIsGrid: parent ? parent.layoutMode === 'GRID' : false,
-    // Phase 2 §6: renamed from `parentIsCanvas` and widened.
-    // CANVAS is implicitly FREE (free positioning at the page root); any
-    // FRAME with `layoutMode === 'FREE'` opts into the same semantic for
-    // its children. The absolute-positioning emit branch (tailwind-classes
-    // `applyLayoutStyle`) keys off this single predicate.
-    parentIsFreeLayout: parent ? parent.type === 'CANVAS' || parent.layoutMode === 'FREE' : false
+    // Canvas rendering positions children of every non-auto-layout container
+    // from their stored x/y coordinates. Treat both the legacy default NONE
+    // and the explicit FREE mode the same way here so generated code matches
+    // the editor instead of falling back to normal document flow.
+    parentIsFreeLayout: parent
+      ? parent.type === 'CANVAS' || !isAutoLayoutMode(parent.layoutMode)
+      : false
   }
 }
 

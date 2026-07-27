@@ -114,7 +114,7 @@ describe('Tailwind JSX export — canvas-direct absolute positioning (Phase 1 §
     expect(jsx).toContain('h-20')
   })
 
-  test('nested non-canvas frame is not absolute even at depth', () => {
+  test('nested NONE frame establishes a local coordinate context at depth', () => {
     const graph = makeGraph()
     const outer = graph.createNode('FRAME', pageId(graph), {
       name: 'Outer',
@@ -131,13 +131,19 @@ describe('Tailwind JSX export — canvas-direct absolute positioning (Phase 1 §
     })
     const inner = graph.createNode('RECTANGLE', middle.id, {
       name: 'Inner',
+      x: 12,
+      y: 16,
       width: 50,
       height: 50
     })
     const middleJsx = tw(graph, middle.id)
-    expect(middleJsx).not.toContain('absolute')
+    const middleOpeningTag = middleJsx.split('\n')[0] ?? ''
+    expect(middleOpeningTag).toContain('relative')
+    expect(middleOpeningTag).not.toContain('absolute')
     const innerJsx = tw(graph, inner.id)
-    expect(innerJsx).not.toContain('absolute')
+    expect(innerJsx).toContain('absolute')
+    expect(innerJsx).toContain('left-3')
+    expect(innerJsx).toContain('top-4')
   })
 
   test('canvas-direct child preserves rotation transform alongside left/top', () => {

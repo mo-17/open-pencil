@@ -370,11 +370,11 @@ export type LayoutSizing = 'FIXED' | 'HUG' | 'FILL'
 /**
  * True when the layout mode runs an auto-layout (flex / grid) engine over
  * the node's children. `'NONE'` and `'FREE'` both opt out of auto-layout
- * (NONE = legacy default that emits free positioning only when the parent
- * is CANVAS; `'FREE'` = Phase 2 §6 parent-level toggle that emits free
- * positioning anywhere). Use this helper wherever a callsite wants the
- * "is auto-layout?" semantic — direct equality with `'NONE'` would
- * silently exclude `'FREE'` from the FREE-as-non-auto-layout semantic.
+ * (NONE = legacy/editor default; `'FREE'` = the explicit lowcode authoring
+ * marker). Canvas and generated-code rendering preserve child x/y for both;
+ * FREE remains distinct for authoring UI and persistence. Use this helper
+ * wherever a callsite wants the "is auto-layout?" semantic — direct equality
+ * with `'NONE'` would silently exclude `'FREE'`.
  *
  * Phase 2 §6 — introduced alongside the `'FREE'` variant; swept across
  * every existing `layoutMode === 'NONE'` / `!== 'NONE'` callsite in the

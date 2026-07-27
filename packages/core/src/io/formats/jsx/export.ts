@@ -36,7 +36,14 @@ const NODE_TYPE_TO_TAG: Partial<Record<NodeType, string>> = {
   INSTANCE: 'Frame',
   BUTTON: 'Button',
   INPUT: 'Input',
-  SELECT: 'Select'
+  SELECT: 'Select',
+  CHECKBOX: 'Checkbox',
+  FORM: 'Form',
+  LIST: 'List',
+  RADIO: 'Radio',
+  TEXTAREA: 'Textarea',
+  DATEPICKER: 'DatePicker',
+  SWITCH: 'Switch'
 }
 
 const NODE_TYPE_TO_TW_TAG: Partial<Record<NodeType, string>> = {
@@ -56,7 +63,35 @@ const NODE_TYPE_TO_TW_TAG: Partial<Record<NodeType, string>> = {
   INSTANCE: 'div',
   BUTTON: 'button',
   INPUT: 'input',
-  SELECT: 'select'
+  SELECT: 'select',
+  CHECKBOX: 'input',
+  FORM: 'form',
+  LIST: 'div',
+  RADIO: 'div',
+  TEXTAREA: 'textarea',
+  DATEPICKER: 'input',
+  SWITCH: 'input'
+}
+
+type DirectInteractiveProp =
+  | 'text'
+  | 'placeholder'
+  | 'value'
+  | 'options'
+  | 'checked'
+  | 'groupName'
+  | 'min'
+  | 'max'
+
+const DIRECT_INTERACTIVE_PROPS: Partial<Record<NodeType, readonly DirectInteractiveProp[]>> = {
+  BUTTON: ['text'],
+  INPUT: ['placeholder', 'value'],
+  SELECT: ['options', 'value'],
+  CHECKBOX: ['options', 'checked'],
+  RADIO: ['options', 'value', 'groupName'],
+  TEXTAREA: ['placeholder', 'value'],
+  DATEPICKER: ['value', 'min', 'max'],
+  SWITCH: ['checked']
 }
 
 function buttonLabel(node: SceneNode): string {
@@ -64,20 +99,31 @@ function buttonLabel(node: SceneNode): string {
   return typeof text === 'string' && text.trim() ? text : 'Button'
 }
 
-function inputPlaceholder(node: SceneNode): string | null {
-  const placeholder = node.interactiveProps?.placeholder
-  return typeof placeholder === 'string' ? placeholder : null
-}
-
-function interactiveValue(node: SceneNode): string | null {
-  const value = node.interactiveProps?.value
-  return typeof value === 'string' && value !== '' ? value : null
-}
-
 function selectOptions(node: SceneNode): string[] {
   const options = node.interactiveProps?.options
   if (!Array.isArray(options)) return []
   return options.filter((option): option is string => typeof option === 'string')
+}
+
+function isDirectInteractiveValue(key: DirectInteractiveProp, value: unknown): boolean {
+  if (key === 'checked') return typeof value === 'boolean'
+  if (key === 'options') {
+    return Array.isArray(value) && value.every((option) => typeof option === 'string')
+  }
+  return typeof value === 'string'
+}
+
+function isCheckboxGroup(node: SceneNode): boolean {
+  if (node.type !== 'CHECKBOX') return false
+  const options = node.interactiveProps?.options
+  if (Array.isArray(options) && options.length > 0) return true
+  const source = node.interactiveProps?.optionsSource
+  return typeof source === 'object' && source !== null
+}
+
+function nodeTag(node: SceneNode, format: JSXFormat): string | undefined {
+  if (format === 'tailwind' && isCheckboxGroup(node)) return 'div'
+  return (format === 'tailwind' ? NODE_TYPE_TO_TW_TAG : NODE_TYPE_TO_TAG)[node.type]
 }
 
 // --- OpenPencil format helpers ---
@@ -306,19 +352,23 @@ function collectShapeNodeProps(node: SceneNode, props: [string, unknown][]): voi
 }
 
 function collectInteractiveNodeProps(node: SceneNode, props: [string, unknown][]): void {
-  if (node.type === 'INPUT') {
-    const placeholder = inputPlaceholder(node)
-    const value = interactiveValue(node)
-    if (placeholder !== null) props.push(['placeholder', placeholder])
-    if (value !== null) props.push(['value', value])
+  const interactiveProps = node.interactiveProps
+  if (!interactiveProps) return
+
+  const consumed = new Set<string>()
+  for (const key of DIRECT_INTERACTIVE_PROPS[node.type] ?? []) {
+    const value = interactiveProps[key]
+    if (!isDirectInteractiveValue(key, value)) continue
+    consumed.add(key)
+    // Button text is represented as its JSX child, matching the established
+    // `<Button>Label</Button>` authoring contract.
+    if (node.type !== 'BUTTON' || key !== 'text') props.push([key, value])
   }
 
-  if (node.type === 'SELECT') {
-    const options = selectOptions(node)
-    const value = interactiveValue(node)
-    if (options.length > 0) props.push(['options', options])
-    if (value !== null) props.push(['value', value])
-  }
+  const advanced = Object.fromEntries(
+    Object.entries(interactiveProps).filter(([key]) => !consumed.has(key))
+  )
+  if (Object.keys(advanced).length > 0) props.push(['interactiveProps', advanced])
 }
 
 function collectProps(node: SceneNode, graph: SceneGraph): [string, unknown][] {
@@ -348,24 +398,86 @@ function collectTailwindAttrs(node: SceneNode, graph: SceneGraph): [string, unkn
   if (node.name && node.name !== node.type) attrs.push(['data-name', node.name])
   if (classes.length > 0) attrs.push(['className', classes.join(' ')])
 
-  if (node.type === 'INPUT') {
-    const placeholder = inputPlaceholder(node)
-    const value = interactiveValue(node)
-    if (placeholder !== null) attrs.push(['placeholder', placeholder])
-    if (value !== null) attrs.push(['defaultValue', value])
-  }
-
-  if (node.type === 'SELECT') {
-    const value = interactiveValue(node)
-    if (value !== null) attrs.push(['defaultValue', value])
-  }
-
+  collectTailwindInteractiveAttrs(node, attrs)
   return attrs
 }
 
+function pushStringInteractiveAttr(
+  node: SceneNode,
+  prop: string,
+  attr: string,
+  attrs: [string, unknown][]
+): void {
+  const value = node.interactiveProps?.[prop]
+  if (typeof value === 'string' && value !== '') attrs.push([attr, value])
+}
+
+function pushDefaultChecked(node: SceneNode, attrs: [string, unknown][]): void {
+  if (node.interactiveProps?.checked === true) attrs.push(['defaultChecked', true])
+}
+
+function collectTailwindInteractiveAttrs(node: SceneNode, attrs: [string, unknown][]): void {
+  switch (node.type) {
+    case 'BUTTON':
+      attrs.push(['type', 'button'])
+      return
+    case 'INPUT':
+      attrs.push(['type', 'text'])
+      pushStringInteractiveAttr(node, 'placeholder', 'placeholder', attrs)
+      pushStringInteractiveAttr(node, 'value', 'defaultValue', attrs)
+      return
+    case 'SELECT':
+      pushStringInteractiveAttr(node, 'value', 'defaultValue', attrs)
+      return
+    case 'CHECKBOX':
+      if (isCheckboxGroup(node)) attrs.push(['role', 'group'])
+      else {
+        attrs.push(['type', 'checkbox'])
+        pushDefaultChecked(node, attrs)
+      }
+      return
+    case 'RADIO':
+      attrs.push(['role', 'radiogroup'])
+      return
+    case 'TEXTAREA':
+      pushStringInteractiveAttr(node, 'placeholder', 'placeholder', attrs)
+      pushStringInteractiveAttr(node, 'value', 'defaultValue', attrs)
+      return
+    case 'DATEPICKER':
+      attrs.push(['type', 'date'])
+      pushStringInteractiveAttr(node, 'value', 'defaultValue', attrs)
+      pushStringInteractiveAttr(node, 'min', 'min', attrs)
+      pushStringInteractiveAttr(node, 'max', 'max', attrs)
+      return
+    case 'SWITCH':
+      attrs.push(['type', 'checkbox'], ['role', 'switch'])
+      pushDefaultChecked(node, attrs)
+  }
+}
+
+function tailwindOptionGroup(node: SceneNode, opening: string, prefix: string): string | null {
+  if (node.type !== 'RADIO' && !isCheckboxGroup(node)) return null
+  const options = selectOptions(node)
+  if (options.length === 0) return null
+
+  const inputType = node.type === 'RADIO' ? 'radio' : 'checkbox'
+  const groupName = inputType === 'radio' ? node.interactiveProps?.groupName : undefined
+  const selected = inputType === 'radio' ? node.interactiveProps?.value : undefined
+  const rows = options.map((option) => {
+    const attrs: [string, unknown][] = [
+      ['type', inputType],
+      ['value', option]
+    ]
+    if (typeof groupName === 'string' && groupName !== '') attrs.push(['name', groupName])
+    if (selected === option) attrs.push(['defaultChecked', true])
+    const inputAttrs = attrs.map(([key, value]) => formatProp(key, value)).join(' ')
+    return `${prefix}  <label><input ${inputAttrs} />${escapeJSXText(option)}</label>`
+  })
+  return [`${prefix}${opening}>`, ...rows, `${prefix}</div>`].join('\n')
+}
+
 function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number, format: JSXFormat): string {
-  const tagMap = format === 'tailwind' ? NODE_TYPE_TO_TW_TAG : NODE_TYPE_TO_TAG
-  const tag = tagMap[node.type]
+  const tag = nodeTag(node, format)
   if (!tag) return ''
 
   const prefix = '  '.repeat(indent)
@@ -408,10 +520,15 @@ function nodeToJSX(node: SceneNode, graph: SceneGraph, indent: number, format: J
       `${prefix}${opening}>`,
       ...options.map(
         (option) =>
-          `${prefix}  <option value="${escapeJSXText(option)}">${escapeJSXText(option)}</option>`
+          `${prefix}  <option ${formatProp('value', option)}>${escapeJSXText(option)}</option>`
       ),
       `${prefix}</${tag}>`
     ].join('\n')
+  }
+
+  if (children.length === 0 && format === 'tailwind') {
+    const optionGroup = tailwindOptionGroup(node, opening, prefix)
+    if (optionGroup) return optionGroup
   }
 
   if (children.length === 0) return `${prefix}${opening} />`

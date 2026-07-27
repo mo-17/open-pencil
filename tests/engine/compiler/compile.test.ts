@@ -78,6 +78,50 @@ describe('compile (public API, end-to-end)', () => {
     expect(appTsx).toContain('>Hello world</p>')
   })
 
+  test('preserves every authored LIST row when no dynamic datasource is configured', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const list = graph.createNode('LIST', pageId, {
+      name: 'PackingChecklist',
+      layoutMode: 'VERTICAL',
+      width: 358,
+      height: 88
+    })
+    const foodRow = graph.createNode('FRAME', list.id, {
+      name: 'FoodRow',
+      layoutMode: 'HORIZONTAL',
+      width: 358,
+      height: 44
+    })
+    graph.createNode('CHECKBOX', foodRow.id, { name: 'FoodCheckbox' })
+    graph.createNode('TEXT', foodRow.id, { name: 'FoodLabel', text: '梅子饭团便当' })
+    graph.createNode('TEXT', foodRow.id, { name: 'FoodMeta', text: '补充体力' })
+    const charmRow = graph.createNode('FRAME', list.id, {
+      name: 'CharmRow',
+      layoutMode: 'HORIZONTAL',
+      width: 358,
+      height: 44
+    })
+    graph.createNode('CHECKBOX', charmRow.id, { name: 'CharmCheckbox' })
+    graph.createNode('TEXT', charmRow.id, { name: 'CharmLabel', text: '晴天护身符' })
+    graph.createNode('TEXT', charmRow.id, { name: 'CharmMeta', text: '尚未选择' })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults()
+    })
+
+    const appTsx = out.files.get('src/App.tsx') as string
+    expect(appTsx).toContain('梅子饭团便当')
+    expect(appTsx).toContain('补充体力')
+    expect(appTsx).toContain('晴天护身符')
+    expect(appTsx).toContain('尚未选择')
+    expect(appTsx.match(/<input/g)).toHaveLength(2)
+    expect(appTsx).not.toContain('.map((')
+    expect(out.warnings.some((warning) => warning.code === 'list-no-datasource')).toBe(false)
+  })
+
   test('preserves 20px corner radius with a valid Tailwind arbitrary class', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

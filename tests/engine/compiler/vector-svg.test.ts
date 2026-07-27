@@ -132,4 +132,134 @@ describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
     expect(app).toContain('M2 2')
     expect(app).toContain('M14 14')
   })
+
+  test('a HUG auto-layout row of vector icons stays a layout container', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const fill = [
+      {
+        type: 'SOLID' as const,
+        color: { r: 0, g: 0, b: 0, a: 1 },
+        opacity: 1,
+        visible: true
+      }
+    ]
+    const row = graph.createNode('FRAME', pageId, {
+      name: 'StatusIcons',
+      width: 38,
+      height: 16,
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'HUG',
+      counterAxisSizing: 'HUG',
+      itemSpacing: 8,
+      fills: []
+    })
+    graph.createNode('VECTOR', row.id, {
+      x: 0,
+      y: 1,
+      width: 14,
+      height: 14,
+      fillGeometry: [{ windingRule: 'NONZERO', commandsBlob: rectangleCommandsBlob(1, 1, 12, 12) }],
+      fills: fill
+    })
+    graph.createNode('VECTOR', row.id, {
+      x: 22,
+      y: 0,
+      width: 16,
+      height: 16,
+      fillGeometry: [{ windingRule: 'NONZERO', commandsBlob: rectangleCommandsBlob(1, 1, 14, 14) }],
+      fills: fill
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'status-icon-row' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+
+    // The row keeps its two fixed-size children, which provide its HUG
+    // dimensions. Folding the whole row would leave one 100% SVG in a wrapper
+    // with no width/height and trigger the browser's 300×150 SVG fallback.
+    expect((app.match(/dangerouslySetInnerHTML/g) ?? []).length).toBe(2)
+    expect(app).toMatch(/className="[^"]*\bflex\b[^"]*"/)
+    expect(app).toMatch(/className="[^"]*\bgap-2\b[^"]*"/)
+    expect(app).not.toContain('viewBox="0 0 38 16"')
+  })
+
+  test('LINE inline SVG keeps authored bounds instead of applying CSS line geometry twice', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const window = graph.createNode('FRAME', pageId, {
+      name: 'HouseWindow',
+      x: 22,
+      y: 64,
+      width: 76,
+      height: 60,
+      layoutMode: 'VERTICAL',
+      clipsContent: true,
+      fills: []
+    })
+    graph.createNode('LINE', window.id, {
+      name: 'WindowCross',
+      x: 36,
+      y: 0,
+      width: 1,
+      height: 60,
+      layoutPositioning: 'ABSOLUTE',
+      fills: [],
+      strokes: [
+        {
+          color: { r: 0.54, g: 0.36, b: 0.25, a: 1 },
+          weight: 2,
+          opacity: 1,
+          visible: true,
+          align: 'INSIDE'
+        }
+      ]
+    })
+    const frog = graph.createNode('FRAME', pageId, {
+      name: 'FrogTravelerHero',
+      x: 120,
+      y: 200,
+      width: 124,
+      height: 90,
+      layoutMode: 'VERTICAL',
+      fills: []
+    })
+    graph.createNode('LINE', frog.id, {
+      name: 'FrogMouth',
+      x: 51,
+      y: 46,
+      width: 22,
+      height: 1,
+      layoutPositioning: 'ABSOLUTE',
+      fills: [],
+      strokes: [
+        {
+          color: { r: 0.18, g: 0.32, b: 0.22, a: 1 },
+          weight: 2,
+          opacity: 1,
+          visible: true,
+          align: 'INSIDE'
+        }
+      ]
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'line-bounds' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+
+    expect(app).toContain('className="absolute top-0 left-9 w-px h-15"')
+    expect(app).toContain('viewBox=\\"0 0 1 60\\"')
+    expect(app).toContain('<line x1=\\"0\\" y1=\\"0\\" x2=\\"1\\" y2=\\"60\\"')
+    expect(app).toContain('className="absolute top-[46px] left-[51px] w-[22px] h-px"')
+    expect(app).toContain('viewBox=\\"0 0 22 1\\"')
+    expect(app).not.toContain('origin-left')
+    expect(app).not.toContain('rotate-[89')
+    expect(app).not.toContain('w-[60.008')
+  })
 })

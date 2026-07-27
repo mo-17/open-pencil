@@ -115,11 +115,94 @@ function buildBrowserSmokeFiles(): { files: Map<string, string | Uint8Array>; id
   }
 }
 
+function buildLayoutFidelityFiles(): {
+  files: Map<string, string | Uint8Array>
+  ids: LayoutFidelityIds
+} {
+  const graph = makeSceneGraph()
+  const pageId = firstPageId(graph)
+  const scene = graph.createNode('FRAME', pageId, {
+    name: 'GardenScene',
+    width: 390,
+    height: 400,
+    layoutMode: 'NONE',
+    clipsContent: true
+  })
+  const cabin = graph.createNode('FRAME', scene.id, {
+    name: 'TinyCabin',
+    x: 190,
+    y: 98,
+    width: 138,
+    height: 174,
+    layoutMode: 'NONE'
+  })
+  graph.createNode('RECTANGLE', cabin.id, {
+    x: 8,
+    y: 50,
+    width: 122,
+    height: 116
+  })
+  const frog = graph.createNode('ELLIPSE', scene.id, {
+    name: 'FrogTraveler',
+    x: 141,
+    y: 248,
+    width: 72,
+    height: 78
+  })
+
+  const header = graph.createNode('FRAME', pageId, {
+    name: 'StatusBar',
+    x: 0,
+    y: 420,
+    width: 100,
+    height: 40,
+    layoutMode: 'HORIZONTAL',
+    counterAxisAlign: 'CENTER'
+  })
+  const iconRow = graph.createNode('FRAME', header.id, {
+    name: 'StatusIcons',
+    width: 38,
+    height: 16,
+    layoutMode: 'HORIZONTAL',
+    primaryAxisSizing: 'HUG',
+    counterAxisSizing: 'HUG',
+    itemSpacing: 8
+  })
+  const signal = graph.createNode('STAR', iconRow.id, { width: 14, height: 14 })
+  const battery = graph.createNode('STAR', iconRow.id, { width: 16, height: 16 })
+
+  const files = compile({
+    graph,
+    pageIds: [pageId],
+    options: withDefaults({ packageName: 'layout-fidelity-smoke' })
+  }).files
+  return {
+    files,
+    ids: {
+      scene: scene.id,
+      cabin: cabin.id,
+      frog: frog.id,
+      iconRow: iconRow.id,
+      signal: signal.id,
+      battery: battery.id
+    }
+  }
+}
+
 interface SmokeIds {
   picture: string
   layered: string
   imageFill: string
   blended: string
+}
+
+interface LayoutFidelityIds {
+  scene: string
+  cabin: string
+  frog: string
+  iconRow: string
+  signal: string
+  battery: string
 }
 
 describe('preview browser pixels — image and visual fills (Phase 4 §24)', () => {
@@ -174,6 +257,42 @@ describe('preview browser pixels — image and visual fills (Phase 4 §24)', () 
     })
     expect(backgroundImage).toContain('linear-gradient')
     expect(backgroundImage).toContain('rgb(255, 255, 255)')
+  }, 30_000)
+
+  test('keeps nested coordinate scenes and HUG icon rows at canvas geometry', async () => {
+    if (!server || !page) throw new Error('missing preview test runtime')
+    const { files, ids } = buildLayoutFidelityFiles()
+    server.updateFiles(files)
+    await page.goto(server.url, { waitUntil: 'networkidle' })
+
+    const boxes = await page.evaluate(
+      (selectors) => {
+        const rect = (selector: string) => {
+          const el = document.querySelector(selector)
+          if (!el) throw new Error(`missing ${selector}`)
+          const box = el.getBoundingClientRect()
+          return { x: box.x, y: box.y, width: box.width, height: box.height }
+        }
+        return {
+          scene: rect(selectors.scene),
+          cabin: rect(selectors.cabin),
+          frog: rect(selectors.frog),
+          iconRow: rect(selectors.iconRow),
+          signal: rect(selectors.signal),
+          battery: rect(selectors.battery)
+        }
+      },
+      Object.fromEntries(Object.entries(ids).map(([key, id]) => [key, nodeSelector(id)]))
+    )
+
+    expect(boxes.cabin.x - boxes.scene.x).toBeCloseTo(190, 1)
+    expect(boxes.cabin.y - boxes.scene.y).toBeCloseTo(98, 1)
+    expect(boxes.frog.x - boxes.scene.x).toBeCloseTo(141, 1)
+    expect(boxes.frog.y - boxes.scene.y).toBeCloseTo(248, 1)
+    expect(boxes.iconRow.width).toBeCloseTo(38, 1)
+    expect(boxes.iconRow.height).toBeCloseTo(16, 1)
+    expect(boxes.signal.width).toBeCloseTo(14, 1)
+    expect(boxes.battery.width).toBeCloseTo(16, 1)
   }, 30_000)
 })
 
