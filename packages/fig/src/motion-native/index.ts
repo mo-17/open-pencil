@@ -6,6 +6,8 @@ import {
   validateMotionSpec
 } from '@open-pencil/scene-graph'
 
+import { FIGMA_MOTION_API_REVISION } from './applicator'
+
 export type FigmaNativeMotionFieldName =
   | 'OPACITY'
   | 'TRANSLATION_X'
@@ -13,6 +15,9 @@ export type FigmaNativeMotionFieldName =
   | 'ROTATION'
   | 'SCALE_X'
   | 'SCALE_Y'
+
+export const FIGMA_MOTION_SHARED_NAMESPACE = 'openpencil'
+export const FIGMA_MOTION_SHARED_KEY = 'motion-v1'
 
 export interface FigmaNativeMotionEasing {
   type: 'LINEAR' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_AND_OUT' | 'CUSTOM_CUBIC_BEZIER'
@@ -41,6 +46,7 @@ export interface FigmaNativeMotionOperation {
 export interface FigmaNativeMotionIssue {
   code:
     | 'invalid-motion'
+    | 'spec-version'
     | 'track-count'
     | 'trigger'
     | 'delay'
@@ -48,6 +54,8 @@ export interface FigmaNativeMotionIssue {
     | 'direction'
     | 'fill'
     | 'exit'
+    | 'duplicate-offset'
+    | 'easing'
     | 'empty-channels'
   message: string
 }
@@ -58,9 +66,16 @@ export interface FigmaNativeMotionWarning {
 }
 
 export interface FigmaNativeMotionPlan {
+  version: 1
+  apiRevision: typeof FIGMA_MOTION_API_REVISION
   /** True only when every authored behavior can be represented by the public Figma Motion API. */
   supported: boolean
   durationSeconds?: number
+  /** Native timelines may be extended, but never shortened because the top-level frame owns them. */
+  durationPolicy: 'grow-only'
+  managedFields: Array<{ type: 'PROPERTY'; name: FigmaNativeMotionFieldName }>
+  /** Canonical adapter payload used to recognize idempotent, OpenPencil-owned native writes. */
+  sourceSignature?: string
   operations: FigmaNativeMotionOperation[]
   issues: FigmaNativeMotionIssue[]
   warnings: FigmaNativeMotionWarning[]
@@ -69,6 +84,104 @@ export interface FigmaNativeMotionPlan {
 export interface FigmaNativeMotionOptions {
   /** Authored node opacity. MotionSpec opacity values are multipliers. */
   nodeOpacity?: number
+}
+
+export interface FigmaMotionSharedEnvelope {
+  schema: 'openpencil.motion'
+  version: 1
+  motion: MotionSpec
+}
+
+export interface FigmaMotionSharedClearEnvelope {
+  schema: 'openpencil.motion'
+  version: 1
+  cleared: true
+}
+
+export type FigmaMotionSharedPayload =
+  | { kind: 'motion'; value: FigmaMotionSharedEnvelope }
+  | { kind: 'cleared'; value: FigmaMotionSharedClearEnvelope }
+
+export type FigmaMotionSharedEnvelopeResult =
+  | { ok: true; value: FigmaMotionSharedEnvelope }
+  | { ok: false; error: string }
+
+export type FigmaMotionSharedPayloadResult =
+  | { ok: true; value: FigmaMotionSharedPayload }
+  | { ok: false; error: string }
+
+/** Encode a cross-plugin MotionSpec mirror for Figma shared plugin data. */
+export function encodeFigmaMotionSharedEnvelope(value: unknown): string {
+  const validated = validateMotionSpec(value)
+  if (!validated.success) {
+    throw new Error(validated.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; '))
+  }
+  return JSON.stringify({
+    schema: 'openpencil.motion',
+    version: 1,
+    motion: validated.value
+  } satisfies FigmaMotionSharedEnvelope)
+}
+
+/** Encode a shared marker that tells the Figma adapter not to apply stale Motion. */
+export function encodeFigmaMotionSharedClearEnvelope(): string {
+  return JSON.stringify({
+    schema: 'openpencil.motion',
+    version: 1,
+    cleared: true
+  } satisfies FigmaMotionSharedClearEnvelope)
+}
+
+/** Strictly decode either an actionable Motion mirror or an explicit clear marker. */
+export function decodeFigmaMotionSharedPayload(raw: string): FigmaMotionSharedPayloadResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+  if (!isPlainRecord(parsed)) return { ok: false, error: 'Expected an object envelope' }
+  if (parsed.schema !== 'openpencil.motion' || parsed.version !== 1) {
+    return { ok: false, error: 'Unsupported shared Motion envelope version' }
+  }
+  const keys = Object.keys(parsed).sort().join(',')
+  if (keys === 'cleared,schema,version' && parsed.cleared === true) {
+    return {
+      ok: true,
+      value: {
+        kind: 'cleared',
+        value: { schema: 'openpencil.motion', version: 1, cleared: true }
+      }
+    }
+  }
+  if (keys !== 'motion,schema,version') {
+    return { ok: false, error: 'Unexpected shared Motion envelope fields' }
+  }
+  const validated = validateMotionSpec(parsed.motion)
+  if (!validated.success) {
+    return {
+      ok: false,
+      error: validated.issues.map((issue) => `${issue.path}: ${issue.message}`).join('; ')
+    }
+  }
+  return {
+    ok: true,
+    value: {
+      kind: 'motion',
+      value: { schema: 'openpencil.motion', version: 1, motion: validated.value }
+    }
+  }
+}
+
+/** Strictly decode the shared mirror without accepting future or extra fields. */
+export function decodeFigmaMotionSharedEnvelope(raw: string): FigmaMotionSharedEnvelopeResult {
+  const decoded = decodeFigmaMotionSharedPayload(raw)
+  return decoded.ok && decoded.value.kind === 'motion'
+    ? { ok: true, value: decoded.value.value }
+    : {
+        ok: false,
+        error: decoded.ok ? 'Shared Motion was explicitly cleared' : decoded.error
+      }
 }
 
 interface MotionChannel {
@@ -101,7 +214,11 @@ export function createFigmaNativeMotionPlan(
   const validated = validateSafely(value)
   if (!validated.success) {
     return {
+      version: 1,
+      apiRevision: FIGMA_MOTION_API_REVISION,
       supported: false,
+      durationPolicy: 'grow-only',
+      managedFields: [],
       operations: [],
       issues: [
         {
@@ -114,6 +231,12 @@ export function createFigmaNativeMotionPlan(
   }
 
   const spec = validated.value
+  if (spec.version !== 1) {
+    issues.push({
+      code: 'spec-version',
+      message: 'Figma native export currently supports only MotionSpec v1 visual channels'
+    })
+  }
   if (spec.tracks.length !== 1) {
     issues.push({
       code: 'track-count',
@@ -122,6 +245,8 @@ export function createFigmaNativeMotionPlan(
   }
   const track = spec.tracks[0]
   checkTrackCompatibility(track, issues)
+  const durationSeconds = roundSeconds(track.timing.durationMs / 1_000)
+  checkLoweredKeyframePositions(track, durationSeconds, issues)
 
   if (spec.reducedMotion !== undefined) {
     warnings.push({
@@ -138,7 +263,6 @@ export function createFigmaNativeMotionPlan(
   if (issues.length > 0) return unsupported(issues, warnings)
 
   const nodeOpacity = clampOpacity(options.nodeOpacity ?? 1)
-  const durationSeconds = roundSeconds(track.timing.durationMs / 1_000)
   const operations = activeChannels(track, nodeOpacity).map((channel) =>
     operationForChannel(track, channel, durationSeconds, nodeOpacity)
   )
@@ -150,71 +274,25 @@ export function createFigmaNativeMotionPlan(
     return unsupported(issues, warnings)
   }
 
-  return { supported: true, durationSeconds, operations, issues, warnings }
-}
-
-/**
- * Generate a copyable Figma Plugin API script for the selected node (or a
- * stable node id). The script intentionally uses only the official beta APIs:
- * manual keyframe track apply/remove, animation style removal, timelines, and
- * setTimelineDuration().
- */
-export function buildFigmaMotionPluginScript(
-  plan: FigmaNativeMotionPlan,
-  options: { nodeId?: string } = {}
-): string {
-  if (!plan.supported || plan.durationSeconds === undefined) {
-    throw new Error('Cannot build a Figma Motion script for an unsupported plan')
+  const managedFields = operations.map((operation) => ({ ...operation.field }))
+  const sourceSignature = JSON.stringify({
+    version: 1,
+    apiRevision: FIGMA_MOTION_API_REVISION,
+    durationSeconds,
+    operations
+  })
+  return {
+    version: 1,
+    apiRevision: FIGMA_MOTION_API_REVISION,
+    supported: true,
+    durationSeconds,
+    durationPolicy: 'grow-only',
+    managedFields,
+    sourceSignature,
+    operations,
+    issues,
+    warnings
   }
-  const nodeLookup = options.nodeId
-    ? `const node = await figma.getNodeByIdAsync(${JSON.stringify(options.nodeId)})`
-    : `const selection = figma.currentPage.selection
-if (selection.length !== 1) {
-  throw new Error('Select exactly one target node before applying Motion')
-}
-const node = selection[0]`
-  const operations = JSON.stringify(plan.operations, null, 2)
-  const supportedFields = JSON.stringify(
-    MOTION_CHANNELS.map(({ field }) => ({ type: 'PROPERTY', name: field })),
-    null,
-    2
-  )
-  return `;(async () => {
-${indent(nodeLookup, 2)}
-  if (!node) throw new Error('The target node was not found')
-  if (typeof node.applyManualKeyframeTrack !== 'function') {
-    throw new Error('The selected node does not support the Figma Motion API')
-  }
-  if (typeof node.removeManualKeyframeTrack !== 'function') {
-    throw new Error('The selected node cannot replace existing Figma Motion tracks safely')
-  }
-  if (typeof node.setTimelineDuration !== 'function') {
-    throw new Error('The selected node does not support Figma Motion timelines')
-  }
-  const animationStyles = Array.isArray(node.animationStyles) ? [...node.animationStyles] : []
-  if (animationStyles.length > 0 && typeof node.removeAnimationStyle !== 'function') {
-    throw new Error('The selected node cannot remove conflicting Figma Motion styles safely')
-  }
-  const supportedFields = ${indent(supportedFields, 2).trimStart()}
-  // Applied animation styles do not expose a documented per-style field map.
-  // Remove them before installing the canonical OpenPencil manual tracks.
-  for (const animationStyle of animationStyles) {
-    node.removeAnimationStyle(animationStyle.id)
-  }
-  for (const field of supportedFields) {
-    node.removeManualKeyframeTrack(field)
-  }
-  const operations = ${indent(operations, 2).trimStart()}
-  for (const operation of operations) {
-    node.applyManualKeyframeTrack(operation.field, operation.track)
-  }
-  const timeline = Array.isArray(node.timelines) ? node.timelines[0] : undefined
-  if (timeline && timeline.duration < ${plan.durationSeconds}) {
-    node.setTimelineDuration(timeline.id, ${plan.durationSeconds})
-  }
-  return { mutatedNodeIds: [node.id], timelineId: timeline?.id ?? null }
-})()
-`
 }
 
 function validateSafely(
@@ -271,13 +349,45 @@ function checkTrackCompatibility(track: MotionTrack, issues: FigmaNativeMotionIs
       message: `Figma native export cannot preserve exit="${track.exit}"`
     })
   }
+  const easings = [track.timing.easing, ...track.keyframes.map((keyframe) => keyframe.easing)]
+  if (easings.some((easing) => typeof easing === 'object' && easing.type !== 'cubicBezier')) {
+    issues.push({
+      code: 'easing',
+      message: 'Figma native export supports only named and cubic-bezier easing'
+    })
+  }
+}
+
+function checkLoweredKeyframePositions(
+  track: MotionTrack,
+  durationSeconds: number,
+  issues: FigmaNativeMotionIssue[]
+): void {
+  const positions = track.keyframes.map((keyframe) =>
+    roundSeconds(keyframe.offset * durationSeconds)
+  )
+  if (positions.some((position, index) => index > 0 && position <= (positions[index - 1] ?? -1))) {
+    issues.push({
+      code: 'duplicate-offset',
+      message: 'Figma native export cannot safely preserve keyframes that lower to the same time'
+    })
+  }
 }
 
 function unsupported(
   issues: FigmaNativeMotionIssue[],
   warnings: FigmaNativeMotionWarning[]
 ): FigmaNativeMotionPlan {
-  return { supported: false, operations: [], issues, warnings }
+  return {
+    version: 1,
+    apiRevision: FIGMA_MOTION_API_REVISION,
+    supported: false,
+    durationPolicy: 'grow-only',
+    managedFields: [],
+    operations: [],
+    issues,
+    warnings
+  }
 }
 
 function activeChannels(track: MotionTrack, nodeOpacity: number): MotionChannel[] {
@@ -330,6 +440,9 @@ function channelValue(
 
 function figmaEasing(easing: MotionEasing): FigmaNativeMotionEasing {
   if (typeof easing === 'object') {
+    if (easing.type !== 'cubicBezier') {
+      throw new Error(`Unsupported Figma native easing: ${easing.type}`)
+    }
     return {
       type: 'CUSTOM_CUBIC_BEZIER',
       easingFunctionCubicBezier: {
@@ -366,14 +479,51 @@ function roundSeconds(value: number): number {
   return Number(value.toFixed(6))
 }
 
-function indent(value: string, spaces: number): string {
-  const prefix = ' '.repeat(spaces)
-  return value
-    .split('\n')
-    .map((line) => `${prefix}${line}`)
-    .join('\n')
-}
-
 function assertNever(value: never): never {
   throw new Error(`Unsupported Motion easing: ${String(value)}`)
 }
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
+export { buildFigmaMotionPluginScript, type FigmaNativeMotionScriptOptions } from './script'
+export {
+  FIGMA_MOTION_API_REVISION,
+  FIGMA_NATIVE_MOTION_APPLICATOR_SCHEMA,
+  FIGMA_NATIVE_MOTION_FIELDS,
+  FIGMA_NATIVE_MOTION_OWNERSHIP_KEY,
+  FIGMA_NATIVE_MOTION_OWNERSHIP_NAMESPACE,
+  applyFigmaNativeMotionTransaction,
+  createFigmaNativeMotionApplyRequest,
+  getFigmaNativeMotionTransactionSource,
+  type FigmaNativeMotionApplyOptions,
+  type FigmaNativeMotionApplyRequest,
+  type FigmaNativeMotionConflictPolicy,
+  type FigmaNativeMotionOwnershipRecord,
+  type FigmaNativeMotionTransactionHost,
+  type FigmaNativeMotionTransactionResult,
+  type FigmaNativeMotionTransactionStatus,
+  type FigmaNativeMotionTransactionTarget
+} from './applicator'
+export {
+  diffFigmaNativeMotion,
+  importFigmaNativeMotion,
+  inspectFigmaNativeMotion,
+  type FigmaNativeMotionDiagnostic,
+  type FigmaNativeMotionDiagnosticCode,
+  type FigmaNativeMotionDiagnosticSeverity,
+  type FigmaNativeMotionDiff,
+  type FigmaNativeMotionImportResult,
+  type FigmaNativeMotionImportSource,
+  type FigmaNativeMotionInspection,
+  type FigmaNativeMotionOwnershipChange,
+  type FigmaNativeMotionOwnershipStatus,
+  type FigmaNativeMotionSharedMirrorStatus,
+  type FigmaNativeMotionSnapshot,
+  type FigmaNativeMotionTimelineChange,
+  type FigmaNativeMotionTimelineGrowth,
+  type FigmaNativeMotionTimelineInspection
+} from './inspect'

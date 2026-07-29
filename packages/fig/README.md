@@ -17,6 +17,8 @@ Current ownership:
 - Component-property, symbol-override, derived-symbol-data, and instance synchronization policy through `@open-pencil/fig/instance-overrides`
 - Effective raw-metadata precedence and invalidation over SceneGraph's format-neutral edited-field tracking
 - SceneGraph-to-`NodeChange` export conversion with an explicit glyph-outline runtime service
+- Strict shared Motion envelopes, official Motion Plugin API plans/scripts/applicator transactions,
+  and bounded detached native inspect/import/compare helpers
 - Package-local archive, conversion, instance, export, and dist smoke tests
 
 Planned ownership:

@@ -1,12 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { MotionSpec, MotionTrack } from '@open-pencil/scene-graph'
-
 import {
   buildFigmaMotionPluginScript,
   createFigmaNativeMotionPlan,
+  decodeFigmaMotionSharedEnvelope,
+  decodeFigmaMotionSharedPayload,
+  encodeFigmaMotionSharedClearEnvelope,
+  encodeFigmaMotionSharedEnvelope,
+  getFigmaNativeMotionTransactionSource,
   type FigmaNativeMotionIssue
-} from '../src/motion-native'
+} from '@open-pencil/fig'
+import type { MotionSpec, MotionTrack } from '@open-pencil/scene-graph'
 
 function createTrack(overrides: Partial<MotionTrack> = {}): MotionTrack {
   return {
@@ -37,6 +41,40 @@ function issueCodes(value: unknown): FigmaNativeMotionIssue['code'][] {
 }
 
 describe('@open-pencil/fig native Motion adapter', () => {
+  test('strictly round-trips the cross-plugin Motion envelope', () => {
+    const motion = createSpec()
+    const encoded = encodeFigmaMotionSharedEnvelope(motion)
+    const decoded = decodeFigmaMotionSharedEnvelope(encoded)
+
+    expect(decoded).toEqual({
+      ok: true,
+      value: { schema: 'openpencil.motion', version: 1, motion }
+    })
+    expect(decodeFigmaMotionSharedEnvelope('{not json').ok).toBe(false)
+    expect(
+      decodeFigmaMotionSharedEnvelope(
+        JSON.stringify({ schema: 'openpencil.motion', version: 2, motion })
+      ).ok
+    ).toBe(false)
+    expect(
+      decodeFigmaMotionSharedEnvelope(
+        JSON.stringify({ schema: 'openpencil.motion', version: 1, motion, script: 'nope' })
+      ).ok
+    ).toBe(false)
+    const cleared = encodeFigmaMotionSharedClearEnvelope()
+    expect(decodeFigmaMotionSharedPayload(cleared)).toEqual({
+      ok: true,
+      value: {
+        kind: 'cleared',
+        value: { schema: 'openpencil.motion', version: 1, cleared: true }
+      }
+    })
+    expect(decodeFigmaMotionSharedEnvelope(cleared)).toEqual({
+      ok: false,
+      error: 'Shared Motion was explicitly cleared'
+    })
+  })
+
   test('converts opacity multipliers against the authored node opacity', () => {
     const plan = createFigmaNativeMotionPlan(
       createSpec({
@@ -209,31 +247,40 @@ describe('@open-pencil/fig native Motion adapter', () => {
     expect(plan.issues.map((issue) => issue.code)).toEqual(['empty-channels'])
   })
 
+  test('rejects keyframes that collapse onto the same native timeline position', () => {
+    const plan = createFigmaNativeMotionPlan(
+      createSpec({
+        keyframes: [
+          { offset: 0, x: 0 },
+          { offset: 0.5000001, x: 10 },
+          { offset: 0.5000002, x: 20 },
+          { offset: 1, x: 30 }
+        ]
+      })
+    )
+
+    expect(plan.supported).toBe(false)
+    expect(plan.operations).toEqual([])
+    expect(plan.issues.map((issue) => issue.code)).toContain('duplicate-offset')
+  })
+
   test('builds a deterministic selection-only script with guarded beta API access', () => {
     const plan = createFigmaNativeMotionPlan(createSpec())
     const first = buildFigmaMotionPluginScript(plan)
     const second = buildFigmaMotionPluginScript(plan)
+    const transactionSource = getFigmaNativeMotionTransactionSource()
 
     expect(first).toBe(second)
     expect(first).toContain('selection.length !== 1')
-    expect(first).toContain("typeof node.applyManualKeyframeTrack !== 'function'")
-    expect(first).toContain("typeof node.removeManualKeyframeTrack !== 'function'")
-    expect(first).toContain("typeof node.setTimelineDuration !== 'function'")
-    expect(first).toContain('timeline.duration < 0.4')
+    expect(first).toContain(`const apply = ${transactionSource}`)
+    expect(first).toContain('return apply(figma, node, request)')
+    expect(first.match(/function applyFigmaNativeMotionTransaction/g)).toHaveLength(1)
+    expect(first).toContain('"conflictPolicy": "replace-owned"')
     expect(first).not.toContain('figma.getNodeByIdAsync')
-    expect(first).not.toContain('setPluginData')
     expect(first).not.toContain('eval(')
   })
 
-  test('replaces slide-up with fade-in without leaving supported tracks or animation styles', () => {
-    const slidePlan = createFigmaNativeMotionPlan(
-      createSpec({
-        keyframes: [
-          { offset: 0, opacity: 0, y: 24 },
-          { offset: 1, opacity: 1, y: 0 }
-        ]
-      })
-    )
+  test('requires an explicit destructive policy before replacing foreign native Motion', () => {
     const fadePlan = createFigmaNativeMotionPlan(
       createSpec({
         keyframes: [
@@ -243,24 +290,14 @@ describe('@open-pencil/fig native Motion adapter', () => {
       })
     )
 
-    expect(slidePlan.operations.map((operation) => operation.field.name)).toEqual([
-      'OPACITY',
-      'TRANSLATION_Y'
-    ])
-    expect(fadePlan.operations.map((operation) => operation.field.name)).toEqual(['OPACITY'])
-
-    const script = buildFigmaMotionPluginScript(fadePlan)
-    const cleanupStart = script.indexOf('const supportedFields =')
-    const applyStart = script.indexOf('const operations =')
-    const cleanup = script.slice(cleanupStart, applyStart)
-    expect(cleanup).toContain('"name": "TRANSLATION_Y"')
-    expect(cleanup).not.toContain('"name": "WIDTH"')
-    expect(cleanup).toContain('node.removeManualKeyframeTrack(field)')
-    expect(cleanup).toContain('node.removeAnimationStyle(animationStyle.id)')
-    expect(script).toContain("typeof node.removeAnimationStyle !== 'function'")
-    expect(script.indexOf('node.removeManualKeyframeTrack(field)')).toBeLessThan(
-      script.indexOf('node.applyManualKeyframeTrack(operation.field')
-    )
+    const safe = buildFigmaMotionPluginScript(fadePlan)
+    const destructive = buildFigmaMotionPluginScript(fadePlan, {
+      conflictPolicy: 'replace-all'
+    })
+    expect(safe).toContain('"conflictPolicy": "replace-owned"')
+    expect(destructive).toContain('"conflictPolicy": "replace-all"')
+    expect(safe).toContain(`const apply = ${getFigmaNativeMotionTransactionSource()}`)
+    expect(destructive).toContain(`const apply = ${getFigmaNativeMotionTransactionSource()}`)
   })
 
   test('quotes an optional stable node id instead of interpolating executable code', () => {
@@ -274,8 +311,22 @@ describe('@open-pencil/fig native Motion adapter', () => {
 
   test('does not generate a script for a failed compatibility plan', () => {
     const plan = createFigmaNativeMotionPlan(createSpec({ trigger: 'click' }))
-    expect(() => buildFigmaMotionPluginScript(plan)).toThrow(
-      'Cannot build a Figma Motion script for an unsupported plan'
-    )
+    expect(() => buildFigmaMotionPluginScript(plan)).toThrow(/unsupported or malformed plan/)
+  })
+
+  test('rejects malformed JavaScript inputs instead of trusting TypeScript-only shapes', () => {
+    const plan = createFigmaNativeMotionPlan(createSpec())
+    const unsupportedField = structuredClone(plan)
+    const [firstOperation] = unsupportedField.operations
+    if (!firstOperation) throw new Error('missing operation fixture')
+    Reflect.set(firstOperation.field, 'name', 'WIDTH')
+
+    expect(() => buildFigmaMotionPluginScript(unsupportedField)).toThrow(/unsupported native track/)
+    expect(() =>
+      buildFigmaMotionPluginScript(plan, { allowTimelineGrowth: 'yes' } as never)
+    ).toThrow(/must be a boolean/)
+    expect(() =>
+      buildFigmaMotionPluginScript(plan, { conflictPolicy: 'overwrite' } as never)
+    ).toThrow(/replace-owned or replace-all/)
   })
 })

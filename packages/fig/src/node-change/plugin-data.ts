@@ -9,6 +9,7 @@ import {
   type SceneNode
 } from '@open-pencil/scene-graph'
 
+import { FIGMA_MOTION_SHARED_KEY, FIGMA_MOTION_SHARED_NAMESPACE } from '../motion-native'
 import { readEffectiveFigmaRawField } from '../source-metadata'
 
 export const OPEN_PENCIL_PLUGIN_ID = 'open-pencil'
@@ -183,11 +184,28 @@ export function extractPluginRelaunchData(nc: NodeChange): PluginRelaunchDataEnt
 }
 
 export function mergePluginData(pluginData: PluginDataEntry[]): PluginData[] {
-  return pluginData.map((entry) => ({
-    pluginID: entry.pluginId,
-    key: entry.key,
-    value: entry.value
-  }))
+  let lastSharedMotionIndex = -1
+  for (let index = 0; index < pluginData.length; index++) {
+    const entry = pluginData[index]
+    if (
+      entry.pluginId === FIGMA_MOTION_SHARED_NAMESPACE &&
+      entry.key === `${FIGMA_MOTION_SHARED_NAMESPACE}/${FIGMA_MOTION_SHARED_KEY}`
+    ) {
+      lastSharedMotionIndex = index
+    }
+  }
+  return pluginData
+    .filter((entry, index) => {
+      const isSharedMotion =
+        entry.pluginId === FIGMA_MOTION_SHARED_NAMESPACE &&
+        entry.key === `${FIGMA_MOTION_SHARED_NAMESPACE}/${FIGMA_MOTION_SHARED_KEY}`
+      return !isSharedMotion || index === lastSharedMotionIndex
+    })
+    .map((entry) => ({
+      pluginID: entry.pluginId,
+      key: entry.key,
+      value: entry.value
+    }))
 }
 
 export function serializePluginRelaunchData(
