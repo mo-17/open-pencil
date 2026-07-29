@@ -24,13 +24,13 @@ Lowcode apps build on normal OpenPencil documents. You still draw frames, text, 
 
 ## Desktop vs Browser
 
-| Capability | Desktop app | Browser app |
-|------------|-------------|-------------|
-| Edit design and lowcode properties | Yes | Yes |
-| Live lowcode preview pane | Yes | No, preview sidecar is desktop-only |
-| Deploy controls in the preview pane | Yes | No |
-| CLI compile/build/deploy | Yes, from your terminal | Yes, from your terminal |
-| MCP/agent control of a running document | Yes | Limited by the connected tool |
+| Capability                              | Desktop app             | Browser app                         |
+| --------------------------------------- | ----------------------- | ----------------------------------- |
+| Edit design and lowcode properties      | Yes                     | Yes                                 |
+| Live lowcode preview pane               | Yes                     | No, preview sidecar is desktop-only |
+| Deploy controls in the preview pane     | Yes                     | No                                  |
+| CLI compile/build/deploy                | Yes, from your terminal | Yes, from your terminal             |
+| MCP/agent control of a running document | Yes                     | Limited by the connected tool       |
 
 For browser-only use, keep editing in the web app and run `openpencil compile`, `openpencil build`, or `openpencil deploy` against the saved `.fig` / `.pen` file from your terminal.
 
@@ -72,6 +72,217 @@ Preview options:
 - **Deploy** — use the deploy controls when you are ready to publish.
 
 The preview pane is Tauri-only because it starts a local compiler dev server sidecar.
+
+## Motion and Workflow Actions
+
+Apply a Motion preset to a node from the Design inspector. For a single selection, the Motion
+section also exposes a visual timeline where you can:
+
+- Add, rename, duplicate, reorder, or remove tracks within the bounded `MotionSpec` limits. A track
+  rename updates matching Play, Stop, Toggle, and Await references in events and workflows in the
+  same undo step.
+- Add, duplicate, remove, or pointer-drag keyframes. One drag is coalesced into one undo step, and a
+  newly inserted keyframe preserves every enabled channel by sampling the surrounding segment.
+- Drag the playhead to preview an exact time on the Canvas without changing document geometry.
+- Edit each track's trigger, duration, delay, easing, iterations, direction, fill, and exit behavior,
+  plus a per-keyframe segment easing. Easing supports named curves, a graphical/numeric cubic
+  bezier editor, and MotionSpec v2 hold, steps, spring, and inertia controls.
+- Enable and edit opacity, X/Y translation, X/Y scale, and rotation on each keyframe.
+- Explicitly upgrade a v1 spec before authoring v2 transform origin, width/height, corner radius,
+  fill/stroke, blur/shadow, bounded paths with progress and auto-rotate, vector trim, gap, row/column
+  gap, and four-side padding channels. Paint controls require an existing visible paint or stroke,
+  corner radius requires box geometry, and gap/padding require auto layout. VECTOR stroke width and
+  trim additionally require an editable centerline; imported stroke-outline geometry can animate
+  its stroke color, while width and trim remain static. Vector color channels also require drawable
+  geometry for the corresponding fill or stroke role, so empty and role-mismatched imported paths
+  fail closed. Unavailable controls explain that requirement, and an unsupported channel already
+  present in imported data remains removable. BOOLEAN_OPERATION layers require resolved final
+  `fillGeometry` before presets, preview, or timeline authoring are enabled; an existing unsupported
+  MotionSpec can still be cleared. v1 data stays v1 until that explicit upgrade.
+
+### Motion P2 authoring
+
+MotionSpec v3 is an explicit upgrade. Existing v1/v2 tracks keep their original serialization and
+playback until you choose a v3-only control. In v3, each track can use `replace`, `add`, or
+`accumulate` composition, a bounded weight, and a stable priority. The Canvas, generated React
+runtime, fixed-time export, and public Motion Runtime SDK resolve the same ordering rules.
+
+Use the P2 panels according to the level of behavior you are authoring:
+
+- **Scene timeline** — Select a page or frame, then add descendant tracks as cues. Sequences can run
+  on page/frame enter, page/frame exit, or through the manual runtime API. Zoom and snap the ruler,
+  add markers, select several cues, translate or scale their timing, and use Auto Keyframe without
+  splitting one gesture into multiple undo entries.
+- **Motion recipes** — Select the participating layers, define stable role assignments and bounded
+  numeric parameters, and save the complete multi-node snapshot. Compatibility is checked before
+  apply, and applying every role is one undoable transaction. Personal recipes can be imported or
+  exported as JSON; CLI and MCP/AI use the same strict recipe format.
+- **Continuous drivers** — Select a page or frame that owns direct-progress-safe tracks. Add a
+  scroll, pointer, drag, visibility, page-state, document-state, or variable input; choose its target
+  track; then set input min/max, dead zone, clamp, and reverse. The preview slider samples the same
+  result without changing authored geometry. Generated apps scope listeners to that owner, suppress
+  the driven track's automatic trigger, coalesce updates into one frame, and clean up listeners and
+  observers on unmount.
+- **Prototype transitions** — Add navigate, back, open-overlay, or close-overlay connections with
+  click or bounded after-delay triggers. Configure interruption and forward/reverse playback.
+  Smart Match uses an explicit stable key on corresponding layers, interpolates matched geometry,
+  dissolves unmatched layers, and applies the authored deterministic fallback when matching is
+  ambiguous or reduced motion is active.
+- **Motion paths** — Upgrade a polyline path to the v3 cubic representation, add or remove cubic
+  segments, and turn on canvas editing. The overlay exposes focusable endpoints and control handles;
+  drag them or use Arrow keys (Shift for a larger step). One drag is one undo step, Escape restores
+  the starting path, and nested transforms, rotation, flips, pan, and zoom are accounted for. Path
+  traversal uses a bounded arc-length table for constant-speed progress and optional direction
+  following.
+- **Advanced channels** — v3 can animate multiple indexed paints and effects, gradient stops,
+  independent corner radii, text reveal, supported variable-font axes, mask-safe properties, and
+  topology-compatible vector morphs. Controls remain disabled with a concrete capability reason
+  when the selected layer cannot reproduce a channel; imported unsupported values remain removable.
+- **Generated effects** — Add one bounded noise, shimmer, scanline, or particle layer. Only preset,
+  time, seed, color, density, and resource-budget data is stored—never shader source, arbitrary code,
+  or a URL. Canvas, generated apps, and fixed-time export use the same deterministic seed and an
+  explicit static/disabled reduced-motion fallback.
+
+Use **Animation export** for a selected node or scene owner. PNG sequence and the deterministic
+GIF89a encoder are available without an external binary. Browser builds expose VP8 WebM only when
+WebCodecs reports the required capability and use an explicit opaque-only contract. Desktop CLI and
+MCP can additionally discover FFmpeg for WebM or optional MP4 output. Choose the frame rate, loop
+count, and reduced-motion policy before export; progress and cancellation apply to rendering and
+encoding. Tauri and encoded CLI/MCP files use strict atomic no-clobber publication. A CLI/MCP PNG
+sequence exclusively claims its directory and no-replace hard-links each frame; successful command
+completion plus `manifest.json` marks the complete sequence. Browser animation exports hand a fully
+encoded payload to the browser download manager, whose own collision policy controls renaming or
+overwrite confirmation. Failed or cancelled work cleans only output owned by that export.
+
+The same `export_motion_animation` operation is available to built-in AI and MCP. Built-in AI opens
+the app save surface for PNG-sequence ZIP or GIF output and honors request cancellation, but its chat
+transcript does not yet show per-phase progress. MCP reports progress when the client supplies a
+progress token and restricts every output path to `OPENPENCIL_MCP_ROOT`.
+
+MotionSpec v3 collaboration uses stable track/keyframe identities and nested CRDT fields, so edits to
+different channels or timings merge without replacing the whole timeline. The collaboration panel
+shows bounded conflict notices plus remote playheads and selections; deleted identities remain
+tombstoned until an explicit compaction boundary. v1/v2 continue using their legacy opaque snapshot
+and are never migrated merely by opening a collaborative document.
+
+The preset library groups the built-in entrance, interaction, emphasis, and loop recipes. Search by
+name or behavior, keep personal favorites, and point at or keyboard-focus a card to preview it on the
+current selection without changing the document or adding an undo entry. A multi-selection can add
+a spatially ordered delay with forward or reverse direction and linear or eased rhythm.
+
+Use **Save current** to capture the selected node's complete MotionSpec as a personal preset. Personal
+presets and favorites are user settings rather than document data. The local settings envelope stores
+both, while portable export contains the versioned library metadata and preset definitions but
+deliberately omits favorites: those remain personal and are not shared. Copy/paste the JSON or use
+the file import/export buttons;
+browser sessions use the browser picker/download flow and Tauri uses native file dialogs. Import
+validates the complete payload before merging it. Applying a personal preset always writes a complete
+MotionSpec snapshot to each node, so the animation continues to work after `.fig` save/reopen,
+copy/paste, collaboration, component instance sync, and compilation even on a machine that does not
+have the original personal library. Renaming, updating, or deleting the library entry never silently
+rewrites nodes that already used it.
+
+Readonly shared libraries retain publisher, source, accepted version, and newest observed version
+metadata. Accept a bounded manifest explicitly, run **Check for update** against its declared file or
+HTTP(S) source, and use **Accept update** only after reviewing the new version; checking never
+silently replaces the accepted snapshot. The CLI exposes the same publish/import/check/accept flow.
+
+Signed **Team animation libraries** extend that flow with Ed25519 publisher verification, engine
+version ranges, bounded numeric tokens, parameterized recipes, deterministic update diffs, explicit
+accept/reject review, verified history, and rollback. Import requires both the signed manifest and
+the trusted publisher public key. Applying an entry expands it into a complete document snapshot, so
+the design and generated app do not depend on the registry remaining online. A signature, digest,
+range, token, or role mismatch fails before the document is edited.
+
+Lowcode Events and Workflows include **Play motion**, **Stop motion**, **Toggle motion**, and
+**Await motion** actions. Choose a target node with valid Motion data, then run all of its tracks or
+one track by id. Await supports a bounded timeout and optional stop-on-timeout behavior. Generated React apps
+resolve every rendered instance with the target `data-node-id`; manual playback uses the same
+bounded WAAPI runtime as interactive triggers and temporarily suppresses that instance's CSS
+mount/loop animation to avoid competing transforms. Stopping cancels both manual and matching
+automatic playback and restores the node's authored static state.
+
+When a generated multi-page React app runs a lowcode **Navigate** action, it first starts every
+mounted `pageExit` track on the current page and waits for their WAAPI playback before changing the
+route. Navigation still proceeds when the Motion runtime or matching tracks are absent. The wait has
+a four-second hard ceiling; an infinite or stalled exit animation is canceled at that boundary so it
+cannot trap the user on the old route. Explicit Play, Stop, Toggle, and Await motion workflow actions
+keep their existing independent semantics.
+
+Canvas preview uses a prepared reference sampler so channel discovery, timing defaults, and the
+reduced-motion decision are resolved once per preview target. The sampler can select one trigger,
+explicit track ids, or every track in source order; when tracks write the same channel, the later
+contributing track wins. Its diagnostic form reports each track's trigger, exit behavior, progress,
+contribution, completion, and isolated visual value. Browser parity tests compare this reference
+against generated CSS and controlled WAAPI checkpoints for every visual channel.
+
+While a development preview is running, enable **Motion** in the preview toolbar to open **Motion
+Debug**. It reports structured runtime entries such as the node and track, trigger and playback
+source, play state, progress, current time, reduced-motion policy, exit behavior, timing, and compile
+warnings, plus the number of active runtime-managed animations. The generated runtime responds to
+live `prefers-reduced-motion` changes while preserving unaffected, controlled, stopped, and active
+hover/focus/press/click/in-view state. Performance and cleanup coverage includes repeatable
+100/500-target sampling and browser checks that removed Motion containers release their animations
+and inspection entries. A real Tauri automation ACK also covers the initially empty Debug state and
+adding the first mount track: the preview performs one automatic full reload, requires no manual
+refresh, and exposes the completed track. Interactive triggers and live reduced-motion switching are
+covered in browser/runtime tests rather than claimed as manually verified Tauri behaviors.
+
+### Figma native Motion adapter (Beta)
+
+OpenPencil keeps `MotionSpec` as the canonical editable source and writes a strict shared-plugin-data
+mirror that the bundled development Figma plugin can inspect. That mirror is metadata, not a native
+Figma timeline. Native Motion is created only when the
+[official Motion Plugin API](https://developers.figma.com/docs/plugins/api/Motion/) applies a
+generated, validated plan inside Figma. Figma introduced these read/write methods in
+[Plugin API Update 130](https://developers.figma.com/docs/plugins/updates/).
+
+The currently verified native subset is deliberately narrow: exactly one `mount` track, zero delay,
+one normal iteration, `both` fill, no exit animation, and keyframes using opacity, X/Y translation,
+rotation, or X/Y scale with standard or cubic-bezier easing. Unsupported triggers, loops, direction,
+exit behavior, properties, duplicate lowered offsets, malformed metadata, and unapproved
+shared-timeline growth fail closed. With the default `replace-owned` policy, foreign/native-edited
+tracks also fail closed. The explicit destructive `replace-all` opt-in may remove foreign animation
+styles and supported manual property tracks; indexed paint/stroke/effect tracks and unknown future
+property fields still fail closed.
+
+Use the inspector's **Figma native Motion** card for a compatibility diagnosis and copyable script,
+the extended MCP tool `get_figma_motion_adapter` for automation, or the CLI. The CLI defaults to a
+plan and can compare a detached official-API readback before generating anything:
+
+```sh
+openpencil motion inspect figma-motion-snapshot.json --json
+openpencil motion apply app.fig --node 1:23 --current figma-motion-snapshot.json --json
+openpencil motion apply app.fig --node 1:23 --emit script -o apply-motion.js
+openpencil motion clear figma-motion-snapshot.json --emit snapshot -o clear-motion.json
+```
+
+`motion inspect`, `apply`, and `clear` operate on files, plans, and generated artifacts only; they do
+not connect to Figma Desktop. An explicitly emitted apply script requires exactly one selected Figma
+node by default and replaces only tracks carrying a verified OpenPencil ownership marker.
+`--target-node`, `--conflict-policy replace-all`, and `--allow-timeline-growth` are explicit opt-ins.
+The safe apply/clear snapshots contain no undocumented raw timeline payloads. Every supported apply
+script performs capability checks, readback verification, and rollback on failure. Unit,
+mock-plugin, CLI, and OpenPencil UI tests cover this contract; final acceptance in a live Figma
+Desktop document remains a manual ACK boundary while Figma's Motion Plugin API is Beta. The older
+`motion figma-adapter` command remains available as a compatibility shortcut for script generation.
+
+Motion remains declarative JSON: these controls do not accept arbitrary JavaScript or CSS. The
+OpenPencil `MotionSpec` is preserved in `.fig` plugin data, but it is not the same as Figma's native
+prototype or Motion timeline. The personal preset library itself does not travel inside `.fig`; use
+its explicit JSON export when another author should receive the reusable entry. Imported `.pen`
+documents can round-trip MotionSpec through the versioned `metadata.openPencil` extension using the
+Pen package, Core IO registry, or CLI. That writer is intentionally Motion-only and rejects other
+edits rather than producing a lossy `.pen`. Component refs and nested descendant overrides preserve
+inheritance, while explicit clears use a tombstone so Motion does not return after reopen. Unknown
+future metadata is preserved when untouched and rejected on conflicting Motion edits. The desktop
+editor still imports `.pen` into a `.fig` save flow for general editing.
+
+Four final checks intentionally remain manual: native operating-system JSON open/save dialogs,
+persistence across an actual desktop application-process restart, desktop `.fig` save/reopen, and a
+live Figma Desktop apply/readback/rollback run through the official Motion Plugin API Beta. Unit,
+browser, mock-plugin, and Tauri automation results are not presented as substitutes for those four
+checks.
 
 ## Compile Source
 

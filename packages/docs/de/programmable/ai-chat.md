@@ -1,6 +1,6 @@
 ---
 title: KI-Chat
-description: Integrierter KI-Assistent mit über 90 Werkzeugen zum Erstellen und Bearbeiten von Designs.
+description: Integrierter KI-Assistent mit einem kuratierten Satz von über 50 Werkzeugen zum Erstellen und Bearbeiten von Designs.
 ---
 
 # KI-Chat
@@ -29,7 +29,7 @@ Kein Backend, kein Abonnement — Ihr Schlüssel kommuniziert direkt mit dem Anb
 
 ## Funktionen
 
-Der Assistent verfügt über 90+ Werkzeuge in diesen Kategorien:
+Der Assistent verfügt über einen kuratierten Satz von 50+ Werkzeugen in diesen Kategorien:
 
 - **Erstellen** — Frames, Formen, Text, Komponenten, Seiten. Rendert JSX für komplexe Layouts.
 - **Stylen** — Füllungen, Konturen, Effekte, Deckkraft, Eckenradius, Mischmodi.

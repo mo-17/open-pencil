@@ -65,7 +65,7 @@ CLI: `openpencil export design.fig -f jsx --style tailwind`
 
 ## Chat IA
 
-Pulsa <kbd>⌘</kbd><kbd>J</kbd> para abrir el asistente IA. 90+ herramientas que pueden crear formas, aplicar estilos, gestionar layout, trabajar con componentes y variables, ejecutar operaciones booleanas, analizar tokens de diseño y exportar assets. Conecta Anthropic, OpenAI, Google AI, OpenRouter o cualquier endpoint compatible.
+Pulsa <kbd>⌘</kbd><kbd>J</kbd> para abrir el asistente IA. Sus más de 50 herramientas seleccionadas pueden crear formas, aplicar estilos, gestionar layout, trabajar con componentes y variables, ejecutar operaciones booleanas, analizar tokens de diseño y exportar assets. Conecta Anthropic, OpenAI, Google AI, OpenRouter o cualquier endpoint compatible.
 
 Las llamadas a herramientas se muestran como entradas colapsables. Verificación visual — el asistente renderiza su trabajo y lo compara con tu solicitud. Soporte completo de deshacer para todas las mutaciones de IA.
 
@@ -73,7 +73,7 @@ Ver [Chat IA](/programmable/ai-chat) para configuración y detalles de proveedor
 
 ## Servidor MCP
 
-Conecta Claude Code, Cursor, Windsurf, o cualquier cliente MCP para leer y escribir archivos `.fig` de forma headless. 90+ herramientas. Dos transportes: stdio y HTTP.
+Conecta Claude Code, Cursor, Windsurf, o cualquier cliente MCP para leer y escribir archivos `.fig` de forma headless. El servidor ofrece más de 140 operaciones de diseño y operaciones de documentos/archivos mediante stdio y HTTP.
 
 ```sh
 npm install -g @open-pencil/mcp

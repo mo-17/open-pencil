@@ -19,7 +19,7 @@ graph TB
                 Kiwi --- SVG[SVG export]
             end
         end
-        MCP["MCP Server (90 tools, stdio+HTTP)"]
+        MCP["MCP Server (140+ design tools, stdio+HTTP)"]
         Collab["P2P Collab (Trystero + Yjs)"]
     end
 `
@@ -76,7 +76,7 @@ Narzędzia są definiowane raz w `packages/core/src/tools/`, podzielone wg domen
 - **Serwer MCP** — schematy zod, transporty stdio + HTTP
 - **CLI** — dostępne przez komendę `eval`
 
-90+ narzędzi core + 3 narzędzia zarządzania plikami MCP. Zawiera zapytania XPath (`query_nodes`), inspekcję JSX (`get_jsx`, `diff_jsx`), opis semantyczny (`describe`) i weryfikację wizualną (`export_image` zwraca obrazy do modelu).
+Serwer MCP oferuje ponad 140 operacji projektowych oraz operacje dokumentów/plików. Wbudowany chat używa ponad 50 wyselekcjonowanych narzędzi. Zawiera zapytania XPath (`query_nodes`), inspekcję JSX (`get_jsx`, `diff_jsx`), opis semantyczny (`describe`) i weryfikację wizualną (`export_image` zwraca obrazy do modelu).
 
 ### Cofnij/Ponów
 
@@ -98,7 +98,7 @@ Gdy aplikacja desktopowa jest uruchomiona, komendy CLI łączą się z nią prze
 
 ### Pełny zestaw narzędzi figma-use
 
-Serwer MCP obecnie udostępnia 90 narzędzi. Referencyjna implementacja w [figma-use](https://github.com/dannote/figma-use) ma 118. Pozostałe narzędzia obejmują zaawansowane ograniczenia layoutu, połączenia prototypów, zaawansowaną edycję właściwości komponentów i masowe operacje na dokumentach.
+Serwer MCP oferuje ponad 140 operacji projektowych oraz operacje dokumentów/plików. Wbudowana AI celowo używa ponad 50 wyselekcjonowanych narzędzi; CLI udostępnia całą powierzchnię ToolDef przez `eval`.
 
 ### Narzędzia CI do designu
 

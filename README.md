@@ -26,10 +26,17 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
 - **Design-to-code export** — export selections as JSX/Tailwind, generate token outputs, and map designs into component-oriented code workflows
-- **Code-based motion** — apply bounded animation presets, preview them without changing document geometry, edit timing and triggers through the inspector or AI/MCP, and compile them to CSS/WAAPI with reduced-motion handling
+- **Code-based motion** — author bounded MotionSpec v1/v2/v3 timelines, structured channels, and
+  cubic paths; choreograph page/frame scenes; build multi-node recipes, continuous drivers,
+  prototypes, and Smart Match transitions; use personal, shared, or signed Team libraries; trigger
+  tracks from lowcode workflows; compile to CSS/WAAPI with live reduced-motion handling; export
+  deterministic PNG sequences or GIF plus capability-gated WebM/MP4; embed the public SSR-safe
+  Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
+  native subset
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase actions, workflows, i18n, shadcn/ui output, preview, build, and deploy flows
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
-- **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence, and follow mode
+- **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence,
+  follow mode, and fine-grained MotionSpec v3 timeline merging with remote playheads and selections
 - **Auto layout & CSS Grid** — flex and grid layout via Yoga WASM, with gap, padding, alignment, track sizing
 - **~7 MB desktop app** — Tauri v2 for macOS, Windows, Linux. Also runs in the browser as a PWA
 
@@ -85,8 +92,17 @@ openpencil export design.fig -f jsx --style tailwind   # Tailwind JSX
 openpencil export design.fig -f html --css tailwind    # Tailwind HTML fragment
 openpencil export design.fig -f html --html standalone --assets external # HTML + assets
 openpencil convert design.pen -f fig -o output.fig     # Convert between document formats
+openpencil convert animated.pen -f pen -o updated.pen # Source-preserving Motion metadata write
+openpencil motion export animated.fig --node 1:23 --fps 30 -o motion-frames # PNG sequence
+openpencil motion export animated.fig --node 1:23 --format gif -o motion.gif # Built-in GIF89a
+openpencil motion export animated.fig --node 1:23 --format webm -o motion.webm # FFmpeg capability
 openpencil import page.html --css styles.css -o page.fig # HTML/CSS → editable .fig
 ```
+
+The `.pen` writer currently updates MotionSpec metadata only on documents originally read from
+`.pen`; it preserves untouched foreign/future metadata and rejects conflicting unknown-schema,
+structural, or visual changes instead of emitting a lossy Pencil document. Use `.fig` for general
+editing and conversion.
 
 DOM/CSS input flows through `@open-pencil/dom-css`, so HTML, authored CSS, and Tailwind utility CSS can become editable OpenPencil layers:
 
@@ -141,12 +157,45 @@ openpencil variables design.fig
 
 ### Script with Figma Plugin API
 
-`eval` gives you the full Figma Plugin API. Modify the file, write it back:
+`eval` exposes OpenPencil's Figma-compatible Plugin API surface. Modify the file, write it back:
 
 ```sh
 openpencil eval design.fig -c "figma.currentPage.children.length"
 openpencil eval design.fig -c "figma.currentPage.selection.forEach(n => n.opacity = 0.5)" -w
 ```
+
+### Adapt Motion to Figma (Beta)
+
+Generate a self-contained Figma plugin script for a node whose `MotionSpec` fits the verified
+[official Motion API](https://developers.figma.com/docs/plugins/api/Motion/) subset:
+
+```sh
+openpencil motion inspect figma-motion-snapshot.json --json
+openpencil motion apply design.fig --node 1:23 --emit script -o apply-motion.js
+openpencil motion clear figma-motion-snapshot.json --emit snapshot -o clear-motion.json
+```
+
+The safe default targets one selected Figma node, replaces only Motion previously owned by the
+OpenPencil adapter, and refuses unsupported triggers, timing, properties, or conflicting native
+state. Use `--target-node`, `--conflict-policy replace-all`, or `--allow-timeline-growth` only when
+that broader target or mutation is intentional. This bridge applies through Figma's official
+Plugin API; OpenPencil still does not synthesize undocumented native timeline payloads directly
+inside `.fig` archives.
+
+### Share Motion preset libraries
+
+Publish a personal preset JSON file as a readonly, versioned shared manifest, then import, check,
+and explicitly accept updates from its declared file or HTTP(S) source:
+
+```sh
+openpencil motion presets publish personal.json --publisher-id design-team --publisher-name "Design Team" --library-id product-motion --library-name "Product Motion" --source-version v1 -o product-motion.json
+openpencil motion presets import product-motion.json -o accepted.json
+openpencil motion presets check accepted.json -o checked.json
+openpencil motion presets accept checked.json -o accepted-v2.json
+```
+
+`check` records that a source version is available without replacing the accepted preset snapshots.
+Only `accept` replaces them. Add `--json` to any command for machine-readable output.
 
 ### Control the running app
 
@@ -197,7 +246,7 @@ Press <kbd>⌘</kbd><kbd>J</kbd> to open the AI assistant. Its curated built-in 
 
 ### Coding agents (desktop)
 
-Use Claude Code, Codex, or Gemini CLI directly in the chat panel. The agent connects to the editor's MCP server and uses all 100+ design tools. Requires the desktop app and the agent CLI installed locally.
+Use Claude Code, Codex, or Gemini CLI directly in the chat panel. The agent connects to the editor's MCP server and uses all 140+ design operations. Requires the desktop app and the agent CLI installed locally.
 
 **Setup (Claude Code):**
 
@@ -214,7 +263,7 @@ Use Claude Code, Codex, or Gemini CLI directly in the chat panel. The agent conn
 
 ### MCP server
 
-Connect Claude Code, Cursor, Windsurf, or any MCP client to inspect, modify, and export design documents through 100+ operations. The server connects to a running OpenPencil app for live-document operations. [Full docs →](https://openpencil.dev/programmable/mcp-server)
+Connect Claude Code, Cursor, Windsurf, or any MCP client to inspect, modify, and export design documents through 140+ design operations plus document/file lifecycle tools. The server connects to a running OpenPencil app for live-document operations. [Full docs →](https://openpencil.dev/programmable/mcp-server)
 
 **Stdio** (Claude Code, Cursor, Windsurf):
 
@@ -302,6 +351,7 @@ packages/
   kiwi/           @open-pencil/kiwi — Kiwi runtime and low-level .fig container parsing
   fig/            @open-pencil/fig — .fig archives, SceneGraph conversion, instances, metadata
   core/           @open-pencil/core — editor engine, renderer, layout, tools, RPC, document I/O
+  motion-runtime/ @open-pencil/motion-runtime — shared scheduler and DOM/Vanilla/Vue adapters
   dom-css/        @open-pencil/dom-css — HTML/CSS/Tailwind to editable design documents
   vue/            @open-pencil/vue — headless Vue SDK
   compiler/       @open-pencil/compiler — private design-to-code compiler for React/Tailwind apps

@@ -4,14 +4,134 @@
 
 ### Fixed
 
+- Preserve exact non-frame-aligned WebM durations through FFmpeg IVF remuxing, reject unsupported
+  partial-frame MP4 plans before encoding, propagate generated-effect time and reduced-motion mode
+  through AI/MCP raster rendering, prevent early FFmpeg exit from hanging stdin backpressure, and
+  prevent a racing empty destination directory from being replaced during PNG-sequence publication.
+- Lower prototype hotspots, after-delay connections, overlays, and Smart Match keys from component
+  master bodies into instance-scoped generated React nodes, so repeated component instances no
+  longer share target identity or silently drop interactive behavior.
+- Reverify signed Team Motion registry metadata at every app, CLI, AI, and MCP trust boundary;
+  expose pure accept/reject/rollback operations and accepted-snapshot application without allowing
+  pending or tampered history to mutate a document.
+- Keep a cleared idle public Motion Runtime binding cleared when the operating-system reduced-motion
+  preference changes, while still resampling fixed-time bindings that remain visibly applied.
+- Play all mounted `pageExit` tracks before generated React lowcode navigation, while keeping the
+  route transition non-blocking when the Motion runtime is absent and enforcing a four-second safety
+  cap for stalled or infinite exit animations.
+- Preserve `.pen` Motion inheritance across component refs and nested descendant overrides, retain
+  explicit clear tombstones, reject edits that conflict with unknown metadata schemas, and keep
+  derived auto-layout updates from being mistaken for unsupported source edits.
+- Write `eval` output with the document format selected by its destination extension, so `.pen`
+  output remains Pencil JSON instead of receiving a mislabeled `.fig` ZIP archive.
 - Center text glyphs within explicit line-height leading in CanvasKit paragraph rendering.
+- Fully reload generated previews when the virtual file topology changes, so adding a document's
+  first Motion runtime or CSS module is evaluated immediately without a manual preview refresh.
+- Remove cleared optional node fields from both Yjs peers instead of leaving stale Motion data in
+  the remote graph.
 
 ### Added
 
+- Compose MotionSpec v3 tracks with deterministic `replace`, `add`, or `accumulate` semantics,
+  bounded weights, and stable priorities shared by Canvas preview, fixed-time export, generated React
+  projects, and the public runtime SDK, while leaving v1/v2 serialization and playback unchanged
+  until an explicit upgrade.
+- Choreograph page- or frame-owned scene timelines from descendant tracks with enter, exit, and
+  manual sequences; markers, zoom and snapping; multi-cue translate/scale editing; Auto Keyframe;
+  owner-scoped runtime cleanup; and one undo entry per authoring gesture.
+- Capture parameterized multi-node Motion recipes with stable role assignments, compatibility
+  previews, atomic application, personal JSON exchange, and shared UI, CLI, MCP, and AI validation.
+  Applying a recipe expands every role into complete document Motion snapshots.
+- Drive direct-progress-safe tracks from bounded scroll, pointer, drag, visibility, page/document
+  state, or variable inputs. Drivers support ranges, dead zones, clamping, reversal, accessible
+  reduced-motion behavior, owner-scoped listeners, frame-coalesced updates, and deterministic cleanup.
+- Upgrade v2 polyline Motion paths to bounded MotionSpec v3 cubic Bézier segments and edit their
+  endpoints and control points directly on the Canvas. The overlay accounts for nested transforms,
+  pan, and zoom; supports pointer drag, keyboard nudge, Escape rollback, segment add/remove, and
+  direction following; and records one undo entry per gesture without mutating static geometry.
+- Author MotionSpec v3 structured channels for indexed paints and effects, gradient stops,
+  independent corners, text reveal, variable-font axes, and topology-compatible vector morphs.
+  Canvas, masks, generated React output, tools, and persisted snapshots share node-aware capability
+  checks and deterministic fallback warnings; unsupported imported values remain removable.
+- Author prototype navigate, back, open-overlay, and close-overlay connections with click or bounded
+  after-delay triggers, interruption policy, forward/reverse playback, and generated route behavior.
+  OpenPencil Smart Match pairs layers through explicit stable keys, interpolates matched geometry,
+  dissolves unmatched layers, and uses deterministic ambiguity and reduced-motion fallbacks.
+- Import signed Ed25519 Team animation libraries with engine-version constraints, bounded tokens,
+  parameterized entries, deterministic update diffs, explicit accept/reject review, verified history,
+  rollback, and reproducible application snapshots through the app, CLI, MCP, and built-in AI tools.
+- Publish `@open-pencil/motion-runtime`, an SSR-safe, tree-shakeable scheduler with framework-neutral
+  prepared plans, DOM/Vanilla adapters, Vue bindings, continuous drivers, structured inspection, and
+  lifecycle cleanup. Generated React projects embed its public sampling and frame-loop kernel at
+  compile time, preserving portable zero-dependency output instead of maintaining a second animation
+  engine. Its DOM adapter reveals Unicode text by code point and fails closed for undeclared indexed
+  paint, gradient-stop, structured-effect, text, or vector-morph capabilities.
+- Author bounded generated-effect layers with deterministic noise, shimmer, scanline, and particle
+  presets. Effects accept only strict time, seed, color, density, and budget data—never shader source,
+  arbitrary code, or URLs—and render through CanvasKit, fixed-time animation export, and an isolated
+  generated React Canvas2D runtime with reduced-motion static/disabled fallbacks. The complete
+  effect snapshot round-trips through `.fig`, `.pen`, clipboard, components, AI, and MCP.
+- Collaboratively edit MotionSpec v3 timelines with stable keyframe identity and fine-grained Yjs
+  track/keyframe maps instead of whole-motion last-write-wins updates. Concurrent field edits merge,
+  delete tombstones survive stale reconnects, local timeline undo/redo is origin-scoped, bounded
+  deterministic conflict notices are visible in the collaboration panel, and node/scene timelines
+  show sanitized remote playheads and selections while v1/v2 retain their legacy wire shape.
+- Export node-local or scene Motion through a deterministic integer-microsecond frame planner and
+  the reference sampler to fixed-canvas PNG sequences or a built-in byte-stable GIF89a encoder.
+  Browser exports add capability-gated WebCodecs VP8 WebM, while CLI and MCP discover real FFmpeg
+  WebM/MP4 encoders. The app panel and interactive CLI report progress; MCP reports progress when a
+  client supplies a token. UI, CLI, MCP, and built-in AI propagate cancellation through their active
+  rendering/encoding paths. All paths bound duration, loops, frames, dimensions, and pixel work;
+  expose explicit reduced-motion policy; and verify output signatures. Tauri and encoded Node files
+  use atomic no-clobber publication; Node PNG sequences exclusively claim a destination and publish
+  each frame without replacement; browser exports delegate filename collisions to the download
+  manager after encoding succeeds. Failed or cancelled work cleans only artifacts owned by the
+  export.
+- Inspect detached Figma Motion readback snapshots, import the verified native numeric intersection,
+  compare add/update/remove, timeline growth, and ownership changes, and generate plan-only, official
+  Plugin API script, or guarded apply/clear snapshot artifacts from the CLI without claiming direct
+  Figma Desktop control or writing undocumented raw timeline bytes.
+- Inspect whether a node's canonical `MotionSpec` fits the verified Figma Motion Plugin API Beta
+  subset, preserve a strict shared-plugin-data mirror for the development plugin, and generate or
+  apply a fail-closed native adapter through the inspector, CLI, MCP, or Figma plugin. The adapter
+  defaults to owned-track replacement, shared-timeline growth protection, readback verification,
+  and rollback instead of writing undocumented native timeline bytes into `.fig` archives.
+- Round-trip bounded MotionSpec metadata through imported `.pen` sources with a source-preserving,
+  fail-closed Pen package/Core IO writer and CLI conversion path; foreign or future metadata stays
+  inert and intact, while unsupported non-Motion edits must be saved as `.fig`.
+- Browse categorized Motion presets with search and favorites, preview a preset from pointer or
+  keyboard focus without editing the document, save and manage personal presets, edit their
+  description/category or update them from the current selection, and import/export strictly
+  validated portable JSON while keeping favorites local. Publish, import, check, explicitly accept,
+  and remove readonly shared preset libraries from file or URL sources in the app and CLI; accepted
+  presets remain complete snapshots, and update checks never replace them implicitly.
+- Apply a complete validated MotionSpec to one or many nodes through AI/MCP, including atomic
+  instance-safe undo and optional stagger direction and rhythm.
 - Author bounded, code-based node motion with reusable presets, multi-selection inspector controls,
   non-destructive CanvasKit preview, reduced-motion policies, and AI/MCP read-write tools.
+- Edit single-node motion on a visual multi-track timeline, including keyframes, channel values,
+  track rename/reorder/duplicate, keyframe duplicate/pointer drag, per-segment easing, iterations,
+  direction, fill, exit behavior, and a scrubbable canvas playhead. Track renames update matching
+  lowcode Motion references atomically.
+- Explicitly upgrade MotionSpec v1 to v2 and author bounded transform-origin, geometry, paint,
+  stroke, blur/shadow, path/progress/auto-rotate, vector-trim, auto-layout, physical easing, and
+  per-keyframe easing channels while preserving v1 compatibility and cross-format snapshots.
+  Advanced controls now disable paint, corner-radius, stroke-width, trim, and layout channels that
+  cannot affect the selected node, explain the required capability, and still allow imported
+  unsupported channels to be removed. Imported outline-only VECTOR geometry keeps stroke-color
+  animation, while width and trim stay static unless an editable centerline is available.
+  BOOLEAN_OPERATION layers without resolved final `fillGeometry` now disable preset, preview, and
+  timeline authoring, emit a Motion lint diagnostic, and still allow an existing MotionSpec to be
+  cleared.
 - Compile node motion into generated React projects with CSS keyframes for mount/loop tracks and a
   small WAAPI runtime for hover, press, focus, click, and in-view triggers.
+- Play, stop, toggle, or await all motion tracks or one named track from lowcode events and
+  workflows; generated React apps route those actions through the bounded WAAPI motion runtime.
+- Sample Motion through a prepared framework-neutral reference plan with trigger, explicit track-id,
+  or all-track selection, plus per-track progress, contribution, completion, exit, and visual
+  diagnostics for editors and runtime inspection.
+- Inspect generated development previews with Motion Debug, including structured track state,
+  source, trigger, progress, current time, reduced-motion policy, exit behavior, and compile warnings.
 - Figma-style Assets panel browsing with component thumbnails, grid/list views, page grouping, context actions, and drag-to-canvas insertion.
 - Import HTML, CSS, Tailwind, and JSX as editable documents from the app, CLI, and SDK, and export standalone browser-ready HTML with compiled CSS and optional external assets.
 - Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, and blur effects.
@@ -32,6 +152,17 @@
 
 ### Changed
 
+- Keep generated Motion runtimes in sync with live `prefers-reduced-motion` changes without
+  restarting unaffected animations or losing controlled, stopped, or active transient-trigger
+  state.
+- Keep the public Motion Runtime SDK synchronized with live reduced-motion changes for SDK-owned
+  Vanilla and Vue runtimes, preserving logical progress, playback state, and playback rate while
+  restoring authored DOM state for disabled plans. Injected runtimes remain host-owned.
+- Exercise Canvas reference sampling against generated CSS and WAAPI output in browser parity tests,
+  with repeatable 100/500-target prepared-sampling baselines and structured runtime cleanup tests for
+  completed animations, token changes, and removed subtrees.
+- Verify Motion Debug in the real Tauri preview: an initially empty runtime reports ready state, and
+  adding the first mount track automatically reloads once and exposes its completed runtime entry.
 - Preserve imported Figma interaction, media, animation, and timeline payloads byte-for-byte across
   `.fig` saves, including nested opaque fields and schema-aware node reference remapping. A
   fail-closed adapter can generate Figma Motion Plugin API operations for the supported single-track

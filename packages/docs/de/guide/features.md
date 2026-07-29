@@ -65,7 +65,7 @@ CLI: `openpencil export design.fig -f jsx --style tailwind`
 
 ## KI-Chat
 
-<kbd>⌘</kbd><kbd>J</kbd> öffnet den KI-Assistenten. 90+ Werkzeuge zum Erstellen von Formen, Setzen von Stilen, Verwalten von Layout, Arbeiten mit Komponenten und Variablen, Ausführen boolescher Operationen, Analysieren von Design-Tokens und Exportieren von Assets. Verbinden Sie Anthropic, OpenAI, Google AI, OpenRouter oder einen kompatiblen Endpunkt.
+<kbd>⌘</kbd><kbd>J</kbd> öffnet den KI-Assistenten. Der kuratierte Satz von 50+ Werkzeugen erstellt Formen, setzt Stile, verwaltet Layout, arbeitet mit Komponenten und Variablen, führt boolesche Operationen aus, analysiert Design-Tokens und exportiert Assets. Verbinden Sie Anthropic, OpenAI, Google AI, OpenRouter oder einen kompatiblen Endpunkt.
 
 Tool-Aufrufe werden als einklappbare Timeline-Einträge angezeigt. Visuelle Überprüfung — der Assistent rendert seine Arbeit und vergleicht sie mit Ihrer Anfrage. Vollständige Undo-Unterstützung für alle KI-Mutationen.
 
@@ -73,7 +73,7 @@ Siehe [KI-Chat](/programmable/ai-chat) für Einrichtung und Anbieter-Details.
 
 ## MCP-Server
 
-Claude Code, Cursor, Windsurf oder jeden MCP-Client verbinden, um `.fig`-Dateien headless zu lesen und zu schreiben. 90+ Werkzeuge. Zwei Transporte: stdio und HTTP.
+Claude Code, Cursor, Windsurf oder jeden MCP-Client verbinden, um `.fig`-Dateien headless zu lesen und zu schreiben. Der Server bietet 140+ Designoperationen plus Dokument-/Dateioperationen über stdio und HTTP.
 
 ```sh
 npm install -g @open-pencil/mcp

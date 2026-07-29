@@ -9,15 +9,17 @@ Vue 3 + CanvasKit (Skia WASM) + Yoga WASM design editor. Tauri v2 desktop, also 
 Bun workspace with focused packages:
 
 - `packages/scene-graph` — `@open-pencil/scene-graph`: framework-agnostic node types, graph storage, variables, libraries, copy/snap/undo, and geometry primitives.
-- `packages/pen` — `@open-pencil/pen`: Pencil.dev `.pen` document model, parser, and SceneGraph import adapter.
+- `packages/pen` — `@open-pencil/pen`: Pencil.dev `.pen` document model, parser, SceneGraph import adapter, and source-preserving MotionSpec writer. The writer accepts imported `.pen` graphs and rejects non-Motion edits rather than emitting a lossy document.
 - `packages/kiwi` — `@open-pencil/kiwi`: pure Kiwi schema/runtime/protocol package. Owns low-level Figma Kiwi codec/container/parse helpers and stays SceneGraph-agnostic.
 - `packages/fig` — `@open-pencil/fig`: `.fig` archive/parser package owning Figma-specific SceneGraph conversion, raw metadata policy, and component/instance interpretation. Core keeps format-neutral IO registration and runtime rendering/font integration.
 - `packages/core` — `@open-pencil/core`: renderer, layout, editor core, Figma API, tools, clipboard, vector conversion, lowcode validation, and app/CLI-facing document I/O. Keeps browser DOM out of core.
+- `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/core/motion` prepared plans.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
 - `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into a framework-neutral IR, then emits runnable Vite + React + TypeScript + Tailwind projects, preview VFS, static builds, and deploy bundles.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
+- `packages/figma-motion-plugin` — private development Figma plugin that consumes OpenPencil's strict shared Motion envelope and applies the verified official Motion Plugin API subset through the shared `@open-pencil/fig` applicator.
 - `packages/docs` — `@open-pencil/docs`: VitePress documentation site. Run with `bun run docs:dev`.
 - `packages/demos` — demo media/assets only, not a published workspace package.
 
@@ -45,6 +47,7 @@ Use public package exports across package/app boundaries. Do not import workspac
 | `@open-pencil/core/canvas`             | SkiaRenderer (Skia/CanvasKit painting engine)                                         | —                         |
 | `@open-pencil/core/design-jsx`         | JSX-to-design renderer                                                                | sucrase                   |
 | `@open-pencil/core/editor`             | createEditor, Editor, EditorState                                                     | —                         |
+| `@open-pencil/core/motion`             | prepared MotionSpec sampling, per-track diagnostics, easing, and timeline timing      | —                         |
 | `@open-pencil/core/tools`              | ToolDef, ALL_TOOLS, AI adapter                                                        | diff                      |
 | `@open-pencil/core/kiwi`               | .fig parse/serialize, codec, protocol                                                 | fflate, fzstd             |
 | `@open-pencil/core/clipboard`          | Figma/OpenPencil clipboard parsing and import helpers                                 | —                         |
@@ -52,6 +55,7 @@ Use public package exports across package/app boundaries. Do not import workspac
 | `@open-pencil/core/lint`               | design linter rules and presets                                                       | —                         |
 | `@open-pencil/core/lowcode-validation` | lowcode state/action/expression/Supabase validators shared by tools, editor, compiler | expr-eval                 |
 | `@open-pencil/core/io`                 | IORegistry, builtin read/write/export formats, headless raster/SVG/JSX helpers        | CanvasKit, jspdf, svg2pdf |
+| `@open-pencil/core/io/motion-export`   | deterministic Motion frame planning, PNG sequences, and encoder capabilities          | CanvasKit                 |
 | `@open-pencil/core/io/formats/fig`     | .fig read/write helpers                                                               | fflate, fzstd             |
 | `@open-pencil/core/io/formats/pen`     | .pen read/write helpers                                                               | —                         |
 | `@open-pencil/core/io/formats/jsx`     | selection/node JSX export helpers                                                     | —                         |
@@ -162,6 +166,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun run test:type-shapes` — duplicate object-type shape detector
 - `bun run test:tools` — run private tool package tests under `tools/*`
 - `bun run test:packages` — package metadata check + packed tarball smoke tests
+- `bun run check:figma-motion-plugin` — typecheck, test, and build the development Figma Motion adapter plugin
 - `bun run docs:dev` / `docs:build` / `docs:preview` — VitePress docs lifecycle
 - `bun run generate:tauri-menu` — regenerate `desktop/generated/menu.json` from shared menu schema
 - `bun run visual-compare` — Figma vs OpenPencil renderer visual comparison helper
@@ -172,6 +177,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil pages <file>` — list pages
 - `bun open-pencil formats` — list readable/writable/export formats registered by `IORegistry`
 - `bun open-pencil convert <file> --format fig -o <out.fig>` — convert documents through the IO registry
+- `bun open-pencil convert <file.pen> --format pen -o <out.pen>` — source-preserving `.pen` MotionSpec metadata write; rejects non-Motion edits
 - `bun open-pencil query <file> '<xpath>'` — query nodes with XPath selectors
 - `bun open-pencil selection` — inspect current selection from a running app via RPC
 - `bun open-pencil variables <file>` — list design variables
@@ -185,12 +191,18 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil analyze spacing <file>` — gap/padding values
 - `bun open-pencil analyze clusters <file>` — repeated patterns
 - `bun open-pencil eval <file> --code '<js>'` — execute JS with Figma Plugin API
+- `bun open-pencil motion figma-adapter <file> --node <id> -o <script.js>` — diagnose and generate a safe official Figma Motion Plugin API adapter script
+- `bun open-pencil motion inspect <snapshot.json>` — inspect/import a detached official Figma Motion readback snapshot
+- `bun open-pencil motion apply <file> --node <id>` — compare/plan by default, or explicitly emit a Plugin API script/safe apply snapshot
+- `bun open-pencil motion clear [snapshot.json]` — compare/plan a clear or emit a guarded clear snapshot without raw timeline writes
+- `bun open-pencil motion export <file> --node <id> -o <path>` — export deterministic PNG/GIF or capability-gated WebM/MP4 animation
+- `bun open-pencil motion presets publish|import|check|accept ...` — manage readonly shared Motion preset manifests with explicit update acceptance
 
 ## Releases & CI
 
 ### How to release
 
-1. Update version in `package.json`, `packages/core/package.json`, `packages/cli/package.json`, `packages/mcp/package.json`, `packages/vue/package.json`, `desktop/tauri.conf.json`, and `desktop/Cargo.toml`
+1. Update version in `package.json`, each public `packages/*/package.json` including `packages/motion-runtime/package.json`, `desktop/tauri.conf.json`, and `desktop/Cargo.toml`
 2. Update `CHANGELOG.md` — move "Unreleased" items under new version heading with date
 3. Commit: `Release v0.x.y`
 4. Tag: `git tag v0.x.y && git push --tags`
@@ -198,22 +210,22 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 6. The `build.yml` workflow triggers on `v*` tags and:
    - Builds Tauri binaries for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
    - Creates a draft GitHub Release with all platform binaries
-   - Publishes `@open-pencil/core`, `@open-pencil/cli`, `@open-pencil/mcp`, and `@open-pencil/vue` to npm with provenance
+   - Publishes all public workspace packages, including `@open-pencil/motion-runtime`, to npm with provenance
 7. `@open-pencil/compiler` is private and built for app/CLI consumption, but it is not currently published as a standalone npm package.
 8. Go to GitHub Releases → edit the draft → paste changelog section → publish
 
 ### CI workflows
 
-| Workflow                 | Trigger                                          | What it does                                                                                                                                             |
-| ------------------------ | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci.yml`                 | PR to `master` (non-docs)                        | `format:check`, full `bun run check`, engine unit tests, copy-paste detection                                                                            |
-| `preview.yml`            | PR to `master` (non-docs), `pull_request_target` | Build web app, deploy Cloudflare Pages preview, comment preview URL                                                                                      |
-| `build.yml`              | `v*` tag push or manual                          | Build Tauri desktop apps (5 targets), create GitHub Release, publish `@open-pencil/core`, `@open-pencil/cli`, `@open-pencil/mcp`, and `@open-pencil/vue` |
-| `homebrew.yml`           | Release published                                | Update `open-pencil/homebrew-tap` cask with new version + SHA256 hashes                                                                                  |
-| `app.yml`                | Push to `master` (non-docs)                      | Build web app, deploy to Cloudflare Pages (`app.openpencil.dev`)                                                                                         |
-| `docs.yml`               | Push to `master` (`packages/docs/**`)            | Build VitePress docs, deploy to Cloudflare Pages (`openpencil.dev`)                                                                                      |
-| `heavy-tests.yml`        | Manual                                           | Heavy `.fig` round-trip tests with `BUN_HEAVY_TESTS=true`                                                                                                |
-| `pr-review-guidance.yml` | PR review/comment events                         | Record CodeRabbit review guidance using trusted default-branch tooling only                                                                              |
+| Workflow                 | Trigger                                          | What it does                                                                                                           |
+| ------------------------ | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `ci.yml`                 | PR to `master` (non-docs)                        | `format:check`, full `bun run check`, engine unit tests, copy-paste detection                                          |
+| `preview.yml`            | PR to `master` (non-docs), `pull_request_target` | Build web app, deploy Cloudflare Pages preview, comment preview URL                                                    |
+| `build.yml`              | `v*` tag push or manual                          | Build Tauri desktop apps (5 targets), create GitHub Release, and publish all public workspace packages with provenance |
+| `homebrew.yml`           | Release published                                | Update `open-pencil/homebrew-tap` cask with new version + SHA256 hashes                                                |
+| `app.yml`                | Push to `master` (non-docs)                      | Build web app, deploy to Cloudflare Pages (`app.openpencil.dev`)                                                       |
+| `docs.yml`               | Push to `master` (`packages/docs/**`)            | Build VitePress docs, deploy to Cloudflare Pages (`openpencil.dev`)                                                    |
+| `heavy-tests.yml`        | Manual                                           | Heavy `.fig` round-trip tests with `BUN_HEAVY_TESTS=true`                                                              |
+| `pr-review-guidance.yml` | PR review/comment events                         | Record CodeRabbit review guidance using trusted default-branch tooling only                                            |
 
 ### Before committing
 
@@ -285,7 +297,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
   - `codegen/` — token and component-map extraction
   - `stock-photo/` + `stock-photo.ts` — stock image provider requests and fill application
   - `calc.ts` — utility calculation tool
-  - `registry-core.ts` — `CORE_TOOLS`, the default app AI set (~30 common tools, lower schema/token cost)
+  - `registry-core.ts` — `CORE_TOOLS`, the default app AI set (curated 50+ common tools, lower schema/token cost)
   - `registry-extended.ts` — advanced variables, vector, export, analysis, codegen, and structure tools
   - `registry.ts` — exports `ALL_TOOLS = [...CORE_TOOLS, ...EXTENDED_TOOLS]`
 - Each tool has: name, description, typed params, and an `execute(figma: FigmaAPI, args)` function
@@ -311,6 +323,9 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Preview pane code lives in `src/app/lowcode/preview-pane/`. In Tauri, it spawns `bun packages/compiler/src/dev-server.ts --root <repo>` through the shell allowlist name `lowcode-preview`; the browser bundle must not statically import compiler dev-server/build/deploy code.
 - One-click deploy shells out to `bun packages/cli/src/index.ts deploy ... --json` with provider tokens passed through env (`NETLIFY_AUTH_TOKEN` / `VERCEL_TOKEN`), never as process args or persisted document data.
 - Lowcode document/page/node fields live on `SceneNode` (`state`, `bindings`, `events`, `interactiveProps`, `lowcodeDocumentState`, `lowcodeSupabaseConfig`, translations, workflows, route/auth fields) and round-trip through `.fig` pluginData keys in `packages/core/src/kiwi/fig/node-change/lowcode-plugin-data.ts`.
+- Personal Motion preset definitions and favorites are user-scoped app settings, not SceneGraph fields. The local settings envelope stores both; portable JSON contains the versioned library metadata and preset definitions but deliberately omits favorites. The portable library format and strict migration/parser helpers live under `packages/scene-graph/src/motion/`; app persistence, browser/native file exchange, and UI state live under `src/app/motion-presets/`. Applied nodes always receive a complete expanded `MotionSpec` snapshot, so `.fig`, clipboard, collaboration, instances, and compiler behavior never require the source library. Imported `.pen` sources use the versioned `metadata.openPencil` envelope; the Pen writer updates Motion-only edits and rejects all other edits.
+- Figma native Motion remains an adapter boundary: `MotionSpec` is canonical, the active shared envelope is strict and conflict-free, and both generated scripts and `packages/figma-motion-plugin` must execute the same runtime-validated applicator from `@open-pencil/fig`. Reject unsupported semantics; under the default `replace-owned` policy, also reject foreign/native-edited state. Treat `replace-all` as explicit destructive consent to remove only the verified removable subset, while indexed and unknown future tracks still fail closed. Require explicit timeline-growth consent, verify readback and rollback, and never synthesize undocumented native timeline bytes in raw `.fig` output.
+- Preset-card previews use the editor's ephemeral Motion preview state and must not mutate nodes or create undo entries. Multi-node preset/spec application validates every staggered snapshot first, then commits one instance-aware undo batch.
 - Validate lowcode mutations through `packages/core/src/lowcode-validation/**` and the lowcode ToolDefs in `packages/core/src/tools/modify/lowcode.ts`; do not hand-assign unvalidated action/state JSON in app UI or compiler code.
 - Lowcode test coverage belongs under `tests/engine/compiler/**`, `tests/engine/lowcode-validation/**`, `tests/engine/tools/lowcode/**`, `tests/engine/kiwi/lowcode/**`, or UI-facing E2E specs when behavior is visible in the app.
 

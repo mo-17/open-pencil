@@ -12,7 +12,7 @@
 | **Format pliku** | Kiwi binarny + Zstd | Własny format Figmy — kompaktowy, szybkie parsowanie, kompatybilny z .fig |
 | **Współpraca** | Trystero + Yjs | P2P WebRTC przez sygnalizację MQTT, sync CRDT, persystencja y-indexeddb |
 | **Kolor** | culori | Konwersje przestrzeni kolorów (HSV, RGB, hex) |
-| **AI/MCP** | MCP SDK + Hono | 90+ narzędzi dla kodowania AI, transporty stdio + HTTP |
+| **AI/MCP** | MCP SDK + Hono | Ponad 50 wbudowanych narzędzi i ponad 140 operacji MCP, stdio + HTTP |
 | **JSX Transform** | Sucrase | 201 KB JSX → JS, synchroniczny, kompatybilny z przeglądarką |
 | **Zdarzenia** | nanoevents | 108 bajtów, typowany emitter zdarzeń dla mutacji SceneGraph |
 | **JSX Transform** | Sucrase | 201 KB JSX → JS, synchroniczny, kompatybilny z przeglądarką |

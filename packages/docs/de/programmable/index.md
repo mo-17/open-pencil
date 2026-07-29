@@ -12,7 +12,7 @@ Die Editor-Oberfläche und die Automatisierungsschnittstellen verwenden dieselbe
 
 ## KI-Chat
 
-Der integrierte Assistent hat Zugriff auf 87 Werkzeuge, die die gesamte Oberfläche des Editors abdecken. Beschreibe in natürlicher Sprache, was du möchtest — „füge allen Buttons einen 16px Schlagschatten hinzu", „erstelle eine Kartenkomponente mit Dark-Mode-Variante", „exportiere jeden Frame auf dieser Seite in 2×".
+Der integrierte Assistent hat Zugriff auf einen kuratierten Satz von 50+ Werkzeugen für häufige Editor-Aufgaben. Beschreibe in natürlicher Sprache, was du möchtest — „füge allen Buttons einen 16px Schlagschatten hinzu", „erstelle eine Kartenkomponente mit Dark-Mode-Variante", „exportiere diese Animation". Erweiterte Operationen bleiben über MCP verfügbar.
 
 [KI-Chat →](./ai-chat)
 
@@ -40,7 +40,7 @@ Das CLI verbindet sich auch über RPC mit der laufenden Desktop-App, sodass du d
 
 ## MCP-Server
 
-Verbinde Claude Code, Cursor, Windsurf oder jeden MCP-kompatiblen Client mit OpenPencil. Der Server stellt 90 Werkzeuge zum Lesen, Erstellen und Bearbeiten von Designs bereit — dieselben Werkzeuge, die der integrierte KI-Chat verwendet. Läuft über stdio oder HTTP mit Session-Unterstützung.
+Verbinde Claude Code, Cursor, Windsurf oder jeden MCP-kompatiblen Client mit OpenPencil. Der Server stellt über 140 Designoperationen plus MCP-spezifische Dokument- und Dateioperationen bereit. Der integrierte Chat nutzt bewusst einen kleineren, kuratierten Satz von über 50 Werkzeugen. Läuft über stdio oder HTTP mit Session-Unterstützung.
 
 [MCP-Server →](./mcp-server)
 

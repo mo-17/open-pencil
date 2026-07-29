@@ -1,6 +1,6 @@
 ---
 title: AI Chat
-description: Built-in AI assistant with 90+ tools for creating and modifying designs.
+description: Built-in AI assistant with a curated 50+ tools for creating and modifying designs.
 ---
 
 # AI Chat
@@ -31,7 +31,7 @@ No backend, no subscription — your key talks directly to the provider.
 
 ## What It Can Do
 
-The assistant has 90+ tools across these categories:
+The assistant has a curated 50+ tools across these categories:
 
 - **Create** — frames, shapes, text, components, pages, and real lowcode controls. Renders JSX for complex layouts without substituting visual Frames for functional controls.
 - **Style** — fills, strokes, effects, opacity, corner radius, blend modes.
@@ -43,6 +43,13 @@ The assistant has 90+ tools across these categories:
 - **Analyze** — color palette, typography audit, spacing consistency, cluster detection.
 - **Export** — PNG, SVG, JSX with Tailwind classes. Vision-based verification via `export_image`.
 - **Vector** — boolean operations, path manipulation.
+- **Motion** — inspect and author node timelines, scenes, continuous drivers, prototypes, Smart
+  Match keys, bounded generated effects, and multi-node recipes; browse and apply presets; verify
+  signed Team libraries and atomically apply an entry; or export deterministic animation artifacts.
+  Built-in AI can save a PNG-sequence ZIP or GIF through the app save surface without returning the
+  binary payload to the model. Stopping the AI request cancels the export; the chat transcript does
+  not currently display per-phase export progress. WebM/MP4 remain capability-gated and fail closed
+  when the app host has no matching encoder.
 
 ## Visual Verification
 

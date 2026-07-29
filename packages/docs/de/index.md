@@ -27,7 +27,7 @@ features:
     details: Headless-CLI zum Inspizieren, Exportieren und Analysieren von .fig-Dateien. Figma Plugin API via eval. Tailwind CSS-Export. JSON-Ausgabe für CI.
   - icon: 🤖
     title: KI-nativ
-    details: Integrierter Chat mit 90 Werkzeugen — Formen erstellen, Stile setzen, Layout verwalten, Tokens analysieren. MCP-Server für Claude Code, Cursor, Windsurf.
+    details: Integrierter Chat mit über 50 kuratierten Werkzeugen. MCP-Server mit über 140 Designoperationen für Claude Code, Cursor und Windsurf.
   - icon: 📖
     title: Open Source
     details: MIT-Lizenz. Alles lesen und ändern — den Editor, die Engine, den Datei-Codec, die CLI.

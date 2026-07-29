@@ -1,6 +1,6 @@
 ---
 title: Chat IA
-description: Asistente IA integrado con más de 90 herramientas para crear y modificar diseños.
+description: Asistente IA integrado con más de 50 herramientas seleccionadas para crear y modificar diseños.
 ---
 
 # Chat IA
@@ -29,7 +29,7 @@ Sin backend, sin suscripción — tu clave se comunica directamente con el prove
 
 ## Funciones
 
-El asistente tiene más de 90 herramientas en estas categorías:
+El asistente tiene más de 50 herramientas seleccionadas en estas categorías:
 
 - **Crear** — frames, formas, texto, componentes, páginas. Renderiza JSX para layouts complejos.
 - **Estilo** — rellenos, contornos, efectos, opacidad, radio de borde, modos de fusión.

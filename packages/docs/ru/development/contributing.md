@@ -9,7 +9,7 @@ packages/
   cli/               @open-pencil/cli — headless CLI для операций с .fig
     src/commands/    info, tree, find, export, eval, analyze
   mcp/               @open-pencil/mcp — MCP-сервер для AI-инструментов
-    src/             stdio + HTTP (Hono) транспорты, 87 инструментов
+    src/             stdio + HTTP (Hono) транспорты, более 140 операций с дизайном
 src/
   components/        Vue SFC (холст, панели, панель инструментов, палитра цветов)
     properties/      Секции панели свойств (Внешний вид, Заливка, Обводка и др.)

@@ -19,7 +19,7 @@ graph TB
                 Kiwi --- SVG[SVG export]
             end
         end
-        MCP["MCP Server (90 tools, stdio+HTTP)"]
+        MCP["MCP Server (140+ design tools, stdio+HTTP)"]
         Collab["P2P Collab (Trystero + Yjs)"]
     end
 `
@@ -76,7 +76,7 @@ Gli strumenti sono definiti una sola volta in `packages/core/src/tools/`, suddiv
 - **Server MCP** — schema zod, trasporti stdio + HTTP
 - **CLI** — disponibili tramite il comando `eval`
 
-90+ strumenti core + 3 strumenti di gestione file MCP. Include query XPath (`query_nodes`), ispezione JSX (`get_jsx`, `diff_jsx`), descrizione semantica (`describe`) e verifica visiva (`export_image` restituisce immagini al modello).
+Il server MCP offre oltre 140 operazioni di design e operazioni su documenti/file. La chat integrata usa oltre 50 strumenti selezionati. Include query XPath (`query_nodes`), ispezione JSX (`get_jsx`, `diff_jsx`), descrizione semantica (`describe`) e verifica visiva (`export_image` restituisce immagini al modello).
 
 ### Annulla/Ripristina
 
@@ -98,7 +98,7 @@ Quando l'app desktop è in esecuzione, i comandi CLI si connettono tramite WebSo
 
 ### Set Completo di Strumenti figma-use
 
-Il server MCP attualmente espone 90 strumenti. L'implementazione di riferimento in [figma-use](https://github.com/dannote/figma-use) ne ha 118. Gli strumenti rimanenti coprono vincoli di layout avanzati, connessioni per prototipi, modifica avanzata delle proprietà dei componenti e operazioni in blocco sui documenti.
+Il server MCP offre oltre 140 operazioni di design e operazioni su documenti/file. L'IA integrata usa deliberatamente oltre 50 strumenti selezionati; la CLI espone l'intera superficie ToolDef tramite `eval`.
 
 ### Strumenti di Design per CI
 

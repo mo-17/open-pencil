@@ -1,6 +1,6 @@
 ---
 title: Czat AI
-description: Wbudowany asystent AI z ponad 90 narzędziami do tworzenia i modyfikowania projektów.
+description: Wbudowany asystent AI z ponad 50 wyselekcjonowanymi narzędziami do tworzenia i modyfikowania projektów.
 ---
 
 # Czat AI
@@ -29,7 +29,7 @@ Bez backendu, bez subskrypcji — Twój klucz komunikuje się bezpośrednio z do
 
 ## Funkcje
 
-Asystent ma ponad 90 narzędzi w tych kategoriach:
+Asystent ma ponad 50 wyselekcjonowanych narzędzi w tych kategoriach:
 
 - **Tworzenie** — ramki, kształty, tekst, komponenty, strony. Renderowanie JSX dla złożonych układów.
 - **Styl** — wypełnienia, obrysy, efekty, przezroczystość, promień narożników, tryby mieszania.

@@ -20,7 +20,7 @@ That is why the automation surface matters. The app, the CLI, the AI tools, the 
 
 ## AI Chat
 
-The built-in assistant has access to 87 tools that cover the full surface of the editor. Describe what you want in natural language — "add a 16px drop shadow to all buttons", "create a card component with dark mode variant", "export every frame on this page at 2×".
+The built-in assistant has access to a curated 50+ tools for common editor work. Describe what you want in natural language — "add a 16px drop shadow to all buttons", "create a card component with dark mode variant", "export this animation". Advanced operations remain available through MCP.
 
 [AI Chat →](./ai-chat)
 
@@ -35,6 +35,14 @@ Real-time multiplayer editing over peer-to-peer WebRTC. No server, no account. S
 Build OpenPencil-powered editors with the same Vue SDK the app uses internally. The SDK exposes editor context, canvas wiring, selection state, command models, property-panel composables, and headless primitives.
 
 [Vue SDK →](./sdk/)
+
+## Motion Runtime SDK
+
+Play bounded `MotionSpec` snapshots in framework-neutral, DOM, Vanilla, or Vue applications. The
+runtime shares OpenPencil's prepared-plan sampler, supports deterministic clocks, stays safe during
+SSR, and cleans up scheduled frames, listeners, and owned styles explicitly.
+
+[Motion Runtime SDK →](./motion-runtime)
 
 ## JSX Renderer
 
@@ -54,7 +62,10 @@ The CLI also connects to the running desktop app via RPC, so you can script the 
 
 ## MCP Server
 
-Connect Claude Code, Cursor, Windsurf, or any MCP-compatible client to OpenPencil. The server exposes 90 tools for reading, creating, and modifying designs — the same tools the built-in AI chat uses. Runs over stdio or HTTP with session support.
+Connect Claude Code, Cursor, Windsurf, or any MCP-compatible client to OpenPencil. The server exposes
+140+ design operations plus MCP-only document and file lifecycle tools. Built-in chat deliberately
+uses a smaller curated 50+ tool set to keep model schemas focused. Runs over stdio or HTTP with
+session support.
 
 [MCP Server →](./mcp-server)
 

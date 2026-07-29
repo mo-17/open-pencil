@@ -12,7 +12,7 @@ Interfejs edytora i interfejsy automatyzacji korzystają z tego samego silnika. 
 
 ## Czat AI
 
-Wbudowany asystent ma dostęp do 87 narzędzi, które obejmują całą powierzchnię edytora. Opisz czego chcesz w języku naturalnym — „dodaj cień 16px do wszystkich przycisków", „utwórz komponent karty z wariantem ciemnego motywu", „wyeksportuj każdą ramkę na tej stronie w 2×".
+Wbudowany asystent ma dostęp do ponad 50 wyselekcjonowanych narzędzi do typowych zadań edytora. Opisz czego chcesz w języku naturalnym — „dodaj cień 16px do wszystkich przycisków", „utwórz komponent karty z wariantem ciemnego motywu", „wyeksportuj tę animację". Zaawansowane operacje pozostają dostępne przez MCP.
 
 [Czat AI →](./ai-chat)
 
@@ -40,7 +40,7 @@ CLI łączy się również z uruchomioną aplikacją desktopową przez RPC, wię
 
 ## Serwer MCP
 
-Połącz Claude Code, Cursor, Windsurf lub dowolnego klienta kompatybilnego z MCP z OpenPencil. Serwer udostępnia 90 narzędzi do odczytywania, tworzenia i modyfikowania projektów — te same narzędzia, z których korzysta wbudowany czat AI. Działa przez stdio lub HTTP z obsługą sesji.
+Połącz Claude Code, Cursor, Windsurf lub dowolnego klienta kompatybilnego z MCP z OpenPencil. Serwer udostępnia ponad 140 operacji projektowych oraz operacje cyklu życia dokumentów i plików specyficzne dla MCP. Wbudowany czat celowo używa mniejszego, wyselekcjonowanego zestawu ponad 50 narzędzi. Działa przez stdio lub HTTP z obsługą sesji.
 
 [Serwer MCP →](./mcp-server)
 

@@ -72,6 +72,7 @@ export const programmableSidebar = (
       { text: labels.jsxRenderer, link: `${prefix}/programmable/jsx-renderer` },
       { text: labels.mcpServer, link: `${prefix}/programmable/mcp-server` },
       { text: labels.aiChat, link: `${prefix}/programmable/ai-chat` },
+      { text: 'Motion Runtime SDK', link: '/programmable/motion-runtime' },
       { text: labels.collaboration, link: `${prefix}/programmable/collaboration` },
     ],
   },

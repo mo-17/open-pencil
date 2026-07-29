@@ -215,7 +215,7 @@ Gestione stato via Potok. Undo con vettori di cambiamenti inversi (max 50 voci),
 
 ## 11. Scripting ed estensibilità
 
-OpenPencil include un [comando `eval`](/programmable/cli/scripting) che fornisce un'API Plugin compatibile Figma per scripting headless. Inoltre, 90 strumenti AI disponibili via chat integrata, server MCP (stdio + HTTP) e CLI. Penpot ha un sistema plugin con esecuzione sandboxed ma senza API di scripting headless né integrazione MCP.
+OpenPencil include un [comando `eval`](/programmable/cli/scripting) che fornisce un'API Plugin compatibile Figma per scripting headless. Inoltre, la chat integrata offre oltre 50 strumenti selezionati e il server MCP oltre 140 operazioni di design tramite stdio e HTTP. Penpot ha un sistema plugin con esecuzione sandboxed ma senza API di scripting headless né integrazione MCP.
 
 ## Riepilogo
 
@@ -232,4 +232,4 @@ OpenPencil include un [comando `eval`](/programmable/cli/scripting) che fornisce
 | **Self-hosting** | Penpot | Docker-ready vs solo desktop |
 | **Maturità ecosistema** | Penpot | Anni di produzione vs stadio iniziale |
 
-Open Pencil è architetturalmente più snello — un renderer CanvasKit monoprocesso in ~26K LOC TypeScript, compatibile Figma per design. Penpot è una piattaforma full-stack con ~299K LOC. Open Pencil ha scripting headless, **90 strumenti AI/MCP**, export SVG e app desktop nativa.
+Open Pencil è architetturalmente più snello — un renderer CanvasKit monoprocesso in ~26K LOC TypeScript, compatibile Figma per design. Penpot è una piattaforma full-stack con ~299K LOC. Open Pencil ha scripting headless, **oltre 50 strumenti IA integrati selezionati**, **oltre 140 operazioni MCP**, export SVG e app desktop nativa.

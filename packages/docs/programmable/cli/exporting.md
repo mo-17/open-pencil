@@ -68,11 +68,59 @@ Standalone Tailwind output is compiled during export; it does not depend on the 
 
 HTML export is available in file mode.
 
+## Document Conversion
+
+Convert supported input documents through the shared IO registry:
+
+```sh
+openpencil convert design.pen -f fig -o design.fig
+openpencil convert animated.pen -f pen -o animated-updated.pen
+```
+
+The `.pen` output path is intentionally source-preserving and Motion-only. It accepts a document
+originally read from `.pen`, updates the versioned `metadata.openPencil` MotionSpec envelope, and
+keeps unrelated foreign metadata and unmodified future payloads intact. Ref and nested descendant
+clears use an explicit tombstone so component Motion does not reappear after reopen. Conflicting
+unknown-schema Motion edits and structural, visual, variable, or document-metadata edits are
+rejected; save those edits as `.fig` instead.
+
 ## Thumbnails
 
 ```sh
 openpencil export design.fig --thumbnail --width 1920 --height 1080
 ```
+
+## Motion animation export
+
+Export node-local Motion tracks or a page/frame Motion scene as a deterministic PNG sequence or
+encoded animation:
+
+```sh
+openpencil motion export design.fig --node 1:23 --fps 30 -o card-frames
+openpencil motion export design.fig --scene-owner 1:4 --sequence intro --fps 60 --loops 2 -o intro-frames
+openpencil motion export design.fig --node 1:23 --format gif -o card.gif
+openpencil motion export design.fig --node 1:23 --format webm -o card.webm
+openpencil motion export design.fig --node 1:23 --reduced-motion reduce --json -o reduced-frames
+```
+
+The output directory must not already exist. OpenPencil renders into a sibling temporary directory,
+writes numbered `frame-0000.png` files plus `manifest.json`, then renames the completed directory
+into place. Cancellation or failure removes the temporary output. The manifest records integer
+microsecond timestamps, frame durations, loop-local times, fixed canvas dimensions, and the `1/fps`
+timebase used by the reference sampler.
+
+PNG sequences and deterministic GIF89a are built in. WebM and MP4 require a real FFmpeg executable
+discovered from `--ffmpeg`, `OPENPENCIL_FFMPEG_PATH`, or `PATH`; only codecs reported by that binary
+are offered. Unsupported codecs fail closed, WebM is opaque-only, and OpenPencil never writes PNG
+bytes under a video extension.
+
+An interactive non-JSON terminal receives throttled phase progress on stderr. <kbd>Ctrl</kbd> +
+<kbd>C</kbd> aborts planning, rendering, encoding, or the atomic write and removes temporary output.
+JSON mode and piped stdout remain machine-readable and do not include progress lines.
+
+Frame planning bounds FPS, source/total duration, loops, frame count, dimensions, scale, padding,
+per-frame area, and aggregate pixel work. `--reduced-motion allow|reduce|disable` is explicit and
+deterministic; the headless exporter never infers an ambient OS preference.
 
 ## Live App Mode
 
