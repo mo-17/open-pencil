@@ -12,22 +12,43 @@
 // Step 1 (this file's serialize side) wires the save path; step 2 adds the
 // read side in convert.ts.
 
+import {
+  decodeFigmaMotionSharedPayload,
+  encodeFigmaMotionSharedClearEnvelope,
+  encodeFigmaMotionSharedEnvelope,
+  FIGMA_MOTION_SHARED_KEY,
+  FIGMA_MOTION_SHARED_NAMESPACE
+} from '@open-pencil/fig'
 import { OPEN_PENCIL_PLUGIN_ID } from '@open-pencil/fig/node-change'
 import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
-import { validateMotionSpec } from '@open-pencil/scene-graph'
+import {
+  remapMotionDriverNodeReferences,
+  remapMotionSceneNodeReferences,
+  remapPrototypeNodeReferences,
+  validateGeneratedEffectSpec,
+  validateMotionDriverSpec,
+  validateMotionSceneSpec,
+  validateMotionSpec,
+  validateMotionTransitionKey,
+  validatePrototypeSpec
+} from '@open-pencil/scene-graph'
 import type {
   ActionDef,
   AnalyticsConfig,
   BindingExpr,
   DocumentStateDef,
   EventName,
+  GeneratedEffectSpecV1,
   GridPosition,
   LowcodeHeadMetadata,
   LibraryRef,
   LowcodeTranslations,
+  MotionDriverSpecV1,
+  MotionSceneSpec,
   MotionSpec,
   NodeType,
   PluginDataEntry,
+  PrototypeSpecV1,
   ResponsiveOverrides,
   SceneGraph,
   SceneNode,
@@ -117,10 +138,13 @@ export const LOWCODE_TRANSLATIONS_KEY = 'lowcode/translations'
  *  only. Value is the JSON-encoded `WorkflowDef[]` array. Absent ≡ no authored
  *  workflows, so .fig files that never defined a workflow stay byte-identical. */
 export const LOWCODE_WORKFLOWS_KEY = 'lowcode/workflows'
-/** Phase 3 §8 v11: per-INSTANCE override table. Value is a JSON object keyed by
- *  the STABLE master-child id (`<masterChildId>:<prop>` → snapshot value), since
- *  instance child ids are reassigned on load. Restored via
- *  `reapplyInstanceOverrides` after `populateInstances`. */
+/** Phase 3 §8 v11: per-INSTANCE override table. Descendant overrides use a
+ *  stable child-index path (`<path>:<prop>` → snapshot value), since instance
+ *  child ids are reassigned on load. Strict Motion owner/interaction overrides
+ *  use the empty path (`:motion`, `:motionScene`, `:motionDrivers`, `:prototype`,
+ *  `:transitionKey`, `:generatedEffect`); other unscoped root markers are deliberately
+ *  not generalized.
+ *  Restored via `reapplyInstanceOverrides` after `populateInstances`. */
 export const LOWCODE_OVERRIDES_KEY = 'lowcode/overrides'
 
 /** Phase 4 §14: cross-file/team-library metadata for cached COMPONENT masters.
@@ -144,10 +168,32 @@ export const LOWCODE_REQUIRES_AUTH_KEY = 'lowcode/requiresAuth'
  *  (e.g. `/login`). Absent ≡ the `/login` default. */
 export const LOWCODE_AUTH_REDIRECT_KEY = 'lowcode/authRedirect'
 
-/** Declarative MotionSpec v1 for a single node. The value is strictly
+/** Declarative MotionSpec v1/v2/v3 for a single node. The value is strictly
  * validated on both import and export; malformed or future-version entries
  * stay in ordinary pluginData so a newer OpenPencil can recover them. */
 export const LOWCODE_MOTION_KEY = 'lowcode/motion'
+/** Bounded page/frame choreography referencing node-local Motion tracks. */
+export const LOWCODE_MOTION_SCENE_KEY = 'lowcode/motionScene'
+/** Bounded page/frame continuous-input mappings referencing node-local tracks. */
+export const LOWCODE_MOTION_DRIVERS_KEY = 'lowcode/motionDrivers'
+/** Bounded OpenPencil prototype connections, separate from native Figma interaction metadata. */
+export const LOWCODE_PROTOTYPE_KEY = 'lowcode/prototype'
+/** Explicit stable OpenPencil Smart Match identity. */
+export const LOWCODE_TRANSITION_KEY = 'lowcode/transitionKey'
+/** Strict allowlisted generated visual layer; no shader/program source is accepted. */
+export const LOWCODE_GENERATED_EFFECT_KEY = 'lowcode/generatedEffect'
+const PRESERVED_INVALID_MOTION_CONTRACT_KEYS: ReadonlySet<string> = new Set([
+  LOWCODE_MOTION_KEY,
+  LOWCODE_MOTION_SCENE_KEY,
+  LOWCODE_MOTION_DRIVERS_KEY,
+  LOWCODE_PROTOTYPE_KEY,
+  LOWCODE_TRANSITION_KEY,
+  LOWCODE_GENERATED_EFFECT_KEY
+])
+/** Private archival key for a conflicting active shared Motion payload. The
+ *  original bytes stay recoverable without remaining executable by the Figma
+ *  adapter at `openpencil/motion-v1`. */
+export const LOWCODE_MOTION_SHARED_CONFLICT_KEY = 'lowcode/motionSharedConflict'
 
 const LOWCODE_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
   'BUTTON',
@@ -192,7 +238,12 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_ROUTE_PATTERN_KEY,
   LOWCODE_REQUIRES_AUTH_KEY,
   LOWCODE_AUTH_REDIRECT_KEY,
-  LOWCODE_MOTION_KEY
+  LOWCODE_MOTION_KEY,
+  LOWCODE_MOTION_SCENE_KEY,
+  LOWCODE_MOTION_DRIVERS_KEY,
+  LOWCODE_PROTOTYPE_KEY,
+  LOWCODE_TRANSITION_KEY,
+  LOWCODE_GENERATED_EFFECT_KEY
 ])
 
 /**
@@ -267,24 +318,167 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // / authRedirect) fields — grouped out to keep this function under the
   // complexity limit. Appended last so legacy .fig output stays byte-identical.
   entries.push(...serializeRoutingAuthFields(node))
-  if (node.motion != null) {
-    const hasInertRawMotion = node.pluginData.some(
-      (entry) => entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_MOTION_KEY
-    )
-    if (hasInertRawMotion) {
-      // A canonical raw entry reaches SceneNode.pluginData only when this
-      // version could not safely interpret it (malformed or future version).
-      // Preserve that payload as the single canonical value and do not make a
-      // second current-version entry executable by accident.
-      console.warn(
-        '[lowcode] structured motion conflicts with inert raw lowcode/motion; preserving the raw payload and suppressing the structured value'
-      )
-    } else {
-      const validated = validateMotionSpec(node.motion)
-      if (validated.success) entries.push(makeEntry(LOWCODE_MOTION_KEY, validated.value))
-    }
-  }
+  entries.push(...serializeMotionFields(node))
+  entries.push(...serializeMotionSceneFields(node))
+  entries.push(...serializeMotionDriverFields(node))
+  entries.push(...serializePrototypeFields(node))
+  entries.push(...serializeTransitionKeyField(node))
+  entries.push(...serializeGeneratedEffectField(node))
   return entries
+}
+
+type ContractValidationResult<T> =
+  | { success: true; value: T }
+  | { success: false; issues: unknown[] }
+
+function serializeMotionContractField<T>(
+  node: SceneNode,
+  key: string,
+  value: T | undefined,
+  validate: (candidate: unknown) => ContractValidationResult<T>,
+  label: string
+): PluginDataEntry[] {
+  if (value === undefined) return []
+  const hasInertPayload = node.pluginData.some(
+    (entry) => entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === key
+  )
+  if (hasInertPayload) {
+    console.warn(
+      `[lowcode] structured ${label} conflicts with inert private data; preserving the raw payload and suppressing the structured value`
+    )
+    return []
+  }
+  const validated = validate(value)
+  return validated.success ? [makeEntry(key, validated.value)] : []
+}
+
+function serializeMotionSceneFields(node: SceneNode): PluginDataEntry[] {
+  return serializeMotionContractField(
+    node,
+    LOWCODE_MOTION_SCENE_KEY,
+    node.motionScene,
+    validateMotionSceneSpec,
+    'motion scene'
+  )
+}
+
+function serializeMotionDriverFields(node: SceneNode): PluginDataEntry[] {
+  return serializeMotionContractField(
+    node,
+    LOWCODE_MOTION_DRIVERS_KEY,
+    node.motionDrivers,
+    validateMotionDriverSpec,
+    'motion drivers'
+  )
+}
+
+function serializePrototypeFields(node: SceneNode): PluginDataEntry[] {
+  return serializeMotionContractField(
+    node,
+    LOWCODE_PROTOTYPE_KEY,
+    node.prototype,
+    validatePrototypeSpec,
+    'prototype'
+  )
+}
+
+function serializeTransitionKeyField(node: SceneNode): PluginDataEntry[] {
+  return serializeMotionContractField(
+    node,
+    LOWCODE_TRANSITION_KEY,
+    node.transitionKey,
+    validateMotionTransitionKey,
+    'transition key'
+  )
+}
+
+function serializeGeneratedEffectField(node: SceneNode): PluginDataEntry[] {
+  return serializeMotionContractField(
+    node,
+    LOWCODE_GENERATED_EFFECT_KEY,
+    node.generatedEffect,
+    validateGeneratedEffectSpec,
+    'generated effect'
+  )
+}
+
+function serializeMotionFields(node: SceneNode): PluginDataEntry[] {
+  const activeSharedEntries = node.pluginData.filter(isSharedMotionEntry)
+  if (node.motion == null) {
+    const hasActionableSharedMotion = activeSharedEntries.some((entry) => {
+      const decoded = decodeFigmaMotionSharedPayload(entry.value)
+      return decoded.ok && decoded.value.kind === 'motion'
+    })
+    return hasActionableSharedMotion
+      ? [
+          ...activeSharedEntries.map(archiveSharedMotionEntry),
+          makeSharedMotionEntry(encodeFigmaMotionSharedClearEnvelope())
+        ]
+      : []
+  }
+  const hasInertPrivateMotion = node.pluginData.some(
+    (entry) => entry.pluginId === OPEN_PENCIL_PLUGIN_ID && entry.key === LOWCODE_MOTION_KEY
+  )
+  if (hasInertPrivateMotion) {
+    console.warn(
+      '[lowcode] structured motion conflicts with inert private motion data; preserving the raw payload and suppressing the structured value'
+    )
+    const hasActionableSharedMotion = activeSharedEntries.some((entry) => {
+      const decoded = decodeFigmaMotionSharedPayload(entry.value)
+      return decoded.ok && decoded.value.kind === 'motion'
+    })
+    return hasActionableSharedMotion
+      ? [
+          ...activeSharedEntries.map(archiveSharedMotionEntry),
+          makeSharedMotionEntry(encodeFigmaMotionSharedClearEnvelope())
+        ]
+      : []
+  }
+  const validated = validateMotionSpec(node.motion)
+  if (!validated.success) return []
+  const sharedValue = encodeFigmaMotionSharedEnvelope(validated.value)
+  const conflictingSharedEntries = activeSharedEntries.filter(
+    (entry) => entry.value !== sharedValue
+  )
+  if (conflictingSharedEntries.length > 0) {
+    console.warn(
+      '[lowcode] structured motion conflicts with an active shared mirror; archiving the raw payload and replacing the active mirror with the private canonical value'
+    )
+  }
+  return [
+    makeEntry(LOWCODE_MOTION_KEY, validated.value),
+    ...conflictingSharedEntries.map(archiveSharedMotionEntry),
+    makeSharedMotionEntry(sharedValue)
+  ]
+}
+
+function makeSharedMotionEntry(value: string): PluginDataEntry {
+  return {
+    pluginId: FIGMA_MOTION_SHARED_NAMESPACE,
+    key: `${FIGMA_MOTION_SHARED_NAMESPACE}/${FIGMA_MOTION_SHARED_KEY}`,
+    value
+  }
+}
+
+function archiveSharedMotionEntry(entry: PluginDataEntry): PluginDataEntry {
+  return {
+    pluginId: OPEN_PENCIL_PLUGIN_ID,
+    key: LOWCODE_MOTION_SHARED_CONFLICT_KEY,
+    value: JSON.stringify({
+      schema: 'openpencil.motion-shared-archive',
+      version: 1,
+      pluginId: entry.pluginId,
+      key: entry.key,
+      value: entry.value
+    })
+  }
+}
+
+function isSharedMotionEntry(entry: PluginDataEntry): boolean {
+  return (
+    entry.pluginId === FIGMA_MOTION_SHARED_NAMESPACE &&
+    entry.key === `${FIGMA_MOTION_SHARED_NAMESPACE}/${FIGMA_MOTION_SHARED_KEY}`
+  )
 }
 
 /** Phase 4 §14: team-library metadata. Empty fields write nothing so ordinary
@@ -375,6 +569,11 @@ export function serializeInstanceOverrides(
   if (keys.length === 0) return null
   const table: Record<string, unknown> = {}
   for (const key of keys) {
+    const rootOverride = canonicalRootMotionOverride(key, node.overrides[key])
+    if (rootOverride.matched) {
+      if (rootOverride.valid) table[`:${key}`] = rootOverride.value
+      continue
+    }
     const colon = key.lastIndexOf(':')
     if (colon === -1) continue
     const instChild = graph.getNode(key.slice(0, colon))
@@ -385,10 +584,98 @@ export function serializeInstanceOverrides(
     const path = childIndexPath(graph, node.id, instChild.id)
     if (!path) continue
     const prop = key.slice(colon + 1)
-    table[`${path.join('.')}:${prop}`] = instChild[prop as keyof SceneNode]
+    table[`${path.join('.')}:${prop}`] =
+      node.overrides[key] === null ? null : instChild[prop as keyof SceneNode]
   }
   if (Object.keys(table).length === 0) return null
   return makeEntry(LOWCODE_OVERRIDES_KEY, table)
+}
+
+type RootMotionOverrideResult =
+  | { matched: false }
+  | { matched: true; valid: false }
+  | { matched: true; valid: true; value: unknown }
+
+const ROOT_MOTION_OVERRIDE_FIELDS = new Set([
+  'motion',
+  'motionScene',
+  'motionDrivers',
+  'prototype',
+  'transitionKey',
+  'generatedEffect'
+])
+
+function canonicalRootMotionOverride(key: string, value: unknown): RootMotionOverrideResult {
+  if (!ROOT_MOTION_OVERRIDE_FIELDS.has(key)) return { matched: false }
+  let validation: ContractValidationResult<unknown>
+  if (value === null) return { matched: true, valid: true, value: null }
+  switch (key) {
+    case 'motion':
+      validation = validateMotionSpec(value)
+      break
+    case 'motionScene':
+      validation = validateMotionSceneSpec(value)
+      break
+    case 'motionDrivers':
+      validation = validateMotionDriverSpec(value)
+      break
+    case 'prototype':
+      validation = validatePrototypeSpec(value)
+      break
+    case 'transitionKey':
+      validation = validateMotionTransitionKey(value)
+      break
+    case 'generatedEffect':
+      validation = validateGeneratedEffectSpec(value)
+      break
+    default:
+      return { matched: false }
+  }
+  return validation.success
+    ? { matched: true, valid: true, value: validation.value }
+    : { matched: true, valid: false }
+}
+
+function instanceComponentReferenceMap(
+  graph: SceneGraph,
+  instance: SceneNode
+): Map<string, string> {
+  const references = new Map<string, string>()
+  if (instance.componentId) references.set(instance.componentId, instance.id)
+  const queue = [...instance.childIds]
+  for (const childId of queue) {
+    const child = graph.getNode(childId)
+    if (!child) continue
+    if (child.componentId) references.set(child.componentId, child.id)
+    queue.push(...child.childIds)
+  }
+  return references
+}
+
+function localizeRootMotionOverride(
+  field: string,
+  value: unknown,
+  references: ReadonlyMap<string, string>
+): unknown {
+  if (value === null) return value
+  const resolveNodeId = (nodeId: string) => references.get(nodeId)
+  if (field === 'motionScene') {
+    const validated = validateMotionSceneSpec(value)
+    return validated.success
+      ? remapMotionSceneNodeReferences(validated.value, resolveNodeId)
+      : value
+  }
+  if (field === 'motionDrivers') {
+    const validated = validateMotionDriverSpec(value)
+    return validated.success
+      ? remapMotionDriverNodeReferences(validated.value, resolveNodeId)
+      : value
+  }
+  if (field === 'prototype') {
+    const validated = validatePrototypeSpec(value)
+    return validated.success ? remapPrototypeNodeReferences(validated.value, resolveNodeId) : value
+  }
+  return value
 }
 
 /** The child-index path from `ancestorId` down to `descendantId` (e.g. [0,2] =
@@ -416,22 +703,74 @@ function childIndexPath(
  * Phase 3 §8 v11: re-apply instance overrides restored from `lowcode/overrides`,
  * AFTER `populateInstances` has re-cloned each instance's children from its
  * master (which resets them to master values + new ids). For every instance
- * carrying a `pendingInstanceOverrides` snapshot, map each `<masterChildId>:<prop>`
- * entry to the freshly cloned descendant whose `componentId === masterChildId`,
- * set that child's prop to the snapshot value, and rebuild `node.overrides` keyed
- * by the new child id. Clears the pending field so it is idempotent. */
-export function reapplyInstanceOverrides(graph: SceneGraph): void {
-  for (const node of graph.getAllNodes()) {
+ * carrying a `pendingInstanceOverrides` snapshot, map each `<path>:<prop>` entry
+ * to the freshly cloned descendant, set that child's prop to the snapshot value,
+ * and rebuild `node.overrides` keyed by the new child id. Reserved empty-path
+ * Motion contract entries restore root-instance overrides, including explicit
+ * null clears. Clears the pending field so it is idempotent. */
+export function reapplyInstanceOverrides(graph: SceneGraph, nodeIds?: Iterable<string>): void {
+  const nodes = nodeIds
+    ? Array.from(nodeIds, (id) => graph.getNode(id)).filter(
+        (node): node is SceneNode => node !== undefined
+      )
+    : graph.getAllNodes()
+  for (const node of nodes) {
     const pending = node.pendingInstanceOverrides
     if (node.type !== 'INSTANCE' || !pending) continue
+    const componentReferences = instanceComponentReferenceMap(graph, node)
     const remapped: Record<string, unknown> = {}
     for (const key of Object.keys(pending)) {
+      const rootField = key.startsWith(':') ? key.slice(1) : ''
+      const rootOverride = canonicalRootMotionOverride(rootField, pending[key])
+      if (rootOverride.matched) {
+        if (rootOverride.valid) {
+          const value = localizeRootMotionOverride(
+            rootField,
+            rootOverride.value,
+            componentReferences
+          )
+          if (value === null) {
+            graph.clearNodeFields(node.id, [rootField as keyof SceneNode])
+            remapped[rootField] = null
+          } else {
+            graph.updateNode(node.id, {
+              [rootField]: value
+            } as Partial<SceneNode>)
+            remapped[rootField] = structuredClone(value)
+          }
+        }
+        continue
+      }
       const colon = key.lastIndexOf(':')
       if (colon === -1) continue
-      const child = resolveChildByPath(graph, node.id, key.slice(0, colon))
+      const path = key.slice(0, colon)
+      // Do not interpret arbitrary unscoped markers as root-node patches.
+      // Root Motion contracts are handled narrowly above; descendants require a path.
+      if (path === '') continue
+      const child = resolveChildByPath(graph, node.id, path)
       if (!child) continue
       const prop = key.slice(colon + 1)
       const value = pending[key]
+      const contractOverride = canonicalRootMotionOverride(prop, value)
+      if (contractOverride.matched) {
+        if (contractOverride.valid) {
+          const localizedValue = localizeRootMotionOverride(
+            prop,
+            contractOverride.value,
+            componentReferences
+          )
+          if (localizedValue === null) {
+            graph.clearNodeFields(child.id, [prop as keyof SceneNode])
+            remapped[`${child.id}:${prop}`] = null
+          } else {
+            graph.updateNode(child.id, {
+              [prop]: localizedValue
+            } as Partial<SceneNode>)
+            remapped[`${child.id}:${prop}`] = structuredClone(localizedValue)
+          }
+        }
+        continue
+      }
       graph.updateNode(child.id, { [prop]: value } as Partial<SceneNode>)
       remapped[`${child.id}:${prop}`] = value
     }
@@ -595,9 +934,19 @@ function isNonEmpty(value: unknown): boolean {
  */
 export interface ExtractedLowcodeAndPluginData {
   pluginData: PluginDataEntry[]
-  /** Strictly validated MotionSpec v1. Invalid or unsupported future versions
+  /** Strictly validated MotionSpec v1/v2/v3. Invalid or unsupported future versions
    *  are intentionally left in pluginData instead of being executed. */
   motion?: MotionSpec
+  /** Strictly validated page/frame choreography. Invalid/future data stays inert. */
+  motionScene?: MotionSceneSpec
+  /** Strictly validated page/frame continuous-input mappings. */
+  motionDrivers?: MotionDriverSpecV1
+  /** Strictly validated OpenPencil prototype connections. */
+  prototype?: PrototypeSpecV1
+  /** Explicit stable Smart Match identity. */
+  transitionKey?: string
+  /** Strictly validated generated visual layer. Invalid/future data stays inert. */
+  generatedEffect?: GeneratedEffectSpecV1
   /** Override for `mapNodeType`'s 'RECTANGLE' fallback. Present only when
    *  the SceneNode was one of the lowcode interactive types on save. */
   nodeTypeOverride?: NodeType
@@ -685,8 +1034,27 @@ export function extractLowcodeAndPluginData(
 ): ExtractedLowcodeAndPluginData {
   const pluginData: PluginDataEntry[] = []
   const result: ExtractedLowcodeAndPluginData = { pluginData }
+  const sharedMotionCandidates: Array<{ entry: PluginDataEntry; motion: MotionSpec }> = []
+  let inertPrivateMotion = false
+  let sharedMotionCleared = false
   for (const entry of nc.pluginData ?? []) {
     const preservedEntry = { pluginId: entry.pluginID, key: entry.key, value: entry.value }
+    if (isSharedMotionNodeChangeEntry(entry)) {
+      const decoded = decodeFigmaMotionSharedPayload(entry.value)
+      if (decoded.ok) {
+        if (decoded.value.kind === 'motion') {
+          sharedMotionCandidates.push({
+            entry: preservedEntry,
+            motion: decoded.value.value.motion
+          })
+        } else {
+          sharedMotionCleared = true
+        }
+      } else {
+        pluginData.push(preservedEntry)
+      }
+      continue
+    }
     const isOurs = entry.pluginID === OPEN_PENCIL_PLUGIN_ID && LOWCODE_PLUGIN_KEYS.has(entry.key)
     if (!isOurs) {
       pluginData.push(preservedEntry)
@@ -697,7 +1065,8 @@ export function extractLowcodeAndPluginData(
       parsed = JSON.parse(entry.value)
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err)
-      if (entry.key === LOWCODE_MOTION_KEY) {
+      if (PRESERVED_INVALID_MOTION_CONTRACT_KEYS.has(entry.key)) {
+        if (entry.key === LOWCODE_MOTION_KEY) inertPrivateMotion = true
         console.warn(
           `[lowcode] failed to parse pluginData "${entry.key}": ${reason}; preserving inert entry`
         )
@@ -707,15 +1076,134 @@ export function extractLowcodeAndPluginData(
       console.warn(`[lowcode] failed to parse pluginData "${entry.key}": ${reason}; dropping entry`)
       continue
     }
-    if (entry.key === LOWCODE_MOTION_KEY) {
-      const validated = validateMotionSpec(parsed)
-      if (validated.success) result.motion = validated.value
-      else pluginData.push(preservedEntry)
+    const contractAssignment = assignParsedMotionContract(result, entry.key, parsed, preservedEntry)
+    if (contractAssignment.handled) {
+      inertPrivateMotion ||= contractAssignment.inertPrivateMotion === true
       continue
     }
     assignLowcodeField(result, entry.key, parsed)
   }
+  resolveSharedMotionCandidates(
+    result,
+    sharedMotionCandidates,
+    inertPrivateMotion,
+    sharedMotionCleared
+  )
   return result
+}
+
+function isSharedMotionNodeChangeEntry(
+  entry: NonNullable<NodeChange['pluginData']>[number]
+): boolean {
+  return (
+    entry.pluginID === FIGMA_MOTION_SHARED_NAMESPACE &&
+    entry.key === `${FIGMA_MOTION_SHARED_NAMESPACE}/${FIGMA_MOTION_SHARED_KEY}`
+  )
+}
+
+interface MotionContractAssignment {
+  handled: boolean
+  inertPrivateMotion?: boolean
+}
+
+function assignParsedMotionContract(
+  result: ExtractedLowcodeAndPluginData,
+  key: string,
+  parsed: unknown,
+  preservedEntry: PluginDataEntry
+): MotionContractAssignment {
+  if (key === LOWCODE_MOTION_KEY) {
+    const validated = validateMotionSpec(parsed)
+    if (validated.success) result.motion = validated.value
+    else result.pluginData.push(preservedEntry)
+    return { handled: true, inertPrivateMotion: !validated.success }
+  }
+  if (key === LOWCODE_MOTION_SCENE_KEY) {
+    const validated = validateMotionSceneSpec(parsed)
+    if (validated.success) result.motionScene = validated.value
+    else result.pluginData.push(preservedEntry)
+    return { handled: true }
+  }
+  if (key === LOWCODE_MOTION_DRIVERS_KEY) {
+    const validated = validateMotionDriverSpec(parsed)
+    if (validated.success) result.motionDrivers = validated.value
+    else result.pluginData.push(preservedEntry)
+    return { handled: true }
+  }
+  if (key === LOWCODE_PROTOTYPE_KEY) {
+    const validated = validatePrototypeSpec(parsed)
+    if (validated.success) result.prototype = validated.value
+    else result.pluginData.push(preservedEntry)
+    return { handled: true }
+  }
+  if (key === LOWCODE_TRANSITION_KEY) {
+    const validated = validateMotionTransitionKey(parsed)
+    if (validated.success) result.transitionKey = validated.value
+    else result.pluginData.push(preservedEntry)
+    return { handled: true }
+  }
+  if (key === LOWCODE_GENERATED_EFFECT_KEY) {
+    const validated = validateGeneratedEffectSpec(parsed)
+    if (validated.success) result.generatedEffect = validated.value
+    else result.pluginData.push(preservedEntry)
+    return { handled: true }
+  }
+  return { handled: false }
+}
+
+function resolveSharedMotionCandidates(
+  result: ExtractedLowcodeAndPluginData,
+  candidates: Array<{ entry: PluginDataEntry; motion: MotionSpec }>,
+  inertPrivateMotion: boolean,
+  sharedMotionCleared: boolean
+): void {
+  if (candidates.length === 0) return
+  const signatures = new Set(candidates.map(({ motion }) => JSON.stringify(motion)))
+  const privateSignature = result.motion ? JSON.stringify(result.motion) : undefined
+  const sharedSignature = JSON.stringify(candidates[0].motion)
+  if (
+    !inertPrivateMotion &&
+    !sharedMotionCleared &&
+    signatures.size === 1 &&
+    privateSignature === undefined
+  ) {
+    result.motion = candidates[0].motion
+    return
+  }
+  if (!inertPrivateMotion && signatures.size === 1 && privateSignature === sharedSignature) return
+  result.pluginData.push(...candidates.map(({ entry }) => archiveSharedMotionEntry(entry)))
+  console.warn(
+    '[lowcode] shared Figma Motion data conflicts with the private canonical value; archiving it as inert private plugin data'
+  )
+}
+
+/** Convert lowcode plugin data into fields safe to spread onto a SceneNode. */
+export function extractImportedLowcodeProps(nc: Pick<NodeChange, 'pluginData'>): {
+  nodeTypeOverride?: SceneNode['type']
+  props: Partial<SceneNode>
+} {
+  const {
+    nodeTypeOverride,
+    freeLayoutOverride,
+    primaryAxisSizingOverride,
+    counterAxisSizingOverride,
+    counterAxisAlignContentOverride,
+    gridPositionOverride,
+    ...props
+  } = extractLowcodeAndPluginData(nc)
+  return {
+    nodeTypeOverride,
+    props: {
+      ...props,
+      ...(freeLayoutOverride ? { layoutMode: 'FREE' as const } : {}),
+      ...(primaryAxisSizingOverride ? { primaryAxisSizing: primaryAxisSizingOverride } : {}),
+      ...(counterAxisSizingOverride ? { counterAxisSizing: counterAxisSizingOverride } : {}),
+      ...(counterAxisAlignContentOverride
+        ? { counterAxisAlignContent: counterAxisAlignContentOverride }
+        : {}),
+      ...(gridPositionOverride ? { gridPosition: gridPositionOverride } : {})
+    }
+  }
 }
 
 function assignLowcodeField(

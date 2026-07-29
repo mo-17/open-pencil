@@ -1,4 +1,4 @@
-import { beforeAll, expect, setDefaultTimeout, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 import { SceneGraph, type SceneNode } from '@open-pencil/core'
 
@@ -6,73 +6,107 @@ import { parseFixture, VALID_NODE_TYPES } from '#tests/helpers/fig-fixtures'
 import { collectAllNodes } from '#tests/helpers/fig-traversal'
 import { heavy } from '#tests/helpers/test-utils'
 
-setDefaultTimeout(180_000)
+const HEAVY_FIXTURE_TIMEOUT_MS = 180_000
 
-heavy('parse heavy .fig files', () => {
-  let material3: SceneGraph
-  let nuxtui: SceneGraph
-  let material3Nodes: SceneNode[]
-  let nuxtUiNodes: SceneNode[]
+setDefaultTimeout(HEAVY_FIXTURE_TIMEOUT_MS)
 
-  beforeAll(async () => {
-    material3 = await parseFixture('material3.fig', { populate: 'none' })
-    nuxtui = await parseFixture('nuxtui.fig', { populate: 'none' })
-    material3Nodes = collectAllNodes(material3)
-    nuxtUiNodes = collectAllNodes(nuxtui)
-  })
+heavy.serial('parse heavy .fig files', () => {
+  describe.serial('material3.fig', () => {
+    let graph: SceneGraph | undefined
+    let nodes: SceneNode[] = []
 
-  test('material3.fig parses with pages and nodes', () => {
-    expect(material3).toBeInstanceOf(SceneGraph)
-    expect(material3.getPages().length).toBeGreaterThan(0)
-    expect(material3Nodes.length).toBeGreaterThan(0)
-  })
+    beforeAll(
+      async () => {
+        graph = await parseFixture('material3.fig', { populate: 'none' })
+        nodes = collectAllNodes(graph)
+      },
+      { timeout: HEAVY_FIXTURE_TIMEOUT_MS }
+    )
 
-  test('nuxtui.fig parses with pages and nodes', () => {
-    expect(nuxtui).toBeInstanceOf(SceneGraph)
-    expect(nuxtui.getPages().length).toBeGreaterThan(0)
-    expect(nuxtUiNodes.length).toBeGreaterThan(0)
-  })
+    afterAll(
+      () => {
+        nodes = []
+        graph = undefined
+        Bun.gc(true)
+      },
+      { timeout: HEAVY_FIXTURE_TIMEOUT_MS }
+    )
 
-  test('material3: contains COMPONENT nodes', () => {
-    expect(material3Nodes.some((n) => n.type === 'COMPONENT')).toBe(true)
-  })
+    test('parses with pages and nodes', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+      expect(graph).toBeInstanceOf(SceneGraph)
+      expect(graph?.getPages().length ?? 0).toBeGreaterThan(0)
+      expect(nodes.length).toBeGreaterThan(0)
+    })
 
-  test('material3: no unmapped node types', () => {
-    const invalid = material3Nodes.filter((n) => !VALID_NODE_TYPES.has(n.type))
-    expect(invalid.map((n) => `${n.name}: ${n.type}`)).toEqual([])
-  })
+    test('contains COMPONENT nodes', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+      expect(nodes.some((node) => node.type === 'COMPONENT')).toBe(true)
+    })
 
-  test('nuxtui: no unmapped node types', () => {
-    const invalid = nuxtUiNodes.filter((n) => !VALID_NODE_TYPES.has(n.type))
-    expect(invalid.map((n) => `${n.name}: ${n.type}`)).toEqual([])
-  })
+    test('has no unmapped node types', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+      const invalid = nodes.filter((node) => !VALID_NODE_TYPES.has(node.type))
+      expect(invalid.map((node) => `${node.name}: ${node.type}`)).toEqual([])
+    })
 
-  test('material3: fills have valid colors', () => {
-    for (const n of material3Nodes) {
-      for (const fill of n.fills) {
-        if (fill.type === 'SOLID') {
-          const { r, g, b, a } = fill.color
-          expect(r).toBeGreaterThanOrEqual(0)
-          expect(r).toBeLessThanOrEqual(1)
-          expect(g).toBeGreaterThanOrEqual(0)
-          expect(g).toBeLessThanOrEqual(1)
-          expect(b).toBeGreaterThanOrEqual(0)
-          expect(b).toBeLessThanOrEqual(1)
-          expect(a).toBeGreaterThanOrEqual(0)
-          expect(a).toBeLessThanOrEqual(1)
+    test('has valid fill colors', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+      for (const node of nodes) {
+        for (const fill of node.fills) {
+          if (fill.type === 'SOLID') {
+            const { r, g, b, a } = fill.color
+            expect(r).toBeGreaterThanOrEqual(0)
+            expect(r).toBeLessThanOrEqual(1)
+            expect(g).toBeGreaterThanOrEqual(0)
+            expect(g).toBeLessThanOrEqual(1)
+            expect(b).toBeGreaterThanOrEqual(0)
+            expect(b).toBeLessThanOrEqual(1)
+            expect(a).toBeGreaterThanOrEqual(0)
+            expect(a).toBeLessThanOrEqual(1)
+          }
         }
       }
-    }
+    })
   })
 
-  test('nuxtui: fills have valid colors', () => {
-    for (const n of nuxtUiNodes) {
-      for (const fill of n.fills) {
-        if (fill.type === 'SOLID') {
-          expect(fill.color.r).toBeGreaterThanOrEqual(0)
-          expect(fill.color.r).toBeLessThanOrEqual(1)
+  describe.serial('nuxtui.fig', () => {
+    let graph: SceneGraph | undefined
+    let nodes: SceneNode[] = []
+
+    beforeAll(
+      async () => {
+        graph = await parseFixture('nuxtui.fig', { populate: 'none' })
+        nodes = collectAllNodes(graph)
+      },
+      { timeout: HEAVY_FIXTURE_TIMEOUT_MS }
+    )
+
+    afterAll(
+      () => {
+        nodes = []
+        graph = undefined
+        Bun.gc(true)
+      },
+      { timeout: HEAVY_FIXTURE_TIMEOUT_MS }
+    )
+
+    test('parses with pages and nodes', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+      expect(graph).toBeInstanceOf(SceneGraph)
+      expect(graph?.getPages().length ?? 0).toBeGreaterThan(0)
+      expect(nodes.length).toBeGreaterThan(0)
+    })
+
+    test('has no unmapped node types', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+      const invalid = nodes.filter((node) => !VALID_NODE_TYPES.has(node.type))
+      expect(invalid.map((node) => `${node.name}: ${node.type}`)).toEqual([])
+    })
+
+    test('has valid fill colors', { timeout: HEAVY_FIXTURE_TIMEOUT_MS }, () => {
+      for (const node of nodes) {
+        for (const fill of node.fills) {
+          if (fill.type === 'SOLID') {
+            expect(fill.color.r).toBeGreaterThanOrEqual(0)
+            expect(fill.color.r).toBeLessThanOrEqual(1)
+          }
         }
       }
-    }
+    })
   })
 })

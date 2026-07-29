@@ -26,6 +26,10 @@ import { prepareFigmaProjectionFonts } from '#core/io/formats/fig/projection-fon
 import { renderThumbnail } from '#core/io/formats/raster'
 import type { FigWriteOptions, IOContext } from '#core/io/types'
 import { populateAllLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
+import {
+  remapSerializedLowcodeMotionActionReferences,
+  resolveSerializedGraphNodeReference
+} from '#core/kiwi/fig/node-change/lowcode-node-references'
 import { serializeLowcodeFields } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import {
   createCoreFigExportRuntime,
@@ -730,6 +734,10 @@ export async function exportFigFileWithOptions(
     assignedGuidValues,
     componentPropertyDefinitionsById,
     runtime
+  })
+
+  remapSerializedLowcodeMotionActionReferences(nodeChanges, (nodeId) => {
+    return resolveSerializedGraphNodeReference(graph, nodeIdToGuid, nodeId)
   })
 
   const messageObjectAnimations = remapExportedFigmaNodeReferences(

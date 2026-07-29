@@ -31,17 +31,27 @@ export function createClipboardActions(ctx: EditorContext) {
 
     const newRootIds: string[] = []
     const allSnapshots = new Map<string, SceneNode>()
+    const cloneIdMap = new Map<string, string>()
 
     for (const node of topLevel) {
       const parentId = node.parentId ?? ctx.state.currentPageId
-      const clone = ctx.graph.cloneTree(node.id, parentId, {
-        name: node.name + ' copy',
-        x: node.x + 20,
-        y: node.y + 20
-      })
+      const clone = ctx.graph.cloneTree(
+        node.id,
+        parentId,
+        {
+          name: node.name + ' copy',
+          x: node.x + 20,
+          y: node.y + 20
+        },
+        cloneIdMap
+      )
       if (!clone) continue
       newRootIds.push(clone.id)
-      const subtree = snapshotSubtree(ctx.graph, clone.id)
+    }
+
+    ctx.graph.remapClonedNodeReferences(cloneIdMap)
+    for (const rootId of newRootIds) {
+      const subtree = snapshotSubtree(ctx.graph, rootId)
       for (const [id, snap] of subtree) allSnapshots.set(id, snap)
     }
 
@@ -137,6 +147,7 @@ export function createClipboardActions(ctx: EditorContext) {
     for (const [hash, bytes] of images) ctx.graph.images.set(hash, bytes)
 
     const created: string[] = []
+    const cloneIdMap = new Map<string, string>()
     const createNodeTree = (source: SceneNode & { children?: SceneNode[] }, parentId: string) => {
       const { id: _id, childIds: _childIds, children = [], parentId: _parentId, ...rest } = source
       const node = ctx.graph.createNode(source.type, parentId, {
@@ -145,6 +156,7 @@ export function createClipboardActions(ctx: EditorContext) {
         y: source.y + 20,
         childIds: []
       })
+      cloneIdMap.set(source.id, node.id)
       for (const child of children) createNodeTree(child, node.id)
       return node.id
     }
@@ -152,6 +164,7 @@ export function createClipboardActions(ctx: EditorContext) {
     const pasteTarget = replacementTargets[0]?.parentId ?? resolvePasteTarget(ctx)
     for (const node of nodes) created.push(createNodeTree(node, pasteTarget))
     if (created.length === 0) return created
+    ctx.graph.remapClonedNodeReferences(cloneIdMap)
 
     if (replacementTargets.length > 0) {
       replaceTargetsWithCreated(

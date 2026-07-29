@@ -7,7 +7,7 @@ import {
   SceneGraph,
   type SceneNode
 } from '@open-pencil/core'
-import type { ActionDef } from '@open-pencil/scene-graph'
+import type { ActionDef, MotionSpec } from '@open-pencil/scene-graph'
 
 setDefaultTimeout(30_000)
 
@@ -163,6 +163,97 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedBtn.events).toEqual({
       onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }]
     })
+  })
+
+  test('motion action node references remap to exported GUIDs across events and workflows', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const target = graph.createNode('RECTANGLE', page.id, {
+      name: 'Animated target',
+      width: 100,
+      height: 80,
+      motion: {
+        version: 1,
+        tracks: [
+          {
+            id: 'entrance',
+            trigger: 'mount',
+            keyframes: [
+              { offset: 0, opacity: 0 },
+              { offset: 1, opacity: 1 }
+            ],
+            timing: { durationMs: 300 }
+          }
+        ]
+      }
+    })
+    const onClick: ActionDef[] = [
+      {
+        id: 'play-entrance',
+        kind: 'playMotion',
+        targetNodeId: target.id,
+        trackId: 'entrance'
+      },
+      { id: 'stop-all', kind: 'stopMotion', targetNodeId: target.id }
+    ]
+    graph.createNode('BUTTON', page.id, { name: 'Motion trigger', events: { onClick } })
+    graph.updateNode(graph.rootId, {
+      lowcodeWorkflows: [
+        {
+          id: 'replay',
+          name: 'Replay entrance',
+          actions: [
+            {
+              id: 'if-ready',
+              kind: 'condition',
+              condExpr: 'true',
+              consequent: [
+                {
+                  id: 'workflow-play',
+                  kind: 'playMotion',
+                  targetNodeId: target.id,
+                  trackId: 'entrance'
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const importedTarget = findByName(reimported, 'Animated target')
+    const importedButton = findByName(reimported, 'Motion trigger')
+    const importedActions = importedButton.events?.onClick
+    const importedWorkflowActions = reimported.getNode(reimported.rootId)?.lowcodeWorkflows?.[0]
+      ?.actions
+
+    expect(importedTarget.id).not.toBe(target.id)
+    expect(importedActions).toEqual([
+      {
+        id: 'play-entrance',
+        kind: 'playMotion',
+        targetNodeId: importedTarget.id,
+        trackId: 'entrance'
+      },
+      { id: 'stop-all', kind: 'stopMotion', targetNodeId: importedTarget.id }
+    ])
+    expect(importedWorkflowActions).toEqual([
+      {
+        id: 'if-ready',
+        kind: 'condition',
+        condExpr: 'true',
+        consequent: [
+          {
+            id: 'workflow-play',
+            kind: 'playMotion',
+            targetNodeId: importedTarget.id,
+            trackId: 'entrance'
+          }
+        ]
+      }
+    ])
   })
 
   test('Phase 3 §10 workflow: nested condition / delay / stop survive round-trip', async () => {
@@ -905,6 +996,118 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(Object.keys(inst2?.overrides ?? {})).toEqual([`${child2?.id}:text`])
     // and the pending snapshot was consumed
     expect(inst2?.pendingInstanceOverrides).toBeUndefined()
+  })
+
+  test('root instance custom Motion override round-trips and survives component sync', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const masterMotion: MotionSpec = {
+      version: 1,
+      tracks: [
+        {
+          id: 'master-fade',
+          trigger: 'mount',
+          keyframes: [
+            { offset: 0, opacity: 0 },
+            { offset: 1, opacity: 1 }
+          ],
+          timing: { durationMs: 200 }
+        }
+      ]
+    }
+    const customMotion: MotionSpec = {
+      version: 1,
+      tracks: [
+        {
+          id: 'instance-slide',
+          trigger: 'click',
+          keyframes: [
+            { offset: 0, x: 0 },
+            { offset: 1, x: 48 }
+          ],
+          timing: { durationMs: 640, easing: 'ease-in-out' }
+        }
+      ],
+      reducedMotion: 'reduce'
+    }
+    const comp = graph.createNode('COMPONENT', page.id, {
+      name: 'Motion Master',
+      width: 100,
+      height: 40,
+      motion: masterMotion
+    })
+    const inst = graph.createInstance(comp.id, page.id)
+    if (!inst) throw new Error('instance failed')
+    graph.updateNode(inst.id, {
+      motion: customMotion,
+      overrides: { ...inst.overrides, motion: structuredClone(customMotion) }
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const comp2 = findFirst(reimported, 'COMPONENT')
+    const inst2 = findFirst(reimported, 'INSTANCE')
+
+    expect(inst2.motion).toEqual(customMotion)
+    expect(inst2.overrides.motion).toEqual(customMotion)
+    expect(inst2.overrides.motion).not.toBe(inst2.motion)
+    expect(inst2.pendingInstanceOverrides).toBeUndefined()
+
+    reimported.updateNode(comp2.id, {
+      motion: { ...masterMotion, tracks: [{ ...masterMotion.tracks[0], id: 'master-updated' }] }
+    })
+    reimported.syncInstances(comp2.id)
+
+    expect(inst2.motion).toEqual(customMotion)
+    expect(inst2.overrides.motion).toEqual(customMotion)
+  })
+
+  test('root instance null Motion override round-trips and survives component sync', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const masterMotion: MotionSpec = {
+      version: 1,
+      tracks: [
+        {
+          id: 'master-motion',
+          trigger: 'mount',
+          keyframes: [
+            { offset: 0, y: 20 },
+            { offset: 1, y: 0 }
+          ],
+          timing: { durationMs: 300 }
+        }
+      ]
+    }
+    const comp = graph.createNode('COMPONENT', page.id, {
+      name: 'Motion Master',
+      width: 100,
+      height: 40,
+      motion: masterMotion
+    })
+    const inst = graph.createInstance(comp.id, page.id)
+    if (!inst) throw new Error('instance failed')
+    graph.clearNodeFields(inst.id, ['motion'])
+    graph.updateNode(inst.id, { overrides: { ...inst.overrides, motion: null } })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const comp2 = findFirst(reimported, 'COMPONENT')
+    const inst2 = findFirst(reimported, 'INSTANCE')
+
+    expect(inst2.motion).toBeUndefined()
+    expect(Object.hasOwn(inst2, 'motion')).toBe(false)
+    expect(inst2.overrides.motion).toBeNull()
+    expect(inst2.pendingInstanceOverrides).toBeUndefined()
+
+    reimported.updateNode(comp2.id, {
+      motion: { ...masterMotion, tracks: [{ ...masterMotion.tracks[0], id: 'master-updated' }] }
+    })
+    reimported.syncInstances(comp2.id)
+
+    expect(inst2.motion).toBeUndefined()
+    expect(Object.hasOwn(inst2, 'motion')).toBe(false)
+    expect(inst2.overrides.motion).toBeNull()
   })
 
   test('a clean instance has no overrides after .fig round-trip (byte regression)', async () => {

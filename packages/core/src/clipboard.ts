@@ -11,8 +11,17 @@ import { initCodec, getCompiledSchema, getSchemaBytes } from '@open-pencil/kiwi/
 import type { NodeChange as KiwiNodeChange } from '@open-pencil/kiwi/fig/codec'
 import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi/schema-runtime'
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type { GUID } from '@open-pencil/scene-graph/primitives'
 
 import { shapeTextForClipboard } from './canvas/text/clipboard'
+import {
+  remapSerializedLowcodeMotionActionReferences,
+  resolveSerializedGraphNodeReference
+} from './kiwi/fig/node-change/lowcode-node-references'
+import {
+  extractImportedLowcodeProps,
+  reapplyInstanceOverrides
+} from './kiwi/fig/node-change/lowcode-plugin-data'
 import {
   sceneNodeToKiwi,
   buildFigKiwi,
@@ -245,8 +254,11 @@ export function importClipboardNodes(
     const nc = guidMap.get(figmaId)
     if (!nc) return
 
-    const { nodeType, ...props } = nodeChangeToProps(nc, blobs)
+    const { nodeType, ...baseProps } = nodeChangeToProps(nc, blobs)
     if (nodeType === 'DOCUMENT' || nodeType === 'VARIABLE') return
+    const lowcode = extractImportedLowcodeProps(nc)
+    const importedNodeType = lowcode.nodeTypeOverride ?? nodeType
+    const props = { ...baseProps, ...lowcode.props }
     if (shouldImportTextAsAutoSize(nc, guidMap.get(parentMap.get(figmaId) ?? ''))) {
       props.textAutoResize = 'WIDTH_AND_HEIGHT'
     }
@@ -256,7 +268,7 @@ export function importClipboardNodes(
       props.y = (props.y ?? 0) + offsetY
     }
 
-    const node = graph.createNode(nodeType, ourParentId, props)
+    const node = graph.createNode(importedNodeType, ourParentId, props)
 
     created.set(figmaId, node.id)
     if (ourParentId === targetParentId && !internalFigmaIds.has(figmaId)) createdIds.push(node.id)
@@ -283,6 +295,8 @@ export function importClipboardNodes(
   remapComponentIds(created, graph)
 
   populateAndApplyOverrides(graph, guidMap as Map<string, InstanceNodeChange>, created, blobs)
+  reapplyInstanceOverrides(graph, created.values())
+  graph.preserveSourceMetadataDuring(() => graph.remapClonedNodeReferences(created))
 
   for (const figmaId of internalTopLevel) {
     const ourId = created.get(figmaId)
@@ -305,6 +319,7 @@ export async function buildFigmaClipboardHTML(
   const docGuid = { sessionID: 0, localID: 0 }
   const canvasGuid = { sessionID: 0, localID: 1 }
   const localIdCounter = { value: 100 }
+  const nodeIdToGuid = new Map<string, GUID>()
 
   const nodeChanges: KiwiNodeChange[] = [
     makeDocumentNodeChange(docGuid, graph.documentColorSpace),
@@ -331,11 +346,15 @@ export async function buildFigmaClipboardHTML(
         localIdCounter,
         graph,
         blobs,
-        undefined,
+        nodeIdToGuid,
         fontDigestMap
       )
     )
   }
+
+  remapSerializedLowcodeMotionActionReferences(nodeChanges, (nodeId) => {
+    return resolveSerializedGraphNodeReference(graph, nodeIdToGuid, nodeId)
+  })
 
   const textNodeQueue = [...exportedTextNodes]
   await Promise.all(

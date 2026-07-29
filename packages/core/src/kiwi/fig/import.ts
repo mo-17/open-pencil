@@ -14,13 +14,13 @@ import {
 } from '@open-pencil/fig/node-change'
 import type { NodeChange, VariableDataValuesEntry, Color, GUID } from '@open-pencil/kiwi/fig/codec'
 import { SceneGraph } from '@open-pencil/scene-graph'
-import type { SceneNode, VariableType, VariableValue } from '@open-pencil/scene-graph'
+import type { VariableType, VariableValue } from '@open-pencil/scene-graph'
 
 import { BLACK } from '#core/constants'
 import { setLazyFigImportContext } from '#core/kiwi/fig/lazy-import'
 import { collapseFigmaProjectionChildren } from '#core/kiwi/fig/node-change/figma-projection'
 import {
-  extractLowcodeAndPluginData,
+  extractImportedLowcodeProps,
   reapplyInstanceOverrides
 } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
 import {
@@ -30,34 +30,6 @@ import {
 
 type AssetRef = { key: string; version?: string }
 type AliasRef = { guid?: GUID; assetRef?: AssetRef }
-
-function importedLowcodeProps(nc: NodeChange): {
-  nodeTypeOverride?: SceneNode['type']
-  props: Partial<SceneNode>
-} {
-  const {
-    nodeTypeOverride,
-    freeLayoutOverride,
-    primaryAxisSizingOverride,
-    counterAxisSizingOverride,
-    counterAxisAlignContentOverride,
-    gridPositionOverride,
-    ...props
-  } = extractLowcodeAndPluginData(nc)
-  return {
-    nodeTypeOverride,
-    props: {
-      ...props,
-      ...(freeLayoutOverride ? { layoutMode: 'FREE' as const } : {}),
-      ...(primaryAxisSizingOverride ? { primaryAxisSizing: primaryAxisSizingOverride } : {}),
-      ...(counterAxisSizingOverride ? { counterAxisSizing: counterAxisSizingOverride } : {}),
-      ...(counterAxisAlignContentOverride
-        ? { counterAxisAlignContent: counterAxisAlignContentOverride }
-        : {}),
-      ...(gridPositionOverride ? { gridPosition: gridPositionOverride } : {})
-    }
-  }
-}
 
 function applyImportedCanvasMetadata(
   page: ReturnType<SceneGraph['addPage']>,
@@ -72,7 +44,7 @@ function applyImportedCanvasMetadata(
     FIGMA_CANVAS_METADATA_FIELD_KEYS,
     blobs
   )
-  Object.assign(page, importedLowcodeProps(canvasNc).props)
+  Object.assign(page, extractImportedLowcodeProps(canvasNc).props)
 }
 
 function preserveImportedRootMetadata(
@@ -102,7 +74,7 @@ function applyImportedDocumentMetadata(
     FIGMA_DOCUMENT_METADATA_FIELD_KEYS,
     blobs
   )
-  Object.assign(rootNode, importedLowcodeProps(docNc).props)
+  Object.assign(rootNode, extractImportedLowcodeProps(docNc).props)
 }
 
 function assetRefKey(assetRef: AssetRef): string {
@@ -358,6 +330,7 @@ function importPages(
   childrenMap: Map<string, string[]>,
   created: Set<string>,
   canvasIdToPageId: Map<string, string>,
+  guidToNodeId: Map<string, string>,
   createSceneNode: (ncId: string, graphParentId: string) => void,
   blobs: Uint8Array[]
 ): void {
@@ -371,6 +344,7 @@ function importPages(
 
   if (docId) {
     applyImportedDocumentMetadata(graph, changeMap.get(docId), blobs)
+    guidToNodeId.set(docId, graph.rootId)
 
     for (const canvasId of childrenMap.get(docId) ?? []) {
       const canvasNc = changeMap.get(canvasId)
@@ -380,6 +354,7 @@ function importPages(
         page.source.id = canvasId
         applyImportedCanvasMetadata(page, canvasNc, blobs)
         canvasIdToPageId.set(canvasId, page.id)
+        guidToNodeId.set(canvasId, page.id)
         if (canvasNc.internalOnly) page.internalOnly = true
         created.add(canvasId)
         for (const childId of childrenMap.get(canvasId) ?? []) {
@@ -424,7 +399,7 @@ function remapComponentIds(graph: SceneGraph, guidToNodeId: Map<string, string>)
   for (const node of graph.getAllNodes()) {
     if (node.type !== 'INSTANCE' || !node.componentId) continue
     const remapped = guidToNodeId.get(node.componentId)
-    if (remapped) node.componentId = remapped
+    if (remapped) graph.updateNode(node.id, { componentId: remapped })
   }
 }
 
@@ -519,7 +494,7 @@ export function importNodeChanges(
     if (!nc) return
 
     const { nodeType: figNodeType, ...figProps } = nodeChangeToProps(nc, blobs)
-    const lowcode = importedLowcodeProps(nc)
+    const lowcode = extractImportedLowcodeProps(nc)
     const nodeType = lowcode.nodeTypeOverride ?? figNodeType
     const projection = collapseFigmaProjectionChildren(
       nodeType,
@@ -565,6 +540,7 @@ export function importNodeChanges(
     childrenMap,
     created,
     canvasIdToPageId,
+    guidToNodeId,
     createSceneNode,
     blobs
   )
@@ -572,7 +548,10 @@ export function importNodeChanges(
   importCollections(changeMap, graph)
   importVariableEntries(changeMap, parentMap, graph, assetRefs)
   importVariableBindings(changeMap, guidToNodeId, graph)
-  remapComponentIds(graph, guidToNodeId)
+  graph.preserveSourceMetadataDuring(() => {
+    remapComponentIds(graph, guidToNodeId)
+    graph.remapClonedNodeReferences(guidToNodeId)
+  })
   applyVariantPropSpecs(graph)
 
   const firstPageId = graph.getPages()[0]?.id
@@ -593,6 +572,7 @@ export function importNodeChanges(
         activeRootIds
       )
       reapplyInstanceOverrides(graph)
+      graph.remapClonedNodeReferences(guidToNodeId)
     })
   }
 
