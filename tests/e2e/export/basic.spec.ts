@@ -1,3 +1,7 @@
+import { execFile } from 'node:child_process'
+import { readFile } from 'node:fs/promises'
+import { promisify } from 'node:util'
+
 import { test, expect, type Page } from '@playwright/test'
 
 import { expectInViewport } from '#tests/e2e/fixtures'
@@ -6,6 +10,7 @@ import { propertyItems, propertySection } from '#tests/helpers/properties'
 
 let page: Page
 let canvas: CanvasHelper
+const execFileAsync = promisify(execFile)
 
 test.describe.configure({ mode: 'serial' })
 
@@ -197,6 +202,117 @@ async function createExportableRect(settings: { scale: number; format: string }[
   await canvas.waitForRender()
 }
 
+async function createAnimatedExportableRect() {
+  await page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    for (const node of store.graph.getChildren(store.state.currentPageId)) {
+      store.graph.deleteNode(node.id)
+    }
+    const id = store.createShape('RECTANGLE', 100, 100, 80, 60)
+    store.graph.updateNode(id, {
+      name: 'Animated export',
+      motion: {
+        version: 1,
+        tracks: [
+          {
+            id: 'move',
+            trigger: 'mount',
+            keyframes: [
+              { offset: 0, x: 0 },
+              { offset: 1, x: 20 }
+            ],
+            timing: { durationMs: 100, easing: 'linear' }
+          }
+        ]
+      }
+    })
+    store.select([id])
+    store.requestRender()
+  })
+  await canvas.waitForRender()
+  await page.getByTestId('motion-export').scrollIntoViewIfNeeded()
+  await expect(page.getByTestId('motion-export-capability')).not.toContainText('Detecting')
+}
+
+async function createAnimatedSceneExport() {
+  await page.evaluate(() => {
+    const store = window.openPencil?.getStore?.()
+    if (!store) throw new Error('OpenPencil store not initialized')
+    const pageId = store.state.currentPageId
+    for (const node of store.graph.getChildren(pageId)) store.graph.deleteNode(node.id)
+    const owner = store.graph.createNode('FRAME', pageId, {
+      name: 'Scene export',
+      x: 100,
+      y: 100,
+      width: 120,
+      height: 80,
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.95, g: 0.95, b: 0.95, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+    const target = store.graph.createNode('RECTANGLE', owner.id, {
+      name: 'Scene target',
+      x: 10,
+      y: 10,
+      width: 40,
+      height: 40,
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0.2, g: 0.5, b: 0.9, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ],
+      motion: {
+        version: 1,
+        tracks: [
+          {
+            id: 'move',
+            trigger: 'manual',
+            keyframes: [
+              { offset: 0, x: 0 },
+              { offset: 1, x: 30 }
+            ],
+            timing: { durationMs: 100, easing: 'linear' }
+          }
+        ]
+      }
+    })
+    store.graph.updateNode(owner.id, {
+      motionScene: {
+        version: 1,
+        id: 'scene',
+        sequences: [
+          {
+            id: 'manual-sequence',
+            trigger: 'manual',
+            cues: [
+              {
+                id: 'move-cue',
+                targetNodeId: target.id,
+                trackId: 'move',
+                startMs: 0
+              }
+            ]
+          }
+        ]
+      }
+    })
+    store.select([owner.id])
+    store.requestRender()
+  })
+  await canvas.waitForRender()
+  await page.getByTestId('motion-export').scrollIntoViewIfNeeded()
+  await expect(page.getByTestId('motion-export-capability')).not.toContainText('Detecting')
+}
+
 test('multiple export formats download as a single zip', async () => {
   await createExportableRect([
     { scale: 1, format: 'png' },
@@ -218,7 +334,119 @@ test('a single export format downloads the file directly', async () => {
   canvas.assertNoErrors()
 })
 
+test('Motion export panel downloads a real built-in GIF', async () => {
+  await createAnimatedExportableRect()
+  await forceBlobDownload()
+
+  await expect(page.getByTestId('motion-export-start')).toBeEnabled()
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('motion-export-start').click()
+  ])
+  expect(download.suggestedFilename()).toBe('Animated export-motion.gif')
+  const path = await download.path()
+  expect(path).not.toBeNull()
+  expect((await readFile(path as string)).subarray(0, 6).toString('ascii')).toBe('GIF89a')
+})
+
+test('Motion export panel exports a selected scene sequence', async () => {
+  await createAnimatedSceneExport()
+  await forceBlobDownload()
+
+  await expect(page.getByTestId('motion-export-scene-sequence')).toContainText('manual-sequence')
+  await expect(page.getByTestId('motion-export-start')).toBeEnabled()
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByTestId('motion-export-start').click()
+  ])
+  expect(download.suggestedFilename()).toBe('Scene export-manual-sequence-motion.gif')
+  const path = await download.path()
+  expect(path).not.toBeNull()
+  expect((await readFile(path as string)).subarray(0, 6).toString('ascii')).toBe('GIF89a')
+})
+
+test('Motion export panel exposes only a real WebM capability and declares opaque alpha', async () => {
+  await createAnimatedExportableRect()
+  await forceBlobDownload()
+
+  const format = page.getByTestId('motion-export-format')
+  await format.click()
+  await page.locator('[role="option"]').filter({ hasText: 'WebM' }).click()
+  const capability = page.getByTestId('motion-export-capability')
+  const button = page.getByTestId('motion-export-start')
+  if (/unavailable|no WebM encoder/i.test((await capability.textContent()) ?? '')) {
+    await expect(button).toBeDisabled()
+    return
+  }
+  await expect(capability).toContainText('opaque')
+  await page.getByTestId('motion-export-fps').fill('20')
+
+  const [download] = await Promise.all([page.waitForEvent('download'), button.click()])
+  expect(download.suggestedFilename()).toBe('Animated export-motion.webm')
+  const path = await download.path()
+  expect(path).not.toBeNull()
+  expect([...new Uint8Array(await readFile(path as string)).subarray(0, 4)]).toEqual([
+    0x1a, 0x45, 0xdf, 0xa3
+  ])
+  const { stdout } = await execFileAsync('ffprobe', [
+    '-v',
+    'error',
+    '-count_frames',
+    '-show_entries',
+    'stream=codec_name,width,height,nb_read_frames:format=duration',
+    '-of',
+    'json',
+    path as string
+  ])
+  const inspected = JSON.parse(stdout) as {
+    streams: Array<{
+      codec_name?: string
+      width?: number
+      height?: number
+      nb_read_frames?: string
+    }>
+    format: { duration?: string }
+  }
+  expect(inspected.streams[0]).toMatchObject({
+    codec_name: 'vp8',
+    width: 90,
+    height: 60,
+    nb_read_frames: '2'
+  })
+  expect(Number(inspected.format.duration)).toBeCloseTo(0.1, 3)
+})
+
+test('Motion export panel cancels before publishing a partial download', async () => {
+  await createAnimatedExportableRect()
+  await forceBlobDownload()
+
+  const format = page.getByTestId('motion-export-format')
+  await format.click()
+  await page.locator('[role="option"]').filter({ hasText: /^GIF$/ }).click()
+  await page.getByTestId('motion-export-fps').fill('100')
+  await page.getByTestId('motion-export-loops').fill('100')
+
+  let downloaded = false
+  const onDownload = () => {
+    downloaded = true
+  }
+  page.on('download', onDownload)
+  try {
+    await page.getByTestId('motion-export-start').click()
+    await expect(page.getByTestId('motion-export-cancel')).toBeVisible()
+    await page.getByTestId('motion-export-cancel').click()
+    await expect(page.getByTestId('motion-export-start')).toBeEnabled()
+    await expect(page.getByTestId('motion-export-saved')).toHaveCount(0)
+    await page.waitForTimeout(250)
+    expect(downloaded).toBe(false)
+  } finally {
+    page.off('download', onDownload)
+  }
+})
+
 test('preview toggle shows image with blob src', async () => {
+  await createExportableRect([{ scale: 1, format: 'png' }])
+
   const formatTrigger = exportItems().first().getByRole('combobox', { name: 'Export format' })
   await formatTrigger.click()
   await page.locator('[role="option"]').filter({ hasText: 'PNG' }).click()

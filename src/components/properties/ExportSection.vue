@@ -8,6 +8,7 @@ import IconButton from '@/components/ui/IconButton.vue'
 import PanelItemRow from '@/components/ui/panel/PanelItemRow.vue'
 import PanelSection from '@/components/ui/panel/PanelSection.vue'
 import Tip from '@/components/ui/Tip.vue'
+import MotionAnimationExport from '@/components/properties/motion-export/MotionAnimationExport.vue'
 import { useEditorStore } from '@/app/editor/active-store'
 import { useExport, useI18n } from '@open-pencil/vue'
 import { CHECKERBOARD_BACKGROUND } from '@/theme/checkerboard'
@@ -184,5 +185,7 @@ watch(previewKey, updatePreview, { flush: 'post' })
     >
       {{ panels.exportRenderingPreview }}
     </div>
+
+    <MotionAnimationExport />
   </PanelSection>
 </template>

@@ -1,6 +1,7 @@
 import { zipSync, type Zippable } from 'fflate'
 
 import type { Editor, EditorState } from '@open-pencil/core/editor'
+import type { FigmaExportImageOptions } from '@open-pencil/core/figma-api'
 import type {
   ExportRequest,
   IOFormatAdapter,
@@ -105,7 +106,11 @@ export function createExportTargetActions(editor: Editor, state: EditorState, io
     nodeIds: string[],
     scale: number,
     format: RasterExportFormat,
-    pageId = state.currentPageId
+    pageId = state.currentPageId,
+    motionOptions: Pick<
+      FigmaExportImageOptions,
+      'bounds' | 'motionVisualStates' | 'generatedEffectTimeMs' | 'generatedEffectMode'
+    > = {}
   ): Promise<Uint8Array | null> {
     const renderer = editor.renderer
     if (!renderer) return null
@@ -113,7 +118,8 @@ export function createExportTargetActions(editor: Editor, state: EditorState, io
     if (ids.length === 0) return null
     return renderNodesToImage(renderer.ck, renderer, editor.graph, pageId, ids, {
       scale,
-      format
+      format,
+      ...motionOptions
     })
   }
 
