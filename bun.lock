@@ -21,6 +21,7 @@
         "@open-pencil/dom-css": "workspace:*",
         "@open-pencil/fig": "workspace:*",
         "@open-pencil/kiwi": "workspace:*",
+        "@open-pencil/motion-runtime": "workspace:*",
         "@open-pencil/pen": "workspace:*",
         "@open-pencil/scene-graph": "workspace:*",
         "@open-pencil/vue": "workspace:*",
@@ -83,7 +84,7 @@
         "@agentclientprotocol/sdk": "^0.14.1",
         "@arethetypeswrong/cli": "0.18.4",
         "@feature-sliced/steiger-plugin": "^0.5.8",
-        "@figma/plugin-typings": "^1.126.0",
+        "@figma/plugin-typings": "^1.131.0",
         "@hono/node-server": "^1.19.11",
         "@hypothesi/tauri-mcp-cli": "0.10.0",
         "@hypothesi/tauri-mcp-server": "0.11.2",
@@ -142,6 +143,7 @@
         "@open-pencil/compiler": "workspace:*",
         "@open-pencil/core": "workspace:*",
         "@open-pencil/dom-css": "workspace:*",
+        "@open-pencil/fig": "workspace:*",
         "@open-pencil/mcp": "workspace:*",
         "@open-pencil/scene-graph": "workspace:*",
         "agentfmt": "^0.1.3",
@@ -159,6 +161,7 @@
         "@iconify-json/lucide": "^1.2.94",
         "@noble/hashes": "^1.8.0",
         "@open-pencil/core": "workspace:*",
+        "@open-pencil/motion-runtime": "workspace:*",
         "@open-pencil/scene-graph": "workspace:*",
         "@tailwindcss/vite": "^4.2.1",
         "@vitejs/plugin-react": "^4.3.4",
@@ -266,6 +269,18 @@
         "@open-pencil/scene-graph": "workspace:*",
       },
     },
+    "packages/figma-motion-plugin": {
+      "name": "@open-pencil/figma-motion-plugin",
+      "version": "0.13.2",
+      "dependencies": {
+        "@open-pencil/fig": "workspace:*",
+      },
+      "devDependencies": {
+        "@figma/plugin-typings": "^1.131.0",
+        "@types/bun": "^1.3.14",
+        "typescript": "~5.8.3",
+      },
+    },
     "packages/kiwi": {
       "name": "@open-pencil/kiwi",
       "version": "0.13.2",
@@ -299,6 +314,24 @@
         "@types/node": "^25.3.2",
         "@types/ws": "^8.18.1",
       },
+    },
+    "packages/motion-runtime": {
+      "name": "@open-pencil/motion-runtime",
+      "version": "0.13.2",
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "tsdown": "^0.22.3",
+        "typescript": "~5.8.3",
+        "vue": "^3.5.29",
+      },
+      "peerDependencies": {
+        "@open-pencil/core": "workspace:*",
+        "@open-pencil/scene-graph": "workspace:*",
+        "vue": "^3.5.0",
+      },
+      "optionalPeers": [
+        "vue",
+      ],
     },
     "packages/pen": {
       "name": "@open-pencil/pen",
@@ -685,7 +718,7 @@
 
     "@feature-sliced/steiger-plugin": ["@feature-sliced/steiger-plugin@0.5.8", "", { "dependencies": { "@feature-sliced/filesystem": "^3.1.0", "fastest-levenshtein": "^1.0.16", "lodash-es": "^4.17.21", "pluralize": "^8.0.0", "precinct": "^12.2.0", "tsconfck": "^3.1.6" } }, "sha512-SXn2PQS0yVRzhltSM968hz0hWmNj93l7dNU4Qqry3OgSkvrO4kl1/daWYwRYzmm9sImsAUsTztabwLUbF9U9YA=="],
 
-    "@figma/plugin-typings": ["@figma/plugin-typings@1.126.0", "", {}, "sha512-7Y8HPIHWgMUoT1L7InyUe5X6S+gPUSlVLi7TQvwnRev6PjDwwNkM/oSio2t69EvsJ+TRPSJSvO7xph+KHIcWeQ=="],
+    "@figma/plugin-typings": ["@figma/plugin-typings@1.131.0", "", {}, "sha512-XBTPNGc65myupitMaeemyiF/ir1jn/EXXTdoGUCEVCfVB6KPQUy+gbfHbnC+QQiHxdw/Naikdx+9v/u4d49gfA=="],
 
     "@firebase/ai": ["@firebase/ai@2.10.0", "", { "dependencies": { "@firebase/app-check-interop-types": "0.3.3", "@firebase/component": "0.7.2", "@firebase/logger": "0.5.0", "@firebase/util": "1.15.0", "tslib": "^2.1.0" }, "peerDependencies": { "@firebase/app": "0.x", "@firebase/app-types": "0.x" } }, "sha512-1lI6HomyoO/8RSJb6ItyHLpHnB2z27m5F4aX/Vpi1nhwWoxdNjkq+6UQOykHyCE0KairojOE5qQ20i1tnF0nNA=="],
 
@@ -927,9 +960,13 @@
 
     "@open-pencil/fig": ["@open-pencil/fig@workspace:packages/fig"],
 
+    "@open-pencil/figma-motion-plugin": ["@open-pencil/figma-motion-plugin@workspace:packages/figma-motion-plugin"],
+
     "@open-pencil/kiwi": ["@open-pencil/kiwi@workspace:packages/kiwi"],
 
     "@open-pencil/mcp": ["@open-pencil/mcp@workspace:packages/mcp"],
+
+    "@open-pencil/motion-runtime": ["@open-pencil/motion-runtime@workspace:packages/motion-runtime"],
 
     "@open-pencil/pen": ["@open-pencil/pen@workspace:packages/pen"],
 

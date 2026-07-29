@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -28,6 +28,10 @@ function run(command: string[], cwd = rootDir, env: Record<string, string> = {})
 
 function nodeEval(code: string, cwd: string): void {
   run(['node', '--input-type=module', '--eval', code], cwd)
+}
+
+function bunEval(code: string, cwd: string): void {
+  run(['bun', '--eval', code], cwd)
 }
 
 const tempDir = mkdtempSync(join(tmpdir(), 'open-pencil-package-smoke-'))
@@ -70,6 +74,52 @@ try {
     npm_config_cache: join(tempDir, '.npm-cache')
   })
 
+  const compilerKernelProbe = join(tempDir, 'compiler-motion-kernel-probe.mjs')
+  const compilerKernelBundle = join(tempDir, 'compiler-motion-kernel-probe.bundle.mjs')
+  writeFileSync(
+    compilerKernelProbe,
+    `import { buildMotionRuntime } from '@open-pencil/compiler/adapters/react/motion/runtime'
+
+const source = buildMotionRuntime([
+  { token: 'probe', motion: { version: 3, reducedMotion: 'allow', tracks: [] } }
+])
+if (!source?.includes('Embedded from @open-pencil/motion-runtime/kernel')) {
+  throw new Error('Minified compiler did not embed the public Motion kernel')
+}
+if (source.includes("from '@open-pencil/motion-runtime")) {
+  throw new Error('Generated Motion runtime is not self-contained')
+}
+const executable = source + String.raw\`
+const __probeTrack: MotionTrack = {
+  id: 'probe', trigger: 'mount', exit: 'none', keyframes: [],
+  timing: { duration: 100, delay: 0, easing: 'linear', iterations: 1, direction: 'normal', fill: 'both' },
+  composition: { mode: 'replace', weight: 1, priority: 0, sourceIndex: 0, clock: '--clock', weightVariable: '--weight', variables: { x: '--x' }, sampling: { easing: 'linear', keyframes: [{ offset: 0, values: { x: 0 } }, { offset: 1, values: { x: 100 } }] } }
+}
+if (sharedSampleMotionRuntimeChannel(__probeTrack, 'x', 0.25) !== 25) throw new Error('Embedded channel sampler failed')
+if (sharedMotionRuntimeTrackProgress(__probeTrack, 50).progress !== 0.5) throw new Error('Embedded timing sampler failed')
+if (!Number.isFinite(sharedSampleMotionRuntimeEasing({ type: 'cubicBezier', x1: 0.42, y1: 0, x2: 0.58, y2: 1 }, 0.25))) throw new Error('Embedded easing sampler failed')
+\`
+const runtimeFile = new URL('./compiler-motion-runtime.generated.mjs', import.meta.url)
+await Bun.write(runtimeFile, new Bun.Transpiler({ loader: 'ts' }).transformSync(executable))
+await import(runtimeFile.href)
+globalThis.__OPENPENCIL_MOTION_RUNTIME__?.dispose()
+`
+  )
+  run(
+    [
+      'bun',
+      'build',
+      compilerKernelProbe,
+      '--target=node',
+      '--format=esm',
+      '--minify',
+      `--outfile=${compilerKernelBundle}`
+    ],
+    tempDir
+  )
+  run(['bun', compilerKernelBundle], tempDir)
+  bunEval("await import('@open-pencil/motion-runtime/kernel')", tempDir)
+
   nodeEval("await import('@open-pencil/kiwi')", tempDir)
   nodeEval("await import('@open-pencil/kiwi/schema-runtime')", tempDir)
   nodeEval("await import('@open-pencil/kiwi/fig')", tempDir)
@@ -88,6 +138,11 @@ try {
   nodeEval("await import('@open-pencil/scene-graph/primitives')", tempDir)
   nodeEval("await import('@open-pencil/pen')", tempDir)
   nodeEval("await import('@open-pencil/core')", tempDir)
+  nodeEval("await import('@open-pencil/motion-runtime')", tempDir)
+  nodeEval("await import('@open-pencil/motion-runtime/dom')", tempDir)
+  nodeEval("await import('@open-pencil/motion-runtime/kernel')", tempDir)
+  nodeEval("await import('@open-pencil/motion-runtime/vanilla')", tempDir)
+  nodeEval("await import('@open-pencil/motion-runtime/vue')", tempDir)
   nodeEval("await import('@open-pencil/dom-css')", tempDir)
   nodeEval("await import('@open-pencil/dom-css/browser')", tempDir)
   nodeEval("await import('@open-pencil/dom-css/jsx-runtime')", tempDir)
@@ -117,6 +172,14 @@ try {
   )
   nodeEval(
     "const { SceneGraph } = await import('@open-pencil/scene-graph'); const graph = new SceneGraph(); if (graph.getPages().length !== 1) throw new Error('SceneGraph package smoke failed')",
+    tempDir
+  )
+  nodeEval(
+    "const { createManualMotionClock, createMotionRuntime } = await import('@open-pencil/motion-runtime'); const clock = createManualMotionClock(); const runtime = createMotionRuntime({ clock }); let x = -1; const handle = runtime.register({ id: 'smoke', motion: { version: 1, tracks: [{ id: 'move', trigger: 'mount', keyframes: [{ offset: 0, x: 0 }, { offset: 1, x: 10 }], timing: { durationMs: 100, easing: 'linear' } }] }, apply: ({ sample }) => { x = sample.visual.x } }); handle.play(); clock.advanceBy(50); if (x !== 5) throw new Error('Motion runtime package smoke failed'); runtime.dispose()",
+    tempDir
+  )
+  nodeEval(
+    "const { buildMotionRuntimeKernelSource, sampleMotionRuntimeChannel } = await import('@open-pencil/motion-runtime/kernel'); const track = { timing: { duration: 100, delay: 0, iterations: 1, direction: 'normal', fill: 'both' }, composition: { sampling: { easing: 'linear', keyframes: [{ offset: 0, values: { x: 0 } }, { offset: 1, values: { x: 100 } }] } } }; if (sampleMotionRuntimeChannel(track, 'x', 0.25) !== 25 || !buildMotionRuntimeKernelSource().includes('Embedded from @open-pencil/motion-runtime/kernel')) throw new Error('Motion runtime kernel package smoke failed')",
     tempDir
   )
   nodeEval(

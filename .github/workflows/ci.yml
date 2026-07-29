@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        group: [app, dom, editor, fig, render, scene, vue]
+        group: [app, compiler, compiler-browser, dom, editor, fig, motion, render, scene, vue]
     name: Unit tests (${{ matrix.group }})
     steps:
       - uses: actions/checkout@v4
@@ -45,17 +45,79 @@ jobs:
         with:
           lfs: 'true'
 
+      - name: Install Chromium for compiler browser tests
+        if: matrix.group == 'compiler-browser'
+        run: bunx playwright install --with-deps chromium
+
       - name: Build packages
         run: bun run build:packages
 
       - name: Run quick unit test shard
-        shell: bash
-        run: |
-          mapfile -t test_files < <(bun tools/unit-tests/src/list.ts "${{ matrix.group }}")
-          if [ "${#test_files[@]}" -eq 0 ]; then
-            echo "No tests found for shard ${{ matrix.group }}"
-            exit 0
-          fi
-          bun test "${test_files[@]}"
+        run: bun tools/unit-tests/src/run.ts "${{ matrix.group }}"
         env:
           BUN_HEAVY_TESTS: 'false'
+
+  p2-motion-e2e:
+    name: P2 Motion Playwright
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build Node-side Motion test dependency
+        run: bun --filter @open-pencil/scene-graph build
+
+      - name: Install Chromium and ffprobe
+        run: |
+          bunx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends ffmpeg
+
+      - name: Run P2 Motion browser tests
+        run: |
+          bunx playwright test \
+            tests/e2e/properties/motion-panel.spec.ts \
+            tests/e2e/properties/motion-path-editor.spec.ts \
+            tests/e2e/export/basic.spec.ts \
+            --project=openpencil \
+            --workers=1 \
+            --timeout=30000 \
+            --trace=retain-on-failure
+        env:
+          OPENPENCIL_MCP_SOCKET: ${{ runner.temp }}/open-pencil-motion-e2e.sock
+          OPENPENCIL_MCP_DISCOVERY_PATH: ${{ runner.temp }}/open-pencil-motion-e2e.json
+
+      - name: Upload failure traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p2-motion-playwright-traces
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  desktop-tests:
+    name: Desktop Rust tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop -> target
+
+      - name: Install Tauri test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Run desktop unit tests
+        run: cargo test --manifest-path desktop/Cargo.toml --locked

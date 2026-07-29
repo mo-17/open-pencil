@@ -60,6 +60,7 @@ describe('DEFAULT_PACKAGES', () => {
       'packages/kiwi',
       'packages/fig',
       'packages/core',
+      'packages/motion-runtime',
       'packages/dom-css',
       'packages/cli',
       'packages/mcp',

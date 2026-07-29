@@ -32,6 +32,7 @@ export const DEFAULT_PACKAGES: PackagePublishConfig[] = [
   { dir: 'packages/kiwi', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/fig', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/core', include: ['dist', 'src', 'assets'], extraFiles: [] },
+  { dir: 'packages/motion-runtime', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/dom-css', include: ['dist'], extraFiles: ['README.md'] },
   { dir: 'packages/cli', include: ['bin', 'dist'], extraFiles: [] },
   { dir: 'packages/mcp', include: ['dist'], extraFiles: [] },
