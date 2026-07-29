@@ -2,20 +2,39 @@
 import type { Canvas, Path } from 'canvaskit-wasm'
 
 import type { SceneNode, SceneGraph, Fill } from '@open-pencil/scene-graph'
-import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
+import { computeDescendantVisualBounds, polygonVertices } from '@open-pencil/scene-graph/geometry'
 import type { Color, Rect } from '@open-pencil/scene-graph/primitives'
 
-import { DROP_HIGHLIGHT_ALPHA, DROP_HIGHLIGHT_STROKE, SECTION_CORNER_RADIUS } from '#core/constants'
-import { MOTION_VISUAL_IDENTITY, type MotionVisualState } from '#core/motion'
+import {
+  DEFAULT_SHADOW_COLOR,
+  DROP_HIGHLIGHT_ALPHA,
+  DROP_HIGHLIGHT_STROKE,
+  SECTION_CORNER_RADIUS,
+  TRANSPARENT
+} from '#core/constants'
+import {
+  MOTION_VISUAL_IDENTITY,
+  projectMotionAdvancedChannels,
+  type MotionVisualState
+} from '#core/motion'
 import { transformTextCase } from '#core/text/case'
 import { fontManager } from '#core/text/fonts'
 import { vectorNetworkToCenterlinePath } from '#core/vector'
+import { evalCubic, isLineSegment, segmentToAbsolute } from '#core/vector/curve-math'
 
 import { figmaBlendModeToSkia, needsIsolatedBlendLayer } from './blend'
 import { renderBooleanOperation } from './boolean'
+import { drawGeneratedEffect } from './generated-effect'
 import { drawLayoutGrids } from './layout-grids'
 import { renderButtonLabel } from './lowcode'
 import { renderMaskedChildIds } from './masks'
+import {
+  hasMotionDynamicStroke,
+  measurePathLength,
+  motionDashPhase,
+  motionProjectionFlags,
+  motionTrimProjection
+} from './motion-projection'
 import type { SkiaRenderer, RenderOverlays } from './renderer'
 import { makeSmoothRRectPath, nodeHasRadius, nodeHasSmoothCorners } from './shapes'
 import {
@@ -49,13 +68,23 @@ function motionVisual(overlays: RenderOverlays, nodeId: string): MotionVisualSta
   return overlays.motionVisualStates?.get(nodeId) ?? MOTION_VISUAL_IDENTITY
 }
 
+function motionLayoutNode(node: SceneNode, overlays: RenderOverlays): SceneNode {
+  const layout = overlays.motionLayoutNodes?.get(node.id)
+  return layout ? { ...node, ...layout } : node
+}
+
 function hasMotionGeometry(visual: MotionVisualState): boolean {
   return (
     visual.x !== 0 ||
     visual.y !== 0 ||
     visual.scaleX !== 1 ||
     visual.scaleY !== 1 ||
-    visual.rotate !== 0
+    visual.rotate !== 0 ||
+    visual.width !== undefined ||
+    visual.height !== undefined ||
+    visual.pathProgress !== undefined ||
+    visual.trimStart !== undefined ||
+    visual.trimEnd !== undefined
   )
 }
 
@@ -135,14 +164,276 @@ function applyNodeTransforms(
     canvas.scale(node.flipX ? -1 : 1, node.flipY ? -1 : 1)
   }
 
+  const originX = node.width * (visual.originX ?? 0.5)
+  const originY = node.height * (visual.originY ?? 0.5)
   if (visual.rotate !== 0) {
-    canvas.rotate(visual.rotate, node.width / 2, node.height / 2)
+    canvas.rotate(visual.rotate, originX, originY)
   }
   if (visual.scaleX !== 1 || visual.scaleY !== 1) {
-    canvas.translate(node.width / 2, node.height / 2)
+    canvas.translate(originX, originY)
     canvas.scale(visual.scaleX, visual.scaleY)
-    canvas.translate(-node.width / 2, -node.height / 2)
+    canvas.translate(-originX, -originY)
   }
+}
+
+function replaceFirstSolidFill(
+  fills: SceneNode['fills'],
+  color: NonNullable<MotionVisualState['fillColor']>
+): SceneNode['fills'] {
+  let replaced = false
+  return fills.map((fill) => {
+    if (replaced || !fill.visible || fill.type !== 'SOLID') return fill
+    replaced = true
+    return { ...fill, color: { ...color } }
+  })
+}
+
+function replaceFirstVisibleStroke(
+  strokes: SceneNode['strokes'],
+  visual: MotionVisualState
+): SceneNode['strokes'] {
+  let replaced = false
+  return strokes.map((stroke) => {
+    if (replaced || !stroke.visible) return stroke
+    replaced = true
+    return {
+      ...stroke,
+      ...(visual.strokeColor ? { color: { ...visual.strokeColor } } : {}),
+      ...(visual.strokeWidth !== undefined ? { weight: visual.strokeWidth } : {})
+    }
+  })
+}
+
+function vectorLength(node: SceneNode): number {
+  if (node.type === 'STAR' || node.type === 'POLYGON') {
+    const points = polygonVertices(node)
+    let length = 0
+    for (let index = 0; index < points.length; index++) {
+      const from = points[index]
+      const to = points[(index + 1) % points.length]
+      length += Math.hypot(to.x - from.x, to.y - from.y)
+    }
+    return Math.max(1, length)
+  }
+  if (!node.vectorNetwork) return Math.max(1, Math.hypot(node.width, node.height))
+  let length = 0
+  for (let index = 0; index < node.vectorNetwork.segments.length; index++) {
+    const segment = node.vectorNetwork.segments[index]
+    const curve = segmentToAbsolute(node.vectorNetwork, index)
+    if (isLineSegment(segment)) {
+      length += Math.hypot(curve.p3.x - curve.p0.x, curve.p3.y - curve.p0.y)
+      continue
+    }
+    // A fixed, bounded subdivision keeps preview cost deterministic while
+    // avoiding the severe chord-length error on curved vector segments.
+    let previous = curve.p0
+    for (let sample = 1; sample <= 24; sample++) {
+      const point = evalCubic(
+        curve.p0.x,
+        curve.p0.y,
+        curve.cp1.x,
+        curve.cp1.y,
+        curve.cp2.x,
+        curve.cp2.y,
+        curve.p3.x,
+        curve.p3.y,
+        sample / 24
+      )
+      length += Math.hypot(point.x - previous.x, point.y - previous.y)
+      previous = point
+    }
+  }
+  return Math.max(1, length)
+}
+
+function trimProjection(
+  node: SceneNode,
+  visual: MotionVisualState
+): {
+  pattern?: number[]
+  phase?: number
+  hide?: boolean
+  normalized?: { visibleFraction: number; phase: number }
+} {
+  if (visual.trimStart === undefined && visual.trimEnd === undefined) return {}
+  const start = Math.min(1, Math.max(0, visual.trimStart ?? 0))
+  const end = Math.min(1, Math.max(start, visual.trimEnd ?? 1))
+  const total = vectorLength(node)
+  const visibleFraction = end - start
+  const phase = (((start + (visual.trimOffset ?? 0)) % 1) + 1) % 1
+  // Once a trim channel is authored it owns dash visibility for the whole
+  // track. A full interval is therefore a solid revealed stroke (matching the
+  // compiler's normalized `1 0` SVG dash), not a return to authored dashes.
+  if (visibleFraction >= 1 - 1e-6) {
+    return { pattern: [], normalized: { visibleFraction: 1, phase } }
+  }
+  if (visibleFraction <= 1e-6) return { hide: true }
+  const visible = visibleFraction * total
+  return {
+    pattern: [visible, total - visible],
+    phase: -phase * total,
+    normalized: { visibleFraction, phase }
+  }
+}
+
+function applyMotionBlur(effects: SceneNode['effects'], visual: MotionVisualState): void {
+  if (visual.blur === undefined) return
+  const index = effects.findIndex(
+    (effect) => effect.type === 'LAYER_BLUR' || effect.type === 'FOREGROUND_BLUR'
+  )
+  if (index !== -1) {
+    effects[index] = { ...effects[index], radius: visual.blur, visible: true }
+  } else if (visual.blur > 0) {
+    effects.push({
+      type: 'LAYER_BLUR',
+      color: { ...TRANSPARENT },
+      offset: { x: 0, y: 0 },
+      radius: visual.blur,
+      spread: 0,
+      visible: true
+    })
+  }
+}
+
+function applyMotionShadow(effects: SceneNode['effects'], visual: MotionVisualState): void {
+  if (
+    visual.shadowX === undefined &&
+    visual.shadowY === undefined &&
+    visual.shadowBlur === undefined &&
+    visual.shadowSpread === undefined &&
+    !visual.shadowColor
+  ) {
+    return
+  }
+  const index = effects.findIndex((effect) => effect.type === 'DROP_SHADOW')
+  const authored = index === -1 ? undefined : effects[index]
+  const shadow = {
+    type: 'DROP_SHADOW' as const,
+    color: {
+      ...valueOr(visual.shadowColor, valueOr(authored?.color, DEFAULT_SHADOW_COLOR))
+    },
+    offset: {
+      x: valueOr(visual.shadowX, valueOr(authored?.offset.x, 0)),
+      y: valueOr(visual.shadowY, valueOr(authored?.offset.y, 0))
+    },
+    radius: valueOr(visual.shadowBlur, valueOr(authored?.radius, 0)),
+    spread: valueOr(visual.shadowSpread, valueOr(authored?.spread, 0)),
+    visible: true,
+    ...motionShadowExtras(authored)
+  }
+  if (index !== -1) effects[index] = shadow
+  else effects.push(shadow)
+}
+
+function motionShadowExtras(authored: SceneNode['effects'][number] | undefined) {
+  return {
+    ...(authored?.blendMode ? { blendMode: authored.blendMode } : {}),
+    ...(authored?.showShadowBehindNode === undefined
+      ? {}
+      : { showShadowBehindNode: authored.showShadowBehindNode })
+  }
+}
+
+function motionEffects(node: SceneNode, visual: MotionVisualState): SceneNode['effects'] {
+  const effects = node.effects.map((effect) => ({
+    ...effect,
+    color: { ...effect.color },
+    offset: { ...effect.offset }
+  }))
+  applyMotionBlur(effects, visual)
+  applyMotionShadow(effects, visual)
+  return effects
+}
+
+function valueOr<T>(value: T | undefined, fallback: T): T {
+  return value === undefined ? fallback : value
+}
+
+function motionCornerOverrides(visual: MotionVisualState) {
+  if (visual.cornerRadius === undefined) return {}
+  return {
+    independentCorners: false,
+    topLeftRadius: visual.cornerRadius,
+    topRightRadius: visual.cornerRadius,
+    bottomRightRadius: visual.cornerRadius,
+    bottomLeftRadius: visual.cornerRadius
+  }
+}
+
+function motionStrokes(node: SceneNode, visual: MotionVisualState): SceneNode['strokes'] {
+  const trim = trimProjection(node, visual)
+  const pattern = trim.pattern
+  if (!visual.strokeColor && visual.strokeWidth === undefined && !pattern && !trim.hide) {
+    return node.strokes
+  }
+  let strokes = node.strokes
+  if (trim.hide) {
+    strokes = node.strokes.map((stroke) => (stroke.visible ? { ...stroke, opacity: 0 } : stroke))
+  } else if (pattern) {
+    strokes = node.strokes.map((stroke) =>
+      stroke.visible ? { ...stroke, dashPattern: [...pattern] } : stroke
+    )
+  }
+  return replaceFirstVisibleStroke(strokes, visual)
+}
+
+function motionMainAxisGap(node: SceneNode, visual: MotionVisualState): number {
+  const directional = node.layoutMode === 'HORIZONTAL' ? visual.columnGap : visual.rowGap
+  return valueOr(directional, valueOr(visual.gap, node.itemSpacing))
+}
+
+function motionCounterAxisGap(node: SceneNode, visual: MotionVisualState): number {
+  const directional = node.layoutMode === 'HORIZONTAL' ? visual.rowGap : visual.columnGap
+  return valueOr(directional, valueOr(visual.gap, node.counterAxisSpacing))
+}
+
+function motionNode(node: SceneNode, visual: MotionVisualState): SceneNode {
+  if (node.type === 'VECTOR' && (node.vectorNetwork?.segments.length ?? 0) === 0) {
+    const {
+      strokeWidth: _strokeWidth,
+      trimStart: _trimStart,
+      trimEnd: _trimEnd,
+      trimOffset: _trimOffset,
+      ...supportedVisual
+    } = visual
+    visual = supportedVisual as MotionVisualState
+    if (node.fillGeometry.length === 0) {
+      const { fillColor: _fillColor, ...fillSupportedVisual } = visual
+      visual = fillSupportedVisual as MotionVisualState
+    }
+    if (node.strokeGeometry.length === 0) {
+      const { strokeColor: _strokeColor, ...strokeSupportedVisual } = visual
+      visual = strokeSupportedVisual as MotionVisualState
+    }
+  }
+  const hasV2 = Object.keys(visual).some(
+    (key) =>
+      !['x', 'y', 'scaleX', 'scaleY', 'rotate', 'opacity', 'originX', 'originY'].includes(key)
+  )
+  if (!hasV2 && visual.originX === undefined && visual.originY === undefined) return node
+  const trim = trimProjection(node, visual)
+  const projectedNode: SceneNode = {
+    ...node,
+    ...motionProjectionFlags(
+      trim.phase,
+      visual.strokeWidth !== undefined || trim.normalized !== undefined || trim.hide === true,
+      trim.normalized
+    ),
+    width: valueOr(visual.width, node.width),
+    height: valueOr(visual.height, node.height),
+    cornerRadius: valueOr(visual.cornerRadius, node.cornerRadius),
+    ...motionCornerOverrides(visual),
+    fills: visual.fillColor ? replaceFirstSolidFill(node.fills, visual.fillColor) : node.fills,
+    strokes: motionStrokes(node, visual),
+    effects: motionEffects(node, visual),
+    itemSpacing: motionMainAxisGap(node, visual),
+    counterAxisSpacing: motionCounterAxisGap(node, visual),
+    paddingTop: valueOr(visual.paddingTop, node.paddingTop),
+    paddingRight: valueOr(visual.paddingRight, node.paddingRight),
+    paddingBottom: valueOr(visual.paddingBottom, node.paddingBottom),
+    paddingLeft: valueOr(visual.paddingLeft, node.paddingLeft)
+  }
+  return projectMotionAdvancedChannels(projectedNode, visual).node
 }
 function renderNodeContent(
   r: SkiaRenderer,
@@ -181,8 +472,11 @@ function renderMaskNodeContent(
   nodeId: string,
   overlays: RenderOverlays
 ): void {
+  const authoredNode = node
+  node = motionLayoutNode(authoredNode, overlays)
   const visual = motionVisual(overlays, nodeId)
-  const opacity = Math.min(1, Math.max(0, node.opacity * visual.opacity))
+  const renderedNode = motionNode(node, visual)
+  const opacity = Math.min(1, Math.max(0, renderedNode.opacity * visual.opacity))
   canvas.save()
   canvas.translate(node.x + visual.x, node.y + visual.y)
   if (opacity < 1) {
@@ -190,8 +484,9 @@ function renderMaskNodeContent(
     r.opacityPaint.setBlendMode(r.ck.BlendMode.SrcOver)
     canvas.saveLayer(r.opacityPaint, null)
   }
-  applyNodeTransforms(r, canvas, node, nodeId, overlays, visual)
-  renderNodeContent(r, canvas, graph, node, nodeId, {})
+  applyNodeTransforms(r, canvas, renderedNode, nodeId, overlays, visual)
+  applyIntrinsicGeometryScale(canvas, authoredNode, renderedNode)
+  renderNodeContent(r, canvas, graph, renderedNode, nodeId, {})
   if (opacity < 1) {
     canvas.restore()
     r.opacityPaint.setAlphaf(1)
@@ -199,12 +494,29 @@ function renderMaskNodeContent(
   canvas.restore()
 }
 
+function applyIntrinsicGeometryScale(
+  canvas: Canvas,
+  authoredNode: SceneNode,
+  renderedNode: SceneNode
+): void {
+  if (authoredNode.type !== 'VECTOR' && authoredNode.type !== 'BOOLEAN_OPERATION') return
+  const scaleX = authoredNode.width === 0 ? 1 : renderedNode.width / authoredNode.width
+  const scaleY = authoredNode.height === 0 ? 1 : renderedNode.height / authoredNode.height
+  // Layout-derived FILL/stretch dimensions are just as visual as dimensions
+  // authored directly on the animated child. Comparing the projected node to
+  // the source covers both routes without mutating intrinsic path geometry.
+  if (scaleX === 1 && scaleY === 1) return
+  canvas.scale(scaleX, scaleY)
+}
+
 function motionBounds(node: SceneNode, overlays: RenderOverlays): Rect {
+  node = motionLayoutNode(node, overlays)
   const visual = motionVisual(overlays, node.id)
-  const width = node.width * Math.abs(visual.scaleX)
-  const height = node.height * Math.abs(visual.scaleY)
-  const centerX = node.x + visual.x + node.width / 2
-  const centerY = node.y + visual.y + node.height / 2
+  const renderedNode = motionNode(node, visual)
+  const width = renderedNode.width * Math.abs(visual.scaleX)
+  const height = renderedNode.height * Math.abs(visual.scaleY)
+  const centerX = node.x + visual.x + renderedNode.width / 2
+  const centerY = node.y + visual.y + renderedNode.height / 2
   if (node.rotation + visual.rotate !== 0) {
     const diagonal = Math.hypot(width, height)
     return {
@@ -394,16 +706,17 @@ export function renderNode(
   parentAbsY = 0,
   ancestorHasMotionTransform = false
 ): void {
-  const node = graph.getNode(nodeId)
+  const authoredNode = graph.getNode(nodeId)
   if (
-    !node ||
-    node.internalOnly ||
-    !node.visible ||
-    node.isMask ||
+    !authoredNode ||
+    authoredNode.internalOnly ||
+    !authoredNode.visible ||
+    authoredNode.isMask ||
     fontManager.isNodeBlocked(nodeId)
   ) {
     return
   }
+  const node = motionLayoutNode(authoredNode, overlays)
 
   // Hide the node being edited in node-edit mode (overlay draws it live)
   if (overlays.nodeEditState?.nodeId === nodeId) return
@@ -411,10 +724,11 @@ export function renderNode(
   r._nodeCount++
 
   const visual = motionVisual(overlays, nodeId)
+  const renderedNode = motionNode(node, visual)
   const absX = parentAbsX + node.x + visual.x
   const absY = parentAbsY + node.y + visual.y
 
-  if (!ancestorHasMotionTransform && isCulled(r, node, absX, absY, visual)) {
+  if (!ancestorHasMotionTransform && isCulled(r, renderedNode, absX, absY, visual)) {
     r._culledCount++
     return
   }
@@ -422,22 +736,32 @@ export function renderNode(
   canvas.save()
   canvas.translate(node.x + visual.x, node.y + visual.y)
 
-  const hasNodeLayer = beginNodeOpacityLayer(r, canvas, graph, node, nodeId, overlays, visual)
-  const hasBlurLayer = beginNodeBlurLayer(r, canvas, graph, node, nodeId, overlays)
+  const hasNodeLayer = beginNodeOpacityLayer(
+    r,
+    canvas,
+    graph,
+    renderedNode,
+    nodeId,
+    overlays,
+    visual
+  )
+  const hasBlurLayer = beginNodeBlurLayer(r, canvas, graph, renderedNode, nodeId, overlays)
 
-  applyNodeTransforms(r, canvas, node, nodeId, overlays, visual)
-  renderNodeContent(r, canvas, graph, node, nodeId, overlays)
-  drawLayoutGrids(r, canvas, node)
+  applyNodeTransforms(r, canvas, renderedNode, nodeId, overlays, visual)
+  applyIntrinsicGeometryScale(canvas, authoredNode, renderedNode)
+  renderNodeContent(r, canvas, graph, renderedNode, nodeId, overlays)
+  drawLayoutGrids(r, canvas, renderedNode)
   renderChildren(
     r,
     canvas,
     graph,
-    node,
+    renderedNode,
     overlays,
     absX,
     absY,
     ancestorHasMotionTransform || hasMotionScaleOrRotation(visual)
   )
+  drawGeneratedEffect(r, canvas, renderedNode, overlays)
 
   endNodeBlurLayer(r, canvas, hasBlurLayer)
   endNodeOpacityLayer(r, canvas, hasNodeLayer)
@@ -518,31 +842,44 @@ export function renderShape(
   node: SceneNode,
   graph: SceneGraph
 ): void {
+  const authoredNode = graph.getNode(node.id)
+  const hasProjectedVectorNetwork =
+    node.type === 'VECTOR' &&
+    authoredNode?.vectorNetwork !== undefined &&
+    authoredNode.vectorNetwork !== node.vectorNetwork
+  if (hasProjectedVectorNetwork) r.invalidateVectorPath(node.id)
   const hasEffects = node.effects.length > 0 && node.effects.some((e) => e.visible)
+  const isMotionProjection = authoredNode !== node
 
-  if (hasEffects) {
-    const cached = r.nodePictureCache.get(node.id)
-    const cachedGeneration = r.nodePictureCacheGenerations.get(node.id)
-    if (cached && cachedGeneration === r.fontGeneration) {
-      canvas.drawPicture(cached)
-      return
+  try {
+    if (hasEffects && !isMotionProjection) {
+      const cached = r.nodePictureCache.get(node.id)
+      const cachedGeneration = r.nodePictureCacheGenerations.get(node.id)
+      if (cached && cachedGeneration === r.fontGeneration) {
+        canvas.drawPicture(cached)
+        return
+      }
+      if (cached) cached.delete()
+      r.nodePictureCache.delete(node.id)
+      r.nodePictureCacheGenerations.delete(node.id)
+
+      const margin = r.effectOverflow(node)
+      const bounds = r.ck.LTRBRect(-margin, -margin, node.width + margin, node.height + margin)
+      const recorder = new r.ck.PictureRecorder()
+      const recCanvas = recorder.beginRecording(bounds)
+      r.renderShapeUncached(recCanvas, node, graph)
+      const picture = recorder.finishRecordingAsPicture()
+      recorder.delete()
+      r.nodePictureCache.set(node.id, picture)
+      r.nodePictureCacheGenerations.set(node.id, r.fontGeneration)
+      canvas.drawPicture(picture)
+    } else {
+      r.renderShapeUncached(canvas, node, graph)
     }
-    if (cached) cached.delete()
-    r.nodePictureCache.delete(node.id)
-    r.nodePictureCacheGenerations.delete(node.id)
-
-    const margin = r.effectOverflow(node)
-    const bounds = r.ck.LTRBRect(-margin, -margin, node.width + margin, node.height + margin)
-    const recorder = new r.ck.PictureRecorder()
-    const recCanvas = recorder.beginRecording(bounds)
-    r.renderShapeUncached(recCanvas, node, graph)
-    const picture = recorder.finishRecordingAsPicture()
-    recorder.delete()
-    r.nodePictureCache.set(node.id, picture)
-    r.nodePictureCacheGenerations.set(node.id, r.fontGeneration)
-    canvas.drawPicture(picture)
-  } else {
-    r.renderShapeUncached(canvas, node, graph)
+  } finally {
+    // Projected vertices change every frame. Keep cache ownership bounded and
+    // prevent the last preview/export frame from leaking into static rendering.
+    if (hasProjectedVectorNetwork) r.invalidateVectorPath(node.id)
   }
 }
 
@@ -612,31 +949,109 @@ function drawVectorPathStrokes(
   stroke: SceneNode['strokes'][0],
   sc: Color,
   miterLimit: number,
-  outlineCacheKey?: string
+  outlineCacheKey?: string,
+  dashPhase = 0,
+  projectedNode?: SceneNode
 ): void {
+  const trim = projectedNode ? motionTrimProjection(projectedNode) : undefined
   const dash = stroke.dashPattern
-  if (dash && dash.length > 0) {
-    r.strokePaint.setColor(r.ck.Color4f(sc.r, sc.g, sc.b, sc.a))
-    r.strokePaint.setAlphaf(stroke.opacity)
-    r.strokePaint.setStrokeWidth(stroke.weight)
-    r.strokePaint.setStrokeCap(getStrokeCapEntity(r, stroke.cap ?? 'NONE'))
-    r.strokePaint.setStrokeJoin(getStrokeJoinEntity(r, stroke.join ?? 'MITER'))
-    r.strokePaint.setStrokeMiter(miterLimit)
-    r.strokePaint.setShader(null)
-    const effect = r.ck.PathEffect.MakeDash(dash, 0)
-    r.strokePaint.setPathEffect(effect)
-    for (const vp of vectorPaths) canvas.drawPath(vp, r.strokePaint)
-    r.strokePaint.setPathEffect(null)
-    effect.delete()
+  if (trim) {
+    drawTrimmedVectorPaths(r, canvas, vectorPaths, stroke, sc, miterLimit, trim)
     return
   }
+  if (dash && dash.length > 0) {
+    drawDashedVectorPaths(r, canvas, vectorPaths, stroke, sc, miterLimit, dash, dashPhase)
+    return
+  }
+  drawVectorStrokeOutlines(r, canvas, vectorPaths, stroke, sc, miterLimit, outlineCacheKey)
+}
+
+function configureVectorStrokePaint(
+  r: SkiaRenderer,
+  stroke: SceneNode['strokes'][0],
+  color: Color,
+  miterLimit: number
+): void {
+  r.strokePaint.setColor(r.ck.Color4f(color.r, color.g, color.b, color.a))
+  r.strokePaint.setAlphaf(stroke.opacity)
+  r.strokePaint.setStrokeWidth(stroke.weight)
+  r.strokePaint.setStrokeCap(getStrokeCapEntity(r, stroke.cap ?? 'NONE'))
+  r.strokePaint.setStrokeJoin(getStrokeJoinEntity(r, stroke.join ?? 'MITER'))
+  r.strokePaint.setStrokeMiter(miterLimit)
+  r.strokePaint.setShader(null)
+}
+
+function drawTrimmedVectorPaths(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  vectorPaths: Path[],
+  stroke: SceneNode['strokes'][0],
+  color: Color,
+  miterLimit: number,
+  trim: NonNullable<ReturnType<typeof motionTrimProjection>>
+): void {
+  configureVectorStrokePaint(r, stroke, color, miterLimit)
+  if (trim.visibleFraction >= 1 - 1e-6) {
+    r.strokePaint.setPathEffect(null)
+    for (const path of vectorPaths) canvas.drawPath(path, r.strokePaint)
+    return
+  }
+  // SVG pathLength normalization restarts trim for every emitted geometry.
+  // Mirror that contract by measuring and dashing each CanvasKit Path
+  // independently rather than sharing one aggregate length across siblings.
+  for (const path of vectorPaths) {
+    const length = measurePathLength(r.ck, [path])
+    const effect = r.ck.PathEffect.MakeDash(
+      [trim.visibleFraction * length, (1 - trim.visibleFraction) * length],
+      -trim.phase * length
+    )
+    r.strokePaint.setPathEffect(effect)
+    try {
+      canvas.drawPath(path, r.strokePaint)
+    } finally {
+      r.strokePaint.setPathEffect(null)
+      effect.delete()
+    }
+  }
+}
+
+function drawDashedVectorPaths(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  vectorPaths: Path[],
+  stroke: SceneNode['strokes'][0],
+  color: Color,
+  miterLimit: number,
+  dash: readonly number[],
+  dashPhase: number
+): void {
+  configureVectorStrokePaint(r, stroke, color, miterLimit)
+  const effect = r.ck.PathEffect.MakeDash([...dash], dashPhase)
+  r.strokePaint.setPathEffect(effect)
+  try {
+    for (const path of vectorPaths) canvas.drawPath(path, r.strokePaint)
+  } finally {
+    r.strokePaint.setPathEffect(null)
+    effect.delete()
+  }
+}
+
+function drawVectorStrokeOutlines(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  vectorPaths: Path[],
+  stroke: SceneNode['strokes'][0],
+  color: Color,
+  miterLimit: number,
+  outlineCacheKey: string | undefined
+): void {
   const strokeOpts = {
     width: stroke.weight,
     miter_limit: miterLimit,
     cap: getStrokeCapEntity(r, stroke.cap ?? 'NONE'),
     join: getStrokeJoinEntity(r, stroke.join ?? 'MITER')
   }
-  r.fillPaint.setColor(r.ck.Color4f(sc.r, sc.g, sc.b, sc.a))
+  r.fillPaint.setColor(r.ck.Color4f(color.r, color.g, color.b, color.a))
   r.fillPaint.setAlphaf(stroke.opacity)
   r.fillPaint.setShader(null)
 
@@ -652,6 +1067,29 @@ function drawVectorPathStrokes(
   for (const outline of outlines) canvas.drawPath(outline, r.fillPaint)
 }
 
+function dynamicVectorStrokePaths(
+  node: SceneNode,
+  vectorPaths: Path[] | null,
+  vectorStroke: Path[] | null
+): Path[] | null {
+  if (node.type !== 'VECTOR' || !hasMotionDynamicStroke(node)) return null
+  return vectorPaths ?? vectorStroke
+}
+
+function isVectorCenterlineStroke(
+  node: SceneNode,
+  stroke: SceneNode['strokes'][0],
+  vectorStroke: Path[] | null
+): vectorStroke is Path[] {
+  return Boolean(
+    vectorStroke &&
+    stroke.align === 'CENTER' &&
+    node.cornerRadius === 0 &&
+    node.type === 'VECTOR' &&
+    !node.fills.some((fill) => fill.visible)
+  )
+}
+
 function drawRegularStroke(
   r: SkiaRenderer,
   canvas: Canvas,
@@ -663,7 +1101,7 @@ function drawRegularStroke(
 ): void {
   configureStrokePaint(r, node, stroke, sc)
   if (stroke.dashPattern && stroke.dashPattern.length > 0) {
-    r.strokePaint.setPathEffect(r.ck.PathEffect.MakeDash(stroke.dashPattern, 0))
+    r.strokePaint.setPathEffect(r.ck.PathEffect.MakeDash(stroke.dashPattern, motionDashPhase(node)))
   } else {
     r.strokePaint.setPathEffect(null)
   }
@@ -687,20 +1125,52 @@ function drawNodeStroke(
   vectorPaths: Path[] | null,
   vectorStroke: Path[] | null
 ): void {
-  const shouldStrokeVectorCenterline =
-    vectorStroke &&
-    stroke.align === 'CENTER' &&
-    node.cornerRadius === 0 &&
-    node.type === 'VECTOR' &&
-    !node.fills.some((fill) => fill.visible)
-  if (shouldStrokeVectorCenterline) {
+  const motionPaths = dynamicVectorStrokePaths(node, vectorPaths, vectorStroke)
+  if (motionPaths) {
+    // `getVectorPaths` groups paths the same way as SVG geometry emission
+    // (one per region / imported geometry, one aggregate open-network path).
+    // Keep trim reset boundaries identical across Canvas and compiled SVG.
+    drawVectorPathStrokes(
+      r,
+      canvas,
+      motionPaths,
+      stroke,
+      sc,
+      node.strokeMiterLimit,
+      undefined,
+      motionDashPhase(node),
+      node
+    )
+    return
+  }
+  if (isVectorCenterlineStroke(node, stroke, vectorStroke)) {
     const outlineKey = `${node.id}|${stroke.weight}|${stroke.cap ?? node.strokeCap}|${stroke.join ?? node.strokeJoin}|${node.strokeMiterLimit}`
-    drawVectorPathStrokes(r, canvas, vectorStroke, stroke, sc, node.strokeMiterLimit, outlineKey)
+    drawVectorPathStrokes(
+      r,
+      canvas,
+      vectorStroke,
+      stroke,
+      sc,
+      node.strokeMiterLimit,
+      outlineKey,
+      motionDashPhase(node),
+      node
+    )
     return
   }
   if (!sg) {
     if (vectorPaths) {
-      drawVectorPathStrokes(r, canvas, vectorPaths, stroke, sc, node.strokeMiterLimit)
+      drawVectorPathStrokes(
+        r,
+        canvas,
+        vectorPaths,
+        stroke,
+        sc,
+        node.strokeMiterLimit,
+        undefined,
+        motionDashPhase(node),
+        node
+      )
     } else drawRegularStroke(r, canvas, node, rect, hasRadius, stroke, sc)
     return
   }
@@ -748,10 +1218,21 @@ export function renderShapeUncached(
       stroke.dashPattern &&
       stroke.dashPattern.length > 0 &&
       node.type === 'VECTOR' &&
-      node.vectorNetwork
+      node.vectorNetwork &&
+      !motionTrimProjection(node)
     ) {
       const centerline = vectorNetworkToCenterlinePath(r.ck, node.vectorNetwork)
-      drawVectorPathStrokes(r, canvas, [centerline], stroke, color, node.strokeMiterLimit)
+      drawVectorPathStrokes(
+        r,
+        canvas,
+        [centerline],
+        stroke,
+        color,
+        node.strokeMiterLimit,
+        undefined,
+        motionDashPhase(node),
+        node
+      )
       centerline.delete()
       return
     }

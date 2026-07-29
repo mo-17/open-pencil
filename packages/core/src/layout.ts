@@ -12,6 +12,7 @@ import {
 } from 'yoga-layout'
 
 import { applyYogaLayout } from './layout/apply'
+import type { LayoutGraph } from './layout/graph'
 import { buildGridTree, createGridChildNode } from './layout/grid'
 import { resolveNodeLayoutDirection } from './text/direction'
 export {
@@ -33,8 +34,9 @@ import {
   mapGridTrack,
   mapJustify
 } from './layout/yoga-helpers'
+import type { MotionVisualState } from './motion'
 
-export function computeLayout(graph: SceneGraph, frameId: string): void {
+export function computeLayout(graph: LayoutGraph, frameId: string): void {
   const frame = graph.getNode(frameId)
   if (!frame || !isAutoLayoutMode(frame.layoutMode)) return
 
@@ -53,7 +55,7 @@ export function computeLayout(graph: SceneGraph, frameId: string): void {
 }
 
 function resolveComputedLayoutDirection(
-  graph: SceneGraph,
+  graph: LayoutGraph,
   node: Pick<SceneNode, 'layoutDirection' | 'parentId'>
 ): 'LTR' | 'RTL' {
   const parent = node.parentId ? graph.getNode(node.parentId) : null
@@ -64,6 +66,203 @@ function resolveComputedLayoutDirection(
 export function computeAllLayouts(graph: SceneGraph, scopeId?: string): void {
   const visited = new Set<string>()
   computeLayoutsBottomUp(graph, scopeId ?? graph.rootId, visited)
+}
+
+export type MotionLayoutPreviewNode = Pick<SceneNode, 'x' | 'y' | 'width' | 'height'>
+
+/**
+ * Compute the ephemeral Yoga geometry needed by MotionSpec layout channels.
+ * The authored SceneGraph is never mutated: writes are captured by a small
+ * copy-on-write graph facade and only the resulting geometry is returned.
+ */
+export function computeMotionLayoutPreview(
+  graph: SceneGraph,
+  visuals: ReadonlyMap<string, MotionVisualState> | undefined
+): ReadonlyMap<string, MotionLayoutPreviewNode> {
+  if (!visuals || visuals.size === 0) return new Map()
+
+  const preview = new MotionLayoutPreviewGraph(graph)
+  const roots = new Set<string>()
+  for (const [nodeId, visual] of visuals) {
+    if (!hasMotionLayoutGeometry(visual)) continue
+    const node = graph.getNode(nodeId)
+    if (!node) continue
+    preview.project(node, visual)
+    const root = motionLayoutRoot(graph, node)
+    if (root) roots.add(root.id)
+  }
+  if (roots.size === 0) return new Map()
+
+  for (const rootId of roots) preview.clearDerivedLayout(rootId)
+  for (const rootId of roots) computeLayout(preview, rootId)
+  return preview.geometry()
+}
+
+function hasMotionLayoutGeometry(visual: MotionVisualState): boolean {
+  return (
+    visual.width !== undefined ||
+    visual.height !== undefined ||
+    visual.gap !== undefined ||
+    visual.rowGap !== undefined ||
+    visual.columnGap !== undefined ||
+    visual.paddingTop !== undefined ||
+    visual.paddingRight !== undefined ||
+    visual.paddingBottom !== undefined ||
+    visual.paddingLeft !== undefined
+  )
+}
+
+function motionLayoutRoot(graph: SceneGraph, node: SceneNode): SceneNode | undefined {
+  let current: SceneNode | undefined
+  if (isAutoLayoutMode(node.layoutMode)) current = node
+  else if (node.layoutPositioning !== 'ABSOLUTE' && node.parentId) {
+    current = graph.getNode(node.parentId)
+  }
+  if (!current || !isAutoLayoutMode(current.layoutMode)) return undefined
+
+  while (current.parentId && current.layoutPositioning !== 'ABSOLUTE') {
+    const parent = graph.getNode(current.parentId)
+    if (!parent || !isAutoLayoutMode(parent.layoutMode)) break
+    current = parent
+  }
+  return current
+}
+
+class MotionLayoutPreviewGraph {
+  private readonly changed = new Map<string, SceneNode>()
+
+  constructor(private readonly source: SceneGraph) {}
+
+  getNode(id: string): SceneNode | undefined {
+    return this.changed.get(id) ?? this.source.getNode(id)
+  }
+
+  getChildren(id: string): SceneNode[] {
+    const node = this.getNode(id)
+    return node ? node.childIds.flatMap((childId) => this.getNode(childId) ?? []) : []
+  }
+
+  updateNode(id: string, changes: Partial<SceneNode>): void {
+    const node = this.mutable(id)
+    if (node) Object.assign(node, changes)
+  }
+
+  project(node: SceneNode, visual: MotionVisualState): void {
+    const projected = this.mutable(node.id)
+    if (!projected) return
+    projectMotionDimensions(projected, visual, this.parentOf(projected))
+    projectMotionTextResize(projected, visual)
+    projectMotionGaps(projected, visual)
+    projectMotionPadding(projected, visual)
+  }
+
+  clearDerivedLayout(rootId: string): void {
+    const stack = [rootId]
+    while (stack.length > 0) {
+      const nodeId = stack.pop()
+      if (!nodeId) continue
+      const node = this.mutable(nodeId)
+      if (!node) continue
+      node.figmaDerivedLayout = null
+      if (node.type === 'INSTANCE' && node.source.format === 'fig' && nodeId !== rootId) continue
+      stack.push(...node.childIds)
+    }
+  }
+
+  geometry(): ReadonlyMap<string, MotionLayoutPreviewNode> {
+    const result = new Map<string, MotionLayoutPreviewNode>()
+    for (const [id, node] of this.changed) {
+      const source = this.source.getNode(id)
+      if (
+        !source ||
+        (node.x === source.x &&
+          node.y === source.y &&
+          node.width === source.width &&
+          node.height === source.height)
+      ) {
+        continue
+      }
+      result.set(id, { x: node.x, y: node.y, width: node.width, height: node.height })
+    }
+    return result
+  }
+
+  private mutable(id: string): SceneNode | undefined {
+    const existing = this.changed.get(id)
+    if (existing) return existing
+    const source = this.source.getNode(id)
+    if (!source) return undefined
+    const clone = { ...source }
+    this.changed.set(id, clone)
+    return clone
+  }
+
+  private parentOf(node: SceneNode): SceneNode | undefined {
+    return node.parentId ? this.getNode(node.parentId) : undefined
+  }
+}
+
+function projectMotionDimensions(
+  node: SceneNode,
+  visual: MotionVisualState,
+  parent: SceneNode | undefined
+): void {
+  if (visual.width !== undefined) {
+    node.width = visual.width
+    fixAnimatedAxis(node, 'width', parent)
+  }
+  if (visual.height !== undefined) {
+    node.height = visual.height
+    fixAnimatedAxis(node, 'height', parent)
+  }
+}
+
+function projectMotionTextResize(node: SceneNode, visual: MotionVisualState): void {
+  if (node.type !== 'TEXT') return
+  if (visual.height !== undefined) node.textAutoResize = 'NONE'
+  else if (visual.width !== undefined && node.textAutoResize === 'WIDTH_AND_HEIGHT') {
+    node.textAutoResize = 'HEIGHT'
+  }
+}
+
+function projectMotionGaps(node: SceneNode, visual: MotionVisualState): void {
+  if (node.layoutMode === 'GRID') {
+    node.gridRowGap = visual.rowGap ?? visual.gap ?? node.gridRowGap
+    node.gridColumnGap = visual.columnGap ?? visual.gap ?? node.gridColumnGap
+    return
+  }
+  const mainGap = node.layoutMode === 'HORIZONTAL' ? visual.columnGap : visual.rowGap
+  const crossGap = node.layoutMode === 'HORIZONTAL' ? visual.rowGap : visual.columnGap
+  node.itemSpacing = mainGap ?? visual.gap ?? node.itemSpacing
+  node.counterAxisSpacing = crossGap ?? visual.gap ?? node.counterAxisSpacing
+}
+
+function projectMotionPadding(node: SceneNode, visual: MotionVisualState): void {
+  if (visual.paddingTop !== undefined) node.paddingTop = visual.paddingTop
+  if (visual.paddingRight !== undefined) node.paddingRight = visual.paddingRight
+  if (visual.paddingBottom !== undefined) node.paddingBottom = visual.paddingBottom
+  if (visual.paddingLeft !== undefined) node.paddingLeft = visual.paddingLeft
+}
+
+function fixAnimatedAxis(
+  node: SceneNode,
+  axis: 'width' | 'height',
+  parent: SceneNode | undefined
+): void {
+  if (isAutoLayoutMode(node.layoutMode) && node.layoutMode !== 'GRID') {
+    const isPrimary =
+      (node.layoutMode === 'HORIZONTAL' && axis === 'width') ||
+      (node.layoutMode === 'VERTICAL' && axis === 'height')
+    if (isPrimary) node.primaryAxisSizing = 'FIXED'
+    else node.counterAxisSizing = 'FIXED'
+  }
+  if (!parent || !isAutoLayoutMode(parent.layoutMode)) return
+  const isParentMain =
+    parent.layoutMode === 'GRID' ||
+    (parent.layoutMode === 'HORIZONTAL' && axis === 'width') ||
+    (parent.layoutMode === 'VERTICAL' && axis === 'height')
+  if (isParentMain) node.layoutGrow = 0
+  if (parent.layoutMode === 'GRID' || !isParentMain) node.layoutAlignSelf = 'MIN'
 }
 
 function computeLayoutsBottomUp(graph: SceneGraph, nodeId: string, visited: Set<string>): void {
@@ -87,7 +286,7 @@ function preservesImportedInstanceLayout(node: SceneNode): boolean {
 // --- Flex layout ---
 
 function buildYogaTree(
-  graph: SceneGraph,
+  graph: LayoutGraph,
   frame: SceneNode,
   inheritedDirection: 'LTR' | 'RTL'
 ): YogaNode {
@@ -166,7 +365,7 @@ function configureChildAsGrid(
   yogaChild: YogaNode,
   child: SceneNode,
   parent: SceneNode,
-  graph: SceneGraph,
+  graph: LayoutGraph,
   inheritedDirection: 'LTR' | 'RTL'
 ): void {
   const direction = resolveNodeLayoutDirection(child, inheritedDirection)
@@ -233,7 +432,7 @@ function configureChildAsAutoLayout(
   yogaChild: YogaNode,
   child: SceneNode,
   parent: SceneNode,
-  graph: SceneGraph,
+  graph: LayoutGraph,
   inheritedDirection: 'LTR' | 'RTL'
 ): void {
   const direction = resolveNodeLayoutDirection(child, inheritedDirection)

@@ -2,14 +2,19 @@ import { describe, expect, mock, test } from 'bun:test'
 
 import type { Canvas } from 'canvaskit-wasm'
 
-import { SceneGraph, type MotionSpec } from '@open-pencil/scene-graph'
+import { SceneGraph, type MotionSpec, type SceneNode } from '@open-pencil/scene-graph'
 
+import { renderBooleanOperation } from '#core/canvas/boolean'
+import { motionProjectionFlags, motionTrimProjection } from '#core/canvas/motion-projection'
 import { drawSelection } from '#core/canvas/overlays/selection'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { hasVolatileOverlay, renderSceneToCanvas } from '#core/canvas/renderer/pipeline'
 import { renderNode } from '#core/canvas/scene'
 import { renderNodesToSVG } from '#core/io/formats/svg'
+import { computeMotionLayoutPreview, setTextMeasurer } from '#core/layout'
 import type { MotionVisualState } from '#core/motion'
+
+import { fixed, gridFrame, rect } from '#tests/helpers/layout'
 
 function pageId(graph: SceneGraph) {
   return graph.getPages()[0].id
@@ -101,6 +106,10 @@ function calls(fn: ReturnType<typeof mock>): unknown[][] {
   return (fn as { mock: { calls: unknown[][] } }).mock.calls
 }
 
+function visual(overrides: Partial<MotionVisualState>): MotionVisualState {
+  return { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, opacity: 1, ...overrides }
+}
+
 describe('CanvasKit motion preview', () => {
   test('applies translation, center transforms, and authored-opacity multiplication', () => {
     const graph = new SceneGraph()
@@ -156,6 +165,57 @@ describe('CanvasKit motion preview', () => {
 
     expect(calls(canvas.rotate)).toContainEqual([10, 0, 0])
     expect(calls(canvas.rotate)).toContainEqual([45, 50, 5])
+  })
+
+  test('scales intrinsic VECTOR and BOOLEAN geometry for animated dimensions', () => {
+    for (const type of ['VECTOR', 'BOOLEAN_OPERATION'] as const) {
+      const graph = new SceneGraph()
+      const node = graph.createNode(type, pageId(graph), {
+        width: 40,
+        height: 20,
+        ...(type === 'BOOLEAN_OPERATION' ? { booleanOperation: 'UNION' as const } : {})
+      })
+      const authored = structuredClone(graph.getNode(node.id))
+      const renderer = createRenderer()
+      const canvas = createCanvas()
+
+      renderNode(renderer, canvas as Canvas, graph, node.id, {
+        motionVisualStates: new Map([[node.id, visual({ width: 80, height: 10 })]])
+      })
+
+      expect(calls(canvas.scale)).toContainEqual([2, 0.5])
+      expect(graph.getNode(node.id)).toEqual(authored)
+    }
+  })
+
+  test('scales FILL vector geometry when an animated parent drives COW layout dimensions', () => {
+    for (const type of ['VECTOR', 'BOOLEAN_OPERATION'] as const) {
+      const graph = new SceneGraph()
+      const parent = graph.createNode('FRAME', pageId(graph), {
+        layoutMode: 'HORIZONTAL',
+        primaryAxisSizing: 'FIXED',
+        counterAxisSizing: 'FIXED',
+        width: 40,
+        height: 20
+      })
+      const child = graph.createNode(type, parent.id, {
+        width: 10,
+        height: 20,
+        layoutGrow: 1,
+        ...(type === 'BOOLEAN_OPERATION' ? { booleanOperation: 'UNION' as const } : {})
+      })
+      const preview = computeMotionLayoutPreview(
+        graph,
+        new Map([[parent.id, visual({ width: 80 })]])
+      )
+      expect(preview.get(child.id)?.width).toBe(80)
+      const renderer = createRenderer()
+      const canvas = createCanvas()
+
+      renderNode(renderer, canvas as Canvas, graph, child.id, { motionLayoutNodes: preview })
+
+      expect(calls(canvas.scale)).toContainEqual([8, 1])
+    }
   })
 
   test('keeps unrelated opacity and blur layers bounded during another node preview', () => {
@@ -321,5 +381,238 @@ describe('CanvasKit motion preview', () => {
       12,
       graph
     )
+  })
+
+  test('reflows HORIZONTAL and GRID gaps in a copy-on-write preview', () => {
+    const graph = new SceneGraph()
+    const horizontal = graph.createNode('FRAME', pageId(graph), {
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED',
+      width: 300,
+      height: 80,
+      itemSpacing: 10,
+      paddingLeft: 10
+    })
+    const first = rect(graph, horizontal.id, 50, 20)
+    const second = rect(graph, horizontal.id, 30, 20)
+    const grid = gridFrame(graph, pageId(graph), [fixed(100), fixed(100)], [fixed(40)], {
+      width: 230,
+      height: 40,
+      gridColumnGap: 5,
+      gridRowGap: 5
+    })
+    const gridFirst = rect(graph, grid.id, 20, 20)
+    const gridSecond = rect(graph, grid.id, 20, 20)
+    const authored = [horizontal, first, second, grid, gridFirst, gridSecond].map((node) =>
+      structuredClone(graph.getNode(node.id))
+    )
+
+    const preview = computeMotionLayoutPreview(
+      graph,
+      new Map([
+        [horizontal.id, visual({ gap: 12, rowGap: 18, columnGap: 30, paddingLeft: 20 })],
+        [first.id, visual({ width: 100 })],
+        [grid.id, visual({ gap: 10, rowGap: 20, columnGap: 30 })]
+      ])
+    )
+
+    expect(preview.get(first.id)).toMatchObject({ x: 20, width: 100 })
+    expect(preview.get(second.id)?.x).toBe(150)
+    // Unchanged preview geometry intentionally falls through to the authored
+    // node instead of allocating a redundant copy-on-write entry.
+    expect(preview.get(gridFirst.id)).toBeUndefined()
+    expect(preview.get(gridSecond.id)?.x).toBe(130)
+    for (const [index, node] of [
+      horizontal,
+      first,
+      second,
+      grid,
+      gridFirst,
+      gridSecond
+    ].entries()) {
+      expect(graph.getNode(node.id)).toEqual(authored[index])
+    }
+  })
+
+  test('animated TEXT dimensions override auto-resize only in the COW preview', () => {
+    const graph = new SceneGraph()
+    const frame = graph.createNode('FRAME', pageId(graph), {
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED',
+      width: 200,
+      height: 80
+    })
+    const text = graph.createNode('TEXT', frame.id, {
+      text: 'measured',
+      width: 100,
+      height: 12,
+      textAutoResize: 'WIDTH_AND_HEIGHT'
+    })
+    const authored = structuredClone(graph.getNode(text.id))
+    setTextMeasurer(() => ({ width: 160, height: 44 }))
+    try {
+      const preview = computeMotionLayoutPreview(
+        graph,
+        new Map([[text.id, visual({ width: 40, height: 20 })]])
+      )
+      expect(preview.get(text.id)).toMatchObject({ width: 40, height: 20 })
+      expect(graph.getNode(text.id)).toEqual(authored)
+      expect(graph.getNode(text.id).textAutoResize).toBe('WIDTH_AND_HEIGHT')
+    } finally {
+      setTextMeasurer(null)
+    }
+  })
+
+  test('projects curved trim length, normalized phase, full visibility, and zero visibility', () => {
+    const graph = new SceneGraph()
+    const vector = graph.createNode('VECTOR', pageId(graph), {
+      width: 100,
+      height: 100,
+      vectorNetwork: {
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 100, y: 0 }
+        ],
+        segments: [
+          {
+            start: 0,
+            end: 1,
+            tangentStart: { x: 0, y: 100 },
+            tangentEnd: { x: 0, y: 100 }
+          }
+        ],
+        regions: []
+      },
+      strokes: [
+        {
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          weight: 2,
+          align: 'CENTER',
+          dashPattern: [2, 3]
+        }
+      ]
+    })
+    const authored = structuredClone(graph.getNode(vector.id))
+    const projected = (state: MotionVisualState): SceneNode => {
+      const renderer = createRenderer()
+      renderNode(renderer, createCanvas() as Canvas, graph, vector.id, {
+        motionVisualStates: new Map([[vector.id, state]])
+      })
+      return calls(renderer.renderShape)[0]?.[1] as SceneNode
+    }
+
+    const partial = projected(visual({ trimStart: 0.75, trimEnd: 1, trimOffset: 0.5 }))
+    const dash = partial.strokes[0]?.dashPattern ?? []
+    expect(dash).toHaveLength(2)
+    expect(dash[0] + dash[1]).toBeGreaterThan(150)
+    expect(
+      Object.getOwnPropertySymbols(partial)
+        .map((symbol) => Reflect.get(partial, symbol))
+        .some((value) => typeof value === 'number' && value < 0)
+    ).toBe(true)
+
+    const full = projected(visual({ trimStart: 0, trimEnd: 1, trimOffset: 0.75 }))
+    expect(full.strokes[0]?.dashPattern).toEqual([])
+    expect(motionTrimProjection(full)).toEqual({ visibleFraction: 1, phase: 0.75 })
+    const hidden = projected(visual({ trimStart: 0.4, trimEnd: 0.4 }))
+    expect(hidden.strokes[0]?.opacity).toBe(0)
+    expect(graph.getNode(vector.id)).toEqual(authored)
+  })
+
+  test('full trim overrides authored dashes for LINE, STAR, and POLYGON', () => {
+    for (const type of ['LINE', 'STAR', 'POLYGON'] as const) {
+      const graph = new SceneGraph()
+      const node = graph.createNode(type, pageId(graph), {
+        width: 80,
+        height: 40,
+        strokes: [
+          {
+            color: { r: 0, g: 0, b: 0, a: 1 },
+            opacity: 1,
+            visible: true,
+            weight: 2,
+            align: 'CENTER',
+            dashPattern: [2, 3]
+          }
+        ]
+      })
+      const renderer = createRenderer()
+
+      renderNode(renderer, createCanvas() as Canvas, graph, node.id, {
+        motionVisualStates: new Map([[node.id, visual({ trimStart: 0, trimEnd: 1 })]])
+      })
+
+      const projected = calls(renderer.renderShape)[0]?.[1] as SceneNode
+      expect(projected.strokes[0]?.dashPattern).toEqual([])
+    }
+  })
+
+  test('measures BOOLEAN trim against the final CanvasKit path', () => {
+    class FakePath {
+      addPath(): undefined {
+        return undefined
+      }
+      delete(): undefined {
+        return undefined
+      }
+    }
+    class FakeContourMeasureIter {
+      private consumed = false
+      next() {
+        if (this.consumed) return null
+        this.consumed = true
+        return { length: () => 200, delete: () => undefined }
+      }
+      delete(): undefined {
+        return undefined
+      }
+    }
+    const makeDash = mock(() => ({ delete: () => undefined }))
+    const strokePaint = {
+      setColor: mock(() => undefined),
+      setStrokeWidth: mock(() => undefined),
+      setAlphaf: mock(() => undefined),
+      setPathEffect: mock(() => undefined)
+    }
+    const graph = new SceneGraph()
+    const authored = graph.createNode('BOOLEAN_OPERATION', pageId(graph), {
+      width: 100,
+      height: 100,
+      strokes: [
+        {
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true,
+          weight: 2,
+          align: 'CENTER'
+        }
+      ]
+    })
+    const projected = {
+      ...authored,
+      ...motionProjectionFlags(-1, true, { visibleFraction: 0.25, phase: 0.6 })
+    }
+    const renderer = rendererFixture({
+      ck: {
+        Path: FakePath,
+        ContourMeasureIter: FakeContourMeasureIter,
+        PathEffect: { MakeDash: makeDash },
+        Color4f: (...values: number[]) => values
+      },
+      getFillGeometry: () => [new FakePath()],
+      resolveStrokeColor: (stroke: SceneNode['strokes'][number]) => stroke.color,
+      strokePaint
+    })
+    const canvas = { drawPath: mock(() => undefined) } as Canvas
+
+    renderBooleanOperation(renderer, canvas, projected, graph)
+
+    expect(makeDash).toHaveBeenCalledWith([50, 150], -120)
+    expect(canvas.drawPath).toHaveBeenCalled()
+    expect(strokePaint.setPathEffect).toHaveBeenLastCalledWith(null)
   })
 })

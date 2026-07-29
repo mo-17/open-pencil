@@ -12,6 +12,9 @@ export type {
   EditorOptions,
   EditorState,
   FigmaClipboardImageResolver,
+  MotionPreviewSelection,
+  MotionPreviewSpecTarget,
+  MotionPreviewSpecsOptions,
   MotionPreviewState,
   MotionPreviewTarget,
   Tool

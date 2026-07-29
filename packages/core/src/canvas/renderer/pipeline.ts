@@ -6,24 +6,43 @@ import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry
 import { drawPageGuides } from '#core/canvas/page-guides'
 import type { RenderOverlays, SkiaRenderer } from '#core/canvas/renderer'
 import type { EditorState } from '#core/editor/types'
+import { computeMotionLayoutPreview } from '#core/layout'
+import { graphHasAnimatedGeneratedEffects } from '#core/motion'
 
 import { renderSceneBacking, updateSceneBackingPreviewState } from './retained-backing'
+
+function renderChildrenWithMotionLayout(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  childIds: readonly string[],
+  overlays: RenderOverlays
+): void {
+  const motionLayoutNodes = computeMotionLayoutPreview(graph, overlays.motionVisualStates)
+  const effectiveOverlays =
+    motionLayoutNodes.size > 0 ? { ...overlays, motionLayoutNodes } : overlays
+  for (const childId of childIds) {
+    r.renderNode(canvas, graph, childId, effectiveOverlays)
+  }
+}
 
 export function renderSceneToCanvas(
   r: SkiaRenderer,
   canvas: Canvas,
   graph: SceneGraph,
-  pageId: string
+  pageId: string,
+  overlays: RenderOverlays = {}
 ): void {
   const prevViewport = r.worldViewport
   r.worldViewport = { x: -1e9, y: -1e9, w: 2e9, h: 2e9 }
-  const pageNode = graph.getNode(pageId)
-  if (pageNode) {
-    for (const childId of pageNode.childIds) {
-      r.renderNode(canvas, graph, childId, {})
+  try {
+    const pageNode = graph.getNode(pageId)
+    if (pageNode) {
+      renderChildrenWithMotionLayout(r, canvas, graph, pageNode.childIds, overlays)
     }
+  } finally {
+    r.worldViewport = prevViewport
   }
-  r.worldViewport = prevViewport
 }
 
 export type RenderLayer = 'full' | 'scene' | 'overlays'
@@ -39,6 +58,12 @@ export function renderFromEditorState(
   dpr = 1,
   layer: RenderLayer = 'full'
 ): void {
+  const reducedMotion =
+    typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  const generatedEffectsAnimate = graphHasAnimatedGeneratedEffects(graph, {
+    pageId: state.currentPageId,
+    prefersReducedMotion: reducedMotion
+  })
   r.dpr = dpr
   r.panX = state.panX
   r.panY = state.panY
@@ -55,6 +80,8 @@ export function renderFromEditorState(
     state.selectedIds,
     {
       motionVisualStates: state.motionPreview?.visuals,
+      ...(generatedEffectsAnimate ? { generatedEffectTimeMs: now() } : {}),
+      generatedEffectMode: reducedMotion ? 'reduce' : 'allow',
       hoveredNodeId: state.hoveredNodeId,
       enteredContainerId: state.enteredContainerId,
       editingTextId: state.editingTextId,
@@ -83,6 +110,7 @@ export function renderFromEditorState(
 export function hasVolatileOverlay(overlays: RenderOverlays): boolean {
   return (
     (overlays.motionVisualStates?.size ?? 0) > 0 ||
+    overlays.generatedEffectTimeMs !== undefined ||
     overlays.dropTargetId != null ||
     overlays.rotationPreview != null ||
     overlays.editingTextId != null ||
@@ -230,7 +258,7 @@ export function render(
     )
     r.drawEnteredContainer(canvas, graph, overlays.enteredContainerId)
     p.beginPhase('render:selection')
-    // Motion preview is scene-only in v1; selection chrome stays on authored bounds.
+    // Motion preview is scene-only; selection chrome stays on authored bounds.
     r.drawSelection(canvas, graph, selectedIds, overlays)
     p.endPhase('render:selection')
     r.drawFlashes(canvas, graph)
@@ -306,9 +334,7 @@ function renderPageChildren(
 ): void {
   const pageNode = graph.getNode(r.pageId ?? graph.rootId)
   if (!pageNode) return
-  for (const childId of pageNode.childIds) {
-    r.renderNode(canvas, graph, childId, overlays)
-  }
+  renderChildrenWithMotionLayout(r, canvas, graph, pageNode.childIds, overlays)
 }
 
 function recordScenePicture(

@@ -13,6 +13,10 @@ export interface SVGExportContext {
   defIdCounter: number
   graph: SceneGraph
   colorSpace: RenderColorSpace
+  includeNodeIds: boolean
+  /** Nodes whose outer HTML/CSS wrapper owns opacity, rotation, and blend mode. */
+  presentationOwnedNodeIds?: ReadonlySet<string>
+  effectFilter?: (node: SceneNode, effect: Effect, index: number) => boolean
 }
 
 export function nextDefId(ctx: SVGExportContext, prefix: string): string {
@@ -141,9 +145,12 @@ function detectImageMime(data: Uint8Array): string {
 
 export function createFilterDef(
   effects: Effect[],
-  ctx: SVGExportContext
+  ctx: SVGExportContext,
+  node: SceneNode
 ): { id: string; node: SVGNode } | null {
-  const visible = effects.filter((e) => e.visible)
+  const visible = effects.filter(
+    (effect, index) => effect.visible && (ctx.effectFilter?.(node, effect, index) ?? true)
+  )
   if (visible.length === 0) return null
 
   const id = nextDefId(ctx, 'fx')
@@ -198,7 +205,35 @@ export function createFilterDef(
 
   return {
     id,
-    node: svg('filter', { id }, ...primitives)
+    node: svg('filter', { id, ...filterRegion(node, visible) }, ...primitives)
+  }
+}
+
+function filterRegion(
+  node: SceneNode,
+  effects: readonly Effect[]
+): Record<string, number | string> {
+  let minX = 0
+  let minY = 0
+  let maxX = node.width
+  let maxY = node.height
+  for (const effect of effects) {
+    if (effect.type === 'INNER_SHADOW' || effect.type === 'BACKGROUND_BLUR') continue
+    const spread = effect.type === 'DROP_SHADOW' ? Math.max(0, effect.spread) : 0
+    const padding = effect.radius * 2 + spread
+    const offsetX = effect.type === 'DROP_SHADOW' ? effect.offset.x : 0
+    const offsetY = effect.type === 'DROP_SHADOW' ? effect.offset.y : 0
+    minX = Math.min(minX, offsetX - padding)
+    minY = Math.min(minY, offsetY - padding)
+    maxX = Math.max(maxX, node.width + offsetX + padding)
+    maxY = Math.max(maxY, node.height + offsetY + padding)
+  }
+  return {
+    filterUnits: 'userSpaceOnUse',
+    x: round(minX),
+    y: round(minY),
+    width: round(maxX - minX),
+    height: round(maxY - minY)
   }
 }
 

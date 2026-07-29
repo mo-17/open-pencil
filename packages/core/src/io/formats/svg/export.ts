@@ -39,7 +39,8 @@ import type { SVGNode } from './node'
 function vectorShapeElements(
   node: SceneNode,
   common: Record<string, string | number | undefined>,
-  strokeAttrs: Record<string, string | number | undefined>
+  strokeAttrs: Record<string, string | number | undefined>,
+  includeStrokeGeometry = true
 ): SVGNode[] {
   const elements: SVGNode[] = []
   if (node.fillGeometry.length > 0) {
@@ -61,32 +62,47 @@ function vectorShapeElements(
       elements.push(svg('path', { d, ...common }))
     }
   }
-  if (node.strokeGeometry.length > 0 && strokeAttrs.stroke && strokeAttrs.stroke !== 'none') {
+  if (
+    includeStrokeGeometry &&
+    node.strokeGeometry.length > 0 &&
+    strokeAttrs.stroke &&
+    strokeAttrs.stroke !== 'none'
+  ) {
     for (const geo of node.strokeGeometry) {
       const d = geometryBlobToSVGPath(geo.commandsBlob)
       if (d) {
         elements.push(
           svg('path', {
+            ...common,
             d,
             fill: strokeAttrs.stroke as string,
             'fill-opacity': strokeAttrs['stroke-opacity'],
-            stroke: 'none'
+            stroke: 'none',
+            'data-op-paint': 'stroke-outline'
           })
         )
       }
     }
   }
-  return elements.length > 0
-    ? elements
-    : [svg('rect', { width: round(node.width), height: round(node.height), ...common })]
+  // A VECTOR with no network or imported geometry is visually empty in
+  // CanvasKit. Do not synthesize a rectangular SVG shape for it: that fallback
+  // would make static paints and box/effect Motion animate pixels that do not
+  // exist on the OpenPencil canvas.
+  return elements
 }
 
 function nodeShapeElements(
   node: SceneNode,
   fillAttr: string | null,
-  strokeAttrs: Record<string, string | number | undefined>
+  strokeAttrs: Record<string, string | number | undefined>,
+  includeNodeIds: boolean,
+  fillIndex: number
 ): SVGNode[] {
+  const marker = includeNodeIds
+    ? { 'data-op-node-id': node.id, 'data-op-fill-index': fillIndex }
+    : {}
   const common: Record<string, string | number | undefined> = {
+    ...marker,
     fill: fillAttr ?? 'none',
     ...strokeAttrs
   }
@@ -110,6 +126,7 @@ function nodeShapeElements(
     case 'LINE':
       return [
         svg('line', {
+          ...marker,
           x1: 0,
           y1: 0,
           x2: round(node.width),
@@ -125,6 +142,18 @@ function nodeShapeElements(
 
     case 'VECTOR':
       return vectorShapeElements(node, common, strokeAttrs)
+
+    case 'BOOLEAN_OPERATION':
+      if (node.fillGeometry.length > 0) {
+        // CanvasKit paints/strokes the resolved boolean path itself. Imported
+        // strokeGeometry is a cache for vector outlines, not an additional
+        // boolean result path, so do not render it a second time here.
+        return vectorShapeElements(node, common, strokeAttrs, false)
+      }
+      // Headless SVG export cannot evaluate child-only boolean operations. Fail
+      // closed instead of inventing a rectangle or rendering the uncombined
+      // source children as though they were the boolean result.
+      return []
 
     default: {
       if (hasRadius(node)) {
@@ -233,10 +262,10 @@ function renderTextNode(
 
 // --- Main recursive renderer ---
 
-function buildTransformAttr(node: SceneNode): string | undefined {
+function buildTransformAttr(node: SceneNode, omitRotation: boolean): string | undefined {
   const transforms: string[] = []
   if (node.x !== 0 || node.y !== 0) transforms.push(`translate(${round(node.x)}, ${round(node.y)})`)
-  if (node.rotation !== 0) {
+  if (!omitRotation && node.rotation !== 0) {
     transforms.push(
       `rotate(${round(node.rotation)}, ${round(node.width / 2)}, ${round(node.height / 2)})`
     )
@@ -256,18 +285,19 @@ function buildGroupAttrs(
   ctx: SVGExportContext
 ): { attrs: Record<string, string | number | undefined>; clipId?: string } {
   const attrs: Record<string, string | number | undefined> = {}
+  const presentationOwned = ctx.presentationOwnedNodeIds?.has(node.id) === true
 
-  const transform = buildTransformAttr(node)
+  const transform = buildTransformAttr(node, presentationOwned)
   if (transform) attrs.transform = transform
 
-  if (node.opacity < 1) attrs.opacity = round(node.opacity)
+  if (!presentationOwned && node.opacity < 1) attrs.opacity = round(node.opacity)
 
   const blend = SVG_BLEND_MODE[node.blendMode]
-  if (blend && blend !== 'normal' && node.blendMode !== 'PASS_THROUGH') {
+  if (!presentationOwned && blend && blend !== 'normal' && node.blendMode !== 'PASS_THROUGH') {
     attrs.style = `mix-blend-mode: ${blend}`
   }
 
-  const filterDef = createFilterDef(node.effects, ctx)
+  const filterDef = createFilterDef(node.effects, ctx, node)
   if (filterDef) {
     ctx.defs.push(filterDef.node)
     attrs.filter = `url(#${filterDef.id})`
@@ -321,14 +351,16 @@ function buildShapeChildren(
 ): SVGNode[] {
   if (visibleFills.length > 1) {
     const elements: SVGNode[] = []
-    for (const fill of visibleFills) {
+    for (const [fillIndex, fill] of visibleFills.entries()) {
       const ref = resolveFill(fill, node, ctx)
       if (ref) {
         elements.push(
           ...nodeShapeElements(
             node,
             ref,
-            fill === visibleFills[visibleFills.length - 1] ? strokeAttrs : {}
+            fill === visibleFills[visibleFills.length - 1] ? strokeAttrs : {},
+            ctx.includeNodeIds,
+            fillIndex
           )
         )
       }
@@ -338,7 +370,7 @@ function buildShapeChildren(
 
   const hasFillOrStroke = fillAttr || visibleStrokeCount > 0
   if (hasFillOrStroke && !isGroupLike(node)) {
-    return nodeShapeElements(node, fillAttr, strokeAttrs)
+    return nodeShapeElements(node, fillAttr, strokeAttrs, ctx.includeNodeIds, 0)
   }
 
   return []
@@ -348,6 +380,7 @@ function renderNode(node: SceneNode, ctx: SVGExportContext): SVGNode | null {
   if (!node.visible) return null
 
   const { attrs: groupAttrs, clipId } = buildGroupAttrs(node, ctx)
+  if (ctx.includeNodeIds) groupAttrs['data-op-node-group'] = node.id
 
   if (node.type === 'TEXT') {
     const firstFill = node.fills.find((f) => f.visible)
@@ -370,7 +403,10 @@ function renderNode(node: SceneNode, ctx: SVGExportContext): SVGNode | null {
     ctx
   )
 
-  const childNodes = ctx.graph.getChildren(node.id)
+  // BOOLEAN_OPERATION children are source operands, not visible descendants.
+  // Imported final geometry above is the only headless-safe result; when it is
+  // absent the exporter deliberately emits no pixels.
+  const childNodes = node.type === 'BOOLEAN_OPERATION' ? [] : ctx.graph.getChildren(node.id)
   const childContent: SVGNode[] = []
   for (const child of childNodes) {
     const rendered = renderNode(child, ctx)
@@ -407,6 +443,12 @@ export interface SVGExportOptions {
   xmlDeclaration?: boolean
   /** Target export color space (default: srgb) */
   colorSpace?: 'srgb' | 'display-p3'
+  /** Add source-node markers used by compiler-side SVG motion instrumentation. */
+  includeNodeIds?: boolean
+  /** Let an outer wrapper own root opacity, rotation, and blend presentation. */
+  presentationOwnedNodeIds?: ReadonlySet<string>
+  /** Select authored effects included in generated SVG filters. */
+  effectFilter?: SVGExportContext['effectFilter']
 }
 
 export function renderNodesToSVG(
@@ -415,7 +457,26 @@ export function renderNodesToSVG(
   nodeIds: string[],
   options: SVGExportOptions = {}
 ): string | null {
-  const bounds = computeContentBounds(graph, nodeIds)
+  const presentationRoot =
+    nodeIds.length === 1 && options.presentationOwnedNodeIds?.has(nodeIds[0]) === true
+      ? graph.getNode(nodeIds[0])
+      : undefined
+  const presentationRootPosition = presentationRoot
+    ? graph.getAbsolutePosition(presentationRoot.id)
+    : undefined
+  // Compiler-owned wrappers already apply root rotation and expose the authored
+  // box. Use that intrinsic local box as the SVG viewBox; deriving bounds from
+  // the authored rotation would rotate once for bounds and again on the wrapper,
+  // then non-uniformly squeeze the result back into the authored dimensions.
+  const bounds =
+    presentationRoot && presentationRootPosition
+      ? {
+          minX: presentationRootPosition.x,
+          minY: presentationRootPosition.y,
+          maxX: presentationRootPosition.x + presentationRoot.width,
+          maxY: presentationRootPosition.y + presentationRoot.height
+        }
+      : computeContentBounds(graph, nodeIds)
   if (!bounds) return null
 
   const { minX, minY, maxX, maxY } = bounds
@@ -426,7 +487,10 @@ export function renderNodesToSVG(
     defs: [],
     defIdCounter: 0,
     graph,
-    colorSpace: options.colorSpace ?? 'srgb'
+    colorSpace: options.colorSpace ?? 'srgb',
+    includeNodeIds: options.includeNodeIds === true,
+    presentationOwnedNodeIds: options.presentationOwnedNodeIds,
+    effectFilter: options.effectFilter
   }
 
   const contentNodes: SVGNode[] = []

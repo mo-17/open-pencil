@@ -5,6 +5,7 @@ import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { getTextOutlineSupport } from '#core/text/outlines'
 
 import { makeArcPath } from './fills'
+import { measurePathLength, motionDashPhase, motionTrimProjection } from './motion-projection'
 import type { SkiaRenderer } from './renderer'
 import { nodeHasRadius } from './shapes'
 import { textNodeToOutlinePath } from './text/outlines'
@@ -313,7 +314,25 @@ export function renderBooleanOperation(
       r.strokePaint.setColor(r.ck.Color4f(color.r, color.g, color.b, color.a))
       r.strokePaint.setStrokeWidth(stroke.weight)
       r.strokePaint.setAlphaf(stroke.opacity)
-      canvas.drawPath(path, r.strokePaint)
+      const trim = motionTrimProjection(node)
+      let dash = stroke.dashPattern
+      let dashPhase = motionDashPhase(node)
+      if (trim) {
+        const length = measurePathLength(r.ck, [path])
+        dash =
+          trim.visibleFraction >= 1 - 1e-6
+            ? undefined
+            : [trim.visibleFraction * length, (1 - trim.visibleFraction) * length]
+        dashPhase = -trim.phase * length
+      }
+      const effect = dash && dash.length > 0 ? r.ck.PathEffect.MakeDash(dash, dashPhase) : null
+      r.strokePaint.setPathEffect(effect)
+      try {
+        canvas.drawPath(path, r.strokePaint)
+      } finally {
+        r.strokePaint.setPathEffect(null)
+        effect?.delete()
+      }
     }
   } finally {
     path.delete()

@@ -2,6 +2,7 @@ import type { VectorRegion, VectorVertex } from '@open-pencil/scene-graph'
 import type { Color, Rect, Vector } from '@open-pencil/scene-graph/primitives'
 import type { SnapGuide } from '@open-pencil/scene-graph/snap'
 
+import type { MotionLayoutPreviewNode } from '#core/layout'
 import type { MotionVisualState } from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
 
@@ -15,6 +16,11 @@ export interface RulerTheme {
 export interface RenderOverlays {
   /** Ephemeral scene-only motion deltas; absent from static render/export paths. */
   motionVisualStates?: ReadonlyMap<string, MotionVisualState>
+  /** Non-persistent Yoga geometry derived from animated layout channels. */
+  motionLayoutNodes?: ReadonlyMap<string, MotionLayoutPreviewNode>
+  /** Exact injected timeline time. Undefined renders the authored static t=0 frame. */
+  generatedEffectTimeMs?: number
+  generatedEffectMode?: 'allow' | 'reduce' | 'disable'
   hoveredNodeId?: string | null
   enteredContainerId?: string | null
   editingTextId?: string | null

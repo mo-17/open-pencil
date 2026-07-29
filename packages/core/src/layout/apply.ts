@@ -1,10 +1,12 @@
 import type { Node as YogaNode } from 'yoga-layout'
 
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
-export type ComputeLayoutFn = (graph: SceneGraph, frameId: string) => void
+import type { LayoutGraph } from './graph'
 
-function applyFrameSize(graph: SceneGraph, frame: SceneNode, yogaNode: YogaNode): void {
+export type ComputeLayoutFn = (graph: LayoutGraph, frameId: string) => void
+
+function applyFrameSize(graph: LayoutGraph, frame: SceneNode, yogaNode: YogaNode): void {
   if (frame.layoutMode === 'GRID') {
     if (frame.gridTemplateRows.length === 0) {
       graph.updateNode(frame.id, { height: yogaNode.getComputedHeight() })
@@ -31,7 +33,7 @@ function applyFrameSize(graph: SceneGraph, frame: SceneNode, yogaNode: YogaNode)
   graph.updateNode(frame.id, updates)
 }
 
-function updateChildFromYoga(graph: SceneGraph, child: SceneNode, yogaChild: YogaNode): void {
+function updateChildFromYoga(graph: LayoutGraph, child: SceneNode, yogaChild: YogaNode): void {
   if (!child.visible || child.layoutPositioning === 'ABSOLUTE') return
 
   const derived = child.figmaDerivedLayout
@@ -54,7 +56,7 @@ function preservesImportedInstanceInternals(child: SceneNode): boolean {
 }
 
 function recomputeGridChild(
-  graph: SceneGraph,
+  graph: LayoutGraph,
   child: SceneNode,
   computeLayout: ComputeLayoutFn
 ): void {
@@ -78,7 +80,7 @@ function recomputeGridChild(
 }
 
 export function applyYogaLayout(
-  graph: SceneGraph,
+  graph: LayoutGraph,
   frame: SceneNode,
   yogaNode: YogaNode,
   computeLayout: ComputeLayoutFn

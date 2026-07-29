@@ -73,6 +73,7 @@ export class SkiaRenderer {
   declare auxStroke: Paint
   declare opacityPaint: Paint
   declare effectLayerPaint: Paint
+  declare generatedEffectPaint: Paint
   imageFilterCache = new Map<string, ImageFilter | null>()
   maskFilterCache = new Map<number, MaskFilter | null>()
   _tmpColor = new Float32Array(4)
@@ -544,8 +545,13 @@ export class SkiaRenderer {
     )
   }
 
-  renderSceneToCanvas(canvas: Canvas, graph: SceneGraph, pageId: string): void {
-    RenderPipeline.renderSceneToCanvas(this, canvas, graph, pageId)
+  renderSceneToCanvas(
+    canvas: Canvas,
+    graph: SceneGraph,
+    pageId: string,
+    overlays: RenderOverlays = {}
+  ): void {
+    RenderPipeline.renderSceneToCanvas(this, canvas, graph, pageId, overlays)
   }
 
   renderFromEditorState(

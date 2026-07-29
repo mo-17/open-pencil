@@ -27,6 +27,7 @@ function createRenderer() {
     auxStroke: deletable<Paint>(),
     opacityPaint: deletable<Paint>(),
     effectLayerPaint: deletable<Paint>(),
+    generatedEffectPaint: deletable<Paint>(),
     textFont: deletable<Font>(),
     labelFont: deletable<Font>(),
     sizeFont: deletable<Font>(),
@@ -63,12 +64,14 @@ function createRenderer() {
 test('destroyRenderer deletes all renderer-owned paints and label fonts', () => {
   const renderer = createRenderer()
   const parentOutlinePaint = renderer.parentOutlinePaint
+  const generatedEffectPaint = renderer.generatedEffectPaint
   const sectionTitleFont = renderer.sectionTitleFont
   const componentLabelFont = renderer.componentLabelFont
 
   destroyRenderer(renderer)
 
   expect(parentOutlinePaint.delete).toHaveBeenCalled()
+  expect(generatedEffectPaint.delete).toHaveBeenCalled()
   expect(sectionTitleFont?.delete).toHaveBeenCalled()
   expect(componentLabelFont?.delete).toHaveBeenCalled()
 })

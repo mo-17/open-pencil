@@ -15,7 +15,11 @@ import type { UndoManager } from '@open-pencil/scene-graph/undo'
 
 import type { RulerTheme, SkiaRenderer } from '#core/canvas/renderer'
 import type { RenderOverlays } from '#core/canvas/renderer/types'
-import type { MotionVisualState } from '#core/motion'
+import type {
+  MotionScenePlanIssue,
+  MotionVisualState,
+  PreparedMotionSamplingPlan
+} from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
 
 export type Tool =
@@ -44,13 +48,54 @@ export type Tool =
 export interface MotionPreviewTarget {
   readonly nodeId: string
   readonly spec: MotionSpec
+  /** Prepared once when preview starts and reused for every frame. */
+  readonly plan: PreparedMotionSamplingPlan
+}
+
+export interface MotionPreviewOptions {
+  /** Restrict the preview to one authored track. */
+  readonly trackId?: string
+  /** Author infinite playback as one finite cycle without mutating the document. */
+  readonly infiniteAsSingleCycle?: boolean
+  /** Static authoring seeks keep the finite end value even when runtime fill does not. */
+  readonly holdFinalFrame?: boolean
+}
+
+export type MotionPreviewSelection =
+  | { readonly mode: 'all' }
+  | { readonly mode: 'trigger'; readonly trigger: MotionTrigger }
+
+export interface MotionPreviewSpecTarget {
+  readonly nodeId: string
+  /** Untrusted input is strictly parsed before it reaches the preview sampler. */
+  readonly spec: unknown
+}
+
+export interface MotionPreviewSpecsOptions extends MotionPreviewOptions {
+  /** Preview every track by default, or only tracks matching one authored trigger. */
+  readonly selection?: MotionPreviewSelection
+}
+
+export interface MotionScenePreviewResult {
+  readonly started: boolean
+  /** Opaque preview ownership token. It can be used to stop only the preview this call started. */
+  readonly previewId?: number
+  readonly durationMs: number
+  readonly issues: readonly MotionScenePlanIssue[]
 }
 
 export interface MotionPreviewState {
+  /** Monotonic editor-local token identifying the surface that most recently replaced the preview. */
+  readonly id: number
   readonly targets: readonly MotionPreviewTarget[]
-  readonly trigger: MotionTrigger
+  /** Legacy trigger label. `all` is used by previewMotionSpecs() when every track participates. */
+  readonly trigger: MotionTrigger | 'all'
   readonly prefersReducedMotion: boolean
+  /** True only while the render loop should advance the preview clock. */
+  readonly playing: boolean
   readonly startedAtMs: number | null
+  /** Last sampled timeline position, independent of the RAF timestamp origin. */
+  readonly elapsedMs: number
   readonly visuals: ReadonlyMap<string, MotionVisualState>
   readonly finished: boolean
 }

@@ -2,7 +2,13 @@ import { describe, expect, test } from 'bun:test'
 
 import { createMotionPreset, type MotionSpec, type MotionTrack } from '@open-pencil/scene-graph'
 
-import { sampleMotionEasing, sampleMotionSpec } from '#core/motion'
+import {
+  prepareMotionSamplingPlan,
+  sampleMotionEasing,
+  sampleMotionSpec,
+  samplePreparedMotionPlan,
+  samplePreparedMotionPlanWithDiagnostics
+} from '#core/motion'
 
 function spec(tracks: MotionTrack[], reducedMotion?: MotionSpec['reducedMotion']): MotionSpec {
   return { version: 1, tracks, ...(reducedMotion ? { reducedMotion } : {}) }
@@ -183,5 +189,161 @@ describe('MotionSpec sampling', () => {
     ).toBeCloseTo(0.25, 5)
     expect(sampleMotionEasing('ease-out', 0.5)).toBeGreaterThan(0.5)
     expect(sampleMotionEasing('ease-in', 0.5)).toBeLessThan(0.5)
+  })
+
+  test('prepared trigger plans remain byte-for-byte compatible with sampleMotionSpec', () => {
+    const motion = spec(
+      [
+        track({
+          id: 'enter',
+          timing: {
+            durationMs: 240,
+            delayMs: 40,
+            easing: 'ease-in-out',
+            iterations: 2,
+            direction: 'alternate',
+            fill: 'forwards'
+          }
+        }),
+        track({
+          id: 'hover',
+          trigger: 'hover',
+          keyframes: [
+            { offset: 0, opacity: 0.2 },
+            { offset: 1, opacity: 1 }
+          ]
+        })
+      ],
+      'allow'
+    )
+    const plan = prepareMotionSamplingPlan(motion, {
+      selection: { mode: 'trigger', trigger: 'mount' }
+    })
+
+    for (const elapsedMs of [0, 39, 40, 100, 280, 520, Number.NaN]) {
+      expect(samplePreparedMotionPlan(plan, elapsedMs)).toEqual(sampleMotionSpec(motion, elapsedMs))
+    }
+  })
+
+  test('preparation snapshots channels, reduced-motion timing, and keyframes', () => {
+    const authoredTrack = track({
+      keyframes: [
+        { offset: 0, x: 0, opacity: 0 },
+        { offset: 1, x: 100, opacity: 1 }
+      ],
+      timing: { durationMs: 1_000, delayMs: 500, easing: 'linear' }
+    })
+    const motion = spec([authoredTrack], 'reduce')
+    const plan = prepareMotionSamplingPlan(motion, {
+      selection: { mode: 'all' },
+      prefersReducedMotion: true
+    })
+
+    authoredTrack.keyframes[1].opacity = 0
+    authoredTrack.keyframes[1].rotate = 90
+    authoredTrack.timing.durationMs = 10_000
+    authoredTrack.timing.delayMs = 5_000
+
+    expect(plan.tracks[0]).toMatchObject({
+      channels: { opacity: true, translate: false, scale: false, rotate: false },
+      durationMs: 120,
+      delayMs: 0
+    })
+    expect(samplePreparedMotionPlan(plan, 60).visual).toEqual({
+      x: 0,
+      y: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotate: 0,
+      opacity: 0.5
+    })
+  })
+
+  test('supports trackIds and all selection while preserving source-order wins', () => {
+    const motion = spec([
+      track({ id: 'mount-x' }),
+      track({
+        id: 'hover-x',
+        trigger: 'hover',
+        keyframes: [
+          { offset: 0, x: 200 },
+          { offset: 1, x: 300 }
+        ]
+      }),
+      track({
+        id: 'click-opacity',
+        trigger: 'click',
+        keyframes: [
+          { offset: 0, opacity: 0 },
+          { offset: 1, opacity: 1 }
+        ]
+      })
+    ])
+
+    const selected = prepareMotionSamplingPlan(motion, {
+      selection: { mode: 'trackIds', trackIds: ['click-opacity', 'mount-x'] }
+    })
+    expect(selected.tracks.map((item) => item.id)).toEqual(['mount-x', 'click-opacity'])
+    expect(samplePreparedMotionPlan(selected, 50).visual).toMatchObject({ x: 50, opacity: 0.5 })
+
+    const all = prepareMotionSamplingPlan(motion, { selection: { mode: 'all' } })
+    expect(all.tracks.map((item) => item.id)).toEqual(['mount-x', 'hover-x', 'click-opacity'])
+    expect(samplePreparedMotionPlan(all, 50).visual).toMatchObject({ x: 250, opacity: 0.5 })
+  })
+
+  test('reports isolated per-track progress, contribution, completion, and visual state', () => {
+    const motion = spec([
+      track({
+        id: 'delayed-x',
+        timing: { durationMs: 100, delayMs: 50, easing: 'linear', fill: 'none' }
+      }),
+      track({
+        id: 'fade',
+        trigger: 'hover',
+        keyframes: [
+          { offset: 0, opacity: 0 },
+          { offset: 1, opacity: 1 }
+        ],
+        timing: { durationMs: 100, easing: 'linear', fill: 'forwards' }
+      })
+    ])
+    const plan = prepareMotionSamplingPlan(motion, { selection: { mode: 'all' } })
+
+    expect(samplePreparedMotionPlanWithDiagnostics(plan, 25)).toEqual({
+      visual: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, opacity: 0.25 },
+      hasTracks: true,
+      contributes: true,
+      finished: false,
+      tracks: [
+        {
+          trackId: 'delayed-x',
+          trigger: 'mount',
+          exit: 'reset',
+          progress: 0,
+          contributes: false,
+          finished: false,
+          visual: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, opacity: 1 }
+        },
+        {
+          trackId: 'fade',
+          trigger: 'hover',
+          exit: 'reset',
+          progress: 0.25,
+          contributes: true,
+          finished: false,
+          visual: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, opacity: 0.25 }
+        }
+      ]
+    })
+
+    expect(samplePreparedMotionPlanWithDiagnostics(plan, 150)).toMatchObject({
+      visual: { x: 0, opacity: 1 },
+      contributes: true,
+      finished: true,
+      tracks: [
+        { trackId: 'delayed-x', progress: 1, contributes: false, finished: true },
+        { trackId: 'fade', progress: 1, contributes: true, finished: true }
+      ]
+    })
   })
 })

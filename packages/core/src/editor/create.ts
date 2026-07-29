@@ -173,6 +173,13 @@ export function createEditor(options?: EditorOptions) {
   const text = createTextActions(ctx)
   const nodes = createNodeActions(ctx)
   const motionPreview = createMotionPreviewActions(ctx)
+  const clearPreviewForTarget = (nodeId: string) => {
+    if (motionPreview.hasMotionPreview(nodeId)) motionPreview.stopMotionPreview()
+  }
+  onEditorEvent('node:updated', clearPreviewForTarget)
+  onEditorEvent('node:deleted', clearPreviewForTarget)
+  onEditorEvent('selection:changed', () => motionPreview.stopMotionPreview())
+  onEditorEvent('page:changed', () => motionPreview.stopMotionPreview())
   const variables = createVariableActions(ctx)
   const alignment = createAlignmentActions(ctx)
   const clipboardBridge = createClipboardBridge(clipboard, selection)

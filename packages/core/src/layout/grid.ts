@@ -1,9 +1,10 @@
 import { Direction, Display, Gutter, Edge, type Node as YogaNode } from 'yoga-layout'
 
-import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+import { isAutoLayoutMode, type SceneNode } from '@open-pencil/scene-graph'
 
 import { resolveNodeLayoutDirection } from '#core/text/direction'
 
+import type { LayoutGraph } from './graph'
 import { configureAbsoluteChild, createYogaNode, mapGridTrack } from './yoga-helpers'
 
 function configureAsGrid(
@@ -65,7 +66,7 @@ export function createGridChildNode(child: SceneNode): YogaNode {
 }
 
 export function buildGridTree(
-  graph: SceneGraph,
+  graph: LayoutGraph,
   frame: SceneNode,
   inheritedDirection: 'LTR' | 'RTL'
 ): YogaNode {

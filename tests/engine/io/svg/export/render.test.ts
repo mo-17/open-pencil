@@ -2,6 +2,26 @@ import { describe, expect, test } from 'bun:test'
 
 import { exportSVG, exportSVGOrThrow, makeGraph, pageId, renderNodesToSVGOrThrow } from './helpers'
 
+function rectangleCommandsBlob(x: number, y: number, width: number, height: number): Uint8Array {
+  const blob = new Uint8Array(1 + 4 * 9 + 1)
+  const view = new DataView(blob.buffer)
+  const points = [
+    { command: 1, x, y },
+    { command: 2, x: x + width, y },
+    { command: 2, x: x + width, y: y + height },
+    { command: 2, x, y: y + height }
+  ]
+  let offset = 0
+  for (const point of points) {
+    blob[offset] = point.command
+    view.setFloat32(offset + 1, point.x, true)
+    view.setFloat32(offset + 5, point.y, true)
+    offset += 9
+  }
+  blob[offset] = 0
+  return blob
+}
+
 // --- Full SVG export tests ---
 
 describe('renderNodesToSVG()', () => {
@@ -18,6 +38,86 @@ describe('renderNodesToSVG()', () => {
       visible: false
     })
     expect(exportSVG(graph, [node.id])).toBeNull()
+  })
+
+  test('does not synthesize rectangles for empty vector or boolean geometry', () => {
+    for (const type of ['VECTOR', 'BOOLEAN_OPERATION'] as const) {
+      const graph = makeGraph()
+      const node = graph.createNode(type, pageId(graph), {
+        width: 20,
+        height: 20,
+        fills: [
+          {
+            type: 'SOLID',
+            color: { r: 1, g: 0, b: 0, a: 1 },
+            opacity: 1,
+            visible: true
+          }
+        ],
+        strokes: [
+          {
+            color: { r: 0, g: 0, b: 0, a: 1 },
+            weight: 2,
+            opacity: 1,
+            visible: true,
+            align: 'CENTER'
+          }
+        ]
+      })
+      expect(exportSVG(graph, [node.id]) ?? '').not.toMatch(
+        /<(?:path|line|polyline|polygon|rect|circle|ellipse)\b/
+      )
+    }
+
+    const childOnlyGraph = makeGraph()
+    const childOnly = childOnlyGraph.createNode('BOOLEAN_OPERATION', pageId(childOnlyGraph), {
+      width: 20,
+      height: 20,
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 1, g: 0, b: 0, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+    childOnlyGraph.createNode('RECTANGLE', childOnly.id, {
+      width: 10,
+      height: 10,
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0, g: 1, b: 0, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+    expect(exportSVG(childOnlyGraph, [childOnly.id]) ?? '').not.toMatch(
+      /<(?:path|line|polyline|polygon|rect|circle|ellipse)\b/
+    )
+
+    const strokeOnlyGraph = makeGraph()
+    const strokeOnly = strokeOnlyGraph.createNode('BOOLEAN_OPERATION', pageId(strokeOnlyGraph), {
+      width: 20,
+      height: 20,
+      strokeGeometry: [
+        { windingRule: 'NONZERO', commandsBlob: rectangleCommandsBlob(2, 2, 16, 16) }
+      ],
+      strokes: [
+        {
+          color: { r: 0, g: 0, b: 0, a: 1 },
+          weight: 2,
+          opacity: 1,
+          visible: true,
+          align: 'CENTER'
+        }
+      ]
+    })
+    expect(exportSVG(strokeOnlyGraph, [strokeOnly.id]) ?? '').not.toMatch(
+      /<(?:path|line|polyline|polygon|rect|circle|ellipse)\b/
+    )
   })
 
   test('basic rectangle', () => {
