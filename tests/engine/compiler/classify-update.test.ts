@@ -19,6 +19,14 @@ describe('classifyUpdate (Phase 1 §10)', () => {
     expect(classifyUpdate(['src/App.tsx'], 0)).toBe('full-reload')
   })
 
+  test('a mixed mapped/unmapped batch → full-reload (new imports need evaluation)', () => {
+    expect(classifyUpdate(['src/main.tsx', 'src/__motion-runtime.ts'], 1)).toBe('full-reload')
+  })
+
+  test('an added or removed module → full-reload even when Vite still maps every path', () => {
+    expect(classifyUpdate(['src/main.tsx', 'src/__motion-runtime.ts'], 2, true)).toBe('full-reload')
+  })
+
   test('only .tsx changed and invalidated → hmr', () => {
     expect(classifyUpdate(['src/App.tsx'], 1)).toBe('hmr')
   })

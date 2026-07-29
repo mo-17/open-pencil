@@ -26,6 +26,9 @@ export interface ComponentMeta {
   /** master-descendant node id → prop slot (empty when no instance overrides
    *  a supported prop on this component). */
   propSlots: Map<string, ComponentSlot>
+  /** True when the reusable body contains a prototype source/target or Smart
+   * Match key. Every emitted usage then receives its own runtime scope. */
+  prototypeBody: boolean
   /** Phase 3 §8 v4 — set when this is a COMPONENT_SET: the variant axes and the
    *  per-variant cases (each a COMPONENT child of the SET, keyed by its
    *  parsed variant values). Plain components leave this undefined. */
@@ -135,6 +138,7 @@ export function buildComponentRegistry(
   graph: SceneGraph,
   styleOptions: CompilerStyleOptions = {}
 ): ComponentRegistry {
+  const prototypeRuntimeNodeIds = collectPrototypeRuntimeNodeIds(graph)
   const instancesByComponent = new Map<string, SceneNode[]>()
   const masters: SceneNode[] = []
   const sets: SceneNode[] = []
@@ -163,7 +167,8 @@ export function buildComponentRegistry(
     if (refable.length === 0) continue
     registry.set(master.id, {
       name: uniqueName(componentName(master.name), usedNames),
-      propSlots: buildPropSlots(graph, refable, styleOptions)
+      propSlots: buildPropSlots(graph, refable, styleOptions),
+      prototypeBody: componentBodyUsesPrototype(graph, master.id, prototypeRuntimeNodeIds)
     })
   }
   // Phase 3 §8 v4: a COMPONENT_SET with ≥1 instanced variant → one component
@@ -181,10 +186,52 @@ export function buildComponentRegistry(
       // Phase 3 §8 v5: a SET's text/fill prop slots, merged by layer name so
       // the same logical node across variant subtrees shares one prop.
       propSlots: buildSetPropSlots(graph, kids, variantInstances, styleOptions),
+      prototypeBody: componentBodyUsesPrototype(graph, set.id, prototypeRuntimeNodeIds),
       variants: buildVariants(set, kids)
     })
   }
   return registry
+}
+
+/** Sources, Smart Match layers, and destinations all require a concrete DOM
+ * boundary. Instance clones point back to their master through `componentId`,
+ * so retain both ids: the page walk sees the clone while the reusable body
+ * walk sees the master node. */
+function collectPrototypeRuntimeNodeIds(graph: SceneGraph): ReadonlySet<string> {
+  const ids = new Set<string>()
+  const add = (node: SceneNode | undefined): void => {
+    if (!node) return
+    ids.add(node.id)
+    if (node.componentId) ids.add(node.componentId)
+  }
+  for (const node of graph.getAllNodes()) {
+    if (node.prototype || node.transitionKey) add(node)
+    for (const connection of node.prototype?.connections ?? []) {
+      if (connection.action.kind === 'navigate' || connection.action.kind === 'openOverlay') {
+        add(graph.getNode(connection.action.targetNodeId))
+      }
+    }
+  }
+  return ids
+}
+
+function componentBodyUsesPrototype(
+  graph: SceneGraph,
+  componentId: string,
+  runtimeNodeIds: ReadonlySet<string>
+): boolean {
+  const stack = [...graph.getChildren(componentId)]
+  const visited = new Set<string>()
+  while (stack.length > 0) {
+    const node = stack.pop()
+    if (!node || visited.has(node.id)) continue
+    visited.add(node.id)
+    if (runtimeNodeIds.has(node.id) || (node.componentId && runtimeNodeIds.has(node.componentId))) {
+      return true
+    }
+    stack.push(...graph.getChildren(node.id))
+  }
+  return false
 }
 
 /** Phase 3 §8 v5 — prop slots for a COMPONENT_SET. Unlike a plain component

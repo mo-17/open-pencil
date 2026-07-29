@@ -22,6 +22,7 @@ describe('compile (public API, end-to-end)', () => {
         'index.html',
         'package.json',
         'src/App.tsx',
+        'src/__motion-runtime.ts',
         'src/__preview-bridge.ts',
         'src/index.css',
         'src/main.tsx',

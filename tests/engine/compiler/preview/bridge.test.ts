@@ -102,7 +102,10 @@ describe('preview-bridge — navigate channel (Phase 2 §7)', () => {
 describe('preview-bridge — runtime docState channel (Phase 3 §4.6)', () => {
   test('inbound union is widened with a docState member', () => {
     expect(bridge).toContain('interface InboundDocState')
-    expect(bridge).toContain('type Inbound = InboundSelect | InboundNavigate | InboundDocState')
+    expect(bridge).toContain('interface InboundMotionDebug')
+    expect(bridge).toContain(
+      'type Inbound = InboundSelect | InboundNavigate | InboundDocState | InboundMotionDebug'
+    )
   })
 
   test('reads the zustand store from the window handle exposed by _lowcode_state', () => {
@@ -126,5 +129,25 @@ describe('preview-bridge — runtime docState channel (Phase 3 §4.6)', () => {
     expect(bridge).toContain('let suppressDocStateOutbound = false')
     expect(bridge).toContain('if (suppressDocStateOutbound) return')
     expect(bridge).toContain('suppressDocStateOutbound = true')
+  })
+})
+
+describe('preview-bridge — Motion Debug channel', () => {
+  test('calls the generated runtime inspect handle and posts structured snapshots', () => {
+    expect(bridge).toContain("if (data.type === 'motionDebug')")
+    expect(bridge).toContain("typeof runtime.inspect !== 'function'")
+    expect(bridge).toContain("postMotionDebug('ready', runtime.inspect())")
+    expect(bridge).toMatch(/type: 'motionDebug',\s*status,\s*snapshot,\s*error/)
+  })
+
+  test('polls only while enabled and stops immediately when disabled', () => {
+    expect(bridge).toContain('motionDebugTimer = setInterval(inspectMotion, 250)')
+    expect(bridge).toContain('clearInterval(motionDebugTimer)')
+    expect(bridge).toContain('if (!enabled) return')
+  })
+
+  test('reports missing runtimes and inspect errors without throwing into the preview', () => {
+    expect(bridge).toContain("postMotionDebug('unavailable')")
+    expect(bridge).toContain("postMotionDebug('error'")
   })
 })

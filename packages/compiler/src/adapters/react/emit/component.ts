@@ -27,7 +27,10 @@ export function buildComponentModule(
   def: ComponentDef,
   devMode: boolean,
   uiKit: UiKitAdapter | null = null,
-  motionBoundary = false
+  motionBoundary = false,
+  rootEventsBoundary = false,
+  motionScopeBoundary = false,
+  prototypeBoundary = false
 ): string {
   // Phase 3 §9: a component body with i18n-tagged visible text needs
   // FormattedMessage; §9 v3: a translated attribute (placeholder) needs useIntl.
@@ -42,7 +45,7 @@ export function buildComponentModule(
   const kitImportBlock =
     kitImports.length > 0 ? kitImports.map(kitImportLine).join('\n') + '\n' : ''
   const lucideImport = buildLucideIconImport(referencedLucideIconNames(componentBodyNodes(def)))
-  const reactImport = buildComponentReactImport(def)
+  const reactImport = buildComponentReactImport(def, rootEventsBoundary)
   const lowcodeStateImport = buildComponentLowcodeStateImport(def)
   const validationImport = buildComponentValidationImport(def)
   const importBlock =
@@ -54,7 +57,19 @@ export function buildComponentModule(
     lucideImport
       ? `${reactImport}${lowcodeStateImport}${validationImport}${i18nImport}${kitImportBlock}${lucideImport}\n`
       : ''
-  return importBlock + buildComponentBody(def, devMode, usesIntl, uiKit, motionBoundary)
+  return (
+    importBlock +
+    buildComponentBody(
+      def,
+      devMode,
+      usesIntl,
+      uiKit,
+      motionBoundary,
+      rootEventsBoundary,
+      motionScopeBoundary,
+      prototypeBoundary
+    )
+  )
 }
 
 /** All body nodes of a component def (plain children + every variant subtree).
@@ -82,7 +97,10 @@ function buildComponentBody(
   devMode: boolean,
   usesIntl: boolean,
   uiKit: UiKitAdapter | null,
-  motionBoundary: boolean
+  motionBoundary: boolean,
+  rootEventsBoundary: boolean,
+  motionScopeBoundary: boolean,
+  prototypeBoundary: boolean
 ): string {
   // Phase 3 §9 v3: the `const intl = useIntl()` hook line (empty when the body
   // has no translated attribute → byte-identical to the pre-§9-v3 output).
@@ -90,32 +108,47 @@ function buildComponentBody(
   // Phase 3 §8 v4: a COMPONENT_SET emits per-axis variant props + a subtree
   // switch instead of the single shared body.
   if (def.variantAxes && def.variants) {
-    return buildVariantModule(def, devMode, hookBlock, uiKit, motionBoundary)
+    return buildVariantModule(
+      def,
+      devMode,
+      hookBlock,
+      uiKit,
+      motionBoundary,
+      rootEventsBoundary,
+      motionScopeBoundary,
+      prototypeBoundary
+    )
   }
   // Phase 3 §8 v2: one optional string prop per text-override slot, each
   // defaulting to the master child's text so clean usages (`<Name />`) render
   // unchanged. The body's matching TEXT nodes were collected as `{prop}`.
   const propLines = def.props.map(componentPropLine).join('')
-  const header = componentPropsHeader(def.name, propLines, motionBoundary)
-  const destructure = [
-    'className',
-    'style',
-    ...(motionBoundary ? ['__opMotionKey'] : []),
-    ...def.props.map((p) =>
+  const { header, destructure } = componentFunctionParts(
+    def,
+    propLines,
+    motionBoundary,
+    rootEventsBoundary,
+    prototypeBoundary,
+    def.props.map((p) =>
       p.kind === 'style' ? p.name : `${p.name} = ${JSON.stringify(p.defaultValue)}`
     )
-  ].join(', ')
-  const motionAttr = motionBoundary ? ' data-op-motion={__opMotionKey}' : ''
+  )
+  const rootAttrs = componentRootAttrs(
+    motionBoundary,
+    rootEventsBoundary,
+    motionScopeBoundary,
+    prototypeBoundary
+  )
   if (def.children.length === 0) {
     return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
-${hookBlock}  return <div className={className} style={style}${motionAttr} />
+${hookBlock}  return <div${rootAttrs} className={className} style={style} />
 }
 `
   }
   const body = def.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
 ${hookBlock}  return (
-    <div className={className} style={style}${motionAttr}>
+    <div${rootAttrs} className={className} style={style}>
 ${body}
     </div>
   )
@@ -134,7 +167,10 @@ function buildVariantModule(
   devMode: boolean,
   hookBlock: string,
   uiKit: UiKitAdapter | null,
-  motionBoundary: boolean
+  motionBoundary: boolean,
+  rootEventsBoundary: boolean,
+  motionScopeBoundary: boolean,
+  prototypeBoundary: boolean
 ): string {
   const axes = def.variantAxes ?? []
   const variants = def.variants ?? []
@@ -146,21 +182,34 @@ function buildVariantModule(
     .map((a) => `\n  ${a.name}?: ${a.options.map((o) => JSON.stringify(o)).join(' | ')}`)
     .join('')
   const propLines = axisLines + def.props.map(componentPropLine).join('')
-  const header = componentPropsHeader(def.name, propLines, motionBoundary)
-  const destructure = [
-    'className',
-    'style',
-    ...(motionBoundary ? ['__opMotionKey'] : []),
-    ...axes.map((a) => `${a.name} = ${JSON.stringify(a.defaultValue)}`),
-    ...def.props.map((p) => p.name)
-  ].join(', ')
-  const motionAttr = motionBoundary ? ' data-op-motion={__opMotionKey}' : ''
+  const { header, destructure } = componentFunctionParts(
+    def,
+    propLines,
+    motionBoundary,
+    rootEventsBoundary,
+    prototypeBoundary,
+    [
+      ...axes.map((a) => `${a.name} = ${JSON.stringify(a.defaultValue)}`),
+      ...def.props.map((p) => p.name)
+    ]
+  )
+  const rootAttrs = componentRootAttrs(
+    motionBoundary,
+    rootEventsBoundary,
+    motionScopeBoundary,
+    prototypeBoundary
+  )
   // A registered SET always has ≥1 variant, but guard so the slice below is
   // sound and the fallback never references an undefined case.
   if (variants.length === 0) {
-    const emptyDestructure = motionBoundary ? 'className, style, __opMotionKey' : 'className, style'
+    const emptyDestructure = componentDestructure(
+      def,
+      motionBoundary,
+      rootEventsBoundary,
+      prototypeBoundary
+    )
     return `${header}export default function ${def.name}({ ${emptyDestructure} }: ${def.name}Props) {
-  return <div className={className} style={style}${motionAttr} />
+  return <div${rootAttrs} className={className} style={style} />
 }
 `
   }
@@ -169,21 +218,109 @@ function buildVariantModule(
   const guards = rest
     .map(
       (v) => `  if (__variant === ${JSON.stringify(v.key)}) {
-    return ${variantBody(v, devMode, uiKit, motionBoundary)}
+    return ${variantBody(v, devMode, uiKit, motionBoundary, rootEventsBoundary, motionScopeBoundary, prototypeBoundary)}
   }
 `
     )
     .join('')
   return `${header}export default function ${def.name}({ ${destructure} }: ${def.name}Props) {
 ${hookBlock}  const __variant = ${key}
-${guards}  return ${variantBody(defaultCase, devMode, uiKit, motionBoundary)}
+${guards}  return ${variantBody(defaultCase, devMode, uiKit, motionBoundary, rootEventsBoundary, motionScopeBoundary, prototypeBoundary)}
 }
 `
 }
 
-function componentPropsHeader(name: string, propLines: string, motionBoundary: boolean): string {
-  const motionProp = motionBoundary ? '\n  __opMotionKey?: string' : ''
-  return `interface ${name}Props {\n  className?: string\n  style?: CSSProperties${motionProp}${propLines}\n}\n\n`
+function componentFunctionParts(
+  def: ComponentDef,
+  propLines: string,
+  motionBoundary: boolean,
+  rootEventsBoundary: boolean,
+  prototypeBoundary: boolean,
+  destructuredProps: readonly string[]
+): { header: string; destructure: string } {
+  return {
+    header: componentPropsHeader(
+      def.name,
+      propLines,
+      motionBoundary,
+      rootEventsBoundary,
+      prototypeBoundary,
+      def.prototypeBody === true
+    ),
+    destructure: componentDestructure(
+      def,
+      motionBoundary,
+      rootEventsBoundary,
+      prototypeBoundary,
+      destructuredProps
+    )
+  }
+}
+
+function componentDestructure(
+  def: ComponentDef,
+  motionBoundary: boolean,
+  rootEventsBoundary: boolean,
+  prototypeBoundary: boolean,
+  destructuredProps: readonly string[] = []
+): string {
+  return [
+    'className',
+    'style',
+    ...(def.prototypeBody ? ['__opPrototypeScope'] : []),
+    ...(rootEventsBoundary ? ['__opRootEvents'] : []),
+    ...(motionBoundary ? ['__opMotionKey', '__opMotionDriversKey', '__opNodeId'] : []),
+    ...(prototypeBoundary ? prototypeDestructureNames() : []),
+    ...destructuredProps
+  ].join(', ')
+}
+
+function componentPropsHeader(
+  name: string,
+  propLines: string,
+  motionBoundary: boolean,
+  rootEventsBoundary: boolean,
+  prototypeBoundary: boolean,
+  prototypeBody = false
+): string {
+  const rootEventsProp = rootEventsBoundary
+    ? "\n  __opRootEvents?: Pick<HTMLAttributes<HTMLDivElement>, 'onClick' | 'onChange' | 'onSubmit' | 'onFocus' | 'onBlur'>"
+    : ''
+  const motionProp = motionBoundary
+    ? '\n  __opMotionKey?: string\n  __opMotionDriversKey?: string\n  __opNodeId?: string'
+    : ''
+  const prototypeProps = prototypeBoundary
+    ? '\n  __opPrototypeNode?: string\n  __opPrototypeSource?: boolean\n  __opPrototypeKeyboard?: boolean\n  __opTransitionKey?: string\n  __opPrototypeOverlayTarget?: boolean'
+    : ''
+  const prototypeScopeProp = prototypeBody ? '\n  __opPrototypeScope: string' : ''
+  return `interface ${name}Props {\n  className?: string\n  style?: CSSProperties${rootEventsProp}${motionProp}${prototypeProps}${prototypeScopeProp}${propLines}\n}\n\n`
+}
+
+function componentRootAttrs(
+  motionBoundary: boolean,
+  rootEventsBoundary: boolean,
+  motionScopeBoundary: boolean,
+  prototypeBoundary: boolean
+): string {
+  const events = rootEventsBoundary ? ' {...__opRootEvents}' : ''
+  const motion = motionBoundary
+    ? ' data-node-id={__opNodeId} data-op-motion={__opMotionKey} data-op-motion-drivers={__opMotionDriversKey}'
+    : ''
+  const scope = motionScopeBoundary ? ' data-op-motion-scope' : ''
+  const prototype = prototypeBoundary
+    ? " data-op-prototype-node={__opPrototypeNode} data-op-prototype-source={__opPrototypeSource ? '' : undefined} data-op-prototype-keyboard={__opPrototypeKeyboard ? '' : undefined} role={__opPrototypeKeyboard ? 'button' : undefined} tabIndex={__opPrototypeKeyboard ? 0 : undefined} data-op-transition-key={__opTransitionKey} data-op-prototype-overlay-target={__opPrototypeOverlayTarget ? '' : undefined} hidden={__opPrototypeOverlayTarget || undefined}"
+    : ''
+  return `${events}${motion}${scope}${prototype}`
+}
+
+function prototypeDestructureNames(): string[] {
+  return [
+    '__opPrototypeNode',
+    '__opPrototypeSource',
+    '__opPrototypeKeyboard',
+    '__opTransitionKey',
+    '__opPrototypeOverlayTarget'
+  ]
 }
 
 function componentPropLine(prop: ComponentProp): string {
@@ -191,12 +328,13 @@ function componentPropLine(prop: ComponentProp): string {
   return `\n  ${prop.name}?: ${type}`
 }
 
-function buildComponentReactImport(def: ComponentDef): string {
+function buildComponentReactImport(def: ComponentDef, rootEventsBoundary: boolean): string {
   const names: string[] = []
   if ((def.validatedFields?.length ?? 0) > 0) names.push('useState')
   if (validationUsesRemote(def.validatedFields ?? [])) names.push('useRef')
   const valueImport = names.length > 0 ? `import { ${names.join(', ')} } from 'react'\n` : ''
-  return `${valueImport}import type { CSSProperties } from 'react'\n`
+  const typeNames = ['CSSProperties', ...(rootEventsBoundary ? ['HTMLAttributes'] : [])]
+  return `${valueImport}import type { ${typeNames.join(', ')} } from 'react'\n`
 }
 
 function buildComponentLowcodeStateImport(def: ComponentDef): string {
@@ -231,15 +369,23 @@ function variantBody(
   variant: VariantCase,
   devMode: boolean,
   uiKit: UiKitAdapter | null,
-  motionBoundary: boolean
+  motionBoundary: boolean,
+  rootEventsBoundary: boolean,
+  motionScopeBoundary: boolean,
+  prototypeBoundary: boolean
 ): string {
-  const motionAttr = motionBoundary ? ' data-op-motion={__opMotionKey}' : ''
+  const rootAttrs = componentRootAttrs(
+    motionBoundary,
+    rootEventsBoundary,
+    motionScopeBoundary,
+    prototypeBoundary
+  )
   if (variant.children.length === 0) {
-    return `<div className={className} style={style}${motionAttr} />`
+    return `<div${rootAttrs} className={className} style={style} />`
   }
   const body = variant.children.map((c) => emitElement(c, 3, devMode, uiKit)).join('\n')
   return `(
-    <div className={className} style={style}${motionAttr}>
+    <div${rootAttrs} className={className} style={style}>
 ${body}
     </div>
   )`

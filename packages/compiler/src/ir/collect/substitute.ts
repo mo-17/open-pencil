@@ -46,10 +46,8 @@ export function substituteHandler(
   if (handler.kind === 'stripeCheckout' || handler.kind === 'stripeCustomerPortal') {
     return substituteStripeRedirectHandler(handler, bindings)
   }
+  if (isImmutableHandler(handler)) return handler
   switch (handler.kind) {
-    case 'delay':
-    case 'stop':
-      return handler
     case 'navigate':
       // Phase 4 §16.2: `to` is a literal path; only the param value exprs are
       // substituted (a workflow param can feed a navigate's route param).
@@ -103,6 +101,24 @@ export function substituteHandler(
       return _exhaustive
     }
   }
+}
+
+type ImmutableHandler = Extract<
+  IREventHandler,
+  {
+    kind: 'delay' | 'stop' | 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion'
+  }
+>
+
+function isImmutableHandler(handler: IREventHandler): handler is ImmutableHandler {
+  return (
+    handler.kind === 'delay' ||
+    handler.kind === 'stop' ||
+    handler.kind === 'playMotion' ||
+    handler.kind === 'stopMotion' ||
+    handler.kind === 'toggleMotion' ||
+    handler.kind === 'awaitMotion'
+  )
 }
 
 type SimpleAstHandler = Extract<

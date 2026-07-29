@@ -5,7 +5,9 @@ import {
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
 
 import { buildComponentRegistry } from './ir/collect/components'
+import type { MotionLoweringCache } from './ir/collect/motion'
 import { collectComponents, collectTree } from './ir/collect/tree'
+import type { IRMotion } from './ir/motion'
 import { selectAdapter } from './select-adapter'
 import { buildDesignTokenThemeCss } from './theme-css'
 import type { CompilerInput, CompilerOptions, CompilerOutput, HtmlMetadataOptions } from './types'
@@ -79,13 +81,17 @@ export function compile(input: CompilerInput): CompilerOutput {
   // Phase 3 §9: i18n externalizes display strings at collect time, so the flag
   // threads into both page walks and component-body walks.
   const i18n = options.i18n === true
+  const motionCache: MotionLoweringCache = new Map<string, IRMotion>()
   const { defs: components, warnings: componentWarnings } = collectComponents(
     input.graph,
     registry,
     i18n,
-    styleOptions
+    styleOptions,
+    motionCache
   )
-  const irs = input.pageIds.map((id) => collectTree(input.graph, id, registry, i18n, styleOptions))
+  const irs = input.pageIds.map((id) =>
+    collectTree(input.graph, id, registry, i18n, styleOptions, motionCache)
+  )
   const { files, warnings: adapterWarnings } = adapter.emit(irs, options, components)
   return {
     files,

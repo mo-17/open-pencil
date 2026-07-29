@@ -8,16 +8,19 @@ import {
   PREV_IDENT,
   substitutePrev
 } from '@open-pencil/core/lowcode-validation'
-import type {
-  ActionDef,
-  CallWorkflowAction,
-  EventName,
-  SceneNode,
-  WorkflowDef
+import {
+  type ActionDef,
+  type CallWorkflowAction,
+  type EventName,
+  type SceneGraph,
+  type SceneNode,
+  type WorkflowDef,
+  validateMotionSpec
 } from '@open-pencil/scene-graph'
 
 import type {
   IRApiCallHandler,
+  IRAwaitMotionHandler,
   IRClipboardHandler,
   IRConditionalHandler,
   IRConfirmHandler,
@@ -28,10 +31,13 @@ import type {
   IREventName,
   IRExpression,
   IRNavigateParam,
+  IRPlayMotionHandler,
   IRSetVariableHandler,
   IRStateDecl,
   IRStripeCheckoutHandler,
   IRStripeCustomerPortalHandler,
+  IRStopMotionHandler,
+  IRToggleMotionHandler,
   IRSupabaseAuthHandler,
   IRSupabaseFilter,
   IRSupabaseMutationHandler,
@@ -385,7 +391,8 @@ export function resolveEvents(
   docStateWrites?: Set<string>,
   inScope: ReadonlySet<string> = EMPTY_SCOPE,
   docStateReads?: Set<string>,
-  workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS
+  workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS,
+  graph?: Pick<SceneGraph, 'getNode'>
 ): Partial<Record<IREventName, IREventHandler[]>> | undefined {
   if (!node.events) return undefined
   const out: Partial<Record<IREventName, IREventHandler[]>> = {}
@@ -402,7 +409,8 @@ export function resolveEvents(
       docStateWrites,
       inScope,
       docStateReads,
-      workflows
+      workflows,
+      graph
     )
     if (handlers.length > 0) out[name] = handlers
   }
@@ -419,7 +427,8 @@ function resolveActions(
   docStateWrites: Set<string> | undefined,
   inScope: ReadonlySet<string>,
   docStateReads: Set<string> | undefined,
-  workflows: ReadonlyMap<string, WorkflowDef>
+  workflows: ReadonlyMap<string, WorkflowDef>,
+  graph?: Pick<SceneGraph, 'getNode'>
 ): IREventHandler[] {
   const eventScope = hasEventLocals(eventName)
     ? new Set([...inScope, ...EVENT_LOCAL_IDENTS])
@@ -434,6 +443,7 @@ function resolveActions(
     inScope: eventScope,
     docStateReads,
     workflows,
+    graph,
     // Phase 3 §10 v4: the call stack of currently-expanding workflow ids, for
     // cycle detection. Fresh per top-level event chain.
     workflowStack: []
@@ -641,14 +651,32 @@ interface ResolveCtx {
   docStateReads: Set<string> | undefined
   /** Phase 3 §10 v4: document-level named workflows, for `callWorkflow`. */
   workflows: ReadonlyMap<string, WorkflowDef>
+  /** Optional graph access lets target-bearing actions diagnose stale node and
+   *  track references without coupling the emitter to SceneGraph. */
+  graph?: Pick<SceneGraph, 'getNode'>
   /** Phase 3 §10 v4: ids of workflows currently being expanded (cycle guard). */
   workflowStack: string[]
+}
+
+type MotionActionDef = Extract<
+  ActionDef,
+  { kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion' }
+>
+
+function isMotionAction(action: ActionDef): action is MotionActionDef {
+  return (
+    action.kind === 'playMotion' ||
+    action.kind === 'stopMotion' ||
+    action.kind === 'toggleMotion' ||
+    action.kind === 'awaitMotion'
+  )
 }
 
 /** Exhaustive dispatch on the discriminated union (Phase 1 §7.4). Adding a
  *  kind without a case here is a tsgo error — the silent-drop hole that
  *  Phase 0 had is closed. */
 function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | null {
+  if (isMotionAction(action)) return resolveMotionAction(action, ctx)
   switch (action.kind) {
     case 'setState':
       return resolveSetState(ctx.node, ctx.eventName, action, ctx.states, ctx.warnings)
@@ -784,6 +812,159 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
       return null
     }
   }
+}
+
+function resolveMotionAction(
+  action: MotionActionDef,
+  ctx: ResolveCtx
+): IRPlayMotionHandler | IRStopMotionHandler | IRToggleMotionHandler | IRAwaitMotionHandler | null {
+  const code = motionActionCode(action.kind)
+  const targetNodeId =
+    typeof action.targetNodeId === 'string' ? action.targetNodeId.trim() : undefined
+  if (!targetNodeId) {
+    ctx.warnings.push({
+      code: `action-${code}-invalid-target`,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${action.kind} targetNodeId must be a non-empty string`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+
+  const trackId = typeof action.trackId === 'string' ? action.trackId.trim() : undefined
+  if (action.trackId !== undefined && !trackId) {
+    ctx.warnings.push({
+      code: `action-${code}-invalid-track`,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${action.kind} trackId must be a non-empty string when provided`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+
+  warnMotionActionTarget(action.kind, targetNodeId, trackId, ctx)
+
+  const reference = { targetNodeId, ...(trackId ? { trackId } : {}) }
+  if (action.kind === 'playMotion') return { kind: 'playMotion', ...reference }
+  if (action.kind === 'stopMotion') return { kind: 'stopMotion', ...reference }
+  if (action.kind === 'toggleMotion') return { kind: 'toggleMotion', ...reference }
+  const timeoutMs = action.timeoutMs
+  if (
+    timeoutMs !== undefined &&
+    (!Number.isFinite(timeoutMs) || timeoutMs < 0 || timeoutMs > 120_000)
+  ) {
+    ctx.warnings.push({
+      code: 'action-await-motion-invalid-timeout',
+      message: `node ${ctx.node.id} ${ctx.eventName} awaitMotion timeoutMs must be from 0 to 120000`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  return {
+    kind: 'awaitMotion',
+    ...reference,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    stopOnTimeout: action.stopOnTimeout === true
+  }
+}
+
+function warnMotionActionTarget(
+  kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion',
+  targetNodeId: string,
+  trackId: string | undefined,
+  ctx: ResolveCtx
+): void {
+  if (!ctx.graph) return
+  const target = ctx.graph.getNode(targetNodeId)
+  const prefix = `action-${motionActionCode(kind)}`
+  if (!target) {
+    ctx.warnings.push({
+      code: `${prefix}-unreachable-target`,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${kind} references missing target node "${targetNodeId}"`,
+      nodeId: ctx.node.id
+    })
+    return
+  }
+  const sourcePageId = containingPageId(ctx.node, ctx.graph)
+  const targetPageId = containingPageId(target, ctx.graph)
+  if (
+    sourcePageId &&
+    targetPageId !== sourcePageId &&
+    !isInstanceSourceTarget(ctx.node, target, ctx.graph)
+  ) {
+    ctx.warnings.push({
+      code: `${prefix}-target-outside-page`,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${kind} target "${targetNodeId}" is not rendered on the current output page`,
+      nodeId: ctx.node.id
+    })
+    return
+  }
+  if (target.motion === undefined) {
+    ctx.warnings.push({
+      code: `${prefix}-target-without-motion`,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${kind} target "${targetNodeId}" has no MotionSpec`,
+      nodeId: ctx.node.id
+    })
+    return
+  }
+  let validated: ReturnType<typeof validateMotionSpec>
+  try {
+    validated = validateMotionSpec(target.motion as unknown)
+  } catch {
+    validated = { success: false, issues: [] }
+  }
+  if (!validated.success) {
+    ctx.warnings.push({
+      code: `${prefix}-target-invalid-motion`,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${kind} target "${targetNodeId}" has an invalid MotionSpec`,
+      nodeId: ctx.node.id
+    })
+    return
+  }
+  if (trackId && !validated.value.tracks.some((track) => track.id === trackId)) {
+    ctx.warnings.push({
+      code: `${prefix}-stale-track`,
+      message: `node ${ctx.node.id} ${ctx.eventName} ${kind} target "${targetNodeId}" has no motion track "${trackId}"`,
+      nodeId: ctx.node.id
+    })
+  }
+}
+
+function motionActionCode(
+  kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion'
+): 'play-motion' | 'stop-motion' | 'toggle-motion' | 'await-motion' {
+  if (kind === 'playMotion') return 'play-motion'
+  if (kind === 'stopMotion') return 'stop-motion'
+  if (kind === 'toggleMotion') return 'toggle-motion'
+  return 'await-motion'
+}
+
+function containingPageId(node: SceneNode, graph: Pick<SceneGraph, 'getNode'>): string | undefined {
+  const visited = new Set<string>()
+  let current: SceneNode | undefined = node
+  while (current && !visited.has(current.id)) {
+    if (current.type === 'CANVAS') return current.id
+    visited.add(current.id)
+    current = current.parentId ? graph.getNode(current.parentId) : undefined
+  }
+  return undefined
+}
+
+/** A clean INSTANCE renders its source component subtree locally even though
+ * the source nodes live under the component master's authoring page. */
+function isInstanceSourceTarget(
+  source: SceneNode,
+  target: SceneNode,
+  graph: Pick<SceneGraph, 'getNode'>
+): boolean {
+  if (source.type !== 'INSTANCE' || !source.componentId) return false
+  if (target.id === source.componentId) return true
+  const visited = new Set<string>()
+  let parentId = target.parentId
+  while (parentId && !visited.has(parentId)) {
+    if (parentId === source.componentId) return true
+    visited.add(parentId)
+    parentId = graph.getNode(parentId)?.parentId ?? null
+  }
+  return false
 }
 
 /** Mirror what each handler kind writes into docState so the page emits the

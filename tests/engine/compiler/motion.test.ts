@@ -5,7 +5,14 @@ import { join } from 'node:path'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
-import type { MotionSpec, MotionTrack } from '@open-pencil/scene-graph'
+import {
+  createUserMotionPreset,
+  createUserMotionPresetLibrary,
+  instantiateUserMotionPreset,
+  removeUserMotionPreset,
+  type MotionSpec,
+  type MotionTrack
+} from '@open-pencil/scene-graph'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -42,6 +49,77 @@ function count(source: string, needle: string): number {
 }
 
 describe('compiler — MotionSpec v1 artifacts', () => {
+  test('personal preset snapshots emit the same token, CSS, and runtime after library deletion', () => {
+    const directMotion = spec(
+      [
+        track(
+          'enter',
+          'mount',
+          [
+            { offset: 0, opacity: 0, y: 10 },
+            { offset: 1, opacity: 1, y: 0 }
+          ],
+          360
+        ),
+        track(
+          'hover',
+          'hover',
+          [
+            { offset: 0, scaleX: 1, scaleY: 1 },
+            { offset: 1, scaleX: 1.05, scaleY: 1.05 }
+          ],
+          180
+        )
+      ],
+      'reduce'
+    )
+    let library = createUserMotionPresetLibrary()
+    library = createUserMotionPreset(library, {
+      id: 'user-artifact-parity',
+      name: '编译产物等价',
+      description: 'CSS、runtime 与 token 不依赖本地预设库',
+      category: 'custom',
+      motion: directMotion
+    })
+    const saved = library.presets[0]
+    if (!saved) throw new Error('Expected personal motion preset')
+    const appliedSnapshot = instantiateUserMotionPreset(saved)
+
+    const directGraph = makeSceneGraph()
+    const directNode = directGraph.createNode('BUTTON', firstPageId(directGraph), {
+      name: 'Direct',
+      motion: directMotion
+    })
+    const snapshotGraph = makeSceneGraph()
+    const snapshotNode = snapshotGraph.createNode('BUTTON', firstPageId(snapshotGraph), {
+      name: 'Personal preset snapshot',
+      motion: appliedSnapshot
+    })
+    expect(directNode.motion?.preset).toBeUndefined()
+    expect(snapshotNode.motion?.preset).toEqual({
+      id: saved.id,
+      version: saved.revision,
+      parameters: {}
+    })
+
+    library = removeUserMotionPreset(library, saved.id)
+    expect(library.presets).toEqual([])
+    expect(snapshotGraph.getNode(snapshotNode.id)?.motion).toEqual(appliedSnapshot)
+
+    const directOut = compileGraph(directGraph)
+    const snapshotOut = compileGraph(snapshotGraph)
+    const directApp = directOut.files.get('src/App.tsx') as string
+    const snapshotApp = snapshotOut.files.get('src/App.tsx') as string
+    const directToken = /data-op-motion="([^"]+)"/.exec(directApp)?.[1]
+    const snapshotToken = /data-op-motion="([^"]+)"/.exec(snapshotApp)?.[1]
+    expect(directToken).toBeDefined()
+    expect(snapshotToken).toBe(directToken)
+    expect(snapshotOut.files.get('src/__motion.css')).toBe(directOut.files.get('src/__motion.css'))
+    expect(snapshotOut.files.get('src/__motion-runtime.ts')).toBe(
+      directOut.files.get('src/__motion-runtime.ts')
+    )
+  })
+
   test('no-motion output has no IR residue, artifact, import, or dependency', () => {
     const base = makeSceneGraph()
     base.createNode('RECTANGLE', firstPageId(base), { width: 40, height: 40 })
@@ -109,6 +187,31 @@ describe('compiler — MotionSpec v1 artifacts', () => {
     expect(main).not.toContain('__motion-runtime')
   })
 
+  test('devMode installs the inspectable runtime for CSS-only MotionSpec entries', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('RECTANGLE', pageId, {
+      motion: spec([
+        track('enter', 'mount', [
+          { offset: 0, opacity: 0, y: 8 },
+          { offset: 1, opacity: 1, y: 0 }
+        ])
+      ])
+    })
+
+    const out = compileGraph(graph, [pageId], { devMode: true })
+    const runtime = out.files.get('src/__motion-runtime.ts') as string
+    const main = out.files.get('src/main.tsx') as string
+    expect(out.files.has('src/__motion.css')).toBe(true)
+    expect(runtime).toContain('inspect: (targetNodeId?: string, scope?: Element)')
+    expect(runtime).toContain(
+      "type MotionDebugSource = 'automatic' | 'controlled' | 'idle' | 'stopped'"
+    )
+    expect(runtime).toContain('const runtimeTokens = new Set<string>([])')
+    expect(main).toContain("import './__motion.css'")
+    expect(main).toContain("import './__motion-runtime'")
+  })
+
   test('interactive triggers emit only the delegated zero-dependency runtime', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -148,6 +251,9 @@ describe('compiler — MotionSpec v1 artifacts', () => {
     expect(runtime).toContain("listen('click'")
     expect(runtime).toContain('IntersectionObserver')
     expect(runtime).toContain('MutationObserver')
+    expect(runtime).toContain('/* Embedded from @open-pencil/motion-runtime/kernel. */')
+    expect(runtime).toContain('const embeddedMotionKernel: EmbeddedMotionKernel')
+    expect(runtime).not.toContain("from '@open-pencil/motion-runtime")
     expect(runtime).toContain('__OPENPENCIL_MOTION_RUNTIME__?.dispose()')
     expect(runtime).toContain('cancelAnimation(item.animation)')
     expect(runtime).toContain("animation.addEventListener('finish', release)")
@@ -264,10 +370,15 @@ describe('compiler — MotionSpec v1 artifacts', () => {
     const out = compileGraph(graph, [pageId], { uiKit: 'shadcn' })
     const app = out.files.get('src/App.tsx') as string
     const component = out.files.get('src/components/MotionCard.tsx') as string
+    expect(app).toMatch(/<img[^>]*data-node-id=/)
     expect(app).toMatch(/<img[^>]*data-op-motion=/)
+    expect(app).toMatch(/<Checkbox[^>]*data-node-id=/)
     expect(app).toMatch(/<Checkbox[^>]*data-op-motion=/)
     expect(app).toMatch(/<MotionCard[^>]*__opMotionKey=/)
+    expect(app).toMatch(/<MotionCard[^>]*__opNodeId=/)
     expect(component).toContain('__opMotionKey?: string')
+    expect(component).toContain('__opNodeId?: string')
+    expect(component).toContain('data-node-id={__opNodeId}')
     expect(component).toContain('data-op-motion={__opMotionKey}')
     expect(component).toMatch(/<p[^>]*data-op-motion=/)
   })

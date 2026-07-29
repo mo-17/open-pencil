@@ -76,6 +76,21 @@ describe('buildLowcodeStateRuntime (Phase 2 §2)', () => {
     expect(out).toContain('export function getDocStateSnapshot')
   })
 
+  test('bridges scalar document state changes and initial values to Motion drivers', () => {
+    const out = buildLowcodeStateRuntime([
+      { id: 'doc-progress', name: 'progress', type: 'number', defaultValue: 0.25 },
+      { id: 'doc-enabled', name: 'enabled', type: 'boolean', defaultValue: false },
+      { id: 'doc-label', name: 'label', type: 'string', defaultValue: 'ignored' }
+    ])
+
+    expect(out).toContain('setDocumentState(stateId, value)')
+    expect(out).toContain('notifyDocumentMotionDriver("doc-progress", state.progress)')
+    expect(out).toContain('notifyDocumentMotionDriver("doc-enabled", state.enabled)')
+    expect(out).not.toContain('notifyDocumentMotionDriver("doc-label", state.label)')
+    expect(out).toContain("window.addEventListener('op-motion-drivers-ready', sync)")
+    expect(out).toContain('unsubscribeDocumentMotionDrivers()')
+  })
+
   test('imports zustand only via the public package path (no deep imports beyond /vanilla)', () => {
     const decls: IRDocStateDecl[] = [
       { id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }

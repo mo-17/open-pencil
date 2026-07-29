@@ -7,8 +7,10 @@ import { emitStateDecl } from './emit/state'
 import {
   hasIntlAttr,
   hasTranslatableText,
+  pageHasDocumentStateMotionDriver,
   pageHasNavigateHandler,
   pageHasNavigateParams,
+  pageMotionDriverStateIds,
   pageUsesAnalytics,
   pageUsesConfirm,
   pageUsesSupabase,
@@ -22,6 +24,8 @@ import {
   validationUsesDocStateSnapshot,
   validationUsesRemote
 } from './lowcode/validation'
+import { motionDriverToken } from './motion/drivers'
+import { motionToken } from './motion/key'
 import type { PagePathInfo } from './route-paths'
 import { collectKitImports, kitImportLine } from './ui-kit/registry'
 import type { UiKitAdapter } from './ui-kit/types'
@@ -86,6 +90,10 @@ interface BuildPageOptions {
    *  reads (`$params`) only emit when true — single-page `App.tsx` has no
    *  router, so it never imports `useParams`. */
   routerAvailable: boolean
+  /** Import the generated browser prototype runtime from this page module. */
+  importPrototypeRuntime: boolean
+  /** Emit page-scope prototype DOM markers. */
+  prototypeRuntime: boolean
 }
 
 interface BuildAppOptions {
@@ -123,6 +131,8 @@ interface BuildAppOptions {
   /** Phase 4 §16.1: see `BuildPageOptions.routerAvailable`. Defaults to false
    *  (single-page `App.tsx` has no router); `buildPageModule` passes true. */
   routerAvailable?: boolean
+  /** Generated project includes `src/__prototype-runtime.ts`. */
+  prototypeRuntime?: boolean
 }
 
 /**
@@ -143,6 +153,8 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     lowcodeAnalyticsImportPath: options.lowcodeAnalyticsImportPath ?? './_lowcode_analytics',
     componentImportPrefix: options.componentImportPrefix ?? './components/',
     uiKit: options.uiKit ?? null,
+    importPrototypeRuntime: options.prototypeRuntime === true,
+    prototypeRuntime: options.prototypeRuntime === true,
     // Single-page App.tsx is not wrapped in a router → no `useParams` context.
     routerAvailable: false
   })
@@ -165,6 +177,8 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     lowcodeAnalyticsImportPath: options.lowcodeAnalyticsImportPath ?? '../_lowcode_analytics',
     componentImportPrefix: options.componentImportPrefix ?? '../components/',
     uiKit: options.uiKit ?? null,
+    importPrototypeRuntime: false,
+    prototypeRuntime: options.prototypeRuntime === true,
     // Multi-page modules render inside `<BrowserRouter>` → `useParams` is valid.
     routerAvailable: true
   })
@@ -176,6 +190,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
  */
 export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildAppOptions): string {
   const bridgeImport = options.devMode ? `import './__preview-bridge'\n` : ''
+  const prototypeImport = options.prototypeRuntime ? `import './__prototype-runtime'\n` : ''
   const routerImport = `import { BrowserRouter, Route, Routes } from 'react-router-dom'\n`
   const analyticsImport = options.analyticsRouteTracking
     ? `import { LowcodeAnalyticsRouteTracker } from './_lowcode_analytics'\n`
@@ -183,7 +198,7 @@ export function buildRouterApp(infos: readonly PagePathInfo[], options: BuildApp
   const pageImports = infos
     .map((info) => `import ${info.component} from './pages/${info.slug}'`)
     .join('\n')
-  const importBlock = `${bridgeImport}${routerImport}${analyticsImport}${pageImports}\n\n`
+  const importBlock = `${bridgeImport}${prototypeImport}${routerImport}${analyticsImport}${pageImports}\n\n`
   const routes = infos
     .map((info) => `        <Route path="${info.route}" element={<${info.component} />} />`)
     .join('\n')
@@ -261,7 +276,7 @@ function buildReactImport(ir: IRTree): string {
   if (hasWritableState || hasListQueries || hasValidation) hooks.push('useState')
   if (hasRemoteValidation) hooks.push('useRef')
   if (hasComputedState) hooks.push('useMemo')
-  if (hasListQueries) hooks.push('useEffect')
+  if (hasListQueries || buildMotionDriverStateHooks(ir) !== '') hooks.push('useEffect')
   return hooks.length > 0 ? `import { ${hooks.join(', ')} } from 'react'\n` : ''
 }
 
@@ -278,9 +293,12 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     lowcodeAnalyticsImportPath,
     componentImportPrefix,
     uiKit,
-    routerAvailable
+    routerAvailable,
+    importPrototypeRuntime,
+    prototypeRuntime
   } = options
   const bridgeImport = importPreviewBridge ? `import './__preview-bridge'\n` : ''
+  const prototypeImport = importPrototypeRuntime ? `import './__prototype-runtime'\n` : ''
   const reactImport = buildReactImport(ir)
   // Phase 4 §16.1/§16.3/§16.4: the route-bound built-ins (`$params`, `$query`)
   // and the auth guard only resolve inside the multi-page router; single-page
@@ -319,6 +337,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   })
   const importBlock =
     bridgeImport +
+    prototypeImport +
     reactImport +
     routerImport +
     lowcodeStateImport +
@@ -329,6 +348,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
   const stateLines = ir.states.map((s) => emitStateDecl(s, 1)).join('\n')
+  const motionDriverStateLines = buildMotionDriverStateHooks(ir)
   // Phase 4 §16.1/§16.2/§16.4: useNavigate / $params / $query hook lines.
   const routerHookLines = buildRouterHookLines(usage).join('\n')
   const docStateReadLines = ir.docStateReads
@@ -355,6 +375,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     docStateReadLines,
     routerHookLines,
     stateLines,
+    motionDriverStateLines,
     listQueryLines,
     validationGlue,
     intlHookLine,
@@ -363,7 +384,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     .filter((l) => l !== '')
     .join('\n')
 
-  const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}">`
+  const wrapperOpen = `<div className="${WRAPPER_CLASS_ATTR}"${pageMotionAttrs(ir, devMode)}${pagePrototypeAttrs(ir, prototypeRuntime)}>`
 
   if (ir.children.length === 0) {
     if (hookLines === '') {
@@ -389,6 +410,69 @@ ${body}
   )
 }
 `
+}
+
+function buildMotionDriverStateHooks(ir: IRTree): string {
+  const ids = pageMotionDriverStateIds(ir)
+  return ir.states
+    .filter((state) => ids.has(state.id) && (state.type === 'number' || state.type === 'boolean'))
+    .map(
+      (state) => `  useEffect(() => {
+    const updateMotionDriver = () => {
+      ;(window as unknown as {
+        __OPENPENCIL_MOTION_DRIVERS__?: {
+          setPageState(stateId: string, value: number | boolean): number
+        }
+      }).__OPENPENCIL_MOTION_DRIVERS__?.setPageState(${JSON.stringify(state.id)}, ${state.name})
+    }
+    updateMotionDriver()
+    window.addEventListener('op-motion-drivers-ready', updateMotionDriver)
+    return () => window.removeEventListener('op-motion-drivers-ready', updateMotionDriver)
+  }, [${state.name}])`
+    )
+    .join('\n')
+}
+
+function pageMotionAttrs(ir: IRTree, devMode: boolean): string {
+  const attrs: string[] = []
+  if (devMode || ir.motion || ir.motionDrivers || ir.motionDriverMarker || ir.motionScene) {
+    attrs.push(`data-node-id="${escapeAttribute(ir.pageId)}"`)
+  }
+  if (ir.motionScene) {
+    attrs.push(`data-op-motion-scene-owner="${escapeAttribute(ir.pageId)}"`)
+  }
+  if (ir.motion) attrs.push(`data-op-motion="${motionToken(ir.motion)}"`)
+  if (ir.motionDrivers) {
+    attrs.push(
+      `data-op-motion-drivers="${motionDriverToken(ir.motionDrivers)}"`,
+      'data-op-motion-scope'
+    )
+  }
+  return attrs.length > 0 ? ` ${attrs.join(' ')}` : ''
+}
+
+function pagePrototypeAttrs(ir: IRTree, active: boolean): string {
+  if (!active) return ''
+  const attrs = [
+    `data-op-prototype-page="${escapeAttribute(ir.pageId)}"`,
+    `data-op-prototype-node="${escapeAttribute(ir.pageId)}"`
+  ]
+  if (ir.prototype) attrs.push('data-op-prototype-source')
+  if (ir.prototype?.connections.some(({ trigger }) => trigger.kind === 'click')) {
+    attrs.push('data-op-prototype-keyboard', 'role="button"', 'tabIndex={0}')
+  }
+  if (ir.transitionKey) {
+    attrs.push(`data-op-transition-key="${escapeAttribute(ir.transitionKey)}"`)
+  }
+  return ` ${attrs.join(' ')}`
+}
+
+function escapeAttribute(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
 }
 
 /**
@@ -435,7 +519,9 @@ function buildLowcodeStateImport(ir: IRTree, path: string): string {
   // Phase 4 §19: a doc-state-bound validated field reads its value fresh at
   // validate time via `getDocStateSnapshot` (dodging the render-snapshot).
   if (validationUsesDocStateSnapshot(ir.validatedFields ?? [])) names.push('getDocStateSnapshot')
-  if (names.length === 0) return ''
+  if (names.length === 0) {
+    return pageHasDocumentStateMotionDriver(ir) ? `import '${path}'\n` : ''
+  }
   return `import { ${names.join(', ')} } from '${path}'\n`
 }
 

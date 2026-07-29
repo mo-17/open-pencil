@@ -19,7 +19,7 @@ function member(object: string, property: string): ExprAst {
 }
 
 describe('emit workflow handlers (Phase 3 §10)', () => {
-  test('condition emits if/else with both branches; sync branches stay non-async', () => {
+  test('condition emits if/else and awaits pageExit in navigate branches', () => {
     const handler: IREventHandler = {
       kind: 'condition',
       condAst: ident('isOpen'),
@@ -28,8 +28,9 @@ describe('emit workflow handlers (Phase 3 §10)', () => {
       alternate: [{ kind: 'navigate', to: '/closed' }]
     }
     const out = emitEventHandler([handler])
-    expect(out).toBe('() => { if (isOpen) { navigate("/open"); } else { navigate("/closed"); } }')
-    expect(out.startsWith('async')).toBe(false)
+    expect(out).toBe(
+      'async () => { if (isOpen) { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/open"); } else { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/closed"); } }'
+    )
   })
 
   test('condition with no else omits the else arm', () => {
@@ -235,7 +236,7 @@ describe('emit confirm + clipboard handlers (Phase 3 §10 v3)', () => {
       }
     ])
     expect(out).toBe(
-      'async () => { if (await __opConfirm("Delete?")) { navigate("/gone"); } else { __opToast("Kept"); } }'
+      'async () => { if (await __opConfirm("Delete?")) { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/gone"); } else { __opToast("Kept"); } }'
     )
   })
 

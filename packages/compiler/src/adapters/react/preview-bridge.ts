@@ -69,7 +69,12 @@ interface InboundDocState {
   name: string
   value: unknown
 }
-type Inbound = InboundSelect | InboundNavigate | InboundDocState
+interface InboundMotionDebug {
+  source: typeof INBOUND_SOURCE
+  type: 'motionDebug'
+  enabled: boolean
+}
+type Inbound = InboundSelect | InboundNavigate | InboundDocState | InboundMotionDebug
 
 if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
   window.__openPencilPreviewBridge = true
@@ -94,6 +99,45 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
   // §7 decision #f: suppress outbound navigate while replaying an inbound
   // navigate, so the editor→iframe→editor echo loop never fires.
   let suppressOutbound = false
+  let motionDebugTimer: ReturnType<typeof setInterval> | null = null
+
+  function postMotionDebug(
+    status: 'ready' | 'unavailable' | 'error',
+    snapshot?: unknown,
+    error?: string
+  ): void {
+    window.parent?.postMessage(
+      { source: OUTBOUND_SOURCE, type: 'motionDebug', status, snapshot, error },
+      '*'
+    )
+  }
+
+  function inspectMotion(): void {
+    const runtime = (
+      window as Window & {
+        __OPENPENCIL_MOTION_RUNTIME__?: { inspect?: () => unknown }
+      }
+    ).__OPENPENCIL_MOTION_RUNTIME__
+    if (!runtime || typeof runtime.inspect !== 'function') {
+      postMotionDebug('unavailable')
+      return
+    }
+    try {
+      postMotionDebug('ready', runtime.inspect())
+    } catch (error) {
+      postMotionDebug('error', undefined, error instanceof Error ? error.message : String(error))
+    }
+  }
+
+  function setMotionDebugEnabled(enabled: boolean): void {
+    if (motionDebugTimer !== null) {
+      clearInterval(motionDebugTimer)
+      motionDebugTimer = null
+    }
+    if (!enabled) return
+    inspectMotion()
+    motionDebugTimer = setInterval(inspectMotion, 250)
+  }
 
   // Alias the real pushState BEFORE patching, so the patch can forward
   // calls (including our own replay) without re-entering itself.
@@ -209,6 +253,10 @@ if (typeof window !== 'undefined' && !window.__openPencilPreviewBridge) {
       } finally {
         suppressDocStateOutbound = false
       }
+      return
+    }
+    if (data.type === 'motionDebug') {
+      setMotionDebugEnabled(data.enabled === true)
     }
   })
 

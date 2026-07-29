@@ -17,7 +17,10 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import {
   isAutoLayoutMode,
+  getMotionChannels,
   parseVariantName,
+  remapLowcodeMotionActionTargets,
+  remapMotionDriverNodeReferences,
   type Effect,
   type Fill,
   type AnalyticsConfig,
@@ -29,6 +32,7 @@ import {
   type WorkflowDef
 } from '@open-pencil/scene-graph'
 
+import { collectGeneratedEffect } from '../generated-effect'
 import { tailwindClassName, type CompilerStyleOptions } from '../style'
 import type {
   ComponentDef,
@@ -80,7 +84,14 @@ import {
   instanceHasDeepOverride,
   overrideKind
 } from './components'
-import { collectNodeMotion } from './motion'
+import { collectMotionDriverNodeIds, collectNodeMotionDrivers } from './drivers'
+import { collectNodeMotion, type MotionLoweringCache } from './motion'
+import { collectMotionScene } from './motion-scene'
+import {
+  buildPrototypeCollectIndex,
+  collectPrototypeDecoration,
+  type PrototypeCollectContext
+} from './prototype'
 import { collectPageStates, indexStatesById, resolveComputedStates } from './state'
 
 /**
@@ -94,7 +105,8 @@ export function collectTree(
   pageId: string,
   components: ComponentRegistry = new Map(),
   i18n = false,
-  styleOptions: CompilerStyleOptions = {}
+  styleOptions: CompilerStyleOptions = {},
+  motionCache: MotionLoweringCache = new Map()
 ): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
@@ -126,6 +138,7 @@ export function collectTree(
   // Phase 3 §10 v4: index root-level named workflows by id for inline
   // `callWorkflow` expansion in the bindings pass.
   const workflows = liftWorkflows(graph)
+  const motionDriverNodeIds = collectMotionDriverNodeIds(graph)
 
   if (!page) {
     return {
@@ -149,6 +162,14 @@ export function collectTree(
   const listQueries: IRListQuery[] = []
   const validatedFields: IRFieldValidation[] = []
   const assets = new Map<string, IRAsset>()
+  const prototypeContext: PrototypeCollectContext = {
+    graph,
+    pageId,
+    warnings,
+    index: buildPrototypeCollectIndex(graph),
+    components,
+    componentBody: false
+  }
   const ctx: WalkCtx = {
     graph,
     states: stateById,
@@ -163,7 +184,10 @@ export function collectTree(
     styleOptions,
     listQueries,
     validatedFields,
-    assets
+    assets,
+    motionCache,
+    motionDriverNodeIds,
+    prototypeContext
   }
   const children: IRNode[] = []
   for (const child of graph.getChildren(pageId)) {
@@ -191,10 +215,26 @@ export function collectTree(
     docStateReads,
     warnings
   )
+  const pagePrototype = collectPrototypeDecoration(
+    page,
+    prototypeContext,
+    (page.events?.onClick?.length ?? 0) > 0
+  )
+  const motionScene = collectMotionScene(graph, page, warnings)
+  const pageMotionFields = collectPageMotionFields(
+    graph,
+    page,
+    warnings,
+    motionCache,
+    motionDriverNodeIds
+  )
 
   return {
     pageId,
     pageName: page.name || 'Page',
+    ...pageMotionFields,
+    motionScene,
+    ...pagePrototype,
     routePattern,
     usesRouteParams,
     usesQueryParams,
@@ -213,6 +253,32 @@ export function collectTree(
     warnings,
     ...(assets.size > 0 ? { assets: [...assets.values()] } : {})
   }
+}
+
+function collectPageMotionFields(
+  graph: SceneGraph,
+  page: SceneNode,
+  warnings: IRWarning[],
+  motionCache: MotionLoweringCache,
+  motionDriverNodeIds: ReadonlySet<string>
+): Pick<IRTree, 'motion' | 'motionDrivers' | 'motionDriverMarker'> {
+  const motion = collectNodeMotion(page, warnings, undefined, motionCache)
+  const motionDrivers = collectNodeMotionDrivers(graph, page, warnings)
+  return {
+    ...(motion ? { motion } : {}),
+    ...(motionDrivers ? { motionDrivers } : {}),
+    ...(motionDriverNodeIds.has(page.id) ? { motionDriverMarker: true } : {})
+  }
+}
+
+function collectFrameMotionSceneFields(
+  node: SceneNode,
+  graph: SceneGraph,
+  warnings: IRWarning[]
+): Pick<IRElement, 'motionScene'> {
+  if (node.type !== 'FRAME') return {}
+  const motionScene = collectMotionScene(graph, node, warnings)
+  return motionScene ? { motionScene } : {}
 }
 
 function compactAnalyticsConfig(
@@ -378,7 +444,8 @@ export function collectComponents(
   graph: SceneGraph,
   components: ComponentRegistry,
   i18n = false,
-  styleOptions: CompilerStyleOptions = {}
+  styleOptions: CompilerStyleOptions = {},
+  motionCache: MotionLoweringCache = new Map()
 ): { defs: ComponentDef[]; warnings: IRWarning[] } {
   const warnings: IRWarning[] = []
   // Discard doc-state warnings here — they're already surfaced per page.
@@ -387,6 +454,8 @@ export function collectComponents(
     collectDocStates(graph, [], hasValidSupabaseConfig(root?.lowcodeSupabaseConfig))
   )
   const workflows = liftWorkflows(graph)
+  const prototypeIndex = buildPrototypeCollectIndex(graph)
+  const motionDriverNodeIds = collectMotionDriverNodeIds(graph)
   const defs: ComponentDef[] = []
   for (const [componentId, meta] of components) {
     const master = graph.getNode(componentId)
@@ -408,7 +477,18 @@ export function collectComponents(
       i18n,
       styleOptions,
       assets,
-      validatedFields
+      validatedFields,
+      motionCache,
+      motionDriverNodeIds,
+      prototypeContext: {
+        graph,
+        pageId: '',
+        warnings,
+        index: prototypeIndex,
+        components,
+        componentBody: true,
+        componentRootId: componentId
+      }
     }
     const variantMeta = meta.variants
     if (variantMeta) {
@@ -417,14 +497,14 @@ export function collectComponents(
       // SET's `propSlots`, so a `:text` / `:fills` override on a variant
       // instance parameterizes the matching node in every variant subtree (each
       // emitting `{prop ?? ownLiteral}` — see `variantBody`).
-      const variantCtx: WalkCtx = {
-        ...baseCtx,
-        componentPropSlots: meta.propSlots,
-        variantBody: true
-      }
       const variants: VariantCase[] = variantMeta.cases.map((c) => ({
         key: variantMeta.axes.map((a) => c.values[a.rawName] ?? '').join('|'),
-        children: collectChildSubtree(graph, c.childId, variantCtx)
+        children: collectChildSubtree(graph, c.childId, {
+          ...baseCtx,
+          componentPropSlots: meta.propSlots,
+          variantBody: true,
+          prototypeContext: { ...baseCtx.prototypeContext, componentRootId: c.childId }
+        })
       }))
       defs.push({
         componentId,
@@ -433,6 +513,7 @@ export function collectComponents(
         props: dedupeProps(meta.propSlots),
         variantAxes: variantMeta.axes,
         variants,
+        ...(meta.prototypeBody ? { prototypeBody: true as const } : {}),
         ...(assets.size > 0 ? { assets: [...assets.values()] } : {}),
         ...componentLowcodeUsage(docStateReads, docStateWrites, validatedFields)
       })
@@ -446,6 +527,7 @@ export function collectComponents(
       name: meta.name,
       children: collectChildSubtree(graph, componentId, ctx),
       props,
+      ...(meta.prototypeBody ? { prototypeBody: true as const } : {}),
       ...(assets.size > 0 ? { assets: [...assets.values()] } : {}),
       ...componentLowcodeUsage(docStateReads, docStateWrites, validatedFields)
     })
@@ -525,10 +607,13 @@ function collectChildSubtree(graph: SceneGraph, parentId: string, ctx: WalkCtx):
  *  token-bound inline styles on an overridden child additionally pass through a
  *  sibling style prop (`badgeStyle=`). */
 function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | null {
+  // A generated layer owns a concrete DOM overlay boundary. Inline its root so
+  // the adapter can attach that layer without threading unsafe opaque props.
+  if (node.generatedEffect !== undefined) return null
   if (node.type === 'COMPONENT') {
     const meta = ctx.components.get(node.id)
     if (!meta) return null
-    return refOf(node, meta.name, [], ctx)
+    return refOf(node, meta.name, [], meta.prototypeBody, ctx)
   }
   if (node.type !== 'INSTANCE' || !node.componentId) return null
   // Phase 3 §8 v9: an instance that overrides a node inside a nested instance
@@ -537,7 +622,13 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   if (instanceHasDeepOverride(ctx.graph, node)) return null
   const meta = ctx.components.get(node.componentId)
   if (meta) {
-    return refOf(node, meta.name, resolveInstanceProps(node, meta.propSlots, ctx), ctx)
+    return refOf(
+      node,
+      meta.name,
+      resolveInstanceProps(node, meta.propSlots, ctx),
+      meta.prototypeBody,
+      ctx
+    )
   }
   // Phase 3 §8 v4: a variant instance — componentId points to a variant child
   // of a registered COMPONENT_SET.
@@ -550,7 +641,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
     ...variantProps(variantChild, setMeta.variants.axes),
     ...resolveInstanceProps(node, setMeta.propSlots, ctx)
   ]
-  return refOf(node, setMeta.name, props, ctx)
+  return refOf(node, setMeta.name, props, setMeta.prototypeBody, ctx)
 }
 
 /** Phase 3 §8 v4 — the per-axis variant props a variant instance passes. The
@@ -570,21 +661,89 @@ function refOf(
   node: SceneNode,
   name: string,
   props: ComponentRefProp[],
+  prototypeBody: boolean,
   ctx: WalkCtx
 ): IRComponentRef {
   const styleDeclarations = boundVariableStyleDeclarations(node, ctx)
-  const motion = collectNodeMotion(node, ctx.warnings)
+  const motion = collectNodeMotion(node, ctx.warnings, undefined, ctx.motionCache)
+  const motionDriverNode = componentRefMotionDriverNode(node, ctx)
+  const motionDrivers = collectNodeMotionDrivers(ctx.graph, motionDriverNode, ctx.warnings)
+  const eventNode = componentRefEventNode(node, ctx)
+  const events = resolveEvents(
+    eventNode,
+    ctx.states,
+    ctx.warnings,
+    ctx.docStates,
+    ctx.docStateWrites,
+    ctx.inScope,
+    ctx.docStateReads,
+    ctx.workflows,
+    ctx.graph
+  )
+  const prototype = collectPrototypeDecoration(
+    node,
+    ctx.prototypeContext,
+    (eventNode.events?.onClick?.length ?? 0) > 0
+  )
   return {
     kind: 'componentRef',
     sourceId: node.id,
+    ...prototype,
     name,
     className: tailwindClassName(node, ctx.graph, ctx.styleOptions),
     ...(motion ? { motion } : {}),
+    ...(motionDrivers ? { motionDrivers } : {}),
+    ...(ctx.motionDriverNodeIds.has(node.id) ? { motionDriverMarker: true as const } : {}),
+    ...(events ? { events } : {}),
     ...(hasStyleDeclarations(styleDeclarations)
       ? { styleAttr: { kind: 'styleAttr', declarations: styleDeclarations } }
       : {}),
+    ...(prototypeBody ? { prototypeBody: true as const } : {}),
+    ...(ctx.prototypeContext.componentBody ? { componentScope: true as const } : {}),
     props
   }
+}
+
+function componentRefMotionDriverNode(node: SceneNode, ctx: WalkCtx): SceneNode {
+  if (node.type !== 'INSTANCE' || !node.componentId || !node.motionDrivers) return node
+  const motionDrivers = remapMotionDriverNodeReferences(node.motionDrivers, (targetNodeId) => {
+    if (targetNodeId === node.id) return node.id
+    const target = ctx.graph.getNode(targetNodeId)
+    return target?.componentId && isDescendantOf(target, node.id, ctx.graph)
+      ? target.componentId
+      : targetNodeId
+  })
+  return { ...node, motionDrivers }
+}
+
+/** Clean instances do not necessarily materialize inherited root events on the
+ * clone node. Resolve them from the referenced master while retaining the
+ * instance id as the diagnostic/event ownership boundary. */
+function componentRefEventNode(node: SceneNode, ctx: WalkCtx): SceneNode {
+  if (node.type !== 'INSTANCE' || !node.componentId) return node
+  const source = ctx.graph.getNode(node.componentId)
+  const sourceEvents = node.events ?? source?.events
+  if (!sourceEvents) return node
+
+  const events = structuredClone(sourceEvents)
+  remapLowcodeMotionActionTargets(events, (targetNodeId) => {
+    if (targetNodeId === node.componentId) return node.id
+    const target = ctx.graph.getNode(targetNodeId)
+    if (!target?.componentId || !isDescendantOf(target, node.id, ctx.graph)) return undefined
+    return target.componentId
+  })
+  return { ...node, events }
+}
+
+function isDescendantOf(node: SceneNode, ancestorId: string, graph: SceneGraph): boolean {
+  const visited = new Set<string>()
+  let parentId: string | null | undefined = node.parentId
+  while (parentId && !visited.has(parentId)) {
+    if (parentId === ancestorId) return true
+    visited.add(parentId)
+    parentId = graph.getNode(parentId)?.parentId
+  }
+  return false
 }
 
 /** Phase 3 §8 v2/v3/v6 — the override values an instance passes. For each
@@ -686,6 +845,14 @@ interface WalkCtx {
   /** Phase 4 §24 v2: binary assets referenced by image fills while walking this
    *  page or component body. */
   assets: Map<string, IRAsset>
+  /** Per-compile cache for expensive path/physical-easing lowering. Validation
+   *  and diagnostics still run at every node before this cache is consulted. */
+  motionCache: MotionLoweringCache
+  /** Node ids that need runtime markers because a continuous input owner references them. */
+  motionDriverNodeIds: ReadonlySet<string>
+  /** Prototype metadata is lowered while SceneGraph target lookup is still
+   * available; adapters consume only the resolved IR decoration. */
+  prototypeContext: PrototypeCollectContext
 }
 
 /** Phase 2 §2: pull DocumentStateDef[] off the root SceneNode and convert
@@ -772,7 +939,7 @@ function liftWorkflows(graph: SceneGraph): ReadonlyMap<string, WorkflowDef> {
 /**
  * Map SceneNode types to the HTML tag the React adapter will emit.
  * Tags that don't have a Phase 0 mapping (CONNECTOR, SHAPE_WITH_TEXT,
- * BOOLEAN_OPERATION, CANVAS) drop out by returning undefined here.
+ * CANVAS drops out by returning undefined here.
  */
 const TAG_BY_TYPE: Partial<Record<NodeType, string>> = {
   FRAME: 'div',
@@ -782,6 +949,7 @@ const TAG_BY_TYPE: Partial<Record<NodeType, string>> = {
   STAR: 'div',
   POLYGON: 'div',
   VECTOR: 'div',
+  BOOLEAN_OPERATION: 'div',
   LINE: 'div',
   GROUP: 'div',
   SECTION: 'section',
@@ -868,13 +1036,37 @@ const VECTOR_FOLDABLE_CONTAINERS: ReadonlySet<NodeType> = new Set([
 function isVectorIcon(node: SceneNode, graph: SceneGraph): boolean {
   if (SVG_SHAPE_TYPES.has(node.type)) return true
   if (!VECTOR_FOLDABLE_CONTAINERS.has(node.type)) return false
+  if (node.motionScene) return false
+  // The folded SVG wrapper uses vector Motion semantics. Keep a CSS box
+  // boundary when the container itself animates a box-only channel so values
+  // such as border radius are not silently lowered to an inert vector target.
+  if (requiresBoxMotionTarget(node)) return false
   // An auto-layout container of several icons is layout, not one icon. Folding
   // it removes the children that provide HUG sizing and leaves a 100%-sized SVG
   // with no intrinsic wrapper dimensions (the browser expands it to 300×150).
   // Imported multi-path icon wrappers use non-auto layout and still fold.
   if (isAutoLayoutMode(node.layoutMode)) return false
   const visibleChildren = graph.getChildren(node.id).filter((c) => c.visible)
+  // Folding descendants into one raw SVG would erase their individual DOM
+  // identity, Motion tokens, and event targets. Keep an element boundary for
+  // every behavioral descendant instead.
+  if (visibleChildren.some((child) => subtreeRequiresRuntimeElement(child, graph))) return false
   return visibleChildren.length > 0 && visibleChildren.every((c) => isVectorIcon(c, graph))
+}
+
+function requiresBoxMotionTarget(node: SceneNode): boolean {
+  if (!node.motion || node.motion.version < 2) return false
+  return (
+    getMotionChannels(node.motion.tracks.flatMap((track) => track.keyframes)).cornerRadius === true
+  )
+}
+
+function subtreeRequiresRuntimeElement(node: SceneNode, graph: SceneGraph): boolean {
+  if (node.motion || node.motionScene || node.prototype || node.transitionKey) return true
+  if (Object.values(node.events ?? {}).some((actions) => actions.length > 0)) return true
+  return graph
+    .getChildren(node.id)
+    .some((child) => child.visible && subtreeRequiresRuntimeElement(child, graph))
 }
 
 /**
@@ -884,15 +1076,45 @@ function isVectorIcon(node: SceneNode, graph: SceneGraph): boolean {
  * to a `0 0 w h` viewBox; we drop the `<?xml?>` prelude (`xmlDeclaration:
  * false`) and swap the fixed pixel width/height for 100% so the SVG fills the
  * layout wrapper (whose Tailwind size classes already carry the node's
- * dimensions) while the viewBox preserves the aspect ratio.
+ * dimensions). `preserveAspectRatio="none"` makes responsive flex/grid or
+ * animated dimensions scale intrinsic geometry instead of letterboxing it.
  */
 function buildVectorSvg(node: SceneNode, graph: SceneGraph): string | undefined {
-  const svg = renderNodesToSVG(graph, '', [node.id], { xmlDeclaration: false })
+  const animatedEffects = animatedEffectIndices(node)
+  const svg = renderNodesToSVG(graph, '', [node.id], {
+    xmlDeclaration: false,
+    includeNodeIds: true,
+    // The emitted HTML wrapper already carries root opacity/rotation/blend.
+    // Keep descendants self-contained in SVG while avoiding double application
+    // on the folded source node itself.
+    presentationOwnedNodeIds: new Set([node.id]),
+    effectFilter: (owner, _effect, index) => owner.id !== node.id || !animatedEffects.has(index)
+  })
   if (!svg) return undefined
   return svg.replace(
     /(<svg\b[^>]*?)\swidth="[^"]*"\sheight="[^"]*"/,
-    '$1 width="100%" height="100%"'
+    '$1 width="100%" height="100%" preserveAspectRatio="none" overflow="visible"'
   )
+}
+
+function animatedEffectIndices(node: SceneNode): Set<number> {
+  if (!node.motion || node.motion.version < 2) return new Set()
+  const channels = getMotionChannels(node.motion.tracks.flatMap((track) => track.keyframes))
+  const result = new Set<number>()
+  if (channels.blur || channels.shadow) {
+    const index = node.effects.findIndex(
+      (effect) =>
+        effect.visible && (effect.type === 'LAYER_BLUR' || effect.type === 'FOREGROUND_BLUR')
+    )
+    if (index !== -1) result.add(index)
+  }
+  if (channels.blur || channels.shadow) {
+    const index = node.effects.findIndex(
+      (effect) => effect.visible && effect.type === 'DROP_SHADOW'
+    )
+    if (index !== -1) result.add(index)
+  }
+  return result
 }
 
 /**
@@ -1154,7 +1376,10 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // `<img>` leaf — resolved + returned here so it skips the control / vector /
   // child-recursion path (an image has none). Events (e.g. onClick) still apply.
   const image = resolveImageNode(node, ctx)
-  if (image) return wrapConditional(node, buildImageElement(node, ctx, className, image), ctx)
+  if (image) {
+    collectGeneratedEffect(node, ctx.warnings, false)
+    return wrapConditional(node, buildImageElement(node, ctx, className, image), ctx)
+  }
   // Phase 3 §3.v5 — RADIO / CHECKBOX-group wrappers get a vertical option-stack.
   className = applyOptionGroupWrapper(className, node)
   const attrs: Record<string, IRAttrValue> = {}
@@ -1181,7 +1406,13 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.docStateWrites,
     ctx.inScope,
     ctx.docStateReads,
-    ctx.workflows
+    ctx.workflows,
+    ctx.graph
+  )
+  const prototype = collectPrototypeDecoration(
+    node,
+    ctx.prototypeContext,
+    (node.events?.onClick?.length ?? 0) > 0
   )
 
   // §18/§3.x/§15: the mutually-exclusive interactive control descriptors —
@@ -1198,11 +1429,28 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // it in `<Card>`. Kit-agnostic — the plain emit ignores it (byte-identical).
   const semantics = resolveElementSemantics(node, ctx)
 
-  const motion = collectNodeMotion(node, ctx.warnings)
+  const motion = collectNodeMotion(
+    node,
+    ctx.warnings,
+    vector.extra.rawHtml === undefined ? (node.type === 'TEXT' ? 'text' : 'box') : 'vector',
+    ctx.motionCache
+  )
+  const motionSceneFields = collectFrameMotionSceneFields(node, ctx.graph, ctx.warnings)
+  const motionDriverFields = collectElementMotionDriverFields(node, ctx)
+  const generatedEffect = collectGeneratedEffect(
+    node,
+    ctx.warnings,
+    vector.extra.rawHtml === undefined &&
+      !['input', 'img', 'br', 'hr', 'meta', 'link'].includes(tag)
+  )
   const element: IRElement = {
     kind: 'element',
     sourceId: node.id,
+    ...prototype,
     ...(motion ? { motion } : {}),
+    ...motionSceneFields,
+    ...motionDriverFields,
+    ...(generatedEffect ? { generatedEffect } : {}),
     tag: semantics.link ? 'a' : tag,
     className,
     ...propOverrides,
@@ -2626,19 +2874,40 @@ function buildImageElement(
     ctx.docStateWrites,
     ctx.inScope,
     ctx.docStateReads,
-    ctx.workflows
+    ctx.workflows,
+    ctx.graph
   )
-  const motion = collectNodeMotion(node, ctx.warnings)
+  const motion = collectNodeMotion(node, ctx.warnings, undefined, ctx.motionCache)
+  const motionDrivers = collectNodeMotionDrivers(ctx.graph, node, ctx.warnings)
+  const prototype = collectPrototypeDecoration(
+    node,
+    ctx.prototypeContext,
+    (node.events?.onClick?.length ?? 0) > 0
+  )
   return {
     kind: 'element',
     sourceId: node.id,
+    ...prototype,
     ...(motion ? { motion } : {}),
+    ...(motionDrivers ? { motionDrivers } : {}),
+    ...(ctx.motionDriverNodeIds.has(node.id) ? { motionDriverMarker: true as const } : {}),
     tag: 'img',
     className: joinClass(className, image.objectFitClass),
     attrs: {},
     children: [],
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     image: image.descriptor
+  }
+}
+
+function collectElementMotionDriverFields(
+  node: SceneNode,
+  ctx: WalkCtx
+): Pick<IRElement, 'motionDrivers' | 'motionDriverMarker'> {
+  const motionDrivers = collectNodeMotionDrivers(ctx.graph, node, ctx.warnings)
+  return {
+    ...(motionDrivers ? { motionDrivers } : {}),
+    ...(ctx.motionDriverNodeIds.has(node.id) ? { motionDriverMarker: true } : {})
   }
 }
 

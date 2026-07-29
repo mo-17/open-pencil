@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults } from '@open-pencil/compiler'
+import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
+import type { IRElement } from '@open-pencil/compiler/ir/types'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -35,6 +37,53 @@ function rectangleCommandsBlob(x: number, y: number, width: number, height: numb
 }
 
 describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
+  test('lets the wrapper own root presentation while preserving descendant presentation', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const frame = graph.createNode('FRAME', pageId, {
+      width: 30,
+      height: 20,
+      opacity: 0.5,
+      rotation: 30,
+      blendMode: 'MULTIPLY',
+      fills: []
+    })
+    const child = graph.createNode('VECTOR', frame.id, {
+      width: 30,
+      height: 20,
+      opacity: 0.25,
+      rotation: 10,
+      fillGeometry: [{ windingRule: 'NONZERO', commandsBlob: rectangleCommandsBlob(2, 2, 26, 16) }],
+      fills: [
+        {
+          type: 'SOLID',
+          color: { r: 0, g: 0, b: 1, a: 1 },
+          opacity: 1,
+          visible: true
+        }
+      ]
+    })
+
+    const tree = collectTree(graph, pageId)
+    const element = tree.children[0] as IRElement
+    const rawHtml = element.rawHtml ?? ''
+    const rootGroup = rawHtml.match(
+      new RegExp(`<g[^>]*data-op-node-group="${frame.id}"[^>]*>`)
+    )?.[0]
+    const childGroup = rawHtml.match(
+      new RegExp(`<g[^>]*data-op-node-group="${child.id}"[^>]*>`)
+    )?.[0]
+    expect(rootGroup).toBeDefined()
+    expect(rootGroup).not.toContain('opacity=')
+    expect(rootGroup).not.toContain('rotate(')
+    expect(rootGroup).not.toContain('mix-blend-mode')
+    expect(childGroup).toContain('opacity="0.25"')
+    expect(childGroup).toContain('rotate(10, 15, 10)')
+    expect(rawHtml).toContain('viewBox="0 0 30 20"')
+    expect(rawHtml).toContain('overflow="visible"')
+    expect(element.className).toContain('opacity-50')
+  })
+
   test('a VECTOR emits <svg>/<path> via dangerouslySetInnerHTML, no fill→bg box', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
@@ -255,7 +304,7 @@ describe('compile — vector shapes emit inline SVG (icons, not boxes)', () => {
 
     expect(app).toContain('className="absolute top-0 left-9 w-px h-15"')
     expect(app).toContain('viewBox=\\"0 0 1 60\\"')
-    expect(app).toContain('<line x1=\\"0\\" y1=\\"0\\" x2=\\"1\\" y2=\\"60\\"')
+    expect(app).toContain('x1=\\"0\\" y1=\\"0\\" x2=\\"1\\" y2=\\"60\\"')
     expect(app).toContain('className="absolute top-[46px] left-[51px] w-[22px] h-px"')
     expect(app).toContain('viewBox=\\"0 0 22 1\\"')
     expect(app).not.toContain('origin-left')

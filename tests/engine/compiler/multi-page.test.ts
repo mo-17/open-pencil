@@ -43,6 +43,7 @@ describe('compile — multi-page emission (Phase 1 §11)', () => {
         'index.html',
         'package.json',
         'src/App.tsx',
+        'src/__motion-runtime.ts',
         'src/__preview-bridge.ts',
         'src/index.css',
         'src/main.tsx',
@@ -53,7 +54,7 @@ describe('compile — multi-page emission (Phase 1 §11)', () => {
 
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain('export default function App')
-    expect(app).toContain('<div className="relative min-h-screen">')
+    expect(app).toContain(`<div className="relative min-h-screen" data-node-id="${pageId}">`)
     expect(app).not.toContain('BrowserRouter')
 
     const pkg = JSON.parse(out.files.get('package.json') as string) as {
@@ -96,7 +97,7 @@ describe('compile — multi-page emission (Phase 1 §11)', () => {
     // Each page module emits its own wrapper + scoped function name.
     const indexPage = out.files.get('src/pages/index.tsx') as string
     expect(indexPage).toContain('export default function PageIndex')
-    expect(indexPage).toContain('<div className="relative min-h-screen">')
+    expect(indexPage).toContain(`<div className="relative min-h-screen" data-node-id="${home.id}">`)
     expect(indexPage).toContain('>home-btn</button>')
     // Page modules must NOT import the bridge — App.tsx owns that import.
     expect(indexPage).not.toContain('__preview-bridge')

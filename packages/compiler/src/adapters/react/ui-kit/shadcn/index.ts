@@ -1,4 +1,5 @@
 import { controlledWriteCall } from '#compiler/adapters/react/emit/element'
+import { motionDriverToken } from '#compiler/adapters/react/motion/drivers'
 import { motionToken } from '#compiler/adapters/react/motion/key'
 import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compiler/ir/types'
 
@@ -371,8 +372,23 @@ function rootAttrParts(node: IRElement, ctx: KitEmitCtx): string[] {
   if (typeof style === 'object' && style.kind === 'styleAttr') {
     parts.push(`style={${formatStyleAttr(style.declarations)}}`)
   }
-  if (ctx.devMode) parts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  if (
+    ctx.devMode ||
+    node.motion ||
+    node.motionScene ||
+    node.motionDriverMarker ||
+    node.motionDrivers
+  ) {
+    parts.push(`data-node-id="${ctx.escapeAttr(node.sourceId)}"`)
+  }
   if (node.motion) parts.push(`data-op-motion="${motionToken(node.motion)}"`)
+  if (node.motionScene) {
+    parts.push(`data-op-motion-scene-owner="${ctx.escapeAttr(node.sourceId)}"`)
+  }
+  if (node.motionDrivers) {
+    parts.push(`data-op-motion-drivers="${motionDriverToken(node.motionDrivers)}"`)
+    parts.push('data-op-motion-scope')
+  }
   return parts
 }
 

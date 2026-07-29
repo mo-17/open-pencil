@@ -3,7 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "license": "MIT",
+  "files": [
+    "dist",
+    "src"
+  ],
   "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./src/index.ts",
   "imports": {
     "#compiler/*": {
       "types": "./src/*.ts",
@@ -11,8 +17,6 @@
       "default": "./dist/*.js"
     }
   },
-  "main": "./dist/index.mjs",
-  "types": "./src/index.ts",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -60,10 +64,6 @@
       "default": "./dist/theme-css.mjs"
     }
   },
-  "files": [
-    "dist",
-    "src"
-  ],
   "scripts": {
     "build": "bunx tsdown --config tsdown.config.ts"
   },
@@ -71,6 +71,7 @@
     "@iconify-json/lucide": "^1.2.94",
     "@noble/hashes": "^1.8.0",
     "@open-pencil/core": "workspace:*",
+    "@open-pencil/motion-runtime": "workspace:*",
     "@open-pencil/scene-graph": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-react": "^4.3.4",

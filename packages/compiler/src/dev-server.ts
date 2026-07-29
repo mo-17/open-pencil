@@ -25,15 +25,22 @@ export type UpdateMode = 'full-reload' | 'hmr' | 'noop'
  * Decide how the iframe should react to a batch of VFS changes.
  *
  * - `noop` — nothing changed (idempotent updateFiles call).
- * - `full-reload` — index.html changed, or no VFS module mapped to the changes
- *   (Vite can't HMR what it doesn't know about).
+ * - `full-reload` — index.html changed, the VFS module topology changed, or
+ *   not every changed file maps to a loaded module (Vite can't HMR imports it
+ *   does not know about yet).
  * - `hmr` — broadcast Vite's native `update` event so plugin-react's auto-
  *   injected `import.meta.hot.accept(...)` boundaries can swap modules in
  *   place and preserve `useState`.
  */
-export function classifyUpdate(changes: readonly string[], invalidated: number): UpdateMode {
+export function classifyUpdate(
+  changes: readonly string[],
+  invalidated: number,
+  topologyChanged = false
+): UpdateMode {
   if (changes.length === 0) return 'noop'
-  if (changes.includes('index.html') || invalidated === 0) return 'full-reload'
+  if (changes.includes('index.html') || topologyChanged || invalidated !== changes.length) {
+    return 'full-reload'
+  }
   return 'hmr'
 }
 
@@ -143,11 +150,16 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
 
       // Invalidate everything that changed (added / removed / different content)
       const changed: string[] = []
+      let topologyChanged = false
       for (const [rel, content] of files) {
+        if (!prev.has(rel)) topologyChanged = true
         if (prev.get(rel) !== content) changed.push(rel)
       }
       for (const rel of prev.keys()) {
-        if (!files.has(rel)) changed.push(rel)
+        if (!files.has(rel)) {
+          topologyChanged = true
+          changed.push(rel)
+        }
       }
       if (changed.length === 0) return
 
@@ -160,7 +172,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
         }
       }
 
-      const mode = classifyUpdate(changed, invalidatedPaths.length)
+      const mode = classifyUpdate(changed, invalidatedPaths.length, topologyChanged)
       if (mode === 'noop') return
       if (mode === 'full-reload') {
         server.ws.send({ type: 'full-reload' })

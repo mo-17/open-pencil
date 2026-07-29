@@ -36,6 +36,54 @@ export function pageHasNavigateHandler(ir: IRTree): boolean {
   return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'navigate')))
 }
 
+/** Page-state ids consumed by continuous Motion drivers reachable from this page. */
+export function pageMotionDriverStateIds(ir: IRTree): ReadonlySet<string> {
+  const ids = new Set<string>()
+  collectDriverStateIds(ir.motionDrivers, ids)
+  for (const node of ir.children) collectNodeDriverStateIds(node, ids)
+  return ids
+}
+
+/** Whether a reachable driver consumes the generated document-state store. */
+export function pageHasDocumentStateMotionDriver(ir: IRTree): boolean {
+  if (driverSpecHasDocumentState(ir.motionDrivers)) return true
+  return ir.children.some(nodeHasDocumentStateDriver)
+}
+
+function nodeHasDocumentStateDriver(node: IRNode): boolean {
+  if (node.kind === 'conditional') return nodeHasDocumentStateDriver(node.consequent)
+  if (node.kind === 'list') return nodeHasDocumentStateDriver(node.template)
+  if (node.kind !== 'element' && node.kind !== 'componentRef') return false
+  if (driverSpecHasDocumentState(node.motionDrivers)) return true
+  return node.kind === 'element' && node.children.some(nodeHasDocumentStateDriver)
+}
+
+function driverSpecHasDocumentState(spec: IRTree['motionDrivers']): boolean {
+  return spec?.drivers.some((driver) => driver.source.kind === 'documentState') ?? false
+}
+
+function collectNodeDriverStateIds(node: IRNode, ids: Set<string>): void {
+  if (node.kind === 'conditional') {
+    collectNodeDriverStateIds(node.consequent, ids)
+    return
+  }
+  if (node.kind === 'list') {
+    collectNodeDriverStateIds(node.template, ids)
+    return
+  }
+  if (node.kind !== 'element' && node.kind !== 'componentRef') return
+  collectDriverStateIds(node.motionDrivers, ids)
+  if (node.kind === 'element') {
+    for (const child of node.children) collectNodeDriverStateIds(child, ids)
+  }
+}
+
+function collectDriverStateIds(spec: IRTree['motionDrivers'], ids: Set<string>): void {
+  for (const driver of spec?.drivers ?? []) {
+    if (driver.source.kind === 'pageState') ids.add(driver.source.stateId)
+  }
+}
+
 /** Phase 4 §18: does any element in the tree carry a file-upload config? Drives
  *  the `getSupabaseClient` import (the upload onChange calls storage). */
 function treeHasUpload(node: IRNode): boolean {

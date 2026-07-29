@@ -27,6 +27,7 @@ import { compactLowcodeHeadMetadata } from '@open-pencil/core/lowcode-validation
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
 import { OVERLAY_RUNTIME_CLASSES } from './emit/element'
+import { buildGeneratedEffectPlan } from './generated-effect/scan'
 import {
   pageUsesAnalytics,
   pageUsesConfirm,
@@ -66,6 +67,7 @@ import {
 import { buildMotionPlan } from './motion/scan'
 import type { ReactMotionPlan } from './motion/types'
 import { buildPreviewBridge } from './preview-bridge'
+import { buildPrototypePlan } from './prototype/scan'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import { buildAppTsx, buildPageModule, buildRouterApp, PAGE_WRAPPER_CLASSES } from './scaffold'
 import { collectUsedKitComponents, resolveUiKit } from './ui-kit/registry'
@@ -87,6 +89,8 @@ const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
 const LOWCODE_VALIDATION_FILE = 'src/_lowcode_validation.tsx'
 const LOWCODE_THEME_FILE = 'src/_lowcode_theme.tsx'
 const LOWCODE_ANALYTICS_FILE = 'src/_lowcode_analytics.ts'
+const PROTOTYPE_RUNTIME_FILE = 'src/__prototype-runtime.ts'
+const GENERATED_EFFECT_RUNTIME_FILE = 'src/__generated-effect-runtime.ts'
 const LOWCODE_RUNTIME_THEME_UTILITY_RE =
   /(?:^|:)(?:accent|bg|text|border|ring)-(?:background|foreground|primary|primary-foreground|secondary|secondary-foreground|muted-foreground|destructive|destructive-foreground|border|ring)(?:\/|$)/
 const LOWCODE_RUNTIME_THEME_CSS = `@layer base {
@@ -150,12 +154,23 @@ function emitComponentFiles(
   components: readonly ComponentDef[],
   devMode: boolean,
   uiKit: UiKitAdapter | null,
-  animatedComponentNames: ReadonlySet<string>
+  animatedComponentNames: ReadonlySet<string>,
+  eventComponentNames: ReadonlySet<string>,
+  motionScopeComponentNames: ReadonlySet<string>,
+  prototypeComponentNames: ReadonlySet<string>
 ): void {
   for (const def of components) {
     files.set(
       `src/components/${def.name}.tsx`,
-      buildComponentModule(def, devMode, uiKit, animatedComponentNames.has(def.name))
+      buildComponentModule(
+        def,
+        devMode,
+        uiKit,
+        animatedComponentNames.has(def.name),
+        eventComponentNames.has(def.name),
+        motionScopeComponentNames.has(def.name),
+        prototypeComponentNames.has(def.name)
+      )
     )
   }
 }
@@ -244,7 +259,9 @@ function emitSinglePage(
   // Phase 3 §8 v10: drop components no page (transitively) references, so an
   // all-inlined master (e.g. §8 v9 deep-override) leaves no orphan module/class.
   const components = reachableComponents([cleaned], allComponents)
-  const motion = buildMotionPlan([cleaned], components)
+  const motion = buildMotionPlan([cleaned], components, options.devMode)
+  const generatedEffect = buildGeneratedEffectPlan([cleaned], components)
+  const prototype = buildPrototypePlan(derivePagePaths([cleaned]), components)
   // Phase 3 §15: emit the UI kit's inlined sources for the components rendered
   // here (sets files; returns deps + theme to fold in below).
   const uiKit = resolveUiKit(options)
@@ -290,8 +307,11 @@ function emitSinglePage(
     analyticsConfig: cleaned.analyticsConfig,
     analyticsConsentBanner
   })
-  emitMotionFiles(files, motion)
-  emitComponentFiles(files, components, options.devMode, uiKit, motion.animatedComponentNames)
+  emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
+    motion,
+    generatedEffect,
+    prototype
+  })
   files.set(
     'src/App.tsx',
     buildAppTsx(cleaned, {
@@ -303,7 +323,8 @@ function emitSinglePage(
       lowcodeValidationImportPath: './_lowcode_validation',
       lowcodeAnalyticsImportPath: './_lowcode_analytics',
       componentImportPrefix: './components/',
-      uiKit
+      uiKit,
+      prototypeRuntime: prototype.runtime !== undefined
     })
   )
   setSharedProjectFiles(
@@ -317,6 +338,7 @@ function emitSinglePage(
     analyticsActive,
     analyticsConsentBanner,
     motion,
+    generatedEffect.runtime !== undefined,
     kit,
     resolveIndexMetadata([cleaned], options)
   )
@@ -324,7 +346,7 @@ function emitSinglePage(
   const coverage = i18nActive
     ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations)
     : []
-  return { files, warnings: [...warnings, ...coverage] }
+  return { files, warnings: [...warnings, ...prototype.warnings, ...coverage] }
 }
 
 function emitMultiPage(
@@ -336,7 +358,9 @@ function emitMultiPage(
   const files = new Map<string, string | Uint8Array>()
   // Phase 3 §8 v10: prune components unreferenced across all pages (see emitSinglePage).
   const components = reachableComponents(irs, allComponents)
-  const motion = buildMotionPlan(irs, components)
+  const motion = buildMotionPlan(irs, components, options.devMode)
+  const generatedEffect = buildGeneratedEffectPlan(irs, components)
+  const prototype = buildPrototypePlan(infos, components)
   // Phase 3 §15: emit the UI kit's inlined sources across all pages.
   const uiKit = resolveUiKit(options)
   const kit = applyUiKit(files, irs, components, uiKit)
@@ -382,11 +406,18 @@ function emitMultiPage(
     analyticsRouteTracking,
     analyticsConsentBanner
   })
-  emitMotionFiles(files, motion)
-  emitComponentFiles(files, components, options.devMode, uiKit, motion.animatedComponentNames)
+  emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
+    motion,
+    generatedEffect,
+    prototype
+  })
   files.set(
     'src/App.tsx',
-    buildRouterApp(infos, { devMode: options.devMode, analyticsRouteTracking })
+    buildRouterApp(infos, {
+      devMode: options.devMode,
+      analyticsRouteTracking,
+      prototypeRuntime: prototype.runtime !== undefined
+    })
   )
   for (const info of infos) {
     files.set(
@@ -400,7 +431,8 @@ function emitMultiPage(
         lowcodeValidationImportPath: '../_lowcode_validation',
         lowcodeAnalyticsImportPath: '../_lowcode_analytics',
         componentImportPrefix: '../components/',
-        uiKit
+        uiKit,
+        prototypeRuntime: prototype.runtime !== undefined
       })
     )
   }
@@ -415,6 +447,7 @@ function emitMultiPage(
     analyticsActive,
     analyticsConsentBanner,
     motion,
+    generatedEffect.runtime !== undefined,
     kit,
     resolveIndexMetadata(irs, options)
   )
@@ -422,7 +455,10 @@ function emitMultiPage(
   const coverage = i18nActive
     ? i18nCoverageWarnings(messages, sourceLocale, targetLocales, translations)
     : []
-  return { files, warnings: [...collectSlugWarnings(infos), ...coverage] }
+  return {
+    files,
+    warnings: [...collectSlugWarnings(infos), ...prototype.warnings, ...coverage]
+  }
 }
 
 function lowcodeStateExtraDeps(
@@ -499,6 +535,15 @@ interface LowcodeRuntimeEmit {
   analyticsConsentBanner?: boolean
 }
 
+interface RuntimeAndComponentEmit {
+  motion: ReactMotionPlan
+  generatedEffect: { runtime?: string }
+  prototype: {
+    runtime?: string
+    prototypeComponentNames: ReadonlySet<string>
+  }
+}
+
 /** Emit every on-demand lowcode runtime file (doc-state store, Supabase client,
  *  i18n, toast, confirm, validation). Shared by the single-page and multi-page
  *  emitters so the identical call sequence stays in one place (and clone-free). */
@@ -515,6 +560,29 @@ function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: Lowcode
     e.analyticsConfig,
     e.analyticsRouteTracking,
     e.analyticsConsentBanner
+  )
+}
+
+/** Emit runtime artifacts and reusable component modules in their stable order. */
+function emitRuntimeAndComponentFiles(
+  files: Map<string, string | Uint8Array>,
+  components: readonly ComponentDef[],
+  devMode: boolean,
+  uiKit: UiKitAdapter | null,
+  e: RuntimeAndComponentEmit
+): void {
+  emitMotionFiles(files, e.motion)
+  emitGeneratedEffectRuntime(files, e.generatedEffect.runtime)
+  emitPrototypeRuntime(files, e.prototype.runtime)
+  emitComponentFiles(
+    files,
+    components,
+    devMode,
+    uiKit,
+    e.motion.animatedComponentNames,
+    e.motion.eventComponentNames,
+    e.motion.motionScopeComponentNames,
+    e.prototype.prototypeComponentNames
   )
 }
 
@@ -657,6 +725,7 @@ function setSharedProjectFiles(
   analytics: boolean,
   analyticsConsentBanner: boolean,
   motion: ReactMotionPlan,
+  generatedEffectRuntime: boolean,
   kit: { themeCss: string; active: boolean },
   metadata?: HtmlMetadata
 ): void {
@@ -698,7 +767,8 @@ function setSharedProjectFiles(
       analytics,
       analyticsConsentBanner,
       motion.css !== undefined,
-      motion.runtime !== undefined
+      motion.runtime !== undefined,
+      generatedEffectRuntime
     )
   )
   const themeCss = [
@@ -718,6 +788,20 @@ function setSharedProjectFiles(
 function emitMotionFiles(files: Map<string, string | Uint8Array>, motion: ReactMotionPlan): void {
   if (motion.css !== undefined) files.set('src/__motion.css', motion.css)
   if (motion.runtime !== undefined) files.set('src/__motion-runtime.ts', motion.runtime)
+}
+
+function emitGeneratedEffectRuntime(
+  files: Map<string, string | Uint8Array>,
+  runtime: string | undefined
+): void {
+  if (runtime !== undefined) files.set(GENERATED_EFFECT_RUNTIME_FILE, runtime)
+}
+
+function emitPrototypeRuntime(
+  files: Map<string, string | Uint8Array>,
+  runtime: string | undefined
+): void {
+  if (runtime !== undefined) files.set(PROTOTYPE_RUNTIME_FILE, runtime)
 }
 
 function resolveIndexMetadata(

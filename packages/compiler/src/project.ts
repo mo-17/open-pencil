@@ -253,19 +253,19 @@ export function buildMainTsx(
   analytics = false,
   analyticsConsentBanner = false,
   motionCss = false,
-  motionRuntime = false
+  motionRuntime = false,
+  generatedEffectRuntime = false
 ): string {
   const i18nImport = i18n ? `import { I18nProvider } from './_lowcode_i18n'\n` : ''
   const toastImport = toast ? `import { ToastHost } from './_lowcode_toast'\n` : ''
   const confirmImport = confirm ? `import { ConfirmHost } from './_lowcode_confirm'\n` : ''
   const themeSwitchEnabled = theme && themeSwitchPosition !== false
-  const themeImport = theme
-    ? `import { LowcodeThemeProvider${
-        themeSwitchEnabled ? ', LowcodeThemeSwitch' : ''
-      } } from './_lowcode_theme'\n`
-    : ''
+  const themeImport = buildMainThemeImport(theme, themeSwitchEnabled)
   const analyticsImport = buildAnalyticsImport(analytics, analyticsConsentBanner)
   const motionImports = buildMotionImports(motionCss, motionRuntime)
+  const generatedEffectImport = generatedEffectRuntime
+    ? `import './__generated-effect-runtime'\n`
+    : ''
   let app = '<App />'
   if (i18n) app = `<I18nProvider>\n      ${app}\n    </I18nProvider>`
   const themeSwitch =
@@ -281,7 +281,7 @@ export function buildMainTsx(
   return `import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-${i18nImport}${toastImport}${confirmImport}${themeImport}${analyticsImport}${motionImports}import './index.css'
+${i18nImport}${toastImport}${confirmImport}${themeImport}${analyticsImport}${motionImports}${generatedEffectImport}import './index.css'
 
 const root = document.getElementById('root')
 if (!root) throw new Error('Root element not found')
@@ -292,6 +292,12 @@ createRoot(root).render(
   </StrictMode>
 )
 `
+}
+
+function buildMainThemeImport(theme: boolean, themeSwitchEnabled: boolean): string {
+  if (!theme) return ''
+  const switchImport = themeSwitchEnabled ? ', LowcodeThemeSwitch' : ''
+  return `import { LowcodeThemeProvider${switchImport} } from './_lowcode_theme'\n`
 }
 
 function buildMotionImports(css: boolean, runtime: boolean): string {

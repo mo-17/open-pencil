@@ -28,7 +28,7 @@ describe('compile — canvas-direct absolute positioning (Phase 1 §1)', () => {
     })
 
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('<div className="relative min-h-screen">')
+    expect(app).toContain(`<div className="relative min-h-screen" data-node-id="${pageId}">`)
     expect(app).toContain('<button')
     // 120px → 30 spacing units (4px scale); 80px → 20 spacing units.
     expect(app).toMatch(/className="[^"]*\babsolute\b[^"]*"/)
@@ -59,7 +59,7 @@ describe('compile — canvas-direct absolute positioning (Phase 1 §1)', () => {
     })
 
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('<div className="relative min-h-screen">')
+    expect(app).toContain(`<div className="relative min-h-screen" data-node-id="${pageId}">`)
 
     // The frame's <div> is the absolute container — identify it by its node id.
     const frameLine = app.split('\n').find((l) => l.includes(`data-node-id="${frame.id}"`))
@@ -90,7 +90,7 @@ describe('compile — canvas-direct absolute positioning (Phase 1 §1)', () => {
     })
 
     const app = out.files.get('src/App.tsx') as string
-    expect(app).toContain('<div className="relative min-h-screen">')
+    expect(app).toContain(`<div className="relative min-h-screen" data-node-id="${pageId}">`)
     expect(app).toContain('export default function App')
   })
 

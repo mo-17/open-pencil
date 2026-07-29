@@ -54,7 +54,9 @@ describe('compile — confirm runtime wiring (Phase 3 §10 v3)', () => {
     // page imports + awaits the prompter
     const app = out.files.get('src/App.tsx') as string
     expect(app).toContain("import { __opConfirm } from './_lowcode_confirm'")
-    expect(app).toContain('if (await __opConfirm("Delete this?")) { navigate("/gone"); }')
+    expect(app).toContain(
+      'if (await __opConfirm("Delete this?")) { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/gone"); }'
+    )
 
     // main.tsx mounts ConfirmHost
     const main = out.files.get('src/main.tsx') as string

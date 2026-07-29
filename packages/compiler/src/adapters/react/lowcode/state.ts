@@ -54,6 +54,7 @@ export function buildLowcodeStateRuntime(
 subscribePersistedDocState(store)
 `
       : ''
+  const motionDriverBlock = buildDocumentMotionDriverBlock(sorted)
   const initialFields = sorted
     .map((d) => {
       const value =
@@ -81,6 +82,7 @@ ${initialFields}
 
 const store = createStore<DocState>(() => initial)
 ${persistSubscribe}
+${motionDriverBlock}
 
 // Phase 3 §4.6 — expose the store so the dev-mode preview bridge can mirror
 // runtime docState across collaborators. Harmless in prod (no bridge reads it).
@@ -109,6 +111,50 @@ export function setDocState<K extends keyof DocState>(
 
 export function getDocStateSnapshot<K extends keyof DocState>(name: K): DocState[K] {
   return store.getState()[name]
+}
+`
+}
+
+function buildDocumentMotionDriverBlock(decls: readonly IRDocStateDecl[]): string {
+  const scalar = decls.filter((decl) => decl.type === 'number' || decl.type === 'boolean')
+  if (scalar.length === 0) return ''
+  const syncLines = scalar
+    .map((decl) => `  notifyDocumentMotionDriver(${JSON.stringify(decl.id)}, state.${decl.name})`)
+    .join('\n')
+  const changeLines = scalar
+    .map(
+      (decl) => `  if (!Object.is(state.${decl.name}, previous.${decl.name})) {
+    notifyDocumentMotionDriver(${JSON.stringify(decl.id)}, state.${decl.name})
+  }`
+    )
+    .join('\n')
+  return `type MotionDriverHost = {
+  setDocumentState(stateId: string, value: number | boolean): number
+}
+
+function notifyDocumentMotionDriver(stateId: string, value: number | boolean): void {
+  if (typeof window === 'undefined') return
+  if (typeof value === 'number' && !Number.isFinite(value)) return
+  ;(window as unknown as { __OPENPENCIL_MOTION_DRIVERS__?: MotionDriverHost })
+    .__OPENPENCIL_MOTION_DRIVERS__?.setDocumentState(stateId, value)
+}
+
+function syncDocumentMotionDrivers(state: DocState): void {
+${syncLines}
+}
+
+const unsubscribeDocumentMotionDrivers = store.subscribe((state, previous) => {
+${changeLines}
+})
+
+if (typeof window !== 'undefined') {
+  const sync = () => syncDocumentMotionDrivers(store.getState())
+  window.addEventListener('op-motion-drivers-ready', sync)
+  sync()
+  import.meta.hot?.dispose(() => {
+    window.removeEventListener('op-motion-drivers-ready', sync)
+    unsubscribeDocumentMotionDrivers()
+  })
 }
 `
 }

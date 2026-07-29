@@ -10,6 +10,7 @@ import type {
   IRLucideIcon,
   IRNode,
   IROverlay,
+  IRPrototypeDecoration,
   IRText,
   IRUpload
 } from '#compiler/ir/types'
@@ -17,7 +18,9 @@ import type {
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
 
 import { VALIDATION_ERROR_CLASS, VALIDATION_INVALID_FIELD_CLASS } from '../lowcode/validation'
+import { motionDriverToken } from '../motion/drivers'
 import { motionToken } from '../motion/key'
+import { instrumentVectorMotionHtml } from '../motion/target'
 import type { UiKitAdapter } from '../ui-kit/types'
 import { emitEventHandler, emitFormSubmitHandler } from './event'
 import { setterName } from './state'
@@ -151,7 +154,10 @@ function emitTagElementCore(
   // dangerouslySetInnerHTML (React forbids combining it with children, so the
   // collect pass leaves `children` empty when `rawHtml` is set).
   if (node.rawHtml !== undefined) {
-    return `${pad}${opening} dangerouslySetInnerHTML={{ __html: ${JSON.stringify(node.rawHtml)} }} />`
+    const rawHtml = node.motion
+      ? instrumentVectorMotionHtml(node.rawHtml, node.motion, node.sourceId)
+      : node.rawHtml
+    return `${pad}${opening} dangerouslySetInnerHTML={{ __html: ${JSON.stringify(rawHtml)} }} />`
   }
 
   if (node.tag === 'img' && node.image?.sources && node.image.sources.length > 0) {
@@ -205,11 +211,13 @@ function tagOpenParts(
   uiKit: UiKitAdapter | null
 ): { attrsStr: string; tagName: string } {
   const className = ensureCardClipClass(node)
-  const baseAttrsStr = formatAttrs(
+  const standardAttrs = formatAttrs(
     className,
     node.attrs,
     node.events,
-    devMode ? node.sourceId : undefined,
+    devMode || node.motion || node.motionScene || node.motionDriverMarker || node.motionDrivers
+      ? node.sourceId
+      : undefined,
     node.motion ? motionToken(node.motion) : undefined,
     node.controlled,
     node.upload,
@@ -222,9 +230,85 @@ function tagOpenParts(
     node.image,
     node.link
   )
+  const baseAttrsStr = joinAttrs(
+    standardAttrs,
+    prototypeAttrs(node),
+    motionSceneOwnerAttrs(node),
+    motionDriverAttrs(node),
+    generatedEffectAttrs(node)
+  )
   const displayMapping = node.displayKind ? uiKit?.mapDisplay?.(node.displayKind) : undefined
   const attrsStr = displayMapping ? displayAttrs(baseAttrsStr, node) : baseAttrsStr
   return { attrsStr, tagName: kitTagName(node, uiKit, displayMapping) }
+}
+
+function motionSceneOwnerAttrs(node: IRElement): string {
+  return node.motionScene ? `data-op-motion-scene-owner="${escapeAttr(node.sourceId)}"` : ''
+}
+
+function motionDriverAttrs(node: IRElement): string {
+  return node.motionDrivers
+    ? `data-op-motion-drivers="${motionDriverToken(node.motionDrivers)}" data-op-motion-scope`
+    : ''
+}
+
+function generatedEffectAttrs(node: IRElement): string {
+  if (!node.generatedEffect) return ''
+  return [
+    `data-op-generated-effect="${escapeAttr(JSON.stringify(node.generatedEffect))}"`,
+    `data-op-generated-effect-node="${escapeAttr(node.sourceId)}"`
+  ].join(' ')
+}
+
+function prototypeAttrs(node: IRElement): string {
+  const runtimeNode =
+    node.prototype || node.transitionKey || node.prototypeTarget || node.prototypeOverlayTarget
+  if (!runtimeNode) return ''
+  const attrs = [prototypeValueAttr('data-op-prototype-node', node.sourceId, node.prototypeScope)]
+  if (node.prototype) attrs.push('data-op-prototype-source')
+  if (hasClickPrototype(node.prototype) && !NATIVE_CLICK_TAGS.has(node.tag)) {
+    attrs.push('data-op-prototype-keyboard')
+    if (!Object.hasOwn(node.attrs, 'role')) attrs.push('role="button"')
+    if (!Object.hasOwn(node.attrs, 'tabIndex') && !Object.hasOwn(node.attrs, 'tabindex')) {
+      attrs.push('tabIndex={0}')
+    }
+  }
+  if (node.transitionKey) {
+    attrs.push(
+      prototypeValueAttr('data-op-transition-key', node.transitionKey, node.prototypeScope)
+    )
+  }
+  if (node.prototypeOverlayTarget) {
+    attrs.push('data-op-prototype-overlay-target', 'hidden')
+  }
+  return attrs.join(' ')
+}
+
+function prototypeValueAttr(name: string, value: string, scoped: true | undefined): string {
+  return scoped
+    ? `${name}={${scopedPrototypeValueExpression(value)}}`
+    : `${name}="${escapeAttr(value)}"`
+}
+
+function scopedPrototypeValueExpression(value: string): string {
+  return `JSON.stringify([__opPrototypeScope, ${JSON.stringify(value)}])`
+}
+
+const NATIVE_CLICK_TAGS: ReadonlySet<string> = new Set([
+  'a',
+  'button',
+  'input',
+  'select',
+  'summary',
+  'textarea'
+])
+
+function hasClickPrototype(prototype: IRPrototypeDecoration['prototype']): boolean {
+  return prototype?.connections.some(({ trigger }) => trigger.kind === 'click') ?? false
+}
+
+function joinAttrs(...parts: readonly string[]): string {
+  return parts.filter(Boolean).join(' ')
 }
 
 /**
@@ -270,7 +354,7 @@ function emitLucideIconElement(node: IRElement, indent: number, devMode: boolean
     node.className,
     node.attrs,
     node.events,
-    devMode ? node.sourceId : undefined,
+    devMode || node.motion ? node.sourceId : undefined,
     node.motion ? motionToken(node.motion) : undefined,
     undefined,
     undefined,
@@ -284,7 +368,9 @@ function emitLucideIconElement(node: IRElement, indent: number, devMode: boolean
     undefined
   )
   const iconAttrs = lucideIconAttrParts(icon)
-  const allAttrs = [attrsStr, ...iconAttrs].filter((part) => part !== '').join(' ')
+  const allAttrs = [attrsStr, prototypeAttrs(node), ...iconAttrs]
+    .filter((part) => part !== '')
+    .join(' ')
   return allAttrs ? `${pad}<${icon.name} ${allAttrs} />` : `${pad}<${icon.name} />`
 }
 
@@ -845,9 +931,60 @@ function componentRefAttrs(
   if (node.className) attrs.push(`className="${escapeAttr(node.className)}"`)
   if (node.styleAttr) attrs.push(`style={${formatStyleAttr(node.styleAttr.declarations)}}`)
   attrs.push(...node.props.map(componentRefPropAttr))
-  if (node.motion) attrs.push(`__opMotionKey="${motionToken(node.motion)}"`)
+  const rootEvents = componentRefRootEventsAttr(node.events)
+  if (rootEvents) attrs.push(rootEvents)
+  if (node.motion) {
+    attrs.push(`__opMotionKey="${motionToken(node.motion)}"`)
+  }
+  if (node.motionDrivers) {
+    attrs.push(`__opMotionDriversKey="${motionDriverToken(node.motionDrivers)}"`)
+  }
+  if (node.motion || node.motionDrivers || node.motionDriverMarker) {
+    attrs.push(`__opNodeId="${escapeAttr(node.sourceId)}"`)
+  }
+  if (node.prototypeBody) {
+    attrs.push(
+      node.componentScope
+        ? `__opPrototypeScope={${scopedPrototypeValueExpression(node.sourceId)}}`
+        : `__opPrototypeScope="${escapeAttr(node.sourceId)}"`
+    )
+  }
+  attrs.push(...componentRefPrototypeAttrs(node))
   if (devMode) attrs.push(`data-node-id="${node.sourceId}"`)
   return attrs.length > 0 ? ` ${attrs.join(' ')}` : ''
+}
+
+function componentRefPrototypeAttrs(node: IRPrototypeDecoration & { sourceId: string }): string[] {
+  const runtimeNode =
+    node.prototype || node.transitionKey || node.prototypeTarget || node.prototypeOverlayTarget
+  if (!runtimeNode) return []
+  return [
+    componentPrototypeProp('__opPrototypeNode', node.sourceId, node.prototypeScope),
+    ...(node.prototype ? ['__opPrototypeSource'] : []),
+    ...(hasClickPrototype(node.prototype) ? ['__opPrototypeKeyboard'] : []),
+    ...(node.transitionKey
+      ? [componentPrototypeProp('__opTransitionKey', node.transitionKey, node.prototypeScope)]
+      : []),
+    ...(node.prototypeOverlayTarget ? ['__opPrototypeOverlayTarget'] : [])
+  ]
+}
+
+function componentPrototypeProp(name: string, value: string, scoped: true | undefined): string {
+  return scoped
+    ? `${name}={${scopedPrototypeValueExpression(value)}}`
+    : `${name}="${escapeAttr(value)}"`
+}
+
+function componentRefRootEventsAttr(
+  events: Extract<IRNode, { kind: 'componentRef' }>['events']
+): string | undefined {
+  if (!events) return undefined
+  const entries: string[] = []
+  for (const [name, handlers] of Object.entries(events) as [IREventName, IREventHandler[]][]) {
+    if (handlers.length === 0) continue
+    entries.push(`${name}: ${emitEventHandler(handlers, eventHandlerOptions(name))}`)
+  }
+  return entries.length > 0 ? `__opRootEvents={{ ${entries.join(', ')} }}` : undefined
 }
 
 function componentRefPropAttr(

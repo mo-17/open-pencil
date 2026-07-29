@@ -25,7 +25,7 @@ describe('navigate action — React adapter emit', () => {
     })
   }
 
-  test('multi-page compile: emits useNavigate import + hook + navigate() call', () => {
+  test('multi-page compile: awaits bounded pageExit before navigate()', () => {
     const graph = makeGraph()
     const home = graph.getPages()[0]
     graph.updateNode(home.id, { name: 'Home' })
@@ -43,7 +43,12 @@ describe('navigate action — React adapter emit', () => {
     const indexTsx = out.files.get('src/pages/index.tsx') as string
     expect(indexTsx).toContain("import { useNavigate } from 'react-router-dom'")
     expect(indexTsx).toContain('const navigate = useNavigate()')
-    expect(indexTsx).toContain('onClick={() => navigate("/about")}')
+    expect(indexTsx).toContain(
+      'onClick={async () => { await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate("/about"); }}'
+    )
+    expect(out.files.get('src/__motion-runtime.ts')).toContain(
+      'const PAGE_EXIT_MAX_WAIT_MS = 4_000'
+    )
 
     // The About page has no navigate handlers, so it must not pay the
     // useNavigate import cost.

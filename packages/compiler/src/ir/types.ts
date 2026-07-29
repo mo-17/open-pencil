@@ -5,8 +5,18 @@
 
 import type { ExprAst } from '@open-pencil/core/lowcode-validation'
 
-import type { IRMotion } from './motion'
+import type { IRMotionDriverSpec } from './drivers'
+import type { IRGeneratedEffect } from './generated-effect'
+import type { IRMotion, IRMotionScene } from './motion'
+import type { IRPrototypeDecoration, IRPrototypeNode } from './prototype'
 
+export type {
+  IRMotionDriver,
+  IRMotionDriverAxis,
+  IRMotionDriverSource,
+  IRMotionDriverSpec
+} from './drivers'
+export type { IRGeneratedEffect } from './generated-effect'
 export type {
   IRMotion,
   IRMotionDirection,
@@ -14,11 +24,26 @@ export type {
   IRMotionExit,
   IRMotionFill,
   IRMotionKeyframe,
+  IRMotionRenderTarget,
+  IRMotionScene,
+  IRMotionSceneCue,
+  IRMotionSceneSequence,
+  IRMotionSceneTrigger,
   IRMotionTiming,
   IRMotionTrack,
   IRMotionTrigger,
   IRReducedMotion
 } from './motion'
+export type {
+  IRPrototypeAction,
+  IRPrototypeConnection,
+  IRPrototypeDecoration,
+  IRPrototypeNode,
+  IRPrototypeTarget,
+  IRPrototypeTransition,
+  IRPrototypeTransitionDirection,
+  IRPrototypeTrigger
+} from './prototype'
 
 export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList | IRComponentRef
 
@@ -31,7 +56,7 @@ export type IRNode = IRElement | IRText | IRExpression | IRConditional | IRList 
  * component applies to its root — so each usage is positioned in its own
  * context while sharing the children subtree.
  */
-export interface IRComponentRef {
+export interface IRComponentRef extends IRPrototypeDecoration {
   kind: 'componentRef'
   /** SceneNode id of the master/instance this ref was derived from. */
   sourceId: string
@@ -44,6 +69,19 @@ export interface IRComponentRef {
   styleAttr?: IRStyleAttr
   /** Validated motion behavior applied to this component usage boundary. */
   motion?: IRMotion
+  /** Validated owner-scoped continuous input mappings. */
+  motionDrivers?: IRMotionDriverSpec
+  /** Emit a stable marker because a reachable driver references this node. */
+  motionDriverMarker?: true
+  /** Root-level low-code events authored on the component master or instance.
+   *  The React adapter forwards these to the emitted component boundary. */
+  events?: Partial<Record<IREventName, IREventHandler[]>>
+  /** The referenced component body owns prototype nodes/targets/transition
+   * keys and therefore needs a unique runtime instance scope. */
+  prototypeBody?: true
+  /** This ref itself lives in a reusable component body, so its child
+   * component scope is derived from the enclosing instance scope. */
+  componentScope?: true
   /** Phase 3 §8 v2 — text-override prop values this usage passes
    *  (`<Name title="new" />`). Empty for the master and clean instances (they
    *  fall back to the component's per-prop defaults). */
@@ -111,6 +149,9 @@ export interface ComponentDef {
   docStateWrites?: string[]
   /** Component-local validated fields. */
   validatedFields?: IRFieldValidation[]
+  /** At least one reachable body node participates in prototype runtime
+   * identity. The generated component requires `__opPrototypeScope`. */
+  prototypeBody?: true
 }
 
 /** Phase 3 §8 v4 — one variant axis of a COMPONENT_SET (e.g. `Size`). */
@@ -132,13 +173,21 @@ export interface VariantCase {
   children: IRNode[]
 }
 
-export interface IRElement {
+export interface IRElement extends IRPrototypeDecoration {
   kind: 'element'
   /** SceneNode id this IR node was derived from. Adapters may emit this as a
    *  `data-node-id` attribute later for canvas↔preview highlighting. */
   sourceId: string
   /** Validated, framework-neutral motion behavior for this element. */
   motion?: IRMotion
+  /** Validated choreography owned by this FRAME boundary. */
+  motionScene?: IRMotionScene
+  /** Validated owner-scoped continuous input mappings. */
+  motionDrivers?: IRMotionDriverSpec
+  /** Emit a stable marker because a reachable driver references this node. */
+  motionDriverMarker?: true
+  /** Strict allowlisted generated visual layer, sampled by adapter-owned runtimes. */
+  generatedEffect?: IRGeneratedEffect
   /** Lowercase HTML tag for the adapter to emit (e.g. 'div', 'input'). */
   tag: string
   /** Space-separated Tailwind class string. Empty string when no classes.
@@ -614,6 +663,10 @@ export type IREventHandler =
   | IRTrackEventHandler
   | IRStripeCheckoutHandler
   | IRStripeCustomerPortalHandler
+  | IRPlayMotionHandler
+  | IRStopMotionHandler
+  | IRToggleMotionHandler
+  | IRAwaitMotionHandler
 
 /** Phase 2 §2: 'absolute' = adapter emits `setX(<expr>)`; 'functional' =
  *  adapter emits `setX((prev) => <expr-with-$prev-as-prev>)`. The collector
@@ -808,6 +861,38 @@ export interface IRStopHandler {
   kind: 'stop'
 }
 
+/** Start authored motion on every rendered instance of a SceneNode. Omitting
+ *  `trackId` asks the runtime to play every track in the target MotionSpec. */
+export interface IRPlayMotionHandler {
+  kind: 'playMotion'
+  targetNodeId: string
+  trackId?: string
+}
+
+/** Cancel/reset programmatic motion on every rendered instance of a SceneNode.
+ *  Omitting `trackId` stops every programmatically controlled track. */
+export interface IRStopMotionHandler {
+  kind: 'stopMotion'
+  targetNodeId: string
+  trackId?: string
+}
+
+/** Toggle matching controlled Motion tracks. */
+export interface IRToggleMotionHandler {
+  kind: 'toggleMotion'
+  targetNodeId: string
+  trackId?: string
+}
+
+/** Await matching Motion completion or cancellation before continuing. */
+export interface IRAwaitMotionHandler {
+  kind: 'awaitMotion'
+  targetNodeId: string
+  trackId?: string
+  timeoutMs?: number
+  stopOnTimeout: boolean
+}
+
 /** Phase 3 §10 v2: show a transient toast. The adapter emits
  *  `__opToast(<message>, <variant?>)` against the auto-mounted `<ToastHost/>`
  *  runtime. `ast` is the parsed message expression (same restricted sub-language
@@ -942,6 +1027,19 @@ export interface IRTree {
   /** Page name from the scene graph. Currently unused by the adapter, but
    *  reserved for multi-page routing in Phase 1. */
   pageName: string
+  /** Optional Motion authored directly on the page wrapper. */
+  motion?: IRMotion
+  /** Continuous inputs owned by the page wrapper. */
+  motionDrivers?: IRMotionDriverSpec
+  /** Keep the production page wrapper addressable when referenced by a driver. */
+  motionDriverMarker?: true
+  /** Validated page-level choreography with invalid cue references omitted. */
+  motionScene?: IRMotionScene
+  /** Page-wrapper prototype connections and explicit Smart Match identity. */
+  prototype?: IRPrototypeNode
+  transitionKey?: string
+  /** True when another compiled prototype connection targets this page. */
+  prototypeTarget?: true
   /** Phase 4 §16.1: page-level dynamic route pattern (e.g. `/product/:id`),
    *  lifted + validated from the page node's `lowcodeRoutePattern`. When set,
    *  the multi-page router emits `<Route path="<pattern>">` instead of the
