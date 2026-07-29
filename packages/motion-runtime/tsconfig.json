@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "declarationDir": "./dist",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "types": ["bun"],
+    "paths": {
+      "@open-pencil/motion-runtime": ["./src/index.ts"],
+      "@open-pencil/motion-runtime/dom": ["./src/dom.ts"],
+      "@open-pencil/motion-runtime/vanilla": ["./src/vanilla.ts"],
+      "@open-pencil/motion-runtime/vue": ["./src/vue.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
