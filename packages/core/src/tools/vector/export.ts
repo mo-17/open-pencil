@@ -3,7 +3,7 @@ import { defineTool } from '#core/tools/schema'
 
 const CHUNK_SIZE = 0x8000
 
-function uint8ArrayToBase64(bytes: Uint8Array): string {
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(bytes).toString('base64')
   }

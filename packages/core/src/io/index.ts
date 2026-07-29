@@ -18,7 +18,7 @@ export {
   type ExportFigFileOptions,
   type ParseFigFileOptions
 } from './formats/fig'
-export { parsePenFile, readPenFile } from '@open-pencil/pen'
+export { parsePenFile, readPenFile, serializePenFile, writePenFile } from '@open-pencil/pen'
 export { sceneNodeToJSX, selectionToJSX, type JSXFormat } from './formats/jsx'
 export {
   computeContentBounds,
@@ -28,8 +28,11 @@ export {
   headlessRenderNodes,
   headlessRenderThumbnail,
   type RasterExportFormat,
-  type ExportFormat
+  type ExportFormat,
+  type RasterRenderBounds,
+  type RasterRenderOptions
 } from './formats/raster'
+export * from './motion-export/public'
 export { renderNodesToSVG, geometryBlobToSVGPath, vectorNetworkToSVGPaths } from './formats/svg'
 export type {
   IOFormatRole,

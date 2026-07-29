@@ -4,18 +4,34 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 import { computeDescendantVisualBounds } from '@open-pencil/scene-graph/geometry'
 
 import type { SkiaRenderer } from '#core/canvas'
+import type { RenderOverlays } from '#core/canvas/renderer'
 import type { RenderColorSpace } from '#core/color/management'
 import { extractExportGraph, findPageId } from '#core/io/subgraph'
+import type { MotionVisualState } from '#core/motion'
 
 export type RasterExportFormat = 'PNG' | 'JPG' | 'WEBP'
 export type ExportFormat = RasterExportFormat | 'SVG'
 
-interface RenderOptions {
+export interface RasterRenderBounds {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
+export interface RasterRenderOptions {
   scale: number
   format: ExportFormat
   quality?: number
   colorSpace?: RenderColorSpace
   trimTransparent?: boolean
+  /** Fixed document-space bounds used by every frame of an animation export. */
+  bounds?: RasterRenderBounds
+  /** Ephemeral sampled Motion values; authored graph data remains untouched. */
+  motionVisualStates?: ReadonlyMap<string, MotionVisualState>
+  /** Exact generated-layer timeline time for deterministic animation frames. */
+  generatedEffectTimeMs?: number
+  generatedEffectMode?: 'allow' | 'reduce' | 'disable'
 }
 
 function ensureSinglePageSelection(graph: SceneGraph, pageId: string, nodeIds: string[]): boolean {
@@ -108,7 +124,8 @@ function renderToSurface(
   format: ExportFormat,
   quality: number,
   setup: (canvas: Canvas) => void,
-  trimTransparent = false
+  trimTransparent = false,
+  overlays: RenderOverlays = {}
 ): Uint8Array | null {
   const renderScale = 2
   const renderWidth = width * renderScale
@@ -134,7 +151,7 @@ function renderToSurface(
     const canvas = surface.getCanvas()
     canvas.scale(renderScale, renderScale)
     setup(canvas)
-    renderer.renderSceneToCanvas(canvas, renderGraph, pageId)
+    renderer.renderSceneToCanvas(canvas, renderGraph, pageId, overlays)
     surface.flush()
 
     const highResImage = surface.makeImageSnapshot()
@@ -250,13 +267,13 @@ export function renderNodesToImage(
   graph: SceneGraph,
   pageId: string,
   nodeIds: string[],
-  options: RenderOptions
+  options: RasterRenderOptions
 ): Uint8Array | null {
   if (!ensureSinglePageSelection(graph, pageId, nodeIds)) {
     throw new Error('Raster export selection must stay on a single page')
   }
 
-  const bounds = computeContentBounds(graph, nodeIds)
+  const bounds = options.bounds ?? computeContentBounds(graph, nodeIds)
   if (!bounds) return null
 
   const contentW = bounds.maxX - bounds.minX
@@ -293,7 +310,12 @@ export function renderNodesToImage(
       canvas.scale(options.scale, options.scale)
       canvas.translate(-bounds.minX, -bounds.minY)
     },
-    options.trimTransparent
+    options.trimTransparent,
+    {
+      motionVisualStates: options.motionVisualStates,
+      generatedEffectTimeMs: options.generatedEffectTimeMs,
+      generatedEffectMode: options.generatedEffectMode
+    }
   )
 }
 

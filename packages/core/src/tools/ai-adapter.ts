@@ -13,7 +13,7 @@ import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import type { FigmaAPI } from '#core/figma-api'
 
-import type { ToolDef, ParamDef, ParamType } from './schema'
+import type { ToolCtx, ToolDef, ParamDef, ParamType } from './schema'
 
 export interface ToolLogEntry {
   tool: string
@@ -50,6 +50,7 @@ export interface StepBudget {
 
 export interface AIAdapterOptions {
   getFigma: () => FigmaAPI
+  getToolContext?: (def: ToolDef, args: Record<string, unknown>) => ToolCtx | undefined
   onBeforeExecute?: (def: ToolDef) => void
   onAfterExecute?: (def: ToolDef) => Promise<void> | void
   onFlashNodes?: (nodeIds: string[]) => void
@@ -159,7 +160,7 @@ export function toolsToAI(
     const toolOpts: Record<string, unknown> = {
       description: def.description,
       inputSchema: valibotSchema(v.object(shape as Record<string, never>)),
-      execute: async (args: Record<string, unknown>) => {
+      execute: async (args: Record<string, unknown>, execution?: { abortSignal?: AbortSignal }) => {
         const startTime = Date.now()
         const figma = options.getFigma()
         const nodeBefore =
@@ -167,7 +168,11 @@ export function toolsToAI(
 
         options.onBeforeExecute?.(def)
         try {
-          let execResult = await def.execute(options.getFigma(), args)
+          const hostContext = options.getToolContext?.(def, args)
+          let execResult = await def.execute(options.getFigma(), args, {
+            ...hostContext,
+            signal: execution?.abortSignal ?? hostContext?.signal
+          })
           if (def.mutates && options.onFlashNodes) {
             const ids = extractNodeIds(execResult)
             if (ids.length > 0) options.onFlashNodes(ids)
@@ -178,6 +183,7 @@ export function toolsToAI(
           }
           return execResult
         } catch (err) {
+          if (execution?.abortSignal?.aborted) throw err
           const errorMsg = err instanceof Error ? err.message : String(err)
           emitToolLog(options, def, args, startTime, figma, nodeBefore, null, errorMsg)
           return { error: errorMsg }

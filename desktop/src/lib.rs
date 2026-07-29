@@ -4,6 +4,7 @@ mod fonts;
 mod http;
 mod menu;
 mod menu_events;
+mod motion_export;
 #[cfg(target_os = "macos")]
 mod window;
 
@@ -16,6 +17,7 @@ use fonts::{list_system_fonts, load_system_font};
 use http::proxy_http_request;
 use menu::install_app_menu;
 use menu_events::handle_menu_event;
+use motion_export::write_motion_export_noclobber;
 use std::{
     path::{Path, PathBuf},
     sync::Mutex,
@@ -138,7 +140,8 @@ pub fn run() {
             list_system_fonts,
             load_system_font,
             proxy_http_request,
-            take_pending_open
+            take_pending_open,
+            write_motion_export_noclobber
         ])
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())

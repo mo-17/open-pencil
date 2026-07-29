@@ -3,8 +3,14 @@ import type { CanvasKit } from 'canvaskit-wasm'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { SkiaRenderer } from '#core/canvas'
+import type { MotionVisualState } from '#core/motion'
 
-import { renderNodesToImage, renderThumbnail, type ExportFormat } from './render'
+import {
+  renderNodesToImage,
+  renderThumbnail,
+  type ExportFormat,
+  type RasterRenderBounds
+} from './render'
 
 let cachedCk: CanvasKit | null = null
 let cachedRenderer: SkiaRenderer | null = null
@@ -41,6 +47,10 @@ export async function headlessRenderNodes(
     format?: ExportFormat
     quality?: number
     trimTransparent?: boolean
+    bounds?: RasterRenderBounds
+    motionVisualStates?: ReadonlyMap<string, MotionVisualState>
+    generatedEffectTimeMs?: number
+    generatedEffectMode?: 'allow' | 'reduce' | 'disable'
   } = {}
 ): Promise<Uint8Array | null> {
   const { ck, renderer } = await getRenderer()
@@ -51,7 +61,11 @@ export async function headlessRenderNodes(
       scale: options.scale ?? 1,
       format: options.format ?? 'PNG',
       quality: options.quality,
-      trimTransparent: options.trimTransparent
+      trimTransparent: options.trimTransparent,
+      bounds: options.bounds,
+      motionVisualStates: options.motionVisualStates,
+      generatedEffectTimeMs: options.generatedEffectTimeMs,
+      generatedEffectMode: options.generatedEffectMode
     })
   } finally {
     restoreTextMeasurer()

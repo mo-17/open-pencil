@@ -70,6 +70,11 @@
       "import": "./dist/editor/index.js",
       "default": "./dist/editor/index.js"
     },
+    "./motion": {
+      "types": "./dist/motion/index.d.ts",
+      "import": "./dist/motion/index.js",
+      "default": "./dist/motion/index.js"
+    },
     "./tools": {
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js",
@@ -109,6 +114,11 @@
       "types": "./dist/io/formats/fig/index.d.ts",
       "import": "./dist/io/formats/fig/index.js",
       "default": "./dist/io/formats/fig/index.js"
+    },
+    "./io/motion-export": {
+      "types": "./dist/io/motion-export/index.d.ts",
+      "import": "./dist/io/motion-export/index.js",
+      "default": "./dist/io/motion-export/index.js"
     },
     "./io/formats/jsx": {
       "types": "./dist/io/formats/jsx/index.d.ts",

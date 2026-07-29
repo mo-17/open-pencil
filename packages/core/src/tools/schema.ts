@@ -10,6 +10,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 
 import type { Editor } from '#core/editor'
 import type { FigmaAPI, FigmaNodeProxy } from '#core/figma-api'
+import type { MotionAnimationExportResult, MotionExportProgress } from '#core/io/motion-export'
 
 export type ParamType = 'string' | 'number' | 'boolean' | 'color' | 'string[]'
 
@@ -29,6 +30,16 @@ export interface ParamDef {
  *  legacy `figma.graph.updateNode` path (no undo). */
 export interface ToolCtx {
   editor?: Editor
+  /** Request-scoped cancellation propagated by AI and MCP adapters. */
+  signal?: AbortSignal
+  /** Long-running tools report bounded, serializable progress through the active adapter. */
+  onProgress?: (progress: MotionExportProgress) => void
+  /** App hosts can commit an animation artifact through their native/browser save surface. */
+  saveMotionExport?: (
+    result: MotionAnimationExportResult,
+    suggestedName: string,
+    signal?: AbortSignal
+  ) => Promise<boolean>
 }
 
 export interface ToolDef {

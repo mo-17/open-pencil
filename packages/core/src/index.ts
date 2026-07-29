@@ -16,6 +16,9 @@ export type {
   EditorState,
   EditorToolDef,
   FigmaClipboardImageResolver,
+  MotionPreviewSelection,
+  MotionPreviewSpecTarget,
+  MotionPreviewSpecsOptions,
   MotionPreviewState,
   MotionPreviewTarget,
   Tool
@@ -273,8 +276,11 @@ export {
   headlessRenderNodes,
   headlessRenderThumbnail,
   type RasterExportFormat,
-  type ExportFormat
+  type ExportFormat,
+  type RasterRenderBounds,
+  type RasterRenderOptions
 } from './io/formats/raster'
+export * from './io/motion-export/public'
 export {
   renderNodesToSVG,
   geometryBlobToSVGPath,
@@ -393,7 +399,7 @@ export {
 } from './clipboard'
 export { probeGlyphOutlineCommands, type GlyphOutlineProbe } from './text/opentype'
 
-export { readPenFile, parsePenFile } from '@open-pencil/pen'
+export { readPenFile, parsePenFile, serializePenFile, writePenFile } from '@open-pencil/pen'
 
 export {
   readFigFile,

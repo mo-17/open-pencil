@@ -16,7 +16,12 @@ import type { SkiaRenderer } from '#core/canvas'
 import { canMakeBooleanSourceNode } from '#core/canvas/boolean'
 import { flattenNodesToVectorProps } from '#core/canvas/flatten'
 import { IS_BROWSER } from '#core/constants'
-import type { RasterExportFormat } from '#core/io/formats/raster'
+import type {
+  RasterExportFormat,
+  RasterRenderBounds,
+  RasterRenderOptions
+} from '#core/io/formats/raster'
+import type { MotionVisualState } from '#core/motion'
 
 import type {
   FigmaBooleanOperationNode,
@@ -61,6 +66,17 @@ export type {
 export type { FigmaFont, FigmaFontName } from './proxy'
 
 export { computeImageHash }
+
+export interface FigmaExportImageOptions extends Pick<
+  RasterRenderOptions,
+  'generatedEffectTimeMs' | 'generatedEffectMode'
+> {
+  scale?: number
+  format?: RasterExportFormat
+  quality?: number
+  bounds?: RasterRenderBounds
+  motionVisualStates?: ReadonlyMap<string, MotionVisualState>
+}
 
 // TODO(figma-api): Implement the full official PluginAPI interface once our compatibility
 // layer covers all required node-specific return types and unsupported APIs are modeled explicitly.
@@ -531,8 +547,5 @@ export class FigmaAPI implements NodeProxyHost {
     return undefined
   }
 
-  exportImage?: (
-    nodeIds: string[],
-    options: { scale?: number; format?: RasterExportFormat; quality?: number }
-  ) => Promise<Uint8Array | null>
+  exportImage?: (nodeIds: string[], options: FigmaExportImageOptions) => Promise<Uint8Array | null>
 }
