@@ -27,7 +27,7 @@ const previewUiKit = ref<PreviewUiKit>('none')
 const previewI18nEnabled = ref(false)
 const previewLocalesInput = ref('')
 const previewTheme = ref<'light' | 'dark'>('light')
-const { status, forceRecompile } = useCompileOnChange({
+const { status, motionWarnings, motionCompileError, forceRecompile } = useCompileOnChange({
   uiKit: previewUiKit,
   i18nEnabled: previewI18nEnabled,
   localesInput: previewLocalesInput
@@ -38,6 +38,49 @@ const collab = useCollabInjected()
 const iframeKey = ref(0)
 const iframeEl = ref<HTMLIFrameElement | null>(null)
 
+type MotionDebugStatus = 'idle' | 'waiting' | 'ready' | 'unavailable' | 'error'
+
+interface MotionDebugEntry {
+  nodeId: string
+  trackId: string
+  trigger: string
+  source: string
+  playState: string
+  progress: number | null
+  currentTime: number | null
+  token: string | null
+  reducedMotion: string | null
+  exit: string | null
+  timing: Record<string, unknown> | null
+}
+
+interface MotionDebugSnapshot {
+  capturedAt: number | null
+  activeAnimationCount: number | null
+  entries: MotionDebugEntry[]
+}
+
+interface UnknownRecord {
+  [key: string]: unknown
+}
+
+interface PreviewMessage {
+  source?: unknown
+  type?: unknown
+  id?: unknown
+  route?: unknown
+  name?: unknown
+  value?: unknown
+  status?: unknown
+  snapshot?: unknown
+  error?: unknown
+}
+
+const motionDebugEnabled = ref(false)
+const motionDebugStatus = ref<MotionDebugStatus>('idle')
+const motionDebugError = ref('')
+const motionDebugSnapshot = ref<MotionDebugSnapshot | null>(null)
+
 // §7 decision #f mirror: while the editor is replaying an inbound `navigate`
 // (iframe → editor) via `store.switchPage`, the resulting `currentPageId`
 // change must not post outbound navigate back to the iframe. Without this
@@ -46,13 +89,22 @@ const iframeEl = ref<HTMLIFrameElement | null>(null)
 let suppressOutboundNavigate = false
 
 function reload(): void {
+  resetMotionDebugForReload()
   forceRecompile()
   iframeKey.value++
 }
 
 function recompilePreviewOptions(): void {
+  resetMotionDebugForReload()
   forceRecompile()
   iframeKey.value++
+}
+
+function resetMotionDebugForReload(): void {
+  if (!motionDebugEnabled.value) return
+  motionDebugStatus.value = 'waiting'
+  motionDebugError.value = ''
+  motionDebugSnapshot.value = null
 }
 
 const url = computed(() => (status.value.kind === 'ready' ? status.value.url : null))
@@ -138,6 +190,7 @@ function postIframe(
     | { type: 'select'; id: string | null }
     | { type: 'navigate'; route: string }
     | { type: 'theme'; theme: 'light' | 'dark' }
+    | { type: 'motionDebug'; enabled: boolean }
     | ({ type: 'docState' } & PreviewDocStatePayload)
 ): void {
   iframeEl.value?.contentWindow?.postMessage({ source: OUTBOUND_SOURCE, ...payload }, '*')
@@ -167,27 +220,142 @@ function postSelection(): void {
   postIframe({ type: 'select', id })
 }
 
+function setMotionDebugEnabled(enabled: boolean): void {
+  motionDebugEnabled.value = enabled
+  motionDebugError.value = ''
+  if (enabled) {
+    motionDebugStatus.value = 'waiting'
+  } else {
+    motionDebugStatus.value = 'idle'
+    motionDebugSnapshot.value = null
+  }
+  postIframe({ type: 'motionDebug', enabled })
+}
+
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return isUnknownRecord(value) ? value : null
+}
+
+function asText(value: unknown, fallback = '—'): string {
+  return typeof value === 'string' && value !== '' ? value : fallback
+}
+
+function asFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function normalizeMotionDebugEntry(value: unknown): MotionDebugEntry | null {
+  const entry = asRecord(value)
+  if (!entry) return null
+  return {
+    nodeId: asText(entry.nodeId),
+    trackId: asText(entry.trackId),
+    trigger: asText(entry.trigger),
+    source: asText(entry.source),
+    playState: asText(entry.playState),
+    progress: asFiniteNumber(entry.progress),
+    currentTime: asFiniteNumber(entry.currentTime),
+    token: typeof entry.token === 'string' ? entry.token : null,
+    reducedMotion: typeof entry.reducedMotion === 'string' ? entry.reducedMotion : null,
+    exit: typeof entry.exit === 'string' ? entry.exit : null,
+    timing: asRecord(entry.timing)
+  }
+}
+
+function normalizeMotionDebugSnapshot(value: unknown): MotionDebugSnapshot {
+  const snapshot = asRecord(value)
+  const entries = Array.isArray(snapshot?.entries)
+    ? snapshot.entries
+        .map(normalizeMotionDebugEntry)
+        .filter((entry): entry is MotionDebugEntry => entry !== null)
+    : []
+  return {
+    capturedAt: asFiniteNumber(snapshot?.capturedAt),
+    activeAnimationCount: asFiniteNumber(snapshot?.activeAnimationCount),
+    entries
+  }
+}
+
+function formatProgress(value: number | null): string {
+  if (value === null) return '—'
+  return `${Math.round(value * 100)}%`
+}
+
+function formatCurrentTime(value: number | null): string {
+  if (value === null) return '—'
+  return `${Math.round(value)} ms`
+}
+
+const motionDebugMessage = computed(() => {
+  switch (motionDebugStatus.value) {
+    case 'idle':
+      return 'Motion Debug is off.'
+    case 'waiting':
+      return 'Waiting for Motion runtime…'
+    case 'unavailable':
+      return 'No Motion runtime is available in this preview.'
+    case 'error':
+      return motionDebugError.value || 'Motion runtime inspection failed.'
+    case 'ready': {
+      if (!motionDebugSnapshot.value?.entries.length) {
+        return 'Motion runtime is ready; no tracks are registered.'
+      }
+      const trackSummary =
+        motionDebugSnapshot.value.entries.length > 100
+          ? `Showing 100 / ${motionDebugSnapshot.value.entries.length} Motion tracks`
+          : `${motionDebugSnapshot.value.entries.length} Motion track${motionDebugSnapshot.value.entries.length === 1 ? '' : 's'}`
+      const activeAnimationCount = motionDebugSnapshot.value.activeAnimationCount
+      return activeAnimationCount === null
+        ? trackSummary
+        : `${trackSummary} · ${activeAnimationCount} active runtime animation${activeAnimationCount === 1 ? '' : 's'}`
+    }
+  }
+})
+
+const visibleMotionDebugEntries = computed(
+  () => motionDebugSnapshot.value?.entries.slice(0, 100) ?? []
+)
+
 function onIframeLoad(): void {
   // After every iframe reload the bridge starts fresh — replay current
   // editor state (target page + selection) so the iframe doesn't sit on
   // the default `/` route or with a stale overlay.
+  resetMotionDebugForReload()
   postNavigateToCurrent()
   postTheme()
   postSelection()
+  if (motionDebugEnabled.value) postIframe({ type: 'motionDebug', enabled: true })
 }
 
 let unsubscribeSelection: (() => void) | null = null
 
+function handleMotionDebugMessage(data: PreviewMessage): void {
+  if (!motionDebugEnabled.value) return
+  if (data.status === 'ready') {
+    motionDebugStatus.value = 'ready'
+    motionDebugError.value = ''
+    motionDebugSnapshot.value = normalizeMotionDebugSnapshot(data.snapshot)
+    return
+  }
+  if (data.status === 'unavailable') {
+    motionDebugStatus.value = 'unavailable'
+    motionDebugSnapshot.value = null
+    return
+  }
+  if (data.status === 'error') {
+    motionDebugStatus.value = 'error'
+    motionDebugError.value = asText(data.error, 'Motion runtime inspection failed.')
+    motionDebugSnapshot.value = null
+  }
+}
+
 useEventListener(window, 'message', (event: MessageEvent) => {
   if (event.source !== iframeEl.value?.contentWindow) return
-  const data = event.data as {
-    source?: unknown
-    type?: unknown
-    id?: unknown
-    route?: unknown
-    name?: unknown
-    value?: unknown
-  } | null
+  const data = event.data as PreviewMessage | null
   if (!data || data.source !== INBOUND_SOURCE) return
 
   // §7 step 4 walker concern: dispatch on `type` must stay exhaustive.
@@ -220,7 +388,10 @@ useEventListener(window, 'message', (event: MessageEvent) => {
       name: data.name,
       value: data.value as PreviewDocStatePayload['value']
     })
+    return
   }
+
+  if (data.type === 'motionDebug') handleMotionDebugMessage(data)
 })
 
 // §7 decision #4: switching pages just navigates the iframe — no recompile
@@ -252,6 +423,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (motionDebugEnabled.value) postIframe({ type: 'motionDebug', enabled: false })
   unsubscribeSelection?.()
   unsubscribeSelection = null
   collab?.onPreviewDocState(null)
@@ -312,6 +484,19 @@ onBeforeUnmount(() => {
           class="h-6 w-20 rounded border border-border bg-input px-1 text-xs text-surface"
         />
         <DeployControls />
+        <Tip label="Inspect Motion runtime tracks">
+          <button
+            type="button"
+            data-test-id="lowcode-preview-motion-debug-toggle"
+            aria-controls="lowcode-preview-motion-debug"
+            :aria-pressed="motionDebugEnabled"
+            class="h-6 rounded px-2 text-xs outline-none transition-colors hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent"
+            :class="motionDebugEnabled ? 'bg-hover text-surface' : 'text-muted'"
+            @click="setMotionDebugEnabled(!motionDebugEnabled)"
+          >
+            Motion
+          </button>
+        </Tip>
         <Tip :label="url ? `Reload (${url})` : undefined">
           <button
             v-if="url"
@@ -337,22 +522,107 @@ onBeforeUnmount(() => {
         </Tip>
       </div>
     </div>
-    <div class="relative flex-1 bg-white">
-      <iframe
-        v-if="url"
-        :key="iframeKey"
-        ref="iframeEl"
-        :src="url"
-        class="absolute inset-0 size-full border-0"
-        aria-label="lowcode preview"
-        @load="onIframeLoad"
-      />
-      <div
-        v-else
-        class="flex h-full items-center justify-center px-4 text-center text-xs text-muted"
-      >
-        {{ statusLabel }}
+    <div class="flex min-h-0 flex-1 flex-col bg-white">
+      <div class="relative min-h-0 flex-1">
+        <iframe
+          v-if="url"
+          :key="iframeKey"
+          ref="iframeEl"
+          :src="url"
+          class="absolute inset-0 size-full border-0"
+          aria-label="lowcode preview"
+          @load="onIframeLoad"
+        />
+        <div
+          v-else
+          class="flex h-full items-center justify-center px-4 text-center text-xs text-muted"
+        >
+          {{ statusLabel }}
+        </div>
       </div>
+      <section
+        v-if="motionDebugEnabled"
+        id="lowcode-preview-motion-debug"
+        data-test-id="lowcode-preview-motion-debug"
+        aria-label="Motion Debug"
+        class="max-h-48 shrink-0 overflow-auto border-t border-border bg-panel text-xs text-surface"
+      >
+        <div class="sticky top-0 flex items-center justify-between bg-panel px-2 py-1.5">
+          <h2 class="font-medium">Motion Debug</h2>
+          <span class="text-muted" aria-live="polite">{{ motionDebugMessage }}</span>
+        </div>
+        <div
+          v-if="motionCompileError"
+          role="alert"
+          class="border-t border-border px-2 py-1.5 text-red-500"
+        >
+          Motion compile failed: {{ motionCompileError }}
+        </div>
+        <ul
+          v-if="motionWarnings.length"
+          aria-label="Motion compile warnings"
+          class="border-t border-border px-2 py-1.5 text-amber-500"
+        >
+          <li
+            v-for="(warning, index) in motionWarnings"
+            :key="`${warning.code}:${warning.nodeId ?? ''}:${index}`"
+          >
+            <code>{{ warning.code }}</code
+            >: {{ warning.message }}
+          </li>
+        </ul>
+        <table
+          v-if="motionDebugStatus === 'ready' && visibleMotionDebugEntries.length"
+          class="w-full table-fixed border-collapse text-left"
+          aria-label="Motion runtime tracks"
+        >
+          <thead class="text-muted">
+            <tr class="border-t border-border">
+              <th scope="col" class="w-2/5 px-2 py-1 font-normal">Node / track</th>
+              <th scope="col" class="w-1/5 px-2 py-1 font-normal">Trigger / source</th>
+              <th scope="col" class="w-1/5 px-2 py-1 font-normal">State</th>
+              <th scope="col" class="w-1/5 px-2 py-1 font-normal">Progress / time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(entry, index) in visibleMotionDebugEntries"
+              :key="`${entry.nodeId}:${entry.trackId}:${index}`"
+              class="border-t border-border align-top"
+            >
+              <td class="px-2 py-1">
+                <Tip :label="entry.nodeId">
+                  <span class="block truncate">{{ entry.nodeId }}</span>
+                </Tip>
+                <Tip :label="entry.trackId">
+                  <span class="block truncate text-muted">{{ entry.trackId }}</span>
+                </Tip>
+                <Tip v-if="entry.token" :label="entry.token">
+                  <span class="block truncate text-muted">{{ entry.token }}</span>
+                </Tip>
+              </td>
+              <td class="px-2 py-1">
+                <div>{{ entry.trigger }}</div>
+                <div class="text-muted">{{ entry.source }}</div>
+              </td>
+              <td class="px-2 py-1">
+                <div>{{ entry.playState }}</div>
+                <div v-if="entry.reducedMotion || entry.exit" class="text-muted">
+                  {{ entry.reducedMotion ?? '—' }} · {{ entry.exit ?? '—' }}
+                </div>
+              </td>
+              <td class="px-2 py-1">
+                <Tip :label="entry.timing ? JSON.stringify(entry.timing) : undefined">
+                  <span class="block">
+                    <span class="block">{{ formatProgress(entry.progress) }}</span>
+                    <span class="block text-muted">{{ formatCurrentTime(entry.currentTime) }}</span>
+                  </span>
+                </Tip>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </div>
   </aside>
 </template>

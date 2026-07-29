@@ -26,7 +26,12 @@
 import { watchDebounced } from '@vueuse/core'
 import { onBeforeUnmount, ref, type Ref } from 'vue'
 
-import { compile, withDefaults, type CompilerOptions } from '@open-pencil/compiler'
+import {
+  compile,
+  withDefaults,
+  type CompilerOptions,
+  type CompileWarning
+} from '@open-pencil/compiler'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { decodeTauriStderr } from '@/app/shell/ui'
@@ -219,10 +224,16 @@ export type PreviewStatus =
 
 interface UseCompileOnChangeResult {
   status: Ref<PreviewStatus>
+  motionWarnings: Ref<CompileWarning[]>
+  motionCompileError: Ref<string | null>
   /** Compile + push immediately, bypassing the sceneVersion debounce. Used by
    *  the PreviewPane reload button so the user can force a fresh build without
    *  waiting on the next debounced tick. No-op until the sidecar is ready. */
   forceRecompile: () => void
+}
+
+export function onlyMotionWarnings(warnings: readonly CompileWarning[]): CompileWarning[] {
+  return warnings.filter((warning) => warning.code.startsWith('motion-'))
 }
 
 /**
@@ -232,10 +243,12 @@ interface UseCompileOnChangeResult {
  */
 export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompileOnChangeResult {
   const status = ref<PreviewStatus>({ kind: 'idle' })
+  const motionWarnings = ref<CompileWarning[]>([])
+  const motionCompileError = ref<string | null>(null)
 
   if (!isTauri()) {
     status.value = { kind: 'disabled', reason: 'Preview is only available in the desktop app' }
-    return { status, forceRecompile: NOOP }
+    return { status, motionWarnings, motionCompileError, forceRecompile: NOOP }
   }
 
   const store = useEditorStore()
@@ -261,6 +274,8 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
           ...previewCompilerOverrides(settings)
         })
       })
+      motionWarnings.value = onlyMotionWarnings(out.warnings)
+      motionCompileError.value = null
       for (const w of out.warnings) {
         console.warn(`[preview] ${w.code}: ${w.message}`)
       }
@@ -268,6 +283,8 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         console.warn('[preview] update failed:', e)
       })
     } catch (e) {
+      motionWarnings.value = []
+      motionCompileError.value = e instanceof Error ? e.message : String(e)
       console.warn('[preview] compile failed:', e)
     }
   }
@@ -314,5 +331,5 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     }
   })
 
-  return { status, forceRecompile: recompileAndPush }
+  return { status, motionWarnings, motionCompileError, forceRecompile: recompileAndPush }
 }
