@@ -156,12 +156,16 @@
   "presenceEditingState": "Editing page state",
   "presenceEditingDocState": "Editing document state",
   "presenceEditingSupabaseConfig": "Editing the Supabase config",
+  "presenceEditingMotionTimeline": "Editing the Motion timeline of {node}",
+  "presenceEditingMotionSceneTimeline": "Editing the scene timeline of {node}",
   "presenceEditingNodeFallback": "an element",
   "presenceTargetState": "page state",
   "presenceTargetDocState": "document state",
   "presenceTargetSupabaseConfig": "the Supabase config",
   "presenceConflictToast": "A collaborator changed {target} — last save wins, review for lost changes.",
   "presenceConflictBanner": "A collaborator is also editing {target} — last save wins.",
+  "motionTimelineConflictCount": "{count} Motion merge notices",
+  "motionTimelineConflictClear": "Dismiss",
   "collabSignalingSelfHosted": "Self-hosted signaling",
   "collabSignalingSupabase": "Supabase Realtime signaling"
 }

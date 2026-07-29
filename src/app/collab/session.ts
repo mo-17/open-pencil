@@ -7,6 +7,10 @@ import * as Y from 'yjs'
 
 import { randomIndex } from '@open-pencil/core/random'
 
+import {
+  createMotionTimelineUndoManager,
+  MOTION_TIMELINES_DOC_KEY
+} from '@/app/collab/motion-timeline-yjs'
 import { connectCollabRoom } from '@/app/collab/room'
 import type { CollabState, PreviewDocStatePayload } from '@/app/collab/types'
 import { bindCollabGraphEvents, registerYjsObservers } from '@/app/collab/yjs-sync'
@@ -18,6 +22,8 @@ export type CollabRuntime = {
   awareness: awarenessProtocol.Awareness | null
   ynodes: Y.Map<Y.Map<unknown>> | null
   yimages: Y.Map<Uint8Array> | null
+  ymotions: Y.Map<Y.Map<unknown>> | null
+  motionUndoManager: Y.UndoManager | null
   room: Room | null
   persistence: IndexeddbPersistence | null
   connectedStore: EditorStore | null
@@ -32,31 +38,28 @@ export type CollabRuntime = {
   previewDocStateHandler: ((payload: PreviewDocStatePayload) => void) | null
 }
 
-type ConnectCollabSessionOptions = {
-  roomId: string
+interface CollabSessionSyncOptions {
   runtime: CollabRuntime
   state: Ref<CollabState>
-  store: EditorStore
-  disconnect: () => void
   updatePeersList: () => void
   tickFollow: () => void
   broadcastAwareness: () => void
   applyYjsToGraph: (events: Y.YEvent<Y.Map<unknown>>[]) => void
+  applyYjsMotionToGraph: (events: Y.YEvent<Y.Map<unknown>>[]) => void
   syncNodeToYjs: (nodeId: string) => void
+}
+
+interface ConnectCollabSessionOptions extends CollabSessionSyncOptions {
+  roomId: string
+  store: EditorStore
+  disconnect: () => void
   // Phase 3 §4.2 — room auth.
   key?: string
   onAuthError?: () => void
 }
 
-type CollabConnectionActionsOptions = {
-  runtime: CollabRuntime
-  state: Ref<CollabState>
+interface CollabConnectionActionsOptions extends CollabSessionSyncOptions {
   getStore: () => EditorStore
-  updatePeersList: () => void
-  tickFollow: () => void
-  broadcastAwareness: () => void
-  applyYjsToGraph: (events: Y.YEvent<Y.Map<unknown>>[]) => void
-  syncNodeToYjs: (nodeId: string) => void
   resetFollow: () => void
 }
 
@@ -66,6 +69,7 @@ type CollabSessionResources = {
   awareness: awarenessProtocol.Awareness | null
   persistence: IndexeddbPersistence | null
   ydoc: Y.Doc | null
+  motionUndoManager: Y.UndoManager | null
   unbindGraphEvents: (() => void) | null
   stopZoomWatch: (() => void) | null
   resetFollow: () => void
@@ -77,6 +81,8 @@ export function createCollabRuntime(): CollabRuntime {
     awareness: null,
     ynodes: null,
     yimages: null,
+    ymotions: null,
+    motionUndoManager: null,
     room: null,
     persistence: null,
     connectedStore: null,
@@ -96,7 +102,8 @@ export function createInitialCollabState(localName: string): CollabState {
     roomKey: null,
     peers: [],
     localName,
-    localColor: PEER_COLORS[randomIndex(PEER_COLORS.length)]
+    localColor: PEER_COLORS[randomIndex(PEER_COLORS.length)],
+    motionConflicts: []
   }
 }
 
@@ -108,6 +115,7 @@ export function createCollabConnectionActions({
   tickFollow,
   broadcastAwareness,
   applyYjsToGraph,
+  applyYjsMotionToGraph,
   syncNodeToYjs,
   resetFollow
 }: CollabConnectionActionsOptions) {
@@ -122,6 +130,7 @@ export function createCollabConnectionActions({
       tickFollow,
       broadcastAwareness,
       applyYjsToGraph,
+      applyYjsMotionToGraph,
       syncNodeToYjs,
       key,
       onAuthError
@@ -136,6 +145,7 @@ export function createCollabConnectionActions({
       awareness: runtime.awareness,
       persistence: runtime.persistence,
       ydoc: runtime.ydoc,
+      motionUndoManager: runtime.motionUndoManager,
       unbindGraphEvents: runtime.unbindGraphEvents,
       stopZoomWatch: runtime.stopZoomWatch,
       resetFollow
@@ -170,6 +180,7 @@ export function connectCollabSession({
   tickFollow,
   broadcastAwareness,
   applyYjsToGraph,
+  applyYjsMotionToGraph,
   syncNodeToYjs,
   key,
   onAuthError
@@ -183,6 +194,8 @@ export function connectCollabSession({
   runtime.awareness = new awarenessProtocol.Awareness(runtime.ydoc)
   runtime.ynodes = runtime.ydoc.getMap('nodes')
   runtime.yimages = runtime.ydoc.getMap('images')
+  runtime.ymotions = runtime.ydoc.getMap(MOTION_TIMELINES_DOC_KEY)
+  runtime.motionUndoManager = createMotionTimelineUndoManager(runtime.ymotions)
   runtime.persistence = new IndexeddbPersistence(`op-room-${roomId}`, runtime.ydoc)
 
   runtime.awareness.on('change', () => {
@@ -194,11 +207,13 @@ export function connectCollabSession({
     store,
     ynodes: runtime.ynodes,
     yimages: runtime.yimages,
+    ymotions: runtime.ymotions,
     getSuppressYjsEvents: () => runtime.suppressYjsEvents,
     setSuppressGraphSync: (value) => {
       runtime.suppressGraphSync = value
     },
-    applyYjsToGraph
+    applyYjsToGraph,
+    applyYjsMotionToGraph
   })
 
   const roomConnection = connectCollabRoom({
@@ -224,6 +239,7 @@ export function connectCollabSession({
     store,
     getYdoc: () => runtime.ydoc,
     getYnodes: () => runtime.ynodes,
+    getYmotions: () => runtime.ymotions,
     getSuppressGraphSync: () => runtime.suppressGraphSync,
     setSuppressYjsEvents: (value) => {
       runtime.suppressYjsEvents = value
@@ -241,6 +257,8 @@ export function resetCollabRuntime(runtime: CollabRuntime) {
   runtime.ydoc = null
   runtime.ynodes = null
   runtime.yimages = null
+  runtime.ymotions = null
+  runtime.motionUndoManager = null
   runtime.connectedStore = null
   runtime.sendPreviewDocState = null
   // Keep previewDocStateHandler — the PreviewPane registers it once and it is
@@ -252,6 +270,7 @@ export function resetCollabConnectionState(state: Ref<CollabState>) {
   state.value.roomId = null
   state.value.roomKey = null
   state.value.peers = []
+  state.value.motionConflicts = []
 }
 
 export function disposeCollabSessionResources(resources: CollabSessionResources) {
@@ -262,6 +281,7 @@ export function disposeCollabSessionResources(resources: CollabSessionResources)
   if (resources.persistence) {
     void resources.persistence.destroy()
   }
+  resources.motionUndoManager?.destroy()
   resources.ydoc?.destroy()
   resources.resetFollow()
   resources.store.state.remoteCursors = []

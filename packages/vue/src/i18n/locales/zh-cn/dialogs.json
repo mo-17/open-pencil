@@ -156,12 +156,16 @@
   "presenceEditingState": "正在编辑页面状态",
   "presenceEditingDocState": "正在编辑文档状态",
   "presenceEditingSupabaseConfig": "正在编辑 Supabase 配置",
+  "presenceEditingMotionTimeline": "正在编辑 {node} 的 Motion 时间轴",
+  "presenceEditingMotionSceneTimeline": "正在编辑 {node} 的场景时间轴",
   "presenceEditingNodeFallback": "某个元素",
   "presenceTargetState": "页面状态",
   "presenceTargetDocState": "文档状态",
   "presenceTargetSupabaseConfig": "Supabase 配置",
   "presenceConflictToast": "协作者改动了{target} —— 末次保存胜出,请检查是否有改动丢失。",
   "presenceConflictBanner": "协作者也在编辑{target} —— 末次保存胜出。",
+  "motionTimelineConflictCount": "{count} 条 Motion 合并提示",
+  "motionTimelineConflictClear": "忽略",
   "collabSignalingSelfHosted": "自建信令",
   "collabSignalingSupabase": "Supabase Realtime 信令"
 }

@@ -7,7 +7,7 @@ import type { Color } from '@open-pencil/scene-graph/primitives'
 import type { EditorStore } from '@/app/editor/active-store'
 import { PEER_COLORS, ROOM_ID_CHARS, ROOM_ID_LENGTH, ROOM_KEY_LENGTH } from '@/constants'
 
-import type { RemotePeer } from './types'
+import type { MotionTimelinePresence, RemotePeer } from './types'
 
 type PeerEditing = RemotePeer['editing']
 
@@ -18,6 +18,50 @@ type CursorState = {
   y: number
   pageId: string
   zoom?: number
+}
+
+const MAX_TIMELINE_PRESENCE_IDS = 32
+const MAX_TIMELINE_PLAYHEAD_MS = 120_000
+const SAFE_PRESENCE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$/
+
+function presenceIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return [
+    ...new Set(
+      value.filter((id): id is string => typeof id === 'string' && SAFE_PRESENCE_ID.test(id))
+    )
+  ]
+    .sort()
+    .slice(0, MAX_TIMELINE_PRESENCE_IDS)
+}
+
+/** Strict bounded awareness decoder. Malformed peers cannot grow reactive UI state. */
+export function parseMotionTimelinePresence(value: unknown): MotionTimelinePresence | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const scope = Reflect.get(value, 'scope')
+  const ownerId = Reflect.get(value, 'ownerId')
+  if (scope !== 'node' && scope !== 'scene') return undefined
+  if (typeof ownerId !== 'string' || !SAFE_PRESENCE_ID.test(ownerId)) return undefined
+  const rawPlayhead = Reflect.get(value, 'playheadMs')
+  const playheadMs =
+    typeof rawPlayhead === 'number' && Number.isFinite(rawPlayhead)
+      ? Math.min(MAX_TIMELINE_PLAYHEAD_MS, Math.max(0, rawPlayhead))
+      : 0
+  const rawSequenceId = Reflect.get(value, 'sequenceId')
+  const sequenceId =
+    typeof rawSequenceId === 'string' && SAFE_PRESENCE_ID.test(rawSequenceId)
+      ? rawSequenceId
+      : undefined
+  return {
+    scope,
+    ownerId,
+    ...(sequenceId ? { sequenceId } : {}),
+    trackIds: presenceIds(Reflect.get(value, 'trackIds')),
+    keyframeIds: presenceIds(Reflect.get(value, 'keyframeIds')),
+    cueIds: presenceIds(Reflect.get(value, 'cueIds')),
+    playheadMs,
+    playing: Reflect.get(value, 'playing') === true
+  }
 }
 
 export function buildRemotePeers(
@@ -36,7 +80,8 @@ export function buildRemotePeers(
       color: user.color || PEER_COLORS[clientId % PEER_COLORS.length],
       cursor: peerState.cursor as RemotePeer['cursor'],
       selection: peerState.selection as string[],
-      editing: peerState.editing as PeerEditing
+      editing: peerState.editing as PeerEditing,
+      motionTimeline: parseMotionTimelinePresence(peerState.motionTimeline)
     })
   })
 

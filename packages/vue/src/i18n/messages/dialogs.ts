@@ -176,6 +176,8 @@ export const dialogMessageDefaults = {
   presenceEditingState: 'Editing page state',
   presenceEditingDocState: 'Editing document state',
   presenceEditingSupabaseConfig: 'Editing the Supabase config',
+  presenceEditingMotionTimeline: params('Editing the Motion timeline of {node}'),
+  presenceEditingMotionSceneTimeline: params('Editing the scene timeline of {node}'),
   presenceEditingNodeFallback: 'an element',
   presenceTargetState: 'page state',
   presenceTargetDocState: 'document state',
@@ -184,6 +186,8 @@ export const dialogMessageDefaults = {
     'A collaborator changed {target} - last save wins, review for lost changes.'
   ),
   presenceConflictBanner: params('A collaborator is also editing {target} - last save wins.'),
+  motionTimelineConflictCount: params('{count} Motion merge notices'),
+  motionTimelineConflictClear: 'Dismiss',
   collabSignalingSelfHosted: 'Self-hosted signaling',
   collabSignalingSupabase: 'Supabase Realtime signaling'
 } as const

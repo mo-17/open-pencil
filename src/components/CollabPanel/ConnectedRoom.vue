@@ -43,6 +43,43 @@ const collab = useCollabPanelContext()
     {{ collab.signalingLabel }}
   </div>
 
+  <div
+    v-if="collab.motionConflictCount > 0"
+    data-test-id="motion-collab-conflicts"
+    class="mb-3 rounded border border-warning/30 bg-warning/10 px-2 py-1.5 text-[10px] text-warning"
+  >
+    <div class="flex items-center gap-2">
+      <icon-lucide-triangle-alert class="size-3 shrink-0" />
+      <span class="min-w-0 flex-1">
+        {{
+          collab.dialogs.motionTimelineConflictCount({ count: String(collab.motionConflictCount) })
+        }}
+      </span>
+      <button
+        type="button"
+        class="shrink-0 underline underline-offset-2"
+        @click="collab.clearMotionConflicts"
+      >
+        {{ collab.dialogs.motionTimelineConflictClear }}
+      </button>
+    </div>
+    <ul class="mt-1 max-h-28 space-y-1 overflow-y-auto border-t border-warning/20 pt-1">
+      <li
+        v-for="(conflict, index) in collab.motionConflicts"
+        :key="`${conflict.nodeId}:${conflict.trackId ?? ''}:${conflict.keyframeId ?? ''}:${conflict.code}:${index}`"
+        class="leading-4"
+        data-test-id="motion-collab-conflict-detail"
+      >
+        <p class="break-all font-medium">
+          {{ conflict.code }} · {{ conflict.nodeId }}
+          <template v-if="conflict.trackId"> · {{ conflict.trackId }}</template>
+          <template v-if="conflict.keyframeId"> · {{ conflict.keyframeId }}</template>
+        </p>
+        <p class="break-words text-muted">{{ conflict.message }}</p>
+      </li>
+    </ul>
+  </div>
+
   <!-- §4.4 — per-peer roster with what each collaborator is editing. -->
   <div class="mb-3 flex flex-col gap-1.5">
     <div class="flex items-center gap-2">

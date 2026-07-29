@@ -5,6 +5,10 @@ import { createFollowActions, generateRoomId, generateRoomKey } from '@/app/coll
 import type { DocStateConflictKind } from '@/app/collab/conflict'
 import { createLocalAwarenessActions } from '@/app/collab/local-awareness'
 import {
+  MOTION_TIMELINE_CRDT_LIMITS,
+  type MotionTimelineConflict
+} from '@/app/collab/motion-timeline-yjs'
+import {
   createCollabConnectionActions,
   createCollabRuntime,
   createInitialCollabState
@@ -12,6 +16,7 @@ import {
 import {
   DEFAULT_COLLAB_STATE,
   type CollabState,
+  type MotionTimelinePresence,
   type PresenceEditingKind,
   type PresenceEditingTarget,
   type PreviewDocStatePayload,
@@ -24,6 +29,7 @@ export { COLLAB_KEY, useCollabInjected } from '@/app/collab/context'
 export { DEFAULT_COLLAB_STATE }
 export type {
   CollabState,
+  MotionTimelinePresence,
   PresenceEditingKind,
   PresenceEditingTarget,
   PreviewDocStatePayload,
@@ -48,6 +54,7 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     updateCursor,
     updateSelection,
     updateEditingTarget,
+    updateMotionTimelinePresence,
     updatePeersList,
     setLocalName
   } = createLocalAwarenessActions({
@@ -64,6 +71,21 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     conflictHandler = handler ?? undefined
   }
 
+  function recordMotionConflict(conflict: MotionTimelineConflict): void {
+    const key = `${conflict.nodeId}:${conflict.trackId ?? ''}:${conflict.keyframeId ?? ''}:${conflict.code}`
+    const next = state.value.motionConflicts.filter(
+      (current) =>
+        `${current.nodeId}:${current.trackId ?? ''}:${current.keyframeId ?? ''}:${current.code}` !==
+        key
+    )
+    next.push(conflict)
+    state.value.motionConflicts = next.slice(-MOTION_TIMELINE_CRDT_LIMITS.maxConflicts)
+  }
+
+  function clearMotionTimelineConflicts(): void {
+    state.value.motionConflicts = []
+  }
+
   // Phase 3 §4.6 — preview runtime docState collaboration. The PreviewPane
   // relays bridge messages both ways: `sendPreviewDocState` broadcasts a local
   // change (no-op when disconnected); `onPreviewDocState` registers the receiver
@@ -75,16 +97,20 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     runtime.previewDocStateHandler = handler
   }
 
-  const { syncNodeToYjs, syncAllNodesToYjs, applyYjsToGraph } = createYjsGraphSync({
-    getStore: getActiveStore,
-    getYdoc: () => runtime.ydoc,
-    getYnodes: () => runtime.ynodes,
-    getYimages: () => runtime.yimages,
-    setSuppressYjsEvents: (value) => {
-      runtime.suppressYjsEvents = value
-    },
-    getConflictHandler: () => conflictHandler
-  })
+  const { syncNodeToYjs, syncAllNodesToYjs, applyYjsToGraph, applyYjsMotionToGraph } =
+    createYjsGraphSync({
+      getStore: getActiveStore,
+      getYdoc: () => runtime.ydoc,
+      getYnodes: () => runtime.ynodes,
+      getYimages: () => runtime.yimages,
+      getYmotions: () => runtime.ymotions,
+      getSuppressYjsEvents: () => runtime.suppressYjsEvents,
+      setSuppressYjsEvents: (value) => {
+        runtime.suppressYjsEvents = value
+      },
+      getConflictHandler: () => conflictHandler,
+      getMotionConflictHandler: () => recordMotionConflict
+    })
   const { connect, disconnect } = createCollabConnectionActions({
     runtime,
     state,
@@ -93,6 +119,7 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     tickFollow,
     broadcastAwareness,
     applyYjsToGraph,
+    applyYjsMotionToGraph,
     syncNodeToYjs,
     resetFollow
   })
@@ -104,10 +131,21 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     const key = generateRoomKey()
     connect(roomId, key)
     syncAllNodesToYjs()
+    // Seeding a new room establishes its baseline; the first collaborative
+    // undo must target a user edit instead of deleting the imported timeline.
+    runtime.motionUndoManager?.clear()
     return { roomId, key }
   }
 
   tryOnScopeDispose(disconnect)
+
+  function undoMotionTimeline(): void {
+    runtime.motionUndoManager?.undo()
+  }
+
+  function redoMotionTimeline(): void {
+    runtime.motionUndoManager?.redo()
+  }
 
   return {
     state,
@@ -119,7 +157,11 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     updateCursor,
     updateSelection,
     updateEditingTarget,
+    updateMotionTimelinePresence,
     onDocStateConflict,
+    clearMotionTimelineConflicts,
+    undoMotionTimeline,
+    redoMotionTimeline,
     sendPreviewDocState,
     onPreviewDocState,
     setLocalName,

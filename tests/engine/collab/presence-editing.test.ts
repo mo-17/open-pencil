@@ -68,4 +68,53 @@ describe('buildRemotePeers — editing target (Phase 3 §4.4)', () => {
 
     expect(peers).toHaveLength(0)
   })
+
+  test('surfaces bounded Motion timeline playhead and selection presence', () => {
+    const states = new Map<number, Record<string, unknown>>([
+      [
+        REMOTE_CLIENT,
+        {
+          user: user('Dana'),
+          motionTimeline: {
+            scope: 'node',
+            ownerId: 'node-42',
+            trackIds: ['enter', 'enter'],
+            keyframeIds: ['kf_a'],
+            cueIds: [],
+            playheadMs: 240,
+            playing: true
+          }
+        }
+      ]
+    ])
+
+    expect(buildRemotePeers(states, LOCAL_CLIENT)[0].motionTimeline).toEqual({
+      scope: 'node',
+      ownerId: 'node-42',
+      trackIds: ['enter'],
+      keyframeIds: ['kf_a'],
+      cueIds: [],
+      playheadMs: 240,
+      playing: true
+    })
+  })
+
+  test('drops malformed Motion awareness instead of growing peer state', () => {
+    const states = new Map<number, Record<string, unknown>>([
+      [
+        REMOTE_CLIENT,
+        {
+          user: user('Eve'),
+          motionTimeline: {
+            scope: 'node',
+            ownerId: '../unsafe',
+            trackIds: Array.from({ length: 1_000 }, () => 'x'),
+            playheadMs: Number.POSITIVE_INFINITY
+          }
+        }
+      ]
+    ])
+
+    expect(buildRemotePeers(states, LOCAL_CLIENT)[0].motionTimeline).toBeUndefined()
+  })
 })

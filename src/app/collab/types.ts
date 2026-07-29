@@ -1,5 +1,7 @@
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
+import type { MotionTimelineConflict } from '@/app/collab/motion-timeline-yjs'
+
 /** Phase 3 §4.4 — the lowcode property panel a peer is actively editing.
  *  One per Lowcode/*.vue panel. Drives "who's editing what" presence. */
 export type PresenceEditingKind =
@@ -24,6 +26,17 @@ export interface PresenceEditingTarget {
   nodeId?: string
 }
 
+export interface MotionTimelinePresence {
+  scope: 'node' | 'scene'
+  ownerId: string
+  sequenceId?: string
+  trackIds: string[]
+  keyframeIds: string[]
+  cueIds: string[]
+  playheadMs: number
+  playing: boolean
+}
+
 export interface RemotePeer {
   clientId: number
   name: string
@@ -32,6 +45,8 @@ export interface RemotePeer {
   selection?: string[]
   /** Phase 3 §4.4 — the lowcode panel this peer is editing, if any. */
   editing?: PresenceEditingTarget
+  /** Ephemeral timeline selection/playhead; never persisted into the document. */
+  motionTimeline?: MotionTimelinePresence
 }
 
 /** Phase 3 §4.6 — preview runtime-state collaboration. JSON-serializable so it
@@ -57,6 +72,8 @@ export interface CollabState {
   peers: RemotePeer[]
   localName: string
   localColor: Color
+  /** Bounded, deduplicated deterministic-resolution notices for Motion CRDT merges. */
+  motionConflicts: MotionTimelineConflict[]
 }
 
 export const DEFAULT_COLLAB_STATE: CollabState = {
@@ -65,5 +82,6 @@ export const DEFAULT_COLLAB_STATE: CollabState = {
   roomKey: null,
   peers: [],
   localName: '',
-  localColor: { r: 0.5, g: 0.5, b: 0.5, a: 1 }
+  localColor: { r: 0.5, g: 0.5, b: 0.5, a: 1 },
+  motionConflicts: []
 }

@@ -108,7 +108,26 @@ function createCollabPanelContext() {
   // §4.4 — "Editing events of Button1" / "Editing document state", or null when
   // the peer isn't editing a lowcode panel.
   function peerEditingLabel(peer: RemotePeer): string | null {
-    return presenceEditingLabel(peer, dialogs.value, (id) => editor.graph.getNode(id)?.name)
+    const lowcode = presenceEditingLabel(
+      peer,
+      dialogs.value,
+      (id) => editor.graph.getNode(id)?.name
+    )
+    if (lowcode) return lowcode
+    const timeline = peer.motionTimeline
+    if (!timeline) return null
+    const node =
+      editor.graph.getNode(timeline.ownerId)?.name ?? dialogs.value.presenceEditingNodeFallback
+    return timeline.scope === 'scene'
+      ? dialogs.value.presenceEditingMotionSceneTimeline({ node })
+      : dialogs.value.presenceEditingMotionTimeline({ node })
+  }
+
+  const motionConflictCount = computed(() => state.value.motionConflicts.length)
+  const motionConflicts = computed(() => state.value.motionConflicts)
+
+  function clearMotionConflicts() {
+    collab?.clearMotionTimelineConflicts()
   }
 
   // §4.3 — signaling path is fixed at editor build time (VITE_COLLAB_*), so
@@ -139,6 +158,9 @@ function createCollabPanelContext() {
     disconnect,
     toggleFollowPeer,
     peerEditingLabel,
+    motionConflictCount,
+    motionConflicts,
+    clearMotionConflicts,
     signalingLabel
   }
 }
