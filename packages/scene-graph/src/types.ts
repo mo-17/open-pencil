@@ -1,4 +1,11 @@
-import type { MotionSpec } from './motion'
+import type {
+  GeneratedEffectSpecV1,
+  MotionDriverSpecV1,
+  MotionSceneSpec,
+  MotionSpec,
+  MotionTransitionKey,
+  PrototypeSpecV1
+} from './motion'
 import type { Color, Matrix, Rect, Vector } from './primitives'
 
 export interface SceneGraphEvents {
@@ -510,8 +517,18 @@ export interface SceneNode {
   gridStyleId: string | null
   sharedStyleType: SharedStyleType | null
   opacity: number
-  /** Declarative, bounded MotionSpec v1. Absent nodes retain static behavior. */
+  /** Declarative, bounded node-local MotionSpec. Absent nodes retain static behavior. */
   motion?: MotionSpec
+  /** Optional page/frame choreography referencing descendant node-local Motion tracks. */
+  motionScene?: MotionSceneSpec
+  /** Optional page/frame continuous inputs referencing node-local Motion tracks. */
+  motionDrivers?: MotionDriverSpecV1
+  /** Optional source-node prototype connections, independent from lowcode events. */
+  prototype?: PrototypeSpecV1
+  /** Explicit stable identity used only by OpenPencil Smart Match. */
+  transitionKey?: MotionTransitionKey
+  /** Strict allowlisted generated visual layer. Never contains shader/program source. */
+  generatedEffect?: GeneratedEffectSpecV1
 
   cornerRadius: number
   topLeftRadius: number
@@ -1265,6 +1282,47 @@ export interface CallWorkflowAction {
   args?: Record<string, string>
 }
 
+/** Play one valid MotionSpec authored on another design node. Omitting
+ *  `trackId` applies the action to every track on the target node. Runtime
+ *  playback is intentionally handled by the compiler / preview adapters; the
+ *  scene graph only owns this declarative low-code action reference. */
+export interface PlayMotionAction {
+  id: string
+  kind: 'playMotion'
+  targetNodeId: string
+  trackId?: string
+}
+
+/** Stop MotionSpec playback for a target node. Omitting `trackId` stops every
+ *  track on that node. */
+export interface StopMotionAction {
+  id: string
+  kind: 'stopMotion'
+  targetNodeId: string
+  trackId?: string
+}
+
+/** Toggle programmatic Motion playback for a target node. If a matching
+ * controlled track is active it is stopped; otherwise it is started. */
+export interface ToggleMotionAction {
+  id: string
+  kind: 'toggleMotion'
+  targetNodeId: string
+  trackId?: string
+}
+
+/** Pause a low-code workflow until matching programmatic Motion completes,
+ * is stopped, or reaches the optional timeout. `stopOnTimeout` cancels the
+ * matching tracks before the workflow continues. */
+export interface AwaitMotionAction {
+  id: string
+  kind: 'awaitMotion'
+  targetNodeId: string
+  trackId?: string
+  timeoutMs?: number
+  stopOnTimeout?: boolean
+}
+
 /** Phase 1 §7.4: discriminated union so the compiler can exhaustively
  *  dispatch on `kind` and the editor UI can render per-kind inputs.
  *  Phase 2 §3 adds `ApiCallAction`; Phase 3 §2 adds Supabase {Query,Mutation};
@@ -1291,6 +1349,10 @@ export type ActionDef =
   | StripeCheckoutAction
   | StripeCustomerPortalAction
   | CallWorkflowAction
+  | PlayMotionAction
+  | StopMotionAction
+  | ToggleMotionAction
+  | AwaitMotionAction
 
 export type ActionKind = ActionDef['kind']
 

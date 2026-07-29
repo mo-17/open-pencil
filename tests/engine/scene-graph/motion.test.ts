@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   MOTION_LIMITS,
+  MOTION_PRESET_CATEGORIES,
   MOTION_PRESET_IDS,
   MOTION_PRESET_REGISTRY,
   MotionValidationError,
@@ -67,6 +68,16 @@ describe('MotionSpec v1 validation', () => {
     expect(parsed.tracks[0].timing).not.toBe(input.tracks[0].timing)
     expect(validateMotionSpec(input)).toEqual({ success: true, value: parsed })
     expect(isMotionSpec(input)).toBe(true)
+  })
+
+  test('accepts explicit page entry and exit choreography triggers', () => {
+    for (const trigger of ['pageEnter', 'pageExit'] as const) {
+      const spec: MotionSpec = {
+        version: 1,
+        tracks: [{ ...validTrack(trigger), trigger }]
+      }
+      expect(parseMotionSpec(spec).tracks[0]?.trigger).toBe(trigger)
+    }
   })
 
   test('accepts every documented numeric boundary', () => {
@@ -251,6 +262,7 @@ describe('MotionSpec v1 validation', () => {
 
 describe('built-in motion presets', () => {
   test('exports and validates all eight deterministic presets', () => {
+    expect([...MOTION_PRESET_CATEGORIES]).toEqual(['entrance', 'interaction', 'emphasis', 'loop'])
     expect([...MOTION_PRESET_IDS]).toEqual([
       'fade-in',
       'slide-up',
@@ -271,6 +283,9 @@ describe('built-in motion presets', () => {
       expect(first).not.toBe(second)
       expect(first.tracks).not.toBe(second.tracks)
       expect(first.tracks[0].keyframes).not.toBe(second.tracks[0].keyframes)
+      expect(MOTION_PRESET_CATEGORIES).toContain(MOTION_PRESET_REGISTRY[id].category)
+      expect(MOTION_PRESET_REGISTRY[id].keywords.length).toBeGreaterThan(0)
+      expect(Object.isFrozen(MOTION_PRESET_REGISTRY[id].keywords)).toBe(true)
       expect(first.preset).toEqual({
         id,
         version: MOTION_PRESET_REGISTRY[id].version,

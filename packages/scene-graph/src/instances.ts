@@ -1,7 +1,14 @@
 import type { SceneGraph, SceneNode } from './'
 import { cloneNodeProps, copyEffects, copyFills, copyStrokes, copyStyleRuns } from './copy'
 import type { NodeCloneMode } from './copy'
-import { cloneMotionSpec } from './motion'
+import {
+  cloneGeneratedEffectSpec,
+  cloneMotionDriverSpec,
+  cloneMotionSceneSpec,
+  cloneMotionSpec,
+  clonePrototypeSpec,
+  parseMotionTransitionKey
+} from './motion'
 
 export type { NodeCloneMode } from './copy'
 
@@ -44,8 +51,22 @@ const INSTANCE_SYNC_PROPS: (keyof SceneNode)[] = [
   'borderLeftWeight',
   'boundVariables',
   'variableModes',
-  'motion'
+  'motion',
+  'motionScene',
+  'motionDrivers',
+  'prototype',
+  'transitionKey',
+  'generatedEffect'
 ]
+
+const OPTIONAL_INSTANCE_SYNC_PROPS = [
+  'motion',
+  'motionScene',
+  'motionDrivers',
+  'prototype',
+  'transitionKey',
+  'generatedEffect'
+] as const satisfies readonly (keyof SceneNode)[]
 
 function setSceneProp<K extends keyof SceneNode>(
   target: Partial<SceneNode>,
@@ -55,11 +76,56 @@ function setSceneProp<K extends keyof SceneNode>(
   target[key] = value
 }
 
+function copyOptionalInstanceProp(
+  target: Partial<SceneNode> | SceneNode,
+  source: SceneNode,
+  key: keyof SceneNode
+): boolean {
+  switch (key) {
+    case 'motion':
+      if (source.motion) setSceneProp(target, key, cloneMotionSpec(source.motion))
+      else Reflect.deleteProperty(target, key)
+      return true
+    case 'motionScene':
+      if (source.motionScene) setSceneProp(target, key, cloneMotionSceneSpec(source.motionScene))
+      else Reflect.deleteProperty(target, key)
+      return true
+    case 'motionDrivers':
+      if (source.motionDrivers) {
+        setSceneProp(target, key, cloneMotionDriverSpec(source.motionDrivers))
+      } else {
+        Reflect.deleteProperty(target, key)
+      }
+      return true
+    case 'prototype':
+      if (source.prototype) setSceneProp(target, key, clonePrototypeSpec(source.prototype))
+      else Reflect.deleteProperty(target, key)
+      return true
+    case 'transitionKey':
+      if (source.transitionKey !== undefined) {
+        setSceneProp(target, key, parseMotionTransitionKey(source.transitionKey))
+      } else {
+        Reflect.deleteProperty(target, key)
+      }
+      return true
+    case 'generatedEffect':
+      if (source.generatedEffect) {
+        setSceneProp(target, key, cloneGeneratedEffectSpec(source.generatedEffect))
+      } else {
+        Reflect.deleteProperty(target, key)
+      }
+      return true
+    default:
+      return false
+  }
+}
+
 function copyProp(
   target: Partial<SceneNode> | SceneNode,
   source: SceneNode,
   key: keyof SceneNode
 ): void {
+  if (copyOptionalInstanceProp(target, source, key)) return
   if (key === 'fills') {
     setSceneProp(target, key, copyFills(source.fills))
   } else if (key === 'strokes') {
@@ -76,9 +142,6 @@ function copyProp(
   } else if (key === 'gridPosition') {
     // Shallow copy the grid position object — all fields are primitives
     setSceneProp(target, key, source.gridPosition ? { ...source.gridPosition } : null)
-  } else if (key === 'motion') {
-    if (source.motion) setSceneProp(target, key, cloneMotionSpec(source.motion))
-    else Reflect.deleteProperty(target, key)
   } else {
     const value = source[key]
     setSceneProp(target, key, Array.isArray(value) ? structuredClone(value) : value)
@@ -89,8 +152,11 @@ function cloneChildrenWithMapping(
   graph: SceneGraph,
   sourceParentId: string,
   destParentId: string,
-  mode: NodeCloneMode = 'deep'
+  mode: NodeCloneMode = 'deep',
+  idMap?: Map<string, string>
 ): void {
+  const ownsIdMap = idMap === undefined
+  const cloneIdMap = idMap ?? new Map<string, string>()
   const sourceParent = graph.nodes.get(sourceParentId)
   if (!sourceParent) return
 
@@ -99,22 +165,28 @@ function cloneChildrenWithMapping(
     if (!src) continue
 
     const clone = graph.createNode(src.type, destParentId, cloneNodeProps(src, childId, mode))
+    cloneIdMap.set(src.id, clone.id)
 
     if (src.childIds.length > 0) {
-      cloneChildrenWithMapping(graph, childId, clone.id, mode)
+      cloneChildrenWithMapping(graph, childId, clone.id, mode, cloneIdMap)
     }
   }
+
+  if (ownsIdMap) graph.remapClonedNodeReferences(cloneIdMap)
 }
 
 function syncChildren(
   graph: SceneGraph,
   compParentId: string,
   instParentId: string,
-  overrides: Record<string, unknown>
+  overrides: Record<string, unknown>,
+  idMap: Map<string, string>
 ): void {
   const compParent = graph.nodes.get(compParentId)
   const instParent = graph.nodes.get(instParentId)
   if (!compParent || !instParent) return
+
+  idMap.set(compParentId, instParentId)
 
   const instChildMap = new Map<string, SceneNode>()
   for (const childId of instParent.childIds) {
@@ -123,7 +195,10 @@ function syncChildren(
     const sourceComponentId = overrides[`${child.id}:sourceComponentId`]
     const mappedComponentId =
       typeof sourceComponentId === 'string' ? sourceComponentId : child.componentId
-    if (mappedComponentId) instChildMap.set(mappedComponentId, child)
+    if (mappedComponentId) {
+      instChildMap.set(mappedComponentId, child)
+      idMap.set(mappedComponentId, child.id)
+    }
   }
 
   for (const compChildId of compParent.childIds) {
@@ -131,8 +206,9 @@ function syncChildren(
       const src = graph.nodes.get(compChildId)
       if (!src) continue
       const clone = graph.createNode(src.type, instParentId, cloneNodeProps(src, compChildId))
+      idMap.set(src.id, clone.id)
       if (src.childIds.length > 0) {
-        cloneChildrenWithMapping(graph, compChildId, clone.id)
+        cloneChildrenWithMapping(graph, compChildId, clone.id, 'deep', idMap)
       }
       instChildMap.set(compChildId, clone)
     }
@@ -163,7 +239,7 @@ function syncChildren(
     }
 
     if (compChild.childIds.length > 0 && !(`${instChild.id}:componentId` in overrides)) {
-      syncChildren(graph, compChildId, instChild.id, overrides)
+      syncChildren(graph, compChildId, instChild.id, overrides, idMap)
     }
   }
 
@@ -204,7 +280,9 @@ export function createInstance(
 
   const instance = graph.createNode('INSTANCE', parentId, { ...props, ...overrides })
 
-  cloneChildrenWithMapping(graph, component.id, instance.id)
+  const cloneIdMap = new Map([[component.id, instance.id]])
+  cloneChildrenWithMapping(graph, component.id, instance.id, 'deep', cloneIdMap)
+  graph.remapClonedNodeReferences(cloneIdMap)
 
   return instance
 }
@@ -218,7 +296,9 @@ export function populateInstanceChildren(
   const instance = graph.nodes.get(instanceId)
   const component = graph.nodes.get(componentId)
   if (!instance || !component || instance.type !== 'INSTANCE') return
-  cloneChildrenWithMapping(graph, componentId, instanceId, mode)
+  const cloneIdMap = new Map([[componentId, instanceId]])
+  cloneChildrenWithMapping(graph, componentId, instanceId, mode, cloneIdMap)
+  graph.remapClonedNodeReferences(cloneIdMap)
 }
 
 export function swapInstanceComponent(
@@ -232,10 +312,10 @@ export function swapInstanceComponent(
 
   const previousComponent = instance.componentId ? graph.nodes.get(instance.componentId) : undefined
   const updates: Partial<SceneNode> = { componentId }
-  const shouldClearMotion =
-    instance.motion !== undefined &&
-    component.motion === undefined &&
-    !('motion' in instance.overrides)
+  const fieldsToClear = OPTIONAL_INSTANCE_SYNC_PROPS.filter(
+    (key) =>
+      instance[key] !== undefined && component[key] === undefined && !(key in instance.overrides)
+  )
   for (const key of INSTANCE_SYNC_PROPS) {
     if (key in instance.overrides) continue
     copyProp(updates, component, key)
@@ -245,8 +325,10 @@ export function swapInstanceComponent(
   const childIds = Array.from(instance.childIds)
   for (const childId of childIds) graph.deleteNode(childId)
   graph.updateNode(instanceId, updates)
-  if (shouldClearMotion) graph.clearNodeFields(instanceId, ['motion'])
-  cloneChildrenWithMapping(graph, componentId, instanceId)
+  if (fieldsToClear.length > 0) graph.clearNodeFields(instanceId, fieldsToClear)
+  const cloneIdMap = new Map([[componentId, instanceId]])
+  cloneChildrenWithMapping(graph, componentId, instanceId, 'deep', cloneIdMap)
+  graph.remapClonedNodeReferences(cloneIdMap)
 }
 
 export function syncInstances(graph: SceneGraph, componentId: string): void {
@@ -259,7 +341,9 @@ export function syncInstances(graph: SceneGraph, componentId: string): void {
       copyProp(instance, component, key)
     }
 
-    syncChildren(graph, component.id, instance.id, instance.overrides)
+    const cloneIdMap = new Map([[component.id, instance.id]])
+    syncChildren(graph, component.id, instance.id, instance.overrides, cloneIdMap)
+    graph.remapClonedNodeReferences(cloneIdMap)
   }
 }
 

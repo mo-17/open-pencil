@@ -382,6 +382,7 @@ function cloneSubtreeIntoGraph(
   const idMap = new Map<string, string>()
   const cloned = cloneSubtree(sourceGraph, targetGraph, sourceId, parentId, idMap)
   remapClonedComponentIds(sourceGraph, targetGraph, idMap)
+  targetGraph.remapClonedNodeReferences(idMap)
   return cloned
 }
 

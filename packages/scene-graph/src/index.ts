@@ -17,7 +17,15 @@ export { UndoManager, type UndoEntry, type UndoManagerOptions } from './undo'
 import { createNanoEvents } from 'nanoevents'
 
 import { removeStaleBindings } from './bindings'
-import { cloneNodeProps } from './copy'
+import {
+  cloneNodeProps,
+  remapClonedInstanceOverrides,
+  remapPendingInstanceOverrideReferences,
+  remapNodeLowcodeMotionActionTargets,
+  remapNodeMotionDriverReferences,
+  remapNodeMotionSceneTargets,
+  remapNodePrototypeTargets
+} from './copy'
 import { bindNodeEvents } from './events'
 import * as HitTest from './hit-test'
 import * as Instances from './instances'
@@ -581,8 +589,11 @@ export class SceneGraph {
   cloneTree(
     sourceId: string,
     parentId: string,
-    overrides: Partial<SceneNode> = {}
+    overrides: Partial<SceneNode> = {},
+    idMap?: Map<string, string>
   ): SceneNode | null {
+    const ownsIdMap = idMap === undefined
+    const cloneIdMap = idMap ?? new Map<string, string>()
     const src = this.nodes.get(sourceId)
     if (!src) return null
 
@@ -592,12 +603,47 @@ export class SceneGraph {
     // so props.source is SourceMetadata | undefined, but we know it's always set.
     props.source = { ...(props.source as SourceMetadata), id: null, orderKey: null }
     const clone = this.createNode(src.type, parentId, { ...props, ...overrides })
+    cloneIdMap.set(src.id, clone.id)
 
     for (const childId of src.childIds) {
-      this.cloneTree(childId, clone.id)
+      this.cloneTree(childId, clone.id, {}, cloneIdMap)
     }
 
+    if (ownsIdMap) this.remapClonedNodeReferences(cloneIdMap)
+
     return clone
+  }
+
+  /** Remap references whose targets were included in the same clone operation. */
+  remapClonedNodeReferences(idMap: ReadonlyMap<string, string>): void {
+    const resolveNodeId = (nodeId: string) => idMap.get(nodeId)
+    for (const cloneId of idMap.values()) {
+      const node = this.nodes.get(cloneId)
+      if (!node) continue
+      const lowcodeUpdates = remapNodeLowcodeMotionActionTargets(node, resolveNodeId)
+      const sceneUpdates = remapNodeMotionSceneTargets(node, resolveNodeId)
+      const driverUpdates = remapNodeMotionDriverReferences(node, resolveNodeId)
+      const prototypeUpdates = remapNodePrototypeTargets(node, resolveNodeId)
+      const overrideUpdates = remapClonedInstanceOverrides(node, idMap)
+      const pendingOverrideUpdates = remapPendingInstanceOverrideReferences(node, idMap)
+      if (
+        lowcodeUpdates ||
+        sceneUpdates ||
+        driverUpdates ||
+        prototypeUpdates ||
+        overrideUpdates ||
+        pendingOverrideUpdates
+      ) {
+        this.updateNode(cloneId, {
+          ...lowcodeUpdates,
+          ...sceneUpdates,
+          ...driverUpdates,
+          ...prototypeUpdates,
+          ...overrideUpdates,
+          ...pendingOverrideUpdates
+        })
+      }
+    }
   }
 
   createInstance(

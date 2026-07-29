@@ -20,6 +20,13 @@ export const MOTION_PRESET_IDS = Object.freeze([
 ] as const)
 
 export type MotionPresetId = (typeof MOTION_PRESET_IDS)[number]
+export const MOTION_PRESET_CATEGORIES = Object.freeze([
+  'entrance',
+  'interaction',
+  'emphasis',
+  'loop'
+] as const)
+export type MotionPresetCategory = (typeof MOTION_PRESET_CATEGORIES)[number]
 export type MotionPresetParameterName = 'durationMs' | 'delayMs' | 'distance' | 'intensity'
 export type MotionPresetParameters = Partial<Record<MotionPresetParameterName, number>>
 
@@ -32,6 +39,8 @@ export interface MotionPresetParameterDefinition {
 export interface MotionPresetDefinition {
   readonly id: MotionPresetId
   readonly version: 1
+  readonly category: MotionPresetCategory
+  readonly keywords: readonly string[]
   readonly parameters: Readonly<
     Partial<Record<MotionPresetParameterName, MotionPresetParameterDefinition>>
   >
@@ -51,9 +60,17 @@ function parameter(
 
 function presetDefinition(
   id: MotionPresetId,
+  category: MotionPresetCategory,
+  keywords: readonly string[],
   parameters: MotionPresetDefinition['parameters']
 ): MotionPresetDefinition {
-  return Object.freeze({ id, version: 1, parameters: Object.freeze(parameters) })
+  return Object.freeze({
+    id,
+    version: 1,
+    category,
+    keywords: Object.freeze([...keywords]),
+    parameters: Object.freeze(parameters)
+  })
 }
 
 const duration = (defaultValue: number) =>
@@ -64,38 +81,41 @@ const intensity = (max: number) => parameter(1, 0, max)
 
 export const MOTION_PRESET_REGISTRY: Readonly<Record<MotionPresetId, MotionPresetDefinition>> =
   Object.freeze({
-    'fade-in': presetDefinition('fade-in', { durationMs: duration(400), delayMs: delay() }),
-    'slide-up': presetDefinition('slide-up', {
+    'fade-in': presetDefinition('fade-in', 'entrance', ['fade', 'opacity', 'entrance'], {
+      durationMs: duration(400),
+      delayMs: delay()
+    }),
+    'slide-up': presetDefinition('slide-up', 'entrance', ['slide', 'up', 'entrance'], {
       durationMs: duration(500),
       delayMs: delay(),
       distance: distance(24)
     }),
-    'scale-in': presetDefinition('scale-in', {
+    'scale-in': presetDefinition('scale-in', 'entrance', ['scale', 'zoom', 'entrance'], {
       durationMs: duration(400),
       delayMs: delay(),
       intensity: intensity(10)
     }),
-    'bounce-in': presetDefinition('bounce-in', {
+    'bounce-in': presetDefinition('bounce-in', 'entrance', ['bounce', 'scale', 'entrance'], {
       durationMs: duration(650),
       delayMs: delay(),
       intensity: intensity(10)
     }),
-    'hover-lift': presetDefinition('hover-lift', {
+    'hover-lift': presetDefinition('hover-lift', 'interaction', ['hover', 'lift', 'interaction'], {
       durationMs: duration(180),
       delayMs: delay(),
       distance: distance(8)
     }),
-    press: presetDefinition('press', {
+    press: presetDefinition('press', 'interaction', ['press', 'tap', 'interaction'], {
       durationMs: duration(120),
       delayMs: delay(),
       intensity: intensity(10)
     }),
-    pulse: presetDefinition('pulse', {
+    pulse: presetDefinition('pulse', 'emphasis', ['pulse', 'emphasis', 'attention'], {
       durationMs: duration(1_600),
       delayMs: delay(),
       intensity: intensity(10)
     }),
-    float: presetDefinition('float', {
+    float: presetDefinition('float', 'loop', ['float', 'loop', 'ambient'], {
       durationMs: duration(2_500),
       delayMs: delay(),
       distance: distance(12)
