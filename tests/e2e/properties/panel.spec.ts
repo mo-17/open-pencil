@@ -50,7 +50,7 @@ test('appearance fields share control height and show variable actions', async (
   await expect(applyVariable).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
 
   await applyVariable.click()
-  const search = editor.page.getByPlaceholder('Search')
+  const search = editor.page.getByPlaceholder('Search…', { exact: true })
   const picker = editor.page.locator('[data-slot=content]').filter({ has: search })
   await expect(picker).toBeVisible()
   const triggerBox = expectDefined(await applyVariable.boundingBox(), 'variable trigger bounds')
@@ -540,8 +540,9 @@ test('bound NumberField detach edit is one undo step', async () => {
   expect(await readState()).toEqual({ radius: 0, binding: 'Radius/default' })
 
   await field.getByLabel('Apply variable').click()
-  await expect(editor.page.getByPlaceholder('Search')).toBeVisible()
-  await editor.page.getByPlaceholder('Search').press('Escape')
+  const search = editor.page.getByPlaceholder('Search…', { exact: true })
+  await expect(search).toBeVisible()
+  await search.press('Escape')
   expect(await readState()).toEqual({ radius: 0, binding: 'Radius/default' })
 
   await field.click({ position: { x: 40, y: 13 } })
