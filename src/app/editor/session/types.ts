@@ -1,6 +1,7 @@
 import { createDefaultEditorState, type EditorState } from '@open-pencil/core/editor'
 
 import type { NodeEditState } from '@/app/editor/vector-edit/types'
+import type { MotionPathEditSelection } from '@/app/motion-path/types'
 
 export function createInitialAppEditorState(pageId: string): AppEditorState {
   return {
@@ -17,6 +18,7 @@ export function createInitialAppEditorState(pageId: string): AppEditorState {
     cursorCanvasX: null,
     cursorCanvasY: null,
     nodeEditState: null,
+    motionPathEdit: null,
     numberFieldFocused: false
   }
 }
@@ -34,5 +36,6 @@ export type AppEditorState = EditorState & {
   cursorCanvasX: number | null
   cursorCanvasY: number | null
   nodeEditState: NodeEditState | null
+  motionPathEdit: MotionPathEditSelection | null
   numberFieldFocused: boolean
 }

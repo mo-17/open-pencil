@@ -31,6 +31,7 @@ import IconLucidePanelLeft from '~icons/lucide/panel-left'
 import IconLucidePanelRight from '~icons/lucide/panel-right'
 import IconLucidePanelTop from '~icons/lucide/panel-top'
 import CanvasMenu from './canvas/CanvasMenu.vue'
+import MotionPathOverlay from './canvas/MotionPathOverlay.vue'
 import NumberField from './inputs/NumberField.vue'
 
 const store = useEditorStore()
@@ -120,6 +121,7 @@ const cursor = computed(() => toolCursor(store.state.activeTool, cursorOverride.
           :style="{ cursor }"
           class="absolute inset-0 block size-full touch-none outline-none"
         />
+        <MotionPathOverlay />
         <Transition
           enter-active-class="transition-opacity duration-150"
           enter-from-class="opacity-0"

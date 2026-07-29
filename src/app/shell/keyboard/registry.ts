@@ -52,11 +52,27 @@ function opacityBindings(): ShortcutDefinition[] {
 
 const EDITOR_SHORTCUT_OVERLAY_SELECTOR =
   '[data-picker-content], [role="dialog"], [role="listbox"], [role="menu"]'
+const MOTION_PATH_HANDLE_SELECTOR = '[data-motion-path-handle]'
+const MOTION_PATH_LOCAL_KEYS = new Set([
+  'Escape',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown'
+])
 
 function originatedInOverlay(event: KeyboardEvent) {
   return event
     .composedPath()
     .some((target) => target instanceof Element && target.matches(EDITOR_SHORTCUT_OVERLAY_SELECTOR))
+}
+
+function originatedInMotionPathHandle(event: KeyboardEvent) {
+  return (
+    MOTION_PATH_LOCAL_KEYS.has(event.code) &&
+    event.target instanceof Element &&
+    event.target.closest(MOTION_PATH_HANDLE_SELECTOR) !== null
+  )
 }
 
 function hasOpenDismissableLayer() {
@@ -65,6 +81,7 @@ function hasOpenDismissableLayer() {
 
 function shouldIgnoreShortcut(event: KeyboardEvent, options: KeyboardShortcutOptions) {
   return (
+    originatedInMotionPathHandle(event) ||
     hasOpenDismissableLayer() ||
     originatedInOverlay(event) ||
     isEditing(event) ||
