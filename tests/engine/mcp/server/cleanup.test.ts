@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
-import { mkdir, rm } from 'node:fs/promises'
+import { lstat, mkdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { WebSocket } from 'ws'
 
 import { startServer, type ServerHandle } from '#mcp/server'
+import { removeStaleSocket } from '#mcp/transport/discovery'
 import { getDiscoveryPath } from '#mcp/transport/paths'
 
 import { socketRequest, type HealthResponse } from '#tests/helpers/mcp/server'
@@ -72,6 +73,45 @@ describe('MCP lifecycle failure cleanup', () => {
   })
 
   if (isUnix) {
+    test('removes an orphaned Unix socket left by a killed process', async () => {
+      const socketPath = testSocketPath()
+      expect(socketPath).toBeTruthy()
+      if (!socketPath) return
+      const readyPath = `${socketPath}.ready`
+      const script = `
+        import { writeFileSync } from 'node:fs'
+        import { createServer } from 'node:net'
+        const server = createServer()
+        server.listen(${JSON.stringify(socketPath)}, () => {
+          writeFileSync(${JSON.stringify(readyPath)}, 'ready')
+        })
+        setInterval(() => undefined, 1000)
+      `
+      const child = Bun.spawn([process.execPath, '-e', script], {
+        stdout: 'ignore',
+        stderr: 'inherit'
+      })
+
+      try {
+        const deadline = Date.now() + 5_000
+        while (!existsSync(readyPath) && Date.now() < deadline) await Bun.sleep(20)
+        expect(existsSync(readyPath)).toBe(true)
+        expect((await lstat(socketPath)).isSocket()).toBe(true)
+
+        child.kill('SIGKILL')
+        await child.exited
+        expect((await lstat(socketPath)).isSocket()).toBe(true)
+
+        await removeStaleSocket(socketPath)
+        await expect(lstat(socketPath)).rejects.toMatchObject({ code: 'ENOENT' })
+      } finally {
+        child.kill('SIGKILL')
+        await child.exited
+        await rm(readyPath, { force: true })
+        await rm(socketPath, { force: true })
+      }
+    }, 15_000)
+
     test('Unix socket listen failure rejects and does not leak the server', async () => {
       const socketPath = testSocketPath()
       expect(socketPath).toBeTruthy()

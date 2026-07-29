@@ -3,6 +3,7 @@ import { access, constants, lstat, readFile, rename, unlink, writeFile } from 'n
 import { Socket } from 'node:net'
 
 import { getDiscoveryPath, getSocketPath, platformHasUnixSockets } from '#mcp/transport/paths'
+import { isDeadSocketConnectError } from '#mcp/transport/socket-liveness'
 
 /**
  * Metadata written to the discovery file so clients can auto-locate
@@ -159,8 +160,9 @@ async function isSocketLiveViaTcp(socketPath: string): Promise<boolean> {
  * Direct Unix-socket connection probe. A server binds the socket before
  * writeDiscovery(), so isSocketLiveViaTcp() can return false during that
  * window. This probe connects directly to the socket path — a successful
- * connection or timeout means the socket is live; only ECONNREFUSED means
- * no process is listening.
+ * connection or timeout means the socket is live; ECONNREFUSED and ENOENT
+ * mean no process is listening. macOS can return ENOENT for an orphaned
+ * socket inode that is still visible in the filesystem.
  */
 function probeSocketLive(socketPath: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -177,8 +179,7 @@ function probeSocketLive(socketPath: string): Promise<boolean> {
     const timer = setTimeout(() => finish(true), 1000)
     socket.once('connect', () => finish(true))
     socket.once('error', (err) => {
-      const code = (err as NodeJS.ErrnoException).code
-      finish(code !== 'ECONNREFUSED')
+      finish(!isDeadSocketConnectError(err))
     })
     socket.connect(socketPath)
   })
