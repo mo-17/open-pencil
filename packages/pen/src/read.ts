@@ -27,10 +27,12 @@ import {
   mapTextAlign,
   mapTextAlignVertical,
   parseSize,
-  type PenDocument,
   type PenNode,
   type VarContext
 } from './convert'
+import { applyPenMetadata, applyPenOverrideMetadata, inheritPenMotion } from './read-metadata'
+import { registerPenSource } from './source'
+import { parsePenDocument } from './validation'
 
 function scaleVectorNetwork(vn: VectorNetwork, targetW: number, targetH: number): void {
   if (vn.vertices.length === 0) return
@@ -196,6 +198,7 @@ function applyRefProps(
   node.componentId = componentId
   const comp = graph.getNode(componentId)
   if (!comp) return
+  inheritPenMotion(node, comp, pen.metadata)
   if (pen.width === undefined) node.width = comp.width
   if (pen.height === undefined) node.height = comp.height
   if (pen.layout === undefined) inheritLayoutFromComp(node, pen, comp)
@@ -250,6 +253,7 @@ function createSceneNode(
   }
 
   const node = graph.createNode(mapNodeType(pen), parentId, overrides)
+  if (Object.hasOwn(pen, 'metadata')) applyPenMetadata(node, pen.metadata)
   if (isSeoMetadata(pen.lowcodeSeoMetadata)) node.lowcodeSeoMetadata = pen.lowcodeSeoMetadata
 
   if (pen.fill !== undefined) node.fills = convertFill(pen.fill, ctx, node)
@@ -350,7 +354,8 @@ function findCloneByNameFallback(
 function applyOverrideProps(
   target: SceneNode,
   overrideData: Partial<PenNode>,
-  ctx: VarContext
+  ctx: VarContext,
+  instanceNode: SceneNode
 ): void {
   if (overrideData.fill !== undefined) target.fills = convertFill(overrideData.fill, ctx, target)
   if (overrideData.content !== undefined) target.text = overrideData.content
@@ -363,6 +368,14 @@ function applyOverrideProps(
     target.height = parseSize(overrideData.height, target.height, ctx).value
   if (overrideData.rotation !== undefined) target.rotation = overrideData.rotation
   if (overrideData.name !== undefined) target.name = overrideData.name
+  if (Object.hasOwn(overrideData, 'metadata')) {
+    applyPenOverrideMetadata(target, overrideData.metadata, instanceNode)
+  }
+}
+
+function descendantIdFromPath(path: string): string {
+  const separator = path.lastIndexOf('/')
+  return separator === -1 ? path : path.slice(separator + 1)
 }
 
 function populateInstances(graph: SceneGraph): void {
@@ -385,7 +398,8 @@ function applyDescendantOverrides(
   const instanceNode = graph.getNode(pen.id)
   if (!instanceNode) return
 
-  for (const [origId, overrideData] of Object.entries(pen.descendants)) {
+  for (const [descendantPath, overrideData] of Object.entries(pen.descendants)) {
+    const origId = descendantIdFromPath(descendantPath)
     const clone =
       findCloneByComponentId(graph, instanceNode.id, origId) ??
       findCloneByNameFallback(graph, instanceNode.id, origId)
@@ -398,7 +412,7 @@ function applyDescendantOverrides(
           createSceneNode(child, clone.id, graph, ctx, componentIds, penSources)
         }
       }
-      applyOverrideProps(clone, overrideData, ctx)
+      applyOverrideProps(clone, overrideData, ctx, instanceNode)
       continue
     }
 
@@ -488,7 +502,7 @@ function fixTextWidths(graph: SceneGraph): void {
 }
 
 export function parsePenFile(json: string): SceneGraph {
-  const doc: PenDocument = JSON.parse(json)
+  const doc = parsePenDocument(json)
   const graph = new SceneGraph()
 
   for (const page of graph.getPages(true)) {
@@ -518,6 +532,7 @@ export function parsePenFile(json: string): SceneGraph {
   resolveThemeVariables(doc.children, graph, ctx)
   fixInstanceWidths(graph)
   fixTextWidths(graph)
+  registerPenSource(graph, doc, json)
 
   if (graph.getPages(true).length === 0) {
     graph.addPage('Page 1')

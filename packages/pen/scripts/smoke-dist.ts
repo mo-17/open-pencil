@@ -12,3 +12,8 @@ const graph = mod.parsePenFile(
 if (graph.getPages()[0]?.childIds.length !== 1) {
   throw new Error('Expected built Pen package to parse a document')
 }
+
+const serialized = mod.serializePenFile(graph)
+if (JSON.parse(serialized).children[0]?.id !== 'frame') {
+  throw new Error('Expected built Pen package to serialize its source document')
+}

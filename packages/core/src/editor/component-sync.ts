@@ -28,10 +28,10 @@ export function createComponentSyncScheduler(
         }
       }
       for (const compId of componentIds) {
-        graph.syncInstances(compId)
+        graph.preserveSourceMetadataDuring(() => graph.syncInstances(compId))
       }
       if (componentIds.size > 0) {
-        computeAllLayouts(graph)
+        graph.preserveSourceMetadataDuring(() => computeAllLayouts(graph))
         requestRender()
       }
     } finally {

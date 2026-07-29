@@ -8,15 +8,17 @@ export function createLayoutRunner(getGraph: () => SceneGraph) {
     const node = graph.getNode(id)
     if (!node) return
 
-    computeAllLayouts(graph, id)
+    graph.preserveSourceMetadataDuring(() => {
+      computeAllLayouts(graph, id)
 
-    let parent = node.parentId ? graph.getNode(node.parentId) : undefined
-    while (parent) {
-      if (isAutoLayoutMode(parent.layoutMode)) {
-        computeLayout(graph, parent.id)
+      let parent = node.parentId ? graph.getNode(node.parentId) : undefined
+      while (parent) {
+        if (isAutoLayoutMode(parent.layoutMode)) {
+          computeLayout(graph, parent.id)
+        }
+        parent = parent.parentId ? graph.getNode(parent.parentId) : undefined
       }
-      parent = parent.parentId ? graph.getNode(parent.parentId) : undefined
-    }
+    })
   }
 
   return { runLayoutForNode }

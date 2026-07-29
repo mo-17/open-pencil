@@ -25,6 +25,7 @@ import { BLACK } from '@open-pencil/scene-graph/constants'
 import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 import { parseColor } from './color'
+import type { PenMetadata } from './metadata'
 
 export interface PenDocument {
   version: string
@@ -113,6 +114,7 @@ export interface PenNode {
   weight?: number
   model?: string
   theme?: Record<string, string>
+  metadata?: PenMetadata
   lowcodeSeoMetadata?: SeoMetadata
 }
 
