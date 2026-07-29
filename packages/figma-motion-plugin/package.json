@@ -1,0 +1,20 @@
+{
+  "name": "@open-pencil/figma-motion-plugin",
+  "version": "0.13.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/code.ts --outfile dist/code.js --target browser --format iife --minify",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test tests",
+    "check": "bun run typecheck && bun run test && bun run build"
+  },
+  "dependencies": {
+    "@open-pencil/fig": "workspace:*"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.131.0",
+    "@types/bun": "^1.3.14",
+    "typescript": "~5.8.3"
+  }
+}
