@@ -10,6 +10,8 @@ import type {
   WorkflowDef
 } from '@open-pencil/scene-graph'
 
+import type { MotionActionTargetOption } from './motion-action-options'
+
 /**
  * Phase 3 §10 v10 — pure per-action validation for the recursive workflow
  * editor. Mirrors the `resolveActions` branch in `collect/bindings.ts` so the
@@ -44,6 +46,8 @@ export interface ActionErrors {
   condExpr?: string
   /** §10 v11 — the callWorkflow dropdown (missing / unknown workflow). */
   workflow?: string
+  /** Motion track dropdown (specified track no longer exists). */
+  track?: string
   /** §10 v11 — per-parameter argument errors (required-missing / invalid expr),
    *  keyed by the referenced workflow's formal parameter name. */
   argErrors?: Map<string, string>
@@ -56,6 +60,14 @@ export interface ActionValidationCtx {
   /** §10 v11 — document-level named workflows (`root.lowcodeWorkflows`), so a
    *  `callWorkflow` row can validate its workflowId + required arguments. */
   workflows: readonly WorkflowDef[]
+  /** Every current graph node id, including nodes without valid motion. */
+  validNodeIds: ReadonlySet<string>
+  /** Nodes whose MotionSpec currently passes strict validation. */
+  motionTargets: readonly MotionActionTargetOption[]
+  /** Existing animated nodes that cannot be addressed stably after .fig export. */
+  unsupportedMotionTargetIds?: ReadonlySet<string>
+  /** Existing animated nodes that are not rendered on the current page. */
+  outOfScopeMotionTargetIds?: ReadonlySet<string>
 }
 
 type SupabaseAuthOp = Extract<ActionDef, { kind: 'supabaseAuth' }>['operation']
@@ -289,6 +301,53 @@ function callWorkflowErrors(
   return argErrors.size > 0 ? { argErrors } : {}
 }
 
+function motionActionErrors(
+  action: Extract<
+    ActionDef,
+    { kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion' }
+  >,
+  ctx: ActionValidationCtx
+): ActionErrors {
+  if (!action.targetNodeId || action.targetNodeId.trim() === '') {
+    return { target: 'motion target required' }
+  }
+  if (!ctx.validNodeIds.has(action.targetNodeId)) {
+    return { target: 'target node no longer exists' }
+  }
+  if (ctx.unsupportedMotionTargetIds?.has(action.targetNodeId)) {
+    return { target: 'instance child motion targets cannot be saved to .fig' }
+  }
+  if (ctx.outOfScopeMotionTargetIds?.has(action.targetNodeId)) {
+    return { target: 'motion target is not available on the current page' }
+  }
+  const target = ctx.motionTargets.find((candidate) => candidate.id === action.targetNodeId)
+  if (!target) return { target: 'target node has no valid motion' }
+  if (action.trackId && !target.tracks.some((track) => track.id === action.trackId)) {
+    return { track: 'motion track no longer exists' }
+  }
+  if (
+    action.kind === 'awaitMotion' &&
+    action.timeoutMs !== undefined &&
+    (!Number.isFinite(action.timeoutMs) || action.timeoutMs < 0 || action.timeoutMs > 120_000)
+  ) {
+    return { ms: 'timeout must be between 0 and 120000 ms' }
+  }
+  return {}
+}
+
+function referenceActionErrors(action: ActionDef, ctx: ActionValidationCtx): ActionErrors {
+  if (action.kind === 'callWorkflow') return callWorkflowErrors(action, ctx)
+  if (
+    action.kind === 'playMotion' ||
+    action.kind === 'stopMotion' ||
+    action.kind === 'toggleMotion' ||
+    action.kind === 'awaitMotion'
+  ) {
+    return motionActionErrors(action, ctx)
+  }
+  return {}
+}
+
 /** Compute the validation errors for one action (leaf-level only — branch
  *  children validate via their own rows). Mirrors `errorsFor` in IR collect. */
 export function computeActionErrors(action: ActionDef, ctx: ActionValidationCtx): ActionErrors {
@@ -313,6 +372,5 @@ export function computeActionErrors(action: ActionDef, ctx: ActionValidationCtx)
     return flatWorkflowErrors(action)
   }
   if (action.kind === 'condition' || action.kind === 'confirm') return controlFlowErrors(action)
-  if (action.kind === 'callWorkflow') return callWorkflowErrors(action, ctx)
-  return {}
+  return referenceActionErrors(action, ctx)
 }

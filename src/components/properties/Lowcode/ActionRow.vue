@@ -13,6 +13,7 @@ import type {
 import { useI18n } from '@open-pencil/vue'
 
 import { ANALYTICS_TRACK_EVENT_CONFIG_HINT } from '@/app/lowcode/analytics-help'
+import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
 import Tip from '@/components/ui/Tip.vue'
 import {
   authNeedsEmail,
@@ -37,15 +38,17 @@ import ActionList from './ActionList.vue'
  * Controlled: takes the action via `action`, emits the edited replacement via
  * `update:action` (or `remove`). The parent list owns array identity.
  */
-const { action, pageStates, docStates, workflows, analyticsConfigured, actionPath } = defineProps<{
-  action: ActionDef
-  pageStates: readonly StateDef[]
-  docStates: readonly DocumentStateDef[]
-  /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
-  workflows: readonly WorkflowDef[]
-  analyticsConfigured?: boolean
-  actionPath: string
-}>()
+const { action, pageStates, docStates, workflows, motionOptions, analyticsConfigured, actionPath } =
+  defineProps<{
+    action: ActionDef
+    pageStates: readonly StateDef[]
+    docStates: readonly DocumentStateDef[]
+    /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
+    workflows: readonly WorkflowDef[]
+    motionOptions: MotionActionOptions
+    analyticsConfigured?: boolean
+    actionPath: string
+  }>()
 
 const emit = defineEmits<{
   'update:action': [ActionDef]
@@ -82,7 +85,11 @@ const errors = computed<ActionErrors>(() =>
   computeActionErrors(action, {
     validStateIds: validStateIds.value,
     validDocStateNames: validDocStateNames.value,
-    workflows
+    workflows,
+    validNodeIds: motionOptions.nodeIds,
+    motionTargets: motionOptions.targets,
+    unsupportedMotionTargetIds: motionOptions.unsupportedTargetIds,
+    outOfScopeMotionTargetIds: motionOptions.outOfScopeTargetIds
   })
 )
 
@@ -101,6 +108,10 @@ function actionKindLabel(kind: ActionKind): string {
   if (kind === 'trackEvent') return 'Track event'
   if (kind === 'stripeCheckout') return 'Stripe checkout'
   if (kind === 'stripeCustomerPortal') return 'Stripe customer portal'
+  if (kind === 'playMotion') return panels.value.lowcodeActionPlayMotion
+  if (kind === 'stopMotion') return panels.value.lowcodeActionStopMotion
+  if (kind === 'toggleMotion') return panels.value.lowcodeActionToggleMotion
+  if (kind === 'awaitMotion') return panels.value.lowcodeActionAwaitMotion
   return kind
 }
 
@@ -109,7 +120,39 @@ function patch(p: Partial<ActionDef>): void {
 }
 
 function changeKind(kind: ActionKind): void {
-  emit('update:action', makeAction(kind, action.id, { pageStates, docStates }))
+  emit(
+    'update:action',
+    makeAction(kind, action.id, { pageStates, docStates, motionTargets: motionOptions.targets })
+  )
+}
+
+const selectedMotionTarget = computed(() => {
+  if (!isMotionAction(action)) return undefined
+  return motionOptions.targets.find((target) => target.id === action.targetNodeId)
+})
+
+function isMotionAction(
+  value: ActionDef
+): value is Extract<
+  ActionDef,
+  { kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion' }
+> {
+  return (
+    value.kind === 'playMotion' ||
+    value.kind === 'stopMotion' ||
+    value.kind === 'toggleMotion' ||
+    value.kind === 'awaitMotion'
+  )
+}
+
+function changeMotionTarget(targetNodeId: string): void {
+  if (!isMotionAction(action)) return
+  patch({ targetNodeId, trackId: undefined } as Partial<ActionDef>)
+}
+
+function changeMotionTrack(trackId: string): void {
+  if (!isMotionAction(action)) return
+  patch({ trackId: trackId || undefined } as Partial<ActionDef>)
 }
 
 function updateFilters(next: (current: SupabaseFilter[]) => SupabaseFilter[]): void {
@@ -593,6 +636,103 @@ function setArg(param: string, value: string): void {
         <span class="text-[11px] text-muted">ms</span>
       </template>
 
+      <template v-else-if="isMotionAction(action)">
+        <select
+          :value="action.targetNodeId"
+          :aria-label="panels.lowcodeActionMotionTarget"
+          :aria-invalid="errors.target ? 'true' : undefined"
+          data-test-id="lowcode-action-motion-target"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent',
+            errors.target ? 'border-red-500' : 'border-border'
+          ]"
+          @change="changeMotionTarget(($event.target as HTMLSelectElement).value)"
+        >
+          <option v-if="motionOptions.targets.length === 0" value="" disabled>
+            {{ panels.lowcodeActionNoMotionTargets }}
+          </option>
+          <option
+            v-if="
+              action.targetNodeId &&
+              !motionOptions.targets.some((target) => target.id === action.targetNodeId)
+            "
+            :value="action.targetNodeId"
+            disabled
+          >
+            {{ action.targetNodeId }}
+          </option>
+          <option v-for="target in motionOptions.targets" :key="target.id" :value="target.id">
+            {{ target.label }}
+          </option>
+        </select>
+        <select
+          :value="action.trackId ?? ''"
+          :aria-label="panels.lowcodeActionMotionTrack"
+          :aria-invalid="errors.track ? 'true' : undefined"
+          :disabled="!selectedMotionTarget"
+          data-test-id="lowcode-action-motion-track"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-1.5 py-1 text-xs text-surface outline-none focus:border-accent disabled:opacity-50',
+            errors.track ? 'border-red-500' : 'border-border'
+          ]"
+          @change="changeMotionTrack(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">{{ panels.motionAllTracks }}</option>
+          <option
+            v-if="
+              action.trackId &&
+              !selectedMotionTarget?.tracks.some((track) => track.id === action.trackId)
+            "
+            :value="action.trackId"
+            disabled
+          >
+            {{ action.trackId }}
+          </option>
+          <option
+            v-for="track in selectedMotionTarget?.tracks ?? []"
+            :key="track.id"
+            :value="track.id"
+          >
+            {{ track.label }}
+          </option>
+        </select>
+        <template v-if="action.kind === 'awaitMotion'">
+          <input
+            :value="action.timeoutMs ?? ''"
+            type="number"
+            min="0"
+            max="120000"
+            step="100"
+            :aria-label="panels.lowcodeActionMotionTimeout"
+            :aria-invalid="errors.ms ? 'true' : undefined"
+            data-test-id="lowcode-action-motion-timeout"
+            :placeholder="panels.lowcodeActionMotionTimeout"
+            :class="[
+              'w-24 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+              errors.ms ? 'border-red-500' : 'border-border'
+            ]"
+            @change="
+              patch({
+                timeoutMs:
+                  ($event.target as HTMLInputElement).value === ''
+                    ? undefined
+                    : Number(($event.target as HTMLInputElement).value)
+              })
+            "
+          />
+          <label class="flex items-center gap-1 text-[10px] text-muted">
+            <input
+              type="checkbox"
+              class="size-3 accent-accent"
+              :checked="action.stopOnTimeout === true"
+              data-test-id="lowcode-action-motion-stop-on-timeout"
+              @change="patch({ stopOnTimeout: ($event.target as HTMLInputElement).checked })"
+            />
+            {{ panels.lowcodeActionMotionStopOnTimeout }}
+          </label>
+        </template>
+      </template>
+
       <template v-else-if="action.kind === 'condition'">
         <span class="text-[11px] text-muted">if</span>
         <input
@@ -1071,6 +1211,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/onSuccess`"
         data-test-id="lowcode-action-on-success-add"
@@ -1082,6 +1223,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/onError`"
         data-test-id="lowcode-action-on-error-add"
@@ -1102,6 +1244,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/consequent`"
         data-test-id="lowcode-action-consequent-add"
@@ -1115,6 +1258,7 @@ function setArg(param: string, value: string): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path-prefix="`${actionPath}/alternate`"
         data-test-id="lowcode-action-alternate-add"
@@ -1165,6 +1309,14 @@ function setArg(param: string, value: string): void {
       class="pl-1 text-[10px] text-red-500"
     >
       workflow: {{ errors.workflow }}
+    </p>
+
+    <p
+      v-if="errors.track"
+      data-test-id="lowcode-action-motion-track-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
+      track: {{ errors.track }}
     </p>
 
     <p

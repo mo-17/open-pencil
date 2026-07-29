@@ -9,6 +9,7 @@ import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import { clearLowcodeActionFocus, peekLowcodeActionFocus } from '@/app/lowcode/action-focus'
 import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
+import { collectMotionActionOptions } from '@/app/lowcode/motion-action-options'
 
 import ActionList from './ActionList.vue'
 
@@ -65,6 +66,10 @@ const analyticsConfigured = useSceneComputed<boolean>(() => {
   const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
   return config?.enabled !== false && !!config?.id?.trim()
 })
+
+const motionOptions = useSceneComputed(() =>
+  collectMotionActionOptions(editor.graph.getAllNodes(), { pageId: editor.state.currentPageId })
+)
 
 const actions = useSceneComputed<ActionDef[]>(() => {
   const node = selectedNode.value
@@ -139,6 +144,7 @@ watch(
       :page-states="pageStates"
       :doc-states="docStates"
       :workflows="docWorkflows"
+      :motion-options="motionOptions"
       :analytics-configured="analyticsConfigured"
       :action-path-prefix="eventName ?? ''"
       data-test-id="lowcode-action-add"

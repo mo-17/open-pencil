@@ -8,6 +8,7 @@ import Tip from '@/components/ui/Tip.vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { requestLowcodeActionFocus } from '@/app/lowcode/action-focus'
+import { collectMotionActionOptions } from '@/app/lowcode/motion-action-options'
 import {
   analyzeWorkflowGraph,
   collectWorkflowEntrypoints,
@@ -73,6 +74,9 @@ const analyticsConfigured = useSceneComputed<boolean>(() => {
   const config = editor.graph.getNode(editor.graph.rootId)?.lowcodeAnalyticsConfig
   return config?.enabled !== false && !!config?.id?.trim()
 })
+const motionOptions = useSceneComputed(() =>
+  collectMotionActionOptions(editor.graph.getAllNodes(), { pageId: editor.state.currentPageId })
+)
 const workflowEntrypoints = useSceneComputed(() =>
   collectWorkflowEntrypoints([...editor.graph.getAllNodes()], workflows.value)
 )
@@ -1455,6 +1459,7 @@ function containingPageId(node: SceneNode): string | undefined {
         :pages="pages"
         :page-states="pageStatesFor(wf)"
         :doc-states="docStates"
+        :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :ref="(row) => setWorkflowRowRef(wf.id, row)"
         @update:workflow="updateWorkflow(wf.id, $event)"

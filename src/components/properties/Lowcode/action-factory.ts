@@ -1,5 +1,7 @@
 import type { ActionDef, ActionKind, DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
 
+import type { MotionActionTargetOption } from '@/app/lowcode/motion-action-options'
+
 /**
  * Phase 3 §10 v10 — shared `ActionDef` factory + kind list for the recursive
  * workflow editor (`ActionRow` / `ActionList`). Extracted from EventsPanel so
@@ -16,6 +18,7 @@ import type { ActionDef, ActionKind, DocumentStateDef, StateDef } from '@open-pe
 export interface ActionFactoryCtx {
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
+  motionTargets: readonly MotionActionTargetOption[]
 }
 
 /** The kinds offered in the GUI kind selector. §10 v10 adds the `condition` /
@@ -38,7 +41,11 @@ export const ACTION_KINDS: ActionKind[] = [
   'stripeCustomerPortal',
   'delay',
   'stop',
-  'callWorkflow'
+  'callWorkflow',
+  'playMotion',
+  'stopMotion',
+  'toggleMotion',
+  'awaitMotion'
 ]
 
 // Per-kind factory map — a lookup table (not a branch chain) so `makeAction`
@@ -108,7 +115,29 @@ const FACTORIES: Record<ActionKind, (id: string, ctx: ActionFactoryCtx) => Actio
   stop: (id) => ({ id, kind: 'stop' }),
   // §10 v11 — a fresh callWorkflow has no target yet; the row's workflow
   // dropdown sets `workflowId` and the args editor fills `args`.
-  callWorkflow: (id) => ({ id, kind: 'callWorkflow' })
+  callWorkflow: (id) => ({ id, kind: 'callWorkflow' }),
+  playMotion: (id, ctx) => ({
+    id,
+    kind: 'playMotion',
+    targetNodeId: first(ctx.motionTargets)?.id ?? ''
+  }),
+  stopMotion: (id, ctx) => ({
+    id,
+    kind: 'stopMotion',
+    targetNodeId: first(ctx.motionTargets)?.id ?? ''
+  }),
+  toggleMotion: (id, ctx) => ({
+    id,
+    kind: 'toggleMotion',
+    targetNodeId: first(ctx.motionTargets)?.id ?? ''
+  }),
+  awaitMotion: (id, ctx) => ({
+    id,
+    kind: 'awaitMotion',
+    targetNodeId: first(ctx.motionTargets)?.id ?? '',
+    timeoutMs: 10_000,
+    stopOnTimeout: true
+  })
 }
 
 /** Build a fresh action of `kind` with `id`. */

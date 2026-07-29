@@ -4,6 +4,7 @@ import { computed, useAttrs } from 'vue'
 import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-pencil/scene-graph'
 import { useI18n } from '@open-pencil/vue'
 
+import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
 import { makeAction } from './action-factory'
 // Mutually recursive with ActionRow (a list renders rows, a row renders nested
 // branch lists) — intentional cycle, resolved lazily at render time.
@@ -17,16 +18,24 @@ import ActionRow from './ActionRow.vue'
  * so the full workflow tree is editable at any depth. Emits the whole new array
  * on every edit (the parent owns persistence / undo).
  */
-const { actions, pageStates, docStates, workflows, analyticsConfigured, actionPathPrefix } =
-  defineProps<{
-    actions: readonly ActionDef[]
-    pageStates: readonly StateDef[]
-    docStates: readonly DocumentStateDef[]
-    /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
-    workflows: readonly WorkflowDef[]
-    analyticsConfigured?: boolean
-    actionPathPrefix?: string
-  }>()
+const {
+  actions,
+  pageStates,
+  docStates,
+  workflows,
+  motionOptions,
+  analyticsConfigured,
+  actionPathPrefix
+} = defineProps<{
+  actions: readonly ActionDef[]
+  pageStates: readonly StateDef[]
+  docStates: readonly DocumentStateDef[]
+  /** §10 v11 — named workflows a `callWorkflow` row can target / pass args to. */
+  workflows: readonly WorkflowDef[]
+  motionOptions: MotionActionOptions
+  analyticsConfigured?: boolean
+  actionPathPrefix?: string
+}>()
 
 defineOptions({ inheritAttrs: false })
 
@@ -56,7 +65,11 @@ function removeAt(index: number): void {
 function add(): void {
   emit('update:actions', [
     ...actions,
-    makeAction('setState', crypto.randomUUID(), { pageStates, docStates })
+    makeAction('setState', crypto.randomUUID(), {
+      pageStates,
+      docStates,
+      motionTargets: motionOptions.targets
+    })
   ])
 }
 </script>
@@ -71,6 +84,7 @@ function add(): void {
         :page-states="pageStates"
         :doc-states="docStates"
         :workflows="workflows"
+        :motion-options="motionOptions"
         :analytics-configured="analyticsConfigured"
         :action-path="actionPathPrefix ? `${actionPathPrefix}[${i}]` : `[${i}]`"
         @update:action="replaceAt(i, $event)"

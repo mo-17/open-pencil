@@ -11,7 +11,9 @@ import {
 const ctx = {
   validStateIds: new Set<string>(),
   validDocStateNames: new Set<string>(),
-  workflows: []
+  workflows: [],
+  validNodeIds: new Set<string>(),
+  motionTargets: []
 }
 const CHECKOUT_ENDPOINT = `/api/\${priceId}/checkout`
 const PORTAL_ENDPOINT = `/api/customer-portal/\${customerId}`
@@ -139,5 +141,85 @@ describe('lowcode ActionRow validation', () => {
     expect(errors.target).toBe('error target no longer exists')
     expect(errors.entries?.get(0)?.keyError).toBe('invalid identifier')
     expect(errors.entries?.get(0)?.valueError).toBeTruthy()
+  })
+
+  test('motion actions distinguish missing, invalid, and deleted targets', () => {
+    const motionCtx = {
+      ...ctx,
+      validNodeIds: new Set(['static-node', 'motion-node']),
+      motionTargets: [
+        {
+          id: 'motion-node',
+          label: 'Animated (motion-node)',
+          tracks: [{ id: 'hover', label: 'hover' }]
+        }
+      ]
+    }
+
+    expect(
+      computeActionErrors({ id: 'play-1', kind: 'playMotion', targetNodeId: '' }, motionCtx)
+    ).toEqual({ target: 'motion target required' })
+    expect(
+      computeActionErrors(
+        { id: 'play-2', kind: 'playMotion', targetNodeId: 'static-node' },
+        motionCtx
+      )
+    ).toEqual({ target: 'target node has no valid motion' })
+    expect(
+      computeActionErrors(
+        { id: 'stop-1', kind: 'stopMotion', targetNodeId: 'deleted-node' },
+        motionCtx
+      )
+    ).toEqual({ target: 'target node no longer exists' })
+  })
+
+  test('motion actions accept all tracks and reject a stale track id', () => {
+    const motionCtx = {
+      ...ctx,
+      validNodeIds: new Set(['motion-node']),
+      motionTargets: [
+        {
+          id: 'motion-node',
+          label: 'Animated (motion-node)',
+          tracks: [{ id: 'hover', label: 'hover' }]
+        }
+      ]
+    }
+
+    expect(
+      computeActionErrors(
+        { id: 'play-1', kind: 'playMotion', targetNodeId: 'motion-node' },
+        motionCtx
+      )
+    ).toEqual({})
+    expect(
+      computeActionErrors(
+        {
+          id: 'stop-1',
+          kind: 'stopMotion',
+          targetNodeId: 'motion-node',
+          trackId: 'removed-track'
+        },
+        motionCtx
+      )
+    ).toEqual({ track: 'motion track no longer exists' })
+    expect(
+      computeActionErrors(
+        {
+          id: 'await-1',
+          kind: 'awaitMotion',
+          targetNodeId: 'motion-node',
+          trackId: 'hover',
+          timeoutMs: 120_001
+        },
+        motionCtx
+      )
+    ).toEqual({ ms: 'timeout must be between 0 and 120000 ms' })
+    expect(
+      computeActionErrors(
+        { id: 'toggle-1', kind: 'toggleMotion', targetNodeId: 'motion-node' },
+        motionCtx
+      )
+    ).toEqual({})
   })
 })
