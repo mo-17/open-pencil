@@ -7,6 +7,7 @@
 > 2026-07-01 update: add the Phase 5 operator ACK checklist for Analytics, Custom Head/CSS,
 > onboarding, and Stripe billing webhooks.
 > 2026-07-14 update: refresh package-split imports and record the automated local Libraries ACK.
+> 2026-07-28 update: add the personal Motion preset library browser/Tauri/MCP ACK checklist.
 
 ## 0. Scope
 
@@ -20,6 +21,8 @@ local handoff/index files such as `prompt.md` and `.codegraph/` are not staged.
 Primary ACK target:
 
 - §14 Libraries panel: local manifest + library file flow, outdated status, accept update, undo/redo.
+- Motion preset library: local persistence, non-destructive pointer/keyboard preview, JSON exchange,
+  stagger ordering, `.fig` snapshot persistence, and live MCP undo.
 
 Secondary ACK targets:
 
@@ -462,11 +465,11 @@ code review; this section proves the host does not block the emitted static head
 
 Provider matrix to fill in during manual ACK:
 
-| Provider | Live URL | CSP header | Report-only header | External link/preload | Inline head style | App CSS | Result |
-| -------- | -------- | ---------- | ------------------ | --------------------- | ----------------- | ------- | ------ |
-| Netlify  |          |            |                    |                       |                   |         |        |
-| Vercel   |          |            |                    |                       |                   |         |        |
-| Cloudflare Pages |  |            |                    |                       |                   |         |        |
+| Provider         | Live URL | CSP header | Report-only header | External link/preload | Inline head style | App CSS | Result |
+| ---------------- | -------- | ---------- | ------------------ | --------------------- | ----------------- | ------- | ------ |
+| Netlify          |          |            |                    |                       |                   |         |        |
+| Vercel           |          |            |                    |                       |                   |         |        |
+| Cloudflare Pages |          |            |                    |                       |                   |         |        |
 
 Pass criteria:
 
@@ -688,7 +691,92 @@ If the operator ACK fails:
 4. Fix the smallest affected template, schema, compiler, or GUI surface.
 5. Re-run the failed operator step and the local gate list in `prompt.md`.
 
-## 11. Closeout
+## 11. Motion Preset Library Browser/Tauri/MCP ACK
+
+Automated status on 2026-07-28:
+
+- `bunx playwright test tests/e2e/properties/motion-panel.spec.ts --project=openpencil` passes
+  15/15 in the browser project.
+- The suite covers categorized search, pointer/keyboard preview without document or undo mutation,
+  favorites and reload persistence, Chinese personal-preset names, portable JSON download and file
+  import, rejection without library replacement, stagger application, applied snapshots that
+  survive removal of the local preset definition, multi-track timeline editing, advanced v2 channel
+  authoring, per-node capability reasons including unresolved Boolean fail-close with removable
+  imported Motion, and lowcode Motion action configuration.
+- A real Tauri + live MCP ACK also passed on 2026-07-28 with OpenPencil `0.13.2`, Tauri
+  `2.10.2`, and the debug automation bridge connected to the visible `main` webview. An isolated
+  authenticated MCP runtime advertised 127 tools, including `list_motion_presets`,
+  `apply_motion_preset`, `apply_motion_spec`, and `read_motion`, and accepted calls through the
+  official MCP SDK `/mcp` transport rather than only the internal RPC endpoint.
+- The live MCP run created two nodes at different Y positions and applied `slide-up` with a 30 ms
+  base delay plus 75 ms linear Forward stagger. `read_motion` returned complete snapshots with
+  delays of 30 ms and 105 ms, and the app exposed one `AI: apply_motion_preset` undo entry for the
+  batch. A strict custom one-track `press` MotionSpec also round-tripped through
+  `apply_motion_spec`/`read_motion`; a payload containing an unknown `script` field was rejected and
+  the other node retained its prior 105 ms snapshot.
+- The real Tauri property panel visibly exposed all eight built-ins, search, JSON transfer, and the
+  multi-selection stagger step/direction/rhythm controls. Pointer hover/leave and keyboard
+  focus/Escape started and stopped preview while both graph snapshots and the undo label stayed
+  unchanged.
+- Native operating-system JSON open/save dialogs, persistence across an actual application-process
+  restart, and `.fig` save/reopen were not exercised in this run and remain manual ACK boundaries.
+
+The complete remaining Motion P0/P1 manual boundary is exactly four ACKs:
+
+1. Exercise the native operating-system JSON open and save dialogs.
+2. Verify personal presets and favorites across an actual desktop application-process restart.
+3. Save, close, and reopen a `.fig` document in the desktop app and verify authored MotionSpec data.
+4. Apply, read back, and roll back the supported native subset in a live Figma Desktop document via
+   the official Motion Plugin API Beta.
+
+All other Motion P0/P1 items in this checklist are covered by automated unit, browser, compiler,
+package, mock-plugin, or Tauri/MCP verification. Those automated checks do not count as any of the
+four ACKs above.
+
+Use a fresh test profile or remove only `open-pencil:motion-preset-library:v1` before starting. Do
+not clear unrelated app settings.
+
+Browser or desktop authoring:
+
+1. Create three rectangles at different Y positions and select the first one.
+2. Open Motion, search for `slide`, then filter Entrance and confirm only matching built-ins remain.
+3. Focus **Slide up** with the keyboard. Confirm the canvas previews while the rectangle's graph
+   `motion` value and undo label remain unchanged. Press Escape and confirm the authored canvas
+   state returns immediately. Repeat with pointer hover/leave.
+4. Apply the preset, change one timeline value, and save it as the Chinese name `卡片入场`. Favorite
+   it, restart the app, and confirm both the entry and favorite survive.
+5. Rename the entry, delete it, and confirm deletion also clears its favorite. Undo is not expected
+   for library-management operations because they are user settings, not document mutations.
+6. Recreate the entry, export JSON, remove it, and import the exported file. Confirm the portable
+   payload contains version metadata and preset definitions but not favorites; favorites remain only
+   in the separate local settings envelope. Confirm the normalized entry returns. Try malformed, future-version,
+   oversized, duplicate-id, and unknown-field JSON; each must show an error without replacing the
+   current library. Exercise the browser picker/download and the Tauri native dialogs as separate
+   paths.
+7. Select all three rectangles. Enable stagger with a non-zero step, apply Forward, and confirm delay
+   increases in canvas `y → x → node id` order. Apply Reverse and confirm the order inverts. Undo and
+   redo must each treat the whole selection as one operation.
+8. Apply the personal preset to a root component instance, sync its component, and confirm the
+   instance override remains. Clear it and confirm the null override also survives sync and undo.
+9. Save to `.fig`, restart, and reopen. Confirm every applied node still animates even after removing
+   the local personal library. Copy through both OpenPencil and Figma clipboard payloads and confirm
+   the destination nodes keep the complete MotionSpec. The reusable library entry itself is expected
+   to travel only through JSON export, not `.fig` or clipboard.
+
+Live MCP:
+
+1. Call `list_motion_presets` and confirm category and keyword metadata is present.
+2. Call `apply_motion_preset` against the three nodes with stagger options; confirm one undo removes
+   all three changes and one redo restores them.
+3. Read the saved personal MotionSpec from one node and pass it to `apply_motion_spec` for another
+   selection. Confirm instance overrides, undo/redo, and invalid-JSON atomic failure.
+4. Save/reopen through the live app and confirm compiled preview output behaves the same; provenance
+   may identify the personal snapshot but must not change compiler artifacts.
+
+Record separately whether the run used browser, real Tauri, and live MCP. Automated Playwright and
+unit coverage do not count as a real Tauri restart or native file-dialog ACK.
+
+## 12. Closeout
 
 If all ACKs pass:
 
