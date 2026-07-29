@@ -12,7 +12,7 @@ const io = new IORegistry(BUILTIN_IO_FORMATS)
 export async function loadDocument(filePath: string): Promise<SceneGraph> {
   const bytes = new Uint8Array(await readFile(filePath))
   const { graph } = await io.readDocument({ name: filePath, data: bytes })
-  computeAllLayouts(graph)
+  graph.preserveSourceMetadataDuring(() => computeAllLayouts(graph))
   return graph
 }
 
@@ -61,5 +61,5 @@ export async function saveDocument(
   filePath: string
 ): Promise<void> {
   const result = await io.writeDocument(format, graph)
-  await Bun.write(filePath, result.data as Uint8Array)
+  await Bun.write(filePath, result.data)
 }

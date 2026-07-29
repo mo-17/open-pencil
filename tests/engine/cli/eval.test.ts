@@ -12,6 +12,7 @@ setDefaultTimeout(30_000)
 
 const CLI = cliSourcePath('index.ts')
 const FIXTURE = repoPath('tests/fixtures/gold-preview.fig')
+const PEN_FIXTURE = repoPath('tests/fixtures/pencil_simple.pen')
 
 async function run(
   args: string[],
@@ -213,6 +214,25 @@ heavy('eval CLI', () => {
     } else {
       expect(stderr).toContain('NodeType')
     }
+  })
+
+  test('--output preserves the .pen document format', async () => {
+    const outFile = join(tmpdir(), `eval-test-${randomUUID()}.pen`)
+    const { exitCode, stderr } = await run([
+      'eval',
+      PEN_FIXTURE,
+      '--quiet',
+      '--code',
+      'return figma.currentPage.name',
+      '-o',
+      outFile
+    ])
+
+    expect(exitCode).toBe(0)
+    expect(stderr).toBe('')
+    const output = await Bun.file(outFile).text()
+    expect(() => JSON.parse(output)).not.toThrow()
+    expect(JSON.parse(output)).toMatchObject({ version: '2.8', children: expect.any(Array) })
   })
 
   test('array of nodes serializes', async () => {

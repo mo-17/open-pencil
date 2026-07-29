@@ -37,7 +37,7 @@ export default defineCommand({
     format: {
       type: 'string',
       alias: 'f',
-      description: 'Output format: fig (default: fig)',
+      description: 'Output format: fig or source-preserving pen (default: fig)',
       default: 'fig'
     }
   },
@@ -58,7 +58,7 @@ export default defineCommand({
       format === 'fig' ? { profile: 'figma-compatible' } : undefined
     )
     const output = args.output ? resolve(args.output) : defaultOutput(file, format)
-    await writeFile(output, result.data as Uint8Array)
+    await writeFile(output, result.data)
     console.log(ok(`Converted ${file} → ${output}`))
   }
 })

@@ -6,6 +6,7 @@
 // (lowcode mutate tools intentionally hit the no-undo fallback path here
 // because the editor is not injected outside `src/app/ai/**` — §3.v2.2 #b.)
 import { writeFile } from 'node:fs/promises'
+import { extname } from 'node:path'
 
 import { defineCommand } from 'citty'
 
@@ -107,8 +108,12 @@ export default defineCommand({
       const { BUILTIN_IO_FORMATS, IORegistry } = await import('@open-pencil/core/io')
       const io = new IORegistry(BUILTIN_IO_FORMATS)
       const outPath = args.output ? args.output : file
-      const result = await io.writeDocument('fig', graph)
-      await writeFile(outPath, result.data as Uint8Array)
+      const extension = extname(outPath).slice(1).toLowerCase()
+      const format =
+        io.listWritableFormats().find((candidate) => candidate.extensions.includes(extension))
+          ?.id ?? 'fig'
+      const result = await io.writeDocument(format, graph)
+      await writeFile(outPath, result.data)
       if (!args.quiet) {
         console.error(`Written to ${outPath}`)
       }
