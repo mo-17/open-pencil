@@ -24,6 +24,12 @@ type BrowserMessage = {
   result?: unknown
   error?: string
   ok?: boolean
+  progress?: unknown
+}
+
+export interface BrowserRpcSendOptions {
+  signal?: AbortSignal
+  onProgress?: (progress: unknown) => void
 }
 
 function stripEnvelope(msg: BrowserMessage): Record<string, unknown> {
@@ -149,28 +155,71 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
     for (const client of clients) sendRegisterPrompt(client)
   }
 
-  function sendRpc(body: Record<string, unknown>): Promise<unknown> {
+  function sendRpc(
+    body: Record<string, unknown>,
+    options: BrowserRpcSendOptions = {}
+  ): Promise<unknown> {
     if (bridgeClosed) return Promise.reject(new Error('Server shutting down'))
+    if (options.signal?.aborted) {
+      const error = new Error('RPC request cancelled')
+      error.name = 'AbortError'
+      return Promise.reject(error)
+    }
     return new Promise((resolve, reject) => {
+      let id: string | null = null
+      let cleanupAbort: () => void = () => undefined
+      const settle = createSettler(
+        (value: unknown) => {
+          cleanupAbort()
+          resolve(value)
+        },
+        (error: Error) => {
+          cleanupAbort()
+          reject(error)
+        }
+      )
+      const onAbort = () => {
+        if (id) {
+          const request = pending.get(id)
+          if (request) {
+            clearTimeout(request.timer)
+            pending.delete(id)
+          }
+          if (browserWs) sendJson(browserWs, { type: 'cancel', id })
+        }
+        const error = new Error('RPC request cancelled')
+        error.name = 'AbortError'
+        settle.reject(error)
+      }
+      cleanupAbort = () => {
+        options.signal?.removeEventListener('abort', onAbort)
+      }
+      options.signal?.addEventListener('abort', onAbort, { once: true })
+
       const doSend = () => {
+        if (settle.isSettled()) return
         const ws = browserWs
         if (!ws || ws.readyState !== ws.OPEN || !browserRegistered) {
-          reject(new Error(APP_NOT_CONNECTED_MESSAGE))
+          settle.reject(new Error(APP_NOT_CONNECTED_MESSAGE))
           return
         }
-        const id = randomUUID()
-        const settle = createSettler(resolve, reject)
+        id = randomUUID()
         const timeoutMs = resolveBrowserRpcTimeoutMs(body)
         const timer = setTimeout(() => {
-          pending.delete(id)
+          if (id) pending.delete(id)
           settle.reject(new Error(rpcTimeoutMessage(timeoutMs)))
         }, timeoutMs)
-        pending.set(id, { resolve: settle.resolve, reject: settle.reject, timer })
+        pending.set(id, {
+          resolve: settle.resolve,
+          reject: settle.reject,
+          timer,
+          onProgress: options.onProgress
+        })
         try {
           ws.send(JSON.stringify({ ...body, type: 'request', id }))
         } catch (e) {
           clearTimeout(timer)
-          pending.delete(id)
+          if (id) pending.delete(id)
           if (!settle.isSettled()) {
             settle.reject(e instanceof Error ? e : new Error(String(e)))
           }
@@ -180,7 +229,7 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
       if (browserWs && browserWs.readyState === browserWs.OPEN && browserRegistered) {
         doSend()
       } else {
-        void waitForConnection().then(doSend).catch(reject)
+        void waitForConnection().then(doSend).catch(settle.reject)
       }
     })
   }
@@ -239,6 +288,34 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
     }
   }
 
+  function handleHandshakeMessage(msg: BrowserMessage, ws: WebSocket): boolean {
+    if (msg.type === 'auth') {
+      // Authenticate a stdio bridge client without registering it as the browser app.
+      if (msg.token === null || typeof msg.token === 'string') {
+        if (!isAuthorized(msg.token, authToken)) ws.close()
+        else authenticatedClients.add(ws)
+      } else if (msg.token !== undefined) ws.close()
+      return true
+    }
+    if (msg.type !== 'register') return false
+    if (msg.token === null || typeof msg.token === 'string') registerBrowser(ws, msg.token)
+    else if (msg.token !== undefined) ws.close()
+    return true
+  }
+
+  function handleAuthenticatedMessage(msg: BrowserMessage, ws: WebSocket): void {
+    if (msg.type === 'request') {
+      void handleClientRequest(ws, msg)
+      return
+    }
+    if (msg.type === 'progress') {
+      if (!browserRegistered || browserWs !== ws || !msg.id) return
+      pending.get(msg.id)?.onProgress?.(msg.progress)
+      return
+    }
+    if (msg.type === 'response') handleBrowserResponse(msg, ws)
+  }
+
   function handleMessage(data: string, ws: WebSocket) {
     if (bridgeClosed) return
     let parsed: unknown
@@ -253,33 +330,7 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
       return
     }
     const msg = parsed as BrowserMessage
-
-    if (msg.type === 'auth') {
-      // Authenticate a stdio bridge client without registering it as the
-      // browser app. This lets the client send request/response messages
-      // without becoming the RPC target. The token is validated the same
-      // way as registerBrowser — when auth is disabled (authToken === null),
-      // any token is accepted.
-      if (msg.token === null || typeof msg.token === 'string') {
-        if (!isAuthorized(msg.token, authToken)) {
-          ws.close()
-          return
-        }
-        authenticatedClients.add(ws)
-      } else if (msg.token !== undefined) {
-        ws.close()
-      }
-      return
-    }
-
-    if (msg.type === 'register') {
-      if (msg.token === null || typeof msg.token === 'string') {
-        registerBrowser(ws, msg.token)
-      } else if (msg.token !== undefined) {
-        ws.close()
-      }
-      return
-    }
+    if (handleHandshakeMessage(msg, ws)) return
     // All non-register messages require authentication. Without this
     // check, an unauthenticated WebSocket client (that hasn't sent a
     // valid register message) could bypass the HTTP auth on /rpc by
@@ -288,11 +339,7 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
       ws.close()
       return
     }
-    if (msg.type === 'request') {
-      void handleClientRequest(ws, msg)
-      return
-    }
-    if (msg.type === 'response') handleBrowserResponse(msg, ws)
+    handleAuthenticatedMessage(msg, ws)
   }
 
   function handleClose(ws: WebSocket) {

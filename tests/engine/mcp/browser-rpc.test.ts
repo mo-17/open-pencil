@@ -437,4 +437,56 @@ describe('BrowserRpcBridge reconnection', () => {
     expect(result.legitimate).toBe(true)
     expect(result.injected).toBeUndefined()
   })
+
+  test('forwards authenticated progress and sends cancellation to the active browser request', async () => {
+    const pair = await setupWsPair()
+    track(pair)
+    const bridge = createBrowserRpcBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined
+    })
+    await registerBrowser(pair.serverWs, pair.clientWs, bridge)
+
+    const progress: unknown[] = []
+    let requestId = ''
+    const cancelled = new Promise<string>((resolve) => {
+      pair.clientWs.on('message', (raw: Buffer) => {
+        const message = JSON.parse(raw.toString()) as {
+          type?: string
+          id?: string
+        }
+        if (message.type === 'request' && message.id) {
+          requestId = message.id
+          pair.clientWs.send(
+            JSON.stringify({
+              type: 'progress',
+              id: message.id,
+              progress: { phase: 'render', completed: 1, total: 3 }
+            })
+          )
+        } else if (message.type === 'cancel' && message.id) {
+          resolve(message.id)
+        }
+      })
+    })
+    const controller = new AbortController()
+    const outcome = bridge
+      .sendRpc(RPC_BODY, {
+        signal: controller.signal,
+        onProgress: (value) => progress.push(value)
+      })
+      .catch((error: Error) => error)
+
+    for (let index = 0; index < 100 && progress.length === 0; index++) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 5)
+      })
+    }
+    expect(progress).toEqual([{ phase: 'render', completed: 1, total: 3 }])
+    controller.abort()
+    expect(await cancelled).toBe(requestId)
+    const error = await outcome
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).name).toBe('AbortError')
+  })
 })

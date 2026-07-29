@@ -4,14 +4,63 @@ import { resolve } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 
+import type {
+  MotionAnimationEncoder,
+  MotionExportProgress
+} from '@open-pencil/core/io/motion-export'
 import { ALL_TOOLS, CODEGEN_PROMPT } from '@open-pencil/core/tools'
 
 import type { RpcJsonObject } from '#mcp/json'
+import {
+  discoverFfmpegMotionEncoders,
+  encodeMotionPngSequenceToolResult
+} from '#mcp/motion-export/index'
 import { MAX_RESULT_BYTES, fail, ok, resultTooLargeMessage } from '#mcp/result'
 import { resolveSafePath, writeToolOutput } from '#mcp/tool/output'
 import { paramToZod } from '#mcp/tool/schema'
 
-export type RpcSender = (body: Record<string, unknown>) => Promise<unknown>
+export type RpcSender = (
+  body: Record<string, unknown>,
+  options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void }
+) => Promise<unknown>
+
+export interface ToolRequestExtra {
+  signal?: AbortSignal
+  _meta?: { progressToken?: string | number }
+  sendNotification?: (notification: Record<string, unknown>) => Promise<void>
+}
+
+function isMotionExportProgress(value: unknown): value is MotionExportProgress {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  return (
+    'phase' in value &&
+    typeof value.phase === 'string' &&
+    'completed' in value &&
+    typeof value.completed === 'number' &&
+    'total' in value &&
+    typeof value.total === 'number'
+  )
+}
+
+function motionProgressReporter(
+  extra: ToolRequestExtra | undefined
+): ((progress: unknown) => void) | undefined {
+  const token = extra?._meta?.progressToken
+  const sendNotification = extra?.sendNotification
+  if (token === undefined || !sendNotification) return undefined
+  return (value) => {
+    if (!isMotionExportProgress(value)) return
+    void sendNotification({
+      method: 'notifications/progress',
+      params: {
+        progressToken: token,
+        progress: value.completed,
+        total: value.total,
+        message: `Motion export ${value.phase}`
+      }
+    }).catch(() => undefined)
+  }
+}
 
 const automationTargetSchema = {
   document_id: z.string().describe('Optional OpenPencil document/tab ID to target').optional(),
@@ -38,6 +87,31 @@ export interface RegisterToolsOptions {
   sendRpc: RpcSender
 }
 
+interface PreparedMotionToolCall {
+  readonly args: Record<string, unknown>
+  readonly encoder?: MotionAnimationEncoder
+}
+
+async function prepareMotionToolCall(
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<PreparedMotionToolCall> {
+  if (toolName !== 'export_motion_animation' || (args.format !== 'webm' && args.format !== 'mp4')) {
+    return { args }
+  }
+  const format = args.format
+  const ffmpeg = await discoverFfmpegMotionEncoders()
+  const encoder = ffmpeg.encoders.find((candidate) => candidate.format === format)
+  if (!encoder) {
+    throw new Error(
+      `Motion export format "${format}" is unavailable: ${
+        ffmpeg.reason ?? `FFmpeg does not list a ${format} encoder`
+      }`
+    )
+  }
+  return { args: { ...args, format: 'png-sequence' }, encoder }
+}
+
 export function registerTools(mcpServer: McpServer, options: RegisterToolsOptions) {
   const { enableEval, sendRpc } = options
   const resolvedRoot = options.mcpRoot ? resolve(options.mcpRoot) : null
@@ -55,19 +129,50 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
         description: def.description,
         inputSchema: z.object({ ...shape, ...automationTargetSchema })
       },
-      async (args: Record<string, unknown>) => {
+      async (args: Record<string, unknown>, extra?: ToolRequestExtra) => {
         try {
           const { target, args: toolArgs } = splitAutomationTarget(args)
-          const result = await sendRpc({
-            command: 'tool',
-            args: { ...target, name: def.name, args: toolArgs }
-          })
+          const requestedPath = typeof toolArgs.path === 'string' ? toolArgs.path : null
+          if (def.name === 'export_motion_animation' && requestedPath && !resolvedRoot) {
+            return fail(
+              new Error(
+                'export_motion_animation requires OPENPENCIL_MCP_ROOT so output can be written safely'
+              )
+            )
+          }
+          const prepared = await prepareMotionToolCall(def.name, toolArgs)
+          const onProgress =
+            def.name === 'export_motion_animation' ? motionProgressReporter(extra) : undefined
+          const result = await sendRpc(
+            {
+              command: 'tool',
+              args: {
+                ...target,
+                name: def.name,
+                args: prepared.args
+              }
+            },
+            { signal: extra?.signal, onProgress }
+          )
           const res = result as { ok?: boolean; result?: unknown; error?: string }
           if (res.ok === false) return fail(new Error(res.error))
-          const r = res.result as RpcJsonObject | undefined
-          const filePath = typeof toolArgs.path === 'string' ? toolArgs.path : null
+          const r = prepared.encoder
+            ? ((await encodeMotionPngSequenceToolResult(
+                res.result,
+                prepared.encoder,
+                extra?.signal,
+                onProgress
+              )) as RpcJsonObject)
+            : (res.result as RpcJsonObject | undefined)
+          const filePath = requestedPath
           if (r && filePath && resolvedRoot) {
-            const written = await writeToolOutput(def.name, r, filePath, resolvedRoot)
+            const written = await writeToolOutput(
+              def.name,
+              r,
+              filePath,
+              resolvedRoot,
+              extra?.signal
+            )
             if (written) return written
           }
           if (r && 'base64' in r && 'mimeType' in r) {

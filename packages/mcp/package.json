@@ -33,6 +33,12 @@
       "bun": "./src/transport/discovery.ts",
       "import": "./dist/discovery.mjs",
       "default": "./dist/discovery.mjs"
+    },
+    "./motion-export": {
+      "types": "./dist/motion-export.d.mts",
+      "bun": "./src/motion-export/index.ts",
+      "import": "./dist/motion-export.mjs",
+      "default": "./dist/motion-export.mjs"
     }
   },
   "bin": {

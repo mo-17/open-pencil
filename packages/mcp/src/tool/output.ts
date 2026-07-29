@@ -1,6 +1,9 @@
-import { lstat, mkdir, readlink, realpath, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, basename, isAbsolute, join, parse, resolve, sep as osSep } from 'node:path'
 
+import { MotionExportCancelledError } from '@open-pencil/core/io/motion-export'
+
+import { publishDirectoryNoClobber, publishFileNoClobber } from '#mcp/motion-export/no-clobber'
 import { ok } from '#mcp/result'
 import type { MCPResult } from '#mcp/result'
 
@@ -213,12 +216,176 @@ export async function resolveSafePath(filePath: string, root: string): Promise<S
   return resolveSafePathInternal(filePath, root, 0)
 }
 
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path)
+    return true
+  } catch (error) {
+    if (isMissingPathError(error)) return false
+    throw error
+  }
+}
+
+function throwIfCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new MotionExportCancelledError()
+}
+
+interface MotionSequenceFrameOutput {
+  file: string
+  base64: string
+  byteLength?: number
+}
+
+interface MotionSequenceFrameCandidate {
+  file?: unknown
+  base64?: unknown
+  byteLength?: unknown
+}
+
+function motionSequenceFrames(value: unknown): MotionSequenceFrameOutput[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 3_600) return null
+  const frames: MotionSequenceFrameOutput[] = []
+  const seen = new Set<string>()
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return null
+    const frame = candidate as MotionSequenceFrameCandidate
+    if (
+      typeof frame.file !== 'string' ||
+      !/^frame-\d{4,}\.png$/.test(frame.file) ||
+      seen.has(frame.file) ||
+      typeof frame.base64 !== 'string'
+    ) {
+      return null
+    }
+    seen.add(frame.file)
+    frames.push({
+      file: frame.file,
+      base64: frame.base64,
+      ...(typeof frame.byteLength === 'number' ? { byteLength: frame.byteLength } : {})
+    })
+  }
+  return frames
+}
+
+async function writeMotionPngSequence(
+  result: Record<string, unknown>,
+  resolved: string,
+  realPath: string,
+  root: string,
+  signal?: AbortSignal
+): Promise<MCPResult | null> {
+  if (result.format !== 'png-sequence') return null
+  const frames = motionSequenceFrames(result.frames)
+  if (
+    !frames ||
+    !result.manifest ||
+    typeof result.manifest !== 'object' ||
+    Array.isArray(result.manifest)
+  ) {
+    throw new Error('Motion PNG sequence result is malformed')
+  }
+  if (await pathExists(realPath)) {
+    throw new Error(`Motion export output already exists: ${resolved}`)
+  }
+
+  const parentDir = dirname(realPath)
+  await mkdir(parentDir, { recursive: true })
+  await resolveSafePath(parentDir, root)
+  const temporaryDir = await mkdtemp(join(parentDir, `.${basename(realPath)}.tmp-`))
+  let moved = false
+  try {
+    let byteLength = 0
+    for (const frame of frames) {
+      throwIfCancelled(signal)
+      const buffer = Buffer.from(frame.base64, 'base64')
+      if (
+        buffer.length < 8 ||
+        !buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+      ) {
+        throw new Error(`Motion export frame is not valid PNG data: ${frame.file}`)
+      }
+      if (frame.byteLength !== undefined && frame.byteLength !== buffer.length) {
+        throw new Error(`Motion export frame length mismatch: ${frame.file}`)
+      }
+      await writeFile(join(temporaryDir, frame.file), buffer)
+      byteLength += buffer.length
+    }
+    throwIfCancelled(signal)
+    const manifestText = `${JSON.stringify(result.manifest, null, 2)}\n`
+    await writeFile(join(temporaryDir, 'manifest.json'), manifestText, 'utf8')
+    byteLength += Buffer.byteLength(manifestText, 'utf8')
+    await resolveSafePath(temporaryDir, root)
+    throwIfCancelled(signal)
+    await publishDirectoryNoClobber(temporaryDir, realPath)
+    moved = true
+    await resolveSafePath(realPath, root)
+    return ok({
+      written: resolved,
+      format: 'png-sequence',
+      frameCount: frames.length,
+      byteLength
+    })
+  } finally {
+    if (!moved) await rm(temporaryDir, { recursive: true, force: true })
+  }
+}
+
+function hasEncodedMotionSignature(format: unknown, buffer: Buffer): boolean {
+  if (format === 'gif') return buffer.subarray(0, 4).toString('ascii') === 'GIF8'
+  if (format === 'webm') {
+    return buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
+  }
+  if (format === 'mp4')
+    return buffer.length >= 12 && buffer.subarray(4, 8).toString('ascii') === 'ftyp'
+  return false
+}
+
+async function writeEncodedMotionAtomic(
+  result: Record<string, unknown>,
+  resolved: string,
+  realPath: string,
+  root: string,
+  signal?: AbortSignal
+): Promise<MCPResult | null> {
+  if (typeof result.base64 !== 'string') return null
+  const buffer = Buffer.from(result.base64, 'base64')
+  if (!hasEncodedMotionSignature(result.format, buffer)) {
+    throw new Error(`Motion ${String(result.format)} output has an invalid file signature`)
+  }
+  if (await pathExists(realPath))
+    throw new Error(`Motion export output already exists: ${resolved}`)
+
+  const parentDir = dirname(realPath)
+  await mkdir(parentDir, { recursive: true })
+  await resolveSafePath(parentDir, root)
+  const temporaryDir = await mkdtemp(join(parentDir, `.${basename(realPath)}.tmp-`))
+  const temporaryFile = join(temporaryDir, basename(realPath))
+  try {
+    throwIfCancelled(signal)
+    await writeFile(temporaryFile, buffer)
+    await resolveSafePath(temporaryFile, root)
+    throwIfCancelled(signal)
+    await publishFileNoClobber(temporaryFile, realPath)
+    await resolveSafePath(realPath, root)
+    return ok({
+      written: resolved,
+      format: result.format,
+      byteLength: buffer.length,
+      encoder: result.encoder
+    })
+  } finally {
+    await rm(temporaryDir, { recursive: true, force: true })
+  }
+}
+
 export async function writeToolOutput(
   toolName: string,
   result: Record<string, unknown>,
   filePath: string,
-  root: string
+  root: string,
+  signal?: AbortSignal
 ): Promise<MCPResult | null> {
+  if (toolName === 'export_motion_animation') throwIfCancelled(signal)
   const { resolved, realPath } = await resolveSafePath(filePath, root)
   // Use the canonical realPath for filesystem operations to prevent TOCTOU:
   // an attacker could swap a directory component with a symlink between
@@ -231,6 +398,12 @@ export async function writeToolOutput(
   // with a symlink between resolveSafePath and the write would be detected
   // here — realpath follows the ancestor symlink and resolves outside root.
   await resolveSafePath(parentDir, root)
+  if (toolName === 'export_motion_animation') {
+    const sequence = await writeMotionPngSequence(result, resolved, realPath, root, signal)
+    if (sequence) return sequence
+    const encoded = await writeEncodedMotionAtomic(result, resolved, realPath, root, signal)
+    if (encoded) return encoded
+  }
   if (toolName === 'export_svg' && typeof result.svg === 'string') {
     await writeFile(realPath, result.svg, 'utf8')
     await resolveSafePath(realPath, root)
