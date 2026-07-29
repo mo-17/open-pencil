@@ -1,10 +1,6 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
 
-type ReloadViewport = {
-  panX: number
-  panY: number
-  zoom: number
-}
+type ReloadViewport = Pick<EditorState, 'panX' | 'panY' | 'zoom'>
 
 export type ReloadStateSnapshot = {
   viewport: ReloadViewport
