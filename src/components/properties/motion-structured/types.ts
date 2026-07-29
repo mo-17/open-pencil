@@ -1,0 +1,30 @@
+export interface MotionStructuredChannelLabels {
+  title: string
+  upgrade: string
+  upgradeHint: string
+  enable: string
+  remove: string
+  addTarget: string
+  paints: string
+  gradientStops: string
+  effects: string
+  cornerRadii: string
+  textReveal: string
+  fontAxes: string
+  vectorMorph: string
+  opacity: string
+  position: string
+  radius: string
+  x: string
+  y: string
+  blur: string
+  spread: string
+  red: string
+  green: string
+  blue: string
+  alpha: string
+  topLeft: string
+  topRight: string
+  bottomRight: string
+  bottomLeft: string
+}

@@ -1,3 +1,4 @@
+import { inspectMotionNodeCapabilities } from '@open-pencil/core/motion'
 import {
   cloneMotionSpec,
   createMotionPreset,
@@ -5,12 +6,16 @@ import {
   isMotionPresetId,
   MOTION_PRESET_REGISTRY,
   parseMotionSpec,
+  renameNodeLowcodeMotionTrackReferences,
   type MotionPresetId,
   type MotionPresetParameterName,
   type MotionSpec,
+  type MotionStaggerOptions,
   type MotionTrigger,
-  type SceneNode
+  type SceneNode,
+  withMotionStagger
 } from '@open-pencil/scene-graph'
+import type { Vector } from '@open-pencil/scene-graph/primitives'
 
 export const MOTION_MIXED = Symbol('motion-mixed')
 
@@ -36,11 +41,22 @@ export interface MotionSelectionState {
 export interface MotionMutationEditor {
   graph: {
     getNode(id: string): SceneNode | undefined
+    getAbsolutePosition(id: string): Vector
   }
   undo: {
     runBatch<T>(label: string, apply: () => T, coalesceKey?: string): T
   }
   updateNodeWithUndo(id: string, changes: Partial<SceneNode>, label?: string): void
+}
+
+export interface MotionApplication {
+  nodeId: string
+  motion: MotionSpec
+}
+
+interface MotionUpdate {
+  id: string
+  motion: MotionSpec | undefined
 }
 
 const SKIP_MOTION = Symbol('skip-motion')
@@ -135,6 +151,166 @@ function sameMotion(left: MotionSpec | undefined, right: MotionSpec | undefined)
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
+function motionOverrideValue(motion: MotionSpec | undefined): MotionSpec | null {
+  return motion ? cloneMotionSpec(motion) : null
+}
+
+function hasCurrentMotionOverride(node: SceneNode, motion: MotionSpec | undefined): boolean {
+  if (node.type !== 'INSTANCE') return true
+  if (!Object.hasOwn(node.overrides, 'motion')) return false
+  const override = node.overrides.motion
+  if (!motion) return override === null
+  if (!override || typeof override !== 'object') return false
+  return JSON.stringify(override) === JSON.stringify(motion)
+}
+
+function nodeMotionChanges(node: SceneNode, motion: MotionSpec | undefined): Partial<SceneNode> {
+  if (node.type !== 'INSTANCE') return { motion }
+  return {
+    motion,
+    overrides: {
+      ...node.overrides,
+      motion: motionOverrideValue(motion)
+    }
+  }
+}
+
+function needsNodeMotionUpdate(node: SceneNode, motion: MotionSpec | undefined): boolean {
+  return !sameMotion(node.motion, motion) || !hasCurrentMotionOverride(node, motion)
+}
+
+function compareNodeIds(left: string, right: string): number {
+  if (left === right) return 0
+  return left < right ? -1 : 1
+}
+
+function spatialMotionTargetIds(
+  editor: MotionMutationEditor,
+  nodeIds: readonly string[]
+): string[] {
+  return [...new Set(nodeIds)]
+    .filter((id) => editor.graph.getNode(id) !== undefined)
+    .map((id) => ({ id, position: editor.graph.getAbsolutePosition(id) }))
+    .sort(
+      (left, right) =>
+        left.position.y - right.position.y ||
+        left.position.x - right.position.x ||
+        compareNodeIds(left.id, right.id)
+    )
+    .map(({ id }) => id)
+}
+
+/** Build fully validated per-node snapshots before any graph mutation or undo entry is created. */
+export function buildMotionApplications(
+  editor: MotionMutationEditor,
+  nodeIds: readonly string[],
+  motion: MotionSpec,
+  stagger?: MotionStaggerOptions
+): MotionApplication[] {
+  const validated = parseMotionSpec(motion)
+  const ids = stagger ? spatialMotionTargetIds(editor, nodeIds) : [...new Set(nodeIds)]
+  const existingIds = ids.filter((id) => editor.graph.getNode(id) !== undefined)
+  return existingIds.map((nodeId, index) => ({
+    nodeId,
+    motion: stagger
+      ? withMotionStagger(validated, index, existingIds.length, stagger)
+      : cloneMotionSpec(validated)
+  }))
+}
+
+export function applyMotionApplications(
+  editor: MotionMutationEditor,
+  applications: readonly MotionApplication[],
+  label: string
+): number {
+  const updates = applications
+    .map(({ nodeId, motion }) => ({
+      id: nodeId,
+      node: editor.graph.getNode(nodeId),
+      motion: parseMotionSpec(motion)
+    }))
+    .filter(
+      (update): update is { id: string; node: SceneNode; motion: MotionSpec } =>
+        update.node !== undefined && needsNodeMotionUpdate(update.node, update.motion)
+    )
+  const incompatible = updates.flatMap(({ node, motion }) =>
+    inspectMotionNodeCapabilities(node, motion).map(
+      ({ path, message }) => `MotionSpec is incompatible with node ${node.id}: ${path}: ${message}`
+    )
+  )
+  if (incompatible.length > 0) throw new Error(incompatible.join('; '))
+  return commitMotionUpdates(editor, updates, label)
+}
+
+/** Commit one authored Motion value while preserving root-instance inheritance semantics. */
+export function updateNodeMotionWithUndo(
+  editor: MotionMutationEditor,
+  nodeId: string,
+  motion: MotionSpec | undefined,
+  label: string
+): boolean {
+  const node = editor.graph.getNode(nodeId)
+  if (!node) return false
+  const validated = motion ? parseMotionSpec(motion) : undefined
+  if (!needsNodeMotionUpdate(node, validated)) return false
+  editor.updateNodeWithUndo(nodeId, nodeMotionChanges(node, validated), label)
+  return true
+}
+
+type MotionTrackReferenceMutationEditor = MotionMutationEditor & {
+  graph: MotionMutationEditor['graph'] & {
+    getAllNodes(): Iterable<SceneNode>
+  }
+}
+
+/** Rename a track and every matching low-code action reference as one undo step. */
+export function renameMotionTrackWithReferences(
+  editor: MotionTrackReferenceMutationEditor,
+  nodeId: string,
+  motion: MotionSpec,
+  previousTrackId: string,
+  nextTrackId: string,
+  label: string
+): boolean {
+  const node = editor.graph.getNode(nodeId)
+  if (!node) return false
+  const validated = parseMotionSpec(motion)
+  const updateMotion = needsNodeMotionUpdate(node, validated)
+  const referenceUpdates = [...editor.graph.getAllNodes()].flatMap((candidate) => {
+    const changes = renameNodeLowcodeMotionTrackReferences(
+      candidate,
+      nodeId,
+      previousTrackId,
+      nextTrackId
+    )
+    return changes ? [{ id: candidate.id, changes }] : []
+  })
+  if (!updateMotion && referenceUpdates.length === 0) return false
+
+  editor.undo.runBatch(label, () => {
+    if (updateMotion) updateNodeMotionWithUndo(editor, nodeId, validated, label)
+    for (const update of referenceUpdates) {
+      editor.updateNodeWithUndo(update.id, update.changes, label)
+    }
+  })
+  return true
+}
+
+function commitMotionUpdates(
+  editor: MotionMutationEditor,
+  updates: readonly MotionUpdate[],
+  label: string
+): number {
+  if (updates.length === 0) return 0
+
+  editor.undo.runBatch(label, () => {
+    for (const update of updates) {
+      updateNodeMotionWithUndo(editor, update.id, update.motion, label)
+    }
+  })
+  return updates.length
+}
+
 function mutateSelectedMotion(
   editor: MotionMutationEditor,
   nodeIds: readonly string[],
@@ -151,26 +327,39 @@ function mutateSelectedMotion(
     const result = mutate(node.motion, node)
     if (result === SKIP_MOTION) continue
     const motion = result ? parseMotionSpec(result) : undefined
-    if (!sameMotion(node.motion, motion)) updates.push({ id, motion })
+    if (needsNodeMotionUpdate(node, motion)) updates.push({ id, motion })
   }
-  if (updates.length === 0) return 0
-
-  editor.undo.runBatch(label, () => {
-    for (const update of updates) {
-      editor.updateNodeWithUndo(update.id, { motion: update.motion }, label)
-    }
-  })
-  return updates.length
+  return commitMotionUpdates(editor, updates, label)
 }
 
 export function applyMotionPreset(
   editor: MotionMutationEditor,
   nodeIds: readonly string[],
   presetId: MotionPresetId,
-  label: string
+  label: string,
+  stagger?: MotionStaggerOptions
 ): number {
   const preset = createMotionPreset(presetId)
-  return mutateSelectedMotion(editor, nodeIds, label, () => cloneMotionSpec(preset))
+  return applyMotionApplications(
+    editor,
+    buildMotionApplications(editor, nodeIds, preset, stagger),
+    label
+  )
+}
+
+/** Replace the selection with one complete MotionSpec snapshot, optionally staggered. */
+export function applyMotionSpec(
+  editor: MotionMutationEditor,
+  nodeIds: readonly string[],
+  motion: MotionSpec,
+  label: string,
+  stagger?: MotionStaggerOptions
+): number {
+  return applyMotionApplications(
+    editor,
+    buildMotionApplications(editor, nodeIds, motion, stagger),
+    label
+  )
 }
 
 export function clearSelectedMotion(
@@ -203,6 +392,7 @@ export function setMotionTrigger(
   return updateExistingMotion(editor, nodeIds, label, (motion) => {
     const next = cloneMotionSpec(motion)
     for (const track of next.tracks) track.trigger = trigger
+    if (presetSelection(motion) === 'custom') delete next.preset
     return parseMotionSpec(next)
   })
 }
@@ -217,7 +407,8 @@ export function setMotionTiming(
   return updateExistingMotion(editor, nodeIds, label, (motion) => {
     const next = cloneMotionSpec(motion)
     for (const track of next.tracks) track.timing[field] = value
-    if (next.preset && Object.hasOwn(next.preset.parameters, field)) {
+    if (presetSelection(motion) === 'custom') delete next.preset
+    else if (next.preset && Object.hasOwn(next.preset.parameters, field)) {
       next.preset.parameters[field] = value
     }
     return parseMotionSpec(next)
@@ -234,6 +425,7 @@ export function setMotionReducedMotion(
     const next = cloneMotionSpec(motion)
     if (value === 'default') delete next.reducedMotion
     else next.reducedMotion = value
+    if (presetSelection(motion) === 'custom') delete next.preset
     return parseMotionSpec(next)
   })
 }

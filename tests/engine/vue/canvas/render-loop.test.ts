@@ -1,14 +1,18 @@
 import { describe, expect, test } from 'bun:test'
 
 import type { Editor, EditorEvents } from '@open-pencil/core/editor'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { createCanvasRenderLoop } from '#vue/canvas/surface/render-loop'
+
+import { generatedEffect } from '#tests/helpers/generated-effect'
 
 type EditorEventName = keyof EditorEvents
 
 type TestEditor = Pick<
   Editor,
   | 'state'
+  | 'graph'
   | 'onEditorEvent'
   | 'isMotionPreviewActive'
   | 'updateMotionPreviewFrame'
@@ -46,17 +50,76 @@ function createFrameScheduler() {
   }
 }
 
+function createReducedMotionQuery(initial = false) {
+  let matches = initial
+  type ChangeListener = (this: MediaQueryList, event: MediaQueryListEvent) => unknown
+  const listeners = new Set<ChangeListener>()
+  const listenerObjects = new Set<EventListenerObject>()
+  const originalMatchMedia = globalThis.matchMedia
+  const query: MediaQueryList = {
+    get matches() {
+      return matches
+    },
+    media: '(prefers-reduced-motion: reduce)',
+    onchange: null,
+    addListener(listener) {
+      if (listener) listeners.add(listener)
+    },
+    removeListener(listener) {
+      if (listener) listeners.delete(listener)
+    },
+    addEventListener(type, listener) {
+      if (type !== 'change') return
+      if (typeof listener === 'function') listeners.add(listener)
+      else listenerObjects.add(listener)
+    },
+    removeEventListener(type, listener) {
+      if (type !== 'change') return
+      if (typeof listener === 'function') listeners.delete(listener)
+      else listenerObjects.delete(listener)
+    },
+    dispatchEvent(event) {
+      const change = event as MediaQueryListEvent
+      for (const listener of listeners) listener.call(query, change)
+      for (const listener of listenerObjects) listener.handleEvent(change)
+      query.onchange?.(change)
+      return true
+    }
+  }
+  globalThis.matchMedia = () => query
+  return {
+    get listenerCount() {
+      return listeners.size + listenerObjects.size
+    },
+    set(next: boolean) {
+      matches = next
+      const event = Object.assign(new Event('change'), {
+        matches,
+        media: query.media
+      }) as MediaQueryListEvent
+      query.dispatchEvent(event)
+    },
+    restore() {
+      globalThis.matchMedia = originalMatchMedia
+    }
+  }
+}
+
 function createEditor() {
   const handlers = new Map<EditorEventName, Set<(...args: never[]) => void>>()
   let motionActive = false
   let motionResults: boolean[] = []
   const motionTimestamps: number[] = []
   let motionStops = 0
+  const graph = new SceneGraph()
+  const currentPageId = graph.getPages()[0].id
   const editor: TestEditor = {
+    graph,
     state: {
       loading: false,
       renderVersion: 0,
-      selectedIds: new Set<string>()
+      selectedIds: new Set<string>(),
+      currentPageId
     } as Editor['state'],
     onEditorEvent(event, handler) {
       const listeners = handlers.get(event) ?? new Set()
@@ -80,6 +143,7 @@ function createEditor() {
 
   return {
     editor: editor as Editor,
+    graph,
     emit(event: EditorEventName) {
       for (const handler of handlers.get(event) ?? []) handler()
     },
@@ -281,6 +345,98 @@ describe('canvas render loop', () => {
       expect(harness.motionTimestamps).toEqual([])
       expect(scheduler.pendingCount).toBe(0)
     } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('only visible generated effects on the current page keep scheduling frames', () => {
+    const scheduler = createFrameScheduler()
+    const media = createReducedMotionQuery()
+    try {
+      const harness = createEditor()
+      const otherPage = harness.graph.addPage('Hidden page')
+      harness.graph.createNode('RECTANGLE', otherPage.id, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect()
+      })
+      const hiddenParent = harness.graph.createNode('FRAME', harness.editor.state.currentPageId, {
+        visible: false,
+        width: 100,
+        height: 100
+      })
+      harness.graph.createNode('RECTANGLE', hiddenParent.id, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect()
+      })
+      let renders = 0
+      const loop = createCanvasRenderLoop(harness.editor, () => renders++)
+
+      harness.emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(1)
+      expect(scheduler.pendingCount).toBe(0)
+
+      const visible = harness.graph.createNode('RECTANGLE', harness.editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect()
+      })
+      harness.emit('render:requested')
+      scheduler.flush()
+      expect(renders).toBe(2)
+      expect(scheduler.pendingCount).toBe(1)
+
+      harness.graph.updateNode(visible.id, { width: 0 })
+      scheduler.flush()
+      expect(renders).toBe(3)
+      expect(scheduler.pendingCount).toBe(0)
+
+      loop.pause()
+    } finally {
+      media.restore()
+      scheduler.restore()
+    }
+  })
+
+  test('reduced-motion changes repaint a static frame, resume animation, and clean up', () => {
+    const scheduler = createFrameScheduler()
+    const media = createReducedMotionQuery()
+    try {
+      const harness = createEditor()
+      harness.graph.createNode('RECTANGLE', harness.editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect()
+      })
+      let renders = 0
+      const loop = createCanvasRenderLoop(harness.editor, () => renders++)
+      expect(media.listenerCount).toBe(1)
+
+      harness.emit('repaint:requested')
+      scheduler.flush()
+      expect(renders).toBe(1)
+      expect(scheduler.pendingCount).toBe(1)
+
+      media.set(true)
+      scheduler.flush()
+      expect(renders).toBe(2)
+      expect(scheduler.pendingCount).toBe(0)
+
+      media.set(false)
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.flush()
+      expect(renders).toBe(3)
+      expect(scheduler.pendingCount).toBe(1)
+
+      loop.pause()
+      expect(scheduler.pendingCount).toBe(0)
+      expect(media.listenerCount).toBe(0)
+      media.set(true)
+      expect(scheduler.pendingCount).toBe(0)
+    } finally {
+      media.restore()
       scheduler.restore()
     }
   })

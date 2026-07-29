@@ -1,10 +1,17 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createMotionPreset, MOTION_LIMITS } from '@open-pencil/scene-graph'
+import {
+  createMotionPreset,
+  createUserMotionPreset,
+  createUserMotionPresetLibrary,
+  instantiateUserMotionPreset,
+  MOTION_LIMITS
+} from '@open-pencil/scene-graph'
 
 import { createEditorStore } from '@/app/editor/session'
 import {
   applyMotionPreset,
+  applyMotionSpec,
   clearSelectedMotion,
   MOTION_MIXED,
   readMotionSelection,
@@ -104,6 +111,119 @@ describe('motion property model', () => {
     }
   })
 
+  test('applies spatial stagger in one undo step and keeps built-in provenance aligned', () => {
+    const { ids, store } = createRectangles(3)
+
+    expect(
+      applyMotionPreset(store, [ids[2], ids[0], ids[1]], 'slide-up', 'Apply stagger', {
+        stepMs: 80,
+        direction: 'forward',
+        rhythm: 'linear'
+      })
+    ).toBe(3)
+    expect(
+      ids.map((id) => selectedNode(store, id, 'rectangle').motion?.tracks[0]?.timing.delayMs)
+    ).toEqual([0, 80, 160])
+    expect(
+      ids.map((id) => selectedNode(store, id, 'rectangle').motion?.preset?.parameters.delayMs)
+    ).toEqual([0, 80, 160])
+    expect(store.undo.undoLabel).toBe('Apply stagger')
+
+    store.undo.undo()
+    expect(ids.map((id) => selectedNode(store, id, 'rectangle').motion)).toEqual([
+      undefined,
+      undefined,
+      undefined
+    ])
+    store.undo.redo()
+    expect(
+      ids.map((id) => selectedNode(store, id, 'rectangle').motion?.tracks[0]?.timing.delayMs)
+    ).toEqual([0, 80, 160])
+
+    expect(
+      applyMotionPreset(store, ids, 'slide-up', 'Reverse stagger', {
+        stepMs: 80,
+        direction: 'reverse',
+        rhythm: 'linear'
+      })
+    ).toBe(2)
+    expect(
+      ids.map((id) => selectedNode(store, id, 'rectangle').motion?.tracks[0]?.timing.delayMs)
+    ).toEqual([160, 80, 0])
+  })
+
+  test('uses node ids as a locale-independent stagger tie-breaker', () => {
+    const store = createEditorStore()
+    const pageId = store.state.currentPageId
+    store.graph.createNodeWithId('motion-b', 'RECTANGLE', pageId, {
+      x: 40,
+      y: 40,
+      width: 20,
+      height: 20
+    })
+    store.graph.createNodeWithId('motion-a', 'RECTANGLE', pageId, {
+      x: 40,
+      y: 40,
+      width: 20,
+      height: 20
+    })
+
+    expect(
+      applyMotionPreset(store, ['motion-b', 'motion-a'], 'fade-in', 'Apply tied stagger', {
+        stepMs: 25,
+        direction: 'forward',
+        rhythm: 'linear'
+      })
+    ).toBe(2)
+    expect(selectedNode(store, 'motion-a', 'a').motion?.tracks[0]?.timing.delayMs).toBe(0)
+    expect(selectedNode(store, 'motion-b', 'b').motion?.tracks[0]?.timing.delayMs).toBe(25)
+  })
+
+  test('prebuilds every staggered snapshot before mutation', () => {
+    const { ids, store } = createRectangles(2)
+    const motion = createMotionPreset('fade-in', { delayMs: MOTION_LIMITS.delayMs.max - 10 })
+
+    expect(() =>
+      applyMotionSpec(store, ids, motion, 'Invalid stagger', {
+        stepMs: 20,
+        direction: 'forward',
+        rhythm: 'linear'
+      })
+    ).toThrow()
+    expect(ids.map((id) => selectedNode(store, id, 'rectangle').motion)).toEqual([
+      undefined,
+      undefined
+    ])
+    expect(store.undo.canUndo).toBe(false)
+  })
+
+  test('applies personal preset snapshots deeply and detaches provenance after editing', () => {
+    const { ids, store } = createRectangles(2)
+    const personalMotion = createMotionPreset('slide-up')
+    delete personalMotion.preset
+    const library = createUserMotionPreset(createUserMotionPresetLibrary(), {
+      id: 'user-card-enter',
+      name: '卡片入场',
+      category: 'entrance',
+      motion: personalMotion
+    })
+    const snapshot = instantiateUserMotionPreset(library.presets[0])
+
+    expect(applyMotionSpec(store, ids, snapshot, 'Apply personal preset')).toBe(2)
+    const first = selectedNode(store, ids[0], 'first rectangle').motion
+    const second = selectedNode(store, ids[1], 'second rectangle').motion
+    expect(first?.preset).toEqual({ id: 'user-card-enter', version: 1, parameters: {} })
+    expect(second).toEqual(first)
+    expect(second).not.toBe(first)
+    expect(second?.tracks).not.toBe(first?.tracks)
+
+    expect(setMotionTiming(store, [ids[0]], 'durationMs', 700, 'Edit personal motion')).toBe(1)
+    expect(selectedNode(store, ids[0], 'first rectangle').motion?.preset).toBeUndefined()
+    expect(selectedNode(store, ids[1], 'second rectangle').motion?.preset?.id).toBe(
+      'user-card-enter'
+    )
+  })
+
   test('updates preset controls without discarding trigger or reduced-motion policy', () => {
     const { ids, store } = createRectangles(1)
     applyMotionPreset(store, ids, 'slide-up', 'Apply motion preset')
@@ -146,5 +266,48 @@ describe('motion property model', () => {
       setMotionTiming(store, ids, 'durationMs', MOTION_LIMITS.durationMs.max + 1, 'Update motion')
     ).toThrow()
     expect(ids.map((id) => selectedNode(store, id, 'rectangle').motion)).toEqual(before)
+  })
+
+  test('records root instance motion overrides atomically across apply, clear, undo, and sync', () => {
+    const store = createEditorStore()
+    const component = store.graph.createNode('COMPONENT', store.state.currentPageId, {
+      name: 'Animated component',
+      motion: createMotionPreset('fade-in')
+    })
+    const instance = store.graph.createInstance(component.id, store.state.currentPageId)
+    if (!instance) throw new Error('Expected component instance')
+
+    expect(applyMotionPreset(store, [instance.id], 'slide-up', 'Apply motion preset')).toBe(1)
+    let current = selectedNode(store, instance.id, 'instance')
+    expect(current.motion?.preset?.id).toBe('slide-up')
+    expect(current.overrides.motion).toEqual(current.motion)
+    expect(current.overrides.motion).not.toBe(current.motion)
+
+    store.graph.updateNode(component.id, { motion: createMotionPreset('bounce-in') })
+    store.graph.syncInstances(component.id)
+    current = selectedNode(store, instance.id, 'instance')
+    expect(current.motion?.preset?.id).toBe('slide-up')
+
+    store.undo.undo()
+    current = selectedNode(store, instance.id, 'instance')
+    expect(current.motion?.preset?.id).toBe('fade-in')
+    expect(Object.hasOwn(current.overrides, 'motion')).toBe(false)
+
+    store.undo.redo()
+    current = selectedNode(store, instance.id, 'instance')
+    expect(current.motion?.preset?.id).toBe('slide-up')
+    expect(current.overrides.motion).toEqual(current.motion)
+
+    expect(clearSelectedMotion(store, [instance.id], 'Clear motion')).toBe(1)
+    current = selectedNode(store, instance.id, 'instance')
+    expect(current.motion).toBeUndefined()
+    expect(current.overrides.motion).toBeNull()
+    store.graph.syncInstances(component.id)
+    expect(selectedNode(store, instance.id, 'instance').motion).toBeUndefined()
+
+    store.undo.undo()
+    current = selectedNode(store, instance.id, 'instance')
+    expect(current.motion?.preset?.id).toBe('slide-up')
+    expect(current.overrides.motion).toEqual(current.motion)
   })
 })

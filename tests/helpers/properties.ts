@@ -17,3 +17,8 @@ export function propertyItem(page: Page, property: string, index = 0): Locator {
     `[data-property=${JSON.stringify(property)}][data-index=${JSON.stringify(String(index))}]`
   )
 }
+
+export async function chooseAppSelect(page: Page, trigger: Locator, option: string): Promise<void> {
+  await trigger.click()
+  await page.getByRole('option', { name: option, exact: true }).click()
+}

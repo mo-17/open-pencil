@@ -1,4 +1,5 @@
 import type { Editor } from '@open-pencil/core/editor'
+import { graphHasAnimatedGeneratedEffects } from '@open-pencil/core/motion'
 
 import type { CanvasRenderLayer } from './types'
 
@@ -60,6 +61,12 @@ export function createCanvasRenderLoop(
   options: RenderLoopOptions = {}
 ) {
   const scheduler = getRenderScheduler(editor)
+  const drivesMotion = shouldDriveMotion(options.layer)
+  const reducedMotionQuery =
+    drivesMotion && typeof matchMedia === 'function'
+      ? matchMedia('(prefers-reduced-motion: reduce)')
+      : null
+  let prefersReducedMotion = reducedMotionQuery?.matches ?? false
   let dirty = true
   let frameScheduled = false
   let lastRenderVersion = -1
@@ -72,12 +79,17 @@ export function createCanvasRenderLoop(
       return
     }
 
-    const drivesMotion = shouldDriveMotion(options.layer)
     const motionWasActive = drivesMotion && editor.isMotionPreviewActive()
+    const generatedEffectWasActive =
+      drivesMotion &&
+      graphHasAnimatedGeneratedEffects(editor.graph, {
+        pageId: editor.state.currentPageId,
+        prefersReducedMotion
+      })
     const motionShouldContinue = motionWasActive
       ? editor.updateMotionPreviewFrame(timestampMs)
       : false
-    if (motionWasActive) dirty = true
+    if (motionWasActive || generatedEffectWasActive) dirty = true
 
     const versionChanged = editor.state.renderVersion !== lastRenderVersion
     const selectionChanged = editor.state.selectedIds !== lastSelectedIds
@@ -86,9 +98,12 @@ export function createCanvasRenderLoop(
       renderNow()
     }
 
-    if (!motionWasActive) return
-    if (motionShouldContinue && editor.isMotionPreviewActive()) scheduleFrame()
-    else if (editor.isMotionPreviewActive()) editor.stopMotionPreview()
+    if (!motionWasActive && !generatedEffectWasActive) return
+    if (generatedEffectWasActive || (motionShouldContinue && editor.isMotionPreviewActive())) {
+      scheduleFrame()
+    } else if (editor.isMotionPreviewActive()) {
+      editor.stopMotionPreview()
+    }
   }
 
   const scheduleFrame = () => {
@@ -102,6 +117,11 @@ export function createCanvasRenderLoop(
     scheduleFrame()
   }
 
+  const onReducedMotionChange = () => {
+    prefersReducedMotion = reducedMotionQuery?.matches ?? false
+    scheduleRender()
+  }
+
   const unsubscribe = [
     editor.onEditorEvent('render:requested', scheduleRender),
     editor.onEditorEvent('viewport:changed', scheduleRender)
@@ -113,6 +133,8 @@ export function createCanvasRenderLoop(
     unsubscribe.push(editor.onEditorEvent('selection:changed', scheduleRender))
   }
 
+  reducedMotionQuery?.addEventListener('change', onReducedMotionChange)
+
   function markRendered() {
     lastRenderVersion = editor.state.renderVersion
     lastSelectedIds = editor.state.selectedIds
@@ -120,6 +142,7 @@ export function createCanvasRenderLoop(
 
   function pause() {
     for (const off of unsubscribe) off()
+    reducedMotionQuery?.removeEventListener('change', onReducedMotionChange)
     if (frameScheduled) {
       scheduler.cancel(renderFrame)
       frameScheduled = false
