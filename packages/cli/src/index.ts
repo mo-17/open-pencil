@@ -15,6 +15,7 @@ import importCmd from './commands/import'
 import info from './commands/info'
 import library from './commands/library'
 import lint from './commands/lint'
+import motion from './commands/motion'
 import node from './commands/node'
 import pages from './commands/pages'
 import query from './commands/query'
@@ -45,6 +46,7 @@ const main = defineCommand({
     info,
     library,
     lint,
+    motion,
     query,
     node,
     pages,
