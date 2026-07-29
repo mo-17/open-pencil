@@ -24,7 +24,15 @@ interface AdapterResult {
   error?: string
   compatibility?: {
     canonical: { motionPresent: boolean; roundTrip: boolean; format: string }
-    native: { supported: boolean; rawFigAuthoring: boolean; api: string }
+    native: {
+      supported: boolean
+      rawFigAuthoring: boolean
+      api: string
+      conflictPolicy: string
+      allowTimelineGrowth: boolean
+      ownership: string
+      writeSafety: string
+    }
   }
   durationSeconds?: number | null
   operations?: Array<{
@@ -52,14 +60,17 @@ describe('get_figma_motion_adapter', () => {
 
     expect(result.compatibility).toMatchObject({
       canonical: {
-        format: 'MotionSpec v1 pluginData',
+        format: 'MotionSpec v1/v2 pluginData',
         motionPresent: true,
         roundTrip: true
       },
       native: {
         api: 'Figma Plugin API Motion Beta (2026-06-23)',
         supported: true,
-        rawFigAuthoring: false
+        rawFigAuthoring: false,
+        conflictPolicy: 'replace-owned',
+        allowTimelineGrowth: false,
+        ownership: 'sharedPluginData openpencil/nativeMotionAdapterV1'
       }
     })
     expect(result.durationSeconds).toBe(0.3)
@@ -72,7 +83,31 @@ describe('get_figma_motion_adapter', () => {
       [0, 0.6]
     )
     expect(result.script).toContain('figma.currentPage.selection')
+    expect(result.script).toContain('"conflictPolicy": "replace-owned"')
     expect(result.script).not.toContain(rectangle.id)
+    expect(result.compatibility?.native.writeSafety).toContain('only tracks carrying verified')
+    expect(result.compatibility?.native.writeSafety).toContain('rejects foreign/native-edited')
+  })
+
+  test('emits destructive replacement and shared timeline growth only when requested', () => {
+    const { figma, graph } = setupToolTest()
+    const rectangle = figma.createRectangle()
+    graph.updateNode(rectangle.id, { motion })
+
+    const result = getTool('get_figma_motion_adapter').execute(figma, {
+      id: rectangle.id,
+      conflictPolicy: 'replace-all',
+      allowTimelineGrowth: true
+    }) as AdapterResult
+
+    expect(result.compatibility?.native).toMatchObject({
+      conflictPolicy: 'replace-all',
+      allowTimelineGrowth: true
+    })
+    expect(result.compatibility?.native.writeSafety).toContain('explicit destructive consent')
+    expect(result.compatibility?.native.writeSafety).toContain('Indexed or unknown future tracks')
+    expect(result.script).toContain('"conflictPolicy": "replace-all"')
+    expect(result.script).toContain('"allowTimelineGrowth": true')
   })
 
   test('reports unsupported semantics without emitting operations or a script', () => {

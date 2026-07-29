@@ -1,4 +1,9 @@
-import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
+import {
+  cloneGeneratedEffectSpec,
+  cloneMotionSpec,
+  type SceneGraph,
+  type SceneNode
+} from '@open-pencil/scene-graph'
 
 import { presets } from './presets'
 import { allRules } from './rules'
@@ -86,11 +91,16 @@ export class Linter {
       paddingLeft: raw.paddingLeft,
       cornerRadius: raw.cornerRadius,
       childIds: raw.childIds.slice(),
+      fillGeometryCount: raw.fillGeometry.length,
       componentId: raw.componentId || undefined,
       text: raw.text,
       fontSize: raw.fontSize,
       styleRunCount: raw.styleRuns.length,
       boundVariables: raw.boundVariables,
+      motion: raw.motion ? cloneMotionSpec(raw.motion) : undefined,
+      generatedEffect: raw.generatedEffect
+        ? cloneGeneratedEffectSpec(raw.generatedEffect)
+        : undefined,
       fills: raw.fills.map((f) => ({
         type: f.type,
         visible: f.visible,

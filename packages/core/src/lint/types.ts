@@ -1,4 +1,4 @@
-import type { LayoutMode } from '@open-pencil/scene-graph'
+import type { GeneratedEffectSpecV1, LayoutMode, MotionSpec } from '@open-pencil/scene-graph'
 
 export type Severity = 'error' | 'warning' | 'info' | 'off'
 
@@ -10,6 +10,8 @@ export type Category =
   | 'components'
   | 'design-tokens'
   | 'typography'
+  | 'motion'
+  | 'performance'
 
 export interface RuleMeta {
   id: string
@@ -63,11 +65,14 @@ export interface LintNode {
   paddingLeft: number
   cornerRadius: number
   childIds: string[]
+  fillGeometryCount: number
   componentId?: string
   text: string
   fontSize: number
   styleRunCount: number
   boundVariables: Record<string, string>
+  motion?: MotionSpec
+  generatedEffect?: GeneratedEffectSpecV1
   fills: Array<{
     type: string
     visible: boolean

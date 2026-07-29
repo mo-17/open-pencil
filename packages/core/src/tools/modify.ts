@@ -1,4 +1,5 @@
 export { setEffects } from './modify/effects'
+export { clearGeneratedEffect, updateGeneratedEffect } from './modify/generated-effect'
 export { setMinMax, setOpacity, setRadius, setRotation } from './modify/geometry'
 export { setConstraints, setLayout, setLayoutChild } from './modify/layout'
 export { publishComponent } from './modify/library'
@@ -9,7 +10,27 @@ export {
   setWorkflows,
   updateLowcodeNode
 } from './modify/lowcode'
-export { applyMotionPreset, clearMotion, updateMotion } from './modify/motion'
+export {
+  applyMotionPreset,
+  applyMotionRecipe,
+  applyMotionSpec,
+  clearMotion,
+  clearMotionDrivers,
+  clearMotionScene,
+  clearMotionTransitionKey,
+  clearPrototype,
+  setMotionTransitionKey,
+  updateMotion,
+  updateMotionDrivers,
+  updateMotionScene,
+  updatePrototype
+} from './modify/motion'
+export {
+  applyTeamMotionLibraryEntry,
+  manageTeamMotionLibraryRegistry,
+  reviewTeamMotionLibraryUpdate,
+  verifyTeamMotionLibrary
+} from './modify/team-motion'
 export { setFill, setImageFill, setStroke } from './modify/paint'
 export { setBlend, setLocked, setStrokeAlign, setVisible } from './modify/state'
 export { setFont, setFontRange, setText, setTextProperties, setTextResize } from './modify/text'

@@ -23,13 +23,23 @@ export const recommended: Preset = {
     'no-groups': 'info',
     'effect-style-required': 'info',
     'no-mixed-styles': 'warning',
-    'no-detached-instances': 'off'
+    'no-detached-instances': 'off',
+    'motion-reduced-motion': 'warning',
+    'motion-target-capability': 'warning',
+    'motion-loop-safety': 'warning',
+    'motion-flashing': 'error',
+    'motion-transform-bounds': 'warning',
+    'motion-long-timing': 'warning',
+    'motion-complexity-budget': 'warning'
   }
 }
 
 export const strict: Preset = {
   rules: Object.fromEntries(
-    Object.keys(recommended.rules).map((id) => [id, id === 'color-contrast' ? 'error' : 'warning'])
+    Object.keys(recommended.rules).map((id) => [
+      id,
+      id === 'color-contrast' || id === 'motion-flashing' ? 'error' : 'warning'
+    ])
   )
 }
 export const accessibility: Preset = {
@@ -50,7 +60,14 @@ export const accessibility: Preset = {
     'no-groups': 'off',
     'effect-style-required': 'off',
     'no-mixed-styles': 'off',
-    'no-detached-instances': 'off'
+    'no-detached-instances': 'off',
+    'motion-reduced-motion': 'error',
+    'motion-target-capability': 'warning',
+    'motion-loop-safety': 'error',
+    'motion-flashing': 'error',
+    'motion-transform-bounds': 'warning',
+    'motion-long-timing': 'warning',
+    'motion-complexity-budget': 'warning'
   }
 }
 export const presets: Record<string, Preset> = { recommended, strict, accessibility }

@@ -8,7 +8,13 @@ import { ALL_TOOLS, FigmaAPI, SceneGraph, toolsToAI } from '@open-pencil/core'
 
 import { expectDefined } from '#tests/helpers/assert'
 
-type AdapterTool = { execute(args: Record<string, unknown>): Promise<unknown>; description: string }
+type AdapterTool = {
+  execute(
+    args: Record<string, unknown>,
+    execution?: { abortSignal?: AbortSignal }
+  ): Promise<unknown>
+  description: string
+}
 
 interface PageTreeToolResult {
   page: unknown
@@ -51,6 +57,30 @@ describe('AI adapter', () => {
       expect(aiTool.description).toBeTruthy()
       expect(typeof aiTool.execute).toBe('function')
     }
+  })
+
+  test('passes the AI request AbortSignal into ToolCtx', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    let received: AbortSignal | undefined
+    const tools = toolsToAI(
+      [
+        {
+          name: 'observe_abort_signal',
+          description: 'test',
+          params: {},
+          execute: (_figma, _args, ctx) => {
+            received = ctx?.signal
+            return { ok: true }
+          }
+        }
+      ],
+      { getFigma: () => figma },
+      { v, valibotSchema, tool }
+    )
+    const controller = new AbortController()
+    await adapterTool(tools, 'observe_abort_signal').execute({}, { abortSignal: controller.signal })
+    expect(received).toBe(controller.signal)
   })
 
   test('create_shape tool works through adapter', async () => {

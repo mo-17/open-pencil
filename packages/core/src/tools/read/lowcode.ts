@@ -68,7 +68,7 @@ export interface LowcodeNodeRead {
   /** Phase 4 §20: per-interaction-state appearance overrides, emitted as
    *  Tailwind pseudo-state classes (`hover:*`, `focus:*`, ...). */
   stateOverrides?: StateOverrides
-  /** Declarative bounded MotionSpec v1 plus a compact indexable summary. */
+  /** Declarative bounded MotionSpec v1/v2 plus a compact indexable summary. */
   motion?: MotionSpec
   motionSummary?: MotionSummary
   /** Root-only: document-level state declarations. Always undefined on
@@ -156,7 +156,7 @@ function getRoot(figma: FigmaAPI) {
 export const readLowcodeNode = defineTool({
   name: 'read_lowcode_node',
   description:
-    "Read the lowcode-specific fields of a single SceneNode: state declarations, channel bindings, event handlers, interactive component props, stateOverrides, renderCondition, layoutMode, and declarative MotionSpec v1 (full bounded spec plus compact motionSummary), together with root-only documentState / supabaseConfig snapshots. Fields stored as undefined are omitted so AI can distinguish 'never configured' from an authored empty value. Non-recursive — children are not included; call again per child id. Use read_motion for a focused motion read. Failure shape: { ok: false, error: <reason> } when the id does not match any node.",
+    "Read the lowcode-specific fields of a single SceneNode: state declarations, channel bindings, event handlers, interactive component props, stateOverrides, renderCondition, layoutMode, and declarative MotionSpec v1/v2 (full bounded spec plus compact motionSummary), together with root-only documentState / supabaseConfig snapshots. Fields stored as undefined are omitted so AI can distinguish 'never configured' from an authored empty value. Non-recursive — children are not included; call again per child id. Use read_motion for a focused motion read. Failure shape: { ok: false, error: <reason> } when the id does not match any node.",
   params: {
     id: { type: 'string', description: 'Node id', required: true }
   },

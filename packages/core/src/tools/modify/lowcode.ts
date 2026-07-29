@@ -93,7 +93,12 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'stripeCheckout',
   'stripeCustomerPortal',
   // Phase 3 §10 v4 named workflow invocation
-  'callWorkflow'
+  'callWorkflow',
+  // MotionSpec playback controls
+  'playMotion',
+  'stopMotion',
+  'toggleMotion',
+  'awaitMotion'
 ])
 
 const KNOWN_BINDING_KINDS = new Set<BindingKind>(['literal', 'ref', 'expr', 'docState'])
@@ -372,6 +377,14 @@ function validatePerKindFields(
     return validateStripeRedirectAction(where, value)
   }
   if (kind === 'callWorkflow') return validateCallWorkflowAction(where, value)
+  if (
+    kind === 'playMotion' ||
+    kind === 'stopMotion' ||
+    kind === 'toggleMotion' ||
+    kind === 'awaitMotion'
+  ) {
+    return validateMotionAction(where, value)
+  }
   return { ok: true }
 }
 
@@ -423,6 +436,43 @@ function validateCallWorkflowAction(
       if (typeof expr !== 'string')
         return failAt(`${where}.args.${param}`, 'must be a string expression')
     }
+  }
+  return { ok: true }
+}
+
+/** Motion actions reference a graph node and optionally one of its track ids.
+ *  This tool boundary validates the JSON shape; graph-aware existence and
+ *  MotionSpec checks are surfaced by the editor and compiler contexts that own
+ *  the current graph snapshot. */
+function validateMotionAction(
+  where: string,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (typeof value.targetNodeId !== 'string' || value.targetNodeId.trim() === '') {
+    return failAt(where, '.targetNodeId must be a non-empty string')
+  }
+  if (
+    value.trackId !== undefined &&
+    (typeof value.trackId !== 'string' || value.trackId.trim() === '')
+  ) {
+    return failAt(where, '.trackId must be a non-empty string when provided')
+  }
+  if (
+    value.kind === 'awaitMotion' &&
+    value.timeoutMs !== undefined &&
+    (typeof value.timeoutMs !== 'number' ||
+      !Number.isFinite(value.timeoutMs) ||
+      value.timeoutMs < 0 ||
+      value.timeoutMs > 120_000)
+  ) {
+    return failAt(where, '.timeoutMs must be a finite number from 0 to 120000')
+  }
+  if (
+    value.kind === 'awaitMotion' &&
+    value.stopOnTimeout !== undefined &&
+    typeof value.stopOnTimeout !== 'boolean'
+  ) {
+    return failAt(where, '.stopOnTimeout must be a boolean when provided')
   }
   return { ok: true }
 }
@@ -687,6 +737,7 @@ function buildActionFromValidated(
   kind: ActionKind,
   raw: Record<string, unknown>
 ): ActionDef {
+  if (isMotionActionKind(kind)) return buildMotionActionFromValidated(id, kind, raw)
   switch (kind) {
     case 'setState':
       return {
@@ -828,6 +879,40 @@ function buildActionFromValidated(
       const _exhaustive: never = kind
       throw new Error(`unreachable action kind: ${String(_exhaustive)}`)
     }
+  }
+}
+
+type MotionActionKind = Extract<
+  ActionKind,
+  'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion'
+>
+
+function isMotionActionKind(kind: ActionKind): kind is MotionActionKind {
+  return (
+    kind === 'playMotion' ||
+    kind === 'stopMotion' ||
+    kind === 'toggleMotion' ||
+    kind === 'awaitMotion'
+  )
+}
+
+function buildMotionActionFromValidated(
+  id: string,
+  kind: MotionActionKind,
+  raw: Record<string, unknown>
+): ActionDef {
+  const reference = {
+    id,
+    kind,
+    targetNodeId: raw.targetNodeId as string,
+    trackId: raw.trackId as string | undefined
+  }
+  if (kind !== 'awaitMotion') return reference
+  return {
+    ...reference,
+    kind,
+    timeoutMs: raw.timeoutMs as number | undefined,
+    stopOnTimeout: raw.stopOnTimeout as boolean | undefined
   }
 }
 
@@ -1615,7 +1700,7 @@ export const updateLowcodeNode = defineTool({
     patch_json: {
       type: 'string',
       description:
-        'JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig, lowcodeSeoMetadata, lowcodeAnalyticsConfig, lowcodeHeadMetadata, lowcodeCustomCss}. lowcodeAnalyticsConfig accepts respectDoNotTrack, consentRequired, consentRegionPreset, consentAnalyticsDefault, and consentCopy plain-text banner options. Use null as a value to clear a field.',
+        "JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig, lowcodeSeoMetadata, lowcodeAnalyticsConfig, lowcodeHeadMetadata, lowcodeCustomCss}. events accept { kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion', targetNodeId, trackId?, timeoutMs?, stopOnTimeout? }; omit trackId for all tracks. lowcodeAnalyticsConfig accepts respectDoNotTrack, consentRequired, consentRegionPreset, consentAnalyticsDefault, and consentCopy plain-text banner options. Use null as a value to clear a field.",
       required: true
     }
   },
@@ -1936,7 +2021,7 @@ export const setWorkflows = defineTool({
     workflows_json: {
       type: 'string',
       description:
-        'JSON array [{ id, name, actions }], OR the literal string "null" / "[]" to clear.',
+        "JSON array [{ id, name, actions }], OR the literal string 'null' / '[]' to clear. actions may include { kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion', targetNodeId, trackId?, timeoutMs?, stopOnTimeout? }.",
       required: true
     }
   },
