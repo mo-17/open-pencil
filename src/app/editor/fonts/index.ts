@@ -8,6 +8,7 @@ import {
   fontManager,
   missingGraphFontScripts,
   type FontFamilyOption,
+  type FontLoadOptions,
   type LocalFontAccessState,
   type WebFontProviderId
 } from '@open-pencil/core/text'
@@ -165,31 +166,49 @@ interface FontRenderInvalidator {
   invalidateAllPictures(): void
 }
 
+type FontLoadCancellation = AbortSignal | FontLoadOptions
+
+function fontLoadOptions(cancellation?: FontLoadCancellation): FontLoadOptions {
+  if (!cancellation) return {}
+  if ('aborted' in cancellation) return { signal: cancellation }
+  return cancellation
+}
+
 export async function ensureGraphFonts(
   graph: SceneGraph,
   nodeIds: string[],
-  renderer?: FontRenderInvalidator | null
+  renderer?: FontRenderInvalidator | null,
+  cancellation?: FontLoadCancellation
 ): Promise<boolean> {
-  fontManager.blockNodesUntilFontsResolve(nodeIds)
+  const options = fontLoadOptions(cancellation)
+  const requirements = collectGraphFontRequirements(graph, nodeIds)
+  let fontsChanged = false
   try {
+    options.signal?.throwIfAborted()
     const generationBefore = fontManager.generation()
     const fontKeys = fontManager.collectFontKeys(graph, nodeIds)
-    const requirements = collectGraphFontRequirements(graph, nodeIds)
     const { characters } = requirements
-    await Promise.all(fontKeys.map(([family, style]) => loadFont(family, style, characters)))
+    await Promise.all(
+      fontKeys.map(([family, style]) => loadFont(family, style, characters, options))
+    )
     const fallbackScripts = missingGraphFontScripts(requirements)
     if (fallbackScripts.length > 0) {
-      const fallbacks = await fontManager.ensureFallbackPack(fallbackScripts, characters)
-      if (Object.values(fallbacks).some((families) => families.length > 0)) {
-        clearTextPictures(graph, nodeIds)
-      }
-    } else if (fontManager.generation() !== generationBefore) {
+      const fallbackFamiliesBefore = new Set([
+        ...fontManager.getCJKFallbackFamilies(),
+        ...fontManager.getArabicFallbackFamilies()
+      ])
+      const fallbacks = await fontManager.ensureFallbackPack(fallbackScripts, characters, options)
+      fontsChanged = Object.values(fallbacks).some((families) =>
+        families.some((family) => !fallbackFamiliesBefore.has(family))
+      )
+    }
+    fontsChanged ||= fontManager.generation() !== generationBefore
+    if (fontsChanged) {
       clearTextPictures(graph, nodeIds)
     }
-    return fontManager.generation() !== generationBefore || fallbackScripts.length > 0
+    return fontsChanged
   } finally {
-    fontManager.unblockNodes(nodeIds)
-    renderer?.invalidateAllPictures()
+    if (fontsChanged) renderer?.invalidateAllPictures()
   }
 }
 
@@ -207,9 +226,17 @@ async function loadSystemFont(family: string, style = 'Regular'): Promise<ArrayB
   if (!isTauri()) return null
   try {
     const { invoke } = await import('@tauri-apps/api/core')
-    const data = await invoke<number[] | null>('load_system_font', { family, style })
+    const data = await invoke<ArrayBuffer | Uint8Array | number[] | null>('load_system_font', {
+      family,
+      style
+    })
+    if (data instanceof ArrayBuffer) return data.byteLength > 0 ? data : null
+    if (ArrayBuffer.isView(data)) {
+      if (data.byteLength === 0) return null
+      return new Uint8Array(data.buffer, data.byteOffset, data.byteLength).slice().buffer
+    }
     if (!data?.length) return null
-    return new Uint8Array(data).buffer
+    return Uint8Array.from(data).buffer
   } catch {
     return null
   }
@@ -218,10 +245,13 @@ async function loadSystemFont(family: string, style = 'Regular'): Promise<ArrayB
 export async function loadFont(
   family: string,
   style = 'Regular',
-  characters = ''
+  characters = '',
+  options?: FontLoadOptions
 ): Promise<ArrayBuffer | null> {
   configureTauriFontCache()
-  const loaded = await fontManager.loadFont(family, style, characters)
+  const loaded = options
+    ? await fontManager.loadFont(family, style, characters, options)
+    : await fontManager.loadFont(family, style, characters)
   if (!loaded) showWebFontUnavailableToast()
   return loaded
 }

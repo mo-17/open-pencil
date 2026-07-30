@@ -18,6 +18,11 @@ function cachePath(key: string) {
   return `${APP_CACHE_DIR}/${key.split('/').map(encodeURIComponent).join('/')}`
 }
 
+function cacheParentPath(key: string) {
+  const path = cachePath(key)
+  return path.slice(0, path.lastIndexOf('/'))
+}
+
 function storageKey(key: string) {
   return `${STORAGE_PREFIX}${key}`
 }
@@ -57,7 +62,10 @@ export async function readCacheText(key: string): Promise<string | null> {
 export async function writeCacheText(key: string, value: string): Promise<void> {
   if (isTauriRuntime()) {
     const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
-    await mkdir(APP_CACHE_DIR, { baseDir: BaseDirectory.AppLocalData, recursive: true })
+    await mkdir(cacheParentPath(key), {
+      baseDir: BaseDirectory.AppLocalData,
+      recursive: true
+    })
     await writeFile(cachePath(key), textEncoder.encode(value), {
       baseDir: BaseDirectory.AppLocalData
     })
@@ -97,7 +105,10 @@ export async function writeCacheBytes(key: string, value: ArrayBuffer): Promise<
   if (!isTauriRuntime()) return
 
   const { BaseDirectory, mkdir, writeFile } = await import('@tauri-apps/plugin-fs')
-  await mkdir(APP_CACHE_DIR, { baseDir: BaseDirectory.AppLocalData, recursive: true })
+  await mkdir(cacheParentPath(key), {
+    baseDir: BaseDirectory.AppLocalData,
+    recursive: true
+  })
   await writeFile(cachePath(key), new Uint8Array(value), { baseDir: BaseDirectory.AppLocalData })
 }
 

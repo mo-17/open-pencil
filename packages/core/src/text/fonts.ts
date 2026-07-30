@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- Font loading, fallback, retained data, and provider epochs share one lifecycle */
+
 import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import type { SceneGraph } from '@open-pencil/scene-graph'
@@ -28,6 +30,82 @@ import type { WebFontFetch, WebFontProviderId } from '#core/text/web-fonts'
 
 type FindLocalFontOptions = { allowVariable?: boolean }
 
+export interface FontLoadOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+function asError(reason: unknown, fallbackMessage: string): Error {
+  if (reason instanceof Error) return reason
+  return new Error(typeof reason === 'string' ? reason : fallbackMessage)
+}
+
+function abortError(signal?: AbortSignal): Error {
+  if (signal?.reason !== undefined) {
+    const error = asError(signal.reason, 'Font loading was aborted')
+    if (error.name === 'Error') error.name = 'AbortError'
+    return error
+  }
+  if (typeof DOMException !== 'undefined') {
+    return new DOMException('Font loading was aborted', 'AbortError')
+  }
+  const error = new Error('Font loading was aborted')
+  error.name = 'AbortError'
+  return error
+}
+
+function timeoutError(timeoutMs: number): Error {
+  const error = new Error(`Font loading timed out after ${timeoutMs}ms`)
+  error.name = 'TimeoutError'
+  return error
+}
+
+function throwIfFontLoadAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortError(signal)
+}
+
+function waitForFontLoad<T>(promise: Promise<T>, options: FontLoadOptions = {}): Promise<T> {
+  const { signal, timeoutMs } = options
+  if (signal?.aborted) return Promise.reject(abortError(signal))
+  if (!signal && !(timeoutMs && timeoutMs > 0)) return promise
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    let timeout: ReturnType<typeof setTimeout> | undefined
+
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      if (timeout !== undefined) clearTimeout(timeout)
+      signal?.removeEventListener('abort', onAbort)
+      callback()
+    }
+    const onAbort = () => finish(() => reject(abortError(signal)))
+
+    signal?.addEventListener('abort', onAbort, { once: true })
+    if (timeoutMs && timeoutMs > 0) {
+      timeout = setTimeout(() => finish(() => reject(timeoutError(timeoutMs))), timeoutMs)
+    }
+    void promise
+      .then(
+        (value) => finish(() => resolve(value)),
+        (error: unknown) => finish(() => reject(asError(error, 'Font loading failed')))
+      )
+      .catch((error: unknown) => finish(() => reject(asError(error, 'Font loading failed'))))
+  })
+}
+
+function buffersEqual(first: ArrayBuffer, second: ArrayBuffer): boolean {
+  if (first === second) return true
+  if (first.byteLength !== second.byteLength) return false
+  const firstBytes = new Uint8Array(first)
+  const secondBytes = new Uint8Array(second)
+  for (let index = 0; index < firstBytes.length; index++) {
+    if (firstBytes[index] !== secondBytes[index]) return false
+  }
+  return true
+}
+
 const BUNDLED_FONTS: Record<string, string> = {
   'Inter|Regular': '/Inter-Regular.ttf',
   'Inter|Medium': '/Inter-Medium.ttf',
@@ -57,11 +135,17 @@ export class FontManager {
   private downloadedFontCache: DownloadedFontCache | null = null
   private fallbackUserAgent: string | undefined
   private hostFontLoader: HostFontLoader | null = null
+  private hostFontResults = new Map<string, ArrayBuffer>()
+  private hostFontLoadPromises = new Map<string, Promise<ArrayBuffer | null>>()
+  private fontLoadPromises = new Map<
+    string,
+    { promise: Promise<ArrayBuffer | null>; requestedCharacters: Set<string> }
+  >()
+  private fallbackLoadPromises = new Map<FontFallbackScript, Promise<string[]>>()
+  private fallbackFamiliesByScript = new Map<FontFallbackScript, string[]>()
   private webFonts = new WebFontResolver()
   private cjkFallbackFamilies: string[] = []
-  private cjkFallbackPromise: Promise<string[]> | null = null
   private arabicFallbackFamilies: string[] = []
-  private arabicFallbackPromise: Promise<string[]> | null = null
 
   attachProvider(_canvasKit: CanvasKit, provider: TypefaceFontProvider): void {
     this.fontProviders.add(provider)
@@ -121,11 +205,17 @@ export class FontManager {
   }
 
   setFallbackUserAgent(userAgent: string | undefined): void {
+    if (userAgent === this.fallbackUserAgent) return
     this.fallbackUserAgent = userAgent
+    this.fallbackFamiliesByScript.clear()
   }
 
   setHostFontLoader(loader: HostFontLoader | null): void {
+    if (loader === this.hostFontLoader) return
     this.hostFontLoader = loader
+    this.hostFontResults.clear()
+    this.hostFontLoadPromises.clear()
+    this.fallbackFamiliesByScript.clear()
   }
 
   /** @deprecated Use setHostFontLoader. Scheduled for removal in v0.15. */
@@ -295,7 +385,14 @@ export class FontManager {
     }
   }
 
-  async loadFont(family: string, style = 'Regular', characters = ''): Promise<ArrayBuffer | null> {
+  async loadFont(
+    family: string,
+    style = 'Regular',
+    characters = '',
+    options: FontLoadOptions = {}
+  ): Promise<ArrayBuffer | null> {
+    throwIfFontLoadAborted(options.signal)
+    const cacheKey = `${family}|${style}`
     const loaded = this.loadedData(family, style)
     if (loaded) {
       this.registerFontInCanvasKit(family, loaded)
@@ -305,16 +402,60 @@ export class FontManager {
         remoteCoverage &&
         Array.from(characters).some((character) => !remoteCoverage.has(character))
       )
-      return missingRemoteCoverage
-        ? ((await this.loadRemoteFont(family, style, characters)) ?? loaded)
-        : loaded
+      if (!missingRemoteCoverage) {
+        throwIfFontLoadAborted(options.signal)
+        return loaded
+      }
     }
 
-    return (
-      (await this.loadLocalFont(family, style)) ??
-      (await this.loadCachedFont(family, style, characters)) ??
-      (await this.loadRemoteFont(family, style, characters))
+    let flight = this.fontLoadPromises.get(cacheKey)
+    if (!flight) {
+      const requestedCharacters = new Set(characters)
+      const promise = this.runFontLoadFlight(family, style, requestedCharacters)
+      flight = { promise, requestedCharacters }
+      this.fontLoadPromises.set(cacheKey, flight)
+      const cleanup = () => {
+        if (this.fontLoadPromises.get(cacheKey)?.promise === promise) {
+          this.fontLoadPromises.delete(cacheKey)
+        }
+      }
+      void promise.then(cleanup, cleanup)
+    } else {
+      for (const character of characters) flight.requestedCharacters.add(character)
+    }
+
+    const result = await waitForFontLoad(flight.promise, options)
+    throwIfFontLoadAborted(options.signal)
+    return result
+  }
+
+  private async runFontLoadFlight(
+    family: string,
+    style: string,
+    requestedCharacters: Set<string>
+  ): Promise<ArrayBuffer | null> {
+    const cacheKey = `${family}|${style}`
+    let result = this.loadedData(family, style)
+    if (!result) {
+      const requestedText = () => Array.from(requestedCharacters).join('')
+      result =
+        (await this.loadLocalFont(family, style)) ??
+        (await this.loadCachedFont(family, style, requestedText())) ??
+        (await this.loadRemoteFont(family, style, requestedText()))
+    }
+    if (!result) return null
+
+    // A caller can join the single flight while its first remote subset is in
+    // progress. Extend coverage once with the accumulated characters. If the
+    // provider cannot supply them, keep the last usable face and finish instead
+    // of recursively retrying forever.
+    const coverage = this.remoteCoverage.get(cacheKey)
+    if (!coverage) return result
+    const missingCharacters = Array.from(requestedCharacters).filter(
+      (character) => !coverage.has(character)
     )
+    if (missingCharacters.length === 0) return result
+    return (await this.loadRemoteFont(family, style, missingCharacters.join(''))) ?? result
   }
 
   async ensureNodeFont(family: string, weight: number): Promise<void> {
@@ -353,14 +494,15 @@ export class FontManager {
     return collectGraphFontKeys(graph, nodeIds)
   }
 
-  async ensureCJKFallback(): Promise<string[]> {
-    if (this.cjkFallbackFamilies.length > 0) return this.cjkFallbackFamilies
-    if (this.cjkFallbackPromise) return this.cjkFallbackPromise
-
-    this.cjkFallbackPromise = this.ensureFallbackFamilies('cjk', this.cjkFallbackFamilies, {
-      allowVariableLocalFonts: true
-    })
-    return this.cjkFallbackPromise
+  async ensureCJKFallback(options: FontLoadOptions = {}): Promise<string[]> {
+    await this.ensureFallbackFamilies(
+      'cjk',
+      this.cjkFallbackFamilies,
+      { allowVariableLocalFonts: true },
+      '',
+      options
+    )
+    return this.cjkFallbackFamilies
   }
 
   getCJKFallbackFamilies(): string[] {
@@ -373,30 +515,38 @@ export class FontManager {
     }
   }
 
-  async ensureArabicFallback(): Promise<string[]> {
-    if (this.arabicFallbackFamilies.length > 0) return this.arabicFallbackFamilies
-    if (this.arabicFallbackPromise) return this.arabicFallbackPromise
-
-    this.arabicFallbackPromise = this.ensureFallbackFamilies('arabic', this.arabicFallbackFamilies)
-    return this.arabicFallbackPromise
+  async ensureArabicFallback(options: FontLoadOptions = {}): Promise<string[]> {
+    await this.ensureFallbackFamilies('arabic', this.arabicFallbackFamilies, {}, '', options)
+    return this.arabicFallbackFamilies
   }
 
   async ensureFallbackPack(
     scripts: FontFallbackScript[] = ['cjk', 'arabic'],
-    characters = ''
+    characters = '',
+    options: FontLoadOptions = {}
   ): Promise<Partial<Record<FontFallbackScript, string[]>>> {
+    throwIfFontLoadAborted(options.signal)
     const result: Partial<Record<FontFallbackScript, string[]>> = {}
     await Promise.all(
       scripts.map(async (script) => {
-        if (script === 'arabic' && !characters) result[script] = await this.ensureArabicFallback()
-        else if (script === 'cjk' && !characters) result[script] = await this.ensureCJKFallback()
+        if (script === 'arabic' && !characters)
+          result[script] = await this.ensureArabicFallback(options)
+        else if (script === 'cjk' && !characters)
+          result[script] = await this.ensureCJKFallback(options)
         else {
           const target =
             script === 'arabic' ? this.arabicFallbackFamilies : this.cjkFallbackFamilies
-          result[script] = await this.ensureFallbackFamilies(script, target, {}, characters)
+          result[script] = await this.ensureFallbackFamilies(
+            script,
+            target,
+            {},
+            characters,
+            options
+          )
         }
       })
     )
+    throwIfFontLoadAborted(options.signal)
     return result
   }
 
@@ -414,7 +564,54 @@ export class FontManager {
     script: FontFallbackScript,
     targetFamilies: string[],
     options: { allowVariableLocalFonts?: boolean } = {},
-    characters = ''
+    characters = '',
+    loadOptions: FontLoadOptions = {}
+  ): Promise<string[]> {
+    throwIfFontLoadAborted(loadOptions.signal)
+    let scriptFamilies = this.fallbackFamiliesByScript.get(script)
+    if (!scriptFamilies) {
+      scriptFamilies = []
+      this.fallbackFamiliesByScript.set(script, scriptFamilies)
+    }
+    const selectedFamily = scriptFamilies[0]
+    if (selectedFamily) {
+      if (characters) await this.loadFont(selectedFamily, 'Regular', characters, loadOptions)
+      throwIfFontLoadAborted(loadOptions.signal)
+      return scriptFamilies
+    }
+
+    const existingPromise = this.fallbackLoadPromises.get(script)
+    if (existingPromise) {
+      const result = await waitForFontLoad(existingPromise, loadOptions)
+      throwIfFontLoadAborted(loadOptions.signal)
+      return result
+    }
+
+    const pending = this.resolveFirstFallbackFamily(
+      script,
+      scriptFamilies,
+      targetFamilies,
+      options,
+      characters
+    )
+    this.fallbackLoadPromises.set(script, pending)
+    const cleanup = () => {
+      if (this.fallbackLoadPromises.get(script) === pending) {
+        this.fallbackLoadPromises.delete(script)
+      }
+    }
+    void pending.then(cleanup, cleanup)
+    const result = await waitForFontLoad(pending, loadOptions)
+    throwIfFontLoadAborted(loadOptions.signal)
+    return result
+  }
+
+  private async resolveFirstFallbackFamily(
+    script: FontFallbackScript,
+    scriptFamilies: string[],
+    targetFamilies: string[],
+    options: { allowVariableLocalFonts?: boolean },
+    characters: string
   ): Promise<string[]> {
     const manifest = fontFallbackEntry(script, this.fallbackUserAgent)
 
@@ -424,47 +621,70 @@ export class FontManager {
         (await this.findLocalFont(family, undefined, {
           allowVariable: options.allowVariableLocalFonts
         }))
-      if (
-        buffer &&
-        this.registerAndCache(family, 'Regular', buffer) &&
-        !targetFamilies.includes(family)
-      ) {
-        targetFamilies.push(family)
+      if (buffer && this.registerAndCache(family, 'Regular', buffer)) {
+        if (!scriptFamilies.includes(family)) scriptFamilies.push(family)
+        if (!targetFamilies.includes(family)) targetFamilies.push(family)
+        return scriptFamilies
       }
     }
 
-    if (targetFamilies.length === 0 || characters) {
-      const results = await Promise.allSettled(
-        manifest.remoteFamilies.map(async (family) => {
-          // A remote fallback family may also have a bundled, cached, or host
-          // face (notably the bundled Noto Sans SC). Resolve through the full
-          // font chain so CJK controls can render without network access.
-          const data = await this.loadFont(family, 'Regular', characters)
-          return data ? family : null
-        })
-      )
-      for (const result of results) {
-        if (
-          result.status === 'fulfilled' &&
-          result.value &&
-          !targetFamilies.includes(result.value)
-        ) {
-          targetFamilies.push(result.value)
-        }
+    for (const family of manifest.remoteFamilies) {
+      // A remote fallback family may also have a bundled, cached, or host face
+      // (notably the bundled Noto Sans SC). Stop at the first usable candidate;
+      // registering every candidate retains several multi-megabyte faces.
+      const data = await this.loadFont(family, 'Regular', characters)
+      if (data) {
+        if (!scriptFamilies.includes(family)) scriptFamilies.push(family)
+        if (!targetFamilies.includes(family)) targetFamilies.push(family)
+        return scriptFamilies
       }
     }
 
-    return targetFamilies
+    return scriptFamilies
   }
 
   private async loadHostFont(family: string, style: string): Promise<ArrayBuffer | null> {
     if (!this.hostFontLoader) return null
-    try {
-      return await this.hostFontLoader(family, style)
-    } catch (e) {
-      console.warn(`Host fallback font load failed for "${family}" ${style}:`, e)
-      return null
+    const key = `${family}|${style}`
+    const cached = this.hostFontResults.get(key)
+    if (cached) return cached
+    const existing = this.hostFontLoadPromises.get(key)
+    if (existing) return existing
+
+    const loader = this.hostFontLoader
+    const pending = loader(family, style)
+      .catch((e: unknown) => {
+        console.warn(`Host fallback font load failed for "${family}" ${style}:`, e)
+        return null
+      })
+      .then((data) => {
+        if (this.hostFontLoader === loader && data) this.hostFontResults.set(key, data)
+        return data
+      })
+    this.hostFontLoadPromises.set(key, pending)
+    const cleanup = () => {
+      if (this.hostFontLoadPromises.get(key) === pending) {
+        this.hostFontLoadPromises.delete(key)
+      }
     }
+    void pending.then(cleanup, cleanup)
+    return pending
+  }
+
+  retainedDataCount(family: string, style = 'Regular'): number {
+    const key = `${family}|${style}`
+    return (
+      (this.loadedFamilies.has(key) ? 1 : 0) + (this.supplementalFamilyData.get(key)?.length ?? 0)
+    )
+  }
+
+  private equivalentRetainedData(key: string, buffer: ArrayBuffer): ArrayBuffer | null {
+    const primary = this.loadedFamilies.get(key)
+    if (primary && buffersEqual(primary, buffer)) return primary
+    for (const supplemental of this.supplementalFamilyData.get(key) ?? []) {
+      if (buffersEqual(supplemental, buffer)) return supplemental
+    }
+    return null
   }
 
   private async readDownloadedFont(
@@ -518,8 +738,8 @@ export class FontManager {
 
   private registerSupplemental(family: string, style: string, buffer: ArrayBuffer): void {
     const key = `${family}|${style}`
+    if (this.equivalentRetainedData(key, buffer)) return
     const supplemental = this.supplementalFamilyData.get(key) ?? []
-    if (supplemental.includes(buffer)) return
     supplemental.push(buffer)
     this.supplementalFamilyData.set(key, supplemental)
     this.registerFontInCanvasKit(family, buffer)
@@ -529,11 +749,15 @@ export class FontManager {
   private registerAndCache(family: string, style: string, buffer: ArrayBuffer): ArrayBuffer | null {
     const key = `${family}|${style}`
     const existing = this.loadedFamilies.get(key)
-    if (existing === buffer) {
-      this.registerFontInCanvasKit(family, buffer)
-      return buffer
+    const equivalent = this.equivalentRetainedData(key, buffer)
+    if (equivalent) {
+      this.registerFontInCanvasKit(family, equivalent)
+      return equivalent
     }
-    if (existing) this.registerSupplemental(family, style, existing)
+    if (existing) {
+      this.loadedFamilies.delete(key)
+      this.registerSupplemental(family, style, existing)
+    }
     this.loadedFamilies.set(key, buffer)
     this.registerFontInCanvasKit(family, buffer)
     this.registerFontInBrowser(family, style, buffer)

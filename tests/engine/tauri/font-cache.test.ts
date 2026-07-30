@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 
-import { clearDownloadedFontCache, downloadedFontCacheSummary } from '@/app/editor/fonts/cache'
+import {
+  clearDownloadedFontCache,
+  createTauriDownloadedFontCache,
+  downloadedFontCacheSummary
+} from '@/app/editor/fonts/cache'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
@@ -84,5 +88,25 @@ describe('Tauri downloaded font cache helpers', () => {
         }
       }
     ])
+  })
+
+  test('creates nested directories before writing font bytes and the manifest', async () => {
+    const calls: Array<{ cmd: string; args: unknown }> = []
+    await mockTauriIPC((cmd, args) => {
+      calls.push({ cmd, args })
+      if (cmd === 'plugin:fs|read_file') throw new Error('missing')
+      return null
+    })
+
+    const data = Uint8Array.from([1, 2, 3, 4]).buffer
+    await createTauriDownloadedFontCache().write('Noto Sans SC', 'Regular', data, '中文')
+
+    const directoryPaths = calls
+      .filter(({ cmd }) => cmd === 'plugin:fs|mkdir')
+      .map(({ args }) => (args as { path: string }).path)
+
+    expect(directoryPaths).toContain('cache/v1/font-cache/v1/files')
+    expect(directoryPaths).toContain('cache/v1/font-cache/v1')
+    expect(calls.filter(({ cmd }) => cmd === 'plugin:fs|write_file')).toHaveLength(2)
   })
 })

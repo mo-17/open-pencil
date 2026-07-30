@@ -39,4 +39,78 @@ describe('app font loading', () => {
       fontManager.ensureFallbackPack = originalEnsureFallbackPack
     }
   })
+
+  test('keeps the containing frame visible without releasing a text block it does not own', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const frame = graph.createNode('FRAME', page.id, {
+      name: 'Visible while fonts load',
+      width: 320,
+      height: 200
+    })
+    const text = graph.createNode('TEXT', frame.id, {
+      text: 'Still visible',
+      fontFamily: `Pending Font ${Date.now()}`,
+      fontSize: 24
+    })
+    const controller = new AbortController()
+    const originalLoadFont = fontManager.loadFont.bind(fontManager)
+    let receivedSignal: AbortSignal | undefined
+
+    fontManager.blockNodesUntilFontsResolve([text.id])
+    fontManager.loadFont = async (_family, _style, _characters, options) => {
+      receivedSignal = options?.signal
+      return new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            const reason = options.signal?.reason
+            reject(reason instanceof Error ? reason : new Error('aborted'))
+          },
+          { once: true }
+        )
+      })
+    }
+
+    try {
+      const pending = ensureGraphFonts(graph, [frame.id], null, controller.signal)
+      await Promise.resolve()
+
+      expect(receivedSignal).toBe(controller.signal)
+      expect(fontManager.isNodeBlocked(frame.id)).toBe(false)
+      expect(fontManager.isNodeBlocked(text.id)).toBe(true)
+
+      controller.abort(new Error('AI drawing stopped'))
+      await expect(pending).rejects.toThrow('AI drawing stopped')
+      expect(fontManager.isNodeBlocked(frame.id)).toBe(false)
+      expect(fontManager.isNodeBlocked(text.id)).toBe(true)
+    } finally {
+      fontManager.loadFont = originalLoadFont
+      fontManager.unblockNodes([text.id])
+    }
+  })
+
+  test('preserves an independently owned text block when font loading fails', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const text = graph.createNode('TEXT', page.id, {
+      text: 'Failure cleanup',
+      fontFamily: `Failing Font ${Date.now()}`,
+      fontSize: 24
+    })
+    const originalLoadFont = fontManager.loadFont.bind(fontManager)
+
+    fontManager.blockNodesUntilFontsResolve([text.id])
+    fontManager.loadFont = async () => {
+      throw new Error('font transport failed')
+    }
+
+    try {
+      await expect(ensureGraphFonts(graph, [text.id])).rejects.toThrow('font transport failed')
+      expect(fontManager.isNodeBlocked(text.id)).toBe(true)
+    } finally {
+      fontManager.loadFont = originalLoadFont
+      fontManager.unblockNodes([text.id])
+    }
+  })
 })

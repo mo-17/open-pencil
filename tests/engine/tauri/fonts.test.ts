@@ -36,14 +36,32 @@ describe('Tauri font helpers', () => {
     await mockTauriIPC((cmd, args) => {
       expect(cmd).toBe('load_system_font')
       expect(args).toEqual({ family: 'System UI', style: 'Bold Italic' })
-      return [1, 2, 3, 4]
+      return Uint8Array.from([1, 2, 3, 4]).buffer
     })
 
     const { loadFont } = await import('@/app/editor/fonts')
     const buffer = await loadFont('System UI', 'Bold Italic')
 
     expect([...new Uint8Array(buffer ?? new ArrayBuffer(0))]).toEqual([1, 2, 3, 4])
-    expect(fontManager.isLoaded('System UI', 'Bold Italic')).toBe(true)
+    expect(fontManager.isStyleLoaded('System UI', 'Bold Italic')).toBe(true)
+  })
+
+  test('deduplicates twenty concurrent raw binary system font requests', async () => {
+    let systemFontCalls = 0
+    await mockTauriIPC((cmd) => {
+      expect(cmd).toBe('load_system_font')
+      systemFontCalls++
+      return Uint8Array.from([0, 1, 0, 0, 4, 3, 2, 1]).buffer
+    })
+
+    const { loadFont } = await import('@/app/editor/fonts')
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => loadFont('Concurrent System UI', 'Regular'))
+    )
+
+    expect(systemFontCalls).toBe(1)
+    expect(results.every((result) => result?.byteLength === 8)).toBe(true)
+    expect(fontManager.retainedDataCount('Concurrent System UI')).toBe(1)
   })
 
   test('falls back to font manager loading when the system font command fails', async () => {

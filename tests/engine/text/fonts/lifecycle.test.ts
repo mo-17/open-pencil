@@ -56,6 +56,183 @@ describe('font lifecycle', () => {
     expect(registrations).toEqual(['Subset Font', 'Subset Font'])
   })
 
+  test('deduplicates concurrent host loads and byte-identical buffers', async () => {
+    const manager = new FontManager()
+    const registrations: string[] = []
+    const provider = {
+      registerFont(_data: ArrayBuffer, family: string) {
+        registrations.push(family)
+      }
+    } as TypefaceFontProvider
+    let hostLoads = 0
+
+    manager.attachProvider({} as CanvasKit, provider)
+    manager.setHostFontLoader(async () => {
+      hostLoads++
+      await Promise.resolve()
+      return Uint8Array.from([0, 1, 0, 0, 7, 8, 9, 10]).buffer
+    })
+
+    await Promise.all(
+      Array.from({ length: 20 }, () => manager.loadFont('Bounded Host Font', 'Regular'))
+    )
+    manager.markLoaded(
+      'Bounded Host Font',
+      'Regular',
+      Uint8Array.from([0, 1, 0, 0, 7, 8, 9, 10]).buffer
+    )
+
+    expect(hostLoads).toBe(1)
+    expect(registrations).toEqual(['Bounded Host Font'])
+    expect(manager.retainedDataCount('Bounded Host Font')).toBe(1)
+  })
+
+  test('resolves twenty CJK fallback requests through one host face', async () => {
+    const manager = new FontManager()
+    const registrations: string[] = []
+    const provider = {
+      registerFont(_data: ArrayBuffer, family: string) {
+        registrations.push(family)
+      }
+    } as TypefaceFontProvider
+    let hostLoads = 0
+
+    manager.attachProvider({} as CanvasKit, provider)
+    manager.setFallbackUserAgent('Mozilla/5.0 (Macintosh)')
+    manager.setHostFontLoader(async (family) => {
+      hostLoads++
+      return family === 'PingFang SC' ? Uint8Array.from([0, 1, 0, 0, 11, 12, 13, 14]).buffer : null
+    })
+
+    const results = []
+    for (let index = 0; index < 20; index++) {
+      results.push(await manager.ensureFallbackPack(['cjk-sc'], '中文'))
+    }
+
+    expect(results.every((result) => result['cjk-sc']?.[0] === 'PingFang SC')).toBe(true)
+    expect(hostLoads).toBe(1)
+    expect(registrations).toEqual(['PingFang SC'])
+    expect(manager.retainedDataCount('PingFang SC')).toBe(1)
+  })
+
+  test('resolves Simplified Chinese and Korean through independent single flights', async () => {
+    const manager = new FontManager()
+    const loadedFamilies: string[] = []
+    const fontData = Uint8Array.from([0, 1, 0, 0, 17, 18, 19, 20]).buffer
+
+    manager.setFallbackUserAgent('Mozilla/5.0 (Macintosh)')
+    manager.setHostFontLoader(async (family) => {
+      loadedFamilies.push(family)
+      return family === 'PingFang SC' || family === 'Apple SD Gothic Neo' ? fontData : null
+    })
+
+    const simplified = await manager.ensureFallbackPack(['cjk-sc'], '中文')
+    const korean = await manager.ensureFallbackPack(['cjk-kr'], '환경설정')
+
+    expect(simplified['cjk-sc']).toEqual(['PingFang SC'])
+    expect(korean['cjk-kr']).toEqual(['Apple SD Gothic Neo'])
+    expect(loadedFamilies).toEqual(['PingFang SC', 'Apple SD Gothic Neo'])
+    expect(manager.getCJKFallbackFamilies()).toEqual(['PingFang SC', 'Apple SD Gothic Neo'])
+  })
+
+  test('finishes a missing remote coverage extension without recursive retries', async () => {
+    const manager = new FontManager()
+    const data = Uint8Array.from([0, 1, 0, 0, 21, 22, 23, 24]).buffer
+    const remoteCoverage = Reflect.get(manager, 'remoteCoverage') as Map<string, Set<string>>
+    let remoteLoads = 0
+
+    manager.markLoaded('Remote Subset', 'Regular', data)
+    remoteCoverage.set('Remote Subset|Regular', new Set('A'))
+    Reflect.set(manager, 'loadRemoteFont', async () => {
+      remoteLoads++
+      return null
+    })
+
+    await expect(manager.loadFont('Remote Subset', 'Regular', '中')).resolves.toBe(data)
+    expect(remoteLoads).toBe(1)
+  })
+
+  test('retries failed host loads instead of caching a transient null result', async () => {
+    const manager = new FontManager()
+    const data = Uint8Array.from([0, 1, 0, 0, 25, 26, 27, 28]).buffer
+    let hostLoads = 0
+
+    manager.setOnlineFontProviders({ google: false, fontsource: false })
+    manager.setHostFontLoader(async () => {
+      hostLoads++
+      if (hostLoads === 1) throw new Error('temporary font IPC failure')
+      return data
+    })
+
+    await expect(manager.loadFont('Retryable Host Font', 'Regular')).resolves.toBeNull()
+    await expect(manager.loadFont('Retryable Host Font', 'Regular')).resolves.toBe(data)
+    expect(hostLoads).toBe(2)
+  })
+
+  test('retries an unresolved fallback script after its sources become available', async () => {
+    const manager = new FontManager()
+    const data = Uint8Array.from([0, 1, 0, 0, 29, 30, 31, 32]).buffer
+    let koreanAvailable = false
+
+    manager.setFallbackUserAgent('Mozilla/5.0 (Macintosh)')
+    manager.setHostFontLoader(async (family) =>
+      koreanAvailable && family === 'Apple SD Gothic Neo' ? data : null
+    )
+    manager.loadFont = async () => null
+
+    await expect(manager.ensureFallbackPack(['cjk-kr'], '환경설정')).resolves.toEqual({
+      'cjk-kr': []
+    })
+    koreanAvailable = true
+    await expect(manager.ensureFallbackPack(['cjk-kr'], '환경설정')).resolves.toEqual({
+      'cjk-kr': ['Apple SD Gothic Neo']
+    })
+  })
+
+  test('lets a caller abort without duplicating or cancelling the shared host load', async () => {
+    const manager = new FontManager()
+    const controller = new AbortController()
+    let releaseHostLoad: ((data: ArrayBuffer) => void) | undefined
+    let hostLoads = 0
+
+    manager.setHostFontLoader(
+      () =>
+        new Promise((resolve) => {
+          hostLoads++
+          releaseHostLoad = resolve
+        })
+    )
+
+    const cancelled = manager.loadFont('Abortable Host Font', 'Regular', '', {
+      signal: controller.signal
+    })
+    const surviving = manager.loadFont('Abortable Host Font', 'Regular')
+    controller.abort(new Error('stop font wait'))
+
+    await expect(cancelled).rejects.toThrow('stop font wait')
+    releaseHostLoad?.(Uint8Array.from([0, 1, 0, 0, 3, 4, 5, 6]).buffer)
+    await expect(surviving).resolves.toHaveProperty('byteLength', 8)
+    expect(hostLoads).toBe(1)
+    expect(manager.retainedDataCount('Abortable Host Font')).toBe(1)
+  })
+
+  test('rejects a pre-aborted load before invoking the host loader', async () => {
+    const manager = new FontManager()
+    const controller = new AbortController()
+    let hostLoads = 0
+
+    manager.setHostFontLoader(async () => {
+      hostLoads++
+      return new ArrayBuffer(8)
+    })
+    controller.abort(new Error('already stopped'))
+
+    await expect(
+      manager.loadFont('Pre-aborted Host Font', 'Regular', '', { signal: controller.signal })
+    ).rejects.toThrow('already stopped')
+    expect(hostLoads).toBe(0)
+  })
+
   test('tracks nodes gated by pre-render font resolution', () => {
     const manager = new FontManager()
     manager.blockNodesUntilFontsResolve(['first', 'second'])
