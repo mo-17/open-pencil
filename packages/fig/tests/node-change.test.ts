@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { NodeChange } from '@open-pencil/kiwi/fig/codec'
+import type { NodeChange, Paint } from '@open-pencil/kiwi/fig/codec'
 
 import {
   applyStyleRefsToFields,
@@ -57,8 +57,8 @@ describe('@open-pencil/fig NodeChange policy', () => {
   test('keeps resolved variable alpha in paint opacity', () => {
     setVariableColorResolver(() => ({ r: 1, g: 0, b: 0, a: 0.4 }))
     try {
-      const paint = {
-        type: 'SOLID' as const,
+      const paint: Paint = {
+        type: 'SOLID',
         color: { r: 0, g: 0, b: 0, a: 1 },
         colorVar: { value: { alias: { guid: { sessionID: 1, localID: 2 } } } }
       }

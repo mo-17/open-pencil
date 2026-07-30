@@ -1,13 +1,12 @@
 import type { MotionTrigger } from '@open-pencil/scene-graph'
 
+import { encodeBase64 } from '#core/bytes'
 import {
   exportGraphMotion,
   type MotionExportFormat,
   type MotionExportReducedMotion
 } from '#core/io/motion-export'
 import { defineTool } from '#core/tools/schema'
-
-import { uint8ArrayToBase64 } from './export'
 
 const FORMATS = new Set<MotionExportFormat>(['png-sequence', 'gif', 'webm', 'mp4'])
 const REDUCED_MOTION = new Set<MotionExportReducedMotion>(['allow', 'reduce', 'disable'])
@@ -188,7 +187,7 @@ export const exportMotionAnimation = defineTool({
         issues: result.issues,
         frames: result.frames.map((frame) => ({
           file: frame.fileName,
-          base64: uint8ArrayToBase64(frame.bytes),
+          base64: encodeBase64(frame.bytes),
           byteLength: frame.byteLength
         }))
       }
@@ -197,7 +196,7 @@ export const exportMotionAnimation = defineTool({
       format: result.format,
       mimeType: result.mimeType,
       extension: result.extension,
-      base64: uint8ArrayToBase64(result.bytes),
+      base64: encodeBase64(result.bytes),
       byteLength: result.byteLength,
       encoder: result.encoder,
       issues: result.issues

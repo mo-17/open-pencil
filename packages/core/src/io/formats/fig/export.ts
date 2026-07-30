@@ -19,6 +19,7 @@ import { decodeBinarySchema, compileSchema, ByteBuffer } from '@open-pencil/kiwi
 import type { SceneGraph, SceneNode, VariableValue } from '@open-pencil/scene-graph'
 import type { GUID } from '@open-pencil/scene-graph/primitives'
 
+import { decodeBase64 } from '#core/bytes'
 import type { SkiaRenderer } from '#core/canvas'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
 import { projectLowcodeNodeForFigma } from '#core/io/formats/fig/lowcode-projection'
@@ -82,11 +83,8 @@ function createCompatibleFigProjection(graph: SceneGraph): CompatibleFigProjecti
   }
 }
 
-const THUMBNAIL_1X1 = Uint8Array.from(
-  atob(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
-  ),
-  (c) => c.charCodeAt(0)
+const THUMBNAIL_1X1 = decodeBase64(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
 )
 
 type KiwiNodeChange = NodeChange & Record<string, unknown>

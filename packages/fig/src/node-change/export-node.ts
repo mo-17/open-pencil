@@ -320,6 +320,7 @@ function materializeFigmaBlob(
 }
 
 function normalizeFigmaPayloadValue(key: string, value: unknown): unknown {
+  if (key === 'stackCounterAlignItems' && value === 'STRETCH') return 'MIN'
   if (
     (key === 'stackJustify' ||
       key === 'stackPrimaryAlignItems' ||

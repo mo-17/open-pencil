@@ -131,7 +131,11 @@ Property-panel anatomy in `packages/vue/src/primitives/PropertySection/`, `Segme
 
 Credential persistence lives under `src/app/settings/credentials/`. Settings components receive `CredentialManager` and may inspect status, replace, or clear credentials; runtime adapters receive `CredentialResolver`. Components must not read saved secrets or keep them in long-lived reactive refs. Non-secret provider preferences remain in normal settings storage.
 
-Tauri stores secrets in the native system credential store through `desktop/src/credentials.rs`; browser sessions default to memory and may explicitly opt into WebCrypto-encrypted IndexedDB storage. Native failures must never silently fall back to browser or plaintext storage. New integration credentials use stable `CredentialRef` values and join the unified Settings surface rather than adding feature-local key forms.
+Tauri stores secrets in the native system credential store through `desktop/src/credentials.rs`; browsers default to WebCrypto-encrypted IndexedDB storage and may explicitly opt out to session-only memory. Native failures must never silently fall back to browser or plaintext storage. New integration credentials use stable `CredentialRef` values and join the unified Settings surface rather than adding feature-local key forms.
+
+Storage-provider schemas and runtime adapters live under `src/app/integrations/storage/`; non-secret preferences and credential references stay separate, and adapters resolve secrets at operation time. Local-first document caching and outbox synchronization live under `src/app/storage/`. A remote storage binding augments document source state and must not replace local file identity.
+
+Bitmap-to-vector conversion lives in `packages/core/src/vector/vectorize/`; app provider clients, preferences, and lazy credential resolution live under `src/app/editor/vectorize/`. Keep provider credentials in the centralized credential manager, bound request and response sizes, and validate provider-owned download URLs before importing returned SVG.
 
 App dialogs compose the Reka-backed components under `src/components/ui/dialog/` and the typed theme in `src/theme/dialog.ts`. Do not repeat portal, overlay, content, header, or footer infrastructure in feature dialogs.
 
@@ -335,6 +339,8 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Pure mapping logic in `src/app/ai/acp/map-update.ts` — converts `SessionUpdate` → `UIMessageChunk`
 - ACP design context prompt (`ACP_DESIGN_CONTEXT`) is authored in `src/app/ai/acp/design-context.md` and re-exported from `src/constants.ts`
 - Agent definitions (`ACP_AGENTS`) in `packages/core/src/constants.ts`
+- Direct model configuration lives under `src/app/ai/models/**`: reusable profiles reference provider connections, roles resolve to profiles, and runtime creation resolves credentials lazily. Keep profiles, connections, and role assignments separate instead of returning to singleton provider/model settings.
+- Public AI and MCP documentation lives in `packages/docs/programmable/ai-chat.md` and `packages/docs/programmable/mcp-server.md`.
 - MCP server: Vite plugin in dev spawns `bun run packages/mcp/src/index.ts`; production Tauri spawns global `openpencil-mcp-http` through shell permissions (requires matching `@open-pencil/mcp` version installed globally; follow-up: bundle as Tauri sidecar)
 - Architecture: app/browser ↔ WebSocket :7601 ↔ MCP server HTTP :7600 (`/health`, `/rpc`, `/mcp`) ↔ agent subprocess / MCP clients
 - Production MCP spawn uses `OPENPENCIL_MCP_AUTH_TOKEN` and `OPENPENCIL_MCP_CORS_ORIGIN`; app health-checks version compatibility and surfaces the package-manager-specific install command
@@ -353,6 +359,7 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - ICE servers: Google STUN + Cloudflare STUN + Open Relay TURN (TCP + UDP)
 - Room IDs use `crypto.getRandomValues()` — no `Math.random()` anywhere in codebase
 - Stale cursors cleaned on peer disconnect via `removeAwarenessStates()`
+- Collaboration is documented in `packages/docs/programmable/collaboration.md`; preserve crypto-safe room IDs and peer cleanup semantics when changing it.
 
 ## Code conventions
 

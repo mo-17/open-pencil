@@ -1,6 +1,7 @@
 import { lstat, mkdir, mkdtemp, readlink, realpath, rm, writeFile } from 'node:fs/promises'
 import { dirname, basename, isAbsolute, join, parse, resolve, sep as osSep } from 'node:path'
 
+import { decodeBase64 } from '@open-pencil/core/bytes'
 import { MotionExportCancelledError } from '@open-pencil/core/io/motion-export'
 
 import { publishDirectoryNoClobber, publishFileNoClobber } from '#mcp/motion-export/no-clobber'
@@ -410,10 +411,10 @@ export async function writeToolOutput(
     return ok({ written: resolved, byteLength: Buffer.byteLength(result.svg, 'utf8') })
   }
   if (toolName === 'export_image' && typeof result.base64 === 'string') {
-    const buffer = Buffer.from(result.base64, 'base64')
-    await writeFile(realPath, buffer)
+    const bytes = decodeBase64(result.base64)
+    await writeFile(realPath, bytes)
     await resolveSafePath(realPath, root)
-    return ok({ written: resolved, byteLength: buffer.length })
+    return ok({ written: resolved, byteLength: bytes.length })
   }
   if (toolName === 'get_jsx' && typeof result.jsx === 'string') {
     await writeFile(realPath, result.jsx, 'utf8')

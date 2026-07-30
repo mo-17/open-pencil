@@ -25,6 +25,7 @@ export const UNIT_TEST_GROUPS = {
   motion: ['tests/engine/collab', 'tests/engine/motion', 'packages/motion-runtime/tests'],
   render: ['tests/engine/geometry', 'tests/engine/layout', 'tests/engine/render'],
   scene: [
+    'tests/engine/bytes',
     'tests/engine/lint',
     'tests/engine/lowcode-validation',
     'tests/engine/random',

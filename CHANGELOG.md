@@ -28,6 +28,11 @@
   derived auto-layout updates from being mistaken for unsupported source edits.
 - Write `eval` output with the document format selected by its destination extension, so `.pen`
   output remains Pencil JSON instead of receiving a mislabeled `.fig` ZIP archive.
+- Match regional browser languages to supported locales without selecting a secondary language. (#417)
+- Save auto-layout frames that stretch their children to `.fig` without failing. (#427)
+- Preserve multiple colors in imported vector artwork such as multi-color logos. (#386)
+- Edit vectors in opened documents at the correct position, with live fills and undo/redo. (#390)
+- Reduce large `.fig` page-switch work to the active page, reuse fixed-point propagation indexes, and coalesce Layers tree rebuilds. (#420)
 - Center text glyphs within explicit line-height leading in CanvasKit paragraph rendering.
 - Fully reload generated previews when the virtual file topology changes, so adding a document's
   first Motion runtime or CSS module is evaluated immediately without a manual preview refresh.
@@ -136,6 +141,7 @@
   diagnostics for editors and runtime inspection.
 - Inspect generated development previews with Motion Debug, including structured track state,
   source, trigger, progress, current time, reduced-motion policy, exit behavior, and compile warnings.
+- Export selections, pages and documents as editable PowerPoint (`.pptx`) files from the File menu, CLI and SDK: text, rectangles, ellipses and lines stay native editable elements, while gradients, masks, blends, vectors and icons fall back to embedded images.
 - Figma-style Assets panel browsing with component thumbnails, grid/list views, page grouping, context actions, and drag-to-canvas insertion.
 - Import HTML, CSS, Tailwind, and JSX as editable documents from the app, CLI, and SDK, and export standalone browser-ready HTML with compiled CSS and optional external assets.
 - Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, and blur effects.
@@ -144,13 +150,17 @@
 - Find overlapping layers and overflowing children from the CLI, AI tools, and MCP.
 - Use Figma-style number-key opacity shortcuts: `1`–`9` set 10%–90%, `0` sets 100%, and two-digit sequences set exact values.
 - Drag image files directly into the desktop app and paste Figma layers with their remote image fills.
+- Drop SVG files onto the canvas to import them as editable vector layers alongside raster images. (#392)
 - Drag with the Text tool to create a fixed-size text box, or click to create auto-width text.
 - Target a specific open document and page from live CLI and MCP automation, including sessions with multiple documents.
 - Test OpenAI-compatible provider connections from AI settings with clearer setup errors.
+- Manage AI, agent, and media credentials from unified Settings, using the system credential store on desktop and encrypted browser storage by default with a session-only option.
+- Assign separate Design, Review, Fast, and Vision models, providers, endpoints, and credentials from AI settings.
+- Connect an S3-compatible storage workspace with local-first saves, background synchronization, and centrally managed credentials.
+- Convert image layers into editable vector layers with Recraft or fal.ai from the canvas context menu. (#322)
 - Build custom property panels with new Vue SDK number fields, bindable values, property sections, responsive property grids, segmented controls, property lists, color models, fill controls, and gradient primitives.
 - Save lowcode buttons, inputs, forms, lists, and the other interactive controls as editable Figma-native visual layers while retaining their OpenPencil semantics for round-trip import.
 - Let built-in AI and Design JSX create all ten real lowcode control node types with validated interactive properties instead of visual Frame substitutes.
-- Manage AI, agent, and media credentials from unified Settings, using the system credential store on desktop and optional encrypted storage in the browser.
 - Connect local MCP clients through automatically discovered private Unix sockets on macOS and Linux, with localhost TCP fallback. (#338)
 - Create centered frames from current Figma-style device and asset presets, or resize selected frames from the Design panel while preserving their names.
 
@@ -391,6 +401,7 @@
 - Avoid emitting localStorage persistence helpers when no document state is marked persistent.
 - Choose Freeform, vertical, horizontal, or grid flow directly from the contextual Layout section, with sizing grouped alongside it and current Layout guide terminology.
 - Redesign the editor chrome and Design panel with denser aligned controls, clearer selection and section states, improved menus and overlays, consistent light/dark theming, and better keyboard and screen-reader behavior.
+- Center full-area empty and setup states consistently across panels, dialogs, and workspaces.
 - Scale the Layers panel to documents with thousands of nodes through virtualized rows, faster incremental updates, stable expansion, range selection, and scroll-to-selection.
 - Resolve fonts before text appears, with language-aware CJK and Arabic fallback, character-specific remote subsets, and more reliable rendering as fonts load.
 - Open and save large `.fig` documents substantially faster while preserving original metadata and user edits; corrupted compressed data now reports an error instead of being opened as valid content.

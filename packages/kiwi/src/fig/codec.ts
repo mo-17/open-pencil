@@ -345,7 +345,7 @@ export interface NodeChange {
   // Vector
   booleanOperation?: 'UNION' | 'SUBTRACT' | 'INTERSECT' | 'XOR'
   vectorData?: unknown
-  fillGeometry?: Array<{ windingRule?: string; commandsBlob?: number }>
+  fillGeometry?: Array<{ windingRule?: string; commandsBlob?: number; styleID?: number }>
   strokeGeometry?: Array<{ windingRule?: string; commandsBlob?: number }>
   // Text
   fontSize?: number

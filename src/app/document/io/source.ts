@@ -9,7 +9,8 @@ import {
 } from '@/app/document/io/names'
 import { createSaveActions } from '@/app/document/io/save'
 import { createDocumentSourceState } from '@/app/document/io/source-state'
-import type { DocumentSourceIdentity } from '@/app/document/io/types'
+import type { DocumentSourceAccess } from '@/app/document/io/types'
+import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
 
 type DocumentSourceState = EditorState & {
   documentName: string
@@ -18,21 +19,11 @@ type DocumentSourceState = EditorState & {
 
 export { createDocumentSourceState }
 
-type DocumentSourceOptions = {
+type DocumentSourceOptions = DocumentSourceAccess & {
   editor: Editor
   state: DocumentSourceState
   stopWatchingFile: () => void
   startWatchingFile: () => Promise<void>
-  getFileHandle: () => FileSystemFileHandle | null
-  setFileHandle: (handle: FileSystemFileHandle | null) => void
-  getFilePath: () => string | null
-  setFilePath: (path: string | null) => void
-  getDownloadName: () => string | null
-  setDownloadName: (name: string | null) => void
-  setSourceIdentity: (identity: DocumentSourceIdentity) => void
-  getSavedVersion: () => number
-  setSavedVersion: (version: number) => void
-  setLastWriteTime: (time: number) => void
   getRenderer: () => Editor['renderer']
 }
 
@@ -47,6 +38,8 @@ export function createDocumentSourceActions({
   setFilePath,
   getDownloadName,
   setDownloadName,
+  getStorageBinding,
+  setStorageBinding,
   setSourceIdentity,
   getSavedVersion,
   setSavedVersion,
@@ -70,6 +63,8 @@ export function createDocumentSourceActions({
     setFileHandle,
     getDownloadName,
     setDownloadName,
+    getStorageBinding,
+    setStorageBinding,
     setSourceIdentity,
     setSavedVersion,
     setLastWriteTime,
@@ -81,7 +76,7 @@ export function createDocumentSourceActions({
   const { disposeAutosave } = createAutosave({
     state,
     getSavedVersion,
-    hasWritableSource: () => !!getFileHandle() || !!getFilePath(),
+    hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding(),
     saveCurrentDocument: async () => {
       await writeFile(await buildFigFile())
     }
@@ -94,6 +89,7 @@ export function createDocumentSourceActions({
     path?: string
   ) {
     stopWatchingFile()
+    setStorageBinding(null)
     const isFig = sourceFormat === 'fig'
     setFileHandle(isFig ? (handle ?? null) : null)
     setFilePath(isFig ? (path ?? null) : null)
@@ -105,8 +101,21 @@ export function createDocumentSourceActions({
     }
   }
 
+  function setStorageDocumentSource(binding: StorageDocumentBinding, documentName: string) {
+    stopWatchingFile()
+    setFileHandle(null)
+    setFilePath(null)
+    setDownloadName(`${documentName}.fig`)
+    setSourceIdentity({ handle: null, path: null })
+    setStorageBinding(binding)
+    state.documentName = documentName
+    state.autosaveEnabled = true
+    setSavedVersion(state.sceneVersion)
+  }
+
   function setPlannedFilePath(path: string) {
     stopWatchingFile()
+    setStorageBinding(null)
     setFileHandle(null)
     setFilePath(path)
     const downloadName = downloadNameFromPath(path)
@@ -125,10 +134,12 @@ export function createDocumentSourceActions({
 
   return {
     setDocumentSource,
+    setStorageDocumentSource,
     setPlannedFilePath,
     startWatchingCurrentFile,
     disposeDocumentIO,
     saveFigFile,
-    saveFigFileAs
+    saveFigFileAs,
+    getStorageBinding
   }
 }

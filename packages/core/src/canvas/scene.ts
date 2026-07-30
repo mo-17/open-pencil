@@ -25,6 +25,7 @@ import { evalCubic, isLineSegment, segmentToAbsolute } from '#core/vector/curve-
 import { figmaBlendModeToSkia, needsIsolatedBlendLayer } from './blend'
 import { renderBooleanOperation } from './boolean'
 import { drawGeneratedEffect } from './generated-effect'
+import { drawVectorMultiStyleFills, paintFills } from './fills'
 import { drawLayoutGrids } from './layout-grids'
 import { renderButtonLabel } from './lowcode'
 import { renderMaskedChildIds } from './masks'
@@ -53,16 +54,7 @@ function drawVisibleFills(
   graph: SceneGraph,
   draw: (fill: Fill) => void
 ): void {
-  for (let fi = 0; fi < node.fills.length; fi++) {
-    const fill = node.fills[fi]
-    if (!fill.visible) continue
-    if (!r.applyFill(fill, node, graph, fi)) continue
-    r.fillPaint.setAlphaf(fill.opacity)
-    r.fillPaint.setBlendMode(figmaBlendModeToSkia(r.ck, fill.blendMode))
-    draw(fill)
-    r.fillPaint.setShader(null)
-    r.fillPaint.setBlendMode(r.ck.BlendMode.SrcOver)
-  }
+  paintFills(r, node.fills, node, graph, draw)
 }
 function motionVisual(overlays: RenderOverlays, nodeId: string): MotionVisualState {
   return overlays.motionVisualStates?.get(nodeId) ?? MOTION_VISUAL_IDENTITY
@@ -1208,7 +1200,9 @@ export function renderShapeUncached(
   const shadowChild = getShadowShapeChild(node, graph)
   r.renderEffects(canvas, node, rect, hasRadius, 'behind', shadowChild)
 
-  drawVisibleFills(r, node, graph, (fill) => r.drawNodeFill(canvas, node, rect, hasRadius, fill))
+  if (!drawVectorMultiStyleFills(r, canvas, node, graph)) {
+    drawVisibleFills(r, node, graph, (fill) => r.drawNodeFill(canvas, node, rect, hasRadius, fill))
+  }
 
   const sg = node.strokeGeometry.length > 0 ? r.getStrokeGeometry(node) : null
   const vectorPaths = node.type === 'VECTOR' ? r.getVectorPaths(node) : null

@@ -162,12 +162,17 @@ test('saving API key in unified settings shows chat interface', async () => {
   await expect(page.getByTestId('app-settings-dialog')).toBeVisible()
   await expect(page.getByTestId('settings-remember-credentials')).toHaveAttribute(
     'data-state',
-    'unchecked'
+    'checked'
   )
-  await expect(page.getByTestId('settings-credential-backend')).toContainText('this session only')
-  await page.getByTestId('settings-ai-provider').click()
+  await expect(page.getByTestId('settings-credential-backend')).toContainText(
+    'encrypted browser storage'
+  )
+  await page.locator('[data-model-id]').first().click()
+  await page.getByTestId('settings-model-provider').click()
   await page.getByRole('option', { name: 'OpenRouter' }).click()
+  await page.getByLabel('Name').fill('Claude Sonnet')
   await apiKeyInput().fill(key)
+  await page.getByRole('button', { name: 'Save model' }).click()
   await page.getByTestId('app-settings-done').click()
 
   await expect(chatInput()).toBeVisible()
@@ -249,16 +254,20 @@ test('OpenRouter accepts a custom model ID from provider settings', async () => 
 
   await page.keyboard.press('Escape')
   await page.getByTestId('provider-settings-trigger').click()
+  await page.locator('[data-model-id]').first().click()
   const customModelInput = page.getByTestId('provider-settings-custom-model')
   await expect(customModelInput).toBeVisible()
   await customModelInput.fill(customModel)
+  await page.getByRole('button', { name: 'Save model' }).click()
   await page.getByTestId('app-settings-done').click()
 
   await expect(page.getByTestId('chat-custom-model-label')).toContainText(customModel)
   await expect(page.getByTestId('chat-model-selector')).toBeHidden()
 
   await page.getByTestId('provider-settings-trigger').click()
+  await page.locator('[data-model-id]').first().click()
   await page.getByTestId('provider-settings-custom-model').fill('')
+  await page.getByRole('button', { name: 'Save model' }).click()
   await page.getByTestId('app-settings-done').click()
 
   await expect(page.getByTestId('chat-model-selector')).toBeVisible()
@@ -276,11 +285,16 @@ test('transport errors show an actionable toast', async () => {
 })
 
 test('"Get API key" link opens external URL via window.open', async () => {
-  await page.evaluate("localStorage.removeItem('open-pencil:ai-key:openrouter')")
-  await page.reload()
-  await canvas.waitForInit()
-  await chatTab().click()
+  await page.getByTestId('provider-settings-trigger').click()
+  await page.locator('[data-model-id]').first().click()
+  await page.getByTestId('provider-settings-clear-key').click()
+  await page.getByRole('button', { name: 'Back' }).click()
+  await page.getByTestId('app-settings-done').click()
+  await expect(page.getByTestId('provider-setup-open-settings')).toBeVisible()
   await page.getByTestId('provider-setup-open-settings').click()
+  await page.locator('[data-model-id]').first().click()
+  await page.getByTestId('settings-model-provider').click()
+  await page.getByRole('option', { name: 'OpenRouter' }).click()
 
   const link = page.getByRole('button', { name: 'Get API key →' })
   await expect(link).toBeVisible()
