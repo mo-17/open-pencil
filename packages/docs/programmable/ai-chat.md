@@ -31,6 +31,37 @@ You can configure multiple reusable models and separately assign models for desi
 
 No backend, no subscription — your key talks directly to the provider.
 
+## Visual references
+
+Use the paperclip to attach a PNG, JPEG, or WebP, or select visible canvas layers and choose
+**Attach current selection**. The composer shows the provider and model that will receive the image;
+nothing is sent until you submit the message.
+
+OpenPencil re-encodes every reference to remove embedded metadata and bounds it to a 2048 px edge,
+four attachments, and 6 MB combined. A canvas selection is rendered from its visible appearance, so
+cropped-away source pixels are not uploaded. Full payloads are retained only for the active request;
+the chat history keeps bounded thumbnails. Pixels, OCR text, and Vision briefs are treated as
+untrusted reference data: instructions embedded inside an image do not grant tool authority or
+override the user's normal message.
+
+If the Design model supports both tools and image input, it receives the reference directly. If it
+supports tools but not images, assign a separate **Vision** model to create a grounded visual brief
+for the Design agent. If those roles use different providers, the original pixels go only to the
+Vision provider; the Design provider receives the bounded text brief plus non-image source
+provenance. For a canvas selection, that provenance can include up to 64 captured node IDs so the
+Design agent can verify and locate the source; each provenance record is bound to its image by a
+zero-based attachment index, and paperclip attachments are marked as chat-only. The composer shows
+the pixel route before submission. Desktop coding agents receive images only when their ACP
+handshake advertises image prompt support. Unsupported configurations fail before prompting and keep
+the draft available.
+
+Ask the assistant to recreate or adapt the reference as editable frames, text, shapes, and
+components. **Attach current selection** keeps the source nodes on the canvas so the assistant can
+build beside them or inside a named target. A paperclip attachment is chat-only and is not inserted
+onto the canvas; its result is created on the current page or inside a named target. To keep an
+uploaded screenshot visible beside the result, place it on the canvas first and attach its current
+selection.
+
 ## What It Can Do
 
 The assistant has a curated 50+ tools across these categories:
@@ -43,7 +74,7 @@ The assistant has a curated 50+ tools across these categories:
 - **Query** — find nodes, XPath selectors, read properties, list pages, fonts, selection.
 - **Inspect** — `get_jsx` for JSX roundtrip view, `diff_jsx` for structural diffs, `describe` for semantic role and design issue detection.
 - **Analyze** — color palette, typography audit, spacing consistency, cluster detection.
-- **Export** — PNG, SVG, JSX with Tailwind classes. Vision-based verification via `export_image`.
+- **Export** — PNG, SVG, JSX with Tailwind classes.
 - **Vector** — boolean operations, path manipulation.
 - **Motion** — inspect and author node timelines, scenes, continuous drivers, prototypes, Smart
   Match keys, bounded generated effects, and multi-node recipes; browse and apply presets; verify
@@ -53,9 +84,13 @@ The assistant has a curated 50+ tools across these categories:
   not currently display per-phase export progress. WebM/MP4 remain capability-gated and fail closed
   when the app host has no matching encoder.
 
-## Visual Verification
+## Verification
 
-The assistant can verify its work visually. After creating or modifying designs, it uses `export_image` to capture a screenshot and checks the result against the original request. This catches layout issues, missing elements, and color mismatches that text-only responses would miss.
+After creating or modifying designs, the assistant uses `describe` to inspect the generated
+structure and correct concrete layout warnings. When you attach a visual reference, a
+vision-capable model also grounds the initial plan in its visible pixels. OpenPencil does not
+automatically upload the canvas or promise pixel-perfect recovery of exact fonts, hidden
+interactions, or responsive behavior that cannot be observed.
 
 ## Example Prompts
 

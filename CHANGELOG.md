@@ -41,6 +41,11 @@
 
 ### Added
 
+- Attach bounded, metadata-scrubbed PNG, JPEG, or WebP references—or an explicitly selected canvas
+  region—to built-in AI chat. Vision-capable Design models receive the image directly; otherwise a
+  configured Vision role produces a grounded brief for the Design agent. ACP agents negotiate image
+  support before prompting, reference thumbnails remain visible in chat, and generated output stays
+  editable without automatically replacing the source image.
 - Compose MotionSpec v3 tracks with deterministic `replace`, `add`, or `accumulate` semantics,
   bounded weights, and stable priorities shared by Canvas preview, fixed-time export, generated React
   projects, and the public runtime SDK, while leaving v1/v2 serialization and playback unchanged
