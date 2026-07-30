@@ -11,6 +11,56 @@ export function invalidateScenePicture(r: SkiaRenderer): void {
   r.sceneBackingBuild = null
 }
 
+/**
+ * Cancels only the in-progress retained-frame build when the on-screen surface changes.
+ *
+ * A completed backing image is deliberately kept: it is the only safe frame we can present if
+ * the first draw on the replacement surface fails. The next successful scene render will either
+ * reuse it or replace it with geometry matching the new viewport.
+ */
+export function prepareSurfaceReplacement(r: SkiaRenderer): void {
+  const build = r.sceneBackingBuild
+  r.sceneBackingBuild = null
+  try {
+    build?.surface.delete()
+  } catch (error) {
+    console.warn('Retained-frame build cleanup failed during surface replacement', error)
+  }
+  r.sceneBackingNeedsCrispRender = !!r.sceneBacking
+}
+
+/** Moves ownership of the completed retained frame to a replacement renderer. */
+export function transferLastGoodFrame(source: SkiaRenderer, target: SkiaRenderer): boolean {
+  const backing = source.sceneBacking
+  if (!backing || source.ck !== target.ck) return false
+
+  target.sceneBackingBuild?.surface.delete()
+  target.sceneBackingBuild = null
+  target.sceneBacking?.image.delete()
+  target.sceneBacking = backing
+  source.sceneBacking = null
+
+  // Prime the replacement with the presentation state needed to display the transferred image
+  // before its first renderFromEditorState call. A failed first render refreshes these values from
+  // editor state before recovery, while an immediate handoff can still show the old frame now.
+  target.panX = source.panX
+  target.panY = source.panY
+  target.zoom = source.zoom
+  target.dpr = source.dpr
+  target.viewportWidth = source.viewportWidth
+  target.viewportHeight = source.viewportHeight
+  target.pageColor = source.pageColor
+  target.pageId = source.pageId
+  target.sceneBackingPreviewUntil = source.sceneBackingPreviewUntil
+  target.sceneBackingAverageRecordMs = source.sceneBackingAverageRecordMs
+  target.sceneBackingAverageViewportIntervalMs = source.sceneBackingAverageViewportIntervalMs
+  target.sceneBackingLastViewportEventAt = source.sceneBackingLastViewportEventAt
+  target.lastSceneViewport = source.lastSceneViewport ? { ...source.lastSceneViewport } : null
+  target.sceneBackingNeedsCrispRender = true
+  source.sceneBackingNeedsCrispRender = false
+  return true
+}
+
 export function clearSubtreePictureCache(r: SkiaRenderer): void {
   for (const entry of r.subtreePictureCache.values()) entry.picture.delete()
   r.subtreePictureCache.clear()

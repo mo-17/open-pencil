@@ -10,6 +10,7 @@ import type { RenderLayer } from './pipeline'
 
 const now = typeof performance !== 'undefined' ? () => performance.now() : () => 0
 const SCENE_BACKING_SCALE = 3
+const MAX_SCENE_BACKING_DEVICE_PIXELS = 12_000_000
 const FRAME_BUDGET_60HZ_MS = 1000 / 60
 const MIN_SCENE_BACKING_IDLE_FRAMES = 2
 const MAX_SCENE_BACKING_IDLE_FRAMES = 18
@@ -69,12 +70,14 @@ function backingMetadataMatches(
   positionPreviewVersion: number
 ): boolean {
   const backing = r.sceneBacking
+  const expected = sceneBackingGeometry(r)
   return !!(
     backing &&
     backing.pageId === r.pageId &&
     backing.sceneVersion === sceneVersion &&
     backing.positionPreviewVersion === positionPreviewVersion &&
-    backing.fontGeneration === r.fontGeneration
+    backing.fontGeneration === r.fontGeneration &&
+    Math.abs(backing.dpr - expected.dpr) <= 0.0001
   )
 }
 
@@ -138,26 +141,65 @@ function drawSceneBacking(
     return false
   }
 
+  drawBackingImage(r, canvas, backing)
+  return true
+}
+
+function drawBackingImage(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  backing: NonNullable<SkiaRenderer['sceneBacking']>
+): void {
   const scale = r.zoom / backing.zoom
   const x = r.panX - backing.panX * scale
   const y = r.panY - backing.panY * scale
   r.opacityPaint.setAlphaf(1)
   canvas.drawImageRectOptions(
     backing.image,
-    r.ck.LTRBRect(0, 0, backing.width * backing.dpr, backing.height * backing.dpr),
+    r.ck.LTRBRect(
+      0,
+      0,
+      Math.max(1, Math.floor(backing.width * backing.dpr)),
+      Math.max(1, Math.floor(backing.height * backing.dpr))
+    ),
     r.ck.LTRBRect(x, y, x + backing.width * scale, y + backing.height * scale),
     r.ck.FilterMode.Linear,
     r.ck.MipmapMode.None,
     r.opacityPaint
   )
+}
+
+/** Draws the most recently completed scene even when its graph metadata is stale. */
+export function drawLastGoodSceneBacking(r: SkiaRenderer, canvas: Canvas): boolean {
+  const backing = r.sceneBacking
+  if (!backing || backing.pageId !== r.pageId) return false
+  drawBackingImage(r, canvas, backing)
   return true
 }
 
+export function sceneBackingScaleForViewport(
+  viewportWidth: number,
+  viewportHeight: number,
+  dpr: number
+): number {
+  const viewportDevicePixels = Math.max(1, viewportWidth * viewportHeight * dpr * dpr)
+  return clamp(
+    Math.sqrt(MAX_SCENE_BACKING_DEVICE_PIXELS / viewportDevicePixels),
+    1,
+    SCENE_BACKING_SCALE
+  )
+}
+
 function sceneBackingGeometry(r: SkiaRenderer) {
-  const marginX = r.viewportWidth * ((SCENE_BACKING_SCALE - 1) / 2)
-  const marginY = r.viewportHeight * ((SCENE_BACKING_SCALE - 1) / 2)
+  const backingScale = sceneBackingScaleForViewport(r.viewportWidth, r.viewportHeight, r.dpr)
+  const marginX = r.viewportWidth * ((backingScale - 1) / 2)
+  const marginY = r.viewportHeight * ((backingScale - 1) / 2)
   const width = Math.max(1, Math.ceil(r.viewportWidth + marginX * 2))
   const height = Math.max(1, Math.ceil(r.viewportHeight + marginY * 2))
+  // A single viewport can itself exceed the cap on a large/high-DPI display.
+  // Keep CSS coverage intact and lower only the retained preview resolution.
+  const cappedDpr = Math.sqrt(MAX_SCENE_BACKING_DEVICE_PIXELS / (width * height))
+  const dpr = Math.max(0.1, Math.min(r.dpr, cappedDpr))
   const backingPanX = r.panX + marginX
   const backingPanY = r.panY + marginY
   return {
@@ -170,18 +212,29 @@ function sceneBackingGeometry(r: SkiaRenderer) {
     worldWidth: width / r.zoom,
     worldHeight: height / r.zoom,
     zoom: r.zoom,
-    dpr: r.dpr
+    dpr
   }
 }
 
-function createSceneBackingSurface(r: SkiaRenderer, width: number, height: number): Surface | null {
-  return r.surface.makeSurface({
-    width: Math.ceil(width * r.dpr),
-    height: Math.ceil(height * r.dpr),
-    colorType: r.ck.ColorType.RGBA_8888,
-    alphaType: r.ck.AlphaType.Premul,
-    colorSpace: r.ck.ColorSpace.SRGB
-  })
+function createSceneBackingSurface(
+  r: SkiaRenderer,
+  width: number,
+  height: number,
+  dpr: number
+): Surface | null {
+  try {
+    return r.surface.makeSurface({
+      width: Math.max(1, Math.floor(width * dpr)),
+      height: Math.max(1, Math.floor(height * dpr)),
+      colorType: r.ck.ColorType.RGBA_8888,
+      alphaType: r.ck.AlphaType.Premul,
+      colorSpace: r.ck.ColorSpace.SRGB
+    })
+  } catch {
+    // CanvasKit can throw instead of returning null under GPU memory pressure.
+    // The caller will use the live renderer or the previous retained image.
+    return null
+  }
 }
 
 function ensureSubtreePictureCacheScope(
@@ -222,7 +275,12 @@ function cachedSubtreePicture(
     return cached.picture
   }
 
-  cached?.picture.delete()
+  if (cached) {
+    // Remove the entry before rebuilding. If CanvasKit throws while recording,
+    // a later lookup must never return the already-deleted picture.
+    r.subtreePictureCache.delete(childId)
+    cached.picture.delete()
+  }
   const bounds = computeDescendantVisualBounds(
     [childId],
     (id) => graph.getNode(id),
@@ -231,28 +289,31 @@ function cachedSubtreePicture(
   if (!bounds) return null
 
   const recorder = new r.ck.PictureRecorder()
-  const recCanvas = recorder.beginRecording(
-    r.ck.LTRBRect(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY)
-  )
   const prevViewport = r.worldViewport
-  r.worldViewport = {
-    x: bounds.minX,
-    y: bounds.minY,
-    w: bounds.maxX - bounds.minX,
-    h: bounds.maxY - bounds.minY
+  try {
+    const recCanvas = recorder.beginRecording(
+      r.ck.LTRBRect(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY)
+    )
+    r.worldViewport = {
+      x: bounds.minX,
+      y: bounds.minY,
+      w: bounds.maxX - bounds.minX,
+      h: bounds.maxY - bounds.minY
+    }
+    r.renderNode(recCanvas, graph, childId, {})
+    const picture = recorder.finishRecordingAsPicture()
+    r.subtreePictureCache.set(childId, {
+      picture,
+      pageId: r.pageId,
+      sceneVersion,
+      positionPreviewVersion: graph.positionPreviewVersion,
+      fontGeneration: r.fontGeneration
+    })
+    return picture
+  } finally {
+    r.worldViewport = prevViewport
+    recorder.delete()
   }
-  r.renderNode(recCanvas, graph, childId, {})
-  r.worldViewport = prevViewport
-  const picture = recorder.finishRecordingAsPicture()
-  recorder.delete()
-  r.subtreePictureCache.set(childId, {
-    picture,
-    pageId: r.pageId,
-    sceneVersion,
-    positionPreviewVersion: graph.positionPreviewVersion,
-    fontGeneration: r.fontGeneration
-  })
-  return picture
 }
 
 function renderBackingChild(
@@ -265,21 +326,25 @@ function renderBackingChild(
 ): void {
   const canvas = surface.getCanvas()
   const prevViewport = r.worldViewport
-  r.worldViewport = {
-    x: backing.worldX,
-    y: backing.worldY,
-    w: backing.worldWidth,
-    h: backing.worldHeight
+  const initialSaveCount = canvas.getSaveCount()
+  try {
+    r.worldViewport = {
+      x: backing.worldX,
+      y: backing.worldY,
+      w: backing.worldWidth,
+      h: backing.worldHeight
+    }
+    canvas.save()
+    canvas.scale(backing.dpr, backing.dpr)
+    canvas.translate(backing.panX, backing.panY)
+    canvas.scale(r.zoom, r.zoom)
+    const picture = cachedSubtreePicture(r, graph, childId, sceneVersion)
+    if (picture) canvas.drawPicture(picture)
+    else r.renderNode(canvas, graph, childId, {})
+  } finally {
+    r.worldViewport = prevViewport
+    canvas.restoreToCount(initialSaveCount)
   }
-  canvas.save()
-  canvas.scale(r.dpr, r.dpr)
-  canvas.translate(backing.panX, backing.panY)
-  canvas.scale(r.zoom, r.zoom)
-  const picture = cachedSubtreePicture(r, graph, childId, sceneVersion)
-  if (picture) canvas.drawPicture(picture)
-  else r.renderNode(canvas, graph, childId, {})
-  canvas.restore()
-  r.worldViewport = prevViewport
 }
 
 function sceneBackingMetrics(backing: ReturnType<typeof sceneBackingGeometry>) {
@@ -344,9 +409,14 @@ function startSceneBackingBuild(r: SkiaRenderer, graph: SceneGraph, sceneVersion
   cancelSceneBackingBuild(r)
   const backing = sceneBackingGeometry(r)
   const pageNode = graph.getNode(r.pageId ?? graph.rootId)
-  const surface = createSceneBackingSurface(r, backing.width, backing.height)
+  const surface = createSceneBackingSurface(r, backing.width, backing.height, backing.dpr)
   if (!surface) return
-  surface.getCanvas().clear(r.ck.Color4f(r.pageColor.r, r.pageColor.g, r.pageColor.b, 1))
+  try {
+    surface.getCanvas().clear(r.ck.Color4f(r.pageColor.r, r.pageColor.g, r.pageColor.b, 1))
+  } catch {
+    surface.delete()
+    return
+  }
   r.sceneBackingBuild = {
     surface,
     graph,
@@ -386,17 +456,31 @@ function stepSceneBackingBuild(r: SkiaRenderer, sceneVersion: number): boolean {
 
   const startedAt = now()
   const backing = sceneBackingGeometryFromBuild(build)
-  do {
-    const childId = build.childIds[build.index]
-    if (!childId) break
-    renderBackingChild(r, build.graph, build.surface, childId, backing, build.sceneVersion)
-    build.index++
-  } while (build.index < build.childIds.length && now() - startedAt < SCENE_BACKING_BUILD_BUDGET_MS)
+  try {
+    do {
+      const childId = build.childIds[build.index]
+      if (!childId) break
+      renderBackingChild(r, build.graph, build.surface, childId, backing, build.sceneVersion)
+      build.index++
+    } while (
+      build.index < build.childIds.length &&
+      now() - startedAt < SCENE_BACKING_BUILD_BUDGET_MS
+    )
+  } catch {
+    cancelSceneBackingBuild(r)
+    return false
+  }
 
   if (build.index < build.childIds.length) return true
 
-  build.surface.flush()
-  const image = build.surface.makeImageSnapshot()
+  let image: CKImage
+  try {
+    build.surface.flush()
+    image = build.surface.makeImageSnapshot()
+  } catch {
+    cancelSceneBackingBuild(r)
+    return false
+  }
   build.surface.delete()
   r.sceneBackingBuild = null
   installSceneBackingImage(r, image, build.sceneVersion, build.positionPreviewVersion, backing)
@@ -407,27 +491,34 @@ function stepSceneBackingBuild(r: SkiaRenderer, sceneVersion: number): boolean {
   return true
 }
 
-function recordSceneBacking(r: SkiaRenderer, graph: SceneGraph, sceneVersion: number): void {
+function recordSceneBacking(r: SkiaRenderer, graph: SceneGraph, sceneVersion: number): boolean {
   const startedAt = now()
   const backing = sceneBackingGeometry(r)
-  const surface = createSceneBackingSurface(r, backing.width, backing.height)
-  if (!surface) return
-  const canvas = surface.getCanvas()
-  canvas.clear(r.ck.Color4f(r.pageColor.r, r.pageColor.g, r.pageColor.b, 1))
-  const pageNode = graph.getNode(r.pageId ?? graph.rootId)
-  if (pageNode) {
-    for (const childId of pageNode.childIds) {
-      renderBackingChild(r, graph, surface, childId, backing, sceneVersion)
+  const surface = createSceneBackingSurface(r, backing.width, backing.height, backing.dpr)
+  if (!surface) return false
+  let image: CKImage
+  try {
+    const canvas = surface.getCanvas()
+    canvas.clear(r.ck.Color4f(r.pageColor.r, r.pageColor.g, r.pageColor.b, 1))
+    const pageNode = graph.getNode(r.pageId ?? graph.rootId)
+    if (pageNode) {
+      for (const childId of pageNode.childIds) {
+        renderBackingChild(r, graph, surface, childId, backing, sceneVersion)
+      }
     }
+    surface.flush()
+    image = surface.makeImageSnapshot()
+  } catch {
+    surface.delete()
+    return false
   }
-  surface.flush()
-  const image = surface.makeImageSnapshot()
   surface.delete()
   installSceneBackingImage(r, image, sceneVersion, graph.positionPreviewVersion, backing)
   r.sceneBackingAverageRecordMs = smoothAverage(
     r.sceneBackingAverageRecordMs,
     clamp(now() - startedAt, 1, 1_000)
   )
+  return true
 }
 
 export function renderSceneBacking(
@@ -444,29 +535,27 @@ export function renderSceneBacking(
     allowStaleZoom,
     positionPreviewVersion
   )
-  if (!hasCoverage) {
-    if (
-      !r.sceneBacking ||
-      !backingMetadataMatches(r, sceneVersion, positionPreviewVersion) ||
-      !backingScreenCoverageContainsViewport(r)
-    ) {
-      cancelSceneBackingBuild(r)
-      recordSceneBacking(r, graph, sceneVersion)
-    } else {
-      if (!sceneBackingBuildMatches(r, sceneVersion)) startSceneBackingBuild(r, graph, sceneVersion)
-      stepSceneBackingBuild(r, sceneVersion)
-    }
+  if (!r.sceneBacking) {
+    // The first retained frame has no fallback to present, so build it eagerly.
+    recordSceneBacking(r, graph, sceneVersion)
+  } else if (!hasCoverage) {
+    // Once a completed frame exists, never synchronously redraw the entire
+    // page for a graph change. Keep presenting the last-good frame while the
+    // replacement is recorded in bounded slices.
+    if (!sceneBackingBuildMatches(r, sceneVersion)) startSceneBackingBuild(r, graph, sceneVersion)
+    stepSceneBackingBuild(r, sceneVersion)
   } else if (r.sceneBackingBuild) {
     stepSceneBackingBuild(r, sceneVersion)
   }
 
-  const crisp = Math.abs((r.sceneBacking?.zoom ?? r.zoom) - r.zoom) <= 0.0001
-  r.sceneBackingNeedsCrispRender = !crisp || !!r.sceneBackingBuild
-  return drawSceneBacking(
+  const drewCurrent = drawSceneBacking(
     r,
     canvas,
     sceneVersion,
     allowStaleZoom || !!r.sceneBackingBuild,
     positionPreviewVersion
   )
+  const crisp = Math.abs((r.sceneBacking?.zoom ?? r.zoom) - r.zoom) <= 0.0001
+  r.sceneBackingNeedsCrispRender = !drewCurrent || !crisp || !!r.sceneBackingBuild
+  return drewCurrent || drawLastGoodSceneBacking(r, canvas)
 }

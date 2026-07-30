@@ -33,6 +33,7 @@ function setup() {
     requestRepaint: () => {
       state.renderVersion++
     },
+    requestOverlayRepaint: () => undefined,
     getTextEditor: () => textEditor,
     getRenderer: () => null,
     runLayoutForNode: () => undefined,

@@ -56,13 +56,18 @@ export function createEditorStoreModules(
   io: IORegistry,
   viewportSize: ViewportSize
 ) {
-  const flash = createFlashActions(editor, state)
+  const { dispose: disposeFlash, ...flash } = createFlashActions(editor)
   const pen = createPenActions(editor, graph, state)
   const vectorEdit = createVectorEditActions(editor, graph, state)
   const documentIO = createDocumentIOActions(editor, state, viewportSize)
   const documentExport = createDocumentExportActions(editor, state, io, documentIO.downloadBlob)
   const mobileClipboard = createMobileClipboardActions(editor, state)
   const profiler = createProfilerActions(editor)
+
+  function dispose() {
+    disposeFlash()
+    documentIO.disposeDocumentIO()
+  }
 
   return {
     ...flash,
@@ -81,7 +86,7 @@ export function createEditorStoreModules(
     getDocumentPath: documentIO.getDocumentPath,
     setPlannedFilePath: documentIO.setPlannedFilePath,
     startWatchingCurrentFile: documentIO.startWatchingCurrentFile,
-    dispose: documentIO.disposeDocumentIO,
+    dispose,
     ...documentExport,
     ...mobileClipboard,
     ...profiler

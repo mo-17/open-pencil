@@ -22,8 +22,11 @@ type TestEditor = Pick<
 function createFrameScheduler() {
   let nextId = 1
   const callbacks = new Map<number, FrameRequestCallback>()
+  const timers = new Map<number, { callback: () => void; delay: number }>()
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame
   const originalCancelAnimationFrame = globalThis.cancelAnimationFrame
+  const originalSetTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
 
   globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
     const id = nextId++
@@ -33,19 +36,40 @@ function createFrameScheduler() {
   globalThis.cancelAnimationFrame = ((id: number) => {
     callbacks.delete(id)
   }) as typeof cancelAnimationFrame
+  globalThis.setTimeout = ((callback: () => void, delay = 0) => {
+    const id = nextId++
+    timers.set(id, { callback, delay: Number(delay) })
+    return id
+  }) as typeof setTimeout
+  globalThis.clearTimeout = ((id: number) => {
+    timers.delete(id)
+  }) as typeof clearTimeout
 
   return {
     get pendingCount() {
       return callbacks.size
+    },
+    get timerCount() {
+      return timers.size
+    },
+    get nextTimerDelay() {
+      return timers.values().next().value?.delay as number | undefined
     },
     flush(timestampMs = 0) {
       const pending = [...callbacks]
       callbacks.clear()
       for (const [, callback] of pending) callback(timestampMs)
     },
+    flushTimers() {
+      const pending = [...timers.values()]
+      timers.clear()
+      for (const { callback } of pending) callback()
+    },
     restore() {
       globalThis.requestAnimationFrame = originalRequestAnimationFrame
       globalThis.cancelAnimationFrame = originalCancelAnimationFrame
+      globalThis.setTimeout = originalSetTimeout
+      globalThis.clearTimeout = originalClearTimeout
     }
   }
 }
@@ -118,6 +142,7 @@ function createEditor() {
     state: {
       loading: false,
       renderVersion: 0,
+      sceneVersion: 0,
       selectedIds: new Set<string>(),
       currentPageId
     } as Editor['state'],
@@ -145,6 +170,12 @@ function createEditor() {
     editor: editor as Editor,
     graph,
     emit(event: EditorEventName) {
+      if (event === 'render:requested') {
+        editor.state.renderVersion++
+        editor.state.sceneVersion++
+      } else if (event === 'repaint:requested') {
+        editor.state.renderVersion++
+      }
       for (const handler of handlers.get(event) ?? []) handler()
     },
     startMotion(results: boolean[]) {
@@ -190,6 +221,7 @@ describe('canvas render loop', () => {
 
       emit('render:requested')
       emit('repaint:requested')
+      emit('overlay:requested')
       emit('selection:changed')
       emit('viewport:changed')
 
@@ -201,7 +233,7 @@ describe('canvas render loop', () => {
     }
   })
 
-  test('scene layers render on repaint but ignore selection events', () => {
+  test('scene layers render on repaint but ignore selection and overlay-only events', () => {
     const scheduler = createFrameScheduler()
     try {
       const { editor, emit } = createEditor()
@@ -215,6 +247,7 @@ describe('canvas render loop', () => {
       )
 
       emit('selection:changed')
+      emit('overlay:requested')
       expect(scheduler.pendingCount).toBe(0)
 
       emit('repaint:requested')
@@ -226,7 +259,7 @@ describe('canvas render loop', () => {
     }
   })
 
-  test('overlay layers render on repaint and selection events', () => {
+  test('overlay layers render on repaint, overlay-only, and selection events', () => {
     const scheduler = createFrameScheduler()
     try {
       const { editor, emit } = createEditor()
@@ -240,6 +273,7 @@ describe('canvas render loop', () => {
       )
 
       emit('repaint:requested')
+      emit('overlay:requested')
       emit('selection:changed')
       expect(scheduler.pendingCount).toBe(1)
       scheduler.flush()
@@ -386,16 +420,178 @@ describe('canvas render loop', () => {
       harness.emit('render:requested')
       scheduler.flush()
       expect(renders).toBe(2)
-      expect(scheduler.pendingCount).toBe(1)
+      expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.timerCount).toBe(1)
 
       harness.graph.updateNode(visible.id, { width: 0 })
+      harness.emit('render:requested')
       scheduler.flush()
       expect(renders).toBe(3)
       expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.timerCount).toBe(0)
 
       loop.pause()
     } finally {
       media.restore()
+      scheduler.restore()
+    }
+  })
+
+  test('renders smooth generated effects near 30fps independently of phase frequency', () => {
+    const scheduler = createFrameScheduler()
+    const media = createReducedMotionQuery()
+    try {
+      const harness = createEditor()
+      harness.graph.createNode('RECTANGLE', harness.editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect('shimmer')
+      })
+      const getNode = harness.graph.getNode.bind(harness.graph)
+      let graphReads = 0
+      harness.graph.getNode = ((id: string) => {
+        graphReads++
+        return getNode(id)
+      }) as SceneGraph['getNode']
+      let renders = 0
+      const loop = createCanvasRenderLoop(harness.editor, () => renders++)
+
+      harness.emit('render:requested')
+      scheduler.flush(0)
+      expect(renders).toBe(1)
+      expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.timerCount).toBe(1)
+      expect(scheduler.nextTimerDelay).toBeCloseTo(1000 / 30)
+      const firstFrameGraphReads = graphReads
+
+      scheduler.flushTimers()
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.flush(34)
+      expect(renders).toBe(2)
+      expect(scheduler.timerCount).toBe(1)
+      expect(graphReads).toBe(firstFrameGraphReads)
+
+      harness.emit('render:requested')
+      scheduler.flush(68)
+      expect(graphReads).toBeGreaterThan(firstFrameGraphReads)
+
+      loop.pause()
+    } finally {
+      media.restore()
+      scheduler.restore()
+    }
+  })
+
+  test('uses authored temporal frequency only as the cadence for discrete noise', () => {
+    const scheduler = createFrameScheduler()
+    const media = createReducedMotionQuery()
+    try {
+      const harness = createEditor()
+      harness.graph.createNode('RECTANGLE', harness.editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect('noise')
+      })
+      const loop = createCanvasRenderLoop(harness.editor, () => true)
+
+      harness.emit('render:requested')
+      scheduler.flush(0)
+      expect(scheduler.nextTimerDelay).toBeCloseTo(1000 / 6)
+
+      loop.pause()
+    } finally {
+      media.restore()
+      scheduler.restore()
+    }
+  })
+
+  test('retries transient render failures without leaving the loop permanently dirty', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      let attempts = 0
+      createCanvasRenderLoop(editor, () => {
+        attempts++
+        return attempts >= 3
+      })
+
+      emit('render:requested')
+      scheduler.flush(0)
+      expect(attempts).toBe(1)
+      expect(scheduler.pendingCount).toBe(1)
+
+      scheduler.flush(16)
+      expect(attempts).toBe(2)
+      expect(scheduler.pendingCount).toBe(1)
+
+      scheduler.flush(32)
+      expect(attempts).toBe(3)
+      expect(scheduler.pendingCount).toBe(0)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('does not reset the retry budget merely because another event arrives', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      let attempts = 0
+      let succeed = false
+      createCanvasRenderLoop(editor, () => {
+        attempts++
+        return succeed
+      })
+
+      emit('render:requested')
+      scheduler.flush(0)
+      scheduler.flush(16)
+      scheduler.flush(32)
+      expect(attempts).toBe(3)
+      expect(scheduler.pendingCount).toBe(0)
+
+      emit('repaint:requested')
+      scheduler.flush(48)
+      expect(attempts).toBe(4)
+      expect(scheduler.pendingCount).toBe(0)
+
+      succeed = true
+      emit('repaint:requested')
+      scheduler.flush(64)
+      expect(attempts).toBe(5)
+
+      succeed = false
+      emit('repaint:requested')
+      scheduler.flush(80)
+      expect(scheduler.pendingCount).toBe(1)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
+  test('isolates shared RAF callbacks when one surface throws before rendering', () => {
+    const scheduler = createFrameScheduler()
+    const originalConsoleError = console.error
+    console.error = () => undefined
+    try {
+      const harness = createEditor()
+      let checks = 0
+      harness.editor.isMotionPreviewActive = () => {
+        checks++
+        if (checks === 1) throw new Error('broken surface')
+        return false
+      }
+      let healthyRenders = 0
+      createCanvasRenderLoop(harness.editor, () => true, { layer: 'scene' })
+      createCanvasRenderLoop(harness.editor, () => {
+        healthyRenders++
+      })
+
+      harness.emit('render:requested')
+      scheduler.flush(0)
+      expect(healthyRenders).toBe(1)
+    } finally {
+      console.error = originalConsoleError
       scheduler.restore()
     }
   })
@@ -417,21 +613,23 @@ describe('canvas render loop', () => {
       harness.emit('repaint:requested')
       scheduler.flush()
       expect(renders).toBe(1)
-      expect(scheduler.pendingCount).toBe(1)
+      expect(scheduler.timerCount).toBe(1)
 
       media.set(true)
       scheduler.flush()
       expect(renders).toBe(2)
       expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.timerCount).toBe(0)
 
       media.set(false)
       expect(scheduler.pendingCount).toBe(1)
       scheduler.flush()
       expect(renders).toBe(3)
-      expect(scheduler.pendingCount).toBe(1)
+      expect(scheduler.timerCount).toBe(1)
 
       loop.pause()
       expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.timerCount).toBe(0)
       expect(media.listenerCount).toBe(0)
       media.set(true)
       expect(scheduler.pendingCount).toBe(0)

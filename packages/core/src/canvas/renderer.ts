@@ -460,9 +460,14 @@ export class SkiaRenderer {
   }
 
   replaceSurface(surface: Surface): void {
-    this.surface.delete()
+    const previousSurface = this.surface
     this.surface = surface
-    this.invalidateScenePicture()
+    RendererState.prepareSurfaceReplacement(this)
+    try {
+      previousSurface.delete()
+    } catch (error) {
+      console.warn('Previous CanvasKit surface cleanup failed', error)
+    }
   }
 
   invalidateScenePicture(): void {
@@ -585,6 +590,14 @@ export class SkiaRenderer {
     layer: RenderPipeline.RenderLayer = 'full'
   ): void {
     RenderPipeline.render(this, graph, selectedIds, overlays, sceneVersion, layer)
+  }
+
+  recoverLastGoodFrame(layer: RenderPipeline.RenderLayer = 'full'): boolean {
+    return RenderPipeline.recoverLastGoodFrame(this, layer)
+  }
+
+  transferLastGoodFrameTo(target: SkiaRenderer): boolean {
+    return RendererState.transferLastGoodFrame(this, target)
   }
 
   invalidateVectorPath(nodeId: string): void {
