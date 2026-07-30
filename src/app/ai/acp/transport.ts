@@ -3,6 +3,7 @@ import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclie
 import type {
   Agent,
   Client,
+  ContentBlock,
   McpServer,
   RequestPermissionRequest,
   RequestPermissionResponse,
@@ -10,10 +11,26 @@ import type {
   SessionNotification,
   SetSessionConfigOptionRequest
 } from '@agentclientprotocol/sdk'
-import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
+import {
+  isFileUIPart,
+  type ChatTransport,
+  type FileUIPart,
+  type UIMessage,
+  type UIMessageChunk
+} from 'ai'
 
+import { decodeBase64, encodeBase64 } from '@open-pencil/core/bytes'
 import { AUTOMATION_HTTP_PORT, type ACPAgentDef } from '@open-pencil/core/constants'
 
+import {
+  DEFAULT_VISUAL_ATTACHMENT_LIMITS,
+  MAX_VISUAL_ATTACHMENTS,
+  MAX_VISUAL_ATTACHMENT_TOTAL_BYTES,
+  formatVisualReferenceSourceContext,
+  sniffVisualAttachmentMediaType,
+  SUPPORTED_VISUAL_ATTACHMENT_TYPES,
+  type VisualAttachmentMediaType
+} from '@/app/ai/chat/attachments'
 import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
 
@@ -46,6 +63,7 @@ interface ACPSession {
   updates: ReturnType<typeof createSessionUpdateBuffer>
   lifecycle: ACPRequestLifecycle
   configOptions: SessionConfigOption[]
+  supportsImagePrompts: boolean
   diagnosticsEnabled: boolean
   dead: boolean
 }
@@ -75,6 +93,8 @@ const IS_DEV = import.meta.env.DEV
 const TRANSPORT_DESTROYED_MESSAGE = 'ACP transport was destroyed.'
 const AGENT_EXITED_MESSAGE = 'Agent process exited unexpectedly.'
 const ACP_CANCEL_DRAIN_TIMEOUT_MS = 3_000
+const ACP_MAX_IMAGE_BYTES = DEFAULT_VISUAL_ATTACHMENT_LIMITS.maxOutputBytes
+const STRICT_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
 
 const acpDebugLog: ACPDebugEntry[] = []
 
@@ -82,6 +102,118 @@ function abortError(): Error {
   const error = new Error('ACP request cancelled')
   error.name = 'AbortError'
   return error
+}
+
+function attachmentLabel(part: FileUIPart, index: number): string {
+  return part.filename ? ` ${JSON.stringify(part.filename.slice(0, 100))}` : ` #${index + 1}`
+}
+
+function supportedImageMediaType(mediaType: string): VisualAttachmentMediaType | undefined {
+  return SUPPORTED_VISUAL_ATTACHMENT_TYPES.find((candidate) => candidate === mediaType)
+}
+
+function requireSupportedImageMediaType(
+  part: FileUIPart,
+  index: number
+): VisualAttachmentMediaType {
+  const mediaType = supportedImageMediaType(part.mediaType)
+  if (mediaType) return mediaType
+  throw new Error(
+    `File attachment${attachmentLabel(part, index)} cannot be sent over ACP. Only PNG, JPEG, and WebP image attachments are supported. Remove it or attach a supported image.`
+  )
+}
+
+function toACPImageContent(
+  part: FileUIPart,
+  index: number
+): { content: ContentBlock; byteLength: number } {
+  const label = attachmentLabel(part, index)
+  const mediaType = requireSupportedImageMediaType(part, index)
+
+  const separator = part.url.indexOf(',')
+  const header = separator !== -1 ? part.url.slice(0, separator) : ''
+  const match = /^data:([^;,]+);base64$/.exec(header)
+  if (!match) {
+    throw new Error(
+      `Image attachment${label} must use an embedded base64 data URL. Reattach it from your device and try again.`
+    )
+  }
+  if (match[1] !== mediaType) {
+    throw new Error(
+      `Image attachment${label} declares ${JSON.stringify(mediaType)}, but its data URL contains ${JSON.stringify(match[1])}. Reattach the image and try again.`
+    )
+  }
+
+  const data = part.url.slice(separator + 1)
+  if (!data) throw new Error(`Image attachment${label} is empty. Reattach it and try again.`)
+  const maxEncodedLength = Math.ceil(ACP_MAX_IMAGE_BYTES / 3) * 4
+  if (data.length > maxEncodedLength) {
+    throw new Error(
+      `Image attachment${label} exceeds the 2 MiB ACP image limit. Resize or compress it and try again.`
+    )
+  }
+  if (!STRICT_BASE64_PATTERN.test(data)) {
+    throw new Error(
+      `Image attachment${label} contains invalid base64 data. Reattach it and try again.`
+    )
+  }
+
+  let bytes: Uint8Array
+  try {
+    bytes = decodeBase64(data)
+  } catch {
+    throw new Error(
+      `Image attachment${label} contains invalid base64 data. Reattach it and try again.`
+    )
+  }
+  if (encodeBase64(bytes) !== data) {
+    throw new Error(
+      `Image attachment${label} contains non-canonical base64 data. Reattach it and try again.`
+    )
+  }
+  if (bytes.byteLength === 0) {
+    throw new Error(`Image attachment${label} is empty. Reattach it and try again.`)
+  }
+  if (bytes.byteLength > ACP_MAX_IMAGE_BYTES) {
+    throw new Error(
+      `Image attachment${label} exceeds the 2 MiB ACP image limit. Resize or compress it and try again.`
+    )
+  }
+  if (sniffVisualAttachmentMediaType(bytes) !== mediaType) {
+    throw new Error(
+      `Image attachment${label} contents do not match its declared media type. Reattach it and try again.`
+    )
+  }
+
+  return {
+    content: {
+      type: 'image',
+      data,
+      mimeType: mediaType
+    },
+    byteLength: bytes.byteLength
+  }
+}
+
+function toACPImageContents(parts: FileUIPart[]): ContentBlock[] {
+  parts.forEach(requireSupportedImageMediaType)
+  if (parts.length > MAX_VISUAL_ATTACHMENTS) {
+    throw new Error(
+      `ACP prompts support up to ${MAX_VISUAL_ATTACHMENTS} image attachments. Remove some images and try again.`
+    )
+  }
+
+  let totalBytes = 0
+  return parts.map((part, index) => {
+    const image = toACPImageContent(part, index)
+    totalBytes += image.byteLength
+    if (totalBytes > MAX_VISUAL_ATTACHMENT_TOTAL_BYTES) {
+      throw new Error(
+        'The combined ACP image attachments exceed the 6 MiB limit. Remove or compress some images and try again.'
+      )
+    }
+    return image.content
+  })
 }
 
 function waitWithAbort(promise: Promise<void>, signal?: AbortSignal): Promise<void> {
@@ -298,11 +430,16 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   > {
     if (abortSignal?.aborted) throw abortError()
     const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
+    const fileAttachments = lastUserMessage?.parts.filter(isFileUIPart) ?? []
+    const imageContent = toACPImageContents(fileAttachments)
     const text =
       lastUserMessage?.parts
         .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
         .map((p) => p.text)
         .join('\n') ?? ''
+    const visualReferenceSourceContext = lastUserMessage
+      ? formatVisualReferenceSourceContext(lastUserMessage)
+      : null
 
     let activeSession: ACPSession
     let activePrompt: ACPActivePrompt
@@ -312,6 +449,11 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       activeSession = await this.ensureSession()
       if (abortSignal?.aborted) throw abortError()
       if (this.activePrompt) continue
+      if (imageContent.length > 0 && !activeSession.supportsImagePrompts) {
+        throw new Error(
+          `The ACP agent "${this.agentDef.name}" does not support image prompts. Remove the image attachment or choose an ACP agent that advertises image support.`
+        )
+      }
       activePrompt = this.reservePrompt(activeSession)
       break
     }
@@ -322,7 +464,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const promptText = [
       ...(consumedSystemContext ? [SYSTEM_PROMPT] : []),
       ...(consumedRuntimeContext ? [runtimeContext] : []),
-      text
+      text,
+      visualReferenceSourceContext
     ]
       .filter(Boolean)
       .join('\n\n')
@@ -418,7 +561,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         requestWithLifecycle(session.lifecycle, () =>
           connection.prompt({
             sessionId,
-            prompt: [{ type: 'text', text: promptText }]
+            prompt: [{ type: 'text', text: promptText }, ...imageContent]
           })
         )
           .then((result) => {
@@ -720,6 +863,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         updates,
         lifecycle,
         configOptions,
+        supportsImagePrompts:
+          initializeResult.agentCapabilities?.promptCapabilities?.image === true,
         dead: false,
         get diagnosticsEnabled() {
           return diagnosticsEnabled

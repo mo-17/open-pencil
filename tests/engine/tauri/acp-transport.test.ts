@@ -1,8 +1,10 @@
+/* oxlint-disable eslint/max-lines -- ACP process and prompt lifecycle scenarios share one protocol fixture. */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
-import type { UIMessageChunk } from 'ai'
+import type { FileUIPart, UIMessageChunk } from 'ai'
 
+import { encodeBase64 } from '@open-pencil/core/bytes'
 import { ACP_AGENTS } from '@open-pencil/core/constants'
 
 import { ACPChatTransport, buildOpenPencilMcpServerConfig } from '@/app/ai/acp/transport'
@@ -12,6 +14,8 @@ import * as automationMcp from '@/app/automation/mcp/spawn'
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
 const TEST_AUTOMATION_AUTH_TOKEN = 'test-automation-token'
+const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const JPEG_SIGNATURE = new Uint8Array([0xff, 0xd8, 0xff])
 
 beforeEach(() => {
   vi.spyOn(automationMcp, 'getAutomationAuthToken').mockResolvedValue(TEST_AUTOMATION_AUTH_TOKEN)
@@ -132,6 +136,52 @@ function userMessage(text: string, abortSignal?: AbortSignal) {
     messageId: undefined,
     messages: [
       { id: `user-${text}`, role: 'user' as const, parts: [{ type: 'text' as const, text }] }
+    ],
+    abortSignal
+  }
+}
+
+function dataUrl(mediaType: string, bytes: Uint8Array): string {
+  return `data:${mediaType};base64,${encodeBase64(bytes)}`
+}
+
+function pngBytes(byteLength = PNG_SIGNATURE.byteLength): Uint8Array {
+  const bytes = new Uint8Array(byteLength)
+  bytes.set(PNG_SIGNATURE)
+  return bytes
+}
+
+function filePart(overrides: Partial<FileUIPart> = {}): FileUIPart {
+  return {
+    type: 'file',
+    mediaType: 'image/png',
+    filename: 'reference.png',
+    url: dataUrl('image/png', PNG_SIGNATURE),
+    ...overrides
+  }
+}
+
+function imageUserMessage(
+  text: string,
+  files: FileUIPart[] = [filePart()],
+  references: Array<{ source: 'file' | 'selection'; canvasNodeIds?: string[] }> = files.map(() => ({
+    source: 'file'
+  })),
+  abortSignal?: AbortSignal
+) {
+  return {
+    trigger: 'submit-message' as const,
+    chatId: 'chat-1',
+    messageId: undefined,
+    messages: [
+      {
+        id: `user-image-${text}`,
+        role: 'user' as const,
+        metadata: {
+          visualAttachments: references
+        },
+        parts: [{ type: 'text' as const, text }, ...files]
+      }
     ],
     abortSignal
   }
@@ -354,6 +404,194 @@ describe('Tauri ACP transport', () => {
 
     await expect(pendingChange).rejects.toThrow('ACP transport was destroyed.')
     await pendingDestroy
+  })
+
+  test('maps image file parts to ACP image content when the agent advertises support', async () => {
+    const agent = await installFakeACPAgent()
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { promptCapabilities: { image: true } }
+        })
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'session-1', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = await createACPTransport('acp:codex')
+
+    const jpeg = filePart({
+      filename: 'paperclip.jpg',
+      mediaType: 'image/jpeg',
+      url: dataUrl('image/jpeg', JPEG_SIGNATURE)
+    })
+    await readChunks(
+      await transport.sendMessages(
+        imageUserMessage(
+          'Use both references',
+          [filePart(), jpeg],
+          [{ source: 'selection', canvasNodeIds: ['0:42'] }, { source: 'file' }]
+        )
+      )
+    )
+
+    const request = await waitForRequest(agent.requests, 'session/prompt')
+    const prompt = request.params.prompt as Array<{
+      type: string
+      text?: string
+      data?: string
+      mimeType?: string
+    }>
+    expect(prompt).toHaveLength(3)
+    expect(prompt[0]?.text).toContain('Use both references')
+    expect(prompt[0]?.text).toContain('[BEGIN_OPENPENCIL_VISUAL_REFERENCE_SOURCE_CONTEXT]')
+    expect(prompt[0]?.text).toContain(
+      '{"schema":"openpencil.visual-reference-source.v1","references":[{"attachmentIndex":0,"source":"selection","canvasNodeIds":["0:42"]},{"attachmentIndex":1,"source":"file"}]}'
+    )
+    expect(prompt[0]?.text).not.toContain('iVBORw0KGgo=')
+    expect(prompt[1]).toEqual({
+      type: 'image',
+      data: 'iVBORw0KGgo=',
+      mimeType: 'image/png'
+    })
+    expect(prompt[2]).toEqual({
+      type: 'image',
+      data: '/9j/',
+      mimeType: 'image/jpeg'
+    })
+    await transport.destroy()
+  })
+
+  test('rejects image prompts without sending them when the agent lacks image support', async () => {
+    const agent = await installFakeACPAgent()
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { promptCapabilities: { image: false } }
+        })
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'session-1', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = await createACPTransport('acp:codex')
+
+    await expect(transport.sendMessages(imageUserMessage('Use this reference'))).rejects.toThrow(
+      'does not support image prompts'
+    )
+    expect(agent.requests.some((request) => request.method === 'session/prompt')).toBe(false)
+
+    await readChunks(await transport.sendMessages(userMessage('Retry without the image')))
+    const retry = await waitForRequest(agent.requests, 'session/prompt')
+    const retryText = (retry.params.prompt as Array<{ type: string; text?: string }>)[0]?.text
+    expect(retryText).toContain('You are a design assistant inside a vector design editor.')
+    expect(retryText).toContain('Retry without the image')
+    await transport.destroy()
+  })
+
+  test('fails closed for invalid base64, MIME, magic bytes, and non-image files', async () => {
+    const agent = await installFakeACPAgent()
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { promptCapabilities: { image: true } }
+        })
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'session-1', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = await createACPTransport('acp:codex')
+    const invalidCases: Array<{ name: string; part: FileUIPart; error: string }> = [
+      {
+        name: 'invalid base64',
+        part: filePart({ url: 'data:image/png;base64,iVBORw0KGgo!' }),
+        error: 'contains invalid base64 data'
+      },
+      {
+        name: 'empty base64',
+        part: filePart({ url: 'data:image/png;base64,' }),
+        error: 'is empty'
+      },
+      {
+        name: 'non-canonical base64',
+        part: filePart({ url: 'data:image/png;base64,AB==' }),
+        error: 'contains non-canonical base64 data'
+      },
+      {
+        name: 'MIME mismatch',
+        part: filePart({ url: dataUrl('image/jpeg', JPEG_SIGNATURE) }),
+        error: 'data URL contains "image/jpeg"'
+      },
+      {
+        name: 'magic mismatch',
+        part: filePart({ url: dataUrl('image/png', JPEG_SIGNATURE) }),
+        error: 'contents do not match its declared media type'
+      },
+      {
+        name: 'non-image file',
+        part: filePart({
+          mediaType: 'application/pdf',
+          filename: 'reference.pdf',
+          url: 'data:application/pdf;base64,JVBERg=='
+        }),
+        error: 'Only PNG, JPEG, and WebP image attachments are supported'
+      }
+    ]
+
+    for (const invalid of invalidCases) {
+      await expect(
+        transport.sendMessages(imageUserMessage(invalid.name, [invalid.part]))
+      ).rejects.toThrow(invalid.error)
+    }
+    expect(agent.requests).toEqual([])
+
+    await readChunks(await transport.sendMessages(userMessage('Retry after invalid image')))
+    const retry = await waitForRequest(agent.requests, 'session/prompt')
+    const retryText = (retry.params.prompt as Array<{ type: string; text?: string }>)[0]?.text
+    expect(retryText).toContain('You are a design assistant inside a vector design editor.')
+    expect(retryText).toContain('Retry after invalid image')
+    await transport.destroy()
+  })
+
+  test('fails closed for image count, per-image size, and combined size limits', async () => {
+    const agent = await installFakeACPAgent()
+    const transport = await createACPTransport('acp:codex')
+
+    const tooMany = Array.from({ length: 5 }, (_, index) =>
+      filePart({ filename: `reference-${index}.png` })
+    )
+    await expect(
+      transport.sendMessages(imageUserMessage('Too many images', tooMany))
+    ).rejects.toThrow('up to 4 image attachments')
+
+    const oversized = filePart({
+      filename: 'oversized.png',
+      url: dataUrl('image/png', pngBytes(2 * 1024 * 1024 + 1))
+    })
+    await expect(
+      transport.sendMessages(imageUserMessage('Oversized image', [oversized]))
+    ).rejects.toThrow('exceeds the 2 MiB ACP image limit')
+
+    const maximumImageUrl = dataUrl('image/png', pngBytes(2 * 1024 * 1024))
+    const overCombinedLimit = [
+      filePart({ filename: 'maximum-1.png', url: maximumImageUrl }),
+      filePart({ filename: 'maximum-2.png', url: maximumImageUrl }),
+      filePart({ filename: 'maximum-3.png', url: maximumImageUrl }),
+      filePart({ filename: 'extra.png' })
+    ]
+    await expect(
+      transport.sendMessages(imageUserMessage('Too many bytes', overCombinedLimit))
+    ).rejects.toThrow('combined ACP image attachments exceed the 6 MiB limit')
+
+    expect(agent.requests).toEqual([])
+    await transport.destroy()
   })
 
   test('settles a pending prompt stream when the agent process exits', async () => {
