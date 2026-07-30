@@ -2,6 +2,7 @@ import { request } from 'node:http'
 import type { ClientRequest, RequestOptions } from 'node:http'
 
 import { resolveStdioRpcTimeoutMs, rpcTimeoutMessage } from '#mcp/rpc-timeout'
+import type { RpcSendOptions } from '#mcp/rpc-types'
 import { readDiscoveryFile } from '#mcp/transport/discovery'
 import { getSocketPath, platformHasUnixSockets } from '#mcp/transport/paths'
 
@@ -23,6 +24,41 @@ const DISCONNECTED_MESSAGE =
   'Do NOT attempt to start the app yourself or retry automatically.'
 
 type TransportMode = 'socket' | 'tcp'
+
+function abortError(): Error {
+  const error = new Error('RPC request cancelled')
+  error.name = 'AbortError'
+  return error
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw abortError()
+}
+
+function waitWithAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise
+  if (signal.aborted) return Promise.reject(abortError())
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      cleanup()
+      reject(abortError())
+    }
+    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    signal.addEventListener('abort', onAbort, { once: true })
+    void promise.then(
+      (value) => {
+        cleanup()
+        resolve(value)
+        return undefined
+      },
+      (error: unknown) => {
+        cleanup()
+        reject(error instanceof Error ? error : new Error('MCP request failed', { cause: error }))
+        return undefined
+      }
+    )
+  })
+}
 
 /**
  * Creates an RPC bridge that connects to the MCP server via HTTP
@@ -137,7 +173,8 @@ export function createStdioRpcBridge({
     method: string,
     path: string,
     body?: Record<string, unknown>,
-    timeoutMs = resolveStdioRpcTimeoutMs(body ?? {})
+    timeoutMs = resolveStdioRpcTimeoutMs(body ?? {}),
+    onRequest?: (req: ClientRequest) => void
   ): Promise<{ status: number; data: unknown; req: ClientRequest }> {
     return new Promise((resolve, reject) => {
       const bodyJson = body ? JSON.stringify(body) : undefined
@@ -175,6 +212,7 @@ export function createStdioRpcBridge({
       })
 
       req.on('error', reject)
+      onRequest?.(req)
       // Socket-level idle timeout to prevent indefinite hangs on
       // unresponsive connections. Set 5s shorter than the resolved outer
       // deadline so this fires deterministically first, producing a clear
@@ -306,142 +344,186 @@ export function createStdioRpcBridge({
    * caller. This makes server restarts with a new auto-generated token
    * seamless to the AI agent.
    */
-  function sendRpc(body: Record<string, unknown>): Promise<unknown> {
+  async function sendRpc(
+    body: Record<string, unknown>,
+    options: RpcSendOptions = {}
+  ): Promise<unknown> {
+    const signal = options.signal
+    throwIfAborted(signal)
     // If not ready, await the in-flight connect() promise first — the
     // bridge may still be resolving transport. Only reject after that
     // completes and we're still not ready.
     const awaitReady = async (): Promise<void> => {
-      if (!ready && connectPromise) await connectPromise
+      if (!ready && connectPromise) await waitWithAbort(connectPromise, signal)
+      throwIfAborted(signal)
       if (authFailure) throw new Error('Unauthorized: check OPENPENCIL_MCP_AUTH_TOKEN')
       if (!ready) throw new Error(DISCONNECTED_MESSAGE)
     }
 
-    return awaitReady().then(
-      () =>
-        new Promise((resolve, reject) => {
-          let settled = false
-          const timeoutMs = resolveStdioRpcTimeoutMs(body)
-          const timer = setTimeout(() => {
-            if (settled) return
-            settled = true
-            reject(new Error(rpcTimeoutMessage(timeoutMs)))
-          }, timeoutMs)
+    await awaitReady()
+    throwIfAborted(signal)
+    return new Promise((resolve, reject) => {
+      let settled = false
+      let activeRequest: ClientRequest | null = null
+      const timeoutMs = resolveStdioRpcTimeoutMs(body)
+      let cleanupAbort: () => void = () => undefined
 
-          /**
-           * Performs one HTTP request attempt. `allowAuthRetry` controls whether
-           * a 401 with an auto-discovered token triggers a re-read and retry.
-           * It is set to `false` for the second attempt to prevent infinite loops.
-           */
-          function attempt(allowAuthRetry: boolean) {
-            httpRequest('POST', '/rpc', body, timeoutMs)
-              .then(({ status, data, req }) => {
-                // If the overall RPC timeout fired while the request was in-flight,
-                // the server may have already executed the tool. Destroying the
-                // request only closes the TCP socket — it does not roll back any
-                // server-side mutation. Callers must not assume that a timeout
-                // means the operation was not executed.
-                if (settled) {
-                  req.destroy()
-                  return undefined
-                }
+      const settle = (action: () => void, destroyWith?: Error) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        cleanupAbort()
+        if (destroyWith && activeRequest && !activeRequest.destroyed) {
+          activeRequest.destroy(destroyWith)
+        }
+        activeRequest = null
+        action()
+      }
 
-                if (status === 401) {
-                  if (allowAuthRetry && !hasExplicitAuth) {
-                    // Auto-discovered token may have rotated — re-read the
-                    // discovery file for a fresh token and retry transparently.
-                    // IMPORTANT: Do NOT clear the timer here — the retry must
-                    // still be protected by the overall RPC timeout.
-                    resolvedAuthToken = null
-                    void readDiscoveryFile()
-                      .then((info) => {
-                        if (settled) return undefined
-                        if (info?.authToken) {
-                          resolvedAuthToken = info.authToken
-                          // Keep existing transport mode (socket path / port
-                          // doesn't change on server restart — only the token
-                          // does). Retry exactly once with the new token.
-                          attempt(false)
-                          return undefined
-                        }
-                        clearTimeout(timer)
-                        authFailure = true
-                        transportMode = null
-                        if (!hasExplicitSocketPath) resolvedSocketPath = null
-                        resolvedHttpPort = null
-                        ready = false
-                        settled = true
-                        scheduleReconnect()
-                        reject(new Error('Unauthorized'))
-                        return undefined
-                      })
-                      .catch(() => {
-                        if (settled) return
-                        clearTimeout(timer)
-                        // Discovery read failed — stale transport state must be
-                        // discarded so the bridge re-resolves on reconnect.
-                        transportMode = null
-                        if (!hasExplicitSocketPath) resolvedSocketPath = null
-                        resolvedHttpPort = null
-                        ready = false
-                        settled = true
-                        scheduleReconnect()
-                        reject(new Error(DISCONNECTED_MESSAGE))
-                      })
-                    return undefined
-                  }
+      const timer = setTimeout(() => {
+        const error = new Error(rpcTimeoutMessage(timeoutMs))
+        settle(() => reject(error), error)
+      }, timeoutMs)
 
-                  // Explicit token was rejected (config error), or auto-retry
-                  // already failed — surface the error immediately.
-                  clearTimeout(timer)
-                  authFailure = true
-                  if (!hasExplicitAuth) {
-                    resolvedAuthToken = null
-                  }
-                  transportMode = null
-                  // Clear auto-discovered transport params so resolveTransport()
-                  // picks up fresh values from the discovery file on reconnect.
-                  if (!hasExplicitSocketPath) resolvedSocketPath = null
-                  resolvedHttpPort = null
-                  ready = false
-                  settled = true
-                  scheduleReconnect()
-                  reject(new Error('Unauthorized: check OPENPENCIL_MCP_AUTH_TOKEN'))
-                  return undefined
-                }
+      const onAbort = () => {
+        const error = abortError()
+        settle(() => reject(error), error)
+      }
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true })
+        cleanupAbort = () => signal.removeEventListener('abort', onAbort)
+      }
 
-                clearTimeout(timer)
-
-                if (status >= 400) {
-                  const errData = data as { error?: string }
-                  settled = true
-                  reject(new Error(errData.error ?? `RPC failed with status ${status}`))
-                  return undefined
-                }
-                settled = true
-                resolve(data)
-                return undefined
-              })
-              .catch(() => {
-                if (settled) return
-                clearTimeout(timer)
-                if (!hasExplicitSocketPath && transportMode === 'socket') {
-                  socketFailed = true
-                }
-                transportMode = null
-                // Clear auto-discovered transport params so resolveTransport()
-                // picks up fresh values from the discovery file on reconnect.
-                if (!hasExplicitSocketPath) resolvedSocketPath = null
-                resolvedHttpPort = null
-                ready = false
-                settled = true
-                scheduleReconnect()
-                reject(new Error(DISCONNECTED_MESSAGE))
-              })
+      /**
+       * Performs one HTTP request attempt. `allowAuthRetry` controls whether
+       * a 401 with an auto-discovered token triggers a re-read and retry.
+       * It is set to `false` for the second attempt to prevent infinite loops.
+       */
+      function attempt(allowAuthRetry: boolean) {
+        if (settled) return
+        if (signal?.aborted) {
+          onAbort()
+          return
+        }
+        httpRequest('POST', '/rpc', body, timeoutMs, (req) => {
+          if (settled || signal?.aborted) {
+            req.destroy(abortError())
+            return
           }
-
-          attempt(true)
+          activeRequest = req
         })
-    )
+          .then(({ status, data, req }) => {
+            if (activeRequest === req) activeRequest = null
+            // If the overall RPC timeout fired while the request was in-flight,
+            // the server may have already executed the tool. Destroying the
+            // request only closes the TCP socket — it does not roll back any
+            // server-side mutation. Callers must not assume that a timeout
+            // means the operation was not executed.
+            if (settled) {
+              if (!req.destroyed) req.destroy()
+              return undefined
+            }
+
+            if (status === 401) {
+              if (allowAuthRetry && !hasExplicitAuth) {
+                // Auto-discovered token may have rotated — re-read the
+                // discovery file for a fresh token and retry transparently.
+                // IMPORTANT: Do NOT clear the timer here — the retry must
+                // still be protected by the overall RPC timeout.
+                resolvedAuthToken = null
+                void readDiscoveryFile()
+                  .then((info) => {
+                    if (settled) return undefined
+                    if (signal?.aborted) {
+                      onAbort()
+                      return undefined
+                    }
+                    if (info?.authToken) {
+                      resolvedAuthToken = info.authToken
+                      // Keep existing transport mode (socket path / port
+                      // doesn't change on server restart — only the token
+                      // does). Retry exactly once with the new token.
+                      attempt(false)
+                      return undefined
+                    }
+                    authFailure = true
+                    transportMode = null
+                    if (!hasExplicitSocketPath) resolvedSocketPath = null
+                    resolvedHttpPort = null
+                    ready = false
+                    scheduleReconnect()
+                    settle(() => reject(new Error('Unauthorized')))
+                    return undefined
+                  })
+                  .catch(() => {
+                    if (settled) return
+                    if (signal?.aborted) {
+                      onAbort()
+                      return
+                    }
+                    // Discovery read failed — stale transport state must be
+                    // discarded so the bridge re-resolves on reconnect.
+                    transportMode = null
+                    if (!hasExplicitSocketPath) resolvedSocketPath = null
+                    resolvedHttpPort = null
+                    ready = false
+                    scheduleReconnect()
+                    settle(() => reject(new Error(DISCONNECTED_MESSAGE)))
+                  })
+                return undefined
+              }
+
+              // Explicit token was rejected (config error), or auto-retry
+              // already failed — surface the error immediately.
+              authFailure = true
+              if (!hasExplicitAuth) {
+                resolvedAuthToken = null
+              }
+              transportMode = null
+              // Clear auto-discovered transport params so resolveTransport()
+              // picks up fresh values from the discovery file on reconnect.
+              if (!hasExplicitSocketPath) resolvedSocketPath = null
+              resolvedHttpPort = null
+              ready = false
+              scheduleReconnect()
+              settle(() => reject(new Error('Unauthorized: check OPENPENCIL_MCP_AUTH_TOKEN')))
+              return undefined
+            }
+
+            if (status >= 400) {
+              const errData = data as { error?: string }
+              settle(() => reject(new Error(errData.error ?? `RPC failed with status ${status}`)))
+              return undefined
+            }
+            settle(() => resolve(data))
+            return undefined
+          })
+          .catch((error: unknown) => {
+            if (settled) return
+            if (signal?.aborted) {
+              onAbort()
+              return
+            }
+            if (!hasExplicitSocketPath && transportMode === 'socket') {
+              socketFailed = true
+            }
+            transportMode = null
+            // Clear auto-discovered transport params so resolveTransport()
+            // picks up fresh values from the discovery file on reconnect.
+            if (!hasExplicitSocketPath) resolvedSocketPath = null
+            resolvedHttpPort = null
+            ready = false
+            scheduleReconnect()
+            const requestError =
+              error instanceof Error && error.name === 'AbortError'
+                ? error
+                : new Error(DISCONNECTED_MESSAGE)
+            settle(() => reject(requestError))
+          })
+      }
+
+      attempt(true)
+    })
   }
 
   /**

@@ -91,7 +91,10 @@ function createHonoApp(options: {
   corsOrigin: string | null
   browserRpc: ReturnType<typeof createBrowserRpcBridge>
   mcpSessions: ReturnType<typeof createMcpSessionManager>
-  sendToBrowser: (msg: RpcJsonObject) => Promise<unknown>
+  sendToBrowser: (
+    msg: RpcJsonObject,
+    options?: { signal?: AbortSignal; onProgress?: (progress: unknown) => void }
+  ) => Promise<unknown>
 }): Hono {
   const { authToken, corsOrigin, browserRpc, mcpSessions, sendToBrowser } = options
 
@@ -141,7 +144,7 @@ function createHonoApp(options: {
     }
     try {
       body = preprocessRpc(body as RpcJsonObject)
-      const result = await sendToBrowser(body as RpcJsonObject)
+      const result = await sendToBrowser(body as RpcJsonObject, { signal: c.req.raw.signal })
       return c.json(result)
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

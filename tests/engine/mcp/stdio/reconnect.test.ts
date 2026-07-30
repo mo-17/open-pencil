@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { mkdir, rm, unlink, writeFile } from 'node:fs/promises'
-import { createServer, type Server } from 'node:http'
+import { createServer, type Server, type ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -190,6 +190,117 @@ describe('stdio-bridge transport reconnection', () => {
     } finally {
       bridge?.close()
       await closeMockServer(tcpServer)
+    }
+  })
+
+  test.skipIf(!isUnix)('rejects a pre-cancelled RPC without opening a request', async () => {
+    let server: Server | null = null
+    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    try {
+      await mkdir(TEST_DIR, { recursive: true })
+      server = await createMockMcpServer(SOCKET_PATH, { authToken: AUTH_TOKEN })
+      bridge = await createBridgeAndWaitForReady({
+        socketPath: SOCKET_PATH,
+        authToken: AUTH_TOKEN
+      })
+      const controller = new AbortController()
+      controller.abort()
+
+      await expect(
+        bridge.sendRpc({ command: 'test' }, { signal: controller.signal })
+      ).rejects.toMatchObject({ name: 'AbortError' })
+    } finally {
+      bridge?.close()
+      await closeMockServer(server, SOCKET_PATH)
+    }
+  })
+
+  test.skipIf(!isUnix)('cancels while waiting for the initial health check', async () => {
+    let server: Server | null = null
+    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    let healthResponse: ServerResponse | null = null
+    let resolveHealthSeen = () => undefined
+    const healthSeen = new Promise<void>((resolve) => {
+      resolveHealthSeen = resolve
+    })
+    try {
+      await mkdir(TEST_DIR, { recursive: true })
+      server = createServer((request, response) => {
+        if (request.url === '/health') {
+          healthResponse = response
+          resolveHealthSeen()
+        }
+      })
+      await new Promise<void>((resolve) => {
+        server?.listen(SOCKET_PATH, resolve)
+      })
+      bridge = createStdioRpcBridge({
+        socketPath: SOCKET_PATH,
+        authToken: AUTH_TOKEN,
+        reconnectDelayMs: 20
+      })
+      const controller = new AbortController()
+      const pending = bridge.sendRpc({ command: 'test' }, { signal: controller.signal })
+      await healthSeen
+      controller.abort()
+
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+      healthResponse?.writeHead(200, { 'Content-Type': 'application/json' })
+      healthResponse?.end(JSON.stringify({ status: 'ok' }))
+    } finally {
+      bridge?.close()
+      if (healthResponse && !healthResponse.writableEnded) healthResponse.end()
+      await closeMockServer(server, SOCKET_PATH)
+    }
+  })
+
+  test.skipIf(!isUnix)('destroys the active retried HTTP request when cancelled', async () => {
+    let server: Server | null = null
+    let bridge: ReturnType<typeof createStdioRpcBridge> | null = null
+    let rpcCount = 0
+    let resolveRetrySeen = () => undefined
+    let resolveRetryClosed = () => undefined
+    const retrySeen = new Promise<void>((resolve) => {
+      resolveRetrySeen = resolve
+    })
+    const retryClosed = new Promise<void>((resolve) => {
+      resolveRetryClosed = resolve
+    })
+    try {
+      await mkdir(TEST_DIR, { recursive: true })
+      await writeMockDiscovery(SOCKET_PATH, AUTH_TOKEN)
+      process.env.OPENPENCIL_MCP_SOCKET = SOCKET_PATH
+      server = createServer((request, response) => {
+        if (request.url === '/health') {
+          response.writeHead(200, { 'Content-Type': 'application/json' })
+          response.end(JSON.stringify({ status: 'ok' }))
+          return
+        }
+        if (request.url !== '/rpc') return
+        rpcCount += 1
+        if (rpcCount === 1) {
+          response.writeHead(401, { 'Content-Type': 'application/json' })
+          response.end(JSON.stringify({ error: 'Unauthorized' }))
+          return
+        }
+        request.once('close', resolveRetryClosed)
+        resolveRetrySeen()
+      })
+      await new Promise<void>((resolve) => {
+        server?.listen(SOCKET_PATH, resolve)
+      })
+      bridge = await createBridgeAndWaitForReady({ socketPath: SOCKET_PATH })
+      const controller = new AbortController()
+      const pending = bridge.sendRpc({ command: 'test' }, { signal: controller.signal })
+      await retrySeen
+      controller.abort()
+
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+      await retryClosed
+      expect(rpcCount).toBe(2)
+    } finally {
+      bridge?.close()
+      await closeMockServer(server, SOCKET_PATH)
     }
   })
 

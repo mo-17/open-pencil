@@ -5,7 +5,7 @@ import type { WebSocket } from 'ws'
 import { isAuthorized } from '#mcp/auth'
 import type { RpcJsonObject } from '#mcp/json'
 import { resolveBrowserRpcTimeoutMs, rpcTimeoutMessage } from '#mcp/rpc-timeout'
-import type { PendingRequest } from '#mcp/rpc-types'
+import type { PendingRequest, RpcSendOptions } from '#mcp/rpc-types'
 
 const APP_WAIT_TIMEOUT = 10_000
 
@@ -15,6 +15,7 @@ const APP_NOT_CONNECTED_MESSAGE =
 type BrowserRpcBridgeOptions = {
   authToken: string | null
   onConnectionChange: () => void
+  resolveTimeoutMs?: (body: Record<string, unknown>) => number
 }
 
 type BrowserMessage = {
@@ -27,10 +28,7 @@ type BrowserMessage = {
   progress?: unknown
 }
 
-export interface BrowserRpcSendOptions {
-  signal?: AbortSignal
-  onProgress?: (progress: unknown) => void
-}
+export type BrowserRpcSendOptions = RpcSendOptions
 
 function stripEnvelope(msg: BrowserMessage): Record<string, unknown> {
   const { type: _type, id: _id, ...body } = msg
@@ -65,7 +63,11 @@ function createSettler<T>(resolve: (value: T) => void, reject: (error: Error) =>
   }
 }
 
-export function createBrowserRpcBridge({ authToken, onConnectionChange }: BrowserRpcBridgeOptions) {
+export function createBrowserRpcBridge({
+  authToken,
+  onConnectionChange,
+  resolveTimeoutMs = resolveBrowserRpcTimeoutMs
+}: BrowserRpcBridgeOptions) {
   const pending = new Map<string, PendingRequest>()
   const clients = new Set<WebSocket>()
   const connectionWaiters = new Set<PendingRequest>()
@@ -167,6 +169,7 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
     }
     return new Promise((resolve, reject) => {
       let id: string | null = null
+      let requestWs: WebSocket | null = null
       let cleanupAbort: () => void = () => undefined
       const settle = createSettler(
         (value: unknown) => {
@@ -185,7 +188,7 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
             clearTimeout(request.timer)
             pending.delete(id)
           }
-          if (browserWs) sendJson(browserWs, { type: 'cancel', id })
+          if (requestWs) sendJson(requestWs, { type: 'cancel', id })
         }
         const error = new Error('RPC request cancelled')
         error.name = 'AbortError'
@@ -204,9 +207,13 @@ export function createBrowserRpcBridge({ authToken, onConnectionChange }: Browse
           return
         }
         id = randomUUID()
-        const timeoutMs = resolveBrowserRpcTimeoutMs(body)
+        requestWs = ws
+        const timeoutMs = resolveTimeoutMs(body)
         const timer = setTimeout(() => {
-          if (id) pending.delete(id)
+          if (id && pending.has(id)) {
+            sendJson(ws, { type: 'cancel', id })
+            pending.delete(id)
+          }
           settle.reject(new Error(rpcTimeoutMessage(timeoutMs)))
         }, timeoutMs)
         pending.set(id, {

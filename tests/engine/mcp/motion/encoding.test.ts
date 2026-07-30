@@ -470,4 +470,38 @@ process.exit(1)`
       }
     })
   })
+
+  test('preserves AbortError from app RPC instead of converting cancellation to a tool result', async () => {
+    const handlers = new Map<
+      string,
+      (args: Record<string, unknown>, extra?: ToolRequestExtra) => Promise<unknown>
+    >()
+    const server = Object.create(McpServer.prototype) as McpServer
+    Object.defineProperty(server, 'registerTool', {
+      value(
+        name: string,
+        _definition: unknown,
+        handler: (args: Record<string, unknown>, extra?: ToolRequestExtra) => Promise<unknown>
+      ) {
+        handlers.set(name, handler)
+      }
+    })
+    const controller = new AbortController()
+    controller.abort()
+    const cancellation = new Error('cancelled')
+    cancellation.name = 'AbortError'
+    let forwardedSignal: AbortSignal | undefined
+    registerTools(server, {
+      enableEval: false,
+      async sendRpc(_body, options) {
+        forwardedSignal = options?.signal
+        throw cancellation
+      }
+    })
+
+    const handler = handlers.get('get_selection')
+    expect(handler).toBeDefined()
+    await expect(handler?.({}, { signal: controller.signal })).rejects.toBe(cancellation)
+    expect(forwardedSignal).toBe(controller.signal)
+  })
 })

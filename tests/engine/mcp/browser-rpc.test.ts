@@ -489,4 +489,30 @@ describe('BrowserRpcBridge reconnection', () => {
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).name).toBe('AbortError')
   })
+
+  test('sends cancellation to the browser when an RPC reaches its deadline', async () => {
+    const pair = await setupWsPair()
+    track(pair)
+    const bridge = createBrowserRpcBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined,
+      resolveTimeoutMs: () => 10
+    })
+    await registerBrowser(pair.serverWs, pair.clientWs, bridge)
+
+    let requestId = ''
+    const cancelled = new Promise<string>((resolve) => {
+      pair.clientWs.on('message', (raw: Buffer) => {
+        const message = JSON.parse(raw.toString()) as { type?: string; id?: string }
+        if (message.type === 'request' && message.id) requestId = message.id
+        if (message.type === 'cancel' && message.id) resolve(message.id)
+      })
+    })
+
+    const outcome = bridge.sendRpc(RPC_BODY).catch((error: Error) => error)
+    expect(await cancelled).toBe(requestId)
+    const error = await outcome
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toBe('RPC timeout (0.01s)')
+  })
 })
