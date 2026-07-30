@@ -62,6 +62,63 @@ onto the canvas; its result is created on the current page or inside a named tar
 uploaded screenshot visible beside the result, place it on the canvas first and attach its current
 selection.
 
+## Optional model capabilities
+
+Optional network and execution capabilities are configured per model and are **off by default**.
+Settings migrated from an earlier version keep all of them disabled until you explicitly opt in.
+
+### Web search and hosted code execution
+
+- **Web search** is available for direct OpenRouter models. It installs OpenRouter's
+  `openrouter:web_search` server tool only for models where you enable it. Search queries and the
+  relevant chat context go to OpenRouter, provider search charges may apply, and returned URL or
+  document citations appear as source cards. See the
+  [OpenRouter server-tool documentation](https://openrouter.ai/docs/guides/features/server-tools/web-search).
+- **Code execution** is available for direct OpenAI models through the Responses API Code
+  Interpreter tool. Python runs in an OpenAI-hosted auto container, not in OpenPencil, your shell,
+  or your local filesystem. Generated-file citations appear as document source cards; file parts
+  that include a safe HTTP(S) URL appear as explicit assistant-file links. See the
+  [OpenAI Code Interpreter guide](https://developers.openai.com/api/docs/guides/tools-code-interpreter).
+
+OpenAI-compatible endpoints do not inherit Code Interpreter support merely because they implement
+the Responses wire format. Unsupported provider/capability combinations fail before a prompt is
+sent. Provider-controlled remote image files are shown as explicit links instead of being fetched
+automatically by the renderer; bounded inline raster outputs can be previewed in chat.
+
+### Remote MCP servers
+
+In **Settings → AI & agents → Remote MCP servers**, add a trusted
+[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)
+endpoint, choose no authentication or a Bearer token, then edit a model and select the servers it
+may use. Up to eight servers can be enabled for one model. Tokens are resolved from the unified
+credential store when a session starts and are never written into model or MCP settings.
+
+OpenPencil applies the following boundary:
+
+- Only HTTPS endpoints are accepted, except loopback HTTP for local development. Embedded URL
+  credentials and fragments are rejected. The app-owned Direct transport also rejects redirects.
+- The Direct runtime namespaces tools as `mcp__<server-id>__<tool>`. Its discovery pages, transport
+  bytes, schema bytes, tool counts, call duration, and result size are bounded; partial startup
+  failures close every opened client.
+- Tool names, descriptions, schemas, and results are treated as untrusted third-party data. Direct
+  chat requires an explicit approval for every call and shows the locally configured server name,
+  origin, and exact tool input. Approval applies to that call only.
+- Desktop ACP agents receive the selected servers in `session/new`. The selected agent—not
+  OpenPencil—controls redirect handling and whether it requests permission for each MCP call, so
+  enable Remote MCP for ACP only with an agent whose policy you trust. Changing a server,
+  credential, model assignment, tab, or provider invalidates the old session before a new one is
+  published.
+- Direct chat connects from the app WebView, so a remote endpoint must allow that origin through
+  CORS. ACP agents connect from their own process and do not share this WebView limitation.
+
+The first release intentionally excludes remote stdio, legacy HTTP+SSE, OAuth, arbitrary secret
+headers, persistent approvals, MCP resources/prompts, and a native streaming proxy. Use the
+connection test beside a configured server to verify the endpoint and credential without invoking
+one of its tools.
+
+Web search grounds a model response; it does not import an arbitrary website's HTML/CSS or promise
+a pixel-identical editable reconstruction. Website URL import remains a separate workflow.
+
 ## What It Can Do
 
 The assistant has a curated 50+ tools across these categories:

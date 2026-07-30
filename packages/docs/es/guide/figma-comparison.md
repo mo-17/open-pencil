@@ -28,7 +28,7 @@ Comparación característica por característica de las capacidades de Figma Des
 | Miniaturas personalizadas | 🔲 | Miniatura generada en export, pero sin selector de miniatura personalizada |
 | Configuración de valores de nudge | 🔲 | Por defecto 1px/10px; Figma permite valores personalizados |
 | Menú de app (modo navegador) | ✅ | Menús Archivo, Editar, Ver, Objeto, Texto, Organizar; Tauri usa menús nativos |
-| Herramientas IA | 🟡 | Más de 50 herramientas integradas seleccionadas y más de 140 operaciones MCP; sin imágenes generadas por IA ni búsqueda IA aún |
+| Herramientas IA | 🟡 | Más de 50 herramientas integradas, referencias visuales, búsqueda web opcional de OpenRouter, ejecución de código alojada por OpenAI y más de 140 operaciones MCP; aún sin modelo de generación de imágenes IA |
 
 ## Capas y formas
 

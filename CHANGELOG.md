@@ -41,6 +41,12 @@
 
 ### Added
 
+- Add opt-in AI capability controls: OpenRouter's provider-hosted web search with source cards,
+  OpenAI Responses Code Interpreter with generated-file references, and trusted Remote Streamable
+  HTTP MCP servers with credential-store-backed Bearer tokens, per-model selection, namespaced tools,
+  bounded Direct transport/discovery/results, per-call Direct approval, explicit ACP policy
+  delegation, and deterministic cleanup. Existing model settings migrate with every optional
+  capability disabled.
 - Attach bounded, metadata-scrubbed PNG, JPEG, or WebP references—or an explicitly selected canvas
   region—to built-in AI chat. Vision-capable Design models receive the image directly; otherwise a
   configured Vision role produces a grounded brief for the Design agent. ACP agents negotiate image

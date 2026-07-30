@@ -28,7 +28,7 @@ Comparaison fonctionnalité par fonctionnalité des capacités de Figma Design a
 | Miniatures personnalisées | 🔲 | Miniature générée à l'export, mais pas de sélecteur personnalisé |
 | Réglages de valeur de nudge | 🔲 | Défaut 1px/10px ; Figma permet des valeurs personnalisées |
 | Menu de l'app (mode navigateur) | ✅ | Menus Fichier, Édition, Affichage, Objet, Texte, Disposition ; Tauri utilise les menus natifs |
-| Outils IA | 🟡 | Plus de 50 outils intégrés sélectionnés et plus de 140 opérations MCP ; pas d'images générées par IA ni de recherche IA encore |
+| Outils IA | 🟡 | Plus de 50 outils intégrés, références visuelles, recherche web OpenRouter facultative, exécution de code hébergée par OpenAI et plus de 140 opérations MCP ; pas encore de modèle de génération d’images IA |
 
 ## Calques et formes
 

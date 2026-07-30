@@ -28,7 +28,7 @@ Feature-by-feature comparison of Figma Design capabilities with Open Pencil's cu
 | Custom file thumbnails | 🔲 | Thumbnail generated on export, but no custom thumbnail picker |
 | Nudge value settings | 🔲 | Default 1px/10px; Figma allows custom small/big nudge values |
 | App menu (browser mode) | ✅ | File, Edit, View, Object, Text, Arrange menus; Tauri uses native menus |
-| AI tools | 🟡 | Curated 50+ built-in tools plus 140+ MCP design operations; no AI-generated images or AI-powered search yet |
+| AI tools | 🟡 | Curated 50+ built-in tools, visual references, opt-in OpenRouter web search, hosted OpenAI code execution, and 140+ MCP design operations; no AI-generated image model yet |
 
 ## Layers & Shapes
 
