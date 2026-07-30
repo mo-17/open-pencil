@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- Keep long built-in AI drawing sessions responsive by streaming raw system-font bytes with bounded
+  script-specific caching, propagating cancellation through tools, layout, fonts, icons, and ACP,
+  serializing mutations into transactional undo snapshots, bounding retained CanvasKit backing
+  memory, and recovering the last good scene after transient renderer failures.
 - Preserve exact non-frame-aligned WebM durations through FFmpeg IVF remuxing, reject unsupported
   partial-frame MP4 plans before encoding, propagate generated-effect time and reduced-motion mode
   through AI/MCP raster rendering, prevent early FFmpeg exit from hanging stdin backpressure, and
