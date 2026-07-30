@@ -9,12 +9,17 @@ import { ACP_AGENTS } from '@open-pencil/core/constants'
 import type { ACPAgentID, AIProviderID } from '@open-pencil/core/constants'
 
 import { resetAcpDiagnostics } from '@/app/ai/acp/diagnostics'
+import { archiveVisualChatMessages } from '@/app/ai/chat/attachments'
 import {
   finalizeInterruptedToolParts,
   finalizeUnfinishedToolParts
 } from '@/app/ai/chat/interruption'
 import { resolveLanguageModelID } from '@/app/ai/chat/model'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
+import {
+  createVisionRoleAnalyzer,
+  VisualReferenceChatTransport
+} from '@/app/ai/chat/visual-transport'
 import { createAIModelRuntime } from '@/app/ai/models'
 import { MAX_AGENT_STEPS, createAITools, recordStepUsage, resetRunSteps } from '@/app/ai/tools'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
@@ -88,6 +93,7 @@ function estimateValueBytes(value: unknown, limit: number, seen = new WeakSet<ob
 }
 
 export function trimChatHistory(messages: UIMessage[]): UIMessage[] {
+  messages = archiveVisualChatMessages(messages)
   if (messages.length === 0) return messages
   let start = messages.length
   let bytes = 0
@@ -102,6 +108,7 @@ export function trimChatHistory(messages: UIMessage[]): UIMessage[] {
 
   const bounded = messages.slice(start)
   const firstUser = bounded.findIndex((message) => message.role === 'user')
+  if (firstUser === -1) return []
   return firstUser > 0 ? bounded.slice(firstUser) : bounded
 }
 
@@ -302,7 +309,7 @@ export function createChatSessionManager({
     if (runtime?.kind !== 'direct') {
       throw new Error('The Design model is not configured for direct API access')
     }
-    return createToolLoopTransport({
+    const transport = createToolLoopTransport({
       store,
       providerID: runtime.role.connection.providerID,
       model: runtime.model,
@@ -312,6 +319,11 @@ export function createChatSessionManager({
         customModelID: runtime.role.profile.customModelID
       }),
       maxOutputTokens: runtime.role.profile.maxOutputTokens
+    })
+    return new VisualReferenceChatTransport({
+      transport,
+      designSupportsVision: runtime.role.profile.capabilities.includes('vision'),
+      analyze: createVisionRoleAnalyzer()
     })
   }
 

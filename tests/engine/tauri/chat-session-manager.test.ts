@@ -80,6 +80,50 @@ describe('chat history bounds', () => {
       'latest-assistant'
     ])
   })
+
+  test('archives thumbnail metadata once and never keeps an assistant-only visual turn', () => {
+    const thumbnailUrl = `data:image/png;base64,${'A'.repeat(131_072)}`
+    const visualUser = {
+      id: 'visual-user',
+      role: 'user' as const,
+      metadata: {
+        visualAttachments: Array.from({ length: 4 }, (_, index) => ({
+          id: `visual-${index}`,
+          name: `reference-${index}.png`,
+          mediaType: 'image/png',
+          source: 'file',
+          thumbnail: { url: thumbnailUrl, sizeBytes: 96 * 1024, width: 320, height: 320 }
+        }))
+      },
+      parts: Array.from({ length: 4 }, (_, index) => ({
+        type: 'file' as const,
+        mediaType: 'image/png',
+        filename: `reference-${index}.png`,
+        url: `data:image/png;base64,FULL-${index}`
+      }))
+    } satisfies UIMessage
+    const assistant = {
+      id: 'visual-assistant',
+      role: 'assistant' as const,
+      parts: [{ type: 'text' as const, text: 'Created the editable layout' }]
+    } satisfies UIMessage
+
+    const bounded = trimChatHistory([visualUser, assistant])
+
+    expect(bounded.map((message) => message.id)).toEqual(['visual-user', 'visual-assistant'])
+    expect(bounded[0]?.metadata).toEqual({
+      visualReferenceSourceContext: {
+        schema: 'openpencil.visual-reference-source.v1',
+        references: Array.from({ length: 4 }, (_, attachmentIndex) => ({
+          attachmentIndex,
+          source: 'file'
+        }))
+      }
+    })
+    expect(
+      bounded[0]?.parts.every((part) => part.type !== 'file' || part.url === thumbnailUrl)
+    ).toBe(true)
+  })
 })
 
 describe('ACP chat session manager', () => {
