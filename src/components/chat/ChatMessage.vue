@@ -50,6 +50,8 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
                   :class="{
                     'bg-accent/20 text-accent': toolState(part) === 'pending',
                     'bg-green-500/20 text-green-400': toolState(part) === 'done',
+                    'bg-muted/20 text-muted': toolState(part) === 'cancelled',
+                    'bg-amber-500/20 text-amber-400': toolState(part) === 'denied',
                     'bg-red-500/20 text-red-400': toolState(part) === 'error'
                   }"
                 >
@@ -58,6 +60,11 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
                     class="size-3 animate-spin"
                   />
                   <icon-lucide-check v-else-if="toolState(part) === 'done'" class="size-3" />
+                  <icon-lucide-circle-slash
+                    v-else-if="toolState(part) === 'cancelled'"
+                    class="size-3"
+                  />
+                  <icon-lucide-shield-x v-else-if="toolState(part) === 'denied'" class="size-3" />
                   <icon-lucide-triangle-alert v-else class="size-3" />
                 </div>
                 <span class="text-[11px] text-surface">
@@ -69,7 +76,11 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
                       ? 'Running…'
                       : toolState(part) === 'done'
                         ? 'Done'
-                        : 'Error'
+                        : toolState(part) === 'cancelled'
+                          ? 'Cancelled'
+                          : toolState(part) === 'denied'
+                            ? 'Denied'
+                            : 'Error'
                   }}
                 </span>
                 <icon-lucide-chevron-down

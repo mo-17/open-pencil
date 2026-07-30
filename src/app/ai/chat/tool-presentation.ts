@@ -1,10 +1,12 @@
+import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
+
 type ToolPartLike = {
   state: string
   output?: unknown
   errorText?: unknown
 }
 
-export type ToolPresentationState = 'pending' | 'done' | 'error'
+export type ToolPresentationState = 'pending' | 'done' | 'error' | 'cancelled' | 'denied'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -112,7 +114,10 @@ export function hasErrorOutput(part: ToolPartLike): boolean {
 }
 
 export function toolState(part: ToolPartLike): ToolPresentationState {
-  if (toolErrorText(part) !== null) return 'error'
+  if (part.state === 'output-denied') return 'denied'
+  const error = toolErrorText(part)
+  if (error === INTERRUPTED_TOOL_ERROR) return 'cancelled'
+  if (error !== null) return 'error'
   if (part.state === 'output-available') return 'done'
   return 'pending'
 }

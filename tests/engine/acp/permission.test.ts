@@ -3,6 +3,7 @@ import { describe, expect, test, beforeEach } from 'bun:test'
 import type { RequestPermissionRequest } from '@agentclientprotocol/sdk'
 
 import {
+  cancelPermissionsForSession,
   permissionQueue,
   currentPermission,
   requestPermissionFromUser,
@@ -87,6 +88,23 @@ describe('acp-permission', () => {
     const r2 = await p2
     expect(r2.outcome.optionId).toBe('a2')
     expect(permissionQueue.value).toHaveLength(0)
+  })
+
+  test('cancels only permission requests for the cancelled session', async () => {
+    const first = requestPermissionFromUser(makeRequest())
+    const otherRequest = { ...makeRequest(), sessionId: 'session-2' }
+    const second = requestPermissionFromUser(otherRequest)
+
+    cancelPermissionsForSession('session-1')
+
+    await expect(first).resolves.toEqual({ outcome: { outcome: 'cancelled' } })
+    expect(permissionQueue.value).toHaveLength(1)
+    expect(currentPermission.value?.request.sessionId).toBe('session-2')
+
+    respondToPermission('allow')
+    await expect(second).resolves.toEqual({
+      outcome: { outcome: 'selected', optionId: 'allow' }
+    })
   })
 
   test('respondToPermission is no-op when queue is empty', () => {

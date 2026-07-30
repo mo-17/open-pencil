@@ -24,6 +24,7 @@ interface AccumulatedToolCall {
 
 export interface ACPUpdateMapper {
   map: (update: SessionUpdate) => UIMessageChunk[]
+  interrupt: (errorText: string) => UIMessageChunk[]
   finish: () => UIMessageChunk[]
 }
 
@@ -281,6 +282,7 @@ export function createACPUpdateMapper(baseId: string): ACPUpdateMapper {
   let textStarted = false
   let textSegment = 0
   let reasoningSegment = 0
+  let reasoningId: string | null = null
   let phase: string | undefined
 
   function closeText(chunks: UIMessageChunk[]): void {
@@ -291,8 +293,15 @@ export function createACPUpdateMapper(baseId: string): ACPUpdateMapper {
     phase = undefined
   }
 
+  function closeReasoning(chunks: UIMessageChunk[]): void {
+    if (!reasoningId) return
+    chunks.push({ type: 'reasoning-end', id: reasoningId })
+    reasoningId = null
+  }
+
   function mapMessage(update: SessionUpdate): UIMessageChunk[] {
     const chunks: UIMessageChunk[] = []
+    closeReasoning(chunks)
     const nextPhase = updatePhase(update)
     if (textStarted && nextPhase !== phase && (nextPhase !== undefined || phase !== undefined)) {
       closeText(chunks)
@@ -325,7 +334,10 @@ export function createACPUpdateMapper(baseId: string): ACPUpdateMapper {
     emitToolStart(state, toolChunks)
     emitToolInput(state, toolChunks)
     emitToolTerminal(state, toolChunks)
-    if (toolChunks.length > 0) closeText(chunks)
+    if (toolChunks.length > 0) {
+      closeReasoning(chunks)
+      closeText(chunks)
+    }
     chunks.push(...toolChunks)
     return chunks
   }
@@ -337,8 +349,15 @@ export function createACPUpdateMapper(baseId: string): ACPUpdateMapper {
         if (update.content.type !== 'text' || !update.content.text.trim()) return []
         const chunks: UIMessageChunk[] = []
         closeText(chunks)
-        const reasoningId = `${baseId}-reasoning-${reasoningSegment++}`
-        chunks.push(...mapUpdate(update, baseId, false, reasoningId).chunks)
+        if (!reasoningId) {
+          reasoningId = `${baseId}-reasoning-${reasoningSegment++}`
+          chunks.push({ type: 'reasoning-start', id: reasoningId })
+        }
+        chunks.push({
+          type: 'reasoning-delta',
+          id: reasoningId,
+          delta: update.content.text
+        })
         return chunks
       }
       if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
@@ -346,8 +365,25 @@ export function createACPUpdateMapper(baseId: string): ACPUpdateMapper {
       }
       return []
     },
+    interrupt(errorText: string): UIMessageChunk[] {
+      const chunks: UIMessageChunk[] = []
+      closeReasoning(chunks)
+      closeText(chunks)
+      for (const state of tools.values()) {
+        if (state.hidden || !state.started || state.terminalEmitted) continue
+        state.terminalEmitted = true
+        chunks.push({
+          type: 'tool-output-error',
+          toolCallId: state.toolCallId,
+          errorText,
+          providerExecuted: true
+        })
+      }
+      return chunks
+    },
     finish(): UIMessageChunk[] {
       const chunks: UIMessageChunk[] = []
+      closeReasoning(chunks)
       closeText(chunks)
       tools.clear()
       return chunks

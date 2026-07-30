@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
+import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 import { computed, ref } from 'vue'
 
 import type { AIProviderID } from '@open-pencil/core/constants'
 
-import { createChatSessionManager } from '@/app/ai/chat/transports'
+import { createChatSessionManager, trimChatHistory } from '@/app/ai/chat/transports'
 import * as automationMcp from '@/app/automation/mcp/spawn'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
 
@@ -33,8 +34,298 @@ async function waitFor(check: () => boolean): Promise<void> {
   throw new Error('Timed out waiting for the ACP request')
 }
 
+function neverSettles(): Promise<void> {
+  return new Promise<void>(() => {
+    // Simulate a provider implementation whose stop hook never returns.
+  })
+}
+
+describe('chat history bounds', () => {
+  test('keeps only recent complete turns and drops oversized older context', () => {
+    const messages = Array.from({ length: 60 }, (_, index) => ({
+      id: `message-${index}`,
+      role: index % 2 === 0 ? ('user' as const) : ('assistant' as const),
+      parts: [{ type: 'text' as const, text: `message ${index}` }]
+    })) satisfies UIMessage[]
+
+    const bounded = trimChatHistory(messages)
+    expect(bounded.length).toBeLessThanOrEqual(40)
+    expect(bounded[0]?.role).toBe('user')
+    expect(bounded.at(-1)?.id).toBe('message-59')
+
+    const withOversizedHistory = [
+      {
+        id: 'large-old-user',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'x'.repeat(1_100_000) }]
+      },
+      {
+        id: 'old-assistant',
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: 'old reply' }]
+      },
+      {
+        id: 'latest-user',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'latest prompt' }]
+      },
+      {
+        id: 'latest-assistant',
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: 'latest reply' }]
+      }
+    ] satisfies UIMessage[]
+    expect(trimChatHistory(withOversizedHistory).map((message) => message.id)).toEqual([
+      'latest-user',
+      'latest-assistant'
+    ])
+  })
+})
+
 describe('ACP chat session manager', () => {
-  test('shares one prewarm when ensureChat is called concurrently', async () => {
+  test('stops the active chat before switching tabs and safely force-discards a hung chat', async () => {
+    const storeA = {} as EditorStore
+    const storeB = {} as EditorStore
+    let activeStore = storeA
+    const events: string[] = []
+    let transportCount = 0
+    let runCount = 0
+    const manager = createChatSessionManager({
+      isConfigured: computed(() => true),
+      isACPProvider: computed(() => false),
+      providerID: ref<AIProviderID>('openai'),
+      credentialsReady: Promise.resolve(),
+      resolveAPIKey: async () => 'test-key',
+      modelID: ref('gpt-test'),
+      customModelID: ref(''),
+      customBaseURL: ref(''),
+      customAPIType: ref<'completions' | 'responses'>('completions'),
+      maxOutputTokens: ref(16_384),
+      getActiveEditorStore: () => activeStore
+    })
+    manager.setOverrideTransport(() => {
+      transportCount += 1
+      events.push(`transport-${transportCount}`)
+      return {
+        async sendMessages({ abortSignal }) {
+          runCount += 1
+          const run = runCount
+          if (!abortSignal) throw new Error('Expected Chat to provide an abort signal')
+          return new ReadableStream<UIMessageChunk>({
+            start(controller) {
+              controller.enqueue({ type: 'start' })
+              controller.enqueue({ type: 'start-step' })
+              abortSignal.addEventListener(
+                'abort',
+                () => {
+                  events.push(`abort-${run}`)
+                  controller.enqueue({ type: 'finish-step' })
+                  controller.enqueue({ type: 'finish', finishReason: 'stop' })
+                  controller.close()
+                },
+                { once: true }
+              )
+            }
+          })
+        },
+        async reconnectToStream() {
+          return null
+        }
+      } satisfies ChatTransport<UIMessage>
+    })
+
+    const first = await manager.ensureChat()
+    if (!first) throw new Error('Missing first chat')
+    void first.sendMessage({ text: 'first' }).catch(() => undefined)
+    await waitFor(() => runCount === 1)
+
+    activeStore = storeB
+    const second = await manager.ensureChat()
+    expect(second).not.toBe(first)
+    expect(events.indexOf('abort-1')).toBeLessThan(events.indexOf('transport-2'))
+
+    if (!second) throw new Error('Missing second chat')
+    void second.sendMessage({ text: 'second' }).catch(() => undefined)
+    await waitFor(() => runCount === 2)
+    manager.markTransportDirty()
+    const third = await manager.ensureChat()
+    expect(third).not.toBe(second)
+    expect(events.indexOf('abort-2')).toBeLessThan(events.indexOf('transport-3'))
+
+    if (!third) throw new Error('Missing third chat')
+    void third.sendMessage({ text: 'third' }).catch(() => undefined)
+    await waitFor(() => runCount === 3)
+    await manager.resetChat()
+    const fourth = await manager.ensureChat()
+    expect(fourth).not.toBe(third)
+    expect(events.indexOf('abort-3')).toBeLessThan(events.indexOf('transport-4'))
+
+    if (!fourth) throw new Error('Missing fourth chat')
+    fourth.stop = neverSettles
+    let forceStopSettled = false
+    void manager.forceStopChat().then(() => {
+      forceStopSettled = true
+      return undefined
+    })
+    await waitFor(() => forceStopSettled)
+
+    const fifth = await manager.ensureChat()
+    expect(fifth).not.toBe(fourth)
+    expect(events).toContain('transport-5')
+    await manager.resetChat()
+  })
+
+  test('stores interrupted tool state before switching away and back', async () => {
+    const storeA = {} as EditorStore
+    const storeB = {} as EditorStore
+    let activeStore = storeA
+    const manager = createChatSessionManager({
+      isConfigured: computed(() => true),
+      isACPProvider: computed(() => false),
+      providerID: ref<AIProviderID>('openai'),
+      credentialsReady: Promise.resolve(),
+      resolveAPIKey: async () => 'test-key',
+      modelID: ref('gpt-test'),
+      customModelID: ref(''),
+      customBaseURL: ref(''),
+      customAPIType: ref<'completions' | 'responses'>('completions'),
+      maxOutputTokens: ref(16_384),
+      getActiveEditorStore: () => activeStore
+    })
+    manager.setOverrideTransport(() => ({
+      async sendMessages({ abortSignal }) {
+        if (!abortSignal) throw new Error('Expected Chat to provide an abort signal')
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            controller.enqueue({ type: 'start' })
+            controller.enqueue({ type: 'start-step' })
+            controller.enqueue({
+              type: 'tool-input-start',
+              toolCallId: 'render-running',
+              toolName: 'Render',
+              providerExecuted: true,
+              title: 'Render'
+            })
+            controller.enqueue({
+              type: 'tool-input-available',
+              toolCallId: 'render-running',
+              toolName: 'Render',
+              input: { jsx: '<Frame />' },
+              providerExecuted: true,
+              title: 'Render'
+            })
+            abortSignal.addEventListener(
+              'abort',
+              () => {
+                controller.enqueue({ type: 'finish-step' })
+                controller.enqueue({ type: 'finish', finishReason: 'stop' })
+                controller.close()
+              },
+              { once: true }
+            )
+          }
+        })
+      },
+      async reconnectToStream() {
+        return null
+      }
+    }))
+
+    const first = await manager.ensureChat()
+    if (!first) throw new Error('Missing first chat')
+    void first.sendMessage({ text: 'draw' }).catch(() => undefined)
+    await waitFor(() =>
+      first.messages.some((message) =>
+        message.parts.some((part) => 'state' in part && part.state === 'input-available')
+      )
+    )
+
+    activeStore = storeB
+    await manager.ensureChat()
+    activeStore = storeA
+    const restored = await manager.ensureChat()
+    if (!restored) throw new Error('Missing restored chat')
+
+    expect(
+      restored.messages.some((message) =>
+        message.parts.some(
+          (part) =>
+            'state' in part &&
+            part.state === 'output-error' &&
+            'errorText' in part &&
+            part.errorText === 'Conversation interrupted'
+        )
+      )
+    ).toBeTrue()
+    await manager.resetChat()
+  })
+
+  test('finalizes a pending direct-provider tool when its stream errors', async () => {
+    const store = {} as EditorStore
+    const manager = createChatSessionManager({
+      isConfigured: computed(() => true),
+      isACPProvider: computed(() => false),
+      providerID: ref<AIProviderID>('openai'),
+      credentialsReady: Promise.resolve(),
+      resolveAPIKey: async () => 'test-key',
+      modelID: ref('gpt-test'),
+      customModelID: ref(''),
+      customBaseURL: ref(''),
+      customAPIType: ref<'completions' | 'responses'>('completions'),
+      maxOutputTokens: ref(16_384),
+      getActiveEditorStore: () => store
+    })
+    manager.setOverrideTransport(() => ({
+      async sendMessages() {
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            controller.enqueue({ type: 'start' })
+            controller.enqueue({ type: 'start-step' })
+            controller.enqueue({
+              type: 'tool-input-start',
+              toolCallId: 'direct-render',
+              toolName: 'Render',
+              providerExecuted: true,
+              title: 'Render'
+            })
+            controller.enqueue({
+              type: 'tool-input-available',
+              toolCallId: 'direct-render',
+              toolName: 'Render',
+              input: { jsx: '<Frame />' },
+              providerExecuted: true,
+              title: 'Render'
+            })
+            controller.enqueue({ type: 'error', errorText: 'Direct provider failed' })
+            controller.close()
+          }
+        })
+      },
+      async reconnectToStream() {
+        return null
+      }
+    }))
+
+    const chat = await manager.ensureChat()
+    if (!chat) throw new Error('Missing chat')
+    await chat.sendMessage({ text: 'draw' }).catch(() => undefined)
+
+    expect(chat.status).toBe('error')
+    expect(
+      chat.messages.some((message) =>
+        message.parts.some(
+          (part) =>
+            'toolCallId' in part &&
+            part.toolCallId === 'direct-render' &&
+            part.state === 'output-error' &&
+            part.errorText === 'Direct provider failed'
+        )
+      )
+    ).toBeTrue()
+    await manager.resetChat()
+  })
+
+  test('shares one prewarm and force-destroys ACP when stop and child kill hang', async () => {
     const initialOptions: SessionConfigOption[] = [
       {
         type: 'select',
@@ -69,6 +360,7 @@ describe('ACP chat session manager', () => {
       }
       if (cmd === 'plugin:shell|kill') {
         killCount++
+        if (killCount === 1) return neverSettles()
         return null
       }
       if (cmd === 'plugin:shell|stdin_write') {
@@ -102,7 +394,8 @@ describe('ACP chat session manager', () => {
       customBaseURL: ref(''),
       customAPIType: ref<'completions' | 'responses'>('completions'),
       maxOutputTokens: ref(16_384),
-      getActiveEditorStore: () => store
+      getActiveEditorStore: () => store,
+      forceCloseTimeoutMs: 5
     })
 
     const first = manager.ensureChat()
@@ -120,9 +413,25 @@ describe('ACP chat session manager', () => {
     expect(methods).toEqual(['initialize', 'session/new'])
     expect(manager.acpConfigOptions.value).toEqual(initialOptions)
 
-    manager.markTransportDirty()
+    if (!firstChat) throw new Error('Missing first chat')
+    firstChat.stop = neverSettles
+    let forceStopSettled = false
+    void manager.forceStopChat().then(() => {
+      forceStopSettled = true
+      return undefined
+    })
     await waitFor(() => killCount === 1)
+    await waitFor(() => forceStopSettled)
     expect(manager.acpConfigOptions.value).toEqual([])
+
+    newSessionRequestId = null
+    const replacementPromise = manager.ensureChat()
+    await waitFor(() => spawnCount === 2 && newSessionRequestId !== null)
+    if (newSessionRequestId === null) throw new Error('Missing replacement session/new request ID')
+    respond(newSessionRequestId, { sessionId: 'session-2', configOptions: initialOptions })
+    const replacement = await replacementPromise
+    expect(replacement).not.toBe(firstChat)
+    await manager.resetChat()
   })
 
   test('does not reuse a destroyed chat when switching stores during prewarm', async () => {
@@ -212,6 +521,6 @@ describe('ACP chat session manager', () => {
     expect(nextPid).toBe(83)
     expect(manager.acpConfigOptions.value).toEqual(initialOptions)
 
-    manager.resetChat()
+    await manager.resetChat()
   })
 })

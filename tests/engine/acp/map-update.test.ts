@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import type { SessionUpdate } from '@agentclientprotocol/sdk'
 
 import { createACPUpdateMapper } from '@/app/ai/acp/map-update'
+import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
 
 function message(text: string, phase: 'commentary' | 'final_answer'): SessionUpdate {
   return {
@@ -13,6 +14,64 @@ function message(text: string, phase: 'commentary' | 'final_answer'): SessionUpd
 }
 
 describe('createACPUpdateMapper', () => {
+  test('finalizes only unfinished visible tools when a prompt is interrupted', () => {
+    const mapper = createACPUpdateMapper('cancel')
+    expect(
+      mapper.map({
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tc-running',
+        title: 'Render',
+        status: 'in_progress',
+        rawInput: { jsx: '<Frame />' }
+      })
+    ).toContainEqual(
+      expect.objectContaining({ type: 'tool-input-available', toolCallId: 'tc-running' })
+    )
+
+    expect(mapper.interrupt(INTERRUPTED_TOOL_ERROR)).toContainEqual({
+      type: 'tool-output-error',
+      toolCallId: 'tc-running',
+      errorText: INTERRUPTED_TOOL_ERROR,
+      providerExecuted: true
+    })
+    expect(mapper.interrupt(INTERRUPTED_TOOL_ERROR)).toEqual([])
+  })
+
+  test('merges adjacent reasoning deltas into one bounded reasoning part', () => {
+    const mapper = createACPUpdateMapper('turn-reasoning')
+    const thought = (text: string): SessionUpdate => ({
+      sessionUpdate: 'agent_thought_chunk',
+      content: { type: 'text', text }
+    })
+
+    const chunks = [
+      ...mapper.map(thought('first ')),
+      ...mapper.map(thought('second ')),
+      ...mapper.map(thought('third')),
+      ...mapper.finish()
+    ]
+
+    expect(chunks).toEqual([
+      { type: 'reasoning-start', id: 'turn-reasoning-reasoning-0' },
+      {
+        type: 'reasoning-delta',
+        id: 'turn-reasoning-reasoning-0',
+        delta: 'first '
+      },
+      {
+        type: 'reasoning-delta',
+        id: 'turn-reasoning-reasoning-0',
+        delta: 'second '
+      },
+      {
+        type: 'reasoning-delta',
+        id: 'turn-reasoning-reasoning-0',
+        delta: 'third'
+      },
+      { type: 'reasoning-end', id: 'turn-reasoning-reasoning-0' }
+    ])
+  })
+
   test('preserves commentary, tool, and final-answer chronology with separate text IDs', () => {
     const mapper = createACPUpdateMapper('turn-1')
     const chunks = [

@@ -1,3 +1,4 @@
+/* oxlint-disable eslint/max-lines -- ACP process, session, prompt drain, and permission cancellation share one protocol lifecycle boundary. */
 import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import type {
   Agent,
@@ -13,6 +14,7 @@ import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
 
 import { AUTOMATION_HTTP_PORT, type ACPAgentDef } from '@open-pencil/core/constants'
 
+import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
 
 import {
@@ -26,6 +28,7 @@ import {
   resetAcpDiagnostics
 } from './diagnostics'
 import { createACPUpdateMapper } from './map-update'
+import { cancelPermissionsForSession, requestPermissionFromUser } from './permission'
 import { spawnAcpProcess } from './process'
 
 type TauriChild = Awaited<ReturnType<typeof spawnAcpProcess>>['child']
@@ -56,14 +59,55 @@ interface ACPChatTransportOptions {
   agentDef: ACPAgentDef
   cwd?: string
   onConfigOptionsChange?: (options: readonly SessionConfigOption[]) => void
+  cancelDrainTimeoutMs?: number
+}
+
+interface ACPActivePrompt {
+  session: ACPSession
+  done: Promise<void>
+  resolveDone: () => void
+  cancelRequested: boolean
+  cancelTimer?: ReturnType<typeof setTimeout>
 }
 
 const MAX_LOG_AGE_MS = 5 * 60 * 1000
 const IS_DEV = import.meta.env.DEV
 const TRANSPORT_DESTROYED_MESSAGE = 'ACP transport was destroyed.'
 const AGENT_EXITED_MESSAGE = 'Agent process exited unexpectedly.'
+const ACP_CANCEL_DRAIN_TIMEOUT_MS = 3_000
 
 const acpDebugLog: ACPDebugEntry[] = []
+
+function abortError(): Error {
+  const error = new Error('ACP request cancelled')
+  error.name = 'AbortError'
+  return error
+}
+
+function waitWithAbort(promise: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (!signal) return promise
+  if (signal.aborted) return Promise.reject(abortError())
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener('abort', onAbort)
+    const onAbort = () => {
+      cleanup()
+      reject(abortError())
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    void promise.then(
+      () => {
+        cleanup()
+        resolve()
+        return undefined
+      },
+      (error: unknown) => {
+        cleanup()
+        reject(error instanceof Error ? error : new Error('ACP prompt failed', { cause: error }))
+        return undefined
+      }
+    )
+  })
+}
 
 export function createSessionUpdateBuffer() {
   const pending: SessionNotification[] = []
@@ -235,11 +279,15 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private runtimeContextDirty = true
   private destroying = false
   private requestLifecycle: ACPRequestLifecycle | null = null
+  private activePrompt: ACPActivePrompt | null = null
+  private cancellingSessionIds = new Set<string>()
+  private cancelDrainTimeoutMs: number
 
   constructor(options: ACPChatTransportOptions) {
     this.agentDef = options.agentDef
     this.cwd = options.cwd ?? '.'
     this.onConfigOptionsChange = options.onConfigOptionsChange ?? (() => undefined)
+    this.cancelDrainTimeoutMs = options.cancelDrainTimeoutMs ?? ACP_CANCEL_DRAIN_TIMEOUT_MS
   }
 
   async sendMessages({
@@ -248,6 +296,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   }: Parameters<ChatTransport<UIMessage>['sendMessages']>[0]): Promise<
     ReadableStream<UIMessageChunk>
   > {
+    if (abortSignal?.aborted) throw abortError()
     const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user')
     const text =
       lastUserMessage?.parts
@@ -255,7 +304,17 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         .map((p) => p.text)
         .join('\n') ?? ''
 
-    const activeSession = await this.ensureSession()
+    let activeSession: ACPSession
+    let activePrompt: ACPActivePrompt
+    for (;;) {
+      if (this.activePrompt) await waitWithAbort(this.activePrompt.done, abortSignal)
+      if (abortSignal?.aborted) throw abortError()
+      activeSession = await this.ensureSession()
+      if (abortSignal?.aborted) throw abortError()
+      if (this.activePrompt) continue
+      activePrompt = this.reservePrompt(activeSession)
+      break
+    }
 
     const consumedSystemContext = !this.sentContext
     const consumedRuntimeContext = this.runtimeContextDirty
@@ -272,21 +331,74 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
     const { connection, sessionId } = activeSession
     const session = activeSession
+    this.cancellingSessionIds.delete(sessionId)
 
     return new ReadableStream<UIMessageChunk>({
       start: (controller) => {
         const updateMapper = createACPUpdateMapper(`acp-${Date.now()}`)
         let closed = false
+        let promptStarted = false
+        let contextRestored = false
+        let cleanupAbort: () => void = () => undefined
 
-        function finish(reason: 'stop' | 'other' | 'error', errorText?: string) {
+        const restoreContext = () => {
+          if (contextRestored) return
+          contextRestored = true
+          if (consumedSystemContext) this.sentContext = false
+          if (consumedRuntimeContext) this.runtimeContextDirty = true
+        }
+
+        const finish = (
+          reason: 'stop' | 'other' | 'error',
+          errorText?: string,
+          pendingToolError?: string
+        ) => {
           if (closed) return
           closed = true
-          if (errorText) controller.enqueue({ type: 'error', errorText })
-          for (const chunk of updateMapper.finish()) controller.enqueue(chunk)
-          controller.enqueue({ type: 'finish-step' })
-          controller.enqueue({ type: 'finish', finishReason: reason })
+          cleanupAbort()
+          clearTimeout(activePrompt.cancelTimer)
           session.updates.setHandler(null)
-          controller.close()
+          try {
+            const toolError = pendingToolError ?? (reason === 'error' ? errorText : undefined)
+            if (toolError) {
+              for (const chunk of updateMapper.interrupt(toolError)) controller.enqueue(chunk)
+            }
+            for (const chunk of updateMapper.finish()) controller.enqueue(chunk)
+            // AI SDK treats an error chunk as terminal, so every pending part must
+            // be finalized before this chunk is emitted.
+            if (errorText) controller.enqueue({ type: 'error', errorText })
+            controller.enqueue({ type: 'finish-step' })
+            controller.enqueue({ type: 'finish', finishReason: reason })
+            controller.close()
+          } finally {
+            this.releasePrompt(activePrompt)
+          }
+        }
+
+        const onAbort = () => {
+          if (closed || activePrompt.cancelRequested) return
+          if (!promptStarted) {
+            restoreContext()
+            finish('stop', undefined, INTERRUPTED_TOOL_ERROR)
+            return
+          }
+          activePrompt.cancelRequested = true
+          this.cancellingSessionIds.add(sessionId)
+          cancelPermissionsForSession(sessionId)
+          void connection.cancel({ sessionId }).catch(() => undefined)
+          activePrompt.cancelTimer = setTimeout(() => {
+            if (closed || this.activePrompt !== activePrompt) return
+            restoreContext()
+            this.invalidateSession(
+              session,
+              new Error(`ACP cancellation did not settle within ${this.cancelDrainTimeoutMs}ms.`)
+            )
+            finish('stop', undefined, INTERRUPTED_TOOL_ERROR)
+          }, this.cancelDrainTimeoutMs)
+        }
+        if (abortSignal) {
+          abortSignal.addEventListener('abort', onAbort, { once: true })
+          cleanupAbort = () => abortSignal.removeEventListener('abort', onAbort)
         }
 
         session.updates.setHandler((params) => {
@@ -294,15 +406,15 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           for (const chunk of updateMapper.map(params.update)) controller.enqueue(chunk)
         })
 
-        abortSignal?.addEventListener('abort', () => {
-          void connection.cancel({ sessionId })
-          finish('stop')
-        })
-
         controller.enqueue({ type: 'start' })
         controller.enqueue({ type: 'start-step' })
+        if (abortSignal?.aborted) {
+          onAbort()
+          return
+        }
         session.updates.flush()
 
+        promptStarted = true
         requestWithLifecycle(session.lifecycle, () =>
           connection.prompt({
             sessionId,
@@ -310,17 +422,36 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           })
         )
           .then((result) => {
+            if (closed) return undefined
             if (session.diagnosticsEnabled) {
               appendAcpDebugEntry('prompt_response', result)
               recordAcpPrompt(result)
             }
-            finish(result.stopReason === 'end_turn' ? 'stop' : 'other')
+            if (activePrompt.cancelRequested) {
+              restoreContext()
+              if (result.stopReason !== 'cancelled') {
+                this.invalidateSession(
+                  session,
+                  new Error(
+                    `ACP agent returned "${result.stopReason}" after cancellation instead of "cancelled".`
+                  )
+                )
+              }
+              finish('stop', undefined, INTERRUPTED_TOOL_ERROR)
+            } else {
+              finish(result.stopReason === 'end_turn' ? 'stop' : 'other')
+            }
             return undefined
           })
           .catch((e) => {
-            if (consumedSystemContext) this.sentContext = false
-            if (consumedRuntimeContext) this.runtimeContextDirty = true
-            finish('error', formatConnectionError(e, this.agentDef))
+            if (closed) return
+            restoreContext()
+            if (activePrompt.cancelRequested) {
+              this.invalidateSession(session, requestError(e))
+              finish('stop', undefined, INTERRUPTED_TOOL_ERROR)
+            } else {
+              finish('error', formatConnectionError(e, this.agentDef))
+            }
           })
       }
     })
@@ -373,6 +504,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     }
     if (this.session) {
       const session = this.session
+      cancelPermissionsForSession(session.sessionId)
       session.dead = true
       session.diagnosticsEnabled = false
       session.updates.setHandler(null)
@@ -380,6 +512,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       this.session = null
       kills.push(session.child.kill())
     }
+    this.cancellingSessionIds.clear()
     await Promise.all(kills)
   }
 
@@ -389,6 +522,43 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
   private publishConfigOptions(options: readonly SessionConfigOption[]): void {
     this.onConfigOptionsChange([...options])
+  }
+
+  private reservePrompt(session: ACPSession): ACPActivePrompt {
+    let resolveDone: () => void = () => undefined
+    const done = new Promise<void>((resolve) => {
+      resolveDone = resolve
+    })
+    const activePrompt: ACPActivePrompt = {
+      session,
+      done,
+      resolveDone,
+      cancelRequested: false
+    }
+    this.activePrompt = activePrompt
+    return activePrompt
+  }
+
+  private releasePrompt(activePrompt: ACPActivePrompt): void {
+    clearTimeout(activePrompt.cancelTimer)
+    if (this.activePrompt === activePrompt) this.activePrompt = null
+    activePrompt.resolveDone()
+  }
+
+  private invalidateSession(session: ACPSession, error: Error): void {
+    const shouldKill = !session.dead
+    session.dead = true
+    session.diagnosticsEnabled = false
+    session.updates.setHandler(null)
+    session.updates.clear()
+    cancelPermissionsForSession(session.sessionId)
+    closeRequestLifecycle(session.lifecycle, error)
+    if (this.requestLifecycle === session.lifecycle) this.requestLifecycle = null
+    if (this.session === session) {
+      this.session = null
+      this.publishConfigOptions([])
+    }
+    if (shouldKill) void session.child.kill().catch(() => undefined)
   }
 
   private async ensureSession(): Promise<ACPSession> {
@@ -449,6 +619,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
           }
           session.dead = true
           session.diagnosticsEnabled = false
+          cancelPermissionsForSession(session.sessionId)
           session.updates.setHandler(null)
           session.updates.clear()
           this.session = null
@@ -470,10 +641,12 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     const stream = ndJsonStream(input, output)
     const updates = createSessionUpdateBuffer()
     const clientImpl: Client = {
-      async requestPermission(
+      requestPermission: async (
         params: RequestPermissionRequest
-      ): Promise<RequestPermissionResponse> {
-        const { requestPermissionFromUser } = await import('@/app/ai/acp/permission')
+      ): Promise<RequestPermissionResponse> => {
+        if (this.cancellingSessionIds.has(params.sessionId)) {
+          return { outcome: { outcome: 'cancelled' } }
+        }
         return requestPermissionFromUser(params)
       },
 

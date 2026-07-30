@@ -9,6 +9,10 @@ import { ACP_AGENTS } from '@open-pencil/core/constants'
 import type { ACPAgentID, AIProviderID } from '@open-pencil/core/constants'
 
 import { resetAcpDiagnostics } from '@/app/ai/acp/diagnostics'
+import {
+  finalizeInterruptedToolParts,
+  finalizeUnfinishedToolParts
+} from '@/app/ai/chat/interruption'
 import { createLanguageModel, resolveLanguageModelID } from '@/app/ai/chat/model'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
 import { MAX_AGENT_STEPS, createAITools, recordStepUsage, resetRunSteps } from '@/app/ai/tools'
@@ -28,6 +32,7 @@ type ChatSessionOptions = {
   customAPIType: Ref<'completions' | 'responses'>
   maxOutputTokens: Ref<number>
   getActiveEditorStore: () => EditorStore
+  forceCloseTimeoutMs?: number
 }
 
 type ToolLoopTransportOptions = {
@@ -44,6 +49,57 @@ type ToolLoopTransportOptions = {
 const ANTHROPIC_CACHE_CONTROL = {
   anthropic: { cacheControl: { type: 'ephemeral' } }
 } as const
+const MAX_CHAT_HISTORY_MESSAGES = 40
+const MAX_CHAT_HISTORY_BYTES = 2 * 1024 * 1024
+const FORCE_CLOSE_TIMEOUT_MS = 1_000
+
+async function settleWithin(promise: Promise<void>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs)
+  })
+  await Promise.race([promise.catch(() => undefined), timeout])
+  clearTimeout(timer)
+}
+
+function estimateValueBytes(value: unknown, limit: number, seen = new WeakSet<object>()): number {
+  if (limit < 0) return limit + 1
+  if (typeof value === 'string') return Math.min(limit + 1, value.length * 2)
+  if (value === null || value === undefined) return 4
+  if (typeof value !== 'object') return 8
+  if (seen.has(value)) return 0
+  seen.add(value)
+
+  let bytes = 0
+  const entries: Array<[string, unknown]> = Array.isArray(value)
+    ? value.map((item, index) => [String(index), item])
+    : Object.entries(value)
+  for (const [key, item] of entries) {
+    bytes += key.length * 2
+    if (bytes > limit) return limit + 1
+    bytes += estimateValueBytes(item, limit - bytes, seen)
+    if (bytes > limit) return limit + 1
+  }
+  return bytes
+}
+
+export function trimChatHistory(messages: UIMessage[]): UIMessage[] {
+  if (messages.length === 0) return messages
+  let start = messages.length
+  let bytes = 0
+  for (let index = messages.length - 1; index >= 0; index--) {
+    if (messages.length - index > MAX_CHAT_HISTORY_MESSAGES) break
+    const remaining = MAX_CHAT_HISTORY_BYTES - bytes
+    const messageBytes = estimateValueBytes(messages[index], remaining)
+    if (messageBytes > remaining && start < messages.length) break
+    start = index
+    bytes += messageBytes
+  }
+
+  const bounded = messages.slice(start)
+  const firstUser = bounded.findIndex((message) => message.role === 'user')
+  return firstUser > 0 ? bounded.slice(firstUser) : bounded
+}
 
 function supportsAnthropicCaching(providerID: AIProviderID, modelID: string): boolean {
   return (
@@ -132,14 +188,18 @@ export function createChatSessionManager({
   customBaseURL,
   customAPIType,
   maxOutputTokens,
-  getActiveEditorStore
+  getActiveEditorStore,
+  forceCloseTimeoutMs = FORCE_CLOSE_TIMEOUT_MS
 }: ChatSessionOptions) {
   let transportDirty = false
   let currentChatStore: EditorStore | null = null
   let currentChatMessages = new WeakMap<EditorStore, UIMessage[]>()
   let chat: Chat<UIMessage> | null = null
-  let acpTransportInstance: Awaited<ReturnType<typeof createACPTransport>> | null = null
+  type ACPTransport = Awaited<ReturnType<typeof createACPTransport>>
+  let acpTransportInstance: ACPTransport | null = null
+  const closingACPTransports = new Set<ACPTransport>()
   let acpTransportClosePromise: Promise<void> = Promise.resolve()
+  let chatStopPromise: Promise<void> = Promise.resolve()
   let acpTransportGeneration = 0
   let chatInitializationGeneration = 0
   let pendingChatInitialization: {
@@ -152,17 +212,58 @@ export function createChatSessionManager({
   const acpConfigUpdating = ref(false)
   let overrideTransport: (() => ChatTransport<UIMessage>) | null = null
 
+  async function stopAndFinalizeChat(target: Chat<UIMessage>): Promise<void> {
+    try {
+      await target.stop()
+    } finally {
+      target.messages = finalizeInterruptedToolParts(target.messages)
+    }
+  }
+
+  function stopChatInstance(target: Chat<UIMessage> | null): Promise<void> {
+    if (!target) return chatStopPromise
+    chatStopPromise = chatStopPromise.then(() => stopAndFinalizeChat(target)).catch(() => undefined)
+    return chatStopPromise
+  }
+
   function detachACPTransport(): Promise<void> {
     const transport = acpTransportInstance
     acpTransportInstance = null
-    if (!transport) return acpTransportClosePromise
+    if (!transport) {
+      return Promise.all([chatStopPromise, acpTransportClosePromise]).then(() => undefined)
+    }
 
-    const close = transport.destroy().catch(() => undefined)
+    closingACPTransports.add(transport)
+    const close = chatStopPromise
+      .then(() => transport.destroy())
+      .catch(() => undefined)
+      .finally(() => closingACPTransports.delete(transport))
     acpTransportClosePromise = Promise.all([acpTransportClosePromise, close]).then(() => undefined)
     return acpTransportClosePromise
   }
 
+  function forceDetachACPTransport(): Promise<void> {
+    const transports = new Set(closingACPTransports)
+    if (acpTransportInstance) transports.add(acpTransportInstance)
+    acpTransportInstance = null
+
+    const destroy = Promise.all(
+      [...transports].map((transport) =>
+        transport
+          .destroy()
+          .catch(() => undefined)
+          .finally(() => closingACPTransports.delete(transport))
+      )
+    ).then(() => undefined)
+    const close = settleWithin(destroy, forceCloseTimeoutMs)
+    // A graceful close can be permanently blocked behind Chat.stop(). Force stop
+    // deliberately abandons that barrier so a replacement session can start.
+    acpTransportClosePromise = close
+    return close
+  }
+
   function markTransportDirty() {
+    void stopChatInstance(chat)
     transportDirty = true
     currentChatStore = null
     currentChatMessages = new WeakMap()
@@ -230,6 +331,7 @@ export function createChatSessionManager({
     store: EditorStore,
     generation: number
   ): Promise<Chat<UIMessage> | null> {
+    await chatStopPromise
     await credentialsReady
     if (generation !== chatInitializationGeneration || store !== getActiveEditorStore()) {
       return ensureChat()
@@ -252,7 +354,23 @@ export function createChatSessionManager({
       return ensureChat()
     }
 
-    chat = new Chat<UIMessage>({ transport, messages })
+    const createdChat = new Chat<UIMessage>({
+      transport,
+      messages: messages ? trimChatHistory(messages) : undefined,
+      onFinish: ({ messages: finishedMessages, isAbort, isError }) => {
+        let settledMessages = finishedMessages
+        if (isAbort) {
+          settledMessages = finalizeInterruptedToolParts(finishedMessages)
+        } else if (isError) {
+          settledMessages = finalizeUnfinishedToolParts(
+            finishedMessages,
+            createdChat.error?.message || 'AI request failed'
+          )
+        }
+        createdChat.messages = trimChatHistory(settledMessages)
+      }
+    })
+    chat = createdChat
     currentChatStore = store
     transportDirty = false
     return chat
@@ -268,8 +386,10 @@ export function createChatSessionManager({
     }
 
     if (currentChatStore && chat) {
-      currentChatMessages.set(currentChatStore, chat.messages)
+      chat.messages = finalizeInterruptedToolParts(chat.messages)
+      currentChatMessages.set(currentChatStore, trimChatHistory(chat.messages))
     }
+    void stopChatInstance(chat)
     chat = null
     currentChatStore = null
 
@@ -286,18 +406,47 @@ export function createChatSessionManager({
     return promise
   }
 
-  function resetChat() {
+  async function resetChat(): Promise<void> {
+    void stopChatInstance(chat)
     if (currentChatStore) currentChatMessages.delete(currentChatStore)
     chatInitializationGeneration++
     pendingChatInitialization = null
     acpTransportGeneration++
     acpConfigUpdateGeneration++
-    void detachACPTransport()
-    acpConfigOptions.value = []
-    acpConfigUpdating.value = false
     chat = null
     currentChatStore = null
     transportDirty = false
+    acpConfigOptions.value = []
+    acpConfigUpdating.value = false
+    await detachACPTransport()
+  }
+
+  async function forceStopChat(): Promise<void> {
+    const discardedChat = chat
+    if (discardedChat) {
+      discardedChat.messages = finalizeInterruptedToolParts(discardedChat.messages)
+    }
+    if (currentChatStore && discardedChat) {
+      currentChatMessages.set(currentChatStore, trimChatHistory(discardedChat.messages))
+    }
+    // Keep aborting the SDK chat as a best effort, but never let a provider's
+    // hung stop promise poison future chat initialization.
+    chatStopPromise = Promise.resolve()
+    if (discardedChat) {
+      void Promise.resolve()
+        .then(() => discardedChat.stop())
+        .catch(() => undefined)
+    }
+    chatInitializationGeneration++
+    pendingChatInitialization = null
+    acpTransportGeneration++
+    acpConfigUpdateGeneration++
+    chat = null
+    currentChatStore = null
+    transportDirty = false
+    acpConfigOptions.value = []
+    acpConfigUpdating.value = false
+    await forceDetachACPTransport()
   }
 
   function setOverrideTransport(factory: (() => ChatTransport<UIMessage>) | null) {
@@ -322,6 +471,7 @@ export function createChatSessionManager({
   return {
     ensureChat,
     resetChat,
+    forceStopChat,
     markTransportDirty,
     setOverrideTransport,
     acpConfigOptions,

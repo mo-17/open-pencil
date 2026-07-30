@@ -18,9 +18,16 @@ import { activeTab } from '@/app/tabs'
 const { providerID, providerDef, modelID, customModelID } = useAIChat()
 const { dialogs } = useI18n()
 
-const { status, initializing = false } = defineProps<{
+const {
+  status,
+  initializing = false,
+  stopping = false,
+  stopRetryAvailable = false
+} = defineProps<{
   status: 'ready' | 'submitted' | 'streaming' | 'error'
   initializing?: boolean
+  stopping?: boolean
+  stopRetryAvailable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -131,14 +138,23 @@ function handleSubmit(e: Event) {
           @copy.stop
           @cut.stop
         />
-        <Tip v-if="isStreaming" :label="dialogs.stopGenerating">
+        <Tip
+          v-if="isStreaming"
+          :label="
+            stopRetryAvailable ? 'Force stop' : stopping ? 'Stopping…' : dialogs.stopGenerating
+          "
+        >
           <button
             type="button"
             data-test-id="chat-stop-button"
             :class="stopButton.base"
+            :disabled="stopping"
+            :aria-busy="stopping || undefined"
             @click="emit('stop')"
           >
-            <icon-lucide-square class="size-3" />
+            <icon-lucide-loader-circle v-if="stopping" class="size-3 animate-spin" />
+            <icon-lucide-octagon-alert v-else-if="stopRetryAvailable" class="size-3" />
+            <icon-lucide-square v-else class="size-3" />
           </button>
         </Tip>
         <Tip v-else :label="dialogs.sendMessage">

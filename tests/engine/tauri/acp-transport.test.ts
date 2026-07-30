@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
 
-import { buildOpenPencilMcpServerConfig, type ACPChatTransport } from '@/app/ai/acp/transport'
+import { ACP_AGENTS } from '@open-pencil/core/constants'
+
+import { ACPChatTransport, buildOpenPencilMcpServerConfig } from '@/app/ai/acp/transport'
 import { createACPTransport } from '@/app/ai/chat/transports'
 import * as automationMcp from '@/app/automation/mcp/spawn'
 
@@ -99,17 +101,31 @@ async function waitForRequest(
   throw new Error(`Timed out waiting for ${method} request #${occurrence}`)
 }
 
-async function readChunks(stream: ReadableStream<UIMessageChunk>): Promise<UIMessageChunk[]> {
+async function readChunks(
+  stream: ReadableStream<UIMessageChunk>,
+  onChunk: (chunk: UIMessageChunk) => void = () => undefined
+): Promise<UIMessageChunk[]> {
   const chunks: UIMessageChunk[] = []
   const reader = stream.getReader()
   while (true) {
     const result = await reader.read()
     if (result.done) return chunks
     chunks.push(result.value)
+    onChunk(result.value)
   }
 }
 
-function userMessage(text: string) {
+async function waitFor(check: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (check()) return
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0)
+    })
+  }
+  throw new Error('Timed out waiting for ACP stream output')
+}
+
+function userMessage(text: string, abortSignal?: AbortSignal) {
   return {
     trigger: 'submit-message' as const,
     chatId: 'chat-1',
@@ -117,7 +133,7 @@ function userMessage(text: string) {
     messages: [
       { id: `user-${text}`, role: 'user' as const, parts: [{ type: 'text' as const, text }] }
     ],
-    abortSignal: undefined
+    abortSignal
   }
 }
 
@@ -352,16 +368,130 @@ describe('Tauri ACP transport', () => {
     await transport.connect()
 
     const stream = await transport.sendMessages(userMessage('pending prompt'))
-    const chunksPromise = readChunks(stream)
+    let sawRunningTool = false
+    const chunksPromise = readChunks(stream, (chunk) => {
+      if (chunk.type === 'tool-input-available' && chunk.toolCallId === 'render-running') {
+        sawRunningTool = true
+      }
+    })
     await waitForRequest(agent.requests, 'session/prompt')
+    agent.notify({
+      sessionId: 'session-1',
+      update: {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'render-running',
+        title: 'Render',
+        kind: 'edit',
+        status: 'in_progress',
+        rawInput: { jsx: '<Frame />' }
+      }
+    })
+    await waitFor(() => sawRunningTool)
     agent.terminate()
 
     const chunks = await chunksPromise
+    const toolErrorIndex = chunks.findIndex(
+      (chunk) => chunk.type === 'tool-output-error' && chunk.toolCallId === 'render-running'
+    )
+    const transportErrorIndex = chunks.findIndex((chunk) => chunk.type === 'error')
+    expect(toolErrorIndex).toBeGreaterThanOrEqual(0)
+    expect(toolErrorIndex).toBeLessThan(transportErrorIndex)
+    expect(chunks[toolErrorIndex]).toEqual({
+      type: 'tool-output-error',
+      toolCallId: 'render-running',
+      errorText: 'Agent process exited unexpectedly.',
+      providerExecuted: true
+    })
     expect(chunks).toContainEqual({
       type: 'error',
       errorText: 'Agent process exited unexpectedly.'
     })
     expect(chunks.at(-1)).toEqual({ type: 'finish', finishReason: 'error' })
+    await transport.destroy()
+  })
+
+  test('drains the cancelled prompt before closing its stream or starting the next turn', async () => {
+    const agent = await installFakeACPAgent()
+    let firstPromptReply: JsonRpcReply | null = null
+    let promptCount = 0
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+      else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'session-1', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        promptCount += 1
+        if (promptCount === 1) firstPromptReply = reply
+        else reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = await createACPTransport('acp:codex')
+    await transport.connect()
+
+    const controller = new AbortController()
+    const stream = await transport.sendMessages(userMessage('cancel prompt', controller.signal))
+    const chunksPromise = readChunks(stream)
+    await waitForRequest(agent.requests, 'session/prompt')
+    controller.abort()
+
+    await waitForRequest(agent.requests, 'session/cancel')
+    const nextStreamPromise = transport.sendMessages(userMessage('next prompt'))
+    const beforeCancelledReply = await Promise.race([
+      chunksPromise.then(() => 'closed'),
+      nextStreamPromise.then(() => 'next-started'),
+      new Promise<'draining'>((resolve) => {
+        setTimeout(() => resolve('draining'), 20)
+      })
+    ])
+    expect(beforeCancelledReply).toBe('draining')
+    expect(agent.requests.filter((request) => request.method === 'session/prompt')).toHaveLength(1)
+
+    if (!firstPromptReply) throw new Error('Missing first prompt reply handle')
+    firstPromptReply.respond({ stopReason: 'cancelled' })
+    const chunks = await chunksPromise
+    expect(chunks.at(-1)).toEqual({ type: 'finish', finishReason: 'stop' })
+    expect(chunks.some((chunk) => chunk.type === 'error')).toBe(false)
+    await readChunks(await nextStreamPromise)
+    expect(agent.requests.filter((request) => request.method === 'session/prompt')).toHaveLength(2)
+    await transport.destroy()
+  })
+
+  test('invalidates an ACP session when cancellation does not settle before the drain timeout', async () => {
+    const agent = await installFakeACPAgent()
+    let sessionCount = 0
+    let promptCount = 0
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+      else if (request.method === 'session/new') {
+        sessionCount += 1
+        reply.respond({
+          sessionId: `session-${sessionCount}`,
+          configOptions: TEST_CONFIG_OPTIONS
+        })
+      } else if (request.method === 'session/prompt') {
+        promptCount += 1
+        if (promptCount > 1) reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const agentDef = ACP_AGENTS.find((candidate) => candidate.id === 'codex')
+    if (!agentDef) throw new Error('Missing Codex ACP agent definition')
+    const transport = new ACPChatTransport({
+      agentDef,
+      cwd: '/Users/tester',
+      cancelDrainTimeoutMs: 20
+    })
+
+    const controller = new AbortController()
+    const chunksPromise = readChunks(
+      await transport.sendMessages(userMessage('stuck prompt', controller.signal))
+    )
+    await waitForRequest(agent.requests, 'session/prompt')
+    controller.abort()
+
+    const chunks = await chunksPromise
+    expect(chunks.at(-1)).toEqual({ type: 'finish', finishReason: 'stop' })
+    await readChunks(await transport.sendMessages(userMessage('replacement prompt')))
+    expect(sessionCount).toBe(2)
+    expect(promptCount).toBe(2)
     await transport.destroy()
   })
 

@@ -51,3 +51,15 @@ export function rejectCurrentPermission() {
     outcome: { outcome: 'selected', optionId: findRejectOption(entry.request) }
   })
 }
+
+export function cancelPermissionsForSession(sessionId: string): void {
+  const cancelled = permissionQueue.value.filter((entry) => entry.request.sessionId === sessionId)
+  if (cancelled.length === 0) return
+
+  const cancelledEntries = new Set(cancelled)
+  permissionQueue.value = permissionQueue.value.filter((entry) => !cancelledEntries.has(entry))
+  for (const entry of cancelled) {
+    clearTimeout(entry.timer)
+    entry.resolve({ outcome: { outcome: 'cancelled' } })
+  }
+}

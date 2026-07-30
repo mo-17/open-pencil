@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
+import { INTERRUPTED_TOOL_ERROR } from '@/app/ai/chat/interruption'
 import {
   hasErrorOutput,
   toolErrorText,
@@ -62,5 +63,15 @@ describe('chat tool presentation', () => {
       expect(toolState({ state: 'output-available', output: { result: {}, error } })).toBe('done')
     }
     expect(toolState({ state: 'input-available' })).toBe('pending')
+  })
+
+  test('presents an interrupted unfinished tool as cancelled instead of failed', () => {
+    expect(toolState({ state: 'output-error', errorText: INTERRUPTED_TOOL_ERROR })).toBe(
+      'cancelled'
+    )
+  })
+
+  test('presents a denied tool as terminal instead of leaving it running', () => {
+    expect(toolState({ state: 'output-denied' })).toBe('denied')
   })
 })

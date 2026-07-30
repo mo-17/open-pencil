@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { refAutoReset, useClipboard } from '@vueuse/core'
-import { computed, markRaw, nextTick, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { getAcpDebugText, clearAcpDebugLog, hasAcpDebugEntries } from '@/app/ai/acp/transport'
 import { useChatSubmissionPending } from '@/app/ai/chat/drafts'
+import { finalizeInterruptedToolParts } from '@/app/ai/chat/interruption'
 import { copyChatLog } from '@/app/ai/debug'
 import { clearToolLogEntries, didHitStepLimit } from '@/app/ai/tools'
 import { activeTab } from '@/app/tabs'
@@ -23,13 +24,24 @@ import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 const IS_DEV = import.meta.env.DEV
 
-const { isConfigured, providerID, ensureChat, resetChat } = useAIChat()
+const { isConfigured, providerID, ensureChat, resetChat, forceStopChat } = useAIChat()
 const { copy } = useClipboard()
 const { dialogs } = useI18n()
 
 const chat = ref<Chat<UIMessage> | null>(null)
 const submissionPending = useChatSubmissionPending(() => activeTab.value?.store)
+const stopRequested = ref(false)
+const stopRetryAvailable = ref(false)
+const STOP_RETRY_DELAY_MS = 2_000
 let refreshGeneration = 0
+let stopRetryTimer: ReturnType<typeof setTimeout> | undefined
+
+function resetStopState() {
+  clearTimeout(stopRetryTimer)
+  stopRetryTimer = undefined
+  stopRequested.value = false
+  stopRetryAvailable.value = false
+}
 
 async function refreshChat() {
   const generation = ++refreshGeneration
@@ -73,13 +85,31 @@ const showContinue = computed(() => {
   return last.role === 'assistant' && didHitStepLimit()
 })
 
-function scrollToBottom() {
-  nextTick(() => {
-    messagesEnd.value?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  })
+const scrollRevision = computed(() => {
+  const list = messages.value
+  const last = list[list.length - 1]
+  const parts = last?.parts ?? []
+  const tail = parts[parts.length - 1] as JsonObject | undefined
+  const textLength = typeof tail?.text === 'string' ? tail.text.length : 0
+  const state = typeof tail?.state === 'string' ? tail.state : ''
+  return `${list.length}:${parts.length}:${textLength}:${state}:${status.value}`
+})
+
+let scrollTimer: ReturnType<typeof setTimeout> | undefined
+function scheduleScrollToBottom() {
+  if (scrollTimer) return
+  scrollTimer = setTimeout(() => {
+    scrollTimer = undefined
+    void nextTick(() => {
+      messagesEnd.value?.scrollIntoView({ behavior: 'auto', block: 'end' })
+    })
+  }, 80)
 }
 
-watch(messages, scrollToBottom, { deep: true })
+watch(scrollRevision, scheduleScrollToBottom)
+watch(status, (nextStatus) => {
+  if (nextStatus !== 'streaming' && nextStatus !== 'submitted') resetStopState()
+})
 watch(
   () => chat.value?.error,
   (error) => {
@@ -87,8 +117,13 @@ watch(
   }
 )
 watch([() => activeTab.value?.id, providerID], refreshChat)
+onBeforeUnmount(() => {
+  clearTimeout(scrollTimer)
+  clearTimeout(stopRetryTimer)
+})
 
 async function handleSubmit(text: string, restoreInput: () => void = () => undefined) {
+  resetStopState()
   const requestedTab = activeTab.value
   const requestedSubmissionPending = useChatSubmissionPending(requestedTab?.store)
   if (
@@ -138,8 +173,41 @@ async function handleSubmit(text: string, restoreInput: () => void = () => undef
   }
 }
 
-function handleStop() {
-  chat.value?.stop()
+async function handleStop() {
+  const current = chat.value
+  if (!current) return
+  if (stopRetryAvailable.value) {
+    stopRetryAvailable.value = false
+    stopRequested.value = true
+    chat.value = null
+    await forceStopChat()
+    resetStopState()
+    await refreshChat()
+    return
+  }
+  if (stopRequested.value) return
+  stopRequested.value = true
+  void current.stop().then(
+    () => {
+      current.messages = finalizeInterruptedToolParts(current.messages)
+      return undefined
+    },
+    () => {
+      current.messages = finalizeInterruptedToolParts(current.messages)
+      return undefined
+    }
+  )
+  clearTimeout(stopRetryTimer)
+  stopRetryTimer = setTimeout(() => {
+    stopRetryTimer = undefined
+    if (
+      chat.value === current &&
+      (current.status === 'streaming' || current.status === 'submitted')
+    ) {
+      stopRequested.value = false
+      stopRetryAvailable.value = true
+    }
+  }, STOP_RETRY_DELAY_MS)
 }
 
 async function handleCopyDebug() {
@@ -156,7 +224,8 @@ async function handleCopyAcpLog() {
 
 async function handleClearChat() {
   chat.value = null
-  resetChat()
+  resetStopState()
+  await resetChat()
   clearToolLogEntries()
   clearAcpDebugLog()
   await refreshChat()
@@ -261,6 +330,8 @@ async function handleClearChat() {
       <ChatInput
         :status="status"
         :initializing="submissionPending"
+        :stopping="stopRequested"
+        :stop-retry-available="stopRetryAvailable"
         @submit="handleSubmit"
         @stop="handleStop"
       />
