@@ -209,6 +209,37 @@ function formatMessageStats(messages: UIMessage[]): string {
   return lines.join('\n')
 }
 
+export function formatConversationMessage(message: UIMessage): string {
+  const header = `--- ${message.role.toUpperCase()} (${message.id}) ---`
+  const parts: string[] = []
+
+  for (const part of message.parts) {
+    const p = part as JsonObject
+    if (p.type === 'text') {
+      parts.push(`  ${p.text as string}`)
+    } else if (p.type === 'file') {
+      const filename = typeof p.filename === 'string' && p.filename ? p.filename : 'attachment'
+      const mediaType = typeof p.mediaType === 'string' ? p.mediaType : 'unknown media type'
+      parts.push(`  [file] ${filename} (${mediaType}; payload omitted)`)
+    } else if (p.type === 'reasoning') {
+      let reasoning = ''
+      if (typeof p.text === 'string') reasoning = p.text
+      else if (typeof p.content === 'string') reasoning = p.content
+      parts.push(`  [reasoning] ${reasoning}`)
+    } else if (
+      p.type === 'tool-invocation' ||
+      p.toolInvocation ||
+      (typeof p.type === 'string' && p.type.startsWith('tool-'))
+    ) {
+      parts.push(formatToolPart(p))
+    } else {
+      parts.push(`  [${typeof p.type === 'string' ? p.type : 'unknown'}] ${JSON.stringify(p)}`)
+    }
+  }
+
+  return `${header}\n${parts.join('\n')}`
+}
+
 export function serializeChatLog(messages: UIMessage[]): string {
   const sections: string[] = []
 
@@ -247,30 +278,7 @@ export function serializeChatLog(messages: UIMessage[]): string {
 
   sections.push('=== CONVERSATION ===')
   for (const msg of messages) {
-    const header = `--- ${msg.role.toUpperCase()} (${msg.id}) ---`
-    const parts: string[] = []
-
-    for (const part of msg.parts) {
-      const p = part as JsonObject
-      if (p.type === 'text') {
-        parts.push(`  ${p.text as string}`)
-      } else if (p.type === 'reasoning') {
-        let reasoning = ''
-        if (typeof p.text === 'string') reasoning = p.text
-        else if (typeof p.content === 'string') reasoning = p.content
-        parts.push(`  [reasoning] ${reasoning}`)
-      } else if (
-        p.type === 'tool-invocation' ||
-        p.toolInvocation ||
-        (typeof p.type === 'string' && p.type.startsWith('tool-'))
-      ) {
-        parts.push(formatToolPart(p))
-      } else {
-        parts.push(`  [${typeof p.type === 'string' ? p.type : 'unknown'}] ${JSON.stringify(p)}`)
-      }
-    }
-
-    sections.push(`${header}\n${parts.join('\n')}`)
+    sections.push(formatConversationMessage(msg))
   }
 
   return sections.join('\n\n')

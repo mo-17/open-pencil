@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import type { ToolDebugLog } from '@open-pencil/core/tools'
 
-import { formatDiagnostics } from '@/app/ai/debug'
+import { formatConversationMessage, formatDiagnostics } from '@/app/ai/debug'
 
 describe('AI debug diagnostics', () => {
   test('labels all locally collected tool metrics as direct/local', () => {
@@ -29,5 +29,29 @@ describe('AI debug diagnostics', () => {
       'Direct/local mutating calls: 1',
       'Direct/local errors: 1'
     ])
+  })
+
+  test('omits visual attachment payloads from copied debug logs', () => {
+    const secretPayload = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB'
+    const log = formatConversationMessage({
+      id: 'user-image',
+      role: 'user',
+      parts: [
+        { type: 'text', text: 'Recreate this' },
+        {
+          type: 'file',
+          filename: 'reference.png',
+          mediaType: 'image/png',
+          url: `data:image/png;base64,${secretPayload}`
+        }
+      ],
+      metadata: {
+        visualAttachments: [{ thumbnail: { url: `data:image/png;base64,${secretPayload}-thumb` } }]
+      }
+    })
+
+    expect(log).toContain('[file] reference.png (image/png; payload omitted)')
+    expect(log).not.toContain('data:image')
+    expect(log).not.toContain(secretPayload)
   })
 })
