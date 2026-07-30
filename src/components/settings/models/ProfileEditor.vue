@@ -16,7 +16,13 @@ import {
   type ProviderConnectionTestFailureReason
 } from '@/app/ai/chat/connection-test'
 import {
+  MAX_REMOTE_MCP_SERVERS_PER_MODEL,
+  remoteMcpSettings,
+  type RemoteMcpServerId
+} from '@/app/ai/mcp'
+import {
   aiModelSettings,
+  createDefaultAIModelFeaturePolicy,
   createModelProfileDraft,
   findModelConnectionForDraft,
   modelConnectionCredentialStatus,
@@ -69,6 +75,21 @@ const hasExistingKey = computed(() => keyStatus.value === 'configured')
 const canDelete = computed(() => Boolean(profileId) && aiModelSettings.value.models.length > 1)
 const toolsEnabled = capabilityModel('tools')
 const visionEnabled = capabilityModel('vision')
+const supportsWebSearch = computed(() => draft.providerID === 'openrouter')
+const supportsCodeExecution = computed(() => draft.providerID === 'openai')
+const remoteMcpServers = computed(() => remoteMcpSettings.value.servers)
+const webSearchEnabled = computed({
+  get: () => draft.featurePolicy.webSearch.enabled,
+  set: (enabled: boolean) => {
+    draft.featurePolicy.webSearch.enabled = enabled
+  }
+})
+const codeExecutionEnabled = computed({
+  get: () => draft.featurePolicy.codeExecution.enabled,
+  set: (enabled: boolean) => {
+    draft.featurePolicy.codeExecution.enabled = enabled
+  }
+})
 const canSave = computed(
   () =>
     Boolean(draft.name.trim()) &&
@@ -93,6 +114,32 @@ function capabilityModel(capability: AIModelCapability) {
   })
 }
 
+function remoteMcpServerEnabled(id: RemoteMcpServerId): boolean {
+  return draft.featurePolicy.mcpServerIds.includes(id)
+}
+
+function setRemoteMcpServerEnabled(id: RemoteMcpServerId, enabled: boolean): void {
+  saveError.value = null
+  if (!enabled) {
+    draft.featurePolicy.mcpServerIds = draft.featurePolicy.mcpServerIds.filter(
+      (serverId) => serverId !== id
+    )
+    return
+  }
+  if (draft.featurePolicy.mcpServerIds.includes(id)) return
+  if (draft.featurePolicy.mcpServerIds.length >= MAX_REMOTE_MCP_SERVERS_PER_MODEL) {
+    saveError.value = dialogs.value.modelFeatureRemoteMcpLimit({
+      count: MAX_REMOTE_MCP_SERVERS_PER_MODEL
+    })
+    return
+  }
+  draft.featurePolicy.mcpServerIds.push(id)
+}
+
+function remoteMcpOrigin(url: string): string {
+  return new URL(url).origin
+}
+
 function resetConnectionTest(): void {
   connectionTestStatus.value = 'idle'
   connectionTestReason.value = null
@@ -111,6 +158,7 @@ function updateProvider(providerID: AIProviderID): void {
   draft.customModelID = ''
   draft.customBaseURL = ''
   draft.customAPIType = 'completions'
+  draft.featurePolicy = createDefaultAIModelFeaturePolicy()
   if (providerID.startsWith('acp:')) {
     draft.capabilities = ['tools']
     if (!draft.name.trim()) draft.name = providerDisplayName.value
@@ -315,6 +363,77 @@ void refreshKeyStatus()
           <div class="flex items-center justify-between gap-3">
             <span class="text-[11px] text-muted">{{ dialogs.modelCapabilityVision }}</span>
             <AppSwitch v-model="visionEnabled" :label="dialogs.modelCapabilityVision" />
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="supportsWebSearch || supportsCodeExecution || remoteMcpServers.length"
+        class="rounded border border-border p-2.5"
+      >
+        <p class="mb-2 text-[11px] font-medium text-surface">
+          {{ dialogs.modelOptionalFeatures }}
+        </p>
+        <div v-if="supportsWebSearch" class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-[11px] text-muted">{{ dialogs.modelFeatureWebSearch }}</p>
+            <p class="mt-0.5 text-[10px] text-muted/80">
+              {{ dialogs.modelFeatureWebSearchHint }}
+            </p>
+          </div>
+          <AppSwitch
+            v-model="webSearchEnabled"
+            :label="dialogs.modelFeatureWebSearch"
+            data-test-id="settings-model-web-search"
+          />
+        </div>
+        <div
+          v-if="supportsCodeExecution"
+          class="flex items-center justify-between gap-3"
+          :class="supportsWebSearch ? 'mt-2 border-t border-border pt-2' : ''"
+        >
+          <div>
+            <p class="text-[11px] text-muted">{{ dialogs.modelFeatureCodeExecution }}</p>
+            <p class="mt-0.5 text-[10px] text-muted/80">
+              {{ dialogs.modelFeatureCodeExecutionHint }}
+            </p>
+          </div>
+          <AppSwitch
+            v-model="codeExecutionEnabled"
+            :label="dialogs.modelFeatureCodeExecution"
+            data-test-id="settings-model-code-execution"
+          />
+        </div>
+        <div
+          v-if="remoteMcpServers.length"
+          class="flex flex-col gap-2"
+          :class="
+            supportsWebSearch || supportsCodeExecution ? 'mt-2 border-t border-border pt-2' : ''
+          "
+          data-test-id="settings-model-remote-mcp"
+        >
+          <div>
+            <p class="text-[11px] text-muted">{{ dialogs.modelFeatureRemoteMcp }}</p>
+            <p class="mt-0.5 text-[10px] text-muted/80">
+              {{ dialogs.modelFeatureRemoteMcpHint }}
+            </p>
+          </div>
+          <div
+            v-for="server in remoteMcpServers"
+            :key="server.id"
+            class="flex items-center justify-between gap-3 rounded bg-panel-field px-2 py-1.5"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-[11px] text-surface">{{ server.name }}</p>
+              <p class="truncate text-[9px] text-muted">
+                {{ remoteMcpOrigin(server.transport.url) }}
+              </p>
+            </div>
+            <AppSwitch
+              :model-value="remoteMcpServerEnabled(server.id)"
+              :label="server.name"
+              @update:model-value="setRemoteMcpServerEnabled(server.id, $event)"
+            />
           </div>
         </div>
       </div>

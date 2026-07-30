@@ -6,6 +6,7 @@ import { ACP_AGENTS, AI_PROVIDERS } from '@open-pencil/core/constants'
 
 import { aiModelSettings, modelConnection, modelConnectionCredentialStatus } from '@/app/ai/models'
 import type { CredentialStatus } from '@/app/settings/credentials/types'
+import RemoteMcpServersSection from '@/components/settings/mcp/RemoteMcpServersSection.vue'
 import ProfileEditor from '@/components/settings/models/ProfileEditor.vue'
 import RoleAssignments from '@/components/settings/models/RoleAssignments.vue'
 
@@ -164,5 +165,7 @@ watch(
       </div>
       <RoleAssignments />
     </section>
+
+    <RemoteMcpServersSection />
   </div>
 </template>
