@@ -76,6 +76,7 @@ interface ACPRequestLifecycle {
 interface ACPChatTransportOptions {
   agentDef: ACPAgentDef
   cwd?: string
+  mcpServers?: McpServer[]
   onConfigOptionsChange?: (options: readonly SessionConfigOption[]) => void
   cancelDrainTimeoutMs?: number
 }
@@ -305,6 +306,13 @@ export function buildOpenPencilMcpServerConfig(authToken: string | null): McpSer
   }
 }
 
+export function buildAcpMcpServerConfigs(
+  authToken: string | null,
+  remoteServers: readonly McpServer[] = []
+): McpServer[] {
+  return [buildOpenPencilMcpServerConfig(authToken), ...remoteServers]
+}
+
 function isMissingCommandError(message: string): boolean {
   const normalized = message.toLowerCase()
   return normalized.includes('enoent') || normalized.includes('program not found')
@@ -406,6 +414,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private pendingChild: TauriChild | null = null
   private agentDef: ACPAgentDef
   private cwd: string
+  private mcpServers: McpServer[]
   private onConfigOptionsChange: (options: readonly SessionConfigOption[]) => void
   private sentContext = false
   private runtimeContextDirty = true
@@ -418,6 +427,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   constructor(options: ACPChatTransportOptions) {
     this.agentDef = options.agentDef
     this.cwd = options.cwd ?? '.'
+    this.mcpServers = [...(options.mcpServers ?? [])]
     this.onConfigOptionsChange = options.onConfigOptionsChange ?? (() => undefined)
     this.cancelDrainTimeoutMs = options.cancelDrainTimeoutMs ?? ACP_CANCEL_DRAIN_TIMEOUT_MS
   }
@@ -634,6 +644,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
   async destroy(): Promise<void> {
     this.destroying = true
+    this.mcpServers = []
     this.publishConfigOptions([])
     if (this.requestLifecycle) {
       closeRequestLifecycle(this.requestLifecycle, new Error(TRANSPORT_DESTROYED_MESSAGE))
@@ -840,7 +851,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       const sessionResult = await requestWithLifecycle(lifecycle, () =>
         connection.newSession({
           cwd: this.cwd,
-          mcpServers: [buildOpenPencilMcpServerConfig(automationAuthToken)]
+          mcpServers: buildAcpMcpServerConfigs(automationAuthToken, this.mcpServers)
         })
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)

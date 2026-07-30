@@ -1,8 +1,20 @@
-import type { LanguageModel } from 'ai'
+import type { LanguageModel, ToolLoopAgentSettings, ToolSet } from 'ai'
+import { readonly, ref } from 'vue'
 
-import { createLanguageModel } from '@/app/ai/chat/model'
+import { createProviderModelRuntime } from '@/app/ai/chat/model'
+import {
+  createRemoteMcpRuntime,
+  MAX_REMOTE_MCP_TOOL_PAGES,
+  MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES,
+  mergeRemoteMcpTools,
+  REMOTE_MCP_DISCOVERY_TIMEOUT_MS,
+  REMOTE_MCP_INITIALIZATION_TIMEOUT_MS,
+  type RemoteMcpRuntime
+} from '@/app/ai/mcp'
 import { modelConnection, resolveAIModelRole } from '@/app/ai/models/store'
 import type { AIModelConnection, AIModelRole, ResolvedAIModelRole } from '@/app/ai/models/types'
+import type { ProviderCapabilityReport } from '@/app/ai/providers/types'
+import { settleRuntimeDisposals } from '@/app/ai/runtime-disposal'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import {
   initializeCredentialMigration,
@@ -14,6 +26,10 @@ export type DirectAIModelRuntime = {
   kind: 'direct'
   role: ResolvedAIModelRole
   model: LanguageModel
+  capabilities: ProviderCapabilityReport
+  providerTools: ToolSet
+  providerOptions?: ToolLoopAgentSettings['providerOptions']
+  dispose?: () => Promise<void>
 }
 
 export type ACPModelRuntime = {
@@ -23,8 +39,36 @@ export type ACPModelRuntime = {
 
 export type AIModelRuntime = DirectAIModelRuntime | ACPModelRuntime
 
+const mutableModelCredentialRevision = ref(0)
+export const modelCredentialRevision = readonly(mutableModelCredentialRevision)
+
+function combineRuntimeDisposers(
+  ...disposers: Array<(() => Promise<void>) | undefined>
+): (() => Promise<void>) | undefined {
+  const active = disposers.filter(
+    (dispose): dispose is () => Promise<void> => dispose !== undefined
+  )
+  if (active.length === 0) return undefined
+  let promise: Promise<void> | undefined
+  return () => {
+    promise ??= settleRuntimeDisposals(active, 'Failed to dispose AI model runtime')
+    return promise
+  }
+}
+
 export function modelConnectionCredentialRef(connection: AIModelConnection): CredentialRef {
   return providerCredentialRef(connection.providerID, connection.credentialProfileId)
+}
+
+function assertProviderFeatureSupport(
+  enabled: boolean,
+  state: string,
+  feature: string,
+  providerID: string
+): void {
+  if (enabled && state !== 'supported') {
+    throw new Error(`${feature} is not supported by the ${providerID} provider adapter`)
+  }
 }
 
 export async function modelConnectionCredentialStatus(
@@ -42,6 +86,7 @@ export async function setModelConnectionAPIKey(connectionId: string, value: stri
   const key = value.trim()
   if (key) await appCredentialServices.manager.set(reference, key)
   else await appCredentialServices.manager.clear(reference)
+  mutableModelCredentialRevision.value++
 }
 
 export async function resolveModelConnectionAPIKey(connectionId: string): Promise<string | null> {
@@ -69,16 +114,79 @@ export async function createAIModelRuntime(role: AIModelRole): Promise<AIModelRu
 
   const apiKey = await resolveModelConnectionAPIKey(resolved.connection.id)
   if (!apiKey) throw new Error(`Credential is unavailable for the ${role} model role`)
-  return {
-    kind: 'direct',
-    role: resolved,
-    model: createLanguageModel({
+  const providerRuntime = createProviderModelRuntime(
+    {
       providerID: resolved.connection.providerID,
       apiKey,
       modelID: resolved.profile.modelID,
       customModelID: resolved.profile.customModelID,
       customBaseURL: resolved.connection.customBaseURL,
       customAPIType: resolved.connection.customAPIType
-    })
+    },
+    {
+      webSearch: resolved.profile.featurePolicy.webSearch,
+      codeExecution: resolved.profile.featurePolicy.codeExecution
+    }
+  )
+  let remoteMcpRuntime: RemoteMcpRuntime | undefined
+  let providerTools = providerRuntime.providerTools
+  try {
+    assertProviderFeatureSupport(
+      resolved.profile.featurePolicy.webSearch.enabled,
+      providerRuntime.capabilities.webSearch.state,
+      'Web search',
+      resolved.connection.providerID
+    )
+    assertProviderFeatureSupport(
+      resolved.profile.featurePolicy.codeExecution.enabled,
+      providerRuntime.capabilities.codeExecution.state,
+      'Code execution',
+      resolved.connection.providerID
+    )
+    if (role === 'design' && resolved.profile.featurePolicy.mcpServerIds.length > 0) {
+      remoteMcpRuntime = await createRemoteMcpRuntime(resolved.profile.featurePolicy.mcpServerIds)
+      providerTools = mergeRemoteMcpTools(providerTools, remoteMcpRuntime.tools)
+    }
+  } catch (error) {
+    await Promise.allSettled([
+      Promise.resolve().then(() => providerRuntime.dispose?.()),
+      Promise.resolve().then(() => remoteMcpRuntime?.dispose())
+    ])
+    throw error
+  }
+
+  const providerDispose = providerRuntime.dispose
+  const dispose = combineRuntimeDisposers(
+    providerDispose ? () => providerDispose() : undefined,
+    remoteMcpRuntime ? () => remoteMcpRuntime.dispose() : undefined
+  )
+  const capabilities = remoteMcpRuntime
+    ? {
+        ...providerRuntime.capabilities,
+        mcpTools: {
+          state: 'supported' as const,
+          owner: 'application' as const,
+          evidence: 'user' as const,
+          constraints: {
+            transport: 'streamable-http',
+            directFetch: 'webview',
+            requiresCors: true,
+            serverCount: resolved.profile.featurePolicy.mcpServerIds.length,
+            maxToolPagesPerServer: MAX_REMOTE_MCP_TOOL_PAGES,
+            maxTransportResponseBytes: MAX_REMOTE_MCP_TRANSPORT_RESPONSE_BYTES,
+            discoveryTimeoutMs: REMOTE_MCP_DISCOVERY_TIMEOUT_MS,
+            initializationTimeoutMs: REMOTE_MCP_INITIALIZATION_TIMEOUT_MS
+          }
+        }
+      }
+    : providerRuntime.capabilities
+  return {
+    kind: 'direct',
+    role: resolved,
+    model: providerRuntime.model,
+    capabilities,
+    providerTools,
+    providerOptions: providerRuntime.providerOptions,
+    dispose
   }
 }

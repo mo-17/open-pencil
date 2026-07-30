@@ -7,7 +7,11 @@ import type { FileUIPart, UIMessageChunk } from 'ai'
 import { encodeBase64 } from '@open-pencil/core/bytes'
 import { ACP_AGENTS } from '@open-pencil/core/constants'
 
-import { ACPChatTransport, buildOpenPencilMcpServerConfig } from '@/app/ai/acp/transport'
+import {
+  ACPChatTransport,
+  buildAcpMcpServerConfigs,
+  buildOpenPencilMcpServerConfig
+} from '@/app/ai/acp/transport'
 import { createACPTransport } from '@/app/ai/chat/transports'
 import * as automationMcp from '@/app/automation/mcp/spawn'
 
@@ -223,6 +227,19 @@ describe('Tauri ACP transport', () => {
       url: 'http://127.0.0.1:7600/mcp',
       headers: []
     })
+  })
+
+  test('appends selected remote MCP servers to ACP session configuration', () => {
+    const remote = {
+      type: 'http' as const,
+      name: 'remote-mcp-0123456789abcdef',
+      url: 'https://mcp.example.com/tools',
+      headers: [{ name: 'Authorization', value: 'Bearer runtime-only' }]
+    }
+    expect(buildAcpMcpServerConfigs(TEST_AUTOMATION_AUTH_TOKEN, [remote])).toEqual([
+      buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN),
+      remote
+    ])
   })
 
   test('uses Tauri home directory for transport cwd', async () => {

@@ -1,5 +1,6 @@
 import { AI_PROVIDERS } from '@open-pencil/core/constants'
 
+import { remoteMcpCredentialRefs } from '@/app/ai/mcp/credentials'
 import { aiModelSettings, modelConnectionCredentialRef } from '@/app/ai/models'
 import { VECTORIZE_CREDENTIAL_REFS } from '@/app/editor/vectorize/credentials'
 import { storageCredentialRefs, storageProviderRegistry } from '@/app/integrations/storage'
@@ -33,6 +34,7 @@ export function appCredentialRefs(): CredentialRef[] {
     PEXELS_CREDENTIAL,
     UNSPLASH_CREDENTIAL,
     ...VECTORIZE_CREDENTIAL_REFS,
+    ...remoteMcpCredentialRefs(),
     ...storageCredentials
   ])
 }

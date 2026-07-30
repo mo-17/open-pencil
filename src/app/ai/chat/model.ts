@@ -1,7 +1,11 @@
 import type { LanguageModel } from 'ai'
 
 import { modelProviderAdapter } from '@/app/ai/providers/registry'
-import type { ModelConfig } from '@/app/ai/providers/types'
+import type {
+  ModelConfig,
+  ProviderFeaturePolicy,
+  ProviderModelRuntime
+} from '@/app/ai/providers/types'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
 
@@ -25,5 +29,12 @@ function desktopFetch(): typeof fetch | undefined {
 }
 
 export function createLanguageModel(config: ModelConfig): LanguageModel {
-  return modelProviderAdapter(config.providerID).create(config, { fetch: desktopFetch() })
+  return createProviderModelRuntime(config).model
+}
+
+export function createProviderModelRuntime(
+  config: ModelConfig,
+  policy?: ProviderFeaturePolicy
+): ProviderModelRuntime {
+  return modelProviderAdapter(config.providerID).create(config, { fetch: desktopFetch() }, policy)
 }

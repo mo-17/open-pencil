@@ -9,6 +9,16 @@ export type AIModelRoleAssignment = AIModelProfileId | 'design' | null
 export type AIModelCapability = (typeof AI_MODEL_CAPABILITIES)[number]
 export type OptionalAIModelRole = Exclude<AIModelRole, 'design'>
 
+export type AIModelFeaturePolicy = {
+  webSearch: {
+    enabled: boolean
+  }
+  codeExecution: {
+    enabled: boolean
+  }
+  mcpServerIds: string[]
+}
+
 export type AIModelConnection = {
   id: string
   providerID: AIProviderID
@@ -25,6 +35,7 @@ export type AIModelProfile = {
   customModelID: string
   maxOutputTokens: number
   capabilities: AIModelCapability[]
+  featurePolicy: AIModelFeaturePolicy
 }
 
 export type AIModelAssignments = {
@@ -35,7 +46,7 @@ export type AIModelAssignments = {
 }
 
 export type AIModelSettings = {
-  version: 1
+  version: 2
   connections: AIModelConnection[]
   models: AIModelProfile[]
   assignments: AIModelAssignments
@@ -52,6 +63,7 @@ export type AIModelProfileDraft = {
   customAPIType: 'completions' | 'responses'
   maxOutputTokens: number
   capabilities: AIModelCapability[]
+  featurePolicy: AIModelFeaturePolicy
 }
 
 export type ResolvedAIModelRole = {

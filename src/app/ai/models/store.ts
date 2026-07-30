@@ -7,6 +7,7 @@ import {
   type AIProviderID
 } from '@open-pencil/core/constants'
 
+import { isRemoteMcpServerId, MAX_REMOTE_MCP_SERVERS_PER_MODEL } from '@/app/ai/mcp/types'
 import {
   readAIModelSettingsStorage,
   readLegacyAIModelStorage,
@@ -15,6 +16,7 @@ import {
 import type {
   AIModelCapability,
   AIModelConnection,
+  AIModelFeaturePolicy,
   AIModelProfile,
   AIModelProfileDraft,
   AIModelProfileId,
@@ -58,6 +60,41 @@ function normalizedMaxOutputTokens(value: unknown): number {
     : DEFAULT_MAX_OUTPUT_TOKENS
 }
 
+export function createDefaultAIModelFeaturePolicy(): AIModelFeaturePolicy {
+  return {
+    webSearch: { enabled: false },
+    codeExecution: { enabled: false },
+    mcpServerIds: []
+  }
+}
+
+function parseFeatureEnabled(value: unknown): boolean {
+  return isRecord(value) && value.enabled === true
+}
+
+function parseFeaturePolicy(value: unknown): AIModelFeaturePolicy {
+  if (!isRecord(value)) return createDefaultAIModelFeaturePolicy()
+  const mcpServerIds = Array.isArray(value.mcpServerIds)
+    ? [...new Set(value.mcpServerIds.filter(isRemoteMcpServerId))].slice(
+        0,
+        MAX_REMOTE_MCP_SERVERS_PER_MODEL
+      )
+    : []
+  return {
+    webSearch: { enabled: parseFeatureEnabled(value.webSearch) },
+    codeExecution: { enabled: parseFeatureEnabled(value.codeExecution) },
+    mcpServerIds
+  }
+}
+
+function cloneFeaturePolicy(policy: AIModelFeaturePolicy): AIModelFeaturePolicy {
+  return {
+    webSearch: { ...policy.webSearch },
+    codeExecution: { ...policy.codeExecution },
+    mcpServerIds: [...policy.mcpServerIds]
+  }
+}
+
 function parseConnection(value: unknown): AIModelConnection | null {
   if (!isRecord(value)) return null
   const id = stringValue(value.id)
@@ -72,7 +109,11 @@ function parseConnection(value: unknown): AIModelConnection | null {
   }
 }
 
-function parseProfile(value: unknown, connectionIds: Set<string>): AIModelProfile | null {
+function parseProfile(
+  value: unknown,
+  connectionIds: Set<string>,
+  sourceVersion: 1 | 2
+): AIModelProfile | null {
   if (!isRecord(value)) return null
   const id = stringValue(value.id)
   const connectionId = stringValue(value.connectionId)
@@ -87,7 +128,13 @@ function parseProfile(value: unknown, connectionIds: Set<string>): AIModelProfil
     modelID: stringValue(value.modelID),
     customModelID: stringValue(value.customModelID),
     maxOutputTokens: normalizedMaxOutputTokens(value.maxOutputTokens),
-    capabilities: [...new Set(capabilities)]
+    capabilities: [...new Set(capabilities)],
+    // Version 1 predates optional network/code capabilities. Ignore any
+    // unexpected forward fields so migration can never silently enable them.
+    featurePolicy:
+      sourceVersion === 2
+        ? parseFeaturePolicy(value.featurePolicy)
+        : createDefaultAIModelFeaturePolicy()
   }
 }
 
@@ -96,15 +143,16 @@ function optionalAssignment(value: unknown, modelIds: Set<string>): AIModelRoleA
   return typeof value === 'string' && modelIds.has(value) ? (value as AIModelProfileId) : null
 }
 
-function parseSettings(value: unknown): AIModelSettings | null {
-  if (!isRecord(value) || value.version !== 1) return null
+export function parseAIModelSettings(value: unknown): AIModelSettings | null {
+  if (!isRecord(value) || (value.version !== 1 && value.version !== 2)) return null
+  const sourceVersion = value.version
   const connections = Array.isArray(value.connections)
     ? value.connections.map(parseConnection).filter((connection) => connection !== null)
     : []
   const connectionIds = new Set(connections.map((connection) => connection.id))
   const models = Array.isArray(value.models)
     ? value.models
-        .map((profile) => parseProfile(profile, connectionIds))
+        .map((profile) => parseProfile(profile, connectionIds, sourceVersion))
         .filter((profile) => profile !== null)
     : []
   if (!models.length) return null
@@ -129,7 +177,7 @@ function parseSettings(value: unknown): AIModelSettings | null {
     const invalidVision = role === 'vision' && !profile?.capabilities.includes('vision')
     if (invalidACP || invalidVision) assignments[role] = null
   }
-  return { version: 1, connections, models, assignments }
+  return { version: 2, connections, models, assignments }
 }
 
 function legacySettings(): AIModelSettings {
@@ -144,7 +192,7 @@ function legacySettings(): AIModelSettings {
     : 'Design model'
   const maxOutputTokens = Number(readLegacyAIModelStorage('ai-max-output-tokens'))
   return {
-    version: 1,
+    version: 2,
     connections: [
       {
         id: LEGACY_CONNECTION_ID,
@@ -165,7 +213,8 @@ function legacySettings(): AIModelSettings {
         maxOutputTokens: Number.isFinite(maxOutputTokens)
           ? maxOutputTokens
           : DEFAULT_MAX_OUTPUT_TOKENS,
-        capabilities: ['tools']
+        capabilities: ['tools'],
+        featurePolicy: createDefaultAIModelFeaturePolicy()
       }
     ],
     assignments: {
@@ -178,7 +227,13 @@ function legacySettings(): AIModelSettings {
 }
 
 function loadSettings(): AIModelSettings {
-  return parseSettings(readAIModelSettingsStorage()) ?? legacySettings()
+  const stored = readAIModelSettingsStorage()
+  const parsed = parseAIModelSettings(stored)
+  if (parsed) {
+    if (!isRecord(stored) || stored.version !== 2) writeAIModelSettingsStorage(parsed)
+    return parsed
+  }
+  return legacySettings()
 }
 
 export const aiModelSettings = ref<AIModelSettings>(loadSettings())
@@ -269,7 +324,8 @@ function draftForProfile(
     customBaseURL: connection.customBaseURL,
     customAPIType: connection.customAPIType,
     maxOutputTokens: profile.maxOutputTokens,
-    capabilities: [...profile.capabilities]
+    capabilities: [...profile.capabilities],
+    featurePolicy: cloneFeaturePolicy(profile.featurePolicy)
   }
 }
 
@@ -286,7 +342,8 @@ function newProfileDraft(connection: AIModelConnection | null): AIModelProfileDr
     customBaseURL: connection?.customBaseURL ?? '',
     customAPIType: connection?.customAPIType ?? 'completions',
     maxOutputTokens: DEFAULT_MAX_OUTPUT_TOKENS,
-    capabilities: ['tools']
+    capabilities: ['tools'],
+    featurePolicy: createDefaultAIModelFeaturePolicy()
   }
 }
 
@@ -319,7 +376,8 @@ export function saveModelProfileDraft(draft: AIModelProfileDraft): AIModelProfil
     modelID: draft.modelID.trim() || provider?.defaultModel || '',
     customModelID: draft.customModelID.trim(),
     maxOutputTokens: normalizedMaxOutputTokens(draft.maxOutputTokens),
-    capabilities: [...new Set(draft.capabilities)]
+    capabilities: [...new Set(draft.capabilities)],
+    featurePolicy: cloneFeaturePolicy(draft.featurePolicy)
   }
   const index = aiModelSettings.value.models.findIndex((model) => model.id === profile.id)
   if (index === -1) aiModelSettings.value.models.push(profile)
@@ -366,6 +424,17 @@ export function removeModelProfile(profileId: string): void {
       (connection) => connection.id !== removed.connectionId
     )
   }
+}
+
+export function removeRemoteMcpServerFromModelProfiles(serverId: string): number {
+  let changed = 0
+  for (const profile of aiModelSettings.value.models) {
+    const next = profile.featurePolicy.mcpServerIds.filter((id) => id !== serverId)
+    if (next.length === profile.featurePolicy.mcpServerIds.length) continue
+    profile.featurePolicy.mcpServerIds = next
+    changed += 1
+  }
+  return changed
 }
 
 export function setModelRoleAssignment(role: 'design', assignment: AIModelProfileId): void
@@ -432,11 +501,12 @@ export const designMaxOutputTokens = computed(
 export function modelSettingsSnapshot(): AIModelSettings {
   const settings = aiModelSettings.value
   return {
-    version: 1,
+    version: 2,
     connections: settings.connections.map((connection) => ({ ...connection })),
     models: settings.models.map((profile) => ({
       ...profile,
-      capabilities: [...profile.capabilities]
+      capabilities: [...profile.capabilities],
+      featurePolicy: cloneFeaturePolicy(profile.featurePolicy)
     })),
     assignments: { ...settings.assignments }
   }

@@ -1,4 +1,4 @@
-import type { LanguageModel } from 'ai'
+import type { LanguageModel, ToolLoopAgentSettings, ToolSet } from 'ai'
 
 import type { AIProviderID } from '@open-pencil/core/constants'
 
@@ -11,10 +11,55 @@ export type ModelConfig = {
   customAPIType: 'completions' | 'responses'
 }
 
-export type ModelProviderRuntime = {
+export type ModelProviderAdapterContext = {
   fetch?: typeof fetch
 }
 
+export type ProviderFeaturePolicy = {
+  webSearch?: {
+    enabled: boolean
+    engine?: 'auto' | 'native' | 'exa'
+    maxResults?: number
+  }
+  codeExecution?: {
+    enabled: boolean
+  }
+}
+
+export type ProviderCapabilityOwner = 'application' | 'provider' | 'gateway' | 'acp-agent'
+export type ProviderCapabilityEvidence = 'adapter' | 'catalog' | 'user' | 'probe'
+
+export type ProviderCapabilitySupport =
+  | {
+      state: 'supported'
+      owner: ProviderCapabilityOwner
+      api?: 'chat' | 'responses' | 'messages' | 'generate-content'
+      evidence: ProviderCapabilityEvidence
+      constraints?: Record<string, unknown>
+    }
+  | { state: 'unsupported'; reason: string }
+  | { state: 'unknown'; reason: string }
+
+export type ProviderCapabilityReport = {
+  functionTools: ProviderCapabilitySupport
+  imageInput: ProviderCapabilitySupport
+  webSearch: ProviderCapabilitySupport
+  codeExecution: ProviderCapabilitySupport
+  mcpTools: ProviderCapabilitySupport
+}
+
+export type ProviderModelRuntime = {
+  model: LanguageModel
+  capabilities: ProviderCapabilityReport
+  providerTools: ToolSet
+  providerOptions?: ToolLoopAgentSettings['providerOptions']
+  dispose?: () => Promise<void>
+}
+
 export interface ModelProviderAdapter {
-  create(config: ModelConfig, runtime: ModelProviderRuntime): LanguageModel
+  create(
+    config: ModelConfig,
+    context: ModelProviderAdapterContext,
+    policy?: ProviderFeaturePolicy
+  ): ProviderModelRuntime
 }
