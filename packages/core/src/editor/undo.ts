@@ -7,8 +7,12 @@ import type { UndoEntry } from '@open-pencil/scene-graph/undo'
 import { restoreSubtree, snapshotSubtree } from './clipboard/subtree-history'
 import { collectNodePositions, pushPositionUndo } from './history/position'
 import {
+  documentSnapshotChanged as hasDocumentSnapshotChanged,
+  restoreDocumentFromSnapshot as restoreDocumentSnapshot,
   restorePageFromSnapshot as restorePageSnapshot,
+  snapshotDocument as createDocumentSnapshot,
   snapshotPage as createPageSnapshot,
+  type DocumentSnapshot,
   type PageSnapshot
 } from './history/snapshot'
 import { textAutoResizeChanges } from './text/auto-resize'
@@ -187,12 +191,27 @@ export function createUndoActions(ctx: EditorContext) {
     ctx.requestRender()
   }
 
-  function snapshotPage(): PageSnapshot {
-    return createPageSnapshot(ctx.graph, ctx.state.currentPageId)
+  function snapshotPage(pageId: string = ctx.state.currentPageId): PageSnapshot {
+    return createPageSnapshot(ctx.graph, pageId)
   }
 
-  function restorePageFromSnapshot(snapshot: PageSnapshot) {
-    restorePageSnapshot(ctx, snapshot)
+  function restorePageFromSnapshot(
+    snapshot: PageSnapshot,
+    pageId: string = ctx.state.currentPageId
+  ) {
+    restorePageSnapshot(ctx, snapshot, pageId)
+  }
+
+  function snapshotDocument(): DocumentSnapshot {
+    return createDocumentSnapshot(ctx.graph, ctx.state.currentPageId)
+  }
+
+  function restoreDocumentFromSnapshot(snapshot: DocumentSnapshot) {
+    restoreDocumentSnapshot(ctx, snapshot)
+  }
+
+  function documentSnapshotChanged(snapshot: DocumentSnapshot): boolean {
+    return hasDocumentSnapshotChanged(ctx.graph, snapshot)
   }
 
   function pushUndoEntry(entry: UndoEntry) {
@@ -209,6 +228,9 @@ export function createUndoActions(ctx: EditorContext) {
     commitNodeUpdate,
     undoAction,
     redoAction,
+    snapshotDocument,
+    restoreDocumentFromSnapshot,
+    documentSnapshotChanged,
     snapshotPage,
     restorePageFromSnapshot,
     pushUndoEntry

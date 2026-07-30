@@ -11,6 +11,7 @@ import type * as valibot from 'valibot'
 
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
+import { abortError, isAbortError } from '#core/async-work'
 import type { FigmaAPI } from '#core/figma-api'
 
 import type { ToolCtx, ToolDef, ParamDef, ParamType } from './schema'
@@ -48,17 +49,47 @@ export interface StepBudget {
   max: number
 }
 
+export type AIAdapterExecutionStatus = 'success' | 'error' | 'aborted'
+
+export interface AIAdapterExecutionContext {
+  args: Record<string, unknown>
+  signal?: AbortSignal
+  status: AIAdapterExecutionStatus
+  result?: unknown
+  error?: unknown
+}
+
 export interface AIAdapterOptions {
   getFigma: () => FigmaAPI
+  /** Share this key across adapter instances that mutate the same SceneGraph. */
+  mutationKey?: object
   getToolContext?: (def: ToolDef, args: Record<string, unknown>) => ToolCtx | undefined
-  onBeforeExecute?: (def: ToolDef) => void
-  onAfterExecute?: (def: ToolDef) => Promise<void> | void
+  onBeforeExecute?: (
+    def: ToolDef,
+    context: Pick<AIAdapterExecutionContext, 'args' | 'signal'>
+  ) => void
+  onAfterExecute?: (def: ToolDef, context: AIAdapterExecutionContext) => Promise<void> | void
   onFlashNodes?: (nodeIds: string[]) => void
   onToolLog?: (entry: ToolLogEntry) => void
   getStepBudget?: () => StepBudget
 }
 
 const STEP_WARNING_THRESHOLD = 5
+const TOOL_ABORT_MESSAGE = 'Tool execution cancelled'
+const MUTATION_QUEUES = new WeakMap<object, Promise<void>>()
+
+export function serializeToolMutation<T>(mutationKey: object, run: () => Promise<T>): Promise<T> {
+  const previous = MUTATION_QUEUES.get(mutationKey) ?? Promise.resolve()
+  const queued = previous.then(run, run)
+  MUTATION_QUEUES.set(
+    mutationKey,
+    queued.then(
+      () => undefined,
+      () => undefined
+    )
+  )
+  return queued
+}
 
 function appendStepWarning(result: unknown, budget: StepBudget): unknown {
   const remaining = budget.max - budget.current
@@ -139,6 +170,139 @@ function emitToolLog(
   })
 }
 
+function isRejectedToolResult(result: unknown): boolean {
+  return Boolean(
+    result &&
+    typeof result === 'object' &&
+    !Array.isArray(result) &&
+    'ok' in result &&
+    result.ok === false
+  )
+}
+
+interface ToolExecutionOutcome {
+  context: AIAdapterExecutionContext
+  primaryError?: unknown
+  result?: unknown
+}
+
+async function executeToolDefinition(
+  def: ToolDef,
+  options: AIAdapterOptions,
+  figma: FigmaAPI,
+  args: Record<string, unknown>,
+  hostContext: ToolCtx | undefined,
+  signal: AbortSignal | undefined
+): Promise<ToolExecutionOutcome> {
+  try {
+    options.onBeforeExecute?.(def, { args, signal })
+    if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
+    const result = await def.execute(figma, args, { ...hostContext, signal })
+    if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
+    return {
+      context: {
+        args,
+        signal,
+        status: isRejectedToolResult(result) ? 'error' : 'success',
+        result
+      },
+      result
+    }
+  } catch (error) {
+    return {
+      context: {
+        args,
+        signal,
+        status: isAbortError(error, signal) ? 'aborted' : 'error',
+        error
+      },
+      primaryError: error
+    }
+  }
+}
+
+async function executeAfterHook(
+  def: ToolDef,
+  options: AIAdapterOptions,
+  context: AIAdapterExecutionContext
+): Promise<unknown> {
+  try {
+    await options.onAfterExecute?.(def, context)
+    return undefined
+  } catch (error) {
+    return error
+  }
+}
+
+function throwIfToolCancelled(
+  signal: AbortSignal | undefined,
+  primaryError: unknown,
+  afterError: unknown
+): void {
+  if (signal?.aborted || isAbortError(primaryError, signal) || isAbortError(afterError, signal)) {
+    throw abortError(TOOL_ABORT_MESSAGE)
+  }
+}
+
+function finishToolExecution(
+  def: ToolDef,
+  options: AIAdapterOptions,
+  args: Record<string, unknown>,
+  startTime: number,
+  figma: FigmaAPI,
+  nodeBefore: Record<string, unknown> | undefined,
+  outcome: ToolExecutionOutcome,
+  afterError: unknown
+): unknown {
+  const failure = outcome.primaryError ?? afterError
+  if (failure !== undefined) {
+    const errorMsg = toolFailureMessage(failure)
+    emitToolLog(options, def, args, startTime, figma, nodeBefore, null, errorMsg)
+    return { error: errorMsg }
+  }
+
+  if (outcome.context.status === 'success' && def.mutates && options.onFlashNodes) {
+    const ids = extractNodeIds(outcome.result)
+    if (ids.length > 0) options.onFlashNodes(ids)
+  }
+  emitToolLog(options, def, args, startTime, figma, nodeBefore, outcome.result)
+  const budget = options.getStepBudget?.()
+  return budget ? appendStepWarning(outcome.result, budget) : outcome.result
+}
+
+function toolFailureMessage(failure: unknown): string {
+  if (failure instanceof Error) return failure.message
+  if (typeof failure === 'string') return failure
+  if (typeof failure === 'symbol') return failure.description ?? 'Tool execution failed'
+  if (typeof failure === 'function') return failure.name || 'Tool execution failed'
+  try {
+    return JSON.stringify(failure)
+  } catch {
+    return 'Tool execution failed'
+  }
+}
+
+async function executeAdapterTool(
+  def: ToolDef,
+  options: AIAdapterOptions,
+  args: Record<string, unknown>,
+  execution?: { abortSignal?: AbortSignal }
+): Promise<unknown> {
+  const startTime = Date.now()
+  const figma = options.getFigma()
+  const hostContext = options.getToolContext?.(def, args)
+  const signal = execution?.abortSignal ?? hostContext?.signal
+  if (signal?.aborted) throw abortError(TOOL_ABORT_MESSAGE)
+  const nodeBefore = def.mutates && options.onToolLog ? captureNodeSnapshot(figma, args) : undefined
+  const outcome = await executeToolDefinition(def, options, figma, args, hostContext, signal)
+  const afterError = await executeAfterHook(def, options, outcome.context)
+
+  // Cancellation may arrive while the after hook is loading fonts or
+  // computing layout. Never report that transaction as successful.
+  throwIfToolCancelled(signal, outcome.primaryError, afterError)
+  return finishToolExecution(def, options, args, startTime, figma, nodeBefore, outcome, afterError)
+}
+
 export function toolsToAI(
   tools: ToolDef[],
   options: AIAdapterOptions,
@@ -150,6 +314,11 @@ export function toolsToAI(
 ): ToolSet {
   const { v, valibotSchema, tool } = deps
   const result: ToolSet = {}
+  // Vercel AI may execute tool calls from the same model step concurrently.
+  // SceneGraph mutations and their host-side after hooks (layout, fonts, undo)
+  // form one transaction, so keep them in a single lane. Read-only tools can
+  // still run concurrently.
+  const mutationKey = options.mutationKey ?? {}
 
   for (const def of tools) {
     const shape: Record<string, unknown> = {}
@@ -160,36 +329,10 @@ export function toolsToAI(
     const toolOpts: Record<string, unknown> = {
       description: def.description,
       inputSchema: valibotSchema(v.object(shape as Record<string, never>)),
-      execute: async (args: Record<string, unknown>, execution?: { abortSignal?: AbortSignal }) => {
-        const startTime = Date.now()
-        const figma = options.getFigma()
-        const nodeBefore =
-          def.mutates && options.onToolLog ? captureNodeSnapshot(figma, args) : undefined
+      execute: (args: Record<string, unknown>, execution?: { abortSignal?: AbortSignal }) => {
+        const run = () => executeAdapterTool(def, options, args, execution)
 
-        options.onBeforeExecute?.(def)
-        try {
-          const hostContext = options.getToolContext?.(def, args)
-          let execResult = await def.execute(options.getFigma(), args, {
-            ...hostContext,
-            signal: execution?.abortSignal ?? hostContext?.signal
-          })
-          if (def.mutates && options.onFlashNodes) {
-            const ids = extractNodeIds(execResult)
-            if (ids.length > 0) options.onFlashNodes(ids)
-          }
-          emitToolLog(options, def, args, startTime, figma, nodeBefore, execResult)
-          if (options.getStepBudget) {
-            execResult = appendStepWarning(execResult, options.getStepBudget())
-          }
-          return execResult
-        } catch (err) {
-          if (execution?.abortSignal?.aborted) throw err
-          const errorMsg = err instanceof Error ? err.message : String(err)
-          emitToolLog(options, def, args, startTime, figma, nodeBefore, null, errorMsg)
-          return { error: errorMsg }
-        } finally {
-          await options.onAfterExecute?.(def)
-        }
+        return def.mutates ? serializeToolMutation(mutationKey, run) : run()
       }
     }
 

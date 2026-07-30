@@ -31,7 +31,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     const controller = new AbortController()
     activeRequests.set(id, controller)
     try {
-      return await handleAutomationRequest(getStore(), command, args, {
+      const result = await handleAutomationRequest(getStore(), command, args, {
         signal: controller.signal,
         onProgress(progress) {
           if (socket.readyState === WebSocket.OPEN) {
@@ -39,6 +39,8 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
           }
         }
       })
+      controller.signal.throwIfAborted()
+      return result
     } finally {
       if (activeRequests.get(id) === controller) activeRequests.delete(id)
     }
@@ -79,16 +81,20 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
         if (msg.type !== 'request') return
         try {
           const result = await handleRequest(msg.id, msg.command, msg.args, socket)
-          socket.send(JSON.stringify({ type: 'response', id: msg.id, ...(result as object) }))
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'response', id: msg.id, ...(result as object) }))
+          }
         } catch (e) {
-          socket.send(
-            JSON.stringify({
-              type: 'response',
-              id: msg.id,
-              ok: false,
-              error: e instanceof Error ? e.message : String(e)
-            })
-          )
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(
+              JSON.stringify({
+                type: 'response',
+                id: msg.id,
+                ok: false,
+                error: e instanceof Error ? e.message : String(e)
+              })
+            )
+          }
         }
       } catch (e) {
         console.warn('Failed to parse WebSocket message:', e)

@@ -16,6 +16,7 @@ export interface StockPhotoProvider {
       perPage: number
       orientation: 'landscape' | 'portrait' | 'square'
       targetDim: number
+      signal?: AbortSignal
     }
   ): Promise<StockPhotoResult[]>
 }
@@ -76,7 +77,7 @@ export function setPexelsApiKey(key: string | null): void {
 
 const pexelsProvider: StockPhotoProvider = {
   name: 'pexels',
-  async search(query, { perPage, orientation, targetDim }) {
+  async search(query, { perPage, orientation, targetDim, signal }) {
     if (!pexelsApiKey) throw new Error('Pexels API key not configured')
     const response = await ofetch.raw<{ photos: PexelsPhoto[] }>(
       'https://api.pexels.com/v1/search',
@@ -84,7 +85,8 @@ const pexelsProvider: StockPhotoProvider = {
         headers: { Authorization: pexelsApiKey },
         ignoreResponseError: true,
         query: { query, per_page: perPage, orientation },
-        retry: 0
+        retry: 0,
+        signal
       }
     )
     if (!response.ok) throw new Error(`Pexels ${response.status}`)
@@ -126,7 +128,7 @@ function pickUnsplashSize(urls: UnsplashPhoto['urls'], targetDim: number): strin
 
 const unsplashProvider: StockPhotoProvider = {
   name: 'unsplash',
-  async search(query, { perPage, orientation }) {
+  async search(query, { perPage, orientation, signal }) {
     if (!unsplashAccessKey) throw new Error('Unsplash access key not configured')
     const orient = orientation === 'square' ? 'squarish' : orientation
     const response = await ofetch.raw<{ results: UnsplashPhoto[] }>(
@@ -138,7 +140,8 @@ const unsplashProvider: StockPhotoProvider = {
         },
         ignoreResponseError: true,
         query: { query, per_page: perPage, orientation: orient },
-        retry: 0
+        retry: 0,
+        signal
       }
     )
     if (!response.ok) throw new Error(`Unsplash ${response.status}`)

@@ -494,6 +494,66 @@ describe('renderTreeNode', () => {
     const label = getNodeOrThrow(g, childIdAt(node, 0))
     expect(label.text).toBe('Button')
   })
+
+  it('cooperatively cancels a large tree and removes partial roots', async () => {
+    const g = makeSceneGraph()
+    const page = g.getPages()[0]
+    const created: string[] = []
+    g.onNodeEvents({ created: (node) => created.push(node.id) })
+    const controller = new AbortController()
+    const children = Array.from({ length: 160 }, (_, index) =>
+      Rectangle({ name: `Item ${index}`, w: 20, h: 20 })
+    )
+    setTimeout(() => controller.abort(), 0)
+
+    const error = await renderTreeNode(g, Frame({ name: 'Cancelled root', children }), {
+      signal: controller.signal
+    }).catch((reason: Error) => reason)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).name).toBe('AbortError')
+    expect(page.childIds).toEqual([])
+    expect(created).toEqual([])
+  })
+
+  it('can defer layout to a host-owned post-tool pass', async () => {
+    const g = makeSceneGraph()
+    const result = await renderTreeNode(
+      g,
+      Frame({
+        name: 'Deferred',
+        flex: 'row',
+        p: 20,
+        children: Rectangle({ name: 'Child', w: 40, h: 40 })
+      }),
+      { layout: false }
+    )
+
+    const child = getNodeOrThrow(g, childIdAt(getNodeOrThrow(g, result.id), 0))
+    expect(child.x).toBe(0)
+    expect(child.y).toBe(0)
+  })
+
+  it('layouts only the page that owns the render parent', async () => {
+    const g = makeSceneGraph()
+    const untouchedPage = g.addPage('Untouched')
+    const untouchedFrame = g.createNode('FRAME', untouchedPage.id, {
+      layoutMode: 'HORIZONTAL',
+      width: 200,
+      height: 100,
+      paddingLeft: 50
+    })
+    const untouchedChild = g.createNode('RECTANGLE', untouchedFrame.id, {
+      width: 20,
+      height: 20
+    })
+
+    await renderTreeNode(g, Frame({ name: 'Rendered', flex: 'row', children: Rectangle({}) }), {
+      parentId: g.getPages()[0].id
+    })
+
+    expect(getNodeOrThrow(g, untouchedChild.id).x).toBe(0)
+  })
 })
 
 describe('renderJSX (string → scene graph)', () => {
@@ -577,5 +637,35 @@ describe('renderJSX (string → scene graph)', () => {
 
     expect(node.primaryAxisAlign).toBe('CENTER')
     expect(node.counterAxisAlign).toBe('CENTER')
+  })
+
+  it('removes earlier fragment roots when a later root fails', async () => {
+    const g = makeSceneGraph()
+    const page = g.getPages()[0]
+
+    await expect(
+      renderJSX(g, '<><Rectangle name="Temporary" w={20} h={20} /><unknown /></>')
+    ).rejects.toThrow('Unknown element: <unknown>')
+    expect(page.childIds).toEqual([])
+  })
+
+  it('cancels while resolving a large JSX tree before creating graph nodes', async () => {
+    const g = makeSceneGraph()
+    const created: string[] = []
+    g.onNodeEvents({ created: (node) => created.push(node.id) })
+    const controller = new AbortController()
+    const children = Array.from(
+      { length: 180 },
+      (_, index) => `<Rectangle name="Item ${index}" w={10} h={10} />`
+    ).join('')
+    setTimeout(() => controller.abort(), 0)
+
+    const error = await renderJSX(g, `<Frame>${children}</Frame>`, {
+      signal: controller.signal
+    }).catch((reason: Error) => reason)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).name).toBe('AbortError')
+    expect(created).toEqual([])
   })
 })

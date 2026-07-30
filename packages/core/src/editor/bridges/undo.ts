@@ -15,6 +15,9 @@ export function createUndoBridge(undoActions: UndoActions, selection: SelectionA
     commitNodeUpdate: undoActions.commitNodeUpdate,
     undoAction: () => undoActions.undoAction(selection.validateEnteredContainer),
     redoAction: () => undoActions.redoAction(selection.validateEnteredContainer),
+    snapshotDocument: undoActions.snapshotDocument,
+    restoreDocumentFromSnapshot: undoActions.restoreDocumentFromSnapshot,
+    documentSnapshotChanged: undoActions.documentSnapshotChanged,
     snapshotPage: undoActions.snapshotPage,
     restorePageFromSnapshot: undoActions.restorePageFromSnapshot,
     pushUndoEntry: undoActions.pushUndoEntry

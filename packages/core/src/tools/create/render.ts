@@ -24,7 +24,7 @@ export const render = defineTool({
       required: true
     }
   },
-  execute: async (figma, args) => {
+  execute: async (figma, args, context) => {
     const { renderJSX } = await import('#core/design-jsx/render.js')
 
     let parentId = args.parent_id ?? figma.currentPageId
@@ -44,7 +44,9 @@ export const render = defineTool({
     const results = await renderJSX(figma.graph, args.jsx, {
       parentId,
       x: args.x,
-      y: args.y
+      y: args.y,
+      signal: context?.signal,
+      layout: context?.deferLayout !== true
     })
     const result = results[0]
 

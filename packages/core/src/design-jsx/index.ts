@@ -38,7 +38,9 @@ export {
   type PaintProp,
   isTreeNode,
   node,
-  resolveToTree
+  resolveToTree,
+  resolveToTreeAsync,
+  type ResolveTreeOptions
 } from './tree'
 
 export { renderTree, type RenderResult } from './renderer'

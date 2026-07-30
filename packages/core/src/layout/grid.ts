@@ -5,7 +5,7 @@ import { isAutoLayoutMode, type SceneNode } from '@open-pencil/scene-graph'
 import { resolveNodeLayoutDirection } from '#core/text/direction'
 
 import type { LayoutGraph } from './graph'
-import { configureAbsoluteChild, createYogaNode, mapGridTrack } from './yoga-helpers'
+import { configureAbsoluteChild, createYogaNode, freeYogaTree, mapGridTrack } from './yoga-helpers'
 
 function configureAsGrid(
   yogaNode: YogaNode,
@@ -70,25 +70,44 @@ export function buildGridTree(
   frame: SceneNode,
   inheritedDirection: 'LTR' | 'RTL'
 ): YogaNode {
+  const steps = buildGridTreeSteps(graph, frame, inheritedDirection)
+  let state = steps.next()
+  while (!state.done) state = steps.next()
+  return state.value
+}
+
+/** Yield once per child while preserving the exact synchronous build order. */
+export function* buildGridTreeSteps(
+  graph: LayoutGraph,
+  frame: SceneNode,
+  inheritedDirection: 'LTR' | 'RTL'
+): Generator<void, YogaNode, void> {
   const root = createYogaNode()
-  const direction = resolveNodeLayoutDirection(frame, inheritedDirection)
-  configureAsGrid(root, frame, direction)
+  let completed = false
+  try {
+    const direction = resolveNodeLayoutDirection(frame, inheritedDirection)
+    configureAsGrid(root, frame, direction)
 
-  const children = graph.getChildren(frame.id)
-  for (const child of children) {
-    if (child.layoutPositioning === 'ABSOLUTE') {
-      const yogaChild = createYogaNode()
-      configureAbsoluteChild(yogaChild, child)
-      root.insertChild(yogaChild, root.getChildCount())
-    } else {
-      const yogaChild = createGridChildNode(child)
-      if (isAutoLayoutMode(child.layoutMode)) {
-        const childDirection = resolveNodeLayoutDirection(child, direction)
-        yogaChild.setDirection(childDirection === 'RTL' ? Direction.RTL : Direction.LTR)
+    const children = graph.getChildren(frame.id)
+    for (const child of children) {
+      yield
+      if (child.layoutPositioning === 'ABSOLUTE') {
+        const yogaChild = createYogaNode()
+        root.insertChild(yogaChild, root.getChildCount())
+        configureAbsoluteChild(yogaChild, child)
+      } else {
+        const yogaChild = createGridChildNode(child)
+        root.insertChild(yogaChild, root.getChildCount())
+        if (isAutoLayoutMode(child.layoutMode)) {
+          const childDirection = resolveNodeLayoutDirection(child, direction)
+          yogaChild.setDirection(childDirection === 'RTL' ? Direction.RTL : Direction.LTR)
+        }
       }
-      root.insertChild(yogaChild, root.getChildCount())
     }
-  }
 
-  return root
+    completed = true
+    return root
+  } finally {
+    if (!completed) freeYogaTree(root)
+  }
 }

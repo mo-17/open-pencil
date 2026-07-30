@@ -32,6 +32,8 @@ export interface ToolCtx {
   editor?: Editor
   /** Request-scoped cancellation propagated by AI and MCP adapters. */
   signal?: AbortSignal
+  /** Host already owns the page-scoped post-tool layout pass. */
+  deferLayout?: boolean
   /** Long-running tools report bounded, serializable progress through the active adapter. */
   onProgress?: (progress: MotionExportProgress) => void
   /** App hosts can commit an animation artifact through their native/browser save surface. */

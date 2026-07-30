@@ -271,6 +271,25 @@ describe('UndoManager', () => {
     expect(undo.canUndo).toBe(false)
   })
 
+  test('revision advances for recorded history and navigation', () => {
+    const undo = createUndoManager()
+    const initial = undo.revision
+    undo.push(
+      undoEntry(
+        'change',
+        () => undefined,
+        () => undefined
+      )
+    )
+    expect(undo.revision).toBe(initial + 1)
+    undo.undo()
+    expect(undo.revision).toBe(initial + 2)
+    undo.redo()
+    expect(undo.revision).toBe(initial + 3)
+    undo.clear()
+    expect(undo.revision).toBe(initial + 4)
+  })
+
   test('multiple undo/redo', () => {
     const undo = createUndoManager()
     let val = 0

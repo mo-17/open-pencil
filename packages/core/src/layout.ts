@@ -11,9 +11,9 @@ import {
   type Node as YogaNode
 } from 'yoga-layout'
 
-import { applyYogaLayout } from './layout/apply'
+import { applyYogaLayoutSteps, type LayoutApplyStep } from './layout/apply'
 import type { LayoutGraph } from './layout/graph'
-import { buildGridTree, createGridChildNode } from './layout/grid'
+import { buildGridTreeSteps, createGridChildNode } from './layout/grid'
 import { resolveNodeLayoutDirection } from './text/direction'
 export {
   estimateTextSize,
@@ -22,6 +22,8 @@ export {
   type TextMeasurer
 } from './layout/text-measurement'
 import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+
+import { throwIfAborted, yieldToHost, type CooperativeExecution } from '#core/async-work'
 
 import { estimateTextSize, getTextMeasurer } from './layout/text-measurement'
 import {
@@ -34,24 +36,59 @@ import {
   mapGridTrack,
   mapJustify
 } from './layout/yoga-helpers'
+
+const LAYOUT_ABORT_MESSAGE = 'Layout cancelled'
 import type { MotionVisualState } from './motion'
 
 export function computeLayout(graph: LayoutGraph, frameId: string): void {
+  const steps = computeLayoutSteps(graph, frameId)
+  let state = steps.next()
+  while (!state.done) state = steps.next()
+}
+
+type LayoutStep = LayoutApplyStep
+type LayoutSteps<T = void> = Generator<LayoutStep, T, void>
+
+function* computeLayoutSteps(graph: LayoutGraph, frameId: string): LayoutSteps {
   const frame = graph.getNode(frameId)
   if (!frame || !isAutoLayoutMode(frame.layoutMode)) return
 
   const rootDirection = resolveComputedLayoutDirection(graph, frame)
-  const yogaRoot =
+  const yogaRoot = yield* asLayoutSteps(
     frame.layoutMode === 'GRID'
-      ? buildGridTree(graph, frame, rootDirection)
-      : buildYogaTree(graph, frame, rootDirection)
-  yogaRoot.calculateLayout(
-    undefined,
-    undefined,
-    rootDirection === 'RTL' ? Direction.RTL : Direction.LTR
+      ? buildGridTreeSteps(graph, frame, rootDirection)
+      : buildYogaTreeSteps(graph, frame, rootDirection)
   )
-  applyYogaLayout(graph, frame, yogaRoot, computeLayout)
-  freeYogaTree(yogaRoot)
+  try {
+    // Yoga's WASM calculate call is synchronous and must remain atomic. These
+    // markers let the async runner yield immediately before and after it.
+    yield 'atomic'
+    yogaRoot.calculateLayout(
+      undefined,
+      undefined,
+      rootDirection === 'RTL' ? Direction.RTL : Direction.LTR
+    )
+    yield 'atomic'
+    yield* applyYogaLayoutSteps(graph, frame, yogaRoot, computeLayoutSteps)
+    yield 'atomic'
+  } finally {
+    freeYogaTree(yogaRoot)
+  }
+}
+
+function* asLayoutSteps<T>(steps: Generator<void, T, void>): LayoutSteps<T> {
+  let completed = false
+  try {
+    let state = steps.next()
+    while (!state.done) {
+      yield 'work'
+      state = steps.next()
+    }
+    completed = true
+    return state.value
+  } finally {
+    if (!completed) steps.return(undefined as T)
+  }
 }
 
 function resolveComputedLayoutDirection(
@@ -66,6 +103,95 @@ function resolveComputedLayoutDirection(
 export function computeAllLayouts(graph: SceneGraph, scopeId?: string): void {
   const visited = new Set<string>()
   computeLayoutsBottomUp(graph, scopeId ?? graph.rootId, visited)
+}
+
+/**
+ * Cooperative variant for long-running AI/automation work. It yields between
+ * small traversal/layout batches so WebKit can deliver AbortSignal events.
+ */
+export async function computeAllLayoutsAsync(
+  graph: SceneGraph,
+  scopeId?: string,
+  signal?: AbortSignal,
+  yieldEvery = 32
+): Promise<void> {
+  const execution: CooperativeExecution = {
+    signal,
+    yieldEvery: Math.max(1, yieldEvery),
+    workSinceYield: 0
+  }
+  throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
+  const rootId = scopeId ?? graph.rootId
+  const visited = new Set<string>()
+  const pending: Array<{ nodeId: string; coveredByParentLayout: boolean }> = [
+    { nodeId: rootId, coveredByParentLayout: false }
+  ]
+  const layoutRoots: string[] = []
+
+  while (pending.length > 0) {
+    const next = pending.pop()
+    if (!next || visited.has(next.nodeId)) continue
+    const { nodeId, coveredByParentLayout } = next
+    const node = graph.getNode(nodeId)
+    if (!node) continue
+    visited.add(nodeId)
+    const participatesInLayout =
+      isAutoLayoutMode(node.layoutMode) && !preservesImportedInstanceLayout(node)
+    if (participatesInLayout && !coveredByParentLayout) layoutRoots.push(nodeId)
+
+    for (const childId of node.childIds) {
+      const child = graph.getNode(childId)
+      const childCovered =
+        participatesInLayout &&
+        !!child &&
+        isAutoLayoutMode(child.layoutMode) &&
+        !preservesImportedInstanceLayout(child) &&
+        child.visible &&
+        child.layoutPositioning !== 'ABSOLUTE'
+      pending.push({ nodeId: childId, coveredByParentLayout: childCovered })
+    }
+    await checkpointLayout(execution)
+  }
+
+  // One Yoga tree already contains every contiguous visible flow-layout
+  // descendant. Computing only the uncovered roots avoids the prior quadratic
+  // pattern where each nested frame was calculated once by itself and again
+  // through every ancestor.
+  for (const nodeId of layoutRoots) {
+    await computeLayoutCooperatively(graph, nodeId, execution)
+    await checkpointLayout(execution)
+  }
+  throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
+}
+
+async function computeLayoutCooperatively(
+  graph: LayoutGraph,
+  frameId: string,
+  execution: CooperativeExecution
+): Promise<void> {
+  const steps = computeLayoutSteps(graph, frameId)
+  let completed = false
+  try {
+    let state = steps.next()
+    while (!state.done) {
+      await checkpointLayout(execution, state.value === 'atomic')
+      state = steps.next()
+    }
+    completed = true
+  } finally {
+    // Closing a suspended generator runs the Yoga-tree finally blocks and
+    // frees every partially-built WASM node after cancellation or failure.
+    if (!completed) steps.return(undefined)
+  }
+}
+
+async function checkpointLayout(execution: CooperativeExecution, force = false): Promise<void> {
+  throwIfAborted(execution.signal, LAYOUT_ABORT_MESSAGE)
+  execution.workSinceYield++
+  if (!force && execution.workSinceYield < execution.yieldEvery) return
+  execution.workSinceYield = 0
+  await yieldToHost(execution.signal, LAYOUT_ABORT_MESSAGE)
+  throwIfAborted(execution.signal, LAYOUT_ABORT_MESSAGE)
 }
 
 export type MotionLayoutPreviewNode = Pick<SceneNode, 'x' | 'y' | 'width' | 'height'>
@@ -285,45 +411,53 @@ function preservesImportedInstanceLayout(node: SceneNode): boolean {
 
 // --- Flex layout ---
 
-function buildYogaTree(
+function* buildYogaTreeSteps(
   graph: LayoutGraph,
   frame: SceneNode,
   inheritedDirection: 'LTR' | 'RTL'
-): YogaNode {
+): Generator<void, YogaNode, void> {
   const root = createYogaNode()
-  const direction = resolveNodeLayoutDirection(frame, inheritedDirection)
+  let completed = false
+  try {
+    const direction = resolveNodeLayoutDirection(frame, inheritedDirection)
 
-  if (frame.primaryAxisSizing === 'FIXED') {
-    if (frame.layoutMode === 'HORIZONTAL') root.setWidth(frame.width)
-    else root.setHeight(frame.height)
-  }
-  if (frame.counterAxisSizing === 'FIXED') {
-    if (frame.layoutMode === 'HORIZONTAL') root.setHeight(frame.height)
-    else root.setWidth(frame.width)
-  }
-
-  configureFlexContainer(root, frame, direction)
-
-  const children = graph.getChildren(frame.id)
-  for (const child of children) {
-    const yogaChild = createYogaNode()
-
-    if (child.layoutPositioning === 'ABSOLUTE') {
-      configureAbsoluteChild(yogaChild, child)
-    } else if (!child.visible) {
-      yogaChild.setDisplay(Display.None)
-    } else if (child.layoutMode === 'GRID') {
-      configureChildAsGrid(yogaChild, child, frame, graph, direction)
-    } else if (isAutoLayoutMode(child.layoutMode)) {
-      configureChildAsAutoLayout(yogaChild, child, frame, graph, direction)
-    } else {
-      configureChildAsLeaf(yogaChild, child, frame)
+    if (frame.primaryAxisSizing === 'FIXED') {
+      if (frame.layoutMode === 'HORIZONTAL') root.setWidth(frame.width)
+      else root.setHeight(frame.height)
+    }
+    if (frame.counterAxisSizing === 'FIXED') {
+      if (frame.layoutMode === 'HORIZONTAL') root.setHeight(frame.height)
+      else root.setWidth(frame.width)
     }
 
-    root.insertChild(yogaChild, root.getChildCount())
-  }
+    configureFlexContainer(root, frame, direction)
 
-  return root
+    const children = graph.getChildren(frame.id)
+    for (const child of children) {
+      yield
+      const yogaChild = createYogaNode()
+      // Attach first so aborting a nested builder still lets root cleanup own
+      // every allocated Yoga node.
+      root.insertChild(yogaChild, root.getChildCount())
+
+      if (child.layoutPositioning === 'ABSOLUTE') {
+        configureAbsoluteChild(yogaChild, child)
+      } else if (!child.visible) {
+        yogaChild.setDisplay(Display.None)
+      } else if (child.layoutMode === 'GRID') {
+        yield* configureChildAsGridSteps(yogaChild, child, frame, graph, direction)
+      } else if (isAutoLayoutMode(child.layoutMode)) {
+        yield* configureChildAsAutoLayoutSteps(yogaChild, child, frame, graph, direction)
+      } else {
+        configureChildAsLeaf(yogaChild, child, frame)
+      }
+    }
+
+    completed = true
+    return root
+  } finally {
+    if (!completed) freeYogaTree(root)
+  }
 }
 
 function configureFlexContainer(
@@ -361,13 +495,13 @@ function configureFlexContainer(
   applyMinMaxConstraints(yogaNode, node)
 }
 
-function configureChildAsGrid(
+function* configureChildAsGridSteps(
   yogaChild: YogaNode,
   child: SceneNode,
   parent: SceneNode,
   graph: LayoutGraph,
   inheritedDirection: 'LTR' | 'RTL'
-): void {
+): Generator<void, void, void> {
   const direction = resolveNodeLayoutDirection(child, inheritedDirection)
   yogaChild.setDisplay(Display.Grid)
   yogaChild.setDirection(direction === 'RTL' ? Direction.RTL : Direction.LTR)
@@ -418,23 +552,24 @@ function configureChildAsGrid(
 
   const grandchildren = graph.getChildren(child.id)
   for (const gc of grandchildren) {
+    yield
     if (gc.layoutPositioning === 'ABSOLUTE') {
       const yogaGC = createYogaNode()
-      configureAbsoluteChild(yogaGC, gc)
       yogaChild.insertChild(yogaGC, yogaChild.getChildCount())
+      configureAbsoluteChild(yogaGC, gc)
     } else {
       yogaChild.insertChild(createGridChildNode(gc), yogaChild.getChildCount())
     }
   }
 }
 
-function configureChildAsAutoLayout(
+function* configureChildAsAutoLayoutSteps(
   yogaChild: YogaNode,
   child: SceneNode,
   parent: SceneNode,
   graph: LayoutGraph,
   inheritedDirection: 'LTR' | 'RTL'
-): void {
+): Generator<void, void, void> {
   const direction = resolveNodeLayoutDirection(child, inheritedDirection)
   const isParentRow = parent.layoutMode === 'HORIZONTAL'
   const isChildRow = child.layoutMode === 'HORIZONTAL'
@@ -459,19 +594,20 @@ function configureChildAsAutoLayout(
 
   const grandchildren = graph.getChildren(child.id)
   for (const gc of grandchildren) {
+    yield
     const yogaGC = createYogaNode()
+    yogaChild.insertChild(yogaGC, yogaChild.getChildCount())
     if (gc.layoutPositioning === 'ABSOLUTE') {
       configureAbsoluteChild(yogaGC, gc)
     } else if (!gc.visible) {
       yogaGC.setDisplay(Display.None)
     } else if (gc.layoutMode === 'GRID') {
-      configureChildAsGrid(yogaGC, gc, child, graph, direction)
+      yield* configureChildAsGridSteps(yogaGC, gc, child, graph, direction)
     } else if (isAutoLayoutMode(gc.layoutMode)) {
-      configureChildAsAutoLayout(yogaGC, gc, child, graph, direction)
+      yield* configureChildAsAutoLayoutSteps(yogaGC, gc, child, graph, direction)
     } else {
       configureChildAsLeaf(yogaGC, gc, child)
     }
-    yogaChild.insertChild(yogaGC, yogaChild.getChildCount())
   }
 }
 

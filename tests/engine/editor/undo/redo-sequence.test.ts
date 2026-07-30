@@ -122,6 +122,73 @@ describe('undo/redo multi-step sequences', () => {
     expect(getNodeOrThrow(editor.graph, frame.id).childIds).toEqual([child.id])
   })
 
+  test('page snapshots restore image resources without cloning their byte buffers', () => {
+    const { editor, pageId } = setupEditorPage()
+    const existingBytes = new Uint8Array([1, 2, 3])
+    editor.graph.images.set('existing', existingBytes)
+    const before = editor.snapshotPage(pageId)
+    const addedBytes = new Uint8Array([4, 5, 6])
+    editor.graph.images.set('added', addedBytes)
+    const after = editor.snapshotPage(pageId)
+
+    editor.restorePageFromSnapshot(before, pageId)
+    expect([...editor.graph.images.keys()]).toEqual(['existing'])
+    expect(editor.graph.images.get('existing')).toBe(existingBytes)
+
+    editor.restorePageFromSnapshot(after, pageId)
+    expect([...editor.graph.images.keys()]).toEqual(['existing', 'added'])
+    expect(editor.graph.images.get('added')).toBe(addedBytes)
+  })
+
+  test('document snapshots retain image bytes and discard derived text pictures', () => {
+    const { editor, pageId } = setupEditorPage()
+    const imageBytes = new Uint8Array([7, 8, 9])
+    const textPicture = new Uint8Array([10, 11, 12])
+    editor.graph.images.set('existing', imageBytes)
+    const text = editor.graph.createNode('TEXT', pageId, {
+      name: 'Cached text',
+      text: 'Hello',
+      textPicture
+    })
+
+    const pageSnapshot = editor.snapshotPage(pageId)
+    const documentSnapshot = editor.snapshotDocument()
+
+    expect(pageSnapshot.get(text.id)?.textPicture).toBeNull()
+    expect(documentSnapshot.nodes.get(text.id)?.textPicture).toBeNull()
+    expect(documentSnapshot.images.get('existing')).toBe(imageBytes)
+    expect(editor.graph.getNode(text.id)?.textPicture).toBe(textPicture)
+
+    editor.graph.images.set('added', new Uint8Array([13]))
+    editor.restoreDocumentFromSnapshot(documentSnapshot)
+    expect([...editor.graph.images.keys()]).toEqual(['existing'])
+    expect(editor.graph.images.get('existing')).toBe(imageBytes)
+    expect(editor.graph.getNode(text.id)?.textPicture).toBeNull()
+  })
+
+  test('restores an explicit page after the user switches pages', async () => {
+    const { editor, pageId } = setupEditorPage()
+    const frame = createHistoryFrame(editor, pageId)
+    const snapshot = editor.snapshotPage(pageId)
+    editor.graph.updateNode(pageId, {
+      name: 'Changed page',
+      lowcodePageState: [{ id: 'temporary', name: 'temporary', type: 'string', defaultValue: '' }]
+    })
+    const secondPage = editor.addPage('Second page')
+
+    await editor.switchPage(secondPage)
+    const selected = editor.graph.createNode('RECTANGLE', secondPage, { name: 'Keep selected' })
+    editor.select([selected.id])
+    editor.graph.deleteNode(frame.id)
+    editor.restorePageFromSnapshot(snapshot, pageId)
+
+    expect(editor.state.currentPageId).toBe(secondPage)
+    expect(editor.state.selectedIds).toEqual(new Set([selected.id]))
+    expect(editor.graph.getNode(frame.id)).not.toBeUndefined()
+    expect(editor.graph.getNode(pageId)?.name).toBe('Page 1')
+    expect(editor.graph.getNode(pageId)?.lowcodePageState).toBeUndefined()
+  })
+
   test('delete frame with children → undo restores subtree', () => {
     const { editor, pageId } = setupEditorPage()
 

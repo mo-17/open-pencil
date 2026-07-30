@@ -1,7 +1,11 @@
 import type { Effect, Fill } from '@open-pencil/scene-graph'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
+import { throwIfAborted, yieldToHost, type CooperativeExecution } from '#core/async-work'
+
 import type { DesignVariable } from './vars'
+
+const JSX_RENDER_ABORT_MESSAGE = 'JSX render cancelled'
 
 export interface TreeNode {
   type: string
@@ -66,6 +70,82 @@ export function resolveToTree(element: unknown, depth = 0): TreeNode | null {
   }
 
   return null
+}
+
+export interface ResolveTreeOptions {
+  signal?: AbortSignal
+  /** Number of resolved values between browser task yields. */
+  yieldEvery?: number
+}
+
+/**
+ * Cooperative counterpart to `resolveToTree` for untrusted/generated JSX.
+ * The synchronous API remains available for callers that already own a small
+ * tree, while AI/automation render paths can yield as component output is
+ * expanded and flattened.
+ */
+export async function resolveToTreeAsync(
+  element: unknown,
+  options: ResolveTreeOptions = {}
+): Promise<TreeNode | null> {
+  const execution: CooperativeExecution = {
+    signal: options.signal,
+    yieldEvery: Math.max(1, options.yieldEvery ?? 32),
+    workSinceYield: 0
+  }
+  const tree = await resolveToTreeCooperatively(element, 0, execution)
+  throwIfAborted(execution.signal, JSX_RENDER_ABORT_MESSAGE)
+  return tree
+}
+
+async function resolveToTreeCooperatively(
+  element: unknown,
+  depth: number,
+  execution: CooperativeExecution
+): Promise<TreeNode | null> {
+  if (depth > 100) throw new Error('Component resolution depth exceeded')
+  await checkpointResolution(execution)
+  if (element == null) return null
+  if (isTreeNode(element)) return element
+  if (!isReactElement(element)) return null
+
+  if (typeof element.type === 'function') {
+    const component = element.type as FunctionComponent
+    const rendered = component(element.props)
+    throwIfAborted(execution.signal, JSX_RENDER_ABORT_MESSAGE)
+    return resolveToTreeCooperatively(rendered, depth + 1, execution)
+  }
+
+  if (typeof element.type !== 'string') return null
+
+  const children: (TreeNode | string)[] = []
+  const pending = element.props.children == null ? [] : [element.props.children]
+  while (pending.length > 0) {
+    await checkpointResolution(execution)
+    const child = pending.pop()
+    if (Array.isArray(child)) {
+      for (let index = child.length - 1; index >= 0; index--) pending.push(child[index])
+      continue
+    }
+    if (child == null) continue
+    if (typeof child === 'string' || typeof child === 'number') {
+      children.push(String(child))
+      continue
+    }
+    const resolved = await resolveToTreeCooperatively(child, depth + 1, execution)
+    if (resolved) children.push(resolved)
+  }
+
+  const { children: _, ...props } = element.props
+  return { type: element.type, props, children }
+}
+
+async function checkpointResolution(execution: CooperativeExecution): Promise<void> {
+  throwIfAborted(execution.signal, JSX_RENDER_ABORT_MESSAGE)
+  execution.workSinceYield++
+  if (execution.workSinceYield < execution.yieldEvery) return
+  execution.workSinceYield = 0
+  await yieldToHost(execution.signal, JSX_RENDER_ABORT_MESSAGE)
 }
 
 function resolveChild(child: unknown): TreeNode | string | null {

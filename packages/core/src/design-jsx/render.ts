@@ -2,6 +2,7 @@ import { transform } from 'sucrase'
 
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import { throwIfAborted, yieldToHost } from '#core/async-work'
 import type { RenderOptions as RenderJSXOptions } from '#core/design-jsx/types'
 
 import { backgroundBlur, dropShadow, foregroundBlur, innerShadow, layerBlur } from './effects'
@@ -15,8 +16,10 @@ import {
   radialGradient,
   solid
 } from './paints'
-import { renderTree, type RenderResult, validateTreeForRender } from './renderer'
-import { isTreeNode, resolveToTree, type TreeNode } from './tree'
+import { renderTree, type RenderResult, validateTreeForRenderAsync } from './renderer'
+import { isTreeNode, resolveToTreeAsync, type TreeNode } from './tree'
+
+const JSX_RENDER_ABORT_MESSAGE = 'JSX render cancelled'
 
 /**
  * Build a component function from a JSX string using sucrase.
@@ -136,21 +139,28 @@ function stripHtmlComments(jsxString: string): string {
   return jsxString.replace(/<!--[\s\S]*?-->/g, '')
 }
 
-function unsupportedPropWarnings(tree: TreeNode): string[] {
+async function unsupportedPropWarnings(tree: TreeNode, signal?: AbortSignal): Promise<string[]> {
   const warnings: string[] = []
-  collectUnsupportedPropWarnings(tree, warnings)
-  return warnings
-}
+  const pending = [tree]
+  let work = 0
 
-function collectUnsupportedPropWarnings(tree: TreeNode, warnings: string[]): void {
-  for (const key of Object.keys(tree.props)) {
-    if (!SUPPORTED_PROPS.has(key)) {
-      warnings.push(`Unsupported prop "${key}" on <${tree.type}> is ignored.`)
+  while (pending.length > 0) {
+    throwIfAborted(signal, JSX_RENDER_ABORT_MESSAGE)
+    const current = pending.pop()
+    if (!current) continue
+    for (const key of Object.keys(current.props)) {
+      if (!SUPPORTED_PROPS.has(key)) {
+        warnings.push(`Unsupported prop "${key}" on <${current.type}> is ignored.`)
+      }
     }
+    for (let index = current.children.length - 1; index >= 0; index--) {
+      const child = current.children[index]
+      if (isTreeNode(child)) pending.push(child)
+    }
+    if (++work % 32 === 0) await yieldToHost(signal, JSX_RENDER_ABORT_MESSAGE)
   }
-  for (const child of tree.children) {
-    if (isTreeNode(child)) collectUnsupportedPropWarnings(child, warnings)
-  }
+  throwIfAborted(signal, JSX_RENDER_ABORT_MESSAGE)
+  return warnings
 }
 
 export function buildComponent(jsxString: string): React.ComponentType {
@@ -226,9 +236,13 @@ export async function renderJSX(
   jsxString: string,
   options?: RenderJSXOptions
 ): Promise<RenderResult[]> {
+  throwIfAborted(options?.signal, JSX_RENDER_ABORT_MESSAGE)
   const Component = buildComponent(jsxString)
+  throwIfAborted(options?.signal, JSX_RENDER_ABORT_MESSAGE)
   const element = React.createElement(Component, null)
-  const tree = resolveToTree(element)
+  throwIfAborted(options?.signal, JSX_RENDER_ABORT_MESSAGE)
+  const tree = await resolveToTreeAsync(element, { signal: options?.signal })
+  throwIfAborted(options?.signal, JSX_RENDER_ABORT_MESSAGE)
 
   if (!tree) {
     throw new Error('JSX must return a Figma element (Frame, Text, etc)')
@@ -236,28 +250,50 @@ export async function renderJSX(
 
   // Preflight the complete resolved tree before rendering fragment roots one
   // by one, so a later invalid lowcode control cannot leave earlier siblings.
-  validateTreeForRender(tree)
+  await validateTreeForRenderAsync(tree, options?.signal)
+  throwIfAborted(options?.signal, JSX_RENDER_ABORT_MESSAGE)
 
-  const warnings = unsupportedPropWarnings(tree)
+  const warnings = await unsupportedPropWarnings(tree, options?.signal)
+  throwIfAborted(options?.signal, JSX_RENDER_ABORT_MESSAGE)
 
   if (tree.type === '' && tree.children.length > 0) {
-    const results: RenderResult[] = []
-    for (const child of tree.children) {
-      if (typeof child === 'string') continue
-      results.push(await renderTree(graph, child, options))
-    }
-    if (results.length === 0) {
-      throw new Error('JSX must return a Figma element (Frame, Text, etc)')
-    }
-    if (warnings.length > 0) {
-      results[0].warnings = [...(results[0].warnings ?? []), ...warnings]
-    }
-    return results
+    return renderFragment(graph, tree, warnings, options)
   }
 
   const result = await renderTree(graph, tree, options)
   if (warnings.length > 0) result.warnings = [...(result.warnings ?? []), ...warnings]
   return [result]
+}
+
+async function renderFragment(
+  graph: SceneGraph,
+  tree: TreeNode,
+  warnings: string[],
+  options?: RenderJSXOptions
+): Promise<RenderResult[]> {
+  const results: RenderResult[] = []
+  const roots = tree.children.filter(isTreeNode)
+  try {
+    for (const [index, child] of roots.entries()) {
+      throwIfAborted(options?.signal, JSX_RENDER_ABORT_MESSAGE)
+      results.push(
+        await renderTree(graph, child, {
+          ...options,
+          layout: options?.layout !== false && index === roots.length - 1
+        })
+      )
+    }
+  } catch (error) {
+    for (const result of results.toReversed()) graph.deleteNode(result.id)
+    throw error
+  }
+  if (results.length === 0) {
+    throw new Error('JSX must return a Figma element (Frame, Text, etc)')
+  }
+  if (warnings.length > 0) {
+    results[0].warnings = [...(results[0].warnings ?? []), ...warnings]
+  }
+  return results
 }
 
 export { renderTree as renderTreeNode }

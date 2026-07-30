@@ -16,10 +16,15 @@ export function createIconifyAPIClient(
   })
 
   return {
-    async fetchCollection(prefix: string, iconNames: string[]): Promise<IconifyResponse> {
+    async fetchCollection(
+      prefix: string,
+      iconNames: string[],
+      signal?: AbortSignal
+    ): Promise<IconifyResponse> {
       const response = await iconifyApi.raw<IconifyResponse>(`/${prefix}.json`, {
         ignoreResponseError: true,
-        query: { icons: iconNames.join(',') }
+        query: { icons: iconNames.join(',') },
+        signal
       })
       if (!response.ok) {
         throw new Error(`Iconify API error: ${response.status} for prefix "${prefix}"`)
@@ -52,9 +57,10 @@ const iconifyAPIClient = createIconifyAPIClient()
 
 export function fetchIconifyCollection(
   prefix: string,
-  iconNames: string[]
+  iconNames: string[],
+  signal?: AbortSignal
 ): Promise<IconifyResponse> {
-  return iconifyAPIClient.fetchCollection(prefix, iconNames)
+  return iconifyAPIClient.fetchCollection(prefix, iconNames, signal)
 }
 
 export function searchIconify(

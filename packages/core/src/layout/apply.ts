@@ -5,6 +5,11 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 import type { LayoutGraph } from './graph'
 
 export type ComputeLayoutFn = (graph: LayoutGraph, frameId: string) => void
+export type LayoutApplyStep = 'work' | 'atomic'
+export type ComputeLayoutStepsFn = (
+  graph: LayoutGraph,
+  frameId: string
+) => Iterable<LayoutApplyStep>
 
 function applyFrameSize(graph: LayoutGraph, frame: SceneNode, yogaNode: YogaNode): void {
   if (frame.layoutMode === 'GRID') {
@@ -55,11 +60,11 @@ function preservesImportedInstanceInternals(child: SceneNode): boolean {
   return child.type === 'INSTANCE' && child.source.format === 'fig'
 }
 
-function recomputeGridChild(
+function* recomputeGridChildSteps(
   graph: LayoutGraph,
   child: SceneNode,
-  computeLayout: ComputeLayoutFn
-): void {
+  computeLayoutSteps: ComputeLayoutStepsFn
+): Generator<LayoutApplyStep, void, void> {
   const updated = graph.getNode(child.id)
   if (!updated || updated.layoutMode === 'NONE') return
 
@@ -69,23 +74,34 @@ function recomputeGridChild(
 
   if (savedPrimary === 'HUG') updates.primaryAxisSizing = 'FIXED'
   if (savedCounter === 'HUG') updates.counterAxisSizing = 'FIXED'
-  if (Object.keys(updates).length > 0) graph.updateNode(child.id, updates)
-
-  computeLayout(graph, child.id)
-
   const restore: Partial<SceneNode> = {}
   if (updates.primaryAxisSizing) restore.primaryAxisSizing = savedPrimary
   if (updates.counterAxisSizing) restore.counterAxisSizing = savedCounter
-  if (Object.keys(restore).length > 0) graph.updateNode(child.id, restore)
+  try {
+    if (Object.keys(updates).length > 0) graph.updateNode(child.id, updates)
+    yield 'work'
+    yield* computeLayoutSteps(graph, child.id)
+  } finally {
+    // A cooperative run may be cancelled while the nested grid layout is
+    // suspended. Never leave its temporary FIXED sizing overrides authored.
+    if (Object.keys(restore).length > 0) graph.updateNode(child.id, restore)
+  }
+  yield 'work'
 }
 
-export function applyYogaLayout(
+/**
+ * Apply calculated Yoga geometry one node at a time. The yielded work markers
+ * let async callers checkpoint AbortSignal between graph writes instead of
+ * synchronously walking an arbitrarily deep subtree.
+ */
+export function* applyYogaLayoutSteps(
   graph: LayoutGraph,
   frame: SceneNode,
   yogaNode: YogaNode,
-  computeLayout: ComputeLayoutFn
-): void {
+  computeLayoutSteps: ComputeLayoutStepsFn
+): Generator<LayoutApplyStep, void, void> {
   applyFrameSize(graph, frame, yogaNode)
+  yield 'work'
 
   const children = graph.getChildren(frame.id)
   let yogaIndex = 0
@@ -95,21 +111,37 @@ export function applyYogaLayout(
     yogaIndex++
 
     updateChildFromYoga(graph, child, yogaChild)
+    yield 'work'
 
     if (preservesImportedInstanceInternals(child)) continue
 
     if (child.layoutMode !== 'NONE') {
       if (child.layoutMode === 'GRID' && child.visible && child.layoutPositioning !== 'ABSOLUTE') {
-        computeLayout(graph, child.id)
+        yield* computeLayoutSteps(graph, child.id)
       } else if (
         frame.layoutMode === 'GRID' &&
         child.visible &&
         child.layoutPositioning !== 'ABSOLUTE'
       ) {
-        recomputeGridChild(graph, child, computeLayout)
+        yield* recomputeGridChildSteps(graph, child, computeLayoutSteps)
       } else {
-        applyYogaLayout(graph, child, yogaChild, computeLayout)
+        yield* applyYogaLayoutSteps(graph, child, yogaChild, computeLayoutSteps)
       }
     }
   }
+}
+
+/** Synchronous compatibility wrapper used by direct layout callers. */
+export function applyYogaLayout(
+  graph: LayoutGraph,
+  frame: SceneNode,
+  yogaNode: YogaNode,
+  computeLayout: ComputeLayoutFn
+): void {
+  const steps = applyYogaLayoutSteps(graph, frame, yogaNode, (nestedGraph, frameId) => {
+    computeLayout(nestedGraph, frameId)
+    return []
+  })
+  let state = steps.next()
+  while (!state.done) state = steps.next()
 }

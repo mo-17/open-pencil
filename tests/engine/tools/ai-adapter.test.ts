@@ -83,6 +83,211 @@ describe('AI adapter', () => {
     expect(received).toBe(controller.signal)
   })
 
+  test('reports cancellation and skips mutation flashes after an ignored abort', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    const controller = new AbortController()
+    const flashes: string[][] = []
+    let afterContext: { status?: string; signal?: AbortSignal } | undefined
+    const tools = toolsToAI(
+      [
+        {
+          name: 'ignore_abort_signal',
+          description: 'test',
+          params: {},
+          mutates: true,
+          execute: () => {
+            controller.abort()
+            return { id: 'created-after-stop' }
+          }
+        }
+      ],
+      {
+        getFigma: () => figma,
+        onFlashNodes: (ids) => flashes.push(ids),
+        onAfterExecute: (_def, context) => {
+          afterContext = context
+        }
+      },
+      { v, valibotSchema, tool }
+    )
+
+    const outcome = adapterTool(tools, 'ignore_abort_signal')
+      .execute({}, { abortSignal: controller.signal })
+      .catch((error: Error) => error)
+
+    const error = await outcome
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).name).toBe('AbortError')
+    expect(flashes).toEqual([])
+    expect(afterContext).toMatchObject({ status: 'aborted', signal: controller.signal })
+  })
+
+  test('reports cancellation when abort arrives during the after-execute hook', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    const controller = new AbortController()
+    const flashes: string[][] = []
+    const tools = toolsToAI(
+      [
+        {
+          name: 'abort_during_after',
+          description: 'test',
+          params: {},
+          mutates: true,
+          execute: () => ({ id: 'created-before-stop' })
+        }
+      ],
+      {
+        getFigma: () => figma,
+        onAfterExecute: () => controller.abort(),
+        onFlashNodes: (ids) => flashes.push(ids)
+      },
+      { v, valibotSchema, tool }
+    )
+
+    const error = await adapterTool(tools, 'abort_during_after')
+      .execute({}, { abortSignal: controller.signal })
+      .catch((reason: Error) => reason)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).name).toBe('AbortError')
+    expect(flashes).toEqual([])
+  })
+
+  test('serializes mutating tools through their after-execute hooks', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    let active = 0
+    let maxActive = 0
+    const order: string[] = []
+    const tools = toolsToAI(
+      [
+        {
+          name: 'serialized_mutation',
+          description: 'test',
+          params: { id: { type: 'string', required: true } },
+          mutates: true,
+          execute: async (_figma, args) => {
+            active++
+            maxActive = Math.max(maxActive, active)
+            order.push(`start:${String(args.id)}`)
+            await new Promise((resolve) => {
+              setTimeout(resolve, 5)
+            })
+            active--
+            return { id: args.id }
+          }
+        }
+      ],
+      {
+        getFigma: () => figma,
+        onAfterExecute: async (_def, context) => {
+          order.push(`after:${String((context.result as { id?: string })?.id)}`)
+          await new Promise((resolve) => {
+            setTimeout(resolve, 5)
+          })
+        }
+      },
+      { v, valibotSchema, tool }
+    )
+
+    const mutation = adapterTool(tools, 'serialized_mutation')
+    await Promise.all([mutation.execute({ id: 'one' }), mutation.execute({ id: 'two' })])
+
+    expect(maxActive).toBe(1)
+    expect(order).toEqual(['start:one', 'after:one', 'start:two', 'after:two'])
+  })
+
+  test('serializes separate adapter instances that share a mutation key', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    const mutationKey = {}
+    let active = 0
+    let maxActive = 0
+    const def = {
+      name: 'shared_serialized_mutation',
+      description: 'test',
+      params: {},
+      mutates: true,
+      execute: async () => {
+        active++
+        maxActive = Math.max(maxActive, active)
+        await new Promise((resolve) => {
+          setTimeout(resolve, 5)
+        })
+        active--
+        return { ok: true }
+      }
+    }
+    const makeTools = () =>
+      toolsToAI([def], { getFigma: () => figma, mutationKey }, { v, valibotSchema, tool })
+
+    await Promise.all([
+      adapterTool(makeTools(), def.name).execute({}),
+      adapterTool(makeTools(), def.name).execute({})
+    ])
+
+    expect(maxActive).toBe(1)
+  })
+
+  test('treats ok false as a rejected result without flashing or replacing the result', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    const flashes: string[][] = []
+    let status: string | undefined
+    const tools = toolsToAI(
+      [
+        {
+          name: 'rejected_mutation',
+          description: 'test',
+          params: {},
+          mutates: true,
+          execute: () => ({ ok: false, error: 'invalid input', id: 'not-created' })
+        }
+      ],
+      {
+        getFigma: () => figma,
+        onAfterExecute: (_def, context) => {
+          status = context.status
+        },
+        onFlashNodes: (ids) => flashes.push(ids)
+      },
+      { v, valibotSchema, tool }
+    )
+
+    const result = await adapterTool(tools, 'rejected_mutation').execute({})
+    expect(result).toEqual({ ok: false, error: 'invalid input', id: 'not-created' })
+    expect(status).toBe('error')
+    expect(flashes).toEqual([])
+  })
+
+  test('passes successful tool results to the after-execute hook', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    let afterContext: { status?: string; result?: unknown } | undefined
+    const tools = toolsToAI(
+      [
+        {
+          name: 'return_result',
+          description: 'test',
+          params: {},
+          execute: () => ({ ok: true, value: 42 })
+        }
+      ],
+      {
+        getFigma: () => figma,
+        onAfterExecute: (_def, context) => {
+          afterContext = context
+        }
+      },
+      { v, valibotSchema, tool }
+    )
+
+    await adapterTool(tools, 'return_result').execute({})
+    expect(afterContext).toMatchObject({ status: 'success', result: { ok: true, value: 42 } })
+  })
+
   test('create_shape tool works through adapter', async () => {
     const { tools, figma } = setup()
     const createShape = adapterTool(tools, 'create_shape')
@@ -142,8 +347,12 @@ describe('AI adapter', () => {
       ALL_TOOLS,
       {
         getFigma: () => figma,
-        onBeforeExecute: () => calls.push('before'),
-        onAfterExecute: () => calls.push('after')
+        onBeforeExecute: () => {
+          calls.push('before')
+        },
+        onAfterExecute: () => {
+          calls.push('after')
+        }
       },
       { v, valibotSchema, tool }
     )

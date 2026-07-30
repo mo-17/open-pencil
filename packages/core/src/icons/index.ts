@@ -20,15 +20,20 @@ function parseIconName(name: string): { prefix: string; iconName: string } {
   return { prefix: name.slice(0, colonIdx), iconName: name.slice(colonIdx + 1) }
 }
 
-export async function fetchIcon(name: string, size = 24): Promise<IconData> {
-  const results = await fetchIcons([name], size)
+export async function fetchIcon(name: string, size = 24, signal?: AbortSignal): Promise<IconData> {
+  const results = await fetchIcons([name], size, signal)
   const result = results.get(name)
   if (!result)
     throw new Error(`Icon "${name}" not found. Check the name at https://icon-sets.iconify.design/`)
   return result
 }
 
-export async function fetchIcons(names: string[], size = 24): Promise<Map<string, IconData>> {
+export async function fetchIcons(
+  names: string[],
+  size = 24,
+  signal?: AbortSignal
+): Promise<Map<string, IconData>> {
+  throwIfIconFetchAborted(signal)
   const results = new Map<string, IconData>()
   const toFetch = new Map<string, string[]>()
 
@@ -46,11 +51,14 @@ export async function fetchIcons(names: string[], size = 24): Promise<Map<string
   }
 
   const fetches = [...toFetch.entries()].map(async ([prefix, iconNames]) => {
-    const data = await fetchIconifyCollection(prefix, iconNames)
+    throwIfIconFetchAborted(signal)
+    const data = await fetchIconifyCollection(prefix, iconNames, signal)
+    throwIfIconFetchAborted(signal)
     const defaultW = data.width ?? 24
     const defaultH = data.height ?? 24
 
     for (const iconName of iconNames) {
+      throwIfIconFetchAborted(signal)
       const fullName = `${prefix}:${iconName}`
       let entry = data.icons[iconName]
       if (!entry) {
@@ -64,8 +72,25 @@ export async function fetchIcons(names: string[], size = 24): Promise<Map<string
     }
   })
 
-  await Promise.all(fetches)
+  try {
+    await Promise.all(fetches)
+  } catch (error) {
+    if (signal?.aborted) throwIconFetchAborted()
+    throw error
+  }
+  throwIfIconFetchAborted(signal)
   return results
+}
+
+function throwIfIconFetchAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return
+  throwIconFetchAborted()
+}
+
+function throwIconFetchAborted(): never {
+  const error = new Error('Icon fetch cancelled')
+  error.name = 'AbortError'
+  throw error
 }
 
 export { searchIconify as searchIcons }

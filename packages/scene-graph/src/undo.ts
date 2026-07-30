@@ -21,6 +21,7 @@ export class UndoManager {
   private undoStack: UndoEntry[] = []
   private redoStack: UndoEntry[] = []
   private batches: UndoBatch[] = []
+  private historyRevision = 0
   private readonly limit: number
 
   constructor(options: UndoManagerOptions = {}) {
@@ -41,6 +42,7 @@ export class UndoManager {
   }
 
   record(entry: UndoEntry): void {
+    this.historyRevision++
     const batch = this.currentBatch
     if (batch) {
       batch.entries.push(entry)
@@ -54,6 +56,7 @@ export class UndoManager {
     if (!entry) return null
     entry.inverse()
     this.redoStack.push(entry)
+    this.historyRevision++
     return entry.label
   }
 
@@ -62,6 +65,7 @@ export class UndoManager {
     if (!entry) return null
     entry.forward()
     this.undoStack.push(entry)
+    this.historyRevision++
     return entry.label
   }
 
@@ -101,6 +105,12 @@ export class UndoManager {
     this.undoStack = []
     this.redoStack = []
     this.batches = []
+    this.historyRevision++
+  }
+
+  /** Monotonic history mutation marker for guarding long asynchronous transactions. */
+  get revision(): number {
+    return this.historyRevision
   }
 
   get isBatching(): boolean {

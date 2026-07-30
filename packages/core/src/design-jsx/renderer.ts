@@ -12,7 +12,7 @@ import { fetchIcons } from '#core/icons'
 import { createIconFromPaths } from '#core/icons/render'
 import { extractPaths, scalePathInfos } from '#core/icons/svg'
 import type { IconData } from '#core/icons/types'
-import { computeAllLayouts } from '#core/layout'
+import { computeAllLayoutsAsync } from '#core/layout'
 import { randomHex } from '#core/random'
 
 import {
@@ -76,22 +76,88 @@ export async function renderTree(
   const parentId = options.parentId ?? graph.getPages()[0].id
   const warnings: string[] = []
   const lowcodeProps = new Map<TreeNode, PreparedLowcodeProps>()
-  preflightLowcodeTree(tree, lowcodeProps, warnings)
-
-  const result = await renderNode(graph, tree, parentId, lowcodeProps)
-
-  if (options.x !== undefined) graph.updateNode(result.id, { x: options.x })
-  if (options.y !== undefined) graph.updateNode(result.id, { y: options.y })
-
-  computeAllLayouts(graph)
-
-  return {
-    id: result.id,
-    name: result.name,
-    type: result.type,
-    childIds: result.childIds,
-    ...(warnings.length > 0 ? { warnings } : {})
+  const execution: RenderExecution = {
+    signal: options.signal,
+    rootParentId: parentId,
+    createdRootIds: new Set(),
+    workSinceYield: 0
   }
+  throwIfRenderAborted(options.signal)
+  await preflightLowcodeTreeAsync(tree, lowcodeProps, warnings, execution)
+  throwIfRenderAborted(options.signal)
+
+  try {
+    const result = await renderNode(graph, tree, parentId, lowcodeProps, execution)
+    throwIfRenderAborted(options.signal)
+
+    if (options.x !== undefined) graph.updateNode(result.id, { x: options.x })
+    if (options.y !== undefined) graph.updateNode(result.id, { y: options.y })
+
+    if (options.layout !== false) {
+      await computeAllLayoutsAsync(graph, findOwningPageId(graph, parentId), options.signal)
+      throwIfRenderAborted(options.signal)
+    }
+
+    return {
+      id: result.id,
+      name: result.name,
+      type: result.type,
+      childIds: result.childIds,
+      ...(warnings.length > 0 ? { warnings } : {})
+    }
+  } catch (error) {
+    // A child Icon/fetch/layout failure must not leave its already-created
+    // root (and descendants) behind on the page.
+    for (const childId of execution.createdRootIds) graph.deleteNode(childId)
+    throw error
+  }
+}
+
+interface RenderExecution {
+  signal?: AbortSignal
+  rootParentId: string
+  createdRootIds: Set<string>
+  workSinceYield: number
+}
+
+function throwIfRenderAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return
+  const error = new Error('JSX render cancelled')
+  error.name = 'AbortError'
+  throw error
+}
+
+async function checkpointRender(execution: RenderExecution, force = false): Promise<void> {
+  throwIfRenderAborted(execution.signal)
+  execution.workSinceYield++
+  if (!force && execution.workSinceYield < 32) return
+  execution.workSinceYield = 0
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      execution.signal?.removeEventListener('abort', onAbort)
+      resolve()
+    }, 0)
+    const onAbort = () => {
+      clearTimeout(timeout)
+      execution.signal?.removeEventListener('abort', onAbort)
+      const error = new Error('JSX render cancelled')
+      error.name = 'AbortError'
+      reject(error)
+    }
+    execution.signal?.addEventListener('abort', onAbort, { once: true })
+  })
+  throwIfRenderAborted(execution.signal)
+}
+
+function findOwningPageId(graph: SceneGraph, nodeId: string): string {
+  const visited = new Set<string>()
+  let current = graph.getNode(nodeId)
+  while (current && !visited.has(current.id)) {
+    if (current.type === 'CANVAS') return current.id
+    visited.add(current.id)
+    current = current.parentId ? graph.getNode(current.parentId) : undefined
+  }
+  return nodeId
 }
 
 function buttonTextFromTree(tree: TreeNode, nodeType: NodeType): string | undefined {
@@ -121,9 +187,53 @@ function preflightLowcodeTree(
   }
 }
 
+async function preflightLowcodeTreeAsync(
+  tree: TreeNode,
+  preparedByTree: Map<TreeNode, PreparedLowcodeProps>,
+  warnings: string[],
+  execution: RenderExecution
+): Promise<void> {
+  const pending = [tree]
+  while (pending.length > 0) {
+    await checkpointRender(execution)
+    const current = pending.pop()
+    if (!current) continue
+    const nodeType = TYPE_MAP[current.type.toLowerCase()]
+    if (nodeType && isLowcodeNodeType(nodeType)) {
+      const prepared = prepareLowcodeProps(
+        nodeType,
+        current.type,
+        current.props,
+        buttonTextFromTree(current, nodeType)
+      )
+      preparedByTree.set(current, prepared)
+      warnings.push(...prepared.warnings)
+    }
+    for (let index = current.children.length - 1; index >= 0; index--) {
+      const child = current.children[index]
+      if (isTreeNode(child)) pending.push(child)
+    }
+  }
+}
+
 /** Validate every lowcode node before a JSX render starts mutating the graph. */
 export function validateTreeForRender(tree: TreeNode): void {
   preflightLowcodeTree(tree, new Map(), [])
+}
+
+/** Cooperative preflight used before any graph mutation on generated trees. */
+export async function validateTreeForRenderAsync(
+  tree: TreeNode,
+  signal?: AbortSignal
+): Promise<void> {
+  const execution: RenderExecution = {
+    signal,
+    rootParentId: '',
+    createdRootIds: new Set(),
+    workSinceYield: 0
+  }
+  await preflightLowcodeTreeAsync(tree, new Map(), [], execution)
+  throwIfRenderAborted(signal)
 }
 
 interface PreparedProps {
@@ -265,7 +375,8 @@ function finishIconRender(
 async function renderIconNode(
   graph: SceneGraph,
   tree: TreeNode,
-  parentId: string
+  parentId: string,
+  signal?: AbortSignal
 ): Promise<SceneNode> {
   const props = tree.props
   const iconName = props.name as string | undefined
@@ -275,7 +386,9 @@ async function renderIconNode(
   const colorHex = (props.color as string | undefined) ?? '#000000'
   const parsedColor = parseColor(colorHex)
 
-  const icons = await fetchIcons([iconName], size)
+  throwIfRenderAborted(signal)
+  const icons = await fetchIcons([iconName], size, signal)
+  throwIfRenderAborted(signal)
   const icon = icons.get(iconName)
   if (!icon || icon.paths.length === 0) {
     throw new Error(`Icon "${iconName}" not found`)
@@ -546,12 +659,29 @@ async function renderNode(
   graph: SceneGraph,
   tree: TreeNode,
   parentId: string,
-  lowcodeProps: Map<TreeNode, PreparedLowcodeProps>
+  lowcodeProps: Map<TreeNode, PreparedLowcodeProps>,
+  execution: RenderExecution
 ): Promise<SceneNode> {
+  await checkpointRender(execution)
   const elementType = tree.type.toLowerCase()
-  if (elementType === 'icon') return renderIconNode(graph, tree, parentId)
-  if (elementType === 'svg') return renderSvgNode(graph, tree, parentId)
-  if (elementType === 'instance') return renderInstanceNode(graph, tree, parentId)
+  if (elementType === 'icon') {
+    const node = await renderIconNode(graph, tree, parentId, execution.signal)
+    trackCreatedRoot(execution, parentId, node.id)
+    await checkpointRender(execution, true)
+    return node
+  }
+  if (elementType === 'svg') {
+    const node = await renderSvgNode(graph, tree, parentId)
+    trackCreatedRoot(execution, parentId, node.id)
+    await checkpointRender(execution)
+    return node
+  }
+  if (elementType === 'instance') {
+    const node = await renderInstanceNode(graph, tree, parentId)
+    trackCreatedRoot(execution, parentId, node.id)
+    await checkpointRender(execution)
+    return node
+  }
 
   const nodeType = TYPE_MAP[elementType]
   if (!nodeType) throw new Error(`Unknown element: <${tree.type}>`)
@@ -573,17 +703,22 @@ async function renderNode(
   }
 
   const node = graph.createNode(nodeType, parentId, overrides)
+  trackCreatedRoot(execution, parentId, node.id)
   applyPreparedLowcodeProps(graph, node, preparedLowcode)
   applyBindings(graph, node.id, bindings)
 
   for (const child of tree.children) {
     if (typeof child === 'string') continue
     if (isTreeNode(child)) {
-      await renderNode(graph, child, node.id, lowcodeProps)
+      await renderNode(graph, child, node.id, lowcodeProps, execution)
     }
   }
 
   if (node.type === 'COMPONENT_SET') inferComponentSetProperties(graph, node.id)
 
   return node
+}
+
+function trackCreatedRoot(execution: RenderExecution, parentId: string, nodeId: string): void {
+  if (parentId === execution.rootParentId) execution.createdRootIds.add(nodeId)
 }

@@ -29,7 +29,7 @@ export const stockPhoto = defineTool({
       required: true
     }
   },
-  execute: async (figma, { requests }) => {
+  execute: async (figma, { requests }, context) => {
     const provider = getActiveProvider()
     if (!provider) {
       return {
@@ -40,7 +40,9 @@ export const stockPhoto = defineTool({
     const reqs = parsePhotoRequests(requests)
     if ('error' in reqs) return reqs
 
-    const results = await Promise.all(reqs.map((request) => applyPhoto(figma, provider, request)))
+    const results = await Promise.all(
+      reqs.map((request) => applyPhoto(figma, provider, request, context?.signal))
+    )
     const ok = results.filter((result) => result.photo).length
 
     return { applied: ok, failed: results.length - ok, provider: provider.name, results }

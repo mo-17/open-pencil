@@ -15,16 +15,17 @@ export const fetchIconsTool = defineTool({
     },
     size: { type: 'number', description: 'Icon size in pixels (default: 24)' }
   },
-  execute: async (_figma, args) => {
+  execute: async (_figma, args, context) => {
     const size = args.size ?? 24
     try {
-      const icons = await fetchIcons(args.names, size)
+      const icons = await fetchIcons(args.names, size, context?.signal)
       const fetched = [...icons.keys()]
       const notFound = args.names.filter((name) => !icons.has(name))
       const result: Record<string, unknown> = { fetched, count: fetched.length }
       if (notFound.length > 0) result.not_found = notFound
       return result
     } catch (e) {
+      if (isAbortError(e, context?.signal)) throw e
       return { error: (e as Error).message }
     }
   }
@@ -52,7 +53,7 @@ export const insertIcon = defineTool({
     },
     parent_id: { type: 'string', description: 'Parent node ID for all icons' }
   },
-  execute: async (figma, args) => {
+  execute: async (figma, args, context) => {
     const names = args.names ?? (args.name ? [args.name] : [])
     if (names.length === 0) return { error: 'Provide "names" (array) or "name" (string)' }
 
@@ -62,8 +63,9 @@ export const insertIcon = defineTool({
 
     let icons
     try {
-      icons = await fetchIcons(names, size)
+      icons = await fetchIcons(names, size, context?.signal)
     } catch (e) {
+      if (isAbortError(e, context?.signal)) throw e
       return { error: (e as Error).message }
     }
 
@@ -71,6 +73,7 @@ export const insertIcon = defineTool({
     const notFound: string[] = []
 
     for (const name of names) {
+      throwIfIconToolAborted(context?.signal)
       const icon = icons.get(name)
       if (!icon || icon.paths.length === 0) {
         notFound.push(name)
@@ -90,6 +93,20 @@ export const insertIcon = defineTool({
     return result
   }
 })
+
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return (
+    signal?.aborted === true ||
+    (typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError')
+  )
+}
+
+function throwIfIconToolAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return
+  const error = new Error('Icon operation cancelled')
+  error.name = 'AbortError'
+  throw error
+}
 
 export const searchIconsTool = defineTool({
   name: 'search_icons',

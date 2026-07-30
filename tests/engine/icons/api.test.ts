@@ -61,4 +61,27 @@ describe('Iconify API client', () => {
     )
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
+
+  test('forwards AbortSignal to the underlying Iconify request', async () => {
+    let requestSignal: AbortSignal | undefined
+    const fetcher = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init)
+      requestSignal = request.signal
+      return new Promise<Response>((_resolve, reject) => {
+        request.signal.addEventListener(
+          'abort',
+          () => reject(new DOMException('Request aborted', 'AbortError')),
+          { once: true }
+        )
+      })
+    }) as typeof fetch
+    const client = createIconifyAPIClient(fetcher, 'https://icons.example')
+    const controller = new AbortController()
+
+    const request = client.fetchCollection('lucide', ['home'], controller.signal)
+    controller.abort()
+
+    await expect(request).rejects.toBeDefined()
+    expect(requestSignal?.aborted).toBe(true)
+  })
 })

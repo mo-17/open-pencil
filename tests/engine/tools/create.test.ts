@@ -77,6 +77,23 @@ describe('render', () => {
     expect(result.warnings).toEqual(['Unsupported prop "mt" on <frame> is ignored.'])
   })
 
+  test('defers render layout when the host owns the post-tool pass', async () => {
+    const { figma } = setupToolTest()
+    const tool = getTool('render')
+    const result = (await tool.execute(
+      figma,
+      {
+        jsx: '<Frame name="Deferred" flex="row" p={24}><Rectangle name="Child" w={20} h={20} /></Frame>'
+      },
+      { deferLayout: true }
+    )) as ToolResult
+    const childId = expectDefined((result.children as string[])[0], 'rendered child id')
+    const child = expectDefined(figma.getNodeById(childId), 'rendered child')
+
+    expect(child.x).toBe(0)
+    expect(child.y).toBe(0)
+  })
+
   test('get_node exposes text style fields', async () => {
     const { figma } = setupToolTest()
     const render = getTool('render')

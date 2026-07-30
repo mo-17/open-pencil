@@ -10,6 +10,13 @@ export const deleteNode = defineTool({
   execute: (figma, { id }) => {
     const node = figma.getNodeById(id)
     if (!node) return { error: `Node "${id}" not found` }
+    const raw = figma.graph.getNode(id)
+    if (id === figma.graph.rootId) {
+      return { ok: false, error: 'The document root cannot be deleted.' }
+    }
+    if (raw?.type === 'CANVAS' && figma.graph.getPages().length <= 1) {
+      return { ok: false, error: 'The last page cannot be deleted.' }
+    }
     node.remove()
     return { deleted: id }
   }

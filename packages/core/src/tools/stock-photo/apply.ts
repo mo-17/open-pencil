@@ -1,6 +1,9 @@
+import { abortError, isAbortError, throwIfAborted } from '#core/async-work'
 import type { FigmaAPI } from '#core/figma-api'
 
 import type { StockPhotoProvider, StockPhotoResult } from './providers'
+
+const STOCK_PHOTO_ABORT_MESSAGE = 'Stock photo request cancelled'
 
 export interface PhotoRequest {
   id: string
@@ -28,8 +31,10 @@ export interface PhotoResult {
 export async function applyPhoto(
   figma: FigmaAPI,
   provider: StockPhotoProvider,
-  req: PhotoRequest
+  req: PhotoRequest,
+  signal?: AbortSignal
 ): Promise<PhotoResult> {
+  throwIfAborted(signal, STOCK_PHOTO_ABORT_MESSAGE)
   const node = figma.getNodeById(req.id)
   if (!node) return { id: req.id, error: 'Not found' }
 
@@ -44,22 +49,26 @@ export async function applyPhoto(
 
   let results: StockPhotoResult[]
   try {
-    results = await provider.search(req.query, { perPage, orientation, targetDim })
+    results = await provider.search(req.query, { perPage, orientation, targetDim, signal })
   } catch (err) {
+    if (isAbortError(err, signal)) throw abortError(STOCK_PHOTO_ABORT_MESSAGE)
     return { id: req.id, error: err instanceof Error ? err.message : String(err) }
   }
+  throwIfAborted(signal, STOCK_PHOTO_ABORT_MESSAGE)
 
   if (results.length === 0) return { id: req.id, error: `No photos for "${req.query}"` }
   const photo = results[Math.min(req.index ?? 0, results.length - 1)]
 
   let imageBytes: Uint8Array
   try {
-    const response = await fetch(photo.url)
+    const response = await fetch(photo.url, { signal })
     if (!response.ok) return { id: req.id, error: `Download ${response.status}` }
     imageBytes = new Uint8Array(await response.arrayBuffer())
   } catch (err) {
+    if (isAbortError(err, signal)) throw abortError(STOCK_PHOTO_ABORT_MESSAGE)
     return { id: req.id, error: `Download: ${err instanceof Error ? err.message : String(err)}` }
   }
+  throwIfAborted(signal, STOCK_PHOTO_ABORT_MESSAGE)
 
   const image = figma.createImage(imageBytes)
   node.fills = [
