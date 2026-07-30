@@ -4,9 +4,16 @@ type ToolPartLike = {
   state: string
   output?: unknown
   errorText?: unknown
+  approval?: { id?: unknown; approved?: unknown }
 }
 
-export type ToolPresentationState = 'pending' | 'done' | 'error' | 'cancelled' | 'denied'
+export type ToolPresentationState =
+  | 'pending'
+  | 'approval'
+  | 'done'
+  | 'error'
+  | 'cancelled'
+  | 'denied'
 
 type UnknownRecord = Record<string, unknown>
 
@@ -114,6 +121,10 @@ export function hasErrorOutput(part: ToolPartLike): boolean {
 }
 
 export function toolState(part: ToolPartLike): ToolPresentationState {
+  if (part.state === 'approval-requested') return 'approval'
+  if (part.state === 'approval-responded' && part.approval?.approved === false) {
+    return 'denied'
+  }
   if (part.state === 'output-denied') return 'denied'
   const error = toolErrorText(part)
   if (error === INTERRUPTED_TOOL_ERROR) return 'cancelled'

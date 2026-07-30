@@ -3,16 +3,20 @@ import { computed, ref, watch } from 'vue'
 import { IS_TAURI } from '@open-pencil/core/constants'
 import { setPexelsApiKey, setUnsplashAccessKey } from '@open-pencil/core/tools'
 
+import { remoteMcpCredentialRevision, remoteMcpSettings } from '@/app/ai/mcp'
 import {
   designCustomAPIType,
   designCustomBaseURL,
   designCustomModelID,
   designMaxOutputTokens,
   designModelConnection,
+  designModelProfile,
   designModelID,
   designProviderDefinition,
   designProviderID,
-  modelConnectionCredentialRef
+  modelConnectionCredentialRef,
+  modelCredentialRevision,
+  setModelConnectionAPIKey
 } from '@/app/ai/models'
 import { appCredentialServices, browserCredentialsRemembered } from '@/app/settings/credentials/app'
 import {
@@ -34,7 +38,7 @@ export const providerDef = designProviderDefinition
 export const apiKeyStatus = ref<CredentialStatus>('missing')
 export const pexelsKeyStatus = ref<CredentialStatus>('missing')
 export const unsplashKeyStatus = ref<CredentialStatus>('missing')
-const credentialRevision = ref(0)
+const credentialPersistenceRevision = ref(0)
 
 export const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
 
@@ -92,13 +96,11 @@ export async function resolveAPIKey(): Promise<string | null> {
 }
 
 export async function setAPIKey(key: string): Promise<void> {
-  const reference = designCredentialReference()
-  if (!reference) return
-  const value = key.trim()
-  if (value) await appCredentialServices.manager.set(reference, value)
-  else await appCredentialServices.manager.clear(reference)
+  const connection = designModelConnection.value
+  if (!connection || connection.providerID.startsWith('acp:')) return
+  const reference = modelConnectionCredentialRef(connection)
+  await setModelConnectionAPIKey(connection.id, key)
   apiKeyStatus.value = await refreshStatus(reference)
-  credentialRevision.value++
 }
 
 export async function setPexelsKey(key: string): Promise<void> {
@@ -121,7 +123,7 @@ export async function setRememberCredentials(remembered: boolean): Promise<void>
   await credentialsReady
   await setAppCredentialPersistence(remembered)
   await Promise.all([refreshAIProviderStatus(), refreshMediaCredentials()])
-  credentialRevision.value++
+  credentialPersistenceRevision.value++
 }
 
 export { browserCredentialsRemembered }
@@ -139,5 +141,28 @@ export function registerAIChatEffects(markTransportDirty: () => void) {
   watch(customAPIType, markTransportDirty)
   watch(customBaseURL, markTransportDirty)
   watch(maxOutputTokens, markTransportDirty)
-  watch(credentialRevision, markTransportDirty)
+  watch(() => {
+    const profile = designModelProfile.value
+    if (!profile) return null
+    return [
+      ...profile.capabilities,
+      profile.featurePolicy.webSearch.enabled,
+      profile.featurePolicy.codeExecution.enabled,
+      ...profile.featurePolicy.mcpServerIds
+    ]
+  }, markTransportDirty)
+  watch(credentialPersistenceRevision, markTransportDirty)
+  watch(modelCredentialRevision, markTransportDirty, { flush: 'sync' })
+  watch(remoteMcpCredentialRevision, markTransportDirty)
+  watch(
+    () =>
+      remoteMcpSettings.value.servers.map((server) => [
+        server.id,
+        server.name,
+        server.transport.url,
+        server.auth.type,
+        server.auth.type === 'bearer' ? server.auth.credentialProfileId : ''
+      ]),
+    markTransportDirty
+  )
 }

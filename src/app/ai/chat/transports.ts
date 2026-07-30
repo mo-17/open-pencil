@@ -1,26 +1,34 @@
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
 import { Chat } from '@ai-sdk/vue'
-import { DirectChatTransport, stepCountIs, ToolLoopAgent } from 'ai'
-import type { ChatTransport, LanguageModel, UIMessage } from 'ai'
-import { ref, shallowRef } from 'vue'
+import {
+  DirectChatTransport,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
+  stepCountIs,
+  ToolLoopAgent
+} from 'ai'
+import type { ChatTransport, LanguageModel, ToolLoopAgentSettings, ToolSet, UIMessage } from 'ai'
+import { readonly, ref, shallowRef } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 
 import { ACP_AGENTS } from '@open-pencil/core/constants'
 import type { ACPAgentID, AIProviderID } from '@open-pencil/core/constants'
 
 import { resetAcpDiagnostics } from '@/app/ai/acp/diagnostics'
+import { hasPendingToolApproval } from '@/app/ai/chat/approval'
 import { archiveVisualChatMessages } from '@/app/ai/chat/attachments'
 import {
   finalizeInterruptedToolParts,
   finalizeUnfinishedToolParts
 } from '@/app/ai/chat/interruption'
 import { resolveLanguageModelID } from '@/app/ai/chat/model'
+import { archiveAssistantFileMessages } from '@/app/ai/chat/sources'
 import SYSTEM_PROMPT from '@/app/ai/chat/system-prompt.md?raw'
 import {
   createVisionRoleAnalyzer,
   VisualReferenceChatTransport
 } from '@/app/ai/chat/visual-transport'
-import { createAIModelRuntime } from '@/app/ai/models'
+import { buildRemoteMcpAcpServerConfigs } from '@/app/ai/mcp/acp'
+import { createAIModelRuntime, designModelProfile } from '@/app/ai/models'
 import { MAX_AGENT_STEPS, createAITools, recordStepUsage, resetRunSteps } from '@/app/ai/tools'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
 
@@ -33,6 +41,7 @@ type ChatSessionOptions = {
   credentialsReady: Promise<void>
   getActiveEditorStore: () => EditorStore
   forceCloseTimeoutMs?: number
+  createModelRuntime?: typeof createAIModelRuntime
   /** @deprecated Direct providers are resolved through the Design model profile. */
   resolveAPIKey?: (providerID: AIProviderID) => Promise<string | null>
   /** @deprecated Direct providers are resolved through the Design model profile. */
@@ -53,6 +62,8 @@ type ToolLoopTransportOptions = {
   model: LanguageModel
   effectiveModelID: string
   maxOutputTokens: number
+  providerTools?: ToolSet
+  providerOptions?: ToolLoopAgentSettings['providerOptions']
 }
 
 const ANTHROPIC_CACHE_CONTROL = {
@@ -93,23 +104,30 @@ function estimateValueBytes(value: unknown, limit: number, seen = new WeakSet<ob
 }
 
 export function trimChatHistory(messages: UIMessage[]): UIMessage[] {
-  messages = archiveVisualChatMessages(messages)
+  messages = archiveAssistantFileMessages(archiveVisualChatMessages(messages))
   if (messages.length === 0) return messages
-  let start = messages.length
-  let bytes = 0
-  for (let index = messages.length - 1; index >= 0; index--) {
-    if (messages.length - index > MAX_CHAT_HISTORY_MESSAGES) break
-    const remaining = MAX_CHAT_HISTORY_BYTES - bytes
-    const messageBytes = estimateValueBytes(messages[index], remaining)
-    if (messageBytes > remaining && start < messages.length) break
-    start = index
-    bytes += messageBytes
-  }
 
-  const bounded = messages.slice(start)
-  const firstUser = bounded.findIndex((message) => message.role === 'user')
-  if (firstUser === -1) return []
-  return firstUser > 0 ? bounded.slice(firstUser) : bounded
+  // Prefer the newest complete suffix, but never force an oversized newest
+  // assistant into the window and then erase the conversation for lacking a
+  // user start. If necessary, drop that suffix and find the newest user-led
+  // window that actually fits.
+  for (let end = messages.length; end > 0; end--) {
+    let start = end
+    let bytes = 0
+    for (let index = end - 1; index >= 0; index--) {
+      if (end - index > MAX_CHAT_HISTORY_MESSAGES) break
+      const remaining = MAX_CHAT_HISTORY_BYTES - bytes
+      const messageBytes = estimateValueBytes(messages[index], remaining)
+      if (messageBytes > remaining) break
+      start = index
+      bytes += messageBytes
+    }
+
+    const bounded = messages.slice(start, end)
+    const firstUser = bounded.findIndex((message) => message.role === 'user')
+    if (firstUser !== -1) return firstUser > 0 ? bounded.slice(firstUser) : bounded
+  }
+  return []
 }
 
 function supportsAnthropicCaching(providerID: AIProviderID, modelID: string): boolean {
@@ -118,6 +136,16 @@ function supportsAnthropicCaching(providerID: AIProviderID, modelID: string): bo
     providerID === 'anthropic-compatible' ||
     (providerID === 'openrouter' && modelID.startsWith('anthropic/'))
   )
+}
+
+export function mergeAIToolSets(applicationTools: ToolSet, providerTools: ToolSet = {}): ToolSet {
+  const conflicts = Object.keys(providerTools).filter((name) => name in applicationTools)
+  if (conflicts.length > 0) {
+    throw new Error(
+      `Provider tool name conflicts with an application tool: ${conflicts.join(', ')}`
+    )
+  }
+  return { ...applicationTools, ...providerTools }
 }
 
 export async function createACPTransport(
@@ -130,7 +158,15 @@ export async function createACPTransport(
 
   const { ACPChatTransport } = await import('@/app/ai/acp/transport')
   const { homeDir } = await import('@tauri-apps/api/path')
-  return new ACPChatTransport({ agentDef, cwd: await homeDir(), onConfigOptionsChange })
+  const mcpServers = await buildRemoteMcpAcpServerConfigs(
+    designModelProfile.value?.featurePolicy.mcpServerIds ?? []
+  )
+  return new ACPChatTransport({
+    agentDef,
+    cwd: await homeDir(),
+    mcpServers,
+    onConfigOptionsChange
+  })
 }
 
 export function createToolLoopTransport({
@@ -138,12 +174,18 @@ export function createToolLoopTransport({
   providerID,
   model,
   effectiveModelID,
-  maxOutputTokens
+  maxOutputTokens,
+  providerTools,
+  providerOptions: runtimeProviderOptions
 }: ToolLoopTransportOptions) {
-  const tools = createAITools(store)
+  const tools = mergeAIToolSets(createAITools(store), providerTools)
   const cacheProviderOptions = supportsAnthropicCaching(providerID, effectiveModelID)
     ? ANTHROPIC_CACHE_CONTROL
     : undefined
+  const providerOptions =
+    runtimeProviderOptions || cacheProviderOptions
+      ? { ...runtimeProviderOptions, ...cacheProviderOptions }
+      : undefined
 
   const agent = new ToolLoopAgent({
     model,
@@ -151,13 +193,13 @@ export function createToolLoopTransport({
     tools,
     stopWhen: stepCountIs(MAX_AGENT_STEPS),
     maxOutputTokens,
-    providerOptions: cacheProviderOptions,
+    providerOptions,
     prepareCall: (options) => {
       resetRunSteps(store)
       return {
         ...options,
         maxOutputTokens,
-        providerOptions: cacheProviderOptions
+        providerOptions
       }
     },
     onStepFinish: ({ usage }) => {
@@ -183,7 +225,8 @@ export function createChatSessionManager({
   providerID,
   credentialsReady,
   getActiveEditorStore,
-  forceCloseTimeoutMs = FORCE_CLOSE_TIMEOUT_MS
+  forceCloseTimeoutMs = FORCE_CLOSE_TIMEOUT_MS,
+  createModelRuntime = createAIModelRuntime
 }: ChatSessionOptions) {
   let transportDirty = false
   let currentChatStore: EditorStore | null = null
@@ -193,9 +236,14 @@ export function createChatSessionManager({
   let acpTransportInstance: ACPTransport | null = null
   const closingACPTransports = new Set<ACPTransport>()
   let acpTransportClosePromise: Promise<void> = Promise.resolve()
+  type DirectRuntimeHandle = { dispose: () => Promise<void> }
+  let directRuntimeHandle: DirectRuntimeHandle | null = null
+  const closingDirectRuntimes = new Set<DirectRuntimeHandle>()
+  let directRuntimeClosePromise: Promise<void> = Promise.resolve()
   let chatStopPromise: Promise<void> = Promise.resolve()
   let acpTransportGeneration = 0
   let chatInitializationGeneration = 0
+  const sessionRevision = ref(0)
   let pendingChatInitialization: {
     generation: number
     store: EditorStore
@@ -236,6 +284,26 @@ export function createChatSessionManager({
     return acpTransportClosePromise
   }
 
+  function closeDirectRuntime(handle: DirectRuntimeHandle): Promise<void> {
+    if (directRuntimeHandle === handle) directRuntimeHandle = null
+    closingDirectRuntimes.add(handle)
+    const close = chatStopPromise
+      .then(() => handle.dispose())
+      .catch(() => undefined)
+      .finally(() => closingDirectRuntimes.delete(handle))
+    directRuntimeClosePromise = Promise.all([directRuntimeClosePromise, close]).then(
+      () => undefined
+    )
+    return directRuntimeClosePromise
+  }
+
+  function detachDirectRuntime(): Promise<void> {
+    const handle = directRuntimeHandle
+    return handle
+      ? closeDirectRuntime(handle)
+      : Promise.all([chatStopPromise, directRuntimeClosePromise]).then(() => undefined)
+  }
+
   function forceDetachACPTransport(): Promise<void> {
     const transports = new Set(closingACPTransports)
     if (acpTransportInstance) transports.add(acpTransportInstance)
@@ -256,9 +324,30 @@ export function createChatSessionManager({
     return close
   }
 
+  function forceDetachDirectRuntime(): Promise<void> {
+    const runtimes = new Set(closingDirectRuntimes)
+    if (directRuntimeHandle) runtimes.add(directRuntimeHandle)
+    directRuntimeHandle = null
+    closingDirectRuntimes.clear()
+
+    const destroy = Promise.all(
+      [...runtimes].map((handle) =>
+        Promise.resolve()
+          .then(() => handle.dispose())
+          .catch(() => undefined)
+      )
+    ).then(() => undefined)
+    const close = settleWithin(destroy, forceCloseTimeoutMs)
+    // As with ACP, force stop deliberately abandons any graceful close that is
+    // still queued behind a provider's hung Chat.stop(). The runtime disposer
+    // is idempotent, so a released graceful chain can safely converge later.
+    directRuntimeClosePromise = close
+    return close
+  }
+
   function markTransportDirty() {
-    void stopChatInstance(chat)
     transportDirty = true
+    void stopChatInstance(chat)
     currentChatStore = null
     currentChatMessages = new WeakMap()
     chatInitializationGeneration++
@@ -266,8 +355,10 @@ export function createChatSessionManager({
     acpTransportGeneration++
     acpConfigUpdateGeneration++
     void detachACPTransport()
+    void detachDirectRuntime()
     acpConfigOptions.value = []
     acpConfigUpdating.value = false
+    sessionRevision.value++
   }
 
   async function createActiveACPTransport() {
@@ -303,28 +394,38 @@ export function createChatSessionManager({
   async function createTransport(store: EditorStore) {
     resetAcpDiagnostics()
     acpConfigOptions.value = []
-    if (overrideTransport) return overrideTransport()
+    if (overrideTransport) return { transport: overrideTransport(), dispose: undefined }
 
-    const runtime = await createAIModelRuntime('design')
+    const runtime = await createModelRuntime('design')
     if (runtime?.kind !== 'direct') {
       throw new Error('The Design model is not configured for direct API access')
     }
-    const transport = createToolLoopTransport({
-      store,
-      providerID: runtime.role.connection.providerID,
-      model: runtime.model,
-      effectiveModelID: resolveLanguageModelID({
+    try {
+      const transport = createToolLoopTransport({
+        store,
         providerID: runtime.role.connection.providerID,
-        modelID: runtime.role.profile.modelID,
-        customModelID: runtime.role.profile.customModelID
-      }),
-      maxOutputTokens: runtime.role.profile.maxOutputTokens
-    })
-    return new VisualReferenceChatTransport({
-      transport,
-      designSupportsVision: runtime.role.profile.capabilities.includes('vision'),
-      analyze: createVisionRoleAnalyzer()
-    })
+        model: runtime.model,
+        effectiveModelID: resolveLanguageModelID({
+          providerID: runtime.role.connection.providerID,
+          modelID: runtime.role.profile.modelID,
+          customModelID: runtime.role.profile.customModelID
+        }),
+        maxOutputTokens: runtime.role.profile.maxOutputTokens,
+        providerTools: runtime.providerTools,
+        providerOptions: runtime.providerOptions
+      })
+      return {
+        transport: new VisualReferenceChatTransport({
+          transport,
+          designSupportsVision: runtime.role.profile.capabilities.includes('vision'),
+          analyze: createVisionRoleAnalyzer()
+        }) as ChatTransport<UIMessage>,
+        dispose: runtime.dispose
+      }
+    } catch (error) {
+      await runtime.dispose?.().catch(() => undefined)
+      throw error
+    }
   }
 
   async function initializeChat(
@@ -342,21 +443,41 @@ export function createChatSessionManager({
     resetAcpDiagnostics()
 
     let transport: ChatTransport<UIMessage>
+    let pendingDirectRuntime: Awaited<ReturnType<typeof createTransport>> | null = null
     if (isACPProvider.value) {
+      await detachDirectRuntime()
       transport = await createActiveACPTransport()
     } else {
       await detachACPTransport()
-      transport = await createTransport(store)
+      await detachDirectRuntime()
+      pendingDirectRuntime = await createTransport(store)
+      transport = pendingDirectRuntime.transport
     }
 
     if (generation !== chatInitializationGeneration || store !== getActiveEditorStore()) {
       if (transport === acpTransportInstance) await detachACPTransport()
+      if (pendingDirectRuntime?.dispose) await pendingDirectRuntime.dispose().catch(() => undefined)
       return ensureChat()
+    }
+    if (pendingDirectRuntime?.dispose) {
+      let disposePromise: Promise<void> | null = null
+      directRuntimeHandle = {
+        dispose: () => {
+          disposePromise ??= pendingDirectRuntime.dispose?.() ?? Promise.resolve()
+          return disposePromise
+        }
+      }
     }
 
     const createdChat = new Chat<UIMessage>({
       transport,
       messages: messages ? trimChatHistory(messages) : undefined,
+      sendAutomaticallyWhen: (options) =>
+        generation === chatInitializationGeneration &&
+        !transportDirty &&
+        currentChatStore === store &&
+        getActiveEditorStore() === store &&
+        lastAssistantMessageIsCompleteWithApprovalResponses(options),
       onFinish: ({ messages: finishedMessages, isAbort, isError }) => {
         let settledMessages = finishedMessages
         if (isAbort) {
@@ -406,6 +527,26 @@ export function createChatSessionManager({
     return promise
   }
 
+  async function respondToToolApproval(
+    target: Chat<UIMessage>,
+    messageId: string,
+    approvalId: string,
+    approved: boolean
+  ): Promise<boolean> {
+    const activeStore = getActiveEditorStore()
+    if (
+      target !== chat ||
+      transportDirty ||
+      currentChatStore !== activeStore ||
+      !hasPendingToolApproval(target.messages, messageId, approvalId)
+    ) {
+      return false
+    }
+
+    await target.addToolApprovalResponse({ id: approvalId, approved })
+    return true
+  }
+
   async function resetChat(): Promise<void> {
     void stopChatInstance(chat)
     if (currentChatStore) currentChatMessages.delete(currentChatStore)
@@ -418,7 +559,9 @@ export function createChatSessionManager({
     transportDirty = false
     acpConfigOptions.value = []
     acpConfigUpdating.value = false
-    await detachACPTransport()
+    const detachPromise = Promise.all([detachACPTransport(), detachDirectRuntime()])
+    sessionRevision.value++
+    await detachPromise
   }
 
   async function forceStopChat(): Promise<void> {
@@ -446,7 +589,9 @@ export function createChatSessionManager({
     transportDirty = false
     acpConfigOptions.value = []
     acpConfigUpdating.value = false
-    await forceDetachACPTransport()
+    const detachPromise = Promise.all([forceDetachACPTransport(), forceDetachDirectRuntime()])
+    sessionRevision.value++
+    await detachPromise
   }
 
   function setOverrideTransport(factory: (() => ChatTransport<UIMessage>) | null) {
@@ -470,9 +615,11 @@ export function createChatSessionManager({
 
   return {
     ensureChat,
+    respondToToolApproval,
     resetChat,
     forceStopChat,
     markTransportDirty,
+    sessionRevision: readonly(sessionRevision),
     setOverrideTransport,
     acpConfigOptions,
     acpConfigUpdating,

@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'bun:test'
 
 import type { SessionConfigOption } from '@agentclientprotocol/sdk'
-import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai'
-import { computed, ref } from 'vue'
+import type { ChatTransport, LanguageModel, UIMessage, UIMessageChunk } from 'ai'
+import { computed, ref, watch } from 'vue'
 
 import type { AIProviderID } from '@open-pencil/core/constants'
 
+import { collectAssistantFiles, MAX_ASSISTANT_INLINE_DATA_URL_CHARS } from '@/app/ai/chat/sources'
 import { createChatSessionManager, trimChatHistory } from '@/app/ai/chat/transports'
+import type { AIModelRuntime } from '@/app/ai/models'
 import * as automationMcp from '@/app/automation/mcp/spawn'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
 
@@ -38,6 +40,26 @@ function neverSettles(): Promise<void> {
   return new Promise<void>(() => {
     // Simulate a provider implementation whose stop hook never returns.
   })
+}
+
+function pendingApprovalMessage(
+  messageId = 'assistant-approval',
+  approvalId = 'approval-1'
+): UIMessage {
+  return {
+    id: messageId,
+    role: 'assistant',
+    parts: [
+      {
+        type: 'dynamic-tool',
+        toolName: 'mcp__mcp-0123456789abcdef__write',
+        toolCallId: `call-${approvalId}`,
+        state: 'approval-requested',
+        input: { value: 'visible input' },
+        approval: { id: approvalId }
+      }
+    ]
+  }
 }
 
 describe('chat history bounds', () => {
@@ -124,9 +146,268 @@ describe('chat history bounds', () => {
       bounded[0]?.parts.every((part) => part.type !== 'file' || part.url === thumbnailUrl)
     ).toBe(true)
   })
+
+  test('keeps a four-thumbnail user turn when an assistant inline file exceeds its budget', () => {
+    const thumbnailUrl = `data:image/png;base64,${'A'.repeat(131_072)}`
+    const oversizedPayload = `data:image/png;base64,${'PAYLOAD'.repeat(
+      Math.ceil(MAX_ASSISTANT_INLINE_DATA_URL_CHARS / 7)
+    )}`
+    const user = {
+      id: 'user-with-four-thumbnails',
+      role: 'user' as const,
+      metadata: {
+        visualAttachments: Array.from({ length: 4 }, (_, index) => ({
+          id: `visual-${index}`,
+          name: `reference-${index}.png`,
+          mediaType: 'image/png',
+          source: 'file',
+          thumbnail: { url: thumbnailUrl, sizeBytes: 96 * 1024, width: 320, height: 320 }
+        }))
+      },
+      parts: Array.from({ length: 4 }, (_, index) => ({
+        type: 'file' as const,
+        mediaType: 'image/png',
+        filename: `reference-${index}.png`,
+        url: `data:image/png;base64,FULL-${index}`
+      }))
+    } satisfies UIMessage
+    const assistant = {
+      id: 'assistant-with-oversized-file',
+      role: 'assistant' as const,
+      parts: [
+        { type: 'text' as const, text: 'Generated the file' },
+        {
+          type: 'file' as const,
+          filename: 'large.png',
+          mediaType: 'image/png',
+          url: oversizedPayload
+        }
+      ]
+    } satisfies UIMessage
+
+    const bounded = trimChatHistory([user, assistant])
+    const retainedAssistant = bounded.at(-1)
+
+    expect(bounded.map((message) => message.id)).toEqual([user.id, assistant.id])
+    expect(JSON.stringify(bounded)).not.toContain(oversizedPayload)
+    expect(
+      collectAssistantFiles(retainedAssistant?.parts ?? [], retainedAssistant?.metadata, {
+        document: 'Document',
+        generatedImage: 'Generated image',
+        file: 'File'
+      })
+    ).toEqual([expect.objectContaining({ name: 'large.png', blocked: true })])
+  })
+
+  test('drops an individually oversized newest assistant and retains a recent user-led window', () => {
+    const messages = [
+      {
+        id: 'older-user',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'older prompt' }]
+      },
+      {
+        id: 'older-assistant',
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: 'older reply' }]
+      },
+      {
+        id: 'recent-user',
+        role: 'user' as const,
+        parts: [{ type: 'text' as const, text: 'recent prompt' }]
+      },
+      {
+        id: 'oversized-assistant',
+        role: 'assistant' as const,
+        parts: [{ type: 'text' as const, text: 'x'.repeat(1_100_000) }]
+      }
+    ] satisfies UIMessage[]
+
+    const bounded = trimChatHistory(messages)
+    expect(bounded.length).toBeGreaterThan(0)
+    expect(bounded[0]?.role).toBe('user')
+    expect(bounded.at(-1)?.id).toBe('recent-user')
+    expect(bounded.some((message) => message.id === 'oversized-assistant')).toBeFalse()
+  })
 })
 
 describe('ACP chat session manager', () => {
+  test('rejects stale approval after transport invalidation without sending on the old chat', async () => {
+    const store = {} as EditorStore
+    let oldTransportSends = 0
+    const manager = createChatSessionManager({
+      isConfigured: computed(() => true),
+      isACPProvider: computed(() => false),
+      providerID: ref<AIProviderID>('openai'),
+      credentialsReady: Promise.resolve(),
+      getActiveEditorStore: () => store
+    })
+    manager.setOverrideTransport(() => ({
+      async sendMessages() {
+        oldTransportSends += 1
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            controller.close()
+          }
+        })
+      },
+      reconnectToStream: async () => null
+    }))
+
+    const staleChat = await manager.ensureChat()
+    if (!staleChat) throw new Error('Missing stale chat')
+    staleChat.messages = [pendingApprovalMessage()]
+    const previousRevision = manager.sessionRevision.value
+    let refreshedChatPromise: ReturnType<typeof manager.ensureChat> | undefined
+    const stopRevisionWatch = watch(
+      manager.sessionRevision,
+      () => {
+        refreshedChatPromise = manager.ensureChat()
+      },
+      { flush: 'sync' }
+    )
+
+    manager.markTransportDirty()
+    stopRevisionWatch()
+
+    expect(manager.sessionRevision.value).toBe(previousRevision + 1)
+    if (!refreshedChatPromise)
+      throw new Error('Session revision did not synchronously refresh chat')
+    expect(await refreshedChatPromise).not.toBe(staleChat)
+    expect(
+      await manager.respondToToolApproval(staleChat, 'assistant-approval', 'approval-1', true)
+    ).toBeFalse()
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0)
+    })
+    expect(oldTransportSends).toBe(0)
+    expect(staleChat.messages[0]?.parts[0]).toMatchObject({ state: 'approval-requested' })
+    await manager.resetChat()
+  })
+
+  test('accepts only a pending approval on the last assistant message', async () => {
+    const store = {} as EditorStore
+    let sends = 0
+    const manager = createChatSessionManager({
+      isConfigured: computed(() => true),
+      isACPProvider: computed(() => false),
+      providerID: ref<AIProviderID>('openai'),
+      credentialsReady: Promise.resolve(),
+      getActiveEditorStore: () => store
+    })
+    manager.setOverrideTransport(() => ({
+      async sendMessages() {
+        sends += 1
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            controller.close()
+          }
+        })
+      },
+      reconnectToStream: async () => null
+    }))
+
+    const currentChat = await manager.ensureChat()
+    if (!currentChat) throw new Error('Missing current chat')
+    const pending = pendingApprovalMessage()
+    currentChat.messages = [
+      pending,
+      { id: 'user-newer', role: 'user', parts: [{ type: 'text', text: 'Continue instead' }] }
+    ]
+
+    expect(
+      await manager.respondToToolApproval(currentChat, 'assistant-approval', 'approval-1', true)
+    ).toBeFalse()
+    expect(sends).toBe(0)
+
+    currentChat.messages = [pending]
+    expect(
+      await manager.respondToToolApproval(currentChat, 'assistant-approval', 'approval-1', false)
+    ).toBeTrue()
+    await waitFor(() => sends === 1)
+    await manager.resetChat()
+  })
+
+  test('abandons a direct runtime close queued behind a hung stop before replacement', async () => {
+    const store = {} as EditorStore
+    let runtimeCount = 0
+    let firstDisposeCount = 0
+    let replacementDisposeCount = 0
+    const role: Extract<AIModelRuntime, { kind: 'direct' }>['role'] = {
+      requestedRole: 'design',
+      profile: {
+        id: 'model-test',
+        name: 'Test',
+        connectionId: 'connection-test',
+        modelID: 'gpt-test',
+        customModelID: '',
+        maxOutputTokens: 16_384,
+        capabilities: ['tools'],
+        featurePolicy: {
+          webSearch: { enabled: false },
+          codeExecution: { enabled: false },
+          mcpServerIds: []
+        }
+      },
+      connection: {
+        id: 'connection-test',
+        providerID: 'openai',
+        customBaseURL: '',
+        customAPIType: 'responses',
+        credentialProfileId: 'test'
+      }
+    }
+    const unsupported = { state: 'unsupported' as const, reason: 'not needed by this test' }
+    const createModelRuntime = async (): Promise<AIModelRuntime> => {
+      runtimeCount += 1
+      const first = runtimeCount === 1
+      return {
+        kind: 'direct',
+        role,
+        model: {} as LanguageModel,
+        capabilities: {
+          functionTools: unsupported,
+          imageInput: unsupported,
+          webSearch: unsupported,
+          codeExecution: unsupported,
+          mcpTools: unsupported
+        },
+        providerTools: {},
+        dispose: () => {
+          if (first) {
+            firstDisposeCount += 1
+            return neverSettles()
+          }
+          replacementDisposeCount += 1
+          return Promise.resolve()
+        }
+      }
+    }
+    const manager = createChatSessionManager({
+      isConfigured: computed(() => true),
+      isACPProvider: computed(() => false),
+      providerID: ref<AIProviderID>('openai'),
+      credentialsReady: Promise.resolve(),
+      getActiveEditorStore: () => store,
+      forceCloseTimeoutMs: 5,
+      createModelRuntime
+    })
+
+    const firstChat = await manager.ensureChat()
+    if (!firstChat) throw new Error('Missing first chat')
+    firstChat.stop = neverSettles
+    manager.markTransportDirty()
+
+    await manager.forceStopChat()
+    expect(firstDisposeCount).toBe(1)
+
+    const replacement = await manager.ensureChat()
+    expect(replacement).not.toBe(firstChat)
+    expect(runtimeCount).toBe(2)
+    await manager.resetChat()
+    expect(replacementDisposeCount).toBe(1)
+  })
+
   test('stops the active chat before switching tabs and safely force-discards a hung chat', async () => {
     const storeA = {} as EditorStore
     const storeB = {} as EditorStore

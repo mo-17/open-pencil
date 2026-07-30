@@ -73,5 +73,12 @@ describe('chat tool presentation', () => {
 
   test('presents a denied tool as terminal instead of leaving it running', () => {
     expect(toolState({ state: 'output-denied' })).toBe('denied')
+    expect(
+      toolState({ state: 'approval-responded', approval: { id: 'approval-1', approved: false } })
+    ).toBe('denied')
+  })
+
+  test('presents a pending approval separately from a running tool', () => {
+    expect(toolState({ state: 'approval-requested' })).toBe('approval')
   })
 })

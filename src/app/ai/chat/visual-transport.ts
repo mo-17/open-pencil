@@ -160,9 +160,11 @@ export async function prepareVisualReferenceMessages(
   return prepared
 }
 
-export function createVisionRoleAnalyzer(): VisualMessageAnalyzer {
+export function createVisionRoleAnalyzer(
+  createRuntime: typeof createAIModelRuntime = createAIModelRuntime
+): VisualMessageAnalyzer {
   return async (message, abortSignal) => {
-    const runtime = await createAIModelRuntime('vision')
+    const runtime = await createRuntime('vision')
     if (!runtime) {
       throw new Error(
         'The Design model cannot read images and no Vision model is configured. Open Settings and assign a vision-capable model.'
@@ -172,14 +174,18 @@ export function createVisionRoleAnalyzer(): VisualMessageAnalyzer {
       throw new Error('The configured Vision model must use direct API access.')
     }
 
-    const result = await generateText({
-      model: runtime.model,
-      system: VISUAL_ANALYSIS_PROMPT,
-      messages: await convertToModelMessages([message]),
-      maxOutputTokens: Math.min(runtime.role.profile.maxOutputTokens, 4_096),
-      abortSignal
-    })
-    return result.text
+    try {
+      const result = await generateText({
+        model: runtime.model,
+        system: VISUAL_ANALYSIS_PROMPT,
+        messages: await convertToModelMessages([message]),
+        maxOutputTokens: Math.min(runtime.role.profile.maxOutputTokens, 4_096),
+        abortSignal
+      })
+      return result.text
+    } finally {
+      await runtime.dispose?.().catch(() => undefined)
+    }
   }
 }
 

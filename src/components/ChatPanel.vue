@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'reka-ui'
 import { refAutoReset, useClipboard } from '@vueuse/core'
-import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 
 import { getAcpDebugText, clearAcpDebugLog, hasAcpDebugEntries } from '@/app/ai/acp/transport'
 import {
@@ -14,6 +14,12 @@ import {
   type VisualChatAttachment
 } from '@/app/ai/chat/attachments'
 import { useChatAttachments, useChatSubmissionPending } from '@/app/ai/chat/drafts'
+import {
+  finalizePendingToolApprovals,
+  hasPendingToolApproval,
+  isCurrentToolApprovalContext,
+  type ToolApprovalContext
+} from '@/app/ai/chat/approval'
 import { finalizeInterruptedToolParts } from '@/app/ai/chat/interruption'
 import { captureSelectionVisualAttachment } from '@/app/ai/chat/selection-attachment'
 import { copyChatLog } from '@/app/ai/debug'
@@ -36,19 +42,35 @@ import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 const IS_DEV = import.meta.env.DEV
 
-const { isConfigured, providerID, ensureChat, resetChat, forceStopChat } = useAIChat()
+const {
+  isConfigured,
+  providerID,
+  ensureChat,
+  respondToToolApproval,
+  sessionRevision,
+  resetChat,
+  forceStopChat
+} = useAIChat()
 const { copy } = useClipboard()
 const { dialogs } = useI18n()
 
-const chat = ref<Chat<UIMessage> | null>(null)
+const chat = shallowRef<Chat<UIMessage> | null>(null)
 const submissionPending = useChatSubmissionPending(() => activeTab.value?.store)
 const attachments = useChatAttachments(() => activeTab.value?.store)
 const attachmentBusy = ref(false)
 const stopRequested = ref(false)
 const stopRetryAvailable = ref(false)
+const pendingApprovalIds = ref<string[]>([])
 const STOP_RETRY_DELAY_MS = 2_000
 let refreshGeneration = 0
 let stopRetryTimer: ReturnType<typeof setTimeout> | undefined
+let publishedChatContext: ToolApprovalContext<Chat<UIMessage>> | null = null
+
+function unpublishChat(): void {
+  chat.value = null
+  publishedChatContext = null
+  pendingApprovalIds.value = []
+}
 
 function resetStopState() {
   clearTimeout(stopRetryTimer)
@@ -59,13 +81,33 @@ function resetStopState() {
 
 async function refreshChat() {
   const generation = ++refreshGeneration
+  const expectedSessionRevision = sessionRevision.value
+  const tabId = activeTab.value?.id ?? null
+  const expectedProviderID = providerID.value
+  unpublishChat()
   try {
     const nextChat = await ensureChat()
-    if (generation !== refreshGeneration) return
-    chat.value = nextChat ? markRaw(nextChat) : null
+    if (
+      generation !== refreshGeneration ||
+      expectedSessionRevision !== sessionRevision.value ||
+      tabId !== (activeTab.value?.id ?? null) ||
+      expectedProviderID !== providerID.value
+    ) {
+      return
+    }
+    if (!nextChat) return
+    const published = markRaw(nextChat)
+    chat.value = published
+    publishedChatContext = {
+      chat: published,
+      generation,
+      sessionRevision: expectedSessionRevision,
+      tabId,
+      providerID: expectedProviderID
+    }
   } catch (error) {
     if (generation !== refreshGeneration) return
-    chat.value = null
+    unpublishChat()
     toast.error(error instanceof Error ? error.message : 'Failed to initialize chat')
   }
 }
@@ -76,6 +118,10 @@ const debugCopied = refAutoReset(false, 1500)
 const acpLogCopied = refAutoReset(false, 1500)
 
 const messages = computed(() => chat.value?.messages ?? [])
+const actionableApprovalMessageId = computed(() => {
+  const last = messages.value.at(-1)
+  return last?.role === 'assistant' ? last.id : null
+})
 const status = computed(() => chat.value?.status ?? 'ready')
 const canAttachSelection = computed(() =>
   Boolean(activeTab.value?.store.renderer && activeTab.value.store.state.selectedIds.size > 0)
@@ -146,7 +192,10 @@ watch(
   }
 )
 watch([() => activeTab.value?.id, providerID], refreshChat)
+watch(sessionRevision, refreshChat, { flush: 'sync' })
 onBeforeUnmount(() => {
+  refreshGeneration += 1
+  unpublishChat()
   clearTimeout(scrollTimer)
   clearTimeout(stopRetryTimer)
 })
@@ -181,6 +230,7 @@ async function sendPreparedSubmission(
   attachmentDraft: ReturnType<typeof useChatAttachments>,
   restoreSubmission: () => void
 ) {
+  targetChat.messages = finalizePendingToolApprovals(targetChat.messages)
   const previousMessages = [...targetChat.messages]
   attachmentDraft.value = []
   try {
@@ -227,6 +277,7 @@ async function handleSubmit(text: string, restoreInput: () => void = () => undef
   requestedSubmissionPending.value = true
   const requestedTabId = requestedTab?.id
   const requestedProviderID = providerID.value
+  const requestedSessionRevision = sessionRevision.value
   try {
     let c: Chat<UIMessage> | null
     try {
@@ -237,7 +288,11 @@ async function handleSubmit(text: string, restoreInput: () => void = () => undef
       toast.error(error instanceof Error ? error.message : String(error))
       return
     }
-    if (activeTab.value?.id !== requestedTabId || providerID.value !== requestedProviderID) {
+    if (
+      activeTab.value?.id !== requestedTabId ||
+      providerID.value !== requestedProviderID ||
+      sessionRevision.value !== requestedSessionRevision
+    ) {
       restoreSubmission()
       toast.error('The chat context changed before the message was sent. Please try again.')
       return
@@ -251,7 +306,15 @@ async function handleSubmit(text: string, restoreInput: () => void = () => undef
       restoreSubmission()
       return
     }
-    chat.value = markRaw(c)
+    const published = markRaw(c)
+    chat.value = published
+    publishedChatContext = {
+      chat: published,
+      generation: refreshGeneration,
+      sessionRevision: requestedSessionRevision,
+      tabId: requestedTabId ?? null,
+      providerID: requestedProviderID
+    }
     await sendPreparedSubmission(
       c,
       text,
@@ -385,12 +448,44 @@ async function handleCopyAcpLog() {
 }
 
 async function handleClearChat() {
-  chat.value = null
+  unpublishChat()
   resetStopState()
   await resetChat()
   clearToolLogEntries()
   clearAcpDebugLog()
   await refreshChat()
+}
+
+async function handleToolApproval(messageId: string, id: string, approved: boolean) {
+  const context = publishedChatContext
+  const current = chat.value
+  if (
+    !current ||
+    !isCurrentToolApprovalContext(
+      context,
+      current,
+      refreshGeneration,
+      sessionRevision.value,
+      activeTab.value?.id ?? null,
+      providerID.value
+    ) ||
+    pendingApprovalIds.value.includes(id) ||
+    !hasPendingToolApproval(current.messages, messageId, id)
+  ) {
+    return
+  }
+  pendingApprovalIds.value = [...pendingApprovalIds.value, id]
+  try {
+    const accepted = await respondToToolApproval(current, messageId, id, approved)
+    if (!accepted) {
+      unpublishChat()
+      void refreshChat()
+    }
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    pendingApprovalIds.value = pendingApprovalIds.value.filter((candidate) => candidate !== id)
+  }
 }
 </script>
 
@@ -414,7 +509,14 @@ async function handleClearChat() {
 
           <!-- Messages -->
           <div v-else data-test-id="chat-messages" class="flex flex-col gap-3">
-            <ChatMessage v-for="msg in messages" :key="msg.id" :message="msg" />
+            <ChatMessage
+              v-for="msg in messages"
+              :key="msg.id"
+              :message="msg"
+              :pending-approval-ids="pendingApprovalIds"
+              :approval-enabled="msg.id === actionableApprovalMessageId"
+              @tool-approval="handleToolApproval"
+            />
 
             <!-- Thinking indicator: shown when AI is working but no visible activity -->
             <div v-if="isThinking" data-test-id="chat-typing-indicator" class="flex gap-2">

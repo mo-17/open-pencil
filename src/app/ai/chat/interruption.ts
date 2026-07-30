@@ -13,17 +13,31 @@ function failToolPart(part: ToolPart, errorText: string): ToolPart {
   } as ToolPart
 }
 
-function isUnfinishedToolPart(
-  part: UIMessagePart<UIDataTypes, UITools>
-): part is ToolPart & { state: 'input-streaming' | 'input-available' } {
+function finalizeUnfinishedToolPart(part: ToolPart, errorText: string): ToolPart {
+  if (part.state === 'approval-responded' && !part.approval.approved) {
+    return {
+      ...part,
+      state: 'output-denied'
+    } as ToolPart
+  }
+  return failToolPart(part, errorText)
+}
+
+function isUnfinishedToolPart(part: UIMessagePart<UIDataTypes, UITools>): part is ToolPart & {
+  state: 'input-streaming' | 'input-available' | 'approval-responded'
+} {
   return (
-    isToolUIPart(part) && (part.state === 'input-streaming' || part.state === 'input-available')
+    isToolUIPart(part) &&
+    (part.state === 'input-streaming' ||
+      part.state === 'input-available' ||
+      part.state === 'approval-responded')
   )
 }
 
 /**
  * Stops unfinished tool cards from spinning after their chat stream was cancelled.
- * Completed, failed, denied, and approval-state calls keep their protocol result.
+ * Pending approvals keep waiting for the user. Responded approvals are closed with
+ * a protocol result when their continuation does not finish.
  */
 export function finalizeUnfinishedToolParts(messages: UIMessage[], errorText: string): UIMessage[] {
   if (!messages.some((message) => message.parts.some(isUnfinishedToolPart))) return messages
@@ -32,7 +46,7 @@ export function finalizeUnfinishedToolParts(messages: UIMessage[], errorText: st
     return {
       ...message,
       parts: message.parts.map((part) =>
-        isUnfinishedToolPart(part) ? failToolPart(part, errorText) : part
+        isUnfinishedToolPart(part) ? finalizeUnfinishedToolPart(part, errorText) : part
       )
     }
   })
