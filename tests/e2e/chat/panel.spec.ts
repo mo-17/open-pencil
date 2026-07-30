@@ -36,10 +36,17 @@ async function injectMockTransport(page: Page) {
       async sendMessages({
         messages
       }: {
-        messages: Array<{ role: string; parts: Array<{ type: string; text?: string }> }>
+        messages: Array<{
+          role: string
+          parts: Array<{ type: string; text?: string; mediaType?: string; url?: string }>
+        }>
       }) {
         const lastUser = [...messages].reverse().find((m) => m.role === 'user')
         const text = lastUser?.parts?.find((p) => p.type === 'text')?.text ?? ''
+        const files = lastUser?.parts?.filter((part) => part.type === 'file') ?? []
+        document.documentElement.dataset.lastChatFiles = files
+          .map((part) => `${part.mediaType}:${part.url?.startsWith('data:') ? 'data' : 'url'}`)
+          .join(',')
         const msgId = `mock-msg-${++msgCounter}`
         const lowerText = text.toLowerCase()
         const wantsTool = lowerText.includes('frame') || lowerText.includes('rectangle')
@@ -131,7 +138,11 @@ function designTab() {
 }
 
 function chatInput() {
-  return page.locator('input[placeholder="Describe a change…"]')
+  return page.getByTestId('chat-input')
+}
+
+function sendButton() {
+  return page.getByTestId('chat-send-button')
 }
 
 function apiKeyInput() {
@@ -180,14 +191,69 @@ test('saving API key in unified settings shows chat interface', async () => {
 })
 
 test('empty input has disabled send button', async () => {
-  const sendButton = page.locator('button[type="submit"]')
-  await expect(sendButton).toBeDisabled()
+  await expect(sendButton()).toBeDisabled()
 })
 
 test('typing enables send button', async () => {
   await chatInput().fill('Make a red rectangle')
-  const sendButton = page.locator('button[type="submit"]')
-  await expect(sendButton).toBeEnabled()
+  await expect(sendButton()).toBeEnabled()
+})
+
+test('attaches the current canvas selection as a visual reference', async () => {
+  await chatInput().fill('')
+  await designTab().click()
+  await canvas.drawRect(180, 140, 80, 60)
+  await chatTab().click()
+
+  const attachSelection = page.getByTestId('chat-attachment-selection-button')
+  await expect(attachSelection).toBeEnabled()
+  await attachSelection.click()
+  await expect(chatInput()).toBeDisabled()
+  await expect(sendButton()).toBeDisabled()
+
+  const draftAttachment = page
+    .getByTestId('chat-draft-attachments')
+    .getByTestId('chat-visual-attachment')
+  await expect(draftAttachment).toContainText('Rectangle')
+  await expect(draftAttachment.locator('img')).toBeVisible()
+  await expect(sendButton()).toBeEnabled()
+  await sendButton().click()
+
+  await expect(page.getByTestId('chat-draft-attachments')).toBeHidden()
+  await expect(
+    page.getByText('Recreate this visual reference as an editable design.', { exact: true })
+  ).toBeVisible()
+  const messageAttachments = page.getByTestId('chat-message-attachments').last()
+  await expect(messageAttachments).toBeVisible()
+  await expect(messageAttachments.locator('img')).toBeVisible()
+})
+
+test('attaches a normalized image reference and sends it as a file part', async () => {
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64'
+  )
+  await page.getByTestId('chat-attachment-file-input').setInputFiles({
+    name: 'reference.png',
+    mimeType: 'image/png',
+    buffer: png
+  })
+
+  const draftAttachment = page
+    .getByTestId('chat-draft-attachments')
+    .getByTestId('chat-visual-attachment')
+  await expect(draftAttachment).toContainText('reference.png')
+  await expect(draftAttachment.locator('img')).toBeVisible()
+  await expect(page.getByTestId('chat-attachment-target')).toContainText('Image route:')
+
+  await chatInput().fill('Recreate this reference as editable layers')
+  await chatInput().press('Enter')
+
+  await expect(page.getByTestId('chat-draft-attachments')).toBeHidden()
+  const messageAttachments = page.getByTestId('chat-message-attachments').last()
+  await expect(messageAttachments).toBeVisible()
+  await expect(messageAttachments.locator('img')).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-last-chat-files', 'image/png:data')
 })
 
 test('Enter submits message and clears input', async () => {
@@ -204,7 +270,9 @@ test('assistant responds', async () => {
       timeout: 30000
     })
   } else {
-    await expect(page.getByText('mock response', { exact: false })).toBeVisible({ timeout: 5000 })
+    await expect(
+      page.getByTestId('chat-message-assistant').last().getByText('mock response', { exact: false })
+    ).toBeVisible({ timeout: 5000 })
   }
 })
 
@@ -215,7 +283,9 @@ test('model selector is visible and clickable', async () => {
 
   await expect(page.getByRole('option', { name: /Claude Sonnet 4\.6/ })).toBeVisible()
   await expect(page.getByText('Best for design')).toBeVisible()
-  await expect(page.getByText('Free').first()).toBeVisible()
+  await expect(
+    page.locator('[role="option"]:visible').filter({ hasText: 'Free' }).first()
+  ).toBeVisible()
 
   await page.getByRole('option', { name: /Claude Sonnet 4\.6/ }).click()
   await expect(page.getByRole('option', { name: /Claude Sonnet 4\.6/ })).toBeHidden()

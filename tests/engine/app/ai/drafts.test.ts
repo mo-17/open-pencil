@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test'
 
 import { shallowRef } from 'vue'
 
-import { useChatDraft, useChatSubmissionPending } from '@/app/ai/chat/drafts'
+import type { VisualChatAttachment } from '@/app/ai/chat/attachments'
+import { useChatAttachments, useChatDraft, useChatSubmissionPending } from '@/app/ai/chat/drafts'
+
+const attachment = { id: 'visual-1' } as VisualChatAttachment
 
 describe('chat drafts', () => {
   test('keeps one shared draft per editor store', () => {
@@ -58,5 +61,19 @@ describe('chat drafts', () => {
     activeStore.value = storeA
     expect(activeLock.value).toBe(true)
     expect(useChatSubmissionPending(storeB).value).toBe(true)
+  })
+
+  test('keeps attachment drafts isolated per editor store and follows owner changes', () => {
+    const storeA = {}
+    const storeB = {}
+    const activeStore = shallowRef<object | undefined>(storeA)
+    const activeAttachments = useChatAttachments(() => activeStore.value)
+
+    activeAttachments.value = [attachment]
+    activeStore.value = storeB
+    expect(activeAttachments.value).toEqual([])
+
+    activeStore.value = storeA
+    expect(activeAttachments.value).toEqual([attachment])
   })
 })

@@ -4,9 +4,20 @@ import { refAutoReset, useClipboard } from '@vueuse/core'
 import { computed, markRaw, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 import { getAcpDebugText, clearAcpDebugLog, hasAcpDebugEntries } from '@/app/ai/acp/transport'
-import { useChatSubmissionPending } from '@/app/ai/chat/drafts'
+import {
+  createVisualChatMessageMetadata,
+  MAX_VISUAL_ATTACHMENTS,
+  MAX_VISUAL_ATTACHMENT_TOTAL_BYTES,
+  normalizeVisualAttachment,
+  SUPPORTED_VISUAL_ATTACHMENT_TYPES,
+  toFileUIPart,
+  type VisualChatAttachment
+} from '@/app/ai/chat/attachments'
+import { useChatAttachments, useChatSubmissionPending } from '@/app/ai/chat/drafts'
 import { finalizeInterruptedToolParts } from '@/app/ai/chat/interruption'
+import { captureSelectionVisualAttachment } from '@/app/ai/chat/selection-attachment'
 import { copyChatLog } from '@/app/ai/debug'
+import { resolveAIModelRole } from '@/app/ai/models'
 import { clearToolLogEntries, didHitStepLimit } from '@/app/ai/tools'
 import { activeTab } from '@/app/tabs'
 import AcpPermissionDialog from '@/components/chat/AcpPermissionDialog.vue'
@@ -31,6 +42,8 @@ const { dialogs } = useI18n()
 
 const chat = ref<Chat<UIMessage> | null>(null)
 const submissionPending = useChatSubmissionPending(() => activeTab.value?.store)
+const attachments = useChatAttachments(() => activeTab.value?.store)
+const attachmentBusy = ref(false)
 const stopRequested = ref(false)
 const stopRetryAvailable = ref(false)
 const STOP_RETRY_DELAY_MS = 2_000
@@ -64,6 +77,21 @@ const acpLogCopied = refAutoReset(false, 1500)
 
 const messages = computed(() => chat.value?.messages ?? [])
 const status = computed(() => chat.value?.status ?? 'ready')
+const canAttachSelection = computed(() =>
+  Boolean(activeTab.value?.store.renderer && activeTab.value.store.state.selectedIds.size > 0)
+)
+const acceptedImageTypes = SUPPORTED_VISUAL_ATTACHMENT_TYPES.join(',')
+const attachmentTargetLabel = computed(() => {
+  const design = resolveAIModelRole('design')
+  if (!design) return 'AI model setup required'
+  const designLabel = `${design.connection.providerID} · ${design.profile.name}`
+  if (design.connection.providerID.startsWith('acp:')) return designLabel
+  if (design.profile.capabilities.includes('vision')) return designLabel
+  const vision = resolveAIModelRole('vision')
+  return vision
+    ? `${vision.connection.providerID} · ${vision.profile.name} (pixels) → ${designLabel} (brief)`
+    : `${designLabel} · Vision setup required`
+})
 const isThinking = computed(() => {
   const s = status.value
   if (s !== 'submitted' && s !== 'streaming') return false
@@ -123,16 +151,77 @@ onBeforeUnmount(() => {
   clearTimeout(stopRetryTimer)
 })
 
+function restoreAttachments(
+  owner: object | null | undefined,
+  submitted: readonly VisualChatAttachment[]
+) {
+  if (!owner || submitted.length === 0) return
+  const draft = useChatAttachments(owner)
+  const existingIds = new Set(draft.value.map((attachment) => attachment.id))
+  draft.value = [
+    ...submitted.filter((attachment) => !existingIds.has(attachment.id)),
+    ...draft.value
+  ]
+}
+
+function rollbackFailedSubmission(
+  targetChat: Chat<UIMessage>,
+  previousMessages: UIMessage[],
+  restoreSubmission: () => void
+) {
+  targetChat.messages = previousMessages
+  targetChat.clearError()
+  restoreSubmission()
+}
+
+async function sendPreparedSubmission(
+  targetChat: Chat<UIMessage>,
+  text: string,
+  submittedAttachments: readonly VisualChatAttachment[],
+  attachmentDraft: ReturnType<typeof useChatAttachments>,
+  restoreSubmission: () => void
+) {
+  const previousMessages = [...targetChat.messages]
+  attachmentDraft.value = []
+  try {
+    await targetChat.sendMessage(
+      submittedAttachments.length > 0
+        ? {
+            text,
+            files: submittedAttachments.map(toFileUIPart),
+            metadata: createVisualChatMessageMetadata(submittedAttachments)
+          }
+        : { text }
+    )
+    if (targetChat.status !== 'error') return
+
+    const message = targetChat.error?.message || 'The visual reference could not be sent.'
+    rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
+    toast.error(message)
+  } catch (error) {
+    rollbackFailedSubmission(targetChat, previousMessages, restoreSubmission)
+    console.error('Chat error:', error)
+    toast.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
 async function handleSubmit(text: string, restoreInput: () => void = () => undefined) {
   resetStopState()
   const requestedTab = activeTab.value
+  const requestedAttachmentDraft = useChatAttachments(requestedTab?.store)
+  const submittedAttachments = [...requestedAttachmentDraft.value]
+  const restoreSubmission = () => {
+    restoreInput()
+    restoreAttachments(requestedTab?.store, submittedAttachments)
+  }
   const requestedSubmissionPending = useChatSubmissionPending(requestedTab?.store)
   if (
+    attachmentBusy.value ||
     requestedSubmissionPending.value ||
     status.value === 'streaming' ||
     status.value === 'submitted'
   ) {
-    restoreInput()
+    restoreSubmission()
     return
   }
   requestedSubmissionPending.value = true
@@ -143,35 +232,107 @@ async function handleSubmit(text: string, restoreInput: () => void = () => undef
     try {
       c = await ensureChat()
     } catch (error) {
-      restoreInput()
+      restoreSubmission()
       console.error('Failed to initialize chat:', error)
       toast.error(error instanceof Error ? error.message : String(error))
       return
     }
     if (activeTab.value?.id !== requestedTabId || providerID.value !== requestedProviderID) {
-      restoreInput()
+      restoreSubmission()
       toast.error('The chat context changed before the message was sent. Please try again.')
       return
     }
     if (!c) {
       chat.value = null
-      restoreInput()
+      restoreSubmission()
       return
     }
     if (c.status === 'submitted' || c.status === 'streaming') {
-      restoreInput()
+      restoreSubmission()
       return
     }
     chat.value = markRaw(c)
-    try {
-      await c.sendMessage({ text })
-    } catch (error) {
-      console.error('Chat error:', error)
-      toast.error(error instanceof Error ? error.message : String(error))
-    }
+    await sendPreparedSubmission(
+      c,
+      text,
+      submittedAttachments,
+      requestedAttachmentDraft,
+      restoreSubmission
+    )
   } finally {
     requestedSubmissionPending.value = false
   }
+}
+
+async function addVisualAttachments(files: readonly File[], source: 'file' | 'selection' = 'file') {
+  const owner = activeTab.value?.store
+  if (!owner || files.length === 0 || attachmentBusy.value) return
+  const draft = useChatAttachments(owner)
+  const remainingSlots = MAX_VISUAL_ATTACHMENTS - draft.value.length
+  if (remainingSlots <= 0) {
+    toast.error(`You can attach up to ${MAX_VISUAL_ATTACHMENTS} images.`)
+    return
+  }
+
+  attachmentBusy.value = true
+  try {
+    const next = [...draft.value]
+    let totalBytes = next.reduce((sum, attachment) => sum + attachment.sizeBytes, 0)
+    for (const file of files.slice(0, remainingSlots)) {
+      try {
+        const attachment = await normalizeVisualAttachment(file, { source })
+        if (totalBytes + attachment.sizeBytes > MAX_VISUAL_ATTACHMENT_TOTAL_BYTES) {
+          throw new Error('The combined image references exceed the 6 MB limit.')
+        }
+        next.push(attachment)
+        totalBytes += attachment.sizeBytes
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error))
+      }
+    }
+    draft.value = next
+    if (files.length > remainingSlots) {
+      toast.error(`Only ${MAX_VISUAL_ATTACHMENTS} image references can be attached at once.`)
+    }
+  } finally {
+    attachmentBusy.value = false
+  }
+}
+
+async function handleAttachSelection() {
+  const tab = activeTab.value
+  const store = tab?.store
+  if (!tab || !store || attachmentBusy.value) return
+
+  attachmentBusy.value = true
+  try {
+    const draft = useChatAttachments(store)
+    if (draft.value.length >= MAX_VISUAL_ATTACHMENTS) {
+      throw new Error(`You can attach up to ${MAX_VISUAL_ATTACHMENTS} images.`)
+    }
+    const attachment = await captureSelectionVisualAttachment(store)
+    const totalBytes = draft.value.reduce((sum, item) => sum + item.sizeBytes, 0)
+    if (totalBytes + attachment.sizeBytes > MAX_VISUAL_ATTACHMENT_TOTAL_BYTES) {
+      throw new Error('The combined image references exceed the 6 MB limit.')
+    }
+    draft.value = [...draft.value, attachment]
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    attachmentBusy.value = false
+  }
+}
+
+function handleRemoveAttachment(id: string) {
+  if (
+    attachmentBusy.value ||
+    submissionPending.value ||
+    status.value === 'streaming' ||
+    status.value === 'submitted'
+  ) {
+    return
+  }
+  attachments.value = attachments.value.filter((attachment) => attachment.id !== id)
 }
 
 async function handleStop() {
@@ -334,8 +495,18 @@ async function handleClearChat() {
         :initializing="submissionPending"
         :stopping="stopRequested"
         :stop-retry-available="stopRetryAvailable"
+        visual-attachments-enabled
+        :attachments="attachments"
+        :can-attach-selection="canAttachSelection"
+        :attachments-disabled="attachmentBusy"
+        :accepted-image-types="acceptedImageTypes"
+        allow-multiple-attachments
+        :attachment-target-label="attachmentTargetLabel"
         @submit="handleSubmit"
         @stop="handleStop"
+        @select-files="addVisualAttachments"
+        @attach-selection="handleAttachSelection"
+        @remove-attachment="handleRemoveAttachment"
       />
 
       <AcpPermissionDialog />

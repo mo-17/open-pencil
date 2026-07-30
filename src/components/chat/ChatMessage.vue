@@ -1,17 +1,28 @@
 <script setup lang="ts">
-import { isTextUIPart, isToolUIPart, getToolName } from 'ai'
+import { computed } from 'vue'
+import { getToolName, isFileUIPart, isTextUIPart, isToolUIPart } from 'ai'
 import { CollapsibleContent, CollapsibleRoot, CollapsibleTrigger } from 'reka-ui'
 import { Markdown } from 'vue-stream-markdown'
-import { vTestId } from '@open-pencil/vue'
+import { useI18n, vTestId } from '@open-pencil/vue'
 import 'vue-stream-markdown/index.css'
 
-import type { UIDataTypes, UIMessage, UIMessagePart, UITools } from 'ai'
+import type { FileUIPart, UIDataTypes, UIMessage, UIMessagePart, UITools } from 'ai'
 
 import { hasErrorOutput, toolErrorText, toolState } from '@/app/ai/chat/tool-presentation'
+import ChatAttachmentThumbnail from '@/components/chat/ChatAttachmentThumbnail.vue'
 
 const { message } = defineProps<{ message: UIMessage }>()
+const { dialogs } = useI18n()
 
 type ToolPart = Extract<UIMessagePart<UIDataTypes, UITools>, { toolCallId: string }>
+
+const userText = computed(() =>
+  message.parts
+    .filter(isTextUIPart)
+    .map((part) => part.text)
+    .join('')
+)
+const userFiles = computed(() => message.parts.filter(isFileUIPart))
 
 function toolDisplayName(part: ToolPart): string {
   return getToolName(part)
@@ -25,6 +36,28 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
   if ('toolCallId' in part) return part.toolCallId
   return `part-${index}`
 }
+
+function fileName(part: FileUIPart, index: number): string {
+  return part.filename?.trim() || `${dialogs.value.imageAttachment} ${index + 1}`
+}
+
+function filePreviewUrl(part: FileUIPart, index: number): string {
+  const metadata = message.metadata
+  if (!metadata || typeof metadata !== 'object' || !('visualAttachments' in metadata)) {
+    return part.url
+  }
+
+  const attachments = (metadata as { visualAttachments?: unknown }).visualAttachments
+  if (!Array.isArray(attachments)) return part.url
+  const attachment = attachments[index]
+  if (!attachment || typeof attachment !== 'object' || !('thumbnail' in attachment)) {
+    return part.url
+  }
+
+  const thumbnail = (attachment as { thumbnail?: unknown }).thumbnail
+  if (!thumbnail || typeof thumbnail !== 'object' || !('url' in thumbnail)) return part.url
+  return typeof thumbnail.url === 'string' && thumbnail.url ? thumbnail.url : part.url
+}
 </script>
 
 <template>
@@ -32,7 +65,12 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
     v-test-id="`chat-message-${message.role}`"
     :class="message.role === 'user' ? 'flex justify-end' : ''"
   >
-    <div class="min-w-0 space-y-1.5" :class="message.role === 'user' ? 'max-w-[85%]' : ''">
+    <div
+      class="min-w-0"
+      :class="
+        message.role === 'user' ? 'flex max-w-[85%] flex-col items-end gap-1.5' : 'space-y-1.5'
+      "
+    >
       <template v-if="message.role === 'assistant'">
         <template v-for="(part, i) in message.parts" :key="partKey(part, i)">
           <!-- Tool call -->
@@ -115,18 +153,30 @@ function partKey(part: UIMessagePart<UIDataTypes, UITools>, index: number): stri
       </template>
 
       <!-- User message -->
-      <div
-        v-else-if="message.role === 'user'"
-        data-test-id="chat-text-bubble"
-        class="rounded-xl rounded-br-md bg-accent px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-white"
-      >
-        {{
-          message.parts
-            .filter(isTextUIPart)
-            .map((p) => p.text)
-            .join('')
-        }}
-      </div>
+      <template v-else-if="message.role === 'user'">
+        <div
+          v-if="userFiles.length"
+          data-test-id="chat-message-attachments"
+          class="flex max-w-full flex-wrap justify-end gap-1.5"
+          :aria-label="dialogs.imageReferences"
+        >
+          <ChatAttachmentThumbnail
+            v-for="(part, index) in userFiles"
+            :key="partKey(part, index)"
+            compact
+            :url="filePreviewUrl(part, index)"
+            :name="fileName(part, index)"
+            :media-type="part.mediaType"
+          />
+        </div>
+        <div
+          v-if="userText"
+          data-test-id="chat-text-bubble"
+          class="rounded-xl rounded-br-md bg-accent px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-white"
+        >
+          {{ userText }}
+        </div>
+      </template>
     </div>
   </div>
 </template>
