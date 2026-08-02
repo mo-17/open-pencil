@@ -198,6 +198,8 @@ describe('MCP stdio transport', () => {
     const names = tools.map((t) => t.name)
     expect(names).toContain('create_shape')
     expect(names).toContain('get_page_tree')
+    expect(names).toContain('check_font')
+    expect(names).toContain('audit_font_licenses')
     expect(names).toContain('save_file')
     expect(names).toContain('list_documents')
     expect(names).toContain('get_codegen_prompt')

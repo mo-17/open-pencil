@@ -138,8 +138,12 @@ describe('MCP server', () => {
     expect(names).toContain('create_shape')
     expect(names).toContain('set_fill')
     expect(names).toContain('get_page_tree')
+    expect(names).toContain('check_font')
+    expect(names).toContain('audit_font_licenses')
     expect(names).toContain('render')
     expect(names).toContain('get_codegen_prompt')
+    const auditFontLicenses = tools.find((tool) => tool.name === 'audit_font_licenses')
+    expect(JSON.stringify(auditFontLicenses?.inputSchema)).toContain('commercial_use')
     expect(tools.length).toBeGreaterThan(30)
   })
 

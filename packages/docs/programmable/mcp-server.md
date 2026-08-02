@@ -125,7 +125,10 @@ Endpoints are available over both active transports:
 
 1. **Discover targets** — call `list_documents` first when more than one document or page may be open. It returns stable `document_id` and page IDs.
 2. **Open** — `open_file` to load an existing `.fig`, or `new_document` for a blank canvas. These return target metadata for the opened or created document.
-3. **Read** — `get_page_tree`, `find_nodes`, `get_node`, `list_pages`
+3. **Read and verify** — `get_page_tree`, `find_nodes`, `get_node`, `list_pages`; after changing a
+   text font, call `check_font` with the expected family/style and retry if resolution is pending.
+   Before commercial use, embedding, redistribution, or modification, call `audit_font_licenses`
+   with the matching `intended_use` and manually review every `unknown` result.
 4. **Create** — `create_shape`, `render` (JSX)
 5. **Modify** — `set_fill`, `set_stroke`, `set_layout`, `update_node`, `set_effects`, or the bounded
    Motion tools
@@ -133,6 +136,20 @@ Endpoints are available over both active transports:
 7. **Save** — `save_file` to write back to `.fig`
 
 Most tools accept optional `document_id` and `page_id` fields. Pass them explicitly for agent workflows instead of relying on the visible active tab/page. `create_page` only creates a page; call `switch_page` separately when the workflow should change the active page.
+
+### Font license audit
+
+`audit_font_licenses` scans the current page by default. Pass `id` for a node subtree or
+`all_pages: true` for the whole document, and choose `commercial_use`, `embedding`,
+`redistribution`, or `modification` as `intended_use`.
+
+- `verified_open` means the exact loaded font bytes match a reviewed bundled-font SHA-256 manifest.
+- `restricted` means the font reports an explicit restriction that conflicts with the requested use.
+- `unknown` requires manual review. Installed, downloadable, renderable, or provider-listed fonts
+  are never treated as free by themselves.
+
+The result also reports OpenType license and embedding metadata, usage locations, obligations, and a
+`pass`, `review`, or `block` decision. This evidence-based audit is not legal advice.
 
 ## AI Agent Skill
 
@@ -157,24 +174,26 @@ Works with Claude Code, Cursor, Windsurf, Codex, and any agent that supports [sk
 
 ### Read
 
-| Tool               | Description                                         |
-| ------------------ | --------------------------------------------------- |
-| `get_selection`    | Get currently selected nodes                        |
-| `get_page_tree`    | Get the full node tree of the current page          |
-| `get_current_page` | Get the current page name and ID                    |
-| `get_node`         | Get detailed properties of a node by ID             |
-| `find_nodes`       | Find nodes by name pattern and/or type              |
-| `get_components`   | List all components in the document                 |
-| `list_pages`       | List all pages                                      |
-| `list_variables`   | List design variables                               |
-| `list_collections` | List variable collections                           |
-| `list_fonts`       | List fonts used in the current page                 |
-| `page_bounds`      | Get bounding box of all objects on the current page |
-| `node_bounds`      | Get bounding box of a node                          |
-| `node_ancestors`   | Get ancestor chain of a node                        |
-| `node_children`    | Get direct children of a node                       |
-| `node_tree`        | Get the subtree rooted at a node                    |
-| `node_bindings`    | Get variable bindings on a node                     |
+| Tool                   | Description                                                                |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `get_selection`        | Get currently selected nodes                                               |
+| `get_page_tree`        | Get the full node tree of the current page                                 |
+| `get_current_page`     | Get the current page name and ID                                           |
+| `get_node`             | Get detailed properties of a node by ID                                    |
+| `find_nodes`           | Find nodes by name pattern and/or type                                     |
+| `get_components`       | List all components in the document                                        |
+| `list_pages`           | List all pages                                                             |
+| `list_variables`       | List design variables                                                      |
+| `list_collections`     | List variable collections                                                  |
+| `list_fonts`           | List fonts used in the current page                                        |
+| `list_available_fonts` | List font families the connected host can render                           |
+| `check_font`           | Verify assignment, exact face loading, fallback readiness, and glyph state |
+| `page_bounds`          | Get bounding box of all objects on the current page                        |
+| `node_bounds`          | Get bounding box of a node                                                 |
+| `node_ancestors`       | Get ancestor chain of a node                                               |
+| `node_children`        | Get direct children of a node                                              |
+| `node_tree`            | Get the subtree rooted at a node                                           |
+| `node_bindings`        | Get variable bindings on a node                                            |
 
 ### Create
 
@@ -338,6 +357,7 @@ progress token, the server emits bounded
 | -------------------- | ----------------------------------------------- |
 | `analyze_colors`     | Analyze color palette usage across the document |
 | `analyze_typography` | Analyze font/size/weight distribution           |
+| `audit_font_licenses` | Audit exact font artifacts and license evidence |
 | `analyze_spacing`    | Analyze gap and padding values                  |
 | `analyze_clusters`   | Detect repeated patterns (potential components) |
 

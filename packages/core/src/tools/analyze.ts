@@ -3,6 +3,7 @@ export { analyzeColors } from './analyze/colors'
 export { diffCreate, diffShow } from './analyze/diff'
 export { evalCode } from './analyze/eval'
 export { wrapEvalCode } from './analyze/eval/wrap'
+export { auditFontLicenses } from './analyze/font-licenses'
 export { analyzeOverlaps, computeOverlaps } from './analyze/overlaps'
 export type {
   AnalyzeOverlapsArgs,

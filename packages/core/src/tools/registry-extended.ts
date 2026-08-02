@@ -4,6 +4,7 @@ import {
   analyzeOverlaps,
   analyzeSpacing,
   analyzeTypography,
+  auditFontLicenses,
   diffCreate,
   diffShow
 } from './analyze'
@@ -37,6 +38,7 @@ import {
   setVisible
 } from './modify'
 import {
+  checkFont,
   diffJsx,
   getComponents,
   getCurrentPage,
@@ -113,6 +115,7 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   pageBounds,
   listFonts,
   listAvailableFonts,
+  checkFont,
   diffJsx,
   // Create (advanced)
   createShape,
@@ -186,6 +189,7 @@ export const EXTENDED_TOOLS: ToolDef[] = [
   // Analyze & diff
   analyzeColors,
   analyzeTypography,
+  auditFontLicenses,
   analyzeSpacing,
   analyzeClusters,
   analyzeOverlaps,

@@ -24,7 +24,8 @@ export const setText = defineTool({
 export const setFont = defineTool({
   name: 'set_font',
   mutates: true,
-  description: 'Set font properties of a text node.',
+  description:
+    'Set font properties of a text node. After changing family or style, call check_font with the expected values to verify live renderer effectiveness.',
   params: {
     id: { type: 'string', description: 'Node ID', required: true },
     family: { type: 'string', description: 'Font family name' },
@@ -49,7 +50,8 @@ export const setFont = defineTool({
 export const setFontRange = defineTool({
   name: 'set_font_range',
   mutates: true,
-  description: 'Set font properties for a text range.',
+  description:
+    'Set font properties for a text range. Call check_font on the node afterwards to detect mixed assignments, pending loads, synthesized styles, or unresolved glyphs.',
   params: {
     id: { type: 'string', description: 'Node ID', required: true },
     start: { type: 'number', description: 'Start character index', required: true, min: 0 },

@@ -101,6 +101,12 @@ export class FigmaAPI implements NodeProxyHost {
     this._renderer = renderer
   }
 
+  getNodeFontReadiness(id: string): ReturnType<SkiaRenderer['nodeFontReadiness']> | 'unavailable' {
+    const node = this.graph.getNode(id)
+    if (!this._renderer || node?.type !== 'TEXT') return 'unavailable'
+    return this._renderer.nodeFontReadiness(node)
+  }
+
   get currentPageId(): string {
     return this._currentPageId
   }

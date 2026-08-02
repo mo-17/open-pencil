@@ -1,5 +1,5 @@
 export { getComponents } from './read/components'
-export { listAvailableFonts, listFonts } from './read/fonts'
+export { checkFont, listAvailableFonts, listFonts } from './read/fonts'
 export { readGeneratedEffect, type GeneratedEffectRead } from './read/generated-effect'
 export { diffJsx, getJsx } from './read/jsx'
 export {
