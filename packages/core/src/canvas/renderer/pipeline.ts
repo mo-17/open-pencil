@@ -9,11 +9,13 @@ import type { EditorState } from '#core/editor/types'
 import { computeMotionLayoutPreview } from '#core/layout'
 import { graphHasAnimatedGeneratedEffects } from '#core/motion'
 
+import { beginDecodedImageCacheFrame, endDecodedImageCacheFrame } from './image-cache'
 import {
   drawLastGoodSceneBacking,
   renderSceneBacking,
   updateSceneBackingPreviewState
 } from './retained-backing'
+import { withIsolatedDocumentCaches } from './state'
 
 function renderChildrenWithMotionLayout(
   r: SkiaRenderer,
@@ -37,15 +39,39 @@ export function renderSceneToCanvas(
   pageId: string,
   overlays: RenderOverlays = {}
 ): void {
+  const scopeDiffers =
+    r.renderCacheGraph !== null && (r.renderCacheGraph !== graph || r.renderCachePageId !== pageId)
+  if (scopeDiffers) {
+    withIsolatedDocumentCaches(r, graph, pageId, () => {
+      renderSceneToCanvasInCurrentScope(r, canvas, graph, pageId, overlays)
+    })
+    return
+  }
+
+  prepareRenderCacheScope(r, graph, pageId)
+  renderSceneToCanvasInCurrentScope(r, canvas, graph, pageId, overlays)
+}
+
+function renderSceneToCanvasInCurrentScope(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  pageId: string,
+  overlays: RenderOverlays
+): void {
+  beginDecodedImageCacheFrame(r)
   const prevViewport = r.worldViewport
   r.worldViewport = { x: -1e9, y: -1e9, w: 2e9, h: 2e9 }
+  let completed = false
   try {
     const pageNode = graph.getNode(pageId)
     if (pageNode) {
       renderChildrenWithMotionLayout(r, canvas, graph, pageNode.childIds, overlays)
     }
+    completed = true
   } finally {
     r.worldViewport = prevViewport
+    endDecodedImageCacheFrame(r, completed)
   }
 }
 
@@ -164,6 +190,63 @@ function measure<T>(fn: () => T): { value: T; duration: number } {
   return { value, duration: now() - start }
 }
 
+function prepareRenderCacheScope(r: SkiaRenderer, graph: SceneGraph, pageId = r.pageId): void {
+  const previousGraph = r.renderCacheGraph
+  const scopeChanged =
+    previousGraph !== null && (previousGraph !== graph || r.renderCachePageId !== pageId)
+  if (scopeChanged) {
+    // A previous page's pictures can retain native SkImage references after the decoded-image
+    // LRU drops its JS wrappers. They cannot be used to recover a different page, so release both
+    // layers of caching before the new page starts decoding.
+    r.clearDocumentCaches()
+  }
+  r.renderCacheGraph = graph
+  r.renderCachePageId = pageId
+}
+
+function renderSceneLayer(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  overlays: RenderOverlays,
+  sceneVersion: number,
+  layer: RenderLayer,
+  hasVolatileOverlays: boolean,
+  canUsePicture: boolean,
+  cacheMissReason: string
+): void {
+  const drewSceneBacking =
+    layer === 'scene' && !hasVolatileOverlays && renderSceneBacking(r, canvas, graph, sceneVersion)
+  if (drewSceneBacking) {
+    r.profiler.setScenePictureMode('hit', 'backing')
+    return
+  }
+
+  canvas.translate(r.panX, r.panY)
+  canvas.scale(r.zoom, r.zoom)
+  if (layer === 'scene') {
+    renderLiveSceneContent(
+      r,
+      canvas,
+      graph,
+      overlays,
+      hasVolatileOverlays ? cacheMissReason : 'backing-unavailable'
+    )
+    return
+  }
+
+  renderSceneContent(
+    r,
+    canvas,
+    graph,
+    overlays,
+    sceneVersion,
+    canUsePicture,
+    cacheMissReason,
+    hasVolatileOverlays
+  )
+}
+
 export function render(
   r: SkiaRenderer,
   graph: SceneGraph,
@@ -172,6 +255,7 @@ export function render(
   sceneVersion = -1,
   layer: RenderLayer = 'full'
 ): void {
+  prepareRenderCacheScope(r, graph)
   r.syncFontGeneration()
   const p = r.profiler
   p.beginFrame()
@@ -182,6 +266,8 @@ export function render(
   let recoveryCanvas: Canvas | null = null
   let initialSaveCount = 0
   let frameEnded = false
+  let surfaceFlushed = false
+  beginDecodedImageCacheFrame(r)
   try {
     graph.clearAbsPosCache()
 
@@ -221,26 +307,17 @@ export function render(
       canvas.scale(r.dpr, r.dpr)
 
       p.beginPhase('render:scene')
-      if (
-        layer === 'scene' &&
-        !hasVolatileOverlays &&
-        renderSceneBacking(r, canvas, graph, sceneVersion)
-      ) {
-        p.setScenePictureMode('hit', 'backing')
-      } else {
-        canvas.translate(r.panX, r.panY)
-        canvas.scale(r.zoom, r.zoom)
-        renderSceneContent(
-          r,
-          canvas,
-          graph,
-          overlays,
-          sceneVersion,
-          canUsePicture,
-          cacheMissReason,
-          hasVolatileOverlays
-        )
-      }
+      renderSceneLayer(
+        r,
+        canvas,
+        graph,
+        overlays,
+        sceneVersion,
+        layer,
+        hasVolatileOverlays,
+        canUsePicture,
+        cacheMissReason
+      )
       p.endPhase('render:scene')
 
       canvas.restore()
@@ -290,7 +367,10 @@ export function render(
     }
 
     p.beginPhase('render:flush')
-    const { duration: flushDuration } = measure(() => r.surface.flush())
+    const { duration: flushDuration } = measure(() => {
+      r.surface.flush()
+      surfaceFlushed = true
+    })
     p.setFlushTime(flushDuration)
     p.endPhase('render:flush')
 
@@ -312,6 +392,7 @@ export function render(
         console.warn('Canvas profiler frame could not be closed', error)
       }
     }
+    endDecodedImageCacheFrame(r, surfaceFlushed)
   }
 }
 
@@ -374,12 +455,7 @@ function renderSceneContent(
     }
     p.endPhase('render:drawPicture')
   } else if (hasVolatileOverlays) {
-    p.setScenePictureMode('volatile', cacheMissReason)
-    r._nodeCount = 0
-    r._culledCount = 0
-    p.beginPhase('render:volatile')
-    renderPageChildren(r, canvas, graph, overlays)
-    p.endPhase('render:volatile')
+    renderLiveSceneContent(r, canvas, graph, overlays, cacheMissReason)
   } else {
     p.setScenePictureMode('record', cacheMissReason)
     r._nodeCount = 0
@@ -389,6 +465,22 @@ function renderSceneContent(
     p.setScenePictureRecordTime(duration)
     p.endPhase('render:recordPicture')
   }
+}
+
+function renderLiveSceneContent(
+  r: SkiaRenderer,
+  canvas: Canvas,
+  graph: SceneGraph,
+  overlays: RenderOverlays,
+  reason: string
+): void {
+  const p = r.profiler
+  p.setScenePictureMode('volatile', reason)
+  r._nodeCount = 0
+  r._culledCount = 0
+  p.beginPhase('render:volatile')
+  renderPageChildren(r, canvas, graph, overlays)
+  p.endPhase('render:volatile')
 }
 
 function renderPageChildren(

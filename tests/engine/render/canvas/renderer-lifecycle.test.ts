@@ -1,13 +1,31 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { Font, Image as CKImage, Paint, Surface } from 'canvaskit-wasm'
+import type {
+  Font,
+  Image as CKImage,
+  ImageFilter,
+  MaskFilter,
+  Paint,
+  SkPicture,
+  Surface
+} from 'canvaskit-wasm'
 
+import { SceneGraph } from '@open-pencil/scene-graph'
+
+import { LabelCache } from '#core/canvas/labels/cache'
 import { SkiaRenderer } from '#core/canvas/renderer'
 import { destroyRenderer } from '#core/canvas/renderer/lifecycle'
-import { transferLastGoodFrame } from '#core/canvas/renderer/state'
+import { transferLastGoodFrame, withIsolatedDocumentCaches } from '#core/canvas/renderer/state'
 
 function deletable<T>() {
   return { delete: mock() } as T & { delete: ReturnType<typeof mock> }
+}
+
+function filterPaint() {
+  return Object.assign(deletable<Paint>(), {
+    setImageFilter: mock(),
+    setMaskFilter: mock()
+  })
 }
 
 function createRenderer() {
@@ -15,6 +33,14 @@ function createRenderer() {
     ck: {} as SkiaRenderer['ck'],
     destroyed: false,
     imageCache: new Map(),
+    imageCacheByteSize: 0,
+    imageCacheByteBudget: 128 * 1024 * 1024,
+    imageCacheFrameDepth: 0,
+    imageCacheFrameUsed: new Set(),
+    pendingFontNodes: new Map(),
+    textPictureGenerations: new Map(),
+    renderCacheGraph: null,
+    renderCachePageId: null,
     vectorPathCache: new Map(),
     vectorStrokePathCache: new Map(),
     vectorStrokeOutlineCache: new Map(),
@@ -25,10 +51,10 @@ function createRenderer() {
     selectionPaint: deletable<Paint>(),
     parentOutlinePaint: deletable<Paint>(),
     snapPaint: deletable<Paint>(),
-    auxFill: deletable<Paint>(),
+    auxFill: filterPaint(),
     auxStroke: deletable<Paint>(),
     opacityPaint: deletable<Paint>(),
-    effectLayerPaint: deletable<Paint>(),
+    effectLayerPaint: filterPaint(),
     generatedEffectPaint: deletable<Paint>(),
     textFont: deletable<Font>(),
     labelFont: deletable<Font>(),
@@ -52,7 +78,9 @@ function createRenderer() {
     imageFilterCache: new Map(),
     maskFilterCache: new Map(),
     nodePictureCache: new Map(),
+    nodePictureCacheGenerations: new Map(),
     subtreePictureCache: new Map(),
+    labelCache: new LabelCache(),
     scenePicture: null,
     sceneBacking: null,
     sceneBackingBuild: null,
@@ -79,6 +107,11 @@ function createRenderer() {
 
 test('destroyRenderer deletes all renderer-owned paints and label fonts', () => {
   const renderer = createRenderer()
+  const cachedImage = deletable<CKImage>()
+  renderer.imageCache.set('cached', { image: cachedImage, byteSize: 64 })
+  renderer.imageCacheByteSize = 64
+  renderer.imageCacheFrameDepth = 1
+  renderer.imageCacheFrameUsed.add('cached')
   const parentOutlinePaint = renderer.parentOutlinePaint
   const generatedEffectPaint = renderer.generatedEffectPaint
   const sectionTitleFont = renderer.sectionTitleFont
@@ -90,12 +123,19 @@ test('destroyRenderer deletes all renderer-owned paints and label fonts', () => 
   expect(generatedEffectPaint.delete).toHaveBeenCalled()
   expect(sectionTitleFont?.delete).toHaveBeenCalled()
   expect(componentLabelFont?.delete).toHaveBeenCalled()
+  expect(cachedImage.delete).toHaveBeenCalledTimes(1)
+  expect(renderer.imageCacheByteSize).toBe(0)
+  expect(renderer.imageCacheFrameDepth).toBe(0)
+  expect(renderer.imageCacheFrameUsed.size).toBe(0)
 })
 
 test('last-good frame ownership survives source renderer destruction', () => {
   const source = createRenderer()
   const target = createRenderer()
   target.ck = source.ck
+  const graph = {} as SkiaRenderer['renderCacheGraph']
+  source.renderCacheGraph = graph
+  source.renderCachePageId = 'page'
   const image = deletable<CKImage>()
   source.sceneBacking = {
     image,
@@ -118,6 +158,8 @@ test('last-good frame ownership survives source renderer destruction', () => {
   expect(transferLastGoodFrame(source, target)).toBe(true)
   expect(source.sceneBacking).toBeNull()
   expect(target.sceneBacking?.image).toBe(image)
+  expect(target.renderCacheGraph).toBe(graph)
+  expect(target.renderCachePageId).toBe('page')
 
   destroyRenderer(source)
   expect(image.delete).not.toHaveBeenCalled()
@@ -132,6 +174,7 @@ test('surface replacement keeps the completed frame and cancels only the stale b
   const replacementSurface = deletable<Surface>()
   const image = deletable<CKImage>()
   const buildSurface = deletable<Surface>()
+  const buildPicture = deletable<SkPicture>()
   renderer.sceneBacking = {
     image,
     pageId: 'page',
@@ -150,6 +193,13 @@ test('surface replacement keeps the completed frame and cancels only the stale b
     worldHeight: 200
   }
   renderer.sceneBackingBuild = { surface: buildSurface } as SkiaRenderer['sceneBackingBuild']
+  renderer.subtreePictureCache.set('partial', {
+    picture: buildPicture,
+    pageId: 'page',
+    sceneVersion: 4,
+    positionPreviewVersion: 2,
+    fontGeneration: 1
+  })
 
   SkiaRenderer.prototype.replaceSurface.call(renderer, replacementSurface)
 
@@ -158,6 +208,43 @@ test('surface replacement keeps the completed frame and cancels only the stale b
   expect(renderer.sceneBacking?.image).toBe(image)
   expect(image.delete).not.toHaveBeenCalled()
   expect(buildSurface.delete).toHaveBeenCalledTimes(1)
+  expect(buildPicture.delete).toHaveBeenCalledTimes(1)
+  expect(renderer.subtreePictureCache.size).toBe(0)
   expect(renderer.sceneBackingBuild).toBeNull()
   expect(renderer.sceneBackingNeedsCrispRender).toBe(true)
+})
+
+test('isolated document caches restore warm filters and release temporary filters on failure', () => {
+  const renderer = createRenderer()
+  const warmImageFilter = deletable<ImageFilter>()
+  const warmMaskFilter = deletable<MaskFilter>()
+  const temporaryImageFilter = deletable<ImageFilter>()
+  const temporaryMaskFilter = deletable<MaskFilter>()
+  renderer.imageFilterCache.set('warm', warmImageFilter)
+  renderer.maskFilterCache.set(1, warmMaskFilter)
+
+  expect(() =>
+    withIsolatedDocumentCaches(renderer, new SceneGraph(), 'export-page', () => {
+      renderer.imageFilterCache.set('temporary', temporaryImageFilter)
+      renderer.maskFilterCache.set(2, temporaryMaskFilter)
+      renderer.effectLayerPaint.setImageFilter(temporaryImageFilter)
+      renderer.auxFill.setImageFilter(temporaryImageFilter)
+      renderer.auxFill.setMaskFilter(temporaryMaskFilter)
+      throw new Error('synthetic export failure')
+    })
+  ).toThrow('synthetic export failure')
+
+  expect(renderer.imageFilterCache.get('warm')).toBe(warmImageFilter)
+  expect(renderer.maskFilterCache.get(1)).toBe(warmMaskFilter)
+  expect(warmImageFilter.delete).not.toHaveBeenCalled()
+  expect(warmMaskFilter.delete).not.toHaveBeenCalled()
+  expect(temporaryImageFilter.delete).toHaveBeenCalledTimes(1)
+  expect(temporaryMaskFilter.delete).toHaveBeenCalledTimes(1)
+  expect(renderer.effectLayerPaint.setImageFilter).toHaveBeenLastCalledWith(null)
+  expect(renderer.auxFill.setImageFilter).toHaveBeenLastCalledWith(null)
+  expect(renderer.auxFill.setMaskFilter).toHaveBeenLastCalledWith(null)
+
+  destroyRenderer(renderer)
+  expect(warmImageFilter.delete).toHaveBeenCalledTimes(1)
+  expect(warmMaskFilter.delete).toHaveBeenCalledTimes(1)
 })

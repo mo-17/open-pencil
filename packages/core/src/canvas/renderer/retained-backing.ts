@@ -261,7 +261,8 @@ function cachedSubtreePicture(
   r: SkiaRenderer,
   graph: SceneGraph,
   childId: string,
-  sceneVersion: number
+  sceneVersion: number,
+  recordingBounds: NonNullable<ReturnType<typeof computeDescendantVisualBounds>>
 ) {
   ensureSubtreePictureCacheScope(r, graph, sceneVersion)
   const cached = r.subtreePictureCache.get(childId)
@@ -281,24 +282,22 @@ function cachedSubtreePicture(
     r.subtreePictureCache.delete(childId)
     cached.picture.delete()
   }
-  const bounds = computeDescendantVisualBounds(
-    [childId],
-    (id) => graph.getNode(id),
-    (id) => graph.getAbsolutePosition(id)
-  )
-  if (!bounds) return null
-
   const recorder = new r.ck.PictureRecorder()
   const prevViewport = r.worldViewport
   try {
     const recCanvas = recorder.beginRecording(
-      r.ck.LTRBRect(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY)
+      r.ck.LTRBRect(
+        recordingBounds.minX,
+        recordingBounds.minY,
+        recordingBounds.maxX,
+        recordingBounds.maxY
+      )
     )
     r.worldViewport = {
-      x: bounds.minX,
-      y: bounds.minY,
-      w: bounds.maxX - bounds.minX,
-      h: bounds.maxY - bounds.minY
+      x: recordingBounds.minX,
+      y: recordingBounds.minY,
+      w: recordingBounds.maxX - recordingBounds.minX,
+      h: recordingBounds.maxY - recordingBounds.minY
     }
     r.renderNode(recCanvas, graph, childId, {})
     const picture = recorder.finishRecordingAsPicture()
@@ -316,6 +315,17 @@ function cachedSubtreePicture(
   }
 }
 
+function subtreeBackingIntersection(
+  bounds: NonNullable<ReturnType<typeof computeDescendantVisualBounds>>,
+  backing: ReturnType<typeof sceneBackingGeometry>
+): NonNullable<ReturnType<typeof computeDescendantVisualBounds>> | null {
+  const minX = Math.max(bounds.minX, backing.worldX)
+  const minY = Math.max(bounds.minY, backing.worldY)
+  const maxX = Math.min(bounds.maxX, backing.worldX + backing.worldWidth)
+  const maxY = Math.min(bounds.maxY, backing.worldY + backing.worldHeight)
+  return minX < maxX && minY < maxY ? { minX, minY, maxX, maxY } : null
+}
+
 function renderBackingChild(
   r: SkiaRenderer,
   graph: SceneGraph,
@@ -324,6 +334,15 @@ function renderBackingChild(
   backing: ReturnType<typeof sceneBackingGeometry>,
   sceneVersion: number
 ): void {
+  const bounds = computeDescendantVisualBounds(
+    [childId],
+    (id) => graph.getNode(id),
+    (id) => graph.getAbsolutePosition(id)
+  )
+  if (!bounds) return
+  const recordingBounds = subtreeBackingIntersection(bounds, backing)
+  if (!recordingBounds) return
+
   const canvas = surface.getCanvas()
   const prevViewport = r.worldViewport
   const initialSaveCount = canvas.getSaveCount()
@@ -338,9 +357,8 @@ function renderBackingChild(
     canvas.scale(backing.dpr, backing.dpr)
     canvas.translate(backing.panX, backing.panY)
     canvas.scale(r.zoom, r.zoom)
-    const picture = cachedSubtreePicture(r, graph, childId, sceneVersion)
-    if (picture) canvas.drawPicture(picture)
-    else r.renderNode(canvas, graph, childId, {})
+    const picture = cachedSubtreePicture(r, graph, childId, sceneVersion, recordingBounds)
+    canvas.drawPicture(picture)
   } finally {
     r.worldViewport = prevViewport
     canvas.restoreToCount(initialSaveCount)
@@ -382,11 +400,15 @@ function installSceneBackingImage(
   r.scenePicturePositionPreviewVersion = positionPreviewVersion
   r.scenePicturePageId = r.pageId
   r.sceneBackingNeedsCrispRender = false
+  // The flushed snapshot owns its raster pixels. Keeping the recording pictures would retain all
+  // source SkImages independently of the decoded-image LRU with no benefit to this completed frame.
+  clearSubtreePictureCache(r)
 }
 
 function cancelSceneBackingBuild(r: SkiaRenderer): void {
   r.sceneBackingBuild?.surface.delete()
   r.sceneBackingBuild = null
+  clearSubtreePictureCache(r)
 }
 
 function sceneBackingBuildMatches(r: SkiaRenderer, sceneVersion: number): boolean {
@@ -406,7 +428,7 @@ function sceneBackingBuildMatches(r: SkiaRenderer, sceneVersion: number): boolea
 }
 
 function startSceneBackingBuild(r: SkiaRenderer, graph: SceneGraph, sceneVersion: number): void {
-  cancelSceneBackingBuild(r)
+  if (r.sceneBackingBuild) cancelSceneBackingBuild(r)
   const backing = sceneBackingGeometry(r)
   const pageNode = graph.getNode(r.pageId ?? graph.rootId)
   const surface = createSceneBackingSurface(r, backing.width, backing.height, backing.dpr)
@@ -510,6 +532,7 @@ function recordSceneBacking(r: SkiaRenderer, graph: SceneGraph, sceneVersion: nu
     image = surface.makeImageSnapshot()
   } catch {
     surface.delete()
+    clearSubtreePictureCache(r)
     return false
   }
   surface.delete()
@@ -557,5 +580,11 @@ export function renderSceneBacking(
   )
   const crisp = Math.abs((r.sceneBacking?.zoom ?? r.zoom) - r.zoom) <= 0.0001
   r.sceneBackingNeedsCrispRender = !drewCurrent || !crisp || !!r.sceneBackingBuild
-  return drewCurrent || drawLastGoodSceneBacking(r, canvas)
+  if (drewCurrent) return true
+  if (!hasCoverage && !r.sceneBackingBuild) {
+    // Allocation or recording failed. Presenting the stale image as a successful retained draw
+    // would permanently suppress the viewport-culling live fallback in the render pipeline.
+    return false
+  }
+  return drawLastGoodSceneBacking(r, canvas)
 }

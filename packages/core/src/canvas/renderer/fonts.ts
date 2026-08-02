@@ -52,11 +52,12 @@ function settleFontDemand(
   syncFontGeneration(r)
   for (const nodeId of nodeIds) {
     const pending = r.pendingFontNodes.get(nodeId)
-    if (pending) {
-      pending.node.textPicture = null
-      pending.keys.delete(snapshot.key)
-      if (pending.keys.size === 0) r.pendingFontNodes.delete(nodeId)
-    }
+    // A resolution can arrive after a page/graph cache reset. Ignore it unless the active
+    // document still owns this exact demand; node IDs may be reused by a replacement graph.
+    if (!pending?.keys.has(snapshot.key)) continue
+    pending.node.textPicture = null
+    pending.keys.delete(snapshot.key)
+    if (pending.keys.size === 0) r.pendingFontNodes.delete(nodeId)
     r.textPictureGenerations.delete(nodeId)
     r.invalidateNodePicture(nodeId)
   }

@@ -1,8 +1,8 @@
 import { expect, mock, test } from 'bun:test'
 
-import type { Canvas, Image as CKImage, Surface } from 'canvaskit-wasm'
+import type { Canvas, Image as CKImage, SkPicture, Surface } from 'canvaskit-wasm'
 
-import type { SceneGraph } from '@open-pencil/scene-graph'
+import { SceneGraph } from '@open-pencil/scene-graph'
 
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { recoverLastGoodFrame } from '#core/canvas/renderer/pipeline'
@@ -56,6 +56,7 @@ function createRenderer(surfaceFactory: (descriptor?: unknown) => Surface | null
     subtreePictureCachePageId: null,
     subtreePictureCacheSceneVersion: 0,
     subtreePictureCachePositionPreviewVersion: 0,
+    subtreePictureCacheFontGeneration: 0,
     worldViewport: { x: 0, y: 0, w: 0, h: 0 },
     renderNode: mock()
   }
@@ -158,6 +159,7 @@ test('last-good scene backing can be restored after graph metadata changes', () 
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
+    fontGeneration: 0,
     panX: 0,
     panY: 0,
     zoom: 1,
@@ -182,7 +184,12 @@ test('scene-version changes rebuild incrementally while presenting the last-good
     save: mock(),
     scale: mock(),
     translate: mock(),
-    drawPicture: mock(),
+    drawPicture: mock(() => {
+      const startedAt = performance.now()
+      while (performance.now() - startedAt < 8) {
+        // Force the incremental builder to yield after one root.
+      }
+    }),
     restoreToCount: mock()
   }
   const buildCanvas = partialBuildCanvas as Canvas
@@ -212,17 +219,30 @@ test('scene-version changes rebuild incrementally while presenting the last-good
     worldWidth: 300,
     worldHeight: 300
   }
-  r.renderNode = mock(() => {
-    const startedAt = performance.now()
-    while (performance.now() - startedAt < 8) {
-      // Force the incremental builder to yield after one root.
-    }
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  r.pageId = page.id
+  r.sceneBacking.pageId = page.id
+  const first = graph.createNode('RECTANGLE', page.id, { width: 10, height: 10 })
+  const second = graph.createNode('RECTANGLE', page.id, { x: 20, width: 10, height: 10 })
+  r.subtreePictureCachePageId = page.id
+  r.subtreePictureCacheSceneVersion = 2
+  r.subtreePictureCachePositionPreviewVersion = graph.positionPreviewVersion
+  r.subtreePictureCacheFontGeneration = r.fontGeneration
+  r.subtreePictureCache.set(first.id, {
+    picture: { delete: mock() } as SkPicture,
+    pageId: page.id,
+    sceneVersion: 2,
+    positionPreviewVersion: graph.positionPreviewVersion,
+    fontGeneration: r.fontGeneration
   })
-  const graph = createGraph()
-  graph.getNode = mock((id: string) => {
-    if (id === 'page') return { id: 'page', type: 'CANVAS', childIds: ['a', 'b'] }
-    return null
-  }) as SceneGraph['getNode']
+  r.subtreePictureCache.set(second.id, {
+    picture: { delete: mock() } as SkPicture,
+    pageId: page.id,
+    sceneVersion: 2,
+    positionPreviewVersion: graph.positionPreviewVersion,
+    fontGeneration: r.fontGeneration
+  })
   const canvas = createCanvas()
 
   expect(renderSceneBacking(r, canvas, graph, 2)).toBe(true)
@@ -230,6 +250,51 @@ test('scene-version changes rebuild incrementally while presenting the last-good
   expect(r.sceneBacking?.image).toBe(oldImage)
   expect(oldImage.delete).not.toHaveBeenCalled()
   expect(canvas.drawImageRectOptions).toHaveBeenCalled()
+})
+
+test('retained backing skips offscreen top-level subtrees and releases recording pictures', () => {
+  const partialBuildCanvas: Partial<Canvas> = {
+    clear: mock(),
+    getSaveCount: mock(() => 0),
+    save: mock(),
+    scale: mock(),
+    translate: mock(),
+    drawPicture: mock(),
+    restoreToCount: mock()
+  }
+  const buildCanvas = partialBuildCanvas as Canvas
+  const snapshot = { delete: mock() } as CKImage
+  const partialBuildSurface: Partial<Surface> = {
+    getCanvas: mock(() => buildCanvas),
+    flush: mock(),
+    makeImageSnapshot: mock(() => snapshot),
+    delete: mock()
+  }
+  const r = createRenderer(() => partialBuildSurface as Surface)
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  r.pageId = page.id
+  const visible = graph.createNode('RECTANGLE', page.id, { width: 10, height: 10 })
+  graph.createNode('RECTANGLE', page.id, { x: 1_000, width: 10, height: 10 })
+  const visiblePicture = { delete: mock() }
+  r.subtreePictureCachePageId = page.id
+  r.subtreePictureCacheSceneVersion = 1
+  r.subtreePictureCachePositionPreviewVersion = graph.positionPreviewVersion
+  r.subtreePictureCacheFontGeneration = r.fontGeneration
+  r.subtreePictureCache.set(visible.id, {
+    picture: visiblePicture as SkPicture,
+    pageId: page.id,
+    sceneVersion: 1,
+    positionPreviewVersion: graph.positionPreviewVersion,
+    fontGeneration: r.fontGeneration
+  })
+
+  expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe(true)
+  expect(buildCanvas.drawPicture).toHaveBeenCalledTimes(1)
+  expect(buildCanvas.drawPicture).toHaveBeenCalledWith(visiblePicture)
+  expect(r.sceneBacking?.image).toBe(snapshot)
+  expect(r.subtreePictureCache.size).toBe(0)
+  expect(visiblePicture.delete).toHaveBeenCalledTimes(1)
 })
 
 test('retained scene backing filters cross-zoom previews instead of falling back to live rendering', () => {
@@ -241,6 +306,7 @@ test('retained scene backing filters cross-zoom previews instead of falling back
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
+    fontGeneration: 0,
     panX: 0,
     panY: 0,
     zoom: 0.5,
@@ -275,6 +341,7 @@ test('retained scene backing allows same-zoom previews while panning', () => {
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 0,
+    fontGeneration: 0,
     panX: 0,
     panY: 0,
     zoom: 1,
@@ -293,13 +360,14 @@ test('retained scene backing allows same-zoom previews while panning', () => {
   expect(canvas.drawImageRectOptions).toHaveBeenCalled()
 })
 
-test('retained scene backing keeps the last-good frame while position metadata rebuilds', () => {
+test('retained scene backing falls back live when a metadata rebuild cannot start', () => {
   const r = createRenderer(() => null)
   r.sceneBacking = {
     image: { delete: mock() } as CKImage,
     pageId: 'page',
     sceneVersion: 1,
     positionPreviewVersion: 1,
+    fontGeneration: 0,
     panX: 0,
     panY: 0,
     zoom: 1,
@@ -315,6 +383,6 @@ test('retained scene backing keeps the last-good frame while position metadata r
   const canvas = createCanvas()
   const graph = createGraph(2)
 
-  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
-  expect(canvas.drawImageRectOptions).toHaveBeenCalled()
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(false)
+  expect(canvas.drawImageRectOptions).not.toHaveBeenCalled()
 })

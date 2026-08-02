@@ -24,6 +24,10 @@ import { LabelCache } from './labels/cache'
 import * as LabelHitTest from './labels/hit-test'
 import * as RenderColors from './renderer/colors'
 import * as RendererFonts from './renderer/fonts'
+import {
+  DEFAULT_DECODED_IMAGE_CACHE_BUDGET_BYTES,
+  type DecodedImageCacheEntry
+} from './renderer/image-cache'
 import { destroyRenderer } from './renderer/lifecycle'
 import { installRendererDomainMethods } from './renderer/methods'
 import { initializeRendererPaints } from './renderer/paints'
@@ -93,7 +97,13 @@ export class SkiaRenderer {
     | undefined
   pendingFontNodes = new Map<string, PendingFontNode>()
   textPictureGenerations = new Map<string, { data: Uint8Array; generation: number }>()
-  imageCache = new Map<string, CKImage>()
+  imageCache = new Map<string, DecodedImageCacheEntry>()
+  imageCacheByteSize = 0
+  imageCacheByteBudget = DEFAULT_DECODED_IMAGE_CACHE_BUDGET_BYTES
+  imageCacheFrameDepth = 0
+  imageCacheFrameUsed = new Set<string>()
+  renderCacheGraph: SceneGraph | null = null
+  renderCachePageId: string | null = null
   vectorPathCache = new Map<string, Path[]>()
   vectorStrokePathCache = new Map<string, Path[]>()
   vectorStrokeOutlineCache = new Map<string, Path[]>()
@@ -293,7 +303,7 @@ export class SkiaRenderer {
     fill?: Fill
   ) => void
   declare applyFill: (fill: Fill, node: SceneNode, graph: SceneGraph, fillIndex?: number) => boolean
-  declare applyGradientFill: (fill: Fill, node: SceneNode, graph: SceneGraph) => void
+  declare applyGradientFill: (fill: Fill, node: SceneNode, graph: SceneGraph) => boolean
   declare applyImageFill: (fill: Fill, node: SceneNode, graph: SceneGraph) => boolean
   declare drawArc: (canvas: Canvas, node: SceneNode, paint: Paint) => void
   declare drawNodeStroke: (
@@ -477,6 +487,10 @@ export class SkiaRenderer {
 
   invalidateAllPictures(): void {
     RendererState.invalidateAllPictures(this)
+  }
+
+  clearDocumentCaches(): void {
+    RendererState.clearDocumentCaches(this)
   }
 
   invalidateNodePicture(nodeId: string): void {

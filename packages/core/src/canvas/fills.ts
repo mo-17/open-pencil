@@ -1,15 +1,33 @@
-import type { Canvas, Paint } from 'canvaskit-wasm'
+import type { Canvas, Paint, Shader } from 'canvaskit-wasm'
 
 import type { SceneNode, SceneGraph, Fill } from '@open-pencil/scene-graph'
 import type { Rect, Vector } from '@open-pencil/scene-graph/primitives'
 
 import { figmaBlendModeToSkia } from './blend'
 import type { SkiaRenderer } from './renderer'
+import {
+  cacheDecodedImage,
+  estimateDecodedImageBytes,
+  getDecodedImageCacheEntry,
+  reserveDecodedImageCacheBytes
+} from './renderer/image-cache'
 import { makeSmoothRRectPath, nodeHasSmoothCorners } from './shapes'
 
 interface PaintFillsOptions {
   readonly bindToNodeFills?: boolean
   readonly patternStack?: Set<string>
+}
+
+function setOwnedFillShader(r: SkiaRenderer, shader: Shader | null): boolean {
+  if (!shader) return false
+  try {
+    r.fillPaint.setShader(shader)
+  } finally {
+    // SkPaint retains its own native reference. Release the temporary Embind
+    // wrapper immediately so repeated fills do not accumulate WASM handles.
+    shader.delete()
+  }
+  return true
 }
 
 export function paintFills(
@@ -30,9 +48,12 @@ export function paintFills(
     if (!applied) continue
     r.fillPaint.setAlphaf(fill.opacity)
     r.fillPaint.setBlendMode(figmaBlendModeToSkia(r.ck, fill.blendMode))
-    draw(fill)
-    r.fillPaint.setShader(null)
-    r.fillPaint.setBlendMode(r.ck.BlendMode.SrcOver)
+    try {
+      draw(fill)
+    } finally {
+      r.fillPaint.setShader(null)
+      r.fillPaint.setBlendMode(r.ck.BlendMode.SrcOver)
+    }
   }
 }
 
@@ -140,8 +161,7 @@ export function applyFill(
   }
 
   if (fill.type.startsWith('GRADIENT') && fill.gradientStops && fill.gradientTransform) {
-    r.applyGradientFill(fill, node, graph)
-    return true
+    return r.applyGradientFill(fill, node, graph)
   }
 
   if (fill.type === 'IMAGE' && fill.imageHash) {
@@ -272,9 +292,11 @@ function applyPatternFill(
     undefined,
     tileRect
   )
-  r.fillPaint.setShader(shader)
-  picture.delete()
-  return true
+  try {
+    return setOwnedFillShader(r, shader)
+  } finally {
+    picture.delete()
+  }
 }
 
 function makeGradientLocalMatrix(
@@ -315,10 +337,10 @@ export function applyGradientFill(
   fill: Fill,
   node: SceneNode,
   graph: SceneGraph
-): void {
+): boolean {
   const stops = fill.gradientStops
   const t = fill.gradientTransform
-  if (!stops || !t) return
+  if (!stops || !t) return false
   const colors = stops.map((s, index) => {
     const resolved = r.resolveFillColorInfo(
       {
@@ -353,7 +375,7 @@ export function applyGradientFill(
       positions,
       r.ck.TileMode.Clamp
     )
-    r.fillPaint.setShader(shader)
+    return setOwnedFillShader(r, shader)
   } else if (fill.type === 'GRADIENT_RADIAL' || fill.type === 'GRADIENT_DIAMOND') {
     // Figma's gradientTransform maps gradient space (center 0.5,0.5, radius 0.5)
     // to the node's normalized [0,1] coordinate space. The full local matrix
@@ -367,7 +389,7 @@ export function applyGradientFill(
       r.ck.TileMode.Clamp,
       localMatrix
     )
-    r.fillPaint.setShader(shader)
+    return setOwnedFillShader(r, shader)
   } else if (fill.type === 'GRADIENT_ANGULAR') {
     const localMatrix = makeGradientLocalMatrix(r, w, h, t)
     const shader = r.ck.Shader.MakeSweepGradient(
@@ -378,8 +400,9 @@ export function applyGradientFill(
       r.ck.TileMode.Clamp,
       localMatrix
     )
-    r.fillPaint.setShader(shader)
+    return setOwnedFillShader(r, shader)
   }
+  return false
 }
 
 export function makeImageFillLocalMatrix(
@@ -434,15 +457,20 @@ export function applyImageFill(
 ): boolean {
   const hash = fill.imageHash
   if (!hash) return false
-  let img = r.imageCache.get(hash)
+  let img = getDecodedImageCacheEntry(r, hash)
   if (!img) {
     const data = graph.images.get(hash)
     if (!data) return false
     const decoded = r.ck.MakeImageFromEncoded(data) ?? undefined
     if (!decoded) return false
-    img = decoded.makeCopyWithDefaultMipmaps()
-    decoded.delete()
-    r.imageCache.set(hash, img)
+    const byteSize = estimateDecodedImageBytes(decoded)
+    reserveDecodedImageCacheBytes(r, byteSize)
+    try {
+      img = decoded.makeCopyWithDefaultMipmaps()
+    } finally {
+      decoded.delete()
+    }
+    cacheDecodedImage(r, hash, img, byteSize)
   }
 
   const imgW = img.width()
@@ -459,8 +487,7 @@ export function applyImageFill(
       1 / 3,
       localMatrix
     )
-    r.fillPaint.setShader(shader)
-    return true
+    return setOwnedFillShader(r, shader)
   }
 
   const shader = img.makeShaderOptions(
@@ -470,8 +497,7 @@ export function applyImageFill(
     r.ck.MipmapMode.Linear,
     localMatrix
   )
-  r.fillPaint.setShader(shader)
-  return true
+  return setOwnedFillShader(r, shader)
 }
 
 export function makeArcPath(r: SkiaRenderer, node: SceneNode) {
