@@ -57,21 +57,21 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 > 个来 / 直接干推荐项」,真大决策才单问一个 AskUserQuestion。headless 可验的
 > 连续增量优先,真机 GUI 验证类候选排在后面。
 
-| #   | feature                                        | 优先级               | 简述 / 状态                                                                                    | 详写          |
-| --- | ---------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------- | ------------- |
-| 1   | **§15 FRAME→Card 容器映射**                    | 已完成               | **CODE COMPLETE 2026-06-21**;容器型 FRAME → shadcn Card 容器映射。                             | §15           |
-| 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | 已完成               | **CODE COMPLETE 2026-06-21**;动态段、`$params`、带参 navigate、auth guard、`$query` 已闭合。   | §16           |
-| 3   | **§15 Phase C array checkbox-group**           | 已完成               | **CODE COMPLETE 2026-06-21**;静态 array checkbox-group shadcn emit 已闭合。                    | §15           |
-| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | 已完成               | **CODE COMPLETE 2026-06-23**;Supabase query、分页、排序、筛选、动态 options 已闭合。           | §17           |
-| 5   | **§19 表单校验**                               | 已完成               | **CODE COMPLETE 2026-06-23**;runtime、remote debounce/cancel、GUI、tool schema、E2E 已闭合。   | §19           |
-| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 已完成               | **CODE COMPLETE 2026-06-21**;INPUT upload → Supabase Storage public URL 已闭合。               | §18           |
-| 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成               | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                        | §9            |
-| 8   | **§14 跨文件组件库 / 团队库**                  | 已完成               | Phase A foundation + publish/import/update helpers + `publish_component` + CLI + local Libraries 面板已完成, browser GUI ACK 通过。 | §14           |
-| 9   | **更多 deploy providers(Cloudflare Pages 等)** | 已完成               | **CODE COMPLETE 2026-06-25**;Cloudflare Pages Direct Upload provider 已接入 CLI + Tauri DeployControls。 | §5            |
-| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成               | **GUI ACK 2026-06-24**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options,真机 Tauri ACK 通过。 | §9 / §15      |
-| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成               | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合并通过 E2E ACK。 | §7 / §8 / §10 |
-| 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成               | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                 | §10           |
-| 13  | **lowcode 字段升格 Kiwi schema**               | Deferred             | **DEFERRED 2026-06-25**;pluginData 旁路稳定,升格成本高,移入 Phase 5+ 工程债。                  | §6            |
+| #   | feature                                        | 优先级   | 简述 / 状态                                                                                                                         | 详写          |
+| --- | ---------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| 1   | **§15 FRAME→Card 容器映射**                    | 已完成   | **CODE COMPLETE 2026-06-21**;容器型 FRAME → shadcn Card 容器映射。                                                                  | §15           |
+| 2   | **§16 动态路由 / 路由参数 / 路由守卫** ⭐      | 已完成   | **CODE COMPLETE 2026-06-21**;动态段、`$params`、带参 navigate、auth guard、`$query` 已闭合。                                        | §16           |
+| 3   | **§15 Phase C array checkbox-group**           | 已完成   | **CODE COMPLETE 2026-06-21**;静态 array checkbox-group shadcn emit 已闭合。                                                         | §15           |
+| 4   | **§17 列表绑真实数据源 + 分页/排序/筛选**      | 已完成   | **CODE COMPLETE 2026-06-23**;Supabase query、分页、排序、筛选、动态 options 已闭合。                                                | §17           |
+| 5   | **§19 表单校验**                               | 已完成   | **CODE COMPLETE 2026-06-23**;runtime、remote debounce/cancel、GUI、tool schema、E2E 已闭合。                                        | §19           |
+| 6   | **§18 文件 / 图片上传(Supabase Storage)**      | 已完成   | **CODE COMPLETE 2026-06-21**;INPUT upload → Supabase Storage public URL 已闭合。                                                    | §18           |
+| 7   | **§9 v15 RTL 逻辑属性(ps-/pe-)**               | 已完成   | **CODE COMPLETE 2026-06-23**;gated `rtlLogicalProperties`,默认不漂移。                                                              | §9            |
+| 8   | **§14 跨文件组件库 / 团队库**                  | 已完成   | Phase A foundation + publish/import/update helpers + `publish_component` + CLI + local Libraries 面板已完成, browser GUI ACK 通过。 | §14           |
+| 9   | **更多 deploy providers(Cloudflare Pages 等)** | 已完成   | **CODE COMPLETE 2026-06-25**;Cloudflare Pages Direct Upload provider 已接入 CLI + Tauri DeployControls。                            | §5            |
+| 10  | **编辑器实时 preview i18n / ui-kit toggle**    | 已完成   | **GUI ACK 2026-06-24**;preview 工具条新增 i18n/uiKit 小入口,实时编译带对应 options,真机 Tauri ACK 通过。                            | §9 / §15      |
+| 11  | **§7 / §8 / §10 编辑器授权面板(GUI)**          | 已完成   | **CODE COMPLETE 2026-06-24**;responsive overrides、component-props、optionalParams GUI 已闭合并通过 E2E ACK。                       | §7 / §8 / §10 |
+| 12  | **§10 工作流体跨页 pageStates 精确**           | 已完成   | **CODE COMPLETE 2026-06-23**;`WorkflowDef.pageId?` 精确解析 page-local state。                                                      | §10           |
+| 13  | **lowcode 字段升格 Kiwi schema**               | Deferred | **DEFERRED 2026-06-25**;pluginData 旁路稳定,升格成本高,移入 Phase 5+ 工程债。                                                       | §6            |
 
 > **Phase 4 closeout(2026-06-25)**:#1–#12 均已完成;#13 明确 Deferred。#8 已完成数据模型 + `.fig`
 > round-trip foundation + publish helper/tool + import/update helpers + headless CLI + local GUI;
@@ -153,7 +153,7 @@ phase-3(`docs/lowcode-phase-3.md`)已经把大量 feature 线一路做到收尾�
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **J. 上游 merge:relocate 而非 gut**                       | dev 脚本只用公共包导出时迁 `tools/` 零 import 破坏。3-way 交错冲突(上游重构成函数 + 我们加字段)= 重写整段而非逐 marker,把我们字段折进上游新函数签名;两侧独立贡献 pluginData 的,串调用顺序。**本会话实证**:`4bc1698e` 合入 = 2 个纯 import 行冲突取并集(`isAutoLayoutMode` value + 上游 `SceneGraph`/`SceneNode` type)                                                                                                                                                                                                                                                                                                                                                                                                            |
 | **K. `scripts/*.ts` 必须是单行 shim**                     | 上游 steiger 规则 `scripts-are-entrypoint-shims`:`#!/usr/bin/env bun` + `import '../tools/...'`。实现逻辑放 `tools/<domain>/src/`(kebab domain,`strictToolsLayout`;每 tool 一个 minimal `package.json`,tools/\* 非 workspace 成员)。`check` 现含 `test:tools`                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| **L. keep-out scratch 现触发 shim 规则**                  | 未跟踪生成器(make-v5/v6/realmachine/layout-roundtrip)在 `scripts/` 下会触发 K 的 shim 规则 → **`bun run check` 前移到 `$CLAUDE_JOB_DIR/tmp/scratch`、check 后还原**。当前 tracked 低代码 demo 生成器统一收在 `tools/lowcode/src/make/`,别当 keep-out。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **L. keep-out scratch 现触发 shim 规则**                  | 未跟踪生成器(make-v5/v6/realmachine/layout-roundtrip)在 `scripts/` 下会触发 K 的 shim 规则 → **`bun run check` 前移到 `$CLAUDE_JOB_DIR/tmp/scratch`、check 后还原**。当前 tracked 低代码 demo 生成器统一收在 `tools/lowcode/src/make/`,别当 keep-out。                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **M. 改 core/compiler src 必先 `build:packages` 再 lint** | 否则 type-aware oxlint 报 dist-vs-src SceneNode TS2345 假错。改 Vue 必跑 `check:vue`(第 4 道闸,vue-tsc 抓 oxlint/tsgo 抓不到的 narrow 漏 case)。每 commit 前 `git checkout -- desktop/Cargo.lock`(cargo run/check 会改它)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | **N. type-shapes.ts 禁重复 alias-to-type-literal shape**  | 跨 src+tests 禁任何 ≥2 成员的具名 type-literal alias 形状重复;逃逸口 = inline union 或 interface-extends,不是具名 2 成员 literal alias                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **O. tsconfig paths 从最近的 tsconfig 解析**              | bun-test/tsgo 从 importing file 最近的 tsconfig 解析 `paths`;无匹配 key **不**回退父 tsconfig → 落到 node_modules exports。新 package 的 tsconfig 要 mirror `packages/vue/tsconfig.json` 的 `@open-pencil/core/*`→`../core/src/*` 映射                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
@@ -672,6 +672,20 @@ bun test \
   tests/engine/kiwi/lowcode/export-node.test.ts \
   tests/engine/kiwi/lowcode/plugin-data.test.ts
 ```
+
+### §20.4 editor authoring GUI + legacy paint compatibility(2026-08-01)
+
+**交付记录**:
+
+- 右侧属性面板新增「交互状态」入口。选中 BUTTON 或表单控件后,可在
+  `hover/focus/active/disabled` 四个状态间切换,授权 fill、stroke/width、opacity、
+  corner radius,也可单独清空当前状态;空字段继续继承基态。
+- 面板只写完整 canonical Fill/Stroke,并接入 undo 与协作 presence。Compiler/JSX
+  投影额外兼容旧文档中的 string-color solid fill/stroke
+  (`{ type: 'SOLID', color: '#RRGGBB' }`),转换只发生在 emit 快照中,不改写
+  SceneGraph 原数据。
+- 状态效果在 Compiler/browser 预览中由 CSS pseudo-state 触发;设计画布仍显示静态
+  基态,本轮未加入画布状态强制预览模式。
 
 ## §21 覆盖层组件(Modal / Dialog / Drawer / Popover / Tooltip)
 

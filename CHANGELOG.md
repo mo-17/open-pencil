@@ -4,6 +4,18 @@
 
 ### Fixed
 
+- Keep image-heavy `.fig` saves responsive in Tauri by replacing JSON byte-array IPC with a raw
+  binary request/response, building the native archive on a blocking worker thread, and serializing
+  versioned saves against the file target captured when each save was requested.
+- Keep `navigate` actions inside reusable Compiler components wired to React Router, including
+  dynamic route params and component-root events, while stripping them safely from routerless
+  single-page output.
+- Reduce large `.fig` open and page-switch pressure by transferring source bytes without routine
+  full-file copies, skipping unsafe OOM fallbacks, releasing completed lazy-import metadata and old
+  page CanvasKit resources, bounding decoded-image caching, culling retained backing work to the
+  visible region, using cooperative layout, and suspending idle canvas frames while loading. (#255)
+- Preserve generated and imported image-fill assets in compiler static builds instead of leaving
+  broken background URLs after Vite moves the stylesheet into the output asset directory.
 - Keep long built-in AI drawing sessions responsive by streaming raw system-font bytes with bounded
   script-specific caching, propagating cancellation through tools, layout, fonts, icons, and ACP,
   serializing mutations into transactional undo snapshots, bounding retained CanvasKit backing
@@ -38,9 +50,39 @@
   first Motion runtime or CSS module is evaluated immediately without a manual preview refresh.
 - Remove cleared optional node fields from both Yjs peers instead of leaving stale Motion data in
   the remote graph.
+- Avoid transient Missing font warnings while a local, cached, or online font is still resolving;
+  only report a family after its available sources fail or are exhausted, and let the warning
+  retry every required face after clearing matching online-font failure caches. When a family does
+  not publish the requested weight or slant, load its regular face for CanvasKit synthesis instead
+  of repeatedly retrying an unavailable exact face, and only report retained/downloaded bytes as
+  loaded after every active CanvasKit provider accepts them.
+- Keep generated React previews and static compiler output on the same resolved font faces as the
+  canvas: emit portable font assets and `@font-face` rules, preserve synthetic weight/slant
+  fallback, add the Inter and script fallback stack, carry binary files through the preview
+  sidecar with acknowledged reusable references, and preserve text/button typography, including
+  non-token font sizes, weight, italic, line-height, and letter-spacing. Canvas
+  and compiler font-provider requests use language subset labels rather than sending document text
+  or glyphs. Generated assets retain provider policy provenance and warn when an exact
+  redistribution license still requires review.
 
 ### Added
 
+- Add an Interaction states inspector for buttons and form controls to author
+  hover, focus, active, and disabled fill, stroke, opacity, and corner-radius
+  overrides. Compiler export also accepts legacy solid state paints with string
+  colors without turning them transparent.
+- Audit font-license evidence from the built-in MCP with `audit_font_licenses`, including current
+  page, subtree, or all-page scans; base and style-run usage locations; exact bundled-font SHA-256
+  verification; self-reported OpenType license and embedding metadata; intended-use permissions;
+  and conservative `pass`, `review`, or `block` decisions. The Typography font picker now exposes
+  matching Free, Open license declared, License required, and License unknown badges plus a license
+  filter. Official Google Fonts, Fontsource, Bunny Fonts, and Fontshare catalog policies establish
+  free-use status without claiming an exact artifact license, while visible local fonts are lazily
+  inspected for embedded open-license declarations or explicit restrictions.
+- Verify live text-node font assignment and CanvasKit effectiveness from the built-in MCP with
+  `check_font`, including style-run overrides, exact face loading, resolver source, synthesized
+  weight/slant degradation, pending resolution, exhausted glyph coverage, and explicit
+  renderer-unavailable results.
 - Add opt-in AI capability controls: OpenRouter's provider-hosted web search with source cards,
   OpenAI Responses Code Interpreter with generated-file references, and trusted Remote Streamable
   HTTP MCP servers with credential-store-backed Bearer tokens, per-model selection, namespaced tools,
