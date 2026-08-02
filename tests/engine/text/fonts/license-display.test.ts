@@ -3,9 +3,12 @@ import { describe, expect, test } from 'bun:test'
 import {
   BUNDLED_FONT_LICENSE_MANIFEST,
   FontManager,
+  assessFontLicenseBytes,
   fontFamilyLicenseDisplayForCatalog,
   fontFamilyLicenseDisplayFromAssessments
 } from '@open-pencil/core/text'
+
+import { fontBytesWithFsType } from '#tests/helpers/font-fixtures'
 
 describe('font family license display', () => {
   test('marks only complete reviewed bundled catalog families as free', () => {
@@ -118,6 +121,34 @@ describe('font family license display', () => {
       evidence: 'insufficient'
     })
     expect(fontFamilyLicenseDisplayFromAssessments([]).status).toBe('unknown')
+  })
+
+  test('maps OS/2 restricted embedding to a paid embedding-license display', async () => {
+    const source = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    const bytes = fontBytesWithFsType(source, 0x0002)
+    const assessment = await assessFontLicenseBytes(
+      'OpenPencil Restricted Embedding Fixture',
+      'Regular',
+      bytes
+    )
+
+    expect(assessment).toMatchObject({
+      classification: 'restricted',
+      embeddedMetadata: {
+        fsType: 0x0002,
+        embedding: { restricted: true }
+      }
+    })
+    expect(assessment.evidence).toContainEqual(
+      expect.objectContaining({ kind: 'embedded_os2', strength: 'self_reported' })
+    )
+    expect(assessment.reasons.join(' ')).toContain('explicitly restricts embedding')
+    expect(fontFamilyLicenseDisplayFromAssessments([assessment])).toEqual({
+      status: 'requires_license',
+      scope: 'loaded_faces',
+      evidence: 'explicit_restriction',
+      restriction: 'embedding'
+    })
   })
 
   test('listFamilyOptions fills bundled license display metadata without loading the font', async () => {

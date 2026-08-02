@@ -39,6 +39,7 @@ import {
 import { fontManager } from '@open-pencil/core/text'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { importedFontRevision } from '@/app/editor/fonts'
 import { decodeTauriStderr } from '@/app/shell/ui'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
@@ -345,10 +346,10 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   void launchPreviewSidecar()
 
   const stopDebounced = watchDebounced(
-    () => store.state.sceneVersion,
-    () => {
+    () => [store.state.sceneVersion, importedFontRevision.value] as const,
+    (current, previous) => {
       if (!sidecar) return
-      recompileAndPush()
+      recompileAndPush(current[1] !== previous[1])
     },
     { debounce: DEBOUNCE_MS }
   )

@@ -1,6 +1,12 @@
 export type FontResolutionState = 'idle' | 'loading' | 'loaded' | 'failed' | 'exhausted'
 
-export type FontCandidateSource = 'registered' | 'local' | 'cache' | 'remote' | 'fallback'
+export type FontCandidateSource =
+  | 'registered'
+  | 'imported'
+  | 'local'
+  | 'cache'
+  | 'remote'
+  | 'fallback'
 
 export interface FontResolutionCandidate {
   id: string

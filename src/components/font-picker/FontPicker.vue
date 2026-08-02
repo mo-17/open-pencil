@@ -15,6 +15,7 @@ import { useSelectUI } from '@/components/ui/select'
 import { usePopoverUI } from '@/components/ui/popover'
 import {
   listFamilies,
+  importedFontRevision,
   inspectFontFamilyLicense,
   loadFont,
   localFontAccessState,
@@ -141,6 +142,7 @@ function updateLicenseFilter(setLicenseFilter: (filter: FontLicenseFilter) => vo
 
 <template>
   <FontPickerRoot
+    :key="importedFontRevision"
     v-model="modelValue"
     data-test-id="font-picker-root"
     :list-families="listFamilies"

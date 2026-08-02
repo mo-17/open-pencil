@@ -203,6 +203,78 @@ describe('font lifecycle', () => {
     expect(manager.retainedDataCount('Bounded Host Font')).toBe(1)
   })
 
+  test('restores an imported full face before a same-named system font', async () => {
+    const manager = new FontManager()
+    const imported = Uint8Array.from([0, 1, 0, 0, 7, 7, 7, 7]).buffer
+    const system = Uint8Array.from([0, 1, 0, 0, 9, 9, 9, 9]).buffer
+    let hostLoads = 0
+    manager.setDownloadedFontCache({
+      async read() {
+        return null
+      },
+      async readImported(family, style) {
+        expect([family, style]).toEqual(['Conflicting Face', 'Regular'])
+        return imported
+      },
+      async write() {
+        throw new Error('Unexpected cache write')
+      }
+    })
+    manager.setHostFontLoader(async () => {
+      hostLoads++
+      return system
+    })
+
+    await expect(manager.loadFont('Conflicting Face', 'Regular')).resolves.toBe(imported)
+    expect(hostLoads).toBe(0)
+    expect(new Uint8Array(manager.loadedData('Conflicting Face', 'Regular') ?? [])).toEqual(
+      new Uint8Array(imported)
+    )
+  })
+
+  test('production resolver selects an imported face before the same-named system face', async () => {
+    const family = 'Production Resolver Imported Priority'
+    const imported = Uint8Array.from([0, 1, 0, 0, 4, 4, 4, 4]).buffer
+    const system = Uint8Array.from([0, 1, 0, 0, 8, 8, 8, 8]).buffer
+    const demand = fontFaceDemand(family, 'Regular')
+    let hostLoads = 0
+    let remoteCacheReads = 0
+
+    fontManager.setDownloadedFontCache({
+      async read() {
+        remoteCacheReads++
+        return null
+      },
+      async readImported() {
+        return imported
+      },
+      async write() {
+        throw new Error('Unexpected cache write')
+      }
+    })
+    fontManager.setHostFontLoader(async () => {
+      hostLoads++
+      return system
+    })
+    fontResolver.reset(demand)
+
+    try {
+      await expect(fontResolver.demand(demand)).resolves.toMatchObject({
+        state: 'loaded',
+        source: 'imported'
+      })
+      expect(hostLoads).toBe(0)
+      expect(remoteCacheReads).toBe(0)
+      expect(new Uint8Array(fontManager.loadedData(family, 'Regular') ?? [])).toEqual(
+        new Uint8Array(imported)
+      )
+    } finally {
+      fontResolver.reset(demand)
+      fontManager.setDownloadedFontCache(null)
+      fontManager.setHostFontLoader(null)
+    }
+  })
+
   test('resolves twenty CJK fallback requests through one host face', async () => {
     const manager = new FontManager()
     const registrations: string[] = []

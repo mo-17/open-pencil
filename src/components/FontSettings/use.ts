@@ -11,6 +11,7 @@ import {
   clearDownloadedFontCache,
   downloadedFontCacheSummary,
   fontProviderSettings,
+  importFontFile,
   localFontAccessState,
   onlineFontsEnabled,
   predownloadFallbackFonts,
@@ -29,9 +30,10 @@ export interface FontSettingsActions {
   requestLocalFontAccess: () => Promise<string[] | FontFamilyOption[]>
   onlineFontsEnabled: { value: boolean }
   fontProviderSettings: { value: FontProviderSettings }
+  importFontFile: () => Promise<{ family: string; style: string } | null>
 }
 
-export type FontSettingsBusyAction = 'access' | 'download' | 'clear' | 'refresh'
+export type FontSettingsBusyAction = 'access' | 'download' | 'import' | 'clear' | 'refresh'
 
 const defaultActions: FontSettingsActions = {
   clearDownloadedFontCache,
@@ -40,7 +42,8 @@ const defaultActions: FontSettingsActions = {
   predownloadFallbackFonts,
   requestLocalFontAccess,
   onlineFontsEnabled,
-  fontProviderSettings
+  fontProviderSettings,
+  importFontFile
 }
 
 export function useFontSettings(actions: FontSettingsActions = defaultActions) {
@@ -131,6 +134,25 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
     }
   }
 
+  async function importFont() {
+    busyAction.value = 'import'
+    status.value = ''
+    try {
+      const imported = await actions.importFontFile()
+      if (!imported) return null
+      await refreshSummary()
+      status.value = dialogs.value.fontImported(imported)
+      return imported
+    } catch (error) {
+      status.value = dialogs.value.fontImportFailed({
+        error: error instanceof Error ? error.message : String(error)
+      })
+      return null
+    } finally {
+      busyAction.value = null
+    }
+  }
+
   async function clearCache() {
     busyAction.value = 'clear'
     status.value = ''
@@ -158,6 +180,7 @@ export function useFontSettings(actions: FontSettingsActions = defaultActions) {
     fontProviderSettings,
     clearCache,
     downloadFallbacks,
+    importFont,
     refreshSummary,
     requestAccess,
     setOnlineFontsEnabled,

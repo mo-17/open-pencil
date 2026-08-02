@@ -50,7 +50,7 @@ export interface FontLicenseAssessment {
   } | null
   embeddedMetadata: EmbeddedFontLicenseMetadata | null
   evidence: Array<{
-    kind: 'bundled_digest' | 'bundled_manifest_candidate' | 'embedded_name_table'
+    kind: 'bundled_digest' | 'bundled_manifest_candidate' | 'embedded_name_table' | 'embedded_os2'
     strength: 'verified' | 'candidate' | 'self_reported'
     sha256?: string
     expectedSha256?: string
@@ -193,6 +193,7 @@ async function sha256(bytes: ArrayBuffer): Promise<string | null> {
 function explicitlyRestricted(metadata: EmbeddedFontLicenseMetadata | null): boolean {
   const description = metadata?.licenseDescription?.toLocaleLowerCase() ?? ''
   return (
+    metadata?.embedding.restricted === true ||
     description.includes('personal use only') ||
     description.includes('non-commercial use only') ||
     description.includes('commercial license required')
@@ -237,6 +238,14 @@ function buildEvidence(
       note: 'The font file reports license metadata in its OpenType name table; this is a hint, not independent proof.'
     })
   }
+  if (embeddedMetadata?.embedding.restricted === true) {
+    evidence.push({
+      kind: 'embedded_os2',
+      strength: 'self_reported',
+      ...(actualSha256 ? { sha256: actualSha256 } : {}),
+      note: `OpenType OS/2 fsType ${embeddedMetadata.fsType ?? 0x0002} marks font embedding as restricted.`
+    })
+  }
   return evidence
 }
 
@@ -248,6 +257,11 @@ function buildReasons(
 ): string[] {
   const reasons: string[] = []
   if (!loaded) reasons.push('The exact font face is not loaded, so its binary cannot be audited.')
+  if (embeddedMetadata?.embedding.restricted === true) {
+    reasons.push(
+      `OpenType OS/2 fsType ${embeddedMetadata.fsType ?? 0x0002} explicitly restricts embedding this font.`
+    )
+  }
   if (manifestFace && loaded && !manifestMatched) {
     reasons.push('The loaded binary does not match the reviewed bundled font digest.')
   }
@@ -281,8 +295,8 @@ function classificationFor(
   verified: boolean,
   embeddedMetadata: EmbeddedFontLicenseMetadata | null
 ): FontLicenseClassification {
-  if (verified) return 'verified_open'
-  return explicitlyRestricted(embeddedMetadata) ? 'restricted' : 'unknown'
+  if (explicitlyRestricted(embeddedMetadata)) return 'restricted'
+  return verified ? 'verified_open' : 'unknown'
 }
 
 function verifiedManifest(

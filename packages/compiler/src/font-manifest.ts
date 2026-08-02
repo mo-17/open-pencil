@@ -1,5 +1,9 @@
 import { DEFAULT_FONT_FAMILY } from '@open-pencil/core/constants'
-import { collectGraphFontRequirements, requiredNodeFontFaces } from '@open-pencil/core/text'
+import {
+  collectGraphFontRequirements,
+  embeddedFontLicenseMetadata,
+  requiredNodeFontFaces
+} from '@open-pencil/core/text'
 import { normalizeFontFamily, parseFontStyle, type SceneGraph } from '@open-pencil/scene-graph'
 
 import type { CompileWarning, CompilerFontFaceAsset, CompilerFontManifest } from './types'
@@ -43,6 +47,32 @@ function validFontAssetPath(path: string): boolean {
 
 function fontWeightValue(weight: CompilerFontFaceAsset['weight']): string {
   return Array.isArray(weight) ? `${weight[0]} ${weight[1]}` : String(weight)
+}
+
+function fontContentBuffer(content: Uint8Array): ArrayBuffer {
+  if (
+    content.buffer instanceof ArrayBuffer &&
+    content.byteOffset === 0 &&
+    content.byteLength === content.buffer.byteLength
+  ) {
+    return content.buffer
+  }
+  const copy = new Uint8Array(content.byteLength)
+  copy.set(content)
+  return copy.buffer
+}
+
+function restrictedEmbeddingWarning(face: CompilerFontFaceAsset): CompileWarning | undefined {
+  const evidence = face.licenseEvidence
+  const embedded = embeddedFontLicenseMetadata(fontContentBuffer(face.content))
+  const evidenceFsType = evidence?.kind === 'restricted' ? evidence.fsType : undefined
+  if (evidenceFsType === undefined && embedded?.embedding.restricted !== true) return undefined
+  const fsTypeValue = evidenceFsType ?? embedded?.fsType ?? 0x0002
+  const fsType = `0x${fsTypeValue.toString(16).padStart(4, '0')}`
+  return {
+    code: 'font-license-embedding-restricted',
+    message: `${face.family} ${fontWeightValue(face.weight)} ${face.style} declares restricted embedding in OpenType OS/2 fsType ${fsType}; its font bytes were omitted from generated assets`
+  }
 }
 
 function cssString(value: string): string {
@@ -204,7 +234,17 @@ export function applyCompilerFontManifest(
   const warnings: CompileWarning[] = []
   const validFaces: CompilerFontFaceAsset[] = []
   const seenPaths = new Set<string>()
+  const warnedRestrictedFaces = new Set<string>()
   for (const face of manifest.faces) {
+    const restrictedWarning = restrictedEmbeddingWarning(face)
+    if (restrictedWarning) {
+      const key = `${normalizeFontFamily(face.family).toLocaleLowerCase()}\0${fontWeightValue(face.weight)}\0${face.style.toLocaleLowerCase()}`
+      if (!warnedRestrictedFaces.has(key)) {
+        warnedRestrictedFaces.add(key)
+        warnings.push(restrictedWarning)
+      }
+      continue
+    }
     if (!validFontAssetPath(face.path)) {
       warnings.push({
         code: 'font-asset-path-invalid',

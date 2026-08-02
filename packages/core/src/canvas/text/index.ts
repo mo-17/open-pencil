@@ -318,7 +318,12 @@ function resolveParagraphFontFamilies(
   arabicFallbacks: readonly string[],
   cjkFallbacks: readonly string[]
 ): string[] {
-  const renderPrimary = fontManager.renderFamily(primary, style)
+  const snapshot = fontResolver.state(fontFaceDemand(primary, style))
+  const resolvedFace = snapshot.state === 'loaded' ? snapshot.candidate : undefined
+  const renderPrimary = fontManager.renderFamily(
+    resolvedFace?.family ?? primary,
+    resolvedFace?.style ?? style
+  )
   const renderArabicFallbacks = arabicFallbacks.map((family) =>
     fontManager.renderFamily(family, 'Regular')
   )

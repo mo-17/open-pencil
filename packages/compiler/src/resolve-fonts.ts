@@ -2,6 +2,7 @@ import { DEFAULT_FONT_FAMILY } from '@open-pencil/core/constants'
 import {
   assessFontLicenseBytes,
   collectGraphFontRequirements,
+  embeddedFontLicenseMetadata,
   fontCoverageDemand,
   fontFaceDemand,
   fontFallbackEntry,
@@ -21,7 +22,11 @@ import {
 } from '@open-pencil/core/text/web-font/assets'
 import { normalizeFontFamily, parseFontStyle, type SceneGraph } from '@open-pencil/scene-graph'
 
-import type { CompilerFontFaceAsset, CompilerFontManifest } from './types'
+import type {
+  CompilerFontFaceAsset,
+  CompilerFontLicenseEvidence,
+  CompilerFontManifest
+} from './types'
 
 export interface ResolveCompilerWebFontsInput {
   graph: SceneGraph
@@ -168,6 +173,36 @@ function fontBytesFormat(data: ArrayBuffer): {
   return { format: 'truetype', extension: 'ttf' }
 }
 
+type RestrictedEmbeddingEvidence = Extract<CompilerFontLicenseEvidence, { kind: 'restricted' }>
+
+function restrictedEmbeddingEvidence(data: ArrayBuffer): RestrictedEmbeddingEvidence | undefined {
+  const metadata = embeddedFontLicenseMetadata(data)
+  if (metadata?.embedding.restricted !== true) return undefined
+  return {
+    kind: 'restricted',
+    restriction: 'embedding',
+    fsType: metadata.fsType ?? 0x0002
+  }
+}
+
+function assetArrayBuffer(content: Uint8Array): ArrayBuffer {
+  if (
+    content.buffer instanceof ArrayBuffer &&
+    content.byteOffset === 0 &&
+    content.byteLength === content.buffer.byteLength
+  ) {
+    return content.buffer
+  }
+  const copy = new Uint8Array(content.byteLength)
+  copy.set(content)
+  return copy.buffer
+}
+
+function preserveRestrictedEmbedding(face: CompilerFontFaceAsset): CompilerFontFaceAsset {
+  const restricted = restrictedEmbeddingEvidence(assetArrayBuffer(face.content))
+  return restricted ? { ...face, licenseEvidence: restricted } : face
+}
+
 async function loadedFaceAssets(family: string, style: string): Promise<CompilerFontFaceAsset[]> {
   const dataShards = fontManager.loadedDataShards(family, style)
   if (dataShards.length === 0) return []
@@ -179,6 +214,14 @@ async function loadedFaceAssets(family: string, style: string): Promise<Compiler
       const { format, extension } = fontBytesFormat(data)
       const shard = dataShards.length > 1 ? `-${index + 1}` : ''
       const license = await assessFontLicenseBytes(family, style, data)
+      const restricted = restrictedEmbeddingEvidence(data)
+      let licenseEvidence: CompilerFontLicenseEvidence | undefined = restricted
+      if (!licenseEvidence && license.classification === 'verified_open' && license.license) {
+        licenseEvidence = {
+          kind: 'verified_open',
+          licenseIds: [license.license.id]
+        }
+      }
       return {
         family,
         weight: parsed.weight,
@@ -186,14 +229,7 @@ async function loadedFaceAssets(family: string, style: string): Promise<Compiler
         format,
         path: `src/assets/fonts/${familySlug}-${parsed.weight}-${slant}${shard}.${extension}`,
         content: new Uint8Array(data),
-        ...(license.classification === 'verified_open' && license.license
-          ? {
-              licenseEvidence: {
-                kind: 'verified_open' as const,
-                licenseIds: [license.license.id]
-              }
-            }
-          : {})
+        ...(licenseEvidence ? { licenseEvidence } : {})
       }
     })
   )
@@ -276,11 +312,12 @@ async function resolvePlan(
     )
   }
   const facesByPath = new Map<string, CompilerFontFaceAsset>()
-  for (const face of [
+  for (const candidate of [
     ...loaded.faces,
     ...primary.assets,
     ...fallbackResults.flatMap((result) => result.faces)
   ]) {
+    const face = preserveRestrictedEmbedding(candidate)
     facesByPath.set(face.path, face)
   }
   return {

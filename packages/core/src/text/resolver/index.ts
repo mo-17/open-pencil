@@ -39,6 +39,7 @@ export function fontFaceDemand(
   const syntheticStyles = syntheticFaceStyles(style)
   const fallbackSources: FontResolutionCandidate['source'][] = [
     'registered',
+    'imported',
     'local',
     'cache',
     'remote'
@@ -102,6 +103,8 @@ const productionFontLoader: FontResolutionLoader = async (candidate, demand) => 
   switch (candidate.source) {
     case 'registered':
       return fontManager.isStyleLoaded(candidate.family, candidate.style)
+    case 'imported':
+      return (await fontManager.loadImportedFont(candidate.family, candidate.style)) !== null
     case 'local':
       return (await fontManager.loadLocalFont(candidate.family, candidate.style)) !== null
     case 'cache':
@@ -122,3 +125,12 @@ const productionFontLoader: FontResolutionLoader = async (candidate, demand) => 
 }
 
 export const fontResolver = new FontResolver(productionFontLoader)
+
+export function resetFontFamilyDemands(family: string): void {
+  const normalizedFamily = family.trim().toLocaleLowerCase()
+  fontResolver.resetMatching((demand) =>
+    demand.candidates.some(
+      (candidate) => candidate.family.trim().toLocaleLowerCase() === normalizedFamily
+    )
+  )
+}

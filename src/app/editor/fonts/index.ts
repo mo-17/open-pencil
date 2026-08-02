@@ -1,5 +1,5 @@
 import { useLocalStorage } from '@vueuse/core'
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 
 import { IS_BROWSER } from '@open-pencil/core/constants'
 import {
@@ -11,7 +11,10 @@ import {
   fontFamilyLicenseDisplayForCatalog,
   fontFamilyLicenseDisplayFromAssessments,
   fontManager,
+  inspectImportedFontBytes,
+  MAX_IMPORTED_FONT_BYTES,
   missingGraphFontScripts,
+  resetFontFamilyDemands,
   styleToWeight,
   type FontFamilyLicenseDisplay,
   type FontFamilyOption,
@@ -25,7 +28,11 @@ import { dialogMessages } from '@open-pencil/vue'
 import {
   clearDownloadedFontCache as clearTauriDownloadedFontCache,
   createTauriDownloadedFontCache,
-  downloadedFontCacheSummary as tauriDownloadedFontCacheSummary
+  downloadedFontCacheSummary as tauriDownloadedFontCacheSummary,
+  groupImportedFontCacheFamilies,
+  listImportedFontCacheFaces,
+  stageImportedFontCache,
+  type ImportedFontCacheFace
 } from '@/app/editor/fonts/cache'
 import { toast } from '@/app/shell/ui'
 import { isTauri } from '@/app/tauri/env'
@@ -42,6 +49,8 @@ export const fontProviderSettings = useLocalStorage<FontProviderSettings>(
   'op-font-providers',
   DEFAULT_WEB_FONT_PROVIDER_SETTINGS
 )
+/** Reactive signal for consumers whose output embeds the currently loaded font bytes. */
+export const importedFontRevision = ref(0)
 
 watch(
   [onlineFontsEnabled, fontProviderSettings],
@@ -194,17 +203,26 @@ function registerFontFaces(fonts: TauriFontFamily[]): void {
 export async function listFamilies(): Promise<FontFamilyOption[]> {
   configureTauriFontCache()
   if (isTauri()) {
-    const [systemFonts, webFonts] = await Promise.all([
+    const [systemFonts, webFonts, importedFonts] = await Promise.all([
       getTauriFonts(),
-      fontManager.listFamilyOptions()
+      fontManager.listFamilyOptions(),
+      listImportedFontCacheFaces()
     ])
-    const byFamily = new Map(webFonts.map((font) => [font.family, font]))
+    const byFamily = new Map(webFonts.map((font) => [font.family.trim().toLocaleLowerCase(), font]))
     for (const font of systemFonts) {
       fontLicenseAuditStyles.set(font.family, preferredAuditStyle(font.styles))
-      byFamily.set(font.family, {
+      byFamily.set(font.family.trim().toLocaleLowerCase(), {
         family: font.family,
         source: 'local',
         licenseDisplay: fontFamilyLicenseDisplayForCatalog(font.family, 'local')
+      })
+    }
+    for (const font of groupImportedFontCacheFamilies(importedFonts)) {
+      fontLicenseAuditStyles.set(font.family, font.auditStyle)
+      byFamily.set(font.family.trim().toLocaleLowerCase(), {
+        family: font.family,
+        source: 'imported',
+        licenseDisplay: font.licenseDisplay
       })
     }
     return [...byFamily.values()].sort((a, b) => a.family.localeCompare(b.family))
@@ -313,6 +331,56 @@ export async function loadFont(
     : await fontManager.loadFont(family, style, characters)
   if (!loaded) showWebFontUnavailableToast()
   return loaded
+}
+
+export async function importFontBytes(bytes: ArrayBuffer): Promise<ImportedFontCacheFace> {
+  configureTauriFontCache()
+  if (!isTauri()) throw new Error('Font file import is only available in the desktop app')
+  const inspection = await inspectImportedFontBytes(bytes)
+  const transaction = await stageImportedFontCache(inspection, bytes)
+  try {
+    if (
+      !(await fontManager.registerImportedFontBytes(inspection.family, inspection.style, bytes))
+    ) {
+      throw new Error('CanvasKit could not register the selected font face')
+    }
+  } catch (error) {
+    try {
+      await transaction.rollback()
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [error, rollbackError],
+        'Font registration failed and its cache transaction could not be rolled back'
+      )
+    }
+    throw error
+  }
+  resetFontFamilyDemands(inspection.family)
+  fontLicenseAuditStyles.set(inspection.family, inspection.style)
+  importedFontRevision.value++
+  return transaction.face
+}
+
+export async function importFontFile(): Promise<ImportedFontCacheFace | null> {
+  if (!isTauri()) throw new Error('Font file import is only available in the desktop app')
+  const [{ open }, { readFile, stat }] = await Promise.all([
+    import('@tauri-apps/plugin-dialog'),
+    import('@tauri-apps/plugin-fs')
+  ])
+  const path = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: 'Font files', extensions: ['ttf', 'otf', 'woff'] }]
+  })
+  if (typeof path !== 'string') return null
+  const fileInfo = await stat(path)
+  if (!fileInfo.isFile) throw new Error('The selected path is not a font file')
+  if (fileInfo.size > MAX_IMPORTED_FONT_BYTES) {
+    throw new Error(`Font files must be ${MAX_IMPORTED_FONT_BYTES / 1024 / 1024} MiB or smaller`)
+  }
+  const data = await readFile(path)
+  const bytes = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+  return importFontBytes(bytes)
 }
 
 interface LocalFontLicenseProbe {

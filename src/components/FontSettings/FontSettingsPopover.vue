@@ -12,6 +12,7 @@ import { useButtonUI } from '@/components/ui/button'
 import { usePopoverUI } from '@/components/ui/popover'
 
 const { dialogs } = useI18n()
+const emit = defineEmits<{ fontImported: [] }>()
 const cls = usePopoverUI({ content: 'isolate z-[51] w-80 p-3' })
 const trigger = useButtonUI({
   tone: 'ghost',
@@ -47,11 +48,16 @@ const {
   fontProviderSettings,
   clearCache,
   downloadFallbacks,
+  importFont,
   refreshSummary,
   requestAccess,
   setFontProviderEnabled,
   setOnlineFontsEnabled
 } = useFontSettings()
+
+async function importFile() {
+  if (await importFont()) emit('fontImported')
+}
 
 function setPopoverOpen(value: boolean) {
   popoverOpen.value = value
@@ -136,6 +142,27 @@ onMounted(() => {
           </div>
 
           <div class="space-y-1.5">
+            <div
+              v-if="showDownloadedFonts"
+              class="grid grid-cols-[1fr_auto] gap-2 rounded border border-border p-2"
+            >
+              <div>
+                <p class="text-[10px] font-medium text-surface">{{ dialogs.importFontFile }}</p>
+                <p class="mt-0.5 text-[10px] leading-relaxed text-muted">
+                  {{ dialogs.importFontFileDescription }}
+                </p>
+              </div>
+              <button
+                type="button"
+                data-test-id="font-settings-import-file"
+                :class="primaryButton.base"
+                :disabled="busyAction !== null"
+                @click="importFile"
+              >
+                {{ busyAction === 'import' ? dialogs.importingFont : dialogs.importFontFile }}
+              </button>
+            </div>
+
             <div class="grid grid-cols-[1fr_auto] gap-2 rounded border border-border p-2">
               <div>
                 <p class="text-[10px] font-medium text-surface">{{ dialogs.systemFontAccess }}</p>

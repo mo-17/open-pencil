@@ -16,9 +16,11 @@ import PanelGrid from '@/components/ui/panel/PanelGrid.vue'
 import PanelSection from '@/components/ui/panel/PanelSection.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { loadFont } from '@/app/editor/fonts'
+import { useEditorStore } from '@/app/editor/active-store'
 import { appMenuShortcutLabel } from '@/app/shell/menu/shortcut'
 
 const { panels, menu } = useI18n()
+const editor = useEditorStore()
 const fontLoader = { load: loadFont }
 const alignmentOptions = computed(() => [
   { value: 'LEFT', label: panels.value.alignLeft },
@@ -50,6 +52,11 @@ const commonFeatures = computed(() => [
 function featureEnabled(features: Array<{ tag: string; enabled: boolean }>, tag: string) {
   return features.find((feature) => feature.tag === tag)?.enabled ?? true
 }
+
+async function handleFontImported(retryMissingFonts: () => Promise<void>) {
+  await retryMissingFonts()
+  editor.requestRepaint()
+}
 </script>
 
 <template>
@@ -64,7 +71,7 @@ function featureEnabled(features: Array<{ tag: string; enabled: boolean }>, tag:
           :label="panels.fontFamily"
           @select="ctx.actions.setFamily"
         />
-        <FontSettingsPopover />
+        <FontSettingsPopover @font-imported="handleFontImported(ctx.actions.retryMissingFonts)" />
         <IconButton
           v-if="ctx.hasMissingFonts.value"
           data-test-id="font-retry-missing"

@@ -1,8 +1,48 @@
 import { afterEach, describe, expect, test, vi } from 'bun:test'
 
-import { fontFamilyLicenseDisplayForCatalog, fontManager } from '@open-pencil/core/text'
+import { Font, Glyph, Path } from 'opentype.js'
 
+import { resolveCompilerWebFonts } from '@open-pencil/compiler'
+import {
+  fontFaceDemand,
+  fontFamilyLicenseDisplayForCatalog,
+  fontManager,
+  fontResolver,
+  resetFontFamilyDemands
+} from '@open-pencil/core/text'
+
+import { createTauriDownloadedFontCache } from '@/app/editor/fonts/cache'
+
+import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
+
+function copiedBytes(value: unknown): Uint8Array {
+  if (value instanceof ArrayBuffer) return new Uint8Array(value.slice(0))
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice()
+  }
+  if (Array.isArray(value)) return Uint8Array.from(value)
+  throw new Error('Expected binary mock payload')
+}
+
+function generatedFontBytes(family: string, style: string): ArrayBuffer {
+  const glyphPath = new Path()
+  glyphPath.moveTo(50, 0)
+  glyphPath.lineTo(250, 700)
+  glyphPath.lineTo(450, 0)
+  glyphPath.close()
+  return new Font({
+    familyName: family,
+    styleName: style,
+    unitsPerEm: 1000,
+    ascender: 800,
+    descender: -200,
+    glyphs: [
+      new Glyph({ name: '.notdef', advanceWidth: 500, path: new Path() }),
+      new Glyph({ name: 'A', unicode: 65, advanceWidth: 500, path: glyphPath })
+    ]
+  }).toArrayBuffer()
+}
 
 afterEach(async () => {
   await clearTauriMocks()
@@ -129,5 +169,201 @@ describe('Tauri font helpers', () => {
 
     await expect(loadFont('Missing Family', 'Regular')).resolves.toBe(fallback)
     expect(loadFontSpy).toHaveBeenCalledWith('Missing Family', 'Regular', '')
+  })
+
+  test('rolls back a staged manifest when persistence commits before its acknowledgement fails', async () => {
+    const files = new Map<string, Uint8Array>()
+    let manifestWrites = 0
+    await mockTauriIPC((cmd, args, options) => {
+      const payload = args as { path?: string }
+      if (cmd === 'plugin:fs|read_file') {
+        const stored = files.get(payload.path ?? '')
+        if (!stored) throw new Error('missing')
+        return [...stored]
+      }
+      if (cmd === 'plugin:fs|mkdir') return null
+      if (cmd === 'plugin:fs|write_file') {
+        const encodedPath = (options as { headers?: { path?: string } } | undefined)?.headers?.path
+        const path = decodeURIComponent(encodedPath ?? '')
+        files.set(path, copiedBytes(args))
+        if (path.endsWith('/manifest') && ++manifestWrites === 1) {
+          throw new Error('manifest write failed')
+        }
+        return null
+      }
+      if (cmd === 'plugin:fs|remove') {
+        files.delete(payload.path ?? '')
+        return null
+      }
+      throw new Error(`Unexpected command: ${cmd}`)
+    })
+    const register = vi.spyOn(fontManager, 'registerImportedFontBytes').mockResolvedValue(true)
+    const { importFontBytes, importedFontRevision } = await import('@/app/editor/fonts')
+    const { listImportedFontCacheFaces } = await import('@/app/editor/fonts/cache')
+    const bytes = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    const revisionBefore = importedFontRevision.value
+    const renderFamilyBefore = fontManager.renderFamily('Inter', 'Regular')
+
+    await expect(importFontBytes(bytes)).rejects.toThrow('manifest write failed')
+
+    expect(register).not.toHaveBeenCalled()
+    await expect(listImportedFontCacheFaces()).resolves.toEqual([])
+    const manifestBytes = files.get('cache/v1/font-cache/v1/manifest')
+    expect(manifestBytes).toBeDefined()
+    const manifestEnvelope = JSON.parse(new TextDecoder().decode(manifestBytes)) as {
+      value?: { entries?: Record<string, unknown> }
+    }
+    expect(manifestEnvelope.value?.entries).toEqual({})
+    expect(importedFontRevision.value).toBe(revisionBefore)
+    expect(fontManager.renderFamily('Inter', 'Regular')).toBe(renderFamilyBefore)
+    expect([...files.keys()].some((path) => path.includes('/files/'))).toBe(false)
+  })
+
+  test('rolls back persisted metadata when runtime font registration fails', async () => {
+    const files = new Map<string, Uint8Array>()
+    await mockTauriIPC((cmd, args, options) => {
+      const payload = args as { path?: string }
+      if (cmd === 'plugin:fs|read_file') {
+        const stored = files.get(payload.path ?? '')
+        if (!stored) throw new Error('missing')
+        return [...stored]
+      }
+      if (cmd === 'plugin:fs|write_file') {
+        const encodedPath = (options as { headers?: { path?: string } } | undefined)?.headers?.path
+        if (!encodedPath) throw new Error('Expected write path header')
+        files.set(decodeURIComponent(encodedPath), copiedBytes(args))
+        return null
+      }
+      if (cmd === 'plugin:fs|mkdir') return null
+      if (cmd === 'plugin:fs|remove') {
+        files.delete(payload.path ?? '')
+        return null
+      }
+      throw new Error(`Unexpected command: ${cmd}`)
+    })
+    vi.spyOn(fontManager, 'registerImportedFontBytes').mockResolvedValue(false)
+    const { importFontBytes, importedFontRevision } = await import('@/app/editor/fonts')
+    const { listImportedFontCacheFaces } = await import('@/app/editor/fonts/cache')
+    const bytes = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    const revisionBefore = importedFontRevision.value
+
+    await expect(importFontBytes(bytes)).rejects.toThrow('CanvasKit could not register')
+
+    await expect(listImportedFontCacheFaces()).resolves.toEqual([])
+    expect(importedFontRevision.value).toBe(revisionBefore)
+    expect([...files.keys()].some((path) => path.includes('/files/'))).toBe(false)
+  })
+
+  test('invalidates settled synthetic family demands and refreshes compiler candidates after import', async () => {
+    const files = new Map<string, Uint8Array>()
+    await mockTauriIPC((cmd, args, options) => {
+      const payload = args as { path?: string }
+      if (cmd === 'plugin:fs|read_file') {
+        const stored = files.get(payload.path ?? '')
+        if (!stored) throw new Error('missing')
+        return [...stored]
+      }
+      if (cmd === 'plugin:fs|write_file') {
+        const encodedPath = (options as { headers?: { path?: string } } | undefined)?.headers?.path
+        if (!encodedPath) throw new Error('Expected write path header')
+        files.set(decodeURIComponent(encodedPath), copiedBytes(args))
+        return null
+      }
+      if (cmd === 'plugin:fs|mkdir') return null
+      throw new Error(`Unexpected command: ${cmd}`)
+    })
+    const family = 'Dynamic Imported Candidate'
+    const otherFamily = 'Unrelated Settled Candidate'
+    const demand = fontFaceDemand(family, 'Bold Italic')
+    const otherDemand = fontFaceDemand(otherFamily, 'Bold Italic')
+    const regular = generatedFontBytes(family, 'Regular')
+    const italic = generatedFontBytes(family, 'Italic')
+    const previousCache = Reflect.get(fontManager, 'downloadedFontCache')
+    const previousHostLoader = Reflect.get(fontManager, 'hostFontLoader')
+    const previousProviders = new Set(fontManager.enabledOnlineFontProviders())
+    const loadedFamilies = Reflect.get(fontManager, 'loadedFamilies') as Map<string, ArrayBuffer>
+    const supplementalFamilyData = Reflect.get(fontManager, 'supplementalFamilyData') as Map<
+      string,
+      ArrayBuffer[]
+    >
+    const remoteCoverage = Reflect.get(fontManager, 'remoteCoverage') as Map<string, Set<string>>
+    const importedRenderFamilies = Reflect.get(fontManager, 'importedRenderFamilies') as Map<
+      string,
+      string
+    >
+    const { importFontBytes, importedFontRevision } = await import('@/app/editor/fonts')
+    const revisionBefore = importedFontRevision.value
+    fontManager.setDownloadedFontCache(createTauriDownloadedFontCache())
+    fontManager.setHostFontLoader(null)
+    fontManager.setOnlineFontProviders({
+      google: false,
+      fontsource: false,
+      bunny: false,
+      fontshare: false
+    })
+
+    try {
+      expect(await fontManager.registerImportedFontBytes(family, 'Regular', regular)).toBe(true)
+      expect(await fontManager.registerImportedFontBytes(otherFamily, 'Regular', regular)).toBe(
+        true
+      )
+      resetFontFamilyDemands(family)
+      resetFontFamilyDemands(otherFamily)
+      const before = await fontResolver.demand(demand)
+      const unrelated = await fontResolver.demand(otherDemand)
+      expect(before.candidate?.style).toBe('Regular')
+      expect(unrelated.candidate?.style).toBe('Regular')
+
+      await expect(importFontBytes(italic)).resolves.toMatchObject({ family, style: 'Italic' })
+      expect(fontResolver.state(demand).state).toBe('idle')
+      expect(fontResolver.state(otherDemand)).toBe(unrelated)
+
+      const after = await fontResolver.demand(demand)
+      expect(after.candidate?.style).toBe('Regular Italic')
+      expect(fontManager.renderFamily(family, 'Regular Italic')).toStartWith(
+        '__openpencil_imported_'
+      )
+
+      const graph = makeSceneGraph()
+      const pageId = firstPageId(graph)
+      graph.createNode('TEXT', pageId, {
+        text: 'A',
+        fontFamily: family,
+        fontWeight: 700,
+        italic: true
+      })
+      const manifest = await resolveCompilerWebFonts({
+        graph,
+        pageIds: [pageId],
+        providers: [],
+        preferLoaded: true,
+        refresh: true
+      })
+      const faces = manifest.faces.filter((face) => face.family === family)
+      expect(faces).toHaveLength(1)
+      expect(faces[0]).toMatchObject({ weight: 400, style: 'italic' })
+      expect(faces[0].content).toEqual(new Uint8Array(italic))
+    } finally {
+      resetFontFamilyDemands(family)
+      resetFontFamilyDemands(otherFamily)
+      for (const targetFamily of [family, otherFamily]) {
+        for (const style of ['Regular', 'Italic', 'Regular Italic']) {
+          const key = `${targetFamily}|${style}`
+          loadedFamilies.delete(key)
+          supplementalFamilyData.delete(key)
+          remoteCoverage.delete(key)
+          importedRenderFamilies.delete(key)
+        }
+      }
+      importedFontRevision.value = revisionBefore
+      fontManager.setDownloadedFontCache(previousCache)
+      fontManager.setHostFontLoader(previousHostLoader)
+      fontManager.setOnlineFontProviders({
+        google: previousProviders.has('google'),
+        fontsource: previousProviders.has('fontsource'),
+        bunny: previousProviders.has('bunny'),
+        fontshare: previousProviders.has('fontshare')
+      })
+    }
   })
 })

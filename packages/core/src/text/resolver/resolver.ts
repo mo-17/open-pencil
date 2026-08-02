@@ -82,10 +82,16 @@ export class FontResolver {
 
   reset(demand?: FontResolutionDemand | string): void {
     if (demand === undefined) {
-      this.entries.clear()
+      this.cancelEntries([...this.entries.entries()])
       return
     }
-    this.entries.delete(typeof demand === 'string' ? demand : demand.key)
+    const key = typeof demand === 'string' ? demand : demand.key
+    const entry = this.entries.get(key)
+    if (entry) this.cancelEntries([[key, entry]])
+  }
+
+  resetMatching(predicate: (demand: FontResolutionDemand) => boolean): void {
+    this.cancelEntries([...this.entries.entries()].filter(([, entry]) => predicate(entry.demand)))
   }
 
   private request(
@@ -125,6 +131,16 @@ export class FontResolver {
     entry.callbacks.set(onSettled, callbackNodes)
   }
 
+  private cancelEntries(entries: Array<[string, FontResolutionEntry]>): void {
+    for (const [key, entry] of entries) {
+      if (this.entries.get(key) !== entry) continue
+      const snapshot = idleSnapshot(key)
+      entry.snapshot = snapshot
+      this.entries.delete(key)
+      this.notify(entry, snapshot)
+    }
+  }
+
   private async resolve(entry: FontResolutionEntry): Promise<FontResolutionSnapshot> {
     for (const candidate of entry.demand.candidates) {
       if (this.entries.get(entry.demand.key) !== entry) return idleSnapshot(entry.demand.key)
@@ -158,6 +174,11 @@ export class FontResolver {
   ): FontResolutionSnapshot {
     if (this.entries.get(entry.demand.key) !== entry) return idleSnapshot(entry.demand.key)
     entry.snapshot = snapshot
+    this.notify(entry, snapshot)
+    return snapshot
+  }
+
+  private notify(entry: FontResolutionEntry, snapshot: FontResolutionSnapshot): void {
     for (const [callback, nodeIds] of entry.callbacks) {
       try {
         callback(snapshot, [...nodeIds])
@@ -167,6 +188,5 @@ export class FontResolver {
     }
     entry.callbacks.clear()
     entry.nodeIds.clear()
-    return snapshot
   }
 }

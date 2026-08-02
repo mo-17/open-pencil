@@ -31,6 +31,12 @@ export type CompilerFontLicenseEvidence =
       kind: 'verified_open'
       licenseIds: string[]
     }
+  | {
+      kind: 'restricted'
+      restriction: 'embedding'
+      /** Raw OpenType OS/2 fsType value proving the embedding restriction. */
+      fsType: number
+    }
 
 export interface CompilerFontFaceAsset {
   family: string

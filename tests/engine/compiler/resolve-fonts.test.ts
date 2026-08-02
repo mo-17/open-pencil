@@ -10,6 +10,7 @@ import {
   WEB_FONT_PROVIDER_IDS
 } from '@open-pencil/core/text'
 
+import { fontBytesWithFsType } from '#tests/helpers/font-fixtures'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 describe('resolveCompilerWebFonts', () => {
@@ -150,5 +151,96 @@ describe('resolveCompilerWebFonts', () => {
       kind: 'verified_open',
       licenseIds: ['OFL-1.1']
     })
+  })
+
+  test('preserves restricted OS/2 embedding provenance on loaded face assets', async () => {
+    const family = 'Compiler Restricted Embedding Fixture'
+    const style = 'Regular'
+    const key = `${family}|${style}`
+    const demand = fontFaceDemand(family, style)
+    const source = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    const restricted = fontBytesWithFsType(source, 0x0002)
+    const loadedFamilies = Reflect.get(fontManager, 'loadedFamilies') as Map<string, ArrayBuffer>
+    const supplementalFamilyData = Reflect.get(fontManager, 'supplementalFamilyData') as Map<
+      string,
+      ArrayBuffer[]
+    >
+    const remoteCoverage = Reflect.get(fontManager, 'remoteCoverage') as Map<string, Set<string>>
+    fontManager.markLoaded(family, style, restricted)
+    fontResolver.reset(demand)
+
+    try {
+      const graph = makeSceneGraph()
+      const pageId = firstPageId(graph)
+      graph.createNode('TEXT', pageId, {
+        text: 'Restricted',
+        fontFamily: family,
+        fontWeight: 400
+      })
+      const manifest = await resolveCompilerWebFonts({
+        graph,
+        pageIds: [pageId],
+        providers: [],
+        preferLoaded: true,
+        refresh: true
+      })
+
+      expect(manifest.faces.find((face) => face.family === family)?.licenseEvidence).toEqual({
+        kind: 'restricted',
+        restriction: 'embedding',
+        fsType: 0x0002
+      })
+    } finally {
+      fontResolver.reset(demand)
+      loadedFamilies.delete(key)
+      supplementalFamilyData.delete(key)
+      remoteCoverage.delete(key)
+    }
+  })
+
+  test('exports only the imported full face after replacing same-named loaded bytes', async () => {
+    const family = 'Compiler Imported Replacement Fixture'
+    const style = 'Regular'
+    const key = `${family}|${style}`
+    const demand = fontFaceDemand(family, style)
+    const system = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    const imported = await Bun.file('packages/core/assets/Inter-Bold.ttf').arrayBuffer()
+    const loadedFamilies = Reflect.get(fontManager, 'loadedFamilies') as Map<string, ArrayBuffer>
+    const supplementalFamilyData = Reflect.get(fontManager, 'supplementalFamilyData') as Map<
+      string,
+      ArrayBuffer[]
+    >
+    const remoteCoverage = Reflect.get(fontManager, 'remoteCoverage') as Map<string, Set<string>>
+    const importedRenderFamilies = Reflect.get(fontManager, 'importedRenderFamilies') as Map<
+      string,
+      string
+    >
+    fontManager.markLoaded(family, style, system)
+    expect(await fontManager.registerImportedFontBytes(family, style, imported)).toBe(true)
+    fontResolver.reset(demand)
+
+    try {
+      const graph = makeSceneGraph()
+      const pageId = firstPageId(graph)
+      graph.createNode('TEXT', pageId, { text: 'Imported', fontFamily: family, fontWeight: 400 })
+      const manifest = await resolveCompilerWebFonts({
+        graph,
+        pageIds: [pageId],
+        providers: [],
+        preferLoaded: true,
+        refresh: true
+      })
+      const faces = manifest.faces.filter((face) => face.family === family)
+
+      expect(faces).toHaveLength(1)
+      expect(faces[0].path).not.toContain('-2.')
+      expect(faces[0].content).toEqual(new Uint8Array(imported))
+    } finally {
+      fontResolver.reset(demand)
+      loadedFamilies.delete(key)
+      supplementalFamilyData.delete(key)
+      remoteCoverage.delete(key)
+      importedRenderFamilies.delete(key)
+    }
   })
 })

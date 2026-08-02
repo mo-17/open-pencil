@@ -9,6 +9,7 @@ import {
   missingGlyphScripts,
   type FontResolutionCandidate,
   type FontResolutionDemand,
+  type FontResolutionSettled,
   type ObservedShapedLine
 } from '@open-pencil/core/text'
 
@@ -19,7 +20,7 @@ function candidate(source: FontResolutionCandidate['source']): FontResolutionCan
 function faceDemand(): FontResolutionDemand {
   return {
     key: 'face:example:regular',
-    candidates: ['registered', 'local', 'cache', 'remote'].map((source) =>
+    candidates: ['registered', 'imported', 'local', 'cache', 'remote'].map((source) =>
       candidate(source as FontResolutionCandidate['source'])
     )
   }
@@ -50,10 +51,12 @@ describe('FontResolver', () => {
 
     expect(attempted).toEqual([
       'registered:Bold',
+      'imported:Bold',
       'local:Bold',
       'cache:Bold',
       'remote:Bold',
       'registered:Regular',
+      'imported:Regular',
       'local:Regular',
       'cache:Regular',
       'remote:Regular'
@@ -79,7 +82,13 @@ describe('FontResolver', () => {
 
     const result = await resolver.demand(fontFaceDemand('Exact Bold', 'Bold', 'Headline'))
 
-    expect(attempted).toEqual(['registered:Bold', 'local:Bold', 'cache:Bold', 'remote:Bold'])
+    expect(attempted).toEqual([
+      'registered:Bold',
+      'imported:Bold',
+      'local:Bold',
+      'cache:Bold',
+      'remote:Bold'
+    ])
     expect(result.candidate?.style).toBe('Bold')
   })
 
@@ -92,7 +101,7 @@ describe('FontResolver', () => {
 
     const result = await resolver.demand(faceDemand())
 
-    expect(attempted).toEqual(['registered', 'local', 'cache', 'remote'])
+    expect(attempted).toEqual(['registered', 'imported', 'local', 'cache', 'remote'])
     expect(result.state).toBe('loaded')
     expect(result.source).toBe('remote')
   })
@@ -190,6 +199,58 @@ describe('FontResolver', () => {
     resolver.reset(demand)
 
     expect(resolver.state(demand).state).toBe('idle')
+  })
+
+  test('every reset form settles pending callbacks as idle and releases their node ids once', async () => {
+    for (const resetKind of ['demand', 'matching', 'all'] as const) {
+      let release: ((loaded: boolean) => void) | undefined
+      const resolver = new FontResolver(
+        () =>
+          new Promise((resolve) => {
+            release = resolve
+          })
+      )
+      const demand = {
+        key: `pending-reset-${resetKind}`,
+        candidates: [candidate('local')]
+      }
+      const settlements: Array<{ state: string; nodeIds: string[] }> = []
+      const onSettled: FontResolutionSettled = (snapshot, nodeIds) => {
+        settlements.push({ state: snapshot.state, nodeIds })
+      }
+      const first = resolver.demandForNode(demand, 'node-a', onSettled)
+      const second = resolver.demandForNode(demand, 'node-b', onSettled)
+      expect(resolver.pendingNodeIds(demand)).toEqual(['node-a', 'node-b'])
+
+      if (resetKind === 'demand') resolver.reset(demand)
+      else if (resetKind === 'matching') resolver.resetMatching((item) => item.key === demand.key)
+      else resolver.reset()
+
+      expect(resolver.state(demand).state).toBe('idle')
+      expect(resolver.pendingNodeIds(demand)).toEqual([])
+      expect(settlements).toEqual([{ state: 'idle', nodeIds: ['node-a', 'node-b'] }])
+      expect(release).toBeDefined()
+      release?.(true)
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        { key: demand.key, state: 'idle' },
+        { key: demand.key, state: 'idle' }
+      ])
+      expect(settlements).toHaveLength(1)
+    }
+  })
+
+  test('resetMatching invalidates one family without disturbing other settled demands', async () => {
+    const resolver = new FontResolver(async () => true)
+    const first = fontFaceDemand('Family One', 'Bold Italic')
+    const second = fontFaceDemand('Family Two', 'Bold Italic')
+    await Promise.all([resolver.demand(first), resolver.demand(second)])
+
+    resolver.resetMatching((demand) =>
+      demand.candidates.some((item) => item.family === 'Family One')
+    )
+
+    expect(resolver.state(first).state).toBe('idle')
+    expect(resolver.state(second).state).toBe('loaded')
   })
 })
 

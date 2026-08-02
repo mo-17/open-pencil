@@ -117,9 +117,22 @@ function buffersEqual(first: ArrayBuffer, second: ArrayBuffer): boolean {
   return true
 }
 
+async function importedRenderFamily(data: ArrayBuffer): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', data)
+  const hash = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+  return `__openpencil_imported_${hash}`
+}
+
 export class FontManager {
   private loadedFamilies = new Map<string, ArrayBuffer>()
   private supplementalFamilyData = new Map<string, ArrayBuffer[]>()
+  /**
+   * CanvasKit cannot unregister an earlier same-named system/remote face. Imported full faces are
+   * therefore registered under a content-addressed family and selected explicitly at render time.
+   */
+  private importedRenderFamilies = new Map<string, string>()
   private remoteCoverage = new Map<string, Set<string>>()
   private blockedNodeIds = new Set<string>()
   private fontProvider: TypefaceFontProvider | null = null
@@ -151,7 +164,8 @@ export class FontManager {
     for (const [cacheKey, data] of this.loadedFamilies) {
       const separator = cacheKey.indexOf('|')
       const family = cacheKey.slice(0, separator)
-      this.registerFontInProvider(provider, family, data)
+      const style = cacheKey.slice(separator + 1)
+      this.registerFontInProvider(provider, this.renderFamily(family, style), data)
       for (const supplemental of this.supplementalFamilyData.get(cacheKey) ?? []) {
         this.registerFontInProvider(provider, family, supplemental)
       }
@@ -254,9 +268,24 @@ export class FontManager {
     style = 'Regular',
     characters = ''
   ): Promise<ArrayBuffer | null> {
+    const imported = await this.loadImportedFont(family, style)
+    if (imported) return imported
     const cached = await this.readDownloadedFont(family, style, characters)
     if (!cached) return null
     return this.registerAndCache(family, style, cached)
+  }
+
+  async loadImportedFont(family: string, style = 'Regular'): Promise<ArrayBuffer | null> {
+    if (!this.downloadedFontCache?.readImported) return null
+    try {
+      const imported = await this.downloadedFontCache.readImported(family, style)
+      return imported && (await this.registerImportedFontBytes(family, style, imported))
+        ? imported
+        : null
+    } catch (e) {
+      console.warn(`Imported font cache read failed for "${family}" ${style}:`, e)
+      return null
+    }
   }
 
   async requestLocalFontAccess(): Promise<FontInfo[]> {
@@ -455,6 +484,7 @@ export class FontManager {
     if (!result) {
       const requestedText = () => Array.from(requestedCharacters).join('')
       result =
+        (await this.loadImportedFont(family, style)) ??
         (await this.loadLocalFont(family, style)) ??
         (await this.loadCachedFont(family, style, requestedText())) ??
         (await this.loadRemoteFont(family, style, requestedText()))
@@ -482,16 +512,49 @@ export class FontManager {
     this.registerAndCache(family, style, data)
   }
 
+  /**
+   * Replace the active face with validated caller-owned full-face bytes. Imported faces use a
+   * content-addressed CanvasKit family so an older same-named registration cannot win lookup.
+   */
+  async registerImportedFontBytes(
+    family: string,
+    style: string,
+    data: ArrayBuffer
+  ): Promise<boolean> {
+    const key = `${family}|${style}`
+    const renderFamily = await importedRenderFamily(data)
+    const retained = this.loadedFamilies.get(key)
+    if (
+      retained &&
+      this.importedRenderFamilies.get(key) === renderFamily &&
+      buffersEqual(retained, data)
+    ) {
+      return this.fontProviders.size === 0 || this.registerFontInCanvasKit(renderFamily, retained)
+    }
+    if (this.fontProviders.size > 0 && !this.registerFontInCanvasKit(renderFamily, data))
+      return false
+    this.loadedFamilies.set(key, data)
+    this.supplementalFamilyData.delete(key)
+    this.remoteCoverage.delete(key)
+    this.importedRenderFamilies.set(key, renderFamily)
+    this.registerFontInBrowser(family, style, data)
+    return true
+  }
+
   isLoaded(family: string): boolean {
     for (const [key, data] of this.loadedFamilies) {
-      if (key.startsWith(`${family}|`) && this.retainedDataIsRegistered(family, data)) return true
+      if (!key.startsWith(`${family}|`)) continue
+      const style = key.slice(family.length + 1)
+      if (this.retainedDataIsRegistered(this.renderFamily(family, style), data)) return true
     }
     return false
   }
 
   isStyleLoaded(family: string, style: string): boolean {
     const data = this.loadedFamilies.get(`${family}|${style}`)
-    return data !== undefined && this.retainedDataIsRegistered(family, data)
+    return (
+      data !== undefined && this.retainedDataIsRegistered(this.renderFamily(family, style), data)
+    )
   }
 
   remoteStyleNeedsCoverage(family: string, style: string, characters: readonly string[]): boolean {
@@ -512,17 +575,21 @@ export class FontManager {
     const key = `${family}|${style}`
     const primary = this.loadedFamilies.get(key)
     if (!primary) return []
+    const primaryFamily = this.renderFamily(family, style)
     return Object.freeze(
-      [primary, ...(this.supplementalFamilyData.get(key) ?? [])]
-        .filter((data) => this.retainedDataIsRegistered(family, data))
-        .map((data) => data.slice(0))
+      [
+        ...(this.retainedDataIsRegistered(primaryFamily, primary) ? [primary] : []),
+        ...(this.supplementalFamilyData.get(key) ?? []).filter((data) =>
+          this.retainedDataIsRegistered(family, data)
+        )
+      ].map((data) => data.slice(0))
     )
   }
 
   private usableLoadedData(family: string, style: string): ArrayBuffer | null {
     const data = this.loadedData(family, style)
     if (!data || this.fontProviders.size === 0) return data
-    return this.registerFontInCanvasKit(family, data) ? data : null
+    return this.registerFontInCanvasKit(this.renderFamily(family, style), data) ? data : null
   }
 
   private retainedDataIsRegistered(family: string, data: ArrayBuffer): boolean {
@@ -533,11 +600,8 @@ export class FontManager {
     return true
   }
 
-  renderFamily(family: string, _style: string): string {
-    // CanvasKit can shape metrics but paint no glyphs for some CJK/Arabic faces registered under a
-    // synthetic alias. Keep every shard under the font's source family; character-aware remote
-    // requests already fetch cumulative coverage before replacing the primary buffer.
-    return family
+  renderFamily(family: string, style: string): string {
+    return this.importedRenderFamilies.get(`${family}|${style}`) ?? family
   }
 
   collectFontKeys(graph: SceneGraph, nodeIds: string[]): Array<[string, string]> {
@@ -788,6 +852,7 @@ export class FontManager {
 
   private registerSupplemental(family: string, style: string, buffer: ArrayBuffer): boolean {
     const key = `${family}|${style}`
+    if (this.importedRenderFamilies.has(key)) return false
     const equivalent = this.equivalentRetainedData(key, buffer)
     if (equivalent) {
       return this.fontProviders.size === 0 || this.registerFontInCanvasKit(family, equivalent)
@@ -802,6 +867,22 @@ export class FontManager {
 
   private registerAndCache(family: string, style: string, buffer: ArrayBuffer): ArrayBuffer | null {
     const key = `${family}|${style}`
+    const importedRenderFamily = this.importedRenderFamilies.get(key)
+    if (importedRenderFamily) {
+      const imported = this.loadedFamilies.get(key)
+      if (!imported) {
+        this.importedRenderFamilies.delete(key)
+      } else {
+        if (!buffersEqual(imported, buffer)) return null
+        if (
+          this.fontProviders.size > 0 &&
+          !this.registerFontInCanvasKit(importedRenderFamily, imported)
+        ) {
+          return null
+        }
+        return imported
+      }
+    }
     const existing = this.loadedFamilies.get(key)
     const equivalent = this.equivalentRetainedData(key, buffer)
     if (equivalent) {

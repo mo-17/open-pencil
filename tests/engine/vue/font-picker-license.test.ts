@@ -42,6 +42,16 @@ describe('font picker license display', () => {
             restriction: 'commercial'
           }
         },
+        {
+          family: 'Restricted Embedding Font',
+          source: 'local',
+          licenseDisplay: {
+            status: 'requires_license',
+            scope: 'loaded_faces',
+            evidence: 'explicit_restriction',
+            restriction: 'embedding'
+          }
+        },
         'Unverified Font'
       ]
     })
@@ -54,6 +64,7 @@ describe('font picker license display', () => {
       'free',
       'declared_open',
       'requires_license',
+      'requires_license',
       'unknown'
     ])
 
@@ -61,7 +72,10 @@ describe('font picker license display', () => {
     expect(picker.filtered.value.map((option) => option.family)).toEqual(['Open Font'])
 
     picker.setLicenseFilter('requires_license')
-    expect(picker.filtered.value.map((option) => option.family)).toEqual(['Commercial Font'])
+    expect(picker.filtered.value.map((option) => option.family)).toEqual([
+      'Commercial Font',
+      'Restricted Embedding Font'
+    ])
 
     picker.setLicenseFilter('declared_open')
     expect(picker.filtered.value.map((option) => option.family)).toEqual(['Declared Open Font'])
@@ -78,6 +92,7 @@ describe('font picker license display', () => {
       'Open Font',
       'Declared Open Font',
       'Commercial Font',
+      'Restricted Embedding Font',
       'Unverified Font'
     ])
   })

@@ -69,6 +69,9 @@ export interface FontLicenseDisplayAssessment {
   } | null
   embeddedMetadata?: {
     candidateLicenseId?: string
+    embedding?: {
+      restricted?: boolean | null
+    }
   } | null
 }
 
@@ -212,6 +215,9 @@ export function fontFamilyLicenseDisplayForCatalog(
 
   const entries = faces.map((face) => ({ face, license: bundledFontLicense(face) }))
   const licenseIds = uniqueLicenseIds(entries.map(({ face }) => face.licenseId))
+  if (entries.some(({ license }) => license?.permissions.embedding === 'restricted')) {
+    return restrictedDisplay('catalog_source', 'embedding')
+  }
   if (entries.some(({ license }) => license?.permissions.commercialUse === 'restricted')) {
     return restrictedDisplay('catalog_source', 'commercial')
   }
@@ -237,7 +243,14 @@ export function fontFamilyLicenseDisplayFromAssessments(
 
   const licenseIds = uniqueLicenseIds(assessments.map((assessment) => assessment.license?.id))
   if (assessments.some((assessment) => assessment.classification === 'restricted')) {
-    return restrictedDisplay('loaded_faces', 'general')
+    const restriction = assessments.some(
+      (assessment) =>
+        assessment.classification === 'restricted' &&
+        assessment.embeddedMetadata?.embedding?.restricted === true
+    )
+      ? 'embedding'
+      : 'general'
+    return restrictedDisplay('loaded_faces', restriction)
   }
   if (
     assessments.every(

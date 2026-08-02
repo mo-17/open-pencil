@@ -9,7 +9,7 @@ export interface FontInfo {
 }
 
 export type LocalFontAccessState = 'unsupported' | 'prompt' | 'granted' | 'denied'
-export type FontFamilySource = 'local' | 'bundled' | 'fallback' | WebFontProviderId
+export type FontFamilySource = 'local' | 'imported' | 'bundled' | 'fallback' | WebFontProviderId
 
 export interface FontFamilyOption {
   family: string
@@ -20,6 +20,8 @@ export interface FontFamilyOption {
 
 export interface DownloadedFontCache {
   read(family: string, style: string, characters?: string): Promise<ArrayBuffer | null>
+  /** Explicit user imports take precedence over same-named system and remote faces. */
+  readImported?(family: string, style: string): Promise<ArrayBuffer | null>
   write(family: string, style: string, data: ArrayBuffer, characters?: string): Promise<void>
 }
 

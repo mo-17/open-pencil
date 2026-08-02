@@ -126,8 +126,11 @@ describe('useNodeFontStatus', () => {
         return undefined
       })
 
-      await Promise.resolve()
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0)
+      })
       expect(secondSettled).toBe(false)
+      expect(release).toBeFunction()
       release?.(fontData)
       await Promise.all([first, second])
       expect(status.missingFonts.value).toEqual([])

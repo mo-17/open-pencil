@@ -29,12 +29,12 @@ export const dialogMessageDefaults = {
   showUI: params('Show UI ({shortcut})'),
   fontSettings: 'Font settings',
   fontSettingsDesktopDescription:
-    'Access system fonts, online providers, fallback packs, and cached downloads.',
+    'Access system fonts, imported files, online providers, fallback packs, and the font cache.',
   fontSettingsBrowserDescription:
     'Allow browser access to local fonts and manage online font providers.',
   localFonts: 'Local fonts',
   onlineFonts: 'Online fonts',
-  downloadedCache: 'Downloaded cache',
+  downloadedCache: 'Font cache',
   lastUpdated: 'Last updated',
   enabled: 'Enabled',
   disabled: 'Disabled',
@@ -47,6 +47,12 @@ export const dialogMessageDefaults = {
   allowBrowserFontAccess: 'Allow browser font access when system fonts are missing.',
   allow: 'Allow',
   requesting: 'Requesting…',
+  importFontFile: 'Import font file',
+  importFontFileDescription:
+    'Load a TTF, OTF, or WOFF file for the canvas and, when its license permits embedding, the compiler; keep it available after restart and offline.',
+  importingFont: 'Importing…',
+  fontImported: params('Imported {family} ({style}).'),
+  fontImportFailed: params('Could not import font: {error}'),
   onlineFontProviders: 'Online font providers',
   downloadMissingWebFonts: 'Download missing web fonts through enabled providers.',
   webFontProvidersRequireDesktopApp:
@@ -78,8 +84,8 @@ export const dialogMessageDefaults = {
   fontProviderDisabled: params('Disabled {provider}.'),
   fallbackFontsDownloaded: 'Fallback fonts downloaded.',
   fallbackFontsDownloadFailed: 'Could not download fallback fonts.',
-  downloadedFontCacheCleared: 'Downloaded font cache cleared.',
-  downloadedFontCacheClearFailed: 'Could not clear downloaded font cache.',
+  downloadedFontCacheCleared: 'Font cache cleared.',
+  downloadedFontCacheClearFailed: 'Could not clear the font cache.',
   you: 'You',
   youSuffix: 'you',
   followingPeerStop: params('Following {name} (click to stop)'),

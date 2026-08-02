@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults, type CompilerFontManifest } from '@open-pencil/compiler'
 
+import { fontBytesWithFsType } from '#tests/helpers/font-fixtures'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 function compileFontFixture(manifest: CompilerFontManifest) {
@@ -77,6 +78,34 @@ describe('compiler font manifest', () => {
       ]
     })
     expect(out.warnings.map((warning) => warning.code)).toContain('font-license-review-required')
+    expect(out.warnings.map((warning) => warning.code)).not.toContain('font-license-unverified')
+  })
+
+  test('omits restricted embedding bytes even when caller evidence is missing', async () => {
+    const path = 'src/assets/fonts/bebas-neue-700-normal.ttf'
+    const source = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    const out = compileFontFixture({
+      faces: [
+        {
+          family: 'Bebas Neue',
+          weight: 700,
+          style: 'normal',
+          format: 'truetype',
+          path,
+          content: new Uint8Array(fontBytesWithFsType(source, 0x0002))
+        }
+      ]
+    })
+
+    expect(out.files.has(path)).toBe(false)
+    expect(out.files.get('src/index.css')).not.toContain(path)
+    expect(out.warnings).toContainEqual(
+      expect.objectContaining({
+        code: 'font-license-embedding-restricted',
+        message: expect.stringContaining('OS/2 fsType 0x0002')
+      })
+    )
+    expect(out.warnings.map((warning) => warning.code)).toContain('font-face-unavailable')
     expect(out.warnings.map((warning) => warning.code)).not.toContain('font-license-unverified')
   })
 

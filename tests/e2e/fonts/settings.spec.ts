@@ -45,6 +45,7 @@ test('font settings popover exposes web font access without desktop-only cache a
   await page.getByTestId('font-settings-toggle-online-fonts').click()
   await expect(page.getByTestId('font-settings-toggle-online-fonts')).toHaveText('Disable')
   await expect(page.getByTestId('font-settings-download-fallbacks')).toHaveCount(0)
+  await expect(page.getByTestId('font-settings-import-file')).toHaveCount(0)
   await expect(page.getByTestId('font-settings-refresh-cache')).toHaveCount(0)
   await expect(page.getByTestId('font-settings-clear-cache')).toHaveCount(0)
   await expect(page.getByText('Download CJK and Arabic fallbacks')).toHaveCount(0)
