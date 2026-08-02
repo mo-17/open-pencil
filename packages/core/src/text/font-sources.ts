@@ -1,3 +1,4 @@
+import type { FontFamilyLicenseDisplay } from '#core/text/font-license-display'
 import type { WebFontProviderId } from '#core/text/web-fonts'
 
 export interface FontInfo {
@@ -13,6 +14,8 @@ export type FontFamilySource = 'local' | 'bundled' | 'fallback' | WebFontProvide
 export interface FontFamilyOption {
   family: string
   source: FontFamilySource
+  /** Conservative catalog-level license display metadata. Older callers may omit it. */
+  licenseDisplay?: FontFamilyLicenseDisplay
 }
 
 export interface DownloadedFontCache {

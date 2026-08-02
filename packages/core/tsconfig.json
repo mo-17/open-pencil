@@ -15,6 +15,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "paths": {
+      "#core-assets/*": ["./assets/*"],
       "#core/*": ["./src/*"],
       "@open-pencil/core": ["./src/index.ts"],
       "@open-pencil/core/*": ["./src/*"]

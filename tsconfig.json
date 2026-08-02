@@ -28,6 +28,9 @@
         "./packages/vue/src/*",
         "./packages/vue/src/*.vue"
       ],
+      "#core-assets/*": [
+        "./packages/core/assets/*"
+      ],
       "#core/*": [
         "./packages/core/src/*"
       ],

@@ -17,6 +17,7 @@ import { fontFallbackScriptForCharacter } from '#core/text/coverage'
 import { resolveNodeTextDirection } from '#core/text/direction'
 import type { FontFallbackScript } from '#core/text/fallbacks'
 import { fontManager, weightToStyle } from '#core/text/fonts'
+import { requiredNodeFontFaces } from '#core/text/requirements'
 import {
   fontCoverageDemand,
   fontFaceDemand,
@@ -56,20 +57,6 @@ function demandFace(
   return false
 }
 
-function requiredNodeFaces(node: SceneNode): Array<{ family: string; style: string }> {
-  const baseFamily = node.fontFamily || DEFAULT_FONT_FAMILY
-  const faces = new Map<string, { family: string; style: string }>()
-  const add = (family: string, style: string) => faces.set(`${family}\0${style}`, { family, style })
-  add(baseFamily, weightToStyle(node.fontWeight, node.italic))
-  for (const run of node.styleRuns) {
-    const family = run.style.fontFamily ?? baseFamily
-    const weight = run.style.fontWeight ?? node.fontWeight
-    const italic = run.style.italic ?? node.italic
-    add(family, weightToStyle(weight, italic))
-  }
-  return Array.from(faces.values())
-}
-
 function languageForCharacter(node: SceneNode, character: string): string | null {
   const index = node.text.indexOf(character)
   const run = node.styleRuns.find((item) => index >= item.start && index < item.start + item.length)
@@ -81,11 +68,12 @@ export type NodeFontReadiness = 'ready' | 'pending' | 'exhausted'
 function requiredFacesReadiness(r: FontReadinessRenderer, node: SceneNode): NodeFontReadiness {
   let pending = false
   let exhausted = false
-  for (const { family, style } of requiredNodeFaces(node)) {
+  for (const { family, style } of requiredNodeFontFaces(node)) {
     if (fontManager.isStyleLoaded(family, style)) continue
     const demand = fontFaceDemand(family, style, node.text)
     const state = fontResolver.state(demand).state
     demandFace(r, node, family, style)
+    if (state === 'loaded' && fontManager.isLoaded(family)) continue
     if (state === 'failed' || state === 'exhausted') {
       // CanvasKit can synthesize a missing slant or weight from another loaded face in the same
       // family. Keep the text visible when an exact face (for example, Italic) is unavailable.
@@ -100,7 +88,7 @@ function requiredFacesReadiness(r: FontReadinessRenderer, node: SceneNode): Node
 }
 
 function demandRemoteCoverage(r: TextRenderer, node: SceneNode, characters: string[]): boolean {
-  for (const { family, style } of requiredNodeFaces(node)) {
+  for (const { family, style } of requiredNodeFontFaces(node)) {
     if (!fontManager.remoteStyleNeedsCoverage(family, style, characters)) continue
     const demand = fontRemoteCoverageDemand(family, style, characters)
     const state = fontResolver.state(demand).state

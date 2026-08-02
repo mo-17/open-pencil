@@ -7,6 +7,22 @@ const packageJson = JSON.parse(readFileSync(new URL('./package.json', import.met
   dependencies?: Record<string, string>
 }
 
+function fontLicenseManifest(): Rolldown.Plugin {
+  return {
+    name: 'font-license-manifest',
+    load(id) {
+      if (!id.endsWith('/assets/font-licenses.json')) return
+      const manifest = JSON.parse(readFileSync(id, 'utf8')) as unknown
+      // Rolldown's unbundled JSON output currently emits dangling named exports for object keys.
+      // This manifest is intentionally consumed through its default export only.
+      return {
+        code: `export default ${JSON.stringify(manifest)}`,
+        moduleType: 'js'
+      }
+    }
+  }
+}
+
 function rawText(): Rolldown.Plugin {
   return {
     name: 'raw-text',
@@ -26,7 +42,7 @@ function rawText(): Rolldown.Plugin {
 
 export default defineConfig({
   entry: ['src/**/*.ts', '!src/**/*.d.ts'],
-  plugins: [rawText()],
+  plugins: [fontLicenseManifest(), rawText()],
   unbundle: true,
   platform: 'neutral',
   format: ['esm'],

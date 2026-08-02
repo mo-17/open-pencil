@@ -3,6 +3,11 @@ import type { FontFaceData, RemoteFontSource, ResolveFontResult } from 'unifont'
 import { IS_BROWSER } from '#core/constants'
 import { parseFontStyle } from '#core/text/face'
 import {
+  coordinatedWebFontFetch,
+  retryableCachedPromise,
+  withWebFontFetchProxy
+} from '#core/text/web-font/fetch-proxy'
+import {
   createProviderUnifont,
   isRemoteFontSource,
   type WebFontResolveOptions,
@@ -99,7 +104,6 @@ export class WebFontResolver {
   private failedFonts = new Set<string>()
   private fontPromises = new Map<string, Promise<ArrayBuffer[]>>()
   private remoteFetch: WebFontFetch | null = null
-  private fetchProxyQueue: Promise<void> = Promise.resolve()
 
   setEnabled(settings: Partial<Record<WebFontProviderId, boolean>>): void {
     this.enabled = new Set(WEB_FONT_PROVIDER_IDS.filter((provider) => settings[provider] === true))
@@ -149,47 +153,29 @@ export class WebFontResolver {
     return []
   }
 
-  private async withFetchProxy<T>(operation: () => Promise<T>): Promise<T> {
-    if (!this.remoteFetch) return operation()
-
-    const previous = this.fetchProxyQueue
-    let release: (() => void) | undefined
-    this.fetchProxyQueue = new Promise<void>((resolve) => {
-      release = () => resolve()
-    })
-    await previous
-
-    const originalFetch = globalThis.fetch
-    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' || input instanceof URL ? input.toString() : input.url
-      if (url.startsWith('https://') || url.startsWith('http://')) {
-        return (
-          this.remoteFetch?.(url, init) ?? Promise.reject(new TypeError('No font proxy fetcher'))
-        )
+  clearFailedFont(families: readonly string[], style: string, characters = ''): void {
+    const coverage = normalizedCoverageText(characters)
+    for (const family of families) {
+      for (const provider of this.enabledProviders()) {
+        const key = `${provider}|${family}|${style}|${coverage}`
+        this.fontPromises.delete(key)
+        if (this.failedFonts.delete(key)) this.unifontPromises.delete(provider)
       }
-      return originalFetch(input, init)
-    }) as typeof fetch
-
-    try {
-      return await operation()
-    } finally {
-      globalThis.fetch = originalFetch
-      release?.()
     }
+  }
+
+  private async withFetchProxy<T>(operation: () => Promise<T>): Promise<T> {
+    return withWebFontFetchProxy(this.remoteFetch ?? undefined, operation)
   }
 
   private async fetchRemote(url: string, init?: RequestInit): Promise<Response> {
-    if (this.remoteFetch) return this.remoteFetch(url, init)
-    return fetch(url, init)
+    return coordinatedWebFontFetch(this.remoteFetch ?? undefined, url, init)
   }
 
   private async unifont(provider: WebFontProviderId): Promise<WebUnifont> {
-    let promise = this.unifontPromises.get(provider)
-    if (!promise) {
-      promise = this.withFetchProxy(() => createProviderUnifont(provider))
-      this.unifontPromises.set(provider, promise)
-    }
-    return promise
+    return retryableCachedPromise(this.unifontPromises, provider, () =>
+      this.withFetchProxy(() => createProviderUnifont(provider))
+    )
   }
 
   private async loadFamilies(provider: WebFontProviderId): Promise<string[]> {
@@ -204,7 +190,7 @@ export class WebFontResolver {
       this.familiesCache.set(provider, families)
       return families
     } catch {
-      this.familiesCache.set(provider, [])
+      this.familiesPromises.delete(provider)
       return []
     }
   }
@@ -244,10 +230,7 @@ export class WebFontResolver {
         weights: [String(parsed.weight)],
         styles: [parsed.italic ? 'italic' : 'normal'],
         formats: ['ttf', 'otf', 'woff2', 'woff'],
-        subsets: webFontSubsetsForText(characters),
-        ...(provider === 'google' && characters
-          ? { options: { google: { experimental: { glyphs: [characters] } } } }
-          : {})
+        subsets: webFontSubsetsForText(characters)
       } satisfies WebFontResolveOptions
       const result = await this.withFetchProxy<ResolveFontResult>(() =>
         unifont.resolveFont(family, options)

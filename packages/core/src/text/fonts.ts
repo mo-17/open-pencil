@@ -5,6 +5,8 @@ import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { DEFAULT_FONT_FAMILY, IS_BROWSER } from '#core/constants'
+import { BUNDLED_FONT_URLS } from '#core/text/bundled-fonts'
+import { fontFamilyLicenseDisplayForCatalog } from '#core/text/font-license-display'
 import {
   chooseLocalFontMatch,
   isVariableFont,
@@ -20,6 +22,7 @@ import type { FontFallbackScript } from '#core/text/fallbacks'
 import type {
   DownloadedFontCache,
   FontFamilyOption,
+  FontFamilySource,
   FontInfo,
   HostFontLoader,
   LocalFontAccessState
@@ -29,6 +32,14 @@ import { normalizedCoverageText, WebFontResolver } from '#core/text/web-fonts'
 import type { WebFontFetch, WebFontProviderId } from '#core/text/web-fonts'
 
 type FindLocalFontOptions = { allowVariable?: boolean }
+
+function familyOption(family: string, source: FontFamilySource): FontFamilyOption {
+  return {
+    family,
+    source,
+    licenseDisplay: fontFamilyLicenseDisplayForCatalog(family, source)
+  }
+}
 
 export interface FontLoadOptions {
   signal?: AbortSignal
@@ -104,21 +115,6 @@ function buffersEqual(first: ArrayBuffer, second: ArrayBuffer): boolean {
     if (firstBytes[index] !== secondBytes[index]) return false
   }
   return true
-}
-
-const BUNDLED_FONTS: Record<string, string> = {
-  'Inter|Regular': '/Inter-Regular.ttf',
-  'Inter|Medium': '/Inter-Medium.ttf',
-  'Inter|SemiBold': '/Inter-SemiBold.ttf',
-  'Inter|Bold': '/Inter-Bold.ttf',
-  'Inter|ExtraBold': '/Inter-ExtraBold.ttf',
-  'Noto Naskh Arabic|Regular': '/NotoNaskhArabic-Regular.ttf',
-  // Offline CJK fallback. 'Noto Sans SC' is already the first entry in
-  // CJK_GOOGLE_FONTS, so when local system CJK fonts can't be reached
-  // (Tauri WKWebView has no Local Font Access API; browsers need a permission
-  // grant), the fallback loader resolves this bundled copy before hitting the
-  // network — guaranteeing Chinese renders without connectivity or permission.
-  'Noto Sans SC|Regular': '/NotoSansSC-Regular.ttf'
 }
 
 export class FontManager {
@@ -235,6 +231,15 @@ export class FontManager {
     return this.webFonts.enabledProviders()
   }
 
+  clearFontLoadFailure(family: string, style = 'Regular', characters = ''): void {
+    const normalized = normalizeFontFamily(family)
+    this.webFonts.clearFailedFont(
+      normalized === family ? [family] : [family, normalized],
+      style,
+      characters
+    )
+  }
+
   async loadCachedFont(
     family: string,
     style = 'Regular',
@@ -290,13 +295,13 @@ export class FontManager {
       }))
     )
     const byFamily = new Map<string, FontFamilyOption>()
-    byFamily.set(DEFAULT_FONT_FAMILY, { family: DEFAULT_FONT_FAMILY, source: 'bundled' })
+    byFamily.set(DEFAULT_FONT_FAMILY, familyOption(DEFAULT_FONT_FAMILY, 'bundled'))
     for (const { provider, families } of webFontFamilies) {
       for (const family of families) {
-        if (!byFamily.has(family)) byFamily.set(family, { family, source: provider })
+        if (!byFamily.has(family)) byFamily.set(family, familyOption(family, provider))
       }
     }
-    for (const font of fonts) byFamily.set(font.family, { family: font.family, source: 'local' })
+    for (const font of fonts) byFamily.set(font.family, familyOption(font.family, 'local'))
     return [...byFamily.values()].sort((a, b) => a.family.localeCompare(b.family))
   }
 
@@ -326,17 +331,14 @@ export class FontManager {
 
   async loadLocalFont(family: string, style = 'Regular'): Promise<ArrayBuffer | null> {
     const cacheKey = `${family}|${style}`
-    const loaded = this.loadedFamilies.get(cacheKey)
-    if (loaded) {
-      this.registerFontInCanvasKit(family, loaded)
-      return loaded
-    }
+    const loaded = this.usableLoadedData(family, style)
+    if (loaded) return loaded
 
     const localBuffer =
       (await this.loadHostFont(family, style)) ?? (await this.findLocalFont(family, style))
     if (localBuffer) return this.registerAndCache(family, style, localBuffer)
 
-    const bundledUrl = BUNDLED_FONTS[cacheKey]
+    const bundledUrl = BUNDLED_FONT_URLS[cacheKey]
     if (!bundledUrl) return null
     try {
       const buffer = await this.fetchBundledFont(bundledUrl)
@@ -359,7 +361,8 @@ export class FontManager {
       coverage &&
       Array.from(characters).every((character) => coverage.has(character))
     ) {
-      return this.loadedData(family, style)
+      const loaded = this.usableLoadedData(family, style)
+      if (loaded) return loaded
     }
     try {
       const requestedCharacters = normalizedCoverageText(
@@ -370,13 +373,18 @@ export class FontManager {
       const buffers = await this.webFonts.fetchFont(families, style, requestedCharacters)
       if (buffers.length === 0) return null
       const primary = buffers[0]
-      await this.writeDownloadedFont(family, style, primary, requestedCharacters)
       const registered = this.registerAndCache(family, style, primary)
-      const loadedCoverage = this.remoteCoverage.get(`${family}|${style}`) ?? new Set<string>()
-      for (const character of requestedCharacters) loadedCoverage.add(character)
-      this.remoteCoverage.set(`${family}|${style}`, loadedCoverage)
+      if (!registered) return null
+      await this.writeDownloadedFont(family, style, primary, requestedCharacters)
+      let completeCoverage = true
       for (const supplemental of buffers.slice(1)) {
-        this.registerSupplemental(family, style, supplemental)
+        const accepted = this.registerSupplemental(family, style, supplemental)
+        completeCoverage = accepted && completeCoverage
+      }
+      if (completeCoverage) {
+        const loadedCoverage = this.remoteCoverage.get(`${family}|${style}`) ?? new Set<string>()
+        for (const character of requestedCharacters) loadedCoverage.add(character)
+        this.remoteCoverage.set(`${family}|${style}`, loadedCoverage)
       }
       return registered
     } catch (e) {
@@ -393,9 +401,8 @@ export class FontManager {
   ): Promise<ArrayBuffer | null> {
     throwIfFontLoadAborted(options.signal)
     const cacheKey = `${family}|${style}`
-    const loaded = this.loadedData(family, style)
+    const loaded = this.usableLoadedData(family, style)
     if (loaded) {
-      this.registerFontInCanvasKit(family, loaded)
       const remoteCoverage = this.remoteCoverage.get(`${family}|${style}`)
       const missingRemoteCoverage = Boolean(
         characters &&
@@ -435,7 +442,7 @@ export class FontManager {
     requestedCharacters: Set<string>
   ): Promise<ArrayBuffer | null> {
     const cacheKey = `${family}|${style}`
-    let result = this.loadedData(family, style)
+    let result = this.usableLoadedData(family, style)
     if (!result) {
       const requestedText = () => Array.from(requestedCharacters).join('')
       result =
@@ -467,11 +474,15 @@ export class FontManager {
   }
 
   isLoaded(family: string): boolean {
-    return [...this.loadedFamilies.keys()].some((k) => k.startsWith(`${family}|`))
+    for (const [key, data] of this.loadedFamilies) {
+      if (key.startsWith(`${family}|`) && this.retainedDataIsRegistered(family, data)) return true
+    }
+    return false
   }
 
   isStyleLoaded(family: string, style: string): boolean {
-    return this.loadedFamilies.has(`${family}|${style}`)
+    const data = this.loadedFamilies.get(`${family}|${style}`)
+    return data !== undefined && this.retainedDataIsRegistered(family, data)
   }
 
   remoteStyleNeedsCoverage(family: string, style: string, characters: readonly string[]): boolean {
@@ -481,6 +492,36 @@ export class FontManager {
 
   loadedData(family: string, style: string): ArrayBuffer | null {
     return this.loadedFamilies.get(`${family}|${style}`) ?? null
+  }
+
+  /**
+   * Snapshot every retained buffer for one face without exposing FontManager's
+   * mutable storage. Remote providers may split a face into multiple glyph
+   * shards, so exporters must not assume `loadedData()` is the complete face.
+   */
+  loadedDataShards(family: string, style: string): readonly ArrayBuffer[] {
+    const key = `${family}|${style}`
+    const primary = this.loadedFamilies.get(key)
+    if (!primary) return []
+    return Object.freeze(
+      [primary, ...(this.supplementalFamilyData.get(key) ?? [])]
+        .filter((data) => this.retainedDataIsRegistered(family, data))
+        .map((data) => data.slice(0))
+    )
+  }
+
+  private usableLoadedData(family: string, style: string): ArrayBuffer | null {
+    const data = this.loadedData(family, style)
+    if (!data || this.fontProviders.size === 0) return data
+    return this.registerFontInCanvasKit(family, data) ? data : null
+  }
+
+  private retainedDataIsRegistered(family: string, data: ArrayBuffer): boolean {
+    if (this.fontProviders.size === 0) return true
+    for (const provider of this.fontProviders) {
+      if (!this.providerRegistrations.get(provider)?.get(family)?.has(data)) return false
+    }
+    return true
   }
 
   renderFamily(family: string, _style: string): string {
@@ -736,14 +777,18 @@ export class FontManager {
     }
   }
 
-  private registerSupplemental(family: string, style: string, buffer: ArrayBuffer): void {
+  private registerSupplemental(family: string, style: string, buffer: ArrayBuffer): boolean {
     const key = `${family}|${style}`
-    if (this.equivalentRetainedData(key, buffer)) return
+    const equivalent = this.equivalentRetainedData(key, buffer)
+    if (equivalent) {
+      return this.fontProviders.size === 0 || this.registerFontInCanvasKit(family, equivalent)
+    }
+    if (this.fontProviders.size > 0 && !this.registerFontInCanvasKit(family, buffer)) return false
     const supplemental = this.supplementalFamilyData.get(key) ?? []
     supplemental.push(buffer)
     this.supplementalFamilyData.set(key, supplemental)
-    this.registerFontInCanvasKit(family, buffer)
     this.registerFontInBrowser(family, style, buffer)
+    return true
   }
 
   private registerAndCache(family: string, style: string, buffer: ArrayBuffer): ArrayBuffer | null {
@@ -751,23 +796,28 @@ export class FontManager {
     const existing = this.loadedFamilies.get(key)
     const equivalent = this.equivalentRetainedData(key, buffer)
     if (equivalent) {
-      this.registerFontInCanvasKit(family, equivalent)
+      if (this.fontProviders.size > 0 && !this.registerFontInCanvasKit(family, equivalent)) {
+        return null
+      }
       return equivalent
     }
+    // A fetched buffer is not a usable canvas font until an attached CanvasKit provider accepts
+    // it. Do not turn a decode/registration failure into a false "loaded" state in the UI.
+    if (this.fontProviders.size > 0 && !this.registerFontInCanvasKit(family, buffer)) return null
     if (existing) {
       this.loadedFamilies.delete(key)
       this.registerSupplemental(family, style, existing)
     }
     this.loadedFamilies.set(key, buffer)
-    this.registerFontInCanvasKit(family, buffer)
     this.registerFontInBrowser(family, style, buffer)
     return buffer
   }
 
   private registerFontInCanvasKit(family: string, data: ArrayBuffer): boolean {
-    let registered = false
+    let registered = this.fontProviders.size > 0
     for (const provider of this.fontProviders) {
-      registered = this.registerFontInProvider(provider, family, data) || registered
+      const accepted = this.registerFontInProvider(provider, family, data)
+      registered = accepted && registered
     }
     return registered
   }

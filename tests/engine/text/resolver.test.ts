@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   FontResolver,
+  fontCandidateCoverageText,
   fontCoverageDemand,
+  fontFaceDemand,
   missingGlyphCharacters,
   missingGlyphScripts,
   type FontResolutionCandidate,
@@ -36,6 +38,51 @@ function shapedLine(textLength: number, glyphs: number[], offsets: number[]): Ob
 }
 
 describe('FontResolver', () => {
+  test('falls back to a regular family face after exact bold sources are exhausted', async () => {
+    const demand = fontFaceDemand('Bebas Neue', 'Bold', 'Headline')
+    const attempted: string[] = []
+    const resolver = new FontResolver(async ({ source, style }) => {
+      attempted.push(`${source}:${style}`)
+      return source === 'remote' && style === 'Regular'
+    })
+
+    const result = await resolver.demand(demand)
+
+    expect(attempted).toEqual([
+      'registered:Bold',
+      'local:Bold',
+      'cache:Bold',
+      'remote:Bold',
+      'registered:Regular',
+      'local:Regular',
+      'cache:Regular',
+      'remote:Regular'
+    ])
+    expect(result).toMatchObject({
+      state: 'loaded',
+      source: 'remote',
+      candidate: { family: 'Bebas Neue', style: 'Regular' }
+    })
+    const exactCandidate = demand.candidates[0]
+    const regularCandidate = demand.candidates.find((candidate) => candidate.style === 'Regular')
+    if (!regularCandidate) throw new Error('Regular fallback candidate was not created')
+    expect(fontCandidateCoverageText(demand, exactCandidate)).toBe('Headline')
+    expect(fontCandidateCoverageText(demand, regularCandidate)).toBe('')
+  })
+
+  test('keeps an available exact face ahead of synthetic fallbacks', async () => {
+    const attempted: string[] = []
+    const resolver = new FontResolver(async ({ source, style }) => {
+      attempted.push(`${source}:${style}`)
+      return source === 'remote' && style === 'Bold'
+    })
+
+    const result = await resolver.demand(fontFaceDemand('Exact Bold', 'Bold', 'Headline'))
+
+    expect(attempted).toEqual(['registered:Bold', 'local:Bold', 'cache:Bold', 'remote:Bold'])
+    expect(result.candidate?.style).toBe('Bold')
+  })
+
   test('tries face candidates in source order', async () => {
     const attempted: string[] = []
     const resolver = new FontResolver(async (item) => {
@@ -116,6 +163,21 @@ describe('FontResolver', () => {
     const demand = { key: 'retry', candidates: [candidate('remote')] }
 
     expect((await resolver.demand(demand)).state).toBe('failed')
+    expect((await resolver.retry(demand)).state).toBe('loaded')
+    expect(attempts).toBe(2)
+  })
+
+  test('retries a demand after every candidate was exhausted', async () => {
+    let available = false
+    let attempts = 0
+    const resolver = new FontResolver(async () => {
+      attempts++
+      return available
+    })
+    const demand = { key: 'retry-exhausted', candidates: [candidate('local')] }
+
+    expect((await resolver.demand(demand)).state).toBe('exhausted')
+    available = true
     expect((await resolver.retry(demand)).state).toBe('loaded')
     expect(attempts).toBe(2)
   })

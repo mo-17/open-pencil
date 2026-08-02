@@ -1,3 +1,4 @@
+import { parseFontStyle } from '#core/text/face'
 import type { FontFallbackScript } from '#core/text/fallbacks'
 import { fontManager } from '#core/text/fonts'
 import { FontResolver } from '#core/text/resolver/resolver'
@@ -19,21 +20,52 @@ function faceCandidate(
   return { id: `${source}:${family}:${style}`, family, style, source }
 }
 
+function syntheticFaceStyles(style: string): string[] {
+  const parsed = parseFontStyle(style)
+  const sameSlantRegular = parsed.italic ? 'Regular Italic' : 'Regular'
+  const styles =
+    style.trim().toLocaleLowerCase() === sameSlantRegular.toLocaleLowerCase()
+      ? []
+      : [sameSlantRegular]
+  if (parsed.italic) styles.push('Regular')
+  return styles
+}
+
 export function fontFaceDemand(
   family: string,
   style: string,
   characters = ''
 ): FontResolutionDemand {
+  const syntheticStyles = syntheticFaceStyles(style)
+  const fallbackSources: FontResolutionCandidate['source'][] = [
+    'registered',
+    'local',
+    'cache',
+    'remote'
+  ]
+  const remainingExactSources = fallbackSources.slice(1)
   return {
     key: `face:${family.trim().toLocaleLowerCase()}:${style.toLocaleLowerCase()}`,
     characters,
     candidates: [
       faceCandidate(family, style, 'registered'),
-      faceCandidate(family, style, 'local'),
-      faceCandidate(family, style, 'cache'),
-      faceCandidate(family, style, 'remote')
+      ...remainingExactSources.map((source) => faceCandidate(family, style, source)),
+      ...syntheticStyles.flatMap((fallbackStyle) =>
+        fallbackSources.map((source) => faceCandidate(family, fallbackStyle, source))
+      )
     ]
   }
+}
+
+export function fontCandidateCoverageText(
+  demand: FontResolutionDemand,
+  candidate: FontResolutionCandidate
+): string {
+  const requestedFace = demand.candidates[0]
+  if (candidate.family !== requestedFace.family || candidate.style !== requestedFace.style) {
+    return ''
+  }
+  return demand.characters ?? ''
 }
 
 export function fontRemoteCoverageDemand(
@@ -66,17 +98,19 @@ export function fontCoverageDemand(
 }
 
 const productionFontLoader: FontResolutionLoader = async (candidate, demand) => {
+  const characters = fontCandidateCoverageText(demand, candidate)
   switch (candidate.source) {
     case 'registered':
       return fontManager.isStyleLoaded(candidate.family, candidate.style)
     case 'local':
       return (await fontManager.loadLocalFont(candidate.family, candidate.style)) !== null
     case 'cache':
-      return (await fontManager.loadCachedFont(candidate.family, candidate.style)) !== null
+      return (
+        (await fontManager.loadCachedFont(candidate.family, candidate.style, characters)) !== null
+      )
     case 'remote':
       return (
-        (await fontManager.loadRemoteFont(candidate.family, candidate.style, demand.characters)) !==
-        null
+        (await fontManager.loadRemoteFont(candidate.family, candidate.style, characters)) !== null
       )
     case 'fallback': {
       const script = candidate.family as FontFallbackScript

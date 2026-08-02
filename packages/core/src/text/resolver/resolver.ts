@@ -52,7 +52,8 @@ export class FontResolver {
     demand: FontResolutionDemand,
     onSettled?: FontResolutionSettled
   ): Promise<FontResolutionSnapshot> {
-    if (this.state(demand).state !== 'failed') return this.demand(demand, onSettled)
+    const state = this.state(demand).state
+    if (state !== 'failed' && state !== 'exhausted') return this.demand(demand, onSettled)
     this.entries.delete(demand.key)
     return this.demand(demand, onSettled)
   }

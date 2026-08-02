@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "licenses": {
+    "OFL-1.1": {
+      "name": "SIL Open Font License 1.1",
+      "url": "https://openfontlicense.org",
+      "textPath": "licenses/OFL-1.1.txt",
+      "textSha256": "9947154fa509168a318d679d63579aed6a26d77a3b6bf59f4e10df1413a2f5cf",
+      "permissions": {
+        "commercialUse": "allowed",
+        "embedding": "allowed_with_conditions",
+        "redistribution": "allowed_with_conditions",
+        "modification": "allowed_with_conditions"
+      },
+      "conditions": [
+        "The font software and its individual components may not be sold by themselves.",
+        "Redistributed copies must include the copyright notice and this license.",
+        "Modified versions must respect Reserved Font Names and remain under OFL-1.1."
+      ]
+    }
+  },
+  "fonts": [
+    {
+      "family": "Inter",
+      "style": "Regular",
+      "assetPath": "/Inter-Regular.ttf",
+      "sha256": "a414b48aa577ef2c62ebb135341ddeef33ee26a4f5dc9f787f93c1aab08ebb50",
+      "licenseId": "OFL-1.1",
+      "copyright": "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+      "upstreamLicenseUrl": "https://github.com/rsms/inter/blob/master/LICENSE.txt"
+    },
+    {
+      "family": "Inter",
+      "style": "Medium",
+      "assetPath": "/Inter-Medium.ttf",
+      "sha256": "8c883f63b2c4157d997319f2c8bc6995ed4357ef371940d31ca159004a4aae63",
+      "licenseId": "OFL-1.1",
+      "copyright": "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+      "upstreamLicenseUrl": "https://github.com/rsms/inter/blob/master/LICENSE.txt"
+    },
+    {
+      "family": "Inter",
+      "style": "SemiBold",
+      "assetPath": "/Inter-SemiBold.ttf",
+      "sha256": "e7a1aaf7eda9f2fad4131725fa556265ec75ca7b2d756260173a040363e8d4f7",
+      "licenseId": "OFL-1.1",
+      "copyright": "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+      "upstreamLicenseUrl": "https://github.com/rsms/inter/blob/master/LICENSE.txt"
+    },
+    {
+      "family": "Inter",
+      "style": "Bold",
+      "assetPath": "/Inter-Bold.ttf",
+      "sha256": "fbe825cbfc749317f57a1433d3905aa9d3f388732fd29b8e8a36f34845e3bc3e",
+      "licenseId": "OFL-1.1",
+      "copyright": "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+      "upstreamLicenseUrl": "https://github.com/rsms/inter/blob/master/LICENSE.txt"
+    },
+    {
+      "family": "Inter",
+      "style": "ExtraBold",
+      "assetPath": "/Inter-ExtraBold.ttf",
+      "sha256": "eec66af7f2337bd34fe6e801cf92ededcb57a20c0d7bc40a61d4eefcbe3dd40c",
+      "licenseId": "OFL-1.1",
+      "copyright": "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+      "upstreamLicenseUrl": "https://github.com/rsms/inter/blob/master/LICENSE.txt"
+    },
+    {
+      "family": "Noto Naskh Arabic",
+      "style": "Regular",
+      "assetPath": "/NotoNaskhArabic-Regular.ttf",
+      "sha256": "c34fdbd98af4dbc45ca192a23d2eeb77032add83086f5fe32957d23b3f36b221",
+      "licenseId": "OFL-1.1",
+      "copyright": "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)",
+      "upstreamLicenseUrl": "https://github.com/notofonts/arabic/blob/main/OFL.txt"
+    },
+    {
+      "family": "Noto Sans SC",
+      "style": "Regular",
+      "assetPath": "/NotoSansSC-Regular.ttf",
+      "sha256": "450625c8d46ab3df97b7904ded955ec2746d17ec76740cb1e91d1ba63a0f89af",
+      "licenseId": "OFL-1.1",
+      "copyright": "(c) 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'.",
+      "upstreamLicenseUrl": "https://github.com/notofonts/noto-cjk/blob/main/Sans/LICENSE"
+    }
+  ]
+}

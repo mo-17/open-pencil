@@ -37,6 +37,122 @@ describe('font lifecycle', () => {
     expect(registrations).toEqual(['Generation Test'])
   })
 
+  test('snapshots primary and supplemental face data without exposing retained buffers', () => {
+    const manager = new FontManager()
+    const latin = Uint8Array.from([0, 1, 0, 0, 1, 2, 3, 4]).buffer
+    const cjk = Uint8Array.from([0, 1, 0, 0, 5, 6, 7, 8]).buffer
+
+    manager.markLoaded('Shard Snapshot', 'Regular', latin)
+    manager.markLoaded('Shard Snapshot', 'Regular', cjk)
+    const snapshot = manager.loadedDataShards('Shard Snapshot', 'Regular')
+
+    expect(snapshot).toHaveLength(2)
+    expect(snapshot).not.toContain(latin)
+    expect(snapshot).not.toContain(cjk)
+    new Uint8Array(snapshot[0])[4] = 99
+    expect(new Uint8Array(manager.loadedDataShards('Shard Snapshot', 'Regular')[0])[4]).toBe(5)
+  })
+
+  test('does not report a font as loaded when CanvasKit rejects its bytes', () => {
+    const manager = new FontManager()
+    const provider = {
+      registerFont() {
+        throw new Error('invalid font bytes')
+      }
+    } as TypefaceFontProvider
+
+    manager.attachProvider({} as CanvasKit, provider)
+    const generationBeforeLoad = manager.generation()
+    manager.markLoaded('Rejected Font', 'Regular', new ArrayBuffer(12))
+
+    expect(manager.isStyleLoaded('Rejected Font', 'Regular')).toBe(false)
+    expect(manager.generation()).toBe(generationBeforeLoad)
+  })
+
+  test('does not treat retained bytes as loaded after a provider rejects replay', async () => {
+    const manager = new FontManager()
+    const data = new ArrayBuffer(12)
+    const provider = {
+      registerFont() {
+        throw new Error('invalid retained font bytes')
+      }
+    } as TypefaceFontProvider
+
+    manager.markLoaded('Rejected Retained Font', 'Regular', data)
+    expect(manager.isStyleLoaded('Rejected Retained Font', 'Regular')).toBe(true)
+
+    manager.attachProvider({} as CanvasKit, provider)
+    const generationAfterAttach = manager.generation()
+    manager.setOnlineFontProviders({ google: false, fontsource: false })
+
+    expect(manager.isStyleLoaded('Rejected Retained Font', 'Regular')).toBe(false)
+    await expect(manager.loadLocalFont('Rejected Retained Font', 'Regular')).resolves.toBeNull()
+    await expect(manager.loadFont('Rejected Retained Font', 'Regular')).resolves.toBeNull()
+    expect(manager.generation()).toBe(generationAfterAttach)
+  })
+
+  test('requires every active provider to accept a retained face', () => {
+    const manager = new FontManager()
+    const accepting = { registerFont: () => undefined } as TypefaceFontProvider
+    const rejecting = {
+      registerFont() {
+        throw new Error('provider rejected font')
+      }
+    } as TypefaceFontProvider
+
+    manager.attachProvider({} as CanvasKit, accepting)
+    manager.markLoaded('Shared Canvas Font', 'Regular', new ArrayBuffer(12))
+    expect(manager.isStyleLoaded('Shared Canvas Font', 'Regular')).toBe(true)
+
+    manager.attachProvider({} as CanvasKit, rejecting)
+    expect(manager.isStyleLoaded('Shared Canvas Font', 'Regular')).toBe(false)
+
+    manager.detachProvider(rejecting)
+    expect(manager.isStyleLoaded('Shared Canvas Font', 'Regular')).toBe(true)
+  })
+
+  test('does not persist or advance coverage for a remote face rejected by CanvasKit', async () => {
+    const manager = new FontManager()
+    const data = new ArrayBuffer(12)
+    const rejecting = {
+      registerFont() {
+        throw new Error('invalid remote font bytes')
+      }
+    } as TypefaceFontProvider
+    let cacheWrites = 0
+    const webFonts = Reflect.get(manager, 'webFonts') as {
+      fetchFont: () => Promise<ArrayBuffer[]>
+    }
+    webFonts.fetchFont = async () => [data]
+    manager.setDownloadedFontCache({
+      async read() {
+        return null
+      },
+      async write() {
+        cacheWrites++
+      }
+    })
+    manager.attachProvider({} as CanvasKit, rejecting)
+
+    await expect(
+      manager.loadRemoteFont('Rejected Remote Font', 'Regular', 'ABC')
+    ).resolves.toBeNull()
+    expect(manager.isStyleLoaded('Rejected Remote Font', 'Regular')).toBe(false)
+    expect(manager.remoteStyleNeedsCoverage('Rejected Remote Font', 'Regular', ['A'])).toBe(false)
+    expect(cacheWrites).toBe(0)
+
+    manager.detachProvider(rejecting)
+    manager.attachProvider(
+      {} as CanvasKit,
+      { registerFont: () => undefined } as TypefaceFontProvider
+    )
+    await expect(manager.loadRemoteFont('Rejected Remote Font', 'Regular', 'ABC')).resolves.toBe(
+      data
+    )
+    expect(manager.isStyleLoaded('Rejected Remote Font', 'Regular')).toBe(true)
+    expect(cacheWrites).toBe(1)
+  })
+
   test('keeps cumulative subset registrations under the source family', () => {
     const manager = new FontManager()
     const registrations: string[] = []
