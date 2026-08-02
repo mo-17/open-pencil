@@ -7,6 +7,7 @@ export function createDocumentSourceState() {
   let downloadName: string | null = null
   let sourceIdentity: DocumentSourceIdentity = { handle: null, path: null }
   let storageBinding: StorageDocumentBinding | null = null
+  let sourceRevision = 0
   let savedVersion = 0
   let lastWriteTime = 0
 
@@ -26,6 +27,10 @@ export function createDocumentSourceState() {
     getSourceIdentity: () => sourceIdentity,
     setSourceIdentity: (identity: DocumentSourceIdentity) => {
       sourceIdentity = identity
+    },
+    getSourceRevision: () => sourceRevision,
+    markSourceChanged: () => {
+      sourceRevision++
     },
     getStorageBinding: () => storageBinding,
     setStorageBinding: (binding: StorageDocumentBinding | null) => {

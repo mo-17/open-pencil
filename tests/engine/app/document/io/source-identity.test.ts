@@ -22,9 +22,10 @@ function createSaveHarness(handle: FileSystemFileHandle) {
     documentName: 'Untitled'
   }
   const setSourceIdentity = vi.fn()
+  let sourceRevision = 0
   const actions = createSaveActions({
     state,
-    buildFigFile: () => new Uint8Array([1, 2, 3]),
+    buildFigFile: () => ({ data: new Uint8Array([1, 2, 3]), sceneVersion: 0 }),
     getFilePath: () => null,
     setFilePath: vi.fn(),
     getFileHandle: () => handle,
@@ -34,6 +35,10 @@ function createSaveHarness(handle: FileSystemFileHandle) {
     getStorageBinding: () => null,
     setStorageBinding: vi.fn(),
     setSourceIdentity,
+    getSourceRevision: () => sourceRevision,
+    markSourceChanged: () => {
+      sourceRevision++
+    },
     setSavedVersion: vi.fn(),
     setLastWriteTime: vi.fn(),
     startWatchingFile: vi.fn()
@@ -75,5 +80,172 @@ describe('saved document identity', () => {
 
     await expect(actions.saveFigFile()).rejects.toThrow('write failed')
     expect(setSourceIdentity).not.toHaveBeenCalled()
+  })
+
+  test('serializes overlapping saves so an older snapshot cannot finish last', async () => {
+    let releaseFirstWrite: () => void = () => undefined
+    const firstWriteGate = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve
+    })
+    let signalFirstWrite: () => void = () => undefined
+    const firstWriteStarted = new Promise<void>((resolve) => {
+      signalFirstWrite = resolve
+    })
+    const writtenBytes: number[][] = []
+    const handle = {
+      kind: 'file',
+      name: 'saved.fig',
+      createWritable: vi.fn(async () => ({
+        write: vi.fn(async (data: Uint8Array) => {
+          writtenBytes.push([...data])
+          if (writtenBytes.length === 1) {
+            signalFirstWrite()
+            await firstWriteGate
+          }
+        }),
+        close: vi.fn(async () => undefined)
+      }))
+    } as FileSystemFileHandle
+    const state = {
+      ...createDefaultEditorState('page'),
+      documentName: 'Untitled'
+    }
+    const savedVersions: number[] = []
+    let buildCount = 0
+    let sourceRevision = 0
+    const buildFigFile = vi.fn(() => {
+      buildCount += 1
+      return { data: new Uint8Array([buildCount]), sceneVersion: buildCount }
+    })
+    const actions = createSaveActions({
+      state,
+      buildFigFile,
+      getFilePath: () => null,
+      setFilePath: vi.fn(),
+      getFileHandle: () => handle,
+      setFileHandle: vi.fn(),
+      getDownloadName: () => null,
+      setDownloadName: vi.fn(),
+      getStorageBinding: () => null,
+      setStorageBinding: vi.fn(),
+      setSourceIdentity: vi.fn(),
+      getSourceRevision: () => sourceRevision,
+      markSourceChanged: () => {
+        sourceRevision++
+      },
+      setSavedVersion: (version) => savedVersions.push(version),
+      setLastWriteTime: vi.fn(),
+      startWatchingFile: vi.fn()
+    })
+
+    const firstSave = actions.saveFigFile()
+    await firstWriteStarted
+    const secondSave = actions.saveFigFile()
+    await Promise.resolve()
+
+    expect(buildFigFile).toHaveBeenCalledTimes(1)
+    releaseFirstWrite()
+    await Promise.all([firstSave, secondSave])
+
+    expect(writtenBytes).toEqual([[1], [2]])
+    expect(savedVersions).toEqual([1, 2])
+  })
+
+  test('does not redirect an in-flight snapshot when the document source changes', async () => {
+    let finishBuild: () => void = () => undefined
+    const buildGate = new Promise<void>((resolve) => {
+      finishBuild = resolve
+    })
+    let signalBuild: () => void = () => undefined
+    const buildStarted = new Promise<void>((resolve) => {
+      signalBuild = resolve
+    })
+    const oldHandle = makeWritableHandle('old.fig')
+    const newHandle = makeWritableHandle('new.fig')
+    let activeHandle = oldHandle
+    let sourceRevision = 0
+    const savedVersions: number[] = []
+    const actions = createSaveActions({
+      state: {
+        ...createDefaultEditorState('page'),
+        documentName: 'Old document'
+      },
+      buildFigFile: async () => {
+        signalBuild()
+        await buildGate
+        return { data: new Uint8Array([1]), sceneVersion: 7 }
+      },
+      getFilePath: () => null,
+      setFilePath: vi.fn(),
+      getFileHandle: () => activeHandle,
+      setFileHandle: vi.fn(),
+      getDownloadName: () => null,
+      setDownloadName: vi.fn(),
+      getStorageBinding: () => null,
+      setStorageBinding: vi.fn(),
+      setSourceIdentity: vi.fn(),
+      getSourceRevision: () => sourceRevision,
+      markSourceChanged: () => {
+        sourceRevision++
+      },
+      setSavedVersion: (version) => savedVersions.push(version),
+      setLastWriteTime: vi.fn(),
+      startWatchingFile: vi.fn()
+    })
+
+    const saving = actions.saveFigFile()
+    await buildStarted
+    activeHandle = newHandle
+    sourceRevision++
+    finishBuild()
+    await saving
+
+    expect(oldHandle.createWritable).not.toHaveBeenCalled()
+    expect(newHandle.createWritable).not.toHaveBeenCalled()
+    expect(savedVersions).toEqual([])
+  })
+
+  test('does not build a file when Save As is cancelled', async () => {
+    const previousWindow = Reflect.get(globalThis, 'window')
+    const cancelled = new Error('cancelled')
+    cancelled.name = 'AbortError'
+    Reflect.set(globalThis, 'window', {
+      showSaveFilePicker: vi.fn(async () => {
+        throw cancelled
+      })
+    })
+    const buildFigFile = vi.fn(() => ({ data: new Uint8Array([1]), sceneVersion: 1 }))
+    let sourceRevision = 0
+    const actions = createSaveActions({
+      state: {
+        ...createDefaultEditorState('page'),
+        documentName: 'Untitled'
+      },
+      buildFigFile,
+      getFilePath: () => null,
+      setFilePath: vi.fn(),
+      getFileHandle: () => null,
+      setFileHandle: vi.fn(),
+      getDownloadName: () => null,
+      setDownloadName: vi.fn(),
+      getStorageBinding: () => null,
+      setStorageBinding: vi.fn(),
+      setSourceIdentity: vi.fn(),
+      getSourceRevision: () => sourceRevision,
+      markSourceChanged: () => {
+        sourceRevision++
+      },
+      setSavedVersion: vi.fn(),
+      setLastWriteTime: vi.fn(),
+      startWatchingFile: vi.fn()
+    })
+
+    try {
+      await actions.saveFigFileAs()
+      expect(buildFigFile).not.toHaveBeenCalled()
+    } finally {
+      if (previousWindow === undefined) Reflect.deleteProperty(globalThis, 'window')
+      else Reflect.set(globalThis, 'window', previousWindow)
+    }
   })
 })

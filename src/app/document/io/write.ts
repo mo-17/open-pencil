@@ -1,57 +1,37 @@
-import type { EditorState } from '@open-pencil/core/editor'
-
 import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
 import { persistStorageCanvasLocally } from '@/app/storage/sync/persist'
 import { isTauri } from '@/app/tauri/env'
 
-type WriteDocumentState = EditorState & { documentName: string }
+export type DocumentWriteTarget =
+  | Readonly<{
+      kind: 'storage'
+      binding: StorageDocumentBinding
+      documentName: string
+    }>
+  | Readonly<{ kind: 'tauri-path'; path: string }>
+  | Readonly<{ kind: 'browser-handle'; handle: FileSystemFileHandle }>
 
-type DocumentWriterOptions = {
-  state: WriteDocumentState
-  getFilePath: () => string | null
-  getFileHandle: () => FileSystemFileHandle | null
-  getStorageBinding: () => StorageDocumentBinding | null
-  setSavedVersion: (version: number) => void
-  setLastWriteTime: (time: number) => void
-}
-
-export function createDocumentWriter({
-  state,
-  getFilePath,
-  getFileHandle,
-  getStorageBinding,
-  setSavedVersion,
-  setLastWriteTime
-}: DocumentWriterOptions) {
-  return async function writeFile(data: Uint8Array): Promise<boolean> {
-    setLastWriteTime(Date.now())
-    const storage = getStorageBinding()
-    if (storage) {
+export function createDocumentWriter() {
+  return async function writeFile(target: DocumentWriteTarget, data: Uint8Array): Promise<void> {
+    if (target.kind === 'storage') {
       await persistStorageCanvasLocally({
-        providerId: storage.providerId,
-        canvasId: storage.documentId,
-        name: state.documentName || 'Untitled',
+        providerId: target.binding.providerId,
+        canvasId: target.binding.documentId,
+        name: target.documentName || 'Untitled',
         figBytes: data
       })
-      setSavedVersion(state.sceneVersion)
-      return true
+      return
     }
 
-    const filePath = getFilePath()
-    const fileHandle = getFileHandle()
-    if (filePath && isTauri()) {
+    if (target.kind === 'tauri-path') {
+      if (!isTauri()) throw new Error('Cannot write a Tauri path outside the Tauri runtime')
       const { writeFile: tauriWrite } = await import('@tauri-apps/plugin-fs')
-      await tauriWrite(filePath, data)
-      setSavedVersion(state.sceneVersion)
-      return true
+      await tauriWrite(target.path, data)
+      return
     }
-    if (fileHandle) {
-      const writable = await fileHandle.createWritable()
-      await writable.write(new Uint8Array(data))
-      await writable.close()
-      setSavedVersion(state.sceneVersion)
-      return true
-    }
-    return false
+
+    const writable = await target.handle.createWritable()
+    await writable.write(new Uint8Array(data))
+    await writable.close()
   }
 }

@@ -23,6 +23,7 @@ import { decodeBase64 } from '#core/bytes'
 import type { SkiaRenderer } from '#core/canvas'
 import { CANVAS_BG_COLOR, IS_BROWSER, IS_TAURI } from '#core/constants'
 import { projectLowcodeNodeForFigma } from '#core/io/formats/fig/lowcode-projection'
+import { encodeNativeFigBuildPayload } from '#core/io/formats/fig/native-payload'
 import { prepareFigmaProjectionFonts } from '#core/io/formats/fig/projection-fonts'
 import { renderThumbnail } from '#core/io/formats/raster'
 import type { FigWriteOptions, IOContext } from '#core/io/types'
@@ -780,16 +781,22 @@ export async function exportFigFileWithOptions(
 
   if (IS_TAURI) {
     const { invoke } = await import('@tauri-apps/api/core')
-    return new Uint8Array(
-      await invoke<number[]>('build_fig_file', {
-        schemaDeflated: Array.from(schemaDeflated),
-        kiwiData: Array.from(kiwiData),
-        thumbnailPng: Array.from(thumbnailPng),
+    const response = await invoke<ArrayBuffer | Uint8Array | number[]>(
+      'build_fig_file',
+      encodeNativeFigBuildPayload({
+        schemaDeflated,
+        kiwiData,
+        thumbnailPng,
         metaJson,
-        images: imageEntries.map((e) => ({ name: e.name, data: Array.from(e.data) })),
+        images: imageEntries,
         figKiwiVersion: version
       })
     )
+    if (response instanceof ArrayBuffer) return new Uint8Array(response)
+    if (ArrayBuffer.isView(response)) {
+      return new Uint8Array(response.buffer, response.byteOffset, response.byteLength)
+    }
+    return Uint8Array.from(response)
   }
 
   return compressFigData(schemaDeflated, kiwiData, thumbnailPng, metaJson, imageEntries, version)

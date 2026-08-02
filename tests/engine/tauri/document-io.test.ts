@@ -35,17 +35,9 @@ describe('Tauri document IO helpers', () => {
       calls.push({ cmd, args, options })
       return null
     })
-    const savedVersions: number[] = []
-    const write = createDocumentWriter({
-      state: { sceneVersion: 42 } as Parameters<typeof createDocumentWriter>[0]['state'],
-      getFilePath: () => '/tmp/document.fig',
-      getFileHandle: () => null,
-      getStorageBinding: () => null,
-      setSavedVersion: (version) => savedVersions.push(version),
-      setLastWriteTime: () => undefined
-    })
+    const write = createDocumentWriter()
 
-    await write(new Uint8Array([1, 2, 3]))
+    await write({ kind: 'tauri-path', path: '/tmp/document.fig' }, new Uint8Array([1, 2, 3]))
 
     expect(calls).toHaveLength(1)
     expect(calls[0]?.cmd).toBe('plugin:fs|write_file')
@@ -53,7 +45,6 @@ describe('Tauri document IO helpers', () => {
     expect(calls[0]?.options).toEqual({
       headers: { path: '%2Ftmp%2Fdocument.fig', options: undefined }
     })
-    expect(savedVersions).toEqual([42])
   })
 
   test('chooses a Tauri save path through plugin-dialog', async () => {

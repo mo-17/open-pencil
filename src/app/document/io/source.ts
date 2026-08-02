@@ -41,20 +41,24 @@ export function createDocumentSourceActions({
   getStorageBinding,
   setStorageBinding,
   setSourceIdentity,
+  getSourceRevision,
+  markSourceChanged,
   getSavedVersion,
   setSavedVersion,
   setLastWriteTime,
   getRenderer
 }: DocumentSourceOptions) {
-  function buildFigFile() {
-    return exportFigFileWithOptions(editor.graph, {
+  async function buildFigFile() {
+    const sceneVersion = state.sceneVersion
+    const data = await exportFigFileWithOptions(editor.graph, {
       renderer: getRenderer() ?? undefined,
       thumbnailPageId: state.currentPageId,
       profile: 'figma-compatible'
     })
+    return { data, sceneVersion }
   }
 
-  const { saveFigFile, saveFigFileAs, writeFile } = createSaveActions({
+  const { saveFigFile, saveFigFileAs } = createSaveActions({
     state,
     buildFigFile,
     getFilePath,
@@ -66,6 +70,8 @@ export function createDocumentSourceActions({
     getStorageBinding,
     setStorageBinding,
     setSourceIdentity,
+    getSourceRevision,
+    markSourceChanged,
     setSavedVersion,
     setLastWriteTime,
     startWatchingFile: () => {
@@ -77,9 +83,7 @@ export function createDocumentSourceActions({
     state,
     getSavedVersion,
     hasWritableSource: () => !!getFileHandle() || !!getFilePath() || !!getStorageBinding(),
-    saveCurrentDocument: async () => {
-      await writeFile(await buildFigFile())
-    }
+    saveCurrentDocument: saveFigFile
   })
 
   function setDocumentSource(
@@ -95,6 +99,8 @@ export function createDocumentSourceActions({
     setFilePath(isFig ? (path ?? null) : null)
     setDownloadName(figDownloadName(fileName, sourceFormat))
     setSourceIdentity({ handle: handle ?? null, path: path ?? null })
+    markSourceChanged()
+    setLastWriteTime(0)
     setSavedVersion(state.sceneVersion)
     if (isFig && (handle || path)) {
       void startWatchingFile()
@@ -110,6 +116,8 @@ export function createDocumentSourceActions({
     setStorageBinding(binding)
     state.documentName = documentName
     state.autosaveEnabled = true
+    markSourceChanged()
+    setLastWriteTime(0)
     setSavedVersion(state.sceneVersion)
   }
 
@@ -121,6 +129,8 @@ export function createDocumentSourceActions({
     const downloadName = downloadNameFromPath(path)
     setDownloadName(downloadName)
     state.documentName = documentNameFromFigPath(downloadName)
+    markSourceChanged()
+    setLastWriteTime(0)
   }
 
   function startWatchingCurrentFile() {
