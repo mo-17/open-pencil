@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from 'bun:test'
 
 import { saveExportedFile } from '@/app/document/export/files'
 import { watchTauriFile } from '@/app/document/io/watch-targets'
-import { chooseTauriOpenPath, readTauriDesignFile } from '@/app/shell/menu/files'
+import {
+  chooseTauriOpenPath,
+  readTauriDesignBytes,
+  readTauriDesignFile
+} from '@/app/shell/menu/files'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
@@ -38,6 +42,18 @@ describe('Tauri file actions', () => {
 
     expect(file.name).toBe('design.pen')
     await expect(file.text()).resolves.toBe('{"a":1}')
+  })
+
+  test('reads Tauri bytes without wrapping them in a File', async () => {
+    await mockTauriIPC((cmd, args) => {
+      expect(cmd).toBe('plugin:fs|read_file')
+      expect(args).toEqual({ path: 'C:\\designs\\large.fig', options: undefined })
+      return [1, 2, 3]
+    })
+
+    const bytes = await readTauriDesignBytes('C:\\designs\\large.fig')
+
+    expect([...bytes]).toEqual([1, 2, 3])
   })
 
   test('saves exports through Tauri dialog and fs APIs', async () => {

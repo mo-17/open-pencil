@@ -6,7 +6,18 @@ import { SceneGraph } from '@open-pencil/scene-graph'
 
 import { resolveBrowserFileURL } from '@/app/document/io/browser'
 import type { DocumentSourceIdentity } from '@/app/document/io/types'
-import { createTab, getActiveStore, openFileInNewTab, tabCount } from '@/app/tabs'
+import * as storageModule from '@/app/integrations/storage'
+import {
+  createMemoryLocalCanvasStore,
+  resetLocalCanvasStoreForTests
+} from '@/app/storage/local-store'
+import {
+  createTab,
+  getActiveStore,
+  openFileInNewTab,
+  openStorageDocumentInNewTab,
+  tabCount
+} from '@/app/tabs'
 import { fileIdentitiesMatch, findTabByFileIdentity } from '@/app/tabs/open/identity'
 
 function setupGlobals() {
@@ -95,15 +106,21 @@ describe('file identity', () => {
   })
 })
 
-describe('openFileInNewTab deduplication', () => {
+describe('tab opening deduplication', () => {
   beforeEach(() => {
     setupGlobals()
     vi.spyOn(layoutModule, 'computeAllLayouts').mockReturnValue(undefined)
     vi.spyOn(figModule, 'readFigFile').mockResolvedValue(new SceneGraph())
+    vi.spyOn(figModule, 'readFigSource').mockImplementation(async (source) => {
+      await source.read()
+      return new SceneGraph()
+    })
+    resetLocalCanvasStoreForTests(createMemoryLocalCanvasStore())
     createTab()
   })
 
   afterEach(() => {
+    resetLocalCanvasStoreForTests()
     vi.restoreAllMocks()
     Reflect.deleteProperty(globalThis, 'window')
     Reflect.deleteProperty(globalThis, 'document')
@@ -147,6 +164,21 @@ describe('openFileInNewTab deduplication', () => {
     read.resolve(new SceneGraph())
     await Promise.all([first, second])
     expect(tabCount()).toBe(initialCount)
+  })
+
+  test('starts loading before a deferred desktop read and parses its buffer directly', async () => {
+    let loadingDuringRead = false
+    const read = vi.fn(async () => {
+      loadingDuringRead = getActiveStore().state.loading
+      return new Uint8Array([1, 2, 3])
+    })
+
+    await openFileInNewTab({ name: 'large.fig', read }, undefined, '/tmp/large.fig')
+
+    expect(loadingDuringRead).toBe(true)
+    expect(read).toHaveBeenCalledTimes(1)
+    expect(figModule.readFigSource).toHaveBeenCalledTimes(1)
+    expect(figModule.readFigFile).not.toHaveBeenCalled()
   })
 
   test('allows different files to load concurrently', async () => {
@@ -196,5 +228,67 @@ describe('openFileInNewTab deduplication', () => {
 
     expect(tabCount()).toBe(initialCount + 1)
     expect(figModule.readFigFile).toHaveBeenCalledTimes(2)
+  })
+
+  test('shares one download and parse between concurrent storage opens', async () => {
+    const started = Promise.withResolvers<undefined>()
+    const download = Promise.withResolvers<Uint8Array>()
+    const getDocument = vi.fn(() => {
+      started.resolve(undefined)
+      return download.promise
+    })
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    const document = {
+      id: 'storage-concurrent',
+      name: 'Storage concurrent',
+      updatedAt: '2026-07-31T00:00:00.000Z',
+      metadataAuthoritative: true
+    }
+    const initialCount = tabCount()
+
+    const first = openStorageDocumentInNewTab(document)
+    await started.promise
+    const second = openStorageDocumentInNewTab(document)
+    await Promise.resolve()
+
+    expect(getDocument).toHaveBeenCalledTimes(1)
+    download.resolve(new Uint8Array([1, 2, 3]))
+    await Promise.all([first, second])
+    expect(tabCount()).toBe(initialCount)
+    expect(getActiveStore().getStorageBinding()).toEqual({
+      providerId: storageModule.activeStorageProviderID.value,
+      documentId: document.id
+    })
+  })
+
+  test('removes a failed storage open and retries from the local cache', async () => {
+    const getDocument = vi.fn(async () => new Uint8Array([1, 2, 3]))
+    vi.spyOn(storageModule, 'createActiveStorageAdapter').mockReturnValue({
+      getDocument
+    } as ReturnType<typeof storageModule.createActiveStorageAdapter>)
+    ;(figModule.readFigSource as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(async (source) => {
+        await source.read()
+        throw new Error('parse failed')
+      })
+      .mockImplementationOnce(async (source) => {
+        await source.read()
+        return new SceneGraph()
+      })
+    const document = {
+      id: 'storage-retry',
+      name: 'Storage retry',
+      updatedAt: '2026-07-31T00:00:00.000Z',
+      metadataAuthoritative: true
+    }
+
+    await expect(openStorageDocumentInNewTab(document)).rejects.toThrow('parse failed')
+    await expect(openStorageDocumentInNewTab(document)).resolves.toBeUndefined()
+
+    expect(figModule.readFigSource).toHaveBeenCalledTimes(2)
+    expect(getDocument).toHaveBeenCalledTimes(1)
+    expect(getActiveStore().getStorageBinding()?.documentId).toBe(document.id)
   })
 })

@@ -1,11 +1,16 @@
 import type { Editor, EditorState } from '@open-pencil/core/editor'
 import { readFigFile } from '@open-pencil/core/io/formats/fig'
-import { computeAllLayouts } from '@open-pencil/core/layout'
+import { populateLazyFigImportRoots } from '@open-pencil/core/kiwi'
+import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
 
 import { yieldToUI } from '@/app/document/io/browser'
 import { applyImportedDocument } from '@/app/document/io/imported-document'
 import { readReloadSource } from '@/app/document/io/reload-source'
-import { captureReloadState, restoreReloadState } from '@/app/document/io/reload-state'
+import {
+  captureReloadState,
+  resolveReloadPageId,
+  restoreReloadState
+} from '@/app/document/io/reload-state'
 import { toast } from '@/app/shell/ui'
 
 type OpenDocumentState = EditorState & {
@@ -35,6 +40,11 @@ type ReloadActionsOptions = {
   setSavedVersion: (version: number) => void
 }
 
+type ReloadActionsDependencies = {
+  readSource?: typeof readReloadSource
+  computeLayouts?: typeof computeAllLayoutsAsync
+}
+
 export function createOpenActions({
   editor,
   state,
@@ -42,8 +52,8 @@ export function createOpenActions({
   fitCurrentPageToViewport
 }: OpenFigFileOptions) {
   async function openFigFile(file: File, handle?: FileSystemFileHandle, path?: string) {
+    const finishLoading = editor.beginLoading()
     try {
-      state.loading = true
       await yieldToUI()
       const imported = await readFigFile(file, { populate: 'first-page' })
       await yieldToUI()
@@ -51,44 +61,120 @@ export function createOpenActions({
       state.documentName = file.name.replace(/\.fig$/i, '')
       setDocumentSource(file.name, 'fig', handle, path)
       await fitCurrentPageToViewport()
-      editor.requestRender()
     } catch (e) {
       console.error('Failed to open .fig file:', e)
       toast.error(`Failed to open file: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
-      state.loading = false
+      finishLoading()
     }
   }
 
   return { openFigFile }
 }
 
-export function createReloadActions({
-  editor,
-  state,
-  getFilePath,
-  getFileHandle,
-  setSavedVersion
-}: ReloadActionsOptions) {
-  async function reloadFromDisk() {
-    const snapshot = captureReloadState(state)
-    const filePath = getFilePath()
-    const fileHandle = getFileHandle()
+export function createReloadActions(
+  { editor, state, getFilePath, getFileHandle, setSavedVersion }: ReloadActionsOptions,
+  dependencies: ReloadActionsDependencies = {}
+) {
+  const readSource = dependencies.readSource ?? readReloadSource
+  const computeLayouts = dependencies.computeLayouts ?? computeAllLayoutsAsync
+  let requestedReloadVersion = 0
+  let handledReloadVersion = 0
+  let runningReloadVersion = 0
+  let reloadPromise: Promise<void> | null = null
+  let activeReloadController: AbortController | null = null
 
-    const imported = await readReloadSource({
-      documentName: state.documentName,
-      filePath,
-      fileHandle
-    })
-    if (!imported) return
-    const pageId = imported.getNode(snapshot.pageId) ? snapshot.pageId : imported.getPages()[0]?.id
-    if (pageId) computeAllLayouts(imported, pageId)
-    editor.replaceGraph(imported)
+  function wasSuperseded(version: number, controller: AbortController) {
+    return controller.signal.aborted || version !== requestedReloadVersion
+  }
 
-    editor.undo.clear()
-    restoreReloadState(editor, state, snapshot)
-    editor.requestRender()
-    setSavedVersion(state.sceneVersion)
+  async function runReloadLoop() {
+    runningReloadVersion = requestedReloadVersion
+    const finishLoading = editor.beginLoading()
+    try {
+      while (handledReloadVersion < requestedReloadVersion) {
+        const reloadVersion = requestedReloadVersion
+        runningReloadVersion = reloadVersion
+        const controller = new AbortController()
+        activeReloadController = controller
+        const snapshot = captureReloadState(editor, state)
+        const filePath = getFilePath()
+        const fileHandle = getFileHandle()
+
+        let imported
+        try {
+          imported = await readSource({
+            documentName: state.documentName,
+            filePath,
+            fileHandle
+          })
+        } catch (error) {
+          if (wasSuperseded(reloadVersion, controller)) continue
+          handledReloadVersion = reloadVersion
+          throw error
+        }
+        if (wasSuperseded(reloadVersion, controller)) continue
+        if (!imported) {
+          handledReloadVersion = reloadVersion
+          continue
+        }
+
+        const pageId = resolveReloadPageId(imported, snapshot)
+        populateLazyFigImportRoots(imported, [pageId])
+        try {
+          await computeLayouts(imported, pageId, controller.signal)
+        } catch (error) {
+          if (wasSuperseded(reloadVersion, controller)) continue
+          handledReloadVersion = reloadVersion
+          throw error
+        }
+        if (wasSuperseded(reloadVersion, controller)) continue
+
+        editor.replaceGraph(imported, { currentPageId: pageId })
+        editor.undo.clear()
+        restoreReloadState(editor, state, snapshot)
+        setSavedVersion(state.sceneVersion)
+        handledReloadVersion = reloadVersion
+      }
+    } finally {
+      activeReloadController = null
+      finishLoading()
+    }
+  }
+
+  function ensureReloadLoop(): Promise<void> {
+    if (!reloadPromise) {
+      const pending = runReloadLoop()
+      const tracked = pending
+        .catch((error) => {
+          // Cover unexpected setup/apply/cleanup failures as well as the explicitly guarded read
+          // and layout steps. A newer settlement-gap request still has a larger version and will
+          // start a fresh runner instead of inheriting this failure.
+          handledReloadVersion = Math.max(handledReloadVersion, runningReloadVersion)
+          throw error
+        })
+        .finally(() => {
+          if (reloadPromise === tracked) reloadPromise = null
+        })
+      reloadPromise = tracked
+    }
+    return reloadPromise
+  }
+
+  async function waitForReloadVersion(reloadVersion: number): Promise<void> {
+    if (handledReloadVersion >= reloadVersion) return
+    try {
+      await ensureReloadLoop()
+    } catch (error) {
+      if (handledReloadVersion >= reloadVersion) throw error
+    }
+    return waitForReloadVersion(reloadVersion)
+  }
+
+  function reloadFromDisk(): Promise<void> {
+    const reloadVersion = ++requestedReloadVersion
+    activeReloadController?.abort()
+    return waitForReloadVersion(reloadVersion)
   }
 
   return { reloadFromDisk }

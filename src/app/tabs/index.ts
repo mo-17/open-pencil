@@ -1,8 +1,7 @@
 import { shallowRef, computed, triggerRef } from 'vue'
 
 import { BUILTIN_IO_FORMATS, IORegistry } from '@open-pencil/core/io'
-import { readFigFile } from '@open-pencil/core/io/formats/fig'
-import { computeAllLayouts } from '@open-pencil/core/layout'
+import { readFigFile, readFigSource } from '@open-pencil/core/io/formats/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { setOpenPencilStore } from '@/app/browser-bridge'
@@ -18,6 +17,11 @@ import {
 import { getLocalCanvasStore } from '@/app/storage/local-store'
 import { seedStorageCanvasFromRemote } from '@/app/storage/sync/persist'
 import { createFileOpenCoordinator } from '@/app/tabs/open/coordinator'
+import {
+  exactArrayBuffer,
+  isDeferredOpenFile,
+  type OpenFileSource
+} from '@/app/tabs/open/file-source'
 import { findTabByFileIdentity } from '@/app/tabs/open/identity'
 
 export interface Tab {
@@ -118,8 +122,24 @@ function yieldToUI(): Promise<void> {
   })
 }
 
-function isDOMImportFile(file: File): boolean {
+function isDOMImportFile(file: OpenFileSource): boolean {
   return /\.(html?|xhtml)$/i.test(file.name)
+}
+
+async function readDeferredFile(source: OpenFileSource): Promise<Uint8Array> {
+  return isDeferredOpenFile(source) ? source.read() : new Uint8Array(await source.arrayBuffer())
+}
+
+async function openDOMSource(
+  store: EditorStore,
+  source: OpenFileSource,
+  handle?: FileSystemFileHandle,
+  path?: string
+): Promise<void> {
+  const file = isDeferredOpenFile(source)
+    ? new File([exactArrayBuffer(await source.read())], source.name, { type: source.type })
+    : source
+  await store.openDOMFile(file, { handle, path })
 }
 
 function reusableTabStore(): EditorStore {
@@ -136,17 +156,47 @@ function findStorageTab(providerId: string, documentId: string): Tab | undefined
   })
 }
 
+function storageOpenIdentity(providerId: string, documentId: string): DocumentSourceIdentity {
+  return {
+    handle: null,
+    path: `storage://${encodeURIComponent(providerId)}/${encodeURIComponent(documentId)}`
+  }
+}
+
 export async function openStorageDocumentInNewTab(document: StorageDocument): Promise<void> {
   const providerId = activeStorageProviderID.value
-  const existing = findStorageTab(providerId, document.id)
-  if (existing) {
-    switchTab(existing.id)
+  const identity = storageOpenIdentity(providerId, document.id)
+  const decision = await fileOpenCoordinator.decide(async () => {
+    const pending = await fileOpenCoordinator.findPending(identity)
+    if (pending) {
+      const tab = getTabForStore(pending.store)
+      if (tab) switchTab(tab.id)
+      return { kind: 'pending' as const, completion: pending.completion }
+    }
+
+    const existing = findStorageTab(providerId, document.id)
+    if (existing) {
+      switchTab(existing.id)
+      return { kind: 'existing' as const }
+    }
+
+    const store = reusableTabStore()
+    store.state.documentName = document.name
+    const finishLoading = store.beginLoading()
+    const completion = Promise.withResolvers<undefined>()
+    void completion.promise.catch(() => undefined)
+    const pendingOpen = { completion: completion.promise, identity, store }
+    fileOpenCoordinator.add(pendingOpen)
+    return { kind: 'owner' as const, completion, finishLoading, pendingOpen, store }
+  })
+
+  if (decision.kind === 'existing') return
+  if (decision.kind === 'pending') {
+    await decision.completion
     return
   }
 
-  const store = reusableTabStore()
-  store.state.documentName = document.name
-  store.state.loading = true
+  const { completion, finishLoading, pendingOpen, store } = decision
   try {
     const local = getLocalCanvasStore()
     const localMetadata = await local.getMeta(document.id)
@@ -168,14 +218,22 @@ export async function openStorageDocumentInNewTab(document: StorageDocument): Pr
       })
     }
 
-    const fileBytes = new Uint8Array(bytes.byteLength)
-    fileBytes.set(bytes)
-    const file = new File([fileBytes.buffer], `${document.name}.fig`, {
-      type: 'application/octet-stream'
-    })
-    const imported = await readFigFile(file, { populate: 'first-page' })
-    const firstPageId = imported.getPages()[0]?.id
-    if (firstPageId) computeAllLayouts(imported, firstPageId)
+    let initialBytes: Uint8Array | null = bytes
+    const imported = await readFigSource(
+      {
+        async read() {
+          if (initialBytes) {
+            const current = initialBytes
+            initialBytes = null
+            return current
+          }
+          const cached = await local.readFig(document.id)
+          if (!cached) throw new Error('Cached .fig data is unavailable for parser recovery')
+          return cached
+        }
+      },
+      { populate: 'first-page' }
+    )
     store.replaceGraph(imported)
     store.undo.clear()
     store.setStorageDocumentSource({ providerId, documentId: document.id }, document.name)
@@ -183,13 +241,18 @@ export async function openStorageDocumentInNewTab(document: StorageDocument): Pr
     const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
     await store.switchPage(pageId)
     await store.fitCurrentPageToViewport()
+    completion.resolve(undefined)
+  } catch (error) {
+    completion.reject(error)
+    throw error
   } finally {
-    store.state.loading = false
+    finishLoading()
+    fileOpenCoordinator.remove(pendingOpen)
   }
 }
 
 export async function openFileInNewTab(
-  file: File,
+  file: OpenFileSource,
   handle?: FileSystemFileHandle,
   path?: string
 ): Promise<void> {
@@ -213,13 +276,13 @@ export async function openFileInNewTab(
 
     const store = reusableTabStore()
     store.state.documentName = file.name.replace(/\.[^.]+$/i, '')
-    store.state.loading = true
+    const finishLoading = store.beginLoading()
 
     const completion = Promise.withResolvers<undefined>()
     void completion.promise.catch(() => undefined)
     const pendingOpen = { completion: completion.promise, identity, store }
     fileOpenCoordinator.add(pendingOpen)
-    return { kind: 'owner' as const, completion, pendingOpen, store }
+    return { kind: 'owner' as const, completion, finishLoading, pendingOpen, store }
   })
 
   if (decision.kind === 'existing') return
@@ -228,26 +291,33 @@ export async function openFileInNewTab(
     return
   }
 
-  const { completion, pendingOpen, store } = decision
+  const { completion, finishLoading, pendingOpen, store } = decision
   try {
     if (isDOMImportFile(file)) {
-      await store.openDOMFile(file, { handle, path })
+      await openDOMSource(store, file, handle, path)
       completion.resolve(undefined)
       return
     }
 
     await yieldToUI()
     const isFig = file.name.toLowerCase().endsWith('.fig')
-    const { graph: imported, sourceFormat } = isFig
-      ? { graph: await readFigFile(file, { populate: 'first-page' }), sourceFormat: 'fig' }
-      : await io.readDocument({
-          name: file.name,
-          mimeType: file.type || undefined,
-          data: new Uint8Array(await file.arrayBuffer())
-        })
+    let imported: SceneGraph
+    let sourceFormat: string
+    if (isFig) {
+      imported = isDeferredOpenFile(file)
+        ? await readFigSource(file, { populate: 'first-page' })
+        : await readFigFile(file, { populate: 'first-page' })
+      sourceFormat = 'fig'
+    } else {
+      const result = await io.readDocument({
+        name: file.name,
+        mimeType: file.type || undefined,
+        data: await readDeferredFile(file)
+      })
+      imported = result.graph
+      sourceFormat = result.sourceFormat
+    }
 
-    const firstPageId = imported.getPages()[0]?.id
-    if (firstPageId) computeAllLayouts(imported, firstPageId)
     store.replaceGraph(imported)
     store.undo.clear()
     store.setDocumentSource(file.name, sourceFormat, handle, path)
@@ -260,7 +330,7 @@ export async function openFileInNewTab(
     completion.reject(error)
     throw error
   } finally {
-    store.state.loading = false
+    finishLoading()
     fileOpenCoordinator.remove(pendingOpen)
   }
 }

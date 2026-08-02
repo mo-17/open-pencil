@@ -3,6 +3,7 @@ import { useFileDialog } from '@vueuse/core'
 import { setOpenPencilOpenFileHandler } from '@/app/browser-bridge'
 import { resolveBrowserFileURL } from '@/app/document/io/browser'
 import { openFileInNewTab } from '@/app/tabs'
+import { exactArrayBuffer } from '@/app/tabs/open/file-source'
 import { isTauri } from '@/app/tauri/env'
 import { IS_BROWSER } from '@/constants'
 
@@ -29,9 +30,17 @@ if (IS_BROWSER && 'window' in globalThis) {
 }
 
 export async function readTauriDesignFile(path: string): Promise<File> {
+  const bytes = await readTauriDesignBytes(path)
+  return new File([exactArrayBuffer(bytes)], designFileName(path))
+}
+
+export async function readTauriDesignBytes(path: string): Promise<Uint8Array> {
   const { readFile } = await import('@tauri-apps/plugin-fs')
-  const bytes = await readFile(path)
-  return new File([bytes], path.split('/').pop() ?? 'file.fig')
+  return readFile(path)
+}
+
+function designFileName(path: string): string {
+  return path.split(/[\\/]/).pop() || 'file.fig'
 }
 
 export async function chooseTauriOpenPath(): Promise<string | null> {
@@ -45,8 +54,14 @@ export async function chooseTauriOpenPath(): Promise<string | null> {
 
 export async function openFileFromPath(path: string) {
   if (!isTauri()) return
-  const file = await readTauriDesignFile(path)
-  await openFileInNewTab(file, undefined, path)
+  await openFileInNewTab(
+    {
+      name: designFileName(path),
+      read: () => readTauriDesignBytes(path)
+    },
+    undefined,
+    path
+  )
 }
 
 export async function openFileDialog() {

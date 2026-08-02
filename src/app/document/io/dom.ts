@@ -51,13 +51,12 @@ export function createDOMOpenActions({
     await applyImportedDocument(editor, graph)
     state.documentName = pageName
     await fitCurrentPageToViewport()
-    editor.requestRender()
     return pageName
   }
 
   async function importDOMText(html: string, options: DOMTextImportOptions = {}) {
+    const finishLoading = editor.beginLoading()
     try {
-      state.loading = true
       const pageName = await applyDOMText(html, options)
       setDocumentSource(`${pageName}.html`, 'html')
       toast.info('Imported DOM/CSS document')
@@ -66,13 +65,13 @@ export function createDOMOpenActions({
       toast.error(`Failed to import DOM/CSS: ${e instanceof Error ? e.message : String(e)}`)
       throw e
     } finally {
-      state.loading = false
+      finishLoading()
     }
   }
 
   async function openDOMFile(file: File, options: DOMImportOptions = {}) {
+    const finishLoading = editor.beginLoading()
     try {
-      state.loading = true
       const html = await file.text()
       await applyDOMText(html, {
         cssText: options.cssText,
@@ -83,7 +82,7 @@ export function createDOMOpenActions({
       console.error('Failed to open DOM/CSS file:', e)
       toast.error(`Failed to open DOM/CSS file: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
-      state.loading = false
+      finishLoading()
     }
   }
 
