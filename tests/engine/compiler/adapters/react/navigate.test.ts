@@ -77,6 +77,26 @@ describe('navigate action — React adapter emit', () => {
     expect(aboutTsx).not.toContain('navigate(')
   })
 
+  test('multi-page compile reports a navigate target missing from the emitted router', () => {
+    const graph = makeGraph()
+    const home = graph.getPages()[0]
+    graph.updateNode(home.id, { name: 'Home' })
+    addButtonWithNavigate(graph, home.id, '/not-emitted')
+    const about = graph.addPage('About')
+    const excluded = graph.addPage('Not Emitted')
+    graph.updateNode(excluded.id, { lowcodeRoutePattern: '/not-emitted' })
+
+    const out = compile({
+      graph,
+      pageIds: [home.id, about.id],
+      options: withDefaults({ packageName: 'nav-missing-target' })
+    })
+
+    expect(out.warnings).toContainEqual(
+      expect.objectContaining({ code: 'navigate-target-missing' })
+    )
+  })
+
   test('multi-page reusable component owns its useNavigate import and hook', () => {
     const graph = makeGraph()
     const home = graph.getPages()[0]

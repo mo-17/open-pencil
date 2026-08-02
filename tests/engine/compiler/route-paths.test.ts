@@ -4,6 +4,7 @@ import {
   derivePagePaths,
   findPageInfoByPageId
 } from '@open-pencil/compiler/adapters/react/route-paths'
+import { buildRouterApp } from '@open-pencil/compiler/adapters/react/scaffold'
 import type { IRTree } from '@open-pencil/compiler/ir/types'
 
 function makeIR(pageName: string, pageId = `p-${pageName}`): IRTree {
@@ -55,6 +56,40 @@ describe('derivePagePaths (Phase 1 §11)', () => {
     expect(infos[2].originalSlug).toBe('about')
   })
 
+  test('keeps routes, files, and component names unique when a suffix is already occupied', () => {
+    const infos = derivePagePaths([
+      makeIR('Home'),
+      makeIR('foo-3'),
+      makeIR('foo', 'p-foo-1'),
+      makeIR('foo', 'p-foo-2')
+    ])
+
+    expect(infos.map((info) => info.slug)).toEqual(['index', 'foo-3', 'foo', 'foo-4'])
+    expect(infos.map((info) => info.route)).toEqual(['/', '/foo-3', '/foo', '/foo-4'])
+    expect(infos.map((info) => info.file)).toEqual([
+      'index.tsx',
+      'foo-3.tsx',
+      'foo.tsx',
+      'foo-4.tsx'
+    ])
+    expect(infos.map((info) => info.component)).toEqual([
+      'PageIndex',
+      'PageFoo3',
+      'PageFoo',
+      'PageFoo4'
+    ])
+    expect(new Set(infos.map((info) => info.file)).size).toBe(infos.length)
+    expect(new Set(infos.map((info) => info.component)).size).toBe(infos.length)
+
+    const app = buildRouterApp(infos, { devMode: false })
+    expect(app.split('\n').filter((line) => line.startsWith('import Page'))).toEqual([
+      "import PageIndex from './pages/index'",
+      "import PageFoo3 from './pages/foo-3'",
+      "import PageFoo from './pages/foo'",
+      "import PageFoo4 from './pages/foo-4'"
+    ])
+  })
+
   test('non-first page named "index" → suffixed to avoid colliding with the implicit / route', () => {
     const infos = derivePagePaths([makeIR('Home'), makeIR('index')])
     expect(infos[1].slug).toBe('index-1')
@@ -71,6 +106,15 @@ describe('derivePagePaths (Phase 1 §11)', () => {
   test('leading/trailing punctuation gets trimmed', () => {
     const [, info] = derivePagePaths([makeIR('Home'), makeIR('!!About!!')])
     expect(info.slug).toBe('about')
+  })
+
+  test('uses the shared explicit route-pattern override while keeping the derived filename', () => {
+    const product = makeIR('Product Detail')
+    product.routePattern = '/product/:id'
+    const [, info] = derivePagePaths([makeIR('Home'), product])
+    expect(info.route).toBe('/product/:id')
+    expect(info.slug).toBe('product-detail')
+    expect(info.file).toBe('product-detail.tsx')
   })
 
   // Phase 2 §7: editor preview bridge needs pageId on PagePathInfo so it can

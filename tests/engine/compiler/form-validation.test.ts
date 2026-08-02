@@ -140,6 +140,72 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(formLine).toMatch(/__validateFields\(\["[^"]+"\]\)/)
   })
 
+  test('eventless buttons are implicit submits only inside a FORM subtree', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(pageId, {
+      state: [{ id: 'status', name: 'status', type: 'string', defaultValue: '' }]
+    })
+    const form = graph.createNode('FORM', pageId, { name: 'F', width: 300, height: 200 })
+    const formBody = graph.createNode('FRAME', form.id, {
+      name: 'Form body',
+      width: 300,
+      height: 200
+    })
+    graph.createNode('BUTTON', formBody.id, {
+      name: 'Implicit submit',
+      interactiveProps: { text: 'Implicit submit' }
+    })
+    graph.createNode('BUTTON', formBody.id, {
+      name: 'Configured action',
+      interactiveProps: { text: 'Configured action' },
+      events: {
+        onClick: [
+          {
+            id: 'set-status',
+            kind: 'setState',
+            targetStateId: 'status',
+            valueExpr: '"done"'
+          }
+        ]
+      }
+    })
+    graph.createNode('BUTTON', formBody.id, {
+      name: 'Prototype action',
+      interactiveProps: { text: 'Prototype action' },
+      prototype: {
+        version: 1,
+        connections: [
+          {
+            id: 'prototype-action',
+            trigger: { kind: 'click' },
+            action: { kind: 'back' },
+            transition: { kind: 'instant' },
+            interruption: 'replace',
+            playback: 'forward'
+          }
+        ]
+      }
+    })
+    graph.createNode('BUTTON', pageId, {
+      name: 'Outside button',
+      interactiveProps: { text: 'Outside button' }
+    })
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const implicitSubmit = app.split('\n').find((line) => line.includes('Implicit submit')) ?? ''
+    const configuredAction =
+      app.split('\n').find((line) => line.includes('Configured action')) ?? ''
+    const prototypeAction = app.split('\n').find((line) => line.includes('Prototype action')) ?? ''
+    const outsideButton = app.split('\n').find((line) => line.includes('Outside button')) ?? ''
+
+    expect(implicitSubmit).toContain('type="submit"')
+    expect(configuredAction).toContain('type="button"')
+    expect(prototypeAction).toContain('type="button"')
+    expect(outsideButton).toContain('type="button"')
+  })
+
   test('async custom validator emits validateRemote after sync rules pass', () => {
     const { app, files } = compileField({
       required: true,

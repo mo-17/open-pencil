@@ -13,6 +13,7 @@ import {
   PREV_IDENT,
   validateAnalyticsConfig,
   validateDatePickerProps,
+  validateLowcodeRoutePattern,
   validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
 import {
@@ -178,6 +179,7 @@ export function collectTree(
     docStateWrites,
     warnings,
     inScope: new Set(),
+    inForm: false,
     components,
     workflows,
     i18n,
@@ -389,10 +391,11 @@ function liftRoutePattern(
 ): string | undefined {
   const raw = page.lowcodeRoutePattern
   if (typeof raw !== 'string' || raw === '') return undefined
-  if (!raw.startsWith('/')) {
+  const validation = validateLowcodeRoutePattern(raw)
+  if (!validation.ok) {
     warnings.push({
       code: 'route-pattern-invalid',
-      message: `page route pattern "${raw}" must start with "/"; falling back to the slug-derived route`,
+      message: `page route pattern "${raw}" ${validation.reason}; falling back to the slug-derived route`,
       nodeId: pageId
     })
     return undefined
@@ -472,6 +475,7 @@ export function collectComponents(
       docStateWrites,
       warnings,
       inScope: new Set(),
+      inForm: false,
       components,
       workflows,
       i18n,
@@ -613,6 +617,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   if (node.type === 'COMPONENT') {
     const meta = ctx.components.get(node.id)
     if (!meta) return null
+    if (shouldInlineImplicitSubmitComponent(node, node, ctx)) return null
     return refOf(node, meta.name, [], meta.prototypeBody, ctx)
   }
   if (node.type !== 'INSTANCE' || !node.componentId) return null
@@ -622,6 +627,8 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   if (instanceHasDeepOverride(ctx.graph, node)) return null
   const meta = ctx.components.get(node.componentId)
   if (meta) {
+    const source = ctx.graph.getNode(node.componentId)
+    if (source && shouldInlineImplicitSubmitComponent(node, source, ctx)) return null
     return refOf(
       node,
       meta.name,
@@ -635,6 +642,7 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
   const variantChild = ctx.graph.getNode(node.componentId)
   const setMeta = variantChild?.parentId ? ctx.components.get(variantChild.parentId) : undefined
   if (!variantChild || !setMeta?.variants) return null
+  if (shouldInlineImplicitSubmitComponent(node, variantChild, ctx)) return null
   // Phase 3 §8 v5/v6: a variant instance composes its variant prop with any
   // text/className override props.
   const props = [
@@ -642,6 +650,50 @@ function resolveComponentRef(node: SceneNode, ctx: WalkCtx): IRComponentRef | nu
     ...resolveInstanceProps(node, setMeta.propSlots, ctx)
   ]
   return refOf(node, setMeta.name, props, setMeta.prototypeBody, ctx)
+}
+
+/** A clean component ref hides its descendants behind one reusable module.
+ *  Inside a FORM, inline only refs whose emitted subtree needs native implicit
+ *  submit semantics. Other usages keep sharing the component module, while an
+ *  interactive component boundary remains an explicit button. */
+function shouldInlineImplicitSubmitComponent(
+  node: SceneNode,
+  source: SceneNode,
+  ctx: WalkCtx
+): boolean {
+  if (!ctx.inForm || componentBoundaryHasInteraction(node, source)) return false
+  const stack = ctx.graph
+    .getChildren(source.id)
+    .map((child) => ({ child, insideAuthoredForm: false }))
+  const visited = new Set<string>()
+  while (stack.length > 0) {
+    const entry = stack.pop()
+    if (!entry || visited.has(entry.child.id)) continue
+    visited.add(entry.child.id)
+    if (
+      entry.child.type === 'BUTTON' &&
+      !entry.insideAuthoredForm &&
+      !hasConfiguredButtonInteraction(entry.child)
+    ) {
+      return true
+    }
+    const descendantsInsideForm = entry.insideAuthoredForm || entry.child.type === 'FORM'
+    stack.push(
+      ...ctx.graph
+        .getChildren(entry.child.id)
+        .map((child) => ({ child, insideAuthoredForm: descendantsInsideForm }))
+    )
+  }
+  return false
+}
+
+function componentBoundaryHasInteraction(node: SceneNode, source: SceneNode): boolean {
+  const events = node.events ?? source.events
+  const prototype = node.prototype ?? source.prototype
+  return (
+    Object.values(events ?? {}).some((actions) => actions.length > 0) ||
+    prototype?.connections.some((connection) => connection.trigger.kind === 'click') === true
+  )
 }
 
 /** Phase 3 §8 v4 — the per-axis variant props a variant instance passes. The
@@ -805,6 +857,9 @@ interface WalkCtx {
    *  (`itemName` / `indexName`), popped when leaving. Used by expression
    *  validation in bindings + renderCondition. */
   inScope: Set<string>
+  /** True while walking descendants of a FORM. Kept on the traversal context
+   *  so sibling subtrees outside the form retain normal button semantics. */
+  inForm: boolean
   /** Phase 3 §8: master-id → component metadata registry. A registered
    *  COMPONENT master, and every clean / text-only INSTANCE of one, emit an
    *  IRComponentRef instead of being inlined. Empty map ≡ no component
@@ -1906,9 +1961,10 @@ function collectChildNodes(node: SceneNode, ctx: WalkCtx, children: IRNode[]): v
 }
 
 function collectAuthoredChildren(node: SceneNode, ctx: WalkCtx, children: IRNode[]): void {
+  const childCtx = node.type === 'FORM' && !ctx.inForm ? { ...ctx, inForm: true } : ctx
   for (const child of ctx.graph.getChildren(node.id)) {
     if (!shouldEmitChild(child, ctx)) continue
-    const ir = nodeToIR(child, ctx)
+    const ir = nodeToIR(child, childCtx)
     if (ir) children.push(ir)
   }
 }
@@ -3878,7 +3934,8 @@ function applyDatePickerProps(
   if (typeof ip.max === 'string' && ip.max !== '' && !badFormat.has('max')) attrs.max = ip.max
 }
 
-/** BUTTON — `type="button"` plus a text child from a binding or the literal. */
+/** BUTTON — an eventless FORM descendant is an implicit submit control;
+ *  configured buttons and buttons outside a FORM remain `type="button"`. */
 function applyButtonProps(
   node: SceneNode,
   ip: InteractiveProps,
@@ -3886,7 +3943,7 @@ function applyButtonProps(
   children: IRNode[],
   ctx: WalkCtx
 ): void {
-  attrs.type = 'button'
+  attrs.type = ctx.inForm && !hasConfiguredButtonInteraction(node) ? 'submit' : 'button'
   const binding = resolveTextBinding(
     node,
     ctx.states,
@@ -3901,6 +3958,17 @@ function applyButtonProps(
     const text = typeof ip.text === 'string' ? ip.text : 'Button'
     children.push(displayText(text, ctx))
   }
+}
+
+function hasConfiguredEvent(node: SceneNode): boolean {
+  return Object.values(node.events ?? {}).some((actions) => actions.length > 0)
+}
+
+function hasConfiguredButtonInteraction(node: SceneNode): boolean {
+  if (hasConfiguredEvent(node)) return true
+  return (
+    node.prototype?.connections.some((connection) => connection.trigger.kind === 'click') === true
+  )
 }
 
 /** The string entries of `interactiveProps.options`, used by both SELECT and

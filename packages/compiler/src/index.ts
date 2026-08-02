@@ -1,4 +1,5 @@
 import {
+  auditLowcodeNavigation,
   compactLowcodeHeadMetadata,
   validateLowcodeCustomCss
 } from '@open-pencil/core/lowcode-validation'
@@ -112,6 +113,17 @@ export function compile(input: CompilerInput): CompilerOutput {
   const fontWarnings = input.fontManifest
     ? applyCompilerFontManifest(files, input.graph, input.pageIds, input.fontManifest)
     : []
+  const navigationWarnings = auditLowcodeNavigation(input.graph, {
+    pageIds: input.pageIds
+  })
+    .issues
+    // collectTree already reports the route-pattern fallback with the same source node.
+    .filter((issue) => issue.code !== 'route-pattern-invalid')
+    .map((issue) => ({
+      code: issue.code,
+      message: issue.message,
+      ...(issue.nodeId || issue.pageId ? { nodeId: issue.nodeId ?? issue.pageId } : {})
+    }))
   return {
     files,
     warnings: [
@@ -119,6 +131,7 @@ export function compile(input: CompilerInput): CompilerOutput {
       ...componentWarnings,
       ...irs.flatMap((ir) => ir.warnings),
       ...adapterWarnings,
+      ...navigationWarnings,
       ...fontWarnings
     ]
   }

@@ -82,6 +82,102 @@ describe('compile — components / instances (Phase 3 §8)', () => {
     expect(relocated).toContain('top-20') // 80px → 20
   })
 
+  test('keeps implicit submit semantics local to a clean component usage inside a form', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const library = graph.addPage('Components')
+    const master = graph.createNode('COMPONENT', library.id, {
+      name: 'Reusable Button',
+      width: 120,
+      height: 40
+    })
+    graph.createNode('BUTTON', master.id, {
+      name: 'Submit order',
+      interactiveProps: { text: 'Submit order' }
+    })
+    const form = graph.createNode('FORM', pageId, { name: 'Checkout form' })
+    graph.createInstance(master.id, form.id)
+    graph.createInstance(master.id, pageId)
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'component-submit' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    const component = out.files.get('src/components/ReusableButton.tsx') as string
+    const inlinedButton = app.split('\n').find((line) => line.includes('Submit order')) ?? ''
+
+    expect(inlinedButton).toContain('type="submit"')
+    expect(app.match(/<ReusableButton\b/g)).toHaveLength(1)
+    expect(component).toContain('type="button"')
+  })
+
+  test('keeps interactive component refs as buttons inside a form', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const library = graph.addPage('Components')
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [{ id: 'status', name: 'status', type: 'string', defaultValue: '' }]
+    })
+    const eventMaster = graph.createNode('COMPONENT', library.id, {
+      name: 'Event Button',
+      events: {
+        onClick: [
+          {
+            id: 'set-status',
+            kind: 'setVariable',
+            targetName: 'status',
+            valueExpr: '"done"'
+          }
+        ]
+      }
+    })
+    graph.createNode('BUTTON', eventMaster.id, {
+      interactiveProps: { text: 'Event action' }
+    })
+    const prototypeMaster = graph.createNode('COMPONENT', library.id, {
+      name: 'Prototype Button'
+    })
+    graph.createNode('BUTTON', prototypeMaster.id, {
+      interactiveProps: { text: 'Prototype action' }
+    })
+    const form = graph.createNode('FORM', pageId, { name: 'Interactive form' })
+    graph.createInstance(eventMaster.id, form.id)
+    const prototypeInstance = graph.createInstance(prototypeMaster.id, form.id)
+    const target = graph.createNode('FRAME', pageId, { name: 'Prototype target' })
+    if (!prototypeInstance) throw new Error('missing prototype instance')
+    graph.updateNode(prototypeInstance.id, {
+      prototype: {
+        version: 1,
+        connections: [
+          {
+            id: 'open-target',
+            trigger: { kind: 'click' },
+            action: { kind: 'navigate', targetNodeId: target.id },
+            transition: { kind: 'instant' }
+          }
+        ]
+      }
+    })
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'interactive-component-submit' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    const eventComponent = out.files.get('src/components/EventButton.tsx') as string
+    const prototypeComponent = out.files.get('src/components/PrototypeButton.tsx') as string
+
+    expect(app).toContain('<EventButton')
+    expect(app).toContain('<PrototypeButton')
+    expect(app).not.toContain('>Event action</button>')
+    expect(app).not.toContain('>Prototype action</button>')
+    expect(eventComponent).toContain('type="button"')
+    expect(prototypeComponent).toContain('type="button"')
+  })
+
   test('§8 v6: a non-text override composes to a className prop (no inline fallback)', () => {
     // §8 v6 generalized override→props: any non-text visual override (here
     // `:fontSize`) routes through the child's className prop (whole-className

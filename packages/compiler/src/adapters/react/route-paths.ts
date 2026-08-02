@@ -1,5 +1,7 @@
 import type { IRTree } from '#compiler/ir/types'
 
+import { deriveLowcodePageRoutes } from '@open-pencil/core/lowcode-validation'
+
 /**
  * Per-page routing metadata derived from a list of page IRs. Pure helper —
  * no side effects, no scene-graph access. Locked decision §11.3 #3:
@@ -31,46 +33,23 @@ export interface PagePathInfo {
   component: string
 }
 
-const SLUG_NON_ALPHANUM = /[^a-z0-9]+/g
-const SLUG_TRIM_DASH = /^-+|-+$/g
-
 export function derivePagePaths(irs: readonly IRTree[]): PagePathInfo[] {
-  const used = new Set<string>()
-  const out: PagePathInfo[] = []
-  for (let i = 0; i < irs.length; i++) {
-    const ir = irs[i]
-    let originalSlug: string
-    if (i === 0) {
-      originalSlug = 'index'
-    } else {
-      const raw = ir.pageName
-        .toLowerCase()
-        .replace(SLUG_NON_ALPHANUM, '-')
-        .replace(SLUG_TRIM_DASH, '')
-      originalSlug = raw === '' ? `page-${i}` : raw
-    }
-    let slug = originalSlug
-    // Collision with an earlier slug (or with the reserved 'index' for non-first pages).
-    if (used.has(slug) || (i > 0 && slug === 'index')) {
-      slug = `${originalSlug}-${i}`
-    }
-    used.add(slug)
-    // Phase 4 §16.1: a page may declare an explicit dynamic route pattern
-    // (`/product/:id`); it overrides the slug-derived path. The slug / file /
-    // component name still derive from the page name (the pattern only changes
-    // the `<Route path>`).
-    const route = ir.routePattern ?? (slug === 'index' ? '/' : `/${slug}`)
-    out.push({
-      ir,
+  const routes = deriveLowcodePageRoutes(
+    irs.map((ir) => ({
       pageId: ir.pageId,
-      slug,
-      originalSlug,
-      route,
-      file: `${slug}.tsx`,
-      component: componentNameFromSlug(slug)
-    })
-  }
-  return out
+      pageName: ir.pageName,
+      routePattern: ir.routePattern
+    }))
+  )
+  return routes.map(({ pageId, slug, originalSlug, route }, index) => ({
+    ir: irs[index],
+    pageId,
+    slug,
+    originalSlug,
+    route,
+    file: `${slug}.tsx`,
+    component: componentNameFromSlug(slug)
+  }))
 }
 
 /**
