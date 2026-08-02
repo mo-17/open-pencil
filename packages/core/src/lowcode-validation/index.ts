@@ -97,3 +97,21 @@ export {
   type NavigationRouteEntry,
   auditLowcodeNavigation
 } from './navigation-audit'
+
+export {
+  FORM_CONTROLS_AUDIT_DEFAULT_LIMIT,
+  FORM_CONTROLS_AUDIT_MAX_LIMIT,
+  FORM_VALUE_BINDING_MAX_REPAIRS,
+  type FormControlAuditEntry,
+  type FormControlBindingTargetType,
+  type FormControlBindingStatus,
+  type FormControlsAuditOptions,
+  type FormControlsAudit,
+  type FormControlsResult,
+  type FormControlStateType,
+  type FormValueBindingPlan,
+  auditValidatedFormControls,
+  findComponentMasterAncestor,
+  isCheckboxGroupControl,
+  planValidatedFormValueBindings
+} from './form-controls'

@@ -86,7 +86,10 @@ const hasValidation = computed(() => {
   return (
     type === 'INPUT' ||
     type === 'TEXTAREA' ||
+    type === 'CHECKBOX' ||
+    type === 'SWITCH' ||
     type === 'SELECT' ||
+    type === 'RADIO' ||
     type === 'DATEPICKER' ||
     type === 'FORM'
   )

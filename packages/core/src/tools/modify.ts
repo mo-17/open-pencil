@@ -1,4 +1,5 @@
 export { setEffects } from './modify/effects'
+export { ensureFormValueBindings } from './modify/form-controls'
 export { clearGeneratedEffect, updateGeneratedEffect } from './modify/generated-effect'
 export { setMinMax, setOpacity, setRadius, setRotation } from './modify/geometry'
 export { setConstraints, setLayout, setLayoutChild } from './modify/layout'

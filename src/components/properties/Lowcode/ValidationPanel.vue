@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
-import { useSceneComputed, useSelectionState } from '@open-pencil/vue'
+import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -49,10 +49,19 @@ type Props = Record<string, unknown>
 type NumericRule = 'minLength' | 'maxLength' | 'min' | 'max'
 type MessageRule = keyof ValidationMessages
 
-const FIELD_TYPES = new Set(['INPUT', 'TEXTAREA', 'SELECT', 'DATEPICKER'])
+const FIELD_TYPES = new Set([
+  'INPUT',
+  'TEXTAREA',
+  'SELECT',
+  'RADIO',
+  'DATEPICKER',
+  'CHECKBOX',
+  'SWITCH'
+])
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
+const { panels } = useI18n()
 const { selectedNode } = useSelectionState()
 const presence = usePresenceTarget('interactiveProps', () => selectedNode.value?.id)
 
@@ -255,7 +264,7 @@ function numericValue(key: NumericRule): string {
       />
     </template>
 
-    <template v-else-if="hasValueBinding">
+    <template v-else>
       <label class="flex items-center gap-2 text-[11px] text-surface">
         <input
           type="checkbox"
@@ -408,8 +417,9 @@ function numericValue(key: NumericRule): string {
           @change="setAsyncText('message', ($event.target as HTMLInputElement).value)"
         />
       </div>
+      <p v-if="!hasValueBinding" class="mt-1 text-[10px] text-muted">
+        {{ panels.lowcodeValidationBindingHint }}
+      </p>
     </template>
-
-    <p v-else class="text-[10px] text-muted">Bind Value to a state before adding validation.</p>
   </div>
 </template>

@@ -13,6 +13,7 @@ import {
   clearMotionScene,
   clearMotionTransitionKey,
   clearPrototype,
+  ensureFormValueBindings,
   manageTeamMotionLibraryRegistry,
   reviewTeamMotionLibraryUpdate,
   setMotionTransitionKey,
@@ -39,6 +40,7 @@ import {
   verifyTeamMotionLibrary
 } from './modify'
 import {
+  auditFormControls,
   findNodes,
   auditNavigation,
   getJsx,
@@ -77,6 +79,7 @@ export const CORE_TOOLS: ToolDef[] = [
   getJsx,
   readPageRoute,
   auditNavigation,
+  auditFormControls,
   // Read — lowcode (Phase 3 §3)
   readLowcodeNode,
   readLowcodeNodes,
@@ -106,6 +109,7 @@ export const CORE_TOOLS: ToolDef[] = [
   // Modify — lowcode (Phase 3 §3)
   updateLowcodeNode,
   updateLowcodeNodes,
+  ensureFormValueBindings,
   updatePageRoute,
   setDocStates,
   setSupabaseConfig,

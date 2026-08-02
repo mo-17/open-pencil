@@ -24,6 +24,7 @@ type FigmaFactory = (store: AutomationTarget['store'], pageId?: string) => Figma
 const EDITOR_UNDO_TOOLS = new Set<string>([
   'update_lowcode_node',
   'update_lowcode_nodes',
+  'ensure_form_value_bindings',
   'update_page_route',
   'reparent_nodes',
   'set_doc_states',

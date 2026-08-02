@@ -1,4 +1,5 @@
 export { getComponents } from './read/components'
+export { auditFormControls } from './read/form-controls'
 export { auditFontRendering } from './read/font-rendering'
 export {
   checkFont,

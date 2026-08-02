@@ -804,6 +804,11 @@ export const panelMessageDefaults = {
   lowcodeValueBindingBooleanHint: 'Bind to a boolean state for a controlled checkbox/switch',
   lowcodeValueBindingArrayHint: 'Bind to an array state for a multi-select checkbox group',
   lowcodeValueBindingNoStates: 'No matching state type available',
+  lowcodeValueBindingInvalid: 'Invalid binding — choose Uncontrolled or another state',
+  lowcodeValueBindingCreate: 'Create page state and bind',
+  lowcodeValueBindingComponentUnsupported:
+    'Page state is unavailable inside reusable component masters; bind to document state instead',
+  lowcodeValidationBindingHint: 'Configure validation first, then create or select a Value binding',
   lowcodeInteractiveOptions: 'Options',
   lowcodeInteractiveOptionAdd: 'Add option',
   lowcodeInteractiveOptionRemove: 'Remove option',

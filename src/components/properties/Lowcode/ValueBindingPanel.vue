@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import {
+  findComponentMasterAncestor,
+  isCheckboxGroupControl,
+  planValidatedFormValueBindings
+} from '@open-pencil/core/lowcode-validation'
 import type { BindingExpr, NodeType } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
@@ -29,8 +34,8 @@ const { selectedNode } = useSelectionState()
 const presence = usePresenceTarget('valueBinding', () => selectedNode.value?.id)
 
 function checkboxHasOptions(): boolean {
-  const raw = selectedNode.value?.interactiveProps?.options
-  return Array.isArray(raw) && raw.length > 0
+  const node = selectedNode.value
+  return node ? isCheckboxGroupControl(node) : false
 }
 
 const allowedTypes = computed<readonly CtrlType[]>(() => {
@@ -50,10 +55,18 @@ const controlMode = computed<'boolean' | 'array' | 'text'>(() => {
   return 'text'
 })
 
+const componentMaster = useSceneComputed(() => {
+  const node = selectedNode.value
+  return node ? findComponentMasterAncestor(editor.graph, node) : undefined
+})
+
 const candidatePageStates = useSceneComputed(() => {
+  if (componentMaster.value) return []
   const page = editor.graph.getNode(editor.state.currentPageId)
   const allow = allowedTypes.value
-  return (page?.state ?? []).filter((s) => allow.includes(s.type as CtrlType))
+  return (page?.state ?? []).filter(
+    (state) => state.computedExpr === undefined && allow.includes(state.type as CtrlType)
+  )
 })
 
 const candidateDocStates = useSceneComputed(() => {
@@ -63,11 +76,34 @@ const candidateDocStates = useSceneComputed(() => {
 })
 
 const binding = useSceneComputed<BindingExpr | undefined>(() => selectedNode.value?.bindings?.value)
+const hasValidation = computed(() => {
+  const validation = selectedNode.value?.interactiveProps?.validation
+  return validation !== null && typeof validation === 'object' && !Array.isArray(validation)
+})
+const canCreateBinding = computed(
+  () => binding.value === undefined && hasValidation.value && componentMaster.value === undefined
+)
 
 const DOCSTATE_PREFIX = 'doc:'
 const STATE_PREFIX = 'state:'
+const INVALID_VALUE = 'invalid:'
+
+const bindingIsValid = computed(() => {
+  const current = binding.value
+  if (current?.kind === 'ref') {
+    return candidatePageStates.value.some((state) => state.id === current.stateId)
+  }
+  if (current?.kind === 'docState') {
+    return candidateDocStates.value.some((state) => state.name === current.docStateName)
+  }
+  return false
+})
+const bindingIsInvalid = computed(
+  () => binding.value !== undefined && bindingIsValid.value === false
+)
 
 const selectedValue = computed(() => {
+  if (bindingIsInvalid.value) return INVALID_VALUE
   if (!binding.value) return ''
   if (binding.value.kind === 'docState' && binding.value.docStateName) {
     return `${DOCSTATE_PREFIX}${binding.value.docStateName}`
@@ -105,6 +141,20 @@ function onSourceChange(event: Event): void {
     commitBinding({ kind: 'ref', stateId: value.slice(STATE_PREFIX.length) })
   }
 }
+
+function createPageStateBinding(): void {
+  const node = selectedNode.value
+  if (!node) return
+  const planned = planValidatedFormValueBindings(editor.graph, node.id)
+  if (!planned.ok || planned.data.bindings.length === 0) return
+  const label = panels.value.lowcodeValueBindingCreate
+  editor.undo.runBatch(label, () => {
+    editor.updateNodeWithUndo(planned.data.pageId, { state: planned.data.nextState }, label)
+    for (const repair of planned.data.bindings) {
+      editor.updateNodeWithUndo(repair.nodeId, { bindings: repair.bindings }, label)
+    }
+  })
+}
 </script>
 
 <template>
@@ -117,11 +167,14 @@ function onSourceChange(event: Event): void {
     <label class="mb-1.5 block text-[11px] text-muted">{{ panels.lowcodeValueBinding }}</label>
     <select
       :value="selectedValue"
-      :disabled="!hasAnyCandidate"
+      :disabled="!hasAnyCandidate && !bindingIsInvalid"
       data-test-id="lowcode-value-binding-select"
       class="w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-50"
       @change="onSourceChange"
     >
+      <option v-if="bindingIsInvalid" :value="INVALID_VALUE" disabled>
+        {{ panels.lowcodeValueBindingInvalid }}
+      </option>
       <option value="">{{ panels.lowcodeValueBindingUncontrolled }}</option>
       <option v-for="s in candidatePageStates" :key="s.id" :value="`${STATE_PREFIX}${s.id}`">
         {{ panels.lowcodeTextSourceBound }} {{ s.name }} ({{ s.type }})
@@ -130,8 +183,24 @@ function onSourceChange(event: Event): void {
         {{ panels.lowcodeTextSourceDocState }}: {{ d.name }} ({{ d.type }})
       </option>
     </select>
+    <button
+      v-if="canCreateBinding"
+      type="button"
+      data-test-id="lowcode-value-binding-create"
+      class="mt-1.5 w-full rounded bg-accent px-2 py-1 text-[10px] font-medium text-white hover:opacity-90"
+      @click="createPageStateBinding"
+    >
+      {{ panels.lowcodeValueBindingCreate }}
+    </button>
     <p
-      v-if="!hasAnyCandidate"
+      v-if="componentMaster"
+      data-test-id="lowcode-value-binding-component-unsupported"
+      class="mt-1 text-[10px] text-muted"
+    >
+      {{ panels.lowcodeValueBindingComponentUnsupported }}
+    </p>
+    <p
+      v-else-if="!hasAnyCandidate"
       data-test-id="lowcode-value-binding-empty"
       class="mt-1 text-[10px] text-muted"
     >
