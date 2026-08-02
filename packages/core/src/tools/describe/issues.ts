@@ -2,12 +2,12 @@ import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/
 
 import { colorDistance, colorToHex } from '#core/color'
 
+import { lowTextContrastIssue } from './contrast'
 import { detectLayoutIssues } from './layout-issues'
-import { CONTAINER_TYPES, findAncestorBackground, looksLikeButton } from './shared'
+import { CONTAINER_TYPES, looksLikeButton } from './shared'
 
 const MIN_FILL_OPACITY = 0.15
 const MIN_STROKE_OPACITY = 0.2
-const LOW_CONTRAST_THRESHOLD = 15
 const SHAPE_TYPES = new Set(['RECTANGLE', 'ELLIPSE', 'STAR', 'POLYGON', 'LINE'])
 const ICON_MAX_SIZE = 48
 
@@ -274,17 +274,8 @@ function detectVisibilityIssues(node: SceneNode, graph: SceneGraph, issues: Desc
     })
   }
   if (node.type !== 'TEXT' || !node.parentId) return
-  const textFill = node.fills.find((f) => f.visible && f.type === 'SOLID')
-  if (!textFill) return
-  const parentBg = findAncestorBackground(node, graph)
-  if (!parentBg) return
-  const dist = colorDistance(textFill.color, parentBg)
-  if (dist < LOW_CONTRAST_THRESHOLD) {
-    issues.push({
-      message: `Low contrast: text ${colorToHex(textFill.color)} on ${colorToHex(parentBg)} (distance ${Math.round(dist)})`,
-      suggestion: 'Increase color difference'
-    })
-  }
+  const contrastIssue = lowTextContrastIssue(node, graph)
+  if (contrastIssue) issues.push(contrastIssue)
 }
 
 const RADIUS_TOLERANCE = 2
@@ -403,7 +394,7 @@ const ERROR_PATTERNS = [
   /no color/i,
   /collapses/i,
   /no fill and no stroke/i,
-  /dark on dark/i,
+  /low contrast/i,
   /Touch target too small/i,
   /Nested Text/i
 ]

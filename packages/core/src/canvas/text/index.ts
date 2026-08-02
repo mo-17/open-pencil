@@ -17,13 +17,16 @@ import { fontFallbackScriptForCharacter } from '#core/text/coverage'
 import { resolveNodeTextDirection } from '#core/text/direction'
 import type { FontFallbackScript } from '#core/text/fallbacks'
 import { fontManager, weightToStyle } from '#core/text/fonts'
+import { firstVisibleSolidTextFill } from '#core/text/paint'
 import { requiredNodeFontFaces } from '#core/text/requirements'
 import {
   fontCoverageDemand,
+  fontCandidateCoverageText,
   fontFaceDemand,
   fontRemoteCoverageDemand,
   fontResolver,
   missingGlyphCharacters,
+  type FontResolutionDemand,
   type FontResolutionSettled
 } from '#core/text/resolver'
 
@@ -103,12 +106,14 @@ function demandRemoteCoverage(r: TextRenderer, node: SceneNode, characters: stri
   return false
 }
 
-function observedGlyphReadiness(r: TextRenderer, node: SceneNode): NodeFontReadiness {
+function missingCharactersByScript(
+  r: TextRenderer,
+  node: SceneNode
+): { missingCount: number; byScript: Map<FontFallbackScript, string[]> } {
   const paragraph = buildParagraph(r, node)
   paragraph.layout(resolveParagraphLayoutWidth(node))
   const missingCharacters = missingGlyphCharacters(node.text, paragraph.getShapedLines())
   paragraph.delete()
-  if (missingCharacters.length === 0) return 'ready'
 
   const charactersByScript = new Map<FontFallbackScript, string[]>()
   for (const character of missingCharacters) {
@@ -118,10 +123,16 @@ function observedGlyphReadiness(r: TextRenderer, node: SceneNode): NodeFontReadi
     characters.push(character)
     charactersByScript.set(script, characters)
   }
+  return { missingCount: missingCharacters.length, byScript: charactersByScript }
+}
+
+function observedGlyphReadiness(r: TextRenderer, node: SceneNode): NodeFontReadiness {
+  const missing = missingCharactersByScript(r, node)
+  if (missing.byScript.size === 0) return missing.missingCount > 0 ? 'exhausted' : 'ready'
 
   let pending = false
-  let exhausted = charactersByScript.size === 0
-  for (const [script, characters] of charactersByScript) {
+  let exhausted = false
+  for (const [script, characters] of missing.byScript) {
     if (demandRemoteCoverage(r, node, characters)) {
       pending = true
       continue
@@ -148,15 +159,93 @@ function observedGlyphReadiness(r: TextRenderer, node: SceneNode): NodeFontReadi
   return exhausted ? 'exhausted' : 'ready'
 }
 
-function canObserveGlyphCoverage(r: FontReadinessRenderer): r is TextRenderer {
-  return r.ck !== undefined && r.fontProvider != null && r.fontsLoaded !== undefined
+export function canObserveFontReadiness(r: FontReadinessRenderer): r is TextRenderer {
+  return r.ck !== undefined && r.fontProvider != null && r.fontsLoaded === true
+}
+
+function restartFontDemand(
+  r: FontReadinessRenderer,
+  node: SceneNode,
+  demand: FontResolutionDemand,
+  clearFailure?: () => void
+): string {
+  if (fontResolver.state(demand).state !== 'loading') {
+    clearFailure?.()
+    fontResolver.reset(demand)
+  }
+  r.trackFontDemand?.(node, demand.key)
+  void fontResolver.demandForNode(demand, node.id, r.onFontResolutionSettled)
+  return demand.key
+}
+
+function clearFaceDemandFailures(demand: FontResolutionDemand): void {
+  for (const candidate of demand.candidates) {
+    if (candidate.source !== 'remote') continue
+    fontManager.clearFontLoadFailure(
+      candidate.family,
+      candidate.style,
+      fontCandidateCoverageText(demand, candidate)
+    )
+  }
+}
+
+export interface NodeFontRetryRequest {
+  requested: boolean
+  demandKeys: string[]
+}
+
+/**
+ * Restart every unresolved face and glyph-coverage demand observable from the
+ * live paragraph shaper. Fallback families stay encapsulated in FontManager;
+ * callers receive demand keys only and never guess which family CanvasKit may
+ * eventually use for an individual glyph.
+ */
+export function retryNodeFontReadiness(
+  r: FontReadinessRenderer,
+  node: SceneNode
+): NodeFontRetryRequest {
+  if (node.type !== 'TEXT') return { requested: false, demandKeys: [] }
+  const demands = new Map<string, { demand: FontResolutionDemand; clearFailure?: () => void }>()
+
+  for (const { family, style } of requiredNodeFontFaces(node)) {
+    if (fontManager.isStyleLoaded(family, style)) continue
+    const demand = fontFaceDemand(family, style, node.text)
+    demands.set(demand.key, {
+      demand,
+      clearFailure: () => clearFaceDemandFailures(demand)
+    })
+  }
+
+  if (node.text && canObserveFontReadiness(r)) {
+    for (const [script, characters] of missingCharactersByScript(r, node).byScript) {
+      const coverageText = characters.join('')
+      for (const { family, style } of requiredNodeFontFaces(node)) {
+        if (!fontManager.remoteStyleNeedsCoverage(family, style, characters)) continue
+        const demand = fontRemoteCoverageDemand(family, style, characters)
+        demands.set(demand.key, {
+          demand,
+          clearFailure: () => fontManager.clearFontLoadFailure(family, style, coverageText)
+        })
+      }
+      const demand = fontCoverageDemand(script, characters)
+      demands.set(demand.key, {
+        demand,
+        clearFailure: () => fontManager.clearFallbackLoadFailures(script, coverageText)
+      })
+    }
+  }
+
+  const demandKeys = [...demands.values()].map(({ demand, clearFailure }) =>
+    restartFontDemand(r, node, demand, clearFailure)
+  )
+  return { requested: demandKeys.length > 0, demandKeys }
 }
 
 export function nodeFontReadiness(r: FontReadinessRenderer, node: SceneNode): NodeFontReadiness {
   if (node.type !== 'TEXT') return 'ready'
   const faces = requiredFacesReadiness(r, node)
   if (faces !== 'ready') return faces
-  if (!node.text || !canObserveGlyphCoverage(r)) return 'ready'
+  if (!node.text || !canObserveFontReadiness(r)) return 'ready'
   return observedGlyphReadiness(r, node)
 }
 
@@ -324,7 +413,7 @@ function textDecorationColor(
   fills: SceneNode['textDecorationFills'] | undefined,
   fallback: Float32Array
 ): Float32Array {
-  const fill = fills?.find((item) => item.visible && item.type === 'SOLID')
+  const fill = firstVisibleSolidTextFill(fills)
   if (!fill) return fallback
   const color = resolveRGBAForPreview(fill.color).color
   return ck.Color4f(color.r, color.g, color.b, color.a * fill.opacity)
@@ -335,7 +424,7 @@ function styleRunColor(
   style: SceneNode['styleRuns'][number]['style'],
   baseColor: Float32Array
 ): Float32Array {
-  const visibleFill = style.fills?.find((fill) => fill.visible && fill.type === 'SOLID')
+  const visibleFill = firstVisibleSolidTextFill(style.fills)
   if (!visibleFill) return baseColor
   const color = resolveRGBAForPreview(visibleFill.color).color
   return ck.Color4f(color.r, color.g, color.b, color.a * visibleFill.opacity)

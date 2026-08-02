@@ -196,4 +196,45 @@ describe('check_font', () => {
     expect(wrongType.error).toContain('is not a text node')
     expect(missing.error).toContain('not found')
   })
+
+  test('does not claim success while an attached renderer font provider is still initializing', () => {
+    const { graph, figma } = setupToolTest()
+    const family = 'OpenPencil Check Font Initializing Renderer'
+    const node = graph.createNode('TEXT', figma.currentPageId, {
+      text: 'Initializing',
+      fontFamily: family
+    })
+    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    figma.setRenderer({
+      canObserveFontReadiness: () => false,
+      nodeFontReadiness: () => 'ready'
+    } as never)
+
+    const result = getTool('check_font').execute(figma, { id: node.id }) as FontCheckResult
+
+    expect(result.status).toBe('unverifiable')
+    expect(result.effective).toBeNull()
+    expect(result.exactFacesLoaded).toBe(true)
+  })
+
+  test('checks a lowcode BUTTON label through the renderer text projection', () => {
+    const { graph, figma } = setupToolTest()
+    const family = 'OpenPencil Check Font Button'
+    const button = graph.createNode('BUTTON', figma.currentPageId, {
+      name: 'Projected label',
+      fontFamily: family,
+      interactiveProps: { text: 'Continue' }
+    })
+    fontManager.markLoaded(family, 'Regular', new ArrayBuffer(1))
+    attachReadiness(figma, 'ready')
+
+    const result = getTool('check_font').execute(figma, { id: button.id }) as FontCheckResult & {
+      nodeType?: string
+      contentKind?: string
+    }
+
+    expect(result.status).toBe('effective')
+    expect(result.nodeType).toBe('BUTTON')
+    expect(result.contentKind).toBe('button_label')
+  })
 })

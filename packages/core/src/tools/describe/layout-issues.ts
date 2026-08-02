@@ -1,19 +1,9 @@
-import { wcagLuminance } from 'culori'
 import { sumBy } from 'es-toolkit/math'
 
 import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
-import type { Color } from '@open-pencil/scene-graph/primitives'
-
-import { colorToHex } from '#core/color'
 
 import type { DescribeIssue } from './issues'
-import { CONTAINER_TYPES, findAncestorBackground } from './shared'
-
-const DARK_BG_LUMINANCE = 0.35
-
-function rgbLuminance(c: Color): number {
-  return wcagLuminance({ mode: 'rgb', r: c.r, g: c.g, b: c.b })
-}
+import { CONTAINER_TYPES } from './shared'
 
 interface LayoutContext {
   node: SceneNode
@@ -212,16 +202,6 @@ function checkTextVisibility(ctx: LayoutContext): void {
         suggestion: 'Add color="#hex"'
       })
       continue
-    }
-    const textLum = rgbLuminance(textFill.color)
-    if (textLum > DARK_BG_LUMINANCE) continue
-    const bg = findAncestorBackground(child, graph)
-    if (!bg) continue
-    if (rgbLuminance(bg) < DARK_BG_LUMINANCE) {
-      issues.push({
-        message: `"${child.name || child.text.slice(0, 20) || 'Text'}" dark on dark (${colorToHex(textFill.color)} on ${colorToHex(bg)})`,
-        suggestion: 'Use a light color'
-      })
     }
   }
 }

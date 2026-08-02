@@ -644,6 +644,14 @@ export class SkiaRenderer {
     return RenderText.nodeFontReadiness(this, node)
   }
 
+  canObserveFontReadiness(): boolean {
+    return RenderText.canObserveFontReadiness(this)
+  }
+
+  retryNodeFontReadiness(node: SceneNode): RenderText.NodeFontRetryRequest {
+    return RenderText.retryNodeFontReadiness(this, node)
+  }
+
   isNodeFontLoaded(node: SceneNode): boolean {
     return this.nodeFontReadiness(node) === 'ready'
   }

@@ -23,6 +23,7 @@ import type {
   RasterRenderOptions
 } from '#core/io/formats/raster'
 import type { MotionVisualState } from '#core/motion'
+import { buttonLabelTextNode } from '#core/text/lowcode'
 
 import type {
   FigmaBooleanOperationNode,
@@ -101,10 +102,24 @@ export class FigmaAPI implements NodeProxyHost {
     this._renderer = renderer
   }
 
+  private _fontReadinessTarget(id: string): [SkiaRenderer, CoreSceneNode] | null {
+    const renderer = this._renderer
+    const rawNode = this.graph.getNode(id)
+    if (!renderer?.canObserveFontReadiness() || !rawNode) return null
+    const node = buttonLabelTextNode(rawNode) ?? rawNode
+    return node.type === 'TEXT' ? [renderer, node] : null
+  }
+
   getNodeFontReadiness(id: string): ReturnType<SkiaRenderer['nodeFontReadiness']> | 'unavailable' {
-    const node = this.graph.getNode(id)
-    if (!this._renderer || node?.type !== 'TEXT') return 'unavailable'
-    return this._renderer.nodeFontReadiness(node)
+    const target = this._fontReadinessTarget(id)
+    return target ? target[0].nodeFontReadiness(target[1]) : 'unavailable'
+  }
+
+  retryNodeFontReadiness(
+    id: string
+  ): ReturnType<SkiaRenderer['retryNodeFontReadiness']> | 'unavailable' {
+    const target = this._fontReadinessTarget(id)
+    return target ? target[0].retryNodeFontReadiness(target[1]) : 'unavailable'
   }
 
   get currentPageId(): string {

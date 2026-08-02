@@ -3,12 +3,14 @@ export { clearGeneratedEffect, updateGeneratedEffect } from './modify/generated-
 export { setMinMax, setOpacity, setRadius, setRotation } from './modify/geometry'
 export { setConstraints, setLayout, setLayoutChild } from './modify/layout'
 export { publishComponent } from './modify/library'
+export { updatePageRoute } from './modify/navigation'
 export {
   setDocStates,
   setSupabaseConfig,
   setTranslations,
   setWorkflows,
-  updateLowcodeNode
+  updateLowcodeNode,
+  updateLowcodeNodes
 } from './modify/lowcode'
 export {
   applyMotionPreset,

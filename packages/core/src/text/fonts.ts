@@ -240,6 +240,15 @@ export class FontManager {
     )
   }
 
+  clearFallbackLoadFailures(script: FontFallbackScript, characters = ''): void {
+    const manifest = fontFallbackEntry(script, this.fallbackUserAgent)
+    const families = new Set([
+      ...(this.fallbackFamiliesByScript.get(script) ?? []),
+      ...manifest.remoteFamilies
+    ])
+    for (const family of families) this.clearFontLoadFailure(family, 'Regular', characters)
+  }
+
   async loadCachedFont(
     family: string,
     style = 'Regular',

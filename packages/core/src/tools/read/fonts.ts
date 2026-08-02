@@ -1,8 +1,10 @@
 import { uniq } from 'es-toolkit/array'
 
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
+import type { FigmaAPI } from '#core/figma-api'
 import { parseFontStyle } from '#core/text/face'
 import { fontManager, weightToStyle } from '#core/text/fonts'
+import { buttonLabelTextNode } from '#core/text/lowcode'
 import {
   requiredNodeFontFaceUsages,
   type NodeFontFace,
@@ -16,8 +18,8 @@ import {
 } from '#core/text/resolver'
 import { defineTool, nodeNotFound } from '#core/tools/schema'
 
-type FontAssignment = 'match' | 'partial' | 'mismatch' | 'not_checked'
-type FontCheckStatus =
+export type FontAssignment = 'match' | 'partial' | 'mismatch' | 'not_checked'
+export type FontCheckStatus =
   | 'effective'
   | 'degraded'
   | 'pending'
@@ -25,10 +27,10 @@ type FontCheckStatus =
   | 'exhausted'
   | 'unverifiable'
   | 'mismatch'
-type FontFaceMode = 'exact' | 'synthesized' | 'pending' | 'unavailable' | 'unverified'
-type NodeFontReadiness = 'ready' | 'pending' | 'exhausted' | 'unavailable'
+export type FontFaceMode = 'exact' | 'synthesized' | 'pending' | 'unavailable' | 'unverified'
+export type NodeFontReadiness = 'ready' | 'pending' | 'exhausted' | 'unavailable'
 
-interface FontFaceCheck extends NodeFontFace {
+export interface FontFaceCheck extends NodeFontFace {
   scopes: NodeFontScope[]
   exactLoaded: boolean
   familyLoaded: boolean
@@ -36,8 +38,27 @@ interface FontFaceCheck extends NodeFontFace {
   resolution: {
     state: FontResolutionState
     source?: FontCandidateSource
+    candidate?: { family: string; style: string; source: FontCandidateSource }
     error?: string
   }
+}
+
+export interface FontRenderingCheckResult {
+  id: string
+  name: string
+  nodeType: 'TEXT' | 'BUTTON'
+  contentKind: 'text' | 'button_label'
+  textPreview: string
+  authored: { family: string; style: string }
+  expected: { family?: string; style?: string } | null
+  assignment: FontAssignment
+  status: FontCheckStatus
+  renderStatus: Exclude<FontCheckStatus, 'mismatch'>
+  readiness: NodeFontReadiness
+  effective: boolean | null
+  exactFacesLoaded: boolean
+  faces: FontFaceCheck[]
+  caveats: string[]
 }
 
 function sameFamily(left: string, right: string): boolean {
@@ -127,15 +148,101 @@ function checkCaveats(
   return caveats
 }
 
+/** Shared single-node inspection used by `check_font` and the bounded
+ * document audit. BUTTON labels are projected through the same text model the
+ * CanvasKit lowcode renderer uses, while every other non-TEXT node is rejected. */
+export function inspectNodeFontRendering(
+  figma: FigmaAPI,
+  id: string,
+  expectedFamily?: string,
+  expectedStyle?: string
+): FontRenderingCheckResult | { error: string } {
+  const rawNode = figma.graph.getNode(id)
+  if (!rawNode) return nodeNotFound(id)
+  const buttonLabel = buttonLabelTextNode(rawNode)
+  const node = buttonLabel ?? rawNode
+  if (node.type !== 'TEXT') return { error: `Node "${id}" is not a text node or labelled BUTTON` }
+
+  const readiness = figma.getNodeFontReadiness(rawNode.id)
+  const requiredFaceUsages = requiredNodeFontFaceUsages(node)
+  const requiredFaces = requiredFaceUsages.map(({ family, style }) => ({ family, style }))
+  const faces: FontFaceCheck[] = requiredFaceUsages.map((face) => {
+    const exactLoaded = fontManager.isStyleLoaded(face.family, face.style)
+    const familyLoaded = fontManager.isLoaded(face.family)
+    const snapshot = fontResolver.state(fontFaceDemand(face.family, face.style, node.text))
+    let source = snapshot.source
+    if (exactLoaded && snapshot.state !== 'loaded') source = 'registered'
+    else if (exactLoaded) source ??= 'registered'
+    return {
+      ...face,
+      scopes: face.scopes,
+      exactLoaded,
+      familyLoaded,
+      mode: faceMode(readiness, exactLoaded, familyLoaded),
+      resolution: {
+        state: exactLoaded ? 'loaded' : snapshot.state,
+        ...(source ? { source } : {}),
+        ...(snapshot.candidate
+          ? {
+              candidate: {
+                family: snapshot.candidate.family,
+                style: snapshot.candidate.style,
+                source: snapshot.candidate.source
+              }
+            }
+          : {}),
+        ...(snapshot.error === undefined ? {} : { error: errorMessage(snapshot.error) })
+      }
+    }
+  })
+  const assignment = assignmentFor(requiredFaces, expectedFamily, expectedStyle)
+  const rendererStatus = renderStatus(readiness, faces)
+  const status: FontCheckStatus =
+    assignment === 'partial' || assignment === 'mismatch' ? 'mismatch' : rendererStatus
+  let effective: boolean | null = true
+  if (status === 'mismatch' || status === 'failed' || status === 'exhausted') {
+    effective = false
+  } else if (status === 'pending' || status === 'unverifiable') {
+    effective = null
+  }
+  const expected =
+    expectedFamily || expectedStyle
+      ? {
+          ...(expectedFamily ? { family: expectedFamily } : {}),
+          ...(expectedStyle ? { style: canonicalStyle(expectedStyle) } : {})
+        }
+      : null
+  return {
+    id: rawNode.id,
+    name: rawNode.name,
+    nodeType: buttonLabel ? 'BUTTON' : 'TEXT',
+    contentKind: buttonLabel ? 'button_label' : 'text',
+    textPreview: node.text.length > 80 ? `${node.text.slice(0, 77)}...` : node.text,
+    authored: {
+      family: node.fontFamily || DEFAULT_FONT_FAMILY,
+      style: weightToStyle(node.fontWeight || 400, node.italic)
+    },
+    expected,
+    assignment,
+    status,
+    renderStatus: rendererStatus,
+    readiness,
+    effective,
+    exactFacesLoaded: faces.every((face) => face.exactLoaded),
+    faces,
+    caveats: checkCaveats(assignment, status, readiness)
+  }
+}
+
 export const checkFont = defineTool({
   name: 'check_font',
   description:
-    'Verify whether a text node font is actually effective in the live CanvasKit renderer. ' +
+    'Verify whether a text node or lowcode BUTTON label font is actually effective in the live CanvasKit renderer. ' +
     'Reports base and style-run assignments, exact face loading, resolver source, synthesized-style ' +
     'degradation, pending/exhausted glyph coverage, and optional expected family/style matching. ' +
     'A pending or renderer-unavailable result is never reported as success; call again when pending.',
   params: {
-    id: { type: 'string', description: 'Text node ID', required: true },
+    id: { type: 'string', description: 'TEXT or labelled lowcode BUTTON node ID', required: true },
     expected_family: {
       type: 'string',
       description: 'Optional font family expected across the node and all styled ranges'
@@ -145,70 +252,8 @@ export const checkFont = defineTool({
       description: 'Optional font style expected across the node and all styled ranges'
     }
   },
-  execute: (figma, args) => {
-    const node = figma.graph.getNode(args.id)
-    if (!node) return nodeNotFound(args.id)
-    if (node.type !== 'TEXT') return { error: `Node "${args.id}" is not a text node` }
-
-    const readiness = figma.getNodeFontReadiness(node.id)
-    const requiredFaceUsages = requiredNodeFontFaceUsages(node)
-    const requiredFaces = requiredFaceUsages.map(({ family, style }) => ({ family, style }))
-    const faces: FontFaceCheck[] = requiredFaceUsages.map((face) => {
-      const exactLoaded = fontManager.isStyleLoaded(face.family, face.style)
-      const familyLoaded = fontManager.isLoaded(face.family)
-      const snapshot = fontResolver.state(fontFaceDemand(face.family, face.style, node.text))
-      const source = snapshot.source ?? (exactLoaded ? 'registered' : undefined)
-      return {
-        ...face,
-        scopes: face.scopes,
-        exactLoaded,
-        familyLoaded,
-        mode: faceMode(readiness, exactLoaded, familyLoaded),
-        resolution: {
-          state: exactLoaded ? 'loaded' : snapshot.state,
-          ...(source ? { source } : {}),
-          ...(snapshot.error === undefined ? {} : { error: errorMessage(snapshot.error) })
-        }
-      }
-    })
-    const assignment = assignmentFor(requiredFaces, args.expected_family, args.expected_style)
-    const rendererStatus = renderStatus(readiness, faces)
-    const status: FontCheckStatus =
-      assignment === 'partial' || assignment === 'mismatch' ? 'mismatch' : rendererStatus
-    let effective: boolean | null = true
-    if (status === 'mismatch' || status === 'failed' || status === 'exhausted') {
-      effective = false
-    } else if (status === 'pending' || status === 'unverifiable') {
-      effective = null
-    }
-    const authored = {
-      family: node.fontFamily || DEFAULT_FONT_FAMILY,
-      style: weightToStyle(node.fontWeight || 400, node.italic)
-    }
-    const expected =
-      args.expected_family || args.expected_style
-        ? {
-            ...(args.expected_family ? { family: args.expected_family } : {}),
-            ...(args.expected_style ? { style: canonicalStyle(args.expected_style) } : {})
-          }
-        : null
-
-    return {
-      id: node.id,
-      name: node.name,
-      textPreview: node.text.length > 80 ? `${node.text.slice(0, 77)}...` : node.text,
-      authored,
-      expected,
-      assignment,
-      status,
-      renderStatus: rendererStatus,
-      readiness,
-      effective,
-      exactFacesLoaded: faces.every((face) => face.exactLoaded),
-      faces,
-      caveats: checkCaveats(assignment, status, readiness)
-    }
-  }
+  execute: (figma, args) =>
+    inspectNodeFontRendering(figma, args.id, args.expected_family, args.expected_style)
 })
 
 export const listFonts = defineTool({

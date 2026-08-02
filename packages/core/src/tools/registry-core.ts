@@ -28,27 +28,33 @@ import {
   setTranslations,
   setWorkflows,
   updateLowcodeNode,
+  updateLowcodeNodes,
   updateGeneratedEffect,
   updateMotion,
   updateMotionDrivers,
   updateMotionScene,
   updatePrototype,
+  updatePageRoute,
   updateNode,
   verifyTeamMotionLibrary
 } from './modify'
 import {
   findNodes,
+  auditNavigation,
   getJsx,
   getNode,
   getSelection,
   listMotionPresets,
   readDocStates,
   readLowcodeNode,
+  readLowcodeNodes,
   readGeneratedEffect,
   readMotion,
+  readMotions,
   readMotionDrivers,
   readMotionScene,
   readMotionTransitionKey,
+  readPageRoute,
   readPrototype,
   readSupabaseConfig,
   readTranslations,
@@ -56,7 +62,7 @@ import {
 } from './read'
 import type { ToolDef } from './schema'
 import { stockPhoto } from './stock-photo'
-import { batchUpdate, deleteNode, nodeResize, reparentNode } from './structure'
+import { batchUpdate, deleteNode, nodeResize, reparentNode, reparentNodes } from './structure'
 import { exportMotionAnimation, viewportZoomToFit } from './vector'
 
 /**
@@ -69,14 +75,18 @@ export const CORE_TOOLS: ToolDef[] = [
   getNode,
   findNodes,
   getJsx,
+  readPageRoute,
+  auditNavigation,
   // Read — lowcode (Phase 3 §3)
   readLowcodeNode,
+  readLowcodeNodes,
   readDocStates,
   readSupabaseConfig,
   readTranslations,
   readWorkflows,
   readGeneratedEffect,
   readMotion,
+  readMotions,
   readMotionDrivers,
   readMotionScene,
   readPrototype,
@@ -95,6 +105,8 @@ export const CORE_TOOLS: ToolDef[] = [
   setTextProperties,
   // Modify — lowcode (Phase 3 §3)
   updateLowcodeNode,
+  updateLowcodeNodes,
+  updatePageRoute,
   setDocStates,
   setSupabaseConfig,
   setTranslations,
@@ -121,6 +133,7 @@ export const CORE_TOOLS: ToolDef[] = [
   // Structure
   deleteNode,
   reparentNode,
+  reparentNodes,
   nodeResize,
   batchUpdate,
   // Stock photos
