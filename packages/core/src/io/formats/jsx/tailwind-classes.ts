@@ -2,17 +2,21 @@ import { twirl } from 'twirlwind'
 
 import {
   isAutoLayoutMode,
+  normalizeFontFamily,
   type Fill,
   type GridTrack,
   type InteractionState,
   type ResponsiveBreakpoint,
   type SceneGraph,
-  type SceneNode
+  type SceneNode,
+  type StateOverride,
+  type Stroke
 } from '@open-pencil/scene-graph'
 
-import { colorToCSSCompact } from '#core/color'
+import { colorToCSSCompact, colorToFill } from '#core/color'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { resolveNodeTextDirection } from '#core/text/direction'
+import { buttonLabelTextNode } from '#core/text/lowcode'
 
 import { formatColor, formatTrack, getNodeContext, solidFillColor, solidStroke } from './helpers'
 
@@ -418,12 +422,20 @@ function cssGradientAngle(dx: number, dy: number): number {
 }
 
 function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
-  if (node.type !== 'TEXT') return
-  style.fontSize = px(node.fontSize)
-  if (node.fontFamily && node.fontFamily !== DEFAULT_FONT_FAMILY) style.fontFamily = node.fontFamily
-  if (node.fontWeight !== 400) style.fontWeight = String(node.fontWeight)
-  if (node.textAlignHorizontal !== 'LEFT') style.textAlign = node.textAlignHorizontal.toLowerCase()
-  const textColor = solidFillColor(node.fills)
+  const textNode = buttonLabelTextNode(node) ?? node
+  if (textNode.type !== 'TEXT') return
+  style.fontSize = px(textNode.fontSize)
+  const fontFamily = normalizeFontFamily(textNode.fontFamily)
+  if (fontFamily && fontFamily !== DEFAULT_FONT_FAMILY) style.fontFamily = fontFamily
+  if (textNode.fontWeight !== 400) style.fontWeight = String(textNode.fontWeight)
+  if (textNode.italic) style.fontStyle = 'italic'
+  if (textNode.lineHeight != null) style.lineHeight = px(textNode.lineHeight)
+  if (textNode.letterSpacing !== 0) style.letterSpacing = px(textNode.letterSpacing)
+  if (textNode.textAlignHorizontal !== 'LEFT')
+    style.textAlign = textNode.textAlignHorizontal.toLowerCase()
+  // BUTTON fills describe the control background; canvas renders its label
+  // with the inherited/default foreground rather than reusing that fill.
+  const textColor = node.type === 'TEXT' ? solidFillColor(textNode.fills) : null
   if (textColor) style.color = textColor
 }
 
@@ -536,6 +548,124 @@ const STATE_STYLE_RESET: Record<string, string> = {
   boxShadow: 'none'
 }
 
+const LEGACY_STATE_HEX_COLOR = /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i
+const LEGACY_STATE_FILL_KEYS = new Set(['type', 'color', 'opacity', 'visible'])
+const LEGACY_STATE_STROKE_KEYS = new Set(['type', 'color', 'weight', 'opacity', 'visible', 'align'])
+const LEGACY_STATE_STROKE_ALIGNS = new Set<Stroke['align']>(['INSIDE', 'CENTER', 'OUTSIDE'])
+
+interface LegacyStatePaintRecord {
+  [key: string]: unknown
+  type?: unknown
+  color?: unknown
+  weight?: unknown
+  opacity?: unknown
+  visible?: unknown
+  align?: unknown
+}
+
+function isLegacyStatePaintRecord(value: unknown): value is LegacyStatePaintRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function validUnitInterval(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+}
+
+function validLegacySolidPaint(
+  candidate: LegacyStatePaintRecord,
+  allowedKeys: ReadonlySet<string>
+): boolean {
+  return (
+    (candidate.type === undefined || candidate.type === 'SOLID') &&
+    Object.keys(candidate).every((key) => allowedKeys.has(key))
+  )
+}
+
+function legacyHexColor(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return LEGACY_STATE_HEX_COLOR.test(trimmed) ? trimmed : undefined
+}
+
+function validNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+function validLegacyStrokeAlign(value: unknown): value is Stroke['align'] {
+  return typeof value === 'string' && LEGACY_STATE_STROKE_ALIGNS.has(value as Stroke['align'])
+}
+
+function normalizeLegacyStateFill(fill: Fill): Fill {
+  const raw: unknown = fill
+  const candidate = isLegacyStatePaintRecord(raw) ? raw : undefined
+  if (!candidate || !validLegacySolidPaint(candidate, LEGACY_STATE_FILL_KEYS)) return fill
+  const color = legacyHexColor(candidate.color)
+  if (!color) return fill
+  const opacity = candidate.opacity ?? 1
+  const visible = candidate.visible ?? true
+  if (!validUnitInterval(opacity)) return fill
+  if (typeof visible !== 'boolean') return fill
+  return {
+    ...colorToFill(color),
+    opacity,
+    visible
+  }
+}
+
+function normalizeLegacyStateStroke(stroke: Stroke): Stroke {
+  const raw: unknown = stroke
+  const candidate = isLegacyStatePaintRecord(raw) ? raw : undefined
+  if (!candidate || !validLegacySolidPaint(candidate, LEGACY_STATE_STROKE_KEYS)) return stroke
+  const color = legacyHexColor(candidate.color)
+  if (!color) return stroke
+  const weight = candidate.weight ?? 1
+  const opacity = candidate.opacity ?? 1
+  const visible = candidate.visible ?? true
+  const align = candidate.align ?? 'INSIDE'
+  if (!validNonNegativeNumber(weight)) return stroke
+  if (!validUnitInterval(opacity)) return stroke
+  if (typeof visible !== 'boolean') return stroke
+  if (!validLegacyStrokeAlign(align)) return stroke
+  return {
+    color: colorToFill(color).color,
+    weight,
+    opacity,
+    visible,
+    align
+  }
+}
+
+function normalizeLegacyStatePaints<T>(values: T[], normalize: (value: T) => T): T[] {
+  let normalizedValues: T[] | undefined
+  for (const [index, value] of values.entries()) {
+    const normalized = normalize(value)
+    if (normalized === value) continue
+    normalizedValues ??= [...values]
+    normalizedValues[index] = normalized
+  }
+  return normalizedValues ?? values
+}
+
+/**
+ * Older MCP-authored documents may contain the shorthand
+ * `{ fills: [{ type: 'SOLID', color: '#RRGGBB' }] }`. Keep that compatibility
+ * local to the state-variant projection so loading/exporting never mutates the
+ * SceneGraph.
+ */
+function normalizeLegacyStateOverride(
+  override: StateOverride | undefined
+): StateOverride | undefined {
+  if (!override) return override
+  const fills = override.fills
+    ? normalizeLegacyStatePaints(override.fills, normalizeLegacyStateFill)
+    : undefined
+  const strokes = override.strokes
+    ? normalizeLegacyStatePaints(override.strokes, normalizeLegacyStateStroke)
+    : undefined
+  if (fills === override.fills && strokes === override.strokes) return override
+  return { ...override, ...(fills ? { fills } : {}), ...(strokes ? { strokes } : {}) }
+}
+
 /**
  * Phase 4 §20 — interaction-state (pseudo-class-prefixed) Tailwind classes for
  * a node's `stateOverrides`. Same style-level diff as the responsive emitter
@@ -559,7 +689,7 @@ export function collectStateTailwindClasses(
     options,
     baseStyle,
     INTERACTION_STATES,
-    (state) => overrides[state],
+    (state) => normalizeLegacyStateOverride(overrides[state]),
     STATE_STYLE_RESET
   )
 }
@@ -669,6 +799,22 @@ const BORDER_WIDTH_CLASS: Record<string, string> = {
   '8px': 'border-8'
 }
 
+const FONT_SIZE_CLASS: Record<string, string> = {
+  '12px': 'text-xs',
+  '14px': 'text-sm',
+  '16px': 'text-base',
+  '18px': 'text-lg',
+  '20px': 'text-xl',
+  '24px': 'text-2xl',
+  '30px': 'text-3xl',
+  '36px': 'text-4xl',
+  '48px': 'text-5xl',
+  '60px': 'text-6xl',
+  '72px': 'text-7xl',
+  '96px': 'text-8xl',
+  '128px': 'text-9xl'
+}
+
 function borderWidthClasses(value: string | undefined): string[] {
   if (!value) return []
   return [BORDER_WIDTH_CLASS[value] ?? arbitraryClass('border', value)]
@@ -690,6 +836,11 @@ function roundedClasses(value: string | undefined): string[] {
   ]
 }
 
+function fontSizeClasses(value: string | undefined): string[] {
+  if (!value) return []
+  return [FONT_SIZE_CLASS[value] ?? arbitraryClass('text', value)]
+}
+
 function expandBorderRadius(value: string): [string, string, string, string] | null {
   const parts = value.trim().split(/\s+/).filter(Boolean)
   if (parts.length === 1) return [parts[0], parts[0], parts[0], parts[0]]
@@ -703,9 +854,15 @@ function tailwindClassesFromStyle(style: Record<string, string>): string[] {
   const twirlStyle = { ...style }
   delete twirlStyle.borderWidth
   delete twirlStyle.borderRadius
+  // twirlwind treats spacing multiples as dynamic text utilities (`40px` →
+  // `text-10`), but Tailwind's numeric spacing scale does not apply to
+  // font-size. Emit only real default typography tokens, otherwise preserve
+  // the authored value with an arbitrary utility.
+  delete twirlStyle.fontSize
   const twirled = twirl(twirlStyle)
   return [
     ...(twirled ? twirled.split(' ') : []),
+    ...fontSizeClasses(style.fontSize),
     ...borderWidthClasses(style.borderWidth),
     ...roundedClasses(style.borderRadius)
   ]

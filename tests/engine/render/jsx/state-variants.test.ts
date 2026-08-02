@@ -54,6 +54,36 @@ describe('collectStateTailwindClasses (Phase 4 §20)', () => {
     expect(out).toContain('hover:bg-[#FF0000]')
   })
 
+  test('legacy string-color solid hover fill is projected without mutating the document', () => {
+    const graph = new SceneGraph()
+    const legacyFill = [{ type: 'SOLID', color: '#123456' }]
+    const node = styledNode(graph, {
+      stateOverrides: { hover: {} }
+    })
+    const hover = node.stateOverrides?.hover
+    if (!hover) throw new Error('hover state missing')
+    Reflect.set(hover, 'fills', legacyFill)
+
+    const out = collectStateTailwindClasses(node, graph)
+
+    expect(out).toContain('hover:bg-[#123456]')
+    expect(out).not.toContain('hover:bg-transparent')
+    expect(node.stateOverrides?.hover?.fills).toEqual(legacyFill)
+  })
+
+  test('legacy solid hover stroke receives canonical defaults', () => {
+    const graph = new SceneGraph()
+    const node = styledNode(graph, { strokes: [], stateOverrides: { hover: {} } })
+    const hover = node.stateOverrides?.hover
+    if (!hover) throw new Error('hover state missing')
+    Reflect.set(hover, 'strokes', [{ type: 'SOLID', color: '#E23B32' }])
+
+    const out = collectStateTailwindClasses(node, graph)
+
+    expect(out).toContain('hover:border-[#E23B32]')
+    expect(out).toContain('hover:border')
+  })
+
   test('disabled opacity emits `disabled:opacity-50`', () => {
     const graph = new SceneGraph()
     const node = styledNode(graph, { stateOverrides: { disabled: { opacity: 0.5 } } })

@@ -38,6 +38,27 @@ describe('compile — interaction-state styling (Phase 4 §20)', () => {
     expect(cardDiv).toContain('hover:bg-')
   })
 
+  test('a legacy string-color solid hover fill emits its exact background color', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const button = graph.createNode('BUTTON', pageId, { interactiveProps: { text: 'Legacy' } })
+    graph.updateNode(button.id, {
+      stateOverrides: { hover: {} }
+    })
+    const hover = graph.getNode(button.id)?.stateOverrides?.hover
+    if (!hover) throw new Error('hover state missing')
+    Reflect.set(hover, 'fills', [{ type: 'SOLID', color: '#123456' }])
+
+    const out = compile({
+      graph,
+      pageIds: [pageId],
+      options: withDefaults({ packageName: 'state-button-legacy-fill' })
+    })
+    const app = out.files.get('src/App.tsx') as string
+    expect(app).toContain('hover:bg-[#123456]')
+    expect(app).not.toContain('hover:bg-transparent')
+  })
+
   test('a disabled opacity override emits `disabled:opacity-50`', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

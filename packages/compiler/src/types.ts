@@ -10,6 +10,50 @@ export interface CompilerInput {
    */
   pageIds: string[]
   options: CompilerOptions
+  /**
+   * Resolved, caller-owned web-font assets for this compile. Font discovery is
+   * asynchronous (and environment-specific), while `compile()` deliberately
+   * stays synchronous and deterministic, so app/CLI callers resolve this plan
+   * first with `resolveCompilerWebFonts()` and pass the result here.
+   */
+  fontManifest?: CompilerFontManifest
+}
+
+export type CompilerFontFormat = 'woff2' | 'woff' | 'opentype' | 'truetype'
+
+export type CompilerFontLicenseEvidence =
+  | {
+      kind: 'provider_policy'
+      policyUrl: string
+      policyCheckedAt: string
+    }
+  | {
+      kind: 'verified_open'
+      licenseIds: string[]
+    }
+
+export interface CompilerFontFaceAsset {
+  family: string
+  weight: string | number | [number, number]
+  style: string
+  display?: string
+  stretch?: string
+  unicodeRange?: string[]
+  format: CompilerFontFormat
+  /** Project-relative path. Compiler-generated plans use `src/assets/fonts/*`. */
+  path: string
+  content: Uint8Array
+  /** Source catalog, when the face was downloaded from an online provider. */
+  sourceProvider?: string
+  /** Redistribution evidence. Provider policy is intentionally weaker than an exact font license. */
+  licenseEvidence?: CompilerFontLicenseEvidence
+}
+
+export interface CompilerFontManifest {
+  /** Actual faces found by the resolver. A requested 700 face may resolve to 400. */
+  faces: CompilerFontFaceAsset[]
+  /** Ordered script fallbacks after authored family → Inter, matching the canvas stack. */
+  fallbackFamilies?: string[]
 }
 
 export interface CompilerOptions {

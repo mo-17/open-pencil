@@ -8,7 +8,7 @@
 import { basename, extname } from 'node:path'
 import process from 'node:process'
 
-import { compile, withDefaults } from '@open-pencil/compiler'
+import { compile, resolveCompilerWebFonts, withDefaults } from '@open-pencil/compiler'
 import type { CompileWarning, CompilerOutput, UiKitName } from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
 import type { SceneNode } from '@open-pencil/scene-graph'
@@ -125,9 +125,14 @@ export async function loadAndCompile(opts: {
 
   let compiled: CompilerOutput
   try {
+    const fontManifest = await resolveCompilerWebFonts({
+      graph,
+      pageIds: resolved.pageIds
+    })
     compiled = compile({
       graph,
       pageIds: resolved.pageIds,
+      fontManifest,
       options: withDefaults({
         packageName,
         devMode: false,

@@ -4,6 +4,7 @@ import {
 } from '@open-pencil/core/lowcode-validation'
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
 
+import { applyCompilerFontManifest } from './font-manifest'
 import { buildComponentRegistry } from './ir/collect/components'
 import type { MotionLoweringCache } from './ir/collect/motion'
 import { collectComponents, collectTree } from './ir/collect/tree'
@@ -17,10 +18,25 @@ export type {
   HtmlMetadata,
   HtmlMetadataOptions,
   CompilerInput,
+  CompilerFontFaceAsset,
+  CompilerFontFormat,
+  CompilerFontLicenseEvidence,
+  CompilerFontManifest,
   CompilerOptions,
   CompilerOutput,
   UiKitName
 } from './types'
+export { resolveCompilerWebFonts } from './resolve-fonts'
+export {
+  createPreviewFileDecodeCache,
+  createPreviewFileEncodeCache,
+  deserializePreviewFiles,
+  resetPreviewFileEncodeCache,
+  serializePreviewFiles,
+  type PreviewFileDecodeCache,
+  type PreviewFileEncodeCache,
+  type SerializedPreviewFile
+} from './preview-protocol'
 // Phase 3 §3: validator + expression sublanguage live in
 // `@open-pencil/core/lowcode-validation` so the lowcode AI tool surface
 // (which sits in core) can share one source with editor + compiler.
@@ -93,13 +109,17 @@ export function compile(input: CompilerInput): CompilerOutput {
     collectTree(input.graph, id, registry, i18n, styleOptions, motionCache)
   )
   const { files, warnings: adapterWarnings } = adapter.emit(irs, options, components)
+  const fontWarnings = input.fontManifest
+    ? applyCompilerFontManifest(files, input.graph, input.pageIds, input.fontManifest)
+    : []
   return {
     files,
     warnings: [
       ...selectionWarnings,
       ...componentWarnings,
       ...irs.flatMap((ir) => ir.warnings),
-      ...adapterWarnings
+      ...adapterWarnings,
+      ...fontWarnings
     ]
   }
 }

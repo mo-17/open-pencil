@@ -15,6 +15,12 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { createServer, type Update, type ViteDevServer } from 'vite'
 
+import {
+  createPreviewFileDecodeCache,
+  deserializePreviewFiles,
+  type PreviewFileDecodeCache,
+  type SerializedPreviewFile
+} from './preview-protocol'
 import { inMemoryVFS, prepareVfsRoot, VITE_JSX_ESBUILD, type PreviewFiles } from './vfs'
 
 export type { PreviewFiles }
@@ -42,6 +48,47 @@ export function classifyUpdate(
     return 'full-reload'
   }
   return 'hmr'
+}
+
+export interface PreviewFileDiff {
+  changed: string[]
+  topologyChanged: boolean
+}
+
+function sameFileContent(
+  previous: string | Uint8Array | undefined,
+  next: string | Uint8Array
+): boolean {
+  if (previous === next) return true
+  if (typeof previous === 'string' || typeof next === 'string' || previous === undefined) {
+    return false
+  }
+  if (previous.byteLength !== next.byteLength) return false
+  for (let index = 0; index < previous.byteLength; index++) {
+    if (previous[index] !== next[index]) return false
+  }
+  return true
+}
+
+/**
+ * Compare VFS snapshots by value. Binary sidecar payloads are base64-decoded
+ * into fresh Uint8Array instances on every update, so reference equality would
+ * turn an unchanged font asset into a full reload.
+ */
+export function diffPreviewFiles(previous: PreviewFiles, next: PreviewFiles): PreviewFileDiff {
+  const changed: string[] = []
+  let topologyChanged = false
+  for (const [path, content] of next) {
+    if (!previous.has(path)) topologyChanged = true
+    if (!sameFileContent(previous.get(path), content)) changed.push(path)
+  }
+  for (const path of previous.keys()) {
+    if (!next.has(path)) {
+      topologyChanged = true
+      changed.push(path)
+    }
+  }
+  return { changed, topologyChanged }
 }
 
 export interface PreviewServerOptions {
@@ -149,18 +196,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       state.files = files
 
       // Invalidate everything that changed (added / removed / different content)
-      const changed: string[] = []
-      let topologyChanged = false
-      for (const [rel, content] of files) {
-        if (!prev.has(rel)) topologyChanged = true
-        if (prev.get(rel) !== content) changed.push(rel)
-      }
-      for (const rel of prev.keys()) {
-        if (!files.has(rel)) {
-          topologyChanged = true
-          changed.push(rel)
-        }
-      }
+      const { changed, topologyChanged } = diffPreviewFiles(prev, files)
       if (changed.length === 0) return
 
       const invalidatedPaths: string[] = []
@@ -212,7 +248,7 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
 
 interface IncomingCommand {
   type: 'update' | 'close'
-  files?: Array<[string, string]>
+  files?: SerializedPreviewFile[]
 }
 
 interface OutgoingEvent {
@@ -252,6 +288,7 @@ async function runCli(): Promise<void> {
   }
   emit({ type: 'ready', url: server.url, port: server.port })
 
+  const decodeCache = createPreviewFileDecodeCache()
   let buffer = ''
   process.stdin.setEncoding('utf8')
   process.stdin.on('data', (chunk: string) => {
@@ -264,7 +301,7 @@ async function runCli(): Promise<void> {
       if (!line) continue
       try {
         const cmd = JSON.parse(line) as IncomingCommand
-        handleCommand(server, cmd).catch((e) => {
+        handleCommand(server, cmd, decodeCache).catch((e) => {
           emit({ type: 'error', message: e instanceof Error ? e.message : String(e) })
         })
       } catch (e) {
@@ -297,9 +334,13 @@ async function runCli(): Promise<void> {
   process.stdin.on('close', () => void shutdown())
 }
 
-async function handleCommand(server: PreviewServer, cmd: IncomingCommand): Promise<void> {
+async function handleCommand(
+  server: PreviewServer,
+  cmd: IncomingCommand,
+  decodeCache: PreviewFileDecodeCache
+): Promise<void> {
   if (cmd.type === 'update' && Array.isArray(cmd.files)) {
-    const files: PreviewFiles = new Map(cmd.files)
+    const files = deserializePreviewFiles(cmd.files, decodeCache)
     server.updateFiles(files)
     emit({ type: 'updated' })
     return

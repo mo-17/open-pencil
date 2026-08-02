@@ -432,6 +432,20 @@ describe('Tailwind JSX export', () => {
     expect(tw(graph, node.id)).toContain('text-[22px]')
   })
 
+  test('font size — spacing multiples do not become invalid numeric text utilities', () => {
+    const graph = makeGraph()
+    const node = graph.createNode('TEXT', pageId(graph), {
+      width: 200,
+      height: 48,
+      text: 'Hello',
+      fontSize: 40,
+      fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+    })
+    const jsx = tw(graph, node.id)
+    expect(jsx).toContain('text-[40px]')
+    expect(jsx).not.toContain('text-10')
+  })
+
   test('font weight — named values', () => {
     const graph = makeGraph()
     const node = graph.createNode('TEXT', pageId(graph), {

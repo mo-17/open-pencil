@@ -28,14 +28,22 @@ import { onBeforeUnmount, ref, type Ref } from 'vue'
 
 import {
   compile,
+  createPreviewFileEncodeCache,
+  resolveCompilerWebFonts,
+  resetPreviewFileEncodeCache,
+  serializePreviewFiles,
   withDefaults,
   type CompilerOptions,
   type CompileWarning
 } from '@open-pencil/compiler'
+import { fontManager } from '@open-pencil/core/text'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { decodeTauriStderr } from '@/app/shell/ui'
 import { isTauri } from '@/app/tauri/env'
+import { tauriFetch } from '@/app/tauri/http'
+
+import { waitForPreviewUpdateAck } from './update-ack'
 
 interface SidecarReadyEvent {
   type: 'ready'
@@ -184,23 +192,36 @@ async function startPreviewSidecar(): Promise<PreviewSidecar> {
     listeners.add(handle)
   })
 
+  const encodeCache = createPreviewFileEncodeCache()
+  let updateQueue: Promise<void> = Promise.resolve()
   let disposed = false
   return {
     url: ready.url,
     async update(files: Map<string, string | Uint8Array>): Promise<void> {
       if (disposed) return
-      const serializable: Array<[string, string]> = []
-      for (const [path, content] of files) {
-        if (typeof content === 'string') {
-          serializable.push([path, content])
+      const pending = updateQueue.then(async () => {
+        if (disposed) return undefined
+        const acknowledgement = waitForPreviewUpdateAck(listeners)
+        try {
+          const serializable = serializePreviewFiles(files, encodeCache)
+          const line = JSON.stringify({ type: 'update', files: serializable }) + '\n'
+          await child.write(line)
+          await acknowledgement.promise
+          return undefined
+        } catch (cause) {
+          resetPreviewFileEncodeCache(encodeCache)
+          throw cause
+        } finally {
+          acknowledgement.cancel()
         }
-      }
-      const line = JSON.stringify({ type: 'update', files: serializable }) + '\n'
-      await child.write(line)
+      })
+      updateQueue = pending.catch(() => undefined)
+      await pending
     },
     async dispose(): Promise<void> {
       if (disposed) return
       disposed = true
+      await updateQueue
       try {
         await child.write(JSON.stringify({ type: 'close' }) + '\n')
       } catch (e) {
@@ -254,9 +275,12 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   const store = useEditorStore()
   let sidecar: PreviewSidecar | null = null
   let cancelled = false
+  let compileRevision = 0
 
-  function recompileAndPush(): void {
-    if (!sidecar) return
+  async function compileAndPush(refreshFonts: boolean): Promise<void> {
+    const activeSidecar = sidecar
+    if (!activeSidecar) return
+    const revision = ++compileRevision
     try {
       const graph = store.graph
       const pages = graph.getPages()
@@ -266,9 +290,19 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
       // BrowserRouter shell as CLI export — that's what makes editor↔iframe
       // navigation possible (decision #1).
       const pageIds = pages.length > 1 ? pages.map((p) => p.id) : [store.state.currentPageId]
+      const fontManifest = await resolveCompilerWebFonts({
+        graph,
+        pageIds,
+        providers: fontManager.enabledOnlineFontProviders(),
+        fetcher: tauriFetch,
+        preferLoaded: true,
+        refresh: refreshFonts
+      })
+      if (cancelled || revision !== compileRevision || sidecar !== activeSidecar) return
       const out = compile({
         graph,
         pageIds,
+        fontManifest,
         options: withDefaults({
           packageName: 'openpencil-preview',
           ...previewCompilerOverrides(settings)
@@ -279,14 +313,17 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
       for (const w of out.warnings) {
         console.warn(`[preview] ${w.code}: ${w.message}`)
       }
-      void sidecar.update(out.files).catch((e) => {
-        console.warn('[preview] update failed:', e)
-      })
+      await activeSidecar.update(out.files)
     } catch (e) {
+      if (cancelled || revision !== compileRevision) return
       motionWarnings.value = []
       motionCompileError.value = e instanceof Error ? e.message : String(e)
       console.warn('[preview] compile failed:', e)
     }
+  }
+
+  function recompileAndPush(refreshFonts = false): void {
+    void compileAndPush(refreshFonts)
   }
 
   status.value = { kind: 'starting' }
@@ -331,5 +368,10 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     }
   })
 
-  return { status, motionWarnings, motionCompileError, forceRecompile: recompileAndPush }
+  return {
+    status,
+    motionWarnings,
+    motionCompileError,
+    forceRecompile: () => recompileAndPush(true)
+  }
 }
