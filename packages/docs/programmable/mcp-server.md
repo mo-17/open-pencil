@@ -128,13 +128,13 @@ Endpoints are available over both active transports:
 3. **Read and verify** — `get_page_tree`, `find_nodes`, `get_node`, `list_pages`; use
    `read_lowcode_nodes` or `read_motions` instead of repeated single-node calls. After changing a
    text font, call `check_font` for one node or `audit_font_rendering` for a bounded page/document
-   scan. Use `audit_navigation` before compiling routed pages and `audit_image_assets` when image
-   fills may be missing or corrupt.
+   scan. Use `audit_navigation` before compiling routed pages, `audit_form_controls` before
+   compiling validated forms, and `audit_image_assets` when image fills may be missing or corrupt.
    Before commercial use, embedding, redistribution, or modification, call `audit_font_licenses`
    with the matching `intended_use` and manually review every `unknown` result.
 4. **Create** — `create_shape`, `render` (JSX)
 5. **Modify** — `set_fill`, `set_stroke`, `set_layout`, `update_node`, `set_effects`,
-   `update_lowcode_nodes`, or the bounded Motion tools
+   `update_lowcode_nodes`, `ensure_form_value_bindings`, or the bounded Motion tools
 6. **Structure** — `reparent_nodes`, `group_nodes`, `clone_node`, `delete_node`
 7. **Save** — `save_file` to write back to `.fig`
 
@@ -204,6 +204,7 @@ Works with Claude Code, Cursor, Windsurf, Codex, and any agent that supports [sk
 | `list_available_fonts` | List font families the connected host can render                            |
 | `check_font`           | Verify assignment, exact face loading, fallback readiness, and glyph state  |
 | `audit_font_rendering` | Audit bounded live font effectiveness across subtrees, pages, or a document |
+| `audit_form_controls`  | Audit validated controls with bounded results (50 default, 200 max)         |
 | `read_lowcode_nodes`   | Read projected lowcode metadata for multiple nodes in one bounded call      |
 | `read_motions`         | Read compact or complete Motion metadata for multiple nodes                 |
 | `read_page_route`      | Read the compiler-effective route and collision metadata for one page       |
@@ -229,33 +230,40 @@ Works with Claude Code, Cursor, Windsurf, Codex, and any agent that supports [sk
 
 ### Modify
 
-| Tool                   | Description                                                                |
-| ---------------------- | -------------------------------------------------------------------------- |
-| `set_fill`             | Set fill color (hex)                                                       |
-| `set_stroke`           | Set stroke color, weight, alignment                                        |
-| `set_effects`          | Add shadow or blur effects                                                 |
-| `update_node`          | Update position, size, opacity, corner radius, text, font                  |
-| `set_layout`           | Set auto-layout (flexbox) — direction, spacing, padding, alignment         |
-| `set_constraints`      | Set resize constraints                                                     |
-| `set_rotation`         | Set rotation angle in degrees                                              |
-| `set_opacity`          | Set opacity (0–1)                                                          |
-| `set_radius`           | Set corner radius (uniform or per-corner)                                  |
-| `set_minmax`           | Set min/max width and height constraints                                   |
-| `set_text`             | Set text content of a `TEXT` node                                          |
-| `set_font`             | Set font family and weight                                                 |
-| `set_font_range`       | Set font properties on a character range                                   |
-| `set_text_resize`      | Set text auto-resize mode (fixed/auto-width/auto-height)                   |
-| `set_visible`          | Show or hide a node                                                        |
-| `set_blend`            | Set blend mode                                                             |
-| `set_locked`           | Lock or unlock a node                                                      |
-| `set_stroke_align`     | Set stroke alignment (inside/center/outside)                               |
-| `set_text_properties`  | Set text layout: alignment, auto-resize, text case, decoration, truncation |
-| `set_layout_child`     | Configure auto-layout child: sizing, grow, alignment, absolute positioning |
-| `node_move`            | Move a node to a new position                                              |
-| `node_resize`          | Resize a node                                                              |
-| `node_replace_with`    | Replace a node with another node                                           |
-| `arrange`              | Align or distribute selected nodes                                         |
-| `update_lowcode_nodes` | Validate and update multiple lowcode nodes in one undoable transaction     |
+| Tool                         | Description                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------- |
+| `set_fill`                   | Set fill color (hex)                                                         |
+| `set_stroke`                 | Set stroke color, weight, alignment                                          |
+| `set_effects`                | Add shadow or blur effects                                                   |
+| `update_node`                | Update position, size, opacity, corner radius, text, font                    |
+| `set_layout`                 | Set auto-layout (flexbox) — direction, spacing, padding, alignment           |
+| `set_constraints`            | Set resize constraints                                                       |
+| `set_rotation`               | Set rotation angle in degrees                                                |
+| `set_opacity`                | Set opacity (0–1)                                                            |
+| `set_radius`                 | Set corner radius (uniform or per-corner)                                    |
+| `set_minmax`                 | Set min/max width and height constraints                                     |
+| `set_text`                   | Set text content of a `TEXT` node                                            |
+| `set_font`                   | Set font family and weight                                                   |
+| `set_font_range`             | Set font properties on a character range                                     |
+| `set_text_resize`            | Set text auto-resize mode (fixed/auto-width/auto-height)                     |
+| `set_visible`                | Show or hide a node                                                          |
+| `set_blend`                  | Set blend mode                                                               |
+| `set_locked`                 | Lock or unlock a node                                                        |
+| `set_stroke_align`           | Set stroke alignment (inside/center/outside)                                 |
+| `set_text_properties`        | Set text layout: alignment, auto-resize, text case, decoration, truncation   |
+| `set_layout_child`           | Configure auto-layout child: sizing, grow, alignment, absolute positioning   |
+| `node_move`                  | Move a node to a new position                                                |
+| `node_resize`                | Resize a node                                                                |
+| `node_replace_with`          | Replace a node with another node                                             |
+| `arrange`                    | Align or distribute selected nodes                                           |
+| `update_lowcode_nodes`       | Validate and update multiple lowcode nodes in one undoable transaction       |
+| `ensure_form_value_bindings` | Create up to 199 missing page state/value bindings outside component masters |
+
+`audit_form_controls` includes `total`, `returned`, and `truncated` so callers can detect a bounded
+response. Page/form scopes skip `COMPONENT` and `COMPONENT_SET` master subtrees; a control scope
+inside a master is rejected because component code cannot read page state. Bind reusable component
+fields to document state instead. `ensure_form_value_bindings` also rejects a scope with more than
+199 missing bindings before it builds or mutates the repair plan; narrow the scope and retry.
 
 ### Motion
 

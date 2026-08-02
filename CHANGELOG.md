@@ -71,10 +71,23 @@
   non-token font sizes, weight, italic, line-height, and letter-spacing. Canvas
   and compiler font-provider requests use language subset labels rather than sending document text
   or glyphs. Generated assets retain provider policy provenance and warn when an exact
-  redistribution license still requires review.
+  redistribution license still requires review. Fonts whose OpenType `OS/2 fsType` explicitly
+  restricts embedding are marked as requiring a license and omitted from generated assets with a
+  `font-license-embedding-restricted` warning.
+- Treat bound radio and checkbox groups as controlled validation fields, validate their complete
+  state instead of a wrapper event target, and make `required` reject unchecked booleans and empty
+  option arrays.
 
 ### Added
 
+- Import validated TTF, OTF, and WOFF files from Font settings in the desktop app, retain their
+  internal family/style identity and license evidence in a checksummed local cache, prefer them over
+  same-named system or downloaded faces after restart, and recompile previews from the same bytes
+  used by CanvasKit.
+- Audit and repair validated form controls with `audit_form_controls` and
+  `ensure_form_value_bindings`, including page-scoped state creation, stable names, type-safe
+  defaults, dry runs, optimistic concurrency, and one undo transaction. The Bindings inspector also
+  offers a one-click page-state repair for a selected validated control.
 - Add bounded MCP audits for compiler-effective page routes (`read_page_route`,
   `update_page_route`, and `audit_navigation`), live CanvasKit font effectiveness
   (`audit_font_rendering`), and stored/referenced image integrity (`audit_image_assets`).

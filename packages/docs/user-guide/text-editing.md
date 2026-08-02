@@ -6,6 +6,7 @@ description: Creating and editing text with rich formatting, fonts, and inline e
 # Text Editing
 
 Create text nodes and edit them directly on the canvas with full rich text support.
+
 ## Creating Text
 
 Press <kbd>T</kbd> to activate the text tool, then click on the canvas. An empty text node appears with a blinking cursor — start typing immediately.
@@ -18,12 +19,12 @@ Text is rendered directly on the canvas — there's no separate text input overl
 
 ## Cursor Navigation
 
-| Action | Mac | Windows / Linux |
-|--------|-----|-----------------|
-| Move left/right | <kbd>←</kbd> / <kbd>→</kbd> | <kbd>←</kbd> / <kbd>→</kbd> |
-| Move up/down | <kbd>↑</kbd> / <kbd>↓</kbd> | <kbd>↑</kbd> / <kbd>↓</kbd> |
-| Move by word | <kbd>⌥</kbd><kbd>←</kbd> / <kbd>⌥</kbd><kbd>→</kbd> | <kbd>Ctrl</kbd> + <kbd>←</kbd> / <kbd>Ctrl</kbd> + <kbd>→</kbd> |
-| Move to line start/end | <kbd>⌘</kbd><kbd>←</kbd> / <kbd>⌘</kbd><kbd>→</kbd> | <kbd>Home</kbd> / <kbd>End</kbd> |
+| Action                 | Mac                                                 | Windows / Linux                                                 |
+| ---------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| Move left/right        | <kbd>←</kbd> / <kbd>→</kbd>                         | <kbd>←</kbd> / <kbd>→</kbd>                                     |
+| Move up/down           | <kbd>↑</kbd> / <kbd>↓</kbd>                         | <kbd>↑</kbd> / <kbd>↓</kbd>                                     |
+| Move by word           | <kbd>⌥</kbd><kbd>←</kbd> / <kbd>⌥</kbd><kbd>→</kbd> | <kbd>Ctrl</kbd> + <kbd>←</kbd> / <kbd>Ctrl</kbd> + <kbd>→</kbd> |
+| Move to line start/end | <kbd>⌘</kbd><kbd>←</kbd> / <kbd>⌘</kbd><kbd>→</kbd> | <kbd>Home</kbd> / <kbd>End</kbd>                                |
 
 Hold <kbd>Shift</kbd> with any movement key to extend the selection.
 
@@ -38,10 +39,10 @@ Hold <kbd>Shift</kbd> with any movement key to extend the selection.
 
 Apply formatting to selected text, or toggle the style for the entire node when nothing is selected.
 
-| Action | Mac | Windows / Linux |
-|--------|-----|-----------------|
-| Bold | <kbd>⌘</kbd><kbd>B</kbd> | <kbd>Ctrl</kbd> + <kbd>B</kbd> |
-| Italic | <kbd>⌘</kbd><kbd>I</kbd> | <kbd>Ctrl</kbd> + <kbd>I</kbd> |
+| Action    | Mac                      | Windows / Linux                |
+| --------- | ------------------------ | ------------------------------ |
+| Bold      | <kbd>⌘</kbd><kbd>B</kbd> | <kbd>Ctrl</kbd> + <kbd>B</kbd> |
+| Italic    | <kbd>⌘</kbd><kbd>I</kbd> | <kbd>Ctrl</kbd> + <kbd>I</kbd> |
 | Underline | <kbd>⌘</kbd><kbd>U</kbd> | <kbd>Ctrl</kbd> + <kbd>U</kbd> |
 
 Strikethrough is available via the **S** toggle button in the Typography section of the properties panel (no keyboard shortcut — <kbd>⌘</kbd><kbd>S</kbd> is used for Save).
@@ -52,13 +53,13 @@ The **B / I / U / S** toggle buttons in the Typography section of the properties
 
 ## Editing Operations
 
-| Action | Mac | Windows / Linux |
-|--------|-----|-----------------|
+| Action                    | Mac                      | Windows / Linux                        |
+| ------------------------- | ------------------------ | -------------------------------------- |
 | Delete word before cursor | <kbd>⌥</kbd><kbd>⌫</kbd> | <kbd>Ctrl</kbd> + <kbd>Backspace</kbd> |
-| Delete to line start | <kbd>⌘</kbd><kbd>⌫</kbd> | — |
-| Cut | <kbd>⌘</kbd><kbd>X</kbd> | <kbd>Ctrl</kbd> + <kbd>X</kbd> |
-| Copy | <kbd>⌘</kbd><kbd>C</kbd> | <kbd>Ctrl</kbd> + <kbd>C</kbd> |
-| Paste | <kbd>⌘</kbd><kbd>V</kbd> | <kbd>Ctrl</kbd> + <kbd>V</kbd> |
+| Delete to line start      | <kbd>⌘</kbd><kbd>⌫</kbd> | —                                      |
+| Cut                       | <kbd>⌘</kbd><kbd>X</kbd> | <kbd>Ctrl</kbd> + <kbd>X</kbd>         |
+| Copy                      | <kbd>⌘</kbd><kbd>C</kbd> | <kbd>Ctrl</kbd> + <kbd>C</kbd>         |
+| Paste                     | <kbd>⌘</kbd><kbd>V</kbd> | <kbd>Ctrl</kbd> + <kbd>V</kbd>         |
 
 ## Font Picker
 
@@ -77,7 +78,18 @@ Change the font weight in the Typography section of the properties panel. Availa
 
 - **Default font** — Inter is loaded automatically
 - **Desktop app** — all system fonts are available
+- **Imported font files** — in the desktop app, open **Font settings** beside the family picker and
+  import a TTF, OTF, or WOFF file. OpenPencil reads the font's internal family and style, validates
+  it before CanvasKit registration, records available license evidence, and stores a checksummed
+  local copy for restart and offline use.
 - **Browser** — system fonts are available in Chrome and Edge
+
+An imported face takes priority over a same-named system or downloaded face. The lowcode preview
+then embeds the same loaded bytes in Compiler output, so the canvas and preview do not silently use
+different font files. If the font's OpenType `OS/2 fsType` explicitly restricts embedding, Compiler
+omits the bytes and `@font-face` rule and reports `font-license-embedding-restricted` instead. The
+license badge still reflects evidence, not renderability: **License unknown** requires manual review
+and does not mean free.
 
 ## Tips
 

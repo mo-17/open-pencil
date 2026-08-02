@@ -61,6 +61,23 @@ For a first test, keep the app tiny:
 
 This path proves the core loop before you add Supabase, workflows, multiple pages, or i18n.
 
+### Repair uncontrolled validation fields
+
+Validation only runs on a controlled value. If a validated input, textarea, select, radio,
+datepicker, checkbox, or switch has no `bindings.value`, the Bindings inspector shows **Create page
+state and bind**. It creates a matching page state and the reference binding in one undo step.
+
+For a whole page, form subtree, or one control, MCP/built-in AI can first call
+`audit_form_controls`, then preview the exact repair with
+`ensure_form_value_bindings({ dry_run: true })`, and finally run the same tool without `dry_run`.
+Existing valid or invalid authored bindings are never overwritten; invalid targets are reported for
+manual review. Audits return at most 50 controls by default (configurable up to 200) and report
+`total`, `returned`, and `truncated`; repair calls fail before mutation when more than 199 bindings
+are missing, so narrow the scope and retry. Page/form sweeps skip reusable `COMPONENT` and
+`COMPONENT_SET` master subtrees. A field authored inside a component master cannot bind to page
+state; use document state instead. Put navigation or submission actions on the FORM `onSubmit`
+event when validation must run before those actions.
+
 ## Preview
 
 The desktop preview pane compiles the current page into a local React app and reloads when the design changes. It also includes a canvas-to-preview bridge, so selecting compatible nodes can keep the design and preview surfaces aligned.

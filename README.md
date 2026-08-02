@@ -212,7 +212,7 @@ Applicable inspect and report commands support `--json` for machine-readable out
 
 ### Build lowcode apps
 
-OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app. The lowcode compiler preserves layout, resolved web-font assets and script fallbacks, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, Stripe checkout and customer portal redirects through your own server endpoints, i18n catalogs, analytics hooks, controlled custom head/CSS metadata, and optional shadcn/ui components. Provider catalog policies are retained as provenance, but the compiler warns when a family-specific redistribution license still needs review.
+OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app. The lowcode compiler preserves layout, resolved web-font assets and script fallbacks, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, Stripe checkout and customer portal redirects through your own server endpoints, i18n catalogs, analytics hooks, controlled custom head/CSS metadata, and optional shadcn/ui components. Desktop Font settings can also import validated TTF, OTF, or WOFF files for persistent offline use; previews embed the same loaded face bytes as the CanvasKit canvas unless OpenType metadata explicitly restricts embedding. Restricted faces are omitted with a `font-license-embedding-restricted` compiler warning, while unknown or incomplete redistribution evidence remains visible for manual review.
 
 ```sh
 openpencil compile app.fig -o generated-app
@@ -264,7 +264,7 @@ Use Claude Code, Codex, or Gemini CLI directly in the chat panel. The agent conn
 
 ### MCP server
 
-Connect Claude Code, Cursor, Windsurf, or any MCP client to inspect, modify, and export design documents through 140+ design operations plus document/file lifecycle tools. The server connects to a running OpenPencil app for live-document operations, including bounded navigation, font-rendering, font-license, and image-asset audits; structured multi-node reads; and atomic batch updates. [Full docs →](https://openpencil.dev/programmable/mcp-server)
+Connect Claude Code, Cursor, Windsurf, or any MCP client to inspect, modify, and export design documents through 140+ design operations plus document/file lifecycle tools. The server connects to a running OpenPencil app for live-document operations, including bounded navigation, form-control, font-rendering, font-license, and image-asset audits; type-safe validated-form binding repair; structured multi-node reads; and atomic batch updates. [Full docs →](https://openpencil.dev/programmable/mcp-server)
 
 **Stdio** (Claude Code, Cursor, Windsurf):
 
