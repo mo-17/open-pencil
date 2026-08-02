@@ -209,10 +209,12 @@ export interface EditorContext {
   prefersReducedMotion: () => boolean
   getCk: () => CanvasKit | null
   getRenderer: () => SkiaRenderer | null
+  getRenderers: () => ReadonlySet<SkiaRenderer>
   getTextEditor: () => TextEditor | null
   requestRender: () => void
   requestRepaint: () => void
   requestOverlayRepaint: () => void
+  beginLoading: (options?: { releaseDocumentCaches?: boolean }) => () => void
   emitEditorEvent: <K extends EditorEventName>(
     event: K,
     ...args: Parameters<EditorEvents[K]>

@@ -233,6 +233,32 @@ describe('canvas render loop', () => {
     }
   })
 
+  test('sleeps while loading and resumes on the completion render request', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      let renders = 0
+      createCanvasRenderLoop(editor, () => {
+        renders++
+      })
+
+      editor.state.loading = true
+      emit('render:requested')
+      expect(scheduler.pendingCount).toBe(0)
+      scheduler.flush()
+      expect(renders).toBe(0)
+      expect(scheduler.pendingCount).toBe(0)
+
+      editor.state.loading = false
+      emit('render:requested')
+      scheduler.flush()
+      expect(renders).toBe(1)
+      expect(scheduler.pendingCount).toBe(0)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
   test('scene layers render on repaint but ignore selection and overlay-only events', () => {
     const scheduler = createFrameScheduler()
     try {

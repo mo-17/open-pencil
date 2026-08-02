@@ -4,7 +4,7 @@ import type { createSelectionActions } from '#core/editor/selection'
 import type { createStructureActions } from '#core/editor/structure'
 
 type ComponentActions = ReturnType<typeof createComponentActions>
-type PageActions = ReturnType<typeof createPageActions>
+type PageActions = Pick<ReturnType<typeof createPageActions>, 'switchPage'>
 type SelectionActions = ReturnType<typeof createSelectionActions>
 type StructureActions = ReturnType<typeof createStructureActions>
 

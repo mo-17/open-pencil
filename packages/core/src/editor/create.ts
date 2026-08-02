@@ -67,11 +67,14 @@ export function createEditor(options?: EditorOptions) {
   let _renderer: SkiaRenderer | null = null
   const _renderers = new Set<SkiaRenderer>()
   let _textEditor: TextEditor | null = null
+  let loadingLeaseCount = 0
+  let cacheReleasingLeaseCount = 0
   const events: Emitter<EditorEvents> = createNanoEvents()
 
   void prefetchFigmaSchema()
 
   const state: EditorState = options?.state ?? createDefaultEditorState(_graph.getPages()[0].id)
+  let manualLoading = state.loading
 
   function emitEditorEvent<K extends EditorEventName>(
     event: K,
@@ -106,6 +109,47 @@ export function createEditor(options?: EditorOptions) {
       renderVersion: state.renderVersion,
       sceneVersion: state.sceneVersion
     })
+  }
+
+  function clearRendererDocumentCaches() {
+    for (const renderer of _renderers) renderer.clearDocumentCaches()
+  }
+
+  function updateLoadingState(loading: boolean) {
+    if (state.loading === loading) return
+    state.loading = loading
+    // Render requests raised while loading are intentionally allowed to sleep.
+    // A repaint on completion wakes every canvas without invalidating scene data.
+    if (!loading) requestRepaint()
+  }
+
+  function setLoading(loading: boolean) {
+    const enteringManualLoading = loading && !manualLoading
+    manualLoading = loading
+    if (enteringManualLoading) clearRendererDocumentCaches()
+    updateLoadingState(manualLoading || loadingLeaseCount > 0)
+  }
+
+  function beginLoading(options: { releaseDocumentCaches?: boolean } = {}) {
+    const releasesDocumentCaches = options.releaseDocumentCaches !== false
+    if (releasesDocumentCaches && cacheReleasingLeaseCount === 0) {
+      clearRendererDocumentCaches()
+    }
+    if (releasesDocumentCaches) cacheReleasingLeaseCount++
+    loadingLeaseCount++
+    updateLoadingState(true)
+
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      loadingLeaseCount = Math.max(0, loadingLeaseCount - 1)
+      if (releasesDocumentCaches) {
+        cacheReleasingLeaseCount = Math.max(0, cacheReleasingLeaseCount - 1)
+      }
+      if (loadingLeaseCount !== 0) return
+      updateLoadingState(manualLoading)
+    }
   }
 
   function setSelectedIds(ids: Set<string>) {
@@ -158,10 +202,12 @@ export function createEditor(options?: EditorOptions) {
     prefersReducedMotion: _prefersReducedMotion,
     getCk: () => _ck,
     getRenderer: () => _renderer,
+    getRenderers: () => _renderers,
     getTextEditor: () => _textEditor,
     requestRender,
     requestRepaint,
     requestOverlayRepaint,
+    beginLoading,
     emitEditorEvent,
     setSelectedIds,
     setActiveTool,
@@ -172,7 +218,7 @@ export function createEditor(options?: EditorOptions) {
   // Assemble domain modules
   const viewport = createViewportActions(ctx)
   const selection = createSelectionActions(ctx)
-  const pages = createPageActions(ctx)
+  const { cancelPendingSwitch, ...pages } = createPageActions(ctx)
   const shapes = createShapeActions(ctx)
   const structure = createStructureActions(ctx)
   const components = createComponentActions(ctx)
@@ -189,6 +235,12 @@ export function createEditor(options?: EditorOptions) {
   onEditorEvent('node:deleted', clearPreviewForTarget)
   onEditorEvent('selection:changed', () => motionPreview.stopMotionPreview())
   onEditorEvent('page:changed', () => motionPreview.stopMotionPreview())
+  // Release the previous page before lazy population, font loading, and the next draw can overlap
+  // it in native CanvasKit memory.
+  onEditorEvent('page:changed', clearRendererDocumentCaches)
+  // A replacement graph may intentionally reuse the same page and node IDs. Clear immediately so
+  // native geometry and image caches cannot be read under the new graph identity.
+  onEditorEvent('graph:replaced', clearRendererDocumentCaches)
   const variables = createVariableActions(ctx)
   const vectorize = createVectorizeActions(ctx)
   const alignment = createAlignmentActions(ctx)
@@ -216,11 +268,16 @@ export function createEditor(options?: EditorOptions) {
     }
   }
 
-  function replaceGraph(newGraph: SceneGraph) {
+  function replaceGraph(newGraph: SceneGraph, options: { currentPageId?: string } = {}) {
+    cancelPendingSwitch()
     _graph = newGraph
     subscribeToGraph()
     const previousPageId = state.currentPageId
-    state.currentPageId = _graph.getPages()[0]?.id ?? _graph.rootId
+    const requestedPage = options.currentPageId ? _graph.getNode(options.currentPageId) : null
+    state.currentPageId =
+      requestedPage?.type === 'CANVAS'
+        ? requestedPage.id
+        : (_graph.getPages()[0]?.id ?? _graph.rootId)
     setSelectedIds(new Set())
     state.hoveredNodeId = null
     state.motionPreview = null
@@ -255,6 +312,8 @@ export function createEditor(options?: EditorOptions) {
     requestRender,
     requestRepaint,
     requestOverlayRepaint,
+    setLoading,
+    beginLoading,
     onEditorEvent,
     setCanvasKit,
     removeCanvasRenderer,

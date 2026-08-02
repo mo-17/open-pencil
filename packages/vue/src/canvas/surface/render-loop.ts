@@ -215,7 +215,8 @@ export function createCanvasRenderLoop(
     frameScheduled = false
     if (!pageVisible || suspended || disposed) return
     if (editor.state.loading) {
-      scheduleRender()
+      dirty = true
+      clearGeneratedEffectTimer()
       return
     }
 
@@ -241,6 +242,7 @@ export function createCanvasRenderLoop(
   const scheduleRender = () => {
     dirty = true
     clearGeneratedEffectTimer()
+    if (editor.state.loading) return
     scheduleFrame()
   }
 
