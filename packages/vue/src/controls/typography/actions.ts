@@ -22,7 +22,9 @@ export const TYPOGRAPHY_WEIGHTS = Object.entries(FONT_WEIGHT_NAMES).map(([value,
 
 export function createTypographyState(editor: Editor) {
   const node = useSceneComputed<SceneNode | null>(() => editor.getSelectedNode() ?? null)
-  const { missingFonts, hasMissingFonts } = useNodeFontStatus(() => node.value)
+  const { missingFonts, hasMissingFonts, retryMissingFonts } = useNodeFontStatus(() => node.value, {
+    onResolutionSettled: editor.requestRepaint
+  })
   const fontFamily = computed(() => node.value?.fontFamily ?? '')
   const fontWeight = computed(() => node.value?.fontWeight ?? 400)
   const fontSize = computed(() => node.value?.fontSize ?? 16)
@@ -48,7 +50,8 @@ export function createTypographyState(editor: Editor) {
     currentWeightLabel,
     activeFormatting,
     missingFonts,
-    hasMissingFonts
+    hasMissingFonts,
+    retryMissingFonts
   }
 }
 

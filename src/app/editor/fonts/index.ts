@@ -1,12 +1,19 @@
 import { useLocalStorage } from '@vueuse/core'
 import { watch } from 'vue'
 
+import { IS_BROWSER } from '@open-pencil/core/constants'
 import {
   DEFAULT_WEB_FONT_PROVIDER_SETTINGS,
   WEB_FONT_PROVIDER_IDS,
+  assessFontLicenseBytes,
+  chooseLocalFontMatch,
   collectGraphFontRequirements,
+  fontFamilyLicenseDisplayForCatalog,
+  fontFamilyLicenseDisplayFromAssessments,
   fontManager,
   missingGraphFontScripts,
+  styleToWeight,
+  type FontFamilyLicenseDisplay,
   type FontFamilyOption,
   type FontLoadOptions,
   type LocalFontAccessState,
@@ -80,6 +87,52 @@ interface TauriFontFamily {
 
 let tauriFontsCache: TauriFontFamily[] | null = null
 let tauriFontsPromise: Promise<TauriFontFamily[]> | null = null
+const fontLicenseAuditStyles = new Map<string, string>()
+const fontLicenseInspectionCache = new Map<string, Promise<FontFamilyLicenseDisplay>>()
+const fontLicenseInspectionQueue: Array<() => void> = []
+const MAX_CONCURRENT_FONT_LICENSE_INSPECTIONS = 2
+let activeFontLicenseInspections = 0
+
+function preferredAuditStyle(styles: readonly string[]): string {
+  return (
+    [...styles].sort((first, second) => {
+      const firstItalic = first.includes('Italic') ? 1 : 0
+      const secondItalic = second.includes('Italic') ? 1 : 0
+      return (
+        firstItalic - secondItalic ||
+        Math.abs(styleToWeight(first) - 400) - Math.abs(styleToWeight(second) - 400) ||
+        first.localeCompare(second)
+      )
+    })[0] ?? 'Regular'
+  )
+}
+
+function drainFontLicenseInspectionQueue(): void {
+  if (activeFontLicenseInspections >= MAX_CONCURRENT_FONT_LICENSE_INSPECTIONS) return
+  const next = fontLicenseInspectionQueue.shift()
+  if (!next) return
+  next()
+  drainFontLicenseInspectionQueue()
+}
+
+function scheduleFontLicenseInspection<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    fontLicenseInspectionQueue.push(() => {
+      activeFontLicenseInspections++
+      void (async () => {
+        try {
+          resolve(await task())
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error(String(error)))
+        } finally {
+          activeFontLicenseInspections--
+          drainFontLicenseInspectionQueue()
+        }
+      })()
+    })
+    drainFontLicenseInspectionQueue()
+  })
+}
 
 async function getTauriFonts(): Promise<TauriFontFamily[]> {
   if (tauriFontsCache) return tauriFontsCache
@@ -146,8 +199,14 @@ export async function listFamilies(): Promise<FontFamilyOption[]> {
       fontManager.listFamilyOptions()
     ])
     const byFamily = new Map(webFonts.map((font) => [font.family, font]))
-    for (const font of systemFonts)
-      byFamily.set(font.family, { family: font.family, source: 'local' })
+    for (const font of systemFonts) {
+      fontLicenseAuditStyles.set(font.family, preferredAuditStyle(font.styles))
+      byFamily.set(font.family, {
+        family: font.family,
+        source: 'local',
+        licenseDisplay: fontFamilyLicenseDisplayForCatalog(font.family, 'local')
+      })
+    }
     return [...byFamily.values()].sort((a, b) => a.family.localeCompare(b.family))
   }
   showWebFontUnavailableToast()
@@ -254,4 +313,66 @@ export async function loadFont(
     : await fontManager.loadFont(family, style, characters)
   if (!loaded) showWebFontUnavailableToast()
   return loaded
+}
+
+interface LocalFontLicenseProbe {
+  bytes: ArrayBuffer
+  style: string
+}
+
+async function readBrowserLocalFontForLicense(
+  family: string
+): Promise<LocalFontLicenseProbe | null> {
+  if (!IS_BROWSER || !window.queryLocalFonts) return null
+  try {
+    const fonts = await window.queryLocalFonts()
+    const match = chooseLocalFontMatch(fonts, family)
+    if (!match) return null
+    const blob = await match.blob()
+    if (blob.size === 0) return null
+    return { bytes: await blob.arrayBuffer(), style: match.style }
+  } catch {
+    return null
+  }
+}
+
+async function readLocalFontForLicense(family: string): Promise<LocalFontLicenseProbe | null> {
+  if (!isTauri()) return readBrowserLocalFontForLicense(family)
+  const style = fontLicenseAuditStyles.get(family)
+  if (!style) return null
+  const bytes = await loadSystemFont(family, style)
+  return bytes ? { bytes, style } : null
+}
+
+/**
+ * Lazily inspects one catalog option. Provider-policy and reviewed bundled
+ * results are returned without loading bytes; unknown local faces are loaded
+ * once so their OpenType license metadata can refine the display status.
+ */
+export function inspectFontFamilyLicense(
+  option: FontFamilyOption
+): Promise<FontFamilyLicenseDisplay> {
+  const current =
+    option.licenseDisplay ?? fontFamilyLicenseDisplayForCatalog(option.family, option.source)
+  if (current.status !== 'unknown' || option.source !== 'local') return Promise.resolve(current)
+
+  const styleHint = fontLicenseAuditStyles.get(option.family) ?? 'auto'
+  const key = `${option.source}|${option.family}|${styleHint}`
+  let inspection = fontLicenseInspectionCache.get(key)
+  if (!inspection) {
+    inspection = scheduleFontLicenseInspection(async () => {
+      const probe = await readLocalFontForLicense(option.family)
+      if (!probe) {
+        fontLicenseInspectionCache.delete(key)
+        return current
+      }
+      const assessment = await assessFontLicenseBytes(option.family, probe.style, probe.bytes)
+      return fontFamilyLicenseDisplayFromAssessments([assessment])
+    }).catch(() => {
+      fontLicenseInspectionCache.delete(key)
+      return current
+    })
+    fontLicenseInspectionCache.set(key, inspection)
+  }
+  return inspection
 }

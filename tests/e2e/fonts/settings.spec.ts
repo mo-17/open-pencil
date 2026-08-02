@@ -23,7 +23,7 @@ test('font settings popover exposes web font access without desktop-only cache a
   const typography = page.getByRole('region', { name: 'Typography' })
   await expect(typography).toBeVisible()
   await expect(
-    typography.getByRole('img', { name: /Missing font: Missing Test Sans/ })
+    typography.getByRole('button', { name: 'Reload missing font: Missing Test Sans' })
   ).toBeVisible()
   const fontSettings = page.getByRole('button', { name: 'Font settings' })
   await expect(fontSettings).toHaveAttribute('data-test-id', 'font-settings-trigger')

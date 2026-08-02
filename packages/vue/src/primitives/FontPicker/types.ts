@@ -4,6 +4,7 @@ export interface FontPickerUI {
   item?: string
   itemMeta?: string
   search?: string
+  filters?: string
   viewport?: string
   empty?: string
   emptyAction?: string

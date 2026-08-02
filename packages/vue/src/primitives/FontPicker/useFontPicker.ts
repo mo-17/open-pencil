@@ -1,10 +1,21 @@
 import { useFilter } from 'reka-ui'
 import { computed, ref, watch } from 'vue'
 
-import type { FontFamilyOption } from '@open-pencil/core/text'
+import type {
+  FontFamilyLicenseDisplay,
+  FontFamilyOption,
+  FontLicenseDisplayStatus
+} from '@open-pencil/core/text'
 
 export type FontAccessState = 'unsupported' | 'prompt' | 'granted' | 'denied'
-export type { FontFamilyOption, FontFamilySource } from '@open-pencil/core/text'
+export type {
+  FontFamilyLicenseDisplay,
+  FontFamilyOption,
+  FontFamilySource,
+  FontLicenseDisplayStatus
+} from '@open-pencil/core/text'
+
+export type FontLicenseFilter = 'all' | FontLicenseDisplayStatus
 
 export interface FontAccessController {
   state: () => FontAccessState
@@ -25,8 +36,32 @@ export interface UseFontPickerOptions {
   onSelect?: (family: string) => void
 }
 
+function unknownLicenseDisplay(): FontFamilyLicenseDisplay {
+  return {
+    status: 'unknown',
+    scope: 'catalog_source',
+    evidence: 'insufficient'
+  }
+}
+
 function normalizeOptions(items: string[] | FontFamilyOption[]): FontFamilyOption[] {
-  return items.map((item) => (typeof item === 'string' ? { family: item, source: 'local' } : item))
+  return items.map((item) => {
+    if (typeof item === 'string') {
+      return { family: item, source: 'local', licenseDisplay: unknownLicenseDisplay() }
+    }
+    return { ...item, licenseDisplay: item.licenseDisplay ?? unknownLicenseDisplay() }
+  })
+}
+
+export function fontFamilyOptionLicenseStatus(option: FontFamilyOption): FontLicenseDisplayStatus {
+  return option.licenseDisplay?.status ?? 'unknown'
+}
+
+export function matchesFontLicenseFilter(
+  option: FontFamilyOption,
+  filter: FontLicenseFilter
+): boolean {
+  return filter === 'all' || fontFamilyOptionLicenseStatus(option) === filter
 }
 
 /**
@@ -35,14 +70,18 @@ function normalizeOptions(items: string[] | FontFamilyOption[]): FontFamilyOptio
 export function useFontPicker(options: UseFontPickerOptions) {
   const families = ref<FontFamilyOption[]>([])
   const searchTerm = ref('')
+  const licenseFilter = ref<FontLicenseFilter>('all')
   const open = ref(false)
   const loading = ref(false)
   const accessState = ref<FontAccessState>(options.localFontAccess?.state() ?? 'granted')
 
   const { contains } = useFilter({ sensitivity: 'base' })
   const filtered = computed(() => {
-    if (!searchTerm.value) return families.value
-    return families.value.filter((option) => contains(option.family, searchTerm.value))
+    return families.value.filter(
+      (option) =>
+        matchesFontLicenseFilter(option, licenseFilter.value) &&
+        (!searchTerm.value || contains(option.family, searchTerm.value))
+    )
   })
 
   async function loadFamilies() {
@@ -84,14 +123,20 @@ export function useFontPicker(options: UseFontPickerOptions) {
     open.value = false
   }
 
+  function setLicenseFilter(filter: FontLicenseFilter) {
+    licenseFilter.value = filter
+  }
+
   return {
     families,
     searchTerm,
+    licenseFilter,
     open,
     filtered,
     loading,
     accessState,
     requestAccess,
+    setLicenseFilter,
     select
   }
 }

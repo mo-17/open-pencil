@@ -80,7 +80,11 @@ test('font picker selects local fonts without browser web-font access', async ({
           family: 'OpenPencil Local Font',
           fullName: 'OpenPencil Local Font Regular',
           postscriptName: 'OpenPencilLocalFont-Regular',
-          style: 'Regular'
+          style: 'Regular',
+          blob: async () => {
+            const response = await fetch('/Inter-Regular.ttf')
+            return new Blob([await response.arrayBuffer()], { type: 'font/ttf' })
+          }
         }
       ]
     })
@@ -94,12 +98,18 @@ test('font picker selects local fonts without browser web-font access', async ({
   ).toBe(0)
   await openFontPicker(page)
 
-  await expect(
-    page.getByTestId('font-picker-item').filter({ hasText: 'OpenPencil Local Font' })
-  ).toBeVisible()
-  await page.getByTestId('font-picker-item').filter({ hasText: 'OpenPencil Local Font' }).click()
+  const localFont = page
+    .getByTestId('font-picker-item')
+    .filter({ hasText: 'OpenPencil Local Font' })
+  await expect(localFont).toBeVisible()
+  await expect(localFont).toHaveAttribute('data-license-status', 'declared_open')
+  await expect(localFont.getByTestId('font-license-badge')).toContainText('Open license declared')
+  await localFont.click()
 
   await expect(page.getByTestId('font-picker-trigger')).toContainText('OpenPencil Local Font')
+  await expect(page.getByTestId('font-license-trigger-badge')).toContainText(
+    'Open license declared'
+  )
   await expect
     .poll(async () =>
       page.evaluate((id) => {
@@ -127,7 +137,18 @@ test('font picker keeps bundled fonts when local and web fonts are unavailable',
   await openTypographyForText(page)
   await openFontPicker(page)
 
-  await expect(page.getByTestId('font-picker-item').filter({ hasText: 'Inter' })).toBeVisible()
+  const inter = page.getByTestId('font-picker-item').filter({ hasText: 'Inter' })
+  await expect(inter).toBeVisible()
+  await expect(inter).toHaveAttribute('data-license-status', 'free')
+  await expect(inter.getByTestId('font-license-badge')).toContainText('Free')
+  const licenseFilter = page.getByTestId('font-license-filter')
+  await expect(licenseFilter).toHaveAccessibleName('Filter fonts by license')
+  await licenseFilter.selectOption('free')
+  await expect(inter).toBeVisible()
+  await licenseFilter.selectOption('unknown')
+  await expect(inter).toHaveCount(0)
+  await expect(page.getByText('No fonts match this license filter.')).toBeVisible()
+  await licenseFilter.selectOption('all')
   await expect(
     page.getByTestId('font-picker-item').filter({ hasText: 'OpenPencil Google Font' })
   ).toHaveCount(0)

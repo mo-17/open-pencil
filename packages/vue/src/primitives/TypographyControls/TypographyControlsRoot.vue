@@ -32,7 +32,8 @@ const actions = {
   formatting: onFormattingChange,
   toggleBold: ctx.toggleBold,
   toggleItalic: ctx.toggleItalic,
-  toggleDecoration: ctx.toggleDecoration
+  toggleDecoration: ctx.toggleDecoration,
+  retryMissingFonts: ctx.retryMissingFonts
 }
 </script>
 

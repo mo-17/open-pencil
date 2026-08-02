@@ -15,7 +15,6 @@ import PanelFieldGroup from '@/components/ui/panel/PanelFieldGroup.vue'
 import PanelGrid from '@/components/ui/panel/PanelGrid.vue'
 import PanelSection from '@/components/ui/panel/PanelSection.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
-import Tip from '@/components/ui/Tip.vue'
 import { loadFont } from '@/app/editor/fonts'
 import { appMenuShortcutLabel } from '@/app/shell/menu/shortcut'
 
@@ -66,26 +65,19 @@ function featureEnabled(features: Array<{ tag: string; enabled: boolean }>, tag:
           @select="ctx.actions.setFamily"
         />
         <FontSettingsPopover />
-        <Tip
+        <IconButton
           v-if="ctx.hasMissingFonts.value"
+          data-test-id="font-retry-missing"
           :label="
-            'Missing font' +
-            (ctx.missingFonts.value.length > 1 ? 's' : '') +
-            ': ' +
-            ctx.missingFonts.value.join(', ')
+            ctx.missingFonts.value.length > 1
+              ? panels.reloadMissingFonts({ fonts: ctx.missingFonts.value.join(', ') })
+              : panels.reloadMissingFont({ fonts: ctx.missingFonts.value.join(', ') })
           "
+          class="text-[var(--color-warning-action)]"
+          @click="ctx.actions.retryMissingFonts"
         >
-          <icon-lucide-alert-triangle
-            role="img"
-            :aria-label="
-              'Missing font' +
-              (ctx.missingFonts.value.length > 1 ? 's' : '') +
-              ': ' +
-              ctx.missingFonts.value.join(', ')
-            "
-            class="size-3.5 shrink-0 text-[var(--color-warning-action)]"
-          />
-        </Tip>
+          <icon-lucide-alert-triangle class="size-3.5 shrink-0" />
+        </IconButton>
       </div>
 
       <PanelGrid :columns="2" class="mb-3">

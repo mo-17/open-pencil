@@ -59,7 +59,7 @@ export {
   isToolbarToolActive,
   useToolbarState
 } from '#vue/primitives/Toolbar/useToolbarState'
-export { useNodeFontStatus } from '#vue/shared/font-status/use'
+export { useNodeFontStatus, type UseNodeFontStatusOptions } from '#vue/shared/font-status/use'
 export { usePropScrub } from '#vue/controls/prop-scrub/use'
 export { toolCursor } from '#vue/editor/tool-cursor'
 export {
@@ -127,7 +127,12 @@ export {
 } from '#vue/primitives/Fill'
 export type { FillActions, FillCategory } from '#vue/primitives/Fill'
 export { useGradientStops } from '#vue/primitives/GradientEditor/useGradientStops'
-export { useFontPicker } from '#vue/primitives/FontPicker/useFontPicker'
+export {
+  fontFamilyOptionLicenseStatus,
+  matchesFontLicenseFilter,
+  useFontPicker
+} from '#vue/primitives/FontPicker/useFontPicker'
+export type { FontLicenseFilter } from '#vue/primitives/FontPicker/useFontPicker'
 
 /** Headless structural primitives and their local contexts. */
 export { CanvasRoot, CanvasSurface, useCanvasContext } from '#vue/canvas'
@@ -154,7 +159,12 @@ export type {
   FillSwatchSlots
 } from '#vue/primitives/Fill'
 export { FontPickerRoot } from '#vue/primitives/FontPicker'
-export type { FontFamilyOption, FontPickerUI } from '#vue/primitives/FontPicker'
+export type {
+  FontFamilyLicenseDisplay,
+  FontFamilyOption,
+  FontLicenseDisplayStatus,
+  FontPickerUI
+} from '#vue/primitives/FontPicker'
 export {
   GradientEditorRoot,
   GradientEditorBar,

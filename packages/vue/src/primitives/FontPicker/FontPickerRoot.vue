@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick } from 'vue'
+import { computed, nextTick } from 'vue'
 import { templateRef, unrefElement } from '@vueuse/core'
 import {
   ComboboxAnchor,
@@ -16,6 +16,7 @@ import {
 } from 'reka-ui'
 
 import {
+  fontFamilyOptionLicenseStatus,
   useFontPicker,
   type FontAccessController,
   type FontFamilyOption
@@ -23,15 +24,23 @@ import {
 
 import type { FontPickerUI } from '#vue/primitives/FontPicker/types'
 
-const { listFamilies, localFontAccess, ui, emptySearchText, emptyFontsText, emptyFontsHint } =
-  defineProps<{
-    listFamilies: () => Promise<string[] | FontFamilyOption[]>
-    localFontAccess?: FontAccessController
-    ui?: FontPickerUI
-    emptySearchText?: string
-    emptyFontsText?: string
-    emptyFontsHint?: string
-  }>()
+const {
+  listFamilies,
+  localFontAccess,
+  ui,
+  emptySearchText,
+  emptyLicenseFilterText,
+  emptyFontsText,
+  emptyFontsHint
+} = defineProps<{
+  listFamilies: () => Promise<string[] | FontFamilyOption[]>
+  localFontAccess?: FontAccessController
+  ui?: FontPickerUI
+  emptySearchText?: string
+  emptyLicenseFilterText?: string
+  emptyFontsText?: string
+  emptyFontsHint?: string
+}>()
 
 const modelValue = defineModel<string>({ required: true })
 const emit = defineEmits<{ select: [family: string] }>()
@@ -46,12 +55,27 @@ function focusSearchInput() {
   })
 }
 
-const { searchTerm, open, filtered, loading, accessState, requestAccess, select } = useFontPicker({
+const {
+  families,
+  searchTerm,
+  licenseFilter,
+  open,
+  filtered,
+  loading,
+  accessState,
+  requestAccess,
+  setLicenseFilter,
+  select
+} = useFontPicker({
   modelValue,
   listFamilies,
   localFontAccess,
   onSelect: (family) => emit('select', family)
 })
+
+const selectedOption = computed(() =>
+  families.value.find((option) => option.family === modelValue.value)
+)
 </script>
 
 <template>
@@ -67,7 +91,7 @@ const { searchTerm, open, filtered, loading, accessState, requestAccess, select 
   >
     <ComboboxAnchor as-child>
       <ComboboxTrigger as-child>
-        <slot name="trigger" :value="modelValue" :open="open">
+        <slot name="trigger" :value="modelValue" :open="open" :option="selectedOption">
           <button :class="ui?.trigger">
             <span class="truncate">{{ modelValue }}</span>
           </button>
@@ -98,22 +122,33 @@ const { searchTerm, open, filtered, loading, accessState, requestAccess, select 
           />
         </slot>
 
+        <slot
+          name="filters"
+          :license-filter="licenseFilter"
+          :set-license-filter="setLicenseFilter"
+        />
+
         <ComboboxViewport :class="ui?.viewport ?? 'max-h-72 overflow-y-auto'">
           <ComboboxVirtualizer
             v-slot="{ option }"
             :options="filtered"
             :text-content="(option: FontFamilyOption) => option.family"
             :estimate-size="36"
+            :overscan="2"
           >
             <ComboboxItem
               :value="option.family"
               :class="ui?.item"
               :style="{ fontFamily: `'${option.family}', sans-serif` }"
+              :data-license-status="fontFamilyOptionLicenseStatus(option)"
             >
               <slot
                 name="item"
+                :option="option"
                 :family="option.family"
                 :source="option.source"
+                :license-display="option.licenseDisplay"
+                :license-status="fontFamilyOptionLicenseStatus(option)"
                 :selected="option.family === modelValue"
               >
                 <ComboboxItemIndicator>
@@ -124,8 +159,15 @@ const { searchTerm, open, filtered, loading, accessState, requestAccess, select 
             </ComboboxItem>
           </ComboboxVirtualizer>
 
-          <div v-if="filtered.length === 0 && searchTerm" :class="ui?.empty">
-            {{ emptySearchText ?? 'No fonts found' }}
+          <div
+            v-if="filtered.length === 0 && (searchTerm || licenseFilter !== 'all')"
+            :class="ui?.empty"
+          >
+            {{
+              searchTerm
+                ? (emptySearchText ?? 'No fonts found')
+                : (emptyLicenseFilterText ?? 'No fonts match this license filter')
+            }}
           </div>
           <div v-else-if="filtered.length === 0" :class="ui?.empty">
             <div>

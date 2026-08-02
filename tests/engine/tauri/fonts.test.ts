@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'bun:test'
 
-import { fontManager } from '@open-pencil/core/text'
+import { fontFamilyLicenseDisplayForCatalog, fontManager } from '@open-pencil/core/text'
 
 import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 
@@ -16,20 +16,73 @@ afterEach(async () => {
 })
 
 describe('Tauri font helpers', () => {
-  test('lists system font families through mocked Tauri IPC', async () => {
-    await mockTauriIPC((cmd) => {
-      expect(cmd).toBe('list_system_fonts')
-      return [{ family: 'System UI', styles: ['Regular', 'Bold'] }]
+  test('lists and inspects system fonts through source-only Tauri IPC', async () => {
+    const probeFamily = 'OpenPencil Local License Probe'
+    const probeBytes = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    let probeLoads = 0
+    await mockTauriIPC((cmd, args) => {
+      if (cmd === 'list_system_fonts') {
+        return [
+          { family: 'System UI', styles: ['Regular', 'Bold'] },
+          { family: 'Inter', styles: ['Regular'] },
+          { family: probeFamily, styles: ['Bold'] }
+        ]
+      }
+      expect(cmd).toBe('load_system_font')
+      expect(args).toEqual({ family: probeFamily, style: 'Bold' })
+      probeLoads++
+      return probeBytes
     })
 
-    vi.spyOn(fontManager, 'listFamilyOptions').mockResolvedValue([])
-    const { listFamilies, listFonts } = await import('@/app/editor/fonts')
-    vi.spyOn(fontManager, 'listFamilyOptions').mockResolvedValue([])
-
-    await expect(listFamilies()).resolves.toEqual([{ family: 'System UI', source: 'local' }])
-    await expect(listFonts()).resolves.toEqual([
-      { family: 'System UI', styles: ['Regular', 'Bold'] }
+    vi.spyOn(fontManager, 'listFamilyOptions').mockResolvedValue([
+      {
+        family: 'Inter',
+        source: 'bundled',
+        licenseDisplay: fontFamilyLicenseDisplayForCatalog('Inter', 'bundled')
+      }
     ])
+    const { inspectFontFamilyLicense, listFamilies, listFonts } = await import('@/app/editor/fonts')
+
+    const families = await listFamilies()
+    expect(families).toEqual([
+      {
+        family: 'Inter',
+        source: 'local',
+        licenseDisplay: fontFamilyLicenseDisplayForCatalog('Inter', 'local')
+      },
+      {
+        family: probeFamily,
+        source: 'local',
+        licenseDisplay: fontFamilyLicenseDisplayForCatalog(probeFamily, 'local')
+      },
+      {
+        family: 'System UI',
+        source: 'local',
+        licenseDisplay: fontFamilyLicenseDisplayForCatalog('System UI', 'local')
+      }
+    ])
+    await expect(listFonts()).resolves.toEqual([
+      { family: 'System UI', styles: ['Regular', 'Bold'] },
+      { family: 'Inter', styles: ['Regular'] },
+      { family: probeFamily, styles: ['Bold'] }
+    ])
+
+    expect(fontManager.isLoaded(probeFamily)).toBe(false)
+    const probeOption = families.find((option) => option.family === probeFamily)
+    expect(probeOption).toBeDefined()
+    if (!probeOption) return
+    const displays = await Promise.all(
+      Array.from({ length: 20 }, () => inspectFontFamilyLicense(probeOption))
+    )
+    expect(
+      displays.every(
+        (display) =>
+          display.status === 'declared_open' && display.evidence === 'embedded_name_table'
+      )
+    ).toBe(true)
+    expect(displays[0]).toMatchObject({ licenseIds: ['OFL-1.1'] })
+    expect(probeLoads).toBe(1)
+    expect(fontManager.isLoaded(probeFamily)).toBe(false)
   })
 
   test('loads system font bytes and registers the face', async () => {
