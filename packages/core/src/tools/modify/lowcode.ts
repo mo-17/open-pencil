@@ -1,16 +1,21 @@
+import { parse as parseCssColor } from 'culori'
+
 import type {
   ActionDef,
   ActionKind,
   AnalyticsConfig,
   BindingExpr,
   EventName,
+  Fill,
   LowcodeHeadMetadata,
   LowcodeTranslations,
   SceneNode,
   SeoMetadata,
   StateDef,
+  StateOverride,
   StateOverrides,
   StateValueType,
+  Stroke,
   SupabaseConfig,
   SupabaseFilter,
   SupabasePayloadEntry,
@@ -46,6 +51,7 @@ import type {
  * into shared `binding.ts` / `action.ts` modules waits until v2, when
  * a second consumer materializes.
  */
+import { parseColor } from '#core/color'
 import type { FigmaAPI } from '#core/figma-api'
 import {
   isSafeAnalyticsPolicyUrl,
@@ -127,6 +133,30 @@ const KNOWN_STATE_OVERRIDE_KEYS = new Set([
   'cornerRadius',
   'opacity',
   'effects'
+])
+
+const KNOWN_FILL_TYPES = new Set<Fill['type']>([
+  'SOLID',
+  'GRADIENT_LINEAR',
+  'GRADIENT_RADIAL',
+  'GRADIENT_ANGULAR',
+  'GRADIENT_DIAMOND',
+  'IMAGE',
+  'VIDEO',
+  'PATTERN',
+  'NOISE',
+  'CUSTOM'
+])
+
+const KNOWN_STROKE_ALIGNS = new Set<Stroke['align']>(['INSIDE', 'CENTER', 'OUTSIDE'])
+const SOLID_FILL_SHORTHAND_KEYS = new Set(['type', 'color', 'opacity', 'visible'])
+const SOLID_STROKE_SHORTHAND_KEYS = new Set([
+  'type',
+  'color',
+  'weight',
+  'opacity',
+  'visible',
+  'align'
 ])
 
 const KNOWN_FILTER_OPS = new Set<FilterOp>(['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'in'])
@@ -1043,6 +1073,7 @@ function validateRenderCondition(
 }
 
 type FieldResult = { ok: true } | { ok: false; error: string }
+type ValueResult<T> = { ok: true; value: T } | { ok: false; error: string }
 type StateOverridesResult = { ok: true; value: StateOverrides } | { ok: false; error: string }
 
 function applyStateField(raw: Record<string, unknown>, patch: Partial<SceneNode>): FieldResult {
@@ -1115,6 +1146,168 @@ function applyInteractivePropsField(
   return { ok: true }
 }
 
+function validateUnitInterval(value: unknown, path: string): ValueResult<number> {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
+    return fail(`${path} must be a finite number between 0 and 1`)
+  }
+  return { ok: true, value }
+}
+
+function validateCanonicalColor(value: unknown, path: string): FieldResult {
+  if (!isPlainObject(value)) return fail(`${path} must be an { r, g, b, a } color object`)
+  const channels = ['r', 'g', 'b', 'a'] as const
+  for (const channel of channels) {
+    const result = validateUnitInterval(value[channel], `${path}.${channel}`)
+    if (!result.ok) return result
+  }
+  const unknownKey = Object.keys(value).find(
+    (key) => !channels.includes(key as (typeof channels)[number])
+  )
+  if (unknownKey) return fail(`${path}.${unknownKey} is not supported`)
+  return { ok: true }
+}
+
+function parseShorthandColor(value: unknown, path: string): ValueResult<Fill['color']> {
+  if (typeof value !== 'string' || value.trim() === '' || !parseCssColor(value)) {
+    return fail(`${path} must be a valid CSS color string`)
+  }
+  const color = parseColor(value)
+  const validation = validateCanonicalColor(color, path)
+  return validation.ok ? { ok: true, value: color } : validation
+}
+
+function normalizeSolidFillShorthand(
+  raw: Record<string, unknown>,
+  path: string
+): ValueResult<Fill> {
+  const unknownKey = Object.keys(raw).find((key) => !SOLID_FILL_SHORTHAND_KEYS.has(key))
+  if (unknownKey) return fail(`${path}.${unknownKey} is not supported by solid fill shorthand`)
+  if ('type' in raw && raw.type !== 'SOLID') {
+    return fail(`${path}.type must be SOLID when color is a string`)
+  }
+  const color = parseShorthandColor(raw.color, `${path}.color`)
+  if (!color.ok) return color
+  const opacity = validateUnitInterval(raw.opacity ?? 1, `${path}.opacity`)
+  if (!opacity.ok) return opacity
+  const visible = raw.visible ?? true
+  if (typeof visible !== 'boolean') return fail(`${path}.visible must be a boolean`)
+  return {
+    ok: true,
+    value: { type: 'SOLID', color: color.value, opacity: opacity.value, visible }
+  }
+}
+
+function normalizeStateFill(raw: unknown, path: string): ValueResult<Fill> {
+  if (!isPlainObject(raw)) return fail(`${path} must be a fill object`)
+  if (typeof raw.color === 'string') return normalizeSolidFillShorthand(raw, path)
+  if (typeof raw.type !== 'string' || !KNOWN_FILL_TYPES.has(raw.type as Fill['type'])) {
+    return fail(`${path}.type must be a supported fill type`)
+  }
+  const color = validateCanonicalColor(raw.color, `${path}.color`)
+  if (!color.ok) return color
+  const opacity = validateUnitInterval(raw.opacity, `${path}.opacity`)
+  if (!opacity.ok) return opacity
+  if (typeof raw.visible !== 'boolean') return fail(`${path}.visible must be a boolean`)
+  return {
+    ok: true,
+    value: {
+      ...raw,
+      type: raw.type as Fill['type'],
+      color: raw.color as Fill['color'],
+      opacity: opacity.value,
+      visible: raw.visible
+    }
+  }
+}
+
+function normalizeStateFills(raw: unknown, path: string): ValueResult<Fill[]> {
+  if (!Array.isArray(raw)) return fail(`${path} must be an array`)
+  const normalized: Fill[] = []
+  let changed = false
+  for (const [index, value] of raw.entries()) {
+    const result = normalizeStateFill(value, `${path}[${index}]`)
+    if (!result.ok) return result
+    normalized.push(result.value)
+    changed ||= result.value !== value
+  }
+  return { ok: true, value: changed ? normalized : (raw as Fill[]) }
+}
+
+function normalizeSolidStrokeShorthand(
+  raw: Record<string, unknown>,
+  path: string
+): ValueResult<Stroke> {
+  const unknownKey = Object.keys(raw).find((key) => !SOLID_STROKE_SHORTHAND_KEYS.has(key))
+  if (unknownKey) return fail(`${path}.${unknownKey} is not supported by solid stroke shorthand`)
+  if ('type' in raw && raw.type !== 'SOLID') {
+    return fail(`${path}.type must be SOLID when color is a string`)
+  }
+  const color = parseShorthandColor(raw.color, `${path}.color`)
+  if (!color.ok) return color
+  const weight = raw.weight ?? 1
+  if (typeof weight !== 'number' || !Number.isFinite(weight) || weight < 0) {
+    return fail(`${path}.weight must be a non-negative finite number`)
+  }
+  const opacity = validateUnitInterval(raw.opacity ?? 1, `${path}.opacity`)
+  if (!opacity.ok) return opacity
+  const visible = raw.visible ?? true
+  if (typeof visible !== 'boolean') return fail(`${path}.visible must be a boolean`)
+  const align = raw.align ?? 'INSIDE'
+  if (typeof align !== 'string' || !KNOWN_STROKE_ALIGNS.has(align as Stroke['align'])) {
+    return fail(`${path}.align must be INSIDE, CENTER, or OUTSIDE`)
+  }
+  return {
+    ok: true,
+    value: {
+      color: color.value,
+      weight,
+      opacity: opacity.value,
+      visible,
+      align: align as Stroke['align']
+    }
+  }
+}
+
+function normalizeStateStroke(raw: unknown, path: string): ValueResult<Stroke> {
+  if (!isPlainObject(raw)) return fail(`${path} must be a stroke object`)
+  if (typeof raw.color === 'string') return normalizeSolidStrokeShorthand(raw, path)
+  const color = validateCanonicalColor(raw.color, `${path}.color`)
+  if (!color.ok) return color
+  if (typeof raw.weight !== 'number' || !Number.isFinite(raw.weight) || raw.weight < 0) {
+    return fail(`${path}.weight must be a non-negative finite number`)
+  }
+  const opacity = validateUnitInterval(raw.opacity, `${path}.opacity`)
+  if (!opacity.ok) return opacity
+  if (typeof raw.visible !== 'boolean') return fail(`${path}.visible must be a boolean`)
+  if (typeof raw.align !== 'string' || !KNOWN_STROKE_ALIGNS.has(raw.align as Stroke['align'])) {
+    return fail(`${path}.align must be INSIDE, CENTER, or OUTSIDE`)
+  }
+  return {
+    ok: true,
+    value: {
+      ...raw,
+      color: raw.color as Stroke['color'],
+      weight: raw.weight,
+      opacity: opacity.value,
+      visible: raw.visible,
+      align: raw.align as Stroke['align']
+    }
+  }
+}
+
+function normalizeStateStrokes(raw: unknown, path: string): ValueResult<Stroke[]> {
+  if (!Array.isArray(raw)) return fail(`${path} must be an array`)
+  const normalized: Stroke[] = []
+  let changed = false
+  for (const [index, value] of raw.entries()) {
+    const result = normalizeStateStroke(value, `${path}[${index}]`)
+    if (!result.ok) return result
+    normalized.push(result.value)
+    changed ||= result.value !== value
+  }
+  return { ok: true, value: changed ? normalized : (raw as Stroke[]) }
+}
+
 function validateStateOverrides(raw: unknown): StateOverridesResult {
   if (!isPlainObject(raw)) return fail('stateOverrides must be an object')
   const out: StateOverrides = {}
@@ -1125,25 +1318,38 @@ function validateStateOverrides(raw: unknown): StateOverridesResult {
       )
     }
     if (!isPlainObject(override)) return fail(`stateOverrides.${state} must be an object`)
+    const normalizedOverride: StateOverride = {}
     for (const [key, value] of Object.entries(override)) {
       if (!KNOWN_STATE_OVERRIDE_KEYS.has(key)) {
         return fail(
           `stateOverrides.${state}.${key} is not supported — allowed: ${[...KNOWN_STATE_OVERRIDE_KEYS].join(' / ')}`
         )
       }
-      if ((key === 'fills' || key === 'strokes' || key === 'effects') && !Array.isArray(value)) {
-        return fail(`stateOverrides.${state}.${key} must be an array`)
+      if (key === 'fills') {
+        const result = normalizeStateFills(value, `stateOverrides.${state}.fills`)
+        if (!result.ok) return result
+        normalizedOverride.fills = result.value
+      }
+      if (key === 'strokes') {
+        const result = normalizeStateStrokes(value, `stateOverrides.${state}.strokes`)
+        if (!result.ok) return result
+        normalizedOverride.strokes = result.value
+      }
+      if (key === 'effects') {
+        if (!Array.isArray(value)) return fail(`stateOverrides.${state}.effects must be an array`)
+        normalizedOverride.effects = value as StateOverride['effects']
       }
       if (key === 'cornerRadius' && (typeof value !== 'number' || !Number.isFinite(value))) {
         return fail(`stateOverrides.${state}.cornerRadius must be a finite number`)
       }
+      if (key === 'cornerRadius') normalizedOverride.cornerRadius = value as number
       if (key === 'opacity') {
-        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) {
-          return fail(`stateOverrides.${state}.opacity must be a finite number between 0 and 1`)
-        }
+        const result = validateUnitInterval(value, `stateOverrides.${state}.opacity`)
+        if (!result.ok) return result
+        normalizedOverride.opacity = result.value
       }
     }
-    out[state as keyof StateOverrides] = override
+    out[state as keyof StateOverrides] = normalizedOverride
   }
   return { ok: true, value: out }
 }
@@ -1694,6 +1900,7 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
+    "For stateOverrides fills/strokes, pass canonical SceneGraph paint objects or solid shorthand such as { color: '#E23B32' }; shorthand receives safe defaults and malformed paint entries are rejected. " +
     "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only), lowcodeSeoMetadata, lowcodeAnalyticsConfig (root only), lowcodeHeadMetadata (root only), lowcodeCustomCss (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. Phase 5 §11 lowcodeHeadMetadata accepts only structured { meta?: [{ kind: 'name' | 'property' | 'httpEquiv', key, content }], link?: [{ rel, href, as?, type?, media?, crossorigin? }], styles?: string[] }; lowcodeCustomCss is appended to generated src/index.css. Raw scripts / arbitrary JS are intentionally not supported. Phase 5 §10 lowcodeAnalyticsConfig accepts { provider: 'ga4' | 'plausible' | 'posthog', id, enabled?, endpoint?, pageViews?, respectDoNotTrack?, consentRequired?, consentRegionPreset?, consentAnalyticsDefault?, consentCopy? } where consentRegionPreset currently supports 'eea' as an opt-in starter preset and consentCopy may include plain bannerText, analyticsDescription, privacyPolicyUrl, and privacyPolicyLabel; policy URLs must be http(s) or root-relative. trackEvent actions accept eventNameExpr plus optional expression-valued properties. Page state entries may include Phase 4 §27.2 computedExpr; computed page state is emitted as read-only derived state, so setState and controlled bindings cannot write to it. Phase 4 §20 stateOverrides accepts hover/focus/active/disabled appearance overrides over fills/strokes/cornerRadius/opacity/effects; the compiler emits Tailwind pseudo-state classes such as hover:bg-* or disabled:opacity-50. Phase 4 §19 interactiveProps.validation and validationSummary are schema-checked at this tool boundary: patterns must compile, numeric rules must be finite, customExpr/urlExpr must parse, async validators require exactly one non-empty url or urlExpr and method GET/POST, and unknown validation keys are rejected. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / writable page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object), computed page state, and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 5 §12): `stripeCheckout` and `stripeCustomerPortal` actions are frontend redirect triggers only — `{ kind: 'stripeCheckout' | 'stripeCustomerPortal', endpoint, payloadEntries?, errorTarget? }`. The generated app POSTs JSON to the author's own server endpoint; checkout expects `{ url }` or `{ checkoutUrl }`, while customer portal expects `{ url }` or `{ portalUrl }`, then redirects with `window.location.assign`. Secret keys, price/customer creation, webhooks, subscription lifecycle, retries, and idempotency stay on the author's server and are never stored in ActionDef / .fig / generated code. `endpoint` uses the same safe template parser as apiCall, `payloadEntries` are expression-valued JSON fields with unique identifier keys, and `errorTarget` optionally captures request/response failures. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id', declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },

@@ -13,6 +13,7 @@ export type PresenceEditingKind =
   | 'list'
   | 'componentProps'
   | 'responsiveOverrides'
+  | 'stateOverrides'
   | 'renderCondition'
   | 'docState'
   | 'supabaseConfig'

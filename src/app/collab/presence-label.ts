@@ -21,6 +21,7 @@ export interface PresenceDialogs {
   presenceEditingList: NodeLabel
   presenceEditingComponentProps: NodeLabel
   presenceEditingResponsiveOverrides: NodeLabel
+  presenceEditingStateOverrides: NodeLabel
   presenceEditingRenderCondition: NodeLabel
   presenceEditingState: string
   presenceEditingDocState: string
@@ -50,6 +51,7 @@ export function presenceEditingLabel(
     list: dialogs.presenceEditingList({ node }),
     componentProps: dialogs.presenceEditingComponentProps({ node }),
     responsiveOverrides: dialogs.presenceEditingResponsiveOverrides({ node }),
+    stateOverrides: dialogs.presenceEditingStateOverrides({ node }),
     renderCondition: dialogs.presenceEditingRenderCondition({ node }),
     state: dialogs.presenceEditingState,
     docState: dialogs.presenceEditingDocState,

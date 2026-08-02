@@ -242,6 +242,7 @@
   "presenceEditingList": "正在编辑 {node} 的列表",
   "presenceEditingComponentProps": "正在编辑 {node} 的组件属性",
   "presenceEditingResponsiveOverrides": "正在编辑 {node} 的响应式覆盖",
+  "presenceEditingStateOverrides": "正在编辑 {node} 的交互状态",
   "presenceEditingRenderCondition": "正在编辑 {node} 的渲染条件",
   "presenceEditingState": "正在编辑页面状态",
   "presenceEditingDocState": "正在编辑文档状态",

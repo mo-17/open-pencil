@@ -267,6 +267,7 @@ export const dialogMessageDefaults = {
   presenceEditingList: params('Editing the list of {node}'),
   presenceEditingComponentProps: params('Editing component props of {node}'),
   presenceEditingResponsiveOverrides: params('Editing responsive overrides of {node}'),
+  presenceEditingStateOverrides: params('Editing interaction states of {node}'),
   presenceEditingRenderCondition: params('Editing the render condition of {node}'),
   presenceEditingState: 'Editing page state',
   presenceEditingDocState: 'Editing document state',

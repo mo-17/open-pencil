@@ -334,14 +334,24 @@ describe('update_lowcode_node', () => {
     expect(graph.getNode(graph.rootId)?.lowcodeCustomCss).toBeUndefined()
   })
 
-  test('accepts stateOverrides for interaction-state styling', () => {
+  test('preserves canonical stateOverrides paint objects', () => {
     const { figma, graph } = setupToolTest()
     const rect = figma.createRectangle()
     const stateOverrides = {
       hover: {
         opacity: 0.85,
         cornerRadius: 8,
-        fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }]
+        fills: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, opacity: 1, visible: true }],
+        strokes: [
+          {
+            color: { r: 0, g: 0, b: 0, a: 1 },
+            weight: 2,
+            opacity: 0.75,
+            visible: true,
+            align: 'CENTER',
+            cap: 'ROUND'
+          }
+        ]
       },
       active: { effects: [] }
     }
@@ -353,6 +363,64 @@ describe('update_lowcode_node', () => {
     if (!result.ok) return
     expect(result.data?.updated).toEqual(['stateOverrides'])
     expect(graph.getNode(rect.id)?.stateOverrides).toEqual(stateOverrides)
+  })
+
+  test('normalizes solid fill and stroke shorthands in stateOverrides', () => {
+    const { figma, graph } = setupToolTest()
+    const rect = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: rect.id,
+      patch_json: JSON.stringify({
+        stateOverrides: {
+          hover: {
+            fills: [{ color: '#E23B32' }],
+            strokes: [
+              { type: 'SOLID', color: '#336699', weight: 2, opacity: 0.6, align: 'OUTSIDE' }
+            ]
+          }
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const hover = graph.getNode(rect.id)?.stateOverrides?.hover
+    expect(hover?.fills?.[0]).toEqual({
+      type: 'SOLID',
+      color: { r: 226 / 255, g: 59 / 255, b: 50 / 255, a: 1 },
+      opacity: 1,
+      visible: true
+    })
+    expect(hover?.strokes?.[0]).toEqual({
+      color: { r: 51 / 255, g: 102 / 255, b: 153 / 255, a: 1 },
+      weight: 2,
+      opacity: 0.6,
+      visible: true,
+      align: 'OUTSIDE'
+    })
+  })
+
+  test('rejects malformed stateOverrides paint shorthands with an indexed path', () => {
+    const { figma, graph } = setupToolTest()
+    const rect = figma.createRectangle()
+    const invalidFill = getTool('update_lowcode_node').execute(figma, {
+      id: rect.id,
+      patch_json: JSON.stringify({ stateOverrides: { hover: { fills: [{ color: 'nope' }] } } })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(invalidFill.ok).toBe(false)
+    if (!invalidFill.ok) expect(invalidFill.error).toContain('stateOverrides.hover.fills[0].color')
+
+    const invalidStroke = getTool('update_lowcode_node').execute(figma, {
+      id: rect.id,
+      patch_json: JSON.stringify({
+        stateOverrides: { hover: { strokes: [{ color: '#ffffff', weight: -1 }] } }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(invalidStroke.ok).toBe(false)
+    if (!invalidStroke.ok) {
+      expect(invalidStroke.error).toContain('stateOverrides.hover.strokes[0].weight')
+    }
+    expect(graph.getNode(rect.id)?.stateOverrides).toBeUndefined()
   })
 
   test('rejects malformed stateOverrides', () => {

@@ -242,6 +242,7 @@
   "presenceEditingList": "Editing the list of {node}",
   "presenceEditingComponentProps": "Editing component props of {node}",
   "presenceEditingResponsiveOverrides": "Editing responsive overrides of {node}",
+  "presenceEditingStateOverrides": "Editing interaction states of {node}",
   "presenceEditingRenderCondition": "Editing the render condition of {node}",
   "presenceEditingState": "Editing page state",
   "presenceEditingDocState": "Editing document state",

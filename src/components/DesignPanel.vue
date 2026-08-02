@@ -27,6 +27,7 @@ import ComponentPropsPanel from './properties/Lowcode/ComponentPropsPanel.vue'
 import CustomCodePanel from './properties/Lowcode/CustomCodePanel.vue'
 import DocumentStatePanel from './properties/Lowcode/DocumentStatePanel.vue'
 import EventsPanel from './properties/Lowcode/EventsPanel.vue'
+import InteractionStatePanel from './properties/Lowcode/InteractionStatePanel.vue'
 import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vue'
 import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
 import LibrariesPanel from './properties/Lowcode/LibrariesPanel.vue'
@@ -98,6 +99,23 @@ const hasEvents = computed(() => {
   const type = node.value?.type
   return type === 'BUTTON' || type === 'FORM'
 })
+const INTERACTION_STATE_NODE_TYPES: ReadonlySet<string> = new Set([
+  'BUTTON',
+  'INPUT',
+  'TEXTAREA',
+  'CHECKBOX',
+  'SWITCH',
+  'SELECT',
+  'RADIO',
+  'DATEPICKER'
+])
+const hasInteractionStatePanel = computed(() => {
+  const selected = node.value
+  return Boolean(
+    selected &&
+    (INTERACTION_STATE_NODE_TYPES.has(selected.type) || selected.stateOverrides !== undefined)
+  )
+})
 const supportsLayoutGuides = computed(() => {
   const type = node.value?.type
   return type === 'FRAME' || type === 'COMPONENT' || type === 'COMPONENT_SET' || type === 'INSTANCE'
@@ -146,6 +164,19 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
     'font',
     'text',
     'color'
+  ],
+  'interaction-states': [
+    'interaction',
+    'state',
+    'hover',
+    'focus',
+    'active',
+    'pressed',
+    'disabled',
+    '悬停',
+    '聚焦',
+    '按下',
+    '禁用'
   ],
   motion: ['motion', 'animation', 'transition', 'keyframe', 'preset', '动效', '动画'],
   'lowcode-bindings': [
@@ -234,6 +265,11 @@ const showSingleComponent = computed(
   () => node.value?.type === 'INSTANCE' && sectionMatches('component', 'Component')
 )
 const showSingleAppearance = computed(() => sectionMatches('appearance', panels.value.appearance))
+const showSingleInteractionStates = computed(
+  () =>
+    hasInteractionStatePanel.value &&
+    sectionMatches('interaction-states', panels.value.lowcodeInteractionStates)
+)
 const showSingleMotion = computed(() => sectionMatches('motion', panels.value.motion))
 const showSingleLowcodeBindings = computed(
   () => hasLowcodeBindings.value && sectionMatches('lowcode-bindings', 'Bindings')
@@ -252,6 +288,7 @@ const singleHasMatches = computed(
     showSingleLayout.value ||
     showSingleComponent.value ||
     showSingleAppearance.value ||
+    showSingleInteractionStates.value ||
     showSingleMotion.value ||
     showSingleLowcodeBindings.value ||
     showSingleLowcodeEvents.value ||
@@ -412,6 +449,15 @@ const emptyHasMatches = computed(
       </div>
       <ComponentPropertiesSection />
       <ComponentPropsPanel />
+    </InspectorSection>
+
+    <InspectorSection
+      v-show="showSingleInteractionStates"
+      id="interaction-states"
+      :label="panels.lowcodeInteractionStates"
+      :highlighted="sectionHighlighted('interaction-states', panels.lowcodeInteractionStates)"
+    >
+      <InteractionStatePanel />
     </InspectorSection>
 
     <InspectorSection
