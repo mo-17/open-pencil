@@ -72,7 +72,12 @@ export interface ValidationRules {
 export function validateValue(value: unknown, rules: ValidationRules): string | null {
   const messages = rules.messages
   const str = value == null ? '' : String(value)
-  if (rules.required && str.trim() === '') {
+  const requiredEmpty =
+    value == null ||
+    value === false ||
+    (Array.isArray(value) && value.length === 0) ||
+    (typeof value === 'string' && value.trim() === '')
+  if (rules.required && requiredEmpty) {
     return messages?.required ?? 'This field is required'
   }
   if (str === '') return null

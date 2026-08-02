@@ -1,4 +1,6 @@
 import { controlledWriteCall } from '#compiler/adapters/react/emit/element'
+import { emitEventHandler } from '#compiler/adapters/react/emit/event'
+import { VALIDATION_INVALID_FIELD_CLASS } from '#compiler/adapters/react/lowcode/validation'
 import { motionDriverToken } from '#compiler/adapters/react/motion/drivers'
 import { motionToken } from '#compiler/adapters/react/motion/key'
 import type { IRAttrValue, IRControlledInput, IRElement, IRNode } from '#compiler/ir/types'
@@ -354,20 +356,58 @@ function emitDynamicOptionRow(
 function valueBindingParts(
   controlled: IRControlledInput | undefined,
   defaultValue: string | undefined,
-  ctx: KitEmitCtx
+  ctx: KitEmitCtx,
+  validationKey?: string
 ): string[] {
   if (controlled) {
     return [
       `value={${controlled.read}}`,
-      `onValueChange={(value) => ${controlledWriteCall(controlled, 'value')}}`
+      controlledKitChangeAttr('onValueChange', 'value', controlled, 'value', validationKey)
     ]
   }
   return defaultValue !== undefined ? [`defaultValue="${ctx.escapeAttr(defaultValue)}"`] : []
 }
 
+/** A Radix value callback receives the next value directly rather than a DOM
+ * event. Keep the write and synchronous validation on that same normalized
+ * value so boolean and array controls cannot accidentally validate a string. */
+function controlledKitChangeAttr(
+  prop: 'onCheckedChange' | 'onValueChange',
+  parameter: 'checked' | 'value',
+  controlled: IRControlledInput,
+  valueExpr: string,
+  validationKey: string | undefined
+): string {
+  if (validationKey === undefined) {
+    return `${prop}={(${parameter}) => ${controlledWriteCall(controlled, valueExpr)}}`
+  }
+  const key = JSON.stringify(validationKey)
+  return `${prop}={async (${parameter}) => { const __next = ${valueExpr}; ${controlledWriteCall(controlled, '__next')}; await __validateFieldValue(${key}, __next); }}`
+}
+
+function validationRootAttrParts(node: IRElement): string[] {
+  if (!node.validation) return []
+  const key = JSON.stringify(node.validation.key)
+  const validate = `await __validateField(${key})`
+  const handlers = node.events?.onBlur
+  const onBlur =
+    handlers && handlers.length > 0
+      ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate], forceAsync: true })}}`
+      : `onBlur={async () => { ${validate}; }}`
+  return [`aria-invalid={__fieldErrors[${key}] != null}`, onBlur]
+}
+
+function rootClassNameAttr(node: IRElement, ctx: KitEmitCtx): string | undefined {
+  if (node.className === '' && !node.validation) return undefined
+  if (!node.validation) return `className="${ctx.escapeAttr(node.className)}"`
+  const key = JSON.stringify(node.validation.key)
+  return `className={${JSON.stringify(node.className)} + (__fieldErrors[${key}] ? " ${VALIDATION_INVALID_FIELD_CLASS}" : "")}`
+}
+
 function rootAttrParts(node: IRElement, ctx: KitEmitCtx): string[] {
   const parts: string[] = []
-  if (node.className) parts.push(`className="${ctx.escapeAttr(node.className)}"`)
+  const className = rootClassNameAttr(node, ctx)
+  if (className) parts.push(className)
   const style = node.attrs.style
   if (typeof style === 'object' && style.kind === 'styleAttr') {
     parts.push(`style={${formatStyleAttr(style.declarations)}}`)
@@ -389,6 +429,7 @@ function rootAttrParts(node: IRElement, ctx: KitEmitCtx): string[] {
     parts.push(`data-op-motion-drivers="${motionDriverToken(node.motionDrivers)}"`)
     parts.push('data-op-motion-scope')
   }
+  parts.push(...validationRootAttrParts(node))
   return parts
 }
 
@@ -408,7 +449,15 @@ function emitToggle(node: IRElement, ctx: KitEmitCtx, component: 'Checkbox' | 'S
   if (node.controlled) {
     const value = component === 'Checkbox' ? 'checked === true' : 'checked'
     parts.push(`checked={${node.controlled.read}}`)
-    parts.push(`onCheckedChange={(checked) => ${controlledWriteCall(node.controlled, value)}}`)
+    parts.push(
+      controlledKitChangeAttr(
+        'onCheckedChange',
+        'checked',
+        node.controlled,
+        value,
+        node.validation?.key
+      )
+    )
   } else if (node.attrs.defaultChecked === true) {
     parts.push('defaultChecked')
   }
@@ -423,7 +472,7 @@ function emitSelect(node: IRElement, ctx: KitEmitCtx): string {
   const i2 = '  '.repeat(ctx.indent + 2)
   const defaultValue =
     typeof node.attrs.defaultValue === 'string' ? node.attrs.defaultValue : undefined
-  const rootParts = valueBindingParts(node.controlled, defaultValue, ctx)
+  const rootParts = valueBindingParts(node.controlled, defaultValue, ctx, node.validation?.key)
   const triggerParts = rootAttrParts(node, ctx)
   const staticItems = selectOptions(node.children).map(
     (o) =>
@@ -505,7 +554,7 @@ function optionGroupLists(
 function emitRadioGroup(node: IRElement, ctx: KitEmitCtx): string {
   const { pad, i1, i2, options, controlled, rootParts } = optionGroupBase(node, ctx)
   const defaultValue = controlled ? undefined : options.find((o) => o.defaultChecked)?.value
-  rootParts.push(...valueBindingParts(controlled, defaultValue, ctx))
+  rootParts.push(...valueBindingParts(controlled, defaultValue, ctx, node.validation?.key))
   const rows = options.flatMap((o, i) => {
     const id = `${node.sourceId}-${i}`
     const control = `${i2}<RadioGroupItem ${selectItemValueAttr(o, ctx)} id="${ctx.escapeAttr(id)}" />`
@@ -540,13 +589,13 @@ function emitCheckboxGroup(node: IRElement, ctx: KitEmitCtx): string {
     const id = `${node.sourceId}-${i}`
     const idAttr = `id="${ctx.escapeAttr(id)}"`
     const control = controlled
-      ? `${i2}<Checkbox ${idAttr} ${checkboxToggleParts(controlled, o)} />`
+      ? `${i2}<Checkbox ${idAttr} ${checkboxToggleParts(controlled, o, node.validation?.key)} />`
       : `${i2}<Checkbox ${idAttr} />`
     return emitOptionRow(control, id, o.labelNode, i1, i2, ctx)
   })
   const dynamicRows = optionGroupLists(node, ctx, i1, (o, idExpr, controlPad) =>
     controlled
-      ? `${controlPad}<Checkbox id={${idExpr}} ${checkboxToggleParts(controlled, o)} />`
+      ? `${controlPad}<Checkbox id={${idExpr}} ${checkboxToggleParts(controlled, o, node.validation?.key)} />`
       : `${controlPad}<Checkbox id={${idExpr}} />`
   )
   return [`${pad}<div${attrSuffix(rootParts)}>`, ...rows, ...dynamicRows, `${pad}</div>`].join('\n')
@@ -654,10 +703,14 @@ function emitAccordion(node: IRElement, ctx: KitEmitCtx): string | null {
 /** The `checked` + `onCheckedChange` props for one option of a controlled
  *  array checkbox-group: read `selected.includes(opt)`, write the array with the
  *  option spread in / filtered out depending on the new checked value. */
-function checkboxToggleParts(controlled: IRControlledInput, option: SelectOption): string {
+function checkboxToggleParts(
+  controlled: IRControlledInput,
+  option: SelectOption,
+  validationKey?: string
+): string {
   const value = optionValueCode(option)
   const next = `checked === true ? [...${controlled.read}, ${value}] : ${controlled.read}.filter((v) => v !== ${value})`
-  return `checked={${controlled.read}.includes(${value})} onCheckedChange={(checked) => ${controlledWriteCall(controlled, next)}}`
+  return `checked={${controlled.read}.includes(${value})} ${controlledKitChangeAttr('onCheckedChange', 'checked', controlled, next, validationKey)}`
 }
 
 /** Phase 3 §15 — the shadcn/ui adapter. Phase A maps BUTTON/text-INPUT/

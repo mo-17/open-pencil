@@ -580,7 +580,7 @@ function formatAttrs(
     parts.push(...controlledAttrParts(controlled, attrs, events?.onChange, validationKey))
   // §19: a validated field gets `aria-invalid` + an `onBlur` that validates it.
   if (validationKey !== undefined)
-    parts.push(...validationFieldParts(validationKey, events?.onBlur))
+    parts.push(...validationFieldParts(validationKey, events?.onBlur, controlled))
   parts.push(
     ...eventAttrParts(events, formValidationKeys, {
       skip: eventSkipSet(controlled, validationKey)
@@ -745,10 +745,24 @@ function controlledValueAttrParts(
 }
 
 /** Phase 4 §19: a validated field's `aria-invalid` + validate-on-blur attrs. */
-function validationFieldParts(key: string, handlers: IREventHandler[] | undefined): string[] {
+function validationFieldParts(
+  key: string,
+  handlers: IREventHandler[] | undefined,
+  controlled: IRControlledInput | undefined
+): string[] {
   const k = JSON.stringify(key)
-  const eventValue = '(e.target as HTMLInputElement).value'
-  const validate = `await __validateFieldValue(${k}, ${eventValue}, true)`
+  // RADIO / CHECKBOX-group validation belongs to their div wrapper while the
+  // controlled writers live on option leaves. A bubbled blur target's `value`
+  // is only one option, not the group's current state, so read the bound state.
+  let eventValue: string | undefined
+  if (controlled?.write.targetType === 'boolean') {
+    eventValue = '(e.target as HTMLInputElement).checked'
+  } else if (controlled) {
+    eventValue = '(e.target as HTMLInputElement).value'
+  }
+  const validate = eventValue
+    ? `await __validateFieldValue(${k}, ${eventValue}, true)`
+    : `await __validateField(${k})`
   const onBlur =
     handlers && handlers.length > 0
       ? `onBlur={${emitEventHandler(handlers, { eventLocals: true, prelude: [validate], forceAsync: true })}}`

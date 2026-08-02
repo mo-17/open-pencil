@@ -144,6 +144,65 @@ describe('compile — shadcn Radix controls (Phase 3 §15 Phase B)', () => {
     expect(out.warnings).toEqual([])
   })
 
+  test('validated controls keep aria, blur, and next-value validation through shadcn', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd1', name: 'agreed', type: 'boolean', defaultValue: false },
+        { id: 'd2', name: 'enabled', type: 'boolean', defaultValue: false },
+        { id: 'd3', name: 'country', type: 'string', defaultValue: '' },
+        { id: 'd4', name: 'choice', type: 'string', defaultValue: '' },
+        { id: 'd5', name: 'selected', type: 'array', defaultValue: [] }
+      ]
+    })
+    const checkbox = graph.createNode('CHECKBOX', page.id, {
+      bindings: { value: { kind: 'docState', docStateName: 'agreed' } },
+      interactiveProps: { validation: { required: true } }
+    })
+    const toggle = graph.createNode('SWITCH', page.id, {
+      bindings: { value: { kind: 'docState', docStateName: 'enabled' } },
+      interactiveProps: { validation: { required: true } }
+    })
+    const select = graph.createNode('SELECT', page.id, {
+      bindings: { value: { kind: 'docState', docStateName: 'country' } },
+      interactiveProps: { options: ['CN', 'US'], validation: { required: true } }
+    })
+    const radio = graph.createNode('RADIO', page.id, {
+      bindings: { value: { kind: 'docState', docStateName: 'choice' } },
+      interactiveProps: { options: ['A', 'B'], validation: { required: true } }
+    })
+    const group = graph.createNode('CHECKBOX', page.id, {
+      bindings: { value: { kind: 'docState', docStateName: 'selected' } },
+      interactiveProps: { options: ['One', 'Two'], validation: { required: true } }
+    })
+
+    const out = compileShadcn(graph, page.id, 'kb-validation')
+    const app = out.files.get('src/App.tsx') as string
+
+    for (const node of [checkbox, toggle, select, radio, group]) {
+      const key = JSON.stringify(node.id)
+      expect(app).toContain(`aria-invalid={__fieldErrors[${key}] != null}`)
+      expect(app).toContain(`onBlur={async () => { await __validateField(${key}); }}`)
+    }
+    expect(app).toContain(
+      `const __next = checked === true; setDocState("agreed", __next); await __validateFieldValue(${JSON.stringify(checkbox.id)}, __next)`
+    )
+    expect(app).toContain(
+      `const __next = checked; setDocState("enabled", __next); await __validateFieldValue(${JSON.stringify(toggle.id)}, __next)`
+    )
+    expect(app).toContain(
+      `const __next = value; setDocState("country", __next); await __validateFieldValue(${JSON.stringify(select.id)}, __next)`
+    )
+    expect(app).toContain(
+      `const __next = value; setDocState("choice", __next); await __validateFieldValue(${JSON.stringify(radio.id)}, __next)`
+    )
+    expect(app).toContain(
+      `const __next = checked === true ? [...selected, "One"] : selected.filter((v) => v !== "One"); setDocState("selected", __next); await __validateFieldValue(${JSON.stringify(group.id)}, __next)`
+    )
+    expect(out.warnings.map((warning) => warning.code)).not.toContain('validation-not-controlled')
+  })
+
   test('uncontrolled CHECKBOX (checked) → <Checkbox defaultChecked> (no onCheckedChange)', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

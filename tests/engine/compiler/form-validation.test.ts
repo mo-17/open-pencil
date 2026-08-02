@@ -140,6 +140,102 @@ describe('compile — form validation (Phase 4 §19)', () => {
     expect(formLine).toMatch(/__validateFields\(\["[^"]+"\]\)/)
   })
 
+  test('bound RADIO and CHECKBOX groups register validation without wrapper warnings', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd-radio', name: 'choice', type: 'string', defaultValue: '' },
+        { id: 'd-checkbox', name: 'selected', type: 'array', defaultValue: [] }
+      ]
+    })
+    const form = graph.createNode('FORM', pageId, { name: 'F', width: 300, height: 300 })
+    const radio = graph.createNode('RADIO', form.id, {
+      name: 'Choice',
+      bindings: { value: { kind: 'docState', docStateName: 'choice' } },
+      interactiveProps: {
+        options: ['Alpha', 'Beta'],
+        validation: { required: true }
+      }
+    })
+    const checkbox = graph.createNode('CHECKBOX', form.id, {
+      name: 'Selected',
+      bindings: { value: { kind: 'docState', docStateName: 'selected' } },
+      interactiveProps: {
+        options: ['One', 'Two'],
+        validation: { required: true }
+      }
+    })
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const formLine = app.split('\n').find((line) => line.includes('<form')) ?? ''
+
+    expect(out.warnings.map((warning) => warning.code)).not.toContain('validation-not-controlled')
+    expect(app).toContain(
+      `${JSON.stringify(radio.id)}: async (__valueOverride?: unknown, __includeAsync = true, __signal?: AbortSignal) => {`
+    )
+    expect(app).toContain('getDocStateSnapshot("choice")')
+    expect(app).toContain(
+      `${JSON.stringify(checkbox.id)}: async (__valueOverride?: unknown, __includeAsync = true, __signal?: AbortSignal) => {`
+    )
+    expect(app).toContain('getDocStateSnapshot("selected")')
+    expect(formLine).toContain(JSON.stringify(radio.id))
+    expect(formLine).toContain(JSON.stringify(checkbox.id))
+    expect(app).toContain(`await __validateField(${JSON.stringify(radio.id)})`)
+    expect(app).toContain(`await __validateField(${JSON.stringify(checkbox.id)})`)
+  })
+
+  test('a validated boolean control checks its boolean state on blur', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'd-consent', name: 'consent', type: 'boolean', defaultValue: false }
+      ]
+    })
+    const checkbox = graph.createNode('CHECKBOX', pageId, {
+      name: 'Consent',
+      bindings: { value: { kind: 'docState', docStateName: 'consent' } },
+      interactiveProps: { validation: { required: true } }
+    })
+
+    const out = compile({ graph, pageIds: [pageId], options: withDefaults({ packageName: 'v' }) })
+    const app = out.files.get('src/App.tsx') as string
+    const line = app
+      .split('\n')
+      .find((candidate) => candidate.includes(`data-node-id="${checkbox.id}"`))
+
+    expect(line).toContain(
+      `await __validateFieldValue(${JSON.stringify(checkbox.id)}, (e.target as HTMLInputElement).checked, true)`
+    )
+    expect(line).not.toContain('(e.target as HTMLInputElement).value, true')
+  })
+
+  test('required rejects false and empty arrays while accepting populated values', () => {
+    const { files } = compileField({ required: true })
+    const runtime = files.get('src/_lowcode_validation.tsx') as string
+    const functionStart = runtime.indexOf('export function validateValue')
+    const functionEnd = runtime.indexOf('\nexport interface RemoteValidationConfig', functionStart)
+    expect(functionStart).toBeGreaterThanOrEqual(0)
+    expect(functionEnd).toBeGreaterThan(functionStart)
+
+    const functionSource = runtime
+      .slice(functionStart, functionEnd)
+      .replace('export function validateValue', 'function validateValue')
+    const javascript = new Bun.Transpiler({ loader: 'ts' }).transformSync(functionSource)
+    const validateValue = new Function(`${javascript}\nreturn validateValue`)() as (
+      value: unknown,
+      rules: { required?: boolean }
+    ) => string | null
+
+    expect(validateValue(false, { required: true })).toBe('This field is required')
+    expect(validateValue([], { required: true })).toBe('This field is required')
+    expect(validateValue(true, { required: true })).toBeNull()
+    expect(validateValue(['One'], { required: true })).toBeNull()
+    expect(validateValue(0, { required: true })).toBeNull()
+  })
+
   test('eventless buttons are implicit submits only inside a FORM subtree', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

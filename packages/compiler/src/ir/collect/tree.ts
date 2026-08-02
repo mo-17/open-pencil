@@ -2981,12 +2981,12 @@ function resolveControlDescriptors(
   const upload = applyUploadInput(node, ctx, attrs)
   if (upload) return { upload }
   const out: Pick<IRElement, 'controlled' | 'controlKind' | 'validation'> = {}
-  const controlled = applyControlledInput(node, ctx, attrs, children)
-  if (controlled) {
-    out.controlled = controlled
+  const resolved = applyControlledInput(node, ctx, attrs, children)
+  if (resolved) {
+    if (resolved.attachToWrapper) out.controlled = resolved.controlled
     // §19: a controlled field may carry validation rules — its value is read
     // fresh from `controlled.write.name` at validate time.
-    const validation = applyValidation(node, ctx, controlled)
+    const validation = applyValidation(node, ctx, resolved.controlled)
     if (validation) out.validation = validation
   } else if (hasValidationConfig(node)) {
     // §19: validation needs a controlled value source (the field's doc-state);
@@ -3003,12 +3003,18 @@ function resolveControlDescriptors(
   return out
 }
 
+interface AppliedControlledInput {
+  controlled: IRControlledInput
+  /** Option groups place their controlled wiring on child inputs, not the div wrapper. */
+  attachToWrapper: boolean
+}
+
 function applyControlledInput(
   node: SceneNode,
   ctx: WalkCtx,
   attrs: Record<string, IRAttrValue>,
   children: IRNode[]
-): IRControlledInput | undefined {
+): AppliedControlledInput | undefined {
   if (!CONTROLLED_NODE_TYPES.has(node.type)) return undefined
   const controlled = resolveValueBinding(
     node,
@@ -3037,7 +3043,7 @@ function applyControlledInput(
   // `resolveValueBinding` so the page scaffold imports are unaffected.
   if (node.type === 'RADIO') {
     patchOptionLeafControlled(children, 'radio', controlled)
-    return undefined
+    return { controlled, attachToWrapper: false }
   }
   // CHECKBOX group (§3.v4 step 8): same wrapper-vs-leaf split as RADIO.
   // Per-child checkbox gets the controlled descriptor; emit branches on
@@ -3045,9 +3051,9 @@ function applyControlledInput(
   // array-includes/toggle pair.
   if (isCheckboxGroup(node)) {
     patchOptionLeafControlled(children, 'checkbox', controlled)
-    return undefined
+    return { controlled, attachToWrapper: false }
   }
-  return controlled
+  return { controlled, attachToWrapper: true }
 }
 
 /** Phase 4 §18: resolve an INPUT's file-upload config (`interactiveProps.upload`)
