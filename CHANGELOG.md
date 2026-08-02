@@ -4,6 +4,14 @@
 
 ### Fixed
 
+- Keep core and Automation-tree JSX rendering on the same deterministic placement path, so
+  `replace_id` and `insert_index` preserve the intended parent/order, report the applied placement,
+  and roll back the correct page when post-render font or layout work fails.
+- Surface core tool-domain failures as MCP errors instead of successful nested `{ error }` payloads,
+  and warn during compilation when emitted pages contain missing, ambiguous, cyclic, or otherwise
+  invalid navigation targets.
+- Measure describe-time text contrast from composited alpha, node opacity, and ancestor fills using
+  the WCAG AA ratio instead of RGB distance or a dark-on-dark heuristic.
 - Keep image-heavy `.fig` saves responsive in Tauri by replacing JSON byte-array IPC with a raw
   binary request/response, building the native archive on a blocking worker thread, and serializing
   versioned saves against the file target captured when each save was requested.
@@ -67,6 +75,13 @@
 
 ### Added
 
+- Add bounded MCP audits for compiler-effective page routes (`read_page_route`,
+  `update_page_route`, and `audit_navigation`), live CanvasKit font effectiveness
+  (`audit_font_rendering`), and stored/referenced image integrity (`audit_image_assets`).
+- Add native object/array MCP arguments, machine-readable structured results and request diagnostics,
+  plus bounded multi-node reads and atomic writes with `read_lowcode_nodes`, `read_motions`,
+  `update_lowcode_nodes`, and `reparent_nodes`; component instances can also be created directly at
+  an exact parent/index.
 - Add an Interaction states inspector for buttons and form controls to author
   hover, focus, active, and disabled fill, stroke, opacity, and corner-radius
   overrides. Compiler export also accepts legacy solid state paints with string
