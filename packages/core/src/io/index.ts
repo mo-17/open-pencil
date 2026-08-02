@@ -15,8 +15,11 @@ export {
   exportFigFileWithOptions,
   parseFigFile,
   readFigFile,
+  readFigSource,
   type ExportFigFileOptions,
-  type ParseFigFileOptions
+  type FigSourceData,
+  type ParseFigFileOptions,
+  type ReloadableFigSource
 } from './formats/fig'
 export { parsePenFile, readPenFile, serializePenFile, writePenFile } from '@open-pencil/pen'
 export { sceneNodeToJSX, selectionToJSX, type JSXFormat } from './formats/jsx'

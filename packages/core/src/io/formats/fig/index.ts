@@ -1,4 +1,11 @@
-export { readFigFile, parseFigFile, type ParseFigFileOptions } from './read'
+export {
+  readFigFile,
+  readFigSource,
+  parseFigFile,
+  type FigSourceData,
+  type ParseFigFileOptions,
+  type ReloadableFigSource
+} from './read'
 export {
   exportFigFile,
   exportFigFileWithOptions,

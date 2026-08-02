@@ -11,7 +11,31 @@ export interface LazyFigImportContext {
 
 const lazyFigImportContexts = new WeakMap<SceneGraph, LazyFigImportContext>()
 
+function hasPopulatedAllPageRoots(graph: SceneGraph, context: LazyFigImportContext): boolean {
+  return graph.getPages(true).every((page) => context.populatedRootIds.has(page.id))
+}
+
+function hasPopulatedAllAccessiblePageRoots(
+  graph: SceneGraph,
+  context: LazyFigImportContext,
+  pendingRootIds: ReadonlySet<string> = new Set()
+): boolean {
+  return graph
+    .getPages()
+    .every((page) => context.populatedRootIds.has(page.id) || pendingRootIds.has(page.id))
+}
+
+function releaseCompletedContext(graph: SceneGraph, context: LazyFigImportContext): boolean {
+  if (!hasPopulatedAllPageRoots(graph, context)) return false
+  if (lazyFigImportContexts.get(graph) === context) lazyFigImportContexts.delete(graph)
+  return true
+}
+
 export function setLazyFigImportContext(graph: SceneGraph, context: LazyFigImportContext): void {
+  if (hasPopulatedAllPageRoots(graph, context)) {
+    lazyFigImportContexts.delete(graph)
+    return
+  }
   lazyFigImportContexts.set(graph, context)
 }
 
@@ -42,26 +66,44 @@ function populateRoots(
   context: LazyFigImportContext,
   rootIds: Iterable<string>
 ): boolean {
-  const pending = [...rootIds].filter((id) => id && !context.populatedRootIds.has(id))
-  if (pending.length === 0) return false
-  applyPopulation(graph, context, pending)
+  const pending = [...new Set(rootIds)].filter((id) => id && !context.populatedRootIds.has(id))
+  if (pending.length === 0) {
+    if (!hasPopulatedAllAccessiblePageRoots(graph, context)) return false
+    applyPopulation(graph, context)
+    releaseCompletedContext(graph, context)
+    return true
+  }
+
+  const pendingSet = new Set(pending)
+  const completesAllAccessiblePages = hasPopulatedAllAccessiblePageRoots(graph, context, pendingSet)
+
+  // Finish with one unfiltered pass when the requested roots cover every
+  // remaining page. Cross-page component chains then stabilize before the
+  // large import maps and blob table are released.
+  applyPopulation(graph, context, completesAllAccessiblePages ? undefined : pending)
+  releaseCompletedContext(graph, context)
   return true
 }
 
+/**
+ * Populates roots that still need lazy instance expansion. Returns true only
+ * when a population pass ran. The final pass releases the import context, so
+ * later calls return false.
+ */
 export function populateLazyFigImportRoots(graph: SceneGraph, rootIds: Iterable<string>): boolean {
   const context = getLazyFigImportContext(graph)
   return context ? populateRoots(graph, context, rootIds) : false
 }
 
+/** Populates every remaining root once and releases the lazy import context. */
 export function populateAllLazyFigImportRoots(graph: SceneGraph): boolean {
   const context = getLazyFigImportContext(graph)
   if (!context) return false
-  const rootIds = graph.getPages(true).map((page) => page.id)
-  if (rootIds.every((id) => context.populatedRootIds.has(id))) return false
 
   // Revisit the initially populated page without an active-root filter.
   // Cross-page component chains can only stabilize when global override
   // resolution can see every source and target in the same pass.
   applyPopulation(graph, context)
+  releaseCompletedContext(graph, context)
   return true
 }

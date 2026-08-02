@@ -10,6 +10,13 @@ export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
 }
 
+export type FigSourceData = ArrayBuffer | Uint8Array
+
+export interface ReloadableFigSource {
+  /** Return fresh data on every call. The result may be transferred and detached. */
+  read(): Promise<FigSourceData>
+}
+
 function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}): SceneGraph {
   const {
     nodeChanges,
@@ -29,6 +36,52 @@ function parseFigFileSync(buffer: ArrayBuffer, options: ParseFigFileOptions = {}
 interface WorkerParseResult {
   graph?: SerializedSceneGraph
   error?: string
+  phase?: 'parse' | 'import' | 'transport'
+}
+
+type ReloadFigBuffer = () => Promise<ArrayBuffer>
+
+function workerParseError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error))
+}
+
+class DeterministicFigWorkerError extends Error {
+  override name = 'DeterministicFigWorkerError'
+
+  constructor(
+    message: string,
+    readonly phase: 'parse' | 'import'
+  ) {
+    super(message)
+  }
+}
+
+function isDeterministicWorkerPhase(
+  phase: WorkerParseResult['phase']
+): phase is 'parse' | 'import' {
+  return phase === 'parse' || phase === 'import'
+}
+
+function isExplicitOutOfMemoryError(error: Error): boolean {
+  return /\b(?:out[- ]of[- ]memory|oom|heap limit|memory limit|(?:cannot|could not) allocate memory|memory allocation failed|array buffer allocation failed)\b/i.test(
+    `${error.name}: ${error.message}`
+  )
+}
+
+function transferableFigBuffer(data: FigSourceData): ArrayBuffer {
+  if (data instanceof ArrayBuffer) return data
+  if (
+    data.buffer instanceof ArrayBuffer &&
+    data.byteOffset === 0 &&
+    data.byteLength === data.buffer.byteLength
+  ) {
+    return data.buffer
+  }
+  // `Buffer.slice()` is a zero-copy view in Node/Bun, unlike Uint8Array.slice(). Allocate
+  // explicitly so Buffer subviews and SharedArrayBuffer views cannot expose padded bytes.
+  const copy = new Uint8Array(data.byteLength)
+  copy.set(data)
+  return copy.buffer
 }
 
 function parseViaWorker(buffer: ArrayBuffer, options: ParseFigFileOptions): Promise<SceneGraph> {
@@ -37,22 +90,104 @@ function parseViaWorker(buffer: ArrayBuffer, options: ParseFigFileOptions): Prom
       type: 'module'
     })
 
-    worker.onmessage = (e: MessageEvent<WorkerParseResult>) => {
+    let settled = false
+
+    const fail = (error: unknown) => {
+      if (settled) return
+      settled = true
       worker.terminate()
-      if (e.data.error || !e.data.graph) {
-        reject(new Error(e.data.error ?? 'Worker failed to parse .fig file'))
+      reject(workerParseError(error))
+    }
+
+    const succeed = (graph: SceneGraph) => {
+      if (settled) return
+      settled = true
+      worker.terminate()
+      resolve(graph)
+    }
+
+    worker.onmessage = (e: MessageEvent<WorkerParseResult>) => {
+      if (typeof e.data.error === 'string') {
+        fail(
+          isDeterministicWorkerPhase(e.data.phase)
+            ? new DeterministicFigWorkerError(e.data.error, e.data.phase)
+            : new Error(e.data.error)
+        )
         return
       }
-      resolve(deserializeSceneGraph(e.data.graph))
+      if (!e.data.graph) {
+        fail(new Error('Worker failed to parse .fig file'))
+        return
+      }
+      try {
+        succeed(deserializeSceneGraph(e.data.graph))
+      } catch (error) {
+        fail(error)
+      }
     }
 
     worker.onerror = (err) => {
-      worker.terminate()
-      reject(new Error(err.message || 'Worker failed to parse .fig file'))
+      fail(new Error(err.message || 'Worker failed to parse .fig file'))
     }
 
-    worker.postMessage({ buffer, options }, [buffer])
+    worker.onmessageerror = () => {
+      fail(new Error('Worker .fig parse response could not be deserialized'))
+    }
+
+    try {
+      worker.postMessage({ buffer, options }, [buffer])
+    } catch (error) {
+      fail(error)
+    }
   })
+}
+
+async function parseFigFileWithFallback(
+  buffer: ArrayBuffer,
+  options: ParseFigFileOptions,
+  reloadBuffer?: ReloadFigBuffer
+): Promise<SceneGraph> {
+  try {
+    return await parseViaWorker(buffer, options)
+  } catch (error) {
+    const workerError = workerParseError(error)
+    if (workerError instanceof DeterministicFigWorkerError) throw workerError
+    if (isExplicitOutOfMemoryError(workerError)) {
+      throw new Error(
+        `${workerError.message}. Main-thread fallback was skipped to avoid increasing memory pressure`,
+        { cause: workerError }
+      )
+    }
+
+    // A successful transferable post detaches `buffer`. Reuse it when worker
+    // startup failed before the transfer; otherwise reload only on the rare
+    // failure path instead of retaining a full-size copy for every import.
+    let fallbackBuffer = buffer.byteLength > 0 ? buffer : undefined
+    if (!fallbackBuffer && reloadBuffer) {
+      try {
+        fallbackBuffer = await reloadBuffer()
+      } catch (reloadError) {
+        const sourceError = workerParseError(reloadError)
+        throw new Error(
+          `Worker parsing failed: ${workerError.message}. Reloading the .fig source also failed: ${sourceError.message}`,
+          {
+            cause: new AggregateError(
+              [workerError, sourceError],
+              'Worker parsing and .fig source reload both failed'
+            )
+          }
+        )
+      }
+    }
+    if (!fallbackBuffer) {
+      throw new Error(
+        `${workerError.message}. Main-thread fallback is unavailable after the .fig input buffer was transferred; retry with readFigFile() or a fresh ArrayBuffer`,
+        { cause: workerError }
+      )
+    }
+    console.warn('Worker parsing failed, falling back to main thread:', error)
+    return parseFigFileSync(fallbackBuffer, options)
+  }
 }
 
 export async function parseFigFile(
@@ -60,13 +195,19 @@ export async function parseFigFile(
   options: ParseFigFileOptions = {}
 ): Promise<SceneGraph> {
   if (typeof Worker !== 'undefined' && IS_BROWSER) {
-    const copy = buffer.slice(0)
-    try {
-      return await parseViaWorker(buffer, options)
-    } catch (error) {
-      console.warn('Worker parsing failed, falling back to main thread:', error)
-      return parseFigFileSync(copy, options)
-    }
+    return parseFigFileWithFallback(buffer, options)
+  }
+  return parseFigFileSync(buffer, options)
+}
+
+export async function readFigSource(
+  source: ReloadableFigSource,
+  options: ParseFigFileOptions = {}
+): Promise<SceneGraph> {
+  const readBuffer = async () => transferableFigBuffer(await source.read())
+  const buffer = await readBuffer()
+  if (typeof Worker !== 'undefined' && IS_BROWSER) {
+    return parseFigFileWithFallback(buffer, options, readBuffer)
   }
   return parseFigFileSync(buffer, options)
 }
@@ -75,5 +216,5 @@ export async function readFigFile(
   file: File,
   options: ParseFigFileOptions = {}
 ): Promise<SceneGraph> {
-  return parseFigFile(await file.arrayBuffer(), options)
+  return readFigSource({ read: () => file.arrayBuffer() }, options)
 }

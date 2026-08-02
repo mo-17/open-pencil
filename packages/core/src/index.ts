@@ -404,7 +404,10 @@ export { readPenFile, parsePenFile, serializePenFile, writePenFile } from '@open
 
 export {
   readFigFile,
+  readFigSource,
   parseFigFile,
+  type FigSourceData,
+  type ReloadableFigSource,
   importNodeChanges,
   initCodec,
   encodeMessage,
