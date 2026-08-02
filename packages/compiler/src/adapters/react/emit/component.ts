@@ -1,6 +1,12 @@
 import type { ComponentDef, ComponentProp, IRNode, VariantCase } from '#compiler/ir/types'
 
-import { hasIntlAttr, hasTranslatableText, referencedLucideIconNames } from '../ir-walk'
+import {
+  hasIntlAttr,
+  hasTranslatableText,
+  nodesHaveNavigateHandler,
+  nodesHaveNavigateParams,
+  referencedLucideIconNames
+} from '../ir-walk'
 import { buildReactIntlImport } from '../lowcode/i18n'
 import {
   buildValidationGlue,
@@ -30,8 +36,11 @@ export function buildComponentModule(
   motionBoundary = false,
   rootEventsBoundary = false,
   motionScopeBoundary = false,
-  prototypeBoundary = false
+  prototypeBoundary = false,
+  routerAvailable = false
 ): string {
+  const bodyNodes = componentBodyNodes(def)
+  const needsNavigate = routerAvailable && nodesHaveNavigateHandler(bodyNodes)
   // Phase 3 §9: a component body with i18n-tagged visible text needs
   // FormattedMessage; §9 v3: a translated attribute (placeholder) needs useIntl.
   const usesIntl = componentHasIntlAttr(def)
@@ -41,21 +50,23 @@ export function buildComponentModule(
   })
   // Phase 3 §15: a component body can render interactive nodes too, so it needs
   // its own kit imports.
-  const kitImports = uiKit ? collectKitImports(componentBodyNodes(def), uiKit) : []
+  const kitImports = uiKit ? collectKitImports(bodyNodes, uiKit) : []
   const kitImportBlock =
     kitImports.length > 0 ? kitImports.map(kitImportLine).join('\n') + '\n' : ''
-  const lucideImport = buildLucideIconImport(referencedLucideIconNames(componentBodyNodes(def)))
+  const lucideImport = buildLucideIconImport(referencedLucideIconNames(bodyNodes))
   const reactImport = buildComponentReactImport(def, rootEventsBoundary)
+  const routerImport = buildComponentRouterImport(needsNavigate, nodesHaveNavigateParams(bodyNodes))
   const lowcodeStateImport = buildComponentLowcodeStateImport(def)
   const validationImport = buildComponentValidationImport(def)
   const importBlock =
     reactImport ||
+    routerImport ||
     lowcodeStateImport ||
     validationImport ||
     i18nImport ||
     kitImportBlock ||
     lucideImport
-      ? `${reactImport}${lowcodeStateImport}${validationImport}${i18nImport}${kitImportBlock}${lucideImport}\n`
+      ? `${reactImport}${routerImport}${lowcodeStateImport}${validationImport}${i18nImport}${kitImportBlock}${lucideImport}\n`
       : ''
   return (
     importBlock +
@@ -67,7 +78,8 @@ export function buildComponentModule(
       motionBoundary,
       rootEventsBoundary,
       motionScopeBoundary,
-      prototypeBoundary
+      prototypeBoundary,
+      needsNavigate
     )
   )
 }
@@ -100,11 +112,12 @@ function buildComponentBody(
   motionBoundary: boolean,
   rootEventsBoundary: boolean,
   motionScopeBoundary: boolean,
-  prototypeBoundary: boolean
+  prototypeBoundary: boolean,
+  needsNavigate: boolean
 ): string {
   // Phase 3 §9 v3: the `const intl = useIntl()` hook line (empty when the body
   // has no translated attribute → byte-identical to the pre-§9-v3 output).
-  const hookBlock = buildComponentHookBlock(def, usesIntl)
+  const hookBlock = buildComponentHookBlock(def, usesIntl, needsNavigate)
   // Phase 3 §8 v4: a COMPONENT_SET emits per-axis variant props + a subtree
   // switch instead of the single shared body.
   if (def.variantAxes && def.variants) {
@@ -337,6 +350,12 @@ function buildComponentReactImport(def: ComponentDef, rootEventsBoundary: boolea
   return `${valueImport}import type { ${typeNames.join(', ')} } from 'react'\n`
 }
 
+function buildComponentRouterImport(needsNavigate: boolean, hasNavigateParams: boolean): string {
+  if (!needsNavigate) return ''
+  const names = ['useNavigate', ...(hasNavigateParams ? ['generatePath'] : [])]
+  return `import { ${names.join(', ')} } from 'react-router-dom'\n`
+}
+
 function buildComponentLowcodeStateImport(def: ComponentDef): string {
   const names: string[] = []
   if ((def.docStateReads?.length ?? 0) > 0) names.push('useDocState')
@@ -353,8 +372,13 @@ function buildComponentValidationImport(def: ComponentDef): string {
   return `import { ${names.sort().join(', ')} } from '../_lowcode_validation'\n`
 }
 
-function buildComponentHookBlock(def: ComponentDef, usesIntl: boolean): string {
+function buildComponentHookBlock(
+  def: ComponentDef,
+  usesIntl: boolean,
+  needsNavigate: boolean
+): string {
   const lines = [
+    needsNavigate ? '  const navigate = useNavigate()' : '',
     ...(def.docStateReads ?? []).map(
       (name) => `  const ${name} = useDocState(${JSON.stringify(name)})`
     ),

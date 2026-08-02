@@ -23,17 +23,22 @@ import type { CompileWarning } from '#compiler/types'
 function treeHasHandler(node: IRNode, pred: (h: IREventHandler) => boolean): boolean {
   if (node.kind === 'conditional') return treeHasHandler(node.consequent, pred)
   if (node.kind === 'list') return treeHasHandler(node.template, pred)
-  if (node.kind !== 'element') return false
+  if (node.kind !== 'element' && node.kind !== 'componentRef') return false
   if (node.events) {
     for (const handlers of Object.values(node.events)) {
       if (handlers.some(pred)) return true
     }
   }
-  return node.children.some((c) => treeHasHandler(c, pred))
+  return node.kind === 'element' && node.children.some((c) => treeHasHandler(c, pred))
+}
+
+/** Whether any node in an arbitrary page/component body contains navigate. */
+export function nodesHaveNavigateHandler(nodes: readonly IRNode[]): boolean {
+  return nodes.some((node) => treeHasHandler(node, (h) => handlerTreeHasKind(h, 'navigate')))
 }
 
 export function pageHasNavigateHandler(ir: IRTree): boolean {
-  return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'navigate')))
+  return nodesHaveNavigateHandler(ir.children)
 }
 
 /** Page-state ids consumed by continuous Motion drivers reachable from this page. */
@@ -101,8 +106,13 @@ function treeHasUpload(node: IRNode): boolean {
  * `navigate(generatePath(...))` is actually produced.
  */
 export function pageHasNavigateParams(ir: IRTree): boolean {
-  return ir.children.some((c) =>
-    treeHasHandler(c, (h) =>
+  return nodesHaveNavigateParams(ir.children)
+}
+
+/** Whether navigate in an arbitrary page/component body supplies route params. */
+export function nodesHaveNavigateParams(nodes: readonly IRNode[]): boolean {
+  return nodes.some((node) =>
+    treeHasHandler(node, (h) =>
       handlerTreeMatches(h, (x) => x.kind === 'navigate' && (x.params?.length ?? 0) > 0)
     )
   )
@@ -264,12 +274,15 @@ export function pageUsesAnalytics(ir: IRTree): boolean {
   return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'trackEvent')))
 }
 
-/** The nested handler chains of a branch-carrying handler (`condition` /
- *  `confirm`), or null for leaf handlers — lets predicates descend both
- *  branch kinds uniformly. */
+/** The nested handler chains of a branch-carrying handler, or null for leaf
+ *  handlers. Result branches must participate too: a navigate/toast/etc. that
+ *  runs after an API/Supabase action still needs its module-level dependency. */
 function handlerBranches(h: IREventHandler): IREventHandler[] | null {
   if (h.kind === 'condition' || h.kind === 'confirm') {
     return [...h.consequent, ...(h.alternate ?? [])]
+  }
+  if (h.kind === 'apiCall' || h.kind === 'supabaseQuery' || h.kind === 'supabaseMutation') {
+    return [...(h.onSuccess ?? []), ...(h.onError ?? [])]
   }
   return null
 }
@@ -298,34 +311,44 @@ export function stripNavigateForSinglePage(ir: IRTree): {
   ir: IRTree
   warnings: CompileWarning[]
 } {
-  if (!pageHasNavigateHandler(ir)) return { ir, warnings: [] }
-  const warnings: CompileWarning[] = []
-  const children = ir.children.map((c) => stripNode(c, ir.pageId, warnings))
-  return { ir: { ...ir, children }, warnings }
+  const { nodes, warnings } = stripNavigateFromNodesForSinglePage(ir.children)
+  return nodes === ir.children ? { ir, warnings } : { ir: { ...ir, children: nodes }, warnings }
 }
 
-function stripNode(node: IRNode, pageId: string, warnings: CompileWarning[]): IRNode {
+/** Strip navigate from an arbitrary page/component body for routerless output. */
+export function stripNavigateFromNodesForSinglePage(nodes: IRNode[]): {
+  nodes: IRNode[]
+  warnings: CompileWarning[]
+} {
+  if (!nodesHaveNavigateHandler(nodes)) return { nodes, warnings: [] }
+  const warnings: CompileWarning[] = []
+  return { nodes: nodes.map((node) => stripNode(node, warnings)), warnings }
+}
+
+function stripNode(node: IRNode, warnings: CompileWarning[]): IRNode {
   // Phase 2 §9: descend through the new wrapper kinds so navigate handlers
   // inside conditional / list subtrees get the same single-page treatment
   // (drop + warn) as anywhere else.
   if (node.kind === 'conditional') {
-    const consequent = stripNode(node.consequent, pageId, warnings)
+    const consequent = stripNode(node.consequent, warnings)
     return consequent === node.consequent ? node : { ...node, consequent }
   }
   if (node.kind === 'list') {
-    const template = stripNode(node.template, pageId, warnings)
+    const template = stripNode(node.template, warnings)
     return template === node.template ? node : { ...node, template }
   }
-  if (node.kind !== 'element') return node
-  const events = stripEvents(node, pageId, warnings)
-  const children = node.children.map((c) => stripNode(c, pageId, warnings))
+  if (node.kind !== 'element' && node.kind !== 'componentRef') return node
+  const events = stripEvents(node, warnings)
+  if (node.kind === 'componentRef') {
+    return events === node.events ? node : { ...node, events }
+  }
+  const children = node.children.map((child) => stripNode(child, warnings))
   if (events === node.events && children === node.children) return node
   return { ...node, events, children }
 }
 
 function stripEvents(
-  node: Extract<IRNode, { kind: 'element' }>,
-  pageId: string,
+  node: Extract<IRNode, { kind: 'element' | 'componentRef' }>,
   warnings: CompileWarning[]
 ): typeof node.events {
   if (!node.events) return node.events
@@ -338,26 +361,72 @@ function stripEvents(
     if (!handlers || handlers.length === 0) continue
     const kept: IREventHandler[] = []
     for (const h of handlers) {
-      if (h.kind === 'navigate') {
-        warnings.push({
-          code: 'action-navigate-no-router',
-          message:
-            `node ${node.sourceId} ${eventName} navigate('${h.to}') dropped — ` +
-            'single-page compile has no router. Compile the document with all ' +
-            'pages (default) to use react-router-dom.',
-          nodeId: node.sourceId
-        })
-        changed = true
-        continue
-      }
-      kept.push(h)
+      const next = stripNavigateHandler(h, node.sourceId, eventName, warnings)
+      if (next) kept.push(next)
+      if (next !== h) changed = true
     }
     if (kept.length > 0) out[eventName] = kept
     else changed = true
   }
   if (!changed) return node.events
-  // pageId not used for warnings (per-node already), but accepted for symmetry
-  // with future per-page transforms.
-  void pageId
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+function stripNavigateHandler(
+  handler: IREventHandler,
+  nodeId: string,
+  eventName: string,
+  warnings: CompileWarning[]
+): IREventHandler | undefined {
+  if (handler.kind === 'navigate') {
+    warnings.push({
+      code: 'action-navigate-no-router',
+      message:
+        `node ${nodeId} ${eventName} navigate('${handler.to}') dropped — ` +
+        'single-page compile has no router. Compile the document with all ' +
+        'pages (default) to use react-router-dom.',
+      nodeId
+    })
+    return undefined
+  }
+  if (handler.kind === 'condition' || handler.kind === 'confirm') {
+    const consequent = stripNavigateHandlerList(handler.consequent, nodeId, eventName, warnings)
+    const alternate = handler.alternate
+      ? stripNavigateHandlerList(handler.alternate, nodeId, eventName, warnings)
+      : undefined
+    if (consequent.length === 0 && (alternate?.length ?? 0) === 0) return undefined
+    if (consequent === handler.consequent && alternate === handler.alternate) return handler
+    return { ...handler, consequent, alternate }
+  }
+  if (
+    handler.kind === 'apiCall' ||
+    handler.kind === 'supabaseQuery' ||
+    handler.kind === 'supabaseMutation'
+  ) {
+    const onSuccess = handler.onSuccess
+      ? stripNavigateHandlerList(handler.onSuccess, nodeId, eventName, warnings)
+      : undefined
+    const onError = handler.onError
+      ? stripNavigateHandlerList(handler.onError, nodeId, eventName, warnings)
+      : undefined
+    if (onSuccess === handler.onSuccess && onError === handler.onError) return handler
+    return { ...handler, onSuccess, onError }
+  }
+  return handler
+}
+
+function stripNavigateHandlerList(
+  handlers: IREventHandler[],
+  nodeId: string,
+  eventName: string,
+  warnings: CompileWarning[]
+): IREventHandler[] {
+  const next = handlers.flatMap((handler) => {
+    const stripped = stripNavigateHandler(handler, nodeId, eventName, warnings)
+    return stripped ? [stripped] : []
+  })
+  return next.length === handlers.length &&
+    next.every((handler, index) => handler === handlers[index])
+    ? handlers
+    : next
 }

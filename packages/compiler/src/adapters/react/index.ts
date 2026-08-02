@@ -34,6 +34,7 @@ import {
   pageUsesToast,
   referencedComponentNames,
   referencedLucideIconNames,
+  stripNavigateFromNodesForSinglePage,
   stripNavigateForSinglePage
 } from './ir-walk'
 import { buildLowcodeAnalyticsRuntime } from './lowcode/analytics'
@@ -157,7 +158,8 @@ function emitComponentFiles(
   animatedComponentNames: ReadonlySet<string>,
   eventComponentNames: ReadonlySet<string>,
   motionScopeComponentNames: ReadonlySet<string>,
-  prototypeComponentNames: ReadonlySet<string>
+  prototypeComponentNames: ReadonlySet<string>,
+  routerAvailable: boolean
 ): void {
   for (const def of components) {
     files.set(
@@ -169,7 +171,8 @@ function emitComponentFiles(
         animatedComponentNames.has(def.name),
         eventComponentNames.has(def.name),
         motionScopeComponentNames.has(def.name),
-        prototypeComponentNames.has(def.name)
+        prototypeComponentNames.has(def.name),
+        routerAvailable
       )
     )
   }
@@ -203,6 +206,33 @@ function applyUiKit(
  *  inside variants are missed unless those subtrees are walked too. */
 function componentBodyNodes(def: ComponentDef): IRNode[] {
   return def.variants ? [...def.children, ...def.variants.flatMap((v) => v.children)] : def.children
+}
+
+/** A single-page bundle has no Router context. Reusable component bodies live
+ *  outside the page IR, so strip their navigate actions separately and retain
+ *  the same per-node warnings as the page transform. */
+function stripComponentNavigateForSinglePage(components: readonly ComponentDef[]): {
+  components: ComponentDef[]
+  warnings: CompileWarning[]
+} {
+  const warnings: CompileWarning[] = []
+  const stripped = components.map((def) => {
+    const childResult = stripNavigateFromNodesForSinglePage(def.children)
+    warnings.push(...childResult.warnings)
+    const variants = def.variants?.map((variant) => {
+      const result = stripNavigateFromNodesForSinglePage(variant.children)
+      warnings.push(...result.warnings)
+      return result.nodes === variant.children ? variant : { ...variant, children: result.nodes }
+    })
+    const variantsUnchanged =
+      variants === undefined ||
+      variants.every((variant, index) => variant === def.variants?.[index])
+    if (childResult.nodes === def.children && variantsUnchanged) {
+      return def
+    }
+    return { ...def, children: childResult.nodes, variants }
+  })
+  return { components: stripped, warnings }
 }
 
 /**
@@ -258,7 +288,10 @@ function emitSinglePage(
   const files = new Map<string, string | Uint8Array>()
   // Phase 3 §8 v10: drop components no page (transitively) references, so an
   // all-inlined master (e.g. §8 v9 deep-override) leaves no orphan module/class.
-  const components = reachableComponents([cleaned], allComponents)
+  const reachable = reachableComponents([cleaned], allComponents)
+  const componentStrip = stripComponentNavigateForSinglePage(reachable)
+  const components = componentStrip.components
+  warnings.push(...componentStrip.warnings)
   const motion = buildMotionPlan([cleaned], components, options.devMode)
   const generatedEffect = buildGeneratedEffectPlan([cleaned], components)
   const prototype = buildPrototypePlan(derivePagePaths([cleaned]), components)
@@ -310,7 +343,8 @@ function emitSinglePage(
   emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
     motion,
     generatedEffect,
-    prototype
+    prototype,
+    routerAvailable: false
   })
   files.set(
     'src/App.tsx',
@@ -409,7 +443,8 @@ function emitMultiPage(
   emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
     motion,
     generatedEffect,
-    prototype
+    prototype,
+    routerAvailable: true
   })
   files.set(
     'src/App.tsx',
@@ -542,6 +577,7 @@ interface RuntimeAndComponentEmit {
     runtime?: string
     prototypeComponentNames: ReadonlySet<string>
   }
+  routerAvailable: boolean
 }
 
 /** Emit every on-demand lowcode runtime file (doc-state store, Supabase client,
@@ -582,7 +618,8 @@ function emitRuntimeAndComponentFiles(
     e.motion.animatedComponentNames,
     e.motion.eventComponentNames,
     e.motion.motionScopeComponentNames,
-    e.prototype.prototypeComponentNames
+    e.prototype.prototypeComponentNames,
+    e.routerAvailable
   )
 }
 

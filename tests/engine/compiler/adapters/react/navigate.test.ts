@@ -25,6 +25,26 @@ describe('navigate action — React adapter emit', () => {
     })
   }
 
+  function addReusableNav(
+    graph: SceneGraph,
+    pageId: string,
+    event: { to: string; params?: Record<string, string> }
+  ): void {
+    const master = graph.createNode('COMPONENT', pageId, {
+      name: 'Menu Nav',
+      width: 160,
+      height: 48,
+      layoutMode: 'HORIZONTAL'
+    })
+    graph.createNode('BUTTON', master.id, {
+      interactiveProps: { text: 'Open' },
+      events: {
+        onClick: [{ id: 'component-nav', kind: 'navigate', ...event }]
+      }
+    })
+    graph.createInstance(master.id, pageId)
+  }
+
   test('multi-page compile: awaits bounded pageExit before navigate()', () => {
     const graph = makeGraph()
     const home = graph.getPages()[0]
@@ -57,6 +77,51 @@ describe('navigate action — React adapter emit', () => {
     expect(aboutTsx).not.toContain('navigate(')
   })
 
+  test('multi-page reusable component owns its useNavigate import and hook', () => {
+    const graph = makeGraph()
+    const home = graph.getPages()[0]
+    graph.updateNode(home.id, { name: 'Home' })
+    addReusableNav(graph, home.id, { to: '/about' })
+    graph.addPage('About')
+
+    const out = compile({
+      graph,
+      pageIds: graph.getPages().map((page) => page.id),
+      options: withDefaults({ packageName: 'nav-component' })
+    })
+
+    const component = out.files.get('src/components/MenuNav.tsx') as string
+    expect(component).toContain("import { useNavigate } from 'react-router-dom'")
+    expect(component).toContain('const navigate = useNavigate()')
+    expect(component).toContain('navigate("/about")')
+  })
+
+  test('reusable component navigate params import generatePath', () => {
+    const graph = makeGraph()
+    const home = graph.getPages()[0]
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'ds-product', name: 'productId', type: 'string', defaultValue: 'one' }
+      ]
+    })
+    addReusableNav(graph, home.id, {
+      to: '/product/:id',
+      params: { id: 'productId' }
+    })
+    const product = graph.addPage('Product')
+    graph.updateNode(product.id, { lowcodeRoutePattern: '/product/:id' })
+
+    const out = compile({
+      graph,
+      pageIds: graph.getPages().map((page) => page.id),
+      options: withDefaults({ packageName: 'nav-component-params' })
+    })
+
+    const component = out.files.get('src/components/MenuNav.tsx') as string
+    expect(component).toContain("import { useNavigate, generatePath } from 'react-router-dom'")
+    expect(component).toContain('navigate(generatePath("/product/:id", { id: productId }))')
+  })
+
   test('single-page compile: navigate handler is stripped with a warning', () => {
     const graph = makeGraph()
     const page = graph.getPages()[0]
@@ -76,6 +141,50 @@ describe('navigate action — React adapter emit', () => {
     expect(app).not.toContain('onClick')
 
     expect(out.warnings.some((w) => w.code === 'action-navigate-no-router')).toBe(true)
+  })
+
+  test('single-page reusable component strips navigate with a warning', () => {
+    const graph = makeGraph()
+    const page = graph.getPages()[0]
+    addReusableNav(graph, page.id, { to: '/about' })
+
+    const out = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'nav-component-singlepage' })
+    })
+
+    const component = out.files.get('src/components/MenuNav.tsx') as string
+    expect(component).toContain('<button')
+    expect(component).not.toContain('useNavigate')
+    expect(component).not.toContain('navigate(')
+    expect(component).not.toContain('onClick')
+    expect(out.warnings.some((warning) => warning.code === 'action-navigate-no-router')).toBe(true)
+  })
+
+  test('component-ref root navigate makes the containing page declare useNavigate', () => {
+    const graph = makeGraph()
+    const home = graph.getPages()[0]
+    const master = graph.createNode('COMPONENT', home.id, {
+      name: 'Root Nav',
+      width: 120,
+      height: 40,
+      events: { onClick: [{ id: 'root-nav', kind: 'navigate', to: '/about' }] }
+    })
+    graph.createNode('TEXT', master.id, { text: 'About' })
+    graph.createInstance(master.id, home.id)
+    graph.addPage('About')
+
+    const out = compile({
+      graph,
+      pageIds: graph.getPages().map((page) => page.id),
+      options: withDefaults({ packageName: 'nav-component-root' })
+    })
+
+    const page = out.files.get('src/pages/index.tsx') as string
+    expect(page).toContain("import { useNavigate } from 'react-router-dom'")
+    expect(page).toContain('const navigate = useNavigate()')
+    expect(page).toContain('navigate("/about")')
   })
 
   test('navigate inside an IRConditional consequent still imports useNavigate (Phase 2 §9 regression)', () => {
