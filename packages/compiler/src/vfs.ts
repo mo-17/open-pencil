@@ -121,6 +121,29 @@ export function stripQuery(s: string): string {
   return i === -1 ? s : s.slice(0, i)
 }
 
+interface BinaryBuildAsset {
+  sourceUrl: string
+  outputPath: string
+  bytes: Uint8Array
+}
+
+function binaryBuildAssets(files: PreviewFiles): BinaryBuildAsset[] {
+  const assets: BinaryBuildAsset[] = []
+  for (const [path, content] of files) {
+    if (!(content instanceof Uint8Array)) continue
+    const normalized = posix.normalize(path).replace(/^(\.\.\/)+/, '')
+    const relative = normalized.startsWith('src/assets/')
+      ? normalized.slice('src/assets/'.length)
+      : posix.basename(normalized)
+    assets.push({
+      sourceUrl: `./assets/${relative}`,
+      outputPath: `assets/${relative}`,
+      bytes: content
+    })
+  }
+  return assets
+}
+
 export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): Plugin {
   return {
     name: 'openpencil-lowcode-vfs',
@@ -176,8 +199,39 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
       const content = state.files.get(rel)
       if (content === undefined) return null
       if (typeof content === 'string') return content
-      // Binary content for VFS isn't supported in Phase 0; skip silently
+      // Binary assets are served by the dev middleware and emitted during builds,
+      // but they are not JavaScript modules that Rollup should parse.
       return null
+    },
+
+    generateBundle(_options, bundle) {
+      const assets = binaryBuildAssets(state.files)
+      if (assets.length === 0) return
+
+      for (const asset of assets) {
+        this.emitFile({
+          type: 'asset',
+          fileName: asset.outputPath,
+          source: asset.bytes
+        })
+      }
+
+      // Tailwind emits image-fill URLs from the virtual src/index.css. Vite
+      // cannot read the referenced bytes from disk, so it leaves those URLs
+      // untouched while moving the built stylesheet under assets/. Keep the
+      // class selector stable, but rewrite each declaration relative to the
+      // final CSS asset and emit the matching bytes beside it.
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'asset' || !output.fileName.endsWith('.css')) continue
+        if (typeof output.source !== 'string') continue
+        let css = output.source
+        for (const asset of assets) {
+          const relative = posix.relative(posix.dirname(output.fileName), asset.outputPath)
+          const runtimeUrl = relative.startsWith('.') ? relative : `./${relative}`
+          css = css.replaceAll(asset.sourceUrl, runtimeUrl)
+        }
+        output.source = css
+      }
     },
 
     configureServer(server) {
@@ -228,12 +282,16 @@ function lookupBinaryAsset(
   return null
 }
 
-function contentTypeForPath(path: string): string {
+export function contentTypeForPath(path: string): string {
   const lower = path.toLowerCase()
   if (lower.endsWith('.png')) return 'image/png'
   if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
   if (lower.endsWith('.gif')) return 'image/gif'
   if (lower.endsWith('.webp')) return 'image/webp'
   if (lower.endsWith('.svg')) return 'image/svg+xml'
+  if (lower.endsWith('.woff2')) return 'font/woff2'
+  if (lower.endsWith('.woff')) return 'font/woff'
+  if (lower.endsWith('.ttf')) return 'font/ttf'
+  if (lower.endsWith('.otf')) return 'font/otf'
   return 'application/octet-stream'
 }

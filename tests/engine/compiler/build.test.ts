@@ -32,10 +32,20 @@ const fixture: PreviewFiles = new Map([
   [
     'src/App.tsx',
     'export default function App() {\n' +
-      '  return <div className="p-4 text-red-500">hi</div>\n' +
+      '  return <div className="p-4 text-red-500 bg-[url(./assets/openpencil-image-test.png)]">hi</div>\n' +
       '}\n'
   ],
-  ['src/index.css', '@import "tailwindcss";\n@source inline("p-4 text-red-500");\n']
+  [
+    'src/index.css',
+    '@import "tailwindcss";\n' +
+      '@source inline("p-4 text-red-500 bg-[url(./assets/openpencil-image-test.png)]");\n' +
+      '@font-face{font-family:"Test";src:url("./assets/fonts/test.woff2") format("woff2");font-weight:400}\n'
+  ],
+  [
+    'src/assets/openpencil-image-test.png',
+    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  ],
+  ['src/assets/fonts/test.woff2', new Uint8Array([0x77, 0x4f, 0x46, 0x32, 0, 1, 2, 3])]
 ])
 
 const outDir = mkdtempSync(join(tmpdir(), 'op-build-'))
@@ -55,6 +65,16 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
     const css = result.files.filter((f) => f.startsWith('assets/') && f.endsWith('.css'))
     expect(js.length).toBeGreaterThan(0)
     expect(css.length).toBeGreaterThan(0)
+    expect(result.files).toContain('assets/openpencil-image-test.png')
+    expect(result.files).toContain('assets/fonts/test.woff2')
+    expect(readFileSync(join(outDir, css[0]), 'utf8')).toContain('url(./openpencil-image-test.png)')
+    expect(readFileSync(join(outDir, css[0]), 'utf8')).toContain('url(./fonts/test.woff2)')
+    expect(readFileSync(join(outDir, 'assets/openpencil-image-test.png'))).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    )
+    expect(readFileSync(join(outDir, 'assets/fonts/test.woff2'))).toEqual(
+      Buffer.from([0x77, 0x4f, 0x46, 0x32, 0, 1, 2, 3])
+    )
     // Hashed filenames so the bundle is CDN cacheable.
     expect(js[0]).toMatch(/assets\/index-[\w-]+\.js$/)
   }, 30_000)

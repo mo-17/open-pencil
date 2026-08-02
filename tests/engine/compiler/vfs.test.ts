@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   inMemoryVFS,
+  contentTypeForPath,
   lookupFile,
   resolveRelative,
   stripQuery,
@@ -30,6 +31,15 @@ describe('resolveRelative (Phase 3 §5)', () => {
 
   test('bare specifier is returned unchanged (npm dep, not VFS)', () => {
     expect(resolveRelative('react-dom/client', 'src/main.tsx')).toBe('react-dom/client')
+  })
+})
+
+describe('contentTypeForPath', () => {
+  test('serves browser font assets with their standard MIME types', () => {
+    expect(contentTypeForPath('src/assets/fonts/a.woff2')).toBe('font/woff2')
+    expect(contentTypeForPath('src/assets/fonts/a.woff')).toBe('font/woff')
+    expect(contentTypeForPath('src/assets/fonts/a.ttf')).toBe('font/ttf')
+    expect(contentTypeForPath('src/assets/fonts/a.otf')).toBe('font/otf')
   })
 })
 
