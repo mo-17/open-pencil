@@ -74,6 +74,14 @@ export { defineVars, designVar, isVariable, type DesignVariable, type VarDef } f
 export { createElement } from './mini-react'
 
 export { renderJSX, renderTreeNode, buildComponent } from './render'
+export {
+  applyRenderPlacement,
+  renderPlacementSiblings,
+  resolveRenderPlacement,
+  type AppliedRenderPlacement,
+  type RenderPlacementInput,
+  type ResolvedRenderPlacement
+} from './render-placement'
 
 import jsxReference from '#core/tools/prompts/jsx-reference.md'
 

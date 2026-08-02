@@ -49,6 +49,70 @@ describe('update_lowcode_node', () => {
     expect(result.error).toContain('JSON')
   })
 
+  test('accepts a native patch object without JSON escaping', () => {
+    const { figma, graph } = setupToolTest()
+    const button = figma.createRectangle()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: button.id,
+      patch: {
+        interactiveProps: { text: 'Continue' },
+        events: { onClick: [{ id: 'next', kind: 'navigate', to: '/next' }] }
+      }
+    }) as Result<{ id: string; updated: string[] }>
+
+    expect(result.ok).toBe(true)
+    expect(graph.getNode(button.id)?.events?.onClick).toEqual([
+      { id: 'next', kind: 'navigate', to: '/next' }
+    ])
+  })
+
+  test('requires exactly one patch representation', () => {
+    const { figma } = setupToolTest()
+    const node = figma.createRectangle()
+    const missing = getTool('update_lowcode_node').execute(figma, { id: node.id }) as Result
+    const ambiguous = getTool('update_lowcode_node').execute(figma, {
+      id: node.id,
+      patch: {},
+      patch_json: '{}'
+    }) as Result
+
+    expect(missing).toEqual({ ok: false, error: 'Provide patch or patch_json' })
+    expect(ambiguous).toEqual({
+      ok: false,
+      error: 'Provide exactly one of patch or patch_json, not both'
+    })
+  })
+
+  test('batch validates every native patch before the first mutation', () => {
+    const { figma, graph } = setupToolTest()
+    const first = figma.createRectangle()
+    const result = getTool('update_lowcode_nodes').execute(figma, {
+      operations: [
+        { id: first.id, patch: { interactiveProps: { text: 'Should not persist' } } },
+        { id: 'missing', patch: { interactiveProps: { text: 'Missing' } } }
+      ]
+    }) as Result<{ updated: number }>
+
+    expect(result.ok).toBe(false)
+    expect(graph.getNode(first.id)?.interactiveProps).toBeUndefined()
+  })
+
+  test('updates multiple nodes with native structured operations', () => {
+    const { figma, graph } = setupToolTest()
+    const first = figma.createRectangle()
+    const second = figma.createRectangle()
+    const result = getTool('update_lowcode_nodes').execute(figma, {
+      operations: [
+        { id: first.id, patch: { interactiveProps: { text: 'First' } } },
+        { id: second.id, patch: { stateOverrides: { hover: { opacity: 0.75 } } } }
+      ]
+    }) as Result<{ updated: number }>
+
+    expect(result).toMatchObject({ ok: true, data: { updated: 2 } })
+    expect(graph.getNode(first.id)?.interactiveProps).toEqual({ text: 'First' })
+    expect(graph.getNode(second.id)?.stateOverrides).toEqual({ hover: { opacity: 0.75 } })
+  })
+
   test('rejects unknown patch keys (no silent drops)', () => {
     const { figma } = setupToolTest()
     const rect = figma.createRectangle()
@@ -1093,6 +1157,46 @@ describe('lowcode mutate tools — editor ctx undo (§3.v2 step 1)', () => {
     expect(result.ok).toBe(true)
     const after = graph.getNode(rect.id) as JsonObject
     expect((after.interactiveProps as { text?: string })?.text).toBe('Submit')
+    expect(editor.undo.canUndo).toBe(false)
+  })
+
+  test('update_lowcode_nodes groups all node patches into one undo entry', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const first = figma.createRectangle()
+    const second = figma.createRectangle()
+    const result = getTool('update_lowcode_nodes').execute(
+      figma,
+      {
+        operations: [
+          { id: first.id, patch: { interactiveProps: { text: 'First' } } },
+          { id: second.id, patch: { renderCondition: 'true' } }
+        ]
+      },
+      { editor }
+    ) as Result<{ updated: number }>
+
+    expect(result).toMatchObject({ ok: true, data: { updated: 2 } })
+    expect(editor.undo.undoLabel).toBe('AI: update_lowcode_nodes')
+    expect(editor.undo.undo()).toBe('AI: update_lowcode_nodes')
+    expect(graph.getNode(first.id)?.interactiveProps).toBeUndefined()
+    expect(graph.getNode(second.id)?.renderCondition).toBeUndefined()
+    expect(editor.undo.canUndo).toBe(false)
+  })
+
+  test('update_lowcode_nodes rejects a stale scene version before mutation', () => {
+    const { graph, figma, editor } = setupEditorToolTest()
+    const node = figma.createRectangle()
+    const result = getTool('update_lowcode_nodes').execute(
+      figma,
+      {
+        expected_scene_version: editor.state.sceneVersion + 1,
+        operations: [{ id: node.id, patch: { interactiveProps: { text: 'Stale' } } }]
+      },
+      { editor }
+    ) as Result<{ updated: number }>
+
+    expect(result.ok).toBe(false)
+    expect(graph.getNode(node.id)?.interactiveProps).toBeUndefined()
     expect(editor.undo.canUndo).toBe(false)
   })
 

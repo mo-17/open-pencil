@@ -1900,28 +1900,112 @@ export const updateLowcodeNode = defineTool({
   name: 'update_lowcode_node',
   mutates: true,
   description:
+    'Prefer the native patch object; patch_json remains supported for older clients, but exactly one input must be provided. ' +
     "For stateOverrides fills/strokes, pass canonical SceneGraph paint objects or solid shorthand such as { color: '#E23B32' }; shorthand receives safe defaults and malformed paint entries are rejected. " +
     "Update the lowcode-specific fields of a single SceneNode in one atomic commit. Fields not listed in the patch are left UNCHANGED (no implicit clearing); to clear a field, set its value to null explicitly. Allowed patch keys: state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState (root only), lowcodeSupabaseConfig (root only), lowcodeSeoMetadata, lowcodeAnalyticsConfig (root only), lowcodeHeadMetadata (root only), lowcodeCustomCss (root only). Every input is validated at the tool boundary: state names go through validateStateName ($-prefix reserved for built-ins), bindings.expr / actions.valueExpr / renderCondition go through the Phase 0 expression sublanguage parser, apiCall urls through the §4 template parser, supabaseConfig through validateSupabaseConfig which hard-rejects service_role JWTs. Unknown patch keys are rejected (no silent drops). One call → one undo entry. Phase 5 §11 lowcodeHeadMetadata accepts only structured { meta?: [{ kind: 'name' | 'property' | 'httpEquiv', key, content }], link?: [{ rel, href, as?, type?, media?, crossorigin? }], styles?: string[] }; lowcodeCustomCss is appended to generated src/index.css. Raw scripts / arbitrary JS are intentionally not supported. Phase 5 §10 lowcodeAnalyticsConfig accepts { provider: 'ga4' | 'plausible' | 'posthog', id, enabled?, endpoint?, pageViews?, respectDoNotTrack?, consentRequired?, consentRegionPreset?, consentAnalyticsDefault?, consentCopy? } where consentRegionPreset currently supports 'eea' as an opt-in starter preset and consentCopy may include plain bannerText, analyticsDescription, privacyPolicyUrl, and privacyPolicyLabel; policy URLs must be http(s) or root-relative. trackEvent actions accept eventNameExpr plus optional expression-valued properties. Page state entries may include Phase 4 §27.2 computedExpr; computed page state is emitted as read-only derived state, so setState and controlled bindings cannot write to it. Phase 4 §20 stateOverrides accepts hover/focus/active/disabled appearance overrides over fills/strokes/cornerRadius/opacity/effects; the compiler emits Tailwind pseudo-state classes such as hover:bg-* or disabled:opacity-50. Phase 4 §19 interactiveProps.validation and validationSummary are schema-checked at this tool boundary: patterns must compile, numeric rules must be finite, customExpr/urlExpr must parse, async validators require exactly one non-empty url or urlExpr and method GET/POST, and unknown validation keys are rejected. IMPORTANT: setVariable.valueExpr identifiers can ONLY resolve to declared page-state names plus `$prev` (the functional-update previous-value placeholder for the doc-state being written) — doc-state names are NOT in scope inside setVariable.valueExpr and a reference to one is silently dropped by the IR walker (`action-setvariable-unknown-identifier`), even though the tool accepts the patch as ok. Use `$prev` for self-referential updates (e.g. `$prev + 1` to increment, `$prev` to pass-through). In onChange/onFocus/onBlur handlers, `$event` and `$value` are also in scope; `$value` is emitted from the event target's value. setState.valueExpr has no such restriction. IMPORTANT (Phase 3 §3.x / Phase 4 §28): on an INPUT node, setting bindings.value to { kind: 'docState', docStateName: '<name>' } or { kind: 'ref', stateId: '<id>' } makes the input controlled — the compiler emits `value={read}` plus a synthesized `onChange` that calls setDocState / the page-state setter with `e.target.value` (string targets) or `Number(e.target.value)` (number targets). The referenced docState / writable page-state MUST be type 'string' or 'number'; number-typed targets additionally make the compiler emit `<input type=\"number\">` on the HTML side. Other types (boolean / array / object), computed page state, and the literal / expr kinds are rejected at IR collect time with a warning and the input falls back to uncontrolled emit. A controlled INPUT's user-defined onChange handler is composed after the synthesized writer in the same event handler, so use `$value` to read the runtime input value in follow-up actions. Other interactive types (TEXTAREA / SELECT / CHECKBOX / RADIO / DATEPICKER / SWITCH) also support controlled bindings where their target type is valid. IMPORTANT (Phase 3 §3.v2): a `supabaseMutation` action has two payload channels — `payloadJson` (static JSON literal, no interpolation) and `payloadEntries: [{key, valueExpr}]` (one entry per column, each `valueExpr` uses the same restricted expression sub-language as `setState.valueExpr` / filter values, so values can reference docState / page-state / literals). Prefer `payloadEntries` for form-driven writes (e.g. INSERT a row from controlled INPUTs). When both are set on the same action, `payloadEntries` wins and `payloadJson` is dropped with a warning. `delete` operations must have neither. Each `payloadEntries[i].key` must be a JS identifier (column name) and keys must be unique within the entry list. IMPORTANT (Phase 5 §12): `stripeCheckout` and `stripeCustomerPortal` actions are frontend redirect triggers only — `{ kind: 'stripeCheckout' | 'stripeCustomerPortal', endpoint, payloadEntries?, errorTarget? }`. The generated app POSTs JSON to the author's own server endpoint; checkout expects `{ url }` or `{ checkoutUrl }`, while customer portal expects `{ url }` or `{ portalUrl }`, then redirects with `window.location.assign`. Secret keys, price/customer creation, webhooks, subscription lifecycle, retries, and idempotency stay on the author's server and are never stored in ActionDef / .fig / generated code. `endpoint` uses the same safe template parser as apiCall, `payloadEntries` are expression-valued JSON fields with unique identifier keys, and `errorTarget` optionally captures request/response failures. IMPORTANT (Phase 3 §2.v2 / §2.v3 / §2.v4): a `supabaseAuth` action drives Supabase auth — `{ kind: 'supabaseAuth', operation: 'signIn' | 'signOut' | 'signUp' | 'resetPassword' | 'updatePassword', emailExpr?, passwordExpr?, errorTarget? }`. Per-operation credential gating: `signIn` + `signUp` (registration) use both `emailExpr` + `passwordExpr`; `resetPassword` (send a reset email) uses `emailExpr` only; `updatePassword` (set a new password for the current session) uses `passwordExpr` only; `signOut` uses neither. The exprs use the same expression sub-language as filter values (bind them to a controlled INPUT's docState, e.g. emailExpr: 'emailInput'); a malformed expression is rejected here, a missing required one warns at IR collect. There is no resultTarget: the runtime keeps the `$currentUser` docState synced via onAuthStateChange, so read `$currentUser.signedIn` to branch on auth state. Note `signUp` with email confirmation enabled (the Supabase default) does NOT create a session until the user confirms, so `$currentUser.signedIn` stays false until then; `resetPassword` emits redirectTo: window.location.origin and its email round-trip can only be verified in a real deployment (the email link lands on the app and fires PASSWORD_RECOVERY, where an updatePassword action sets the new one). `errorTarget` optionally captures the auth error. IMPORTANT (Phase 4 §16.2): a `navigate` action targeting a dynamic route pattern (`to: '/product/:id', declared on the target page via its lowcodeRoutePattern) may carry `params: { id: '<expr>' }` — each key is a route-param identifier (filling a `:segment`) and each value is an expression in the same sub-language as setState.valueExpr (resolves against page state / docState / `$params`). The compiler emits `navigate(generatePath('/product/:id', { id: <expr> }))`; with no params it stays a literal `navigate('/about')`. A param key that isn't an identifier or a value that doesn't parse is rejected here; an unknown identifier in a param drops the whole navigate handler with a warning at IR collect. Example: update_lowcode_node({ id: 'btn-1', patch_json: '{\"interactiveProps\":{\"text\":\"Submit\"},\"events\":{\"onClick\":[{\"id\":\"a-1\",\"kind\":\"navigate\",\"to\":\"/done\"}]}}' }) → { ok: true, data: { id: 'btn-1', updated: ['interactiveProps', 'events'] } }. Clearing example: '{\"renderCondition\":null}' clears the renderCondition.",
   params: {
     id: { type: 'string', description: 'Node id', required: true },
+    patch: {
+      type: 'object',
+      description:
+        'Native JSON object containing supported lowcode fields. Prefer this over patch_json to avoid nested escaping.',
+      additionalProperties: true
+    },
     patch_json: {
       type: 'string',
-      description:
-        "JSON object: any subset of {state, bindings, events, interactiveProps, stateOverrides, renderCondition, lowcodeDocumentState, lowcodeSupabaseConfig, lowcodeSeoMetadata, lowcodeAnalyticsConfig, lowcodeHeadMetadata, lowcodeCustomCss}. events accept { kind: 'playMotion' | 'stopMotion' | 'toggleMotion' | 'awaitMotion', targetNodeId, trackId?, timeoutMs?, stopOnTimeout? }; omit trackId for all tracks. lowcodeAnalyticsConfig accepts respectDoNotTrack, consentRequired, consentRegionPreset, consentAnalyticsDefault, and consentCopy plain-text banner options. Use null as a value to clear a field.",
-      required: true
+      description: 'Legacy JSON-string form of patch for clients without structured arguments.'
     }
   },
   execute: (figma, args, ctx): ModifyResult<{ id: string; updated: string[] }> => {
     const node = figma.graph.getNode(args.id)
     if (!node) return fail(`Node "${args.id}" not found`)
-    const parsed = parseJson(args.patch_json, 'patch_json')
-    if (!parsed.ok) return fail(parsed.error)
-    if (!isPlainObject(parsed.value)) return fail('patch_json must be a JSON object')
-    const built = buildPatch(parsed.value, node.type)
+    if (args.patch !== undefined && args.patch_json !== undefined) {
+      return fail('Provide exactly one of patch or patch_json, not both')
+    }
+    if (args.patch === undefined && args.patch_json === undefined) {
+      return fail('Provide patch or patch_json')
+    }
+    let rawPatch: Record<string, unknown>
+    if (args.patch !== undefined) {
+      if (!isPlainObject(args.patch)) return fail('patch must be a JSON object')
+      rawPatch = args.patch
+    } else {
+      const parsed = parseJson(args.patch_json ?? '', 'patch_json')
+      if (!parsed.ok) return fail(parsed.error)
+      if (!isPlainObject(parsed.value)) return fail('patch_json must be a JSON object')
+      rawPatch = parsed.value
+    }
+    const built = buildPatch(rawPatch, node.type)
     if (!built.ok) return built
     const patch = built.data ?? {}
     applyPatchWithUndo(figma, args.id, patch, 'AI: update_lowcode_node', ctx)
     return { ok: true, data: { id: args.id, updated: Object.keys(patch) } }
+  }
+})
+
+export const updateLowcodeNodes = defineTool({
+  name: 'update_lowcode_nodes',
+  mutates: true,
+  description:
+    'Validate and update lowcode fields on multiple nodes in one atomic editor transaction. Every node and patch is validated before the first mutation, preventing malformed input or missing ids from leaving a partially updated document. Uses native structured input and one undo batch.',
+  params: {
+    operations: {
+      type: 'array',
+      description: 'Lowcode updates to validate and apply together',
+      required: true,
+      minItems: 1,
+      maxItems: 200,
+      items: {
+        type: 'object',
+        description: 'One node patch',
+        properties: {
+          id: { type: 'string', description: 'Scene node id', required: true },
+          patch: {
+            type: 'object',
+            description: 'Native lowcode patch object',
+            required: true,
+            additionalProperties: true
+          }
+        }
+      }
+    },
+    expected_scene_version: {
+      type: 'number',
+      description: 'Optional optimistic-concurrency precondition for editor/MCP hosts'
+    }
+  },
+  execute: (figma, { operations, expected_scene_version }, ctx) => {
+    if (expected_scene_version !== undefined) {
+      if (!ctx?.editor) return fail('expected_scene_version requires an editor-backed MCP host')
+      if (ctx.editor.state.sceneVersion !== expected_scene_version) {
+        return fail(
+          `Scene version conflict: expected ${expected_scene_version}, current ${ctx.editor.state.sceneVersion}`
+        )
+      }
+    }
+
+    const seen = new Set<string>()
+    const prepared: Array<{ id: string; patch: Partial<SceneNode> }> = []
+    for (const operation of operations) {
+      if (seen.has(operation.id)) return fail(`Duplicate operation for node "${operation.id}"`)
+      seen.add(operation.id)
+      const node = figma.graph.getNode(operation.id)
+      if (!node) return fail(`Node "${operation.id}" not found`)
+      const built = buildPatch(operation.patch, node.type)
+      if (!built.ok) return fail(`Node "${operation.id}": ${built.error}`)
+      prepared.push({ id: operation.id, patch: built.data ?? {} })
+    }
+
+    const results: Array<{ id: string; updated: string[] }> = []
+    const applyAll = (): void => {
+      for (const operation of prepared) {
+        applyPatchWithUndo(figma, operation.id, operation.patch, 'AI: update_lowcode_nodes', ctx)
+        results.push({ id: operation.id, updated: Object.keys(operation.patch) })
+      }
+    }
+    if (ctx?.editor) ctx.editor.undo.runBatch('AI: update_lowcode_nodes', applyAll)
+    else applyAll()
+    return { ok: true, data: { updated: results.length, results } }
   }
 })
 

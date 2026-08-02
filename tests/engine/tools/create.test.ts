@@ -77,6 +77,94 @@ describe('render', () => {
     expect(result.warnings).toEqual(['Unsupported prop "mt" on <frame> is ignored.'])
   })
 
+  test('rejects missing and non-container parents before creating roots', async () => {
+    const { figma } = setupToolTest()
+    const tool = getTool('render')
+    const shapeParent = figma.createRectangle()
+    const beforeIds = figma.currentPage.children.map((node) => node.id)
+
+    await expect(
+      tool.execute(figma, { parent_id: 'missing', jsx: '<Rectangle name="Orphan" />' })
+    ).rejects.toThrow('Render parent "missing" not found')
+    await expect(
+      tool.execute(figma, {
+        parent_id: shapeParent.id,
+        jsx: '<Rectangle name="Invalid child" />'
+      })
+    ).rejects.toThrow('cannot contain children')
+
+    expect(figma.currentPage.children.map((node) => node.id)).toEqual(beforeIds)
+    expect(figma.currentPage.findAll((node) => node.name === 'Orphan')).toHaveLength(0)
+    expect(figma.currentPage.findAll((node) => node.name === 'Invalid child')).toHaveLength(0)
+  })
+
+  test('rejects a missing replacement instead of silently appending the result', async () => {
+    const { figma } = setupToolTest()
+    const beforeIds = figma.currentPage.children.map((node) => node.id)
+
+    await expect(
+      getTool('render').execute(figma, {
+        replace_id: 'missing',
+        jsx: '<Rectangle name="Must not append" />'
+      })
+    ).rejects.toThrow('Replace target "missing" not found')
+
+    expect(figma.currentPage.children.map((node) => node.id)).toEqual(beforeIds)
+  })
+
+  test('inserts every fragment root as one contiguous block', async () => {
+    const { figma, graph } = setupToolTest()
+    const before = figma.createRectangle()
+    const after = figma.createRectangle()
+
+    const result = (await getTool('render').execute(figma, {
+      insert_index: 1,
+      jsx: '<><Rectangle name="First root" /><Rectangle name="Second root" /></>'
+    })) as ToolResult
+    const siblings = result.siblings as Array<{ id: string; index: number }>
+
+    expect(graph.getNode(figma.currentPage.id)?.childIds).toEqual([
+      before.id,
+      result.id,
+      siblings[0]?.id,
+      after.id
+    ])
+    expect(result.index).toBe(1)
+    expect(siblings).toEqual([
+      { id: siblings[0]?.id, name: 'Second root', type: 'RECTANGLE', index: 2 }
+    ])
+  })
+
+  test('replaces one target with the complete fragment and ignores explicit placement', async () => {
+    const { figma, graph } = setupToolTest()
+    const target = figma.createRectangle()
+    const after = figma.createRectangle()
+    const ignoredParent = figma.createFrame()
+
+    const result = (await getTool('render').execute(figma, {
+      replace_id: target.id,
+      parent_id: ignoredParent.id,
+      insert_index: 99,
+      jsx: '<><Rectangle name="Replacement A" /><Rectangle name="Replacement B" /></>'
+    })) as ToolResult
+    const siblings = result.siblings as Array<{ id: string; index: number }>
+
+    expect(graph.getNode(target.id)).toBeUndefined()
+    expect(graph.getNode(figma.currentPage.id)?.childIds).toEqual([
+      result.id,
+      siblings[0]?.id,
+      after.id,
+      ignoredParent.id
+    ])
+    expect(result).toMatchObject({
+      parent_id: figma.currentPage.id,
+      index: 0,
+      replaced_id: target.id
+    })
+    expect(siblings[0]?.index).toBe(1)
+    expect(graph.getNode(ignoredParent.id)?.childIds).toEqual([])
+  })
+
   test('defers render layout when the host owns the post-tool pass', async () => {
     const { figma } = setupToolTest()
     const tool = getTool('render')
@@ -109,5 +197,83 @@ describe('render', () => {
     expect(result.fontSize).toBe(24)
     expect(result.fontWeight).toBe(700)
     expect(result.textAlignHorizontal).toBe('CENTER')
+  })
+})
+
+describe('create_instance', () => {
+  test('creates directly inside the requested parent at the requested index', () => {
+    const { figma } = setupToolTest()
+    const component = figma.createComponent()
+    component.name = 'Card'
+    const parent = figma.createFrame()
+    const before = figma.createRectangle()
+    const after = figma.createRectangle()
+    parent.appendChild(before)
+    parent.appendChild(after)
+
+    const result = getTool('create_instance').execute(figma, {
+      component_id: component.id,
+      parent_id: parent.id,
+      insert_index: 1,
+      x: 24,
+      y: 32
+    }) as ToolResult
+
+    expect(parent.children.map((child) => child.id)).toEqual([before.id, result.id, after.id])
+    const instance = expectDefined(
+      figma.getNodeById(expectDefined(result.id, 'created instance id')),
+      'created instance'
+    )
+    expect(instance.x).toBe(24)
+    expect(instance.y).toBe(32)
+    expect(result).toMatchObject({ parent_id: parent.id, index: 1 })
+  })
+
+  test('validates the parent before creating an instance', () => {
+    const { figma } = setupToolTest()
+    const component = figma.createComponent()
+    const beforeCount = figma.currentPage.children.length
+
+    const result = getTool('create_instance').execute(figma, {
+      component_id: component.id,
+      parent_id: 'missing'
+    }) as ToolResult
+
+    expect(result.error).toContain('missing')
+    expect(figma.currentPage.children).toHaveLength(beforeCount)
+  })
+
+  test('rejects a component master as the parent of its own instance', () => {
+    const { figma, graph } = setupToolTest()
+    const component = figma.createComponent()
+
+    const result = getTool('create_instance').execute(figma, {
+      component_id: component.id,
+      parent_id: component.id
+    }) as ToolResult
+
+    expect(result.error).toContain('component/instance reference cycle')
+    expect(graph.getNode(component.id)?.childIds).toEqual([])
+    expect(graph.getInstances(component.id)).toEqual([])
+  })
+
+  test('rejects a transitive component reference cycle before creating an instance', () => {
+    const { figma, graph } = setupToolTest()
+    const componentA = figma.createComponent()
+    componentA.name = 'A'
+    const componentB = figma.createComponent()
+    componentB.name = 'B'
+    const bInsideA = graph.createInstance(componentB.id, componentA.id)
+    expect(bInsideA).toBeDefined()
+    const beforeBChildren = [...(graph.getNode(componentB.id)?.childIds ?? [])]
+
+    const result = getTool('create_instance').execute(figma, {
+      component_id: componentA.id,
+      parent_id: componentB.id
+    }) as ToolResult
+
+    expect(result.error).toContain('component/instance reference cycle')
+    expect(graph.getNode(componentB.id)?.childIds).toEqual(beforeBChildren)
+    expect(graph.getInstances(componentA.id)).toEqual([])
   })
 })

@@ -33,6 +33,7 @@ import type {
 import type { FigmaAPI } from '#core/figma-api'
 import { defineTool } from '#core/tools/schema'
 
+import type { BatchReadResult } from './batch-result'
 import { summarizeMotion, type MotionSummary } from './motion'
 
 /** Read shape returned by `readLowcodeNode`. Every lowcode field stays
@@ -97,9 +98,39 @@ export interface LowcodeNodeRead {
   lowcodeWorkflows?: WorkflowDef[]
 }
 
+type LowcodeNodeIdentityRead = Pick<LowcodeNodeRead, 'id' | 'type' | 'name' | 'layoutMode'>
+
+export type LowcodeNodesRead = BatchReadResult<LowcodeNodeIdentityRead & Partial<LowcodeNodeRead>>
+
+const LOWCODE_NODE_IDENTITY_FIELDS = new Set<keyof LowcodeNodeRead>([
+  'id',
+  'type',
+  'name',
+  'layoutMode'
+])
+const LOWCODE_NODE_READ_FIELDS = new Set<keyof LowcodeNodeRead>([
+  ...LOWCODE_NODE_IDENTITY_FIELDS,
+  'state',
+  'bindings',
+  'events',
+  'interactiveProps',
+  'renderCondition',
+  'stateOverrides',
+  'motion',
+  'motionSummary',
+  'lowcodeDocumentState',
+  'lowcodeSupabaseConfig',
+  'lowcodeSeoMetadata',
+  'lowcodeAnalyticsConfig',
+  'lowcodeHeadMetadata',
+  'lowcodeCustomCss',
+  'lowcodeTranslations',
+  'lowcodeWorkflows'
+])
+
 type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
-function buildLowcodeRead(node: {
+export function buildLowcodeRead(node: {
   id: string
   type: string
   name: string
@@ -164,6 +195,65 @@ export const readLowcodeNode = defineTool({
     const node = figma.graph.getNode(id)
     if (!node) return { ok: false, error: `Node "${id}" not found` }
     return { ok: true, data: buildLowcodeRead(node) }
+  }
+})
+
+export const readLowcodeNodes = defineTool({
+  name: 'read_lowcode_nodes',
+  description:
+    'Read lowcode metadata for multiple nodes in one bounded call. Identity fields are always returned. Pass fields to project only the needed lowcode properties (for example ["events","interactiveProps"]), reducing MCP context size. Missing ids are returned together instead of failing the whole read.',
+  params: {
+    ids: {
+      type: 'string[]',
+      description: 'Scene node ids (1-200); duplicates are ignored',
+      required: true
+    },
+    fields: {
+      type: 'string[]',
+      description:
+        'Optional LowcodeNodeRead field projection; identity fields id/type/name/layoutMode are always included'
+    }
+  },
+  execute: (figma, { ids, fields }): ReadResult<LowcodeNodesRead> => {
+    const nodeIds = [...new Set(ids)]
+    if (nodeIds.length === 0) return { ok: false, error: 'ids must contain at least one id' }
+    if (nodeIds.length > 200) return { ok: false, error: 'ids supports at most 200 ids per call' }
+
+    const requested = fields ? [...new Set(fields)] : undefined
+    const invalid = requested?.filter(
+      (field) => !LOWCODE_NODE_READ_FIELDS.has(field as keyof LowcodeNodeRead)
+    )
+    if (invalid && invalid.length > 0) {
+      return { ok: false, error: `Unknown lowcode read fields: ${invalid.join(', ')}` }
+    }
+
+    const results: LowcodeNodesRead['results'] = []
+    const missing: string[] = []
+    for (const id of nodeIds) {
+      const node = figma.graph.getNode(id)
+      if (!node) {
+        missing.push(id)
+        continue
+      }
+      const full = buildLowcodeRead(node)
+      if (!requested) {
+        results.push(full)
+        continue
+      }
+      const projected: LowcodeNodeIdentityRead & Partial<LowcodeNodeRead> = {
+        id: full.id,
+        type: full.type,
+        name: full.name,
+        layoutMode: full.layoutMode
+      }
+      for (const field of requested) {
+        const key = field as keyof LowcodeNodeRead
+        if (LOWCODE_NODE_IDENTITY_FIELDS.has(key) || full[key] === undefined) continue
+        Object.assign(projected, { [key]: full[key] })
+      }
+      results.push(projected)
+    }
+    return { ok: true, data: { results, missing } }
   }
 })
 

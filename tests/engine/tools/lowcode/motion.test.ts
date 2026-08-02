@@ -10,7 +10,12 @@ import {
   SceneGraph
 } from '@open-pencil/scene-graph'
 
-import type { LowcodeNodeRead, MotionRead, MotionSceneRead } from '#core/tools/read'
+import type {
+  LowcodeNodeRead,
+  MotionBatchRead,
+  MotionRead,
+  MotionSceneRead
+} from '#core/tools/read'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
@@ -400,6 +405,40 @@ describe('MotionSpec tools', () => {
     })
     expect(read.data.spec).toEqual(graph.getNode(node.id)?.motion)
     expect(read.data.spec).not.toBe(graph.getNode(node.id)?.motion)
+  })
+
+  test('reads bounded motion summaries for multiple nodes in one call', () => {
+    const { figma, graph } = setupToolTest()
+    const animated = figma.createRectangle()
+    const staticNode = figma.createRectangle()
+    graph.updateNode(animated.id, { motion: createMotionPreset('fade-in') })
+
+    const summary = getTool('read_motions').execute(figma, {
+      nodeIds: [animated.id, staticNode.id, animated.id, 'missing'],
+      mode: 'summary'
+    }) as Result<MotionBatchRead>
+
+    expect(summary.ok).toBe(true)
+    if (!summary.ok) return
+    expect(summary.data.missing).toEqual(['missing'])
+    expect(summary.data.results).toHaveLength(2)
+    expect(summary.data.results[0]).toMatchObject({
+      id: animated.id,
+      summary: { trackCount: 1, keyframeCount: 2, triggers: ['mount'] }
+    })
+    expect(summary.data.results[0].spec).toBeUndefined()
+    expect(summary.data.results[0].advanced).toBeUndefined()
+    expect(summary.data.results[1]).toMatchObject({ id: staticNode.id, summary: null })
+
+    const full = getTool('read_motions').execute(figma, {
+      nodeIds: [animated.id],
+      mode: 'full',
+      includeAdvanced: true
+    }) as Result<MotionBatchRead>
+    expect(full.ok).toBe(true)
+    if (!full.ok) return
+    expect(full.data.results[0].spec).toEqual(graph.getNode(animated.id)?.motion)
+    expect(full.data.results[0].advanced).toBeDefined()
   })
 
   test('update_motion strictly parses JSON and read_lowcode_node includes spec plus summary', () => {

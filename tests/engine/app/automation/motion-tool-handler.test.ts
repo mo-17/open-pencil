@@ -40,9 +40,15 @@ describe('automation Motion tool handler', () => {
       args: { nodeIds: ids, preset: 'slide-up', staggerMs: 40 }
     })
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       ok: true,
-      result: { ok: true, data: { nodeIds: ids, preset: 'slide-up' } }
+      result: { ok: true, data: { nodeIds: ids, preset: 'slide-up' } },
+      meta: {
+        sceneVersionBefore: expect.any(Number),
+        sceneVersionAfter: expect.any(Number),
+        targetPageId: target.pageId,
+        mutatedIds: ids
+      }
     })
     expect(flashed).toEqual([ids])
     expect(ids.map((id) => store.graph.getNode(id)?.motion?.tracks[0]?.timing.delayMs)).toEqual([
@@ -217,6 +223,131 @@ describe('automation Motion tool handler', () => {
     expect(rendered?.x).toBe(35)
   })
 
+  test('replaces a node at its existing sibling index and reports the applied placement', async () => {
+    const { handle, ids, store, target } = setup()
+    const ignoredPage = store.graph.addPage('Ignored explicit parent')
+
+    const response = await handle(target, {
+      name: 'render',
+      args: {
+        parent_id: ignoredPage.id,
+        insert_index: 1,
+        replace_id: ids[0],
+        tree: {
+          type: 'rectangle',
+          props: { name: 'Replacement', w: 30, h: 20 },
+          children: []
+        }
+      }
+    })
+
+    const rendered = store.graph
+      .getChildren(target.pageId)
+      .find((node) => node.name === 'Replacement')
+    expect(rendered).toBeDefined()
+    expect(response).toMatchObject({
+      ok: true,
+      result: {
+        id: rendered?.id,
+        parent_id: target.pageId,
+        index: 0,
+        replaced_id: ids[0]
+      }
+    })
+    expect(store.graph.getNode(ids[0])).toBeUndefined()
+    expect(store.graph.getNode(target.pageId)?.childIds).toEqual([rendered?.id, ids[1]])
+    expect(store.graph.getNode(ignoredPage.id)?.childIds).toEqual([])
+  })
+
+  test('inserts a rendered node at the requested sibling index and reports the actual index', async () => {
+    const { handle, ids, store, target } = setup()
+
+    const response = await handle(target, {
+      name: 'render',
+      args: {
+        insert_index: 1,
+        tree: {
+          type: 'rectangle',
+          props: { name: 'Inserted', w: 30, h: 20 },
+          children: []
+        }
+      }
+    })
+
+    const rendered = store.graph.getChildren(target.pageId).find((node) => node.name === 'Inserted')
+    expect(rendered).toBeDefined()
+    expect(response).toMatchObject({
+      ok: true,
+      result: { id: rendered?.id, parent_id: target.pageId, index: 1 }
+    })
+    expect((response as { result: Record<string, unknown> }).result).not.toHaveProperty(
+      'replaced_id'
+    )
+    expect(store.graph.getNode(target.pageId)?.childIds).toEqual([ids[0], rendered?.id, ids[1]])
+  })
+
+  test('inserts fragment roots as one contiguous block with the same placement semantics', async () => {
+    const { handle, ids, store, target } = setup()
+
+    const response = await handle(target, {
+      name: 'render',
+      args: {
+        insert_index: 1,
+        tree: {
+          type: 'fragment',
+          props: {},
+          children: [
+            { type: 'rectangle', props: { name: 'Fragment first', w: 30, h: 20 }, children: [] },
+            { type: 'rectangle', props: { name: 'Fragment second', w: 30, h: 20 }, children: [] }
+          ]
+        }
+      }
+    })
+
+    const result = (
+      response as {
+        result: { id: string; index: number; siblings: Array<{ id: string; index: number }> }
+      }
+    ).result
+    expect(result.index).toBe(1)
+    expect(result.siblings).toHaveLength(1)
+    expect(result.siblings[0]?.index).toBe(2)
+    expect(store.graph.getNode(target.pageId)?.childIds).toEqual([
+      ids[0],
+      result.id,
+      result.siblings[0]?.id,
+      ids[1]
+    ])
+  })
+
+  test('rejects a non-container render parent without creating an orphan', async () => {
+    const { handle, ids, store, target } = setup()
+    const shapeParent = store.graph.getNode(ids[0])
+    expect(shapeParent?.type).toBe('RECTANGLE')
+    const beforeIds = [...(store.graph.getNode(target.pageId)?.childIds ?? [])]
+
+    const error = await handle(target, {
+      name: 'render',
+      args: {
+        parent_id: ids[0],
+        tree: {
+          type: 'rectangle',
+          props: { name: 'Must not become orphaned', w: 30, h: 20 },
+          children: []
+        }
+      }
+    }).catch((reason: Error) => reason)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).message).toContain('cannot contain children')
+    expect(store.graph.getNode(target.pageId)?.childIds).toEqual(beforeIds)
+    expect(
+      store.graph
+        .getChildren(target.pageId)
+        .some((node) => node.name === 'Must not become orphaned')
+    ).toBe(false)
+  })
+
   test('restores the actual parent page when cross-page render layout is cancelled', async () => {
     const { handle, store, target } = setup()
     const otherPage = store.graph.addPage('Cancelled destination')
@@ -251,6 +382,90 @@ describe('automation Motion tool handler', () => {
     expect((error as Error).name).toBe('AbortError')
     expect(store.graph.getNode(parent.id)?.childIds).toEqual([existing.id])
     expect(store.graph.getChildren(otherPage.id).map((node) => node.id)).toEqual([parent.id])
+  })
+
+  test('restores a cross-page replacement target when post-render layout is cancelled', async () => {
+    const { handle, store, target } = setup()
+    const otherPage = store.graph.addPage('Cancelled replacement destination')
+    const parent = store.graph.createNode('FRAME', otherPage.id, {
+      layoutMode: 'HORIZONTAL',
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED',
+      width: 300,
+      height: 80
+    })
+    const replaceTarget = store.graph.createNode('RECTANGLE', parent.id, {
+      name: 'Original target',
+      width: 20,
+      height: 20
+    })
+    const sibling = store.graph.createNode('RECTANGLE', parent.id, {
+      name: 'Original sibling',
+      width: 20,
+      height: 20
+    })
+    const controller = new AbortController()
+    graphAbortOnFirstLayoutUpdate(store, controller)
+
+    const error = await handle(
+      target,
+      {
+        name: 'render',
+        args: {
+          replace_id: replaceTarget.id,
+          tree: {
+            type: 'rectangle',
+            props: { name: 'Must roll back replacement', w: 30, h: 20 },
+            children: []
+          }
+        }
+      },
+      { signal: controller.signal }
+    ).catch((reason: Error) => reason)
+
+    expect(error).toBeInstanceOf(Error)
+    expect((error as Error).name).toBe('AbortError')
+    expect(store.graph.getNode(parent.id)?.childIds).toEqual([replaceTarget.id, sibling.id])
+    expect(store.graph.getNode(replaceTarget.id)?.name).toBe('Original target')
+    expect(
+      store.graph.getChildren(parent.id).some((node) => node.name === 'Must roll back replacement')
+    ).toBe(false)
+  })
+
+  test('provides editor undo and mutation metadata for page route updates', async () => {
+    const { handle, store, target } = setup()
+
+    const response = await handle(target, {
+      name: 'update_page_route',
+      args: { page_id: target.pageId, route_pattern: '/home' }
+    })
+
+    expect(response).toMatchObject({
+      ok: true,
+      result: { ok: true },
+      meta: { mutatedIds: [target.pageId] }
+    })
+    expect(store.graph.getNode(target.pageId)?.lowcodeRoutePattern).toBe('/home')
+    expect(store.undo.undoLabel).toBe('AI: update_page_route')
+    store.undo.undo()
+    expect(store.graph.getNode(target.pageId)?.lowcodeRoutePattern).toBeUndefined()
+  })
+
+  test('reports every moved id in reparent_nodes mutation metadata', async () => {
+    const { handle, ids, store, target } = setup()
+    const parent = store.graph.createNode('FRAME', target.pageId, { name: 'Batch parent' })
+
+    const response = await handle(target, {
+      name: 'reparent_nodes',
+      args: { ids, parent_id: parent.id, insert_index: 0 }
+    })
+
+    expect(response).toMatchObject({
+      ok: true,
+      result: { ok: true },
+      meta: { mutatedIds: ids }
+    })
+    expect(store.graph.getNode(parent.id)?.childIds).toEqual(ids)
   })
 })
 

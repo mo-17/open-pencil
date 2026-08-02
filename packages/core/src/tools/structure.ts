@@ -11,6 +11,7 @@ export {
   groupNodes,
   nodeToComponent,
   reparentNode,
+  reparentNodes,
   ungroupNode
 } from './structure/hierarchy'
 

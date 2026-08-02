@@ -1,10 +1,15 @@
+import {
+  applyRenderPlacement,
+  renderPlacementSiblings,
+  resolveRenderPlacement
+} from '#core/design-jsx/render-placement'
 import { defineTool } from '#core/tools/schema'
 
 export const render = defineTool({
   name: 'render',
   mutates: true,
   description:
-    'Render JSX to design nodes, including real lowcode BUTTON/INPUT/SELECT/CHECKBOX/FORM/LIST/RADIO/TEXTAREA/DATEPICKER/SWITCH nodes through the matching PascalCase tags. Never use a Frame as a functional-control substitute. Lowcode tags accept direct control props plus a validated interactiveProps object; use update_lowcode_node after render for bindings/events. Use replace_id to swap a skeleton placeholder with real content (keeps position in parent). Example: <Form flex="col" gap={12}><Input placeholder="Email" /><Button>Submit</Button></Form>',
+    'Render JSX to design nodes, including real lowcode BUTTON/INPUT/SELECT/CHECKBOX/FORM/LIST/RADIO/TEXTAREA/DATEPICKER/SWITCH nodes through the matching PascalCase tags. Never use a Frame as a functional-control substitute. Lowcode tags accept direct control props plus a validated interactiveProps object; use update_lowcode_node after render for bindings/events. Use replace_id to swap one skeleton placeholder for the complete rendered result; a JSX fragment replaces it with every root inserted consecutively at the old sibling index, and replace_id takes precedence over parent_id/insert_index. Example: <Form flex="col" gap={12}><Input placeholder="Email" /><Button>Submit</Button></Form>',
   params: {
     replace_id: {
       type: 'string',
@@ -27,49 +32,41 @@ export const render = defineTool({
   execute: async (figma, args, context) => {
     const { renderJSX } = await import('#core/design-jsx/render.js')
 
-    let parentId = args.parent_id ?? figma.currentPageId
-    let replaceIndex = -1
-
-    if (args.replace_id) {
-      const target = figma.graph.getNode(args.replace_id)
-      if (target?.parentId) {
-        parentId = target.parentId
-        const parent = figma.graph.getNode(parentId)
-        if (parent) {
-          replaceIndex = parent.childIds.indexOf(args.replace_id)
-        }
-      }
-    }
+    const placement = resolveRenderPlacement(figma.graph, {
+      defaultParentId: figma.currentPageId,
+      parentId: args.parent_id,
+      replaceId: args.replace_id,
+      insertIndex: args.insert_index
+    })
 
     const results = await renderJSX(figma.graph, args.jsx, {
-      parentId,
+      parentId: placement.parentId,
       x: args.x,
       y: args.y,
       signal: context?.signal,
       layout: context?.deferLayout !== true
     })
     const result = results[0]
-
-    if (args.replace_id && replaceIndex >= 0) {
-      figma.graph.reorderChild(result.id, parentId, replaceIndex)
-      figma.graph.deleteNode(args.replace_id)
-    } else if (args.insert_index !== undefined) {
-      figma.graph.reorderChild(result.id, parentId, args.insert_index)
+    const rootIds = results.map((node) => node.id)
+    let appliedPlacement: ReturnType<typeof applyRenderPlacement>
+    try {
+      appliedPlacement = applyRenderPlacement(figma.graph, rootIds, placement)
+    } catch (error) {
+      for (const id of rootIds.toReversed()) figma.graph.deleteNode(id)
+      throw error
     }
 
+    const siblings = renderPlacementSiblings(results, appliedPlacement)
     return {
       id: result.id,
       name: result.name,
       type: result.type,
       children: result.childIds,
+      parent_id: appliedPlacement.parentId,
+      index: appliedPlacement.index,
+      ...(appliedPlacement.replacedId ? { replaced_id: appliedPlacement.replacedId } : {}),
       ...(result.warnings ? { warnings: result.warnings } : {}),
-      ...(results.length > 1
-        ? {
-            siblings: results
-              .slice(1)
-              .map((node) => ({ id: node.id, name: node.name, type: node.type }))
-          }
-        : {})
+      ...(siblings.length > 0 ? { siblings } : {})
     }
   }
 })

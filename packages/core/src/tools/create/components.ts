@@ -1,4 +1,5 @@
 import { defineTool, nodeSummary } from '#core/tools/schema'
+import { hasComponentInstanceReferencePath } from '#core/tools/structure/hierarchy'
 
 export const createComponent = defineTool({
   name: 'create_component',
@@ -21,15 +22,52 @@ export const createInstance = defineTool({
   description: 'Create an instance of a component.',
   params: {
     component_id: { type: 'string', description: 'Component node ID', required: true },
+    parent_id: {
+      type: 'string',
+      description: 'Parent node for the new instance; defaults to the current page'
+    },
+    insert_index: {
+      type: 'number',
+      description: 'Exact sibling index under parent_id; omit to append'
+    },
     x: { type: 'number', description: 'X position' },
     y: { type: 'number', description: 'Y position' }
   },
   execute: (figma, args) => {
     const component = figma.getNodeById(args.component_id)
     if (!component) return { error: `Component "${args.component_id}" not found` }
-    const instance = component.createInstance()
+    if (component.type !== 'COMPONENT') {
+      return { error: `Node "${args.component_id}" is not a component` }
+    }
+    const parent = args.parent_id ? figma.getNodeById(args.parent_id) : figma.currentPage
+    if (!parent) return { error: `Parent "${args.parent_id}" not found` }
+    const rawParent = figma.graph.getNode(parent.id)
+    if (!rawParent || !figma.graph.isContainer(parent.id)) {
+      return {
+        error: `Parent "${parent.id}" (${rawParent?.type ?? 'unknown'}) cannot contain children`
+      }
+    }
+    if (
+      args.insert_index !== undefined &&
+      (!Number.isInteger(args.insert_index) || args.insert_index < 0)
+    ) {
+      return { error: 'insert_index must be a non-negative integer' }
+    }
+    if (hasComponentInstanceReferencePath(figma.graph, component.id, parent.id)) {
+      return {
+        error: `Cannot create an instance of component "${component.id}" inside "${parent.id}": component/instance reference cycle`
+      }
+    }
+    const rawInstance = figma.graph.createInstance(component.id, parent.id)
+    if (!rawInstance) return { error: `Failed to create instance of component "${component.id}"` }
+    const instance = figma.getNodeById(rawInstance.id)
+    if (!instance) return { error: `Created instance "${rawInstance.id}" could not be resolved` }
+    if (args.insert_index !== undefined) {
+      figma.graph.reorderChild(instance.id, parent.id, args.insert_index)
+    }
     if (args.x !== undefined) instance.x = args.x
     if (args.y !== undefined) instance.y = args.y
-    return nodeSummary(instance)
+    const index = parent.children.findIndex((child) => child.id === instance.id)
+    return { ...nodeSummary(instance), parent_id: parent.id, index }
   }
 })

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { LowcodeNodeRead } from '@open-pencil/core/tools'
+import type { LowcodeNodeRead, LowcodeNodesRead } from '@open-pencil/core/tools'
 import type { ActionDef, DocumentStateDef, SupabaseConfig } from '@open-pencil/scene-graph'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
@@ -143,6 +143,46 @@ describe('read_lowcode_node', () => {
     // leak into the parent read — AI is expected to walk children itself.
     expect(result.data.interactiveProps).toBeUndefined()
     expect(JSON.stringify(result.data)).not.toContain('child')
+  })
+})
+
+describe('read_lowcode_nodes', () => {
+  test('reads a projected batch, deduplicates ids, and reports missing nodes', () => {
+    const { figma, graph } = setupToolTest()
+    const button = figma.createRectangle()
+    const plain = figma.createRectangle()
+    graph.updateNode(button.id, {
+      interactiveProps: { text: 'Continue' },
+      events: { onClick: [{ id: 'navigate', kind: 'navigate', to: '/next' }] },
+      stateOverrides: { hover: { opacity: 0.8 } }
+    })
+
+    const result = getTool('read_lowcode_nodes').execute(figma, {
+      ids: [button.id, plain.id, button.id, 'missing'],
+      fields: ['events', 'interactiveProps']
+    }) as Result<LowcodeNodesRead>
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data.missing).toEqual(['missing'])
+    expect(result.data.results).toHaveLength(2)
+    expect(result.data.results[0]).toMatchObject({
+      id: button.id,
+      interactiveProps: { text: 'Continue' },
+      events: { onClick: [{ id: 'navigate', kind: 'navigate', to: '/next' }] }
+    })
+    expect(result.data.results[0].stateOverrides).toBeUndefined()
+    expect(result.data.results[1]).toMatchObject({ id: plain.id })
+  })
+
+  test('rejects unknown projections before reading any nodes', () => {
+    const { figma } = setupToolTest()
+    const node = figma.createRectangle()
+    const result = getTool('read_lowcode_nodes').execute(figma, {
+      ids: [node.id],
+      fields: ['eventz']
+    }) as Result<LowcodeNodesRead>
+    expect(result).toEqual({ ok: false, error: 'Unknown lowcode read fields: eventz' })
   })
 })
 

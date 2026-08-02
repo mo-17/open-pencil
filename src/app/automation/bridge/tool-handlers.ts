@@ -1,4 +1,10 @@
-import { renderTreeNode } from '@open-pencil/core/design-jsx'
+import {
+  applyRenderPlacement,
+  renderPlacementSiblings,
+  renderTreeNode,
+  resolveRenderPlacement,
+  type AppliedRenderPlacement
+} from '@open-pencil/core/design-jsx'
 import type { Editor } from '@open-pencil/core/editor'
 import type { FigmaAPI } from '@open-pencil/core/figma-api'
 import { computeAllLayoutsAsync } from '@open-pencil/core/layout'
@@ -17,6 +23,9 @@ type FigmaFactory = (store: AutomationTarget['store'], pageId?: string) => Figma
  *  progress context, while only this allowlist receives the editor context. */
 const EDITOR_UNDO_TOOLS = new Set<string>([
   'update_lowcode_node',
+  'update_lowcode_nodes',
+  'update_page_route',
+  'reparent_nodes',
   'set_doc_states',
   'set_supabase_config',
   'apply_motion_preset',
@@ -44,6 +53,56 @@ const NON_GRAPH_MUTATION_TOOLS = new Set([
 type AutomationMutationSnapshot =
   | { scope: 'document'; snapshot: ReturnType<Editor['snapshotDocument']> }
   | { scope: 'page'; snapshot: ReturnType<Editor['snapshotPage']> }
+type AutomationRenderTree = Parameters<typeof renderTreeNode>[1]
+type AutomationRenderResult = Awaited<ReturnType<typeof renderTreeNode>>
+type AutomationRenderResults = [AutomationRenderResult, ...AutomationRenderResult[]]
+
+function automationRenderRoots(tree: AutomationRenderTree): AutomationRenderTree[] {
+  if (tree.type !== '' && tree.type !== 'fragment') return [tree]
+  return tree.children.filter((child): child is AutomationRenderTree => typeof child !== 'string')
+}
+
+async function renderAutomationRoots(
+  target: AutomationTarget,
+  tree: AutomationRenderTree,
+  parentId: string,
+  toolArgs: Record<string, unknown>,
+  context?: AutomationRequestContext
+): Promise<AutomationRenderResults> {
+  const roots = automationRenderRoots(tree)
+  if (roots.length === 0) throw new Error('Render tree must contain at least one root node')
+  const results: AutomationRenderResult[] = []
+  for (const root of roots) {
+    results.push(
+      await renderTreeNode(target.store.graph, root, {
+        parentId,
+        x: toolArgs.x as number | undefined,
+        y: toolArgs.y as number | undefined,
+        signal: context?.signal,
+        layout: false
+      })
+    )
+  }
+  return results as AutomationRenderResults
+}
+
+function automationRenderResult(
+  results: AutomationRenderResults,
+  placement: AppliedRenderPlacement
+): Record<string, unknown> {
+  const result = results[0]
+  const siblings = renderPlacementSiblings(results, placement)
+  return {
+    id: result.id,
+    name: result.name,
+    type: result.type,
+    children: result.childIds,
+    parent_id: placement.parentId,
+    index: placement.index,
+    ...(placement.replacedId ? { replaced_id: placement.replacedId } : {}),
+    ...(siblings.length > 0 ? { siblings } : {})
+  }
+}
 
 export function createAutomationToolHandler(makeFigma: FigmaFactory) {
   async function handleToolRender(
@@ -55,8 +114,15 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     const store = target.store
     const targetPage = store.graph.getNode(target.pageId)
     if (targetPage?.type !== 'CANVAS') throw new Error('Automation target page is no longer open')
+    const sceneVersionBefore = store.state.sceneVersion
     const tree = toolArgs.tree as Parameters<typeof renderTreeNode>[1]
-    const parentId = (toolArgs.parent_id as string | undefined) ?? target.pageId
+    const placement = resolveRenderPlacement(store.graph, {
+      defaultParentId: target.pageId,
+      parentId: toolArgs.parent_id as string | undefined,
+      replaceId: toolArgs.replace_id as string | undefined,
+      insertIndex: toolArgs.insert_index as number | undefined
+    })
+    const parentId = placement.parentId
     if (!store.graph.getNode(parentId)) throw new Error(`Automation parent "${parentId}" not found`)
     const parentPageId = pageIdForNode(store, parentId)
     if (!parentPageId) {
@@ -64,15 +130,11 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
     }
     const before = store.snapshotPage(parentPageId)
     try {
-      const result = await renderTreeNode(store.graph, tree, {
-        parentId,
-        x: toolArgs.x as number | undefined,
-        y: toolArgs.y as number | undefined,
-        signal: context?.signal,
-        layout: false
-      })
+      const results = await renderAutomationRoots(target, tree, parentId, toolArgs, context)
+      const rootIds = results.map((node) => node.id)
+      const appliedPlacement = applyRenderPlacement(store.graph, rootIds, placement)
       throwIfAborted(context?.signal)
-      await ensureGraphFonts(store.graph, [result.id], store.renderer, context?.signal)
+      await ensureGraphFonts(store.graph, rootIds, store.renderer, context?.signal)
       throwIfAborted(context?.signal)
       await yieldToHost()
       throwIfAborted(context?.signal)
@@ -80,10 +142,18 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
       await yieldToHost()
       throwIfAborted(context?.signal)
       store.requestRender()
-      store.flashNodes([result.id])
+      store.flashNodes(rootIds)
       return {
         ok: true,
-        result: { id: result.id, name: result.name, type: result.type, children: result.childIds }
+        result: automationRenderResult(results, appliedPlacement),
+        meta: {
+          sceneVersionBefore,
+          sceneVersionAfter: store.state.sceneVersion,
+          mutationScope: 'page',
+          targetPageId: parentPageId,
+          mutatedIds: rootIds,
+          ...(appliedPlacement.replacedId ? { deletedIds: [appliedPlacement.replacedId] } : {})
+        }
       }
     } catch (error) {
       store.restorePageFromSnapshot(before, parentPageId)
@@ -151,7 +221,17 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
               store.requestRender()
               store.flashNodes(extractNodeIds(result))
             }
-            return { ok: true, result }
+            return {
+              ok: true,
+              result,
+              meta: {
+                sceneVersionBefore,
+                sceneVersionAfter: store.state.sceneVersion,
+                mutationScope: scope,
+                targetPageId: pageId,
+                ...(def.mutates ? { mutatedIds: extractNodeIds(result) } : {})
+              }
+            }
           },
           context?.signal
         )
@@ -224,6 +304,15 @@ function yieldToHost(): Promise<void> {
   })
 }
 
+function addResultItemIds(value: unknown, ids: Set<string>): void {
+  if (!Array.isArray(value)) return
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue
+    const id = (item as JsonObject).id
+    if (typeof id === 'string') ids.add(id)
+  }
+}
+
 function extractNodeIds(result: unknown): string[] {
   if (!result || typeof result !== 'object') return []
   const obj = result as JsonObject
@@ -232,14 +321,12 @@ function extractNodeIds(result: unknown): string[] {
   const ids = new Set<string>()
   if (typeof obj.id === 'string') ids.add(obj.id)
   if (typeof obj.nodeId === 'string') ids.add(obj.nodeId)
+  if (typeof obj.pageId === 'string') ids.add(obj.pageId)
   if (Array.isArray(obj.nodeIds)) {
     for (const nodeId of obj.nodeIds) if (typeof nodeId === 'string') ids.add(nodeId)
   }
-  if (Array.isArray(obj.results)) {
-    for (const item of obj.results) {
-      if (item && typeof item === 'object' && typeof (item as JsonObject).id === 'string')
-        ids.add((item as JsonObject).id as string)
-    }
+  for (const key of ['results', 'moved'] as const) {
+    addResultItemIds(obj[key], ids)
   }
   if (obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
     for (const nodeId of extractNodeIds(obj.data)) ids.add(nodeId)

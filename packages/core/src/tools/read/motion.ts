@@ -21,6 +21,8 @@ import {
 } from '#core/motion'
 import { defineTool } from '#core/tools/schema'
 
+import type { BatchReadResult } from './batch-result'
+
 export interface MotionSummary {
   version: MotionSpec['version']
   trackCount: number
@@ -41,6 +43,11 @@ export interface MotionRead {
     diagnostics: Array<MotionAdvancedCapabilityIssue & { trackId: string; keyframeIndex: number }>
   }
 }
+
+export type MotionBatchRead = BatchReadResult<
+  Pick<MotionRead, 'id' | 'name' | 'type' | 'summary'> &
+    Partial<Pick<MotionRead, 'spec' | 'advanced'>>
+>
 
 export interface MotionSceneRead {
   id: string
@@ -88,6 +95,36 @@ export function summarizeMotion(spec: MotionSpec): MotionSummary {
   return summary
 }
 
+function readMotionNode(
+  node: Parameters<typeof motionAdvancedChannelTemplates>[0],
+  options: { includeSpec: boolean; includeAdvanced: boolean }
+): MotionBatchRead['results'][number] {
+  const spec = node.motion ? cloneMotionSpec(node.motion) : null
+  return {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+    summary: spec ? summarizeMotion(spec) : null,
+    ...(options.includeSpec ? { spec } : {}),
+    ...(options.includeAdvanced
+      ? {
+          advanced: {
+            templates: motionAdvancedChannelTemplates(node),
+            diagnostics: (spec?.tracks ?? []).flatMap((track) =>
+              track.keyframes.flatMap((keyframe, keyframeIndex) =>
+                inspectMotionAdvancedChannels(node, keyframe).map((diagnostic) => ({
+                  ...diagnostic,
+                  trackId: track.id,
+                  keyframeIndex
+                }))
+              )
+            )
+          }
+        }
+      : {})
+  }
+}
+
 function clonePresetDefinition(definition: MotionPresetDefinition): MotionPresetDefinition {
   return {
     id: definition.id,
@@ -110,29 +147,57 @@ export const readMotion = defineTool({
   execute: (figma, { nodeId }): ReadResult<MotionRead> => {
     const node = figma.graph.getNode(nodeId)
     if (!node) return { ok: false, error: `Node "${nodeId}" not found` }
-    const spec = node.motion ? cloneMotionSpec(node.motion) : null
+    const data = readMotionNode(node, { includeSpec: true, includeAdvanced: true })
     return {
       ok: true,
-      data: {
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        summary: spec ? summarizeMotion(spec) : null,
-        spec,
-        advanced: {
-          templates: motionAdvancedChannelTemplates(node),
-          diagnostics: (spec?.tracks ?? []).flatMap((track) =>
-            track.keyframes.flatMap((keyframe, keyframeIndex) =>
-              inspectMotionAdvancedChannels(node, keyframe).map((diagnostic) => ({
-                ...diagnostic,
-                trackId: track.id,
-                keyframeIndex
-              }))
-            )
-          )
-        }
-      }
+      data: data as MotionRead
     }
+  }
+})
+
+export const readMotions = defineTool({
+  name: 'read_motions',
+  description:
+    "Read Motion metadata for multiple nodes in one bounded call. mode='summary' returns only identity plus compact counts/triggers; mode='full' also returns each complete MotionSpec. Set includeAdvanced only when node-derived templates and per-keyframe diagnostics are needed. Missing ids are reported together instead of forcing one retry per node.",
+  params: {
+    nodeIds: {
+      type: 'string[]',
+      description: 'Scene node ids (1-100); duplicates are ignored',
+      required: true
+    },
+    mode: {
+      type: 'string',
+      description: 'Result detail level',
+      enum: ['summary', 'full'],
+      default: 'summary'
+    },
+    includeAdvanced: {
+      type: 'boolean',
+      description: 'Include structured-channel templates and diagnostics',
+      default: false
+    }
+  },
+  execute: (figma, { nodeIds, mode, includeAdvanced }): ReadResult<MotionBatchRead> => {
+    const ids = [...new Set(nodeIds)]
+    if (ids.length === 0) return { ok: false, error: 'nodeIds must contain at least one id' }
+    if (ids.length > 100) return { ok: false, error: 'nodeIds supports at most 100 ids per call' }
+
+    const results: MotionBatchRead['results'] = []
+    const missing: string[] = []
+    for (const nodeId of ids) {
+      const node = figma.graph.getNode(nodeId)
+      if (!node) {
+        missing.push(nodeId)
+        continue
+      }
+      results.push(
+        readMotionNode(node, {
+          includeSpec: mode === 'full',
+          includeAdvanced: includeAdvanced === true
+        })
+      )
+    }
+    return { ok: true, data: { results, missing } }
   }
 })
 
