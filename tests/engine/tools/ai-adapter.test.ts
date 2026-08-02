@@ -262,6 +262,34 @@ describe('AI adapter', () => {
     expect(flashes).toEqual([])
   })
 
+  test('treats the legacy bare error envelope as a rejected result', async () => {
+    const graph = new SceneGraph()
+    const figma = new FigmaAPI(graph)
+    let status: string | undefined
+    const tools = toolsToAI(
+      [
+        {
+          name: 'legacy_rejected_mutation',
+          description: 'test',
+          params: {},
+          mutates: true,
+          execute: () => ({ error: 'missing node' })
+        }
+      ],
+      {
+        getFigma: () => figma,
+        onAfterExecute: (_def, context) => {
+          status = context.status
+        }
+      },
+      { v, valibotSchema, tool }
+    )
+
+    const result = await adapterTool(tools, 'legacy_rejected_mutation').execute({})
+    expect(result).toEqual({ error: 'missing node' })
+    expect(status).toBe('error')
+  })
+
   test('passes successful tool results to the after-execute hook', async () => {
     const graph = new SceneGraph()
     const figma = new FigmaAPI(graph)

@@ -171,13 +171,9 @@ function emitToolLog(
 }
 
 function isRejectedToolResult(result: unknown): boolean {
-  return Boolean(
-    result &&
-    typeof result === 'object' &&
-    !Array.isArray(result) &&
-    'ok' in result &&
-    result.ok === false
-  )
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false
+  if ('ok' in result && result.ok === false) return true
+  return !('ok' in result && result.ok === true) && 'error' in result && result.error != null
 }
 
 interface ToolExecutionOutcome {
@@ -451,6 +447,30 @@ export function buildDebugLog(entries: ToolLogEntry[]): ToolDebugLog {
 }
 
 function paramToValibot(v: typeof valibot, param: ParamDef): unknown {
+  const requiredParam = (value: ParamDef): ParamDef => ({
+    ...value,
+    required: true,
+    default: undefined
+  })
+  const objectSchema = (): unknown => {
+    if (!param.properties) return v.record(v.string(), v.unknown())
+    const shape: Record<string, unknown> = {}
+    for (const [key, property] of Object.entries(param.properties)) {
+      shape[key] = paramToValibot(v, property)
+    }
+    return param.additionalProperties
+      ? v.objectWithRest(shape as Record<string, never>, v.unknown())
+      : v.strictObject(shape as Record<string, never>)
+  }
+  const arraySchema = (): unknown => {
+    const schema = v.array(
+      param.items ? (paramToValibot(v, requiredParam(param.items)) as never) : v.unknown()
+    )
+    const pipes: unknown[] = [schema]
+    if (param.minItems !== undefined) pipes.push(v.minLength(param.minItems))
+    if (param.maxItems !== undefined) pipes.push(v.maxLength(param.maxItems))
+    return pipes.length > 1 ? v.pipe(...(pipes as [never, never, ...never[]])) : schema
+  }
   const typeMap: Record<ParamType, () => unknown> = {
     string: () => (param.enum ? v.picklist(param.enum as [string, ...string[]]) : v.string()),
     number: () => {
@@ -461,7 +481,9 @@ function paramToValibot(v: typeof valibot, param: ParamDef): unknown {
     },
     boolean: () => v.boolean(),
     color: () => v.pipe(v.string(), v.description('Color value (hex like #ff0000 or #ff000080)')),
-    'string[]': () => v.pipe(v.array(v.string()), v.minLength(1))
+    'string[]': () => v.pipe(v.array(v.string()), v.minLength(1)),
+    object: objectSchema,
+    array: arraySchema
   }
 
   let schema = typeMap[param.type]()

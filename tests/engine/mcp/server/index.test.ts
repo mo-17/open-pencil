@@ -139,19 +139,24 @@ describe('MCP server', () => {
     expect(names).toContain('set_fill')
     expect(names).toContain('get_page_tree')
     expect(names).toContain('check_font')
+    expect(names).toContain('audit_font_rendering')
     expect(names).toContain('audit_font_licenses')
+    expect(names).toContain('audit_image_assets')
     expect(names).toContain('render')
     expect(names).toContain('get_codegen_prompt')
     const auditFontLicenses = tools.find((tool) => tool.name === 'audit_font_licenses')
     expect(JSON.stringify(auditFontLicenses?.inputSchema)).toContain('commercial_use')
+    const auditImageAssets = tools.find((tool) => tool.name === 'audit_image_assets')
+    expect(JSON.stringify(auditImageAssets?.inputSchema)).toContain('max_total_references')
     expect(tools.length).toBeGreaterThan(30)
   })
 
-  test('tools have descriptions and input schemas', async () => {
+  test('tools have descriptions and input/output schemas', async () => {
     const { tools } = await client.listTools()
     for (const tool of tools) {
       expect(tool.description).toBeTruthy()
       expect(tool.inputSchema).toBeDefined()
+      expect(tool.outputSchema).toBeDefined()
     }
   })
 
@@ -162,6 +167,13 @@ describe('MCP server', () => {
     })
     expect(result.isError).not.toBe(true)
     const data = parseResult(result) as { id: string; name: string; type: string }
+    expect(result.structuredContent).toEqual(data)
+    expect(result._meta?.openpencil).toMatchObject({
+      tool: 'create_shape',
+      requestBytes: expect.any(Number),
+      resultBytes: expect.any(Number),
+      durationMs: expect.any(Number)
+    })
     expect(data.type).toBe('FRAME')
     expect(data.name).toBe('Test')
 
@@ -206,6 +218,8 @@ describe('MCP server', () => {
 
     const get = await client.callTool({ name: 'get_node', arguments: { id } })
     const data = parseResult(get) as { error?: string }
+    expect(get.isError).toBe(true)
+    expect(get.structuredContent).toEqual(data)
     expect(data.error).toContain('not found')
   })
 

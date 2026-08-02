@@ -15,7 +15,8 @@ import {
   discoverFfmpegMotionEncoders,
   encodeMotionPngSequenceToolResult
 } from '#mcp/motion-export/index'
-import { MAX_RESULT_BYTES, fail, ok, resultTooLargeMessage } from '#mcp/result'
+import { MAX_RESULT_BYTES, fail, getDomainFailure, ok, resultTooLargeMessage } from '#mcp/result'
+import type { MCPResult } from '#mcp/result'
 import { resolveSafePath, writeToolOutput } from '#mcp/tool/output'
 import { paramToZod } from '#mcp/tool/schema'
 
@@ -30,14 +31,14 @@ export interface ToolRequestExtra {
   sendNotification?: (notification: Record<string, unknown>) => Promise<void>
 }
 
-function failUnlessAborted(error: unknown) {
+function failUnlessAborted(error: unknown, meta?: Record<string, unknown>) {
   if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
     if (error instanceof Error) throw error
     const abort = new Error('MCP request cancelled', { cause: error })
     abort.name = 'AbortError'
     throw abort
   }
-  return fail(error)
+  return fail(error, meta)
 }
 
 function isMotionExportProgress(value: unknown): value is MotionExportProgress {
@@ -76,6 +77,11 @@ const automationTargetSchema = {
   document_id: z.string().describe('Optional OpenPencil document/tab ID to target').optional(),
   page_id: z.string().describe('Optional page ID to target within the document').optional()
 }
+
+// ToolDef outputs are intentionally heterogeneous today. Advertising an open
+// object still lets the SDK validate that every successful call supplies
+// structuredContent without pretending that a narrower per-tool contract exists.
+const toolOutputSchema = z.looseObject({})
 
 function splitAutomationTarget(args: Record<string, unknown>): {
   target: { document_id?: string; page_id?: string }
@@ -122,6 +128,122 @@ async function prepareMotionToolCall(
   return { args: { ...args, format: 'png-sequence' }, encoder }
 }
 
+interface CompleteToolCallOptions {
+  toolName: string
+  requestedPath: string | null
+  resolvedRoot: string | null
+  prepared: PreparedMotionToolCall
+  response: unknown
+  signal?: AbortSignal
+  onProgress?: (progress: unknown) => void
+  target: { document_id?: string; page_id?: string }
+  startedAt: number
+  requestBytes: number
+}
+
+interface RpcToolResponse {
+  ok?: boolean
+  result?: unknown
+  error?: string
+  meta?: Record<string, unknown>
+  target?: Record<string, unknown>
+}
+
+function stringifyJson(value: unknown): string | undefined {
+  return JSON.stringify(value)
+}
+
+function jsonBytes(value: unknown): number {
+  try {
+    return Buffer.byteLength(stringifyJson(value) ?? '', 'utf8')
+  } catch {
+    return 0
+  }
+}
+
+function callMeta(
+  options: CompleteToolCallOptions,
+  response: RpcToolResponse,
+  result: unknown
+): Record<string, unknown> {
+  return {
+    openpencil: {
+      tool: options.toolName,
+      durationMs: Date.now() - options.startedAt,
+      requestBytes: options.requestBytes,
+      resultBytes: jsonBytes(result),
+      requestedTarget: options.target,
+      ...(response.target ? { resolvedTarget: response.target } : {}),
+      ...(response.meta ? { mutation: response.meta } : {})
+    }
+  }
+}
+
+function attachMeta(result: MCPResult, meta: Record<string, unknown>): MCPResult {
+  return { ...result, _meta: { ...result._meta, ...meta } }
+}
+
+function imageToolResult(toolName: string, result: RpcJsonObject): MCPResult | undefined {
+  if (!('base64' in result) || !('mimeType' in result)) return undefined
+  const base64 = String(result.base64)
+  const bytes = Buffer.byteLength(base64, 'utf8')
+  if (bytes > MAX_RESULT_BYTES) {
+    return fail(
+      new Error(
+        resultTooLargeMessage(
+          `Image from "${toolName}"`,
+          bytes,
+          'Export a smaller region or lower the scale/resolution.'
+        )
+      )
+    )
+  }
+  return {
+    content: [
+      {
+        type: 'image',
+        data: base64,
+        mimeType: result.mimeType as string
+      }
+    ],
+    structuredContent: {
+      mimeType: result.mimeType,
+      byteLength: Buffer.byteLength(base64, 'base64')
+    }
+  }
+}
+
+async function completeToolCall(options: CompleteToolCallOptions): Promise<MCPResult> {
+  const { toolName, requestedPath, resolvedRoot, prepared, signal, onProgress } = options
+  const response = options.response as RpcToolResponse
+  if (response.ok === false) {
+    return fail(
+      response.error ?? 'OpenPencil RPC failed',
+      callMeta(options, response, response.result)
+    )
+  }
+  const domainFailure = getDomainFailure(response.result)
+  if (domainFailure) {
+    return fail(domainFailure.error, callMeta(options, response, response.result))
+  }
+
+  const result = prepared.encoder
+    ? ((await encodeMotionPngSequenceToolResult(
+        response.result,
+        prepared.encoder,
+        signal,
+        onProgress
+      )) as RpcJsonObject)
+    : (response.result as RpcJsonObject | undefined)
+  const meta = callMeta(options, response, result)
+  if (result && requestedPath && resolvedRoot) {
+    const written = await writeToolOutput(toolName, result, requestedPath, resolvedRoot, signal)
+    if (written) return attachMeta(written, meta)
+  }
+  const image = result && imageToolResult(toolName, result)
+  return image ? attachMeta(image, meta) : ok(result, toolName, meta)
+}
+
 export function registerTools(mcpServer: McpServer, options: RegisterToolsOptions) {
   const { enableEval, sendRpc } = options
   const resolvedRoot = options.mcpRoot ? resolve(options.mcpRoot) : null
@@ -137,11 +259,17 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
       def.name,
       {
         description: def.description,
-        inputSchema: z.object({ ...shape, ...automationTargetSchema })
+        inputSchema: z.object({ ...shape, ...automationTargetSchema }),
+        outputSchema: toolOutputSchema
       },
       async (args: Record<string, unknown>, extra?: ToolRequestExtra) => {
+        const startedAt = Date.now()
+        let requestBytes = jsonBytes(args)
+        let target: { document_id?: string; page_id?: string } = {}
         try {
-          const { target, args: toolArgs } = splitAutomationTarget(args)
+          const split = splitAutomationTarget(args)
+          target = split.target
+          const toolArgs = split.args
           const requestedPath = typeof toolArgs.path === 'string' ? toolArgs.path : null
           if (def.name === 'export_motion_animation' && requestedPath && !resolvedRoot) {
             return fail(
@@ -151,6 +279,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
             )
           }
           const prepared = await prepareMotionToolCall(def.name, toolArgs)
+          requestBytes = jsonBytes({ target, args: prepared.args })
           const onProgress =
             def.name === 'export_motion_animation' ? motionProgressReporter(extra) : undefined
           const result = await sendRpc(
@@ -164,54 +293,27 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
             },
             { signal: extra?.signal, onProgress }
           )
-          const res = result as { ok?: boolean; result?: unknown; error?: string }
-          if (res.ok === false) return fail(new Error(res.error))
-          const r = prepared.encoder
-            ? ((await encodeMotionPngSequenceToolResult(
-                res.result,
-                prepared.encoder,
-                extra?.signal,
-                onProgress
-              )) as RpcJsonObject)
-            : (res.result as RpcJsonObject | undefined)
-          const filePath = requestedPath
-          if (r && filePath && resolvedRoot) {
-            const written = await writeToolOutput(
-              def.name,
-              r,
-              filePath,
-              resolvedRoot,
-              extra?.signal
-            )
-            if (written) return written
-          }
-          if (r && 'base64' in r && 'mimeType' in r) {
-            const base64 = String(r.base64)
-            const bytes = Buffer.byteLength(base64, 'utf8')
-            if (bytes > MAX_RESULT_BYTES) {
-              return fail(
-                new Error(
-                  resultTooLargeMessage(
-                    `Image from "${def.name}"`,
-                    bytes,
-                    'Export a smaller region or lower the scale/resolution.'
-                  )
-                )
-              )
-            }
-            return {
-              content: [
-                {
-                  type: 'image' as const,
-                  data: base64,
-                  mimeType: r.mimeType as string
-                }
-              ]
-            }
-          }
-          return ok(r, def.name)
+          return await completeToolCall({
+            toolName: def.name,
+            requestedPath,
+            resolvedRoot,
+            prepared,
+            response: result,
+            signal: extra?.signal,
+            onProgress,
+            target,
+            startedAt,
+            requestBytes
+          })
         } catch (e) {
-          return failUnlessAborted(e)
+          return failUnlessAborted(e, {
+            openpencil: {
+              tool: def.name,
+              durationMs: Date.now() - startedAt,
+              requestBytes,
+              requestedTarget: target
+            }
+          })
         }
       }
     )
@@ -222,7 +324,8 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
     {
       description:
         'List open OpenPencil documents/tabs with their IDs, file paths, current pages, and pages.',
-      inputSchema: z.object({})
+      inputSchema: z.object({}),
+      outputSchema: toolOutputSchema
     },
     async (_args: Record<string, never>, extra?: ToolRequestExtra) => {
       try {
@@ -231,7 +334,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
           { signal: extra?.signal }
         )
         const res = result as { ok?: boolean; result?: unknown; error?: string }
-        if (res.ok === false) return fail(new Error(res.error))
+        if (res.ok === false) return fail(res.error ?? 'OpenPencil RPC failed')
         return ok(res.result ?? {})
       } catch (e) {
         return failUnlessAborted(e)
@@ -254,7 +357,8 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
               .optional(),
             ...automationTargetSchema
           })
-        : z.object({ ...automationTargetSchema })
+        : z.object({ ...automationTargetSchema }),
+      outputSchema: toolOutputSchema
     },
     async (
       args: { path?: string; document_id?: string; page_id?: string },
@@ -274,7 +378,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
           { signal: extra?.signal }
         )
         const res = result as { ok?: boolean; result?: unknown; target?: unknown; error?: string }
-        if (res.ok === false) return fail(new Error(res.error))
+        if (res.ok === false) return fail(res.error ?? 'OpenPencil RPC failed')
         return ok({
           saved: true,
           ...(safePath ? { path: safePath.resolved } : {}),
@@ -297,7 +401,8 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
             .min(1)
             .describe('Path to the design file, absolute or relative to the MCP root'),
           ...automationTargetSchema
-        })
+        }),
+        outputSchema: toolOutputSchema
       },
       async (
         args: { path: string; document_id?: string; page_id?: string },
@@ -314,7 +419,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
             { signal: extra?.signal }
           )
           const res = result as { ok?: boolean; result?: unknown; target?: unknown; error?: string }
-          if (res.ok === false) return fail(new Error(res.error))
+          if (res.ok === false) return fail(res.error ?? 'OpenPencil RPC failed')
           return ok({ opened: true, ...(res.target ? { target: res.target } : {}) })
         } catch (e) {
           return failUnlessAborted(e)
@@ -333,7 +438,8 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
             .describe('Path for the new file, absolute or relative to the MCP root')
             .optional(),
           ...automationTargetSchema
-        })
+        }),
+        outputSchema: toolOutputSchema
       },
       async (
         args: { path?: string; document_id?: string; page_id?: string },
@@ -351,7 +457,7 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
             { signal: extra?.signal }
           )
           const res = result as { ok?: boolean; result?: unknown; target?: unknown; error?: string }
-          if (res.ok === false) return fail(new Error(res.error))
+          if (res.ok === false) return fail(res.error ?? 'OpenPencil RPC failed')
           return ok({ created: true, ...(res.target ? { target: res.target } : {}) })
         } catch (e) {
           return failUnlessAborted(e)
@@ -365,7 +471,8 @@ export function registerTools(mcpServer: McpServer, options: RegisterToolsOption
     {
       description:
         'Get design-to-code generation guidelines. Call before generating frontend code.',
-      inputSchema: z.object({})
+      inputSchema: z.object({}),
+      outputSchema: toolOutputSchema
     },
     async () => ok({ prompt: CODEGEN_PROMPT })
   )

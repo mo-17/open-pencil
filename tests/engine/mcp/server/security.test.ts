@@ -183,6 +183,38 @@ describe('paramToZod coercion', () => {
     expect(() => schema.parse('200')).toThrow()
     expect(() => schema.parse('-1')).toThrow()
   })
+
+  test('object params accept JSON objects and reject non-JSON values', () => {
+    const schema = paramToZod({ type: 'object', description: 'patch', required: true })
+    expect(schema.parse({ events: { onClick: [] }, enabled: true })).toEqual({
+      events: { onClick: [] },
+      enabled: true
+    })
+    expect(() => schema.parse([])).toThrow()
+    expect(() => schema.parse({ invalid: 1n })).toThrow()
+  })
+
+  test('structured object and array params enforce their nested schemas', () => {
+    const schema = paramToZod({
+      type: 'array',
+      description: 'operations',
+      required: true,
+      minItems: 1,
+      maxItems: 2,
+      items: {
+        type: 'object',
+        description: 'operation',
+        properties: {
+          id: { type: 'string', description: 'node id', required: true },
+          value: { type: 'number', description: 'value', required: true }
+        }
+      }
+    })
+
+    expect(schema.parse([{ id: '1:2', value: '3' }])).toEqual([{ id: '1:2', value: 3 }])
+    expect(() => schema.parse([])).toThrow()
+    expect(() => schema.parse([{ id: '1:2', value: 3, unknown: true }])).toThrow()
+  })
 })
 
 // ---------------------------------------------------------------------------

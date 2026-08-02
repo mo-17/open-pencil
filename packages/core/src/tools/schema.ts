@@ -12,7 +12,7 @@ import type { Editor } from '#core/editor'
 import type { FigmaAPI, FigmaNodeProxy } from '#core/figma-api'
 import type { MotionAnimationExportResult, MotionExportProgress } from '#core/io/motion-export'
 
-export type ParamType = 'string' | 'number' | 'boolean' | 'color' | 'string[]'
+export type ParamType = 'string' | 'number' | 'boolean' | 'color' | 'string[]' | 'object' | 'array'
 
 export interface ParamDef {
   type: ParamType
@@ -22,6 +22,14 @@ export interface ParamDef {
   enum?: string[]
   min?: number
   max?: number
+  /** Nested fields for a structured object parameter. Omit for an arbitrary JSON object. */
+  properties?: Record<string, ParamDef>
+  /** Item schema for a structured array parameter. Omit for arbitrary JSON values. */
+  items?: ParamDef
+  /** Preserve unknown object keys in addition to declared properties. Defaults to false. */
+  additionalProperties?: boolean
+  minItems?: number
+  maxItems?: number
 }
 
 /** Phase 3 §3.v2: optional editor context for tools that need to push
@@ -52,22 +60,31 @@ export interface ToolDef {
   execute: (figma: FigmaAPI, args: Record<string, unknown>, ctx?: ToolCtx) => unknown
 }
 
-type ResolvedType<T extends ParamType> = T extends 'string'
+type ResolvedType<T extends ParamDef> = T['type'] extends 'string'
   ? string
-  : T extends 'number'
+  : T['type'] extends 'number'
     ? number
-    : T extends 'boolean'
+    : T['type'] extends 'boolean'
       ? boolean
-      : T extends 'color'
+      : T['type'] extends 'color'
         ? string
-        : T extends 'string[]'
+        : T['type'] extends 'string[]'
           ? string[]
-          : never
+          : T['type'] extends 'object'
+            ? T extends { properties: infer P extends Record<string, ParamDef> }
+              ? ResolvedParams<P> &
+                  (T extends { additionalProperties: true } ? Record<string, unknown> : object)
+              : Record<string, unknown>
+            : T['type'] extends 'array'
+              ? T extends { items: infer I extends ParamDef }
+                ? ResolvedType<I>[]
+                : unknown[]
+              : never
 
 type ResolvedParams<P extends Record<string, ParamDef>> = {
-  [K in keyof P as P[K]['required'] extends true ? K : never]: ResolvedType<P[K]['type']>
+  [K in keyof P as P[K]['required'] extends true ? K : never]: ResolvedType<P[K]>
 } & {
-  [K in keyof P as P[K]['required'] extends true ? never : K]?: ResolvedType<P[K]['type']>
+  [K in keyof P as P[K]['required'] extends true ? never : K]?: ResolvedType<P[K]>
 }
 
 export function defineTool<P extends Record<string, ParamDef>>(def: {
