@@ -6,17 +6,17 @@ import type { SceneGraph } from '@open-pencil/scene-graph'
 
 import { DEFAULT_FONT_FAMILY, IS_BROWSER } from '#core/constants'
 import { BUNDLED_FONT_URLS } from '#core/text/bundled-fonts'
-import { fontFamilyLicenseDisplayForCatalog } from '#core/text/font-license-display'
+import { fontFamilyLicenseDisplayForCatalog } from '#core/text/font/license-display'
 import {
   chooseLocalFontMatch,
   isVariableFont,
   normalizeFontFamily,
   styleToWeight,
   weightToStyle
-} from '#core/text/font-style'
+} from '#core/text/font/style'
 
-export * from '#core/text/font-sources'
-export * from '#core/text/font-style'
+export * from '#core/text/font/sources'
+export * from '#core/text/font/style'
 import { fontFallbackEntry } from '#core/text/fallbacks'
 import type { FontFallbackScript } from '#core/text/fallbacks'
 import type {
@@ -26,7 +26,7 @@ import type {
   FontInfo,
   HostFontLoader,
   LocalFontAccessState
-} from '#core/text/font-sources'
+} from '#core/text/font/sources'
 import { collectGraphFontKeys } from '#core/text/requirements'
 import { normalizedCoverageText, WebFontResolver } from '#core/text/web-fonts'
 import type { WebFontFetch, WebFontProviderId } from '#core/text/web-fonts'

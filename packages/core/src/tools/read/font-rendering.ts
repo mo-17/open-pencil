@@ -255,7 +255,7 @@ function inspectNodes(figma: FigmaAPI, nodes: readonly SceneNode[]): FontRenderi
 function toAuditNode(graph: SceneGraph, check: FontRenderingCheckResult): FontRenderingAuditNode {
   return {
     ...check,
-    pageId: owningPageId(graph, check.id),
+    pageId: graph.getPageId(check.id) ?? '',
     renderReady: renderReady(check),
     requestedFaces: check.faces.map((face) => ({
       family: face.family,
@@ -298,17 +298,6 @@ function glyphFallbackObservation(
   if (readiness === 'pending') return 'pending'
   if (readiness === 'exhausted') return 'unresolved'
   return 'resolved_family_unobservable'
-}
-
-function owningPageId(graph: SceneGraph, nodeId: string): string {
-  let node = graph.getNode(nodeId)
-  const visited = new Set<string>()
-  while (node && !visited.has(node.id)) {
-    if (node.type === 'CANVAS') return node.id
-    visited.add(node.id)
-    node = node.parentId ? graph.getNode(node.parentId) : undefined
-  }
-  return ''
 }
 
 function summarize(

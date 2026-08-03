@@ -1,8 +1,10 @@
 import * as OpenTypeSync from 'opentype.js'
 
-import { assessFontLicenseBytes } from '#core/text/font-license'
-import type { FontFamilyLicenseDisplay } from '#core/text/font-license-display'
-import { fontFamilyLicenseDisplayFromAssessments } from '#core/text/font-license-display'
+import { assessFontLicenseBytes } from '#core/text/font/license'
+import {
+  fontFamilyLicenseDisplayFromAssessments,
+  type FontFamilyLicenseDisplay
+} from '#core/text/font/license-display'
 
 export const MAX_IMPORTED_FONT_BYTES = 32 * 1024 * 1024
 

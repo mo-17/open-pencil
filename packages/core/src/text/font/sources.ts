@@ -1,4 +1,4 @@
-import type { FontFamilyLicenseDisplay } from '#core/text/font-license-display'
+import type { FontFamilyLicenseDisplay } from '#core/text/font/license-display'
 import type { WebFontProviderId } from '#core/text/web-fonts'
 
 export interface FontInfo {

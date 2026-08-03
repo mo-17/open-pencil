@@ -87,13 +87,7 @@ export function isEffectivelyLocked(graph: SceneGraph, node: SceneNode): boolean
 }
 
 export function findPageId(graph: SceneGraph, node: SceneNode): string | null {
-  let current: SceneNode | undefined = node
-  while (current) {
-    if (current.type === 'CANVAS') return current.id
-    if (current.parentId === null) return null
-    current = graph.getNode(current.parentId)
-  }
-  return null
+  return graph.getPageId(node.id) ?? null
 }
 
 export function findPageIdByName(graph: SceneGraph, name: string | undefined): string | undefined {

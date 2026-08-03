@@ -1,6 +1,6 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
-import { assessLoadedFontLicense, type FontLicenseAssessment } from '#core/text/font-license'
+import { assessLoadedFontLicense, type FontLicenseAssessment } from '#core/text/font/license'
 import { lowcodeTextNode } from '#core/text/lowcode'
 import { requiredNodeFontFaceUsages, type NodeFontScope } from '#core/text/requirements'
 import { fontFaceDemand, fontResolver } from '#core/text/resolver'
@@ -26,17 +26,6 @@ function faceKey(family: string, style: string): string {
   return `${family.trim().toLocaleLowerCase()}\0${style.toLocaleLowerCase()}`
 }
 
-function owningPageId(graph: SceneGraph, node: SceneNode): string {
-  let current: SceneNode | undefined = node
-  const visited = new Set<string>()
-  while (current && !visited.has(current.id)) {
-    if (current.type === 'CANVAS') return current.id
-    visited.add(current.id)
-    current = current.parentId ? graph.getNode(current.parentId) : undefined
-  }
-  return ''
-}
-
 function collectFontFaces(
   graph: SceneGraph,
   rootIds: readonly string[]
@@ -55,7 +44,7 @@ function collectFontFaces(
     visited.add(entry.id)
     const node = graph.getNode(entry.id)
     if (!node) continue
-    const pageId = node.type === 'CANVAS' ? node.id : entry.pageId || owningPageId(graph, node)
+    const pageId = node.type === 'CANVAS' ? node.id : entry.pageId || graph.getPageId(node.id) || ''
     const textNode = lowcodeTextNode(node) ?? node
 
     if (textNode.type === 'TEXT') {

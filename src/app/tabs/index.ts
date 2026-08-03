@@ -163,10 +163,14 @@ function storageOpenIdentity(providerId: string, documentId: string): DocumentSo
   }
 }
 
-export async function openStorageDocumentInNewTab(document: StorageDocument): Promise<void> {
-  const providerId = activeStorageProviderID.value
-  const identity = storageOpenIdentity(providerId, document.id)
-  const decision = await fileOpenCoordinator.decide(async () => {
+type ExistingTabLookup = () => Tab | null | undefined | Promise<Tab | null | undefined>
+
+async function decideDocumentOpen(
+  identity: DocumentSourceIdentity,
+  documentName: string,
+  findExisting: ExistingTabLookup
+) {
+  return fileOpenCoordinator.decide(async () => {
     const pending = await fileOpenCoordinator.findPending(identity)
     if (pending) {
       const tab = getTabForStore(pending.store)
@@ -174,14 +178,14 @@ export async function openStorageDocumentInNewTab(document: StorageDocument): Pr
       return { kind: 'pending' as const, completion: pending.completion }
     }
 
-    const existing = findStorageTab(providerId, document.id)
+    const existing = await findExisting()
     if (existing) {
       switchTab(existing.id)
       return { kind: 'existing' as const }
     }
 
     const store = reusableTabStore()
-    store.state.documentName = document.name
+    store.state.documentName = documentName
     const finishLoading = store.beginLoading()
     const completion = Promise.withResolvers<undefined>()
     void completion.promise.catch(() => undefined)
@@ -189,7 +193,14 @@ export async function openStorageDocumentInNewTab(document: StorageDocument): Pr
     fileOpenCoordinator.add(pendingOpen)
     return { kind: 'owner' as const, completion, finishLoading, pendingOpen, store }
   })
+}
 
+type DocumentOpenDecision = Awaited<ReturnType<typeof decideDocumentOpen>>
+
+async function completeDocumentOpen(
+  decision: DocumentOpenDecision,
+  open: (store: EditorStore) => Promise<void>
+): Promise<void> {
   if (decision.kind === 'existing') return
   if (decision.kind === 'pending') {
     await decision.completion
@@ -198,6 +209,39 @@ export async function openStorageDocumentInNewTab(document: StorageDocument): Pr
 
   const { completion, finishLoading, pendingOpen, store } = decision
   try {
+    await open(store)
+    completion.resolve(undefined)
+  } catch (error) {
+    completion.reject(error)
+    throw error
+  } finally {
+    finishLoading()
+    fileOpenCoordinator.remove(pendingOpen)
+  }
+}
+
+async function finishImportedGraphOpen(
+  store: EditorStore,
+  imported: SceneGraph,
+  setSource: () => void
+): Promise<void> {
+  store.replaceGraph(imported)
+  store.undo.clear()
+  setSource()
+  store.clearSelection()
+  const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
+  await store.switchPage(pageId)
+  await store.fitCurrentPageToViewport()
+}
+
+export async function openStorageDocumentInNewTab(document: StorageDocument): Promise<void> {
+  const providerId = activeStorageProviderID.value
+  const identity = storageOpenIdentity(providerId, document.id)
+  const decision = await decideDocumentOpen(identity, document.name, () =>
+    findStorageTab(providerId, document.id)
+  )
+
+  await completeDocumentOpen(decision, async (store) => {
     const local = getLocalCanvasStore()
     const localMetadata = await local.getMeta(document.id)
     const localBytes = localMetadata?.hasFig ? await local.readFig(document.id) : null
@@ -234,21 +278,10 @@ export async function openStorageDocumentInNewTab(document: StorageDocument): Pr
       },
       { populate: 'first-page' }
     )
-    store.replaceGraph(imported)
-    store.undo.clear()
-    store.setStorageDocumentSource({ providerId, documentId: document.id }, document.name)
-    store.clearSelection()
-    const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
-    await store.switchPage(pageId)
-    await store.fitCurrentPageToViewport()
-    completion.resolve(undefined)
-  } catch (error) {
-    completion.reject(error)
-    throw error
-  } finally {
-    finishLoading()
-    fileOpenCoordinator.remove(pendingOpen)
-  }
+    await finishImportedGraphOpen(store, imported, () => {
+      store.setStorageDocumentSource({ providerId, documentId: document.id }, document.name)
+    })
+  })
 }
 
 export async function openFileInNewTab(
@@ -260,42 +293,13 @@ export async function openFileInNewTab(
     handle: handle ?? null,
     path: path ?? null
   }
-  const decision = await fileOpenCoordinator.decide(async () => {
-    const pending = await fileOpenCoordinator.findPending(identity)
-    if (pending) {
-      const tab = getTabForStore(pending.store)
-      if (tab) switchTab(tab.id)
-      return { kind: 'pending' as const, completion: pending.completion }
-    }
+  const decision = await decideDocumentOpen(identity, file.name.replace(/\.[^.]+$/i, ''), () =>
+    findTabByFileIdentity(tabsRef.value, identity)
+  )
 
-    const existing = await findTabByFileIdentity(tabsRef.value, identity)
-    if (existing) {
-      switchTab(existing.id)
-      return { kind: 'existing' as const }
-    }
-
-    const store = reusableTabStore()
-    store.state.documentName = file.name.replace(/\.[^.]+$/i, '')
-    const finishLoading = store.beginLoading()
-
-    const completion = Promise.withResolvers<undefined>()
-    void completion.promise.catch(() => undefined)
-    const pendingOpen = { completion: completion.promise, identity, store }
-    fileOpenCoordinator.add(pendingOpen)
-    return { kind: 'owner' as const, completion, finishLoading, pendingOpen, store }
-  })
-
-  if (decision.kind === 'existing') return
-  if (decision.kind === 'pending') {
-    await decision.completion
-    return
-  }
-
-  const { completion, finishLoading, pendingOpen, store } = decision
-  try {
+  await completeDocumentOpen(decision, async (store) => {
     if (isDOMImportFile(file)) {
       await openDOMSource(store, file, handle, path)
-      completion.resolve(undefined)
       return
     }
 
@@ -318,21 +322,10 @@ export async function openFileInNewTab(
       sourceFormat = result.sourceFormat
     }
 
-    store.replaceGraph(imported)
-    store.undo.clear()
-    store.setDocumentSource(file.name, sourceFormat, handle, path)
-    store.clearSelection()
-    const pageId = store.graph.getPages()[0]?.id ?? store.graph.rootId
-    await store.switchPage(pageId)
-    await store.fitCurrentPageToViewport()
-    completion.resolve(undefined)
-  } catch (error) {
-    completion.reject(error)
-    throw error
-  } finally {
-    finishLoading()
-    fileOpenCoordinator.remove(pendingOpen)
-  }
+    await finishImportedGraphOpen(store, imported, () => {
+      store.setDocumentSource(file.name, sourceFormat, handle, path)
+    })
+  })
 }
 
 export function tabCount(): number {

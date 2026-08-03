@@ -15,7 +15,6 @@ import {
   MAX_IMPORTED_FONT_BYTES,
   missingGraphFontScripts,
   resetFontFamilyDemands,
-  styleToWeight,
   type FontFamilyLicenseDisplay,
   type FontFamilyOption,
   type FontLoadOptions,
@@ -34,6 +33,7 @@ import {
   stageImportedFontCache,
   type ImportedFontCacheFace
 } from '@/app/editor/fonts/cache'
+import { preferredFontStyle } from '@/app/editor/fonts/style-selection'
 import { toast } from '@/app/shell/ui'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
@@ -101,20 +101,6 @@ const fontLicenseInspectionCache = new Map<string, Promise<FontFamilyLicenseDisp
 const fontLicenseInspectionQueue: Array<() => void> = []
 const MAX_CONCURRENT_FONT_LICENSE_INSPECTIONS = 2
 let activeFontLicenseInspections = 0
-
-function preferredAuditStyle(styles: readonly string[]): string {
-  return (
-    [...styles].sort((first, second) => {
-      const firstItalic = first.includes('Italic') ? 1 : 0
-      const secondItalic = second.includes('Italic') ? 1 : 0
-      return (
-        firstItalic - secondItalic ||
-        Math.abs(styleToWeight(first) - 400) - Math.abs(styleToWeight(second) - 400) ||
-        first.localeCompare(second)
-      )
-    })[0] ?? 'Regular'
-  )
-}
 
 function drainFontLicenseInspectionQueue(): void {
   if (activeFontLicenseInspections >= MAX_CONCURRENT_FONT_LICENSE_INSPECTIONS) return
@@ -210,7 +196,10 @@ export async function listFamilies(): Promise<FontFamilyOption[]> {
     ])
     const byFamily = new Map(webFonts.map((font) => [font.family.trim().toLocaleLowerCase(), font]))
     for (const font of systemFonts) {
-      fontLicenseAuditStyles.set(font.family, preferredAuditStyle(font.styles))
+      fontLicenseAuditStyles.set(
+        font.family,
+        preferredFontStyle(font.styles, (style) => style.includes('Italic'))
+      )
       byFamily.set(font.family.trim().toLocaleLowerCase(), {
         family: font.family,
         source: 'local',

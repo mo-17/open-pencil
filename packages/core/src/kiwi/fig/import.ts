@@ -5,9 +5,9 @@ import type { InstanceNodeChange } from '@open-pencil/fig/instance-overrides'
 import {
   applyStyleRefsToFields,
   guidToString,
-  kiwiVariableFieldToBindingField,
   nodeChangeToProps,
   preserveFigmaPayloadBlobs,
+  resolveVariableConsumptionEntry,
   shouldImportTextAsAutoSize,
   sortChildren,
   setVariableColorResolver
@@ -387,10 +387,8 @@ function importVariableBindings(
     const nodeId = guidToNodeId.get(ncId)
     if (!nodeId) continue
     for (const entry of nc.variableConsumptionMap.entries) {
-      const varGuid = entry.variableData?.value?.alias?.guid
-      if (!varGuid) continue
-      const field = kiwiVariableFieldToBindingField(entry.variableField ?? '')
-      if (field) graph.bindVariable(nodeId, field, guidToString(varGuid))
+      const binding = resolveVariableConsumptionEntry(entry)
+      if (binding) graph.bindVariable(nodeId, binding.field, binding.variableId)
     }
   }
 }

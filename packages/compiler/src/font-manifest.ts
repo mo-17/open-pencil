@@ -6,6 +6,7 @@ import {
 } from '@open-pencil/core/text'
 import { normalizeFontFamily, parseFontStyle, type SceneGraph } from '@open-pencil/scene-graph'
 
+import { exactArrayBuffer } from './bytes'
 import type { CompileWarning, CompilerFontFaceAsset, CompilerFontManifest } from './types'
 
 const FONT_ASSET_PREFIX = 'src/assets/fonts/'
@@ -49,22 +50,9 @@ function fontWeightValue(weight: CompilerFontFaceAsset['weight']): string {
   return Array.isArray(weight) ? `${weight[0]} ${weight[1]}` : String(weight)
 }
 
-function fontContentBuffer(content: Uint8Array): ArrayBuffer {
-  if (
-    content.buffer instanceof ArrayBuffer &&
-    content.byteOffset === 0 &&
-    content.byteLength === content.buffer.byteLength
-  ) {
-    return content.buffer
-  }
-  const copy = new Uint8Array(content.byteLength)
-  copy.set(content)
-  return copy.buffer
-}
-
 function restrictedEmbeddingWarning(face: CompilerFontFaceAsset): CompileWarning | undefined {
   const evidence = face.licenseEvidence
-  const embedded = embeddedFontLicenseMetadata(fontContentBuffer(face.content))
+  const embedded = embeddedFontLicenseMetadata(exactArrayBuffer(face.content))
   const evidenceFsType = evidence?.kind === 'restricted' ? evidence.fsType : undefined
   if (evidenceFsType === undefined && embedded?.embedding.restricted !== true) return undefined
   const fsTypeValue = evidenceFsType ?? embedded?.fsType ?? 0x0002

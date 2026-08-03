@@ -25,7 +25,7 @@ You can configure multiple reusable models and separately assign models for desi
 | **OpenAI**               | GPT-5.3 Codex, GPT-4.1, o3, o4-mini             | API key from [platform.openai.com](https://platform.openai.com)                                             |
 | **Google AI**            | Gemini 3.1 Pro, Gemini 3 Flash                  | API key from [aistudio.google.dev](https://aistudio.google.dev)                                             |
 | **Z.ai**                 | GLM-5.1, GLM-5, GLM-4.7, GLM-4.5 family         | API key from [docs.z.ai](https://docs.z.ai/devpack/quick-start)                                             |
-| **MiniMax**              | MiniMax M2.7, M2.7-highspeed, M2.5, M2.1        | API key from [platform.minimax.io](https://platform.minimax.io/user-center/basic-information/interface-key) |
+| **MiniMax**              | MiniMax M3, M2.7, M2.7-highspeed, M2.5, M2.1    | API key from [platform.minimax.io](https://platform.minimax.io/user-center/basic-information/interface-key) |
 | **OpenAI-compatible**    | Any endpoint with OpenAI API format             | Custom base URL + key. Supports Completions and Responses API toggle.                                       |
 | **Anthropic-compatible** | Any endpoint with Anthropic API format          | Custom base URL + key                                                                                       |
 

@@ -1,7 +1,8 @@
 import type { Node as YogaNode } from 'yoga-layout'
 
-import type { SceneNode } from '@open-pencil/scene-graph'
+import { isAutoLayoutMode, type SceneNode } from '@open-pencil/scene-graph'
 
+import { usesDetachedDerivedLayout } from './derived'
 import type { LayoutGraph } from './graph'
 
 export type ComputeLayoutFn = (graph: LayoutGraph, frameId: string) => void
@@ -10,6 +11,22 @@ export type ComputeLayoutStepsFn = (
   graph: LayoutGraph,
   frameId: string
 ) => Iterable<LayoutApplyStep>
+
+function preservesImportedHugCrossSize(
+  graph: LayoutGraph,
+  frame: SceneNode,
+  axis: 'width' | 'height'
+): boolean {
+  if (frame.source.format !== 'fig' || frame.counterAxisSizing !== 'HUG') return false
+  const expectedMode = axis === 'width' ? 'VERTICAL' : 'HORIZONTAL'
+  if (frame.layoutMode !== expectedMode) return false
+  return graph
+    .getChildren(frame.id)
+    .some(
+      (child) =>
+        child.layoutAlignSelf === 'STRETCH' && child.figmaDerivedLayout?.[axis] !== undefined
+    )
+}
 
 function applyFrameSize(graph: LayoutGraph, frame: SceneNode, yogaNode: YogaNode): void {
   if (frame.layoutMode === 'GRID') {
@@ -31,28 +48,77 @@ function applyFrameSize(graph: LayoutGraph, frame: SceneNode, yogaNode: YogaNode
     else updates.height = derived?.height ?? computedH
   }
   if (frame.counterAxisSizing === 'HUG') {
-    if (frame.layoutMode === 'HORIZONTAL') updates.height = derived?.height ?? computedH
-    else updates.width = derived?.width ?? computedW
+    if (frame.layoutMode === 'HORIZONTAL') {
+      updates.height = preservesImportedHugCrossSize(graph, frame, 'height')
+        ? frame.height
+        : (derived?.height ?? computedH)
+    } else {
+      updates.width = preservesImportedHugCrossSize(graph, frame, 'width')
+        ? frame.width
+        : (derived?.width ?? computedW)
+    }
   }
 
   graph.updateNode(frame.id, updates)
 }
 
+function frameSourceIsFig(graph: LayoutGraph, parentId: string | null): boolean {
+  return parentId ? graph.getNode(parentId)?.source.format === 'fig' : false
+}
+
+function computedChildPosition(
+  child: SceneNode,
+  yogaChild: YogaNode,
+  axis: 'x' | 'y',
+  preservesImportedGeometry: boolean
+): number {
+  if (preservesImportedGeometry) return child[axis]
+  const computed = axis === 'x' ? yogaChild.getComputedLeft() : yogaChild.getComputedTop()
+  if (child.type === 'INSTANCE') return computed
+  return child.figmaDerivedLayout?.[axis] ?? computed
+}
+
+function preservesStaleImportedTextSize(child: SceneNode, axis: 'width' | 'height'): boolean {
+  const derivedSize = child.figmaDerivedLayout?.[axis]
+  return (
+    child.type === 'TEXT' &&
+    child.source.format === 'fig' &&
+    derivedSize !== undefined &&
+    Math.abs(child[axis] - derivedSize) > 0.001
+  )
+}
+
+function computedChildSize(
+  child: SceneNode,
+  yogaChild: YogaNode,
+  axis: 'width' | 'height',
+  preservesImportedFrameGeometry: boolean
+): number {
+  if (preservesImportedFrameGeometry || preservesStaleImportedTextSize(child, axis)) {
+    return child[axis]
+  }
+  const computed = axis === 'width' ? yogaChild.getComputedWidth() : yogaChild.getComputedHeight()
+  if (child.type === 'TEXT' && child.source.format === 'fig') {
+    return computed > 0 ? computed : child[axis]
+  }
+  return child.figmaDerivedLayout?.[axis] ?? computed
+}
+
 function updateChildFromYoga(graph: LayoutGraph, child: SceneNode, yogaChild: YogaNode): void {
   if (!child.visible || child.layoutPositioning === 'ABSOLUTE') return
 
-  const derived = child.figmaDerivedLayout
+  const preservesImportedFrameGeometry =
+    child.type === 'FRAME' &&
+    child.source.format === 'fig' &&
+    frameSourceIsFig(graph, child.parentId)
+  const preservesImportedPosition =
+    preservesImportedFrameGeometry ||
+    (child.source.format === 'fig' && Math.abs(child.rotation) > 0.001)
   graph.updateNode(child.id, {
-    x:
-      child.type === 'INSTANCE'
-        ? yogaChild.getComputedLeft()
-        : (derived?.x ?? yogaChild.getComputedLeft()),
-    y:
-      child.type === 'INSTANCE'
-        ? yogaChild.getComputedTop()
-        : (derived?.y ?? yogaChild.getComputedTop()),
-    width: derived?.width ?? yogaChild.getComputedWidth(),
-    height: derived?.height ?? yogaChild.getComputedHeight()
+    x: computedChildPosition(child, yogaChild, 'x', preservesImportedPosition),
+    y: computedChildPosition(child, yogaChild, 'y', preservesImportedPosition),
+    width: computedChildSize(child, yogaChild, 'width', preservesImportedFrameGeometry),
+    height: computedChildSize(child, yogaChild, 'height', preservesImportedFrameGeometry)
   })
 }
 
@@ -66,7 +132,7 @@ function* recomputeGridChildSteps(
   computeLayoutSteps: ComputeLayoutStepsFn
 ): Generator<LayoutApplyStep, void, void> {
   const updated = graph.getNode(child.id)
-  if (!updated || updated.layoutMode === 'NONE') return
+  if (!updated || !isAutoLayoutMode(updated.layoutMode)) return
 
   const savedPrimary = updated.primaryAxisSizing
   const savedCounter = updated.counterAxisSizing
@@ -113,16 +179,18 @@ export function* applyYogaLayoutSteps(
     updateChildFromYoga(graph, child, yogaChild)
     yield 'work'
 
+    if (!child.visible) continue
     if (preservesImportedInstanceInternals(child)) continue
 
-    if (child.layoutMode !== 'NONE') {
-      if (child.layoutMode === 'GRID' && child.visible && child.layoutPositioning !== 'ABSOLUTE') {
+    if (usesDetachedDerivedLayout(child)) {
+      yield* computeLayoutSteps(graph, child.id)
+      continue
+    }
+
+    if (isAutoLayoutMode(child.layoutMode)) {
+      if (child.layoutMode === 'GRID' && child.layoutPositioning !== 'ABSOLUTE') {
         yield* computeLayoutSteps(graph, child.id)
-      } else if (
-        frame.layoutMode === 'GRID' &&
-        child.visible &&
-        child.layoutPositioning !== 'ABSOLUTE'
-      ) {
+      } else if (frame.layoutMode === 'GRID' && child.layoutPositioning !== 'ABSOLUTE') {
         yield* recomputeGridChildSteps(graph, child, computeLayoutSteps)
       } else {
         yield* applyYogaLayoutSteps(graph, child, yogaChild, computeLayoutSteps)

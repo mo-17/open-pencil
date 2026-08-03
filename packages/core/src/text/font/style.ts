@@ -1,5 +1,4 @@
-import { normalizeFontFamily } from '@open-pencil/scene-graph'
-import type { FontFamilyStyle } from '@open-pencil/scene-graph'
+import { normalizeFontFamily, type FontFamilyStyle } from '@open-pencil/scene-graph'
 
 export {
   FONT_WEIGHT_NAMES,

@@ -1,6 +1,6 @@
 import type { RemoteFontSource, ResolveFontResult } from 'unifont'
 
-import { WEB_FONT_LICENSE_POLICIES } from '#core/text/font-license-display'
+import { WEB_FONT_LICENSE_POLICIES } from '#core/text/font/license-display'
 import {
   coordinatedWebFontFetch,
   retryableCachedPromise,

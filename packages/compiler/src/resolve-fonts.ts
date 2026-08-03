@@ -22,6 +22,7 @@ import {
 } from '@open-pencil/core/text/web-font/assets'
 import { normalizeFontFamily, parseFontStyle, type SceneGraph } from '@open-pencil/scene-graph'
 
+import { exactArrayBuffer } from './bytes'
 import type {
   CompilerFontFaceAsset,
   CompilerFontLicenseEvidence,
@@ -185,21 +186,8 @@ function restrictedEmbeddingEvidence(data: ArrayBuffer): RestrictedEmbeddingEvid
   }
 }
 
-function assetArrayBuffer(content: Uint8Array): ArrayBuffer {
-  if (
-    content.buffer instanceof ArrayBuffer &&
-    content.byteOffset === 0 &&
-    content.byteLength === content.buffer.byteLength
-  ) {
-    return content.buffer
-  }
-  const copy = new Uint8Array(content.byteLength)
-  copy.set(content)
-  return copy.buffer
-}
-
 function preserveRestrictedEmbedding(face: CompilerFontFaceAsset): CompilerFontFaceAsset {
-  const restricted = restrictedEmbeddingEvidence(assetArrayBuffer(face.content))
+  const restricted = restrictedEmbeddingEvidence(exactArrayBuffer(face.content))
   return restricted ? { ...face, licenseEvidence: restricted } : face
 }
 

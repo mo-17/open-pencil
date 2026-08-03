@@ -185,7 +185,7 @@ function resolveTarget(
   if (!target) return undefined
   if (target.type === 'CANVAS') return { nodeId, pageId: target.id, kind: 'page' }
   if (target.type !== 'FRAME') return undefined
-  const pageId = owningPageId(target, ctx.graph)
+  const pageId = ctx.graph.getPageId(target.id)
   if (!pageId) return undefined
   const componentTarget = resolveComponentTarget(target, ctx)
   return { nodeId, pageId, kind: 'frame', ...componentTarget }
@@ -312,17 +312,6 @@ function isDescendantOf(node: SceneNode, ancestorId: string, graph: SceneGraph):
     current = current.parentId ? graph.getNode(current.parentId) : undefined
   }
   return false
-}
-
-function owningPageId(node: SceneNode, graph: SceneGraph): string | undefined {
-  const seen = new Set<string>()
-  let current: SceneNode | undefined = node
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id)
-    if (current.type === 'CANVAS') return current.id
-    current = current.parentId ? graph.getNode(current.parentId) : undefined
-  }
-  return undefined
 }
 
 function warn(ctx: PrototypeCollectContext, nodeId: string, code: string, message: string): void {

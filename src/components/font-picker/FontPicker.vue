@@ -13,6 +13,7 @@ import {
 import AppBadge from '@/components/ui/AppBadge.vue'
 import { useSelectUI } from '@/components/ui/select'
 import { usePopoverUI } from '@/components/ui/popover'
+import Tip from '@/components/ui/Tip.vue'
 import {
   listFamilies,
   importedFontRevision,
@@ -160,19 +161,22 @@ function updateLicenseFilter(setLicenseFilter: (filter: FontLicenseFilter) => vo
         :class="selectCls.trigger"
       >
         <span class="truncate">{{ modelValue }}</span>
-        <AppBadge
+        <Tip
           v-if="option"
-          data-test-id="font-license-trigger-badge"
-          :data-license-status="option.licenseDisplay?.status ?? 'unknown'"
-          :tone="licenseTone(option.licenseDisplay?.status ?? 'unknown')"
-          :title="licenseDescription(option.licenseDisplay, isLicenseChecking(option))"
+          :label="licenseDescription(option.licenseDisplay, isLicenseChecking(option))"
         >
-          {{
-            isLicenseChecking(option)
-              ? panels.fontLicenseChecking
-              : licenseLabel(option.licenseDisplay?.status ?? 'unknown')
-          }}
-        </AppBadge>
+          <AppBadge
+            data-test-id="font-license-trigger-badge"
+            :data-license-status="option.licenseDisplay?.status ?? 'unknown'"
+            :tone="licenseTone(option.licenseDisplay?.status ?? 'unknown')"
+          >
+            {{
+              isLicenseChecking(option)
+                ? panels.fontLicenseChecking
+                : licenseLabel(option.licenseDisplay?.status ?? 'unknown')
+            }}
+          </AppBadge>
+        </Tip>
         <icon-lucide-chevron-down class="size-3 shrink-0 text-muted" />
       </button>
     </template>
@@ -215,44 +219,44 @@ function updateLicenseFilter(setLicenseFilter: (filter: FontLicenseFilter) => vo
           family
         }}</span>
         <span class="font-sans ml-auto flex shrink-0 items-center gap-1">
-          <AppBadge
-            data-test-id="font-license-badge"
-            :data-license-status="licenseStatus"
-            :tone="licenseTone(licenseStatus)"
-            :title="licenseDescription(licenseDisplay, isLicenseChecking(option))"
-            :aria-label="licenseDescription(licenseDisplay, isLicenseChecking(option))"
-          >
-            <icon-lucide-loader-circle
-              v-if="isLicenseChecking(option)"
-              class="size-2.5 animate-spin"
-              aria-hidden="true"
-            />
-            <icon-lucide-circle-check
-              v-else-if="licenseStatus === 'free'"
-              class="size-2.5"
-              aria-hidden="true"
-            />
-            <icon-lucide-file-check
-              v-else-if="licenseStatus === 'declared_open'"
-              class="size-2.5"
-              aria-hidden="true"
-            />
-            <icon-lucide-lock-keyhole
-              v-else-if="licenseStatus === 'requires_license'"
-              class="size-2.5"
-              aria-hidden="true"
-            />
-            <icon-lucide-circle-help v-else class="size-2.5" aria-hidden="true" />
-            {{
-              isLicenseChecking(option) ? panels.fontLicenseChecking : licenseLabel(licenseStatus)
-            }}
-          </AppBadge>
-          <span
-            class="shrink-0 rounded bg-input px-1.5 py-0.5 text-[9px] uppercase text-muted"
-            :title="source"
-          >
-            {{ source }}
-          </span>
+          <Tip :label="licenseDescription(licenseDisplay, isLicenseChecking(option))">
+            <AppBadge
+              data-test-id="font-license-badge"
+              :data-license-status="licenseStatus"
+              :tone="licenseTone(licenseStatus)"
+              :aria-label="licenseDescription(licenseDisplay, isLicenseChecking(option))"
+            >
+              <icon-lucide-loader-circle
+                v-if="isLicenseChecking(option)"
+                class="size-2.5 animate-spin"
+                aria-hidden="true"
+              />
+              <icon-lucide-circle-check
+                v-else-if="licenseStatus === 'free'"
+                class="size-2.5"
+                aria-hidden="true"
+              />
+              <icon-lucide-file-check
+                v-else-if="licenseStatus === 'declared_open'"
+                class="size-2.5"
+                aria-hidden="true"
+              />
+              <icon-lucide-lock-keyhole
+                v-else-if="licenseStatus === 'requires_license'"
+                class="size-2.5"
+                aria-hidden="true"
+              />
+              <icon-lucide-circle-help v-else class="size-2.5" aria-hidden="true" />
+              {{
+                isLicenseChecking(option) ? panels.fontLicenseChecking : licenseLabel(licenseStatus)
+              }}
+            </AppBadge>
+          </Tip>
+          <Tip :label="source">
+            <span class="shrink-0 rounded bg-input px-1.5 py-0.5 text-[9px] uppercase text-muted">
+              {{ source }}
+            </span>
+          </Tip>
         </span>
       </div>
     </template>

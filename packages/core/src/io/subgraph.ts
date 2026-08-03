@@ -187,14 +187,7 @@ function collectComponentDependencies(source: SceneGraph, ids: Set<string>) {
 }
 
 export function findPageId(source: SceneGraph, nodeId: string): string | null {
-  let current = source.getNode(nodeId)
-  while (current?.parentId) {
-    const parent = source.getNode(current.parentId)
-    if (!parent) return null
-    if (parent.type === 'CANVAS') return parent.id
-    current = parent
-  }
-  return current?.type === 'CANVAS' ? current.id : null
+  return source.getPageId(nodeId) ?? null
 }
 
 function ancestorChain(source: SceneGraph, id: string): string[] {

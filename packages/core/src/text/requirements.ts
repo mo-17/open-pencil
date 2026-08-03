@@ -3,7 +3,7 @@ import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { transformTextCase } from '#core/text/case'
 import { cjkFallbackScriptForLanguage, type FontFallbackScript } from '#core/text/fallbacks'
-import { weightToStyle } from '#core/text/font-style'
+import { weightToStyle } from '#core/text/font/style'
 import { lowcodeTextNode } from '#core/text/lowcode'
 
 export interface NodeFontFace {

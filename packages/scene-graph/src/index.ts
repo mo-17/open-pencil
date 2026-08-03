@@ -59,6 +59,7 @@ import type {
 
 export {
   cloneVectorNetwork,
+  mergeVectorNetworks,
   normalizeVectorNetwork,
   transformVectorNetwork,
   validateVectorNetwork,
@@ -272,6 +273,17 @@ export class SceneGraph {
       current = current.parentId ? this.nodes.get(current.parentId) : undefined
     }
     return false
+  }
+
+  getPageId(nodeId: string): string | undefined {
+    const visited = new Set<string>()
+    let current = this.nodes.get(nodeId)
+    while (current && !visited.has(current.id)) {
+      if (current.type === 'CANVAS') return current.id
+      visited.add(current.id)
+      current = current.parentId ? this.nodes.get(current.parentId) : undefined
+    }
+    return undefined
   }
 
   clearAbsPosCache(): void {

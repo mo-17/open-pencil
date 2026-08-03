@@ -3,7 +3,7 @@ import { normalizeFontFamily, weightToStyle } from '@open-pencil/scene-graph'
 import { effectiveFigmaRawNodeFields } from '../source-metadata'
 import { fractionalPosition, mapToFigmaType } from './basics'
 import { bytesToHex } from './bytes'
-import { isFigmaOpaqueNodeType, variableBindingFieldToKiwi } from './convert'
+import { isFigmaOpaqueNodeType } from './convert'
 import { alignGeneratedSingleLineGlyphs, generatedBaselineWithinLine } from './derived/alignment'
 import { buildDerivedTextData as buildSharedDerivedTextData } from './derived/data'
 import { buildDerivedTextFontMetaData } from './derived/font-metadata'
@@ -18,6 +18,7 @@ import {
   TEXT_DIRECTION_PLUGIN_KEY,
   upsertPluginData
 } from './plugin-data'
+import { variableBindingFieldToKiwi } from './variable-bindings'
 import {
   buildStyleOverrideTable,
   encodeVectorNetworkBlob,
@@ -301,8 +302,23 @@ function preserveTrailingPadding(
   return normalizedValue !== inheritedValue ? normalizedValue : undefined
 }
 
+function serializeSizeConstraints(node: SceneNode, nc: KiwiNodeChange): void {
+  if (node.minWidth != null || node.minHeight != null) {
+    nc.minSize = { value: { x: node.minWidth ?? 0, y: node.minHeight ?? 0 } }
+  }
+  if (node.maxWidth != null || node.maxHeight != null) {
+    nc.maxSize = {
+      value: {
+        x: node.maxWidth ?? Number.POSITIVE_INFINITY,
+        y: node.maxHeight ?? Number.POSITIVE_INFINITY
+      }
+    }
+  }
+}
+
 function serializeLayoutProps(node: SceneNode, nc: KiwiNodeChange, graph: SceneGraph): void {
   if (!node.source.id) upsertPluginData(node, LAYOUT_DIRECTION_PLUGIN_KEY, node.layoutDirection)
+  serializeSizeConstraints(node, nc)
   const figLayout = node.source.fig.layout
   if (figLayout) {
     nc.stackMode = normalizeStackMode(figLayout.stackMode)

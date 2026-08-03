@@ -139,6 +139,8 @@ function stripHtmlComments(jsxString: string): string {
   return jsxString.replace(/<!--[\s\S]*?-->/g, '')
 }
 
+const SVG_ROOT_PROPS = new Set([...SUPPORTED_PROPS, 'viewBox', 'body'])
+
 async function unsupportedPropWarnings(tree: TreeNode, signal?: AbortSignal): Promise<string[]> {
   const warnings: string[] = []
   const pending = [tree]
@@ -148,14 +150,20 @@ async function unsupportedPropWarnings(tree: TreeNode, signal?: AbortSignal): Pr
     throwIfAborted(signal, JSX_RENDER_ABORT_MESSAGE)
     const current = pending.pop()
     if (!current) continue
+    const supportedProps = current.type === 'svg' ? SVG_ROOT_PROPS : SUPPORTED_PROPS
     for (const key of Object.keys(current.props)) {
-      if (!SUPPORTED_PROPS.has(key)) {
+      if (!supportedProps.has(key)) {
         warnings.push(`Unsupported prop "${key}" on <${current.type}> is ignored.`)
       }
     }
-    for (let index = current.children.length - 1; index >= 0; index--) {
-      const child = current.children[index]
-      if (isTreeNode(child)) pending.push(child)
+
+    // SVG descendants are parsed as markup by renderSvgNode rather than as
+    // Design JSX nodes. Only the SVG root participates in prop diagnostics.
+    if (current.type !== 'svg') {
+      for (let index = current.children.length - 1; index >= 0; index--) {
+        const child = current.children[index]
+        if (isTreeNode(child)) pending.push(child)
+      }
     }
     if (++work % 32 === 0) await yieldToHost(signal, JSX_RENDER_ABORT_MESSAGE)
   }

@@ -94,7 +94,7 @@ export async function renderTree(
     if (options.y !== undefined) graph.updateNode(result.id, { y: options.y })
 
     if (options.layout !== false) {
-      await computeAllLayoutsAsync(graph, findOwningPageId(graph, parentId), options.signal)
+      await computeAllLayoutsAsync(graph, graph.getPageId(parentId) ?? parentId, options.signal)
       throwIfRenderAborted(options.signal)
     }
 
@@ -147,17 +147,6 @@ async function checkpointRender(execution: RenderExecution, force = false): Prom
     execution.signal?.addEventListener('abort', onAbort, { once: true })
   })
   throwIfRenderAborted(execution.signal)
-}
-
-function findOwningPageId(graph: SceneGraph, nodeId: string): string {
-  const visited = new Set<string>()
-  let current = graph.getNode(nodeId)
-  while (current && !visited.has(current.id)) {
-    if (current.type === 'CANVAS') return current.id
-    visited.add(current.id)
-    current = current.parentId ? graph.getNode(current.parentId) : undefined
-  }
-  return nodeId
 }
 
 function buttonTextFromTree(tree: TreeNode, nodeType: NodeType): string | undefined {

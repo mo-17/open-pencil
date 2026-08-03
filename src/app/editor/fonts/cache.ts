@@ -15,6 +15,7 @@ import {
   writeCacheBytes,
   writeCacheJson
 } from '@/app/cache'
+import { preferredFontStyle } from '@/app/editor/fonts/style-selection'
 
 type FontCacheEntry = {
   family: string
@@ -300,20 +301,6 @@ function importedFamilyLicenseDisplay(
   }
 }
 
-function preferredImportedStyle(styles: readonly string[]): string {
-  return (
-    [...styles].sort((first, second) => {
-      const firstItalic = /(?:italic|oblique)/iu.test(first) ? 1 : 0
-      const secondItalic = /(?:italic|oblique)/iu.test(second) ? 1 : 0
-      return (
-        firstItalic - secondItalic ||
-        Math.abs(styleToWeight(first) - 400) - Math.abs(styleToWeight(second) - 400) ||
-        first.localeCompare(second)
-      )
-    })[0] ?? 'Regular'
-  )
-}
-
 export function groupImportedFontCacheFamilies(
   faces: readonly ImportedFontCacheFace[]
 ): ImportedFontCacheFamily[] {
@@ -326,7 +313,7 @@ export function groupImportedFontCacheFamilies(
   }
   return [...grouped.values()].map((familyFaces) => ({
     family: familyFaces[0].family,
-    auditStyle: preferredImportedStyle(familyFaces.map((face) => face.style)),
+    auditStyle: preferredFontStyle(familyFaces.map((face) => face.style)),
     licenseDisplay: importedFamilyLicenseDisplay(familyFaces)
   }))
 }
