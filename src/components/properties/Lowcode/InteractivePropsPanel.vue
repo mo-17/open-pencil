@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import { colorToHex, parseColor } from '@open-pencil/core/color'
+import type { Color, JsonObject } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed, useSelectionState } from '@open-pencil/vue'
+import ColorInput from '@/components/ColorPicker/ColorInput.vue'
 import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -58,15 +60,14 @@ function t(key: string | undefined): string {
   return typeof value === 'string' ? value : key
 }
 
-function commit(patch: Props): void {
+function replaceProps(next: Props): void {
   const node = selectedNode.value
   if (!node) return
-  const merged: Props = { ...ip.value, ...patch }
-  editor.updateNodeWithUndo(
-    node.id,
-    { interactiveProps: merged as JsonObject },
-    'Update properties'
-  )
+  editor.updateNodeWithUndo(node.id, { interactiveProps: next as JsonObject }, 'Update properties')
+}
+
+function commit(patch: Props): void {
+  replaceProps({ ...ip.value, ...patch })
 }
 
 function stringValue(key: string): string {
@@ -76,6 +77,10 @@ function stringValue(key: string): string {
 
 function boolValue(key: string): boolean {
   return ip.value[key] === true
+}
+
+function colorValue(field: InteractiveField): Color {
+  return parseColor(stringValue(field.key) || field.defaultValue || '#000000')
 }
 
 function arrayValue(key: string): string[] {
@@ -90,14 +95,18 @@ function onTextInput(key: string, value: string): void {
   const next: Props = { ...ip.value }
   if (value === '') Reflect.deleteProperty(next, key)
   else next[key] = value
-  commit(next)
+  replaceProps(next)
 }
 
 function onBoolInput(key: string, checked: boolean): void {
   const next: Props = { ...ip.value }
   if (checked) next[key] = true
   else Reflect.deleteProperty(next, key)
-  commit(next)
+  replaceProps(next)
+}
+
+function onColorInput(key: string, color: Color): void {
+  onTextInput(key, colorToHex(color))
 }
 
 function onEnumInput(key: string, value: string): void {
@@ -141,6 +150,17 @@ function updateOption(key: string, index: number, value: string): void {
         :placeholder="t(field.placeholderKey)"
         class="w-full rounded border border-border bg-input px-2 py-1 text-xs text-surface outline-none focus:border-accent"
         @change="onTextInput(field.key, ($event.target as HTMLInputElement).value)"
+      />
+
+      <!-- color -->
+      <ColorInput
+        v-else-if="field.kind === 'color'"
+        :color="colorValue(field)"
+        editable
+        :aria-label="t(field.labelKey)"
+        :data-test-id="`lowcode-interactive-${field.key}`"
+        class="w-full rounded border border-border bg-input px-2 py-1"
+        @update="onColorInput(field.key, $event)"
       />
 
       <!-- boolean -->

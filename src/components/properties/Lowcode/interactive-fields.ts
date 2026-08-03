@@ -1,4 +1,9 @@
-import { type DatePickerIssue, validateDatePickerProps } from '@open-pencil/core/lowcode-validation'
+import {
+  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
+  DEFAULT_LOWCODE_TEXT_COLOR,
+  type DatePickerIssue,
+  validateDatePickerProps
+} from '@open-pencil/core/lowcode-validation'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 // Phase 3 §3.v6 — declarative schema for the generic InteractiveProps editor.
@@ -19,7 +24,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 // `bindings.text` (the binding wins when set) and lives next to the binding
 // source selector in TextBindingPanel.vue (§3.v6 decision e).
 
-export type FieldKind = 'text' | 'boolean' | 'date' | 'string-array' | 'enum'
+export type FieldKind = 'text' | 'boolean' | 'color' | 'date' | 'string-array' | 'enum'
 
 export interface InteractiveField {
   /** The `interactiveProps` key this field reads/writes. */
@@ -29,6 +34,8 @@ export interface InteractiveField {
   labelKey: string
   /** i18n `panels` key for an input placeholder (text fields). */
   placeholderKey?: string
+  /** Default value shown when the field is absent (color fields). */
+  defaultValue?: string
   /** i18n `panels` key for a helper line under the field. */
   hintKey?: string
   /** For `enum`: the sibling field key holding the `string[]` to choose from. */
@@ -43,10 +50,30 @@ function hasOptions(ip: Record<string, unknown>): boolean {
 
 const TEXT_INPUT_FIELDS: InteractiveField[] = [
   { key: 'placeholder', kind: 'text', labelKey: 'lowcodeInteractivePlaceholder' },
-  { key: 'value', kind: 'text', labelKey: 'lowcodeInteractiveValue' }
+  { key: 'value', kind: 'text', labelKey: 'lowcodeInteractiveValue' },
+  {
+    key: 'textColor',
+    kind: 'color',
+    labelKey: 'lowcodeInteractiveTextColor',
+    defaultValue: DEFAULT_LOWCODE_TEXT_COLOR
+  },
+  {
+    key: 'placeholderColor',
+    kind: 'color',
+    labelKey: 'lowcodeInteractivePlaceholderColor',
+    defaultValue: DEFAULT_LOWCODE_PLACEHOLDER_COLOR
+  }
 ]
 
 export const INTERACTIVE_PROP_FIELDS: Partial<Record<SceneNode['type'], InteractiveField[]>> = {
+  BUTTON: [
+    {
+      key: 'textColor',
+      kind: 'color',
+      labelKey: 'lowcodeInteractiveTextColor',
+      defaultValue: DEFAULT_LOWCODE_TEXT_COLOR
+    }
+  ],
   INPUT: TEXT_INPUT_FIELDS,
   TEXTAREA: TEXT_INPUT_FIELDS,
   CHECKBOX: [

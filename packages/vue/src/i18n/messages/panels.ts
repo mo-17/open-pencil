@@ -819,6 +819,8 @@ export const panelMessageDefaults = {
   lowcodeInteractiveProps: 'Properties',
   lowcodeInteractivePlaceholder: 'Placeholder',
   lowcodeInteractiveValue: 'Default value',
+  lowcodeInteractiveTextColor: 'Text color',
+  lowcodeInteractivePlaceholderColor: 'Placeholder color',
   lowcodeInteractiveDefaultChecked: 'Default checked',
   lowcodeInteractiveDefaultSelected: 'Default selected',
   lowcodeInteractiveDefaultSelectedNone: '(none)',

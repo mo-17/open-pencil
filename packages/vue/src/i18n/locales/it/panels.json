@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "Proprietà",
   "lowcodeInteractivePlaceholder": "Segnaposto",
   "lowcodeInteractiveValue": "Valore predefinito",
+  "lowcodeInteractiveTextColor": "Colore del testo",
+  "lowcodeInteractivePlaceholderColor": "Colore del segnaposto",
   "lowcodeInteractiveDefaultChecked": "Selezionato di default",
   "lowcodeInteractiveDefaultSelected": "Selezione predefinita",
   "lowcodeInteractiveDefaultSelectedNone": "(nessuno)",

@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "属性",
   "lowcodeInteractivePlaceholder": "占位符",
   "lowcodeInteractiveValue": "默认值",
+  "lowcodeInteractiveTextColor": "文本颜色",
+  "lowcodeInteractivePlaceholderColor": "占位符颜色",
   "lowcodeInteractiveDefaultChecked": "默认勾选",
   "lowcodeInteractiveDefaultSelected": "默认选中",
   "lowcodeInteractiveDefaultSelectedNone": "(无)",

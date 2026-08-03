@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "Propriétés",
   "lowcodeInteractivePlaceholder": "Espace réservé",
   "lowcodeInteractiveValue": "Valeur par défaut",
+  "lowcodeInteractiveTextColor": "Couleur du texte",
+  "lowcodeInteractivePlaceholderColor": "Couleur de l’espace réservé",
   "lowcodeInteractiveDefaultChecked": "Coché par défaut",
   "lowcodeInteractiveDefaultSelected": "Sélection par défaut",
   "lowcodeInteractiveDefaultSelectedNone": "(aucun)",

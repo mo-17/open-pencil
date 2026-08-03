@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "Propiedades",
   "lowcodeInteractivePlaceholder": "Marcador de posición",
   "lowcodeInteractiveValue": "Valor predeterminado",
+  "lowcodeInteractiveTextColor": "Color del texto",
+  "lowcodeInteractivePlaceholderColor": "Color del marcador de posición",
   "lowcodeInteractiveDefaultChecked": "Marcado por defecto",
   "lowcodeInteractiveDefaultSelected": "Selección predeterminada",
   "lowcodeInteractiveDefaultSelectedNone": "(ninguno)",

@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "Właściwości",
   "lowcodeInteractivePlaceholder": "Symbol zastępczy",
   "lowcodeInteractiveValue": "Wartość domyślna",
+  "lowcodeInteractiveTextColor": "Kolor tekstu",
+  "lowcodeInteractivePlaceholderColor": "Kolor tekstu zastępczego",
   "lowcodeInteractiveDefaultChecked": "Domyślnie zaznaczone",
   "lowcodeInteractiveDefaultSelected": "Domyślny wybór",
   "lowcodeInteractiveDefaultSelectedNone": "(brak)",

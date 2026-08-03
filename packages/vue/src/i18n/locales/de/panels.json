@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "Eigenschaften",
   "lowcodeInteractivePlaceholder": "Platzhalter",
   "lowcodeInteractiveValue": "Standardwert",
+  "lowcodeInteractiveTextColor": "Textfarbe",
+  "lowcodeInteractivePlaceholderColor": "Platzhalterfarbe",
   "lowcodeInteractiveDefaultChecked": "Standardmäßig aktiviert",
   "lowcodeInteractiveDefaultSelected": "Standardauswahl",
   "lowcodeInteractiveDefaultSelectedNone": "(keine)",

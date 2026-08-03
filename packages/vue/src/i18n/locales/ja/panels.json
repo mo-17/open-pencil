@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "Properties",
   "lowcodeInteractivePlaceholder": "Placeholder",
   "lowcodeInteractiveValue": "Default value",
+  "lowcodeInteractiveTextColor": "テキストの色",
+  "lowcodeInteractivePlaceholderColor": "プレースホルダーの色",
   "lowcodeInteractiveDefaultChecked": "Default checked",
   "lowcodeInteractiveDefaultSelected": "Default selected",
   "lowcodeInteractiveDefaultSelectedNone": "(none)",

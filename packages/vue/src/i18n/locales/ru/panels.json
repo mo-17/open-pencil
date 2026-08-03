@@ -795,6 +795,8 @@
   "lowcodeInteractiveProps": "Свойства",
   "lowcodeInteractivePlaceholder": "Заполнитель",
   "lowcodeInteractiveValue": "Значение по умолчанию",
+  "lowcodeInteractiveTextColor": "Цвет текста",
+  "lowcodeInteractivePlaceholderColor": "Цвет заполнителя",
   "lowcodeInteractiveDefaultChecked": "Отмечено по умолчанию",
   "lowcodeInteractiveDefaultSelected": "Выбор по умолчанию",
   "lowcodeInteractiveDefaultSelectedNone": "(нет)",
