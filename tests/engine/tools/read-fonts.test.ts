@@ -11,6 +11,9 @@ type Readiness = 'ready' | 'pending' | 'exhausted'
 
 interface FontCheckResult {
   error?: string
+  nodeType?: string
+  contentKind?: string
+  textPreview?: string
   assignment?: string
   status?: string
   renderStatus?: string
@@ -27,6 +30,11 @@ interface FontCheckResult {
     resolution: { state: string; source?: string }
   }>
   caveats?: string[]
+}
+
+interface FontListResult {
+  count: number
+  fonts: Array<{ family: string; weights: number[] }>
 }
 
 function attachReadiness(figma: FigmaAPI, readiness: Readiness): void {
@@ -236,5 +244,98 @@ describe('check_font', () => {
     expect(result.status).toBe('effective')
     expect(result.nodeType).toBe('BUTTON')
     expect(result.contentKind).toBe('button_label')
+  })
+
+  test.each([
+    [
+      'INPUT placeholder',
+      'INPUT',
+      { placeholder: 'Email address', value: '' },
+      'input_placeholder',
+      'Email address'
+    ],
+    [
+      'TEXTAREA value',
+      'TEXTAREA',
+      { placeholder: 'Notes', value: 'Saved note' },
+      'textarea_value',
+      'Saved note'
+    ]
+  ] as const)(
+    'checks a lowcode %s through the renderer text projection',
+    (_case, nodeType, interactiveProps, contentKind, textPreview) => {
+      const { graph, figma } = setupToolTest()
+      const family = `OpenPencil Check Font ${nodeType} ${contentKind}`
+      const node = graph.createNode(nodeType, figma.currentPageId, {
+        name: `${nodeType} font projection`,
+        fontFamily: family,
+        fontWeight: 700,
+        interactiveProps: { ...interactiveProps }
+      })
+      fontManager.markLoaded(family, 'Bold', new ArrayBuffer(1))
+      attachReadiness(figma, 'ready')
+
+      const result = getTool('check_font').execute(figma, {
+        id: node.id,
+        expected_family: family,
+        expected_style: 'Bold'
+      }) as FontCheckResult
+
+      expect(result).toMatchObject({
+        status: 'effective',
+        effective: true,
+        assignment: 'match',
+        exactFacesLoaded: true,
+        nodeType,
+        contentKind,
+        textPreview
+      })
+      expect(result.faces?.[0]).toMatchObject({
+        family,
+        style: 'Bold',
+        mode: 'exact',
+        exactLoaded: true
+      })
+    }
+  )
+})
+
+describe('list_fonts', () => {
+  test('includes INPUT and TEXTAREA typography alongside TEXT nodes', () => {
+    const { graph, figma } = setupToolTest()
+    const sharedFamily = 'OpenPencil Used Form Font'
+    const textareaFamily = 'OpenPencil Used Textarea Font'
+    graph.createNode('TEXT', figma.currentPageId, {
+      text: 'Heading',
+      fontFamily: sharedFamily,
+      fontWeight: 400
+    })
+    graph.createNode('INPUT', figma.currentPageId, {
+      fontFamily: sharedFamily,
+      fontWeight: 500,
+      interactiveProps: { placeholder: 'Email address', value: '' }
+    })
+    graph.createNode('TEXTAREA', figma.currentPageId, {
+      fontFamily: textareaFamily,
+      fontWeight: 700,
+      interactiveProps: { placeholder: 'Notes', value: 'Saved note' }
+    })
+
+    const result = getTool('list_fonts').execute(figma, {}) as FontListResult
+    const filtered = getTool('list_fonts').execute(figma, {
+      family: 'textarea'
+    }) as FontListResult
+
+    expect(result).toEqual({
+      count: 2,
+      fonts: [
+        { family: sharedFamily, weights: [400, 500] },
+        { family: textareaFamily, weights: [700] }
+      ]
+    })
+    expect(filtered).toEqual({
+      count: 1,
+      fonts: [{ family: textareaFamily, weights: [700] }]
+    })
   })
 })

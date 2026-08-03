@@ -190,6 +190,45 @@ describe('audit_font_licenses', () => {
     expect(missing.error).toContain('not found')
   })
 
+  test('includes INPUT placeholders and TEXTAREA values in scoped license usage', async () => {
+    const { graph, figma } = setupToolTest()
+    const frame = graph.createNode('FRAME', figma.currentPageId, { name: 'Form fields' })
+    const inputFamily = 'OpenPencil Input License Unknown'
+    const textareaFamily = 'OpenPencil Textarea License Unknown'
+    const input = graph.createNode('INPUT', frame.id, {
+      name: 'Email input',
+      fontFamily: inputFamily,
+      fontWeight: 400,
+      interactiveProps: { placeholder: 'Email address', value: '' }
+    })
+    const textarea = graph.createNode('TEXTAREA', frame.id, {
+      name: 'Notes textarea',
+      fontFamily: textareaFamily,
+      fontWeight: 700,
+      interactiveProps: { placeholder: 'Ignored placeholder', value: 'Saved note' }
+    })
+
+    const result = (await getTool('audit_font_licenses').execute(figma, {
+      id: frame.id
+    })) as FontLicenseAuditResult
+
+    expect(result.summary).toMatchObject({
+      textNodes: 2,
+      families: 2,
+      faces: 2,
+      unknown: 2,
+      review: 2
+    })
+    expect(result.fonts?.find((font) => font.family === inputFamily)).toMatchObject({
+      style: 'Regular',
+      usages: [{ nodeId: input.id, scope: { kind: 'base' } }]
+    })
+    expect(result.fonts?.find((font) => font.family === textareaFamily)).toMatchObject({
+      style: 'Bold',
+      usages: [{ nodeId: textarea.id, scope: { kind: 'base' } }]
+    })
+  })
+
   test('expands from the current page to every page only when requested', async () => {
     const { graph, figma } = setupToolTest()
     const family = 'OpenPencil Cross Page License Unknown'

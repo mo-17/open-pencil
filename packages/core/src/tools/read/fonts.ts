@@ -1,10 +1,12 @@
 import { uniq } from 'es-toolkit/array'
 
+import type { SceneNode } from '@open-pencil/scene-graph'
+
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import type { FigmaAPI } from '#core/figma-api'
 import { parseFontStyle } from '#core/text/face'
 import { fontManager, weightToStyle } from '#core/text/fonts'
-import { buttonLabelTextNode } from '#core/text/lowcode'
+import { lowcodeTextProjection, type LowcodeTextContentKind } from '#core/text/lowcode'
 import {
   requiredNodeFontFaceUsages,
   type NodeFontFace,
@@ -46,8 +48,8 @@ export interface FontFaceCheck extends NodeFontFace {
 export interface FontRenderingCheckResult {
   id: string
   name: string
-  nodeType: 'TEXT' | 'BUTTON'
-  contentKind: 'text' | 'button_label'
+  nodeType: 'TEXT' | 'BUTTON' | 'INPUT' | 'TEXTAREA'
+  contentKind: 'text' | LowcodeTextContentKind
   textPreview: string
   authored: { family: string; style: string }
   expected: { family?: string; style?: string } | null
@@ -61,6 +63,11 @@ export interface FontRenderingCheckResult {
   caveats: string[]
 }
 
+function fontRenderingNodeType(node: SceneNode): FontRenderingCheckResult['nodeType'] {
+  if (node.type === 'BUTTON' || node.type === 'INPUT' || node.type === 'TEXTAREA') return node.type
+  return 'TEXT'
+}
+
 function sameFamily(left: string, right: string): boolean {
   return left.trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase()
 }
@@ -68,6 +75,14 @@ function sameFamily(left: string, right: string): boolean {
 function canonicalStyle(style: string): string {
   const parsed = parseFontStyle(style)
   return weightToStyle(parsed.weight, parsed.italic)
+}
+
+function expectedFont(family?: string, style?: string): FontRenderingCheckResult['expected'] {
+  if (!family && !style) return null
+  return {
+    ...(family ? { family } : {}),
+    ...(style ? { style: canonicalStyle(style) } : {})
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -122,7 +137,7 @@ function checkCaveats(
   const caveats: string[] = []
   if (assignment === 'partial' || assignment === 'mismatch') {
     caveats.push(
-      'The expected font is not assigned to every base/style-run scope in this text node.'
+      'The expected font is not assigned to every base/style-run scope in this text projection.'
     )
   }
   if (readiness === 'unavailable') {
@@ -149,8 +164,8 @@ function checkCaveats(
 }
 
 /** Shared single-node inspection used by `check_font` and the bounded
- * document audit. BUTTON labels are projected through the same text model the
- * CanvasKit lowcode renderer uses, while every other non-TEXT node is rejected. */
+ * document audit. Lowcode control text is projected through the same text model
+ * the CanvasKit renderer uses, while every other non-TEXT node is rejected. */
 export function inspectNodeFontRendering(
   figma: FigmaAPI,
   id: string,
@@ -159,9 +174,11 @@ export function inspectNodeFontRendering(
 ): FontRenderingCheckResult | { error: string } {
   const rawNode = figma.graph.getNode(id)
   if (!rawNode) return nodeNotFound(id)
-  const buttonLabel = buttonLabelTextNode(rawNode)
-  const node = buttonLabel ?? rawNode
-  if (node.type !== 'TEXT') return { error: `Node "${id}" is not a text node or labelled BUTTON` }
+  const projection = lowcodeTextProjection(rawNode)
+  const node = projection?.node ?? rawNode
+  if (node.type !== 'TEXT') {
+    return { error: `Node "${id}" is not a text node or text-capable lowcode control` }
+  }
 
   const readiness = figma.getNodeFontReadiness(rawNode.id)
   const requiredFaceUsages = requiredNodeFontFaceUsages(node)
@@ -205,18 +222,12 @@ export function inspectNodeFontRendering(
   } else if (status === 'pending' || status === 'unverifiable') {
     effective = null
   }
-  const expected =
-    expectedFamily || expectedStyle
-      ? {
-          ...(expectedFamily ? { family: expectedFamily } : {}),
-          ...(expectedStyle ? { style: canonicalStyle(expectedStyle) } : {})
-        }
-      : null
+  const expected = expectedFont(expectedFamily, expectedStyle)
   return {
     id: rawNode.id,
     name: rawNode.name,
-    nodeType: buttonLabel ? 'BUTTON' : 'TEXT',
-    contentKind: buttonLabel ? 'button_label' : 'text',
+    nodeType: fontRenderingNodeType(rawNode),
+    contentKind: projection?.contentKind ?? 'text',
     textPreview: node.text.length > 80 ? `${node.text.slice(0, 77)}...` : node.text,
     authored: {
       family: node.fontFamily || DEFAULT_FONT_FAMILY,
@@ -237,12 +248,16 @@ export function inspectNodeFontRendering(
 export const checkFont = defineTool({
   name: 'check_font',
   description:
-    'Verify whether a text node or lowcode BUTTON label font is actually effective in the live CanvasKit renderer. ' +
+    'Verify whether a text node or visible lowcode BUTTON/INPUT/TEXTAREA font is actually effective in the live CanvasKit renderer. ' +
     'Reports base and style-run assignments, exact face loading, resolver source, synthesized-style ' +
     'degradation, pending/exhausted glyph coverage, and optional expected family/style matching. ' +
     'A pending or renderer-unavailable result is never reported as success; call again when pending.',
   params: {
-    id: { type: 'string', description: 'TEXT or labelled lowcode BUTTON node ID', required: true },
+    id: {
+      type: 'string',
+      description: 'TEXT or text-capable lowcode BUTTON/INPUT/TEXTAREA node ID',
+      required: true
+    },
     expected_family: {
       type: 'string',
       description: 'Optional font family expected across the node and all styled ranges'
@@ -258,7 +273,8 @@ export const checkFont = defineTool({
 
 export const listFonts = defineTool({
   name: 'list_fonts',
-  description: 'List fonts used in the current page.',
+  description:
+    'List fonts used by TEXT and visible lowcode BUTTON/INPUT/TEXTAREA content in the current page.',
   params: {
     family: { type: 'string', description: 'Filter by family name (substring)' }
   },
@@ -266,13 +282,13 @@ export const listFonts = defineTool({
     const fonts = new Map<string, Set<number>>()
     const page = figma.currentPage
     page.findAll((node) => {
-      if (node.type === 'TEXT') {
-        const raw = figma.graph.getNode(node.id)
-        if (raw) {
-          const key = raw.fontFamily
-          if (!fonts.has(key)) fonts.set(key, new Set())
-          fonts.get(key)?.add(raw.fontWeight)
-        }
+      const raw = figma.graph.getNode(node.id)
+      if (!raw) return false
+      const textNode = lowcodeTextProjection(raw)?.node ?? raw
+      if (textNode.type === 'TEXT') {
+        const key = textNode.fontFamily
+        if (!fonts.has(key)) fonts.set(key, new Set())
+        fonts.get(key)?.add(textNode.fontWeight)
       }
       return false
     })

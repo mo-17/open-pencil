@@ -1,7 +1,7 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import type { FigmaAPI } from '#core/figma-api'
-import { buttonLabelTextNode } from '#core/text/lowcode'
+import { lowcodeTextNode } from '#core/text/lowcode'
 import { defineTool } from '#core/tools/schema'
 
 import {
@@ -69,7 +69,7 @@ interface CollectedFontNodes {
 export const auditFontRendering = defineTool({
   name: 'audit_font_rendering',
   description:
-    'Audit whether authored TEXT and lowcode BUTTON-label fonts are render-ready in the live CanvasKit host. Supports explicit node/subtree ids, one page, or the whole document. Reports requested faces separately from the actually loaded exact/synthesized face, resolver channel, pending/exhausted glyph readiness, and an explicit unverifiable state when no renderer is attached. CanvasKit does not expose the family that shaped each fallback glyph, so fallback family is returned as null rather than guessed. Optional retry is bounded by max_retries and timeout_ms. Font licensing is deliberately NOT inferred from renderability; run audit_font_licenses separately.',
+    'Audit whether authored TEXT and visible lowcode BUTTON/INPUT/TEXTAREA fonts are render-ready in the live CanvasKit host. Supports explicit node/subtree ids, one page, or the whole document. Reports requested faces separately from the actually loaded exact/synthesized face, resolver channel, pending/exhausted glyph readiness, and an explicit unverifiable state when no renderer is attached. CanvasKit does not expose the family that shaped each fallback glyph, so fallback family is returned as null rather than guessed. Optional retry is bounded by max_retries and timeout_ms. Font licensing is deliberately NOT inferred from renderability; run audit_font_licenses separately.',
   params: {
     scope: {
       type: 'string',
@@ -109,7 +109,7 @@ export const auditFontRendering = defineTool({
     },
     max_nodes: {
       type: 'number',
-      description: 'Maximum text/button-label results returned (default 200, range 1-500)',
+      description: 'Maximum text/control results returned (default 200, range 1-500)',
       min: 1,
       max: 500,
       default: 200
@@ -224,7 +224,7 @@ function collectFontNodes(graph: SceneGraph, rootIds: readonly string[]): Collec
     visited.add(id)
     const node = graph.getNode(id)
     if (!node) continue
-    if (node.type === 'TEXT' || buttonLabelTextNode(node)) {
+    if (node.type === 'TEXT' || lowcodeTextNode(node)) {
       matched++
       if (nodes.length < MAX_AUDITED_FONT_NODES) nodes.push(node)
       else auditLimitReached = true
@@ -320,6 +320,9 @@ function summarize(
   const faces = nodes.flatMap((node) => node.faces)
   return {
     complete,
+    matchedTextControls: collected.matched,
+    // Retained for compatibility with clients that consumed the original
+    // TEXT/BUTTON-only summary before INPUT and TEXTAREA became renderable.
     matchedTextAndButtonLabels: collected.matched,
     matchedCountComplete: !collected.scanLimitReached,
     auditedNodes: nodes.length,
@@ -352,7 +355,7 @@ function applyRetryCompleteness(
   if (complete) return retry
   const scopeReason = collected.scanLimitReached
     ? `The audit stopped after ${MAX_SCANNED_SCENE_NODES} scene nodes; additional font nodes may exist.`
-    : `The audit inspected the first ${MAX_AUDITED_FONT_NODES} text/button-label nodes.`
+    : `The audit inspected the first ${MAX_AUDITED_FONT_NODES} text/control nodes.`
   if (!retry.requested) return { ...retry, complete: false, reason: scopeReason }
   return {
     ...retry,

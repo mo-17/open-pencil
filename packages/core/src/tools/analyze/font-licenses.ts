@@ -1,7 +1,7 @@
 import type { SceneGraph, SceneNode } from '@open-pencil/scene-graph'
 
 import { assessLoadedFontLicense, type FontLicenseAssessment } from '#core/text/font-license'
-import { buttonLabelTextNode } from '#core/text/lowcode'
+import { lowcodeTextNode } from '#core/text/lowcode'
 import { requiredNodeFontFaceUsages, type NodeFontScope } from '#core/text/requirements'
 import { fontFaceDemand, fontResolver } from '#core/text/resolver'
 import { defineTool, nodeNotFound } from '#core/tools/schema'
@@ -56,7 +56,7 @@ function collectFontFaces(
     const node = graph.getNode(entry.id)
     if (!node) continue
     const pageId = node.type === 'CANVAS' ? node.id : entry.pageId || owningPageId(graph, node)
-    const textNode = buttonLabelTextNode(node) ?? node
+    const textNode = lowcodeTextNode(node) ?? node
 
     if (textNode.type === 'TEXT') {
       textNodeIds.add(node.id)
@@ -140,7 +140,7 @@ function decisionFor(
 export const auditFontLicenses = defineTool({
   name: 'audit_font_licenses',
   description:
-    'Audit font-license evidence for text and low-code button labels in the current page, a node subtree, or all pages. ' +
+    'Audit font-license evidence for TEXT and visible lowcode BUTTON/INPUT/TEXTAREA text in the current page, a node subtree, or all pages. ' +
     'Only an exact loaded-byte SHA-256 match against the reviewed bundled-font manifest is classified as verified_open. ' +
     'OpenType license fields are returned as self-reported hints; local, system, cached, remote, unavailable, or mismatched fonts remain unknown. ' +
     'Results include intended-use permissions, obligations, and pass/review/block decisions and are not legal advice.',

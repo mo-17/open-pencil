@@ -1,11 +1,12 @@
 import { orderBy, sortBy } from 'es-toolkit/array'
 
+import { lowcodeTextNode } from '#core/text/lowcode'
 import { defineTool } from '#core/tools/schema'
 
 export const analyzeTypography = defineTool({
   name: 'analyze_typography',
   description:
-    'Analyze typography usage across the current page. Shows font families, sizes, weights, and their frequencies.',
+    'Analyze typography usage across the current page, including visible BUTTON, INPUT, and TEXTAREA text. Shows font families, sizes, weights, and their frequencies.',
   params: {
     limit: { type: 'number', description: 'Max styles to return (default: 30)' },
     group_by: {
@@ -24,20 +25,21 @@ export const analyzeTypography = defineTool({
     let totalTextNodes = 0
 
     page.findAll((node) => {
-      if (node.type !== 'TEXT') return false
-      totalTextNodes++
       const raw = figma.graph.getNode(node.id)
       if (!raw) return false
-      const lh = raw.lineHeight === null ? 'auto' : `${raw.lineHeight}`
-      const key = `${raw.fontFamily}|${raw.fontSize}|${raw.fontWeight}|${lh}`
+      const textNode = lowcodeTextNode(raw) ?? raw
+      if (textNode.type !== 'TEXT') return false
+      totalTextNodes++
+      const lh = textNode.lineHeight === null ? 'auto' : `${textNode.lineHeight}`
+      const key = `${textNode.fontFamily}|${textNode.fontSize}|${textNode.fontWeight}|${lh}`
       const entry = styleMap.get(key)
       if (entry) {
         entry.count++
       } else {
         styleMap.set(key, {
-          family: raw.fontFamily,
-          size: raw.fontSize,
-          weight: raw.fontWeight,
+          family: textNode.fontFamily,
+          size: textNode.fontSize,
+          weight: textNode.fontWeight,
           lineHeight: lh,
           count: 1
         })

@@ -25,9 +25,9 @@ export const setFont = defineTool({
   name: 'set_font',
   mutates: true,
   description:
-    'Set font properties of a text node. After changing family or style, call check_font with the expected values to verify live renderer effectiveness.',
+    'Set font properties of a TEXT node or visible lowcode BUTTON/INPUT/TEXTAREA content. After changing family or style, call check_font with the expected values to verify live renderer effectiveness.',
   params: {
-    id: { type: 'string', description: 'Node ID', required: true },
+    id: { type: 'string', description: 'Text-capable node ID', required: true },
     family: { type: 'string', description: 'Font family name' },
     size: { type: 'number', description: 'Font size', min: 1 },
     style: { type: 'string', description: 'Font style (e.g. "Bold", "Regular", "Bold Italic")' }

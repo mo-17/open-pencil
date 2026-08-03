@@ -10,6 +10,7 @@ interface FontAuditResult {
   error?: string
   summary?: {
     complete: boolean
+    matchedTextControls: number
     matchedTextAndButtonLabels: number
     auditedNodes: number
     returnedNodes: number
@@ -39,6 +40,7 @@ interface FontAuditResult {
     id: string
     nodeType: string
     contentKind: string
+    textPreview: string
     renderReady: string
     exactFacesLoaded: boolean
     requestedFaces: Array<{ family: string; style: string }>
@@ -60,7 +62,7 @@ function attachReadiness(
 }
 
 describe('audit_font_rendering', () => {
-  test('audits TEXT and BUTTON labels without treating renderability as license evidence', async () => {
+  test('audits TEXT and visible lowcode control text without treating it as license evidence', async () => {
     const { figma, graph } = setupToolTest()
     const page = graph.getPages()[0]
     graph.createNode('TEXT', page.id, { name: 'Heading', text: 'Hello', fontFamily: 'Audit A' })
@@ -69,19 +71,34 @@ describe('audit_font_rendering', () => {
       fontFamily: 'Audit Button',
       interactiveProps: { text: 'Continue' }
     })
+    graph.createNode('INPUT', page.id, {
+      name: 'Email',
+      fontFamily: 'Audit Input',
+      interactiveProps: { placeholder: 'Email address', value: '' }
+    })
+    graph.createNode('TEXTAREA', page.id, {
+      name: 'Notes',
+      fontFamily: 'Audit Textarea',
+      interactiveProps: { placeholder: 'Ignored placeholder', value: 'Saved note' }
+    })
     graph.createNode('RECTANGLE', page.id, { name: 'Ignored' })
 
     const result = (await getTool('audit_font_rendering').execute(figma, {})) as FontAuditResult
 
     expect(result.summary).toMatchObject({
-      matchedTextAndButtonLabels: 2,
-      returnedNodes: 2,
+      matchedTextControls: 4,
+      matchedTextAndButtonLabels: 4,
+      returnedNodes: 4,
       omittedNodes: 0,
-      unverifiable: 2
+      unverifiable: 4
     })
-    expect(result.nodes?.map((node) => [node.nodeType, node.contentKind])).toEqual([
-      ['TEXT', 'text'],
-      ['BUTTON', 'button_label']
+    expect(
+      result.nodes?.map((node) => [node.nodeType, node.contentKind, node.textPreview])
+    ).toEqual([
+      ['TEXT', 'text', 'Hello'],
+      ['BUTTON', 'button_label', 'Continue'],
+      ['INPUT', 'input_placeholder', 'Email address'],
+      ['TEXTAREA', 'textarea_value', 'Saved note']
     ])
     expect(result.nodes?.every((node) => node.renderReady === 'unverifiable')).toBe(true)
     expect(result.nodes?.every((node) => node.glyphFallback.family === null)).toBe(true)
