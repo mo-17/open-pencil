@@ -59,13 +59,15 @@ The lowcode elements above create real lowcode node types, so the built-in AI, c
 
 ```jsx
 <Form name="Signup" w={320} flex="col" gap={12} p={16}>
-  <Input name="Email" placeholder="Email address" />
+  <Input name="Email" placeholder="Email address" textColor="#111827" placeholderColor="#6B7280" />
   <Select name="Plan" options={['Free', 'Pro']} value="Free" />
-  <Button name="Submit">Create account</Button>
+  <Button name="Submit" textColor="#F9FAFB">
+    Create account
+  </Button>
 </Form>
 ```
 
-Convenience props include `text`, `placeholder`, `value`, `options`, `checked`, `groupName`, `min`, and `max`. For advanced JSON-safe configuration, pass an `interactiveProps` object; invalid validation schemas and malformed date values are rejected before creation. Add bindings, events, state overrides, and render conditions with `update_lowcode_node` after rendering.
+Convenience props include `text`, `placeholder`, `value`, `textColor`, `placeholderColor`, `options`, `checked`, `groupName`, `min`, and `max`. Button, Input, and Textarea text colors accept canonical `#RRGGBB` values and apply only to that control; Input and Textarea also accept `placeholderColor`. For advanced JSON-safe configuration, pass an `interactiveProps` object; invalid validation schemas, text colors, and malformed date values are rejected before creation. Add bindings, events, state overrides, and render conditions with `update_lowcode_node` after rendering.
 
 ## Style Props
 

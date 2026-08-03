@@ -31,6 +31,83 @@ You can configure multiple reusable models and separately assign models for desi
 
 No backend, no subscription — your key talks directly to the provider.
 
+### Desktop coding-agent session continuity
+
+Claude Code, Codex, and Gemini CLI use ACP in the desktop app. For a source-backed document,
+OpenPencil's local session store contains the ACP session/thread ID and the non-secret metadata
+needed to route it safely: the local path or storage provider/document IDs, the isolated scope, a
+SHA-256 identity of the effective model and selected Remote MCP configuration, and timestamps. The
+store never contains prompts, attachments, the visible OpenPencil transcript, agent history, or
+credential secrets, and none of this session metadata is written into the `.fig` document.
+
+Each binding is isolated by document, requested role, provider and agent, connection, complete
+OpenPencil model configuration, credential profile, selected Remote MCP server configuration, and
+OpenPencil prompt-context version. An unsaved document keeps its session only in process memory. Its
+first save preserves that document scope and attaches the new path or storage identity; **Save As**
+creates a new document scope and leaves the source document's binding separate. A new or replacement
+session ID is committed to the local persistent store only after its first prompt completes
+successfully. If the durable write fails, the active agent session remains usable, but the session
+control and a warning toast report that its ID was not saved and therefore may not restore after a
+restart.
+
+When a chat starts or you switch back to it, OpenPencil offers the matching ID to the agent only if
+the agent explicitly advertises the ACP `session/resume` capability. If resume is unavailable or
+fails, OpenPencil starts a replacement session. The old binding is not silently replaced during
+setup: after the fallback completes its first prompt and becomes active, the chat shows a notice and
+stores the replacement ID. Automatic context compaction, if supported, remains the coding agent's
+responsibility; OpenPencil only reconnects the isolated thread. Actual restoration also depends on
+the installed agent retaining that thread and implementing ACP resume.
+
+The session control reports the setup result as connecting, resumed, new, fallback, or failed and
+shows the active session ID. If the installed agent advertises the unstable ACP `session/list`
+capability, opening the control explicitly requests a bounded list for the displayed ACP working
+directory. This is an agent-owned history, not a list scoped to the open design: it can include
+threads created by another client using the same agent connection and working directory.
+OpenPencil therefore treats Agent titles, timestamps, and the working directory as display hints,
+not identity. It cross-checks returned IDs against the existing local document/configuration
+bindings and groups candidates as **Exact match**, **Same document** with different AI settings, or
+**Source unverified**. Existing sessions that were never bound locally remain unverified, even when
+their title or directory looks familiar. Non-exact candidates require confirmation. The Agent's
+discovered title catalog is not copied into local storage or the design document.
+
+Choosing **Resume** opens the selected ID in a candidate transport with fallback disabled. The
+current chat and binding remain active until the candidate succeeds; a failed manual resume is
+reported as **Resume failed; current session unchanged** without silently creating a new thread.
+After a successful switch, the selected ID follows
+the same durability rule as every replacement and is stored for the current document scope only
+after its first successful prompt. `session/resume` restores the coding agent's internal context but
+does not replay the visible OpenPencil transcript. Agents without `session/list` keep automatic
+document-scoped continuity but do not show the history picker.
+
+To verify continuity across a real desktop restart:
+
+1. Open a saved design with a configured ACP agent, send one successful prompt, then open the
+   session control and copy its session ID.
+2. Quit OpenPencil normally, relaunch it, and reopen the same design without changing the Design
+   model, connection, credentials, Remote MCP selection, or agent.
+3. Open AI chat and confirm that the control reports **Session restored** with the same ID. The
+   visible transcript will be empty by design; send a follow-up that depends on the earlier context
+   to verify the agent retained the thread.
+4. A **New session after restore failed** or **Session unavailable** result is a real failed restore,
+   not a restored conversation. Record the requested and active IDs; development builds can also
+   copy the ACP log before retrying.
+
+Manager, storage, and mocked transport tests exercise the same binding rules but are not substitutes
+for this installed-agent, quit-and-relaunch check.
+
+**Force stop** terminates a stuck transport without deleting an existing resumable binding. **Clear
+chat** waits for deletion of the current document-and-configuration session binding from local
+persistent storage before opening its replacement; if deletion fails, the chat shows an error rather
+than silently reporting success. ACP does not provide a stable cross-agent delete API, so Clear does
+not delete history retained by the coding agent. It also does not immediately remove the document
+alias used for local routing: an alias with no retained session is pruned after 90 days during
+cleanup.
+
+Session records expire after 90 days of inactivity. Cleanup retains at most 8 bindings per document
+and 200 globally. Direct API providers do not read ACP records and continue to use only bounded
+in-memory message history. In both paths, the visible OpenPencil transcript itself is not currently
+persisted across an application restart, even when an ACP agent restores its internal context.
+
 ## Visual references
 
 Use the paperclip to attach a PNG, JPEG, or WebP, or select visible canvas layers and choose
@@ -103,11 +180,13 @@ OpenPencil applies the following boundary:
 - Tool names, descriptions, schemas, and results are treated as untrusted third-party data. Direct
   chat requires an explicit approval for every call and shows the locally configured server name,
   origin, and exact tool input. Approval applies to that call only.
-- Desktop ACP agents receive the selected servers in `session/new`. The selected agent—not
-  OpenPencil—controls redirect handling and whether it requests permission for each MCP call, so
-  enable Remote MCP for ACP only with an agent whose policy you trust. Changing a server,
-  credential, model assignment, tab, or provider invalidates the old session before a new one is
-  published.
+- Desktop ACP agents receive the selected servers when OpenPencil creates a session or resumes one
+  through an advertised `session/resume` capability. The selected agent—not OpenPencil—controls
+  redirect handling and whether it requests permission for each MCP call, so enable Remote MCP for
+  ACP only with an agent whose policy you trust. The selected server IDs, URLs, authentication types,
+  and credential-profile IDs participate in the non-secret configuration SHA-256 identity. Changing
+  one of those fields, the Design assignment, or the provider invalidates the active transport and
+  selects a separate persisted binding.
 - Direct chat connects from the app WebView, so a remote endpoint must allow that origin through
   CORS. ACP agents connect from their own process and do not share this WebView limitation.
 

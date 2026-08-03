@@ -152,15 +152,16 @@ Most tools accept optional `document_id` and `page_id` fields. Pass them explici
   are never treated as free by themselves.
 
 The result also reports OpenType license and embedding metadata, usage locations, obligations, and a
-`pass`, `review`, or `block` decision. This evidence-based audit is not legal advice.
+`pass`, `review`, or `block` decision. TEXT nodes and visible text projected from Button, Input, and
+Textarea controls are included. This evidence-based audit is not legal advice.
 
 ### Runtime font and image audits
 
 `audit_font_rendering` scans explicit subtrees, one page, or the document with bounded output and an
 optional bounded retry. It separates authored/requested faces from exact or synthesized loaded
-faces, reports pending/exhausted/unverifiable renderer states, and never treats renderability as
-license evidence. CanvasKit cannot expose the family that shaped each fallback glyph, so the tool
-reports that family as unknown instead of guessing.
+faces for TEXT, Button, Input, and Textarea content, reports pending/exhausted/unverifiable renderer
+states, and never treats renderability as license evidence. CanvasKit cannot expose the family that
+shaped each fallback glyph, so the tool reports that family as unknown instead of guessing.
 
 `audit_image_assets` checks all stored and referenced image hashes, bounded file signatures and
 dimensions, byte/pixel budgets, missing data, invalid headers, and orphan assets. Summaries cover

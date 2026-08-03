@@ -22,6 +22,11 @@
   full-file copies, skipping unsafe OOM fallbacks, releasing completed lazy-import metadata and old
   page CanvasKit resources, bounding decoded-image caching, culling retained backing work to the
   visible region, using cooperative layout, and suspending idle canvas frames while loading. (#255)
+- Keep image- and font-heavy `.fig` documents interactive during first open: present their imported
+  geometry and derived text without waiting for online providers or redundantly re-running Yoga,
+  batch exact-font activation after background resolution, prefer the bundled Simplified Chinese
+  fallback over copying a large system TTC through desktop IPC, and build the first retained
+  CanvasKit frame in flushed spatial tiles instead of one synchronous whole-page task.
 - Preserve generated and imported image-fill assets in compiler static builds instead of leaving
   broken background URLs after Vite moves the stylesheet into the output asset directory.
 - Keep long built-in AI drawing sessions responsive by streaming raw system-font bytes with bounded
@@ -80,6 +85,33 @@
 
 ### Added
 
+- Add native text color for Button, Input, and Textarea nodes plus placeholder color for Input and
+  Textarea, with canonical colors shared consistently by the property panel, canvas, Compiler,
+  Figma-compatible projection, and AI/MCP tools.
+- Add local desktop ACP coding-agent continuity for source-backed documents. A new or replacement
+  session/thread ID is committed only after its first successful prompt. The local store also
+  contains non-secret routing metadata (the local path or storage IDs, isolated scope, a SHA-256
+  identity of the effective model and selected Remote MCP configuration, and timestamps), but never
+  prompts, attachments, visible transcripts, agent history, credential secrets, or data inside the
+  `.fig` document. Bindings are isolated by document, Design role, provider/agent, connection,
+  effective runtime model configuration, credential profile, selected Remote MCP server configuration, and
+  prompt-context version. An unsaved document remains process-local, its first save preserves the
+  binding, and Save As starts a new document identity.
+  Resume is gated by the agent's `session/resume` capability; an activated fallback is reported in
+  chat together with the resumed, new, fallback, or failed status and session ID. Agents that
+  advertise the unstable `session/list` capability also expose a bounded history picker. It
+  cross-checks transient Agent results against local document/configuration bindings and labels
+  them as exact, same-document with different settings, or source-unverified instead of trusting
+  repeated Agent titles or a shared working directory. Non-exact candidates require confirmation.
+  Manual resume uses a strict candidate connection and swaps the active chat only
+  after success, so failure never silently creates a thread or discards the current binding. Failed
+  durable ID writes leave the live session usable but show that restart continuity is not guaranteed. The
+  agent-owned catalog is not persisted locally, and resume restores agent context rather than the
+  visible transcript. Clear waits for local persistent deletion and reports failures without
+  deleting agent-owned history, while Force stop preserves an existing resumable binding. Sessions
+  expire after 90 days and are capped at 8 per document and 200 globally; unreferenced routing
+  aliases are pruned after 90 days. Direct API providers do not read ACP records, and the visible
+  transcript is not restored across application restarts.
 - Import validated TTF, OTF, and WOFF files from Font settings in the desktop app, retain their
   internal family/style identity and license evidence in a checksummed local cache, prefer them over
   same-named system or downloaded faces after restart, and recompile previews from the same bytes
