@@ -27,6 +27,7 @@ import { resolveAIModelRole } from '@/app/ai/models'
 import { clearToolLogEntries, didHitStepLimit } from '@/app/ai/tools'
 import { activeTab } from '@/app/tabs'
 import AcpPermissionDialog from '@/components/chat/AcpPermissionDialog.vue'
+import AcpSessionControl from '@/components/chat/AcpSessionControl.vue'
 import ChatInput from '@/components/chat/ChatInput.vue'
 import ChatMessage from '@/components/chat/ChatMessage.vue'
 import AppPlaceholder from '@/components/ui/AppPlaceholder.vue'
@@ -48,6 +49,11 @@ const {
   ensureChat,
   respondToToolApproval,
   sessionRevision,
+  acpSessionStatus,
+  acpSessionHistory,
+  acpSessionRestoreNotice,
+  refreshACPSessionHistory,
+  restoreACPSession,
   resetChat,
   forceStopChat
 } = useAIChat()
@@ -123,6 +129,17 @@ const actionableApprovalMessageId = computed(() => {
   return last?.role === 'assistant' ? last.id : null
 })
 const status = computed(() => chat.value?.status ?? 'ready')
+const isACPProvider = computed(() => providerID.value.startsWith('acp:'))
+const activeDocumentName = computed(
+  () => activeTab.value?.store.state.documentName?.trim() || undefined
+)
+const acpSessionInteractionBusy = computed(
+  () =>
+    submissionPending.value ||
+    status.value === 'streaming' ||
+    status.value === 'submitted' ||
+    acpSessionStatus.value.state === 'connecting'
+)
 const canAttachSelection = computed(() =>
   Boolean(activeTab.value?.store.renderer && activeTab.value.store.state.selectedIds.size > 0)
 )
@@ -193,6 +210,17 @@ watch(
 )
 watch([() => activeTab.value?.id, providerID], refreshChat)
 watch(sessionRevision, refreshChat, { flush: 'sync' })
+watch(acpSessionRestoreNotice, (notice) => {
+  if (notice) toast.warning(dialogs.value.aiSessionRestoreFailed)
+})
+watch(
+  () => acpSessionStatus.value.persistenceError,
+  (error, previousError) => {
+    if (error && error !== previousError) {
+      toast.warning(dialogs.value.aiSessionPersistenceFailed({ error }))
+    }
+  }
+)
 onBeforeUnmount(() => {
   refreshGeneration += 1
   unpublishChat()
@@ -450,10 +478,24 @@ async function handleCopyAcpLog() {
 async function handleClearChat() {
   unpublishChat()
   resetStopState()
-  await resetChat()
-  clearToolLogEntries()
-  clearAcpDebugLog()
-  await refreshChat()
+  try {
+    await resetChat()
+    clearToolLogEntries()
+    clearAcpDebugLog()
+  } catch {
+    toast.error(dialogs.value.aiSessionClearFailed)
+  } finally {
+    await refreshChat()
+  }
+}
+
+async function handleRestoreACPSession(sessionId: string) {
+  try {
+    await restoreACPSession(sessionId)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    toast.error(dialogs.value.aiSessionManualRestoreFailed({ error: message }))
+  }
 }
 
 async function handleToolApproval(messageId: string, id: string, approved: boolean) {
@@ -584,11 +626,36 @@ async function handleToolApproval(messageId: string, id: string, approved: boole
           {{ acpLogCopied ? 'Copied' : 'ACP log' }}
         </AppTextButton>
         <AppTextButton
+          v-if="!isACPProvider"
           :ui="{ base: 'flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover' }"
           @click="handleClearChat"
         >
           <icon-lucide-trash-2 class="size-3" />
           Clear
+        </AppTextButton>
+      </div>
+
+      <div
+        v-if="isACPProvider"
+        class="flex shrink-0 items-center gap-1 border-t border-border px-3 py-1.5"
+      >
+        <AcpSessionControl
+          :status="acpSessionStatus"
+          :history="acpSessionHistory"
+          :document-name="activeDocumentName"
+          :disabled="acpSessionInteractionBusy"
+          @refresh="refreshACPSessionHistory"
+          @resume="handleRestoreACPSession"
+        />
+        <AppTextButton
+          :ui="{
+            base: 'ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 hover:bg-hover'
+          }"
+          :disabled="acpSessionInteractionBusy"
+          @click="handleClearChat"
+        >
+          <icon-lucide-trash-2 class="size-3" />
+          {{ dialogs.clear }}
         </AppTextButton>
       </div>
 

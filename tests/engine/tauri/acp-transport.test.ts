@@ -10,7 +10,9 @@ import { ACP_AGENTS } from '@open-pencil/core/constants'
 import {
   ACPChatTransport,
   buildAcpMcpServerConfigs,
-  buildOpenPencilMcpServerConfig
+  buildOpenPencilMcpServerConfig,
+  type ACPSessionOpenedEvent,
+  type ACPSessionSetupEvent
 } from '@/app/ai/acp/transport'
 import { createACPTransport } from '@/app/ai/chat/transports'
 import * as automationMcp from '@/app/automation/mcp/spawn'
@@ -20,6 +22,8 @@ import { clearTauriMocks, mockTauriIPC } from '#tests/helpers/tauri/mocks'
 const TEST_AUTOMATION_AUTH_TOKEN = 'test-automation-token'
 const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 const JPEG_SIGNATURE = new Uint8Array([0xff, 0xd8, 0xff])
+const TEST_CODEX_AGENT = ACP_AGENTS.find((agent) => agent.id === 'codex')
+if (!TEST_CODEX_AGENT) throw new Error('Missing Codex ACP agent fixture')
 
 beforeEach(() => {
   vi.spyOn(automationMcp, 'getAutomationAuthToken').mockResolvedValue(TEST_AUTOMATION_AUTH_TOKEN)
@@ -254,6 +258,577 @@ describe('Tauri ACP transport', () => {
     }
 
     expect(transport.cwd).toBe('/Users/tester')
+  })
+
+  test('publishes negotiated session setup exactly once when connect succeeds', async () => {
+    const agent = await installFakeACPAgent()
+    const setups: ACPSessionSetupEvent[] = []
+    const opened: ACPSessionOpenedEvent[] = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: {
+            loadSession: true,
+            sessionCapabilities: { list: {}, resume: {} }
+          }
+        })
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'setup-session', configOptions: TEST_CONFIG_OPTIONS })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      onSessionSetup: (event) => setups.push(event),
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await Promise.all([transport.connect(), transport.connect()])
+    await transport.connect()
+
+    expect(setups).toEqual([
+      {
+        sessionId: 'setup-session',
+        method: 'new',
+        capabilities: { list: true, resume: true, load: true }
+      }
+    ])
+    expect(opened).toEqual([])
+    expect(agent.requests.map((request) => request.method)).toEqual(['initialize', 'session/new'])
+    await transport.destroy()
+  })
+
+  test('fails closed when strict resume is unsupported', async () => {
+    const agent = await installFakeACPAgent()
+    const setups: ACPSessionSetupEvent[] = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'strict-session',
+      resumeFallback: 'error',
+      onSessionSetup: (event) => setups.push(event)
+    })
+
+    await expect(transport.connect()).rejects.toThrow('does not support session/resume')
+
+    expect(agent.requests.map((request) => request.method)).toEqual(['initialize'])
+    expect(setups).toEqual([])
+    await transport.destroy()
+  })
+
+  test('fails closed when a strict resume request fails', async () => {
+    const agent = await installFakeACPAgent()
+    const setups: ACPSessionSetupEvent[] = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { resume: {} } }
+        })
+      } else if (request.method === 'session/resume') {
+        reply.reject('Selected session is unavailable')
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'strict-session',
+      resumeFallback: 'error',
+      onSessionSetup: (event) => setups.push(event)
+    })
+
+    await expect(transport.connect()).rejects.toThrow('Selected session is unavailable')
+
+    expect(agent.requests.map((request) => request.method)).toEqual([
+      'initialize',
+      'session/resume'
+    ])
+    expect(agent.requests.some((request) => request.method === 'session/new')).toBe(false)
+    expect(setups).toEqual([])
+    await transport.destroy()
+  })
+
+  test('rejects session listing when the agent does not advertise support', async () => {
+    const agent = await installFakeACPAgent()
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+      else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'active-session', configOptions: TEST_CONFIG_OPTIONS })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project'
+    })
+
+    await transport.connect()
+    await expect(transport.listSessions()).rejects.toThrow('does not support session/list')
+
+    expect(agent.requests.some((request) => request.method === 'session/list')).toBe(false)
+    await transport.destroy()
+  })
+
+  test('lists bounded same-cwd sessions with pagination, deduplication, and sanitization', async () => {
+    const agent = await installFakeACPAgent()
+    const longTitle = `Long ${'x'.repeat(600)}`
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { list: {} } }
+        })
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'active-session', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/list' && request.params.cursor === undefined) {
+        reply.respond({
+          sessions: [
+            {
+              sessionId: 'same-cwd-1',
+              cwd: '/Users/tester/project',
+              title: '  First\n\t session  ',
+              updatedAt: '2026-08-03T08:00:00+08:00',
+              _meta: { secret: 'must-not-leak' }
+            },
+            {
+              sessionId: 'same-cwd-1',
+              cwd: '/Users/tester/project',
+              title: 'Duplicate must not replace first'
+            },
+            {
+              sessionId: 'other-cwd',
+              cwd: '/Users/tester/other',
+              title: 'Filtered'
+            },
+            { sessionId: '', cwd: '/Users/tester/project', title: 'Invalid ID' },
+            { sessionId: ' padded ', cwd: '/Users/tester/project', title: 'Padded ID' },
+            { sessionId: 'control\nid', cwd: '/Users/tester/project', title: 'Control ID' }
+          ],
+          nextCursor: 'page-2',
+          _meta: { server: 'private' }
+        })
+      } else if (request.method === 'session/list' && request.params.cursor === 'page-2') {
+        reply.respond({
+          sessions: [
+            {
+              sessionId: 'same-cwd-2',
+              cwd: '/Users/tester/project',
+              title: longTitle,
+              updatedAt: 'not-a-date',
+              _meta: { secret: 'must-not-leak' }
+            },
+            {
+              sessionId: 'same-cwd-3',
+              cwd: '/Users/tester/project',
+              title: null,
+              updatedAt: null
+            }
+          ],
+          nextCursor: null
+        })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project'
+    })
+
+    await transport.connect()
+    const sessions = await transport.listSessions()
+
+    expect(
+      agent.requests
+        .filter((request) => request.method === 'session/list')
+        .map((request) => request.params)
+    ).toEqual([
+      { cwd: '/Users/tester/project' },
+      { cwd: '/Users/tester/project', cursor: 'page-2' }
+    ])
+    expect(sessions).toEqual([
+      {
+        sessionId: 'same-cwd-1',
+        cwd: '/Users/tester/project',
+        title: 'First session',
+        updatedAt: '2026-08-03T00:00:00.000Z'
+      },
+      {
+        sessionId: 'same-cwd-2',
+        cwd: '/Users/tester/project',
+        title: longTitle.trim().slice(0, 512),
+        updatedAt: null
+      },
+      {
+        sessionId: 'same-cwd-3',
+        cwd: '/Users/tester/project',
+        title: null,
+        updatedAt: null
+      }
+    ])
+    expect(Object.keys(sessions[0] ?? {}).sort()).toEqual([
+      'cwd',
+      'sessionId',
+      'title',
+      'updatedAt'
+    ])
+    await transport.destroy()
+  })
+
+  test('fails closed when session listing repeats a pagination cursor', async () => {
+    const agent = await installFakeACPAgent()
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { list: {} } }
+        })
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'active-session', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/list') {
+        reply.respond({ sessions: [], nextCursor: 'repeated-cursor' })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project'
+    })
+
+    await transport.connect()
+    await expect(transport.listSessions()).rejects.toThrow('repeated session/list cursor')
+
+    expect(agent.requests.filter((request) => request.method === 'session/list')).toHaveLength(2)
+    await transport.destroy()
+  })
+
+  test('rejects a pending session listing when the transport is destroyed', async () => {
+    const agent = await installFakeACPAgent()
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { list: {} } }
+        })
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'active-session', configOptions: TEST_CONFIG_OPTIONS })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project'
+    })
+
+    await transport.connect()
+    const pendingList = transport.listSessions()
+    await waitForRequest(agent.requests, 'session/list')
+    const pendingDestroy = transport.destroy()
+
+    await expect(pendingList).rejects.toThrow('ACP transport was destroyed.')
+    await pendingDestroy
+  })
+
+  test('does not publish a prewarmed new session that exits before its first prompt', async () => {
+    const agent = await installFakeACPAgent()
+    const opened: ACPSessionOpenedEvent[] = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+      else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'unused-session', configOptions: TEST_CONFIG_OPTIONS })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await transport.connect()
+
+    expect(agent.requests.map((request) => request.method)).toEqual(['initialize', 'session/new'])
+    expect(opened).toEqual([])
+    await transport.destroy()
+    expect(agent.requests.some((request) => request.method === 'session/prompt')).toBe(false)
+  })
+
+  test('does not publish a new session until its first prompt succeeds', async () => {
+    const agent = await installFakeACPAgent()
+    const opened: ACPSessionOpenedEvent[] = []
+    let failPrompt = true
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+      else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'prompted-session', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        if (failPrompt) reply.reject('Prompt failed before completion')
+        else reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await transport.connect()
+    await readChunks(await transport.sendMessages(userMessage('first attempt')))
+
+    expect(opened).toEqual([])
+    failPrompt = false
+    await readChunks(await transport.sendMessages(userMessage('second attempt')))
+
+    const promptRequests = agent.requests.filter((request) => request.method === 'session/prompt')
+    expect(promptRequests).toHaveLength(2)
+    for (const request of promptRequests) {
+      const promptText = (request.params.prompt as Array<{ type: string; text: string }>)[0]?.text
+      expect(promptText).toContain('You are a design assistant inside a vector design editor.')
+    }
+    expect(opened).toEqual([{ sessionId: 'prompted-session', method: 'new' }])
+    await transport.destroy()
+  })
+
+  test('resumes a persisted session only when the agent advertises resume support', async () => {
+    const agent = await installFakeACPAgent()
+    const opened: ACPSessionOpenedEvent[] = []
+    const configSnapshots: Array<readonly SessionConfigOption[]> = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { resume: {} } }
+        })
+      } else if (request.method === 'session/resume') {
+        reply.respond({ configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'persisted-session',
+      onConfigOptionsChange: (options) => configSnapshots.push(options),
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await transport.connect()
+
+    expect(agent.requests.map((request) => request.method)).toEqual([
+      'initialize',
+      'session/resume'
+    ])
+    expect(agent.requests.at(-1)?.params).toEqual({
+      cwd: '/Users/tester/project',
+      mcpServers: [buildOpenPencilMcpServerConfig(TEST_AUTOMATION_AUTH_TOKEN)],
+      sessionId: 'persisted-session'
+    })
+    expect(configSnapshots.at(-1)).toEqual(TEST_CONFIG_OPTIONS)
+    expect(opened).toEqual([])
+
+    await readChunks(await transport.sendMessages(userMessage('continue the design')))
+
+    expect(opened).toEqual([{ sessionId: 'persisted-session', method: 'resume' }])
+    await transport.destroy()
+  })
+
+  test('creates a new session when a persisted ID exists but resume is not advertised', async () => {
+    const agent = await installFakeACPAgent()
+    const setups: ACPSessionSetupEvent[] = []
+    const opened: ACPSessionOpenedEvent[] = []
+    const restoreError = `The ACP agent "${TEST_CODEX_AGENT.name}" does not support session/resume.`
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') reply.respond({ protocolVersion: 1 })
+      else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'new-session', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'unsupported-session',
+      onSessionSetup: (event) => setups.push(event),
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await transport.connect()
+
+    expect(agent.requests.map((request) => request.method)).toEqual(['initialize', 'session/new'])
+    expect(setups).toEqual([
+      {
+        sessionId: 'new-session',
+        method: 'new',
+        restoreError,
+        capabilities: { list: false, resume: false, load: false }
+      }
+    ])
+    expect(opened).toEqual([])
+
+    await readChunks(await transport.sendMessages(userMessage('start the design')))
+
+    expect(opened).toEqual([{ sessionId: 'new-session', method: 'new', restoreError }])
+    await transport.destroy()
+  })
+
+  test('falls back to one new session after resume fails and reports the restore error', async () => {
+    const agent = await installFakeACPAgent()
+    const setups: ACPSessionSetupEvent[] = []
+    const opened: ACPSessionOpenedEvent[] = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { resume: {} } }
+        })
+      } else if (request.method === 'session/resume') {
+        reply.reject('Stored session is unavailable')
+      } else if (request.method === 'session/new') {
+        reply.respond({ sessionId: 'replacement-session', configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'stale-session',
+      onSessionSetup: (event) => setups.push(event),
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await transport.connect()
+
+    expect(agent.requests.map((request) => request.method)).toEqual([
+      'initialize',
+      'session/resume',
+      'session/new'
+    ])
+    expect(setups).toEqual([
+      {
+        sessionId: 'replacement-session',
+        method: 'new',
+        restoreError: 'Stored session is unavailable',
+        capabilities: { list: false, resume: true, load: false }
+      }
+    ])
+    expect(opened).toEqual([])
+
+    await readChunks(await transport.sendMessages(userMessage('start a replacement session')))
+
+    expect(opened).toEqual([
+      {
+        sessionId: 'replacement-session',
+        method: 'new',
+        restoreError: 'Stored session is unavailable'
+      }
+    ])
+    await transport.destroy()
+  })
+
+  test('does not publish or replace a persisted ID when resume and fallback creation both fail', async () => {
+    const agent = await installFakeACPAgent()
+    const opened: ACPSessionOpenedEvent[] = []
+    let failSetup = true
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { resume: {} } }
+        })
+      } else if (request.method === 'session/resume') {
+        if (failSetup) reply.reject('Stored session is unavailable')
+        else reply.respond({ configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/new') {
+        reply.reject('Cannot create replacement session')
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'preserved-session',
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await expect(transport.connect()).rejects.toThrow('Cannot create replacement session')
+    expect(opened).toEqual([])
+
+    failSetup = false
+    await transport.connect()
+    const resumeRequests = agent.requests.filter((request) => request.method === 'session/resume')
+    expect(resumeRequests).toHaveLength(2)
+    expect(resumeRequests[1]?.params.sessionId).toBe('preserved-session')
+    expect(opened).toEqual([])
+
+    await readChunks(await transport.sendMessages(userMessage('retry the preserved session')))
+
+    expect(opened).toEqual([{ sessionId: 'preserved-session', method: 'resume' }])
+    await transport.destroy()
+  })
+
+  test('refreshes runtime context without repeating the system prompt after resume', async () => {
+    const agent = await installFakeACPAgent()
+    const opened: ACPSessionOpenedEvent[] = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { resume: {} } }
+        })
+      } else if (request.method === 'session/resume') {
+        reply.respond({ configOptions: TEST_CONFIG_OPTIONS })
+      } else if (request.method === 'session/prompt') {
+        reply.respond({ stopReason: 'end_turn' })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'persisted-session',
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    await readChunks(await transport.sendMessages(userMessage('continue the design')))
+
+    const promptRequest = agent.requests.find((request) => request.method === 'session/prompt')
+    const promptText = promptRequest
+      ? (promptRequest.params.prompt as Array<{ type: string; text: string }>)[0]?.text
+      : undefined
+    expect(promptText).toContain('# ACP runtime metadata')
+    expect(promptText).toContain('continue the design')
+    expect(promptText).not.toContain('You are a design assistant inside a vector design editor.')
+    expect(opened).toEqual([{ sessionId: 'persisted-session', method: 'resume' }])
+    await transport.destroy()
+  })
+
+  test('does not publish a session that becomes stale while resume is pending', async () => {
+    const agent = await installFakeACPAgent()
+    const opened: ACPSessionOpenedEvent[] = []
+    agent.handleRequests((request, reply) => {
+      if (request.method === 'initialize') {
+        reply.respond({
+          protocolVersion: 1,
+          agentCapabilities: { sessionCapabilities: { resume: {} } }
+        })
+      }
+    })
+    const transport = new ACPChatTransport({
+      agentDef: TEST_CODEX_AGENT,
+      cwd: '/Users/tester/project',
+      initialSessionId: 'persisted-session',
+      onSessionOpened: (event) => opened.push(event)
+    })
+
+    const pendingConnect = transport.connect()
+    await waitForRequest(agent.requests, 'session/resume')
+    const pendingDestroy = transport.destroy()
+
+    await expect(pendingConnect).rejects.toThrow('ACP transport was destroyed.')
+    await pendingDestroy
+    expect(opened).toEqual([])
+    expect(agent.requests.some((request) => request.method === 'session/new')).toBe(false)
   })
 
   test('connects before the first prompt and updates model configuration through ACP', async () => {

@@ -8,6 +8,7 @@ export function createDocumentSourceState() {
   let sourceIdentity: DocumentSourceIdentity = { handle: null, path: null }
   let storageBinding: StorageDocumentBinding | null = null
   let sourceRevision = 0
+  const sourceChangeListeners = new Set<() => void>()
   let savedVersion = 0
   let lastWriteTime = 0
 
@@ -31,6 +32,17 @@ export function createDocumentSourceState() {
     getSourceRevision: () => sourceRevision,
     markSourceChanged: () => {
       sourceRevision++
+      for (const listener of sourceChangeListeners) {
+        try {
+          listener()
+        } catch (error) {
+          console.warn('[Document source] Source change listener failed:', error)
+        }
+      }
+    },
+    onSourceChanged: (listener: () => void) => {
+      sourceChangeListeners.add(listener)
+      return () => sourceChangeListeners.delete(listener)
     },
     getStorageBinding: () => storageBinding,
     setStorageBinding: (binding: StorageDocumentBinding | null) => {

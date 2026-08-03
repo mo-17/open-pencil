@@ -72,6 +72,7 @@ export function createDocumentIOActions(
     getDocumentPath: sourceState.getFilePath,
     getDocumentFilePath: sourceState.getFilePath,
     getSourceIdentity: sourceState.getSourceIdentity,
+    onSourceChanged: sourceState.onSourceChanged,
     getStorageBinding: sourceState.getStorageBinding,
     setDocumentSource: sourceActions.setDocumentSource,
     setStorageDocumentSource: sourceActions.setStorageDocumentSource,

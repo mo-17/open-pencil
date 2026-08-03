@@ -59,6 +59,8 @@ interface ACPDebugEntry {
 interface ACPSession {
   connection: ClientSideConnection
   sessionId: string
+  openEvent: ACPSessionOpenedEvent
+  capabilities: ACPSessionCapabilities
   child: TauriChild
   updates: ReturnType<typeof createSessionUpdateBuffer>
   lifecycle: ACPRequestLifecycle
@@ -73,10 +75,61 @@ interface ACPRequestLifecycle {
   rejectors: Set<(error: Error) => void>
 }
 
-interface ACPChatTransportOptions {
+interface ACPConfigUpdateState {
+  latest: { sessionId: string; configOptions: SessionConfigOption[] } | null
+}
+
+interface ACPSpawnState {
+  diagnosticsEnabled: boolean
+  createdSession: ACPSession | null
+  configUpdateState: ACPConfigUpdateState
+}
+
+type ACPNewSessionResult = Awaited<ReturnType<ClientSideConnection['newSession']>>
+
+interface ACPSessionSetup {
+  result: ACPNewSessionResult
+  openEvent: ACPSessionOpenedEvent
+}
+
+export interface ACPSessionOpenedEvent {
+  sessionId: string
+  method: 'new' | 'resume'
+  restoreError?: string
+}
+
+export interface ACPSessionCapabilities {
+  list: boolean
+  resume: boolean
+  load: boolean
+}
+
+export interface ACPSessionSetupEvent extends ACPSessionOpenedEvent {
+  capabilities: ACPSessionCapabilities
+}
+
+export interface ACPSessionListItem {
+  sessionId: string
+  cwd: string
+  title: string | null
+  updatedAt: string | null
+}
+
+interface ACPUntrustedSessionListItem {
+  sessionId?: unknown
+  cwd?: unknown
+  title?: unknown
+  updatedAt?: unknown
+}
+
+export interface ACPChatTransportOptions {
   agentDef: ACPAgentDef
   cwd?: string
   mcpServers?: McpServer[]
+  initialSessionId?: string
+  resumeFallback?: 'new' | 'error'
+  onSessionSetup?: (event: ACPSessionSetupEvent) => void
+  onSessionOpened?: (event: ACPSessionOpenedEvent) => void
   onConfigOptionsChange?: (options: readonly SessionConfigOption[]) => void
   cancelDrainTimeoutMs?: number
 }
@@ -95,7 +148,15 @@ const TRANSPORT_DESTROYED_MESSAGE = 'ACP transport was destroyed.'
 const AGENT_EXITED_MESSAGE = 'Agent process exited unexpectedly.'
 const ACP_CANCEL_DRAIN_TIMEOUT_MS = 3_000
 const ACP_MAX_IMAGE_BYTES = DEFAULT_VISUAL_ATTACHMENT_LIMITS.maxOutputBytes
+const ACP_SESSION_LIST_MAX_PAGES = 5
+const ACP_SESSION_LIST_MAX_ITEMS = 100
+const ACP_SESSION_ID_MAX_LENGTH = 8_192
+const ACP_SESSION_CWD_MAX_LENGTH = 32_768
+const ACP_SESSION_TITLE_MAX_LENGTH = 512
+const ACP_SESSION_TIMESTAMP_MAX_LENGTH = 128
+const ACP_SESSION_CURSOR_MAX_LENGTH = 8_192
 const STRICT_BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+const WINDOWS_ABSOLUTE_PATH_PATTERN = /^(?:[A-Za-z]:[\\/]|\\\\)/
 
 const acpDebugLog: ACPDebugEntry[] = []
 
@@ -242,6 +303,117 @@ function waitWithAbort(promise: Promise<void>, signal?: AbortSignal): Promise<vo
   })
 }
 
+function isAbsoluteACPWorkingDirectory(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= ACP_SESSION_CWD_MAX_LENGTH &&
+    !value.includes('\0') &&
+    (value.startsWith('/') || WINDOWS_ABSOLUTE_PATH_PATTERN.test(value))
+  )
+}
+
+function normalizeSessionListTitle(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim().replace(/\s+/g, ' ')
+  return normalized ? normalized.slice(0, ACP_SESSION_TITLE_MAX_LENGTH) : null
+}
+
+function normalizeSessionListTimestamp(value: unknown): string | null {
+  if (
+    typeof value !== 'string' ||
+    !value.trim() ||
+    value.length > ACP_SESSION_TIMESTAMP_MAX_LENGTH
+  ) {
+    return null
+  }
+  const parsed = new Date(value)
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null
+}
+
+function hasASCIIControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0
+    if (codePoint <= 0x1f || codePoint === 0x7f) return true
+  }
+  return false
+}
+
+function normalizeSessionListItem(value: unknown, expectedCwd: string): ACPSessionListItem | null {
+  if (!isUntrustedSessionListItem(value)) return null
+  const candidate = value
+  if (
+    typeof candidate.sessionId !== 'string' ||
+    !candidate.sessionId.trim() ||
+    candidate.sessionId.trim() !== candidate.sessionId ||
+    hasASCIIControlCharacter(candidate.sessionId) ||
+    candidate.sessionId.length > ACP_SESSION_ID_MAX_LENGTH ||
+    candidate.cwd !== expectedCwd ||
+    !isAbsoluteACPWorkingDirectory(expectedCwd)
+  ) {
+    return null
+  }
+  return {
+    sessionId: candidate.sessionId,
+    cwd: expectedCwd,
+    title: normalizeSessionListTitle(candidate.title),
+    updatedAt: normalizeSessionListTimestamp(candidate.updatedAt)
+  }
+}
+
+function isUntrustedSessionListItem(value: unknown): value is ACPUntrustedSessionListItem {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function collectSessionListItems(
+  rawSessions: unknown,
+  expectedCwd: string,
+  seenSessionIds: Set<string>,
+  sessions: ACPSessionListItem[]
+): void {
+  if (!Array.isArray(rawSessions)) {
+    throw new TypeError('ACP agent returned an invalid session/list response.')
+  }
+  for (const candidate of rawSessions) {
+    if (sessions.length >= ACP_SESSION_LIST_MAX_ITEMS) break
+    const normalized = normalizeSessionListItem(candidate, expectedCwd)
+    if (!normalized || seenSessionIds.has(normalized.sessionId)) continue
+    seenSessionIds.add(normalized.sessionId)
+    sessions.push(normalized)
+  }
+}
+
+function normalizeSessionListCursor(value: unknown, seenCursors: Set<string>): string | null {
+  if (value == null) return null
+  if (typeof value !== 'string' || !value || value.length > ACP_SESSION_CURSOR_MAX_LENGTH) {
+    throw new TypeError('ACP agent returned an invalid session/list cursor.')
+  }
+  if (seenCursors.has(value)) {
+    throw new Error('ACP agent returned a repeated session/list cursor.')
+  }
+  seenCursors.add(value)
+  return value
+}
+
+function requestACPSessionListPage(
+  connection: ClientSideConnection,
+  lifecycle: ACPRequestLifecycle,
+  cwd: string,
+  cursor?: string
+) {
+  return requestWithLifecycle(lifecycle, () =>
+    connection.unstable_listSessions({ cwd, ...(cursor ? { cursor } : {}) })
+  )
+}
+
+function sortSessionListItems(sessions: ACPSessionListItem[]): void {
+  sessions.sort((left, right) => {
+    if (left.updatedAt === right.updatedAt) return 0
+    if (left.updatedAt === null) return 1
+    if (right.updatedAt === null) return -1
+    return right.updatedAt.localeCompare(left.updatedAt)
+  })
+}
+
 export function createSessionUpdateBuffer() {
   const pending: SessionNotification[] = []
   let handler: ((params: SessionNotification) => void) | null = null
@@ -260,6 +432,9 @@ export function createSessionUpdateBuffer() {
       const currentHandler = handler
       if (!currentHandler) return
       for (const notification of pending.splice(0)) currentHandler(notification)
+    },
+    discardPending(): void {
+      pending.length = 0
     },
     clear(): void {
       pending.length = 0
@@ -415,6 +590,10 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private agentDef: ACPAgentDef
   private cwd: string
   private mcpServers: McpServer[]
+  private resumeSessionId: string | null
+  private resumeFallback: 'new' | 'error'
+  private onSessionSetup: (event: ACPSessionSetupEvent) => void
+  private onSessionOpened: (event: ACPSessionOpenedEvent) => void
   private onConfigOptionsChange: (options: readonly SessionConfigOption[]) => void
   private sentContext = false
   private runtimeContextDirty = true
@@ -423,11 +602,17 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private activePrompt: ACPActivePrompt | null = null
   private cancellingSessionIds = new Set<string>()
   private cancelDrainTimeoutMs: number
+  private setupSessions = new WeakSet<ACPSession>()
+  private openedSessionIds = new Set<string>()
 
   constructor(options: ACPChatTransportOptions) {
     this.agentDef = options.agentDef
     this.cwd = options.cwd ?? '.'
     this.mcpServers = [...(options.mcpServers ?? [])]
+    this.resumeSessionId = options.initialSessionId || null
+    this.resumeFallback = options.resumeFallback ?? 'new'
+    this.onSessionSetup = options.onSessionSetup ?? (() => undefined)
+    this.onSessionOpened = options.onSessionOpened ?? (() => undefined)
     this.onConfigOptionsChange = options.onConfigOptionsChange ?? (() => undefined)
     this.cancelDrainTimeoutMs = options.cancelDrainTimeoutMs ?? ACP_CANCEL_DRAIN_TIMEOUT_MS
   }
@@ -592,6 +777,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
               }
               finish('stop', undefined, INTERRUPTED_TOOL_ERROR)
             } else {
+              this.publishSessionOpened(session)
               finish(result.stopReason === 'end_turn' ? 'stop' : 'other')
             }
             return undefined
@@ -611,7 +797,49 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   }
 
   async connect(): Promise<void> {
-    await this.ensureSession()
+    const session = await this.ensureSession()
+    this.publishSessionSetup(session)
+  }
+
+  async listSessions(): Promise<ACPSessionListItem[]> {
+    const session = await this.ensureSession()
+    if (!session.capabilities.list) {
+      throw new Error(`The ACP agent "${this.agentDef.name}" does not support session/list.`)
+    }
+    if (!isAbsoluteACPWorkingDirectory(this.cwd)) {
+      throw new Error('ACP session/list requires an absolute working directory.')
+    }
+
+    const sessions: ACPSessionListItem[] = []
+    const seenSessionIds = new Set<string>()
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    let pageCount = 0
+
+    while (pageCount < ACP_SESSION_LIST_MAX_PAGES && sessions.length < ACP_SESSION_LIST_MAX_ITEMS) {
+      const response = await requestACPSessionListPage(
+        session.connection,
+        session.lifecycle,
+        this.cwd,
+        cursor
+      )
+      this.assertSessionActive(session)
+      pageCount += 1
+
+      collectSessionListItems(response.sessions, this.cwd, seenSessionIds, sessions)
+
+      if (sessions.length >= ACP_SESSION_LIST_MAX_ITEMS) break
+      cursor = normalizeSessionListCursor(response.nextCursor, seenCursors) ?? undefined
+      if (!cursor) break
+    }
+
+    this.assertSessionActive(session)
+    sortSessionListItems(sessions)
+    appendAcpDebugEntry('list_sessions_response', {
+      pages: pageCount,
+      count: sessions.length
+    })
+    return sessions
   }
 
   async setSessionConfigOption(configId: string, value: string): Promise<void> {
@@ -674,8 +902,220 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     return this.destroying
   }
 
+  private assertSessionActive(session: ACPSession): void {
+    if (this.isDestroying() || this.session !== session || session.dead) {
+      throw new Error(TRANSPORT_DESTROYED_MESSAGE)
+    }
+  }
+
   private publishConfigOptions(options: readonly SessionConfigOption[]): void {
     this.onConfigOptionsChange([...options])
+  }
+
+  private publishSessionSetup(session: ACPSession): void {
+    if (this.setupSessions.has(session)) return
+    this.setupSessions.add(session)
+    try {
+      this.onSessionSetup({
+        ...session.openEvent,
+        capabilities: { ...session.capabilities }
+      })
+    } catch (error) {
+      appendAcpDebugEntry('session_setup_callback_error', formatConnectionError(error))
+    }
+  }
+
+  private publishSessionOpened(session: ACPSession): void {
+    if (this.openedSessionIds.has(session.sessionId)) return
+    this.openedSessionIds.add(session.sessionId)
+    try {
+      this.onSessionOpened({ ...session.openEvent })
+    } catch (error) {
+      appendAcpDebugEntry('session_opened_callback_error', formatConnectionError(error))
+    }
+  }
+
+  private handleUnexpectedClose(
+    lifecycle: ACPRequestLifecycle,
+    createdSession: ACPSession | null
+  ): void {
+    const wasCurrentLifecycle = this.requestLifecycle === lifecycle
+    closeRequestLifecycle(lifecycle, new Error(AGENT_EXITED_MESSAGE))
+    if (wasCurrentLifecycle) this.requestLifecycle = null
+
+    let session: ACPSession | null = null
+    if (this.session?.lifecycle === lifecycle) session = this.session
+    else if (createdSession?.lifecycle === lifecycle) session = createdSession
+    if (!session) {
+      if (wasCurrentLifecycle) this.publishConfigOptions([])
+      return
+    }
+
+    session.dead = true
+    session.diagnosticsEnabled = false
+    cancelPermissionsForSession(session.sessionId)
+    session.updates.setHandler(null)
+    session.updates.clear()
+    if (this.session === session) {
+      this.session = null
+      this.publishConfigOptions([])
+    }
+  }
+
+  private async openAgentSession(
+    connection: ClientSideConnection,
+    lifecycle: ACPRequestLifecycle,
+    mcpServers: McpServer[],
+    canResume: boolean,
+    updates: ReturnType<typeof createSessionUpdateBuffer>,
+    configUpdateState: ACPConfigUpdateState
+  ): Promise<ACPSessionSetup> {
+    const initialSessionId = this.resumeSessionId
+    if (!initialSessionId) {
+      const result = await requestWithLifecycle(lifecycle, () =>
+        connection.newSession({ cwd: this.cwd, mcpServers })
+      )
+      return { result, openEvent: { sessionId: result.sessionId, method: 'new' } }
+    }
+    if (!canResume) {
+      const restoreError = `The ACP agent "${this.agentDef.name}" does not support session/resume.`
+      if (this.resumeFallback === 'error') {
+        throw new Error(restoreError)
+      }
+      const result = await requestWithLifecycle(lifecycle, () =>
+        connection.newSession({ cwd: this.cwd, mcpServers })
+      )
+      return {
+        result,
+        openEvent: { sessionId: result.sessionId, method: 'new', restoreError }
+      }
+    }
+
+    try {
+      const resumeResult = await requestWithLifecycle(lifecycle, () =>
+        connection.unstable_resumeSession({
+          cwd: this.cwd,
+          mcpServers,
+          sessionId: initialSessionId
+        })
+      )
+      if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
+      appendAcpDebugEntry('resume_session_response', {
+        sessionId: initialSessionId,
+        ...resumeResult
+      })
+      return {
+        result: { ...resumeResult, sessionId: initialSessionId },
+        openEvent: { sessionId: initialSessionId, method: 'resume' }
+      }
+    } catch (error) {
+      if (this.isDestroying() || lifecycle.closedError) throw error
+      const restoreError = formatConnectionError(error, this.agentDef)
+      appendAcpDebugEntry('resume_session_error', {
+        sessionId: initialSessionId,
+        error: restoreError
+      })
+      if (this.resumeFallback === 'error') throw new Error(restoreError)
+      updates.discardPending()
+      configUpdateState.latest = null
+      const result = await requestWithLifecycle(lifecycle, () =>
+        connection.newSession({ cwd: this.cwd, mcpServers })
+      )
+      return {
+        result,
+        openEvent: { sessionId: result.sessionId, method: 'new', restoreError }
+      }
+    }
+  }
+
+  private createClient(
+    lifecycle: ACPRequestLifecycle,
+    updates: ReturnType<typeof createSessionUpdateBuffer>,
+    state: ACPSpawnState
+  ): Client {
+    return {
+      requestPermission: async (
+        params: RequestPermissionRequest
+      ): Promise<RequestPermissionResponse> => {
+        if (this.cancellingSessionIds.has(params.sessionId)) {
+          return { outcome: { outcome: 'cancelled' } }
+        }
+        return requestPermissionFromUser(params)
+      },
+
+      sessionUpdate: async (params: SessionNotification): Promise<void> => {
+        if (this.isDestroying()) return
+        if (state.diagnosticsEnabled) {
+          appendAcpDebugEntry(params.update.sessionUpdate, params)
+          recordAcpSessionUpdate(params.update)
+        }
+        if (params.update.sessionUpdate === 'config_option_update') {
+          const configOptions = [...params.update.configOptions]
+          state.configUpdateState.latest = { sessionId: params.sessionId, configOptions }
+          let session: ACPSession | null = null
+          if (state.createdSession?.sessionId === params.sessionId) {
+            session = state.createdSession
+          } else if (
+            this.session?.lifecycle === lifecycle &&
+            this.session.sessionId === params.sessionId
+          ) {
+            session = this.session
+          }
+          if (session) {
+            session.configOptions = configOptions
+            this.runtimeContextDirty = true
+            if (this.session === session) this.publishConfigOptions(configOptions)
+          }
+        }
+        updates.push(params)
+      }
+    }
+  }
+
+  private completeSessionSetup(
+    connection: ClientSideConnection,
+    child: TauriChild,
+    updates: ReturnType<typeof createSessionUpdateBuffer>,
+    lifecycle: ACPRequestLifecycle,
+    state: ACPSpawnState,
+    setup: ACPSessionSetup,
+    capabilities: ACPSessionCapabilities,
+    supportsImagePrompts: boolean
+  ): ACPSession {
+    const sessionResult = setup.result
+    recordAcpNewSession(sessionResult)
+    const latestConfigUpdate = state.configUpdateState.latest
+    const configOptions =
+      latestConfigUpdate?.sessionId === sessionResult.sessionId
+        ? latestConfigUpdate.configOptions
+        : [...(sessionResult.configOptions ?? [])]
+    if (latestConfigUpdate?.sessionId === sessionResult.sessionId) {
+      recordAcpConfigOptions(configOptions)
+    }
+
+    const session: ACPSession = {
+      connection,
+      sessionId: sessionResult.sessionId,
+      openEvent: setup.openEvent,
+      capabilities,
+      child,
+      updates,
+      lifecycle,
+      configOptions,
+      supportsImagePrompts,
+      dead: false,
+      get diagnosticsEnabled() {
+        return state.diagnosticsEnabled
+      },
+      set diagnosticsEnabled(value) {
+        state.diagnosticsEnabled = value
+      }
+    }
+    state.createdSession = session
+    this.sentContext = setup.openEvent.method === 'resume'
+    this.runtimeContextDirty = true
+    if (this.pendingChild === child) this.pendingChild = null
+    return session
   }
 
   private reservePrompt(session: ACPSession): ACPActivePrompt {
@@ -728,18 +1168,20 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
     this.sessionPromise = pending
     try {
       const session = await pending
-      if (this.isDestroying()) {
+      if (this.isDestroying() || session.dead || session.lifecycle.closedError) {
         if (!session.dead) {
           session.dead = true
           session.diagnosticsEnabled = false
           session.updates.clear()
           await session.child.kill()
         }
-        throw new Error(TRANSPORT_DESTROYED_MESSAGE)
+        throw session.lifecycle.closedError ?? new Error(TRANSPORT_DESTROYED_MESSAGE)
       }
 
       this.session = session
+      this.resumeSessionId = session.sessionId
       this.publishConfigOptions(session.configOptions)
+      if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
       return session
     } finally {
       if (this.sessionPromise === pending) this.sessionPromise = null
@@ -749,11 +1191,11 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
   private async spawnAgent(): Promise<ACPSession> {
     const lifecycle = createRequestLifecycle()
     this.requestLifecycle = lifecycle
-    let diagnosticsEnabled = true
-    let createdSession: ACPSession | null = null
-    const configUpdateState: {
-      latest: { sessionId: string; configOptions: SessionConfigOption[] } | null
-    } = { latest: null }
+    const state: ACPSpawnState = {
+      diagnosticsEnabled: true,
+      createdSession: null,
+      configUpdateState: { latest: null }
+    }
     let process: Awaited<ReturnType<typeof spawnAcpProcess>>
     try {
       process = await spawnAcpProcess({
@@ -762,22 +1204,8 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
         logId: this.agentDef.id,
         destroying: () => this.destroying,
         onUnexpectedClose: () => {
-          diagnosticsEnabled = false
-          const wasCurrentLifecycle = this.requestLifecycle === lifecycle
-          closeRequestLifecycle(lifecycle, new Error(AGENT_EXITED_MESSAGE))
-          if (wasCurrentLifecycle) this.requestLifecycle = null
-          const session = this.session
-          if (session?.lifecycle !== lifecycle) {
-            if (!session && wasCurrentLifecycle) this.publishConfigOptions([])
-            return
-          }
-          session.dead = true
-          session.diagnosticsEnabled = false
-          cancelPermissionsForSession(session.sessionId)
-          session.updates.setHandler(null)
-          session.updates.clear()
-          this.session = null
-          this.publishConfigOptions([])
+          state.diagnosticsEnabled = false
+          this.handleUnexpectedClose(lifecycle, state.createdSession)
         }
       })
     } catch (e) {
@@ -794,43 +1222,7 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
 
     const stream = ndJsonStream(input, output)
     const updates = createSessionUpdateBuffer()
-    const clientImpl: Client = {
-      requestPermission: async (
-        params: RequestPermissionRequest
-      ): Promise<RequestPermissionResponse> => {
-        if (this.cancellingSessionIds.has(params.sessionId)) {
-          return { outcome: { outcome: 'cancelled' } }
-        }
-        return requestPermissionFromUser(params)
-      },
-
-      sessionUpdate: async (params: SessionNotification): Promise<void> => {
-        if (this.isDestroying()) return
-        if (diagnosticsEnabled) {
-          appendAcpDebugEntry(params.update.sessionUpdate, params)
-          recordAcpSessionUpdate(params.update)
-        }
-        if (params.update.sessionUpdate === 'config_option_update') {
-          const configOptions = [...params.update.configOptions]
-          configUpdateState.latest = { sessionId: params.sessionId, configOptions }
-          let session: ACPSession | null = null
-          if (createdSession?.sessionId === params.sessionId) {
-            session = createdSession
-          } else if (
-            this.session?.lifecycle === lifecycle &&
-            this.session.sessionId === params.sessionId
-          ) {
-            session = this.session
-          }
-          if (session) {
-            session.configOptions = configOptions
-            this.runtimeContextDirty = true
-            if (this.session === session) this.publishConfigOptions(configOptions)
-          }
-        }
-        updates.push(params)
-      }
-    }
+    const clientImpl = this.createClient(lifecycle, updates, state)
 
     const connection = new ClientSideConnection((_agent: Agent) => clientImpl, stream)
     try {
@@ -848,50 +1240,37 @@ export class ACPChatTransport implements ChatTransport<UIMessage> {
       appendAcpDebugEntry('initialize_response', initializeResult)
 
       beginAcpDiagnostics(this.agentDef.name)
-      const sessionResult = await requestWithLifecycle(lifecycle, () =>
-        connection.newSession({
-          cwd: this.cwd,
-          mcpServers: buildAcpMcpServerConfigs(automationAuthToken, this.mcpServers)
-        })
+      const mcpServers = buildAcpMcpServerConfigs(automationAuthToken, this.mcpServers)
+      const capabilities: ACPSessionCapabilities = {
+        list: initializeResult.agentCapabilities?.sessionCapabilities?.list != null,
+        resume: initializeResult.agentCapabilities?.sessionCapabilities?.resume != null,
+        load: initializeResult.agentCapabilities?.loadSession === true
+      }
+      const setup = await this.openAgentSession(
+        connection,
+        lifecycle,
+        mcpServers,
+        capabilities.resume,
+        updates,
+        state.configUpdateState
       )
       if (this.isDestroying()) throw new Error(TRANSPORT_DESTROYED_MESSAGE)
-      appendAcpDebugEntry('new_session_response', sessionResult)
-      recordAcpNewSession(sessionResult)
-
-      const latestConfigUpdate = configUpdateState.latest
-      const configOptions =
-        latestConfigUpdate?.sessionId === sessionResult.sessionId
-          ? latestConfigUpdate.configOptions
-          : [...(sessionResult.configOptions ?? [])]
-      if (latestConfigUpdate?.sessionId === sessionResult.sessionId) {
-        recordAcpConfigOptions(configOptions)
-      }
-
-      const session: ACPSession = {
+      appendAcpDebugEntry('session_setup_response', {
+        method: setup.openEvent.method,
+        result: setup.result
+      })
+      return this.completeSessionSetup(
         connection,
-        sessionId: sessionResult.sessionId,
         child,
         updates,
         lifecycle,
-        configOptions,
-        supportsImagePrompts:
-          initializeResult.agentCapabilities?.promptCapabilities?.image === true,
-        dead: false,
-        get diagnosticsEnabled() {
-          return diagnosticsEnabled
-        },
-        set diagnosticsEnabled(value) {
-          diagnosticsEnabled = value
-        }
-      }
-      createdSession = session
-      this.sentContext = false
-      this.runtimeContextDirty = true
-
-      if (this.pendingChild === child) this.pendingChild = null
-      return session
+        state,
+        setup,
+        capabilities,
+        initializeResult.agentCapabilities?.promptCapabilities?.image === true
+      )
     } catch (e) {
-      diagnosticsEnabled = false
+      state.diagnosticsEnabled = false
       updates.clear()
       const message = this.isDestroying()
         ? TRANSPORT_DESTROYED_MESSAGE

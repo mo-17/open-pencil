@@ -25,17 +25,36 @@ import {
   unsplashKeyStatus
 } from '@/app/ai/chat/storage'
 import { createChatSessionManager } from '@/app/ai/chat/transports'
+import { remoteMcpSettingsSnapshot } from '@/app/ai/mcp'
+import { resolveAIModelRole } from '@/app/ai/models'
+import { getAISessionStore } from '@/app/ai/sessions'
 import { exposeChatTransportOverride } from '@/app/browser-bridge'
 import { getActiveEditorStore } from '@/app/editor/active-store'
 
 const activeTab = ref<'design' | 'code' | 'ai'>('design')
+
+function resolveACPConfigurationContext(role: NonNullable<ReturnType<typeof resolveAIModelRole>>) {
+  const selected = new Set(role.profile.featurePolicy.mcpServerIds)
+  return remoteMcpSettingsSnapshot()
+    .servers.filter((server) => selected.has(server.id))
+    .sort((first, second) => first.id.localeCompare(second.id))
+    .map((server) => ({
+      id: server.id,
+      url: server.transport.url,
+      authType: server.auth.type,
+      credentialProfileId: server.auth.type === 'bearer' ? server.auth.credentialProfileId : null
+    }))
+}
 
 const chatSession = createChatSessionManager({
   isConfigured,
   isACPProvider,
   providerID,
   credentialsReady,
-  getActiveEditorStore
+  getActiveEditorStore,
+  acpSessionStore: getAISessionStore(),
+  resolveACPModelRole: () => resolveAIModelRole('design'),
+  resolveACPConfigurationContext
 })
 
 registerAIChatEffects(chatSession.markTransportDirty)
@@ -61,6 +80,11 @@ export function useAIChat() {
     maxOutputTokens,
     acpConfigOptions: chatSession.acpConfigOptions,
     acpConfigUpdating: chatSession.acpConfigUpdating,
+    acpSessionStatus: chatSession.acpSessionStatus,
+    acpSessionHistory: chatSession.acpSessionHistory,
+    acpSessionRestoreNotice: chatSession.acpSessionRestoreNotice,
+    refreshACPSessionHistory: chatSession.refreshACPSessionHistory,
+    restoreACPSession: chatSession.restoreACPSession,
     setACPConfigOption: chatSession.setACPConfigOption,
     pexelsKeyStatus,
     setPexelsKey,

@@ -59,6 +59,25 @@ describe('saved document identity', () => {
     })
   })
 
+  test('notifies and detaches source identity listeners without breaking saves', () => {
+    const source = createDocumentSourceState()
+    const listener = vi.fn()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const unbind = source.onSourceChanged(listener)
+    source.onSourceChanged(() => {
+      throw new Error('listener failed')
+    })
+
+    source.markSourceChanged()
+    unbind()
+    source.markSourceChanged()
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(source.getSourceRevision()).toBe(2)
+    expect(warn).toHaveBeenCalledTimes(2)
+    warn.mockRestore()
+  })
+
   test('publishes the writable handle after a successful save', async () => {
     const handle = makeWritableHandle('saved.fig')
     const { actions, setSourceIdentity } = createSaveHarness(handle)
