@@ -146,7 +146,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     graph.createNode('BUTTON', page.id, {
       width: 120,
       height: 40,
-      interactiveProps: { text: 'Click me' },
+      interactiveProps: { text: 'Click me', textColor: '#F9FAFB' },
       events: {
         onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }]
       }
@@ -159,7 +159,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     // Type override (decision §12.3 #7): without lowcode/nodeType the kiwi
     // codec would have demoted this to RECTANGLE.
     expect(reimportedBtn.type).toBe('BUTTON')
-    expect(reimportedBtn.interactiveProps).toEqual({ text: 'Click me' })
+    expect(reimportedBtn.interactiveProps).toEqual({ text: 'Click me', textColor: '#F9FAFB' })
     expect(reimportedBtn.events).toEqual({
       onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }]
     })
@@ -531,7 +531,7 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual({ upload })
   })
 
-  test('INPUT validation interactiveProp round-trips through .fig (Phase 4 §19)', async () => {
+  test('INPUT text styling and validation interactiveProps round-trip through .fig', async () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]
     const validation = {
@@ -541,12 +541,19 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
       messages: { required: 'Email required', pattern: 'Bad email', custom: 'Blocked' },
       customExpr: 'email !== "blocked@x.com"'
     }
-    graph.createNode('INPUT', page.id, { name: 'Email', interactiveProps: { validation } })
+    const interactiveProps = {
+      placeholder: 'Email address',
+      value: '',
+      textColor: '#F7F4EE',
+      placeholderColor: '#8B8B93',
+      validation
+    }
+    graph.createNode('INPUT', page.id, { name: 'Email', interactiveProps })
 
     const bytes = await exportFigFile(graph)
     const reimported = await parseFigFile(bytes.buffer)
 
-    expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual({ validation })
+    expect(findFirst(reimported, 'INPUT').interactiveProps).toEqual(interactiveProps)
   })
 
   test('image + aspectRatio interactiveProps round-trip through .fig (Phase 4 §24)', async () => {

@@ -25,7 +25,9 @@ describe('compile — shadcn UI kit (Phase 3 §15)', () => {
   test('BUTTON emits <Button> + import + inlined component sources + deps + theme', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    graph.createNode('BUTTON', pageId, { interactiveProps: { text: 'Save' } })
+    graph.createNode('BUTTON', pageId, {
+      interactiveProps: { text: 'Save', textColor: '#F7F4EE' }
+    })
 
     const out = compileWith(graph, pageId, 'shadcn')
     const app = out.files.get('src/App.tsx') as string
@@ -35,6 +37,8 @@ describe('compile — shadcn UI kit (Phase 3 §15)', () => {
     expect(app).not.toContain('<button')
     // text passes through as the child
     expect(app).toContain('Save')
+    const buttonLine = app.split('\n').find((line) => line.includes('<Button ')) ?? ''
+    expect(buttonLine).toContain('text-[#F7F4EE]')
 
     // inlined kit sources
     expect(out.files.has('src/components/ui/button.tsx')).toBe(true)
@@ -100,6 +104,58 @@ describe('compile — shadcn UI kit (Phase 3 §15)', () => {
     expect(app).toContain(`import { Textarea } from '@/components/ui/textarea'`)
     expect(app).toContain('<Textarea')
     expect(out.files.has('src/components/ui/textarea.tsx')).toBe(true)
+  })
+
+  test('plain and shadcn inputs keep text colors and typography classes', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('INPUT', pageId, {
+      fontFamily: 'IBM Plex Sans',
+      fontSize: 17,
+      fontWeight: 600,
+      interactiveProps: {
+        placeholder: 'Email',
+        textColor: '#F7F4EE',
+        placeholderColor: '#8B8B93'
+      }
+    })
+    graph.createNode('TEXTAREA', pageId, {
+      fontFamily: 'Noto Sans',
+      fontSize: 15,
+      fontWeight: 700,
+      interactiveProps: {
+        placeholder: 'Notes',
+        textColor: '#112233',
+        placeholderColor: '#AABBCC'
+      }
+    })
+
+    const plain = compileWith(graph, pageId).files.get('src/App.tsx') as string
+    const shadcn = compileWith(graph, pageId, 'shadcn').files.get('src/App.tsx') as string
+    const plainInput = plain.split('\n').find((line) => line.includes('<input ')) ?? ''
+    const plainTextarea = plain.split('\n').find((line) => line.includes('<textarea ')) ?? ''
+    const kitInput = shadcn.split('\n').find((line) => line.includes('<Input ')) ?? ''
+    const kitTextarea = shadcn.split('\n').find((line) => line.includes('<Textarea ')) ?? ''
+
+    for (const line of [plainInput, kitInput]) {
+      expect(line).toContain('text-[#F7F4EE]')
+      expect(line).toContain('placeholder:text-[#8B8B93]')
+      expect(line).toContain('font-[IBM_Plex_Sans]')
+      expect(line).toContain('text-[17px]')
+      expect(line).toContain('font-semibold')
+    }
+    for (const line of [plainTextarea, kitTextarea]) {
+      expect(line).toContain('text-[#112233]')
+      expect(line).toContain('placeholder:text-[#AABBCC]')
+      expect(line).toContain('font-[Noto_Sans]')
+      expect(line).toContain('text-[15px]')
+      expect(line).toContain('font-bold')
+    }
+
+    expect(plainInput).toContain('<input ')
+    expect(plainTextarea).toContain('<textarea ')
+    expect(kitInput).toContain('<Input ')
+    expect(kitTextarea).toContain('<Textarea ')
   })
 
   test('only the used components are inlined (BUTTON-only doc has no input/textarea)', () => {

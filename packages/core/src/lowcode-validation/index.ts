@@ -60,9 +60,13 @@ export {
 } from './datepicker-props'
 
 export {
+  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
+  DEFAULT_LOWCODE_TEXT_COLOR,
   type InteractivePropsIssue,
   type InteractivePropsIssueSeverity,
   isInteractivePropsObject,
+  isLowcodeTextColor,
+  normalizeLowcodeTextColor,
   validateInteractiveProps
 } from './interactive-props'
 

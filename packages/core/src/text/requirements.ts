@@ -4,7 +4,7 @@ import { DEFAULT_FONT_FAMILY } from '#core/constants'
 import { transformTextCase } from '#core/text/case'
 import { cjkFallbackScriptForLanguage, type FontFallbackScript } from '#core/text/fallbacks'
 import { weightToStyle } from '#core/text/font-style'
-import { buttonLabelTextNode } from '#core/text/lowcode'
+import { lowcodeTextNode } from '#core/text/lowcode'
 
 export interface NodeFontFace {
   family: string
@@ -57,7 +57,7 @@ export function collectGraphFontKeys(
   const collect = (nodeId: string) => {
     const node = graph.getNode(nodeId)
     if (!node) return
-    const textNode = buttonLabelTextNode(node) ?? node
+    const textNode = lowcodeTextNode(node) ?? node
     for (const { family, style } of requiredNodeFontFaces(textNode)) {
       fontKeys.add(`${family}\0${style}`)
     }
@@ -99,7 +99,7 @@ export function collectGraphFontRequirements(
   const collect = (nodeId: string) => {
     const node = graph.getNode(nodeId)
     if (!node) return
-    const textNode = buttonLabelTextNode(node) ?? node
+    const textNode = lowcodeTextNode(node) ?? node
     nodes.push(textNode)
     if (textNode.type === 'TEXT') {
       let index = 0

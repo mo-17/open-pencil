@@ -4,10 +4,14 @@ import { validateInteractiveProps } from '@open-pencil/core/lowcode-validation'
 
 const INVALID_KNOWN_FIELDS = [
   ['BUTTON', 'text', 42, 'a string'],
+  ['BUTTON', 'textColor', 'black', 'a #RRGGBB color'],
   ['INPUT', 'placeholder', false, 'a string'],
   ['INPUT', 'value', 42, 'a string'],
+  ['INPUT', 'textColor', 'white', 'a #RRGGBB color'],
+  ['INPUT', 'placeholderColor', '#12345G', 'a #RRGGBB color'],
   ['TEXTAREA', 'placeholder', [], 'a string'],
   ['TEXTAREA', 'value', {}, 'a string'],
+  ['TEXTAREA', 'textColor', '#FFF', 'a #RRGGBB color'],
   ['SELECT', 'options', ['Valid', 7], 'an array of strings'],
   ['SELECT', 'value', true, 'a string'],
   ['RADIO', 'options', 'Free,Pro', 'an array of strings'],
@@ -80,9 +84,20 @@ describe('validateInteractiveProps', () => {
 
   test('accepts known field types alongside unknown extension keys', () => {
     const cases = [
-      ['BUTTON', { text: 'Save' }],
-      ['INPUT', { placeholder: 'Email', value: '' }],
-      ['TEXTAREA', { placeholder: 'Bio', value: 'Hello' }],
+      ['BUTTON', { text: 'Save', textColor: '#F9FAFB' }],
+      [
+        'INPUT',
+        {
+          placeholder: 'Email',
+          value: '',
+          textColor: '#F7F4EE',
+          placeholderColor: '#8B8B93'
+        }
+      ],
+      [
+        'TEXTAREA',
+        { placeholder: 'Bio', value: 'Hello', textColor: '#111827', placeholderColor: '#6B7280' }
+      ],
       ['SELECT', { options: ['Admin'], value: 'Admin' }],
       ['RADIO', { options: ['Free'], value: 'Free', groupName: 'plans' }],
       ['CHECKBOX', { options: ['News'], checked: false }],

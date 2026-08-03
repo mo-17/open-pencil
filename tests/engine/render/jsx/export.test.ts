@@ -261,13 +261,15 @@ describe('sceneNodeToJSX', () => {
     const root = source.createNode('FRAME', pageId(source), { name: 'Round-trip controls' })
     source.createNode('BUTTON', root.id, {
       name: 'Submit',
-      interactiveProps: { text: 'Save' }
+      interactiveProps: { text: 'Save', textColor: '#F9FAFB' }
     })
     source.createNode('INPUT', root.id, {
       name: 'Email',
       interactiveProps: {
         placeholder: 'Email address',
         value: 'ada@example.com',
+        textColor: '#F7F4EE',
+        placeholderColor: '#8B8B93',
         validation: { required: true }
       }
     })
@@ -297,7 +299,12 @@ describe('sceneNodeToJSX', () => {
     })
     source.createNode('TEXTAREA', root.id, {
       name: 'Bio',
-      interactiveProps: { placeholder: 'About you', value: 'Hello' }
+      interactiveProps: {
+        placeholder: 'About you',
+        value: 'Hello',
+        textColor: '#111827',
+        placeholderColor: '#6B7280'
+      }
     })
     source.createNode('DATEPICKER', root.id, {
       name: 'Birthday',
@@ -308,8 +315,15 @@ describe('sceneNodeToJSX', () => {
       interactiveProps: { checked: true }
     })
 
+    const jsx = sceneNodeToJSX(root.id, source)
+    expect(jsx).toContain('textColor="#F9FAFB"')
+    expect(jsx).toContain('textColor="#F7F4EE"')
+    expect(jsx).toContain('placeholderColor="#8B8B93"')
+    expect(jsx).toContain('textColor="#111827"')
+    expect(jsx).toContain('placeholderColor="#6B7280"')
+
     const target = makeGraph()
-    const [rendered] = await renderJSX(target, sceneNodeToJSX(root.id, source))
+    const [rendered] = await renderJSX(target, jsx)
     const renderedRoot = target.getNode(rendered.id)
     expect(renderedRoot).toBeDefined()
 
@@ -327,10 +341,12 @@ describe('sceneNodeToJSX', () => {
       'SWITCH'
     ])
 
-    expect(children[0]?.interactiveProps).toMatchObject({ text: 'Save' })
+    expect(children[0]?.interactiveProps).toMatchObject({ text: 'Save', textColor: '#F9FAFB' })
     expect(children[1]?.interactiveProps).toMatchObject({
       placeholder: 'Email address',
       value: 'ada@example.com',
+      textColor: '#F7F4EE',
+      placeholderColor: '#8B8B93',
       validation: { required: true }
     })
     expect(children[2]?.interactiveProps).toMatchObject({
@@ -356,7 +372,9 @@ describe('sceneNodeToJSX', () => {
     })
     expect(children[7]?.interactiveProps).toMatchObject({
       placeholder: 'About you',
-      value: 'Hello'
+      value: 'Hello',
+      textColor: '#111827',
+      placeholderColor: '#6B7280'
     })
     expect(children[8]?.interactiveProps).toMatchObject({
       value: '2026-07-27',

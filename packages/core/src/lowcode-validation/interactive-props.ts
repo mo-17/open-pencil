@@ -37,14 +37,38 @@ const KNOWN_VALIDATION_MESSAGE_KEYS = new Set([
 const KNOWN_VALIDATION_ASYNC_KEYS = new Set(['url', 'urlExpr', 'method', 'message'])
 const KNOWN_VALIDATION_SUMMARY_KEYS = new Set(['enabled', 'title'])
 
-type KnownInteractivePropKind = 'string' | 'boolean' | 'string-array'
+export const DEFAULT_LOWCODE_TEXT_COLOR = '#111827'
+export const DEFAULT_LOWCODE_PLACEHOLDER_COLOR = '#6B7280'
+
+const LOWCODE_TEXT_COLOR_RE = /^#[\dA-Fa-f]{6}$/
+
+/** Lowcode control text colors are stored as canonical, injection-safe CSS hex values. */
+export function isLowcodeTextColor(value: unknown): value is string {
+  return typeof value === 'string' && LOWCODE_TEXT_COLOR_RE.test(value)
+}
+
+export function normalizeLowcodeTextColor(value: unknown, fallback: string): string {
+  return isLowcodeTextColor(value) ? value.toUpperCase() : fallback
+}
+
+type KnownInteractivePropKind = 'string' | 'boolean' | 'string-array' | 'color'
 
 const KNOWN_INTERACTIVE_PROP_TYPES: Partial<
   Record<NodeType, Readonly<Record<string, KnownInteractivePropKind>>>
 > = {
-  BUTTON: { text: 'string' },
-  INPUT: { placeholder: 'string', value: 'string' },
-  TEXTAREA: { placeholder: 'string', value: 'string' },
+  BUTTON: { text: 'string', textColor: 'color' },
+  INPUT: {
+    placeholder: 'string',
+    value: 'string',
+    textColor: 'color',
+    placeholderColor: 'color'
+  },
+  TEXTAREA: {
+    placeholder: 'string',
+    value: 'string',
+    textColor: 'color',
+    placeholderColor: 'color'
+  },
   SELECT: { options: 'string-array', value: 'string' },
   RADIO: { options: 'string-array', value: 'string', groupName: 'string' },
   CHECKBOX: { options: 'string-array', checked: 'boolean' },
@@ -59,6 +83,7 @@ function error(code: string, path: string, reason: string): InteractivePropsIssu
 function matchesKnownPropKind(value: unknown, kind: KnownInteractivePropKind): boolean {
   if (kind === 'string') return typeof value === 'string'
   if (kind === 'boolean') return typeof value === 'boolean'
+  if (kind === 'color') return isLowcodeTextColor(value)
   return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
 }
 
@@ -73,7 +98,9 @@ function knownPropTypeIssues(
   for (const [key, kind] of Object.entries(schema)) {
     if (!(key in value) || matchesKnownPropKind(value[key], kind)) continue
     const path = `interactiveProps.${key}`
-    const expected = kind === 'string-array' ? 'an array of strings' : `a ${kind}`
+    let expected = `a ${kind}`
+    if (kind === 'string-array') expected = 'an array of strings'
+    if (kind === 'color') expected = 'a #RRGGBB color'
     issues.push(error(`interactive-props-${key}-type`, path, `${path} must be ${expected}`))
   }
   return issues

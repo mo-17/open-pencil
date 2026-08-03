@@ -82,14 +82,16 @@ type DirectInteractiveProp =
   | 'groupName'
   | 'min'
   | 'max'
+  | 'textColor'
+  | 'placeholderColor'
 
 const DIRECT_INTERACTIVE_PROPS: Partial<Record<NodeType, readonly DirectInteractiveProp[]>> = {
-  BUTTON: ['text'],
-  INPUT: ['placeholder', 'value'],
+  BUTTON: ['text', 'textColor'],
+  INPUT: ['placeholder', 'value', 'textColor', 'placeholderColor'],
   SELECT: ['options', 'value'],
   CHECKBOX: ['options', 'checked'],
   RADIO: ['options', 'value', 'groupName'],
-  TEXTAREA: ['placeholder', 'value'],
+  TEXTAREA: ['placeholder', 'value', 'textColor', 'placeholderColor'],
   DATEPICKER: ['value', 'min', 'max'],
   SWITCH: ['checked']
 }

@@ -68,8 +68,10 @@ describe('lowcode BUTTON canvas label', () => {
     expect(buttonLabelTextNode(button({ interactiveProps: { text: 42 } }))).toBeNull()
   })
 
-  test('renders the projected label after the button surface and front effects', () => {
-    const node = button()
+  test('renders the projected label in its authored color after the button surface and effects', () => {
+    const node = button({
+      interactiveProps: { text: '整理行囊', textColor: '#A1B2C3' }
+    })
     const canvas = createMockCanvas()
     const callOrder: string[] = []
     const renderText = mock((_canvas: Canvas, label: SceneNode) => {
@@ -102,7 +104,7 @@ describe('lowcode BUTTON canvas label', () => {
     expect(renderedLabel.type).toBe('TEXT')
     expect(renderedLabel.textAlignHorizontal).toBe('CENTER')
     expect(renderedLabel.textAlignVertical).toBe('CENTER')
-    expect(r.fillPaint.setColor).toHaveBeenCalledWith(r.ck.BLACK)
+    expect(r.color4f).toHaveBeenCalledWith(0xa1 / 255, 0xb2 / 255, 0xc3 / 255, 1)
   })
 
   test('draws centered CJK and punctuation through the real CanvasKit text path', async () => {

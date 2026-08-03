@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/core'
 import {
+  collectGraphFontKeys,
   collectGraphFontRequirements,
   fontManager,
   missingGraphFontScripts,
@@ -36,6 +37,41 @@ describe('font fallback coverage indexing', () => {
     expect(requirements.nodes).toHaveLength(1)
     expect(requirements.nodes[0]).toMatchObject({ id: node.id, type: 'TEXT', text: '整理行囊' })
     expect(missingGraphFontScripts(requirements)).toContain('cjk-sc')
+  })
+
+  test('includes INPUT placeholders and TEXTAREA values in font and fallback preflight', async () => {
+    const data = await Bun.file('public/Inter-Regular.ttf').arrayBuffer()
+    const inputFamily = `InputPlaceholderLatin_${Date.now()}`
+    const textareaFamily = `TextareaValueLatin_${Date.now()}`
+    fontManager.markLoaded(inputFamily, 'Regular', data)
+    fontManager.markLoaded(textareaFamily, 'Bold', data)
+    const graph = new SceneGraph()
+    const input = graph.createNode('INPUT', pageId(graph), {
+      fontFamily: inputFamily,
+      fontWeight: 400,
+      textLanguage: 'zh-CN',
+      interactiveProps: { placeholder: '请输入姓名', value: '' }
+    })
+    const textarea = graph.createNode('TEXTAREA', pageId(graph), {
+      fontFamily: textareaFamily,
+      fontWeight: 700,
+      textLanguage: 'zh-Hant-TW',
+      interactiveProps: { placeholder: 'Ignored', value: '備註' }
+    })
+
+    const requirements = collectGraphFontRequirements(graph, [input.id, textarea.id])
+
+    expect(requirements.characters).toBe('请输入姓名備註')
+    expect(requirements.nodes.map((node) => [node.id, node.type, node.text])).toEqual([
+      [input.id, 'TEXT', '请输入姓名'],
+      [textarea.id, 'TEXT', '備註']
+    ])
+    expect(requirements.scripts).toEqual(['cjk-sc', 'cjk-tc'])
+    expect(missingGraphFontScripts(requirements)).toEqual(['cjk-sc', 'cjk-tc'])
+    expect(collectGraphFontKeys(graph, [input.id, textarea.id])).toEqual([
+      [inputFamily, 'Regular'],
+      [textareaFamily, 'Bold']
+    ])
   })
 
   test('detects supplementary-plane Han code points', async () => {

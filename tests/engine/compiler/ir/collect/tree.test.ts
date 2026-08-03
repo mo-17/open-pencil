@@ -56,16 +56,19 @@ describe('collectTree (IR layer)', () => {
     expect(ir.children).toHaveLength(1)
   })
 
-  test('BUTTON → <button> with text from interactiveProps.text', () => {
+  test('BUTTON → <button> with text and label color from interactiveProps', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
-    graph.createNode('BUTTON', pageId)
+    graph.createNode('BUTTON', pageId, {
+      interactiveProps: { text: 'Save', textColor: '#F7F4EE' }
+    })
 
     const ir = collectTree(graph, pageId)
     const btn = ir.children[0] as IRElement
     expect(btn.tag).toBe('button')
     expect(btn.attrs.type).toBe('button')
-    expect(btn.children).toEqual([{ kind: 'text', value: 'Button' }])
+    expect(btn.children).toEqual([{ kind: 'text', value: 'Save' }])
+    expect(btn.className).toContain('text-[#F7F4EE]')
   })
 
   test('INPUT → <input> with placeholder attr', () => {
@@ -78,6 +81,50 @@ describe('collectTree (IR layer)', () => {
     expect(input.tag).toBe('input')
     expect(input.attrs.placeholder).toBe('Enter text')
     expect(input.children).toEqual([])
+  })
+
+  test('INPUT / TEXTAREA preserve text colors and typography in IR classes', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('INPUT', pageId, {
+      fontFamily: 'IBM Plex Sans',
+      fontSize: 17,
+      fontWeight: 600,
+      interactiveProps: {
+        placeholder: 'Email',
+        textColor: '#F7F4EE',
+        placeholderColor: '#8B8B93'
+      }
+    })
+    graph.createNode('TEXTAREA', pageId, {
+      fontFamily: 'Noto Sans',
+      fontSize: 15,
+      fontWeight: 700,
+      interactiveProps: {
+        placeholder: 'Notes',
+        textColor: '#112233',
+        placeholderColor: '#AABBCC'
+      }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const [input, textarea] = ir.children as [IRElement, IRElement]
+
+    expect(input.tag).toBe('input')
+    expect(input.attrs.placeholder).toBe('Email')
+    expect(input.className).toContain('text-[#F7F4EE]')
+    expect(input.className).toContain('placeholder:text-[#8B8B93]')
+    expect(input.className).toContain('font-[IBM_Plex_Sans]')
+    expect(input.className).toContain('text-[17px]')
+    expect(input.className).toContain('font-semibold')
+
+    expect(textarea.tag).toBe('textarea')
+    expect(textarea.attrs.placeholder).toBe('Notes')
+    expect(textarea.className).toContain('text-[#112233]')
+    expect(textarea.className).toContain('placeholder:text-[#AABBCC]')
+    expect(textarea.className).toContain('font-[Noto_Sans]')
+    expect(textarea.className).toContain('text-[15px]')
+    expect(textarea.className).toContain('font-bold')
   })
 
   test('CHECKBOX → <input type="checkbox">', () => {

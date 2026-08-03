@@ -696,7 +696,10 @@ describe('update_lowcode_node', () => {
     const pageId = graph.getPages()[0].id
     const cases = [
       ['BUTTON', { text: 42 }, 'interactiveProps.text'],
+      ['BUTTON', { textColor: 'black' }, 'interactiveProps.textColor'],
       ['INPUT', { placeholder: false }, 'interactiveProps.placeholder'],
+      ['INPUT', { textColor: 'white' }, 'interactiveProps.textColor'],
+      ['INPUT', { placeholderColor: '#12345G' }, 'interactiveProps.placeholderColor'],
       ['TEXTAREA', { value: [] }, 'interactiveProps.value'],
       ['SELECT', { options: ['Admin', 7] }, 'interactiveProps.options'],
       ['RADIO', { groupName: true }, 'interactiveProps.groupName'],
@@ -718,6 +721,55 @@ describe('update_lowcode_node', () => {
       expect(result.error).toContain(expectedPath)
       expect(graph.getNode(node.id)?.interactiveProps).toEqual(before)
     }
+  })
+
+  test('writes Input text colors that read_lowcode_node returns unchanged', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const input = graph.createNode('INPUT', pageId)
+    const update = getTool('update_lowcode_node').execute(figma, {
+      id: input.id,
+      patch: {
+        interactiveProps: {
+          ...input.interactiveProps,
+          textColor: '#F7F4EE',
+          placeholderColor: '#8B8B93'
+        }
+      }
+    }) as Result<{ id: string; updated: string[] }>
+
+    expect(update.ok).toBe(true)
+    const read = getTool('read_lowcode_node').execute(figma, { id: input.id }) as Result<{
+      interactiveProps?: Record<string, unknown>
+    }>
+    expect(read.ok).toBe(true)
+    if (!read.ok) return
+    expect(read.data?.interactiveProps).toMatchObject({
+      textColor: '#F7F4EE',
+      placeholderColor: '#8B8B93'
+    })
+  })
+
+  test('writes Button text color without replacing its label', () => {
+    const { figma, graph } = setupToolTest()
+    const pageId = graph.getPages()[0].id
+    const button = graph.createNode('BUTTON', pageId, {
+      interactiveProps: { text: 'Save' }
+    })
+    const update = getTool('update_lowcode_node').execute(figma, {
+      id: button.id,
+      patch: {
+        interactiveProps: { ...button.interactiveProps, textColor: '#F9FAFB' }
+      }
+    }) as Result<{ id: string; updated: string[] }>
+
+    expect(update.ok).toBe(true)
+    const read = getTool('read_lowcode_node').execute(figma, { id: button.id }) as Result<{
+      interactiveProps?: Record<string, unknown>
+    }>
+    expect(read.ok).toBe(true)
+    if (!read.ok) return
+    expect(read.data?.interactiveProps).toMatchObject({ text: 'Save', textColor: '#F9FAFB' })
   })
 
   test('accepts valid form validation and summary interactiveProps (§19)', () => {

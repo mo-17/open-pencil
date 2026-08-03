@@ -51,14 +51,14 @@ export const LOWCODE_INTRINSIC_ELEMENTS = [
 ] as const
 
 const INTERACTIVE_PROP_NAMES: Record<LowcodeNodeType, readonly string[]> = {
-  BUTTON: ['text'],
-  INPUT: ['placeholder', 'value'],
+  BUTTON: ['text', 'textColor'],
+  INPUT: ['placeholder', 'value', 'textColor', 'placeholderColor'],
   SELECT: ['options', 'value'],
   CHECKBOX: ['options', 'checked'],
   FORM: [],
   LIST: [],
   RADIO: ['options', 'value', 'groupName'],
-  TEXTAREA: ['placeholder', 'value'],
+  TEXTAREA: ['placeholder', 'value', 'textColor', 'placeholderColor'],
   DATEPICKER: ['value', 'min', 'max'],
   SWITCH: ['checked']
 }

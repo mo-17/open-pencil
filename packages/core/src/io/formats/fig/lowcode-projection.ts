@@ -3,11 +3,17 @@ import type { Fill, NodeType, SceneNode, Stroke } from '@open-pencil/scene-graph
 import { createDefaultNode } from '@open-pencil/scene-graph/node-defaults'
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
+import { parseColor } from '#core/color'
 import {
   createFigmaProjectionPluginData,
   FIGMA_PROJECTION_VERSION
 } from '#core/kiwi/fig/node-change/figma-projection'
 import { LOWCODE_NODE_TYPE_KEY } from '#core/kiwi/fig/node-change/lowcode-plugin-data'
+import {
+  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
+  DEFAULT_LOWCODE_TEXT_COLOR,
+  normalizeLowcodeTextColor
+} from '#core/lowcode-validation'
 
 export const FIGMA_PROJECTABLE_LOWCODE_TYPES = [
   'BUTTON',
@@ -93,6 +99,15 @@ function stringOptions(node: SceneNode): string[] {
 
 function checked(node: SceneNode): boolean {
   return node.interactiveProps?.checked === true
+}
+
+function textControlColor(node: SceneNode, placeholder: boolean): Color {
+  return parseColor(
+    normalizeLowcodeTextColor(
+      node.interactiveProps?.[placeholder ? 'placeholderColor' : 'textColor'],
+      placeholder ? DEFAULT_LOWCODE_PLACEHOLDER_COLOR : DEFAULT_LOWCODE_TEXT_COLOR
+    )
+  )
 }
 
 export function isFigmaProjectableLowcodeNode(
@@ -230,7 +245,7 @@ function addButtonProjection(builder: ProjectionBuilder, source: SceneNode): voi
     source.id,
     { role: 'label', ...(authored !== null ? { field: 'text' } : {}) },
     authored?.trim() ? authored : 'Button',
-    { color: INK, width: availableWidth(source), align: 'CENTER' }
+    { color: textControlColor(source, false), width: availableWidth(source), align: 'CENTER' }
   )
 }
 
@@ -253,7 +268,7 @@ function addTextControlProjection(
     { role: showsValue ? 'value' : 'placeholder', ...(field ? { field } : {}) },
     text,
     {
-      color: showsValue ? INK : MUTED,
+      color: textControlColor(source, !showsValue),
       width: availableWidth(source),
       height: multiline
         ? Math.max(18, source.height - source.paddingTop - source.paddingBottom)

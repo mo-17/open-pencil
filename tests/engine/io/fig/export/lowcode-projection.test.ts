@@ -4,6 +4,7 @@ import { parseFigBuffer } from '@open-pencil/fig'
 import { SceneGraph } from '@open-pencil/scene-graph'
 import type { NodeType, SceneNode } from '@open-pencil/scene-graph'
 
+import { parseColor } from '#core/color'
 import { figFormat } from '#core/io/formats'
 import { exportFigFileWithOptions } from '#core/io/formats/fig/export'
 import {
@@ -155,7 +156,7 @@ describe('Figma-compatible lowcode visual projection', () => {
     expect(button.syntheticNodes[0]).toMatchObject({
       type: 'TEXT',
       text: 'Save',
-      fills: [{ color: { r: 0.12, g: 0.14, b: 0.18, a: 1 } }]
+      fills: [{ color: parseColor('#111827') }]
     })
     expect(marker(button.syntheticNodes[0])).toEqual({
       version: FIGMA_PROJECTION_VERSION,
@@ -178,6 +179,59 @@ describe('Figma-compatible lowcode visual projection', () => {
     expect(date.syntheticNodes[0]).toMatchObject({ type: 'TEXT', text: '2026-07-27' })
     expect(marker(date.syntheticNodes[0])).toMatchObject({ role: 'value', field: 'value' })
     expect(marker(date.syntheticNodes[1])).toMatchObject({ role: 'calendar-icon' })
+  })
+
+  test('projects custom value and placeholder colors for INPUT and TEXTAREA', () => {
+    for (const type of ['INPUT', 'TEXTAREA'] as const) {
+      const valuePlan = projected(type, {
+        interactiveProps: {
+          value: 'Authored value',
+          placeholder: 'Helpful hint',
+          textColor: '#123456',
+          placeholderColor: '#ABCDEF'
+        }
+      }).plan
+      const placeholderPlan = projected(type, {
+        interactiveProps: {
+          value: '',
+          placeholder: 'Helpful hint',
+          textColor: '#123456',
+          placeholderColor: '#ABCDEF'
+        }
+      }).plan
+      const valueNode = valuePlan.syntheticNodes[0]
+      const placeholderNode = placeholderPlan.syntheticNodes[0]
+
+      expect(marker(valueNode)).toMatchObject({ role: 'value', field: 'value' })
+      expect(valueNode).toMatchObject({
+        type: 'TEXT',
+        text: 'Authored value',
+        fills: [{ color: parseColor('#123456') }]
+      })
+      expect(marker(placeholderNode)).toMatchObject({
+        role: 'placeholder',
+        field: 'placeholder'
+      })
+      expect(placeholderNode).toMatchObject({
+        type: 'TEXT',
+        text: 'Helpful hint',
+        fills: [{ color: parseColor('#ABCDEF') }]
+      })
+    }
+  })
+
+  test('projects a custom BUTTON label color independently from its background fill', () => {
+    const { plan } = projected('BUTTON', {
+      fills: [{ type: 'SOLID', color: parseColor('#123456'), opacity: 1, visible: true }],
+      interactiveProps: { text: 'Save', textColor: '#F9FAFB' }
+    })
+
+    expect(plan.root.fills).toMatchObject([{ color: parseColor('#123456') }])
+    expect(plan.syntheticNodes[0]).toMatchObject({
+      type: 'TEXT',
+      text: 'Save',
+      fills: [{ color: parseColor('#F9FAFB') }]
+    })
   })
 
   test('builds nested option rows and indexed option labels for RADIO and CHECKBOX groups', () => {
@@ -374,9 +428,9 @@ describe('Figma-compatible lowcode visual projection', () => {
       postscript: ''
     })
     const labelColor = expectDefined(projectedLabel.fillPaints?.[0]?.color, 'label color')
-    expect(labelColor.r).toBeCloseTo(0.12, 5)
-    expect(labelColor.g).toBeCloseTo(0.14, 5)
-    expect(labelColor.b).toBeCloseTo(0.18, 5)
+    expect(labelColor.r).toBeCloseTo(0x11 / 255, 5)
+    expect(labelColor.g).toBeCloseTo(0x18 / 255, 5)
+    expect(labelColor.b).toBeCloseTo(0x27 / 255, 5)
     expect(labelColor.a).toBe(1)
     expectCompleteCJKGlyphCache(parsed, projectedLabel, label)
 

@@ -15,8 +15,13 @@ import {
 
 import { colorToCSSCompact, colorToFill } from '#core/color'
 import { DEFAULT_FONT_FAMILY } from '#core/constants'
+import {
+  DEFAULT_LOWCODE_PLACEHOLDER_COLOR,
+  DEFAULT_LOWCODE_TEXT_COLOR,
+  normalizeLowcodeTextColor
+} from '#core/lowcode-validation'
 import { resolveNodeTextDirection } from '#core/text/direction'
-import { buttonLabelTextNode } from '#core/text/lowcode'
+import { lowcodeTextNode } from '#core/text/lowcode'
 
 import { formatColor, formatTrack, getNodeContext, solidFillColor, solidStroke } from './helpers'
 
@@ -422,7 +427,7 @@ function cssGradientAngle(dx: number, dy: number): number {
 }
 
 function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
-  const textNode = buttonLabelTextNode(node) ?? node
+  const textNode = lowcodeTextNode(node) ?? node
   if (textNode.type !== 'TEXT') return
   style.fontSize = px(textNode.fontSize)
   const fontFamily = normalizeFontFamily(textNode.fontFamily)
@@ -433,10 +438,25 @@ function applyTextStyle(style: Record<string, string>, node: SceneNode): void {
   if (textNode.letterSpacing !== 0) style.letterSpacing = px(textNode.letterSpacing)
   if (textNode.textAlignHorizontal !== 'LEFT')
     style.textAlign = textNode.textAlignHorizontal.toLowerCase()
-  // BUTTON fills describe the control background; canvas renders its label
-  // with the inherited/default foreground rather than reusing that fill.
-  const textColor = node.type === 'TEXT' ? solidFillColor(textNode.fills) : null
+  // BUTTON fills describe the control background; label color is a separate
+  // interactive prop shared with the canvas and Figma-compatible projection.
+  let textColor = node.type === 'TEXT' ? solidFillColor(textNode.fills) : null
+  if (node.type === 'BUTTON' || node.type === 'INPUT' || node.type === 'TEXTAREA') {
+    textColor = normalizeLowcodeTextColor(
+      node.interactiveProps?.textColor,
+      DEFAULT_LOWCODE_TEXT_COLOR
+    )
+  }
   if (textColor) style.color = textColor
+}
+
+function collectTextInputExtraClasses(node: SceneNode): string[] {
+  if (node.type !== 'INPUT' && node.type !== 'TEXTAREA') return []
+  const placeholderColor = normalizeLowcodeTextColor(
+    node.interactiveProps?.placeholderColor,
+    DEFAULT_LOWCODE_PLACEHOLDER_COLOR
+  )
+  return [`placeholder:text-[${placeholderColor}]`]
 }
 
 function nodeToStyle(
@@ -940,6 +960,7 @@ export function collectTailwindClasses(
     extraClasses.push('[direction:rtl]')
   extraClasses.push(...collectShapeExtraClasses(node))
   extraClasses.push(...collectBlendModeClasses(node))
+  extraClasses.push(...collectTextInputExtraClasses(node))
   // Phase 4 §24.2: a gradient fill → `bg-[linear-gradient(...)]` arbitrary value
   // (twirl can't express it; mirrors the clip-path bypass).
   extraClasses.push(...collectGradientClasses(node))

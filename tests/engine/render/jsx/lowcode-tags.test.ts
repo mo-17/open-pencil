@@ -56,14 +56,14 @@ describe('Design JSX lowcode tags', () => {
     const [result] = await renderJSX(
       graph,
       `<Frame name="Controls">
-        <Button name="Submit">Save</Button>
-        <Input name="Email" placeholder="Email" />
+        <Button name="Submit" textColor="#F9FAFB">Save</Button>
+        <Input name="Email" placeholder="Email" textColor="#F7F4EE" placeholderColor="#8B8B93" />
         <Select name="Role" options={['Admin', 'Editor']} value="Editor" />
         <Checkbox name="Topics" options={['News', 'Events']} checked={true} />
         <Form name="Profile form"><Input name="Nested input" /></Form>
         <List name="Results"><Text name="Row">Item</Text></List>
         <Radio name="Plan" options={['Free', 'Pro']} value="Pro" groupName="plans" />
-        <Textarea name="Bio" placeholder="About you" value="Hello" />
+        <Textarea name="Bio" placeholder="About you" value="Hello" textColor="#111827" placeholderColor="#6B7280" />
         <DatePicker name="Birthday" value="2026-07-27" min="2020-01-01" max="2030-01-01" />
         <Switch name="Alerts" checked={true} />
       </Frame>`
@@ -84,8 +84,13 @@ describe('Design JSX lowcode tags', () => {
       'SWITCH'
     ])
 
-    expect(children[0]?.interactiveProps).toMatchObject({ text: 'Save' })
-    expect(children[1]?.interactiveProps).toMatchObject({ placeholder: 'Email', value: '' })
+    expect(children[0]?.interactiveProps).toMatchObject({ text: 'Save', textColor: '#F9FAFB' })
+    expect(children[1]?.interactiveProps).toMatchObject({
+      placeholder: 'Email',
+      value: '',
+      textColor: '#F7F4EE',
+      placeholderColor: '#8B8B93'
+    })
     expect(children[2]?.interactiveProps).toMatchObject({
       options: ['Admin', 'Editor'],
       value: 'Editor'
@@ -101,7 +106,9 @@ describe('Design JSX lowcode tags', () => {
     })
     expect(children[7]?.interactiveProps).toMatchObject({
       placeholder: 'About you',
-      value: 'Hello'
+      value: 'Hello',
+      textColor: '#111827',
+      placeholderColor: '#6B7280'
     })
     expect(children[8]?.interactiveProps).toMatchObject({
       value: '2026-07-27',
@@ -207,6 +214,12 @@ describe('Design JSX lowcode tags', () => {
       'checked must be a boolean'
     )
     await expect(renderJSX(graph, `<Input value={42} />`)).rejects.toThrow('value must be a string')
+    await expect(renderJSX(graph, `<Input textColor="white" />`)).rejects.toThrow(
+      'textColor must be a #RRGGBB color'
+    )
+    await expect(renderJSX(graph, `<Button textColor="white">Save</Button>`)).rejects.toThrow(
+      'textColor must be a #RRGGBB color'
+    )
     expect(page.childIds).toEqual([])
   })
 

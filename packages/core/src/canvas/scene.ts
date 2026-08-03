@@ -24,10 +24,10 @@ import { evalCubic, isLineSegment, segmentToAbsolute } from '#core/vector/curve-
 
 import { figmaBlendModeToSkia, needsIsolatedBlendLayer } from './blend'
 import { renderBooleanOperation } from './boolean'
-import { drawGeneratedEffect } from './generated-effect'
 import { drawVectorMultiStyleFills, paintFills } from './fills'
+import { drawGeneratedEffect } from './generated-effect'
 import { drawLayoutGrids } from './layout-grids'
-import { renderButtonLabel } from './lowcode'
+import { renderButtonLabel, renderTextInputContent } from './lowcode'
 import { renderMaskedChildIds } from './masks'
 import {
   hasMotionDynamicStroke,
@@ -1234,6 +1234,7 @@ export function renderShapeUncached(
   })
   r.renderEffects(canvas, node, rect, hasRadius, 'front', shadowChild)
   if (node.type === 'BUTTON') renderButtonLabel(r, canvas, node)
+  if (node.type === 'INPUT' || node.type === 'TEXTAREA') renderTextInputContent(r, canvas, node)
 }
 
 function isGradientFill(fill?: Fill): boolean {
