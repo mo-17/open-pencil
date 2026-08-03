@@ -21,6 +21,7 @@ import type {
   PreparedMotionSamplingPlan
 } from '#core/motion'
 import type { TextEditor } from '#core/text/editor'
+import type { FontLoadOptions } from '#core/text/fonts'
 
 export type Tool =
   | 'SELECT'
@@ -191,7 +192,12 @@ export type EditorEventName = keyof EditorEvents
 export interface EditorOptions {
   graph?: SceneGraph
   state?: EditorState
-  loadFont?: (family: string, style: string, characters?: string) => Promise<ArrayBuffer | null>
+  loadFont?: (
+    family: string,
+    style: string,
+    characters?: string,
+    options?: FontLoadOptions
+  ) => Promise<ArrayBuffer | null>
   resolveFigmaClipboardImages?: FigmaClipboardImageResolver
   getViewportSize?: () => { width: number; height: number }
   prefersReducedMotion?: () => boolean
@@ -203,7 +209,12 @@ export interface EditorContext {
   set graph(g: SceneGraph)
   undo: UndoManager
   state: EditorState
-  loadFont: (family: string, style: string, characters?: string) => Promise<ArrayBuffer | null>
+  loadFont: (
+    family: string,
+    style: string,
+    characters?: string,
+    options?: FontLoadOptions
+  ) => Promise<ArrayBuffer | null>
   resolveFigmaClipboardImages: FigmaClipboardImageResolver | null
   getViewportSize: () => { width: number; height: number }
   prefersReducedMotion: () => boolean

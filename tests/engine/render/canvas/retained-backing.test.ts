@@ -25,6 +25,7 @@ function createRenderer(surfaceFactory: (descriptor?: unknown) => Surface | null
         right,
         bottom
       ]),
+      ClipOp: { Intersect: 'Intersect' },
       FilterMode: { Linear: 'Linear' },
       MipmapMode: { None: 'None' }
     } as SkiaRenderer['ck'],
@@ -184,12 +185,7 @@ test('scene-version changes rebuild incrementally while presenting the last-good
     save: mock(),
     scale: mock(),
     translate: mock(),
-    drawPicture: mock(() => {
-      const startedAt = performance.now()
-      while (performance.now() - startedAt < 8) {
-        // Force the incremental builder to yield after one root.
-      }
-    }),
+    clipRect: mock(),
     restoreToCount: mock()
   }
   const buildCanvas = partialBuildCanvas as Canvas
@@ -201,6 +197,8 @@ test('scene-version changes rebuild incrementally while presenting the last-good
   }
   const buildSurface = partialBuildSurface as Surface
   const r = createRenderer(() => buildSurface)
+  r.viewportWidth = 400
+  r.viewportHeight = 400
   const oldImage = { delete: mock() } as CKImage
   r.sceneBacking = {
     image: oldImage,
@@ -224,20 +222,14 @@ test('scene-version changes rebuild incrementally while presenting the last-good
   r.pageId = page.id
   r.sceneBacking.pageId = page.id
   const first = graph.createNode('RECTANGLE', page.id, { width: 10, height: 10 })
-  const second = graph.createNode('RECTANGLE', page.id, { x: 20, width: 10, height: 10 })
+  graph.createNode('RECTANGLE', page.id, { x: 20, width: 10, height: 10 })
+  const stalePicture = { delete: mock() }
   r.subtreePictureCachePageId = page.id
   r.subtreePictureCacheSceneVersion = 2
   r.subtreePictureCachePositionPreviewVersion = graph.positionPreviewVersion
   r.subtreePictureCacheFontGeneration = r.fontGeneration
   r.subtreePictureCache.set(first.id, {
-    picture: { delete: mock() } as SkPicture,
-    pageId: page.id,
-    sceneVersion: 2,
-    positionPreviewVersion: graph.positionPreviewVersion,
-    fontGeneration: r.fontGeneration
-  })
-  r.subtreePictureCache.set(second.id, {
-    picture: { delete: mock() } as SkPicture,
+    picture: stalePicture as SkPicture,
     pageId: page.id,
     sceneVersion: 2,
     positionPreviewVersion: graph.positionPreviewVersion,
@@ -250,16 +242,21 @@ test('scene-version changes rebuild incrementally while presenting the last-good
   expect(r.sceneBacking?.image).toBe(oldImage)
   expect(oldImage.delete).not.toHaveBeenCalled()
   expect(canvas.drawImageRectOptions).toHaveBeenCalled()
+  expect(partialBuildSurface.flush).toHaveBeenCalledTimes(1)
+  expect(partialBuildSurface.makeImageSnapshot).not.toHaveBeenCalled()
+  expect(r.sceneBackingNeedsCrispRender).toBe(true)
+  expect(r.subtreePictureCache.size).toBe(0)
+  expect(stalePicture.delete).toHaveBeenCalledTimes(1)
 })
 
-test('retained backing skips offscreen top-level subtrees and releases recording pictures', () => {
+test('first retained backing slices one huge top-level root and installs only the final snapshot', () => {
   const partialBuildCanvas: Partial<Canvas> = {
     clear: mock(),
     getSaveCount: mock(() => 0),
     save: mock(),
     scale: mock(),
     translate: mock(),
-    drawPicture: mock(),
+    clipRect: mock(),
     restoreToCount: mock()
   }
   const buildCanvas = partialBuildCanvas as Canvas
@@ -271,30 +268,102 @@ test('retained backing skips offscreen top-level subtrees and releases recording
     delete: mock()
   }
   const r = createRenderer(() => partialBuildSurface as Surface)
+  r.viewportWidth = 400
+  r.viewportHeight = 400
   const graph = new SceneGraph()
   const page = graph.getPages()[0]
   r.pageId = page.id
-  const visible = graph.createNode('RECTANGLE', page.id, { width: 10, height: 10 })
-  graph.createNode('RECTANGLE', page.id, { x: 1_000, width: 10, height: 10 })
-  const visiblePicture = { delete: mock() }
-  r.subtreePictureCachePageId = page.id
-  r.subtreePictureCacheSceneVersion = 1
-  r.subtreePictureCachePositionPreviewVersion = graph.positionPreviewVersion
-  r.subtreePictureCacheFontGeneration = r.fontGeneration
-  r.subtreePictureCache.set(visible.id, {
-    picture: visiblePicture as SkPicture,
-    pageId: page.id,
-    sceneVersion: 1,
-    positionPreviewVersion: graph.positionPreviewVersion,
-    fontGeneration: r.fontGeneration
+  const hugeRoot = graph.createNode('FRAME', page.id, {
+    x: -500,
+    y: -500,
+    width: 2_000,
+    height: 2_000
   })
+  const canvas = createCanvas()
+
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
+  expect(r.sceneBackingBuild?.index).toBe(1)
+  expect(r.sceneBacking).toBeNull()
+  expect(partialBuildSurface.flush).toHaveBeenCalledTimes(1)
+  expect(partialBuildSurface.makeImageSnapshot).not.toHaveBeenCalled()
+  expect(canvas.drawImageRectOptions).not.toHaveBeenCalled()
+  expect(r.renderNode).toHaveBeenCalledTimes(1)
+  expect(r.renderNode).toHaveBeenLastCalledWith(buildCanvas, graph, hugeRoot.id, {})
+  expect(r.sceneBackingNeedsCrispRender).toBe(true)
+
+  expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
+  expect(r.sceneBackingBuild?.index).toBe(2)
+  expect(r.sceneBacking).toBeNull()
+  expect(partialBuildSurface.flush).toHaveBeenCalledTimes(2)
+  expect(partialBuildSurface.makeImageSnapshot).not.toHaveBeenCalled()
+  expect(canvas.drawImageRectOptions).not.toHaveBeenCalled()
+
+  let buildSteps = 2
+  while (r.sceneBackingBuild && buildSteps < 20) {
+    expect(renderSceneBacking(r, canvas, graph, 1)).toBe(true)
+    buildSteps++
+  }
+
+  expect(buildSteps).toBe(9)
+  expect(partialBuildSurface.flush).toHaveBeenCalledTimes(buildSteps)
+  expect(partialBuildSurface.makeImageSnapshot).toHaveBeenCalledTimes(1)
+  expect(partialBuildSurface.delete).toHaveBeenCalledTimes(1)
+  expect(r.renderNode).toHaveBeenCalledTimes(buildSteps)
+  expect(partialBuildCanvas.clipRect).toHaveBeenCalledTimes(buildSteps)
+  expect(r.sceneBackingBuild).toBeNull()
+  expect(r.sceneBacking?.image).toBe(snapshot)
+  expect(canvas.drawImageRectOptions).toHaveBeenCalledTimes(1)
+  expect(r.sceneBackingNeedsCrispRender).toBe(false)
+})
+
+test('retained backing expands tile culling for effects larger than the default seam padding', () => {
+  const partialBuildCanvas: Partial<Canvas> = {
+    clear: mock(),
+    getSaveCount: mock(() => 0),
+    save: mock(),
+    scale: mock(),
+    translate: mock(),
+    clipRect: mock(),
+    restoreToCount: mock()
+  }
+  const partialBuildSurface: Partial<Surface> = {
+    getCanvas: mock(() => partialBuildCanvas as Canvas),
+    flush: mock(),
+    makeImageSnapshot: mock(),
+    delete: mock()
+  }
+  const r = createRenderer(() => partialBuildSurface as Surface)
+  r.viewportWidth = 400
+  r.viewportHeight = 400
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  r.pageId = page.id
+  graph.createNode('RECTANGLE', page.id, {
+    width: 100,
+    height: 100,
+    effects: [
+      {
+        type: 'DROP_SHADOW',
+        color: { r: 0, g: 0, b: 0, a: 1 },
+        offset: { x: 0, y: 0 },
+        radius: 300,
+        spread: 0,
+        visible: true
+      }
+    ]
+  })
+  const visitedViewports: SkiaRenderer['worldViewport'][] = []
+  r.renderNode = mock(() => visitedViewports.push({ ...r.worldViewport }))
 
   expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe(true)
-  expect(buildCanvas.drawPicture).toHaveBeenCalledTimes(1)
-  expect(buildCanvas.drawPicture).toHaveBeenCalledWith(visiblePicture)
-  expect(r.sceneBacking?.image).toBe(snapshot)
-  expect(r.subtreePictureCache.size).toBe(0)
-  expect(visiblePicture.delete).toHaveBeenCalledTimes(1)
+  expect(visitedViewports).toEqual([
+    {
+      x: -400,
+      y: -400,
+      w: 1_200,
+      h: 1_200
+    }
+  ])
 })
 
 test('retained scene backing filters cross-zoom previews instead of falling back to live rendering', () => {

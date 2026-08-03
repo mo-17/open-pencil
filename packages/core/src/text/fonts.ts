@@ -729,6 +729,22 @@ export class FontManager {
   ): Promise<string[]> {
     const manifest = fontFallbackEntry(script, this.fallbackUserAgent)
 
+    // The desktop host can return an entire TTC collection for a system CJK face. On macOS that
+    // makes the otherwise convenient PingFang fallback copy tens of megabytes through IPC before
+    // the first useful frame. Prefer OpenPencil's bounded, offline Noto Sans SC asset for generic
+    // and Simplified Chinese text; keep platform-native ordering for TC/JP/KR glyph conventions.
+    const bundledFirst =
+      script === 'cjk' || script === 'cjk-sc'
+        ? manifest.remoteFamilies.filter((family) => BUNDLED_FONT_URLS[`${family}|Regular`])
+        : []
+    for (const family of bundledFirst) {
+      const data = await this.loadFont(family, 'Regular', characters)
+      if (!data) continue
+      if (!scriptFamilies.includes(family)) scriptFamilies.push(family)
+      if (!targetFamilies.includes(family)) targetFamilies.push(family)
+      return scriptFamilies
+    }
+
     for (const family of manifest.localFamilies) {
       const buffer =
         (await this.loadHostFont(family, 'Regular')) ??
@@ -743,6 +759,7 @@ export class FontManager {
     }
 
     for (const family of manifest.remoteFamilies) {
+      if (bundledFirst.includes(family)) continue
       // A remote fallback family may also have a bundled, cached, or host face
       // (notably the bundled Noto Sans SC). Stop at the first usable candidate;
       // registering every candidate retains several multi-megabyte faces.

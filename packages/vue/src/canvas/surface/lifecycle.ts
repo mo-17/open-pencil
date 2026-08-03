@@ -232,6 +232,12 @@ export function createCanvasSurfaceManager({
   }
 
   function renderNow(): boolean {
+    if (editor.state.loading) {
+      // kit-loader and font reloads can call renderNow directly, outside the guarded RAF loop.
+      // Keep the frame dirty; the loading lease's repaint event will schedule it once usable.
+      renderLoop.markDirty()
+      return false
+    }
     const renderer = state.renderer
     const canvas = canvasRef.value
     if (!canvas || isDestroyed() || state.contextLost) return false

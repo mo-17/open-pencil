@@ -120,7 +120,7 @@ test('page changes release document-scoped resources from every canvas renderer'
   }
 })
 
-test('a superseded slow page switch cannot render over the latest page', async () => {
+test('a superseded page font load cannot render over the latest page', async () => {
   const graph = new SceneGraph()
   const slowPage = graph.addPage('Slow')
   const fastPage = graph.addPage('Fast')
@@ -139,16 +139,22 @@ test('a superseded slow page switch cannot render over the latest page', async (
 
   const slowSwitch = editor.switchPage(slowPage.id)
   await fontStarted.promise
+  const rendersBeforeSupersede = renders
   const fastSwitch = editor.switchPage(fastPage.id)
   await Promise.all([slowSwitch, fastSwitch])
 
   expect(editor.state.currentPageId).toBe(fastPage.id)
   expect(editor.state.loading).toBe(false)
-  expect(renders).toBe(1)
+  expect(renders).toBe(rendersBeforeSupersede + 1)
+  const rendersAfterFastSwitch = renders
   fontLoad.resolve(null)
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+  expect(renders).toBe(rendersAfterFastSwitch)
 })
 
-test('graph replacement cancels a page switch waiting on the previous graph', async () => {
+test('graph replacement cancels a page font load for the previous graph', async () => {
   const graph = new SceneGraph()
   const slowPage = graph.addPage('Slow')
   const family = uniqueFontFamily('Replaced Switch')
@@ -169,6 +175,7 @@ test('graph replacement cancels a page switch waiting on the previous graph', as
 
   const switching = editor.switchPage(slowPage.id)
   await fontStarted.promise
+  const rendersBeforeReplacement = renders
   const replacement = new SceneGraph()
   const replacementPage = replacement.getPages()[0]
   editor.replaceGraph(replacement)
@@ -177,8 +184,13 @@ test('graph replacement cancels a page switch waiting on the previous graph', as
   expect(editor.graph).toBe(replacement)
   expect(editor.state.currentPageId).toBe(replacementPage.id)
   expect(editor.state.loading).toBe(false)
-  expect(renders).toBe(1)
+  expect(renders).toBe(rendersBeforeReplacement + 1)
+  const rendersAfterReplacement = renders
   fontLoad.resolve(null)
+  await new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+  expect(renders).toBe(rendersAfterReplacement)
 })
 
 test('graph replacement clears renderer resources even when the page ID is unchanged', () => {

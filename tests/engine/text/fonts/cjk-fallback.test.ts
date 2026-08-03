@@ -30,4 +30,19 @@ describe('offline CJK fallback (bundled Noto Sans SC)', () => {
     expect(families['cjk-sc']).toContain('Noto Sans SC')
     expect(fm.getCJKFallbackFamilies()).toContain('Noto Sans SC')
   })
+
+  test('Simplified Chinese avoids copying a platform TTC when the bundled face is available', async () => {
+    const fm = new FontManager()
+    const hostRequests: string[] = []
+    fm.setFallbackUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')
+    fm.setHostFontLoader(async (family) => {
+      hostRequests.push(family)
+      return family === 'PingFang SC' ? new ArrayBuffer(1024) : null
+    })
+
+    const families = await fm.ensureFallbackPack(['cjk-sc'], '整理行囊')
+
+    expect(families['cjk-sc']).toEqual(['Noto Sans SC'])
+    expect(hostRequests).not.toContain('PingFang SC')
+  })
 })

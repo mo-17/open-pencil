@@ -159,3 +159,34 @@ test('failed surface recreation keeps the old renderer and re-presents its frame
 
   manager.destroy()
 })
+
+test('direct renders wait until the editor loading lease is released', () => {
+  installWindow()
+  const events: string[] = []
+  const canvas = createCanvas()
+  const editor = createEditor(events)
+  editor.state.loading = true
+  const renderer = createRenderer('loading', events)
+  const manager = createCanvasSurfaceManager({
+    editor,
+    canvasRef: { value: canvas },
+    options: { layer: 'scene' },
+    getCanvasKit: () => ({}) as CanvasKit,
+    isDestroyed: () => false,
+    shouldShowRulers: () => false,
+    dependencies: {
+      makeSurface: mock(() => ({ surface: createSurface(), glContext: null })),
+      makeRenderer: mock(() => renderer)
+    }
+  })
+
+  expect(manager.createSurface(canvas)).toBe(true)
+  expect(manager.renderNow()).toBe(false)
+  expect(renderer.renderFromEditorState).not.toHaveBeenCalled()
+
+  editor.state.loading = false
+  expect(manager.renderNow()).toBe(true)
+  expect(renderer.renderFromEditorState).toHaveBeenCalledTimes(1)
+
+  manager.destroy()
+})
