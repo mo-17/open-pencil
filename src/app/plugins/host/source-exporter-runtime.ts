@@ -1,4 +1,5 @@
 import {
+  compile,
   resolveCompilerWebFonts,
   type CompilerFontManifest,
   type CompilerInput,
@@ -15,9 +16,11 @@ import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
 
 import { throwIfPluginExportAborted } from './exporter-abort'
+import type { AppPluginExporterExecutionResult } from './exporter-types'
+import { archiveProjectFiles } from './project-archive'
 import { safeSourceProjectPackageName, safeSourceProjectProductName } from './source-project'
 
-export { archiveProjectFiles as archiveSourceProjectFiles } from './project-archive'
+export { archiveProjectFiles as archiveSourceProjectFiles }
 
 export interface SourceExporterEditor {
   graph: EditorStore['graph']
@@ -25,7 +28,7 @@ export interface SourceExporterEditor {
 }
 
 export interface SourceProjectExportDestination {
-  write(data: Uint8Array, signal?: AbortSignal): Promise<void>
+  write(data: Uint8Array, signal?: AbortSignal): Promise<boolean> | Promise<void>
 }
 
 export interface SourceProjectFontPolicyResult {
@@ -50,6 +53,28 @@ export interface SourceProjectExporterDependencies<TEditor extends SourceExporte
   ): Promise<SourceProjectExportDestination | null>
 }
 
+export type SourceProjectExportResult = AppPluginExporterExecutionResult<CompileWarning>
+
+interface SourceProjectCompilerInputContext<TEditor extends SourceExporterEditor> {
+  editor: TEditor
+  pageIds: string[]
+  fontManifest: CompilerFontManifest
+}
+
+export interface RunSourceProjectExportOptions<TEditor extends SourceExporterEditor> {
+  editor: TEditor
+  dependencies: SourceProjectExporterDependencies<TEditor>
+  fileName: string
+  signal?: AbortSignal
+  compilerTargetName?: string
+  applyFontPolicy?: (manifest: CompilerFontManifest) => SourceProjectFontPolicyResult
+  createCompilerInput(context: SourceProjectCompilerInputContext<TEditor>): CompilerInput
+  buildProject(
+    compiledFiles: ReadonlyMap<string, string | Uint8Array>,
+    warnings: readonly CompileWarning[]
+  ): Map<string, string | Uint8Array>
+}
+
 function isAbortSignal(value: unknown): value is AbortSignal {
   return (
     typeof value === 'object' &&
@@ -72,6 +97,60 @@ export function resolveSourceExporterInvocation<TDependencies>(
         dependencies: dependenciesOrSignal ?? defaultDependencies,
         signal: explicitSignal
       }
+}
+
+function requireSourceProjectCompilerFiles(compiled: CompilerOutput, targetName?: string): void {
+  if (compiled.files.size > 0) return
+  const warningCodes = compiled.warnings.map((warning) => warning.code).join(', ')
+  const target = targetName ? ` ${targetName}` : ''
+  throw new Error(
+    `Compiler produced no${target} project files${warningCodes ? ` (${warningCodes})` : ''}`
+  )
+}
+
+export async function runSourceProjectExport<TEditor extends SourceExporterEditor>(
+  options: RunSourceProjectExportOptions<TEditor>
+): Promise<SourceProjectExportResult> {
+  const { editor, dependencies, fileName, signal } = options
+  throwIfPluginExportAborted(signal)
+  const pageIds = editor.graph.getPages().map(({ id }) => id)
+  if (pageIds.length === 0) throw new Error('The current document has no pages to export')
+
+  const destination = await dependencies.chooseDestination(fileName, signal)
+  throwIfPluginExportAborted(signal)
+  if (!destination) return { fileName, fileCount: 0, warnings: [], saved: false }
+
+  const resolvedFontManifest = await dependencies.resolveFontManifest(editor, pageIds, signal)
+  throwIfPluginExportAborted(signal)
+  const fontPolicy = options.applyFontPolicy?.(resolvedFontManifest) ?? {
+    manifest: resolvedFontManifest,
+    warnings: []
+  }
+  const compiled = dependencies.compile(
+    options.createCompilerInput({ editor, pageIds, fontManifest: fontPolicy.manifest })
+  )
+  throwIfPluginExportAborted(signal)
+  requireSourceProjectCompilerFiles(compiled, options.compilerTargetName)
+
+  const warnings = [...fontPolicy.warnings, ...compiled.warnings]
+  const project = options.buildProject(compiled.files, warnings)
+  const archive = await dependencies.archive(project, signal)
+  throwIfPluginExportAborted(signal)
+  const saved = (await destination.write(archive, signal)) ?? true
+  return { fileName, fileCount: project.size, warnings, saved }
+}
+
+export function createDefaultSourceProjectExporterDependencies<
+  TEditor extends SourceExporterEditor
+>(description: string): SourceProjectExporterDependencies<TEditor> {
+  return Object.freeze({
+    resolveFontManifest: resolveSourceExporterFontManifest,
+    compile,
+    archive: archiveProjectFiles,
+    chooseDestination(fileName: string, signal?: AbortSignal) {
+      return chooseSourceProjectDestination(fileName, description, signal)
+    }
+  })
 }
 
 export function sourceProjectNames(documentName: string): { package: string; product: string } {

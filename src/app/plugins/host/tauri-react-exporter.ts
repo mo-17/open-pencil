@@ -1,20 +1,21 @@
-import { compile, withDefaults, type CompileWarning } from '@open-pencil/compiler'
+import { withDefaults } from '@open-pencil/compiler'
 import { isPlainJsonObject } from '@open-pencil/scene-graph'
 
 import { saveExportedFile } from '@/app/document/export/files'
 import { downloadBlob } from '@/app/document/io/browser'
 import type { EditorStore } from '@/app/editor/active-store'
 
-import { throwIfPluginExportAborted } from './exporter-abort'
-import type { AppPluginExporterExecutionResult } from './exporter-types'
 import {
-  archiveSourceProjectFiles,
   chooseSourceProjectDestination,
-  resolveSourceExporterFontManifest,
-  sourceProjectNames
+  createDefaultSourceProjectExporterDependencies,
+  runSourceProjectExport,
+  sourceProjectNames,
+  type SourceProjectExportDestination,
+  type SourceProjectExporterDependencies,
+  type SourceProjectExportResult
 } from './source-exporter-runtime'
 
-export type TauriReactExportResult = AppPluginExporterExecutionResult<CompileWarning>
+export type TauriReactExportResult = SourceProjectExportResult
 
 function rustCrateName(packageName: string): string {
   const crate = packageName.replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
@@ -102,59 +103,59 @@ export function buildTauriReactProjectFiles(
   return files
 }
 
+async function chooseTauriReactDestination(
+  fileName: string,
+  signal?: AbortSignal
+): Promise<SourceProjectExportDestination | null> {
+  // Preserve the established direct-write menu behavior (notably Windows
+  // replacement semantics). MCP calls carry a signal and use the atomic path.
+  if (signal) return chooseSourceProjectDestination(fileName, 'Tauri project', signal)
+  return {
+    write(data) {
+      return saveExportedFile(
+        data,
+        fileName,
+        'Tauri project',
+        '.zip',
+        'application/zip',
+        downloadBlob
+      )
+    }
+  }
+}
+
+const DEFAULT_DEPENDENCIES: SourceProjectExporterDependencies<EditorStore> = Object.freeze({
+  ...createDefaultSourceProjectExporterDependencies<EditorStore>('Tauri project'),
+  chooseDestination: chooseTauriReactDestination
+})
+
 export async function exportCurrentDocumentAsTauriReactSource(
   editor: EditorStore,
   signal?: AbortSignal
 ): Promise<TauriReactExportResult> {
-  throwIfPluginExportAborted(signal)
-  const pages = editor.graph.getPages()
-  if (pages.length === 0) throw new Error('The current document has no pages to export')
   const names = sourceProjectNames(editor.state.documentName)
   const packageName = names.package
   const productName = names.product
-  const pageIds = pages.map((page) => page.id)
   const fileName = `${packageName}-tauri.zip`
-  // Preserve the established direct-write menu behavior (notably Windows
-  // replacement semantics). MCP calls carry a signal and use the atomic path.
-  const destination = signal
-    ? await chooseSourceProjectDestination(fileName, 'Tauri project', signal)
-    : undefined
-  if (signal) {
-    throwIfPluginExportAborted(signal)
-    if (!destination) return { fileName, fileCount: 0, warnings: [], saved: false }
-  }
-
-  const fontManifest = await resolveSourceExporterFontManifest(editor, pageIds, signal)
-  throwIfPluginExportAborted(signal)
-  const compiled = compile({
-    graph: editor.graph,
-    pageIds,
-    fontManifest,
-    options: withDefaults({
-      packageName,
-      router: pages.length > 1 ? 'react-router-v6' : 'none',
-      devMode: false
-    })
-  })
-  throwIfPluginExportAborted(signal)
-  if (compiled.files.size === 0) {
-    const warningCodes = compiled.warnings.map((warning) => warning.code).join(', ')
-    throw new Error(`Compiler produced no project files${warningCodes ? ` (${warningCodes})` : ''}`)
-  }
-  const project = buildTauriReactProjectFiles(compiled.files, packageName, productName)
-  const archive = await archiveSourceProjectFiles(project, signal)
-  throwIfPluginExportAborted(signal)
-  if (destination) {
-    await destination.write(archive, signal)
-    return { fileName, fileCount: project.size, warnings: compiled.warnings, saved: true }
-  }
-  const saved = await saveExportedFile(
-    archive,
+  return runSourceProjectExport({
+    editor,
+    dependencies: DEFAULT_DEPENDENCIES,
     fileName,
-    'Tauri project',
-    '.zip',
-    'application/zip',
-    downloadBlob
-  )
-  return { fileName, fileCount: project.size, warnings: compiled.warnings, saved }
+    signal,
+    createCompilerInput({ pageIds, fontManifest }) {
+      return {
+        graph: editor.graph,
+        pageIds,
+        fontManifest,
+        options: withDefaults({
+          packageName,
+          router: pageIds.length > 1 ? 'react-router-v6' : 'none',
+          devMode: false
+        })
+      }
+    },
+    buildProject(compiledFiles) {
+      return buildTauriReactProjectFiles(compiledFiles, packageName, productName)
+    }
+  })
 }

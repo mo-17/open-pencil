@@ -1,28 +1,25 @@
 import {
-  compile,
   safeFlutterPackageName,
   withDefaults,
   type CompilerFontManifest,
   type CompileWarning
 } from '@open-pencil/compiler'
 
-import { throwIfPluginExportAborted } from './exporter-abort'
-import type { AppPluginExporterExecutionResult } from './exporter-types'
 import {
   applySourceProjectRedistributionFontPolicy,
-  archiveSourceProjectFiles,
   buildSourceProjectExportFiles,
-  chooseSourceProjectDestination,
-  resolveSourceExporterFontManifest,
+  createDefaultSourceProjectExporterDependencies,
   resolveSourceExporterInvocation,
+  runSourceProjectExport,
   sourceProjectNames,
   type SourceExporterEditor,
   type SourceProjectExportDestination,
+  type SourceProjectExportResult,
   type SourceProjectExporterDependencies,
   type SourceProjectFontPolicyResult
 } from './source-exporter-runtime'
 
-export type FlutterExportResult = AppPluginExporterExecutionResult<CompileWarning>
+export type FlutterExportResult = SourceProjectExportResult
 export type FlutterExportDestination = SourceProjectExportDestination
 export type FlutterExportEditor = SourceExporterEditor
 
@@ -55,19 +52,8 @@ export function applyFlutterRedistributionFontPolicy(
   return { manifest: { ...licensed.manifest, faces }, warnings }
 }
 
-async function chooseDefaultDestination(
-  fileName: string,
-  signal?: AbortSignal
-): Promise<FlutterExportDestination | null> {
-  return chooseSourceProjectDestination(fileName, 'Flutter project', signal)
-}
-
-const DEFAULT_DEPENDENCIES: FlutterExporterDependencies = Object.freeze({
-  resolveFontManifest: resolveSourceExporterFontManifest,
-  compile,
-  archive: archiveSourceProjectFiles,
-  chooseDestination: chooseDefaultDestination
-})
+const DEFAULT_DEPENDENCIES =
+  createDefaultSourceProjectExporterDependencies<FlutterExportEditor>('Flutter project')
 
 export function buildFlutterExportFiles(
   compiledFiles: ReadonlyMap<string, string | Uint8Array>,
@@ -95,43 +81,30 @@ export async function exportCurrentDocumentAsFlutterSource(
     DEFAULT_DEPENDENCIES,
     explicitSignal
   )
-  throwIfPluginExportAborted(signal)
-  const pageIds = editor.graph.getPages().map(({ id }) => id)
-  if (pageIds.length === 0) throw new Error('The current document has no pages to export')
   const names = sourceProjectNames(editor.state.documentName)
   const packageName = safeFlutterPackageName(editor.state.documentName)
   const fileName = `${names.package}-flutter.zip`
-  const destination = await dependencies.chooseDestination(fileName, signal)
-  throwIfPluginExportAborted(signal)
-  if (!destination) return { fileName, fileCount: 0, warnings: [], saved: false }
-
-  const resolvedFontManifest = await dependencies.resolveFontManifest(editor, pageIds, signal)
-  throwIfPluginExportAborted(signal)
-  const fontPolicy = applyFlutterRedistributionFontPolicy(resolvedFontManifest)
-  const compiled = dependencies.compile({
-    graph: editor.graph,
-    pageIds,
-    fontManifest: fontPolicy.manifest,
-    options: withDefaults({
-      packageName,
-      productName: names.product,
-      target: 'flutter',
-      router: pageIds.length > 1 ? 'flutter-router' : 'none',
-      devMode: false
-    })
+  return runSourceProjectExport({
+    editor,
+    dependencies,
+    fileName,
+    signal,
+    compilerTargetName: 'Flutter',
+    applyFontPolicy: applyFlutterRedistributionFontPolicy,
+    createCompilerInput({ pageIds, fontManifest }) {
+      return {
+        graph: editor.graph,
+        pageIds,
+        fontManifest,
+        options: withDefaults({
+          packageName,
+          productName: names.product,
+          target: 'flutter',
+          router: pageIds.length > 1 ? 'flutter-router' : 'none',
+          devMode: false
+        })
+      }
+    },
+    buildProject: buildFlutterExportFiles
   })
-  throwIfPluginExportAborted(signal)
-  if (compiled.files.size === 0) {
-    const warningCodes = compiled.warnings.map((warning) => warning.code).join(', ')
-    throw new Error(
-      `Compiler produced no Flutter project files${warningCodes ? ` (${warningCodes})` : ''}`
-    )
-  }
-
-  const warnings = [...fontPolicy.warnings, ...compiled.warnings]
-  const project = buildFlutterExportFiles(compiled.files, warnings)
-  const archive = await dependencies.archive(project, signal)
-  throwIfPluginExportAborted(signal)
-  await destination.write(archive, signal)
-  return { fileName, fileCount: project.size, warnings, saved: true }
 }
