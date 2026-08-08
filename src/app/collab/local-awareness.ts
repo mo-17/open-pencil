@@ -2,6 +2,10 @@ import type { Ref } from 'vue'
 import type { Awareness } from 'y-protocols/awareness'
 
 import { buildRemotePeers, remotePeersToCursors } from '@/app/collab/awareness'
+import {
+  createCursorBroadcastQueue,
+  type CursorBroadcastScheduler
+} from '@/app/collab/cursor-broadcast'
 import type { CollabState, MotionTimelinePresence, PresenceEditingTarget } from '@/app/collab/types'
 import type { EditorStore } from '@/app/editor/active-store'
 
@@ -10,14 +14,25 @@ type LocalAwarenessOptions = {
   storedName: Ref<string>
   getStore: () => EditorStore
   getAwareness: () => Awareness | null
+  cursorScheduler?: CursorBroadcastScheduler
 }
 
 export function createLocalAwarenessActions({
   state,
   storedName,
   getStore,
-  getAwareness
+  getAwareness,
+  cursorScheduler
 }: LocalAwarenessOptions) {
+  const cursorBroadcast = createCursorBroadcastQueue(
+    ({ x, y, pageId }: { x: number; y: number; pageId: string }) => {
+      const awareness = getAwareness()
+      if (!awareness) return
+      awareness.setLocalStateField('cursor', { x, y, pageId, zoom: getStore().state.zoom })
+    },
+    cursorScheduler
+  )
+
   function broadcastAwareness() {
     const awareness = getAwareness()
     if (!awareness) return
@@ -27,13 +42,21 @@ export function createLocalAwarenessActions({
     })
   }
 
-  function updateCursor(x: number, y: number, pageId: string) {
-    const awareness = getAwareness()
-    if (!awareness) return
-    awareness.setLocalStateField('cursor', { x, y, pageId, zoom: getStore().state.zoom })
+  function updateCursor(x: number, y: number, pageId: string, fpsCap = 30) {
+    if (!getAwareness()) return
+    cursorBroadcast.push({ x, y, pageId }, fpsCap)
+  }
+
+  function flushCursor() {
+    cursorBroadcast.flush()
+  }
+
+  function clearCursorBroadcast() {
+    cursorBroadcast.clear()
   }
 
   function updateSelection(ids: string[]) {
+    flushCursor()
     const awareness = getAwareness()
     if (!awareness) return
     awareness.setLocalStateField('selection', ids)
@@ -46,6 +69,7 @@ export function createLocalAwarenessActions({
   // §4.4 — broadcast which lowcode panel the local user is editing (set on
   // panel focus-in, cleared with null on focus-out / selection change / disconnect).
   function updateEditingTarget(target: PresenceEditingTarget | null) {
+    flushCursor()
     const awareness = getAwareness()
     if (!awareness) return
     awareness.setLocalStateField('editing', target)
@@ -69,7 +93,7 @@ export function createLocalAwarenessActions({
 
     state.value.peers = peers
     store.state.remoteCursors = remotePeersToCursors(peers, store.state.currentPageId)
-    store.requestRender()
+    store.requestOverlayRepaint()
   }
 
   function setLocalName(name: string) {
@@ -81,6 +105,8 @@ export function createLocalAwarenessActions({
   return {
     broadcastAwareness,
     updateCursor,
+    flushCursor,
+    clearCursorBroadcast,
     updateSelection,
     updateEditingTarget,
     updateMotionTimelinePresence,

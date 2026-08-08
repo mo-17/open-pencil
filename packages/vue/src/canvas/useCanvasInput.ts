@@ -1,4 +1,4 @@
-import { useEventListener } from '@vueuse/core'
+import { tryOnScopeDispose, useEventListener } from '@vueuse/core'
 import { ref, type Ref } from 'vue'
 
 import type { Editor } from '@open-pencil/core/editor'
@@ -38,7 +38,8 @@ export function useCanvasInput(
   hitTestSectionTitle: (cx: number, cy: number) => SceneNode | null,
   hitTestComponentLabel: (cx: number, cy: number) => SceneNode | null,
   hitTestFrameTitle: (cx: number, cy: number) => SceneNode | null,
-  onCursorMove?: (cx: number, cy: number) => void
+  onCursorMove?: (cx: number, cy: number) => void,
+  onCursorFlush?: () => void
 ) {
   const drag = ref<DragState | null>(null)
   const cursorOverride = ref<string | null>(null)
@@ -51,6 +52,8 @@ export function useCanvasInput(
   const selectedIdsBeforeClickSequence = ref<ReadonlySet<string>>(new Set())
   const spaceHeld = useSpaceHeld()
   const { recordClick, getClickCount } = createClickCounter()
+  let passiveHoverFrame: number | null = null
+  let pendingPassiveHover: { cx: number; cy: number } | null = null
 
   const { getCoords, canvasToLocal, hitTestInScope, hitFns } = createCanvasPointer(
     canvasRef,
@@ -61,7 +64,28 @@ export function useCanvasInput(
   )
 
   function setDrag(d: DragState) {
+    cancelPassiveHover()
     drag.value = d
+  }
+
+  function cancelPassiveHover() {
+    pendingPassiveHover = null
+    if (passiveHoverFrame === null) return
+    cancelAnimationFrame(passiveHoverFrame)
+    passiveHoverFrame = null
+  }
+
+  function schedulePassiveHover(cx: number, cy: number) {
+    pendingPassiveHover = { cx, cy }
+    if (passiveHoverFrame !== null) return
+    passiveHoverFrame = requestAnimationFrame(() => {
+      passiveHoverFrame = null
+      const hover = pendingPassiveHover
+      pendingPassiveHover = null
+      if (!hover || drag.value || editor.state.activeTool !== 'SELECT') return
+      cursorOverride.value = updateHoverCursor(hover.cx, hover.cy, editor, hitFns)
+      editor.setAutoLayoutHover(resolveAutoLayoutHover(hover.cx, hover.cy, editor))
+    })
   }
 
   const { handleTextEditClick, onDblClick: onTextDblClick } = createTextEditInput({
@@ -148,6 +172,7 @@ export function useCanvasInput(
   }
 
   function onMouseDown(e: MouseEvent) {
+    cancelPassiveHover()
     const paddingEdit = autoLayoutPaddingEdit.value
     if (paddingEdit) {
       commitAutoLayoutPaddingEdit(paddingEdit.value)
@@ -155,6 +180,8 @@ export function useCanvasInput(
     if (!editor.state.editingTextId) canvasRef.value?.focus()
     editor.setHoveredNode(null)
     const { sx, sy, cx, cy } = getCoords(e)
+    onCursorMove?.(cx, cy)
+    onCursorFlush?.()
 
     const selectedIdsBeforeMouseDown = new Set(editor.state.selectedIds)
     const clickCount = recordClick(sx, sy)
@@ -175,25 +202,19 @@ export function useCanvasInput(
   }
 
   function onMouseMove(e: MouseEvent) {
-    if (onCursorMove) {
-      const { cx, cy } = getCoords(e)
-      onCursorMove(cx, cy)
-    }
+    const { sx, sy, cx, cy } = getCoords(e)
+    onCursorMove?.(cx, cy)
 
     if (!drag.value) {
-      const { cx, cy } = getCoords(e)
       updatePenHover(cx, cy, editor)
     }
 
     if (!drag.value) {
-      const { cx, cy } = getCoords(e)
       updateNodeEditHover(editor, cx, cy)
     }
 
     if (!drag.value && editor.state.activeTool === 'SELECT') {
-      const { cx, cy } = getCoords(e)
-      cursorOverride.value = updateHoverCursor(cx, cy, editor, hitFns)
-      editor.setAutoLayoutHover(resolveAutoLayoutHover(cx, cy, editor))
+      schedulePassiveHover(cx, cy)
     }
 
     if (!drag.value) return
@@ -203,8 +224,6 @@ export function useCanvasInput(
       handlePanMove(d, e)
       return
     }
-
-    const { sx, sy, cx, cy } = getCoords(e)
 
     if (d.type === 'rotate') {
       handleRotateMove(d, cx, cy, e.shiftKey)
@@ -246,7 +265,12 @@ export function useCanvasInput(
     handleMarqueeMove(d, cx, cy)
   }
 
-  function onMouseUp() {
+  function onMouseUp(e?: MouseEvent) {
+    if (e) {
+      const { cx, cy } = getCoords(e)
+      onCursorMove?.(cx, cy)
+    }
+    onCursorFlush?.()
     if (!drag.value) return
     const d = drag.value
 
@@ -286,16 +310,22 @@ export function useCanvasInput(
   useEventListener(canvasRef, 'mousedown', onMouseDown)
   useEventListener(canvasRef, 'mousemove', onMouseMove)
   useEventListener(canvasRef, 'mouseup', onMouseUp)
-  useEventListener(canvasRef, 'mouseleave', () => {
+  useEventListener(canvasRef, 'mouseleave', (event) => {
+    const { cx, cy } = getCoords(event)
+    onCursorMove?.(cx, cy)
+    onCursorFlush?.()
+    cancelPassiveHover()
     if (!drag.value) {
       editor.setHoveredNode(null)
+      editor.setAutoLayoutHover(null)
     }
   })
-  useEventListener(window, 'mouseup', () => {
-    if (drag.value) onMouseUp()
+  useEventListener(window, 'mouseup', (event) => {
+    if (drag.value) onMouseUp(event)
   })
 
   setupPanZoom(canvasRef, editor, drag, onMouseDown, onMouseMove, onMouseUp)
+  tryOnScopeDispose(cancelPassiveHover)
   return {
     drag,
     cursorOverride,

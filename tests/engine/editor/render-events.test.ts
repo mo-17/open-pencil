@@ -30,6 +30,42 @@ test('overlay-only repaint emits without invalidating the scene render version',
   })
 })
 
+test('selection feedback uses overlay repaint while scene previews retain repaint', () => {
+  const editor = createEditor({ skipInitialGraphSetup: true })
+  const initialRenderVersion = editor.state.renderVersion
+  const initialSceneVersion = editor.state.sceneVersion
+  let overlayRepaints = 0
+  let sceneRepaints = 0
+  editor.onEditorEvent('overlay:requested', () => overlayRepaints++)
+  editor.onEditorEvent('repaint:requested', () => sceneRepaints++)
+
+  editor.setMarquee({ x: 1, y: 2, width: 3, height: 4 })
+  editor.setSnapGuides([{ axis: 'x', position: 10, from: 0, to: 20 }])
+  editor.setHoveredNode('hovered')
+  editor.setLayoutInsertIndicator({
+    parentId: 'parent',
+    index: 0,
+    x: 1,
+    y: 2,
+    length: 3,
+    direction: 'HORIZONTAL'
+  })
+  editor.setAutoLayoutHover({ nodeId: 'layout', kind: 'spacing', index: 1 })
+
+  expect(overlayRepaints).toBe(5)
+  expect(sceneRepaints).toBe(0)
+  expect(editor.state.renderVersion).toBe(initialRenderVersion)
+  expect(editor.state.sceneVersion).toBe(initialSceneVersion)
+
+  editor.setRotationPreview({ nodeId: 'rotating', angle: 45 })
+  editor.setDropTarget('drop-target')
+
+  expect(overlayRepaints).toBe(5)
+  expect(sceneRepaints).toBe(2)
+  expect(editor.state.renderVersion).toBe(initialRenderVersion + 2)
+  expect(editor.state.sceneVersion).toBe(initialSceneVersion)
+})
+
 test('finishing a loading phase wakes canvases without invalidating scene data', () => {
   const editor = createEditor({ skipInitialGraphSetup: true })
   const renderer = { clearDocumentCaches: mock(() => undefined) }

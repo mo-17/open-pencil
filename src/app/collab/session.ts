@@ -61,6 +61,8 @@ interface ConnectCollabSessionOptions extends CollabSessionSyncOptions {
 interface CollabConnectionActionsOptions extends CollabSessionSyncOptions {
   getStore: () => EditorStore
   resetFollow: () => void
+  flushCursor: () => void
+  clearCursorBroadcast: () => void
 }
 
 type CollabSessionResources = {
@@ -73,6 +75,18 @@ type CollabSessionResources = {
   unbindGraphEvents: (() => void) | null
   stopZoomWatch: (() => void) | null
   resetFollow: () => void
+}
+
+type AwarenessChange = {
+  added: number[]
+  updated: number[]
+  removed: number[]
+}
+
+export function awarenessChangeHasRemoteClient(change: AwarenessChange, localClientId: number) {
+  return [...change.added, ...change.updated, ...change.removed].some(
+    (clientId) => clientId !== localClientId
+  )
 }
 
 export function createCollabRuntime(): CollabRuntime {
@@ -117,7 +131,9 @@ export function createCollabConnectionActions({
   applyYjsToGraph,
   applyYjsMotionToGraph,
   syncNodeToYjs,
-  resetFollow
+  resetFollow,
+  flushCursor,
+  clearCursorBroadcast
 }: CollabConnectionActionsOptions) {
   function connect(roomId: string, key?: string, onAuthError?: () => void) {
     connectCollabSession({
@@ -138,6 +154,7 @@ export function createCollabConnectionActions({
   }
 
   function disconnect() {
+    flushCursor()
     const store = runtime.connectedStore ?? getStore()
     disposeCollabSessionResources({
       store,
@@ -150,6 +167,7 @@ export function createCollabConnectionActions({
       stopZoomWatch: runtime.stopZoomWatch,
       resetFollow
     })
+    clearCursorBroadcast()
     resetCollabRuntime(runtime)
     resetCollabConnectionState(state)
   }
@@ -164,7 +182,9 @@ export function watchAwarenessZoom(store: EditorStore, getAwareness: () => Aware
     const prev = awareness.getLocalState()?.cursor as
       | { x: number; y: number; pageId: string; zoom: number }
       | undefined
-    if (prev) {
+    // Panning emits the same viewport event as zooming. Re-broadcasting an
+    // unchanged cursor here would bypass the cursor cadence queue on every pan.
+    if (prev && prev.zoom !== viewport.zoom) {
       awareness.setLocalStateField('cursor', { ...prev, zoom: viewport.zoom })
     }
   })
@@ -198,7 +218,12 @@ export function connectCollabSession({
   runtime.motionUndoManager = createMotionTimelineUndoManager(runtime.ymotions)
   runtime.persistence = new IndexeddbPersistence(`op-room-${roomId}`, runtime.ydoc)
 
-  runtime.awareness.on('change', () => {
+  const localAwarenessClientId = runtime.awareness.clientID
+  runtime.awareness.on('change', (change: AwarenessChange) => {
+    // Local cursor/selection writes also emit `change`. They do not alter the
+    // remote peer list and must not turn the local broadcast cadence into an
+    // overlay repaint cadence.
+    if (!awarenessChangeHasRemoteClient(change, localAwarenessClientId)) return
     updatePeersList()
     tickFollow()
   })
@@ -285,5 +310,5 @@ export function disposeCollabSessionResources(resources: CollabSessionResources)
   resources.ydoc?.destroy()
   resources.resetFollow()
   resources.store.state.remoteCursors = []
-  resources.store.requestRender()
+  resources.store.requestOverlayRepaint()
 }

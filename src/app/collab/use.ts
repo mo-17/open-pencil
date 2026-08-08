@@ -52,6 +52,8 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
   const {
     broadcastAwareness,
     updateCursor,
+    flushCursor,
+    clearCursorBroadcast,
     updateSelection,
     updateEditingTarget,
     updateMotionTimelinePresence,
@@ -121,7 +123,9 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     applyYjsToGraph,
     applyYjsMotionToGraph,
     syncNodeToYjs,
-    resetFollow
+    resetFollow,
+    flushCursor,
+    clearCursorBroadcast
   })
 
   // Phase 3 §4.2 — minting a room also mints a random key (Trystero password).
@@ -155,6 +159,7 @@ export function useCollab(storeOrGetter: EditorStore | (() => EditorStore)) {
     disconnect,
     shareCurrentDoc,
     updateCursor,
+    flushCursor,
     updateSelection,
     updateEditingTarget,
     updateMotionTimelinePresence,
