@@ -11,6 +11,7 @@ import process from 'node:process'
 import { compile, resolveCompilerWebFonts, withDefaults } from '@open-pencil/compiler'
 import type { CompileWarning, CompilerOutput, UiKitName } from '@open-pencil/compiler'
 import type { BuildOptions } from '@open-pencil/compiler/build'
+import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { bold, fmtList, ok, printError } from '#cli/format'
@@ -31,23 +32,92 @@ export function formatWarning(w: CompileWarning): string {
   return `[${w.code}] ${w.message}${id}`
 }
 
+type SupabaseBuildFlags = Partial<
+  Record<'supabaseUrl' | 'supabaseAnonKey' | 'supabaseSchema', string>
+>
+
+function inheritedSupabaseBuildFlags(environment: NodeJS.ProcessEnv): SupabaseBuildFlags {
+  if (environment.OPENPENCIL_DEPLOY_RUNTIME_MODE === 'explicit') {
+    return {
+      supabaseUrl: environment.OPENPENCIL_DEPLOY_SUPABASE_URL,
+      supabaseAnonKey: environment.OPENPENCIL_DEPLOY_SUPABASE_ANON_KEY,
+      supabaseSchema: environment.OPENPENCIL_DEPLOY_SUPABASE_SCHEMA
+    }
+  }
+  return {
+    supabaseUrl: environment.VITE_SUPABASE_URL,
+    supabaseAnonKey: environment.VITE_SUPABASE_ANON_KEY,
+    supabaseSchema: environment.VITE_SUPABASE_SCHEMA
+  }
+}
+
+function optionalTrim(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed || undefined
+}
+
+function validateSupabaseBuildFlags(flags: SupabaseBuildFlags): void {
+  const { supabaseUrl: url, supabaseAnonKey: anonKey, supabaseSchema: schema } = flags
+  if (anonKey !== undefined && detectSupabaseSecretKey(anonKey)) {
+    throw new Error(
+      'Refusing to embed a Supabase secret/service_role key in a client bundle; use a publishable or legacy anon key.'
+    )
+  }
+  if (Boolean(url) !== Boolean(anonKey)) {
+    throw new Error(
+      'Supabase URL and publishable/anon key overrides must be provided together to avoid mixing projects.'
+    )
+  }
+  if (url !== undefined) validateSupabaseBuildUrl(url)
+  if (schema !== undefined && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(schema)) {
+    throw new Error('Supabase schema override must be a plain identifier up to 63 characters.')
+  }
+}
+
+function validateSupabaseBuildUrl(url: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    throw new Error('Supabase URL override is invalid.')
+  }
+  if (
+    (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error('Supabase URL override must be HTTP(S) and must not contain credentials.')
+  }
+}
+
+function buildSupabaseEnvironment(flags: SupabaseBuildFlags): BuildOptions['env'] {
+  const { supabaseUrl: url, supabaseAnonKey: anonKey, supabaseSchema: schema } = flags
+  if (url === undefined && anonKey === undefined && schema === undefined) return undefined
+  return {
+    ...(url === undefined ? {} : { VITE_SUPABASE_URL: url }),
+    ...(anonKey === undefined ? {} : { VITE_SUPABASE_ANON_KEY: anonKey }),
+    ...(schema === undefined ? {} : { VITE_SUPABASE_SCHEMA: schema })
+  }
+}
+
 /**
  * Resolve the per-environment Supabase override for `build` / `deploy` (§5):
- * explicit flags win over `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` in the
- * environment; returns undefined when neither is set so the build keeps the
- * design-time fallback baked into the emitted runtime.
+ * explicit flags win over `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` /
+ * `VITE_SUPABASE_SCHEMA` in the environment; returns undefined when none is set
+ * so the build keeps the design-time fallbacks baked into the emitted runtime.
  */
-export function resolveBuildEnv(flags: {
-  supabaseUrl?: string
-  supabaseAnonKey?: string
-}): BuildOptions['env'] {
-  const url = flags.supabaseUrl ?? process.env.VITE_SUPABASE_URL
-  const anonKey = flags.supabaseAnonKey ?? process.env.VITE_SUPABASE_ANON_KEY
-  if (url === undefined && anonKey === undefined) return undefined
-  const env: NonNullable<BuildOptions['env']> = {}
-  if (url !== undefined) env.VITE_SUPABASE_URL = url
-  if (anonKey !== undefined) env.VITE_SUPABASE_ANON_KEY = anonKey
-  return env
+export function resolveBuildEnv(
+  flags: SupabaseBuildFlags,
+  environment: NodeJS.ProcessEnv = process.env
+): BuildOptions['env'] {
+  const inherited = inheritedSupabaseBuildFlags(environment)
+  const resolved = {
+    supabaseUrl: optionalTrim(flags.supabaseUrl ?? inherited.supabaseUrl),
+    supabaseAnonKey: optionalTrim(flags.supabaseAnonKey ?? inherited.supabaseAnonKey),
+    supabaseSchema: optionalTrim(flags.supabaseSchema ?? inherited.supabaseSchema)
+  }
+  validateSupabaseBuildFlags(resolved)
+  return buildSupabaseEnvironment(resolved)
 }
 
 export type PageResolution = { ok: true; pageIds: string[] } | { ok: false; message: string }

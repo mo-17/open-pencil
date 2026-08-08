@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
+import { useSceneComputed } from '@open-pencil/vue'
+
+import {
+  getActiveEditorStore,
+  useActiveEditorStoreRef,
+  useEditorStore
+} from '@/app/editor/active-store'
 import { openExternalLink } from '@/app/shell/ui'
 import Tip from '@/components/ui/Tip.vue'
 
@@ -12,13 +19,16 @@ import {
   deployRollbackContractLabel,
   deployRollbackContractTitle,
   deployRollbackDraft,
+  deployRuntimeConfigSnapshot,
   readDeployTargetPresets,
   saveDeployTargetPreset,
   restoreNetlifyDeploy,
   type DeployEnvironment,
-  type DeployHistoryEntry
-} from './deploy-history'
-import { useDeploy, type DeployProvider, type DeployUiKit } from './use-deploy'
+  type DeployHistoryEntry,
+  type DeployRuntimeConfig
+} from './deploy/history'
+import { deployScopeForStore } from './deploy/scope'
+import { useDeploy, type DeployProvider, type DeployUiKit } from './deploy/use'
 
 /** Split the comma/space-separated locale field into clean target codes. */
 function parseLocales(raw: string): string[] {
@@ -30,10 +40,12 @@ function parseLocales(raw: string): string[] {
 
 // Phase 3 §5: one-click deploy from the preview header. The token lives only in
 // this component's memory (never persisted) and is handed to the deploy CLI via
-// the spawned process env (see use-deploy.ts). §5.4 adds a provider picker
+// the spawned process env (see deploy/use.ts). §5.4 adds a provider picker
 // (Netlify / Vercel / Cloudflare). Plain English strings match the (non-i18n)
 // PreviewPane sibling.
-const { status, deploy, history, reset } = useDeploy()
+const { status, deploy, history, runtimeAudit, refreshHistory, reset } = useDeploy()
+const store = useEditorStore()
+const activeStoreRef = useActiveEditorStoreRef()
 
 const open = ref(false)
 const provider = ref<DeployProvider>('netlify')
@@ -45,9 +57,52 @@ const uiKit = ref<DeployUiKit>('none')
 // Phase 3 §9: enable the i18n runtime + a comma-separated target-locale list.
 const i18nEnabled = ref(false)
 const localesInput = ref('')
+const supabaseUrl = ref('')
+const supabaseAnonKey = ref('')
+const supabaseSchema = ref('')
+const runtimeError = ref<string | null>(null)
 const rollbackNotice = ref<string | null>(null)
 const targetNotice = ref<string | null>(null)
-const targetPresets = ref(readDeployTargetPresets())
+const targetPresets = ref(readDeployTargetPresets(currentDocumentScope()))
+let suppressEnvironmentPreset = false
+let unbindSourceChanged: (() => void) | undefined
+
+function currentDocumentScope(): string | undefined {
+  return deployScopeForStore(getActiveEditorStore())
+}
+
+function currentRuntimeConfig(): DeployRuntimeConfig | undefined {
+  return deployRuntimeConfigSnapshot({
+    supabaseUrl: supabaseUrl.value,
+    supabaseAnonKey: supabaseAnonKey.value,
+    supabaseSchema: supabaseSchema.value
+  })
+}
+
+function clearRuntimeOverrides(): void {
+  supabaseUrl.value = ''
+  supabaseAnonKey.value = ''
+  supabaseSchema.value = ''
+}
+
+function resetTargetFields(): void {
+  provider.value = 'netlify'
+  site.value = ''
+  uiKit.value = 'none'
+  i18nEnabled.value = false
+  localesInput.value = ''
+  clearRuntimeOverrides()
+}
+
+function applyRuntimeConfig(config: DeployRuntimeConfig | undefined): void {
+  supabaseUrl.value = config?.supabaseUrl ?? ''
+  supabaseAnonKey.value = config?.supabaseAnonKey ?? ''
+  supabaseSchema.value = config?.supabaseSchema ?? ''
+}
+
+const designSupabaseConfig = useSceneComputed(
+  () => store.graph.getNode(store.graph.rootId)?.lowcodeSupabaseConfig
+)
 
 const tokenLabel = computed(() => {
   if (provider.value === 'cloudflare') return 'Cloudflare token'
@@ -66,7 +121,14 @@ const targetPlaceholder = computed(() => {
 
 function toggle(): void {
   open.value = !open.value
-  if (!open.value) reset()
+  if (!open.value) {
+    token.value = ''
+    reset()
+    return
+  }
+  refreshHistory()
+  targetPresets.value = readDeployTargetPresets(currentDocumentScope())
+  applyEnvironmentPreset(environment.value)
 }
 
 function currentBuildOptions() {
@@ -79,6 +141,14 @@ function currentBuildOptions() {
 
 async function submit(): Promise<void> {
   rollbackNotice.value = null
+  let runtimeConfig: DeployRuntimeConfig | undefined
+  try {
+    runtimeConfig = currentRuntimeConfig()
+    runtimeError.value = null
+  } catch (error) {
+    runtimeError.value = error instanceof Error ? error.message : String(error)
+    return
+  }
   await deploy(
     token.value,
     provider.value,
@@ -88,13 +158,16 @@ async function submit(): Promise<void> {
     {
       enabled: i18nEnabled.value,
       locales: parseLocales(localesInput.value)
-    }
+    },
+    runtimeConfig
   )
+  if (status.value.kind === 'done') token.value = ''
 }
 
 function restoreForRollback(entry: DeployHistoryEntry): void {
   const draft = deployRollbackDraft(entry)
   if (!draft) return
+  suppressEnvironmentPreset = true
   reset()
   provider.value = draft.provider
   environment.value = draft.environment
@@ -102,7 +175,11 @@ function restoreForRollback(entry: DeployHistoryEntry): void {
   uiKit.value = draft.uiKit
   i18nEnabled.value = draft.i18nEnabled
   localesInput.value = draft.locales.join(', ')
+  applyRuntimeConfig(draft.runtimeConfig)
   rollbackNotice.value = `Ready to redeploy ${entry.environment} from ${entry.deployId}. Enter a ${draft.provider} token, then deploy.`
+  void nextTick(() => {
+    suppressEnvironmentPreset = false
+  })
 }
 
 async function restoreProviderDeploy(entry: DeployHistoryEntry): Promise<void> {
@@ -122,22 +199,37 @@ async function restoreProviderDeploy(entry: DeployHistoryEntry): Promise<void> {
 
 function applyEnvironmentPreset(nextEnvironment: DeployEnvironment): void {
   const preset = targetPresets.value[nextEnvironment]
-  if (!preset) return
+  if (!preset) {
+    resetTargetFields()
+    targetNotice.value = null
+    return
+  }
   provider.value = preset.provider
   site.value = preset.site ?? ''
   uiKit.value = preset.buildOptions.uiKit
   i18nEnabled.value = preset.buildOptions.i18nEnabled
   localesInput.value = preset.buildOptions.locales.join(', ')
+  applyRuntimeConfig(preset.runtimeConfig)
   targetNotice.value = `Using saved ${nextEnvironment} target.`
 }
 
 function saveCurrentTarget(): void {
-  targetPresets.value = saveDeployTargetPreset({
-    environment: environment.value,
-    provider: provider.value,
-    site: site.value.trim() || undefined,
-    buildOptions: currentBuildOptions()
-  })
+  try {
+    targetPresets.value = saveDeployTargetPreset(
+      {
+        environment: environment.value,
+        provider: provider.value,
+        site: site.value.trim() || undefined,
+        buildOptions: currentBuildOptions(),
+        runtimeConfig: currentRuntimeConfig()
+      },
+      currentDocumentScope()
+    )
+    runtimeError.value = null
+  } catch (error) {
+    runtimeError.value = error instanceof Error ? error.message : String(error)
+    return
+  }
   targetNotice.value = `Saved ${environment.value} target.`
 }
 
@@ -166,12 +258,41 @@ function rollbackContractTitle(entry: DeployHistoryEntry): string {
   return deployRollbackContractTitle(deployRollbackContract(entry))
 }
 
+watch(provider, (next, previous) => {
+  if (next !== previous) token.value = ''
+})
+
 watch(environment, (next) => {
+  if (suppressEnvironmentPreset) return
   rollbackNotice.value = null
   applyEnvironmentPreset(next)
 })
 
-applyEnvironmentPreset(environment.value)
+function reloadDocumentDeployState(): void {
+  token.value = ''
+  reset()
+  runtimeError.value = null
+  rollbackNotice.value = null
+  targetPresets.value = readDeployTargetPresets(currentDocumentScope())
+  refreshHistory()
+  applyEnvironmentPreset(environment.value)
+}
+
+const stopActiveStoreWatch = watch(
+  activeStoreRef,
+  (activeStore) => {
+    unbindSourceChanged?.()
+    unbindSourceChanged = activeStore?.onSourceChanged(reloadDocumentDeployState)
+    reloadDocumentDeployState()
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  stopActiveStoreWatch()
+  unbindSourceChanged?.()
+  token.value = ''
+})
 </script>
 
 <template>
@@ -215,6 +336,62 @@ applyEnvironmentPreset(environment.value)
         <option value="staging">Staging</option>
         <option value="production">Production</option>
       </select>
+
+      <details class="mb-2 rounded border border-border px-2 py-1.5">
+        <summary class="cursor-pointer text-xs text-muted">Runtime overrides</summary>
+        <p class="mt-1 text-[10px] text-muted">
+          Leave blank to use the design-time Supabase configuration.
+        </p>
+        <p
+          v-if="designSupabaseConfig"
+          class="mt-1 truncate font-mono text-[10px] text-muted"
+          data-test-id="lowcode-deploy-runtime-fallback"
+        >
+          Fallback: {{ designSupabaseConfig.url }} ·
+          {{ designSupabaseConfig.schema || 'public' }}
+        </p>
+        <label class="mb-1 mt-2 block text-[11px] text-muted">Supabase URL</label>
+        <input
+          v-model="supabaseUrl"
+          type="url"
+          data-test-id="lowcode-deploy-supabase-url"
+          placeholder="https://project.supabase.co"
+          spellcheck="false"
+          autocomplete="off"
+          class="mb-1.5 w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+          :disabled="status.kind === 'deploying'"
+        />
+        <label class="mb-1 block text-[11px] text-muted">Publishable / anon key</label>
+        <input
+          v-model="supabaseAnonKey"
+          type="password"
+          data-test-id="lowcode-deploy-supabase-anon-key"
+          placeholder="sb_publishable_… or anon JWT"
+          spellcheck="false"
+          autocomplete="off"
+          class="mb-1.5 w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+          :disabled="status.kind === 'deploying'"
+        />
+        <label class="mb-1 block text-[11px] text-muted">Database schema</label>
+        <input
+          v-model="supabaseSchema"
+          type="text"
+          data-test-id="lowcode-deploy-supabase-schema"
+          placeholder="public"
+          spellcheck="false"
+          autocomplete="off"
+          class="w-full rounded border border-border bg-input px-2 py-1 font-mono text-[11px] text-surface"
+          :disabled="status.kind === 'deploying'"
+        />
+        <p
+          v-if="runtimeError"
+          role="alert"
+          data-test-id="lowcode-deploy-runtime-error"
+          class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
+        >
+          {{ runtimeError }}
+        </p>
+      </details>
 
       <label class="mb-1 block text-xs text-muted">UI components</label>
       <select
@@ -318,6 +495,22 @@ applyEnvironmentPreset(environment.value)
           {{ status.result.deployId }}
         </span>
       </p>
+      <div
+        v-if="status.kind === 'done' && status.result.serverDeployment"
+        class="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-muted"
+        data-test-id="lowcode-deploy-server-manual"
+      >
+        <div class="font-medium text-surface">Manual server deployment required</div>
+        <p class="mt-1 break-words">{{ status.result.serverDeployment.warning }}</p>
+        <p class="mt-1 break-all font-mono text-[10px]">
+          Artifact: {{ status.result.serverDeployment.artifactDirectory }}
+        </p>
+        <ol class="mt-1 list-decimal space-y-1 pl-4">
+          <li v-for="command in status.result.serverDeployment.commands" :key="command">
+            <code class="select-all break-all text-[10px] text-surface">{{ command }}</code>
+          </li>
+        </ol>
+      </div>
       <p
         v-else-if="status.kind === 'error'"
         class="mt-2 break-words text-xs text-red-500"
@@ -325,6 +518,23 @@ applyEnvironmentPreset(environment.value)
       >
         {{ status.message }}
       </p>
+
+      <div
+        v-if="runtimeAudit && runtimeAudit.issues.length > 0"
+        class="mt-2 rounded border border-border px-2 py-1 text-[11px] text-muted"
+        data-test-id="lowcode-deploy-runtime-audit"
+      >
+        <div class="font-medium text-surface">Runtime preflight</div>
+        <ul class="mt-1 list-disc space-y-0.5 pl-4">
+          <li
+            v-for="issue in runtimeAudit.issues"
+            :key="issue.code"
+            :class="issue.severity === 'error' ? 'text-red-500' : ''"
+          >
+            {{ issue.message }}
+          </li>
+        </ul>
+      </div>
 
       <div v-if="history.length > 0" class="mt-3 border-t border-border pt-2">
         <div class="mb-1 text-[11px] font-medium text-muted">Recent deploys</div>

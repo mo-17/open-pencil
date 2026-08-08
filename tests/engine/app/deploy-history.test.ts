@@ -18,6 +18,15 @@ function installLocalStorage() {
   return data
 }
 
+function legacyFNV1a32(value: string): number {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return hash >>> 0
+}
+
 afterEach(() => {
   Reflect.deleteProperty(globalThis, 'window')
 })
@@ -26,7 +35,7 @@ describe('lowcode deploy history', () => {
   test('records recent deploy metadata without provider tokens', async () => {
     const storage = installLocalStorage()
     const { deployArtifactLabel, readDeployHistory, recordDeployHistory } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     const history = recordDeployHistory({
       provider: 'netlify',
@@ -68,7 +77,7 @@ describe('lowcode deploy history', () => {
   test('keeps the newest deploy records first and caps history', async () => {
     installLocalStorage()
     const { readDeployHistory, recordDeployHistory } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     for (let i = 0; i < 10; i++) {
       recordDeployHistory({
@@ -88,7 +97,7 @@ describe('lowcode deploy history', () => {
 
   test('derives provider dashboard links for rollback guidance', async () => {
     installLocalStorage()
-    const { deployDashboardUrl } = await import('@/app/lowcode/preview-pane/deploy-history')
+    const { deployDashboardUrl } = await import('@/app/lowcode/preview-pane/deploy/history')
 
     expect(deployDashboardUrl({ provider: 'netlify', deployId: 'dep 1' })).toBe(
       'https://app.netlify.com/deploys/dep%201'
@@ -109,7 +118,7 @@ describe('lowcode deploy history', () => {
   test('describes provider rollback contracts without calling provider APIs', async () => {
     installLocalStorage()
     const { deployRollbackContract, deployRollbackContractLabel, deployRollbackContractTitle } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     expect(
       deployRollbackContract({ provider: 'netlify', deployId: 'dep_1', site: 'site_1' })
@@ -194,7 +203,7 @@ describe('lowcode deploy history', () => {
   test('parses Cloudflare Pages account/project targets for rollback readiness', async () => {
     installLocalStorage()
     const { deployDashboardUrl, parseCloudflarePagesTarget } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     expect(parseCloudflarePagesTarget(' account / project ')).toEqual({
       accountId: 'account',
@@ -240,7 +249,7 @@ describe('lowcode deploy history', () => {
 
   test('parses Vercel project targets without implying production rollback readiness', async () => {
     installLocalStorage()
-    const { parseVercelProjectTarget } = await import('@/app/lowcode/preview-pane/deploy-history')
+    const { parseVercelProjectTarget } = await import('@/app/lowcode/preview-pane/deploy/history')
 
     expect(parseVercelProjectTarget(' my-project ')).toEqual({
       projectName: 'my-project',
@@ -258,7 +267,7 @@ describe('lowcode deploy history', () => {
 
   test('restores a Netlify deploy through the site-scoped restore API', async () => {
     installLocalStorage()
-    const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy-history')
+    const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy/history')
     const calls: Array<{ url: string; init?: RequestInit }> = []
     const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
       calls.push({ url: String(input), init })
@@ -287,7 +296,7 @@ describe('lowcode deploy history', () => {
 
   test('surfaces Netlify rollback API errors without persisting tokens', async () => {
     const storage = installLocalStorage()
-    const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy-history')
+    const { restoreNetlifyDeploy } = await import('@/app/lowcode/preview-pane/deploy/history')
     const fetcher = (async () =>
       new Response('Unauthorized', { status: 401 })) satisfies typeof fetch
 
@@ -299,8 +308,12 @@ describe('lowcode deploy history', () => {
 
   test('builds a redeploy draft from history without restoring deploy artifacts or tokens', async () => {
     installLocalStorage()
-    const { deployBuildOptionsSnapshot, deployRollbackDraft, recordDeployHistory } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+    const {
+      deployBuildOptionsSnapshot,
+      deployRollbackDraft,
+      readDeployHistory,
+      recordDeployHistory
+    } = await import('@/app/lowcode/preview-pane/deploy/history')
 
     const [entry] = recordDeployHistory({
       provider: 'cloudflare',
@@ -311,21 +324,35 @@ describe('lowcode deploy history', () => {
       site: 'account/project',
       uiKit: 'shadcn',
       i18nEnabled: true,
-      locales: ['zh-CN', 'fr']
+      locales: ['zh-CN', 'fr'],
+      runtimeConfig: {
+        supabaseUrl: ' https://rollback.supabase.co ',
+        supabaseAnonKey: ' sb_publishable_rollback ',
+        supabaseSchema: ' release '
+      }
     })
+
+    const runtimeConfig = {
+      supabaseUrl: 'https://rollback.supabase.co',
+      supabaseAnonKey: 'sb_publishable_rollback',
+      supabaseSchema: 'release'
+    }
 
     expect(deployBuildOptionsSnapshot(entry)).toEqual({
       uiKit: 'shadcn',
       i18nEnabled: true,
       locales: ['zh-CN', 'fr']
     })
+    expect(entry.runtimeConfig).toEqual(runtimeConfig)
+    expect(readDeployHistory()[0]?.runtimeConfig).toEqual(runtimeConfig)
     expect(deployRollbackDraft(entry)).toEqual({
       provider: 'cloudflare',
       environment: 'production',
       site: 'account/project',
       uiKit: 'shadcn',
       i18nEnabled: true,
-      locales: ['zh-CN', 'fr']
+      locales: ['zh-CN', 'fr'],
+      runtimeConfig
     })
     expect(JSON.stringify(deployRollbackDraft(entry))).not.toContain('cf_1')
     expect(JSON.stringify(deployRollbackDraft(entry))).not.toContain('https://example.pages.dev')
@@ -335,7 +362,7 @@ describe('lowcode deploy history', () => {
   test('uses structured build options before legacy replay fields', async () => {
     installLocalStorage()
     const { deployArtifactLabel, deployRollbackDraft } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     const entry = {
       id: 'mixed',
@@ -380,7 +407,7 @@ describe('lowcode deploy history', () => {
       ])
     )
     const { deployRollbackDraft, readDeployHistory } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     const [entry] = readDeployHistory()
     expect(entry.compat).toBeUndefined()
@@ -397,7 +424,7 @@ describe('lowcode deploy history', () => {
   test('saves environment target presets without provider tokens', async () => {
     const storage = installLocalStorage()
     const { readDeployTargetPresets, saveDeployTargetPreset } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     const presets = saveDeployTargetPreset({
       environment: 'production',
@@ -428,7 +455,7 @@ describe('lowcode deploy history', () => {
   test('isolates target presets by environment and skips invalid stored presets', async () => {
     const storage = installLocalStorage()
     const { readDeployTargetPresets, saveDeployTargetPreset } =
-      await import('@/app/lowcode/preview-pane/deploy-history')
+      await import('@/app/lowcode/preview-pane/deploy/history')
 
     saveDeployTargetPreset({
       environment: 'preview',
@@ -467,5 +494,246 @@ describe('lowcode deploy history', () => {
       staging: { provider: 'vercel', site: 'staging-project' },
       production: null
     })
+  })
+
+  test('isolates deploy metadata by saved document scope', async () => {
+    const storage = installLocalStorage()
+    const {
+      deployDocumentScope,
+      readDeployHistory,
+      readDeployTargetPresets,
+      recordDeployHistory,
+      saveDeployTargetPreset
+    } = await import('@/app/lowcode/preview-pane/deploy/history')
+    const first = deployDocumentScope('/projects/first.fig')
+    const second = deployDocumentScope('/projects/second.fig')
+    const remote = deployDocumentScope({
+      kind: 'storage',
+      providerId: 'cloud-drive',
+      documentId: '/projects/first.fig'
+    })
+
+    expect(first).toBeTruthy()
+    expect(second).toBeTruthy()
+    expect(remote).toBeTruthy()
+    expect(first).not.toBe(second)
+    expect(remote).not.toBe(first)
+    expect([...storage.keys()].join('\n')).not.toContain('/projects/')
+
+    saveDeployTargetPreset(
+      {
+        environment: 'staging',
+        provider: 'netlify',
+        site: 'first-site',
+        buildOptions: { uiKit: 'none', i18nEnabled: false, locales: [] }
+      },
+      first
+    )
+    saveDeployTargetPreset(
+      {
+        environment: 'staging',
+        provider: 'vercel',
+        site: 'second-project',
+        buildOptions: { uiKit: 'shadcn', i18nEnabled: false, locales: [] }
+      },
+      second
+    )
+    recordDeployHistory(
+      {
+        provider: 'netlify',
+        environment: 'staging',
+        url: 'https://first.example',
+        deployId: 'first-deploy',
+        fileCount: 2
+      },
+      first
+    )
+    recordDeployHistory(
+      {
+        provider: 'cloudflare',
+        environment: 'staging',
+        url: 'https://remote.example',
+        deployId: 'remote-deploy',
+        fileCount: 3
+      },
+      remote
+    )
+
+    expect(readDeployTargetPresets(first).staging?.site).toBe('first-site')
+    expect(readDeployTargetPresets(second).staging?.site).toBe('second-project')
+    expect(readDeployHistory(first).map((entry) => entry.deployId)).toEqual(['first-deploy'])
+    expect(readDeployHistory(second)).toEqual([])
+    expect(readDeployHistory(remote).map((entry) => entry.deployId)).toEqual(['remote-deploy'])
+    expect([...storage.keys()].join('\n')).not.toContain('/projects/')
+  })
+
+  test('uses SHA-256 scopes to separate paths that collided under legacy FNV-1a', async () => {
+    installLocalStorage()
+    const { deployDocumentScope } = await import('@/app/lowcode/preview-pane/deploy/history')
+    const firstPath = '/legacy/3pwu.fig'
+    const secondPath = '/legacy/a5fa.fig'
+
+    expect(legacyFNV1a32(`path\0${firstPath}`)).toBe(legacyFNV1a32(`path\0${secondPath}`))
+    expect(deployDocumentScope(firstPath)).toMatch(/^doc-sha256-[a-f0-9]{64}$/)
+    expect(deployDocumentScope(firstPath)).not.toBe(deployDocumentScope(secondPath))
+  })
+
+  test('rejects incomplete document identities and separates storage providers from paths', async () => {
+    installLocalStorage()
+    const { deployDocumentScope } = await import('@/app/lowcode/preview-pane/deploy/history')
+    const path = deployDocumentScope({ kind: 'path', path: 'shared-document' })
+    const firstStorage = deployDocumentScope({
+      kind: 'storage',
+      providerId: 'first-provider',
+      documentId: 'shared-document'
+    })
+    const secondStorage = deployDocumentScope({
+      kind: 'storage',
+      providerId: 'second-provider',
+      documentId: 'shared-document'
+    })
+
+    expect(new Set([path, firstStorage, secondStorage]).size).toBe(3)
+    expect(deployDocumentScope({ kind: 'path', path: '   ' })).toBeUndefined()
+    expect(
+      deployDocumentScope({ kind: 'storage', providerId: '   ', documentId: 'document' })
+    ).toBeUndefined()
+    expect(
+      deployDocumentScope({ kind: 'storage', providerId: 'provider', documentId: '   ' })
+    ).toBeUndefined()
+    expect(deployDocumentScope({ kind: 'transient', id: '   ' })).toBeUndefined()
+  })
+
+  test('keeps transient deploy state in process memory instead of localStorage', async () => {
+    const storage = installLocalStorage()
+    const {
+      deployDocumentScope,
+      readDeployHistory,
+      readDeployTargetPresets,
+      recordDeployHistory,
+      saveDeployTargetPreset
+    } = await import('@/app/lowcode/preview-pane/deploy/history')
+    const scope = deployDocumentScope({ kind: 'transient', id: 'unsaved-test-store' })
+
+    recordDeployHistory(
+      {
+        provider: 'vercel',
+        environment: 'preview',
+        url: 'https://transient.example',
+        deployId: 'transient-deploy',
+        fileCount: 1
+      },
+      scope
+    )
+    saveDeployTargetPreset(
+      {
+        environment: 'preview',
+        provider: 'vercel',
+        site: 'transient-project',
+        buildOptions: { uiKit: 'none', i18nEnabled: false, locales: [] }
+      },
+      scope
+    )
+
+    expect(readDeployHistory(scope).map((entry) => entry.deployId)).toEqual(['transient-deploy'])
+    expect(readDeployTargetPresets(scope).preview?.site).toBe('transient-project')
+    expect(storage.size).toBe(0)
+  })
+
+  test('assigns stable isolated transient scopes to unsaved editor stores', async () => {
+    installLocalStorage()
+    const { deployScopeForStore } = await import('@/app/lowcode/preview-pane/deploy/scope')
+    type Store = Parameters<typeof deployScopeForStore>[0]
+    const unsavedStore = () =>
+      ({
+        getStorageBinding: () => null,
+        getSourceIdentity: () => ({ handle: null, path: null }),
+        getDocumentPath: () => null
+      }) as Store
+    const first = unsavedStore()
+    const second = unsavedStore()
+
+    expect(deployScopeForStore(first)).toMatch(/^volatile:[a-f0-9]{64}$/)
+    expect(deployScopeForStore(first)).toBe(deployScopeForStore(first))
+    expect(deployScopeForStore(first)).not.toBe(deployScopeForStore(second))
+  })
+
+  test('normalizes public runtime overrides in environment presets', async () => {
+    installLocalStorage()
+    const { deployRuntimeConfigSnapshot, readDeployTargetPresets, saveDeployTargetPreset } =
+      await import('@/app/lowcode/preview-pane/deploy/history')
+
+    expect(deployRuntimeConfigSnapshot({})).toBeUndefined()
+    expect(
+      deployRuntimeConfigSnapshot({
+        supabaseUrl: ' https://staging.supabase.co/ ',
+        supabaseAnonKey: ' sb_publishable_example ',
+        supabaseSchema: ' app '
+      })
+    ).toEqual({
+      supabaseUrl: 'https://staging.supabase.co/',
+      supabaseAnonKey: 'sb_publishable_example',
+      supabaseSchema: 'app'
+    })
+
+    saveDeployTargetPreset({
+      environment: 'staging',
+      provider: 'cloudflare',
+      site: 'account/project',
+      buildOptions: { uiKit: 'none', i18nEnabled: false, locales: [] },
+      runtimeConfig: {
+        supabaseUrl: ' https://staging.supabase.co ',
+        supabaseAnonKey: ' sb_publishable_example ',
+        supabaseSchema: ' app '
+      }
+    })
+    expect(readDeployTargetPresets().staging?.runtimeConfig).toEqual({
+      supabaseUrl: 'https://staging.supabase.co',
+      supabaseAnonKey: 'sb_publishable_example',
+      supabaseSchema: 'app'
+    })
+  })
+
+  test('rejects incomplete or elevated Supabase runtime overrides before persistence', async () => {
+    const storage = installLocalStorage()
+    const { deployRuntimeConfigSnapshot, saveDeployTargetPreset, validateDeployRuntimeConfig } =
+      await import('@/app/lowcode/preview-pane/deploy/history')
+
+    expect(validateDeployRuntimeConfig({ supabaseUrl: 'https://x.supabase.co' })).toMatchObject({
+      ok: false
+    })
+    expect(
+      validateDeployRuntimeConfig({
+        supabaseUrl: 'https://x.supabase.co',
+        supabaseAnonKey: 'sb_secret_do-not-persist'
+      })
+    ).toMatchObject({ ok: false })
+    expect(
+      validateDeployRuntimeConfig({
+        supabaseUrl: 'https://user:password@x.supabase.co',
+        supabaseAnonKey: 'sb_publishable_example'
+      })
+    ).toMatchObject({ ok: false })
+    expect(validateDeployRuntimeConfig({ supabaseSchema: 'bad schema' })).toMatchObject({
+      ok: false
+    })
+    expect(() =>
+      deployRuntimeConfigSnapshot({
+        supabaseUrl: 'https://x.supabase.co',
+        supabaseAnonKey: 'sb_secret_do-not-persist'
+      })
+    ).toThrow('cannot be saved')
+    expect(() =>
+      saveDeployTargetPreset({
+        environment: 'production',
+        provider: 'netlify',
+        buildOptions: { uiKit: 'none', i18nEnabled: false, locales: [] },
+        runtimeConfig: {
+          supabaseUrl: 'https://x.supabase.co',
+          supabaseAnonKey: 'sb_secret_do-not-persist'
+        }
+      })
+    ).toThrow('cannot be saved')
+    expect([...storage.values()].join('\n')).not.toContain('sb_secret_do-not-persist')
   })
 })

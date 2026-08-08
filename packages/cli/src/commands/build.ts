@@ -8,6 +8,10 @@ import type { BuildResult } from '@open-pencil/compiler/build'
 import { loadAndCompile, reportCodegenResult, resolveBuildEnv } from '#cli/codegen'
 import { printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
+import {
+  createBuildServerDeploymentNotice,
+  printManualServerDeploymentNotice
+} from '#cli/server-deployment'
 import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface BuildArgs {
@@ -18,6 +22,7 @@ interface BuildArgs {
   base?: string
   'supabase-url'?: string
   'supabase-anon-key'?: string
+  'supabase-schema'?: string
   i18n?: boolean
   locale?: string | string[]
   'source-locale'?: string
@@ -69,6 +74,12 @@ export default defineCommand({
         'Override the Supabase anon key for this build (else VITE_SUPABASE_ANON_KEY, else design-time).',
       required: false
     },
+    'supabase-schema': {
+      type: 'string',
+      description:
+        'Override the Supabase schema for this build (else VITE_SUPABASE_SCHEMA, else design-time/public).',
+      required: false
+    },
     ...i18nArgs,
     ...uiKitArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
@@ -91,10 +102,17 @@ export default defineCommand({
       uiKit
     })
 
-    const env = resolveBuildEnv({
-      supabaseUrl: (args as BuildArgs)['supabase-url'],
-      supabaseAnonKey: (args as BuildArgs)['supabase-anon-key']
-    })
+    let env: ReturnType<typeof resolveBuildEnv>
+    try {
+      env = resolveBuildEnv({
+        supabaseUrl: (args as BuildArgs)['supabase-url'],
+        supabaseAnonKey: (args as BuildArgs)['supabase-anon-key'],
+        supabaseSchema: (args as BuildArgs)['supabase-schema']
+      })
+    } catch (e) {
+      printError(e)
+      process.exit(1)
+    }
 
     let result: BuildResult
     try {
@@ -105,6 +123,7 @@ export default defineCommand({
       process.exit(1)
     }
 
+    const serverNotice = createBuildServerDeploymentNotice(result)
     reportCodegenResult({
       json: args.json,
       outDir,
@@ -112,7 +131,12 @@ export default defineCommand({
       files: result.files,
       warnings: compiled.warnings,
       verb: 'Built',
-      nextLine: `Done. Deploy ${outDir} to any static host (multi-page apps need an SPA fallback to index.html).`
+      nextLine: serverNotice
+        ? `Done. Deploy the browser files in ${outDir} to any static host ` +
+          '(exclude openpencil-server/; multi-page apps need an SPA fallback to index.html).'
+        : `Done. Deploy ${outDir} to any static host (multi-page apps need an SPA fallback to index.html).`
     })
+
+    if (serverNotice && !args.json) printManualServerDeploymentNotice(serverNotice)
   }
 })

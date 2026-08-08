@@ -102,8 +102,21 @@ describe('buildLowcodeSupabaseRuntime (Phase 3 §2)', () => {
     expect(out).toContain(
       'const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "eyJhbGciOiJIUzI1NiJ9.anon.sig"'
     )
+    expect(out).toContain(
+      'const SUPABASE_SCHEMA = import.meta.env.VITE_SUPABASE_SCHEMA ?? "public"'
+    )
     // createClient now takes the resolved consts, not inline literals.
-    expect(out).toContain('createClient(SUPABASE_URL, SUPABASE_ANON_KEY)')
+    expect(out).toContain(
+      'createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { db: { schema: SUPABASE_SCHEMA } })'
+    )
+  })
+
+  test('passes the configured schema to createClient', () => {
+    const out = buildLowcodeSupabaseRuntime({ ...SAMPLE_CONFIG, schema: 'private' })
+    expect(out).toContain(
+      'const SUPABASE_SCHEMA = import.meta.env.VITE_SUPABASE_SCHEMA ?? "private"'
+    )
+    expect(out).toContain('{ db: { schema: SUPABASE_SCHEMA } }')
   })
 })
 
@@ -168,6 +181,7 @@ describe('React adapter — emit lowcode Supabase runtime + dep inject (Phase 3 
     const envExample = out.files.get('.env.example') as string
     expect(envExample).toContain('VITE_SUPABASE_URL=https://example.supabase.co')
     expect(envExample).toContain('VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiJ9.anon.sig')
+    expect(envExample).toContain('VITE_SUPABASE_SCHEMA=public')
   })
 
   test('§5: no supabaseConfig → no vite-env.d.ts / .env.example (scaffold gated on config)', () => {
@@ -182,6 +196,7 @@ describe('React adapter — emit lowcode Supabase runtime + dep inject (Phase 3 
     expect(buildViteEnvDts()).toContain('/// <reference types="vite/client" />')
     const example = buildSupabaseEnvExample(SAMPLE_CONFIG)
     expect(example).toContain('VITE_SUPABASE_URL=https://example.supabase.co')
+    expect(example).toContain('VITE_SUPABASE_SCHEMA=public')
     expect(example).toContain('Copy this file to .env')
   })
 

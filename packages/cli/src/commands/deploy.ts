@@ -5,7 +5,7 @@ import process from 'node:process'
 
 import { defineCommand } from 'citty'
 
-import { buildPreviewProject } from '@open-pencil/compiler/build'
+import { buildPreviewProject, type BuildResult } from '@open-pencil/compiler/build'
 import { deployFiles, type DeployProgress, type DeployResult } from '@open-pencil/compiler/deploy'
 import {
   resolveDeployEnvironment,
@@ -15,6 +15,10 @@ import {
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
 import { bold, dim, ok, printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
+import {
+  createDeployServerDeploymentNotice,
+  printManualServerDeploymentNotice
+} from '#cli/server-deployment'
 import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
 interface DeployArgs {
@@ -28,6 +32,7 @@ interface DeployArgs {
   base?: string
   'supabase-url'?: string
   'supabase-anon-key'?: string
+  'supabase-schema'?: string
   'ui-kit'?: string
   i18n?: boolean
   locale?: string | string[]
@@ -54,11 +59,22 @@ export function resolveDeployProvider(raw: string | undefined): DeployProvider {
   throw new Error(`Unknown --provider '${provider}'. Supported: ${PROVIDERS.join(', ')}.`)
 }
 
-/** Read a built dist directory back into a path → bytes map for upload. */
-function readDist(outDir: string, relPaths: readonly string[]): Map<string, Uint8Array> {
+export function resolveCloudflareAccountId(
+  explicit: string | undefined,
+  environment: NodeJS.ProcessEnv = process.env
+): string | undefined {
+  if (explicit !== undefined) return explicit.trim() || undefined
+  if (environment.OPENPENCIL_DEPLOY_IGNORE_AMBIENT_TARGET === '1') return undefined
+  return environment.CLOUDFLARE_ACCOUNT_ID?.trim() || undefined
+}
+
+/** Read only the browser-static build paths into the provider upload payload. */
+export function readStaticDist(
+  result: Pick<BuildResult, 'outDir' | 'staticFiles'>
+): Map<string, Uint8Array> {
   const files = new Map<string, Uint8Array>()
-  for (const rel of relPaths) {
-    files.set(rel, new Uint8Array(readFileSync(join(outDir, rel))))
+  for (const rel of result.staticFiles) {
+    files.set(rel, new Uint8Array(readFileSync(join(result.outDir, rel))))
   }
   return files
 }
@@ -131,6 +147,12 @@ export default defineCommand({
         'Override the Supabase anon key for this deploy (else VITE_SUPABASE_ANON_KEY, else design-time).',
       required: false
     },
+    'supabase-schema': {
+      type: 'string',
+      description:
+        'Override the Supabase schema for this deploy (else VITE_SUPABASE_SCHEMA, else design-time/public).',
+      required: false
+    },
     ...uiKitArgs,
     ...i18nArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
@@ -176,10 +198,17 @@ export default defineCommand({
         sourceLocale
       })
 
-      const env = resolveBuildEnv({
-        supabaseUrl: (args as DeployArgs)['supabase-url'],
-        supabaseAnonKey: (args as DeployArgs)['supabase-anon-key']
-      })
+      let env: ReturnType<typeof resolveBuildEnv>
+      try {
+        env = resolveBuildEnv({
+          supabaseUrl: (args as DeployArgs)['supabase-url'],
+          supabaseAnonKey: (args as DeployArgs)['supabase-anon-key'],
+          supabaseSchema: (args as DeployArgs)['supabase-schema']
+        })
+      } catch (e) {
+        printError(e)
+        process.exit(1)
+      }
 
       if (!args.json) console.log('  Building…')
       const built = await buildPreviewProject({
@@ -188,7 +217,12 @@ export default defineCommand({
         base,
         env
       })
-      const dist = readDist(built.outDir, built.files)
+      // `openpencil-server/` is an operator-owned Edge Function bundle. Static
+      // providers receive browser assets only; this command never deploys the
+      // function or configures its secrets as a side effect.
+      const dist = readStaticDist(built)
+      const serverDeployment =
+        built.serverFiles.length > 0 && file ? createDeployServerDeploymentNotice(file) : undefined
 
       let result: DeployResult
       try {
@@ -200,7 +234,7 @@ export default defineCommand({
             site: deployArgs.site,
             accountId:
               provider === 'cloudflare'
-                ? (deployArgs['account-id'] ?? process.env.CLOUDFLARE_ACCOUNT_ID)
+                ? resolveCloudflareAccountId(deployArgs['account-id'])
                 : undefined
           },
           { onProgress: args.json ? undefined : (p) => logProgress(p, provider) }
@@ -212,7 +246,7 @@ export default defineCommand({
       }
 
       if (args.json) {
-        console.log(JSON.stringify({ ...result, environment }, null, 2))
+        console.log(JSON.stringify({ ...result, environment, serverDeployment }, null, 2))
         return
       }
 
@@ -222,6 +256,7 @@ export default defineCommand({
       )
       console.log('')
       console.log(ok(`Live at ${result.url}`))
+      if (serverDeployment) printManualServerDeploymentNotice(serverDeployment)
     } finally {
       rmSync(buildDir, { recursive: true, force: true })
     }

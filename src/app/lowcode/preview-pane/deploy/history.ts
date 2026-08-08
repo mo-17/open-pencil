@@ -1,4 +1,8 @@
+import { sha256 } from '@noble/hashes/sha256'
+import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
+
 import type { DeployEnvironment } from '@open-pencil/core/lowcode-deployment'
+import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
 
 import { readLocalStorageText, writeLocalStorageText } from '@/app/cache'
 
@@ -19,6 +23,7 @@ export interface DeployHistoryEntry {
   i18nEnabled?: boolean
   locales?: string[]
   buildOptions?: DeployBuildOptions
+  runtimeConfig?: DeployRuntimeConfig
   artifactLabel?: string
   compat?: DeployHistoryCompat
 }
@@ -28,6 +33,19 @@ export interface DeployBuildOptions {
   i18nEnabled: boolean
   locales: string[]
 }
+
+/** Public runtime values that may differ between preview, staging, and
+ * production. Supabase publishable/anon keys are intentionally allowed here;
+ * provider access tokens and service-role/secret keys are not. */
+export interface DeployRuntimeConfig {
+  supabaseUrl?: string
+  supabaseAnonKey?: string
+  supabaseSchema?: string
+}
+
+export type DeployRuntimeConfigValidation =
+  | { ok: true; value: DeployRuntimeConfig | undefined }
+  | { ok: false; reason: string }
 
 export interface DeployHistoryCompat {
   schema: 1
@@ -40,13 +58,20 @@ export interface DeployRollbackDraft {
   uiKit: DeployHistoryUiKit
   i18nEnabled: boolean
   locales: string[]
+  runtimeConfig?: DeployRuntimeConfig
 }
+
+export type DeployDocumentIdentity =
+  | { kind: 'path'; path: string }
+  | { kind: 'storage'; providerId: string; documentId: string }
+  | { kind: 'transient'; id: string }
 
 export interface DeployTargetPreset {
   environment: DeployEnvironment
   provider: DeployHistoryProvider
   site?: string
   buildOptions: DeployBuildOptions
+  runtimeConfig?: DeployRuntimeConfig
   updatedAt: string
 }
 
@@ -92,6 +117,64 @@ const DEPLOY_TARGETS_KEY = 'open-pencil:lowcode-deploy-targets:v1'
 const DEPLOY_HISTORY_LIMIT = 8
 const DEPLOY_HISTORY_SCHEMA = 1
 const NETLIFY_API = 'https://api.netlify.com/api/v1'
+const VOLATILE_SCOPE_PREFIX = 'volatile:'
+const volatileStorage = new Map<string, string>()
+
+/** Scope deploy metadata without writing a local path or remote document id to
+ * localStorage. Saved/remote identities use a collision-resistant SHA-256
+ * digest. Unsaved tab identities are process-local and never persisted. */
+export function deployDocumentScope(
+  identity: string | DeployDocumentIdentity | null | undefined
+): string | undefined {
+  let normalizedIdentity: DeployDocumentIdentity | undefined
+  if (typeof identity === 'string') {
+    const path = identity.trim()
+    normalizedIdentity = path ? { kind: 'path', path } : undefined
+  } else {
+    normalizedIdentity = identity ?? undefined
+  }
+  if (!normalizedIdentity) return undefined
+  let value: string
+  if (normalizedIdentity.kind === 'path') {
+    const path = normalizedIdentity.path.trim()
+    if (!path) return undefined
+    value = `path\0${path}`
+  } else if (normalizedIdentity.kind === 'storage') {
+    const providerId = normalizedIdentity.providerId.trim()
+    const documentId = normalizedIdentity.documentId.trim()
+    if (!providerId || !documentId) return undefined
+    value = `storage\0${providerId}\0${documentId}`
+  } else {
+    const id = normalizedIdentity.id.trim()
+    if (!id) return undefined
+    value = `transient\0${id}`
+  }
+  const digest = bytesToHex(sha256(utf8ToBytes(value)))
+  return normalizedIdentity.kind === 'transient'
+    ? `${VOLATILE_SCOPE_PREFIX}${digest}`
+    : `doc-sha256-${digest}`
+}
+
+function scopedStorageKey(base: string, scope?: string): string {
+  const normalized = scope?.trim()
+  return normalized ? `${base}:${normalized}` : base
+}
+
+function readScopedText(base: string, scope?: string): string | null {
+  const key = scopedStorageKey(base, scope)
+  return scope?.startsWith(VOLATILE_SCOPE_PREFIX)
+    ? (volatileStorage.get(key) ?? null)
+    : readLocalStorageText(key)
+}
+
+function writeScopedText(base: string, scope: string | undefined, value: string): void {
+  const key = scopedStorageKey(base, scope)
+  if (scope?.startsWith(VOLATILE_SCOPE_PREFIX)) {
+    volatileStorage.set(key, value)
+    return
+  }
+  writeLocalStorageText(key, value)
+}
 
 interface UnknownFields {
   [key: string]: unknown
@@ -130,6 +213,7 @@ function isDeployHistoryOptionalFields(entry: UnknownFields): boolean {
     (entry.locales === undefined ||
       (Array.isArray(entry.locales) && entry.locales.every((loc) => typeof loc === 'string'))) &&
     (entry.buildOptions === undefined || isDeployBuildOptions(entry.buildOptions)) &&
+    (entry.runtimeConfig === undefined || isDeployRuntimeConfig(entry.runtimeConfig)) &&
     (entry.artifactLabel === undefined || typeof entry.artifactLabel === 'string')
   )
 }
@@ -159,16 +243,27 @@ function isDeployTargetPreset(value: unknown): value is DeployTargetPreset {
       preset.provider === 'cloudflare') &&
     (preset.site === undefined || typeof preset.site === 'string') &&
     isDeployBuildOptions(preset.buildOptions) &&
+    (preset.runtimeConfig === undefined || isDeployRuntimeConfig(preset.runtimeConfig)) &&
     typeof preset.updatedAt === 'string'
   )
+}
+
+function isDeployRuntimeConfig(value: unknown): value is DeployRuntimeConfig {
+  const config = objectFields(value)
+  if (!config) return false
+  const fieldsValid =
+    (config.supabaseUrl === undefined || typeof config.supabaseUrl === 'string') &&
+    (config.supabaseAnonKey === undefined || typeof config.supabaseAnonKey === 'string') &&
+    (config.supabaseSchema === undefined || typeof config.supabaseSchema === 'string')
+  return fieldsValid && validateDeployRuntimeConfig(config as DeployRuntimeConfig).ok
 }
 
 function isDeployEnvironment(value: unknown): value is DeployEnvironment {
   return value === 'preview' || value === 'staging' || value === 'production'
 }
 
-export function readDeployHistory(): DeployHistoryEntry[] {
-  const raw = readLocalStorageText(DEPLOY_HISTORY_KEY)
+export function readDeployHistory(scope?: string): DeployHistoryEntry[] {
+  const raw = readScopedText(DEPLOY_HISTORY_KEY, scope)
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw) as unknown
@@ -179,31 +274,38 @@ export function readDeployHistory(): DeployHistoryEntry[] {
   }
 }
 
-export function writeDeployHistory(entries: readonly DeployHistoryEntry[]): DeployHistoryEntry[] {
+export function writeDeployHistory(
+  entries: readonly DeployHistoryEntry[],
+  scope?: string
+): DeployHistoryEntry[] {
   const next = entries.slice(0, DEPLOY_HISTORY_LIMIT)
-  writeLocalStorageText(DEPLOY_HISTORY_KEY, JSON.stringify(next))
+  writeScopedText(DEPLOY_HISTORY_KEY, scope, JSON.stringify(next))
   return next
 }
 
 export function recordDeployHistory(
-  entry: Omit<DeployHistoryEntry, 'id' | 'createdAt'>
+  entry: Omit<DeployHistoryEntry, 'id' | 'createdAt'>,
+  scope?: string
 ): DeployHistoryEntry[] {
   const createdAt = new Date().toISOString()
   const buildOptions = deployBuildOptionsSnapshot(entry)
   const nextEntry: DeployHistoryEntry = {
     ...entry,
     buildOptions,
+    runtimeConfig: deployRuntimeConfigSnapshot(entry.runtimeConfig),
     artifactLabel: entry.artifactLabel ?? deployArtifactLabel({ ...entry, buildOptions }),
     compat: { schema: DEPLOY_HISTORY_SCHEMA },
     id: `${createdAt}:${entry.provider}:${entry.environment}:${entry.deployId}`,
     createdAt
   }
-  return writeDeployHistory([nextEntry, ...readDeployHistory()])
+  return writeDeployHistory([nextEntry, ...readDeployHistory(scope)], scope)
 }
 
-export function readDeployTargetPresets(): Record<DeployEnvironment, DeployTargetPreset | null> {
+export function readDeployTargetPresets(
+  scope?: string
+): Record<DeployEnvironment, DeployTargetPreset | null> {
   const empty = { preview: null, staging: null, production: null }
-  const raw = readLocalStorageText(DEPLOY_TARGETS_KEY)
+  const raw = readScopedText(DEPLOY_TARGETS_KEY, scope)
   if (!raw) return empty
   try {
     const parsed = JSON.parse(raw) as unknown
@@ -220,22 +322,86 @@ export function readDeployTargetPresets(): Record<DeployEnvironment, DeployTarge
 }
 
 export function writeDeployTargetPresets(
-  presets: Record<DeployEnvironment, DeployTargetPreset | null>
+  presets: Record<DeployEnvironment, DeployTargetPreset | null>,
+  scope?: string
 ): Record<DeployEnvironment, DeployTargetPreset | null> {
-  writeLocalStorageText(DEPLOY_TARGETS_KEY, JSON.stringify(presets))
+  writeScopedText(DEPLOY_TARGETS_KEY, scope, JSON.stringify(presets))
   return presets
 }
 
 export function saveDeployTargetPreset(
-  draft: Omit<DeployTargetPreset, 'updatedAt'>
+  draft: Omit<DeployTargetPreset, 'updatedAt'>,
+  scope?: string
 ): Record<DeployEnvironment, DeployTargetPreset | null> {
-  const presets = readDeployTargetPresets()
+  const presets = readDeployTargetPresets(scope)
   const next: DeployTargetPreset = {
     ...draft,
     buildOptions: deployBuildOptionsSnapshot(draft.buildOptions),
+    runtimeConfig: deployRuntimeConfigSnapshot(draft.runtimeConfig),
     updatedAt: new Date().toISOString()
   }
-  return writeDeployTargetPresets({ ...presets, [draft.environment]: next })
+  return writeDeployTargetPresets({ ...presets, [draft.environment]: next }, scope)
+}
+
+export function deployRuntimeConfigSnapshot(
+  config: DeployRuntimeConfig | undefined
+): DeployRuntimeConfig | undefined {
+  const validated = validateDeployRuntimeConfig(config)
+  if (!validated.ok) throw new TypeError(validated.reason)
+  return validated.value
+}
+
+function validateRuntimeSupabaseUrl(supabaseUrl: string | undefined): string | undefined {
+  if (!supabaseUrl) return undefined
+  try {
+    const parsed = new URL(supabaseUrl)
+    if (
+      (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') ||
+      parsed.username ||
+      parsed.password
+    ) {
+      return 'Supabase URL must be an HTTP(S) URL without credentials.'
+    }
+  } catch {
+    return 'Supabase URL is invalid.'
+  }
+  return undefined
+}
+
+export function validateDeployRuntimeConfig(
+  config: DeployRuntimeConfig | undefined
+): DeployRuntimeConfigValidation {
+  if (!config) return { ok: true, value: undefined }
+  const supabaseUrl = config.supabaseUrl?.trim()
+  const supabaseAnonKey = config.supabaseAnonKey?.trim()
+  const supabaseSchema = config.supabaseSchema?.trim()
+  if (!supabaseUrl && !supabaseAnonKey && !supabaseSchema) return { ok: true, value: undefined }
+  if (!!supabaseUrl !== !!supabaseAnonKey) {
+    return {
+      ok: false,
+      reason: 'Supabase URL and publishable/anon key must be overridden together.'
+    }
+  }
+  const urlError = validateRuntimeSupabaseUrl(supabaseUrl)
+  if (urlError) return { ok: false, reason: urlError }
+  if (supabaseAnonKey && detectSupabaseSecretKey(supabaseAnonKey)) {
+    return {
+      ok: false,
+      reason: 'Supabase secret/service-role keys cannot be saved or sent to a browser build.'
+    }
+  }
+  if (supabaseSchema && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(supabaseSchema)) {
+    return {
+      ok: false,
+      reason: 'Supabase schema must be a plain PostgreSQL identifier (up to 63 characters).'
+    }
+  }
+  const value: DeployRuntimeConfig = {
+    ...(supabaseUrl ? { supabaseUrl } : {}),
+    ...(supabaseAnonKey ? { supabaseAnonKey } : {}),
+    ...(supabaseSchema ? { supabaseSchema } : {})
+  }
+  return { ok: true, value }
 }
 
 export function deployBuildOptionsSnapshot(entry: {
@@ -285,7 +451,8 @@ export function deployRollbackDraft(entry: DeployHistoryEntry): DeployRollbackDr
     site: entry.site,
     uiKit: buildOptions.uiKit,
     i18nEnabled: buildOptions.i18nEnabled,
-    locales: buildOptions.locales
+    locales: buildOptions.locales,
+    runtimeConfig: deployRuntimeConfigSnapshot(entry.runtimeConfig)
   }
 }
 

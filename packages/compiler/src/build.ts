@@ -10,13 +10,15 @@
 // zero `npm install`. Unlike the dev-server (Vite `createServer` + HMR), this
 // runs Vite `build` once and writes a hashed static SPA bundle to a real dir.
 
-import { readdirSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
 import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { build } from 'vite'
+
+import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
 
 import { inMemoryVFS, prepareVfsRoot, VITE_JSX_ESBUILD, type PreviewFiles } from './vfs'
 
@@ -40,14 +42,91 @@ export interface BuildOptions {
    * the design-time values baked into the emitted runtime. The VFS build can't
    * read a disk `.env`, so this is the override channel for our pipeline.
    */
-  env?: { VITE_SUPABASE_URL?: string; VITE_SUPABASE_ANON_KEY?: string }
+  env?: {
+    VITE_SUPABASE_URL?: string
+    VITE_SUPABASE_ANON_KEY?: string
+    VITE_SUPABASE_SCHEMA?: string
+  }
 }
 
 export interface BuildResult {
   /** The directory the bundle was written to. */
   outDir: string
-  /** `outDir`-relative paths written, sorted. */
+  /** All `outDir`-relative paths written, sorted. */
   files: string[]
+  /** Browser-static paths that are safe to send to a static hosting provider. */
+  staticFiles: string[]
+  /** Server-only paths delivered under `openpencil-server/`, never for static upload. */
+  serverFiles: string[]
+}
+
+/** Non-secret operator instructions returned when a build contains server
+ * artifacts that static hosting must not upload. */
+export interface ServerDeploymentInstructions {
+  required: true
+  warning: string
+  artifactDirectory: string
+  commands: string[]
+}
+
+export const OPENPENCIL_SERVER_OUTPUT_DIR = 'openpencil-server'
+
+const SERVER_ARTIFACT_FILES = new Set([
+  '.env.server.example',
+  'openpencil-server.manifest.json',
+  'SERVER_DEPLOYMENT.md'
+])
+
+/** Server-only compiler sources that must bypass Vite and static hosting. */
+export function isServerArtifactSourcePath(path: string): boolean {
+  return path.startsWith('supabase/') || SERVER_ARTIFACT_FILES.has(path)
+}
+
+/** Build output paths that belong to the separately deployed server bundle. */
+export function isServerArtifactOutputPath(path: string): boolean {
+  const normalized = path.replaceAll('\\', '/')
+  return normalized.startsWith(`${OPENPENCIL_SERVER_OUTPUT_DIR}/`)
+}
+
+/**
+ * Pin all client Supabase variables at the Vite define boundary. An omitted
+ * override is deliberately `undefined` so an ambient build-process VITE_* value
+ * cannot replace the design-time fallback emitted by the compiler.
+ */
+export function createSupabaseBuildDefines(env: BuildOptions['env']): Record<string, string> {
+  return {
+    'import.meta.env.VITE_SUPABASE_URL':
+      env?.VITE_SUPABASE_URL === undefined ? 'undefined' : JSON.stringify(env.VITE_SUPABASE_URL),
+    'import.meta.env.VITE_SUPABASE_ANON_KEY':
+      env?.VITE_SUPABASE_ANON_KEY === undefined
+        ? 'undefined'
+        : JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
+    'import.meta.env.VITE_SUPABASE_SCHEMA':
+      env?.VITE_SUPABASE_SCHEMA === undefined
+        ? 'undefined'
+        : JSON.stringify(env.VITE_SUPABASE_SCHEMA)
+  }
+}
+
+function copyServerArtifacts(files: PreviewFiles, outDir: string): void {
+  for (const [path, contents] of files) {
+    if (!isServerArtifactSourcePath(path)) continue
+    const segments = path.split('/')
+    if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
+      throw new Error(`Refusing unsafe server artifact path: ${path}`)
+    }
+    const destination = join(outDir, OPENPENCIL_SERVER_OUTPUT_DIR, ...segments)
+    mkdirSync(dirname(destination), { recursive: true })
+    writeFileSync(destination, contents)
+  }
+}
+
+function browserPreviewFiles(files: PreviewFiles): PreviewFiles {
+  const browserFiles: PreviewFiles = new Map()
+  for (const [path, contents] of files) {
+    if (!isServerArtifactSourcePath(path)) browserFiles.set(path, contents)
+  }
+  return browserFiles
 }
 
 /** Recursively list files under `dir`, returning `dir`-relative POSIX-ish paths. */
@@ -74,24 +153,26 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
   const workspaceRoot = opts.fsRoot ?? process.cwd()
   const base = opts.base ?? '/'
 
+  if (
+    opts.env?.VITE_SUPABASE_ANON_KEY !== undefined &&
+    detectSupabaseSecretKey(opts.env.VITE_SUPABASE_ANON_KEY)
+  ) {
+    throw new Error(
+      'Refusing to embed a Supabase secret/service_role key in a client bundle; use a publishable or legacy anon key.'
+    )
+  }
+
   // Shared with the dev-server: a quiet workspace sub-dir as Vite's root (deps
   // resolve up to the hoisted node_modules; the VFS plugin supplies all source)
   // plus the planted JSX-mode tsconfig.
   const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot)
-  const vfs = inMemoryVFS({ files }, vfsPrefix)
+  // Server sources are never visible to Vite, even if a malformed browser
+  // entry tries to import one. They are copied to the separate bundle below.
+  const vfs = inMemoryVFS({ files: browserPreviewFiles(files) }, vfsPrefix)
 
-  // §5: override the emitted import.meta.env.VITE_SUPABASE_* fallbacks per
-  // environment. Only present keys are defined — omitted ones keep the
-  // design-time fallback baked into the runtime.
-  const define: Record<string, string> = {}
-  if (opts.env?.VITE_SUPABASE_URL !== undefined) {
-    define['import.meta.env.VITE_SUPABASE_URL'] = JSON.stringify(opts.env.VITE_SUPABASE_URL)
-  }
-  if (opts.env?.VITE_SUPABASE_ANON_KEY !== undefined) {
-    define['import.meta.env.VITE_SUPABASE_ANON_KEY'] = JSON.stringify(
-      opts.env.VITE_SUPABASE_ANON_KEY
-    )
-  }
+  // §5: explicit CLI/app overrides win. Missing keys are pinned to undefined
+  // instead of letting Vite inherit an unrelated build-process VITE_* value.
+  const define = createSupabaseBuildDefines(opts.env)
 
   await build({
     root: scanRoot,
@@ -113,5 +194,17 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
     }
   })
 
-  return { outDir, files: listFiles(outDir).sort() }
+  // Server workflows are emitted beside the browser project in the VFS, but
+  // they must not enter Rollup or a static-host upload. Preserve them as a
+  // separate operator-owned bundle instead.
+  copyServerArtifacts(files, outDir)
+
+  const written = listFiles(outDir).sort()
+  const serverFiles = written.filter(isServerArtifactOutputPath)
+  return {
+    outDir,
+    files: written,
+    staticFiles: written.filter((path) => !isServerArtifactOutputPath(path)),
+    serverFiles
+  }
 }

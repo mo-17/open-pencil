@@ -2,12 +2,12 @@
 import { computed, ref, watch } from 'vue'
 
 import {
-  type RlsTableRequirement,
   buildRlsPolicySql,
-  collectRlsRequirements,
-  detectServiceRole
+  detectSupabaseSecretKey,
+  type RlsTableRequirement
 } from '@open-pencil/core/lowcode-validation'
-import type { ActionDef, SupabaseConfig } from '@open-pencil/scene-graph'
+import { auditApplicationRuntime } from '@open-pencil/core/lowcode-validation/application-runtime'
+import type { SupabaseConfig } from '@open-pencil/scene-graph'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 import { useSectionUI } from '@/components/ui/section'
 
@@ -15,6 +15,7 @@ import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceConflictBanner } from '@/app/editor/presence/use-presence-conflict-banner'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
 import { toast } from '@/app/shell/ui'
+import SupabaseSchemaInspector from '@/components/properties/Lowcode/SupabaseSchemaInspector.vue'
 
 const editor = useEditorStore()
 const sectionCls = useSectionUI()
@@ -35,14 +36,14 @@ const anonKeyInput = computed(() => config.value?.anonKey ?? '')
 const schemaInput = computed(() => config.value?.schema ?? '')
 
 // Local mirror of the anon key DOM input. `buildPatch` refuses to persist
-// a service_role JWT, so deriving `serviceRoleDetected` from the committed
+// an elevated Supabase key, so deriving `secretKeyDetected` from the committed
 // config (`anonKeyInput`) would mean the bad value never reaches reactivity
 // — banner, red border, and disabled Test button would all stay silent
 // even though §2.7 risk row 1 demands all four indicators. Tracking what
 // the user has typed locally lets the banner fire live on @input while
 // the committed config stays clean. The watch resyncs only when the
 // committed anon key actually changes (undo/redo, external load), so a
-// rejected service_role attempt stays visible until the user clears it.
+// rejected secret/service_role attempt stays visible until the user clears it.
 const anonKeyTyped = ref<string>(config.value?.anonKey ?? '')
 watch(
   () => config.value?.anonKey,
@@ -56,20 +57,21 @@ const testError = ref<string>('')
 
 // Phase 3 §3.v8 — RLS policy advisor. The silent-0-row footgun (§3.8
 // surprise #5) cannot be probed through the anon REST API, so instead of a
-// live check we derive the anon policies this document *needs* from every
-// Supabase action it uses. Walk the whole graph (not just the selection)
-// since actions live on any node's `events`; `collectRlsRequirements` keeps
-// the aggregation/dedup pure and unit-tested in core.
+// live check we derive the user-scoped policies this document *needs* from
+// every client and server Supabase action, LIST query, and Storage upload.
+// The shared application-runtime audit owns traversal and deduplication.
 const rlsRequirements = useSceneComputed<RlsTableRequirement[]>(() => {
-  const actions: ActionDef[] = []
-  for (const node of editor.graph.getAllNodes()) {
-    if (!node.events) continue
-    for (const list of Object.values(node.events)) {
-      if (list) actions.push(...list)
-    }
-  }
-  return collectRlsRequirements(actions)
+  return auditApplicationRuntime(editor.graph).rlsRequirements
 })
+
+function requirementKey(req: RlsTableRequirement): string {
+  return `${req.schema ?? 'public'}.${req.table}:${req.storageBucket ?? ''}`
+}
+
+function requirementLabel(req: RlsTableRequirement): string {
+  const table = `${req.schema ?? 'public'}.${req.table}`
+  return req.storageBucket ? `${table} (${req.storageBucket})` : table
+}
 
 // Tracks which table's SQL was just copied so the button label can flip to
 // "Copied" briefly. Keyed by table name (one button per requirement).
@@ -77,9 +79,9 @@ const copiedTable = ref<string>('')
 async function copyRlsSql(req: RlsTableRequirement): Promise<void> {
   try {
     await navigator.clipboard.writeText(buildRlsPolicySql(req))
-    copiedTable.value = req.table
+    copiedTable.value = requirementKey(req)
     setTimeout(() => {
-      if (copiedTable.value === req.table) copiedTable.value = ''
+      if (copiedTable.value === requirementKey(req)) copiedTable.value = ''
     }, 1500)
   } catch (err) {
     // Clipboard unavailable (rare in WKWebView) — the SQL is still visible
@@ -100,13 +102,13 @@ function maybeFireRlsToast(): void {
   toast.info(panels.value.lowcodeSupabaseRlsToast)
 }
 
-// Phase 3 §2.7 risk row 1 — service_role JWTs carry full DB privileges and
+// Phase 3 §2.7 risk row 1 — secret/service_role keys carry full DB privileges and
 // MUST never land in .fig / pluginData / git. The detector lives in
 // `@open-pencil/core/lowcode-validation` so the editor UI here and the
 // lowcode AI tool (Phase 3 §3) share one source — a divergence between
 // the two would be silent on this side (banner still shows) and dangerous
 // on the tool side (key would persist).
-const serviceRoleDetected = computed(() => detectServiceRole(anonKeyTyped.value))
+const secretKeyDetected = computed(() => detectSupabaseSecretKey(anonKeyTyped.value))
 
 function commit(next: SupabaseConfig | undefined): void {
   editor.updateNodeWithUndo(
@@ -120,10 +122,10 @@ function buildPatch(url: string, anonKey: string, schema: string): SupabaseConfi
   const u = url.trim()
   const k = anonKey.trim()
   const s = schema.trim()
-  // §2.2 #j hard-reject: a service_role key NEVER persists. Mid-typing the
+  // §2.2 #j hard-reject: an elevated Supabase key NEVER persists. Mid-typing the
   // key is fine (banner shows), but the moment a commit would happen we
   // refuse to persist the bad value.
-  if (k && detectServiceRole(k)) return config.value
+  if (k && detectSupabaseSecretKey(k)) return config.value
   if (!u && !k) return undefined
   return s ? { url: u, anonKey: k, schema: s } : { url: u, anonKey: k }
 }
@@ -151,7 +153,7 @@ async function testConnection(): Promise<void> {
     testError.value = panels.value.lowcodeSupabaseTestMissing
     return
   }
-  if (serviceRoleDetected.value) return
+  if (secretKeyDetected.value) return
   testStatus.value = 'pending'
   testError.value = ''
   try {
@@ -229,13 +231,13 @@ async function testConnection(): Promise<void> {
       <input
         :value="anonKeyTyped"
         :aria-label="panels.lowcodeSupabaseAnonKey"
-        :aria-invalid="serviceRoleDetected ? 'true' : undefined"
+        :aria-invalid="secretKeyDetected ? 'true' : undefined"
         data-test-id="lowcode-supabase-anon-key"
         spellcheck="false"
         :placeholder="panels.lowcodeSupabaseAnonKeyPlaceholder"
         :class="[
           'min-w-0 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
-          serviceRoleDetected ? 'border-red-500' : 'border-border'
+          secretKeyDetected ? 'border-red-500' : 'border-border'
         ]"
         @input="anonKeyTyped = ($event.target as HTMLInputElement).value"
         @change="updateAnonKey(($event.target as HTMLInputElement).value)"
@@ -252,7 +254,7 @@ async function testConnection(): Promise<void> {
       <button
         type="button"
         data-test-id="lowcode-supabase-test"
-        :disabled="testStatus === 'pending' || serviceRoleDetected"
+        :disabled="testStatus === 'pending' || secretKeyDetected"
         class="rounded border border-border px-2 py-1 text-[11px] text-muted hover:bg-hover hover:text-surface disabled:cursor-not-allowed disabled:opacity-50"
         @click="testConnection"
       >
@@ -261,7 +263,7 @@ async function testConnection(): Promise<void> {
     </div>
 
     <p
-      v-if="serviceRoleDetected"
+      v-if="secretKeyDetected"
       data-test-id="lowcode-supabase-service-role-error"
       class="mt-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] text-red-500"
     >
@@ -289,6 +291,8 @@ async function testConnection(): Promise<void> {
       {{ panels.lowcodeSupabaseCurrentUserNote }}
     </p>
 
+    <SupabaseSchemaInspector :config="config" />
+
     <div
       v-if="config && rlsRequirements.length"
       data-test-id="lowcode-supabase-rls-advisor"
@@ -297,12 +301,12 @@ async function testConnection(): Promise<void> {
       <label class="text-[11px] text-muted">{{ panels.lowcodeSupabaseRlsHeading }}</label>
       <div
         v-for="req in rlsRequirements"
-        :key="req.table"
+        :key="requirementKey(req)"
         data-test-id="lowcode-supabase-rls-table"
         class="mt-1.5 flex flex-col gap-1"
       >
         <div class="flex flex-wrap items-center gap-1.5">
-          <span class="font-mono text-xs text-surface">{{ req.table }}</span>
+          <span class="font-mono text-xs text-surface">{{ requirementLabel(req) }}</span>
           <span
             v-for="cmd in req.commands"
             :key="cmd"
@@ -328,7 +332,7 @@ async function testConnection(): Promise<void> {
           @click="copyRlsSql(req)"
         >
           {{
-            copiedTable === req.table
+            copiedTable === requirementKey(req)
               ? panels.lowcodeSupabaseRlsCopied
               : panels.lowcodeSupabaseRlsCopy
           }}

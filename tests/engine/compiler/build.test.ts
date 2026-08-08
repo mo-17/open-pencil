@@ -2,8 +2,13 @@ import { afterAll, describe, expect, test } from 'bun:test'
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import process from 'node:process'
 
-import { buildPreviewProject, type PreviewFiles } from '@open-pencil/compiler/build'
+import {
+  buildPreviewProject,
+  createSupabaseBuildDefines,
+  type PreviewFiles
+} from '@open-pencil/compiler/build'
 
 /**
  * Phase 3 §5 step 2: end-to-end smoke for the static build. Runs a real Vite
@@ -55,6 +60,25 @@ afterAll(() => {
 })
 
 describe('buildPreviewProject (Phase 3 §5)', () => {
+  test('pins all Supabase Vite defines instead of inheriting ambient build values', () => {
+    expect(createSupabaseBuildDefines(undefined)).toEqual({
+      'import.meta.env.VITE_SUPABASE_URL': 'undefined',
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': 'undefined',
+      'import.meta.env.VITE_SUPABASE_SCHEMA': 'undefined'
+    })
+    expect(
+      createSupabaseBuildDefines({
+        VITE_SUPABASE_URL: 'https://explicit.supabase.co',
+        VITE_SUPABASE_ANON_KEY: 'sb_publishable_explicit',
+        VITE_SUPABASE_SCHEMA: 'app'
+      })
+    ).toEqual({
+      'import.meta.env.VITE_SUPABASE_URL': '"https://explicit.supabase.co"',
+      'import.meta.env.VITE_SUPABASE_ANON_KEY': '"sb_publishable_explicit"',
+      'import.meta.env.VITE_SUPABASE_SCHEMA': '"app"'
+    })
+  })
+
   test('compiles a VFS project into a static dist (index.html + hashed assets)', async () => {
     const result = await buildPreviewProject({ files: fixture, outDir })
 
@@ -79,6 +103,47 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
     expect(js[0]).toMatch(/assets\/index-[\w-]+\.js$/)
   }, 30_000)
 
+  test('delivers server artifacts separately and excludes them from static deploy files', async () => {
+    const serverFixture: PreviewFiles = new Map(fixture)
+    serverFixture.set(
+      'supabase/functions/openpencil-runtime/index.ts',
+      'Deno.serve(() => new Response("ok"))\n'
+    )
+    serverFixture.set('.env.server.example', 'PAYMENTS_API_KEY=\n')
+    serverFixture.set('openpencil-server.manifest.json', '{"version":1}\n')
+    serverFixture.set('SERVER_DEPLOYMENT.md', '# Deploy server workflows\n')
+
+    const serverOutDir = mkdtempSync(join(tmpdir(), 'op-build-server-'))
+    try {
+      const result = await buildPreviewProject({ files: serverFixture, outDir: serverOutDir })
+      expect(result.serverFiles).toEqual([
+        'openpencil-server/.env.server.example',
+        'openpencil-server/SERVER_DEPLOYMENT.md',
+        'openpencil-server/openpencil-server.manifest.json',
+        'openpencil-server/supabase/functions/openpencil-runtime/index.ts'
+      ])
+      expect(result.files).toEqual(expect.arrayContaining(result.serverFiles))
+      expect(result.staticFiles.every((path) => !path.startsWith('openpencil-server/'))).toBe(true)
+      expect(result.staticFiles).toContain('index.html')
+      expect(
+        result.staticFiles.some((path) =>
+          readFileSync(join(serverOutDir, path)).includes('Deno.serve')
+        )
+      ).toBe(false)
+      expect(
+        readFileSync(
+          join(serverOutDir, 'openpencil-server/supabase/functions/openpencil-runtime/index.ts'),
+          'utf8'
+        )
+      ).toBe('Deno.serve(() => new Response("ok"))\n')
+      expect(
+        readFileSync(join(serverOutDir, 'openpencil-server/.env.server.example'), 'utf8')
+      ).toBe('PAYMENTS_API_KEY=\n')
+    } finally {
+      rmSync(serverOutDir, { recursive: true, force: true })
+    }
+  }, 30_000)
+
   test('env override is baked via Vite define; absent → import.meta.env fallback survives (§5)', async () => {
     const envFixture: PreviewFiles = new Map([
       [
@@ -97,7 +162,9 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
         'src/App.tsx',
         'export default function App() {\n' +
           '  const u = import.meta.env.VITE_SUPABASE_URL ?? "FALLBACK_DESIGN_URL"\n' +
-          '  return <div>{u}</div>\n' +
+          '  const k = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "FALLBACK_DESIGN_KEY"\n' +
+          '  const s = import.meta.env.VITE_SUPABASE_SCHEMA ?? "FALLBACK_DESIGN_SCHEMA"\n' +
+          '  return <div>{u}:{k}:{s}</div>\n' +
           '}\n'
       ]
     ])
@@ -113,17 +180,57 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
       await buildPreviewProject({
         files: envFixture,
         outDir: withOverride,
-        env: { VITE_SUPABASE_URL: 'https://prod.override.co' }
+        env: {
+          VITE_SUPABASE_URL: 'https://prod.override.co',
+          VITE_SUPABASE_ANON_KEY: 'sb_publishable_override',
+          VITE_SUPABASE_SCHEMA: 'private'
+        }
       })
       const overridden = readBundle(withOverride)
       expect(overridden).toContain('https://prod.override.co')
+      expect(overridden).toContain('sb_publishable_override')
+      expect(overridden).toContain('private')
       expect(overridden).not.toContain('FALLBACK_DESIGN_URL')
+      expect(overridden).not.toContain('FALLBACK_DESIGN_KEY')
+      expect(overridden).not.toContain('FALLBACK_DESIGN_SCHEMA')
 
-      await buildPreviewProject({ files: envFixture, outDir: noOverride })
-      expect(readBundle(noOverride)).toContain('FALLBACK_DESIGN_URL')
+      const ambient = {
+        url: process.env.VITE_SUPABASE_URL,
+        key: process.env.VITE_SUPABASE_ANON_KEY,
+        schema: process.env.VITE_SUPABASE_SCHEMA
+      }
+      process.env.VITE_SUPABASE_URL = 'https://ambient-must-not-leak.supabase.co'
+      process.env.VITE_SUPABASE_ANON_KEY = 'sb_publishable_ambient_must_not_leak'
+      process.env.VITE_SUPABASE_SCHEMA = 'ambient_must_not_leak'
+      try {
+        await buildPreviewProject({ files: envFixture, outDir: noOverride })
+      } finally {
+        if (ambient.url === undefined) delete process.env.VITE_SUPABASE_URL
+        else process.env.VITE_SUPABASE_URL = ambient.url
+        if (ambient.key === undefined) delete process.env.VITE_SUPABASE_ANON_KEY
+        else process.env.VITE_SUPABASE_ANON_KEY = ambient.key
+        if (ambient.schema === undefined) delete process.env.VITE_SUPABASE_SCHEMA
+        else process.env.VITE_SUPABASE_SCHEMA = ambient.schema
+      }
+      const fallback = readBundle(noOverride)
+      expect(fallback).toContain('FALLBACK_DESIGN_URL')
+      expect(fallback).toContain('FALLBACK_DESIGN_KEY')
+      expect(fallback).toContain('FALLBACK_DESIGN_SCHEMA')
+      expect(fallback).not.toContain('ambient-must-not-leak')
+      expect(fallback).not.toContain('ambient_must_not_leak')
     } finally {
       rmSync(withOverride, { recursive: true, force: true })
       rmSync(noOverride, { recursive: true, force: true })
     }
   }, 30_000)
+
+  test('rejects a secret Supabase override before it can enter the client bundle', async () => {
+    expect(
+      buildPreviewProject({
+        files: fixture,
+        outDir,
+        env: { VITE_SUPABASE_ANON_KEY: 'sb_secret_do_not_embed' }
+      })
+    ).rejects.toThrow('secret/service_role')
+  })
 })

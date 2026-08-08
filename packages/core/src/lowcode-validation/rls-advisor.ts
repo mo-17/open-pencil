@@ -31,12 +31,34 @@ export type SqlCommand = 'SELECT' | 'INSERT' | 'UPDATE' | 'DELETE'
 
 /** The anon-role policies one table needs, derived from document usage. */
 export interface RlsTableRequirement {
+  /** Database schema. Defaults to `public` for legacy callers. */
+  schema?: string
   table: string
   /** Deduped, in fixed order SELECT, INSERT, UPDATE, DELETE (次默 3). */
   commands: SqlCommand[]
   /** True when the table is written (UPDATE/DELETE/upsert) — drives the
    *  footgun warning, since those are the silent-0-row cases. */
   needsWriteWarning: boolean
+  /** Supabase Storage uploads target `storage.objects`; when present, generated
+   * SQL is restricted to this bucket instead of using a `(true)` predicate. */
+  storageBucket?: string
+}
+
+/** Non-ActionDef Supabase reads that are encoded in interactiveProps. */
+export interface RlsListQueryUsage {
+  table: string
+}
+
+/** Supabase Storage uploads encoded in an INPUT's interactiveProps. */
+export interface RlsStorageUploadUsage {
+  bucket: string
+}
+
+export interface RlsCollectionOptions {
+  /** Default schema for table actions and LIST data sources. */
+  schema?: string
+  listQueries?: readonly RlsListQueryUsage[]
+  storageUploads?: readonly RlsStorageUploadUsage[]
 }
 
 // Fixed emit order so the generated SQL (and the panel) is deterministic
@@ -44,8 +66,9 @@ export interface RlsTableRequirement {
 const COMMAND_ORDER: readonly SqlCommand[] = ['SELECT', 'INSERT', 'UPDATE', 'DELETE']
 
 // Decision §3.v8.2 (c): supabaseQuery → SELECT; mutation maps per operation.
-// upsert needs BOTH INSERT and UPDATE — the headline footgun, an upsert
-// without an anon UPDATE policy silently inserts a duplicate row.
+// UPDATE and filtered DELETE also need SELECT under Supabase/PostgREST RLS.
+// Upsert therefore needs SELECT + INSERT + UPDATE; omitting a required read
+// policy can make a mutation appear to succeed while changing no row.
 function commandsForAction(action: ActionDef): SqlCommand[] {
   if (action.kind === 'supabaseQuery') return ['SELECT']
   if (action.kind === 'supabaseMutation') {
@@ -53,11 +76,11 @@ function commandsForAction(action: ActionDef): SqlCommand[] {
       case 'insert':
         return ['INSERT']
       case 'update':
-        return ['UPDATE']
+        return ['SELECT', 'UPDATE']
       case 'delete':
-        return ['DELETE']
+        return ['SELECT', 'DELETE']
       case 'upsert':
-        return ['INSERT', 'UPDATE']
+        return ['SELECT', 'INSERT', 'UPDATE']
     }
   }
   return []
@@ -94,7 +117,8 @@ function flattenActions(
       if (
         action.kind === 'apiCall' ||
         action.kind === 'supabaseQuery' ||
-        action.kind === 'supabaseMutation'
+        action.kind === 'supabaseMutation' ||
+        action.kind === 'invokeServerWorkflow'
       ) {
         out.push(...flattenActions(action.onSuccess ?? [], workflows, seen))
         out.push(...flattenActions(action.onError ?? [], workflows, seen))
@@ -106,6 +130,38 @@ function flattenActions(
 
 const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
 
+interface RequirementAccumulator {
+  schema: string
+  table: string
+  commands: Set<SqlCommand>
+  storageBucket?: string
+}
+
+function normalizedSchema(schema: string | undefined): string {
+  return schema?.trim() || 'public'
+}
+
+function addRequirement(
+  byResource: Map<string, RequirementAccumulator>,
+  schema: string,
+  table: string,
+  commands: readonly SqlCommand[],
+  storageBucket?: string
+): void {
+  const normalizedTable = table.trim()
+  const normalizedBucket = storageBucket?.trim()
+  if (!normalizedTable || (storageBucket !== undefined && !normalizedBucket)) return
+  const key = JSON.stringify([schema, normalizedTable, normalizedBucket ?? null])
+  const entry = byResource.get(key) ?? {
+    schema,
+    table: normalizedTable,
+    commands: new Set<SqlCommand>(),
+    ...(normalizedBucket ? { storageBucket: normalizedBucket } : {})
+  }
+  for (const command of commands) entry.commands.add(command)
+  byResource.set(key, entry)
+}
+
 /** Aggregate every Supabase action into per-table anon policy requirements.
  *  Tables are keyed by their trimmed name; blank names are skipped (次默 2).
  *  Same table referenced by multiple actions merges into one entry with the
@@ -114,24 +170,32 @@ const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
  *  (default empty = legacy behaviour, no descent). */
 export function collectRlsRequirements(
   actions: ActionDef[],
-  workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS
+  workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS,
+  options: RlsCollectionOptions = {}
 ): RlsTableRequirement[] {
-  const byTable = new Map<string, Set<SqlCommand>>()
+  const schema = normalizedSchema(options.schema)
+  const byResource = new Map<string, RequirementAccumulator>()
   for (const action of flattenActions(actions, workflows, new Set())) {
     if (action.kind !== 'supabaseQuery' && action.kind !== 'supabaseMutation') continue
-    const table = action.table.trim()
-    if (!table) continue
-    const set = byTable.get(table) ?? new Set<SqlCommand>()
-    for (const command of commandsForAction(action)) set.add(command)
-    byTable.set(table, set)
+    addRequirement(byResource, schema, action.table, commandsForAction(action))
   }
-  return [...byTable.entries()].map(([table, set]) => ({
+  for (const query of options.listQueries ?? []) {
+    addRequirement(byResource, schema, query.table, ['SELECT'])
+  }
+  for (const upload of options.storageUploads ?? []) {
+    // The generated INPUT runtime uploads with `{ upsert: true }`. Supabase
+    // Storage requires INSERT for a new object and SELECT + UPDATE for upsert.
+    addRequirement(byResource, 'storage', 'objects', ['SELECT', 'INSERT', 'UPDATE'], upload.bucket)
+  }
+  return [...byResource.values()].map(({ schema, table, commands, storageBucket }) => ({
+    schema,
     table,
-    commands: COMMAND_ORDER.filter((command) => set.has(command)),
+    commands: COMMAND_ORDER.filter((command) => commands.has(command)),
     // UPDATE / DELETE (incl. upsert's UPDATE leg) are the silent-0-row
     // footgun; a pure INSERT cannot silently affect 0 rows, so it does not
     // trigger the write warning on its own.
-    needsWriteWarning: set.has('UPDATE') || set.has('DELETE')
+    needsWriteWarning: commands.has('UPDATE') || commands.has('DELETE'),
+    ...(storageBucket ? { storageBucket } : {})
   }))
 }
 
@@ -142,21 +206,39 @@ const PRODUCTION_REMINDER =
 // PostgreSQL CREATE POLICY docs) — SELECT and DELETE take only USING;
 // INSERT takes only WITH CHECK; UPDATE takes both. Verified against the
 // docs, not probeable here without a live instance → Tauri ACK #6.
-function clauseFor(command: SqlCommand): string {
-  if (command === 'INSERT') return 'with check (true)'
-  if (command === 'UPDATE') return 'using (true) with check (true)'
-  return 'using (true)' // SELECT / DELETE
+function clauseFor(command: SqlCommand, predicate: string): string {
+  if (command === 'INSERT') return `with check (${predicate})`
+  if (command === 'UPDATE') return `using (${predicate}) with check (${predicate})`
+  return `using (${predicate})` // SELECT / DELETE
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`
+}
+
+function quoteLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
 }
 
 /** Build the copy-paste SQL block for one table: enable RLS + one permissive
  *  anon/authenticated policy per required command (decisions d/e/f). */
 export function buildRlsPolicySql(req: RlsTableRequirement): string {
-  const t = req.table
-  const lines = [PRODUCTION_REMINDER, `alter table "${t}" enable row level security;`]
+  const schema = normalizedSchema(req.schema)
+  const qualifiedTable = `${quoteIdentifier(schema)}.${quoteIdentifier(req.table)}`
+  const predicate = req.storageBucket ? `bucket_id = ${quoteLiteral(req.storageBucket)}` : 'true'
+  const lines = [
+    req.storageBucket
+      ? '-- Review bucket access roles and ownership rules before production.'
+      : PRODUCTION_REMINDER,
+    `alter table ${qualifiedTable} enable row level security;`
+  ]
   for (const command of req.commands) {
     const cmd = command.toLowerCase()
+    const policyName = [schema, req.table, req.storageBucket, cmd, 'openpencil']
+      .filter((part): part is string => !!part)
+      .join('_')
     lines.push(
-      `create policy "${t}_${cmd}_anon" on "${t}" for ${cmd} to anon, authenticated ${clauseFor(command)};`
+      `create policy ${quoteIdentifier(policyName)} on ${qualifiedTable} for ${cmd} to anon, authenticated ${clauseFor(command, predicate)};`
     )
   }
   return lines.join('\n')

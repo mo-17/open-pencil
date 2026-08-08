@@ -36,7 +36,7 @@ describe('collectRlsRequirements', () => {
     ])
     expect(req(reqs, 'posts').commands).toEqual(['SELECT'])
     expect(req(reqs, 'comments').commands).toEqual(['INSERT'])
-    expect(req(reqs, 'likes').commands).toEqual(['DELETE'])
+    expect(req(reqs, 'likes').commands).toEqual(['SELECT', 'DELETE'])
   })
 
   test('Phase 3 §10: descends into condition branches for nested supabase actions', () => {
@@ -59,7 +59,7 @@ describe('collectRlsRequirements', () => {
     // both the direct then-branch query and the doubly-nested else-branch
     // mutation must surface, or RLS policies inside workflows get missed.
     expect(req(reqs, 'posts').commands).toEqual(['SELECT'])
-    expect(req(reqs, 'comments').commands).toEqual(['UPDATE'])
+    expect(req(reqs, 'comments').commands).toEqual(['SELECT', 'UPDATE'])
   })
 
   test('Phase 3 §10 v9: descends into apiCall/supabase onSuccess + onError branches', () => {
@@ -115,10 +115,38 @@ describe('collectRlsRequirements', () => {
     expect(req(reqs, 't').commands).toEqual(['INSERT'])
   })
 
-  test('upsert needs both INSERT and UPDATE (footgun)', () => {
+  test('UPDATE, DELETE, and upsert include the SELECT policy required by Supabase RLS', () => {
+    expect(
+      req(collectRlsRequirements([mutation('profiles', 'update')]), 'profiles').commands
+    ).toEqual(['SELECT', 'UPDATE'])
+    expect(
+      req(collectRlsRequirements([mutation('profiles', 'delete')]), 'profiles').commands
+    ).toEqual(['SELECT', 'DELETE'])
     const reqs = collectRlsRequirements([mutation('profiles', 'upsert')])
-    expect(req(reqs, 'profiles').commands).toEqual(['INSERT', 'UPDATE'])
+    expect(req(reqs, 'profiles').commands).toEqual(['SELECT', 'INSERT', 'UPDATE'])
     expect(req(reqs, 'profiles').needsWriteWarning).toBe(true)
+  })
+
+  test('includes LIST queries and bucket-scoped INPUT storage uploads', () => {
+    const reqs = collectRlsRequirements([], new Map(), {
+      schema: 'app',
+      listQueries: [{ table: 'products' }],
+      storageUploads: [{ bucket: 'avatars' }]
+    })
+
+    expect(req(reqs, 'products')).toEqual({
+      schema: 'app',
+      table: 'products',
+      commands: ['SELECT'],
+      needsWriteWarning: false
+    })
+    expect(req(reqs, 'objects')).toEqual({
+      schema: 'storage',
+      table: 'objects',
+      commands: ['SELECT', 'INSERT', 'UPDATE'],
+      needsWriteWarning: true,
+      storageBucket: 'avatars'
+    })
   })
 
   test('merges multiple actions on the same table and dedupes commands', () => {
@@ -172,21 +200,34 @@ describe('buildRlsPolicySql', () => {
       commands: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
       needsWriteWarning: true
     })
-    expect(sql).toContain('alter table "orders" enable row level security;')
+    expect(sql).toContain('alter table "public"."orders" enable row level security;')
     expect(sql).toContain('-- ⚠ replace (true) with a real predicate before production')
     // Postgres RLS clause matrix (decision §3.v8.2 d)
     expect(sql).toContain(
-      'create policy "orders_select_anon" on "orders" for select to anon, authenticated using (true);'
+      'create policy "public_orders_select_openpencil" on "public"."orders" for select to anon, authenticated using (true);'
     )
     expect(sql).toContain(
-      'create policy "orders_insert_anon" on "orders" for insert to anon, authenticated with check (true);'
+      'create policy "public_orders_insert_openpencil" on "public"."orders" for insert to anon, authenticated with check (true);'
     )
     expect(sql).toContain(
-      'create policy "orders_update_anon" on "orders" for update to anon, authenticated using (true) with check (true);'
+      'create policy "public_orders_update_openpencil" on "public"."orders" for update to anon, authenticated using (true) with check (true);'
     )
     expect(sql).toContain(
-      'create policy "orders_delete_anon" on "orders" for delete to anon, authenticated using (true);'
+      'create policy "public_orders_delete_openpencil" on "public"."orders" for delete to anon, authenticated using (true);'
     )
+  })
+
+  test('quotes schema/table identifiers and storage bucket literals safely', () => {
+    const sql = buildRlsPolicySql({
+      schema: 'odd"schema',
+      table: 'obj"ects',
+      commands: ['INSERT'],
+      needsWriteWarning: false,
+      storageBucket: "team's"
+    })
+
+    expect(sql).toContain('alter table "odd""schema"."obj""ects" enable row level security;')
+    expect(sql).toContain("with check (bucket_id = 'team''s');")
   })
 
   test('reminder comment is the first line', () => {
