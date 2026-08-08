@@ -26,6 +26,18 @@ async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
 }
 
+const V1_GOLDEN_PRIVATE_KEY: JsonWebKey = {
+  crv: 'Ed25519',
+  d: 'FxJOeRX9SK273eZkGQ8W5ohk1EFWP67CZCSzYL4cNbU',
+  ext: true,
+  key_ops: ['sign'],
+  kty: 'OKP',
+  x: '3kDZvtAZuYe78SGOC-rt_sgTMClbZoeR-KYMEAMHwnU'
+}
+const V1_GOLDEN_DIGEST = 'C2jbOQ2TgFTqjQzk_DFCxCfEKO2-3H1aMA28ZrYLzJ4'
+const V1_GOLDEN_SIGNATURE =
+  '0IaajlWJCT1h84O4w4NMH0pZIIOysfsdd6PSmo2tKiqCarZambSVbMBd1ic7L1eh3_lCCthfjh-D7F3HlQZTDw'
+
 describe('shared signed manifest primitives', () => {
   test('canonicalizes keys and implements bounded stable SemVer ranges', () => {
     expect(canonicalManifestJson({ z: 1, a: { d: 2, b: 1 } })).toBe('{"a":{"b":1,"d":2},"z":1}')
@@ -45,6 +57,20 @@ describe('shared signed manifest primitives', () => {
 })
 
 describe('signed declarative plugin packages', () => {
+  test('preserves the schema-v1 canonical digest and signature golden', async () => {
+    const privateKey = await crypto.subtle.importKey(
+      'jwk',
+      V1_GOLDEN_PRIVATE_KEY,
+      { name: 'Ed25519' },
+      false,
+      ['sign']
+    )
+    const manifest = await signPluginManifest(pluginPayload(), privateKey)
+    expect(manifest.schemaVersion).toBe(1)
+    expect(manifest.integrity.digest).toBe(V1_GOLDEN_DIGEST)
+    expect(manifest.integrity.signature.value).toBe(V1_GOLDEN_SIGNATURE)
+  })
+
   test('signs, serializes, parses, and verifies a single bounded JSON package', async () => {
     const keyPair = await keys()
     const manifest = await signPluginManifest(pluginPayload(), keyPair.privateKey)

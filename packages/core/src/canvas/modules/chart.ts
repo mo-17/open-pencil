@@ -6,7 +6,7 @@ import { ellipsizeLabelText, measureLabelText } from '#core/canvas/labels/text'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { CHART_MODULE_TYPE, CHART_PLUGIN_ID, resolveChartModule } from '#core/plugins/chart'
 
-import { configureModulePreviewPaint, modulePreviewFrame } from './preview'
+import { configureModulePreviewPaint, resolveModulePreviewFrame } from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
 /** Draw a deterministic, dependency-free editor preview for a trusted chart module. */
@@ -15,19 +15,17 @@ export function renderChartModulePreview(
   canvas: Canvas,
   node: SceneNode
 ): boolean {
-  const frame = modulePreviewFrame(node)
+  const frame = resolveModulePreviewFrame(node, resolveChartModule)
   if (!frame) return false
-  const resolved = resolveChartModule(frame.node.interactiveProps?.module)
-  if (!resolved?.ok) return false
   if (frame.empty) return true
-  const { width, height } = frame
+  const { width, height, config } = frame
 
   const inset = Math.min(24, Math.max(8, Math.min(width, height) * 0.08))
   const chartWidth = Math.max(0, width - inset * 2)
   const labelFont = renderer.labelFont
   const labelBand = labelFont && height >= 48 ? Math.min(18, height * 0.16) : 0
   const chartHeight = Math.max(0, height - inset * 2 - labelBand)
-  const values = resolved.config.values
+  const values = config.values
   const min = Math.min(0, ...values)
   const max = Math.max(0, ...values)
   const span = Math.max(1, max - min)
@@ -43,7 +41,7 @@ export function renderChartModulePreview(
       renderer.ck.LTRBRect(inset, Math.max(inset, zeroY - 0.5), width - inset, zeroY + 0.5),
       renderer.fillPaint
     )
-    configureModulePreviewPaint(renderer, resolved.config.color)
+    configureModulePreviewPaint(renderer, config.color)
     values.forEach((value, index) => {
       const valueY = inset + ((max - value) / span) * chartHeight
       const left = inset + index * (barWidth + gap)
@@ -61,7 +59,7 @@ export function renderChartModulePreview(
         const centerX = left + barWidth / 2
         const label = ellipsizeLabelText(
           labelFont,
-          resolved.config.labels[index] ?? '',
+          config.labels[index] ?? '',
           Math.max(0, barWidth + gap - 2)
         )
         if (label) {
@@ -73,7 +71,7 @@ export function renderChartModulePreview(
             labelFont
           )
         }
-        if (!resolved.config.showValues || barWidth + gap < 20) return
+        if (!config.showValues || barWidth + gap < 20) return
         const valueY = inset + ((max - value) / span) * chartHeight
         const baseline =
           value >= 0

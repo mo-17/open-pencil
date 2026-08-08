@@ -2,7 +2,6 @@ import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-import { ellipsizeLabelText } from '#core/canvas/labels/text'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import {
   LOTTIE_MODULE_TYPE,
@@ -11,7 +10,13 @@ import {
   type LottieModuleConfigV1
 } from '#core/plugins/lottie'
 
-import { configureModulePreviewPaint, modulePreviewFrame } from './preview'
+import {
+  configureModulePreviewPaint,
+  drawModulePreviewLabel,
+  modulePreviewMediaLayout,
+  resolveModulePreviewFrame,
+  withModulePreviewClip
+} from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
 function previewSource(config: LottieModuleConfigV1): string {
@@ -67,18 +72,13 @@ export function renderLottieModulePreview(
   canvas: Canvas,
   node: SceneNode
 ): boolean {
-  const frame = modulePreviewFrame(node)
+  const frame = resolveModulePreviewFrame(node, resolveLottieModule)
   if (!frame) return false
-  const resolved = resolveLottieModule(frame.node.interactiveProps?.module)
-  if (!resolved?.ok) return false
   if (frame.empty) return true
-  const { width, height } = frame
-  const inset = Math.min(24, Math.max(8, Math.min(width, height) * 0.06))
-  const footerHeight = Math.min(34, Math.max(20, height * 0.14))
+  const { width, height, config } = frame
+  const { inset, footerHeight } = modulePreviewMediaLayout(width, height)
 
-  canvas.save()
-  try {
-    canvas.clipRRect(renderer.makeRRect(frame.node), renderer.ck.ClipOp.Intersect, true)
+  withModulePreviewClip(renderer, canvas, frame.node, () => {
     configureModulePreviewPaint(renderer, '#0F172A')
     canvas.drawRect(
       renderer.ck.LTRBRect(inset, inset, width - inset, height - inset),
@@ -88,21 +88,16 @@ export function renderLottieModulePreview(
     const markRadius = Math.max(10, Math.min(34, Math.min(width, height - footerHeight) * 0.13))
     drawLottieMark(renderer, canvas, width / 2, (height - footerHeight) / 2, markRadius)
 
-    const font = renderer.labelFont
-    if (font && height >= inset * 2 + 18) {
-      configureModulePreviewPaint(renderer, '#CFFAFE')
-      const label = ellipsizeLabelText(
-        font,
-        lottiePreviewLabel(resolved.config),
-        Math.max(0, width - inset * 2)
-      )
-      if (label) {
-        canvas.drawText(label, inset, height - Math.max(4, inset * 0.4), renderer.fillPaint, font)
-      }
-    }
-  } finally {
-    canvas.restore()
-  }
+    drawModulePreviewLabel(
+      renderer,
+      canvas,
+      lottiePreviewLabel(config),
+      width,
+      height,
+      inset,
+      '#CFFAFE'
+    )
+  })
   return true
 }
 

@@ -50,6 +50,7 @@ export {
 export {
   inspectPluginCommandCompatibility,
   inspectPluginExporterCompatibility,
+  inspectPluginExporterMcpExposure,
   inspectPluginHostContributionsCompatibility,
   resolveTrustedPluginExporterExecutor,
   runInstalledPluginCommand,
@@ -74,9 +75,11 @@ export {
 export type {
   AppPluginActivationCompatibility,
   AppPluginActivationCompatibilityPolicy,
+  AppPluginCommandContribution,
   AppBundlePluginCatalogEntry,
   AppPluginCatalogEntry,
   AppPluginCatalogItem,
+  AppPluginExporterContribution,
   AppPluginPinnedDigestMismatch,
   AppPluginRecordIssue,
   AppPluginRecordIssueKind,

@@ -1,10 +1,16 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  CAROUSEL_MODULE_TYPE,
+  CAROUSEL_PLUGIN_ID,
   CHART_PLUGIN_ID,
+  DATA_GRID_MODULE_TYPE,
+  DATA_GRID_PLUGIN_ID,
   HTML_MODULE_TYPE,
   HTML_PLUGIN_ID,
   MAP_PLUGIN_ID,
+  LOTTIE_MODULE_TYPE,
+  LOTTIE_PLUGIN_ID,
   RICH_TEXT_PLUGIN_ID,
   SLIDE_MENU_MODULE_TYPE,
   SLIDE_MENU_PLUGIN_ID,
@@ -20,20 +26,34 @@ import {
   createMemoryAppPluginStateStorage
 } from '@/app/plugins'
 import {
+  ACCESSIBILITY_AUDIT_COMMAND,
+  ACCESSIBILITY_AUDIT_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  DESIGN_TOKENS_EXPORTER,
+  DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
   EXPO_REACT_NATIVE_EXPORTER,
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
+  FIGMA_PROJECTION_EXPORTER,
+  FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 
 const ENGINE_VERSION = '0.13.2'
 
+function bundledManifest(pluginId: string) {
+  const manifest = createBundledPluginCatalog().find(
+    (entry) => entry.manifest.plugin.id === pluginId
+  )?.manifest
+  if (!manifest) throw new Error(`Missing bundled plugin: ${pluginId}`)
+  return manifest
+}
+
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the eleven reviewed built-in plugin identities', () => {
+  test('publishes the seventeen reviewed built-in plugin identities', () => {
     const ids = createBundledPluginCatalog().map((entry) => entry.manifest.plugin.id)
 
     expect(ids).toEqual([
@@ -44,10 +64,16 @@ describe('bundled plugin catalog contributions', () => {
       VIDEO_PLUGIN_ID,
       TABLE_PLUGIN_ID,
       SLIDE_MENU_PLUGIN_ID,
+      LOTTIE_PLUGIN_ID,
+      CAROUSEL_PLUGIN_ID,
+      DATA_GRID_PLUGIN_ID,
       CLIPBOARD_TOOLKIT_PLUGIN_ID,
       TAURI_REACT_EXPORTER_PLUGIN_ID,
       EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
-      FLUTTER_EXPORTER_PLUGIN_ID
+      FLUTTER_EXPORTER_PLUGIN_ID,
+      ACCESSIBILITY_AUDIT_PLUGIN_ID,
+      DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+      FIGMA_PROJECTION_EXPORTER_PLUGIN_ID
     ])
   })
 
@@ -74,7 +100,7 @@ describe('bundled plugin catalog contributions', () => {
     expect(html?.enabledByDefault).toBeUndefined()
   })
 
-  test('keeps the reviewed Video, Table, and Slide Menu modules opt-in and trusted', () => {
+  test('keeps all non-default reviewed modules opt-in and bound to trusted adapters', () => {
     const catalog = createBundledPluginCatalog()
     const expected = [
       {
@@ -91,6 +117,21 @@ describe('bundled plugin catalog contributions', () => {
         pluginId: SLIDE_MENU_PLUGIN_ID,
         moduleType: SLIDE_MENU_MODULE_TYPE,
         adapterId: 'open-pencil.slide-menu'
+      },
+      {
+        pluginId: LOTTIE_PLUGIN_ID,
+        moduleType: LOTTIE_MODULE_TYPE,
+        adapterId: 'open-pencil.lottie'
+      },
+      {
+        pluginId: CAROUSEL_PLUGIN_ID,
+        moduleType: CAROUSEL_MODULE_TYPE,
+        adapterId: 'open-pencil.carousel'
+      },
+      {
+        pluginId: DATA_GRID_PLUGIN_ID,
+        moduleType: DATA_GRID_MODULE_TYPE,
+        adapterId: 'open-pencil.data-grid'
       }
     ]
 
@@ -116,43 +157,74 @@ describe('bundled plugin catalog contributions', () => {
   })
 
   test('declares the clipboard commands and project exporters without executable modules', () => {
-    const catalog = createBundledPluginCatalog()
-    const clipboard = catalog.find(
-      (entry) => entry.manifest.plugin.id === CLIPBOARD_TOOLKIT_PLUGIN_ID
-    )?.manifest
-    const tauriExporter = catalog.find(
-      (entry) => entry.manifest.plugin.id === TAURI_REACT_EXPORTER_PLUGIN_ID
-    )?.manifest
-    const expoExporter = catalog.find(
-      (entry) => entry.manifest.plugin.id === EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID
-    )?.manifest
-    const flutterExporter = catalog.find(
-      (entry) => entry.manifest.plugin.id === FLUTTER_EXPORTER_PLUGIN_ID
-    )?.manifest
+    const clipboard = bundledManifest(CLIPBOARD_TOOLKIT_PLUGIN_ID)
+    const tauriExporter = bundledManifest(TAURI_REACT_EXPORTER_PLUGIN_ID)
+    const expoExporter = bundledManifest(EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID)
+    const flutterExporter = bundledManifest(FLUTTER_EXPORTER_PLUGIN_ID)
+    const accessibilityAudit = bundledManifest(ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    const designTokens = bundledManifest(DESIGN_TOKENS_EXPORTER_PLUGIN_ID)
+    const figmaProjection = bundledManifest(FIGMA_PROJECTION_EXPORTER_PLUGIN_ID)
 
-    expect(clipboard?.contributions.modules).toEqual([])
+    expect(clipboard.contributions.modules).toEqual([])
     expect(
-      clipboard?.contributions.commands?.map(({ commandId, adapterId }) => ({
+      clipboard.contributions.commands?.map(({ commandId, adapterId }) => ({
         commandId,
         adapterId
       }))
     ).toEqual(Object.values(CLIPBOARD_COMMANDS))
-    expect(clipboard?.contributions.exporters).toBeUndefined()
+    expect(clipboard.contributions.exporters).toBeUndefined()
 
-    expect(tauriExporter?.contributions.modules).toEqual([])
-    expect(tauriExporter?.contributions.commands).toBeUndefined()
-    expect(tauriExporter?.contributions.exporters).toEqual([
+    expect(tauriExporter.contributions.modules).toEqual([])
+    expect(tauriExporter.contributions.commands).toBeUndefined()
+    expect(tauriExporter.contributions.exporters).toEqual([
       expect.objectContaining(TAURI_REACT_EXPORTER)
     ])
-    expect(expoExporter?.contributions.modules).toEqual([])
-    expect(expoExporter?.contributions.commands).toBeUndefined()
-    expect(expoExporter?.contributions.exporters).toEqual([
+    expect(expoExporter.contributions.modules).toEqual([])
+    expect(expoExporter.contributions.commands).toBeUndefined()
+    expect(expoExporter.contributions.exporters).toEqual([
       expect.objectContaining(EXPO_REACT_NATIVE_EXPORTER)
     ])
-    expect(flutterExporter?.contributions.modules).toEqual([])
-    expect(flutterExporter?.contributions.commands).toBeUndefined()
-    expect(flutterExporter?.contributions.exporters).toEqual([
+    expect(flutterExporter.contributions.modules).toEqual([])
+    expect(flutterExporter.contributions.commands).toBeUndefined()
+    expect(flutterExporter.contributions.exporters).toEqual([
       expect.objectContaining(FLUTTER_EXPORTER)
+    ])
+    expect(accessibilityAudit.contributions.modules).toEqual([])
+    expect(accessibilityAudit.schemaVersion).toBe(2)
+    expect(accessibilityAudit.contributions.commands).toEqual([
+      expect.objectContaining({
+        ...ACCESSIBILITY_AUDIT_COMMAND,
+        parameters: {
+          maxBytes: 2,
+          schema: expect.objectContaining({
+            type: 'object',
+            additionalProperties: false,
+            maxProperties: 0
+          })
+        },
+        result: expect.objectContaining({
+          maxBytes: 512 * 1024,
+          schema: expect.objectContaining({ type: 'object', additionalProperties: false })
+        })
+      })
+    ])
+    expect(designTokens.contributions.modules).toEqual([])
+    expect(designTokens.schemaVersion).toBe(2)
+    expect(designTokens.contributions.exporters).toEqual([
+      expect.objectContaining({
+        ...DESIGN_TOKENS_EXPORTER,
+        parameters: expect.objectContaining({ maxBytes: 2 }),
+        result: expect.objectContaining({ maxBytes: 2 })
+      })
+    ])
+    expect(figmaProjection.contributions.modules).toEqual([])
+    expect(figmaProjection.schemaVersion).toBe(2)
+    expect(figmaProjection.contributions.exporters).toEqual([
+      expect.objectContaining({
+        ...FIGMA_PROJECTION_EXPORTER,
+        parameters: expect.objectContaining({ maxBytes: 2 }),
+        result: expect.objectContaining({ maxBytes: 2 })
+      })
     ])
   })
 

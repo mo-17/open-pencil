@@ -9,7 +9,11 @@ import {
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { createEditorStore } from '@/app/editor/session'
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
-import { CLIPBOARD_TOOLKIT_PLUGIN_ID, TAURI_REACT_EXPORTER_PLUGIN_ID } from '@/app/plugins/host/ids'
+import {
+  ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  DESIGN_TOKENS_EXPORTER_PLUGIN_ID
+} from '@/app/plugins/host/ids'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
 
@@ -96,6 +100,23 @@ describe('automation plugin MCP handler', () => {
         args: {}
       })
     ).rejects.toThrow('does not belong')
+
+    let getterCalled = false
+    const accessorRequest: Record<string, unknown> = {
+      pluginId: MAP_PLUGIN_ID,
+      args: {}
+    }
+    Object.defineProperty(accessorRequest, 'name', {
+      enumerable: true,
+      get() {
+        getterCalled = true
+        return descriptor.name
+      }
+    })
+    await expect(handlers.handleCall(target(), accessorRequest)).rejects.toThrow(
+      'enumerable data field'
+    )
+    expect(getterCalled).toBe(false)
     await expect(
       handlers.handleCall(target(), {
         name: descriptor.name,
@@ -127,8 +148,8 @@ describe('automation plugin MCP handler', () => {
     await store.load()
     await store.install(CLIPBOARD_TOOLKIT_PLUGIN_ID)
     await store.setEnabled(CLIPBOARD_TOOLKIT_PLUGIN_ID, true)
-    await store.install(TAURI_REACT_EXPORTER_PLUGIN_ID)
-    await store.setEnabled(TAURI_REACT_EXPORTER_PLUGIN_ID, true)
+    await store.install(DESIGN_TOKENS_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, true)
     const executions: string[] = []
     const controller = new AbortController()
     let exporterSignal: AbortSignal | undefined
@@ -149,7 +170,7 @@ describe('automation plugin MCP handler', () => {
     }, dependencies)
     const tools = handlers.handleList().result.tools
     const command = tools.find((tool) => tool.pluginId === CLIPBOARD_TOOLKIT_PLUGIN_ID)
-    const exporter = tools.find((tool) => tool.pluginId === TAURI_REACT_EXPORTER_PLUGIN_ID)
+    const exporter = tools.find((tool) => tool.pluginId === DESIGN_TOKENS_EXPORTER_PLUGIN_ID)
     if (!command || !exporter) throw new Error('Expected command and exporter descriptors')
 
     await expect(
@@ -209,5 +230,65 @@ describe('automation plugin MCP handler', () => {
         args: {}
       })
     ).rejects.toThrow('is unavailable')
+  })
+
+  test('revalidates v2 arguments, forwards the normalized object, and observes live disable', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, true)
+    const received: unknown[] = []
+    const dependencies: AutomationPluginMcpDependencies = {
+      store,
+      runCommand: async (_editor, _plugin, _contribution, args) => {
+        received.push(args)
+        return { status: 'completed', message: 'audit complete' }
+      },
+      runExporter: async () => ({ status: 'cancelled', message: 'unused' })
+    }
+    const handlers = createAutomationPluginMcpHandlers(async () => {
+      throw new Error('Command must not dispatch a core module tool')
+    }, dependencies)
+    const descriptor = handlers
+      .handleList()
+      .result.tools.find((tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    if (!descriptor) throw new Error('Expected accessibility MCP descriptor')
+
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: {}
+      })
+    ).resolves.toMatchObject({
+      ok: true,
+      result: { kind: 'command', status: 'completed' }
+    })
+    expect(received).toEqual([{}])
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: { elevated: true }
+      })
+    ).rejects.toThrow('not supported')
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: null
+      })
+    ).rejects.toThrow('must be an object')
+    expect(received).toHaveLength(1)
+
+    await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, false)
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: {}
+      })
+    ).rejects.toThrow('is unavailable')
+    expect(received).toHaveLength(1)
   })
 })

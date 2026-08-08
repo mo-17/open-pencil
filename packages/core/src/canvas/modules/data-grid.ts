@@ -2,7 +2,6 @@ import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-import { ellipsizeLabelText } from '#core/canvas/labels/text'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import {
   DATA_GRID_MODULE_TYPE,
@@ -12,7 +11,12 @@ import {
   type DataGridModuleConfigV1
 } from '#core/plugins/data-grid'
 
-import { configureModulePreviewPaint, modulePreviewFrame } from './preview'
+import {
+  configureModulePreviewPaint,
+  drawModulePreviewCellText,
+  drawModulePreviewStripedRows,
+  modulePreviewFrame
+} from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
 interface VisibleDataGridRows {
@@ -53,25 +57,6 @@ function sortMarker(config: DataGridModuleConfigV1, columnId: string): string {
   return sort.direction === 'ascending' ? ' ↑' : ' ↓'
 }
 
-function drawCellText(
-  renderer: SkiaRenderer,
-  canvas: Canvas,
-  value: string,
-  left: number,
-  top: number,
-  width: number,
-  rowHeight: number,
-  color: string
-): void {
-  const font = renderer.labelFont
-  if (!font) return
-  const inset = Math.min(8, Math.max(3, width * 0.05))
-  const label = ellipsizeLabelText(font, value, Math.max(0, width - inset * 2))
-  if (!label) return
-  configureModulePreviewPaint(renderer, color)
-  canvas.drawText(label, left + inset, top + rowHeight * 0.66, renderer.fillPaint, font)
-}
-
 /** Draw a bounded first-page summary. Sorting and filtering remain runtime-only and no I/O occurs. */
 export function renderDataGridModulePreview(
   renderer: SkiaRenderer,
@@ -106,15 +91,15 @@ export function renderDataGridModulePreview(
       canvas.drawRect(renderer.ck.LTRBRect(0, 0, width, visible.rowHeight), renderer.fillPaint)
     }
     if (config.striped) {
-      visible.rows.forEach((_, index) => {
-        if (index % 2 === 0) return
-        const top = (visible.headerRows + index) * visible.rowHeight
-        configureModulePreviewPaint(renderer, '#F9FAFB')
-        canvas.drawRect(
-          renderer.ck.LTRBRect(0, top, width, Math.min(bodyHeight, top + visible.rowHeight)),
-          renderer.fillPaint
-        )
-      })
+      drawModulePreviewStripedRows(
+        renderer,
+        canvas,
+        visible.rows.length,
+        visible.headerRows,
+        visible.rowHeight,
+        width,
+        bodyHeight
+      )
     }
 
     configureModulePreviewPaint(renderer, config.borderColor)
@@ -135,7 +120,7 @@ export function renderDataGridModulePreview(
     if (visible.headerRows === 1) {
       let left = 0
       config.data.columns.forEach((column, index) => {
-        drawCellText(
+        drawModulePreviewCellText(
           renderer,
           canvas,
           `${column.label}${sortMarker(config, column.id)}`,
@@ -143,7 +128,8 @@ export function renderDataGridModulePreview(
           0,
           columnWidths[index],
           visible.rowHeight,
-          config.textColor
+          config.textColor,
+          { horizontalInsetRatio: 0.05, baselineRatio: 0.66 }
         )
         left += columnWidths[index]
       })
@@ -151,7 +137,7 @@ export function renderDataGridModulePreview(
     visible.rows.forEach((row, rowIndex) => {
       let left = 0
       row.cells.forEach((cell, columnIndex) => {
-        drawCellText(
+        drawModulePreviewCellText(
           renderer,
           canvas,
           cellText(cell),
@@ -159,7 +145,8 @@ export function renderDataGridModulePreview(
           (visible.headerRows + rowIndex) * visible.rowHeight,
           columnWidths[columnIndex],
           visible.rowHeight,
-          config.textColor
+          config.textColor,
+          { horizontalInsetRatio: 0.05, baselineRatio: 0.66 }
         )
         left += columnWidths[columnIndex]
       })
@@ -170,7 +157,7 @@ export function renderDataGridModulePreview(
       canvas.drawRect(renderer.ck.LTRBRect(0, bodyHeight, width, height), renderer.fillPaint)
       font.setSize(Math.max(8, Math.min(12, config.fontSize * 0.85)))
       const summary = `${config.data.rows.length} rows · ${config.filters.length} filters · ${config.pageSize}/page`
-      drawCellText(
+      drawModulePreviewCellText(
         renderer,
         canvas,
         summary,
@@ -178,7 +165,8 @@ export function renderDataGridModulePreview(
         bodyHeight,
         width,
         visible.footerHeight,
-        config.accentColor
+        config.accentColor,
+        { horizontalInsetRatio: 0.05, baselineRatio: 0.66 }
       )
     }
   } finally {

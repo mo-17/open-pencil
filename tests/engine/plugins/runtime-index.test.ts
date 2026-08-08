@@ -15,9 +15,11 @@ import {
   signPluginManifest,
   signPluginRuntimeIndex,
   signPluginRuntimePackage,
+  signVersionedPluginManifest,
   verifyIndexedPluginRuntimePackage,
   verifyPluginPackage,
   verifyPluginRuntimeIndex,
+  verifyVersionedPluginPackage,
   type PluginRuntimeIndexEntryV1,
   type PluginRuntimeIndexPayloadV1,
   type PluginRuntimePackagePayloadV1,
@@ -25,7 +27,7 @@ import {
   type TrustedPluginPublisherKeyV1
 } from '@open-pencil/core/plugins'
 
-import { pluginPayload } from './helpers'
+import { pluginPayload, pluginPayloadV2 } from './helpers'
 
 const GENERATED_AT = '2026-08-05T00:00:00.000Z'
 const EXPIRES_AT = '2026-08-10T00:00:00.000Z'
@@ -95,12 +97,13 @@ function keyring(publicKey: CryptoKey): TrustedPluginKeyringV1 {
 }
 
 async function runtimePackagePayload(
-  declarativeDigest: string
+  declarativeDigest: string,
+  version = '1.0.0'
 ): Promise<PluginRuntimePackagePayloadV1> {
   return {
     format: PLUGIN_RUNTIME_PACKAGE_FORMAT,
     schemaVersion: PLUGIN_RUNTIME_PACKAGE_SCHEMA_VERSION,
-    plugin: { id: 'acme.analytics', version: '1.0.0' },
+    plugin: { id: 'acme.analytics', version },
     publisher: { id: 'acme', keyId: 'acme.release' },
     declarativeManifestDigest: declarativeDigest,
     runtime: {
@@ -120,16 +123,17 @@ async function runtimePackagePayload(
 
 function indexEntry(
   declarativeDigest: string,
-  runtimePackage: Awaited<ReturnType<typeof signPluginRuntimePackage>>
+  runtimePackage: Awaited<ReturnType<typeof signPluginRuntimePackage>>,
+  version = '1.0.0'
 ): PluginRuntimeIndexEntryV1 {
   return {
     pluginId: 'acme.analytics',
-    version: '1.0.0',
+    version,
     publisherId: 'acme',
     keyId: 'acme.release',
     declarativeManifestDigest: declarativeDigest,
     runtimeKind: 'wasm',
-    runtimePackageUrl: 'https://plugins.example.com/acme.analytics/1.0.0/runtime.json',
+    runtimePackageUrl: `https://plugins.example.com/acme.analytics/${version}/runtime.json`,
     runtimePackageDigest: runtimePackage.integrity.digest,
     runtimePackageByteLength: pluginRuntimePackageCanonicalByteLength(runtimePackage)
   }
@@ -192,6 +196,50 @@ describe('root-signed executable plugin index', () => {
     expect(verified.verifiedRuntimePackage.executionStatus).toBe('eligible')
     expect(verified.verifiedRuntimePackage.verifiedDigest).toBe(entry.runtimePackageDigest)
     expect(verified.keyTrust.rotationPath).toEqual(['acme.release'])
+  })
+
+  test('double-binds schema-v2 declarative packages and rejects a valid but different digest', async () => {
+    const root = await keys()
+    const publisher = await keys()
+    const manifest = await signVersionedPluginManifest(
+      pluginPayloadV2('2.0.0'),
+      publisher.privateKey
+    )
+    const declarativePackage = await verifyVersionedPluginPackage(manifest, publisher.publicKey)
+    const runtimePackage = await signPluginRuntimePackage(
+      await runtimePackagePayload(declarativePackage.verifiedDigest, '2.0.0'),
+      publisher.privateKey
+    )
+    const entry = indexEntry(declarativePackage.verifiedDigest, runtimePackage, '2.0.0')
+    const index = await signPluginRuntimeIndex(indexPayload([entry]), root.privateKey)
+    const verifiedIndex = await verifyPluginRuntimeIndex(index, root.publicKey, { now: NOW })
+
+    await expect(
+      verifyIndexedPluginRuntimePackage(entry, runtimePackage, keyring(publisher.publicKey), {
+        index: verifiedIndex,
+        declarativePackage,
+        now: NOW
+      })
+    ).resolves.toMatchObject({ declarativePackage: { manifest: { schemaVersion: 2 } } })
+
+    const differentPayload = pluginPayloadV2('2.0.0')
+    differentPayload.plugin.name = 'Different signed package'
+    const differentManifest = await signVersionedPluginManifest(
+      differentPayload,
+      publisher.privateKey
+    )
+    const differentPackage = await verifyVersionedPluginPackage(
+      differentManifest,
+      publisher.publicKey
+    )
+    await expectRuntimeTrustCode(
+      verifyIndexedPluginRuntimePackage(entry, runtimePackage, keyring(publisher.publicKey), {
+        index: verifiedIndex,
+        declarativePackage: differentPackage,
+        now: NOW
+      }),
+      'runtime-declarative-package-mismatch'
+    )
   })
 
   test('rejects wrong root coordinates, tampering, future indexes, and expiration', async () => {

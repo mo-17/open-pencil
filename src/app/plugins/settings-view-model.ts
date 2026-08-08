@@ -1,7 +1,10 @@
 import {
   searchMarketplaceListings,
   type MarketplacePluginListingV1,
-  type MarketplacePublisherV1
+  type MarketplacePublisherV1,
+  type PluginExporterOutputV2,
+  type PluginHostPermissionV2,
+  type PluginManifestPayload
 } from '@open-pencil/core/plugins'
 
 import type { MarketplaceSnapshotLoadResult, MarketplaceSnapshotLoadStatus } from './marketplace'
@@ -37,6 +40,51 @@ export interface PluginMarketplaceSnapshotView {
   refreshError: Error | null
 }
 
+export interface PluginV2ContractSummary {
+  readonly kind: 'command' | 'exporter'
+  readonly contributionId: string
+  readonly permissions: readonly PluginHostPermissionV2[]
+  readonly outputs: readonly PluginExporterOutputV2[]
+  readonly parameterMaxBytes: number
+  readonly resultMaxBytes: number
+}
+
+/**
+ * Derive review text from the validated manifest instead of trusting
+ * publisher-authored prose to describe host authority.
+ */
+export function pluginV2ContractSummaries(
+  manifest: PluginManifestPayload
+): readonly PluginV2ContractSummary[] {
+  if (manifest.schemaVersion !== 2) return Object.freeze([])
+  const summaries: PluginV2ContractSummary[] = []
+  for (const contribution of manifest.contributions.commands ?? []) {
+    summaries.push({
+      kind: 'command',
+      contributionId: contribution.commandId,
+      permissions: Object.freeze([...contribution.permissions]),
+      outputs: Object.freeze([]),
+      parameterMaxBytes: contribution.parameters.maxBytes,
+      resultMaxBytes: contribution.result.maxBytes
+    })
+  }
+  for (const contribution of manifest.contributions.exporters ?? []) {
+    summaries.push({
+      kind: 'exporter',
+      contributionId: contribution.exporterId,
+      permissions: Object.freeze([...contribution.permissions]),
+      outputs: Object.freeze(
+        contribution.outputs.map((output) =>
+          Object.freeze({ extension: output.extension, mimeType: output.mimeType })
+        )
+      ),
+      parameterMaxBytes: contribution.parameters.maxBytes,
+      resultMaxBytes: contribution.result.maxBytes
+    })
+  }
+  return Object.freeze(summaries.map((summary) => Object.freeze(summary)))
+}
+
 function normalizedSearchQuery(value: string): string {
   return value.normalize('NFC').trim().toLocaleLowerCase('en-US').slice(0, 256)
 }
@@ -60,7 +108,9 @@ function localCatalogSearchText(item: AppPluginCatalogItem): string {
       exporter.exporterId,
       exporter.name,
       exporter.description,
-      exporter.fileExtension
+      'fileExtension' in exporter
+        ? exporter.fileExtension
+        : exporter.outputs.map((output) => `${output.extension} ${output.mimeType}`).join(' ')
     ])
   ]
     .join('\n')

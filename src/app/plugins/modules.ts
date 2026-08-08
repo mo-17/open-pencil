@@ -35,7 +35,10 @@ const TRUSTED_MODULE_ADAPTERS = new Map([
   ['open-pencil.html', { pluginId: HTML_PLUGIN_ID, moduleType: HTML_MODULE_TYPE }],
   ['open-pencil.video', { pluginId: VIDEO_PLUGIN_ID, moduleType: VIDEO_MODULE_TYPE }],
   ['open-pencil.table', { pluginId: TABLE_PLUGIN_ID, moduleType: TABLE_MODULE_TYPE }],
-  ['open-pencil.slide-menu', { pluginId: SLIDE_MENU_PLUGIN_ID, moduleType: SLIDE_MENU_MODULE_TYPE }],
+  [
+    'open-pencil.slide-menu',
+    { pluginId: SLIDE_MENU_PLUGIN_ID, moduleType: SLIDE_MENU_MODULE_TYPE }
+  ],
   ['open-pencil.lottie', { pluginId: LOTTIE_PLUGIN_ID, moduleType: LOTTIE_MODULE_TYPE }],
   ['open-pencil.carousel', { pluginId: CAROUSEL_PLUGIN_ID, moduleType: CAROUSEL_MODULE_TYPE }],
   ['open-pencil.data-grid', { pluginId: DATA_GRID_PLUGIN_ID, moduleType: DATA_GRID_MODULE_TYPE }]

@@ -3,17 +3,17 @@ import {
   acceptPluginUpdate,
   createInstalledPluginState,
   parseInstalledPluginState,
-  parsePluginManifestPayload,
+  parseVersionedPluginManifestPayload,
   parseTrustedPluginKeyring,
   rejectPluginUpdate,
   resolveTrustedPluginKey,
   reviewPluginUpdate,
   rollbackPlugin,
   setPluginEnabled,
-  verifyPluginPackage,
+  verifyVersionedPluginPackage,
   type InstalledPluginStateV1,
   type InstalledPluginTrustOptions,
-  type PluginManifestPayloadV1,
+  type PluginManifestPayload,
   type TrustedPluginKeyringV1,
   type VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
@@ -157,7 +157,7 @@ function storedPluginRecordIssue(
   return pluginId && publisherSnapshotRecord ? { pluginId, kind: 'invalid-record' } : undefined
 }
 
-async function appBundleDigest(manifest: PluginManifestPayloadV1): Promise<string> {
+async function appBundleDigest(manifest: PluginManifestPayload): Promise<string> {
   return `app-bundle-sha256:${await digestCanonicalManifest(manifest)}`
 }
 
@@ -166,10 +166,14 @@ async function resolveCatalogEntry(
   engineVersion: string
 ): Promise<ResolvedPluginPackage> {
   if (entry.trustSource === 'publisher-signature') {
-    const verifiedPackage = await verifyPluginPackage(entry.manifest, entry.trustedPublicKey, {
-      engineVersion,
-      expectedKeyId: entry.expectedKeyId
-    })
+    const verifiedPackage = await verifyVersionedPluginPackage(
+      entry.manifest,
+      entry.trustedPublicKey,
+      {
+        engineVersion,
+        expectedKeyId: entry.expectedKeyId
+      }
+    )
     const { manifest, verifiedDigest } = verifiedPackage
     if (manifest.plugin.id !== entry.expectedPluginId) {
       throw new Error('Plugin id is not owned by the trusted catalog entry')
@@ -185,7 +189,7 @@ async function resolveCatalogEntry(
       ...(entry.remoteCatalog ? { remoteCatalog: structuredClone(entry.remoteCatalog) } : {})
     }
   }
-  const manifest = parsePluginManifestPayload(entry.manifest)
+  const manifest = parseVersionedPluginManifestPayload(entry.manifest)
   if (!satisfiesStableEngineRange(engineVersion, manifest.engineRange)) {
     throw new Error(`Plugin ${manifest.plugin.id} requires OpenPencil ${manifest.engineRange}`)
   }
@@ -357,7 +361,7 @@ async function verifyStoredSnapshot(
   if (!publicKey) throw new Error(`Stored plugin key is unavailable: ${snapshot.verifiedKeyId}`)
   let verified: VerifiedPluginPackage
   try {
-    verified = await verifyPluginPackage(snapshot.manifest, publicKey, {
+    verified = await verifyVersionedPluginPackage(snapshot.manifest, publicKey, {
       expectedKeyId: snapshot.verifiedKeyId
     })
   } catch (cause) {
@@ -475,9 +479,7 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
   let activeLoad: Promise<AppPluginStoreSnapshot> | null = null
   let mutationTail: Promise<void> = Promise.resolve()
 
-  function activationCompatibilityBlockReason(
-    manifest: PluginManifestPayloadV1
-  ): string | undefined {
+  function activationCompatibilityBlockReason(manifest: PluginManifestPayload): string | undefined {
     try {
       const compatibility = options.activationCompatibilityPolicy(manifest)
       return compatibility.ok
@@ -489,7 +491,7 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
     }
   }
 
-  function requireActivationCompatibility(manifest: PluginManifestPayloadV1): void {
+  function requireActivationCompatibility(manifest: PluginManifestPayload): void {
     const blockedReason = activationCompatibilityBlockReason(manifest)
     if (blockedReason) throw new Error(blockedReason)
   }

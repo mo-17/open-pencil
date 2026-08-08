@@ -9,6 +9,8 @@ export type {
   LintNode,
   LintMessage,
   LintResult,
+  LintLimits,
+  LinterOptions,
   LintConfig,
   Severity,
   Category

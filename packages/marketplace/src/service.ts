@@ -1,12 +1,13 @@
 import {
   parseMarketplaceSnapshotBytes,
+  parseVersionedPluginManifest,
   parsePluginRuntimePackage,
   pluginRuntimePackageCanonicalByteLength,
   searchMarketplaceListings,
-  serializePluginManifest,
+  serializeVersionedPluginManifest,
   serializePluginRuntimePackage,
   verifyMarketplaceSnapshot,
-  verifyPluginPackage,
+  verifyVersionedPluginPackage,
   verifyPluginRuntimePackage,
   type MarketplaceListingSearchOptions,
   type MarketplacePluginListingV1,
@@ -337,22 +338,15 @@ export function createMarketplaceService(
         parseMarketplaceTimestamp(submittedAt, 'submission time')
       )
       const initialState = await options.repository.snapshot()
-      const rawManifest = input.manifest
-      const parsedPublisher =
-        rawManifest !== null && typeof rawManifest === 'object' && 'publisher' in rawManifest
-          ? (rawManifest as { publisher?: { keyId?: unknown } }).publisher
-          : undefined
-      if (typeof parsedPublisher?.keyId !== 'string') {
-        throw new TypeError('Plugin manifest must identify its publisher key')
-      }
+      const manifest = parseVersionedPluginManifest(input.manifest)
       const trust = activePublisherKey(
         initialState,
         publisherId,
-        parsedPublisher.keyId,
+        manifest.publisher.keyId,
         submittedAtMilliseconds
       )
       const publicKey = await importEd25519PublicKeyPem(trust.key.publicKeyPem)
-      const verified = await verifyPluginPackage(rawManifest, publicKey, {
+      const verified = await verifyVersionedPluginPackage(manifest, publicKey, {
         expectedKeyId: trust.key.keyId
       })
       if (verified.manifest.publisher.id !== publisherId) {
@@ -367,7 +361,7 @@ export function createMarketplaceService(
         channel: input.channel
       })
       const manifestArtifact = await options.artifacts.put(
-        encoder.encode(serializePluginManifest(verified.manifest))
+        encoder.encode(serializeVersionedPluginManifest(verified.manifest))
       )
       const listing = publicListing(input.listing)
       let runtimeCoordinate = null

@@ -7,7 +7,13 @@ import {
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
-import { hasExactPluginKeys, parseCanonicalPublicHttpsUrl } from './parse-helpers'
+import {
+  hasExactPluginKeys,
+  isSafePluginHref,
+  mergePluginConfigWithDefaults,
+  parseBoundedPluginText as boundedText,
+  parseCanonicalPluginColor as canonicalColor
+} from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const SLIDE_MENU_PLUGIN_ID = 'open-pencil.slide-menu'
@@ -92,26 +98,7 @@ const CONFIG_KEYS = new Set([
 const ITEM_KEYS = new Set(['label', 'href'])
 const PRESENTATIONS = new Set<SlideMenuPresentationV1>(['menu', 'dialog'])
 const DIRECTIONS = new Set<SlideMenuDirectionV1>(['left', 'right', 'top', 'bottom'])
-const HEX_COLOR = /^#[\dA-F]{6}$/i
-
 type ParseResult = { ok: true; config: SlideMenuModuleConfigV1 } | { ok: false; reason: string }
-
-function boundedText(
-  value: unknown,
-  path: string,
-  minimumLength: number,
-  maximumLength: number
-): string {
-  if (
-    typeof value !== 'string' ||
-    value.length < minimumLength ||
-    value.length > maximumLength ||
-    (minimumLength > 0 && value.trim().length === 0)
-  ) {
-    throw new TypeError(`${path} must contain ${minimumLength} to ${maximumLength} characters`)
-  }
-  return value
-}
 
 function boundedNumber(value: unknown, path: string, minimum: number, maximum: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) {
@@ -120,39 +107,8 @@ function boundedNumber(value: unknown, path: string, minimum: number, maximum: n
   return value
 }
 
-function canonicalColor(value: unknown, path: string): string {
-  if (typeof value !== 'string' || !HEX_COLOR.test(value)) {
-    throw new TypeError(`${path} must be a #RRGGBB value`)
-  }
-  return value.toUpperCase()
-}
-
-function containsUnsafeHrefCharacter(value: string): boolean {
-  if (value.includes('\\')) return true
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code <= 31 || code === 127) return true
-  }
-  return false
-}
-
 export function isSafeSlideMenuHref(value: unknown): value is string {
-  if (
-    typeof value !== 'string' ||
-    value.length === 0 ||
-    value.length > SLIDE_MENU_MODULE_LIMITS.itemHref ||
-    containsUnsafeHrefCharacter(value)
-  ) {
-    return false
-  }
-  if (value.startsWith('/') && !value.startsWith('//')) return true
-  if (value.startsWith('#') && value.length > 1) return true
-  try {
-    parseCanonicalPublicHttpsUrl(value, 'slide menu item href', SLIDE_MENU_MODULE_LIMITS.itemHref)
-    return true
-  } catch {
-    return false
-  }
+  return isSafePluginHref(value, 'slide menu item href', SLIDE_MENU_MODULE_LIMITS.itemHref, false)
 }
 
 function parseItems(value: unknown): SlideMenuItemV1[] {
@@ -269,14 +225,10 @@ function parseSlideMenuConfig(value: unknown): ParseResult {
   }
 }
 
-function mergeWithDefaults(config: unknown): unknown {
-  if (config === undefined) return structuredClone(SLIDE_MENU_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
-  return { ...structuredClone(SLIDE_MENU_MODULE_DEFAULT_CONFIG), ...config }
-}
-
 export function createSlideMenuModuleInstance(config?: unknown): ModuleInstanceV1 {
-  const parsed = parseSlideMenuConfig(mergeWithDefaults(config))
+  const parsed = parseSlideMenuConfig(
+    mergePluginConfigWithDefaults(SLIDE_MENU_MODULE_DEFAULT_CONFIG, config)
+  )
   if (!parsed.ok) throw new TypeError(parsed.reason)
   return {
     version: 1,

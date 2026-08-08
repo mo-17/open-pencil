@@ -8,7 +8,7 @@ import {
   PLUGIN_RUNTIME_INDEX_SCHEMA_VERSION,
   comparePluginCatalogEntries,
   comparePluginRuntimeIndexEntries,
-  parsePluginPackageBytes,
+  parseVersionedPluginPackageBytes,
   parsePluginRuntimePackageBytes,
   pluginRuntimePackageCanonicalByteLength,
   serializeMarketplaceSnapshot,
@@ -17,7 +17,7 @@ import {
   signMarketplaceSnapshot,
   signPluginCatalog,
   signPluginRuntimeIndex,
-  verifyPluginPackage,
+  verifyVersionedPluginPackage,
   verifyPluginRuntimePackage,
   type MarketplacePluginListingV1,
   type MarketplacePublisherDirectoryV1,
@@ -86,7 +86,7 @@ export interface PreparedMarketplacePublication {
 interface VerifiedRelease {
   release: MarketplaceReleaseV1
   key: MarketplacePublisherKeyV1
-  manifest: Awaited<ReturnType<typeof verifyPluginPackage>>['manifest']
+  manifest: Awaited<ReturnType<typeof verifyVersionedPluginPackage>>['manifest']
   runtime: {
     digest: string
     url: string
@@ -226,7 +226,7 @@ async function verifyRelease(
     )
   }
   const artifact = await requiredArtifact(artifacts, release.artifactDigest, 'Plugin manifest')
-  const manifest = parsePluginPackageBytes(artifact.bytes)
+  const manifest = parseVersionedPluginPackageBytes(artifact.bytes)
   const key = activeKey(state, release.publisherId, manifest.publisher.keyId, now)
   if (!key) return null
   if (
@@ -237,7 +237,9 @@ async function verifyRelease(
     throw new Error(`Release ${release.submissionId} does not match its signed manifest`)
   }
   const publicKey = await importEd25519PublicKeyPem(key.publicKeyPem)
-  const verified = await verifyPluginPackage(manifest, publicKey, { expectedKeyId: key.keyId })
+  const verified = await verifyVersionedPluginPackage(manifest, publicKey, {
+    expectedKeyId: key.keyId
+  })
   if (verified.verifiedDigest !== release.manifestDigest) {
     throw new Error(`Release ${release.submissionId} manifest digest does not match its state`)
   }

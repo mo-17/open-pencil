@@ -13,17 +13,18 @@ import {
   serializePluginCatalog,
   signPluginCatalog,
   signPluginManifest,
+  signVersionedPluginManifest,
   validatePluginCatalog,
   verifyCatalogPluginPackage,
   verifyPluginCatalog,
   type PluginCatalogEntryV1,
   type PluginCatalogPayloadV1,
-  type PluginManifestV1,
+  type PluginManifest,
   type TrustedPluginKeyringV1,
   type TrustedPluginPublisherKeyV1
 } from '@open-pencil/core/plugins'
 
-import { pluginPayload } from '../helpers'
+import { pluginPayload, pluginPayloadV2 } from '../helpers'
 
 const GENERATED_AT = '2026-08-05T00:00:00.000Z'
 const EXPIRES_AT = '2026-08-10T00:00:00.000Z'
@@ -33,7 +34,7 @@ async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
 }
 
-function catalogEntry(manifest: PluginManifestV1): PluginCatalogEntryV1 {
+function catalogEntry(manifest: PluginManifest): PluginCatalogEntryV1 {
   return {
     pluginId: manifest.plugin.id,
     version: manifest.plugin.version,
@@ -125,6 +126,34 @@ describe('signed remote plugin catalog', () => {
     expect(verifiedPackage.verifiedPackage.verifiedDigest).toBe(manifest.integrity.digest)
     expect(verifiedPackage.keyTrust.rotationPath).toEqual(['acme.release'])
     expect(verifiedPackage.diagnostics).toEqual([])
+  })
+
+  test('verifies schema-v2 packages and fails closed for unknown manifest versions', async () => {
+    const root = await keys()
+    const publisher = await keys()
+    const manifest = await signVersionedPluginManifest(pluginPayloadV2(), publisher.privateKey)
+    const catalog = await signPluginCatalog(
+      catalogPayload([catalogEntry(manifest)]),
+      root.privateKey
+    )
+    const verifiedCatalog = await verifyPluginCatalog(catalog, root.publicKey, { now: NOW })
+    const trustedKeys = keyring([publisherKey(publisher.publicKey)])
+
+    await expect(
+      verifyCatalogPluginPackage(catalog.entries[0], manifest, trustedKeys, {
+        catalog: verifiedCatalog,
+        now: NOW
+      })
+    ).resolves.toMatchObject({ verifiedPackage: { manifest: { schemaVersion: 2 } } })
+
+    await expect(
+      verifyCatalogPluginPackage(
+        catalog.entries[0],
+        { ...manifest, schemaVersion: 3 },
+        trustedKeys,
+        { catalog: verifiedCatalog, now: NOW }
+      )
+    ).rejects.toThrow('schemaVersion')
   })
 
   test('rejects untrusted roots, tampering, future catalogs, and expiration with stable codes', async () => {

@@ -35,6 +35,34 @@ export interface LintResult {
   errorCount: number
   warningCount: number
   infoCount: number
+  /** True when resource limits prevented a complete graph or message scan. */
+  truncated: boolean
+  /** Number of nodes captured and made available to lint rules. */
+  visitedNodeCount: number
+}
+
+export interface LintLimits {
+  maxNodes: number
+  maxMessages: number
+  maxDepth: number
+  maxChildrenPerNode: number
+  maxStyleEntriesPerNode: number
+  maxTotalStyleEntries: number
+  maxTextCodePoints: number
+  maxTotalTextCodePoints: number
+  maxBoundVariablesPerNode: number
+  maxTotalBoundVariables: number
+  maxStructuredPayloadNodes: number
+  maxTotalStructuredPayloadNodes: number
+  maxStructuredMembersPerContainer: number
+}
+
+export interface LinterOptions {
+  config?: LintConfig
+  preset?: string
+  rules?: string[]
+  /** Optional fail-closed resource limits for untrusted or very large documents. */
+  limits?: Partial<LintLimits>
 }
 
 export interface LintConfig {

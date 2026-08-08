@@ -3,7 +3,19 @@ import { describe, expect, test } from 'bun:test'
 import { MAP_PLUGIN_ID } from '@open-pencil/core/plugins'
 
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
-import { CLIPBOARD_TOOLKIT_PLUGIN_ID } from '@/app/plugins/host/ids'
+import {
+  ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+  EXPO_REACT_NATIVE_EXPORTER,
+  EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
+  FLUTTER_EXPORTER,
+  FLUTTER_EXPORTER_PLUGIN_ID,
+  FIGMA_PROJECTION_EXPORTER,
+  FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
+  TAURI_REACT_EXPORTER,
+  TAURI_REACT_EXPORTER_PLUGIN_ID
+} from '@/app/plugins/host/ids'
 import {
   appPluginMcpToolName,
   listAppPluginMcpTools,
@@ -27,7 +39,7 @@ function createStore() {
 describe('app plugin MCP catalog', () => {
   test('exposes all bundled contributions after all bundled plugins are enabled', async () => {
     const catalog = createBundledPluginCatalog()
-    expect(catalog).toHaveLength(11)
+    expect(catalog).toHaveLength(17)
 
     const store = createStore()
     await store.load()
@@ -41,10 +53,10 @@ describe('app plugin MCP catalog', () => {
     }
 
     const tools = listAppPluginMcpTools(store).tools
-    expect(tools).toHaveLength(14)
-    expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(7)
-    expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(4)
-    expect(tools.filter((tool) => tool.kind === 'exporter')).toHaveLength(3)
+    expect(tools).toHaveLength(16)
+    expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(10)
+    expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(5)
+    expect(tools.filter((tool) => tool.kind === 'exporter')).toHaveLength(1)
   })
 
   test('permanently binds slug-colliding names to canonical plugin identity', () => {
@@ -124,6 +136,108 @@ describe('app plugin MCP catalog', () => {
     )
     expect(commands).toHaveLength(4)
     expect(commands.every((tool) => tool.kind === 'command')).toBe(true)
+  })
+
+  test('dynamically exposes and revokes the static accessibility audit', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    expect(
+      listAppPluginMcpTools(store).tools.some(
+        (tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
+      )
+    ).toBe(false)
+
+    await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, true)
+    const audit = listAppPluginMcpTools(store).tools.find(
+      (tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
+    )
+    expect(audit).toMatchObject({
+      kind: 'command',
+      contributionId: 'run-static-accessibility-audit',
+      inputSchema: { type: 'object', additionalProperties: false, maxProperties: 0 }
+    })
+    if (!audit) throw new Error('Expected accessibility MCP descriptor')
+    expect(resolveAppPluginMcpTool(store, audit.name, ACCESSIBILITY_AUDIT_PLUGIN_ID).kind).toBe(
+      'command'
+    )
+
+    await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, false)
+    expect(
+      listAppPluginMcpTools(store).tools.some(
+        (tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
+      )
+    ).toBe(false)
+  })
+
+  test('projects a compatible v2 contribution parameter schema into the dynamic descriptor', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    await store.setEnabled(ACCESSIBILITY_AUDIT_PLUGIN_ID, true)
+    const installed = store
+      .installedCommands()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    if (!installed || !('parameters' in installed.contribution)) {
+      throw new Error('Expected installed v2 accessibility command')
+    }
+    const contribution = {
+      ...structuredClone(installed.contribution),
+      parameters: {
+        maxBytes: 64,
+        schema: {
+          type: 'object' as const,
+          properties: {
+            level: { type: 'string' as const, enum: ['error', 'warning'] }
+          },
+          required: ['level'],
+          additionalProperties: false as const,
+          minProperties: 1,
+          maxProperties: 1
+        }
+      }
+    }
+    const fakeStore: AppPluginMcpStore = {
+      installedModules: () => [],
+      installedCommands: () => [{ plugin: installed.plugin, contribution }],
+      installedExporters: () => []
+    }
+
+    const [descriptor] = listAppPluginMcpTools(fakeStore).tools
+    expect(descriptor.inputSchema).toEqual(contribution.parameters.schema)
+    expect(JSON.stringify(descriptor.inputSchema)).not.toContain('document_id')
+    expect(JSON.stringify(descriptor.inputSchema)).not.toContain('page_id')
+  })
+
+  test('exposes only cancellable exporters and fails closed for synchronous exporters', async () => {
+    const store = createStore()
+    await store.load()
+    for (const pluginId of [
+      DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+      FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
+      TAURI_REACT_EXPORTER_PLUGIN_ID,
+      EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
+      FLUTTER_EXPORTER_PLUGIN_ID
+    ]) {
+      await store.install(pluginId)
+      await store.setEnabled(pluginId, true)
+    }
+
+    const tools = listAppPluginMcpTools(store).tools
+    expect(tools.filter((tool) => tool.kind === 'exporter').map((tool) => tool.pluginId)).toEqual([
+      DESIGN_TOKENS_EXPORTER_PLUGIN_ID
+    ])
+    for (const [pluginId, exporter] of [
+      [FIGMA_PROJECTION_EXPORTER_PLUGIN_ID, FIGMA_PROJECTION_EXPORTER],
+      [TAURI_REACT_EXPORTER_PLUGIN_ID, TAURI_REACT_EXPORTER],
+      [EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID, EXPO_REACT_NATIVE_EXPORTER],
+      [FLUTTER_EXPORTER_PLUGIN_ID, FLUTTER_EXPORTER]
+    ] as const) {
+      const unavailableName = appPluginMcpToolName(pluginId, 'exporter', exporter.exporterId)
+      expect(() => resolveAppPluginMcpTool(store, unavailableName, pluginId)).toThrow(
+        'is unavailable'
+      )
+    }
   })
 
   test('uses host-owned module text and neutral host command text', async () => {

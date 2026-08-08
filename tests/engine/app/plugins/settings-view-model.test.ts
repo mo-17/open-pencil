@@ -15,8 +15,13 @@ import {
   type MarketplaceSnapshotLoadResult
 } from '@/app/plugins'
 import {
+  ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  DESIGN_TOKENS_EXPORTER_PLUGIN_ID
+} from '@/app/plugins/host/ids'
+import {
   filterPluginDiscoverCatalog,
-  pluginMarketplaceListingViews
+  pluginMarketplaceListingViews,
+  pluginV2ContractSummaries
 } from '@/app/plugins/settings-view-model'
 
 const ROOT_KEY_ID = 'marketplace.root.2026'
@@ -125,6 +130,37 @@ function mapCatalog(): readonly AppPluginCatalogItem[] {
 }
 
 describe('plugin settings marketplace view model', () => {
+  test('derives bounded v2 authority summaries from validated manifests', () => {
+    const catalog = createBundledPluginCatalog()
+    const manifest = (pluginId: string) => {
+      const candidate = catalog.find((entry) => entry.manifest.plugin.id === pluginId)?.manifest
+      if (!candidate) throw new Error(`Missing plugin ${pluginId}`)
+      return candidate
+    }
+
+    expect(pluginV2ContractSummaries(manifest(ACCESSIBILITY_AUDIT_PLUGIN_ID))).toEqual([
+      {
+        kind: 'command',
+        contributionId: 'run-static-accessibility-audit',
+        permissions: ['document.read'],
+        outputs: [],
+        parameterMaxBytes: 2,
+        resultMaxBytes: 512 * 1024
+      }
+    ])
+    expect(pluginV2ContractSummaries(manifest(DESIGN_TOKENS_EXPORTER_PLUGIN_ID))).toEqual([
+      {
+        kind: 'exporter',
+        contributionId: 'design-tokens-json',
+        permissions: ['document.variables.read', 'file.save'],
+        outputs: [{ extension: '.json', mimeType: 'application/json' }],
+        parameterMaxBytes: 2,
+        resultMaxBytes: 2
+      }
+    ])
+    expect(pluginV2ContractSummaries(manifest(PLUGIN_ID))).toEqual([])
+  })
+
   test('searches name, summary, category, and keyword from a verified signed snapshot', async () => {
     const marketplace = await signedMarketplace({
       keyNotAfter: '2026-08-09T00:00:00.000Z'

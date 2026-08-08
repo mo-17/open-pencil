@@ -1,4 +1,5 @@
 export { IORegistry } from './registry'
+export * from './design-tokens'
 export { extractExportGraph } from './subgraph'
 export {
   BUILTIN_IO_FORMATS,

@@ -7,7 +7,15 @@ import {
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
-import { hasExactPluginKeys, parseCanonicalPublicHttpsUrl } from './parse-helpers'
+import {
+  assertBoundedPluginConfigBytes,
+  hasExactPluginKeys,
+  isSafePluginHref,
+  mergePluginConfigWithDefaults,
+  parseBoundedPluginText as boundedText,
+  parseCanonicalPluginColor as canonicalColor,
+  parseCanonicalPublicHttpsUrl
+} from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const CAROUSEL_PLUGIN_ID = 'open-pencil.carousel'
@@ -114,60 +122,10 @@ const CONFIG_KEYS = new Set([
 ])
 const SLIDE_KEYS = new Set(['title', 'description', 'imageUrl', 'alt', 'href'])
 const TRANSITIONS = new Set<CarouselTransitionV1>(['slide', 'fade'])
-const HEX_COLOR = /^#[\dA-F]{6}$/i
-
 type ParseResult = { ok: true; config: CarouselModuleConfigV1 } | { ok: false; reason: string }
 
-function boundedText(
-  value: unknown,
-  path: string,
-  minimumLength: number,
-  maximumLength: number
-): string {
-  if (
-    typeof value !== 'string' ||
-    value.length < minimumLength ||
-    value.length > maximumLength ||
-    (minimumLength > 0 && value.trim().length === 0)
-  ) {
-    throw new TypeError(`${path} must contain ${minimumLength} to ${maximumLength} characters`)
-  }
-  return value
-}
-
-function canonicalColor(value: unknown, path: string): string {
-  if (typeof value !== 'string' || !HEX_COLOR.test(value)) {
-    throw new TypeError(`${path} must be a #RRGGBB value`)
-  }
-  return value.toUpperCase()
-}
-
-function containsUnsafeHrefCharacter(value: string): boolean {
-  if (value.includes('\\')) return true
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    if (code <= 31 || code === 127) return true
-  }
-  return false
-}
-
 export function isSafeCarouselHref(value: unknown): value is string {
-  if (value === '') return true
-  if (
-    typeof value !== 'string' ||
-    value.length > CAROUSEL_MODULE_LIMITS.href ||
-    containsUnsafeHrefCharacter(value)
-  ) {
-    return false
-  }
-  if (value.startsWith('/') && !value.startsWith('//')) return true
-  if (value.startsWith('#') && value.length > 1) return true
-  try {
-    parseCanonicalPublicHttpsUrl(value, 'carousel slide href', CAROUSEL_MODULE_LIMITS.href)
-    return true
-  } catch {
-    return false
-  }
+  return isSafePluginHref(value, 'carousel slide href', CAROUSEL_MODULE_LIMITS.href, true)
 }
 
 function parseImageUrl(value: unknown, path: string): string {
@@ -269,26 +227,17 @@ function parseCarouselConfig(value: unknown): ParseResult {
       textColor: canonicalColor(value.textColor, 'carousel config textColor'),
       accentColor: canonicalColor(value.accentColor, 'carousel config accentColor')
     }
-    const bytes = new TextEncoder().encode(JSON.stringify(config)).byteLength
-    if (bytes > CAROUSEL_MODULE_LIMITS.configBytes) {
-      throw new TypeError(
-        `carousel config must not exceed ${CAROUSEL_MODULE_LIMITS.configBytes} encoded bytes`
-      )
-    }
+    assertBoundedPluginConfigBytes(config, 'carousel config', CAROUSEL_MODULE_LIMITS.configBytes)
     return { ok: true, config }
   } catch (cause) {
     return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) }
   }
 }
 
-function mergeWithDefaults(config: unknown): unknown {
-  if (config === undefined) return structuredClone(CAROUSEL_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
-  return { ...structuredClone(CAROUSEL_MODULE_DEFAULT_CONFIG), ...config }
-}
-
 export function createCarouselModuleInstance(config?: unknown): ModuleInstanceV1 {
-  const parsed = parseCarouselConfig(mergeWithDefaults(config))
+  const parsed = parseCarouselConfig(
+    mergePluginConfigWithDefaults(CAROUSEL_MODULE_DEFAULT_CONFIG, config)
+  )
   if (!parsed.ok) throw new TypeError(parsed.reason)
   return {
     version: 1,

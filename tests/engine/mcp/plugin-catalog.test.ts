@@ -18,6 +18,8 @@ import {
 
 const SLIDE_MENU_TOOL_NAME = appPluginMcpToolName('open-pencil.slide-menu', 'module', 'slide-menu')
 const VIDEO_TOOL_NAME = appPluginMcpToolName('open-pencil.video', 'module', 'video')
+const AUDIT_TOOL_NAME = appPluginMcpToolName('acme.analytics', 'command', 'accessibility-audit')
+const TOKENS_TOOL_NAME = appPluginMcpToolName('acme.analytics', 'exporter', 'design-tokens')
 
 function descriptor(overrides: Record<string, unknown> = {}) {
   return {
@@ -46,6 +48,49 @@ function descriptor(overrides: Record<string, unknown> = {}) {
 
 function response(tools: unknown[], revision = 'revision-1') {
   return { ok: true, result: { revision, tools } }
+}
+
+function commandInputSchema(valueType: 'integer' | 'string' = 'string') {
+  return {
+    type: 'object',
+    properties: {
+      scope:
+        valueType === 'string'
+          ? { type: 'string', enum: ['document', 'selection'] }
+          : { type: 'integer', minimum: 0, maximum: 10 }
+    },
+    required: ['scope'],
+    additionalProperties: false
+  }
+}
+
+function commandDescriptor(inputSchema: unknown = commandInputSchema()) {
+  return descriptor({
+    name: AUDIT_TOOL_NAME,
+    title: 'Run Accessibility Audit',
+    description: 'Run the installed accessibility audit command.',
+    inputSchema,
+    pluginId: 'acme.analytics',
+    kind: 'command',
+    contributionId: 'accessibility-audit'
+  })
+}
+
+function exporterDescriptor(inputSchema: unknown = commandInputSchema()) {
+  return descriptor({
+    name: TOKENS_TOOL_NAME,
+    title: 'Export Design Tokens',
+    description: 'Run the installed design tokens exporter.',
+    inputSchema,
+    pluginId: 'acme.analytics',
+    kind: 'exporter',
+    contributionId: 'design-tokens'
+  })
+}
+
+function nestedArraySchema(depth: number): Record<string, unknown> {
+  if (depth === 0) return { type: 'boolean' }
+  return { type: 'array', items: nestedArraySchema(depth - 1) }
 }
 
 describe('plugin MCP catalog validation', () => {
@@ -91,6 +136,26 @@ describe('plugin MCP catalog validation', () => {
 
     expect(parsed.tools.map((tool) => tool.name)).toEqual([SLIDE_MENU_TOOL_NAME, VIDEO_TOOL_NAME])
     expect(parsed.tools[0]?.inputSchema).toEqual(descriptor().inputSchema)
+    expect(parsed.tools[0]?.inputSchema).toMatchObject({
+      properties: { config: { additionalProperties: true } }
+    })
+  })
+
+  test('accepts strict bounded v2 command and exporter parameter schemas', () => {
+    const parsed = parsePluginMcpCatalogResponse(
+      response([commandDescriptor(), exporterDescriptor()])
+    )
+
+    expect(parsed.tools.map(({ name }) => name).sort()).toEqual(
+      [AUDIT_TOOL_NAME, TOKENS_TOOL_NAME].sort()
+    )
+    for (const tool of parsed.tools) {
+      expect(tool.inputSchema).toMatchObject({
+        type: 'object',
+        required: ['scope'],
+        additionalProperties: false
+      })
+    }
   })
 
   test('rejects duplicate names, static-name collisions, reserved targets, and unsafe schemas', () => {
@@ -146,6 +211,75 @@ describe('plugin MCP catalog validation', () => {
     expect(() => parsePluginMcpCatalogResponse(response(tools))).toThrow(
       `at most ${PLUGIN_MCP_CATALOG_LIMITS.maxTools}`
     )
+  })
+
+  test('fails closed for open, unknown, oversized, deep, or node-heavy v2 schemas', () => {
+    for (const invalidSchema of [
+      { ...commandInputSchema(), additionalProperties: true },
+      { type: 'object', properties: { value: { type: 'string', pattern: '.*' } } },
+      { type: 'object', properties: { value: { oneOf: [{ type: 'string' }] } } },
+      { type: 'object', properties: { value: { $ref: '#/$defs/value' } } },
+      { type: 'object', properties: { value: { type: 'unknown' } } },
+      { type: 'object', properties: { document_id: { type: 'string' } } },
+      { type: 'object', properties: { page_id: { type: 'string' } } }
+    ]) {
+      expect(() =>
+        parsePluginMcpCatalogResponse(response([commandDescriptor(invalidSchema)]))
+      ).toThrow()
+    }
+
+    expect(() =>
+      parsePluginMcpCatalogResponse(
+        response([
+          commandDescriptor({
+            type: 'object',
+            description: 'x'.repeat(PLUGIN_MCP_CATALOG_LIMITS.maxSchemaBytes),
+            properties: {},
+            additionalProperties: false
+          })
+        ])
+      )
+    ).toThrow('byte limit')
+
+    expect(() =>
+      parsePluginMcpCatalogResponse(
+        response([
+          commandDescriptor({
+            type: 'object',
+            properties: {
+              value: nestedArraySchema(PLUGIN_MCP_CATALOG_LIMITS.maxSchemaDepth + 1)
+            },
+            additionalProperties: false
+          })
+        ])
+      )
+    ).toThrow('depth limit')
+
+    const nodeHeavyProperties = Object.fromEntries(
+      Array.from({ length: 128 }, (_, index) => [
+        `group${index}`,
+        {
+          type: 'object',
+          properties: {
+            a: { type: 'boolean' },
+            b: { type: 'boolean' },
+            c: { type: 'boolean' }
+          },
+          additionalProperties: false
+        }
+      ])
+    )
+    expect(() =>
+      parsePluginMcpCatalogResponse(
+        response([
+          commandDescriptor({
+            type: 'object',
+            properties: nodeHeavyProperties,
+            additionalProperties: false
+          })
+        ])
+      )
+    ).toThrow('node limit')
   })
 })
 
@@ -214,11 +348,45 @@ describe('dynamic plugin MCP registration', () => {
       }
     ])
 
+    catalog.replace(response([commandDescriptor()], 'command-string'))
+    expect((await client.listTools()).tools.map(({ name }) => name).sort()).toEqual([
+      AUDIT_TOOL_NAME,
+      'static_tool'
+    ])
+    await client.callTool({
+      name: AUDIT_TOOL_NAME,
+      arguments: { scope: 'selection', document_id: 'document-2' }
+    })
+    expect(rpcCalls.at(-1)).toEqual({
+      command: 'plugin_mcp_tool',
+      args: {
+        document_id: 'document-2',
+        name: AUDIT_TOOL_NAME,
+        pluginId: 'acme.analytics',
+        args: { scope: 'selection' }
+      }
+    })
+
+    catalog.replace(response([commandDescriptor(commandInputSchema('integer'))], 'command-integer'))
+    const callsBeforeStaleValidation = rpcCalls.length
+    const staleCall = await client.callTool({
+      name: AUDIT_TOOL_NAME,
+      arguments: { scope: 'selection' }
+    })
+    expect(staleCall.isError).toBe(true)
+    expect(JSON.stringify(staleCall.content)).toContain('Input validation error')
+    expect(rpcCalls).toHaveLength(callsBeforeStaleValidation)
+    await client.callTool({ name: AUDIT_TOOL_NAME, arguments: { scope: 4 } })
+    expect(rpcCalls.at(-1)).toMatchObject({
+      command: 'plugin_mcp_tool',
+      args: { args: { scope: 4 } }
+    })
+
     catalog.clear()
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['static_tool'])
     const removedCall = await client.callTool({
-      name: SLIDE_MENU_TOOL_NAME,
-      arguments: { x: 40 }
+      name: AUDIT_TOOL_NAME,
+      arguments: { scope: 4 }
     })
     expect(removedCall.isError).toBe(true)
     await new Promise<void>((resolve) => {
@@ -228,11 +396,22 @@ describe('dynamic plugin MCP registration', () => {
   })
 
   test('keeps the last verified list only on success and clears it on refresh failure', async () => {
-    let shouldFail = false
+    let responseMode: 'disconnected' | 'invalid' | 'valid' = 'valid'
     const controller = createPluginMcpController({
       async sendRpc(body) {
         expect(body).toEqual({ command: 'plugin_mcp_tools', args: {} })
-        if (shouldFail) throw new Error('app disconnected')
+        if (responseMode === 'disconnected') throw new Error('app disconnected')
+        if (responseMode === 'invalid') {
+          return response(
+            [
+              commandDescriptor({
+                ...commandInputSchema(),
+                additionalProperties: true
+              })
+            ],
+            'invalid-schema'
+          )
+        }
         return response([descriptor()])
       }
     })
@@ -240,7 +419,13 @@ describe('dynamic plugin MCP registration', () => {
 
     await controller.refresh()
     expect(controller.catalog.current().tools).toHaveLength(1)
-    shouldFail = true
+    responseMode = 'invalid'
+    await controller.refresh()
+    expect(controller.catalog.current()).toEqual({ revision: '', tools: [] })
+    responseMode = 'valid'
+    await controller.refresh()
+    expect(controller.catalog.current().tools).toHaveLength(1)
+    responseMode = 'disconnected'
     await controller.refresh()
     expect(controller.catalog.current()).toEqual({ revision: '', tools: [] })
   })

@@ -10,14 +10,17 @@ import {
   rollbackPlugin,
   setPluginEnabled,
   signPluginManifest,
+  signVersionedPluginManifest,
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
   verifyPluginPackage,
+  verifyVersionedPluginPackage,
   type PluginManifestPayloadV1,
+  type PluginManifestPayloadV2,
   type TrustedPluginKeyringV1,
   type VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
 
-import { pluginPayload } from './helpers'
+import { pluginPayload, pluginPayloadV2 } from './helpers'
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
@@ -33,6 +36,17 @@ async function verified(
   configure?.(payload)
   const manifest = await signPluginManifest(payload, keyPair.privateKey)
   return verifyPluginPackage(manifest, keyPair.publicKey)
+}
+
+async function verifiedV2(
+  keyPair: CryptoKeyPair,
+  version: string,
+  configure?: (payload: PluginManifestPayloadV2) => void
+): Promise<VerifiedPluginPackage> {
+  const payload = pluginPayloadV2(version)
+  configure?.(payload)
+  const manifest = await signVersionedPluginManifest(payload, keyPair.privateKey)
+  return verifyVersionedPluginPackage(manifest, keyPair.publicKey)
 }
 
 describe('installed plugin state', () => {
@@ -222,6 +236,66 @@ describe('installed plugin state', () => {
         'update-exporter-name'
       ]
     })
+  })
+
+  test('reviews a v1-to-v2 migration and preserves the accepted versioned snapshot', async () => {
+    const keyPair = await keys()
+    const initial = await verified(keyPair, '1.0.0', 'Chart', (payload) => {
+      payload.contributions.modules = []
+      payload.contributions.commands = [
+        {
+          commandId: 'accessibility-audit',
+          name: 'Accessibility Audit',
+          description: 'Runs a static accessibility audit',
+          adapterId: 'open-pencil.audit.accessibility'
+        }
+      ]
+      payload.contributions.exporters = [
+        {
+          exporterId: 'design-tokens',
+          name: 'Design Tokens',
+          description: 'Exports public design tokens',
+          adapterId: 'open-pencil.export.design-tokens',
+          fileExtension: '.json'
+        }
+      ]
+    })
+    const update = await verifiedV2(keyPair, '2.0.0')
+    const reviewed = reviewPluginUpdate(createInstalledPluginState(initial), update)
+
+    expect(reviewed.pending?.diff).toMatchObject({
+      updatedCommands: ['accessibility-audit'],
+      updatedExporters: ['design-tokens']
+    })
+    expect(parseInstalledPluginState(reviewed).pending?.candidate.manifest.schemaVersion).toBe(2)
+    expect(acceptPluginUpdate(reviewed).accepted.manifest.schemaVersion).toBe(2)
+  })
+
+  test('requires review when v2 permissions, schemas, or declared outputs expand', async () => {
+    const keyPair = await keys()
+    const initial = await verifiedV2(keyPair, '2.0.0')
+    const update = await verifiedV2(keyPair, '2.1.0', (payload) => {
+      const command = payload.contributions.commands?.[0]
+      const exporter = payload.contributions.exporters?.[0]
+      if (!command || !exporter) throw new Error('Expected v2 contribution fixtures')
+      command.permissions = [...command.permissions, 'file.save']
+      command.parameters = {
+        ...command.parameters,
+        schema: {
+          ...command.parameters.schema,
+          properties: {
+            ...command.parameters.schema.properties,
+            includeHidden: { type: 'boolean' }
+          }
+        }
+      }
+      exporter.outputs = [...exporter.outputs, { extension: '.scss', mimeType: 'text/x-scss' }]
+    })
+    const reviewed = reviewPluginUpdate(createInstalledPluginState(initial), update)
+
+    expect(reviewed.pending?.status).toBe('pending')
+    expect(reviewed.pending?.diff.updatedCommands).toEqual(['accessibility-audit'])
+    expect(reviewed.pending?.diff.updatedExporters).toEqual(['design-tokens'])
   })
 
   test('parses legacy pending diffs without command or exporter lists', async () => {

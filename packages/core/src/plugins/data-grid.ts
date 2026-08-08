@@ -7,7 +7,12 @@ import {
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
-import { hasExactPluginKeys } from './parse-helpers'
+import {
+  assertBoundedPluginConfigBytes,
+  hasExactPluginKeys,
+  mergePluginConfigWithDefaults,
+  parseCanonicalPluginColor as canonicalColor
+} from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const DATA_GRID_PLUGIN_ID = 'open-pencil.data-grid'
@@ -177,8 +182,6 @@ const SELECTION_MODES = new Set<DataGridSelectionModeV1>(['none', 'single', 'mul
 const DENSITIES = new Set<DataGridDensityV1>(['compact', 'comfortable'])
 const ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]*$/
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-const HEX_COLOR = /^#[\dA-F]{6}$/i
-
 type ParseResult = { ok: true; config: DataGridModuleConfigV1 } | { ok: false; reason: string }
 
 function boundedText(value: unknown, path: string, maximum: number, allowEmpty = false): string {
@@ -200,13 +203,6 @@ function identifier(value: unknown, path: string): string {
     throw new TypeError(`${path} must start with a letter and contain only letters, digits, _ or -`)
   }
   return parsed
-}
-
-function canonicalColor(value: unknown, path: string): string {
-  if (typeof value !== 'string' || !HEX_COLOR.test(value)) {
-    throw new TypeError(`${path} must be a #RRGGBB value`)
-  }
-  return value.toUpperCase()
 }
 
 function parseColumns(value: unknown): DataGridColumnV1[] {
@@ -468,26 +464,17 @@ function parseDataGridConfig(value: unknown): ParseResult {
       accentColor: canonicalColor(value.accentColor, 'data grid accentColor'),
       fontSize: value.fontSize
     }
-    const bytes = new TextEncoder().encode(JSON.stringify(config)).byteLength
-    if (bytes > DATA_GRID_MODULE_LIMITS.configBytes) {
-      throw new TypeError(
-        `data grid config must not exceed ${DATA_GRID_MODULE_LIMITS.configBytes} encoded bytes`
-      )
-    }
+    assertBoundedPluginConfigBytes(config, 'data grid config', DATA_GRID_MODULE_LIMITS.configBytes)
     return { ok: true, config }
   } catch (cause) {
     return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) }
   }
 }
 
-function mergeWithDefaults(config: unknown): unknown {
-  if (config === undefined) return structuredClone(DATA_GRID_MODULE_DEFAULT_CONFIG)
-  if (!isPlainJsonObject(config)) return config
-  return { ...structuredClone(DATA_GRID_MODULE_DEFAULT_CONFIG), ...config }
-}
-
 export function createDataGridModuleInstance(config?: unknown): ModuleInstanceV1 {
-  const parsed = parseDataGridConfig(mergeWithDefaults(config))
+  const parsed = parseDataGridConfig(
+    mergePluginConfigWithDefaults(DATA_GRID_MODULE_DEFAULT_CONFIG, config)
+  )
   if (!parsed.ok) throw new TypeError(parsed.reason)
   return {
     version: 1,

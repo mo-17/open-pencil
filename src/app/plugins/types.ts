@@ -1,10 +1,12 @@
 import type {
   DeclarativeCommandContributionV1,
+  DeclarativeCommandContributionV2,
   DeclarativeExporterContributionV1,
+  DeclarativeExporterContributionV2,
   DeclarativeModuleContributionV1,
   InstalledPluginStateV1,
-  PluginManifestV1,
-  PluginManifestPayloadV1,
+  PluginManifest,
+  PluginManifestPayload,
   VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
 
@@ -19,19 +21,19 @@ export type AppPluginActivationCompatibility =
   | Readonly<{ ok: false; reason: string }>
 
 export type AppPluginActivationCompatibilityPolicy = (
-  manifest: PluginManifestPayloadV1
+  manifest: PluginManifestPayload
 ) => AppPluginActivationCompatibility
 
 export type AppBundlePluginCatalogEntry = Readonly<{
   trustSource: 'app-bundle'
-  manifest: PluginManifestPayloadV1
+  manifest: PluginManifestPayload
   installedByDefault?: boolean
   enabledByDefault?: boolean
 }>
 
 export type PublisherSignedPluginCatalogEntry = Readonly<{
   trustSource: 'publisher-signature'
-  manifest: PluginManifestV1
+  manifest: PluginManifest
   trustedPublicKey: CryptoKey
   expectedPluginId: string
   expectedPublisherId: string
@@ -53,7 +55,7 @@ export type AppPluginRemoteCatalogMetadata = Readonly<{
 
 export type ResolvedPluginPackage = Readonly<{
   trustSource: AppPluginTrustSource
-  manifest: PluginManifestPayloadV1
+  manifest: PluginManifestPayload
   digest: string
   verifiedPackage?: VerifiedPluginPackage
   remoteCatalog?: AppPluginRemoteCatalogMetadata
@@ -122,12 +124,20 @@ export type InstalledPluginModule = Readonly<{
   contribution: DeclarativeModuleContributionV1
 }>
 
+export type AppPluginCommandContribution =
+  | DeclarativeCommandContributionV1
+  | DeclarativeCommandContributionV2
+
+export type AppPluginExporterContribution =
+  | DeclarativeExporterContributionV1
+  | DeclarativeExporterContributionV2
+
 export type InstalledPluginCommand = Readonly<{
   plugin: InstalledAppPlugin
-  contribution: DeclarativeCommandContributionV1
+  contribution: AppPluginCommandContribution
 }>
 
 export type InstalledPluginExporter = Readonly<{
   plugin: InstalledAppPlugin
-  contribution: DeclarativeExporterContributionV1
+  contribution: AppPluginExporterContribution
 }>

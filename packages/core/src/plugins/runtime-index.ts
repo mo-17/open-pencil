@@ -25,7 +25,7 @@ import {
 } from './keyring'
 import {
   parseVerifiedPluginPackageSnapshot,
-  verifyPluginPackage,
+  verifyVersionedPluginPackage,
   type VerifiedPluginPackage
 } from './package'
 import {
@@ -500,7 +500,7 @@ async function verifyDeclarativeCoordinates(
   const snapshot = parseVerifiedPluginPackageSnapshot(declarativeValue)
   let declarative: VerifiedPluginPackage
   try {
-    declarative = await verifyPluginPackage(snapshot.manifest, publicKey, {
+    declarative = await verifyVersionedPluginPackage(snapshot.manifest, publicKey, {
       expectedKeyId: entry.keyId
     })
   } catch {

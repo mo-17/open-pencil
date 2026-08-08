@@ -10,10 +10,36 @@ import {
 } from '@open-pencil/scene-graph'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
+import {
+  parsePluginObjectParameterSchema,
+  type PluginObjectParameterSchemaV2
+} from './parameter-schema'
 import type { ModulePropertyFieldKind } from './types'
+
+export {
+  PLUGIN_PARAMETER_SCHEMA_LIMITS,
+  PLUGIN_PARAMETER_VALUE_LIMITS,
+  parsePluginObjectParameterSchema,
+  parsePluginObjectParameterValue,
+  parsePluginParameterSchema,
+  parsePluginParameterValue,
+  type ParsePluginParameterSchemaOptions,
+  type PluginArrayParameterSchemaV2,
+  type PluginBooleanParameterSchemaV2,
+  type PluginNumberParameterSchemaV2,
+  type PluginObjectParameterSchemaV2,
+  type PluginParameterSchemaPrimitive,
+  type PluginParameterSchemaType,
+  type PluginParameterSchemaV2,
+  type PluginParameterValue,
+  type PluginParameterValuePrimitive,
+  type PluginStringParameterSchemaV2
+} from './parameter-schema'
 
 export const PLUGIN_MANIFEST_FORMAT = 'openpencil-plugin' as const
 export const PLUGIN_MANIFEST_SCHEMA_VERSION = 1 as const
+export const PLUGIN_MANIFEST_SCHEMA_VERSION_V2 = 2 as const
+export const PLUGIN_MANIFEST_LATEST_SCHEMA_VERSION = PLUGIN_MANIFEST_SCHEMA_VERSION_V2
 
 export const PLUGIN_MANIFEST_LIMITS = Object.freeze({
   maxJsonBytes: 1024 * 1024,
@@ -26,8 +52,13 @@ export const PLUGIN_MANIFEST_LIMITS = Object.freeze({
   maxNameLength: 128,
   maxDescriptionLength: 2_048,
   maxFileExtensionLength: 32,
+  maxMimeTypeLength: 128,
   maxEngineRangeLength: 128,
-  maxDimension: 100_000
+  maxDimension: 100_000,
+  maxPermissionsPerContribution: 4,
+  maxOutputsPerExporter: 8,
+  maxContributionInputBytes: 256 * 1024,
+  maxContributionResultBytes: 512 * 1024
 })
 
 export interface PluginManifestPublisherV1 {
@@ -102,8 +133,68 @@ export interface PluginManifestV1 extends PluginManifestPayloadV1 {
   integrity: PluginManifestIntegrityV1
 }
 
+export type PluginHostPermissionV2 =
+  | 'document.read'
+  | 'document.selection.read'
+  | 'document.variables.read'
+  | 'file.save'
+
+export interface PluginContributionDataContractV2 {
+  schema: PluginObjectParameterSchemaV2
+  maxBytes: number
+}
+
+export interface DeclarativeCommandContributionV2 {
+  commandId: string
+  name: string
+  description: string
+  adapterId: string
+  parameters: PluginContributionDataContractV2
+  result: PluginContributionDataContractV2
+  permissions: readonly PluginHostPermissionV2[]
+}
+
+export interface PluginExporterOutputV2 {
+  extension: string
+  mimeType: string
+}
+
+export interface DeclarativeExporterContributionV2 {
+  exporterId: string
+  name: string
+  description: string
+  adapterId: string
+  parameters: PluginContributionDataContractV2
+  result: PluginContributionDataContractV2
+  permissions: readonly PluginHostPermissionV2[]
+  outputs: readonly PluginExporterOutputV2[]
+}
+
+export interface PluginManifestPayloadV2 extends Omit<
+  PluginManifestPayloadV1,
+  'schemaVersion' | 'contributions'
+> {
+  schemaVersion: typeof PLUGIN_MANIFEST_SCHEMA_VERSION_V2
+  contributions: {
+    modules: readonly DeclarativeModuleContributionV1[]
+    commands?: readonly DeclarativeCommandContributionV2[]
+    exporters?: readonly DeclarativeExporterContributionV2[]
+  }
+}
+
+export interface PluginManifestV2 extends PluginManifestPayloadV2 {
+  integrity: PluginManifestIntegrityV1
+}
+
+export type PluginManifestPayload = PluginManifestPayloadV1 | PluginManifestPayloadV2
+export type PluginManifest = PluginManifestV1 | PluginManifestV2
+
 export type PluginManifestValidationResult =
   | { ok: true; value: PluginManifestV1 }
+  | { ok: false; reason: string }
+
+export type VersionedPluginManifestValidationResult =
+  | { ok: true; value: PluginManifest }
   | { ok: false; reason: string }
 
 const PAYLOAD_KEYS = new Set([
@@ -132,6 +223,27 @@ const MODULE_KEYS = new Set([
 ])
 const COMMAND_KEYS = new Set(['commandId', 'name', 'description', 'adapterId'])
 const EXPORTER_KEYS = new Set(['exporterId', 'name', 'description', 'adapterId', 'fileExtension'])
+const COMMAND_KEYS_V2 = new Set([
+  'commandId',
+  'name',
+  'description',
+  'adapterId',
+  'parameters',
+  'result',
+  'permissions'
+])
+const EXPORTER_KEYS_V2 = new Set([
+  'exporterId',
+  'name',
+  'description',
+  'adapterId',
+  'parameters',
+  'result',
+  'permissions',
+  'outputs'
+])
+const DATA_CONTRACT_KEYS = new Set(['schema', 'maxBytes'])
+const OUTPUT_KEYS = new Set(['extension', 'mimeType'])
 const SIZE_KEYS = new Set(['width', 'height'])
 const FIELD_KEYS = new Set(['path', 'kind', 'label', 'min', 'max', 'step', 'options'])
 const FIELD_KINDS = new Set<ModulePropertyFieldKind>([
@@ -143,6 +255,12 @@ const FIELD_KINDS = new Set<ModulePropertyFieldKind>([
   'color'
 ])
 const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+const HOST_PERMISSIONS_V2 = new Set<PluginHostPermissionV2>([
+  'document.read',
+  'document.selection.read',
+  'document.variables.read',
+  'file.save'
+])
 
 function identity(value: unknown, path: string): string {
   const reason = validateModuleIdentity(value, path)
@@ -401,6 +519,107 @@ function exporterContribution(value: unknown, index: number): DeclarativeExporte
   }
 }
 
+function contributionDataContract(
+  value: unknown,
+  path: string,
+  maximumBytes: number,
+  reserveAutomationTargets: boolean
+): PluginContributionDataContractV2 {
+  const source = record(value, path, DATA_CONTRACT_KEYS)
+  const maxBytes = positiveInteger(source.maxBytes, `${path}.maxBytes`)
+  if (maxBytes > maximumBytes) {
+    throw new TypeError(`${path}.maxBytes may not exceed ${maximumBytes}`)
+  }
+  return {
+    schema: parsePluginObjectParameterSchema(source.schema, `${path}.schema`, {
+      reserveAutomationTargets
+    }),
+    maxBytes
+  }
+}
+
+function contributionPermissions(value: unknown, path: string): readonly PluginHostPermissionV2[] {
+  const permissions = array(value, path, PLUGIN_MANIFEST_LIMITS.maxPermissionsPerContribution).map(
+    (permission, index) => {
+      if (
+        typeof permission !== 'string' ||
+        !HOST_PERMISSIONS_V2.has(permission as PluginHostPermissionV2)
+      ) {
+        throw new TypeError(`${path}[${index}] is not a supported host permission`)
+      }
+      return permission as PluginHostPermissionV2
+    }
+  )
+  if (new Set(permissions).size !== permissions.length) {
+    throw new TypeError(`${path} must not contain duplicate permissions`)
+  }
+  return permissions
+}
+
+function contributionExecutionContract(source: Record<string, unknown>, path: string) {
+  return {
+    parameters: contributionDataContract(
+      source.parameters,
+      `${path}.parameters`,
+      PLUGIN_MANIFEST_LIMITS.maxContributionInputBytes,
+      true
+    ),
+    result: contributionDataContract(
+      source.result,
+      `${path}.result`,
+      PLUGIN_MANIFEST_LIMITS.maxContributionResultBytes,
+      false
+    ),
+    permissions: contributionPermissions(source.permissions, `${path}.permissions`)
+  }
+}
+
+function commandContributionV2(value: unknown, index: number): DeclarativeCommandContributionV2 {
+  const path = `manifest.contributions.commands[${index}]`
+  const source = record(value, path, COMMAND_KEYS_V2)
+  return {
+    commandId: identity(source.commandId, `${path}.commandId`),
+    ...contributionMetadata(source, path),
+    ...contributionExecutionContract(source, path)
+  }
+}
+
+function mimeType(value: unknown, path: string): string {
+  const parsed = text(value, path, PLUGIN_MANIFEST_LIMITS.maxMimeTypeLength).toLowerCase()
+  if (!/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/.test(parsed)) {
+    throw new TypeError(`${path} must be a safe MIME type without parameters`)
+  }
+  return parsed
+}
+
+function exporterOutput(value: unknown, path: string): PluginExporterOutputV2 {
+  const source = record(value, path, OUTPUT_KEYS)
+  return {
+    extension: fileExtension(source.extension, `${path}.extension`).toLowerCase(),
+    mimeType: mimeType(source.mimeType, `${path}.mimeType`)
+  }
+}
+
+function exporterContributionV2(value: unknown, index: number): DeclarativeExporterContributionV2 {
+  const path = `manifest.contributions.exporters[${index}]`
+  const source = record(value, path, EXPORTER_KEYS_V2)
+  const outputs = array(
+    source.outputs,
+    `${path}.outputs`,
+    PLUGIN_MANIFEST_LIMITS.maxOutputsPerExporter
+  ).map((output, outputIndex) => exporterOutput(output, `${path}.outputs[${outputIndex}]`))
+  if (outputs.length === 0) throw new TypeError(`${path}.outputs must not be empty`)
+  if (new Set(outputs.map((output) => output.extension)).size !== outputs.length) {
+    throw new TypeError(`${path}.outputs must use unique file extensions`)
+  }
+  return {
+    exporterId: identity(source.exporterId, `${path}.exporterId`),
+    ...contributionMetadata(source, path),
+    ...contributionExecutionContract(source, path),
+    outputs
+  }
+}
+
 function publisher(value: unknown): PluginManifestPublisherV1 {
   const source = record(value, 'manifest.publisher', PUBLISHER_KEYS)
   return {
@@ -410,75 +629,147 @@ function publisher(value: unknown): PluginManifestPublisherV1 {
   }
 }
 
-function parsePayloadRecord(source: Record<string, unknown>): PluginManifestPayloadV1 {
-  if (source.format !== PLUGIN_MANIFEST_FORMAT) {
-    throw new TypeError('manifest.format is not a supported plugin manifest format')
+function pluginIdentity(value: unknown): { id: string; name: string; version: string } {
+  const source = record(value, 'manifest.plugin', PLUGIN_KEYS)
+  return {
+    id: identity(source.id, 'manifest.plugin.id'),
+    name: text(source.name, 'manifest.plugin.name', PLUGIN_MANIFEST_LIMITS.maxNameLength),
+    version: parseStableSemver(source.version, 'manifest.plugin.version')
   }
-  if (source.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION) {
-    throw new TypeError('manifest.schemaVersion is not supported')
-  }
-  const pluginSource = record(source.plugin, 'manifest.plugin', PLUGIN_KEYS)
-  const plugin = {
-    id: identity(pluginSource.id, 'manifest.plugin.id'),
-    name: text(pluginSource.name, 'manifest.plugin.name', PLUGIN_MANIFEST_LIMITS.maxNameLength),
-    version: parseStableSemver(pluginSource.version, 'manifest.plugin.version')
-  }
-  const capabilities = array(source.capabilities, 'manifest.capabilities', 0)
+}
+
+function emptyCapabilities(value: unknown, schemaVersion: 1 | 2): readonly [] {
+  const capabilities = array(value, 'manifest.capabilities', 0)
   if (capabilities.length !== 0) {
-    throw new TypeError('manifest.capabilities must be empty for schema version 1')
+    throw new TypeError(`manifest.capabilities must be empty for schema version ${schemaVersion}`)
   }
-  const contributionSource = record(
-    source.contributions,
-    'manifest.contributions',
-    CONTRIBUTIONS_KEYS,
-    REQUIRED_CONTRIBUTIONS_KEYS
-  )
+  return []
+}
+
+function contributionRecord(value: unknown): Record<string, unknown> {
+  return record(value, 'manifest.contributions', CONTRIBUTIONS_KEYS, REQUIRED_CONTRIBUTIONS_KEYS)
+}
+
+function moduleContributions(value: unknown): readonly DeclarativeModuleContributionV1[] {
   const modules = array(
-    contributionSource.modules,
+    value,
     'manifest.contributions.modules',
     PLUGIN_MANIFEST_LIMITS.maxModules
   ).map(moduleContribution)
   if (new Set(modules.map((entry) => entry.moduleType)).size !== modules.length) {
     throw new TypeError('manifest.contributions.modules contains duplicate module types')
   }
-  const commands = Object.hasOwn(contributionSource, 'commands')
-    ? array(
-        contributionSource.commands,
-        'manifest.contributions.commands',
-        PLUGIN_MANIFEST_LIMITS.maxCommands
-      ).map(commandContribution)
-    : undefined
-  if (commands && new Set(commands.map((entry) => entry.commandId)).size !== commands.length) {
-    throw new TypeError('manifest.contributions.commands contains duplicate command IDs')
+  return modules
+}
+
+type ContributionParser<TContribution> = (value: unknown, index: number) => TContribution
+
+function optionalContributions<TContribution>(
+  source: Record<string, unknown>,
+  key: 'commands' | 'exporters',
+  maximum: number,
+  parser: ContributionParser<TContribution>,
+  identityOf: (contribution: TContribution) => string,
+  duplicateLabel: string
+): readonly TContribution[] | undefined {
+  if (!Object.hasOwn(source, key)) return undefined
+  const path = `manifest.contributions.${key}`
+  const contributions = array(source[key], path, maximum).map(parser)
+  if (new Set(contributions.map(identityOf)).size !== contributions.length) {
+    throw new TypeError(`${path} contains duplicate ${duplicateLabel}`)
   }
-  const exporters = Object.hasOwn(contributionSource, 'exporters')
-    ? array(
-        contributionSource.exporters,
-        'manifest.contributions.exporters',
-        PLUGIN_MANIFEST_LIMITS.maxExporters
-      ).map(exporterContribution)
-    : undefined
-  if (exporters && new Set(exporters.map((entry) => entry.exporterId)).size !== exporters.length) {
-    throw new TypeError('manifest.contributions.exporters contains duplicate exporter IDs')
-  }
+  return contributions
+}
+
+function parsedContributions<TCommand, TExporter>(
+  value: unknown,
+  commandParser: ContributionParser<TCommand>,
+  exporterParser: ContributionParser<TExporter>,
+  commandIdentity: (command: TCommand) => string,
+  exporterIdentity: (exporter: TExporter) => string
+) {
+  const source = contributionRecord(value)
+  const modules = moduleContributions(source.modules)
+  const commands = optionalContributions(
+    source,
+    'commands',
+    PLUGIN_MANIFEST_LIMITS.maxCommands,
+    commandParser,
+    commandIdentity,
+    'command IDs'
+  )
+  const exporters = optionalContributions(
+    source,
+    'exporters',
+    PLUGIN_MANIFEST_LIMITS.maxExporters,
+    exporterParser,
+    exporterIdentity,
+    'exporter IDs'
+  )
   if (modules.length + (commands?.length ?? 0) + (exporters?.length ?? 0) === 0) {
     throw new TypeError('manifest must declare at least one contribution')
   }
   return {
+    modules,
+    ...(commands ? { commands } : {}),
+    ...(exporters ? { exporters } : {})
+  }
+}
+
+function payloadIdentity<TSchemaVersion extends 1 | 2>(
+  source: Record<string, unknown>,
+  schemaVersion: TSchemaVersion
+) {
+  if (source.format !== PLUGIN_MANIFEST_FORMAT) {
+    throw new TypeError('manifest.format is not a supported plugin manifest format')
+  }
+  if (source.schemaVersion !== schemaVersion) {
+    throw new TypeError('manifest.schemaVersion is not supported')
+  }
+  emptyCapabilities(source.capabilities, schemaVersion)
+  return {
     format: PLUGIN_MANIFEST_FORMAT,
-    schemaVersion: PLUGIN_MANIFEST_SCHEMA_VERSION,
-    plugin,
+    schemaVersion,
+    plugin: pluginIdentity(source.plugin),
     publisher: publisher(source.publisher),
     engineRange: normalizeStableEngineRange(source.engineRange, 'manifest.engineRange', {
       maxLength: PLUGIN_MANIFEST_LIMITS.maxEngineRangeLength
     }),
-    capabilities: [],
-    contributions: {
-      modules,
-      ...(commands ? { commands } : {}),
-      ...(exporters ? { exporters } : {})
-    }
+    capabilities: [] as readonly []
   }
+}
+
+function parsePayloadRecord(source: Record<string, unknown>): PluginManifestPayloadV1 {
+  return {
+    ...payloadIdentity(source, PLUGIN_MANIFEST_SCHEMA_VERSION),
+    contributions: parsedContributions(
+      source.contributions,
+      commandContribution,
+      exporterContribution,
+      (command) => command.commandId,
+      (exporter) => exporter.exporterId
+    )
+  }
+}
+
+function parsePayloadRecordV2(source: Record<string, unknown>): PluginManifestPayloadV2 {
+  return {
+    ...payloadIdentity(source, PLUGIN_MANIFEST_SCHEMA_VERSION_V2),
+    contributions: parsedContributions(
+      source.contributions,
+      commandContributionV2,
+      exporterContributionV2,
+      (command) => command.commandId,
+      (exporter) => exporter.exporterId
+    )
+  }
+}
+
+function parseVersionedPayloadRecord(source: Record<string, unknown>): PluginManifestPayload {
+  if (source.schemaVersion === PLUGIN_MANIFEST_SCHEMA_VERSION) return parsePayloadRecord(source)
+  if (source.schemaVersion === PLUGIN_MANIFEST_SCHEMA_VERSION_V2)
+    return parsePayloadRecordV2(source)
+  throw new TypeError('manifest.schemaVersion is not supported')
 }
 
 function assertManifestSize(value: unknown): void {
@@ -508,6 +799,22 @@ export function parsePluginManifest(value: unknown): PluginManifestV1 {
   return manifest
 }
 
+export function parseVersionedPluginManifestPayload(value: unknown): PluginManifestPayload {
+  const payload = parseVersionedPayloadRecord(record(value, 'manifest', PAYLOAD_KEYS))
+  assertManifestSize(payload)
+  return payload
+}
+
+export function parseVersionedPluginManifest(value: unknown): PluginManifest {
+  const source = record(value, 'manifest', MANIFEST_KEYS)
+  const payloadSource = { ...source }
+  Reflect.deleteProperty(payloadSource, 'integrity')
+  const payload = parseVersionedPayloadRecord(payloadSource)
+  const manifest = { ...payload, integrity: integrity(source.integrity, payload.publisher.keyId) }
+  assertManifestSize(manifest)
+  return manifest
+}
+
 export function validatePluginManifest(value: unknown): PluginManifestValidationResult {
   try {
     return { ok: true, value: parsePluginManifest(value) }
@@ -517,6 +824,21 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
   }
 }
 
+export function validateVersionedPluginManifest(
+  value: unknown
+): VersionedPluginManifestValidationResult {
+  try {
+    return { ok: true, value: parseVersionedPluginManifest(value) }
+  } catch (error) {
+    if (error instanceof TypeError) return { ok: false, reason: error.message }
+    throw error
+  }
+}
+
 export function serializePluginManifest(value: unknown): string {
   return `${JSON.stringify(canonicalManifestValue(parsePluginManifest(value)), null, 2)}\n`
+}
+
+export function serializeVersionedPluginManifest(value: unknown): string {
+  return `${JSON.stringify(canonicalManifestValue(parseVersionedPluginManifest(value)), null, 2)}\n`
 }

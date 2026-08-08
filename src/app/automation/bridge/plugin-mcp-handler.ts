@@ -1,3 +1,8 @@
+import {
+  parsePluginObjectParameterValue,
+  type DeclarativeCommandContributionV2,
+  type DeclarativeExporterContributionV2
+} from '@open-pencil/core/plugins'
 import { canonicalManifestValue } from '@open-pencil/scene-graph'
 import type { JsonObject, JsonValue } from '@open-pencil/scene-graph/primitives'
 
@@ -16,7 +21,12 @@ import {
   resolveAppPluginMcpTool,
   type AppPluginMcpStore
 } from '@/app/plugins/mcp'
-import type { InstalledPluginCommand, InstalledPluginExporter } from '@/app/plugins/types'
+import type {
+  AppPluginCommandContribution,
+  AppPluginExporterContribution,
+  InstalledPluginCommand,
+  InstalledPluginExporter
+} from '@/app/plugins/types'
 
 const REQUEST_KEYS = new Set(['name', 'pluginId', 'args'])
 const MODULE_ARGUMENT_KEYS = new Set(['config', 'x', 'y', 'width', 'height', 'name', 'parent_id'])
@@ -35,13 +45,15 @@ export interface AutomationPluginMcpDependencies {
   runCommand(
     editor: EditorStore,
     plugin: InstalledPluginCommand['plugin'],
-    contribution: InstalledPluginCommand['contribution']
+    contribution: InstalledPluginCommand['contribution'],
+    args: JsonObject
   ): Promise<AppPluginHostExecutionResult>
   runExporter(
     editor: EditorStore,
     plugin: InstalledPluginExporter['plugin'],
     contribution: InstalledPluginExporter['contribution'],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    args?: JsonObject
   ): Promise<AppPluginHostExecutionResult>
 }
 
@@ -49,28 +61,51 @@ const runDefaultExporter: AutomationPluginMcpDependencies['runExporter'] = (
   editor,
   plugin,
   contribution,
-  signal
-) => runInstalledPluginExporter(editor, plugin, contribution, undefined, signal)
+  signal,
+  args
+) => runInstalledPluginExporter(editor, plugin, contribution, undefined, signal, args)
+
+const runDefaultCommand: AutomationPluginMcpDependencies['runCommand'] = (
+  editor,
+  plugin,
+  contribution,
+  args
+) => runInstalledPluginCommand(editor, plugin, contribution, undefined, args)
 
 const DEFAULT_DEPENDENCIES: AutomationPluginMcpDependencies = Object.freeze({
   store: appPluginStore,
-  runCommand: runInstalledPluginCommand,
+  runCommand: runDefaultCommand,
   runExporter: runDefaultExporter
 })
+
+interface PluginMcpRequestRecord {
+  [key: string]: unknown
+}
 
 function exactRecord(
   value: unknown,
   label: string,
   allowedKeys: ReadonlySet<string>
-): Record<string, unknown> {
+): PluginMcpRequestRecord {
   if (!isUnknownRecord(value)) throw new TypeError(`${label} must be an object`)
   const prototype = Object.getPrototypeOf(value)
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError(`${label} must be a plain object`)
   }
-  const extra = Object.keys(value).filter((key) => !allowedKeys.has(key))
-  if (extra.length > 0) throw new TypeError(`${label} contains unsupported field: ${extra[0]}`)
-  return value
+  const keys = Reflect.ownKeys(value)
+  if (keys.some((key) => typeof key !== 'string')) {
+    throw new TypeError(`${label} must not contain symbol fields`)
+  }
+  const normalized = Object.create(null) as PluginMcpRequestRecord
+  for (const key of keys as string[]) {
+    if (!allowedKeys.has(key)) throw new TypeError(`${label} contains unsupported field: ${key}`)
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) {
+      throw new TypeError(`${label}.${key} must be an enumerable data field`)
+    }
+    normalized[key] = descriptor.value
+  }
+  return Object.freeze(normalized)
 }
 
 function boundedString(value: unknown, label: string, maximum: number): string {
@@ -185,6 +220,28 @@ function emptyArguments(value: unknown): void {
   exactRecord(value ?? {}, 'Plugin MCP tool arguments', new Set())
 }
 
+function contributionArguments(
+  contribution: AppPluginCommandContribution | AppPluginExporterContribution,
+  value: unknown
+): JsonObject {
+  if (!isV2Contribution(contribution)) {
+    emptyArguments(value)
+    return {}
+  }
+  return parsePluginObjectParameterValue(
+    value,
+    contribution.parameters.schema,
+    contribution.parameters.maxBytes,
+    'Plugin MCP contribution arguments'
+  ) as JsonObject
+}
+
+function isV2Contribution(
+  contribution: AppPluginCommandContribution | AppPluginExporterContribution
+): contribution is DeclarativeCommandContributionV2 | DeclarativeExporterContributionV2 {
+  return Object.hasOwn(contribution, 'parameters')
+}
+
 function request(value: unknown): { name: string; pluginId: string; args: unknown } {
   const candidate = exactRecord(value, 'Plugin MCP request', REQUEST_KEYS)
   return {
@@ -194,7 +251,7 @@ function request(value: unknown): { name: string; pluginId: string; args: unknow
       PLUGIN_MCP_LIMITS.maxToolNameLength
     ),
     pluginId: boundedString(candidate.pluginId, 'Plugin MCP plugin id', 128),
-    args: candidate.args ?? {}
+    args: candidate.args === undefined ? {} : candidate.args
   }
 }
 
@@ -238,19 +295,21 @@ export function createAutomationPluginMcpHandlers(
       )
     }
 
-    emptyArguments(call.args)
+    const args = contributionArguments(resolved.value.contribution, call.args)
     const execution =
       resolved.kind === 'command'
         ? await dependencies.runCommand(
             target.store,
             resolved.value.plugin,
-            resolved.value.contribution
+            resolved.value.contribution,
+            args
           )
         : await dependencies.runExporter(
             target.store,
             resolved.value.plugin,
             resolved.value.contribution,
-            context?.signal
+            context?.signal,
+            args
           )
     // Exporters own the last cancellation check before their atomic/durable
     // write boundary. A generic post-write check could report failure after a

@@ -1,14 +1,20 @@
 import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
 
-import type { ModuleDefinition } from '@open-pencil/core/plugins'
+import type {
+  DeclarativeCommandContributionV2,
+  DeclarativeExporterContributionV2,
+  ModuleDefinition
+} from '@open-pencil/core/plugins'
 import type { PluginMcpCatalogSnapshot } from '@open-pencil/mcp/plugin-contract'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
-import { inspectPluginCommandCompatibility, inspectPluginExporterCompatibility } from './host'
+import { inspectPluginCommandCompatibility, inspectPluginExporterMcpExposure } from './host'
 import { inspectInstalledPluginModuleCompatibility } from './modules'
 import type { createAppPluginStore } from './store'
 import type {
+  AppPluginCommandContribution,
+  AppPluginExporterContribution,
   InstalledPluginCommand,
   InstalledPluginExporter,
   InstalledPluginModule
@@ -99,6 +105,19 @@ const EMPTY_INPUT_SCHEMA: JsonObject = Object.freeze({
   properties: Object.freeze({}),
   additionalProperties: false
 })
+
+function contributionInputSchema(
+  contribution: AppPluginCommandContribution | AppPluginExporterContribution
+): JsonObject {
+  if (!isV2Contribution(contribution)) return EMPTY_INPUT_SCHEMA
+  return { ...structuredClone(contribution.parameters.schema) }
+}
+
+function isV2Contribution(
+  contribution: AppPluginCommandContribution | AppPluginExporterContribution
+): contribution is DeclarativeCommandContributionV2 | DeclarativeExporterContributionV2 {
+  return Object.hasOwn(contribution, 'parameters')
+}
 
 function inputField(
   type: 'number' | 'string' | 'object',
@@ -255,7 +274,7 @@ function activeCandidates(store: AppPluginMcpStore): PluginMcpCandidate[] {
         contributionId,
         `Run ${contributionId}`,
         `Run trusted installed-plugin command ${contributionId}.`,
-        EMPTY_INPUT_SCHEMA
+        contributionInputSchema(command.contribution)
       ),
       kind: 'command',
       value: command
@@ -263,7 +282,7 @@ function activeCandidates(store: AppPluginMcpStore): PluginMcpCandidate[] {
   }
   for (const exporter of store.installedExporters()) {
     const pluginId = exporter.plugin.package.manifest.plugin.id
-    if (!inspectPluginExporterCompatibility(pluginId, exporter.contribution).ok) continue
+    if (!inspectPluginExporterMcpExposure(pluginId, exporter.contribution).ok) continue
     const contributionId = exporter.contribution.exporterId
     candidates.push({
       baseName: appPluginMcpToolName(pluginId, 'exporter', contributionId),
@@ -274,7 +293,7 @@ function activeCandidates(store: AppPluginMcpStore): PluginMcpCandidate[] {
         contributionId,
         `Export with ${contributionId}`,
         `Run trusted installed-plugin exporter ${contributionId}.`,
-        EMPTY_INPUT_SCHEMA
+        contributionInputSchema(exporter.contribution)
       ),
       kind: 'exporter',
       value: exporter

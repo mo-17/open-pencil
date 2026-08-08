@@ -5,7 +5,11 @@ import {
   PLUGIN_RUNTIME_PACKAGE_FORMAT,
   PLUGIN_RUNTIME_PACKAGE_SCHEMA_VERSION,
   createPluginRuntimeAsset,
+  parseVersionedPluginPackageBytes,
+  serializePluginManifest,
+  serializeVersionedPluginManifest,
   signPluginManifest,
+  signVersionedPluginManifest,
   signPluginRuntimePackage
 } from '@open-pencil/core/plugins'
 import {
@@ -15,7 +19,7 @@ import {
 } from '@open-pencil/marketplace'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
-import { pluginPayload } from '../plugins/helpers'
+import { pluginPayload, pluginPayloadV2 } from '../plugins/helpers'
 
 const NOW = '2026-08-05T12:00:00.000Z'
 const BEFORE_OWNERSHIP_GRANT = '2026-08-05T11:59:00.000Z'
@@ -24,54 +28,59 @@ async function keyPair(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
 }
 
+async function marketplaceFixture() {
+  const root = await keyPair()
+  const publisher = await keyPair()
+  const repository = createMemoryMarketplaceRepository()
+  const artifacts = createMemoryMarketplaceArtifactStore()
+  const service = createMarketplaceService({
+    repository,
+    artifacts,
+    marketplaceId: 'openpencil-marketplace',
+    publicBaseUrl: 'https://plugins.example.com/',
+    now: () => new Date(NOW),
+    root: {
+      keyId: 'marketplace-root-2026',
+      privateKey: root.privateKey,
+      publicKey: root.publicKey
+    }
+  })
+
+  await service.registerPublisher(
+    {
+      publisher: { id: 'acme', displayName: 'Acme Plugins' },
+      key: {
+        keyId: 'acme.release',
+        publisherId: 'acme',
+        publicKeyPem: await exportEd25519PublicKeyPem(publisher.publicKey),
+        notBefore: '2026-01-01T00:00:00.000Z',
+        notAfter: '2027-01-01T00:00:00.000Z'
+      }
+    },
+    { actor: 'publisher:acme', time: BEFORE_OWNERSHIP_GRANT }
+  )
+  await service.transitionPublisherKey('acme.release', 'active', {
+    actor: 'admin:test',
+    time: BEFORE_OWNERSHIP_GRANT
+  })
+  await service.transitionPublisher('acme', 'active', {
+    actor: 'admin:test',
+    time: BEFORE_OWNERSHIP_GRANT
+  })
+  await service.requestOwnership('acme.analytics', 'acme', {
+    actor: 'publisher:acme',
+    time: BEFORE_OWNERSHIP_GRANT
+  })
+  await service.transitionOwnership('acme.analytics', 'active', {
+    actor: 'admin:test',
+    time: NOW
+  })
+  return { artifacts, publisher, repository, root, service }
+}
+
 describe('marketplace service publication pipeline', () => {
   test('keeps signed manifest and CAS digests distinct and publishes root-bound artifacts', async () => {
-    const root = await keyPair()
-    const publisher = await keyPair()
-    const repository = createMemoryMarketplaceRepository()
-    const artifacts = createMemoryMarketplaceArtifactStore()
-    const service = createMarketplaceService({
-      repository,
-      artifacts,
-      marketplaceId: 'openpencil-marketplace',
-      publicBaseUrl: 'https://plugins.example.com/',
-      now: () => new Date(NOW),
-      root: {
-        keyId: 'marketplace-root-2026',
-        privateKey: root.privateKey,
-        publicKey: root.publicKey
-      }
-    })
-
-    await service.registerPublisher(
-      {
-        publisher: { id: 'acme', displayName: 'Acme Plugins' },
-        key: {
-          keyId: 'acme.release',
-          publisherId: 'acme',
-          publicKeyPem: await exportEd25519PublicKeyPem(publisher.publicKey),
-          notBefore: '2026-01-01T00:00:00.000Z',
-          notAfter: '2027-01-01T00:00:00.000Z'
-        }
-      },
-      { actor: 'publisher:acme', time: BEFORE_OWNERSHIP_GRANT }
-    )
-    await service.transitionPublisherKey('acme.release', 'active', {
-      actor: 'admin:test',
-      time: BEFORE_OWNERSHIP_GRANT
-    })
-    await service.transitionPublisher('acme', 'active', {
-      actor: 'admin:test',
-      time: BEFORE_OWNERSHIP_GRANT
-    })
-    await service.requestOwnership('acme.analytics', 'acme', {
-      actor: 'publisher:acme',
-      time: BEFORE_OWNERSHIP_GRANT
-    })
-    await service.transitionOwnership('acme.analytics', 'active', {
-      actor: 'admin:test',
-      time: NOW
-    })
+    const { artifacts, publisher, repository, root, service } = await marketplaceFixture()
 
     const manifest = await signPluginManifest(pluginPayload(), publisher.privateKey)
     const runtimePackage = await signPluginRuntimePackage(
@@ -123,6 +132,11 @@ describe('marketplace service publication pipeline', () => {
     expect(submission.manifestUrl).toEndWith(`/v1/artifacts/${submission.artifactDigest}`)
     expect(submission.runtimeCoordinate?.packageDigest).toBe(runtimePackage.integrity.digest)
     expect(submission.runtimeCoordinate?.packageUrl).toContain('/v1/artifacts/')
+    const manifestArtifact = await artifacts.get(submission.artifactDigest)
+    expect(new TextDecoder().decode(manifestArtifact?.bytes)).toBe(
+      serializePluginManifest(manifest)
+    )
+    expect(serializeVersionedPluginManifest(manifest)).toBe(serializePluginManifest(manifest))
 
     await service.transitionSubmission(submission.id, 'approved', {
       actor: 'admin:test',
@@ -170,6 +184,63 @@ describe('marketplace service publication pipeline', () => {
       'signature verification failed'
     )
     expect((await repository.snapshot()).publications).toHaveLength(1)
+  })
+
+  test('submits and publishes schema-v2 manifests while unknown versions fail closed', async () => {
+    const { artifacts, publisher, service } = await marketplaceFixture()
+    const manifest = await signVersionedPluginManifest(pluginPayloadV2(), publisher.privateKey)
+    const submission = await service.submit(
+      {
+        id: 'submission-v2',
+        publisherId: 'acme',
+        channel: 'stable',
+        manifest,
+        listing: {
+          displayName: 'Analytics v2',
+          summary: 'Bounded v2 automation contracts',
+          description: 'A schema-v2 declarative plugin for marketplace publication testing.',
+          categories: ['analytics'],
+          iconUrl: null,
+          homepageUrl: null
+        }
+      },
+      { actor: 'publisher:acme', time: NOW }
+    )
+    const artifact = await artifacts.get(submission.artifactDigest)
+    expect(
+      parseVersionedPluginPackageBytes(artifact?.bytes ?? new Uint8Array()).schemaVersion
+    ).toBe(2)
+
+    await service.transitionSubmission(submission.id, 'approved', {
+      actor: 'admin:test',
+      time: NOW
+    })
+    await service.publishSubmission(submission.id, { actor: 'admin:test', time: NOW })
+    const published = await service.publish({ actor: 'admin:test', time: NOW })
+    expect(published.prepared.catalogs[0].catalog.entries).toMatchObject([
+      { pluginId: 'acme.analytics', version: '2.0.0', digest: manifest.integrity.digest }
+    ])
+
+    await expect(
+      service.submit(
+        {
+          id: 'submission-unknown',
+          publisherId: 'acme',
+          channel: 'stable',
+          manifest: { ...manifest, schemaVersion: 3 },
+          listing: {
+            displayName: 'Unknown',
+            summary: 'Unsupported schema version',
+            description: 'This submission must be rejected before persistence.',
+            categories: ['analytics'],
+            iconUrl: null,
+            homepageUrl: null
+          }
+        },
+        { actor: 'publisher:acme', time: NOW }
+      )
+    ).rejects.toThrow('schemaVersion')
+    expect((await service.snapshot()).submissions).toHaveLength(1)
   })
 
   test('withdraws only unpublished submissions owned by the authenticated publisher', async () => {

@@ -2,13 +2,13 @@ import { defineCommand } from 'citty'
 
 import {
   PLUGIN_MANIFEST_LIMITS,
-  parsePluginManifest,
-  parsePluginManifestPayload,
-  serializePluginManifest,
-  signPluginManifest,
-  verifyPluginPackage,
-  type PluginManifestPayloadV1,
-  type PluginManifestV1
+  parseVersionedPluginManifest,
+  parseVersionedPluginManifestPayload,
+  serializeVersionedPluginManifest,
+  signVersionedPluginManifest,
+  verifyVersionedPluginPackage,
+  type PluginManifest,
+  type PluginManifestPayload
 } from '@open-pencil/core/plugins'
 
 import {
@@ -27,10 +27,11 @@ import {
 
 const { version: DEFAULT_ENGINE_VERSION } = await import('../../../package.json')
 
-function manifestDetails(manifest: PluginManifestPayloadV1, digest?: string) {
+function manifestDetails(manifest: PluginManifestPayload, digest?: string) {
   return {
     pluginId: manifest.plugin.id,
     version: manifest.plugin.version,
+    schemaVersion: manifest.schemaVersion,
     publisher: manifest.publisher.id,
     keyId: manifest.publisher.keyId,
     engineRange: manifest.engineRange,
@@ -39,19 +40,19 @@ function manifestDetails(manifest: PluginManifestPayloadV1, digest?: string) {
   }
 }
 
-function parseManifestOrPayload(value: unknown): {
-  signed: boolean
-  manifest: PluginManifestPayloadV1 | PluginManifestV1
-} {
+type ParsedManifestOrPayload =
+  | { signed: false; manifest: PluginManifestPayload }
+  | { signed: true; manifest: PluginManifest }
+
+function parseManifestOrPayload(value: unknown): ParsedManifestOrPayload {
   const signed =
     value !== null &&
     typeof value === 'object' &&
     !Array.isArray(value) &&
     Object.hasOwn(value, 'integrity')
-  return {
-    signed,
-    manifest: signed ? parsePluginManifest(value) : parsePluginManifestPayload(value)
-  }
+  return signed
+    ? { signed, manifest: parseVersionedPluginManifest(value) }
+    : { signed, manifest: parseVersionedPluginManifestPayload(value) }
 }
 
 const validate = defineCommand({
@@ -69,7 +70,12 @@ const validate = defineCommand({
       const parsed = parseManifestOrPayload(
         await readBoundedJson(args.manifest, PLUGIN_MANIFEST_LIMITS.maxJsonBytes, 'Plugin manifest')
       )
-      const report = { valid: true, signed: parsed.signed, manifest: parsed.manifest }
+      const report = {
+        valid: true,
+        signed: parsed.signed,
+        schemaVersion: parsed.manifest.schemaVersion,
+        manifest: parsed.manifest
+      }
       if (args.json) printJson(report)
       else {
         printArtifact(
@@ -77,7 +83,7 @@ const validate = defineCommand({
           parsed.manifest.plugin.name,
           manifestDetails(
             parsed.manifest,
-            parsed.signed ? (parsed.manifest as PluginManifestV1).integrity.digest : undefined
+            parsed.signed ? parsed.manifest.integrity.digest : undefined
           )
         )
       }
@@ -104,14 +110,14 @@ const sign = defineCommand({
         PLUGIN_MANIFEST_LIMITS.maxJsonBytes,
         'Plugin manifest payload'
       )
-      const manifest = await signPluginManifest(payload, await importPrivateKey(args))
+      const manifest = await signVersionedPluginManifest(payload, await importPrivateKey(args))
       const output = await writeJsonOutput(
         args.output,
-        serializePluginManifest(manifest),
+        serializeVersionedPluginManifest(manifest),
         PLUGIN_MANIFEST_LIMITS.maxJsonBytes,
         'Signed plugin manifest'
       )
-      const report = { manifest, output }
+      const report = { schemaVersion: manifest.schemaVersion, manifest, output }
       if (args.json) printJson(report)
       else {
         printArtifact(
@@ -149,11 +155,11 @@ const verify = defineCommand({
         PLUGIN_MANIFEST_LIMITS.maxJsonBytes,
         'Plugin manifest'
       )
-      const snapshot = await verifyPluginPackage(manifest, await importPublicKey(args), {
+      const snapshot = await verifyVersionedPluginPackage(manifest, await importPublicKey(args), {
         engineVersion: args['engine-version'],
         ...(args['key-id'] ? { expectedKeyId: args['key-id'] } : {})
       })
-      if (args.json) printJson(snapshot)
+      if (args.json) printJson({ schemaVersion: snapshot.manifest.schemaVersion, ...snapshot })
       else {
         printArtifact(
           'Verified plugin manifest',

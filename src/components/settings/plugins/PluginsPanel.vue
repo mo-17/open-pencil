@@ -2,6 +2,7 @@
 /* eslint-disable max-lines -- Plugin settings coordinates lifecycle, runtime, host actions, and dependency review. */
 import { computed, ref } from 'vue'
 import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
+import type { JsonValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
@@ -39,6 +40,7 @@ import {
 import {
   filterPluginDiscoverCatalog,
   pluginMarketplaceListingViews,
+  pluginV2ContractSummaries,
   type PluginMarketplaceKeyStatus
 } from '@/app/plugins/settings-view-model'
 import { settingsDialogOpen } from '@/app/settings/dialog'
@@ -46,7 +48,9 @@ import AppBadge from '@/components/ui/AppBadge.vue'
 import AppSwitch from '@/components/ui/AppSwitch.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
+import AccessibilityAuditReport from './AccessibilityAuditReport.vue'
 import PluginMarketplaceSummary from './PluginMarketplaceSummary.vue'
+import PluginV2ContractSummary from './PluginV2ContractSummary.vue'
 
 const { dialogs } = useI18n()
 const editor = useEditorStore()
@@ -67,6 +71,7 @@ const runtimeOutputs = ref<Record<string, string | undefined>>({})
 const hostBusyKey = ref<string | null>(null)
 const hostActionMessage = ref<string | null>(null)
 const hostActionStatus = ref<'completed' | 'cancelled' | null>(null)
+const hostActionData = ref<JsonValue>()
 
 const viewOptions = computed(() => [
   { value: 'browse', label: dialogs.value.pluginsBrowse },
@@ -84,7 +89,8 @@ const discoverCatalog = computed(() =>
     discoverQuery.value
   ).map((item) => ({
     item,
-    marketplace: marketplaceListings.value.get(item.package.manifest.plugin.id) ?? null
+    marketplace: marketplaceListings.value.get(item.package.manifest.plugin.id) ?? null,
+    contractSummaries: pluginV2ContractSummaries(item.package.manifest)
   }))
 )
 const installedPluginViews = computed(() =>
@@ -96,7 +102,11 @@ const installedPluginViews = computed(() =>
       runtimePolicy:
         appPluginRuntimeSnapshot.value.policies.find((policy) => policy.pluginId === id) ?? null,
       runtimeError: runtimeErrors.value[id],
-      runtimeOutput: runtimeOutputs.value[id]
+      runtimeOutput: runtimeOutputs.value[id],
+      contractSummaries: pluginV2ContractSummaries(plugin.package.manifest),
+      pendingContractSummaries: plugin.installedState?.pending
+        ? pluginV2ContractSummaries(plugin.installedState.pending.candidate.manifest)
+        : []
     }
   })
 )
@@ -544,16 +554,22 @@ function addModule(
 
 async function runHostContribution(
   key: string,
-  operation: () => Promise<{ status: 'completed' | 'cancelled'; message: string }>
+  operation: () => Promise<{
+    status: 'completed' | 'cancelled'
+    message: string
+    data?: JsonValue
+  }>
 ): Promise<void> {
   hostBusyKey.value = key
   hostActionMessage.value = null
   hostActionStatus.value = null
+  hostActionData.value = undefined
   operationError.value = null
   try {
     const result = await operation()
     hostActionMessage.value = result.message
     hostActionStatus.value = result.status
+    hostActionData.value = result.data
   } catch (error) {
     operationError.value = dialogs.value.pluginOperationFailed({
       error: error instanceof Error ? error.message : String(error)
@@ -730,7 +746,7 @@ function confirmResetLocalState(): void {
 
       <div v-if="discoverCatalog.length" class="flex flex-col gap-2">
         <article
-          v-for="{ item, marketplace } in discoverCatalog"
+          v-for="{ item, marketplace, contractSummaries } in discoverCatalog"
           :key="item.package.manifest.plugin.id"
           class="rounded border border-border bg-panel-field p-3"
           :data-plugin-id="item.package.manifest.plugin.id"
@@ -755,6 +771,15 @@ function confirmResetLocalState(): void {
                 {{ dialogs.pluginVersion({ version: item.package.manifest.plugin.version }) }} ·
                 {{ trustLabel(item.package.trustSource) }}
               </p>
+              <PluginV2ContractSummary
+                v-if="contractSummaries.length"
+                class="mt-2"
+                :contracts="contractSummaries"
+                :version-label="
+                  dialogs.pluginVersion({ version: item.package.manifest.plugin.version })
+                "
+                scope="catalog"
+              />
               <div
                 v-if="marketplace"
                 class="mt-2 rounded border border-border/70 px-2 py-1.5 text-[9px] text-muted"
@@ -867,7 +892,9 @@ function confirmResetLocalState(): void {
             runtimeReview,
             runtimePolicy,
             runtimeError,
-            runtimeOutput
+            runtimeOutput,
+            contractSummaries,
+            pendingContractSummaries
           } in installedPluginViews"
           :key="pluginId(plugin)"
           class="rounded border border-border bg-panel-field p-3"
@@ -916,6 +943,16 @@ function confirmResetLocalState(): void {
               />
             </div>
           </div>
+
+          <PluginV2ContractSummary
+            v-if="contractSummaries.length"
+            class="mt-2"
+            :contracts="contractSummaries"
+            :version-label="
+              dialogs.pluginVersion({ version: plugin.package.manifest.plugin.version })
+            "
+            scope="current"
+          />
 
           <p v-if="!plugin.enabled" class="mt-2 text-[9px] text-muted">
             {{ dialogs.pluginDisabledHint }}
@@ -1029,6 +1066,26 @@ function confirmResetLocalState(): void {
                 })
               }}
             </p>
+            <div class="mt-2 grid gap-2 sm:grid-cols-2">
+              <PluginV2ContractSummary
+                :contracts="contractSummaries"
+                :version-label="
+                  dialogs.pluginVersion({
+                    version: plugin.installedState.accepted.manifest.plugin.version
+                  })
+                "
+                scope="current"
+              />
+              <PluginV2ContractSummary
+                :contracts="pendingContractSummaries"
+                :version-label="
+                  dialogs.pluginVersion({
+                    version: plugin.installedState.pending.candidate.manifest.plugin.version
+                  })
+                "
+                scope="pending"
+              />
+            </div>
             <div
               v-if="pendingUpdateCompatibilityFailures(plugin).length > 0"
               class="mt-2 rounded border border-error/30 bg-error/5 px-2 py-1.5 text-[9px] text-error"
@@ -1463,6 +1520,7 @@ function confirmResetLocalState(): void {
     >
       {{ hostActionMessage }}
     </p>
+    <AccessibilityAuditReport :data="hostActionData" />
     <p v-if="operationError" class="text-[10px] text-danger" role="alert">
       {{ operationError }}
     </p>

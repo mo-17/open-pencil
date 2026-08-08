@@ -27,8 +27,21 @@ export interface SourceExporterEditor {
   state: Pick<EditorStore['state'], 'documentName'>
 }
 
-export interface SourceProjectExportDestination {
+export interface PluginFileExportDestination {
   write(data: Uint8Array, signal?: AbortSignal): Promise<boolean> | Promise<void>
+}
+
+export type SourceProjectExportDestination = PluginFileExportDestination
+
+export interface RunPluginFileExportOptions<TWarning> {
+  fileName: string
+  signal: AbortSignal | undefined
+  warnings: readonly TWarning[]
+  chooseDestination(
+    fileName: string,
+    signal?: AbortSignal
+  ): Promise<PluginFileExportDestination | null>
+  createBytes(): Uint8Array | Promise<Uint8Array>
 }
 
 export interface SourceProjectFontPolicyResult {
@@ -54,6 +67,21 @@ export interface SourceProjectExporterDependencies<TEditor extends SourceExporte
 }
 
 export type SourceProjectExportResult = AppPluginExporterExecutionResult<CompileWarning>
+
+export async function runPluginFileExport<TWarning>(
+  options: RunPluginFileExportOptions<TWarning>
+): Promise<AppPluginExporterExecutionResult<TWarning>> {
+  const { fileName, signal } = options
+  throwIfPluginExportAborted(signal)
+  const destination = await options.chooseDestination(fileName, signal)
+  throwIfPluginExportAborted(signal)
+  if (!destination) return { fileName, fileCount: 0, warnings: [], saved: false }
+
+  const bytes = await options.createBytes()
+  throwIfPluginExportAborted(signal)
+  const saved = (await destination.write(bytes, signal)) ?? true
+  return { fileName, fileCount: 1, warnings: options.warnings, saved }
+}
 
 interface SourceProjectCompilerInputContext<TEditor extends SourceExporterEditor> {
   editor: TEditor
@@ -160,7 +188,7 @@ export function sourceProjectNames(documentName: string): { package: string; pro
   }
 }
 
-async function writeTauriSourceProjectAtomically(
+async function writeTauriPluginFileAtomically(
   path: string,
   data: Uint8Array,
   signal?: AbortSignal
@@ -180,19 +208,21 @@ async function writeTauriSourceProjectAtomically(
   }
 }
 
-export async function chooseSourceProjectDestination(
+export async function choosePluginFileExportDestination(
   fileName: string,
   description: string,
+  extension: string,
+  mimeType: string,
   signal?: AbortSignal
-): Promise<SourceProjectExportDestination | null> {
+): Promise<PluginFileExportDestination | null> {
   throwIfPluginExportAborted(signal)
   if (isTauri()) {
-    const path = await chooseTauriExportPath(fileName, description, '.zip')
+    const path = await chooseTauriExportPath(fileName, description, extension)
     throwIfPluginExportAborted(signal)
     return path
       ? {
           async write(data, writeSignal = signal) {
-            await writeTauriSourceProjectAtomically(path, data, writeSignal)
+            await writeTauriPluginFileAtomically(path, data, writeSignal)
           }
         }
       : null
@@ -205,7 +235,7 @@ export async function chooseSourceProjectDestination(
         types: [
           {
             description,
-            accept: { 'application/zip': ['.zip'] }
+            accept: { [mimeType]: [extension] }
           }
         ]
       })
@@ -243,9 +273,17 @@ export async function chooseSourceProjectDestination(
   return {
     async write(data, writeSignal = signal) {
       throwIfPluginExportAborted(writeSignal)
-      downloadBlob(data, fileName, 'application/zip')
+      downloadBlob(data, fileName, mimeType)
     }
   }
+}
+
+export function chooseSourceProjectDestination(
+  fileName: string,
+  description: string,
+  signal?: AbortSignal
+): Promise<SourceProjectExportDestination | null> {
+  return choosePluginFileExportDestination(fileName, description, '.zip', 'application/zip', signal)
 }
 
 export function applySourceProjectRedistributionFontPolicy(

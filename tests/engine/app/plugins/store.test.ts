@@ -9,8 +9,9 @@ import {
   TRUSTED_PLUGIN_KEYRING_SCHEMA_VERSION,
   parseTrustedPluginKeyring,
   signPluginManifest,
+  signVersionedPluginManifest,
   verifyPluginPackage,
-  type PluginManifestV1,
+  type PluginManifest,
   type PluginManifestPayloadV1,
   type VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
@@ -60,7 +61,7 @@ async function verified(
 
 function publisherEntry(
   keyPair: CryptoKeyPair,
-  manifest: PluginManifestV1,
+  manifest: PluginManifest,
   remoteCatalog?: AppPluginRemoteCatalogMetadata
 ) {
   return {
@@ -430,6 +431,61 @@ describe('app plugin store', () => {
       engineVersion: ENGINE_VERSION
     })
     expect((await ownershipStore.load()).error?.message).toContain('publisher')
+  })
+
+  test('loads bundled v2 manifests and fails closed for an unknown manifest version', async () => {
+    const v2Entry = createBundledPluginCatalog().find(
+      (entry) => entry.manifest.plugin.id === 'open-pencil.accessibility-audit'
+    )
+    if (v2Entry?.manifest.schemaVersion !== 2) {
+      throw new Error('Expected bundled v2 plugin')
+    }
+    const v2Store = createAppPluginStore({
+      storage: createMemoryAppPluginStateStorage(),
+      catalog: [{ ...v2Entry, installedByDefault: true, enabledByDefault: true }],
+      engineVersion: ENGINE_VERSION
+    })
+    const loaded = await v2Store.load()
+    expect(loaded.error).toBeNull()
+    expect(loaded.installed[0].package.manifest.schemaVersion).toBe(2)
+    expect(v2Store.installedCommands()).toHaveLength(1)
+
+    const unknownVersion = { ...structuredClone(v2Entry.manifest), schemaVersion: 99 }
+    const futureStore = createAppPluginStore({
+      storage: createMemoryAppPluginStateStorage(),
+      catalog: [
+        {
+          trustSource: 'app-bundle',
+          manifest: unknownVersion as never
+        }
+      ],
+      engineVersion: ENGINE_VERSION
+    })
+    expect((await futureStore.load()).error?.message).toContain('schemaVersion is not supported')
+  })
+
+  test('cryptographically verifies and activates a publisher-signed v2 package', async () => {
+    const keyPair = await keys()
+    const bundledV2 = createBundledPluginCatalog().find(
+      (entry) => entry.manifest.plugin.id === 'open-pencil.accessibility-audit'
+    )?.manifest
+    if (bundledV2?.schemaVersion !== 2) {
+      throw new Error('Expected bundled v2 manifest')
+    }
+    const signed = await signVersionedPluginManifest(bundledV2, keyPair.privateKey)
+    const store = createAppPluginStore({
+      storage: createMemoryAppPluginStateStorage(),
+      catalog: [publisherEntry(keyPair, signed)],
+      engineVersion: ENGINE_VERSION
+    })
+
+    expect((await store.load()).error).toBeNull()
+    await store.install(signed.plugin.id)
+    await store.setEnabled(signed.plugin.id, true)
+    const installed = store.snapshot().installed[0]
+    expect(installed.package.manifest.schemaVersion).toBe(2)
+    expect(installed.package.verifiedPackage?.manifest.schemaVersion).toBe(2)
+    expect(store.installedCommands()).toHaveLength(1)
   })
 
   test('persists explicit signed update review, acceptance, rejection, and rollback', async () => {

@@ -1,5 +1,6 @@
 import {
   compareStableSemver,
+  isPlainJsonObject,
   parseBoundedManifestArray,
   parseStableSemver,
   stableSemverParts,
@@ -26,6 +27,86 @@ export function hasExactPluginKeys(
 ): boolean {
   const keys = Object.keys(value)
   return keys.length === allowed.size && keys.every((key) => allowed.has(key))
+}
+
+const CANONICAL_HEX_COLOR = /^#[\dA-F]{6}$/i
+
+export function parseBoundedPluginText(
+  value: unknown,
+  path: string,
+  minimumLength: number,
+  maximumLength: number
+): string {
+  if (
+    typeof value !== 'string' ||
+    value.length < minimumLength ||
+    value.length > maximumLength ||
+    (minimumLength > 0 && value.trim().length === 0)
+  ) {
+    throw new TypeError(`${path} must contain ${minimumLength} to ${maximumLength} characters`)
+  }
+  return value
+}
+
+export function parseCanonicalPluginColor(value: unknown, path: string): string {
+  if (typeof value !== 'string' || !CANONICAL_HEX_COLOR.test(value)) {
+    throw new TypeError(`${path} must be a #RRGGBB value`)
+  }
+  return value.toUpperCase()
+}
+
+function containsUnsafePluginHrefCharacter(value: string): boolean {
+  if (value.includes('\\')) return true
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code <= 31 || code === 127) return true
+  }
+  return false
+}
+
+export function isSafePluginHref(
+  value: unknown,
+  path: string,
+  maximumLength: number,
+  allowEmpty: boolean
+): value is string {
+  if (allowEmpty && value === '') return true
+  if (
+    typeof value !== 'string' ||
+    value.length === 0 ||
+    value.length > maximumLength ||
+    containsUnsafePluginHrefCharacter(value)
+  ) {
+    return false
+  }
+  if (value.startsWith('/') && !value.startsWith('//')) return true
+  if (value.startsWith('#') && value.length > 1) return true
+  try {
+    parseCanonicalPublicHttpsUrl(value, path, maximumLength)
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function assertBoundedPluginConfigBytes(
+  config: unknown,
+  path: string,
+  maximumBytes: number
+): void {
+  const bytes = new TextEncoder().encode(JSON.stringify(config)).byteLength
+  if (bytes > maximumBytes) {
+    throw new TypeError(`${path} must not exceed ${maximumBytes} encoded bytes`)
+  }
+}
+
+export function mergePluginConfigWithDefaults(
+  defaults: Readonly<Record<string, unknown>>,
+  config: unknown
+): unknown {
+  if (config === undefined) return structuredClone(defaults)
+  if (!isPlainJsonObject(config)) return config
+  return { ...structuredClone(defaults), ...config }
 }
 
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/

@@ -11,12 +11,15 @@ import {
   PLUGIN_MANIFEST_LIMITS,
   PLUGIN_MANIFEST_SCHEMA_VERSION,
   parsePluginManifest,
+  parseVersionedPluginManifest,
   type PluginCatalogPayloadV1,
   type PluginManifestPayloadV1
 } from '@open-pencil/core/plugins'
 
 import { runOpenPencilCLI } from '#tests/helpers/cli'
 import { cliSourcePath } from '#tests/helpers/paths'
+
+import { pluginPayloadV2 } from '../plugins/helpers'
 
 const temporaryDirectories: string[] = []
 
@@ -160,8 +163,73 @@ describe('plugin manifest CLI', () => {
     expect(JSON.parse(result.stdout)).toMatchObject({
       valid: true,
       signed: false,
+      schemaVersion: 1,
       manifest: { plugin: { id: 'example.chart', version: '1.2.3' } }
     })
+  })
+
+  test('validates, signs, and verifies schema-v2 manifests with explicit version reports', async () => {
+    const { payloadPath, manifestPath, privateKey, publicKey } = await fixture()
+    await Bun.write(payloadPath, JSON.stringify(pluginPayloadV2()))
+
+    const validated = await runOpenPencilCLI([
+      'plugin',
+      'manifest',
+      'validate',
+      payloadPath,
+      '--json'
+    ])
+    expect(validated).toMatchObject({ exitCode: 0, stderr: '' })
+    expect(JSON.parse(validated.stdout)).toMatchObject({
+      valid: true,
+      signed: false,
+      schemaVersion: 2
+    })
+
+    const signed = await runOpenPencilCLI([
+      'plugin',
+      'manifest',
+      'sign',
+      payloadPath,
+      '--private-key',
+      privateKey,
+      '-o',
+      manifestPath,
+      '--json'
+    ])
+    expect(signed).toMatchObject({ exitCode: 0, stderr: '' })
+    const signedReport = JSON.parse(signed.stdout) as {
+      schemaVersion: number
+      manifest: unknown
+    }
+    expect(signedReport.schemaVersion).toBe(2)
+    expect(parseVersionedPluginManifest(signedReport.manifest).schemaVersion).toBe(2)
+
+    const verified = await runOpenPencilCLI([
+      'plugin',
+      'manifest',
+      'verify',
+      manifestPath,
+      '--public-key',
+      publicKey,
+      '--engine-version',
+      '0.13.2',
+      '--json'
+    ])
+    expect(verified).toMatchObject({ exitCode: 0, stderr: '' })
+    expect(JSON.parse(verified.stdout)).toMatchObject({
+      schemaVersion: 2,
+      manifest: { schemaVersion: 2 }
+    })
+  })
+
+  test('fails closed for unknown manifest schema versions', async () => {
+    const { payloadPath } = await fixture()
+    await Bun.write(payloadPath, JSON.stringify({ ...pluginPayloadV2(), schemaVersion: 3 }))
+
+    const result = await runOpenPencilCLI(['plugin', 'manifest', 'validate', payloadPath])
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toContain('schemaVersion')
   })
 
   test('rejects an oversized manifest before parsing it', async () => {

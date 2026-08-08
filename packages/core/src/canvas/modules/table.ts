@@ -2,7 +2,6 @@ import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-import { ellipsizeLabelText } from '#core/canvas/labels/text'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import {
   TABLE_MODULE_TYPE,
@@ -11,7 +10,12 @@ import {
   type TableModuleConfigV1
 } from '#core/plugins/table'
 
-import { configureModulePreviewPaint, modulePreviewFrame } from './preview'
+import {
+  configureModulePreviewPaint,
+  drawModulePreviewCellText,
+  drawModulePreviewStripedRows,
+  modulePreviewFrame
+} from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
 interface VisibleTableRows {
@@ -29,25 +33,6 @@ export function visibleTableRows(config: TableModuleConfigV1, height: number): V
     headerRows,
     rowHeight
   }
-}
-
-function drawCellText(
-  renderer: SkiaRenderer,
-  canvas: Canvas,
-  value: string,
-  left: number,
-  top: number,
-  width: number,
-  rowHeight: number,
-  color: string
-): void {
-  const font = renderer.labelFont
-  if (!font) return
-  const inset = Math.min(8, Math.max(3, width * 0.06))
-  const label = ellipsizeLabelText(font, value, Math.max(0, width - inset * 2))
-  if (!label) return
-  configureModulePreviewPaint(renderer, color)
-  canvas.drawText(label, left + inset, top + rowHeight * 0.68, renderer.fillPaint, font)
 }
 
 /** Draw a bounded table grid using only already-validated inline data. */
@@ -79,15 +64,15 @@ export function renderTableModulePreview(
       canvas.drawRect(renderer.ck.LTRBRect(0, 0, width, visible.rowHeight), renderer.fillPaint)
     }
     if (resolved.config.striped) {
-      visible.rows.forEach((_, index) => {
-        if (index % 2 === 0) return
-        const top = (visible.headerRows + index) * visible.rowHeight
-        configureModulePreviewPaint(renderer, '#F9FAFB')
-        canvas.drawRect(
-          renderer.ck.LTRBRect(0, top, width, Math.min(height, top + visible.rowHeight)),
-          renderer.fillPaint
-        )
-      })
+      drawModulePreviewStripedRows(
+        renderer,
+        canvas,
+        visible.rows.length,
+        visible.headerRows,
+        visible.rowHeight,
+        width,
+        height
+      )
     }
 
     configureModulePreviewPaint(renderer, resolved.config.borderColor)
@@ -102,7 +87,7 @@ export function renderTableModulePreview(
 
     if (visible.headerRows === 1) {
       columns.forEach((value, column) => {
-        drawCellText(
+        drawModulePreviewCellText(
           renderer,
           canvas,
           value,
@@ -110,14 +95,15 @@ export function renderTableModulePreview(
           0,
           columnWidth,
           visible.rowHeight,
-          resolved.config.textColor
+          resolved.config.textColor,
+          { horizontalInsetRatio: 0.06, baselineRatio: 0.68 }
         )
       })
     }
     visible.rows.forEach((row, rowIndex) => {
       const top = (visible.headerRows + rowIndex) * visible.rowHeight
       row.forEach((value, column) => {
-        drawCellText(
+        drawModulePreviewCellText(
           renderer,
           canvas,
           value,
@@ -125,7 +111,8 @@ export function renderTableModulePreview(
           top,
           columnWidth,
           visible.rowHeight,
-          resolved.config.textColor
+          resolved.config.textColor,
+          { horizontalInsetRatio: 0.06, baselineRatio: 0.68 }
         )
       })
     })

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
-import { PLUGIN_MCP_CATALOG_LIMITS } from '#mcp/tool/plugin/contract'
+import { parsePluginObjectParameterSchema } from '@open-pencil/core/plugins'
+
+import { PLUGIN_MCP_CATALOG_LIMITS, type PluginMcpToolKind } from '#mcp/tool/plugin/contract'
 
 interface JsonRecord {
   [key: string]: unknown
@@ -177,8 +179,21 @@ function schemaNode(
 
 export function parsePluginMcpInputSchema(
   value: unknown,
-  path: string
+  path: string,
+  kind: PluginMcpToolKind
 ): Readonly<Record<string, unknown>> {
+  if (kind !== 'module') {
+    const parsed = parsePluginObjectParameterSchema(value, path, {
+      reserveAutomationTargets: true
+    })
+    const wireSchema = record(parsed, path)
+    try {
+      z.fromJSONSchema(wireSchema)
+    } catch (cause) {
+      throw new TypeError(`${path} could not be converted to a runtime schema`, { cause })
+    }
+    return wireSchema
+  }
   if (jsonBytes(value) > PLUGIN_MCP_CATALOG_LIMITS.maxSchemaBytes) {
     throw new TypeError(`${path} exceeds the JSON Schema byte limit`)
   }

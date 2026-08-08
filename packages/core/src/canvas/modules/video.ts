@@ -2,7 +2,6 @@ import type { Canvas } from 'canvaskit-wasm'
 
 import type { SceneNode } from '@open-pencil/scene-graph'
 
-import { ellipsizeLabelText } from '#core/canvas/labels/text'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import {
   VIDEO_MODULE_TYPE,
@@ -11,7 +10,13 @@ import {
   type VideoModuleConfigV1
 } from '#core/plugins/video'
 
-import { configureModulePreviewPaint, modulePreviewFrame } from './preview'
+import {
+  configureModulePreviewPaint,
+  drawModulePreviewLabel,
+  modulePreviewMediaLayout,
+  resolveModulePreviewFrame,
+  withModulePreviewClip
+} from './preview'
 import type { ModuleCanvasAdapter } from './types'
 
 /** Build a short deterministic status label without loading either media URL. */
@@ -53,19 +58,13 @@ export function renderVideoModulePreview(
   canvas: Canvas,
   node: SceneNode
 ): boolean {
-  const frame = modulePreviewFrame(node)
-  if (frame === null) return false
-  const moduleValue = frame.node.interactiveProps?.module
-  const resolved = resolveVideoModule(moduleValue)
-  if (resolved === null || !resolved.ok) return false
-  const { width, height, empty } = frame
+  const frame = resolveModulePreviewFrame(node, resolveVideoModule)
+  if (!frame) return false
+  const { width, height, empty, config } = frame
   if (empty) return true
-  const inset = Math.min(24, Math.max(8, Math.min(width, height) * 0.06))
-  const footerHeight = Math.min(34, Math.max(20, height * 0.14))
+  const { inset, footerHeight } = modulePreviewMediaLayout(width, height)
 
-  canvas.save()
-  try {
-    canvas.clipRRect(renderer.makeRRect(frame.node), renderer.ck.ClipOp.Intersect, true)
+  withModulePreviewClip(renderer, canvas, frame.node, () => {
     configureModulePreviewPaint(renderer, '#111827')
     canvas.drawRect(
       renderer.ck.LTRBRect(inset, inset, width - inset, height - inset),
@@ -74,7 +73,7 @@ export function renderVideoModulePreview(
     const iconSize = Math.max(8, Math.min(28, Math.min(width, height - footerHeight) * 0.1))
     drawPlayIcon(renderer, canvas, width / 2, (height - footerHeight) / 2, iconSize)
 
-    if (resolved.config.controls && width > inset * 2 + 24) {
+    if (config.controls && width > inset * 2 + 24) {
       const barY = Math.max(inset, height - inset - footerHeight)
       configureModulePreviewPaint(renderer, '#4B5563')
       canvas.drawRect(
@@ -85,21 +84,16 @@ export function renderVideoModulePreview(
       canvas.drawCircle(inset * 1.5, barY + 1.5, 4, renderer.fillPaint)
     }
 
-    const font = renderer.labelFont
-    if (font && height >= inset * 2 + 18) {
-      configureModulePreviewPaint(renderer, '#D1D5DB')
-      const label = ellipsizeLabelText(
-        font,
-        videoPreviewLabel(resolved.config),
-        Math.max(0, width - inset * 2)
-      )
-      if (label) {
-        canvas.drawText(label, inset, height - Math.max(4, inset * 0.4), renderer.fillPaint, font)
-      }
-    }
-  } finally {
-    canvas.restore()
-  }
+    drawModulePreviewLabel(
+      renderer,
+      canvas,
+      videoPreviewLabel(config),
+      width,
+      height,
+      inset,
+      '#D1D5DB'
+    )
+  })
   return true
 }
 

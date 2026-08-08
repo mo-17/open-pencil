@@ -159,7 +159,7 @@ function parseDescriptor(value: unknown, index: number): PluginMcpToolDescriptor
       `${path}.description`,
       PLUGIN_MCP_CATALOG_LIMITS.maxDescriptionLength
     ),
-    inputSchema: parsePluginMcpInputSchema(source.inputSchema, `${path}.inputSchema`),
+    inputSchema: parsePluginMcpInputSchema(source.inputSchema, `${path}.inputSchema`, kind),
     pluginId,
     kind,
     contributionId

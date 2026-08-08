@@ -185,11 +185,16 @@ function requireConsistentHistoricalVersion(
   }
 }
 
-function contributionMap<T>(
-  entries: readonly T[] | undefined,
-  identity: (entry: T) => string
+function contributionMap(
+  entries: readonly object[] | undefined,
+  identityKey: 'moduleType' | 'commandId' | 'exporterId'
 ): Map<string, string> {
-  return new Map(entries?.map((entry) => [identity(entry), canonicalManifestJson(entry)]))
+  return new Map(
+    entries?.map((entry) => [
+      Reflect.get(entry, identityKey) as string,
+      canonicalManifestJson(entry)
+    ])
+  )
 }
 
 function contributionDiff(
@@ -211,30 +216,12 @@ export function diffPluginPackages(
 ): PluginUpdateDiff {
   const current = currentValue ? parseVerifiedPluginPackageSnapshot(currentValue) : null
   const candidate = parseVerifiedPluginPackageSnapshot(candidateValue)
-  const beforeModules = contributionMap(
-    current?.manifest.contributions.modules,
-    (entry) => entry.moduleType
-  )
-  const afterModules = contributionMap(
-    candidate.manifest.contributions.modules,
-    (entry) => entry.moduleType
-  )
-  const beforeCommands = contributionMap(
-    current?.manifest.contributions.commands,
-    (entry) => entry.commandId
-  )
-  const afterCommands = contributionMap(
-    candidate.manifest.contributions.commands,
-    (entry) => entry.commandId
-  )
-  const beforeExporters = contributionMap(
-    current?.manifest.contributions.exporters,
-    (entry) => entry.exporterId
-  )
-  const afterExporters = contributionMap(
-    candidate.manifest.contributions.exporters,
-    (entry) => entry.exporterId
-  )
+  const beforeModules = contributionMap(current?.manifest.contributions.modules, 'moduleType')
+  const afterModules = contributionMap(candidate.manifest.contributions.modules, 'moduleType')
+  const beforeCommands = contributionMap(current?.manifest.contributions.commands, 'commandId')
+  const afterCommands = contributionMap(candidate.manifest.contributions.commands, 'commandId')
+  const beforeExporters = contributionMap(current?.manifest.contributions.exporters, 'exporterId')
+  const afterExporters = contributionMap(candidate.manifest.contributions.exporters, 'exporterId')
   const modules = contributionDiff(beforeModules, afterModules)
   const commands = contributionDiff(beforeCommands, afterCommands)
   const exporters = contributionDiff(beforeExporters, afterExporters)

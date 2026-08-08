@@ -23,8 +23,8 @@ import {
   type TrustedPluginKeyResolution,
   type TrustedPluginKeyringV1
 } from './keyring'
-import { parsePluginManifest, type PluginManifestV1 } from './manifest'
-import { verifyPluginPackage, type VerifiedPluginPackage } from './package'
+import { parseVersionedPluginManifest, type PluginManifest } from './manifest'
+import { verifyVersionedPluginPackage, type VerifiedPluginPackage } from './package'
 import {
   comparePluginVersionCoordinates,
   parseCanonicalPublicHttpsUrl,
@@ -413,7 +413,7 @@ function matchingCatalogEntry(
 
 function assertCatalogEntryMatchesManifest(
   entry: PluginCatalogEntryV1,
-  manifest: PluginManifestV1
+  manifest: PluginManifest
 ): void {
   if (
     manifest.plugin.id !== entry.pluginId ||
@@ -444,7 +444,7 @@ export async function verifyCatalogPluginPackage(
     now,
     PLUGIN_CATALOG_LIMITS.defaultClockSkewMilliseconds
   )
-  const manifest = parsePluginManifest(manifestValue)
+  const manifest = parseVersionedPluginManifest(manifestValue)
   assertCatalogEntryMatchesManifest(entry, manifest)
   const keyTrust = resolveTrustedPluginKey(keyring, {
     pluginId: entry.pluginId,
@@ -454,7 +454,7 @@ export async function verifyCatalogPluginPackage(
   })
   let verifiedPackage: VerifiedPluginPackage
   try {
-    verifiedPackage = await verifyPluginPackage(manifest, keyTrust.key.publicKey, {
+    verifiedPackage = await verifyVersionedPluginPackage(manifest, keyTrust.key.publicKey, {
       expectedKeyId: entry.keyId
     })
   } catch {

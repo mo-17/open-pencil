@@ -403,6 +403,14 @@ export const dialogMessageDefaults = {
     'Uninstall {name}? Existing canvas modules remain unchanged, but new ones cannot be added.'
   ),
   pluginOperationFailed: params('Plugin operation failed: {error}'),
+  pluginAccessibilityReportTitle: 'Static accessibility audit report',
+  pluginAccessibilityReportCounts: params(
+    '{errors} errors · {warnings} warnings · {info} information messages'
+  ),
+  pluginAccessibilityReportShowing: params('Showing {shown} of {total} issues.'),
+  pluginAccessibilityReportNoIssues: 'No issues were found by the evaluated static rules.',
+  pluginAccessibilityReportSuggestion: 'Suggestion',
+  pluginAccessibilityReportNotEvaluated: 'Not evaluated by this static audit',
   pluginDocumentDependencies: 'Current document dependencies',
   pluginDocumentDependenciesDescription:
     'Compare plugin modules used by this document with installed, verified versions.',
