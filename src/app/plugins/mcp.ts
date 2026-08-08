@@ -2,6 +2,7 @@ import { sha256 } from '@noble/hashes/sha256'
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
 
 import type { ModuleDefinition } from '@open-pencil/core/plugins'
+import type { PluginMcpCatalogSnapshot } from '@open-pencil/mcp/plugin-contract'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import { inspectPluginCommandCompatibility, inspectPluginExporterCompatibility } from './host'
@@ -40,10 +41,7 @@ export interface AppPluginMcpToolDescriptor {
   contributionId: string
 }
 
-export interface AppPluginMcpToolCatalog {
-  revision: string
-  tools: readonly AppPluginMcpToolDescriptor[]
-}
+export type AppPluginMcpToolCatalog = PluginMcpCatalogSnapshot
 
 export type AppPluginMcpStore = Pick<
   ReturnType<typeof createAppPluginStore>,

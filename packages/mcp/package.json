@@ -2,7 +2,20 @@
   "name": "@open-pencil/mcp",
   "version": "0.13.2",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/open-pencil/open-pencil.git",
+    "directory": "packages/mcp"
+  },
+  "bin": {
+    "openpencil-mcp": "./dist/stdio.mjs",
+    "openpencil-mcp-http": "./dist/index.mjs"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
+  "main": "./dist/server.mjs",
   "imports": {
     "#mcp/*": {
       "types": "./src/*.ts",
@@ -10,7 +23,6 @@
       "default": "./dist/*.mjs"
     }
   },
-  "main": "./dist/server.mjs",
   "exports": {
     ".": {
       "types": "./dist/server.d.mts",
@@ -39,27 +51,21 @@
       "bun": "./src/motion-export/index.ts",
       "import": "./dist/motion-export.mjs",
       "default": "./dist/motion-export.mjs"
+    },
+    "./plugin-contract": {
+      "types": "./dist/plugin-contract.d.mts",
+      "bun": "./src/tool/plugin/contract.ts",
+      "import": "./dist/plugin-contract.mjs",
+      "default": "./dist/plugin-contract.mjs"
     }
-  },
-  "bin": {
-    "openpencil-mcp": "./dist/stdio.mjs",
-    "openpencil-mcp-http": "./dist/index.mjs"
-  },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "bunx tsdown --config tsdown.config.ts",
-    "prepublishOnly": "bun run build"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/open-pencil/open-pencil.git",
-    "directory": "packages/mcp"
   },
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "scripts": {
+    "build": "bunx tsdown --config tsdown.config.ts",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.11",

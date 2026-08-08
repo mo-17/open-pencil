@@ -7,7 +7,8 @@ export default defineConfig({
     stdio: './src/stdio.ts',
     transport: './src/transport/paths.ts',
     discovery: './src/transport/discovery.ts',
-    'motion-export': './src/motion-export/index.ts'
+    'motion-export': './src/motion-export/index.ts',
+    'plugin-contract': './src/tool/plugin/contract.ts'
   },
   platform: 'node',
   format: ['esm'],
