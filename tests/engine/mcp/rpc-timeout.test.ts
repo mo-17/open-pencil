@@ -18,8 +18,16 @@ describe('MCP RPC timeout policy', () => {
   })
 
   test('gives every tool request at least 60 seconds at the browser layer', () => {
-    for (const name of ['render', 'export_image', 'get_current_page']) {
-      const request = { command: 'tool', args: { name, args: {} } }
+    for (const request of [
+      ...['render', 'export_image', 'get_current_page'].map((name) => ({
+        command: 'tool',
+        args: { name, args: {} }
+      })),
+      {
+        command: 'plugin_mcp_tool',
+        args: { name: 'installed-plugin-exporter', pluginId: 'example.plugin', args: {} }
+      }
+    ]) {
       const browserTimeoutMs = resolveBrowserRpcTimeoutMs(request)
       const stdioTimeoutMs = resolveStdioRpcTimeoutMs(request)
 

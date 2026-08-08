@@ -14,7 +14,8 @@ const APP_NOT_CONNECTED_MESSAGE =
 
 type BrowserRpcBridgeOptions = {
   authToken: string | null
-  onConnectionChange: () => void
+  onConnectionChange: (connected: boolean) => void
+  onPluginToolsChanged?: (revision?: string) => void
   resolveTimeoutMs?: (body: Record<string, unknown>) => number
 }
 
@@ -26,6 +27,7 @@ type BrowserMessage = {
   error?: string
   ok?: boolean
   progress?: unknown
+  revision?: unknown
 }
 
 export type BrowserRpcSendOptions = RpcSendOptions
@@ -66,6 +68,7 @@ function createSettler<T>(resolve: (value: T) => void, reject: (error: Error) =>
 export function createBrowserRpcBridge({
   authToken,
   onConnectionChange,
+  onPluginToolsChanged,
   resolveTimeoutMs = resolveBrowserRpcTimeoutMs
 }: BrowserRpcBridgeOptions) {
   const pending = new Map<string, PendingRequest>()
@@ -278,7 +281,7 @@ export function createBrowserRpcBridge({
       }
     }
     notifyConnectionWaiters()
-    onConnectionChange()
+    onConnectionChange(true)
     broadcastRegisterPrompt()
   }
 
@@ -311,6 +314,16 @@ export function createBrowserRpcBridge({
   }
 
   function handleAuthenticatedMessage(msg: BrowserMessage, ws: WebSocket): void {
+    if (msg.type === 'plugin_tools_changed') {
+      // Only the currently registered desktop app may invalidate the plugin
+      // tool directory. Authenticated forwarding clients are not authoritative.
+      if (browserRegistered && browserWs === ws) {
+        onPluginToolsChanged?.(
+          typeof msg.revision === 'string' && msg.revision.length <= 256 ? msg.revision : undefined
+        )
+      }
+      return
+    }
     if (msg.type === 'request') {
       void handleClientRequest(ws, msg)
       return
@@ -361,7 +374,7 @@ export function createBrowserRpcBridge({
     // CLOSING→CLOSED transition), the waiter should keep waiting the full
     // APP_WAIT_TIMEOUT for a reconnect. registerBrowser will resolve it
     // via notifyConnectionWaiters if the browser reconnects in time.
-    onConnectionChange()
+    onConnectionChange(false)
   }
 
   function handleConnection(ws: WebSocket) {

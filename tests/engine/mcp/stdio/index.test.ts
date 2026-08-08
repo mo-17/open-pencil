@@ -8,6 +8,8 @@ import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdi
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { appPluginMcpToolName } from '@/app/plugins/mcp'
+
 import { startServer, type ServerHandle } from '#mcp/server'
 
 import { expectDefined, getNodeOrThrow } from '#tests/helpers/assert'
@@ -213,6 +215,108 @@ describe('MCP stdio transport', () => {
     expect(JSON.stringify(createShape.inputSchema)).toContain('page_id')
     expect(tools.length).toBeGreaterThan(30)
   }, 10000)
+
+  test('discovers installed plugin tools and removes them after disable without restarting stdio', async () => {
+    const activeBrowser = browser
+    if (!activeBrowser) throw new Error('browser not initialized')
+    const toolName = appPluginMcpToolName('open-pencil.slide-menu', 'module', 'slide-menu')
+    let enabled = true
+    let revision = 'plugin-revision-1'
+    const pluginCalls: unknown[] = []
+    const pluginDescriptor = {
+      name: toolName,
+      title: 'Add Slide Menu',
+      description: 'Insert an installed Slide Menu module into the current document.',
+      inputSchema: {
+        type: 'object',
+        properties: { x: { type: 'number', minimum: -100_000, maximum: 100_000 } },
+        additionalProperties: false
+      },
+      pluginId: 'open-pencil.slide-menu',
+      kind: 'module',
+      contributionId: 'slide-menu'
+    }
+
+    activeBrowser.ws.removeAllListeners('message')
+    activeBrowser.ws.on('message', (raw) => {
+      const message = JSON.parse(raw.toString()) as {
+        type?: string
+        id?: string
+        command?: string
+        args?: unknown
+      }
+      if (message.type !== 'request' || !message.id) return
+      if (message.command === 'plugin_mcp_tools') {
+        activeBrowser.ws.send(
+          JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: { revision, tools: enabled ? [pluginDescriptor] : [] }
+          })
+        )
+      } else if (message.command === 'plugin_mcp_tool') {
+        if (!enabled) {
+          activeBrowser.ws.send(
+            JSON.stringify({
+              type: 'response',
+              id: message.id,
+              ok: false,
+              error: 'Plugin tool is not installed and enabled'
+            })
+          )
+          return
+        }
+        pluginCalls.push(message.args)
+        activeBrowser.ws.send(
+          JSON.stringify({
+            type: 'response',
+            id: message.id,
+            ok: true,
+            result: { inserted: true }
+          })
+        )
+      }
+    })
+
+    activeBrowser.ws.send(JSON.stringify({ type: 'plugin_tools_changed', revision }))
+    let names: string[] = []
+    for (let index = 0; index < 100; index++) {
+      names = (await requireClient().listTools()).tools.map((tool) => tool.name)
+      if (names.includes(toolName)) break
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 25)
+      })
+    }
+    expect(names).toContain(toolName)
+
+    const result = await requireClient().callTool({
+      name: toolName,
+      arguments: { x: 24, document_id: 'doc-1', page_id: 'page-1' }
+    })
+    expect(result.isError).not.toBe(true)
+    expect(pluginCalls).toEqual([
+      {
+        document_id: 'doc-1',
+        page_id: 'page-1',
+        name: toolName,
+        pluginId: 'open-pencil.slide-menu',
+        args: { x: 24 }
+      }
+    ])
+
+    enabled = false
+    revision = 'plugin-revision-2'
+    activeBrowser.ws.send(JSON.stringify({ type: 'plugin_tools_changed', revision }))
+    for (let index = 0; index < 140; index++) {
+      names = (await requireClient().listTools()).tools.map((tool) => tool.name)
+      if (!names.includes(toolName)) break
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 25)
+      })
+    }
+    expect(names).not.toContain(toolName)
+  }, 15000)
 
   test('create_shape via stdio creates a node', async () => {
     const result = await requireClient().callTool({

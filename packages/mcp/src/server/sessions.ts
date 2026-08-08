@@ -11,12 +11,14 @@ export type MCPTransport = {
 type MCPSession = {
   transport: MCPTransport
   server: McpServer
+  pluginTools?: { dispose: () => void }
   lastSeen: number
 }
 
 type McpSessionManagerOptions = {
   serverVersion: string
   registerTools: (server: McpServer) => void
+  registerPluginTools?: (server: McpServer) => { dispose: () => void }
 }
 
 const MAX_MCP_SESSIONS = 10
@@ -25,6 +27,14 @@ const SESSION_CLOSE_TIMEOUT_MS = 5_000
 
 function describeError(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
+}
+
+function disposePluginTools(pluginTools?: { dispose: () => void }): void {
+  try {
+    pluginTools?.dispose()
+  } catch (e) {
+    process.stderr.write(`  MCP session: plugin tool cleanup warning (${describeError(e)})\n`)
+  }
 }
 
 /**
@@ -46,6 +56,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined>
 }
 
 async function closeSession(session: MCPSession): Promise<void> {
+  disposePluginTools(session.pluginTools)
   try {
     await withTimeout(session.transport.close(), SESSION_CLOSE_TIMEOUT_MS)
   } catch (e) {
@@ -62,7 +73,8 @@ async function closeSession(session: MCPSession): Promise<void> {
 
 export function createMcpSessionManager({
   serverVersion,
-  registerTools
+  registerTools,
+  registerPluginTools
 }: McpSessionManagerOptions) {
   const sessions = new Map<string, MCPSession>()
   const closing = new Set<Promise<void>>()
@@ -103,7 +115,15 @@ export function createMcpSessionManager({
 
     const promise = (async () => {
       const server = new McpServer({ name: 'open-pencil', version: serverVersion })
-      registerTools(server)
+      let pluginTools: { dispose: () => void } | undefined
+      try {
+        registerTools(server)
+        pluginTools = registerPluginTools?.(server)
+      } catch (error) {
+        disposePluginTools(pluginTools)
+        await server.close().catch(() => undefined)
+        throw error
+      }
 
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: () => id,
@@ -117,6 +137,7 @@ export function createMcpSessionManager({
       try {
         await server.connect(transport)
       } catch (e) {
+        disposePluginTools(pluginTools)
         await transport.close().catch(() => undefined)
         await server.close().catch(() => undefined)
         throw e
@@ -126,11 +147,12 @@ export function createMcpSessionManager({
       // oxlint-disable-next-line no-unnecessary-condition
       if (closed) {
         // Manager was closed while we were connecting — clean up immediately.
+        disposePluginTools(pluginTools)
         await transport.close().catch(() => undefined)
         await server.close().catch(() => undefined)
         throw new Error('Session manager closed during session creation')
       }
-      sessions.set(id, { transport, server, lastSeen: Date.now() })
+      sessions.set(id, { transport, server, pluginTools, lastSeen: Date.now() })
       return transport
     })()
 

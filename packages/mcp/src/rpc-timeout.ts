@@ -6,7 +6,9 @@ const BROWSER_TOOL_TIMEOUT_MS = 120_000
 const STDIO_TIMEOUT_GRACE_MS = 20_000
 
 export function resolveBrowserRpcTimeoutMs(body: Record<string, unknown>): number {
-  return body.command === 'tool' ? BROWSER_TOOL_TIMEOUT_MS : BROWSER_DEFAULT_TIMEOUT_MS
+  return body.command === 'tool' || body.command === 'plugin_mcp_tool'
+    ? BROWSER_TOOL_TIMEOUT_MS
+    : BROWSER_DEFAULT_TIMEOUT_MS
 }
 
 export function resolveStdioRpcTimeoutMs(body: Record<string, unknown>): number {

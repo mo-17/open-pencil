@@ -14,6 +14,7 @@ import { MCP_CORS_HEADERS, MCP_CORS_METHODS, MCP_EXPOSED_HEADERS } from '#mcp/ht
 import type { RpcJsonObject } from '#mcp/json'
 import { preprocessRpc } from '#mcp/jsx-preprocess'
 import { createMcpSessionManager } from '#mcp/server/sessions'
+import { createPluginMcpController, registerPluginMcpTools } from '#mcp/tool/plugin/catalog'
 import { registerTools } from '#mcp/tool/registration'
 
 import packageJson from '../package.json' with { type: 'json' }
@@ -288,21 +289,52 @@ function buildServerContext(options: ServerOptions) {
     )
   }
 
+  let handleConnectionChange = (_connected: boolean) => undefined
+  let handlePluginToolsChanged = (_revision?: string) => undefined
+  const browserRpc = createBrowserRpcBridge({
+    authToken,
+    onConnectionChange: (connected) => handleConnectionChange(connected),
+    onPluginToolsChanged: (revision) => handlePluginToolsChanged(revision)
+  })
+  const sendToBrowser = browserRpc.sendRpc
+  const pluginMcp = createPluginMcpController({ sendRpc: sendToBrowser })
   const mcpSessions = createMcpSessionManager({
     serverVersion: MCP_VERSION,
     registerTools: (mcpServer: McpServer) =>
-      registerTools(mcpServer, { enableEval, mcpRoot, sendRpc: sendToBrowser })
+      registerTools(mcpServer, { enableEval, mcpRoot, sendRpc: sendToBrowser }),
+    registerPluginTools: (mcpServer: McpServer) =>
+      registerPluginMcpTools(mcpServer, {
+        catalog: pluginMcp.catalog,
+        sendRpc: sendToBrowser
+      })
   })
-  const browserRpc = createBrowserRpcBridge({
-    authToken,
-    onConnectionChange: mcpSessions.notifyToolsChanged
-  })
-  const sendToBrowser = browserRpc.sendRpc
+  handleConnectionChange = (connected) => {
+    // A replacement browser is a different authority. Remove the previous
+    // browser's catalog synchronously before fetching the new snapshot.
+    pluginMcp.clear()
+    if (connected) void pluginMcp.refresh()
+    // Preserve the existing availability notification for static tools while
+    // dynamic registrations emit their own list_changed notifications.
+    mcpSessions.notifyToolsChanged()
+  }
+  handlePluginToolsChanged = () => {
+    void pluginMcp.refresh()
+  }
 
   const app = createHonoApp({ authToken, corsOrigin, browserRpc, mcpSessions, sendToBrowser })
   const wss = new WebSocketServer({ noServer: true })
 
-  return { httpPort, withTcp, mcpSessions, browserRpc, sendToBrowser, app, wss, authToken }
+  return {
+    httpPort,
+    withTcp,
+    mcpSessions,
+    browserRpc,
+    pluginMcp,
+    sendToBrowser,
+    app,
+    wss,
+    authToken
+  }
 }
 
 /**
@@ -314,11 +346,17 @@ function buildServerContext(options: ServerOptions) {
  */
 async function shutdownRuntime(
   browserRpc: ReturnType<typeof createBrowserRpcBridge>,
+  pluginMcp: ReturnType<typeof createPluginMcpController>,
   mcpSessions: ReturnType<typeof createMcpSessionManager>,
   wss: WebSocketServer,
   state: ListenerState
 ): Promise<void> {
   const errors: unknown[] = []
+  try {
+    pluginMcp.close()
+  } catch (e) {
+    errors.push(e)
+  }
   try {
     browserRpc.close()
   } catch (e) {
@@ -347,6 +385,7 @@ function buildHandle(
   app: Hono,
   wss: WebSocketServer,
   browserRpc: ReturnType<typeof createBrowserRpcBridge>,
+  pluginMcp: ReturnType<typeof createPluginMcpController>,
   mcpSessions: ReturnType<typeof createMcpSessionManager>,
   state: ListenerState,
   resolvedSocketPath: string | null,
@@ -373,7 +412,7 @@ function buildHandle(
         errors.push(error)
       }
       try {
-        await shutdownRuntime(browserRpc, mcpSessions, wss, state)
+        await shutdownRuntime(browserRpc, pluginMcp, mcpSessions, wss, state)
       } catch (error) {
         errors.push(error)
       }
@@ -425,7 +464,9 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerHa
   } catch (err) {
     // Tear down any listeners that started before the failure, then close
     // all resources so nothing leaks when startServer rejects.
-    await shutdownRuntime(ctx.browserRpc, ctx.mcpSessions, ctx.wss, state).catch(() => undefined)
+    await shutdownRuntime(ctx.browserRpc, ctx.pluginMcp, ctx.mcpSessions, ctx.wss, state).catch(
+      () => undefined
+    )
     throw err
   }
 
@@ -436,6 +477,7 @@ export async function startServer(options: ServerOptions = {}): Promise<ServerHa
     ctx.app,
     ctx.wss,
     ctx.browserRpc,
+    ctx.pluginMcp,
     ctx.mcpSessions,
     state,
     resolvedSocketPath,

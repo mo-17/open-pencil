@@ -515,4 +515,42 @@ describe('BrowserRpcBridge reconnection', () => {
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).message).toBe('RPC timeout (0.01s)')
   })
+
+  test('accepts plugin tool invalidation only from the active registered browser', async () => {
+    const browserPair = await setupWsPair()
+    track(browserPair)
+    const otherPair = await setupWsPair()
+    track(otherPair)
+    const revisions: Array<string | undefined> = []
+    const bridge = createBrowserRpcBridge({
+      authToken: AUTH_TOKEN,
+      onConnectionChange: () => undefined,
+      onPluginToolsChanged: (revision) => revisions.push(revision)
+    })
+    await registerBrowser(browserPair.serverWs, browserPair.clientWs, bridge)
+
+    // Wire a second authenticated forwarding client without registering it as
+    // the authoritative desktop browser.
+    otherPair.serverWs.on('message', (raw: Buffer) => {
+      bridge.handleMessage(Buffer.from(raw).toString('utf-8'), otherPair.serverWs)
+    })
+    bridge.handleConnection(otherPair.serverWs)
+    await new Promise<Buffer>((resolve) => {
+      otherPair.clientWs.once('message', resolve)
+    })
+    otherPair.clientWs.send(JSON.stringify({ type: 'auth', token: AUTH_TOKEN }))
+    otherPair.clientWs.send(
+      JSON.stringify({ type: 'plugin_tools_changed', revision: 'untrusted-revision' })
+    )
+
+    browserPair.clientWs.send(
+      JSON.stringify({ type: 'plugin_tools_changed', revision: 'trusted-revision' })
+    )
+    for (let index = 0; index < 100 && revisions.length === 0; index++) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 5)
+      })
+    }
+    expect(revisions).toEqual(['trusted-revision'])
+  })
 })

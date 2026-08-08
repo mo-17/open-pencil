@@ -4,6 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 
 import { MCP_VERSION, registerTools } from '#mcp/server'
 import { createStdioRpcBridge } from '#mcp/stdio/bridge'
+import { createPluginMcpController, registerPluginMcpTools } from '#mcp/tool/plugin/catalog'
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.stdout.write(
@@ -44,6 +45,8 @@ function resolveAuthToken(raw: string | undefined): string | null | undefined {
 }
 const authToken = resolveAuthToken(rawAuthToken)
 
+let refreshPluginTools = () => undefined
+
 // OPENPENCIL_MCP_SOCKET is intentionally NOT forwarded as an explicit socketPath.
 // The bridge reads the socket path from the discovery file (whose `socketPath`
 // field records the override) via auto-discovery. Treating the env var as an
@@ -55,16 +58,32 @@ const bridge = createStdioRpcBridge({
     process.stderr.write(
       'Connected to OpenPencil MCP server; document availability is checked per tool call\n'
     )
+    refreshPluginTools()
   },
   onReconnect: () => {
     process.stderr.write(
       'Reconnected to OpenPencil MCP server; document availability is checked per tool call\n'
     )
+    refreshPluginTools()
   }
 })
 
 const mcpServer = new McpServer({ name: 'open-pencil', version: MCP_VERSION })
 registerTools(mcpServer, { enableEval, mcpRoot, sendRpc: bridge.sendRpc })
+const pluginMcp = createPluginMcpController({ sendRpc: bridge.sendRpc })
+registerPluginMcpTools(mcpServer, { catalog: pluginMcp.catalog, sendRpc: bridge.sendRpc })
+refreshPluginTools = () => {
+  pluginMcp.startPolling()
+  void pluginMcp.refresh()
+}
+// Start discovery immediately. sendRpc waits for the bridge's in-flight
+// connection, while onReady/onReconnect safely coalesce with this refresh.
+refreshPluginTools()
+
+process.once('exit', () => {
+  pluginMcp.close()
+  bridge.close()
+})
 
 const transport = new StdioServerTransport()
 mcpServer.connect(transport).catch((err) => {

@@ -10,16 +10,39 @@ import { randomHex } from '@open-pencil/core/random'
 import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
 import type { EditorStore } from '@/app/editor/active-store'
+import { appPluginStore } from '@/app/plugins/app'
+import { listAppPluginMcpTools } from '@/app/plugins/mcp'
 
 export function connectAutomation(getStore: () => EditorStore, authToken: string | null = null) {
   const token = authToken ?? randomHex(32)
   let ws: WebSocket | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let intentionalDisconnect = false
+  let lastPluginToolsRevision: string | null = null
   const activeRequests = new Map<string, AbortController>()
 
   const { handleRequest: handleAutomationRequest } =
     createAutomationCommandHandlers(makeFigmaFromStore)
+
+  function announcePluginTools(socket: WebSocket): void {
+    if (socket !== ws || socket.readyState !== WebSocket.OPEN) return
+    try {
+      const revision = listAppPluginMcpTools(appPluginStore).revision
+      if (revision === lastPluginToolsRevision) return
+      lastPluginToolsRevision = revision
+      socket.send(JSON.stringify({ type: 'plugin_tools_changed', revision }))
+    } catch (error) {
+      console.warn(
+        '[Automation] Failed to announce plugin MCP tools:',
+        error instanceof Error ? error.message : error
+      )
+    }
+  }
+
+  const unsubscribePluginTools = appPluginStore.subscribe(() => {
+    const socket = ws
+    if (socket) announcePluginTools(socket)
+  })
 
   async function handleRequest(
     id: string,
@@ -39,7 +62,11 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
           }
         }
       })
-      controller.signal.throwIfAborted()
+      // Plugin MCP handlers own their completion boundary. In particular, an
+      // exporter checks cancellation immediately before its atomic/durable
+      // commit; checking again here could report failure after the file was
+      // already committed. Other automation commands keep the generic guard.
+      if (command !== 'plugin_mcp_tool') controller.signal.throwIfAborted()
       return result
     } finally {
       if (activeRequests.get(id) === controller) activeRequests.delete(id)
@@ -63,6 +90,8 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     socket.onopen = () => {
       console.debug('[Automation] WebSocket connected to MCP server')
       socket.send(JSON.stringify({ type: 'register', token }))
+      lastPluginToolsRevision = null
+      announcePluginTools(socket)
     }
 
     socket.onmessage = async (event) => {
@@ -102,7 +131,10 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     }
 
     socket.onclose = (event) => {
-      if (ws === socket) ws = null
+      if (ws === socket) {
+        ws = null
+        lastPluginToolsRevision = null
+      }
       for (const controller of activeRequests.values()) controller.abort()
       activeRequests.clear()
       if (intentionalDisconnect || event.code === 1000) return
@@ -124,6 +156,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
   function disconnect() {
     intentionalDisconnect = true
     clearTimeout(reconnectTimer)
+    unsubscribePluginTools()
     for (const controller of activeRequests.values()) controller.abort()
     activeRequests.clear()
     ws?.close()

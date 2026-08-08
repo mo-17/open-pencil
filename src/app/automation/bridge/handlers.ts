@@ -7,6 +7,7 @@ import {
   handleOpenFile,
   handleSaveFile
 } from '@/app/automation/bridge/file-handlers'
+import { createAutomationPluginMcpHandlers } from '@/app/automation/bridge/plugin-mcp-handler'
 import type { AutomationRequestContext } from '@/app/automation/bridge/request-context'
 import { handleRpcFallback } from '@/app/automation/bridge/rpc-handler'
 import { handleSelection } from '@/app/automation/bridge/selection-handler'
@@ -31,10 +32,13 @@ type CommandHandler = (
 export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
   const handleEval = createAutomationEvalHandler(makeFigma)
   const handleTool = createAutomationToolHandler(makeFigma)
+  const { handleList: handlePluginMcpTools, handleCall: handlePluginMcpTool } =
+    createAutomationPluginMcpHandlers(handleTool)
 
   const commandHandlers: Partial<Record<string, CommandHandler>> = {
     eval: handleEval,
     tool: handleTool,
+    plugin_mcp_tool: handlePluginMcpTool,
     export: handleExport,
     export_jsx: handleExportJsx,
     selection: handleSelection,
@@ -52,6 +56,10 @@ export function createAutomationCommandHandlers(makeFigma: FigmaFactory) {
     if (command === 'list_documents') {
       return { ok: true, result: { documents: listAutomationDocuments(store) } }
     }
+
+    // Plugin tool discovery is document-independent. Calls still flow through the normal target
+    // resolver below so document_id/page_id remain host-owned and cannot be supplied by a plugin.
+    if (command === 'plugin_mcp_tools') return handlePluginMcpTools()
 
     if (command === 'open_file' || command === 'new_document') {
       const handler = commandHandlers[command]
