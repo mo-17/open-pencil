@@ -1,6 +1,7 @@
 import { parseFigBuffer } from '@open-pencil/fig'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
 import { IS_BROWSER } from '#core/constants'
 import { importNodeChanges } from '#core/kiwi/fig/import'
 import { deserializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
@@ -8,6 +9,16 @@ import type { SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
 
 export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
+}
+
+export const MAX_FIG_PARSE_WORKER_CONCURRENCY = 2
+
+export function figParseWorkerConcurrencyForDeviceMemory(deviceMemoryGiB?: number | null): 1 | 2 {
+  return typeof deviceMemoryGiB === 'number' &&
+    Number.isFinite(deviceMemoryGiB) &&
+    deviceMemoryGiB > 8
+    ? 2
+    : 1
 }
 
 export type FigSourceData = ArrayBuffer | Uint8Array
@@ -40,6 +51,27 @@ interface WorkerParseResult {
 }
 
 type ReloadFigBuffer = () => Promise<ArrayBuffer>
+
+const figParseWorkerLimiter = new DynamicConcurrencyLimiter(
+  figParseWorkerConcurrencyForDeviceMemory()
+)
+
+/**
+ * Change capacity for workers that have not started yet. Active workers keep
+ * ownership of their transferred buffers and always settle normally.
+ */
+export function setFigParseWorkerConcurrency(concurrency: number): void {
+  if (!Number.isFinite(concurrency) || concurrency < 1) {
+    throw new RangeError('FIG parse worker concurrency must be at least 1')
+  }
+  figParseWorkerLimiter.setConcurrency(
+    Math.min(MAX_FIG_PARSE_WORKER_CONCURRENCY, Math.floor(concurrency))
+  )
+}
+
+export function figParseWorkerQueueState(): ConcurrencyLimiterState {
+  return figParseWorkerLimiter.state()
+}
 
 function workerParseError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
@@ -85,6 +117,13 @@ function transferableFigBuffer(data: FigSourceData): ArrayBuffer {
 }
 
 function parseViaWorker(buffer: ArrayBuffer, options: ParseFigFileOptions): Promise<SceneGraph> {
+  return figParseWorkerLimiter.run(() => parseViaStartedWorker(buffer, options))
+}
+
+function parseViaStartedWorker(
+  buffer: ArrayBuffer,
+  options: ParseFigFileOptions
+): Promise<SceneGraph> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('../../../kiwi/fig/parse/worker.ts', import.meta.url), {
       type: 'module'

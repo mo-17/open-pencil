@@ -4,6 +4,7 @@ import type { CanvasKit, TypefaceFontProvider } from 'canvaskit-wasm'
 
 import type { SceneGraph } from '@open-pencil/scene-graph'
 
+import { DynamicConcurrencyLimiter, type ConcurrencyLimiterState } from '#core/async-work'
 import { DEFAULT_FONT_FAMILY, IS_BROWSER } from '#core/constants'
 import { BUNDLED_FONT_URLS } from '#core/text/bundled-fonts'
 import { fontFamilyLicenseDisplayForCatalog } from '#core/text/font/license-display'
@@ -44,6 +45,12 @@ function familyOption(family: string, source: FontFamilySource): FontFamilyOptio
 export interface FontLoadOptions {
   signal?: AbortSignal
   timeoutMs?: number
+}
+
+export const DEFAULT_FONT_LOAD_CONCURRENCY = 4
+
+export interface FontManagerOptions {
+  loadConcurrency?: number
 }
 
 function asError(reason: unknown, fallbackMessage: string): Error {
@@ -126,6 +133,7 @@ async function importedRenderFamily(data: ArrayBuffer): Promise<string> {
 }
 
 export class FontManager {
+  private readonly fontLoadLimiter: DynamicConcurrencyLimiter
   private loadedFamilies = new Map<string, ArrayBuffer>()
   private supplementalFamilyData = new Map<string, ArrayBuffer[]>()
   /**
@@ -155,6 +163,24 @@ export class FontManager {
   private webFonts = new WebFontResolver()
   private cjkFallbackFamilies: string[] = []
   private arabicFallbackFamilies: string[] = []
+
+  constructor(options: FontManagerOptions = {}) {
+    this.fontLoadLimiter = new DynamicConcurrencyLimiter(
+      options.loadConcurrency ?? DEFAULT_FONT_LOAD_CONCURRENCY
+    )
+  }
+
+  /**
+   * Change the capacity available to new font-source resolution flights.
+   * Registered fonts and already-running flights are never unloaded or interrupted.
+   */
+  setLoadConcurrency(concurrency: number): void {
+    this.fontLoadLimiter.setConcurrency(concurrency)
+  }
+
+  loadQueueState(): ConcurrencyLimiterState {
+    return this.fontLoadLimiter.state()
+  }
 
   attachProvider(_canvasKit: CanvasKit, provider: TypefaceFontProvider): void {
     this.fontProviders.add(provider)
@@ -456,7 +482,9 @@ export class FontManager {
     let flight = this.fontLoadPromises.get(cacheKey)
     if (!flight) {
       const requestedCharacters = new Set(characters)
-      const promise = this.runFontLoadFlight(family, style, requestedCharacters)
+      const promise = this.fontLoadLimiter.run(() =>
+        this.runFontLoadFlight(family, style, requestedCharacters)
+      )
       flight = { promise, requestedCharacters }
       this.fontLoadPromises.set(cacheKey, flight)
       const cleanup = () => {

@@ -2,7 +2,14 @@ import { describe, expect, test } from 'bun:test'
 
 import { SceneGraph } from '@open-pencil/core'
 
-import { computeAllLayoutsAsync, computeLayout } from '#core/layout'
+import {
+  LAYOUT_TIME_SLICE_MS,
+  computeAllLayoutsAsync,
+  computeLayout,
+  getDefaultLayoutTimeSliceMs,
+  layoutTimeSliceMsForPriority,
+  setDefaultLayoutTimeSliceMs
+} from '#core/layout'
 
 import { autoFrame, pageId, rect } from '#tests/helpers/layout'
 
@@ -31,7 +38,7 @@ describe('cooperative layout', () => {
     const cooperative = makeHorizontalGraph()
 
     computeLayout(sync.graph, sync.frameId)
-    await computeAllLayoutsAsync(cooperative.graph, cooperative.frameId, undefined, 1)
+    await computeAllLayoutsAsync(cooperative.graph, cooperative.frameId, { timeSliceMs: 0 })
 
     expect(geometry(cooperative.graph, cooperative.frameId)).toEqual(
       geometry(sync.graph, sync.frameId)
@@ -48,9 +55,10 @@ describe('cooperative layout', () => {
     const controller = new AbortController()
     setTimeout(() => controller.abort(), 0)
 
-    const error = await computeAllLayoutsAsync(graph, frame.id, controller.signal, 340).catch(
-      (reason: Error) => reason
-    )
+    const error = await computeAllLayoutsAsync(graph, frame.id, {
+      signal: controller.signal,
+      timeSliceMs: 1_000
+    }).catch((reason: Error) => reason)
 
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).name).toBe('AbortError')
@@ -58,7 +66,7 @@ describe('cooperative layout', () => {
 
     // A cancelled partial Yoga tree must be fully released so the same graph
     // can be laid out successfully on the next attempt.
-    await computeAllLayoutsAsync(graph, frame.id, undefined, 8)
+    await computeAllLayoutsAsync(graph, frame.id, { timeSliceMs: 0 })
     expect(graph.getChildren(frame.id)[1]?.x).toBe(10)
   })
 
@@ -80,9 +88,10 @@ describe('cooperative layout', () => {
       }
     })
 
-    const error = await computeAllLayoutsAsync(graph, frame.id, controller.signal, 1).catch(
-      (reason: Error) => reason
-    )
+    const error = await computeAllLayoutsAsync(graph, frame.id, {
+      signal: controller.signal,
+      timeSliceMs: 0
+    }).catch((reason: Error) => reason)
 
     expect(error).toBeInstanceOf(Error)
     expect((error as Error).name).toBe('AbortError')
@@ -109,10 +118,48 @@ describe('cooperative layout', () => {
       }
     })
 
-    await computeAllLayoutsAsync(graph, outerFrameId, undefined, 4)
+    await computeAllLayoutsAsync(graph, outerFrameId, { timeSliceMs: 0 })
 
     // Each descendant is applied once by the outer Yoga tree. The previous
     // bottom-up loop reapplied the same deep descendants quadratically.
     expect(geometryUpdates).toBe(depth)
+  })
+
+  test('uses the documented priority budgets', () => {
+    expect(LAYOUT_TIME_SLICE_MS).toEqual({ interactive: 2, normal: 5, idle: 8 })
+    expect(layoutTimeSliceMsForPriority('interactive')).toBe(2)
+    expect(layoutTimeSliceMsForPriority('normal')).toBe(5)
+    expect(layoutTimeSliceMsForPriority('idle')).toBe(8)
+  })
+
+  test('updates the default time slice used by running cooperative work', () => {
+    const previous = getDefaultLayoutTimeSliceMs()
+    try {
+      setDefaultLayoutTimeSliceMs(2)
+      expect(getDefaultLayoutTimeSliceMs()).toBe(2)
+      setDefaultLayoutTimeSliceMs(5)
+      expect(getDefaultLayoutTimeSliceMs()).toBe(5)
+    } finally {
+      setDefaultLayoutTimeSliceMs(previous)
+    }
+  })
+
+  test('rereads an injected time-slice budget without abandoning the active layout', async () => {
+    const { graph, frameId } = makeHorizontalGraph()
+    let clock = 0
+    let timeSliceMs = 100
+    let yields = 0
+
+    await computeAllLayoutsAsync(graph, frameId, {
+      timeSliceMs: () => timeSliceMs,
+      now: () => clock++,
+      hostYield: async () => {
+        yields++
+        timeSliceMs = 0
+      }
+    })
+
+    expect(yields).toBeGreaterThan(3)
+    expect(graph.getChildren(frameId)[1]?.x).toBe(59)
   })
 })

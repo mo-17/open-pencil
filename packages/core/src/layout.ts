@@ -24,7 +24,7 @@ export {
 } from './layout/text-measurement'
 import { isAutoLayoutMode, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
 
-import { throwIfAborted, yieldToHost, type CooperativeExecution } from '#core/async-work'
+import { throwIfAborted, yieldToHost } from '#core/async-work'
 
 import { estimateTextSize, getTextMeasurer } from './layout/text-measurement'
 import {
@@ -40,6 +40,48 @@ import {
 
 const LAYOUT_ABORT_MESSAGE = 'Layout cancelled'
 import type { MotionVisualState } from './motion'
+
+export type LayoutWorkPriority = 'interactive' | 'normal' | 'idle'
+
+export const LAYOUT_TIME_SLICE_MS = {
+  interactive: 2,
+  normal: 5,
+  idle: 8
+} as const satisfies Record<LayoutWorkPriority, number>
+
+let defaultLayoutTimeSliceMs: number = LAYOUT_TIME_SLICE_MS.normal
+
+export interface ComputeAllLayoutsAsyncOptions {
+  signal?: AbortSignal
+  priority?: LayoutWorkPriority
+  /** A getter allows a running background layout to follow a changed resource profile. */
+  timeSliceMs?: number | (() => number)
+  /** Injectable monotonic clock for hosts and deterministic tests. */
+  now?: () => number
+  /** Injectable task yield. Abort is checked immediately before and after it. */
+  hostYield?: (signal?: AbortSignal) => Promise<void>
+}
+
+interface LayoutCooperativeExecution {
+  signal?: AbortSignal
+  timeSliceMs: () => number
+  now: () => number
+  hostYield: (signal?: AbortSignal) => Promise<void>
+  sliceStartedAt: number
+}
+
+export function layoutTimeSliceMsForPriority(priority: LayoutWorkPriority): number {
+  return LAYOUT_TIME_SLICE_MS[priority]
+}
+
+/** Changes the default for pending and running cooperative layouts without affecting sync Yoga. */
+export function setDefaultLayoutTimeSliceMs(timeSliceMs: number): void {
+  defaultLayoutTimeSliceMs = normalizedTimeSliceMs(timeSliceMs)
+}
+
+export function getDefaultLayoutTimeSliceMs(): number {
+  return defaultLayoutTimeSliceMs
+}
 
 export function computeLayout(graph: LayoutGraph, frameId: string): void {
   const steps = computeLayoutSteps(graph, frameId)
@@ -108,19 +150,19 @@ export function computeAllLayouts(graph: SceneGraph, scopeId?: string): void {
 
 /**
  * Cooperative variant for long-running AI/automation work. It yields between
- * small traversal/layout batches so WebKit can deliver AbortSignal events.
+ * bounded traversal/layout time slices so WebKit can deliver AbortSignal events.
+ * The former fourth marker-count argument remains accepted for source
+ * compatibility but no longer controls scheduling.
  */
 export async function computeAllLayoutsAsync(
   graph: SceneGraph,
   scopeId?: string,
-  signal?: AbortSignal,
-  yieldEvery = 32
+  signalOrOptions?: AbortSignal | ComputeAllLayoutsAsyncOptions,
+  _legacyYieldEvery?: number
 ): Promise<void> {
-  const execution: CooperativeExecution = {
-    signal,
-    yieldEvery: Math.max(1, yieldEvery),
-    workSinceYield: 0
-  }
+  const options = asComputeAllLayoutsAsyncOptions(signalOrOptions)
+  const signal = options.signal
+  const execution = createLayoutCooperativeExecution(options)
   throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
   const rootId = scopeId ?? graph.rootId
   const visited = new Set<string>()
@@ -168,7 +210,7 @@ export async function computeAllLayoutsAsync(
 async function computeLayoutCooperatively(
   graph: LayoutGraph,
   frameId: string,
-  execution: CooperativeExecution
+  execution: LayoutCooperativeExecution
 ): Promise<void> {
   const steps = computeLayoutSteps(graph, frameId)
   let completed = false
@@ -186,13 +228,64 @@ async function computeLayoutCooperatively(
   }
 }
 
-async function checkpointLayout(execution: CooperativeExecution, force = false): Promise<void> {
+async function checkpointLayout(
+  execution: LayoutCooperativeExecution,
+  force = false
+): Promise<void> {
   throwIfAborted(execution.signal, LAYOUT_ABORT_MESSAGE)
-  execution.workSinceYield++
-  if (!force && execution.workSinceYield < execution.yieldEvery) return
-  execution.workSinceYield = 0
-  await yieldToHost(execution.signal, LAYOUT_ABORT_MESSAGE)
+  const elapsed = execution.now() - execution.sliceStartedAt
+  if (!force && elapsed < execution.timeSliceMs()) return
+  await execution.hostYield(execution.signal)
   throwIfAborted(execution.signal, LAYOUT_ABORT_MESSAGE)
+  execution.sliceStartedAt = execution.now()
+}
+
+function asComputeAllLayoutsAsyncOptions(
+  value: AbortSignal | ComputeAllLayoutsAsyncOptions | undefined
+): ComputeAllLayoutsAsyncOptions {
+  if (!value) return {}
+  return isAbortSignal(value) ? { signal: value } : value
+}
+
+function isAbortSignal(value: AbortSignal | ComputeAllLayoutsAsyncOptions): value is AbortSignal {
+  return (
+    'aborted' in value &&
+    typeof value.addEventListener === 'function' &&
+    typeof value.removeEventListener === 'function'
+  )
+}
+
+function createLayoutCooperativeExecution(
+  options: ComputeAllLayoutsAsyncOptions
+): LayoutCooperativeExecution {
+  const configuredTimeSlice =
+    options.timeSliceMs ??
+    (options.priority
+      ? layoutTimeSliceMsForPriority(options.priority)
+      : () => getDefaultLayoutTimeSliceMs())
+  const timeSliceMs =
+    typeof configuredTimeSlice === 'function'
+      ? () => normalizedTimeSliceMs(configuredTimeSlice())
+      : () => normalizedTimeSliceMs(configuredTimeSlice)
+  const now = options.now ?? monotonicNow
+  return {
+    signal: options.signal,
+    timeSliceMs,
+    now,
+    hostYield: options.hostYield ?? ((signal) => yieldToHost(signal, LAYOUT_ABORT_MESSAGE)),
+    sliceStartedAt: now()
+  }
+}
+
+function normalizedTimeSliceMs(timeSliceMs: number): number {
+  if (!Number.isFinite(timeSliceMs) || timeSliceMs < 0) {
+    throw new RangeError('Layout time slice must be a finite non-negative number')
+  }
+  return timeSliceMs
+}
+
+function monotonicNow(): number {
+  return typeof performance === 'undefined' ? Date.now() : performance.now()
 }
 
 export type MotionLayoutPreviewNode = Pick<SceneNode, 'x' | 'y' | 'width' | 'height'>

@@ -1,7 +1,11 @@
 export {
+  MAX_FIG_PARSE_WORKER_CONCURRENCY,
+  figParseWorkerConcurrencyForDeviceMemory,
+  figParseWorkerQueueState,
   readFigFile,
   readFigSource,
   parseFigFile,
+  setFigParseWorkerConcurrency,
   type FigSourceData,
   type ParseFigFileOptions,
   type ReloadableFigSource
