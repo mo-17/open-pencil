@@ -6,6 +6,34 @@ export type PreviewUpdateAckEvent =
   | { type: 'updated' }
   | { type: 'closing' }
 
+export type PreviewStartupEvent = Extract<PreviewUpdateAckEvent, { type: 'ready' | 'error' }>
+
+/** Preserve a startup result emitted before `Command.spawn()` resolves and the
+ * ready waiter is attached. Tauri may deliver stdout before the spawn promise,
+ * so dropping this event otherwise turns a healthy server into a 15s timeout. */
+export function createPreviewStartupEventBuffer(): {
+  capture: (event: PreviewUpdateAckEvent) => void
+  replay: (listener: (event: PreviewStartupEvent) => void) => void
+  settle: () => void
+} {
+  let settled = false
+  let buffered: PreviewStartupEvent | null = null
+  return {
+    capture(event) {
+      if (!settled && buffered === null && (event.type === 'ready' || event.type === 'error')) {
+        buffered = event
+      }
+    },
+    replay(listener) {
+      if (buffered) listener(buffered)
+    },
+    settle() {
+      settled = true
+      buffered = null
+    }
+  }
+}
+
 /** Wait for the sidecar to accept one serialized full-file snapshot. */
 export function waitForPreviewUpdateAck(
   listeners: Set<(event: PreviewUpdateAckEvent) => void>,

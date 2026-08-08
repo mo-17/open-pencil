@@ -1,9 +1,32 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  createPreviewStartupEventBuffer,
   waitForPreviewUpdateAck,
   type PreviewUpdateAckEvent
 } from '@/app/lowcode/preview-pane/update-ack'
+
+describe('preview startup event buffer', () => {
+  test('replays an early ready event exactly while startup is pending', () => {
+    const buffer = createPreviewStartupEventBuffer()
+    const events: PreviewUpdateAckEvent[] = []
+    buffer.capture({ type: 'ready', url: 'http://localhost:1234/', port: 1234 })
+    buffer.replay((event) => events.push(event))
+    buffer.settle()
+    buffer.replay((event) => events.push(event))
+    expect(events).toEqual([{ type: 'ready', url: 'http://localhost:1234/', port: 1234 }])
+  })
+
+  test('preserves the first startup result and ignores update acknowledgements', () => {
+    const buffer = createPreviewStartupEventBuffer()
+    const events: PreviewUpdateAckEvent[] = []
+    buffer.capture({ type: 'updated' })
+    buffer.capture({ type: 'error', message: 'early failure' })
+    buffer.capture({ type: 'ready', url: 'http://localhost:9999/', port: 9999 })
+    buffer.replay((event) => events.push(event))
+    expect(events).toEqual([{ type: 'error', message: 'early failure' }])
+  })
+})
 
 function emit(
   listeners: Set<(event: PreviewUpdateAckEvent) => void>,

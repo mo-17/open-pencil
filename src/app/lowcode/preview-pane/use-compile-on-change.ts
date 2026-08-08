@@ -1,6 +1,6 @@
 // Wires the editor scene-graph into the lowcode preview pipeline:
 //
-//   sceneVersion --(200ms debounce)--> compile(all pages | currentPage)
+//   sceneVersion --(refresh policy)--> compile(all pages | currentPage)
 //                                          |
 //                                          v
 //                                  Map<path, content>
@@ -23,8 +23,7 @@
 // via @tauri-apps/plugin-shell; that path is never imported statically so
 // the browser bundle stays clean.
 
-import { watchDebounced } from '@vueuse/core'
-import { onBeforeUnmount, ref, type Ref } from 'vue'
+import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
 
 import {
   compile,
@@ -44,7 +43,15 @@ import { decodeTauriStderr } from '@/app/shell/ui'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
 
-import { waitForPreviewUpdateAck } from './update-ack'
+import {
+  createPreviewCompileScheduler,
+  createPreviewCompileSchedulerState,
+  DEFAULT_PREVIEW_REFRESH_POLICY,
+  type PreviewCompileRun,
+  type PreviewCompileSchedulerState,
+  type PreviewRefreshPolicy
+} from './compile-scheduler'
+import { createPreviewStartupEventBuffer, waitForPreviewUpdateAck } from './update-ack'
 
 interface SidecarReadyEvent {
   type: 'ready'
@@ -70,8 +77,6 @@ type SidecarEvent =
 const SIDECAR_NAME = 'lowcode-preview'
 const SIDECAR_ENTRY = 'packages/compiler/src/dev-server.ts'
 const READY_TIMEOUT_MS = 15_000
-const DEBOUNCE_MS = 200
-
 const NOOP = (): void => undefined
 
 export type PreviewUiKit = 'none' | 'shadcn'
@@ -80,6 +85,7 @@ export interface PreviewCompileSettings {
   uiKit: Ref<PreviewUiKit>
   i18nEnabled: Ref<boolean>
   localesInput: Ref<string>
+  refreshPolicy?: Ref<PreviewRefreshPolicy>
 }
 
 export function parsePreviewLocales(raw: string): string[] {
@@ -119,6 +125,12 @@ async function startPreviewSidecar(): Promise<PreviewSidecar> {
   const listeners = new Set<(event: SidecarEvent) => void>()
   let exited = false
   let exitCode: number | null = null
+  const startupEvents = createPreviewStartupEventBuffer()
+
+  const dispatch = (event: SidecarEvent): void => {
+    startupEvents.capture(event)
+    for (const fn of listeners) fn(event)
+  }
 
   command.stdout.on('data', (raw: Uint8Array | number[] | string) => {
     const chunk = typeof raw === 'string' ? raw : decodeTauriStderr(raw)
@@ -130,8 +142,7 @@ async function startPreviewSidecar(): Promise<PreviewSidecar> {
       nl = stdoutBuffer.indexOf('\n')
       if (!line) continue
       try {
-        const event = JSON.parse(line) as SidecarEvent
-        for (const fn of listeners) fn(event)
+        dispatch(JSON.parse(line) as SidecarEvent)
       } catch (e) {
         console.warn('[preview] non-JSON stdout:', line, e)
       }
@@ -152,9 +163,7 @@ async function startPreviewSidecar(): Promise<PreviewSidecar> {
   command.on('close', (data: { code: number | null }) => {
     exited = true
     exitCode = data.code
-    for (const fn of listeners) {
-      fn({ type: 'error', message: `dev-server exited (code ${data.code ?? 'null'})` })
-    }
+    dispatch({ type: 'error', message: `dev-server exited (code ${data.code ?? 'null'})` })
   })
 
   let child: Awaited<ReturnType<typeof command.spawn>>
@@ -191,7 +200,9 @@ async function startPreviewSidecar(): Promise<PreviewSidecar> {
       }
     }
     listeners.add(handle)
+    startupEvents.replay(handle)
   })
+  startupEvents.settle()
 
   const encodeCache = createPreviewFileEncodeCache()
   let updateQueue: Promise<void> = Promise.resolve()
@@ -246,11 +257,14 @@ export type PreviewStatus =
 
 interface UseCompileOnChangeResult {
   status: Ref<PreviewStatus>
+  compileState: Ref<PreviewCompileSchedulerState>
+  compileWarnings: Ref<CompileWarning[]>
+  compileError: Ref<string | null>
   motionWarnings: Ref<CompileWarning[]>
   motionCompileError: Ref<string | null>
-  /** Compile + push immediately, bypassing the sceneVersion debounce. Used by
+  /** Compile + push immediately, bypassing the active refresh policy. Used by
    *  the PreviewPane reload button so the user can force a fresh build without
-   *  waiting on the next debounced tick. No-op until the sidecar is ready. */
+   *  waiting on an Auto trailing flush. No-op until the sidecar is ready. */
   forceRecompile: () => void
 }
 
@@ -260,28 +274,41 @@ export function onlyMotionWarnings(warnings: readonly CompileWarning[]): Compile
 
 /**
  * Mount-time: spawn the dev-server, do an initial compile + push.
- * Then debounce-watch `sceneVersion` and push fresh compiles on change.
+ * Then policy-watch `sceneVersion` and push fresh compiles on change.
  * Unmount: dispose the sidecar.
  */
 export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompileOnChangeResult {
   const status = ref<PreviewStatus>({ kind: 'idle' })
+  const compileState = ref(
+    createPreviewCompileSchedulerState(
+      settings?.refreshPolicy?.value ?? DEFAULT_PREVIEW_REFRESH_POLICY
+    )
+  )
+  const compileWarnings = ref<CompileWarning[]>([])
+  const compileError = ref<string | null>(null)
   const motionWarnings = ref<CompileWarning[]>([])
   const motionCompileError = ref<string | null>(null)
 
   if (!isTauri()) {
     status.value = { kind: 'disabled', reason: 'Preview is only available in the desktop app' }
-    return { status, motionWarnings, motionCompileError, forceRecompile: NOOP }
+    return {
+      status,
+      compileState,
+      compileWarnings,
+      compileError,
+      motionWarnings,
+      motionCompileError,
+      forceRecompile: NOOP
+    }
   }
 
   const store = useEditorStore()
   let sidecar: PreviewSidecar | null = null
   let cancelled = false
-  let compileRevision = 0
 
-  async function compileAndPush(refreshFonts: boolean): Promise<void> {
+  async function compileAndPush(request: PreviewCompileRun) {
     const activeSidecar = sidecar
-    if (!activeSidecar) return
-    const revision = ++compileRevision
+    if (!activeSidecar) return 'superseded' as const
     try {
       const graph = store.graph
       const pages = graph.getPages()
@@ -297,9 +324,11 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         providers: fontManager.enabledOnlineFontProviders(),
         fetcher: tauriFetch,
         preferLoaded: true,
-        refresh: refreshFonts
+        refresh: request.refreshFonts
       })
-      if (cancelled || revision !== compileRevision || sidecar !== activeSidecar) return
+      if (!request.isCurrent() || sidecar !== activeSidecar) {
+        return 'superseded' as const
+      }
       const out = compile({
         graph,
         pageIds,
@@ -309,23 +338,40 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
           ...previewCompilerOverrides(settings)
         })
       })
+      // `compile` is synchronous. Re-check the scheduler revision before the
+      // sidecar write so a newer scene snapshot never joins the sidecar queue
+      // behind an already obsolete compile.
+      if (!request.isCurrent() || sidecar !== activeSidecar) {
+        return 'superseded' as const
+      }
+      compileWarnings.value = [...out.warnings]
+      compileError.value = null
       motionWarnings.value = onlyMotionWarnings(out.warnings)
       motionCompileError.value = null
       for (const w of out.warnings) {
         console.warn(`[preview] ${w.code}: ${w.message}`)
       }
       await activeSidecar.update(out.files)
+      return 'pushed' as const
     } catch (e) {
-      if (cancelled || revision !== compileRevision) return
+      if (!request.isCurrent()) return 'superseded' as const
+      const message = e instanceof Error ? e.message : String(e)
+      compileWarnings.value = []
+      compileError.value = message
       motionWarnings.value = []
-      motionCompileError.value = e instanceof Error ? e.message : String(e)
+      motionCompileError.value = message
       console.warn('[preview] compile failed:', e)
+      return 'failed' as const
     }
   }
 
-  function recompileAndPush(refreshFonts = false): void {
-    void compileAndPush(refreshFonts)
-  }
+  const scheduler = createPreviewCompileScheduler({
+    policy: compileState.value.policy,
+    run: compileAndPush,
+    onStateChange: (next) => {
+      compileState.value = next
+    }
+  })
 
   status.value = { kind: 'starting' }
   async function launchPreviewSidecar(): Promise<void> {
@@ -336,7 +382,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
       } else {
         sidecar = handle
         status.value = { kind: 'ready', url: handle.url }
-        recompileAndPush()
+        scheduler.requestInitial()
       }
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e)
@@ -345,14 +391,16 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   }
   void launchPreviewSidecar()
 
-  const stopDebounced = watchDebounced(
+  const stopSceneWatch = watch(
     () => [store.state.sceneVersion, importedFontRevision.value] as const,
     (current, previous) => {
       if (!sidecar) return
-      recompileAndPush(current[1] !== previous[1])
-    },
-    { debounce: DEBOUNCE_MS }
+      scheduler.requestChange(current[1] !== previous[1])
+    }
   )
+  const stopPolicyWatch = settings?.refreshPolicy
+    ? watch(settings.refreshPolicy, (policy) => scheduler.setPolicy(policy))
+    : NOOP
 
   // §7 decision #4: switching `currentPageId` no longer rebuilds the
   // preview — it just navigates the existing iframe via the bridge
@@ -362,7 +410,9 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
 
   onBeforeUnmount(() => {
     cancelled = true
-    stopDebounced()
+    stopSceneWatch()
+    stopPolicyWatch()
+    scheduler.dispose()
     if (sidecar) {
       void sidecar.dispose()
       sidecar = null
@@ -371,8 +421,13 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
 
   return {
     status,
+    compileState,
+    compileWarnings,
+    compileError,
     motionWarnings,
     motionCompileError,
-    forceRecompile: () => recompileAndPush(true)
+    forceRecompile: () => {
+      if (sidecar) scheduler.flush(true)
+    }
   }
 }

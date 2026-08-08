@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useEventListener } from '@vueuse/core'
+import { useEventListener, useLocalStorage } from '@vueuse/core'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { derivePagePaths, type PagePathInfo } from '@open-pencil/compiler'
@@ -10,6 +10,12 @@ import type { PreviewDocStatePayload } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import Tip from '@/components/ui/Tip.vue'
 
+import { summarizeCompileDiagnostics, type CompileDiagnostic } from './compile-diagnostics'
+import {
+  DEFAULT_PREVIEW_REFRESH_POLICY,
+  normalizePreviewRefreshPolicy,
+  type PreviewRefreshPolicy
+} from './compile-scheduler'
 import DeployControls from './DeployControls.vue'
 import { useCompileOnChange, type PreviewUiKit } from './use-compile-on-change'
 
@@ -27,16 +33,79 @@ const previewUiKit = ref<PreviewUiKit>('none')
 const previewI18nEnabled = ref(false)
 const previewLocalesInput = ref('')
 const previewTheme = ref<'light' | 'dark'>('light')
-const { status, motionWarnings, motionCompileError, forceRecompile } = useCompileOnChange({
+const storedPreviewRefreshPolicy = useLocalStorage<unknown>(
+  'open-pencil:preview-refresh-policy',
+  DEFAULT_PREVIEW_REFRESH_POLICY
+)
+const previewRefreshPolicy = computed<PreviewRefreshPolicy>({
+  get: () => normalizePreviewRefreshPolicy(storedPreviewRefreshPolicy.value),
+  set: (policy) => {
+    storedPreviewRefreshPolicy.value = normalizePreviewRefreshPolicy(policy)
+  }
+})
+watch(
+  storedPreviewRefreshPolicy,
+  (value) => {
+    const normalized = normalizePreviewRefreshPolicy(value)
+    if (value !== normalized) storedPreviewRefreshPolicy.value = normalized
+  },
+  { immediate: true }
+)
+const {
+  status,
+  compileState,
+  compileWarnings,
+  compileError,
+  motionWarnings,
+  motionCompileError,
+  forceRecompile
+} = useCompileOnChange({
   uiKit: previewUiKit,
   i18nEnabled: previewI18nEnabled,
-  localesInput: previewLocalesInput
+  localesInput: previewLocalesInput,
+  refreshPolicy: previewRefreshPolicy
 })
 const store = useEditorStore()
 const collab = useCollabInjected()
 
 const iframeKey = ref(0)
 const iframeEl = ref<HTMLIFrameElement | null>(null)
+const diagnosticsOpen = ref(false)
+const diagnosticSummary = computed(() =>
+  summarizeCompileDiagnostics(compileWarnings.value, compileError.value)
+)
+const diagnosticSummaryLabel = computed(() => {
+  const { errorCount, warningCount, total } = diagnosticSummary.value
+  if (total === 0) return 'No compile diagnostics.'
+  const parts: string[] = []
+  if (errorCount > 0) parts.push(`${errorCount} error${errorCount === 1 ? '' : 's'}`)
+  if (warningCount > 0) parts.push(`${warningCount} warning${warningCount === 1 ? '' : 's'}`)
+  return parts.join(' · ')
+})
+const compileActivityLabel = computed(() => {
+  if (compileState.value.inFlight) return 'Compiling…'
+  if (compileState.value.pending) {
+    return compileState.value.policy === 'manual'
+      ? 'Changes pending'
+      : `Queued ${compileState.value.autoDelayMs}ms`
+  }
+  if (compileState.value.lastDurationMs !== null) {
+    return `${Math.round(compileState.value.lastDurationMs)}ms`
+  }
+  return 'Waiting'
+})
+const compileActivityDetail = computed(() => {
+  const state = compileState.value
+  const parts = [
+    `Policy: ${state.policy}`,
+    `adaptive delay: ${state.autoDelayMs}ms`,
+    `latest revision: ${state.latestRevision}`
+  ]
+  if (state.lastPushedRevision !== null) parts.push(`last pushed: ${state.lastPushedRevision}`)
+  if (state.coalescedRequests > 0) parts.push(`coalesced: ${state.coalescedRequests}`)
+  if (state.supersededRuns > 0) parts.push(`superseded: ${state.supersededRuns}`)
+  return parts.join(' · ')
+})
 
 type MotionDebugStatus = 'idle' | 'waiting' | 'ready' | 'unavailable' | 'error'
 
@@ -178,6 +247,25 @@ function findPageIdOfNode(nodeId: string): string | null {
     cur = cur.parentId ? store.graph.getNode(cur.parentId) : undefined
   }
   return cur?.id ?? null
+}
+
+function canJumpToDiagnostic(diagnostic: CompileDiagnostic): boolean {
+  return diagnostic.nodeId ? findPageIdOfNode(diagnostic.nodeId) !== null : false
+}
+
+function jumpToDiagnostic(diagnostic: CompileDiagnostic): void {
+  const nodeId = diagnostic.nodeId
+  if (!nodeId || !store.graph.getNode(nodeId)) return
+  const pageId = findPageIdOfNode(nodeId)
+  if (!pageId) return
+  if (pageId === store.state.currentPageId) {
+    store.select([nodeId])
+    return
+  }
+  void store.switchPage(pageId).then(() => {
+    if (store.graph.getNode(nodeId)) store.select([nodeId])
+    return undefined
+  })
 }
 
 function currentSelectionId(): string | null {
@@ -483,7 +571,53 @@ onBeforeUnmount(() => {
           placeholder="ar, fr"
           class="h-6 w-20 rounded border border-border bg-input px-1 text-xs text-surface"
         />
+        <Tip label="Preview refresh policy">
+          <label class="flex items-center gap-1 text-xs text-muted">
+            <span>Refresh</span>
+            <select
+              v-model="previewRefreshPolicy"
+              data-test-id="lowcode-preview-refresh-policy"
+              class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
+            >
+              <option value="realtime">Real-time</option>
+              <option value="auto">Auto</option>
+              <option value="manual">Manual</option>
+            </select>
+          </label>
+        </Tip>
+        <Tip :label="compileActivityDetail">
+          <span
+            data-test-id="lowcode-preview-compile-activity"
+            :data-policy="compileState.policy"
+            :data-in-flight="compileState.inFlight"
+            :data-pending="compileState.pending"
+            :data-latest-revision="compileState.latestRevision"
+            class="max-w-24 truncate rounded bg-hover px-1.5 py-0.5 text-[10px] text-muted"
+          >
+            {{ compileActivityLabel }}
+          </span>
+        </Tip>
         <DeployControls />
+        <Tip label="Inspect compiler diagnostics">
+          <button
+            type="button"
+            data-test-id="lowcode-preview-diagnostics-toggle"
+            aria-controls="lowcode-preview-diagnostics"
+            :aria-expanded="diagnosticsOpen"
+            class="flex h-6 items-center gap-1 rounded px-2 text-xs outline-none transition-colors hover:bg-hover focus-visible:ring-1 focus-visible:ring-accent"
+            :class="diagnosticsOpen ? 'bg-hover text-surface' : 'text-muted'"
+            @click="diagnosticsOpen = !diagnosticsOpen"
+          >
+            Diagnostics
+            <span
+              v-if="diagnosticSummary.total > 0"
+              data-test-id="lowcode-preview-diagnostics-count"
+              class="rounded bg-amber-500/15 px-1 text-[10px] text-amber-500"
+            >
+              {{ diagnosticSummary.total }}
+            </span>
+          </button>
+        </Tip>
         <Tip label="Inspect Motion runtime tracks">
           <button
             type="button"
@@ -540,6 +674,58 @@ onBeforeUnmount(() => {
           {{ statusLabel }}
         </div>
       </div>
+      <section
+        v-if="diagnosticsOpen"
+        id="lowcode-preview-diagnostics"
+        data-test-id="lowcode-preview-diagnostics"
+        aria-label="Preview Diagnostics"
+        class="max-h-48 shrink-0 overflow-auto border-t border-border bg-panel text-xs text-surface"
+      >
+        <div class="sticky top-0 flex items-center justify-between bg-panel px-2 py-1.5">
+          <h2 class="font-medium">Diagnostics</h2>
+          <span class="text-muted" aria-live="polite">{{ diagnosticSummaryLabel }}</span>
+        </div>
+        <p
+          v-if="diagnosticSummary.total === 0"
+          data-test-id="lowcode-preview-diagnostics-empty"
+          class="border-t border-border px-2 py-2 text-muted"
+        >
+          The latest preview compile completed without diagnostics.
+        </p>
+        <ul v-else class="border-t border-border">
+          <li
+            v-for="(diagnostic, index) in diagnosticSummary.items"
+            :key="`${diagnostic.severity}:${diagnostic.code}:${diagnostic.nodeId ?? ''}:${index}`"
+            data-test-id="lowcode-preview-diagnostic"
+            :data-severity="diagnostic.severity"
+            class="flex items-start gap-2 border-b border-border px-2 py-1.5 last:border-b-0"
+          >
+            <span
+              class="mt-0.5 shrink-0 uppercase"
+              :class="diagnostic.severity === 'error' ? 'text-red-500' : 'text-amber-500'"
+            >
+              {{ diagnostic.severity }}
+            </span>
+            <span class="min-w-0 flex-1 break-words">
+              <code>{{ diagnostic.code }}</code
+              >: {{ diagnostic.message }}
+              <span v-if="diagnostic.nodeId" class="block truncate text-muted">
+                Node {{ diagnostic.nodeId }}
+              </span>
+            </span>
+            <button
+              v-if="canJumpToDiagnostic(diagnostic)"
+              type="button"
+              data-test-id="lowcode-preview-diagnostic-jump"
+              :aria-label="`Select node ${diagnostic.nodeId}`"
+              class="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted hover:bg-hover hover:text-surface"
+              @click="jumpToDiagnostic(diagnostic)"
+            >
+              Select
+            </button>
+          </li>
+        </ul>
+      </section>
       <section
         v-if="motionDebugEnabled"
         id="lowcode-preview-motion-debug"
