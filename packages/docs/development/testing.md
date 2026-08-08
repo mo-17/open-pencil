@@ -8,6 +8,67 @@
 | Figma CDP reference   | Playwright | `bun run test:figma` | `tests/figma/`  |
 | Unit tests            | bun:test   | `bun run test:unit`  | `tests/engine/` |
 
+## Documentation Build Memory
+
+The production documentation build avoids loading every page into one Vite/Rolldown module graph.
+By default, it runs the English partition followed by the partially translated `zh-cn` section.
+Each enabled locale is built in a separate process so its heap can be released before the next
+partition starts. After all enabled partitions succeed, their HTML, shared assets, page hash map,
+and sitemap are merged into the final VitePress output.
+
+Within each partition, VitePress page rendering is bounded to one page at a time by default.
+LLM-friendly Markdown is generated only after the site build, in a separate bounded-memory pass:
+per-page files are written immediately and `llms-full.txt` is streamed with backpressure instead of
+being assembled in memory.
+
+```sh
+bun run docs:build
+```
+
+For faster builds on a machine with more memory, increase either concurrency limit explicitly:
+
+```sh
+DOCS_BUILD_CONCURRENCY=2 DOCS_LLMS_CONCURRENCY=4 bun run docs:build
+```
+
+Use these environment variables when diagnosing a documentation build:
+
+| Variable                 | Purpose                                                                 |
+| ------------------------ | ----------------------------------------------------------------------- |
+| `DOCS_BUILD_CONCURRENCY` | Maximum concurrent VitePress page renders per locale; defaults to `1`.  |
+| `DOCS_LLMS_CONCURRENCY`  | Maximum concurrent LLM Markdown transforms; defaults to `2`.            |
+| `DOCS_TWOSLASH=0`        | Temporarily disables Twoslash semantic analysis; Shiki remains active.  |
+| `DOCS_LOCAL_SEARCH=0`    | Temporarily disables local-search indexing to isolate search memory.    |
+| `DOCS_LOCALES`           | Comma-separated site locales; defaults to `en,zh-cn` and requires `en`. |
+| `DOCS_BUILD_LOCALE`      | Selects one internal locale partition; the normal build sets this.      |
+| `DOCS_OUT_DIR`           | Uses a `.vitepress/dist*` final directory for an isolated experiment.   |
+| `DOCS_CACHE_DIR`         | Overrides VitePress's cache directory for an isolated experiment.       |
+| `NODE_OPTIONS`           | Preserves custom Node flags and adds a 4 GiB heap unless overridden.    |
+
+The maintained production documentation defaults to English and Simplified Chinese. Archived
+German, French, Spanish, Italian, Polish, and Russian sources remain in the repository but are not
+built, indexed, linked in the language menu, or advertised through localized SEO. Set an explicit
+override such as `DOCS_LOCALES=en,de,zh-cn` to rebuild an archived locale temporarily; the canonical
+English locale is always required.
+
+Keep or restore `DOCS_BUILD_CONCURRENCY=1` first when diagnosing an out-of-memory failure. Increase
+it only after measuring peak RSS on the target machine. Use the Twoslash and local-search switches
+only as diagnostic probes, not for a production deployment. The normal build owns
+`DOCS_BUILD_LOCALE` and its per-partition temporary output/cache paths.
+
+SDK component reference loaders share one `vue-component-meta` checker per absolute repository
+tsconfig and checker option set. Vite bundles each `.data.ts` loader independently; without this
+process-wide cache, every loader would retain another full TypeScript program and memory would grow
+linearly during the English partition.
+
+Local-search indexes are partition-specific. Navigation within one language remains client-side,
+but switching languages performs a full page load so the browser loads the destination locale's
+search index and route metadata instead of retaining those from the previous partition.
+Localized SEO alternates are also source-aware: a page is linked with `hreflang` and included in
+the sitemap's alternate-language list only when its translated Markdown source exists. This keeps
+the partial Simplified Chinese section from advertising untranslated `/zh-cn/` URLs that would
+return a 404; its navigation links those entries to the canonical English pages instead.
+
 ## E2E Visual Regression
 
 Playwright creates shapes on the canvas and compares screenshots against baseline PNGs.

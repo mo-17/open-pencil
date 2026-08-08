@@ -1,9 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import type { LoaderModule } from 'vitepress'
 import { createChecker } from 'vue-component-meta'
-import type { Loader } from 'vitepress'
+
+import { getOrCreateProcessSingleton } from './process-singleton'
+import { createRefreshingChecker } from './refreshing-checker'
 
 export interface SdkComponentPropMeta {
   name: string
@@ -55,25 +58,39 @@ function findWorkspaceRoot(start: string): string {
 }
 
 const repoRoot = findWorkspaceRoot(fileURLToPath(new URL('.', import.meta.url)))
-const checker = createChecker(resolve(repoRoot, 'packages/vue/tsconfig.json'), { schema: false })
+const vueTsconfig = realpathSync(resolve(repoRoot, 'packages/vue/tsconfig.json'))
+const checkerService = getOrCreateProcessSingleton(
+  `vue-component-meta:${vueTsconfig}:schema=false`,
+  () => createRefreshingChecker(createChecker(vueTsconfig, { schema: false }), vueTsconfig)
+)
 
 export interface SdkComponentData {
   components: SdkComponentMeta[]
 }
 
-export function defineComponentMetaLoader(sources: string[]): Loader<SdkComponentData> {
+export function defineComponentMetaLoader(sources: string[]): LoaderModule<SdkComponentData> {
   return {
-    watch: sources.map((source) => resolve(repoRoot, source)),
-    load: () => ({ components: sources.map(readComponentMeta) })
+    watch: [vueTsconfig, ...sources.map((source) => resolve(repoRoot, source))],
+    load: () => {
+      checkerService.refreshConfig()
+      return { components: sources.map(readComponentMeta) }
+    }
   }
 }
 
 export function readComponentMeta(source: string): SdkComponentMeta {
   const absoluteSource = resolve(repoRoot, source)
-  const meta = checker.getComponentMeta(absoluteSource)
+  checkerService.refreshFile(absoluteSource)
+  const meta = checkerService.checker.getComponentMeta(absoluteSource)
 
   return {
-    name: meta.name ?? source.split('/').at(-1)?.replace(/\.vue$/, '') ?? source,
+    name:
+      meta.name ??
+      source
+        .split('/')
+        .at(-1)
+        ?.replace(/\.vue$/, '') ??
+      source,
     source,
     props: meta.props
       .filter((prop) => !prop.global)
