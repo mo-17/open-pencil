@@ -19,5 +19,6 @@
   "textarea": "Zone de texte",
   "radio": "Bouton radio",
   "switch": "Interrupteur",
-  "datepicker": "Sélecteur de date"
+  "datepicker": "Sélecteur de date",
+  "map": "Carte"
 }

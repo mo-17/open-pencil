@@ -30,7 +30,7 @@
       },
       {
         "id": "export-selection",
-        "label": "Export Selection",
+        "label": "Export",
         "accelerator": "CmdOrCtrl+Shift+E",
         "sub": [
           {
@@ -48,6 +48,21 @@
           {
             "id": "export-fig",
             "label": ".fig"
+          },
+          {
+            "type": "separator"
+          },
+          {
+            "id": "plugin.export.tauri-react",
+            "label": "Tauri React Project…"
+          },
+          {
+            "id": "plugin.export.expo-react-native",
+            "label": "Expo React Native Project…"
+          },
+          {
+            "id": "plugin.export.flutter",
+            "label": "Flutter Project…"
           }
         ]
       },
@@ -101,6 +116,34 @@
         "id": "paste-to-replace",
         "label": "Paste to replace",
         "accelerator": "CmdOrCtrl+Shift+R"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "id": "plugin.clipboard-toolkit",
+        "label": "Clipboard Toolkit",
+        "sub": [
+          {
+            "id": "plugin.clipboard.copy-as-text",
+            "label": "Copy as text"
+          },
+          {
+            "id": "plugin.clipboard.copy-as-svg",
+            "label": "Copy as SVG"
+          },
+          {
+            "id": "plugin.clipboard.copy-as-jsx",
+            "label": "Copy as JSX"
+          },
+          {
+            "id": "plugin.clipboard.copy-as-png",
+            "label": "Copy as PNG"
+          }
+        ]
+      },
+      {
+        "type": "separator"
       },
       {
         "id": "selection.duplicate",
@@ -426,6 +469,15 @@
       {
         "id": "selection.distributeVertical",
         "label": "Distribute Vertical Spacing"
+      }
+    ]
+  },
+  {
+    "label": "Help",
+    "items": [
+      {
+        "id": "application-runtime-guide",
+        "label": "Application Runtime Guide"
       }
     ]
   }

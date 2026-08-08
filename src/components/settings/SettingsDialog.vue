@@ -8,6 +8,8 @@ import { useAIChat } from '@/app/ai/chat/use'
 import { appCredentialServices } from '@/app/settings/credentials/app'
 import { settingsDialogOpen, settingsDialogSection } from '@/app/settings/dialog'
 import ModelsPanel from '@/components/settings/models/ModelsPanel.vue'
+import CanvasPerformancePanel from '@/components/settings/performance/CanvasPerformancePanel.vue'
+import PluginsPanel from '@/components/settings/plugins/PluginsPanel.vue'
 import StockPhotoKeysSection from '@/components/settings/provider/StockPhotoKeysSection.vue'
 import StorageSettingsPanel from '@/components/settings/storage/StorageSettingsPanel.vue'
 import VectorizeSettingsSection from '@/components/settings/vectorize/VectorizeSettingsSection.vue'
@@ -60,6 +62,26 @@ const navigationClass =
         <button
           type="button"
           :class="navigationClass"
+          :data-state="settingsDialogSection === 'performance' ? 'active' : 'inactive'"
+          data-test-id="settings-section-performance"
+          @click="settingsDialogSection = 'performance'"
+        >
+          <icon-lucide-gauge class="size-3.5" />
+          {{ dialogs.settingsCanvasPerformance }}
+        </button>
+        <button
+          type="button"
+          :class="navigationClass"
+          :data-state="settingsDialogSection === 'plugins' ? 'active' : 'inactive'"
+          data-test-id="settings-section-plugins"
+          @click="settingsDialogSection = 'plugins'"
+        >
+          <icon-lucide-puzzle class="size-3.5" />
+          {{ dialogs.settingsPlugins }}
+        </button>
+        <button
+          type="button"
+          :class="navigationClass"
           :data-state="settingsDialogSection === 'ai' ? 'active' : 'inactive'"
           data-test-id="settings-section-ai"
           @click="settingsDialogSection = 'ai'"
@@ -98,6 +120,8 @@ const navigationClass =
           <ModelsPanel />
         </section>
 
+        <CanvasPerformancePanel v-else-if="settingsDialogSection === 'performance'" />
+
         <section
           v-else-if="settingsDialogSection === 'media'"
           class="flex flex-col gap-2.5"
@@ -107,6 +131,8 @@ const navigationClass =
           <StockPhotoKeysSection />
           <VectorizeSettingsSection />
         </section>
+
+        <PluginsPanel v-else-if="settingsDialogSection === 'plugins'" />
 
         <StorageSettingsPanel v-else />
       </div>

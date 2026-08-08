@@ -27,6 +27,16 @@ export interface AppMenuGroupSchema {
   items: AppMenuEntry[]
 }
 
+export const PLUGIN_MENU_ACTION_IDS = Object.freeze({
+  clipboardText: 'plugin.clipboard.copy-as-text',
+  clipboardSvg: 'plugin.clipboard.copy-as-svg',
+  clipboardJsx: 'plugin.clipboard.copy-as-jsx',
+  clipboardPng: 'plugin.clipboard.copy-as-png',
+  exportTauriReact: 'plugin.export.tauri-react',
+  exportExpoReactNative: 'plugin.export.expo-react-native',
+  exportFlutter: 'plugin.export.flutter'
+})
+
 export const APP_MENU_SCHEMA = [
   {
     label: 'File',
@@ -39,13 +49,26 @@ export const APP_MENU_SCHEMA = [
       { type: 'separator' },
       {
         id: 'export-selection',
-        label: 'Export Selection',
+        label: 'Export',
         shortcut: 'MOD+SHIFT+E',
         sub: [
           { id: 'export-png', label: 'PNG' },
           { id: 'export-svg', label: 'SVG' },
           { id: 'export-pptx', label: 'PPTX' },
-          { id: 'export-fig', label: '.fig' }
+          { id: 'export-fig', label: '.fig' },
+          { type: 'separator' },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportTauriReact,
+            label: 'Tauri React Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportExpoReactNative,
+            label: 'Expo React Native Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportFlutter,
+            label: 'Flutter Project…'
+          }
         ]
       },
       { type: 'separator' },
@@ -71,6 +94,30 @@ export const APP_MENU_SCHEMA = [
       { id: 'cut', label: 'Cut', shortcut: 'MOD+X' },
       { id: 'paste', label: 'Paste', shortcut: 'MOD+V' },
       { id: 'paste-to-replace', label: 'Paste to replace', shortcut: 'MOD+SHIFT+R' },
+      { type: 'separator' },
+      {
+        id: 'plugin.clipboard-toolkit',
+        label: 'Clipboard Toolkit',
+        sub: [
+          {
+            id: PLUGIN_MENU_ACTION_IDS.clipboardText,
+            label: 'Copy as text'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.clipboardSvg,
+            label: 'Copy as SVG'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.clipboardJsx,
+            label: 'Copy as JSX'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.clipboardPng,
+            label: 'Copy as PNG'
+          }
+        ]
+      },
+      { type: 'separator' },
       {
         id: 'selection.duplicate',
         label: 'Duplicate',
@@ -314,5 +361,9 @@ export const APP_MENU_SCHEMA = [
         command: 'selection.distributeVertical'
       }
     ]
+  },
+  {
+    label: 'Help',
+    items: [{ id: 'application-runtime-guide', label: 'Application Runtime Guide' }]
   }
 ] satisfies AppMenuGroupSchema[]

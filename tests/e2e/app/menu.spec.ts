@@ -10,7 +10,45 @@ test('menu bar is visible in browser mode', async () => {
 test('menu bar has all top-level menus', async () => {
   const triggers = editor.page.locator('[role="menubar"] [role="menuitem"]')
   const labels = await triggers.allTextContents()
-  expect(labels).toEqual(['File', 'Edit', 'View', 'Object', 'Text', 'Arrange'])
+  expect(labels).toEqual(['File', 'Edit', 'View', 'Object', 'Text', 'Arrange', 'Help'])
+})
+
+test('Help menu opens the bundled Application Runtime guide', async () => {
+  await editor.page.locator('[role="menubar"] [role="menuitem"]', { hasText: 'Help' }).click()
+  await editor.page.getByRole('menuitem', { name: 'Application Runtime Guide' }).click()
+
+  const dialog = editor.page.getByTestId('app-application-runtime-guide-dialog')
+  await expect(dialog).toBeVisible()
+  await dialog.getByTestId('app-application-runtime-guide-language').click()
+  await editor.page.getByRole('option', { name: 'Follow application language' }).click()
+  await expect(dialog.getByText('What You Will Deploy', { exact: true }).first()).toBeVisible()
+  await expect(
+    dialog.getByText(/This guide takes an OpenPencil lowcode document from an interactive design/)
+  ).toBeVisible()
+  await expect(dialog.getByText(/no documentation website is required/i)).toBeVisible()
+
+  await dialog.getByTestId('app-application-runtime-guide-language').click()
+  await editor.page.getByRole('option', { name: '中文（简体）' }).click()
+  await expect(dialog.getByText('你将部署什么', { exact: true }).first()).toBeVisible()
+  await expect(dialog.getByText('What You Will Deploy', { exact: true })).toHaveCount(0)
+  await expect(
+    editor.page.locator('[role="menubar"] [role="menuitem"]', { hasText: 'Help' })
+  ).toBeVisible()
+
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await editor.page.locator('[role="menubar"] [role="menuitem"]', { hasText: 'Help' }).click()
+  await editor.page.getByRole('menuitem', { name: 'Application Runtime Guide' }).click()
+  const reopenedDialog = editor.page.getByTestId('app-application-runtime-guide-dialog')
+  await expect(reopenedDialog.getByText('你将部署什么', { exact: true }).first()).toBeVisible()
+
+  await reopenedDialog.getByTestId('app-application-runtime-guide-language').click()
+  await editor.page.getByRole('option', { name: 'Follow application language' }).click()
+  await expect(
+    reopenedDialog.getByText('What You Will Deploy', { exact: true }).first()
+  ).toBeVisible()
+  await reopenedDialog.getByRole('button', { name: 'Close' }).click()
 })
 
 test('File menu opens and shows items', async () => {
@@ -37,6 +75,21 @@ test('Edit menu shows Undo/Redo/Delete', async () => {
   expect(items.some((t) => t.includes('Delete'))).toBe(true)
   expect(items.some((t) => t.includes('Select all'))).toBe(true)
 
+  await editor.page.keyboard.press('Escape')
+})
+
+test('File and Edit menus expose installed-plugin entry points', async () => {
+  await editor.page.locator('[role="menubar"] [role="menuitem"]', { hasText: 'File' }).click()
+  await editor.page.getByRole('menuitem', { name: 'Export' }).hover()
+  await expect(editor.page.getByRole('menuitem', { name: 'Tauri React Project…' })).toBeVisible()
+  await editor.page.keyboard.press('Escape')
+
+  await editor.page.locator('[role="menubar"] [role="menuitem"]', { hasText: 'Edit' }).click()
+  await editor.page.getByRole('menuitem', { name: 'Clipboard Toolkit' }).hover()
+  await expect(editor.page.getByRole('menuitem', { name: 'Copy as text' })).toBeVisible()
+  await expect(editor.page.getByRole('menuitem', { name: 'Copy as SVG' })).toBeVisible()
+  await expect(editor.page.getByRole('menuitem', { name: 'Copy as JSX' })).toBeVisible()
+  await expect(editor.page.getByRole('menuitem', { name: 'Copy as PNG' })).toBeVisible()
   await editor.page.keyboard.press('Escape')
 })
 

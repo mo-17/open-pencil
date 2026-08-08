@@ -19,5 +19,6 @@
   "textarea": "多行文本",
   "radio": "单选组",
   "switch": "开关",
-  "datepicker": "日期选择器"
+  "datepicker": "日期选择器",
+  "map": "地图"
 }

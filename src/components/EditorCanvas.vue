@@ -19,12 +19,15 @@ import {
   useCanvasDrop,
   useCanvasInput,
   useCanvasVirtualReference,
+  useI18n,
   useTextEdit
 } from '@open-pencil/vue'
 import { useCollabInjected } from '@/app/collab/use'
 import { useEditorStore } from '@/app/editor/active-store'
 import { useCanvasCollaborationAwareness } from '@/app/editor/canvas/collaboration-awareness'
 import { createCanvasContextSelection } from '@/app/editor/canvas/context-selection'
+import { useCanvasFontLoading } from '@/app/editor/fonts/canvas-font-loading'
+import { canvasPerformanceMode, recordActiveCanvasFrame } from '@/app/settings/canvas-performance'
 import IconLucidePanelBottom from '~icons/lucide/panel-bottom'
 import IconLucidePanelLeft from '~icons/lucide/panel-left'
 import IconLucidePanelRight from '~icons/lucide/panel-right'
@@ -35,21 +38,52 @@ import NumberField from './inputs/NumberField.vue'
 
 const store = useEditorStore()
 const collab = useCollabInjected()
+const { dialogs } = useI18n()
 const sceneCanvasRef = ref<HTMLCanvasElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
+const getCanvasPerformanceMode = () => canvasPerformanceMode.value
+const fontLoading = useCanvasFontLoading(store)
 
-const { updateCursor } = useCanvasCollaborationAwareness(store, collab)
+const fontLoadingPercent = computed(() => {
+  const progress = fontLoading.value
+  if (!progress) return 0
+  if (progress.status === 'completed') return 100
+  if (progress.total <= 0) return 0
+  return Math.round(Math.min(1, Math.max(0, progress.completed / progress.total)) * 100)
+})
+const fontLoadingLabel = computed(() => {
+  const progress = fontLoading.value
+  if (!progress) return ''
+  if (progress.status === 'completed') {
+    return progress.failed > 0
+      ? dialogs.value.canvasFontCheckComplete
+      : dialogs.value.canvasFontsReady
+  }
+  return dialogs.value.canvasFontsLoading({
+    completed: String(progress.completed),
+    total: String(progress.total)
+  })
+})
+
+const { updateCursor, flushCursor } = useCanvasCollaborationAwareness(
+  store,
+  collab,
+  getCanvasPerformanceMode
+)
 const { selectAtContextPoint } = createCanvasContextSelection(canvasRef, store)
 
 useCanvas(sceneCanvasRef, store, {
   layer: 'scene',
-  showRulers: false
+  showRulers: false,
+  performanceMode: getCanvasPerformanceMode,
+  onActiveFrameSample: recordActiveCanvasFrame
 })
 const { hitTestSectionTitle, hitTestComponentLabel, hitTestFrameTitle } = useCanvas(
   canvasRef,
   store,
   {
-    layer: 'overlays'
+    layer: 'overlays',
+    performanceMode: getCanvasPerformanceMode
   }
 )
 const {
@@ -64,7 +98,8 @@ const {
   hitTestSectionTitle,
   hitTestComponentLabel,
   hitTestFrameTitle,
-  updateCursor
+  updateCursor,
+  flushCursor
 )
 
 useTextEdit(canvasRef, store)
@@ -120,6 +155,41 @@ const cursor = computed(() => toolCursor(store.state.activeTool, cursorOverride.
           class="absolute inset-0 block size-full touch-none outline-none"
         />
         <MotionPathOverlay />
+        <Transition
+          enter-active-class="transition duration-150"
+          enter-from-class="-translate-y-1 opacity-0"
+          leave-active-class="transition-opacity duration-150"
+          leave-to-class="opacity-0"
+        >
+          <div
+            v-if="fontLoading && !store.state.loading"
+            data-test-id="canvas-font-loading"
+            class="pointer-events-none absolute left-1/2 top-3 z-40 w-56 -translate-x-1/2 rounded-lg border border-surface/12 bg-panel/95 px-3 py-2 text-xs text-surface shadow-lg backdrop-blur"
+          >
+            <div
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              class="flex min-w-0 items-center gap-2"
+            >
+              <icon-lucide-type class="size-3.5 shrink-0 opacity-65" aria-hidden="true" />
+              <span class="min-w-0 flex-1 truncate">{{ fontLoadingLabel }}</span>
+            </div>
+            <div
+              role="progressbar"
+              :aria-label="fontLoadingLabel"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-valuenow="fontLoadingPercent"
+              class="mt-1.5 h-1 overflow-hidden rounded-full bg-surface/10"
+            >
+              <div
+                class="h-full rounded-full bg-accent transition-[width] duration-150"
+                :style="{ width: `${fontLoadingPercent}%` }"
+              />
+            </div>
+          </div>
+        </Transition>
         <Transition
           enter-active-class="transition-opacity duration-150"
           enter-from-class="opacity-0"

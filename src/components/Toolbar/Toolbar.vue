@@ -46,7 +46,8 @@ const toolLabels = computed<Record<Tool, string>>(() => ({
   RADIO: toolTexts.value.radio,
   TEXTAREA: toolTexts.value.textarea,
   DATEPICKER: toolTexts.value.datepicker,
-  SWITCH: toolTexts.value.switch
+  SWITCH: toolTexts.value.switch,
+  MAP: toolTexts.value.map
 }))
 
 const toolShortcuts: Record<Tool, string> = {
@@ -70,7 +71,8 @@ const toolShortcuts: Record<Tool, string> = {
   RADIO: '',
   TEXTAREA: '',
   DATEPICKER: '',
-  SWITCH: ''
+  SWITCH: '',
+  MAP: ''
 }
 
 const flyoutMenuCls = useMenuUI({ content: 'min-w-32' })

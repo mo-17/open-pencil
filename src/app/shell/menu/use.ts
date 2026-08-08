@@ -7,6 +7,8 @@ import { useEditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { createSharedEditorMenuActions } from '@/app/shell/menu/editor-actions'
 import { importFileDialog, openFileDialog } from '@/app/shell/menu/files'
+import { APPLICATION_RUNTIME_GUIDE_MENU_ID } from '@/app/shell/menu/help-actions'
+import { createPluginMenuActions } from '@/app/shell/menu/plugin-actions'
 import { APP_MENU_SCHEMA, type AppMenuEntry } from '@/app/shell/menu/schema'
 import { createSelectionMenuActions } from '@/app/shell/menu/selection-actions'
 import { useAppTheme } from '@/app/shell/theme'
@@ -64,6 +66,9 @@ export function useMenu() {
       store.state.autosaveEnabled = !store.state.autosaveEnabled
     },
     ...createSelectionMenuActions(store),
+    ...createPluginMenuActions(store, {
+      formatError: (error) => dialogs.value.pluginOperationFailed({ error })
+    }),
     'check-updates': () => void checkForAppUpdate({ messages: dialogs }),
     settings: openSettingsDialog,
     ...createSharedEditorMenuActions(setTheme)
@@ -71,6 +76,7 @@ export function useMenu() {
 
   void import('@tauri-apps/api/event').then(({ listen }) => {
     return listen<string>('menu-event', (event) => {
+      if (event.payload === APPLICATION_RUNTIME_GUIDE_MENU_ID) return
       if (COMMAND_MENU_IDS.has(event.payload as EditorCommandId)) {
         runCommand(event.payload as EditorCommandId)
         return

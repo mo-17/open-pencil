@@ -21,7 +21,8 @@ export const toolMessageDefaults = {
   textarea: 'Textarea',
   radio: 'Radio',
   switch: 'Switch',
-  datepicker: 'Date picker'
+  datepicker: 'Date picker',
+  map: 'Map'
 } as const
 
 export const toolMessages = i18n('tools', toolMessageDefaults)

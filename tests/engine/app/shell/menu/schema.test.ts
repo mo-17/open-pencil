@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import type { AppMenuEntry } from '@/app/shell/menu/schema'
-import { APP_MENU_SCHEMA } from '@/app/shell/menu/schema'
+import { APP_MENU_SCHEMA, PLUGIN_MENU_ACTION_IDS } from '@/app/shell/menu/schema'
 
 function actionItems(entries: readonly AppMenuEntry[]): AppMenuEntry[] {
   const result: AppMenuEntry[] = []
@@ -53,5 +55,75 @@ describe('APP_MENU_SCHEMA', () => {
     expect(moveEntries).toEqual([
       expect.objectContaining({ id: 'selection.moveToPage', target: 'browser' })
     ])
+  })
+
+  test('shares plugin command and exporter entries with the generated native menu', () => {
+    const fileMenu = APP_MENU_SCHEMA.find((group) => group.label === 'File')
+    const editMenu = APP_MENU_SCHEMA.find((group) => group.label === 'Edit')
+    const fileEntries = fileMenu ? actionItems(fileMenu.items) : []
+    const editEntries = editMenu ? actionItems(editMenu.items) : []
+
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportTauriReact })
+    )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportExpoReactNative })
+    )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportFlutter })
+    )
+    expect(editEntries.map((entry) => ('type' in entry ? null : entry.id))).toEqual(
+      expect.arrayContaining([
+        PLUGIN_MENU_ACTION_IDS.clipboardText,
+        PLUGIN_MENU_ACTION_IDS.clipboardSvg,
+        PLUGIN_MENU_ACTION_IDS.clipboardJsx,
+        PLUGIN_MENU_ACTION_IDS.clipboardPng
+      ])
+    )
+
+    const generated = JSON.parse(
+      readFileSync(resolve(import.meta.dir, '../../../../../desktop/generated/menu.json'), 'utf8')
+    ) as Array<{ label: string; items: AppMenuEntry[] }>
+    const nativeFile = generated.find((group) => group.label === 'File')
+    const nativeEdit = generated.find((group) => group.label === 'Edit')
+    const nativeIds = [nativeFile, nativeEdit].flatMap((group) =>
+      group ? actionItems(group.items).map((entry) => ('type' in entry ? null : entry.id)) : []
+    )
+
+    expect(nativeIds).toEqual(
+      expect.arrayContaining([
+        PLUGIN_MENU_ACTION_IDS.exportTauriReact,
+        PLUGIN_MENU_ACTION_IDS.exportExpoReactNative,
+        PLUGIN_MENU_ACTION_IDS.exportFlutter,
+        PLUGIN_MENU_ACTION_IDS.clipboardText,
+        PLUGIN_MENU_ACTION_IDS.clipboardSvg,
+        PLUGIN_MENU_ACTION_IDS.clipboardJsx,
+        PLUGIN_MENU_ACTION_IDS.clipboardPng
+      ])
+    )
+  })
+
+  test('exposes the Application Runtime guide in browser and generated native menus', () => {
+    const helpMenu = APP_MENU_SCHEMA.find((group) => group.label === 'Help')
+    const entries = helpMenu ? actionItems(helpMenu.items) : []
+
+    expect(entries).toEqual([
+      expect.objectContaining({
+        id: 'application-runtime-guide',
+        label: 'Application Runtime Guide'
+      })
+    ])
+    expect(helpMenu?.target).toBeUndefined()
+    expect(entries[0] && 'target' in entries[0] ? entries[0].target : undefined).toBeUndefined()
+
+    const generated = JSON.parse(
+      readFileSync(resolve(import.meta.dir, '../../../../../desktop/generated/menu.json'), 'utf8')
+    ) as Array<{ label: string; items: Array<{ id?: string; label?: string }> }>
+    const nativeHelp = generated.find((group) => group.label === 'Help')
+
+    expect(nativeHelp?.items).toContainEqual({
+      id: 'application-runtime-guide',
+      label: 'Application Runtime Guide'
+    })
   })
 })

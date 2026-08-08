@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { defineAsyncComponent, onMounted } from 'vue'
 import { useHead } from '@unhead/vue'
 import { TooltipProvider } from 'reka-ui'
 
@@ -7,6 +7,8 @@ import { provideEditor, useI18n } from '@open-pencil/vue'
 import AppToast from '@/components/Shell/AppToast.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
 import { useEditorStore } from '@/app/editor/active-store'
+import { applicationRuntimeGuideOpen } from '@/app/help/application-runtime-guide'
+import { useApplicationRuntimeGuideMenu } from '@/app/shell/menu/help-actions'
 import { toast } from '@/app/shell/ui'
 import { useAppTheme } from '@/app/shell/theme'
 import { scheduleStartupUpdateCheck } from '@/app/shell/updater'
@@ -16,8 +18,12 @@ useHead({ titleTemplate: (title) => (title ? `${title} — OpenPencil` : 'OpenPe
 
 const store = useEditorStore()
 const { dialogs } = useI18n()
+const ApplicationRuntimeGuideDialog = defineAsyncComponent(
+  () => import('@/components/help/ApplicationRuntimeGuideDialog.vue')
+)
 provideEditor(store)
 useAppTheme()
+useApplicationRuntimeGuideMenu()
 
 onMounted(() => {
   toast.setupGlobalErrorHandler()
@@ -30,6 +36,7 @@ onMounted(() => {
   <TooltipProvider :delay-duration="400">
     <RouterView />
     <SettingsDialog />
+    <ApplicationRuntimeGuideDialog v-if="applicationRuntimeGuideOpen" />
     <AppToast />
   </TooltipProvider>
 </template>

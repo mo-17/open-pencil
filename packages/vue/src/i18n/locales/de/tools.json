@@ -19,5 +19,6 @@
   "textarea": "Textbereich",
   "radio": "Optionsfeld",
   "switch": "Schalter",
-  "datepicker": "Datumsauswahl"
+  "datepicker": "Datumsauswahl",
+  "map": "Karte"
 }

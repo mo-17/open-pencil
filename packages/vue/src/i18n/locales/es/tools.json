@@ -19,5 +19,6 @@
   "textarea": "Área de texto",
   "radio": "Botón de opción",
   "switch": "Interruptor",
-  "datepicker": "Selector de fecha"
+  "datepicker": "Selector de fecha",
+  "map": "Mapa"
 }

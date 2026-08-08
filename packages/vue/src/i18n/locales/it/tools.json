@@ -19,5 +19,6 @@
   "textarea": "Area di testo",
   "radio": "Pulsante radio",
   "switch": "Interruttore",
-  "datepicker": "Selettore data"
+  "datepicker": "Selettore data",
+  "map": "Mappa"
 }

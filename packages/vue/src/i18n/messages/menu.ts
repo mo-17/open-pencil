@@ -7,12 +7,17 @@ export const menuMessageDefaults = {
   object: 'Object',
   arrange: 'Arrange',
   text: 'Text',
+  help: 'Help',
 
   new: 'New',
   open: 'Open…',
   save: 'Save',
   saveAs: 'Save as…',
+  export: 'Export',
   exportSelection: 'Export selection…',
+  exportTauriReactProject: 'Tauri React Project…',
+  exportExpoReactNativeProject: 'Expo React Native Project…',
+  exportFlutterProject: 'Flutter Project…',
   autosave: 'Auto-save to local file',
   closeTab: 'Close tab',
 
@@ -29,6 +34,7 @@ export const menuMessageDefaults = {
   rulers: 'Rulers',
   multiplayerCursors: 'Multiplayer cursors',
   checkUpdates: 'Check for updates…',
+  applicationRuntimeGuide: 'Application Runtime Guide',
 
   moveToPage: 'Move to page',
   createInstance: 'Create instance',
@@ -48,6 +54,7 @@ export const menuMessageDefaults = {
 
   pasteHere: 'Paste here',
   pasteToReplace: 'Paste to replace',
+  clipboardToolkit: 'Clipboard Toolkit',
   renameSelection: 'Rename selection…',
   copyPasteAs: 'Copy/Paste as',
   copyAsText: 'Copy as text',

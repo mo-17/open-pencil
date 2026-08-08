@@ -1,6 +1,7 @@
 import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { useEditorStore } from '@/app/editor/active-store'
+import { openApplicationRuntimeGuide } from '@/app/shell/menu/help-actions'
 
 type TextFormatUpdates = {
   fontWeight?: number
@@ -66,6 +67,7 @@ export function createSharedEditorMenuActions(
     'theme-light': () => setTheme('light'),
     'theme-dark': () => setTheme('dark'),
     'theme-auto': () => setTheme('auto'),
+    'application-runtime-guide': openApplicationRuntimeGuide,
     'text.bold': toggleSelectedTextBold,
     'text.italic': toggleSelectedTextItalic,
     'text.underline': toggleSelectedTextUnderline,

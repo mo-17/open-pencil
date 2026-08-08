@@ -6,6 +6,7 @@ import { useEditorCommands, useI18n } from '@open-pencil/vue'
 import { useEditorStore } from '@/app/editor/active-store'
 import { openSettingsDialog } from '@/app/settings/dialog'
 import { createSharedEditorMenuActions } from '@/app/shell/menu/editor-actions'
+import { createPluginMenuActions } from '@/app/shell/menu/plugin-actions'
 import type { AppMenuActionItem, AppMenuEntry, AppMenuGroupSchema } from '@/app/shell/menu/schema'
 import { APP_MENU_SCHEMA } from '@/app/shell/menu/schema'
 import { createSelectionMenuActions } from '@/app/shell/menu/selection-actions'
@@ -35,7 +36,7 @@ export function useAppMenu() {
     otherPages,
     moveSelectionToPage
   } = useEditorCommands()
-  const { menu, locale, availableLocales, localeLabels, setLocale } = useI18n()
+  const { dialogs, menu, locale, availableLocales, localeLabels, setLocale } = useI18n()
   const { theme, setTheme } = useAppTheme()
 
   const translatedMenuItemLabels: Partial<Record<string, keyof typeof menu.value>> = {
@@ -43,13 +44,21 @@ export function useAppMenu() {
     open: 'open',
     save: 'save',
     'save-as': 'saveAs',
-    'export-selection': 'exportSelection',
+    'export-selection': 'export',
+    'plugin.export.tauri-react': 'exportTauriReactProject',
+    'plugin.export.expo-react-native': 'exportExpoReactNativeProject',
+    'plugin.export.flutter': 'exportFlutterProject',
     autosave: 'autosave',
     close: 'closeTab',
     copy: 'copy',
     cut: 'cut',
     paste: 'paste',
     'paste-to-replace': 'pasteToReplace',
+    'plugin.clipboard-toolkit': 'clipboardToolkit',
+    'plugin.clipboard.copy-as-text': 'copyAsText',
+    'plugin.clipboard.copy-as-svg': 'copyAsSVG',
+    'plugin.clipboard.copy-as-jsx': 'copyAsJSX',
+    'plugin.clipboard.copy-as-png': 'copyAsPNG',
     'selection.rename': 'renameSelection',
     'selection.moveToPage': 'moveToPage',
     language: 'language',
@@ -62,6 +71,7 @@ export function useAppMenu() {
     'theme-light': 'themeLight',
     'theme-dark': 'themeDark',
     'theme-auto': 'themeAuto',
+    'application-runtime-guide': 'applicationRuntimeGuide',
     'zoom-in': 'zoomIn',
     'zoom-out': 'zoomOut',
     'text.bold': 'bold',
@@ -98,6 +108,9 @@ export function useAppMenu() {
     'save-as': () => void store.saveFigFileAs(),
     'export-selection': () => exportSelection('png'),
     ...createSelectionMenuActions(store),
+    ...createPluginMenuActions(store, {
+      formatError: (error) => dialogs.value.pluginOperationFailed({ error })
+    }),
     close: () => {
       if (activeTab.value) closeTab(activeTab.value.id)
     },

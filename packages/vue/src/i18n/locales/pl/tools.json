@@ -19,5 +19,6 @@
   "textarea": "Pole tekstowe",
   "radio": "Przycisk opcji",
   "switch": "Przełącznik",
-  "datepicker": "Wybór daty"
+  "datepicker": "Wybór daty",
+  "map": "Mapa"
 }

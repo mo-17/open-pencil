@@ -19,5 +19,6 @@
   "textarea": "Textarea",
   "radio": "Radio",
   "switch": "Switch",
-  "datepicker": "Date picker"
+  "datepicker": "Date picker",
+  "map": "地図"
 }
