@@ -10,6 +10,8 @@ import { exactArrayBuffer } from './bytes'
 import type { CompileWarning, CompilerFontFaceAsset, CompilerFontManifest } from './types'
 
 const FONT_ASSET_PREFIX = 'src/assets/fonts/'
+const EXPO_FONT_ASSET_PREFIX = 'assets/fonts/'
+const EXPO_FONT_VERSION = '~57.0.1'
 
 interface RequestedFace {
   family: string
@@ -162,14 +164,27 @@ function faceFamilyMatches(face: CompilerFontFaceAsset, request: RequestedFace):
   return normalizeFontFamily(face.family) === request.family
 }
 
+function unresolvedFaceRequests(
+  requests: readonly RequestedFace[],
+  faces: readonly CompilerFontFaceAsset[]
+): Array<{ request: RequestedFace; familyFaces: CompilerFontFaceAsset[] }> {
+  const unresolved: Array<{ request: RequestedFace; familyFaces: CompilerFontFaceAsset[] }> = []
+  for (const request of requests) {
+    if (faces.some((face) => faceSupportsRequest(face, request))) continue
+    unresolved.push({
+      request,
+      familyFaces: faces.filter((face) => faceFamilyMatches(face, request))
+    })
+  }
+  return unresolved
+}
+
 function fontResolutionWarnings(
   requests: readonly RequestedFace[],
   faces: readonly CompilerFontFaceAsset[]
 ): CompileWarning[] {
   const warnings: CompileWarning[] = []
-  for (const request of requests) {
-    if (faces.some((face) => faceSupportsRequest(face, request))) continue
-    const actual = faces.filter((face) => faceFamilyMatches(face, request))
+  for (const { request, familyFaces: actual } of unresolvedFaceRequests(requests, faces)) {
     if (actual.length === 0) {
       warnings.push({
         code: 'font-face-unavailable',
@@ -212,15 +227,12 @@ function fontLicenseWarnings(faces: readonly CompilerFontFaceAsset[]): CompileWa
   return warnings
 }
 
-/** Add resolved font bytes + CSS to an adapter-emitted project. */
-export function applyCompilerFontManifest(
-  files: Map<string, string | Uint8Array>,
-  graph: SceneGraph,
-  pageIds: readonly string[],
-  manifest: CompilerFontManifest
-): CompileWarning[] {
+function embeddableFaces(manifest: CompilerFontManifest): {
+  faces: CompilerFontFaceAsset[]
+  warnings: CompileWarning[]
+} {
   const warnings: CompileWarning[] = []
-  const validFaces: CompilerFontFaceAsset[] = []
+  const faces: CompilerFontFaceAsset[] = []
   const seenPaths = new Set<string>()
   const warnedRestrictedFaces = new Set<string>()
   for (const face of manifest.faces) {
@@ -242,9 +254,22 @@ export function applyCompilerFontManifest(
     }
     if (seenPaths.has(face.path)) continue
     seenPaths.add(face.path)
-    validFaces.push(face)
-    files.set(face.path, face.content)
+    faces.push(face)
   }
+  return { faces, warnings }
+}
+
+/** Add resolved font bytes + CSS to an adapter-emitted project. */
+export function applyCompilerFontManifest(
+  files: Map<string, string | Uint8Array>,
+  graph: SceneGraph,
+  pageIds: readonly string[],
+  manifest: CompilerFontManifest
+): CompileWarning[] {
+  const collected = embeddableFaces(manifest)
+  const warnings = [...collected.warnings]
+  const validFaces = collected.faces
+  for (const face of validFaces) files.set(face.path, face.content)
 
   const requested = requestedFaces(graph, pageIds)
   const css = files.get('src/index.css')
@@ -256,5 +281,150 @@ export function applyCompilerFontManifest(
   }
   warnings.push(...fontResolutionWarnings(requested.faces, validFaces))
   warnings.push(...fontLicenseWarnings(validFaces))
+  return warnings
+}
+
+/** Add native-loadable font assets and an expo-font hook to an Expo project. */
+export function applyExpoCompilerFontManifest(
+  files: Map<string, string | Uint8Array>,
+  graph: SceneGraph,
+  pageIds: readonly string[],
+  manifest: CompilerFontManifest
+): CompileWarning[] {
+  const collected = embeddableFaces(manifest)
+  const warnings = [...collected.warnings]
+  const nativeFaces: CompilerFontFaceAsset[] = []
+  const families = new Set<string>()
+  for (const face of collected.faces) {
+    if (!nativeFontFace(face)) {
+      warnings.push({
+        code: 'expo-font-format-unsupported',
+        message: `${face.family} ${fontWeightValue(face.weight)} ${face.style} uses ${face.format}; Expo native output only bundles .ttf/.otf faces and will use a system fallback`
+      })
+      continue
+    }
+    const family = normalizeFontFamily(face.family)
+    const familyKey = family.toLocaleLowerCase()
+    if (families.has(familyKey)) {
+      warnings.push({
+        code: 'expo-font-face-variant-unsupported',
+        message: `Expo static MVP registered the first native face for ${family}; additional weight/style ${fontWeightValue(face.weight)} ${face.style} uses that family fallback`
+      })
+      continue
+    }
+    families.add(familyKey)
+    nativeFaces.push(face)
+  }
+
+  for (const face of nativeFaces) {
+    files.set(expoFontPath(face.path), face.content)
+  }
+  if (nativeFaces.length > 0) {
+    files.set('src/generated-fonts.ts', expoFontLoader(nativeFaces))
+    addExpoFontDependency(files)
+  }
+  const requested = requestedFaces(graph, pageIds)
+  warnings.push(...nativeFontResolutionWarnings(requested.faces, nativeFaces))
+  warnings.push(...fontLicenseWarnings(nativeFaces))
+  return warnings
+}
+
+/**
+ * Flutter stays fail-closed until the manifest can carry complete license and copyright notices.
+ * SPDX ids alone are insufficient to redistribute font bytes in a generated source archive.
+ */
+export function applyFlutterCompilerFontManifest(
+  _files: Map<string, string | Uint8Array>,
+  graph: SceneGraph,
+  pageIds: readonly string[],
+  manifest: CompilerFontManifest
+): CompileWarning[] {
+  const collected = embeddableFaces(manifest)
+  const warnings = [...collected.warnings]
+  for (const face of collected.faces) {
+    if (!nativeFontFace(face)) {
+      warnings.push({
+        code: 'flutter-font-format-unsupported',
+        message: `${face.family} ${fontWeightValue(face.weight)} ${face.style} uses ${face.format}; Flutter output only bundles .ttf/.otf faces and will use a system fallback`
+      })
+      continue
+    }
+    warnings.push({
+      code: 'font-license-notice-unavailable',
+      message: `${face.family} ${fontWeightValue(face.weight)} ${face.style} (${face.path}) was omitted from Flutter output because the manifest does not contain the full license text and copyright notice required for redistribution${
+        face.licenseEvidence?.kind === 'verified_open'
+          ? `; declared license ids: ${face.licenseEvidence.licenseIds.join(', ')}`
+          : ''
+      }`
+    })
+  }
+  const requested = requestedFaces(graph, pageIds)
+  warnings.push(...flutterFontResolutionWarnings(requested.faces, []))
+  warnings.push(...fontLicenseWarnings(collected.faces))
+  return warnings
+}
+
+function flutterFontResolutionWarnings(
+  requests: readonly RequestedFace[],
+  faces: readonly CompilerFontFaceAsset[]
+): CompileWarning[] {
+  return unresolvedFaceRequests(requests, faces).map(({ request, familyFaces }) => ({
+    code: familyFaces.length === 0 ? 'font-face-unavailable' : 'flutter-font-face-variant-fallback',
+    message:
+      familyFaces.length === 0
+        ? `${request.family} ${request.weight} ${request.style} has no native-loadable face; Flutter output will use a system fallback font`
+        : `${request.family} ${request.weight} ${request.style} has no exact Flutter asset declaration; Flutter uses the family's nearest bundled face`
+  }))
+}
+
+function nativeFontFace(face: CompilerFontFaceAsset): boolean {
+  if (face.format !== 'opentype' && face.format !== 'truetype') return false
+  return /\.(?:otf|ttf)$/i.test(face.path)
+}
+
+function expoFontPath(path: string): string {
+  return `${EXPO_FONT_ASSET_PREFIX}${path.slice(FONT_ASSET_PREFIX.length)}`
+}
+
+function expoFontLoader(faces: readonly CompilerFontFaceAsset[]): string {
+  const entries = faces
+    .map(
+      (face) =>
+        `    ${JSON.stringify(normalizeFontFamily(face.family))}: require(${JSON.stringify(`../${expoFontPath(face.path)}`)})`
+    )
+    .join(',\n')
+  return `import { useFonts } from 'expo-font'
+
+export function useOpenPencilFonts(): boolean {
+  const [loaded, error] = useFonts({
+${entries}
+  })
+  return loaded || error !== null
+}
+`
+}
+
+function addExpoFontDependency(files: Map<string, string | Uint8Array>): void {
+  const source = files.get('package.json')
+  if (typeof source !== 'string') return
+  const value = JSON.parse(source) as { dependencies?: Record<string, string> }
+  value.dependencies = { ...value.dependencies, 'expo-font': EXPO_FONT_VERSION }
+  files.set('package.json', `${JSON.stringify(value, null, 2)}\n`)
+}
+
+function nativeFontResolutionWarnings(
+  requests: readonly RequestedFace[],
+  faces: readonly CompilerFontFaceAsset[]
+): CompileWarning[] {
+  const warnings: CompileWarning[] = []
+  for (const { request, familyFaces } of unresolvedFaceRequests(requests, faces)) {
+    warnings.push({
+      code: familyFaces.length === 0 ? 'font-face-unavailable' : 'expo-font-face-variant-fallback',
+      message:
+        familyFaces.length === 0
+          ? `${request.family} ${request.weight} ${request.style} has no native-loadable face; Expo output will use a system fallback font`
+          : `${request.family} ${request.weight} ${request.style} has no exact registered native face; Expo output uses the family's bundled fallback face`
+    })
+  }
   return warnings
 }

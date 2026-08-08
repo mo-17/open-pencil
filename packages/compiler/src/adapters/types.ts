@@ -2,8 +2,8 @@ import type { ComponentDef, IRTree } from '../ir/types'
 import type { CompileWarning, CompilerOptions } from '../types'
 
 /**
- * Adapter contract. Each target framework (React in Phase 0, Vue/Solid/Svelte
- * in later phases) implements this and registers itself in `select-adapter.ts`.
+ * Adapter contract. Each implemented output target registers itself in
+ * `select-adapter.ts`; reserved targets fail closed until an adapter exists.
  *
  * Adapter modules MUST NOT import from `ir/collect/**` or
  * `@open-pencil/scene-graph` directly — adapters only consume the IR

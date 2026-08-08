@@ -1,3 +1,5 @@
+import { expoAdapter } from './adapters/expo'
+import { flutterAdapter } from './adapters/flutter'
 import { reactAdapter } from './adapters/react'
 import type { FrameworkAdapter } from './adapters/types'
 import type { CompileWarning, CompilerOptions } from './types'
@@ -10,24 +12,28 @@ export interface AdapterSelection {
 }
 
 /**
- * Pick a framework adapter for the requested target. Vue is reserved for
- * Phase 5 — accepting it at the type level but rejecting at runtime is the
- * "keep the architecture seam open without shipping it" contract from
- * docs/lowcode-phase-0.md §4.2.
+ * Pick an adapter for the requested target. Reserved targets remain accepted
+ * at the type level but fail closed at runtime, keeping the adapter seam open
+ * without emitting a misleading partial project.
  */
 export function selectAdapter(options: CompilerOptions): AdapterSelection {
   if (options.target === 'react') {
     return { adapter: reactAdapter, warnings: [] }
   }
-  // target === 'vue' — the only other value the type allows. Vue support is
-  // a Phase 5 deliverable; we reject at runtime so callers see a warning
-  // instead of a silently empty project.
+  if (options.target === 'expo') {
+    return { adapter: expoAdapter, warnings: [] }
+  }
+  if (options.target === 'flutter') {
+    return { adapter: flutterAdapter, warnings: [] }
+  }
+  // Reserved targets reject at runtime so callers get an explicit diagnostic
+  // instead of a silently empty or partially generated project.
   return {
     adapter: null,
     warnings: [
       {
         code: 'target-not-implemented',
-        message: "target 'vue' is reserved for Phase 5; only 'react' is implemented in Phase 0"
+        message: `target '${options.target}' is not implemented; supported targets are 'react', 'expo', and 'flutter'`
       }
     ]
   }

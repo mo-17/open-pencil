@@ -65,16 +65,17 @@ export interface CompilerFontManifest {
 export interface CompilerOptions {
   /** package.json `name` field of the output project */
   packageName: string
+  /** Human-readable application name used by native targets. Web targets ignore it. */
+  productName?: string
   /**
-   * Target framework. Phase 0 only ships React; `'vue'` is a reserved enum
-   * value that returns a `target-not-implemented` warning at compile time.
-   * See docs/lowcode-phase-0.md §8 decision #1.
+   * Output target. React emits the web/Vite project, while Expo and Flutter
+   * emit source-only native static MVPs. Vue remains reserved and fails closed.
    */
-  target: 'react' | 'vue'
+  target: 'react' | 'vue' | 'expo' | 'flutter'
   /** React major version to target. Applies when `target === 'react'`. */
   reactVersion: '18' | '19'
-  /** Router strategy. Phase 0 is single-page only (`none`). */
-  router: 'react-router-v6' | 'vue-router-v4' | 'none'
+  /** Router strategy. Each implemented target validates its own compatible value. */
+  router: 'react-router-v6' | 'vue-router-v4' | 'expo-router' | 'flutter-router' | 'none'
   /** Phase 0 always emits TypeScript */
   typescript: true
   /**
