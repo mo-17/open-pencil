@@ -21,7 +21,8 @@ OpenPencil 插件系统分为两个明确隔离的层级：
 
 配置远程市场根之后，页面还会显示 stable/beta 渠道、发布者与密钥身份、快照状态、审计头，以及该快照是否授权可执行运行时索引。搜索只匹配签名内容中的名称、摘要、分类、关键词、插件 ID 和发布者元数据，不会信任未签名搜索服务返回的身份信息。
 
-应用内置 11 个经过审查的插件：
+应用内置 17 个经过审查的插件，共提供 20 个 contribution：10 个模块、5 个命令与 5 个导出器。
+新配置中只有 Map 默认安装并启用，其余内置插件都需要用户选择安装并启用。
 
 - **Map**：新配置中默认安装并启用，创建可原生编辑的地图 `FRAME`，并通过经过审查的
   MapLibre React 适配器编译。
@@ -35,6 +36,15 @@ OpenPencil 插件系统分为两个明确隔离的层级：
   始终是有界纯文本，不会执行 HTML。
 - **Slide Menu（滑出菜单）**：可安装的触发器模块，可以从左、右、上、下打开边缘菜单或
   模态弹窗。菜单项使用有界纯文本，只允许安全的文档路径、锚点或公开 HTTPS 地址。
+- **Lottie**：可安装的矢量动画模块，接受有界的内嵌 JSON 或规范公开 HTTPS 来源。画布
+  始终离线；内嵌数据在本地加载，生成的 Web/React 只有在用户明确点击后才会请求 URL，
+  并拒绝表达式、外部图片、音频和外部字体。
+- **Carousel（轮播）**：可安装的无障碍轮播模块，支持 1–12 个有界幻灯片、安全链接、可选
+  公开 HTTPS 图片、箭头/圆点、滑动或淡入淡出以及可控自动播放。Compiler 预览只有在用户
+  明确点击后才挂载远程幻灯片媒体。
+- **Advanced Data Grid（高级数据网格）**：可安装的类型化网格，支持有界文本、数字、日期、
+  布尔数据，以及初始排序/筛选、分页、单选/多选、密度与外观设置。最多接受 16 列、200 行、
+  2,000 个单元格，不会自行获取远程数据。
 - **Clipboard Toolkit**：通过主机自有命令把当前选区复制为文本、SVG、JSX 或 PNG；没有
   活动选区时，这些命令不可用。PNG 使用浏览器图片剪贴板 API；当前 Tauri 权限集会明确
   提示不支持，不会把未完成的原生图片复制显示为成功。
@@ -48,6 +58,15 @@ OpenPencil 插件系统分为两个明确隔离的层级：
 - **Flutter Exporter**：把当前文档中受支持的静态设计打包为 source-only 的 Dart + Flutter
   源码工程，直接生成 Flutter Widget 与导航源码，不使用 WebView，不安装依赖、不生成平台
   Runner，也不调用 Flutter 工具链；尚未支持的行为会写入 `EXPORT_WARNINGS.md`。
+- **Static Accessibility Audit（静态无障碍审计）**：使用主机内置、结果有界的无障碍 lint
+  规则检查当前文档。它不是完整 WCAG 符合性测试或认证，也不能替代屏幕阅读器、键盘焦点、
+  运行时表单播报与动态状态测试。
+- **Design Tokens Exporter**：把已发布变量、集合、模式、类型、说明和值导出为确定性 JSON。
+  `hiddenFromPublishing` 变量会被排除；导出范围内的 alias 会保留为 alias。若 alias 指向隐藏/
+  缺失 token、形成循环，或某模式缺值，导出会安全失败，不会展开或伪造值。
+- **Figma Editable Projection Exporter**：生成派生 `.fig` 投影，把可视内容转换为可编辑的
+  Figma 原生图层，不修改 OpenPencil 源文档。OpenPencil 交互、模块行为和插件运行时不能在
+  Figma 中执行，因此这不代表运行时可无损往返。
 
 通常的操作顺序是：
 
@@ -56,13 +75,16 @@ OpenPencil 插件系统分为两个明确隔离的层级：
 3. 完成人工审查后启用插件。
 4. 从编辑器使用对应入口：画布底部工具栏的 **插件** 菜单插入模块；**编辑 → Clipboard
    Toolkit** 执行复制命令；**文件 → 导出 → Tauri React Project** 导出桌面项目源码，
-   或通过 **文件 → 导出 → Expo React Native Project**、**Flutter Project** 导出移动端源码。
+   或通过 **文件 → 导出 → Expo React Native Project**、**Flutter Project** 导出移动端源码；
+   静态审计与另外两个导出器都可从已启用插件卡片运行；静态审计和 Design Tokens 也会暴露
+   动态 MCP 工具。Tauri、Expo、Flutter 与 Figma 源码/投影导出暂时只允许从 UI 运行，直到
+   同步 Compiler/编码阶段支持协作式取消，避免 MCP 超时后导出仍继续占用编辑器。
 5. 对模块，在画布中编辑生成的原生 `FRAME` 与受控属性。
 
 当前 Expo 静态 MVP 支持原生 `View`、`Text`、`Image`、`ImageBackground`、`Pressable`、
 `TextInput` 与 `Switch` 外壳，基础行内布局和视觉样式，单页或 Expo Router 多页面文件，
 以及静态图片。出现原生控件外壳不代表画布中编写的 Web 状态/动作
-运行时已经完成移动端翻译。Map、Chart、Rich Text、HTML、Video、Table、Slide Menu 等模块，Motion 与
+运行时已经完成移动端翻译。全部 10 个插件模块、Motion 与
 原型效果、原始 SVG、上传、Supabase/服务端工作流、分析与 Stripe、持久化、高级表单校验、Overlay、响应式、
 Hover、Custom CSS 以及其他只适用于 DOM/Tailwind 的行为，目前都会留下明确警告，等待
 后续原生适配。
@@ -136,10 +158,26 @@ HTTPS 协议，但 DNS 与重定向仍由媒体服务器和访问者浏览器控
 关闭后回到触发器；用户启用减少动态效果时会取消滑动过渡。菜单地址只接受以 `/` 开头的文档
 路径、以 `#` 开头的页面锚点或规范的公开 HTTPS URL，所有文字都按纯文本显示。
 
-Expo 与 Flutter 源码导出不会为 **</> HTML**、**Video**、**Table** 或 **Slide Menu** 引入
-WebView。在经过
-审查的原生适配器就绪前，这些模块会生成明确的不支持功能警告和不包含原模块行为的静态
-原生 fallback，不会在移动应用中静默嵌入浏览器表面。
+安装 **Lottie** 后，在 **设计 → 模块** 中选择 `url` 或 `json`，并配置循环、自动播放、速度、
+方向与填充方式。Canvas 占位预览绝不请求网络。有界内嵌 JSON 会在本地加载；Compiler 预览与
+生成的 Web/React 输出只有在点击 **Load Lottie animation** 后才执行公开 HTTPS 请求，重试也必须由用户发起；
+系统开启减少动态效果时会禁止自动播放。校验器只接受有界矢量子集，外部资源、表达式、音频
+和外部字体会安全拒绝，不会继续交给渲染器。
+
+安装 **Carousel** 后，在 **设计 → 模块** 中编辑有界 `Slides` JSON 和无障碍标签，再设置初始
+幻灯片、过渡、自动播放间隔、循环、箭头/圆点、悬停暂停与颜色。每个幻灯片包含纯文本标题/
+说明、可选公开 HTTPS 图片（使用图片时必须提供替代文本），以及可选文档路径、锚点或公开
+HTTPS 目标。Compiler 预览必须点击 **Load remote slide media** 后才挂载图片；生成的 Web/React
+适配器提供键盘可操作控件、暂停/继续、当前幻灯片播报与减少动态效果处理。
+
+安装 **Advanced Data Grid** 后，在 **设计 → 模块** 中编辑类型化 `Grid data`、可选初始排序/
+筛选、分页大小、选择模式、密度、表头、斑马纹与颜色。行列 ID 必须是稳定的有界标识符，每个
+单元格必须匹配该列声明的文本、数字、日期或布尔类型。生成的 Web/React 表格针对这些静态
+编写数据提供无障碍排序、筛选、分页与行选择；它不是远程数据库连接器。
+
+Expo 与 Flutter 源码导出不会为任何插件模块引入 WebView，包括 **Lottie**、**Carousel**
+和 **Advanced Data Grid**。在经过审查的原生适配器就绪前，它们会生成明确的不支持功能
+警告，并保留不包含交互模块行为的静态原生 fallback，不会在移动应用中静默嵌入浏览器表面。
 
 安装和启用是两个独立步骤。启用后，经过审查的模块、命令与导出器才可使用；其中只有
 模块会出现在工具栏以及 `list_modules` / `create_module` 的发现结果中。
@@ -156,6 +194,16 @@ OpenPencil 构建。清单可以声明适配器名称，但不能携带或执行
 `contributions.commands` 描述具名主机操作，`contributions.exporters` 描述具名导出操作与
 安全文件扩展名。清单能力列表仍为空。每个贡献都必须精确匹配应用启动时注册并冻结的主机
 适配器；贡献不会获得任意编辑器、文件系统、网络、Tauri 或进程 API。
+
+Manifest API v2 是命令与导出器的安全 contract 基础：它增加有界且封闭的参数/结果 JSON
+Schema、固定的 `document.read`、`document.selection.read`、`document.variables.read`、
+`file.save` 权限词表，以及明确且安全的导出扩展名/MIME 组合。`file.save` 只能到达经过审查
+的主机保存边界，并不存在通用 `document.write` 权限，顶层 capability 列表也继续保持为空。
+API v2 不是通用插件 SDK，不开放任意
+JavaScript、通用网络访问、不受限文档写入或自定义 UI；每个 contribution 仍必须映射到精确
+的主机审查适配器。内置目录现在有意混用版本：既有 contribution 继续使用 Schema v1；静态
+无障碍审计、Design Tokens 导出与 Figma 可编辑投影使用 Schema v2，将参数、结果、权限和输出
+绑定到已审查的主机适配器。v2 清单本身仍不能携带实现代码。
 
 ## 远程目录状态
 
@@ -196,7 +244,8 @@ OpenPencil 会拒绝已签名快照的回滚，并按当前时间重新验证缓
 中。规范身份摘要可防止另一个可读名称归一化后相同的插件复用客户端缓存的旧工具名。安装、
 启用、禁用或移除插件时，MCP 会刷新工具列表；执行每次调用前还会再次检查实时插件状态，
 因此客户端缓存的旧工具不能绕过禁用或卸载。这里只暴露软件内置且经过审查的模块、命令和
-导出适配器，插件清单不能增加任意可执行 MCP 处理器。
+导出适配器，插件清单不能增加任意可执行 MCP 处理器。兼容模块、命令与导出器会分别投影为
+add、run、export 工具；只安装但未启用时不会暴露任何动态 MCP 工具。
 
 ## 更新与回滚
 

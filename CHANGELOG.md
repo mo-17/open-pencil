@@ -106,13 +106,30 @@
   single-flight and latest-change-wins, Auto adapts its trailing delay to recent compile plus ACK
   time, and Manual still generates the initial preview while deferring later changes until reload.
 
-- Expose installed and enabled declarative plugin modules, commands, and exporters as dynamically
-  registered MCP tools. Plugin store changes update connected clients with
+- Expose installed and enabled declarative plugin modules, commands, and cancellable exporters as
+  dynamically registered MCP tools. Plugin store changes update connected clients with
   `notifications/tools/list_changed`; disconnects remove the dynamic catalog, and execution rechecks
   current installation, enablement, contribution identity, and reviewed host-adapter compatibility
   so cached tool names cannot bypass disablement or removal. Stable tool names include the canonical
   contribution's SHA-256 identity, and exporter cancellation is checked through the final atomic
-  write boundary so an RPC timeout cannot silently complete a reported-failed export.
+  write boundary so an RPC timeout cannot silently complete a reported-failed export. Module,
+  command, and exporter contributions map to add, run, and export tools; uninstalled, disabled,
+  host-incompatible, or host-declared non-cancellable contributions are omitted. Tauri, Expo,
+  Flutter, and Figma source/projection exporters remain available from plugin UI and menus but stay
+  out of MCP until their synchronous Compiler/encoder stages support cooperative cancellation.
+
+- Expand the bundled catalog to 17 reviewed plugins with 20 contributions. New opt-in Lottie,
+  Carousel, and Advanced Data Grid modules use offline deterministic Canvas previews and reviewed
+  interactive Web/React adapters; Expo and Flutter retain authored static fallbacks with explicit
+  warnings. Add a bounded Static Accessibility Audit command (a design-time lint report, not complete
+  WCAG conformance), deterministic Design Tokens JSON export that excludes hidden variables while
+  preserving valid aliases, and a derived Figma editable projection that keeps native editable layers
+  without claiming OpenPencil runtime behavior in Figma.
+- Add manifest API v2 validation for bounded parameter/result JSON schemas, the fixed
+  `document.read`, `document.selection.read`, `document.variables.read`, and `file.save` permission
+  vocabulary, and explicit exporter extension/MIME contracts. API v2 establishes a fail-closed host
+  contract; it does not enable arbitrary JavaScript, generic network access, unrestricted document
+  writes, or custom plugin UI, and every contribution still requires an exact reviewed host adapter.
 
 - Add a trusted Expo React Native source exporter backed by a dedicated Compiler target instead of a
   WebView or React Native Web wrapper. The installed plugin exports an Expo Router + TypeScript

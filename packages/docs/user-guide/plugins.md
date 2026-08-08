@@ -31,7 +31,9 @@ or beta channel, publisher/key identity, snapshot status, the audit head, and wh
 authorizes an executable runtime index. Search matches the signed name, summary, category, keyword,
 plugin ID, and publisher metadata; it does not trust an unsigned search-service response.
 
-The application bundle contains eleven reviewed plugins:
+The application bundle contains 17 reviewed plugins with 20 contributions: ten modules, five
+commands, and five exporters. Only Map is installed and enabled on a new profile; every other
+bundled plugin is opt-in.
 
 - **Map** is installed and enabled on a new profile. It creates a native editable map `FRAME` and
   compiles to the reviewed MapLibre-based React adapter.
@@ -49,6 +51,16 @@ The application bundle contains eleven reviewed plugins:
 - **Slide Menu** is an installable trigger module that opens either an edge menu or a modal from the
   left, right, top, or bottom. Its links are bounded plain text with safe document, anchor, or public
   HTTPS destinations.
+- **Lottie** is an installable vector-animation module for bounded embedded JSON or a canonical
+  public HTTPS source. Canvas stays offline; embedded data loads locally, while generated Web/React
+  output requires an explicit user action before fetching a URL. Expressions, external images,
+  audio, and external fonts are rejected.
+- **Carousel** is an installable accessible carousel with one to 12 bounded slides, safe links,
+  optional public HTTPS images, arrows/dots, slide or fade transitions, and controllable autoplay.
+  Remote slide media is not attached in Compiler Preview until the user explicitly loads it.
+- **Advanced Data Grid** is an installable typed grid with bounded text/number/date/boolean data,
+  initial sorting and filters, pagination, single/multiple selection, density, and visual controls.
+  It accepts at most 16 columns, 200 rows, and 2,000 cells and does not fetch remote data.
 - **Clipboard Toolkit** provides host-owned commands for copying the active selection as text,
   SVG, JSX, or PNG. These commands are unavailable when there is no active selection. PNG uses the
   browser image-clipboard API; the current Tauri permission set reports it as unsupported instead
@@ -64,19 +76,33 @@ The application bundle contains eleven reviewed plugins:
   project. It emits Flutter widgets and navigation source rather than a WebView, does not install
   dependencies, generate platform runners, or invoke Flutter tooling, and records unsupported behavior in
   `EXPORT_WARNINGS.md`.
+- **Static Accessibility Audit** runs the host's bounded accessibility lint preset against the
+  current document. It is a design-time report, not complete WCAG conformance or certification and
+  not a screen-reader, keyboard-focus, runtime form-announcement, or dynamic-state audit.
+- **Design Tokens Exporter** writes deterministic JSON for published variables, collections, modes,
+  types, descriptions, and values. Variables hidden from publishing are excluded. Aliases between
+  exported tokens remain aliases; an alias to a hidden or missing token, an alias cycle, or a missing
+  mode value fails the export instead of flattening or inventing a value.
+- **Figma Editable Projection Exporter** creates a derived `.fig` projection with editable native
+  Figma layers. It does not mutate the OpenPencil source document. OpenPencil interactions, module
+  behavior, and plugin runtimes are not executable in Figma, so this is not a lossless runtime
+  round-trip promise.
 
 Install and enable a plugin, then use its editor entry point. Insert modules from the **Plugins**
 menu in the canvas toolbar, run copy commands from **Edit → Clipboard Toolkit**, and export desktop
 source from **File → Export → Tauri React Project** or mobile source from **File → Export → Expo
-React Native Project** or **File → Export → Flutter Project**. These actions still use the same reviewed host
-adapters shown on the installed-plugin card, and modules create native editable `FRAME` nodes rather
-than opaque browser surfaces.
+React Native Project** or **File → Export → Flutter Project**. Run the audit and both additional
+exporters from their enabled installed-plugin cards. Static Accessibility Audit and Design Tokens
+Exporter also expose dynamic MCP tools. Tauri, Expo, Flutter, and Figma source/projection exporters
+remain UI-only until their synchronous Compiler/encoder stages support cooperative cancellation, so
+an MCP timeout cannot leave an export occupying the editor. These actions still use the same reviewed
+host adapters, and modules create native editable `FRAME` nodes rather than opaque browser surfaces.
 
 The current Expo static MVP supports native `View`, `Text`, `Image`, `ImageBackground`, `Pressable`,
 `TextInput`, and `Switch` shells; basic inline layout and visual styles; single-page output or
 Expo Router page files; and static images. The presence of a native control
-shell does not mean its authored web state/action runtime has been translated. Modules such as Map,
-Chart, Rich Text, HTML, Video, Table, and Slide Menu; Motion and prototype effects; raw SVG; upload;
+shell does not mean its authored web state/action runtime has been translated. All ten plugin
+modules; Motion and prototype effects; raw SVG; upload;
 Supabase/server workflows;
 analytics and Stripe; persistence; advanced form validation; overlays; responsive/hover/custom CSS;
 and other DOM/Tailwind-only behavior currently remain explicit warnings for native follow-up.
@@ -163,11 +189,31 @@ while open and returns to the trigger after close, and reduced-motion preference
 sliding transition. Menu links accept only document paths beginning with `/`, local anchors
 beginning with `#`, or canonical public HTTPS URLs; labels and descriptions remain plain text.
 
-Expo and Flutter source exports do not add a WebView for **</> HTML**, **Video**, **Table**, or
-**Slide Menu**. They
-emit explicit unsupported-feature warnings and static native fallbacks without the authored module
-behavior until reviewed native adapters exist. This preserves the existing native export security
-boundary instead of silently shipping a browser surface inside the mobile app.
+After installing **Lottie**, choose `url` or `json` under **Design → Module**, then configure loop,
+autoplay, speed, direction, and fit. The Canvas placeholder never fetches a URL. Bounded embedded JSON
+loads locally; Compiler Preview and generated Web/React output require **Load Lottie animation**
+before making a public HTTPS request, and retry remains user initiated. Reduced-motion preferences
+suppress autoplay. The validator accepts a bounded vector subset and rejects external assets,
+expressions, audio, and external font loads rather than passing them to the renderer.
+
+After installing **Carousel**, edit its bounded `Slides` JSON and accessible label, then choose the
+initial slide, transition, autoplay interval, loop, arrows/dots, hover pause, and colors. Each slide
+has plain-text title/description, optional public HTTPS image with required alternative text, and an
+optional document path, anchor, or public HTTPS destination. Compiler Preview requires **Load remote
+slide media** before attaching images. The generated Web/React adapter provides keyboard-operable
+controls, pause/resume, an announced current slide, and reduced-motion handling.
+
+After installing **Advanced Data Grid**, edit its typed `Grid data`, optional initial sort/filters,
+page size, selection mode, density, headers, stripes, and colors under **Design → Module**. Row and
+column IDs are stable bounded identifiers; every cell must match its declared text, number, date, or
+boolean column. The generated Web/React table supports accessible sorting, filtering, pagination,
+and row selection over this authored static data. It is not a remote database connector.
+
+Expo and Flutter source exports do not add a WebView for any plugin module, including **Lottie**,
+**Carousel**, and **Advanced Data Grid**. They emit explicit unsupported-feature warnings and retain
+authored static native fallbacks without the interactive module behavior until reviewed native
+adapters exist. This preserves the native export security boundary instead of silently shipping a
+browser surface inside the mobile app.
 
 Installation and enablement are separate on purpose. A newly installed plugin starts disabled so
 you can review it before exposing its modules, commands, or exporters. Only modules join the canvas
@@ -185,6 +231,19 @@ native frame modules, `contributions.commands` describes named host actions, and
 manifest still has an empty capability list. Every contribution must match an exact adapter that
 was registered and frozen at application startup; no contribution receives arbitrary editor,
 filesystem, network, Tauri, or process APIs.
+
+Manifest API v2 is a stricter contract foundation for commands and exporters. It adds bounded,
+closed parameter/result JSON schemas, declared permissions from the fixed `document.read`,
+`document.selection.read`, `document.variables.read`, and `file.save` vocabulary, and explicit safe
+extension/MIME pairs for exporter outputs. `file.save` reaches only the reviewed host save boundary;
+there is no general `document.write` permission, and the top-level capability list remains empty.
+API v2 does not create a general plugin SDK or open
+arbitrary JavaScript execution, generic network access, unrestricted document mutation, or custom
+UI. The host still requires an exact reviewed adapter for every contribution. The bundled catalog
+is intentionally mixed-version: existing contributions remain schema v1, while Static
+Accessibility Audit, Design Tokens Exporter, and Figma Editable Projection use schema v2 to bind
+their reviewed parameters, results, permissions, and outputs. A v2 manifest never supplies its own
+implementation.
 
 ## Remote catalog status
 
@@ -240,7 +299,8 @@ cached tool name. The MCP server refreshes its tool list after install, enable, 
 operations. It checks the current plugin state again at execution time, so a tool cached by an MCP
 client stops working immediately after its plugin is disabled or removed. Only host-reviewed module,
 command, and exporter adapters are exposed; a plugin manifest cannot add an arbitrary executable MCP
-handler.
+handler. Compatible modules, commands, and exporters project to add, run, and export tools
+respectively; installation without enablement does not expose any of them.
 
 ## Review updates and roll back
 

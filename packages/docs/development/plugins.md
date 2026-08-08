@@ -17,6 +17,12 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
+The current application bundle contains 17 reviewed plugins and 20 contributions: ten module
+contributions; five commands (four Clipboard Toolkit commands plus Static Accessibility Audit); and
+five exporters (Tauri React, Expo React Native, Flutter, Design Tokens JSON, and Figma Editable
+Projection). Only Map is installed and enabled by default. Catalog count is an application snapshot,
+not a promise that a signed remote manifest can introduce a new host implementation.
+
 ## Package and trust model
 
 The portable package is one bounded UTF-8 JSON manifest, not a ZIP archive. Schema v1 declares
@@ -56,6 +62,25 @@ interface PluginManifestContributionsV1 {
 These fields describe identity and presentation only. They do not contain implementation code,
 URLs, permission grants, or arbitrary host calls. A command or exporter becomes usable only when
 the application has registered the exact reviewed host adapter for that plugin and contribution.
+
+### Manifest API v2 safety contract
+
+Schema v2 keeps module contributions declarative and adds closed parameter/result JSON schemas,
+declared host permissions, and explicit output extension/MIME pairs to commands and exporters. The
+only permission strings are `document.read`, `document.selection.read`, `document.variables.read`,
+and `file.save`. Object schemas must reject additional properties, result sizes are bounded,
+and safe MIME values cannot include parameters. Unknown keys, permissions, automation targets, and
+duplicate output extensions fail parsing. The top-level `capabilities` array remains empty in v2;
+these contribution permissions are constrained inputs to a reviewed adapter, not ambient powers.
+
+This is a contract and validation foundation, not a general executable plugin API. `file.save`
+allows only the reviewed exporter path to publish its bounded output; there is no general
+`document.write`. Schema v2 does not provide arbitrary JavaScript, generic network access,
+unrestricted document mutation, custom UI, DOM/Tauri/process access, or an implementation supplied
+by the package. Exact startup-frozen host adapter compatibility remains mandatory. The bundled
+catalog is mixed-version: legacy contributions stay on schema v1, while the reviewed Static
+Accessibility Audit, Design Tokens Exporter, and Figma Editable Projection contributions exercise
+the v2 contract. Their implementation still ships only in the host build.
 
 Publisher packages add a SHA-256 digest and Ed25519 signature. Verification requires a public key
 selected by the host trust store; a key embedded in package content is never sufficient. Parsing is
@@ -418,14 +443,13 @@ only, links repeat the core protocol/control-character checks, and runtime chang
 hidden form value plus `openpencil:rich-text-change`. This is an application-data boundary, not a
 write-back channel to the source design document.
 
-The HTML, Video, Table, and Slide Menu modules keep the same reviewed-adapter boundary. HTML uses a script-free,
-opaque-origin iframe with strict CSP. Video accepts only empty or canonical public HTTPS source and
-poster URLs, requires muted autoplay, draws an offline Canvas placeholder, and requires an explicit
-load action in dev-mode Compiler Preview before attaching either remote URL. Generated React/Tauri
-apps use the browser's native `<video>` element. Table accepts bounded rectangular
-string data and renders cells through React text nodes in a semantic `<table>`; cell content is never
-interpreted as markup. Expo and Flutter emit explicit unsupported-module warnings and retain static
-fallbacks for all four instead of introducing a WebView.
+The HTML, Video, Table, and Slide Menu modules keep the same reviewed-adapter boundary. HTML uses a
+script-free, opaque-origin iframe with strict CSP. Video accepts only empty or canonical public HTTPS
+source and poster URLs, requires muted autoplay, draws an offline Canvas placeholder, and requires an
+explicit load action in dev-mode Compiler Preview before attaching either remote URL. Generated
+React/Tauri apps use the browser's native `<video>` element. Table accepts bounded rectangular string
+data and renders cells through React text nodes in a semantic `<table>`; cell content is never
+interpreted as markup.
 
 Slide Menu accepts only bounded plain-text content plus document paths, anchors, or canonical public
 HTTPS link targets. Its React adapter emits a dependency-free portal runtime with two reviewed
@@ -434,6 +458,21 @@ restoration, scroll locking, reduced-motion handling, and the configured backdro
 that generated host adapter; declarative plugin data cannot provide code or arbitrary styles.
 Expo and Flutter retain the authored static frame and emit an unsupported-module warning instead of
 introducing a WebView.
+
+Lottie, Carousel, and Advanced Data Grid complete the ten-module bundled set. Lottie Canvas rendering
+is offline and deterministic. Its React adapter accepts bounded embedded vector JSON or performs a
+bounded canonical-public-HTTPS fetch only after explicit user activation; expressions, external
+images/audio/fonts, oversized payloads, and unsupported structures fail closed. Carousel accepts
+bounded slides, safe destinations, and optional canonical public HTTPS media; its generated React
+adapter owns accessible controls, autoplay pause/resume, reduced-motion behavior, and explicit remote
+media activation. Advanced Data Grid accepts bounded typed cells and host-validated sort/filter/page/
+selection settings; the generated React adapter owns its accessible table behavior and does not add a
+remote-data capability.
+
+Web/React and Tauri output use those reviewed interactive adapters. Expo and Flutter do not execute
+plugin module runtimes or insert a WebView: for every module, including these three, they emit an
+unsupported-module warning and retain the authored static fallback until a reviewed native adapter
+exists.
 
 The Clipboard Toolkit is a command-only built-in. Its reviewed host adapters copy the active
 selection as text, SVG, JSX, or PNG and reject invocation when no selection is active. The manifest
@@ -454,6 +493,18 @@ produce a deterministic warning or an explicit authored-frame fallback; it must 
 React Native Web or a WebView. The host archives and saves the generated files but never installs
 dependencies, launches Expo, or invokes Android/iOS build tools.
 
+The Static Accessibility Audit command runs the host accessibility lint preset and returns a bounded
+report. It is not complete WCAG conformance or certification: screen-reader naming/alternatives,
+runtime focus order, form announcements/dynamic state, and contrast that depends on variables,
+images, gradients, or complex compositing remain explicitly unevaluated.
+
+The Design Tokens exporter emits deterministic, bounded JSON for published variables. Variables with
+`hiddenFromPublishing` are excluded, while aliases between exported variables are preserved as alias
+IDs. Aliases to hidden or missing variables, cycles, and missing mode values fail closed. The Figma
+Editable Projection exporter runs the `figma-compatible` export profile into a derived `.fig` without
+mutating the source graph. The result favors native editable Figma layers; OpenPencil interactions and
+plugin runtime behavior are not executable in Figma and are not a lossless round-trip guarantee.
+
 ## AI and MCP
 
 Use the generic operations for every registered module:
@@ -467,6 +518,15 @@ Use the generic operations for every registered module:
 Unknown or invalid module data remains preserved for repair instead of being silently rewritten.
 Do not add a separate tool family for each module unless it performs a genuinely different bounded
 operation.
+
+The application projects each installed, enabled, host-compatible declarative contribution that the
+host explicitly marks MCP-safe into the MCP catalog: modules become add tools, commands become run
+tools, and cancellable exporters become export tools. The Tauri, Expo, Flutter, and Figma
+source/projection exporters remain UI-only until their synchronous Compiler/encoder stages support
+cooperative cancellation. Tool names contain a canonical contribution SHA-256 identity. Store changes trigger
+`notifications/tools/list_changed`; disablement, removal, or host disconnect removes the descriptor,
+and execution rechecks live state so a client-cached name cannot bypass revocation. Manifests cannot
+supply arbitrary MCP handlers, and an installed-but-disabled contribution remains absent.
 
 ## Publisher and catalog workflow
 

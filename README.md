@@ -41,9 +41,10 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
   native subset
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Compiler Preview supports Real-time, Auto, and Manual refresh with single-flight latest-change scheduling
-- **Built-in modules** — add versioned modules such as interactive maps without introducing
-  proprietary node types. Modules stay editable as native frames, survive `.fig` round-trips, expose
-  inspector and AI/MCP controls, and compile to local package-based runtimes
+- **Built-in plugin marketplace** — manage 17 reviewed plugins with 20 module, command, and exporter
+  contributions. Ten versioned modules—including Map, Rich Text, Lottie, Carousel, and Advanced Data
+  Grid—stay editable as native frames, survive `.fig` round-trips, expose inspector and dynamic MCP
+  controls, and compile through reviewed host adapters
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
 - **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence,
   follow mode, and fine-grained MotionSpec v3 timeline merging with remote playheads and selections
@@ -252,19 +253,39 @@ stable/beta catalogs, searchable listings, immutable artifact coordinates, an ap
 checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
 digest pins, cache status, and portable document dependency locks remain enforced.
 After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
-the Edit menu, and export Tauri React, Expo React Native, or source-only Flutter projects from File →
-Export. The eleven reviewed built-ins include Map, Chart, Rich Text, sandboxed HTML, public-HTTPS
-Video, structured Table, an accessible four-direction Slide Menu, Clipboard Toolkit, and the three
-source exporters. Rich Text uses a structured
-visual block and inline-format editor in the Design panel. Compiler Preview and exported React/Tauri
-source render Rich Text as a directly editable, dependency-free field with a safe v1 formatting
-toolbar, plain-text paste, a hidden form value, and a change event; runtime values remain application
-data and are not silently written back to the source `.fig` file. Mobile source ZIPs currently omit font
-bytes because the available SPDX IDs do not include the font-specific copyright, full license text,
-or NOTICE files required for safe redistribution; every omission remains visible in the export report.
-Installed and enabled plugin contributions also appear as dynamic MCP tools. Disabling, removing, or
-disconnecting the plugin host removes those tools from discovery, and every call rechecks live plugin
-state before it reaches a reviewed host adapter.
+the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 17
+reviewed built-ins expose 20 contributions: ten modules (Map, Chart, Rich Text, sandboxed HTML,
+public-HTTPS Video, structured Table, an accessible four-direction Slide Menu, Lottie, Carousel, and
+Advanced Data Grid), five commands (four Clipboard Toolkit actions plus Static Accessibility Audit),
+and five exporters (Tauri React, Expo React Native, Flutter, Design Tokens JSON, and Figma Editable
+Projection). Only Map is installed and enabled by default; all other built-ins are opt-in. Rich Text
+uses a structured visual block and inline-format editor in the Design panel. Compiler Preview and
+exported React/Tauri source render Rich Text as a directly editable, dependency-free field with a
+safe v1 formatting toolbar, plain-text paste, a hidden form value, and a change event; runtime values
+remain application data and are not silently written back to the source `.fig` file. Mobile source
+ZIPs currently omit font bytes because the available SPDX IDs do not include the font-specific
+copyright, full license text, or NOTICE files required for safe redistribution; every omission
+remains visible in the export report.
+Installed and enabled plugin contributions that the host explicitly marks MCP-safe also appear as
+dynamic MCP tools. Disabling, removing, or disconnecting the plugin host removes those tools from
+discovery, and every call rechecks live plugin state before it reaches a reviewed host adapter.
+Modules, commands, and cancellable exporters map to add, run, and export tools respectively. The
+Tauri, Expo, Flutter, and Figma source/projection exporters remain UI-only until their synchronous
+Compiler/encoder stages support cooperative cancellation; uninstalled, disabled, host-incompatible,
+or non-cancellable contributions are never exposed.
+
+The Static Accessibility Audit is a bounded design-time lint report, not a complete WCAG conformance
+test or runtime assistive-technology audit. Design Tokens JSON excludes variables hidden from
+publishing, preserves aliases between exported tokens, and fails closed when an alias targets a hidden
+or missing token. Figma Editable Projection creates a derived `.fig` with native editable layers; it
+does not mutate the source document, and OpenPencil interactions or plugin runtimes are not executable
+in Figma. Web/React and Tauri output can use the reviewed interactive module adapters, while Expo and
+Flutter currently emit warnings and preserve authored static fallbacks for plugin modules.
+
+Manifest API v2 adds strict parameter/result JSON schemas, a fixed host-permission vocabulary, and
+explicit exporter extension/MIME contracts. It is a safety-contract foundation, not a general plugin
+runtime: it does not open arbitrary JavaScript, generic network access, unrestricted document writes,
+or custom UI. Contributions still resolve only to reviewed adapters shipped by the host.
 
 Declarative modules still map only to Canvas/Compiler adapters shipped with the app. An optional
 Phase 4 channel can run a separately publisher-signed and root-indexed, import-free WASM compute
