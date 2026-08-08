@@ -305,8 +305,13 @@ describe('compile — Figma image fills (Phase 4 §24 v2)', () => {
     const binBytes = new Uint8Array([1, 2, 3, 4])
 
     const svg = compileImageFill({ imageHash: 'icon.svg?raw', bytes: svgBytes })
-    expect(svg.files.get('src/assets/openpencil-image-iconsvgraw.svg')).toEqual(svgBytes)
-    expect(svg.app).toContain('bg-[url(./assets/openpencil-image-iconsvgraw.svg)]')
+    const svgPath = [...svg.files.keys()].find(
+      (path) => path.startsWith('src/assets/openpencil-image-iconsvgraw-') && path.endsWith('.svg')
+    )
+    expect(svgPath).toBeDefined()
+    if (!svgPath) throw new Error('Expected a collision-safe SVG asset path')
+    expect(svg.files.get(svgPath)).toEqual(svgBytes)
+    expect(svg.app).toContain(`bg-[url(./assets/${svgPath.split('/').at(-1)})]`)
 
     const webp = compileImageFill({ imageHash: 'hero-webp', bytes: webpBytes })
     expect(webp.files.get('src/assets/openpencil-image-hero-webp.webp')).toEqual(webpBytes)
