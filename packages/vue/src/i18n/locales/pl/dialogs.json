@@ -197,6 +197,7 @@
   "remoteMcpEmpty": "Nie skonfigurowano zdalnych serwerów MCP.",
   "remoteMcpDelete": "Usuń serwer",
   "remoteMcpDeleteDescription": "Usunąć ten serwer, zapisany token i wszystkie przypisania modeli?",
+  "selectDesignModel": "Wybierz model projektowy",
   "modelNeedsCredential": "Brak klucza",
   "modelAgentConnection": "Agent",
   "saveModel": "Zapisz model",

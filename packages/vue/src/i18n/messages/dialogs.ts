@@ -273,6 +273,7 @@ export const dialogMessageDefaults = {
   remoteMcpDelete: 'Delete server',
   remoteMcpDeleteDescription:
     'Delete this server, its saved token, and all model assignments that reference it?',
+  selectDesignModel: 'Select design model',
   modelNeedsCredential: 'Needs key',
   modelAgentConnection: 'Agent',
   saveModel: 'Save model',

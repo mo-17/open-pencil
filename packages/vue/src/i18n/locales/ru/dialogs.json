@@ -197,6 +197,7 @@
   "remoteMcpEmpty": "Удалённые серверы MCP не настроены.",
   "remoteMcpDelete": "Удалить сервер",
   "remoteMcpDeleteDescription": "Удалить этот сервер, сохранённый токен и все назначения моделей?",
+  "selectDesignModel": "Выбрать модель для дизайна",
   "modelNeedsCredential": "Нужен ключ",
   "modelAgentConnection": "Агент",
   "saveModel": "Сохранить модель",

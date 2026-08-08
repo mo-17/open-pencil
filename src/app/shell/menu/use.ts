@@ -8,6 +8,7 @@ import { openSettingsDialog } from '@/app/settings/dialog'
 import { createSharedEditorMenuActions } from '@/app/shell/menu/editor-actions'
 import { importFileDialog, openFileDialog } from '@/app/shell/menu/files'
 import { APPLICATION_RUNTIME_GUIDE_MENU_ID } from '@/app/shell/menu/help-actions'
+import { openStorageWorkspace } from '@/app/shell/menu/navigation'
 import { createPluginMenuActions } from '@/app/shell/menu/plugin-actions'
 import { APP_MENU_SCHEMA, type AppMenuEntry } from '@/app/shell/menu/schema'
 import { createSelectionMenuActions } from '@/app/shell/menu/selection-actions'
@@ -42,6 +43,9 @@ export function useMenu() {
   const actions: Partial<Record<string, () => void>> = {
     new: () => createTab(),
     open: () => void openFileDialog(),
+    'open-storage-workspace': () => {
+      void import('@/router').then(({ default: router }) => openStorageWorkspace(router))
+    },
     close: () => {
       if (activeTab.value) closeTab(activeTab.value.id)
     },

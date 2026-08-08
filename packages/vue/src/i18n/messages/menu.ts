@@ -11,6 +11,7 @@ export const menuMessageDefaults = {
 
   new: 'New',
   open: 'Open…',
+  openStorageWorkspace: 'Open storage workspace…',
   save: 'Save',
   saveAs: 'Save as…',
   export: 'Export',

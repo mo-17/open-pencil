@@ -197,6 +197,7 @@
   "remoteMcpEmpty": "Keine Remote-MCP-Server konfiguriert.",
   "remoteMcpDelete": "Server löschen",
   "remoteMcpDeleteDescription": "Diesen Server, sein gespeichertes Token und alle Modellzuweisungen löschen?",
+  "selectDesignModel": "Designmodell auswählen",
   "modelNeedsCredential": "Schlüssel fehlt",
   "modelAgentConnection": "Agent",
   "saveModel": "Modell speichern",

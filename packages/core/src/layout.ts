@@ -13,6 +13,7 @@ import {
 
 import { applyYogaLayoutSteps, type LayoutApplyStep } from './layout/apply'
 import { usesDetachedDerivedLayout } from './layout/derived'
+import { applyEffectiveGeneratedTextLayout } from './layout/effective-generated-text'
 import type { LayoutGraph } from './layout/graph'
 import { buildGridTreeSteps, createGridChildNode } from './layout/grid'
 import { resolveNodeLayoutDirection } from './text/direction'
@@ -133,7 +134,6 @@ function* asLayoutSteps<T>(steps: Generator<void, T, void>): LayoutSteps<T> {
     if (!completed) steps.return(undefined as T)
   }
 }
-
 function resolveComputedLayoutDirection(
   graph: LayoutGraph,
   node: Pick<SceneNode, 'layoutDirection' | 'parentId'>
@@ -144,8 +144,12 @@ function resolveComputedLayoutDirection(
 }
 
 export function computeAllLayouts(graph: SceneGraph, scopeId?: string): void {
+  const rootId = scopeId ?? graph.rootId
   const visited = new Set<string>()
-  computeLayoutsBottomUp(graph, scopeId ?? graph.rootId, visited)
+  computeLayoutsBottomUp(graph, rootId, visited)
+  if (applyEffectiveGeneratedTextLayout(graph, rootId)) {
+    computeLayoutsBottomUp(graph, rootId, new Set())
+  }
 }
 
 /**
@@ -165,6 +169,19 @@ export async function computeAllLayoutsAsync(
   const execution = createLayoutCooperativeExecution(options)
   throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
   const rootId = scopeId ?? graph.rootId
+  await computeAllLayoutsPassAsync(graph, rootId, execution)
+  throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
+  if (applyEffectiveGeneratedTextLayout(graph, rootId)) {
+    await computeAllLayoutsPassAsync(graph, rootId, execution)
+  }
+  throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
+}
+
+async function computeAllLayoutsPassAsync(
+  graph: SceneGraph,
+  rootId: string,
+  execution: LayoutCooperativeExecution
+): Promise<void> {
   const visited = new Set<string>()
   const pending: Array<{ nodeId: string; coveredByParentLayout: boolean }> = [
     { nodeId: rootId, coveredByParentLayout: false }
@@ -204,7 +221,6 @@ export async function computeAllLayoutsAsync(
     await computeLayoutCooperatively(graph, nodeId, execution)
     await checkpointLayout(execution)
   }
-  throwIfAborted(signal, LAYOUT_ABORT_MESSAGE)
 }
 
 async function computeLayoutCooperatively(

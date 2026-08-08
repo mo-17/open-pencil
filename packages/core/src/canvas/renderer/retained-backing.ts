@@ -245,17 +245,22 @@ function createSceneBackingSurface(
   height: number,
   dpr: number
 ): Surface | null {
+  if (r.sceneBackingAllocationFailed) return null
+  const info = {
+    width: Math.max(1, Math.floor(width * dpr)),
+    height: Math.max(1, Math.floor(height * dpr)),
+    colorType: r.ck.ColorType.RGBA_8888,
+    alphaType: r.ck.AlphaType.Premul,
+    colorSpace: r.ck.ColorSpace.SRGB
+  }
   try {
-    return r.surface.makeSurface({
-      width: Math.max(1, Math.floor(width * dpr)),
-      height: Math.max(1, Math.floor(height * dpr)),
-      colorType: r.ck.ColorType.RGBA_8888,
-      alphaType: r.ck.AlphaType.Premul,
-      colorSpace: r.ck.ColorSpace.SRGB
-    })
-  } catch {
-    // CanvasKit can throw instead of returning null under GPU memory pressure.
-    // The caller will use the live renderer or the previous retained image.
+    return r.surface.makeSurface(info)
+  } catch (error) {
+    r.sceneBackingAllocationFailed = true
+    console.warn(
+      `Disabling retained scene backing after CanvasKit failed to allocate ${info.width}×${info.height}`,
+      error
+    )
     return null
   }
 }
@@ -589,6 +594,7 @@ export function renderSceneBacking(
   graph: SceneGraph,
   sceneVersion: number
 ): boolean {
+  if (r.sceneBackingAllocationFailed) return false
   const positionPreviewVersion = graph.positionPreviewVersion
   const allowStaleZoom = now() < r.sceneBackingPreviewUntil
   const hasCoverage = backingCoverageContainsLiveViewport(

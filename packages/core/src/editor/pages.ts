@@ -1,6 +1,10 @@
 import type { Color } from '@open-pencil/scene-graph/primitives'
 
 import { populateLazyFigImportRoots } from '#core/kiwi/fig/lazy-import'
+import {
+  canUseFigPopulationWorker,
+  createFigPopulationWorker
+} from '#core/kiwi/fig/population/client'
 import { computeAllLayoutsAsync } from '#core/layout'
 import { fontManager } from '#core/text/fonts'
 import { collectGraphFontRequirements } from '#core/text/requirements'
@@ -146,6 +150,9 @@ export function createPageActions(ctx: EditorContext) {
   let activeSwitch: AbortController | null = null
   let activeFontProgress: ActiveFontLoadProgress | null = null
   let nextFontOperationId = 0
+  let populationWorkerInstance: ReturnType<typeof createFigPopulationWorker> | undefined
+  let populationWorkerGeneration = 0
+  let pageSwitchGeneration = 0
 
   function emitFontProgress(progress: ActiveFontLoadProgress): void {
     const { operationId, pageId, completed, total, failed, status } = progress
@@ -212,9 +219,16 @@ export function createPageActions(ctx: EditorContext) {
     activeSwitch = null
   }
 
+  function populationWorker() {
+    if (!canUseFigPopulationWorker(ctx.graph)) return null
+    populationWorkerInstance ??= createFigPopulationWorker(ctx.graph)
+    return populationWorkerInstance
+  }
+
   async function switchPage(pageId: string) {
     const page = ctx.graph.getNode(pageId)
     if (page?.type !== 'CANVAS') return
+    const switchGeneration = ++pageSwitchGeneration
 
     cancelPendingSwitch()
     const switchController = new AbortController()
@@ -240,7 +254,21 @@ export function createPageActions(ctx: EditorContext) {
       if (previousPageId !== pageId) ctx.emitEditorEvent('page:changed', pageId, previousPageId)
 
       pageViewportStore.restorePageViewport(pageId)
-      populateLazyFigImportRoots(switchGraph, [pageId])
+      const worker = populationWorker()
+      const workerGeneration = populationWorkerGeneration
+      const workerResult = worker ? await worker.populate(pageId) : null
+      if (
+        workerGeneration !== populationWorkerGeneration ||
+        switchGeneration !== pageSwitchGeneration ||
+        !isCurrentSwitch()
+      ) {
+        return
+      }
+      if (workerResult === null) {
+        worker?.terminate()
+        populationWorkerInstance = undefined
+        populateLazyFigImportRoots(switchGraph, [pageId])
+      }
 
       const childIds = switchGraph.getChildren(pageId).map((node) => node.id)
       const toLoad = fontManager.collectFontKeys(switchGraph, childIds)
@@ -298,6 +326,15 @@ export function createPageActions(ctx: EditorContext) {
     }
   }
 
+  function clearPageViewports() {
+    populationWorkerGeneration++
+    pageSwitchGeneration++
+    cancelPendingSwitch()
+    populationWorkerInstance?.terminate()
+    populationWorkerInstance = undefined
+    pageViewportStore.clearPageViewports()
+  }
+
   function addPage(name?: string) {
     const pages = ctx.graph.getPages()
     const pageName = name ?? `Page ${pages.length + 1}`
@@ -347,6 +384,6 @@ export function createPageActions(ctx: EditorContext) {
     renamePage,
     setPageColor,
     cancelPendingSwitch,
-    clearPageViewports: pageViewportStore.clearPageViewports
+    clearPageViewports
   }
 }

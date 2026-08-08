@@ -197,6 +197,7 @@
   "remoteMcpEmpty": "Nessun server MCP remoto configurato.",
   "remoteMcpDelete": "Elimina server",
   "remoteMcpDeleteDescription": "Eliminare questo server, il token salvato e tutte le assegnazioni dei modelli?",
+  "selectDesignModel": "Seleziona modello di progettazione",
   "modelNeedsCredential": "Chiave necessaria",
   "modelAgentConnection": "Agente",
   "saveModel": "Salva modello",

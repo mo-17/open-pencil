@@ -6,6 +6,7 @@ import { IS_BROWSER } from '#core/constants'
 import { importNodeChanges } from '#core/kiwi/fig/import'
 import { deserializeSceneGraph } from '#core/kiwi/fig/parse/transfer'
 import type { SerializedSceneGraph } from '#core/kiwi/fig/parse/transfer'
+import { registerFigPopulationWorker } from '#core/kiwi/fig/population/client'
 
 export interface ParseFigFileOptions {
   populate?: 'all' | 'first-page' | 'none'
@@ -100,6 +101,10 @@ function isExplicitOutOfMemoryError(error: Error): boolean {
   )
 }
 
+function canRetainFigPopulationWorker(meta: { env?: { DEV?: boolean } }): boolean {
+  return meta.env?.DEV ?? false
+}
+
 function transferableFigBuffer(data: FigSourceData): ArrayBuffer {
   if (data instanceof ArrayBuffer) return data
   if (
@@ -140,8 +145,15 @@ function parseViaStartedWorker(
 
     const succeed = (graph: SceneGraph) => {
       if (settled) return
+      if (options.populate === 'first-page' && canRetainFigPopulationWorker(import.meta)) {
+        worker.onmessage = null
+        worker.onerror = null
+        worker.onmessageerror = null
+        registerFigPopulationWorker(graph, worker)
+      } else {
+        worker.terminate()
+      }
       settled = true
-      worker.terminate()
       resolve(graph)
     }
 

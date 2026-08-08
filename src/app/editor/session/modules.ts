@@ -64,6 +64,7 @@ export function createEditorStoreModules(
 
   function dispose() {
     disposeFlash()
+    editor.clearPageViewports()
     documentIO.disposeDocumentIO()
   }
 

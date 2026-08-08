@@ -197,6 +197,7 @@
   "remoteMcpEmpty": "リモート MCP サーバーは未設定です。",
   "remoteMcpDelete": "サーバーを削除",
   "remoteMcpDeleteDescription": "このサーバー、保存済みトークン、参照するすべてのモデル割り当てを削除しますか？",
+  "selectDesignModel": "デザインモデルを選択",
   "modelNeedsCredential": "キーが必要",
   "modelAgentConnection": "エージェント",
   "saveModel": "モデルを保存",

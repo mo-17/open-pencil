@@ -139,6 +139,7 @@ export class SkiaRenderer {
   } | null = null
   sceneBackingPreviewUntil = 0
   sceneBackingNeedsCrispRender = false
+  sceneBackingAllocationFailed = false
   sceneBackingBuild: {
     surface: Surface
     graph: SceneGraph
@@ -480,6 +481,7 @@ export class SkiaRenderer {
   replaceSurface(surface: Surface): void {
     const previousSurface = this.surface
     this.surface = surface
+    this.sceneBackingAllocationFailed = false
     RendererState.prepareSurfaceReplacement(this)
     try {
       previousSurface.delete()
@@ -493,6 +495,7 @@ export class SkiaRenderer {
     if (normalized === this.performanceMode) return false
     this.performanceMode = normalized
     this.imageCacheByteBudget = canvasPerformanceProfile(normalized).decodedImageCacheBudgetBytes
+    this.sceneBackingAllocationFailed = false
     this.sceneBackingPreviewUntil = 0
     this.lastSceneViewport = null
     this.sceneBackingNeedsCrispRender = !!this.sceneBacking || !!this.sceneBackingBuild
