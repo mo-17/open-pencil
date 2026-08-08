@@ -1,8 +1,14 @@
 import { describe, expect, test } from 'bun:test'
 
 import {
+  CAROUSEL_MODULE_TYPE,
+  CAROUSEL_PLUGIN_ID,
+  DATA_GRID_MODULE_TYPE,
+  DATA_GRID_PLUGIN_ID,
   HTML_MODULE_TYPE,
   HTML_PLUGIN_ID,
+  LOTTIE_MODULE_TYPE,
+  LOTTIE_PLUGIN_ID,
   SLIDE_MENU_MODULE_TYPE,
   SLIDE_MENU_PLUGIN_ID,
   TABLE_MODULE_TYPE,
@@ -73,11 +79,14 @@ describe('app plugin module adapter compatibility', () => {
     ).toMatchObject({ ok: false, status: 'plugin-identity-mismatch' })
   })
 
-  test('accepts only the reviewed Video, Table, and Slide Menu host adapter identities', () => {
+  test('accepts only reviewed non-default module host adapter identities', () => {
     const cases = [
       [VIDEO_PLUGIN_ID, VIDEO_MODULE_TYPE],
       [TABLE_PLUGIN_ID, TABLE_MODULE_TYPE],
-      [SLIDE_MENU_PLUGIN_ID, SLIDE_MENU_MODULE_TYPE]
+      [SLIDE_MENU_PLUGIN_ID, SLIDE_MENU_MODULE_TYPE],
+      [LOTTIE_PLUGIN_ID, LOTTIE_MODULE_TYPE],
+      [CAROUSEL_PLUGIN_ID, CAROUSEL_MODULE_TYPE],
+      [DATA_GRID_PLUGIN_ID, DATA_GRID_MODULE_TYPE]
     ] as const
 
     for (const [pluginId, moduleType] of cases) {

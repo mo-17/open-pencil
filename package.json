@@ -130,6 +130,7 @@
     "idb": "^8.0.3",
     "jspdf": "^4.2.1",
     "lib0": "^0.2.117",
+    "lottie-web": "5.13.0",
     "maplibre-gl": "6.0.0",
     "motion-v": "^2.0.0",
     "opentype.js": "^2.0.0",

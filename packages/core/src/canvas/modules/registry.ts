@@ -12,7 +12,10 @@ import type { SkiaRenderer } from '#core/canvas/renderer'
 import { MAP_MODULE_TYPE, MAP_PLUGIN_ID } from '#core/plugins/map'
 
 import { CHART_MODULE_CANVAS_ADAPTER, renderChartModulePreview } from './chart'
+import { CAROUSEL_MODULE_CANVAS_ADAPTER, renderCarouselModulePreview } from './carousel'
+import { DATA_GRID_MODULE_CANVAS_ADAPTER, renderDataGridModulePreview } from './data-grid'
 import { HTML_MODULE_CANVAS_ADAPTER, renderHtmlModulePreview } from './html'
+import { LOTTIE_MODULE_CANVAS_ADAPTER, renderLottieModulePreview } from './lottie'
 import { RICH_TEXT_MODULE_CANVAS_ADAPTER, renderRichTextModulePreview } from './rich-text'
 import { SLIDE_MENU_MODULE_CANVAS_ADAPTER, renderSlideMenuModulePreview } from './slide-menu'
 import { TABLE_MODULE_CANVAS_ADAPTER, renderTableModulePreview } from './table'
@@ -68,6 +71,9 @@ export const BUILTIN_MODULE_CANVAS_ADAPTERS = new ModuleCanvasAdapterRegistry()
   .register(VIDEO_MODULE_CANVAS_ADAPTER)
   .register(TABLE_MODULE_CANVAS_ADAPTER)
   .register(SLIDE_MENU_MODULE_CANVAS_ADAPTER)
+  .register(LOTTIE_MODULE_CANVAS_ADAPTER)
+  .register(CAROUSEL_MODULE_CANVAS_ADAPTER)
+  .register(DATA_GRID_MODULE_CANVAS_ADAPTER)
   .freeze()
 
 export function renderModulePreview(
@@ -80,7 +86,10 @@ export function renderModulePreview(
 
 export {
   renderChartModulePreview,
+  renderCarouselModulePreview,
+  renderDataGridModulePreview,
   renderHtmlModulePreview,
+  renderLottieModulePreview,
   renderRichTextModulePreview,
   renderSlideMenuModulePreview,
   renderTableModulePreview,

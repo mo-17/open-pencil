@@ -1,4 +1,5 @@
 export { BUILTIN_PLUGIN_REGISTRY } from './builtin'
+export * from './carousel'
 export * from './catalog'
 export {
   CHART_MODULE_CONFIG_VERSION,
@@ -15,6 +16,7 @@ export {
   type ChartModuleConfig,
   type ChartModuleConfigV1
 } from './chart'
+export * from './data-grid'
 export {
   HTML_MODULE_CONFIG_VERSION,
   HTML_MODULE_DEFAULT_CONFIG,
@@ -58,6 +60,7 @@ export {
   type MapModuleConfig,
   type MapModuleConfigV1
 } from './map'
+export * from './lottie'
 export { PluginRegistry } from './registry'
 export {
   RICH_TEXT_MODULE_CONFIG_VERSION,

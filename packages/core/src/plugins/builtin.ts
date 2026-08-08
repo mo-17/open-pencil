@@ -1,6 +1,9 @@
 import { CHART_PLUGIN } from './chart'
+import { CAROUSEL_PLUGIN } from './carousel'
+import { DATA_GRID_PLUGIN } from './data-grid'
 import { HTML_PLUGIN } from './html'
 import { MAP_PLUGIN } from './map'
+import { LOTTIE_PLUGIN } from './lottie'
 import { PluginRegistry } from './registry'
 import { RICH_TEXT_PLUGIN } from './rich-text'
 import { SLIDE_MENU_PLUGIN } from './slide-menu'
@@ -15,4 +18,7 @@ export const BUILTIN_PLUGIN_REGISTRY = new PluginRegistry()
   .register(VIDEO_PLUGIN)
   .register(TABLE_PLUGIN)
   .register(SLIDE_MENU_PLUGIN)
+  .register(LOTTIE_PLUGIN)
+  .register(CAROUSEL_PLUGIN)
+  .register(DATA_GRID_PLUGIN)
   .freeze()

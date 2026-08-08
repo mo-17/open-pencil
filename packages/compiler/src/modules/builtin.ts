@@ -1,6 +1,9 @@
 import { CHART_COMPILER_MODULE_LOWERER } from './chart'
+import { CAROUSEL_COMPILER_MODULE_LOWERER } from './carousel'
+import { DATA_GRID_COMPILER_MODULE_LOWERER } from './data-grid'
 import { HTML_COMPILER_MODULE_LOWERER } from './html'
 import { MAP_COMPILER_MODULE_LOWERER } from './map'
+import { LOTTIE_COMPILER_MODULE_LOWERER } from './lottie'
 import { CompilerModuleRegistry } from './registry'
 import { RICH_TEXT_COMPILER_MODULE_LOWERER } from './rich-text'
 import { SLIDE_MENU_COMPILER_MODULE_LOWERER } from './slide-menu'
@@ -37,6 +40,18 @@ export const BUILTIN_COMPILER_MODULE_REGISTRY = new CompilerModuleRegistry()
   })
   .register({
     lowerer: TABLE_COMPILER_MODULE_LOWERER,
+    targets: {}
+  })
+  .register({
+    lowerer: LOTTIE_COMPILER_MODULE_LOWERER,
+    targets: {}
+  })
+  .register({
+    lowerer: CAROUSEL_COMPILER_MODULE_LOWERER,
+    targets: {}
+  })
+  .register({
+    lowerer: DATA_GRID_COMPILER_MODULE_LOWERER,
     targets: {}
   })
   .freeze()
