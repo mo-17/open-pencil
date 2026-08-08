@@ -167,6 +167,16 @@ export interface ClipboardImageResolution {
   fetchAttempted: boolean
 }
 
+export interface FontLoadProgress {
+  /** Monotonic editor-local identifier for one page font-loading operation. */
+  readonly operationId: number
+  readonly pageId: string
+  readonly completed: number
+  readonly total: number
+  readonly failed: number
+  readonly status: 'loading' | 'completed' | 'cancelled'
+}
+
 export type FigmaClipboardImageResolver = (
   fileKey: string,
   hashes: string[]
@@ -180,6 +190,7 @@ export interface EditorEvents extends SceneGraphEvents {
   'selection:changed': (selectedIds: string[], previousIds: string[]) => void
   'tool:changed': (tool: Tool, previousTool: Tool) => void
   'page:changed': (pageId: string, previousPageId: string) => void
+  'font:load-progress': (progress: FontLoadProgress) => void
   'clipboard:images-missing': (resolution: ClipboardImageResolution) => void
   'viewport:changed': (
     viewport: { panX: number; panY: number; zoom: number },

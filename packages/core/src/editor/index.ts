@@ -13,6 +13,7 @@ export type {
   EditorOptions,
   EditorState,
   FigmaClipboardImageResolver,
+  FontLoadProgress,
   MotionPreviewSelection,
   MotionPreviewSpecTarget,
   MotionPreviewSpecsOptions,

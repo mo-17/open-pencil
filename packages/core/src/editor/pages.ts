@@ -7,7 +7,7 @@ import { collectGraphFontRequirements } from '#core/text/requirements'
 import { missingGraphFontScripts } from '#core/text/resolved-requirements'
 
 import { createPageViewportStore } from './page-viewports'
-import type { EditorContext } from './types'
+import type { EditorContext, FontLoadProgress } from './types'
 
 const PAGE_FONT_BACKGROUND_DELAY_MS = 32
 
@@ -35,13 +35,28 @@ type PageFontLoadResult = {
   arabicFallbackFamilies: string[]
 }
 
-function loadPageFontsInBackground(
+interface PageFontProgressReporter {
+  start(total: number): void
+  settle(failed: boolean): void
+}
+
+interface ActiveFontLoadProgress {
+  controller: AbortController
+  operationId: number
+  pageId: string
+  completed: number
+  total: number
+  failed: number
+  status: FontLoadProgress['status']
+}
+
+async function loadPageFontsInBackground(
   ctx: EditorContext,
   fontKeys: ReturnType<typeof fontManager.collectFontKeys>,
   requirements: GraphFontRequirements,
-  signal: AbortSignal
+  signal: AbortSignal,
+  progress: PageFontProgressReporter
 ): Promise<PageFontLoadResult> {
-  const requiredFallbacks = missingGraphFontScripts(requirements)
   const requiredCharacters = Array.from(requirements.characters)
   const attemptedFontKeys = fontKeys.filter(
     ([family, style]) =>
@@ -53,23 +68,53 @@ function loadPageFontsInBackground(
     cjkFallbackFamilies: [...fontManager.getCJKFallbackFamilies()],
     arabicFallbackFamilies: [...fontManager.getArabicFallbackFamilies()]
   }
-  return Promise.all([
-    Promise.all(
-      attemptedFontKeys.map(([family, style]) =>
-        Promise.resolve()
-          .then(() => ctx.loadFont(family, style, requirements.characters, { signal }))
-          .catch(() => null)
-      )
-    ),
-    fontManager
-      .ensureFallbackPack(requiredFallbacks, requirements.characters, { signal })
-      .catch(() => undefined)
-  ]).then(([attemptedFaces, fallbacks]) => ({
+  const evaluatesFallbacks = requirements.scripts.length > 0
+  progress.start(attemptedFontKeys.length + (evaluatesFallbacks ? 1 : 0))
+
+  const attemptedFaces = await Promise.all(
+    attemptedFontKeys.map(async ([family, style]) => {
+      let face: ArrayBuffer | null
+      try {
+        face = await ctx.loadFont(family, style, requirements.characters, { signal })
+      } catch {
+        face = null
+      }
+      progress.settle(face === null)
+      return face
+    })
+  )
+  if (signal.aborted) throw new DOMException('Page switch was superseded', 'AbortError')
+
+  // Coverage for an unregistered authored face is intentionally treated as unknown. Re-evaluate
+  // only after those faces settle so a face such as Bebas Neue can reveal its missing CJK glyphs
+  // before the progress operation is allowed to complete.
+  const requiredFallbacks = missingGraphFontScripts(requirements)
+  let fallbacks: PageFontLoadResult['fallbacks']
+  if (evaluatesFallbacks) {
+    if (requiredFallbacks.length === 0) {
+      progress.settle(false)
+    } else {
+      try {
+        fallbacks = await fontManager.ensureFallbackPack(
+          requiredFallbacks,
+          requirements.characters,
+          { signal }
+        )
+        progress.settle(
+          requiredFallbacks.some((script) => (fallbacks?.[script]?.length ?? 0) === 0)
+        )
+      } catch {
+        progress.settle(true)
+      }
+    }
+  }
+
+  return {
     ...before,
     attemptedFaces,
     requiredFallbacks,
     fallbacks
-  }))
+  }
 }
 
 function arraysEqual(first: readonly string[], second: readonly string[]): boolean {
@@ -99,12 +144,79 @@ function clearTextPictures(requirements: GraphFontRequirements): void {
 export function createPageActions(ctx: EditorContext) {
   const pageViewportStore = createPageViewportStore(ctx)
   let activeSwitch: AbortController | null = null
+  let activeFontProgress: ActiveFontLoadProgress | null = null
+  let nextFontOperationId = 0
+
+  function emitFontProgress(progress: ActiveFontLoadProgress): void {
+    const { operationId, pageId, completed, total, failed, status } = progress
+    ctx.emitEditorEvent('font:load-progress', {
+      operationId,
+      pageId,
+      completed,
+      total,
+      failed,
+      status
+    })
+  }
+
+  function cancelFontProgress(controller: AbortController): void {
+    const progress = activeFontProgress
+    if (progress?.controller !== controller || progress.status !== 'loading') return
+    progress.status = 'cancelled'
+    activeFontProgress = null
+    emitFontProgress(progress)
+  }
+
+  function createFontProgressReporter(
+    controller: AbortController,
+    pageId: string,
+    isCurrentSwitch: () => boolean
+  ): PageFontProgressReporter {
+    let operation: ActiveFontLoadProgress | null = null
+
+    return {
+      start(total) {
+        if (total <= 0 || !isCurrentSwitch()) return
+        operation = {
+          controller,
+          operationId: ++nextFontOperationId,
+          pageId,
+          completed: 0,
+          total,
+          failed: 0,
+          status: 'loading'
+        }
+        activeFontProgress = operation
+        emitFontProgress(operation)
+      },
+      settle(failed) {
+        const current = operation
+        if (current?.status !== 'loading' || activeFontProgress !== current || !isCurrentSwitch())
+          return
+        current.completed++
+        if (failed) current.failed++
+        if (current.completed === current.total) {
+          current.status = 'completed'
+          activeFontProgress = null
+        }
+        emitFontProgress(current)
+      }
+    }
+  }
+
+  function cancelPendingSwitch() {
+    const controller = activeSwitch
+    if (!controller) return
+    cancelFontProgress(controller)
+    controller.abort()
+    activeSwitch = null
+  }
 
   async function switchPage(pageId: string) {
     const page = ctx.graph.getNode(pageId)
     if (page?.type !== 'CANVAS') return
 
-    activeSwitch?.abort()
+    cancelPendingSwitch()
     const switchController = new AbortController()
     activeSwitch = switchController
     const { signal } = switchController
@@ -156,7 +268,13 @@ export function createPageActions(ctx: EditorContext) {
             signal
           )
           const result = await waitUnlessAborted(
-            loadPageFontsInBackground(ctx, toLoad, requirements, signal),
+            loadPageFontsInBackground(
+              ctx,
+              toLoad,
+              requirements,
+              signal,
+              createFontProgressReporter(switchController, pageId, isCurrentSwitch)
+            ),
             signal
           )
           if (!pageFontStateChanged(result) || !isCurrentSwitch()) return
@@ -219,11 +337,6 @@ export function createPageActions(ctx: EditorContext) {
   function setPageColor(color: Color) {
     ctx.state.pageColor = color
     ctx.requestRender()
-  }
-
-  function cancelPendingSwitch() {
-    activeSwitch?.abort()
-    activeSwitch = null
   }
 
   return {
