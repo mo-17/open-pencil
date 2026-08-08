@@ -764,6 +764,12 @@ export interface SceneNode {
   // by id via a `CallWorkflowAction`; the compiler expands the chain inline at
   // each call site. Persisted via §12 pluginData under `lowcode/workflows`.
   lowcodeWorkflows?: WorkflowDef[]
+  // ── Lowcode — server workflows ──
+  // Document-level server-only workflows. These deliberately do not reuse
+  // client ActionDef: their HTTP trigger, Supabase-user authentication, env
+  // references, and server-side action vocabulary have a stricter trust
+  // boundary. Persisted via pluginData under `lowcode/serverWorkflows`.
+  lowcodeServerWorkflows?: ServerWorkflowDef[]
   // ── Lowcode (Phase 4 §16.1) — dynamic routing ──
   // Page-level (CANVAS node) route pattern, e.g. `/product/:id`. Like per-page
   // `state`, only a page node carries this in practice. When set, the multi-page
@@ -1287,6 +1293,20 @@ export interface CallWorkflowAction {
   args?: Record<string, string>
 }
 
+/** Invoke one validated document-level server workflow through the generated
+ *  authenticated runtime endpoint. Arguments are expression strings evaluated
+ *  in the caller's scope. `resultName`, when present, introduces a local value
+ *  that is available to the success branch only. */
+export interface InvokeServerWorkflowAction {
+  id: string
+  kind: 'invokeServerWorkflow'
+  workflowId: string
+  args?: Record<string, string>
+  resultName?: string
+  onSuccess?: ActionDef[]
+  onError?: ActionDef[]
+}
+
 /** Play one valid MotionSpec authored on another design node. Omitting
  *  `trackId` applies the action to every track on the target node. Runtime
  *  playback is intentionally handled by the compiler / preview adapters; the
@@ -1354,6 +1374,7 @@ export type ActionDef =
   | StripeCheckoutAction
   | StripeCustomerPortalAction
   | CallWorkflowAction
+  | InvokeServerWorkflowAction
   | PlayMotionAction
   | StopMotionAction
   | ToggleMotionAction
@@ -1399,6 +1420,106 @@ export interface WorkflowDef {
    *  every parameter without a default is required. */
   optionalParams?: string[]
   actions: ActionDef[]
+}
+
+/** A server runtime value sourced from the deployment environment. The value
+ * itself is never stored in the design document. */
+export interface ServerEnvironmentValue {
+  kind: 'env'
+  name: string
+}
+
+/** A server runtime value expressed in the bounded low-code expression
+ * language. Literal strings are written as quoted expressions. */
+export interface ServerExpressionValue {
+  kind: 'expr'
+  expr: string
+}
+
+export type ServerValueSource = ServerEnvironmentValue | ServerExpressionValue
+
+/** First server-workflow trigger. Public/anonymous and non-POST endpoints are
+ * intentionally outside the initial trust boundary. */
+export interface ServerHttpTrigger {
+  kind: 'http'
+  method: 'POST'
+  auth: 'supabase-user'
+}
+
+export interface ServerHttpHeader {
+  name: string
+  value: ServerValueSource
+}
+
+export interface ServerHttpRequestAction {
+  id: string
+  kind: 'httpRequest'
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  url: ServerValueSource
+  headers?: ServerHttpHeader[]
+  body?: ServerValueSource
+  resultName?: string
+}
+
+export interface ServerSupabaseQueryAction {
+  id: string
+  kind: 'supabaseQuery'
+  table: string
+  columns?: string
+  filters?: SupabaseFilter[]
+  single?: boolean
+  resultName: string
+}
+
+export interface ServerSupabaseMutationAction {
+  id: string
+  kind: 'supabaseMutation'
+  operation: 'insert' | 'update' | 'delete' | 'upsert'
+  table: string
+  payloadEntries?: SupabasePayloadEntry[]
+  filters?: SupabaseFilter[]
+  resultName?: string
+}
+
+export interface ServerConditionAction {
+  id: string
+  kind: 'condition'
+  condExpr: string
+  consequent: ServerActionDef[]
+  alternate?: ServerActionDef[]
+}
+
+export interface ServerReturnAction {
+  id: string
+  kind: 'return'
+  valueExpr?: string
+  status?: number
+}
+
+export interface ServerCallWorkflowAction {
+  id: string
+  kind: 'callServerWorkflow'
+  workflowId: string
+  args?: Record<string, string>
+}
+
+export type ServerActionDef =
+  | ServerHttpRequestAction
+  | ServerSupabaseQueryAction
+  | ServerSupabaseMutationAction
+  | ServerConditionAction
+  | ServerReturnAction
+  | ServerCallWorkflowAction
+
+/** A document-level server endpoint definition. Server workflows remain
+ * separate from inline-expanded client workflows and are always authenticated
+ * HTTP POST handlers in the initial contract. */
+export interface ServerWorkflowDef {
+  id: string
+  name: string
+  trigger: ServerHttpTrigger
+  params?: string[]
+  actions: ServerActionDef[]
 }
 
 /** Phase 3 §2: connection settings for a Supabase project. Persisted on the

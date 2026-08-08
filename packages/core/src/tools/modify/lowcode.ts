@@ -54,16 +54,19 @@ import type {
 import { parseColor } from '#core/color'
 import type { FigmaAPI } from '#core/figma-api'
 import {
+  countServerWorkflowActions,
   isSafeAnalyticsPolicyUrl,
   normalizeSupabaseMutationPayloadJson,
   validateAnalyticsConfig,
   validateExpression,
   validateInteractiveProps,
+  validateInvokeServerWorkflowAction,
   validateLowcodeCustomCss,
   validateLowcodeHeadMeta,
   validateStateName,
   validateSupabaseConfig,
   validateSupabasePayloadEntries,
+  validateServerWorkflows,
   validateUrlTemplate
 } from '#core/lowcode-validation'
 
@@ -100,6 +103,7 @@ const KNOWN_ACTION_KINDS = new Set<ActionKind>([
   'stripeCustomerPortal',
   // Phase 3 §10 v4 named workflow invocation
   'callWorkflow',
+  'invokeServerWorkflow',
   // MotionSpec playback controls
   'playMotion',
   'stopMotion',
@@ -399,14 +403,13 @@ function validatePerKindFields(
     return validateResultBranches(where, value)
   }
   if (kind === 'supabaseAuth') return validateSupabaseAuthAction(where, value)
-  if (kind === 'delay') return validateDelayAction(where, value)
-  if (kind === 'toast') return validateToastAction(where, value)
-  if (kind === 'clipboard') return validateClipboardAction(where, value)
-  if (kind === 'trackEvent') return validateTrackEventAction(where, value)
+  if (UTILITY_ACTION_KINDS.has(kind)) return validateUtilityActionFields(where, kind, value)
   if (kind === 'stripeCheckout' || kind === 'stripeCustomerPortal') {
     return validateStripeRedirectAction(where, value)
   }
-  if (kind === 'callWorkflow') return validateCallWorkflowAction(where, value)
+  if (kind === 'callWorkflow' || kind === 'invokeServerWorkflow') {
+    return validateWorkflowInvocationAction(where, kind, value)
+  }
   if (
     kind === 'playMotion' ||
     kind === 'stopMotion' ||
@@ -416,6 +419,30 @@ function validatePerKindFields(
     return validateMotionAction(where, value)
   }
   return { ok: true }
+}
+
+const UTILITY_ACTION_KINDS = new Set<ActionKind>(['delay', 'toast', 'clipboard', 'trackEvent'])
+
+function validateUtilityActionFields(
+  where: string,
+  kind: ActionKind,
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (kind === 'delay') return validateDelayAction(where, value)
+  if (kind === 'toast') return validateToastAction(where, value)
+  if (kind === 'clipboard') return validateClipboardAction(where, value)
+  return validateTrackEventAction(where, value)
+}
+
+function validateWorkflowInvocationAction(
+  where: string,
+  kind: 'callWorkflow' | 'invokeServerWorkflow',
+  value: Record<string, unknown>
+): { ok: true } | { ok: false; error: string } {
+  if (kind === 'callWorkflow') return validateCallWorkflowAction(where, value)
+  const validated = validateInvokeServerWorkflowAction(value)
+  if (!validated.ok) return failAt(where, validated.reason)
+  return validateResultBranches(where, value)
 }
 
 /** Phase 4 §16.2: a navigate's optional `params` — an object mapping a route
@@ -901,6 +928,16 @@ function buildActionFromValidated(
         kind,
         workflowId: raw.workflowId as string | undefined,
         args: raw.args as Record<string, string> | undefined
+      }
+    case 'invokeServerWorkflow':
+      return {
+        id,
+        kind,
+        workflowId: raw.workflowId as string,
+        args: raw.args as Record<string, string> | undefined,
+        resultName: raw.resultName as string | undefined,
+        onSuccess: builtBranch(raw, 'onSuccess'),
+        onError: builtBranch(raw, 'onError')
       }
     default: {
       // Exhaustive — ActionKind covers every variant above. The assignment
@@ -2344,5 +2381,64 @@ export const setWorkflows = defineTool({
       ctx
     )
     return { ok: true, data: { workflows: r.workflows.length, actions } }
+  }
+})
+
+export const setServerWorkflows = defineTool({
+  name: 'set_server_workflows',
+  mutates: true,
+  description:
+    'Replace the root lowcodeServerWorkflows list atomically. Prefer the native server_workflows array; server_workflows_json remains available for legacy clients, and exactly one input is required. Server workflows are separate from client workflows. Initial triggers are strictly { kind: "http", method: "POST", auth: "supabase-user" }; actions are httpRequest, supabaseQuery, supabaseMutation, condition, return, or callServerWorkflow. Runtime secrets must be referenced as { kind: "env", name: "UPPER_SNAKE_NAME" }; secret values and unknown fields are rejected. References, required call arguments, duplicate ids, and recursive call cycles are validated before mutation. Pass [] or legacy "null" to clear.',
+  params: {
+    server_workflows: {
+      type: 'array',
+      description:
+        'Native array of ServerWorkflowDef objects. Prefer this form to avoid nested JSON escaping.'
+    },
+    server_workflows_json: {
+      type: 'string',
+      description:
+        'Legacy JSON-string array of ServerWorkflowDef objects, or the literal null / [] to clear'
+    }
+  },
+  execute: (figma, args, ctx): ModifyResult<{ workflows: number; actions: number }> => {
+    if (args.server_workflows !== undefined && args.server_workflows_json !== undefined) {
+      return fail('Provide exactly one of server_workflows or server_workflows_json, not both')
+    }
+    if (args.server_workflows === undefined && args.server_workflows_json === undefined) {
+      return fail('Provide server_workflows or server_workflows_json')
+    }
+    let raw: unknown = args.server_workflows
+    if (args.server_workflows_json !== undefined) {
+      const parsed = parseJson(args.server_workflows_json, 'server_workflows_json')
+      if (!parsed.ok) return fail(parsed.error)
+      raw = parsed.value
+    }
+    if (raw === null) {
+      applyPatchWithUndo(
+        figma,
+        figma.graph.rootId,
+        { lowcodeServerWorkflows: undefined },
+        'AI: set_server_workflows',
+        ctx
+      )
+      return { ok: true, data: { workflows: 0, actions: 0 } }
+    }
+    const valid = validateServerWorkflows(raw)
+    if (!valid.ok) return valid
+    const actionCount = valid.workflows.reduce(
+      (count, workflow) => count + countServerWorkflowActions(workflow.actions),
+      0
+    )
+    applyPatchWithUndo(
+      figma,
+      figma.graph.rootId,
+      {
+        lowcodeServerWorkflows: valid.workflows.length > 0 ? valid.workflows : undefined
+      },
+      'AI: set_server_workflows',
+      ctx
+    )
+    return { ok: true, data: { workflows: valid.workflows.length, actions: actionCount } }
   }
 })

@@ -1,6 +1,6 @@
 import type { ActionDef, ActionKind, DocumentStateDef, StateDef } from '@open-pencil/scene-graph'
 
-import type { MotionActionTargetOption } from '@/app/lowcode/motion-action-options'
+import type { MotionActionTargetOption } from '../motion-action-options'
 
 /**
  * Phase 3 §10 v10 — shared `ActionDef` factory + kind list for the recursive
@@ -14,7 +14,7 @@ import type { MotionActionTargetOption } from '@/app/lowcode/motion-action-optio
  * logic; deeply-specialised authoring still flows through the MCP tools.
  */
 
-/** Context the factory reads for sensible field defaults. */
+/** Context the lowcode UI factory reads for sensible field defaults. */
 export interface ActionFactoryCtx {
   pageStates: readonly StateDef[]
   docStates: readonly DocumentStateDef[]
@@ -42,6 +42,7 @@ export const ACTION_KINDS: ActionKind[] = [
   'delay',
   'stop',
   'callWorkflow',
+  'invokeServerWorkflow',
   'playMotion',
   'stopMotion',
   'toggleMotion',
@@ -116,6 +117,7 @@ const FACTORIES: Record<ActionKind, (id: string, ctx: ActionFactoryCtx) => Actio
   // §10 v11 — a fresh callWorkflow has no target yet; the row's workflow
   // dropdown sets `workflowId` and the args editor fills `args`.
   callWorkflow: (id) => ({ id, kind: 'callWorkflow' }),
+  invokeServerWorkflow: (id) => ({ id, kind: 'invokeServerWorkflow', workflowId: '' }),
   playMotion: (id, ctx) => ({
     id,
     kind: 'playMotion',

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import { createMotionPreset, SceneGraph } from '@open-pencil/scene-graph'
 
-import { computeActionErrors } from '@/app/lowcode/action-errors'
+import { computeActionErrors } from '@/app/lowcode/action/errors'
 import { collectMotionActionOptions } from '@/app/lowcode/motion-action-options'
 
 import { expectDefined } from '#tests/helpers/assert'

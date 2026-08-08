@@ -2,6 +2,7 @@ import type {
   IRApiCallHandler,
   IRConfirmHandler,
   IREventHandler,
+  IRInvokeServerWorkflowHandler,
   IRNavigateHandler,
   IRStripeCheckoutHandler,
   IRStripeCustomerPortalHandler,
@@ -37,6 +38,7 @@ const SIMPLE_STATEMENT_KINDS = new Set<IREventHandler['kind']>([
  *  unconditionally awaits `__opConfirm`, so it sits in this set directly. */
 const ASYNC_KINDS = new Set<IREventHandler['kind']>([
   'apiCall',
+  'invokeServerWorkflow',
   'stripeCheckout',
   'stripeCustomerPortal',
   'supabaseQuery',
@@ -94,6 +96,7 @@ function handlersContainMotion(handlers: readonly IREventHandler[]): boolean {
     }
     if (
       handler.kind === 'apiCall' ||
+      handler.kind === 'invokeServerWorkflow' ||
       handler.kind === 'supabaseQuery' ||
       handler.kind === 'supabaseMutation'
     ) {
@@ -317,6 +320,20 @@ function emitApiCall(h: IRApiCallHandler, motionScope?: string): string {
   )
 }
 
+function emitInvokeServerWorkflow(h: IRInvokeServerWorkflowHandler, motionScope?: string): string {
+  const args = h.args
+    .map((entry) => `${JSON.stringify(entry.key)}: ${emitExpression(entry.ast)}`)
+    .join(', ')
+  const call = `invokeServerWorkflow(${JSON.stringify(h.workflowId)}, { ${args} })`
+  const invocation = h.resultName ? `const ${h.resultName} = await ${call};` : `await ${call};`
+  const success = h.onSuccess ? ` ${emitStatementList(h.onSuccess, motionScope)}` : ''
+  const failure = h.onError ? ` ${emitStatementList(h.onError, motionScope)}` : ''
+  return (
+    `try { ${invocation}${success} ` +
+    `} catch { console.error("Server workflow invocation failed.");${failure} }`
+  )
+}
+
 /** Phase 4 §16.2: a `navigate` call. Generated navigation first asks the
  *  optional Motion runtime to play every mounted `pageExit` track. The runtime
  *  owns the bounded wait, so a missing runtime resolves immediately and cannot
@@ -333,11 +350,25 @@ function emitNavigate(h: IRNavigateHandler): string {
   return `await window.__OPENPENCIL_MOTION_RUNTIME__?.pageExit?.(); navigate(${destination})`
 }
 
-function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
-  // Exhaustive switch over IREventHandler — the `never` assertion below
-  // makes tsgo flag any new kind added to ir/types.ts that misses a case
-  // here (the silent-drop hole Phase 0 had).
-  if (isMotionControlHandler(h)) return emitMotionControlHandler(h, motionScope)
+type IRImmediateHandler = Extract<
+  IREventHandler,
+  { kind: 'setState' | 'navigate' | 'setVariable' | 'toast' | 'clipboard' | 'trackEvent' }
+>
+
+const IMMEDIATE_HANDLER_KINDS = new Set<IREventHandler['kind']>([
+  'setState',
+  'navigate',
+  'setVariable',
+  'toast',
+  'clipboard',
+  'trackEvent'
+])
+
+function isImmediateHandler(h: IREventHandler): h is IRImmediateHandler {
+  return IMMEDIATE_HANDLER_KINDS.has(h.kind)
+}
+
+function emitImmediateHandler(h: IRImmediateHandler): string {
   switch (h.kind) {
     case 'setState': {
       const inner = emitExpression(h.ast)
@@ -353,6 +384,25 @@ function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
         ? `setDocState(${JSON.stringify(h.docStateName)}, (prev) => ${inner})`
         : `setDocState(${JSON.stringify(h.docStateName)}, ${inner})`
     }
+    case 'toast':
+      return emitToast(h)
+    case 'clipboard':
+      return `navigator.clipboard.writeText(${emitExpression(h.ast)})`
+    case 'trackEvent':
+      return emitTrackEvent(h)
+  }
+  const exhaustive: never = h
+  throw new Error(`unhandled immediate handler kind: ${JSON.stringify(exhaustive)}`)
+}
+
+function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
+  // Exhaustive switch over IREventHandler — the `never` assertion below
+  // makes tsgo flag any new kind added to ir/types.ts that misses a case
+  // here (the silent-drop hole Phase 0 had).
+  if (isImmediateHandler(h)) return emitImmediateHandler(h)
+  if (isMotionControlHandler(h)) return emitMotionControlHandler(h, motionScope)
+  if (h.kind === 'invokeServerWorkflow') return emitInvokeServerWorkflow(h, motionScope)
+  switch (h.kind) {
     case 'apiCall':
       return emitApiCall(h, motionScope)
     case 'stripeCheckout':
@@ -375,21 +425,11 @@ function emitHandlerStatement(h: IREventHandler, motionScope?: string): string {
     case 'stop':
       // Phase 3 §10: early termination of the workflow.
       return 'return'
-    case 'toast':
-      // Phase 3 §10 v2 / v5: push a toast via the runtime (optional position /
-      // duration options ride in a third arg).
-      return emitToast(h)
     case 'confirm':
       // Phase 3 §10 v3 / v5: `if (await __opConfirm(<msg>[, opts])) {…} else {…}`
       // — the awaited user choice forces the enclosing arrow async (ASYNC_KINDS);
       // optional button labels ride in an options object.
       return emitConfirm(h, motionScope)
-    case 'clipboard':
-      // Phase 3 §10 v3: copy to the clipboard, fire-and-forget (the returned
-      // promise is intentionally not awaited — no runtime surface).
-      return `navigator.clipboard.writeText(${emitExpression(h.ast)})`
-    case 'trackEvent':
-      return emitTrackEvent(h)
     default: {
       const exhaustive: never = h
       throw new Error(`unhandled IREventHandler kind: ${JSON.stringify(exhaustive)}`)

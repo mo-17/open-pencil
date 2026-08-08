@@ -7,7 +7,7 @@ import { useSectionUI } from '@/components/ui/section'
 
 import { useEditorStore } from '@/app/editor/active-store'
 import { usePresenceTarget } from '@/app/editor/presence/use-presence-target'
-import { clearLowcodeActionFocus, peekLowcodeActionFocus } from '@/app/lowcode/action-focus'
+import { clearLowcodeActionFocus, peekLowcodeActionFocus } from '@/app/lowcode/action/focus'
 import { flashLowcodeFocusHighlight } from '@/app/lowcode/focus-highlight'
 import { collectMotionActionOptions } from '@/app/lowcode/motion-action-options'
 

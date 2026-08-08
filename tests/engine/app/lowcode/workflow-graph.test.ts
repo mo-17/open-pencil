@@ -58,6 +58,40 @@ describe('lowcode workflow graph analysis', () => {
     ])
   })
 
+  test('traverses invokeServerWorkflow success and error branches', () => {
+    const summary = analyzeWorkflowGraph([
+      {
+        id: 'wf-source',
+        name: 'Source',
+        actions: [
+          {
+            id: 'invoke-server',
+            kind: 'invokeServerWorkflow',
+            workflowId: 'server-checkout',
+            resultName: 'checkout',
+            onSuccess: [
+              { id: 'call-client', kind: 'callWorkflow', workflowId: 'wf-client-success' }
+            ],
+            onError: [{ id: 'toast-error', kind: 'toast', messageExpr: '"Failed"' }]
+          }
+        ]
+      },
+      {
+        id: 'wf-client-success',
+        name: 'Client success',
+        actions: [{ id: 'stop', kind: 'stop' }]
+      }
+    ])
+
+    expect(summary).toMatchObject({ actionCount: 4, callCount: 1, issues: [] })
+    expect(summary.edges[0]).toMatchObject({
+      fromId: 'wf-source',
+      toId: 'wf-client-success',
+      actionId: 'call-client',
+      actionPath: '[0]/onSuccess[0]'
+    })
+  })
+
   test('reports missing workflow references', () => {
     const summary = analyzeWorkflowGraph([
       {

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import type { ActionDef } from '@open-pencil/scene-graph'
 
-import { computeActionErrors } from '@/app/lowcode/action-errors'
+import { computeActionErrors } from '@/app/lowcode/action/errors'
 import {
   ANALYTICS_TRACK_EVENT_CONFIG_HINT,
   analyticsProviderHelp
@@ -141,6 +141,32 @@ describe('lowcode ActionRow validation', () => {
     expect(errors.target).toBe('error target no longer exists')
     expect(errors.entries?.get(0)?.keyError).toBe('invalid identifier')
     expect(errors.entries?.get(0)?.valueError).toBeTruthy()
+  })
+
+  test('invokeServerWorkflow validates workflow, arguments, and success result binding', () => {
+    const valid: ActionDef = {
+      id: 'invoke-1',
+      kind: 'invokeServerWorkflow',
+      workflowId: 'create-checkout',
+      args: { priceId: 'selectedPrice.id', quantity: 'count + 1' },
+      resultName: 'checkoutResult',
+      onSuccess: [{ id: 'success-1', kind: 'toast', messageExpr: '"Ready"' }],
+      onError: [{ id: 'error-1', kind: 'toast', messageExpr: '"Failed"' }]
+    }
+    expect(computeActionErrors(valid, ctx)).toEqual({})
+
+    const invalid: ActionDef = {
+      id: 'invoke-2',
+      kind: 'invokeServerWorkflow',
+      workflowId: '',
+      args: { 'bad-key': '', validName: '(' },
+      resultName: 'bad-result'
+    }
+    const errors = computeActionErrors(invalid, ctx)
+    expect(errors.workflow).toBe('server workflow required')
+    expect(errors.resultName).toBe('must be a valid identifier')
+    expect(errors.argErrors?.get('bad-key')).toBe('argument name must be a valid identifier')
+    expect(errors.argErrors?.get('validName')).toBeTruthy()
   })
 
   test('motion actions distinguish missing, invalid, and deleted targets', () => {

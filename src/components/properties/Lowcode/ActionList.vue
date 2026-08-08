@@ -5,7 +5,7 @@ import type { ActionDef, DocumentStateDef, StateDef, WorkflowDef } from '@open-p
 import { useI18n } from '@open-pencil/vue'
 
 import type { MotionActionOptions } from '@/app/lowcode/motion-action-options'
-import { makeAction } from './action-factory'
+import { makeAction } from '@/app/lowcode/action/factory'
 // Mutually recursive with ActionRow (a list renders rows, a row renders nested
 // branch lists) — intentional cycle, resolved lazily at render time.
 // eslint-disable-next-line import/no-cycle

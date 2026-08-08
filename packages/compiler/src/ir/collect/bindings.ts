@@ -6,7 +6,8 @@ import {
   parseTemplate,
   PAYLOAD_ENTRY_KEY_RE,
   PREV_IDENT,
-  substitutePrev
+  substitutePrev,
+  validateInvokeServerWorkflowAction
 } from '@open-pencil/core/lowcode-validation'
 import {
   type ActionDef,
@@ -30,12 +31,14 @@ import type {
   IREventHandler,
   IREventName,
   IRExpression,
+  IRInvokeServerWorkflowHandler,
   IRNavigateParam,
   IRPlayMotionHandler,
   IRSetVariableHandler,
   IRStateDecl,
   IRStripeCheckoutHandler,
   IRStripeCustomerPortalHandler,
+  IRServerWorkflow,
   IRStopMotionHandler,
   IRToggleMotionHandler,
   IRSupabaseAuthHandler,
@@ -307,6 +310,7 @@ export function resolveValueBinding(
 const EMPTY_SCOPE: ReadonlySet<string> = new Set()
 const EMPTY_DOCSTATES: ReadonlyMap<string, IRDocStateDecl> = new Map()
 const EMPTY_WORKFLOWS: ReadonlyMap<string, WorkflowDef> = new Map()
+const EMPTY_SERVER_WORKFLOWS: ReadonlyMap<string, IRServerWorkflow> = new Map()
 
 /** Phase 4 §16.1: the route-params built-in. An expression may read
  *  `$params.<name>` anywhere a docState read is allowed; the member name is not
@@ -392,6 +396,7 @@ export function resolveEvents(
   inScope: ReadonlySet<string> = EMPTY_SCOPE,
   docStateReads?: Set<string>,
   workflows: ReadonlyMap<string, WorkflowDef> = EMPTY_WORKFLOWS,
+  serverWorkflows: ReadonlyMap<string, IRServerWorkflow> = EMPTY_SERVER_WORKFLOWS,
   graph?: Pick<SceneGraph, 'getNode'>
 ): Partial<Record<IREventName, IREventHandler[]>> | undefined {
   if (!node.events) return undefined
@@ -410,6 +415,7 @@ export function resolveEvents(
       inScope,
       docStateReads,
       workflows,
+      serverWorkflows,
       graph
     )
     if (handlers.length > 0) out[name] = handlers
@@ -428,6 +434,7 @@ function resolveActions(
   inScope: ReadonlySet<string>,
   docStateReads: Set<string> | undefined,
   workflows: ReadonlyMap<string, WorkflowDef>,
+  serverWorkflows: ReadonlyMap<string, IRServerWorkflow>,
   graph?: Pick<SceneGraph, 'getNode'>
 ): IREventHandler[] {
   const eventScope = hasEventLocals(eventName)
@@ -443,6 +450,7 @@ function resolveActions(
     inScope: eventScope,
     docStateReads,
     workflows,
+    serverWorkflows,
     graph,
     // Phase 3 §10 v4: the call stack of currently-expanding workflow ids, for
     // cycle detection. Fresh per top-level event chain.
@@ -487,15 +495,23 @@ function resolveBranch(actions: ActionDef[], ctx: ResolveCtx): IREventHandler[] 
  *  the error are fresh locals — no render-snapshot staleness. Empty / fully
  *  dropped branches stay unset → byte-identical to a branch-less action. */
 function withResultBranches<
-  H extends IRApiCallHandler | IRSupabaseQueryHandler | IRSupabaseMutationHandler
+  H extends
+    | IRApiCallHandler
+    | IRSupabaseQueryHandler
+    | IRSupabaseMutationHandler
+    | IRInvokeServerWorkflowHandler
 >(
   handler: H | null,
   action: { onSuccess?: ActionDef[]; onError?: ActionDef[] },
-  ctx: ResolveCtx
+  ctx: ResolveCtx,
+  successLocal?: string
 ): H | null {
   if (!handler) return null
   if (action.onSuccess && action.onSuccess.length > 0) {
-    const branch = resolveBranch(action.onSuccess, ctx)
+    const successCtx = successLocal
+      ? { ...ctx, inScope: new Set([...ctx.inScope, successLocal]) }
+      : ctx
+    const branch = resolveBranch(action.onSuccess, successCtx)
     if (branch.length > 0) handler.onSuccess = branch
   }
   if (action.onError && action.onError.length > 0) {
@@ -651,6 +667,8 @@ interface ResolveCtx {
   docStateReads: Set<string> | undefined
   /** Phase 3 §10 v4: document-level named workflows, for `callWorkflow`. */
   workflows: ReadonlyMap<string, WorkflowDef>
+  /** Validated server workflows keyed by id for client invocation checks. */
+  serverWorkflows: ReadonlyMap<string, IRServerWorkflow>
   /** Optional graph access lets target-bearing actions diagnose stale node and
    *  track references without coupling the emitter to SceneGraph. */
   graph?: Pick<SceneGraph, 'getNode'>
@@ -672,35 +690,27 @@ function isMotionAction(action: ActionDef): action is MotionActionDef {
   )
 }
 
-/** Exhaustive dispatch on the discriminated union (Phase 1 §7.4). Adding a
- *  kind without a case here is a tsgo error — the silent-drop hole that
- *  Phase 0 had is closed. */
-function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | null {
-  if (isMotionAction(action)) return resolveMotionAction(action, ctx)
+type ResultBranchAction = Extract<
+  ActionDef,
+  { kind: 'apiCall' | 'invokeServerWorkflow' | 'supabaseQuery' | 'supabaseMutation' }
+>
+
+const RESULT_BRANCH_ACTION_KINDS = new Set<ActionDef['kind']>([
+  'apiCall',
+  'invokeServerWorkflow',
+  'supabaseQuery',
+  'supabaseMutation'
+])
+
+function isResultBranchAction(action: ActionDef): action is ResultBranchAction {
+  return RESULT_BRANCH_ACTION_KINDS.has(action.kind)
+}
+
+function dispatchResultBranchAction(
+  action: ResultBranchAction,
+  ctx: ResolveCtx
+): IREventHandler | null {
   switch (action.kind) {
-    case 'setState':
-      return resolveSetState(ctx.node, ctx.eventName, action, ctx.states, ctx.warnings)
-    case 'navigate':
-      return resolveNavigate(
-        ctx.node,
-        ctx.eventName,
-        action,
-        ctx.states,
-        ctx.inScope,
-        ctx.docStates,
-        ctx.docStateReads,
-        ctx.warnings
-      )
-    case 'setVariable':
-      return resolveSetVariable(
-        ctx.node,
-        ctx.eventName,
-        action,
-        ctx.states,
-        ctx.inScope,
-        ctx.docStates,
-        ctx.warnings
-      )
     case 'apiCall':
       return withResultBranches(
         resolveApiCall(
@@ -716,6 +726,10 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
         action,
         ctx
       )
+    case 'invokeServerWorkflow': {
+      const handler = resolveInvokeServerWorkflow(action, ctx)
+      return withResultBranches(handler, action, ctx, handler?.resultName)
+    }
     case 'supabaseQuery':
       return withResultBranches(
         resolveSupabaseQuery(
@@ -745,6 +759,41 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
         ),
         action,
         ctx
+      )
+  }
+  const exhaustive: never = action
+  throw new Error(`unhandled result-branch action kind: ${JSON.stringify(exhaustive)}`)
+}
+
+/** Exhaustive dispatch on the discriminated union (Phase 1 §7.4). Adding a
+ *  kind without a case here is a tsgo error — the silent-drop hole that
+ *  Phase 0 had is closed. */
+function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | null {
+  if (isMotionAction(action)) return resolveMotionAction(action, ctx)
+  if (isResultBranchAction(action)) return dispatchResultBranchAction(action, ctx)
+  switch (action.kind) {
+    case 'setState':
+      return resolveSetState(ctx.node, ctx.eventName, action, ctx.states, ctx.warnings)
+    case 'navigate':
+      return resolveNavigate(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
+    case 'setVariable':
+      return resolveSetVariable(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.warnings
       )
     case 'supabaseAuth':
       return resolveSupabaseAuth(
@@ -812,6 +861,92 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
       return null
     }
   }
+}
+
+function resolveInvokeServerWorkflow(
+  action: Extract<ActionDef, { kind: 'invokeServerWorkflow' }>,
+  ctx: ResolveCtx
+): IRInvokeServerWorkflowHandler | null {
+  const validated = validateInvokeServerWorkflowAction(action)
+  if (!validated.ok) {
+    ctx.warnings.push({
+      code: 'action-invoke-server-workflow-invalid',
+      message: `node ${ctx.node.id} ${ctx.eventName} invokeServerWorkflow is invalid: ${validated.reason}`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  const workflow = ctx.serverWorkflows.get(validated.value.workflowId)
+  if (!workflow) {
+    ctx.warnings.push({
+      code: 'action-invoke-server-workflow-unknown',
+      message: `node ${ctx.node.id} ${ctx.eventName} invokeServerWorkflow references an unavailable workflow`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  const rawArgs = validated.value.args ?? {}
+  const expected = new Set(workflow.params)
+  if (Object.keys(rawArgs).some((name) => !expected.has(name))) {
+    ctx.warnings.push({
+      code: 'action-invoke-server-workflow-args-mismatch',
+      message: `node ${ctx.node.id} ${ctx.eventName} invokeServerWorkflow arguments do not match the workflow parameters`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  if (workflow.params.some((name) => !(name in rawArgs))) {
+    ctx.warnings.push({
+      code: 'action-invoke-server-workflow-args-mismatch',
+      message: `node ${ctx.node.id} ${ctx.eventName} invokeServerWorkflow arguments do not match the workflow parameters`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  const args: IRSupabasePayloadEntry[] = []
+  for (const name of workflow.params) {
+    const parsed = parseExpression(rawArgs[name])
+    if (!parsed.ok) return null
+    if (
+      !checkExprRefs(
+        parsed.references,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.node,
+        `${ctx.eventName} invokeServerWorkflow arg "${name}"`,
+        'action-invoke-server-workflow-arg',
+        ctx.warnings
+      )
+    ) {
+      return null
+    }
+    registerDocStateReads(parsed.references, ctx.docStates, ctx.docStateReads)
+    args.push({ key: name, ast: parsed.ast, references: [...parsed.references] })
+  }
+  const resultName = validated.value.resultName
+  if (resultName && resultNameCollides(resultName, ctx)) {
+    ctx.warnings.push({
+      code: 'action-invoke-server-workflow-result-shadow',
+      message: `node ${ctx.node.id} ${ctx.eventName} invokeServerWorkflow resultName shadows an existing value`,
+      nodeId: ctx.node.id
+    })
+    return null
+  }
+  return {
+    kind: 'invokeServerWorkflow',
+    workflowId: workflow.id,
+    args,
+    ...(resultName ? { resultName } : {})
+  }
+}
+
+function resultNameCollides(name: string, ctx: ResolveCtx): boolean {
+  if (ctx.inScope.has(name) || ctx.docStates.has(name)) return true
+  for (const state of ctx.states.values()) {
+    if (state.name === name) return true
+  }
+  return false
 }
 
 function resolveMotionAction(

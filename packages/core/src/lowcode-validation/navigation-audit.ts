@@ -367,7 +367,8 @@ function actionBranches(action: ActionDef): Array<{ name: string; actions: Actio
   if (
     action.kind === 'apiCall' ||
     action.kind === 'supabaseQuery' ||
-    action.kind === 'supabaseMutation'
+    action.kind === 'supabaseMutation' ||
+    action.kind === 'invokeServerWorkflow'
   ) {
     return [
       ...(action.onSuccess ? [{ name: 'onSuccess', actions: action.onSuccess }] : []),

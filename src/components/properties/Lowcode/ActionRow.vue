@@ -20,8 +20,8 @@ import {
   authNeedsPassword,
   computeActionErrors,
   type ActionErrors
-} from '@/app/lowcode/action-errors'
-import { ACTION_KINDS, makeAction } from './action-factory'
+} from '@/app/lowcode/action/errors'
+import { ACTION_KINDS, makeAction } from '@/app/lowcode/action/factory'
 // ActionRow ↔ ActionList are mutually recursive components (a row renders nested
 // branch lists, a list renders rows) — the import cycle is intentional and
 // resolved lazily at render time, the canonical Vue recursive-component pattern.
@@ -105,6 +105,7 @@ function actionKindLabel(kind: ActionKind): string {
   if (kind === 'condition') return 'If (condition)'
   if (kind === 'confirm') return 'Confirm'
   if (kind === 'callWorkflow') return 'Call workflow'
+  if (kind === 'invokeServerWorkflow') return 'Invoke server workflow'
   if (kind === 'trackEvent') return 'Track event'
   if (kind === 'stripeCheckout') return 'Stripe checkout'
   if (kind === 'stripeCustomerPortal') return 'Stripe customer portal'
@@ -300,6 +301,59 @@ function setArg(param: string, value: string): void {
   if (value.trim() === '') Reflect.deleteProperty(next, param)
   else next[param] = value
   patch({ args: Object.keys(next).length > 0 ? next : undefined } as Partial<ActionDef>)
+}
+
+type InvokeServerArg = SupabasePayloadEntry
+
+const invokeServerArgs = computed<InvokeServerArg[]>(() => {
+  if (action.kind !== 'invokeServerWorkflow') return []
+  return Object.entries(action.args ?? {}).map(([key, valueExpr]) => ({ key, valueExpr }))
+})
+
+function uniqueInvokeServerArgName(base: string, index?: number): string {
+  const stem = base.trim() || 'arg'
+  const existing = new Set(
+    invokeServerArgs.value
+      .filter((_, i) => i !== index)
+      .map((entry) => entry.key)
+      .filter(Boolean)
+  )
+  if (!existing.has(stem)) return stem
+  let suffix = 2
+  while (existing.has(`${stem}_${suffix}`)) suffix += 1
+  return `${stem}_${suffix}`
+}
+
+function updateInvokeServerArgs(next: (current: InvokeServerArg[]) => InvokeServerArg[]): void {
+  if (action.kind !== 'invokeServerWorkflow') return
+  const args: Record<string, string> = {}
+  for (const entry of next(invokeServerArgs.value)) args[entry.key] = entry.valueExpr
+  patch({ args: Object.keys(args).length > 0 ? args : undefined } as Partial<ActionDef>)
+}
+
+function addInvokeServerArg(): void {
+  updateInvokeServerArgs((current) => [
+    ...current,
+    { key: uniqueInvokeServerArgName(`arg${current.length + 1}`), valueExpr: '' }
+  ])
+}
+
+function removeInvokeServerArg(index: number): void {
+  updateInvokeServerArgs((current) => current.filter((_, i) => i !== index))
+}
+
+function updateInvokeServerArg(index: number, next: Partial<InvokeServerArg>): void {
+  updateInvokeServerArgs((current) =>
+    current.map((entry, i) =>
+      i === index
+        ? {
+            ...entry,
+            ...next,
+            ...(next.key !== undefined ? { key: uniqueInvokeServerArgName(next.key, index) } : {})
+          }
+        : entry
+    )
+  )
 }
 </script>
 
@@ -789,6 +843,38 @@ function setArg(param: string, value: string): void {
         </select>
       </template>
 
+      <template v-else-if="action.kind === 'invokeServerWorkflow'">
+        <input
+          :value="action.workflowId"
+          aria-label="Server workflow id"
+          :aria-invalid="errors.workflow ? 'true' : undefined"
+          data-test-id="lowcode-action-server-workflow-id"
+          spellcheck="false"
+          placeholder="workflow-id"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+            errors.workflow ? 'border-red-500' : 'border-border'
+          ]"
+          @change="patch({ workflowId: ($event.target as HTMLInputElement).value.trim() })"
+        />
+        <span class="text-[11px] text-muted">→</span>
+        <input
+          :value="action.resultName ?? ''"
+          aria-label="Server workflow result name"
+          :aria-invalid="errors.resultName ? 'true' : undefined"
+          data-test-id="lowcode-action-server-workflow-result"
+          spellcheck="false"
+          placeholder="result (optional)"
+          :class="[
+            'min-w-0 flex-1 rounded border bg-input px-2 py-1 font-mono text-xs text-surface outline-none focus:border-accent',
+            errors.resultName ? 'border-red-500' : 'border-border'
+          ]"
+          @change="
+            patch({ resultName: ($event.target as HTMLInputElement).value.trim() || undefined })
+          "
+        />
+      </template>
+
       <button
         type="button"
         data-test-id="lowcode-action-remove"
@@ -1196,12 +1282,13 @@ function setArg(param: string, value: string): void {
       <option v-for="d in docStates" :key="d.id" :value="d.name">{{ d.name }}</option>
     </select>
 
-    <!-- §10 v9 result branches: apiCall / supabaseQuery / supabaseMutation -->
+    <!-- Result branches: request/data actions and authenticated server workflows. -->
     <div
       v-if="
         action.kind === 'apiCall' ||
         action.kind === 'supabaseQuery' ||
-        action.kind === 'supabaseMutation'
+        action.kind === 'supabaseMutation' ||
+        action.kind === 'invokeServerWorkflow'
       "
       class="flex flex-col gap-1 border-l border-border pl-2"
     >
@@ -1266,6 +1353,81 @@ function setArg(param: string, value: string): void {
       />
     </div>
 
+    <div
+      v-if="action.kind === 'invokeServerWorkflow'"
+      data-test-id="lowcode-action-server-workflow-args"
+      class="flex flex-col gap-1 border-l border-border pl-2"
+    >
+      <p class="text-[10px] text-muted">
+        Arguments are caller-scope expressions. Server secrets remain environment references in the
+        workflow definition.
+      </p>
+      <label v-if="invokeServerArgs.length > 0" class="text-[10px] text-muted">arguments</label>
+      <div
+        v-for="(entry, i) in invokeServerArgs"
+        :key="i"
+        data-test-id="lowcode-action-server-workflow-arg"
+        class="flex flex-col gap-0.5"
+      >
+        <div class="flex items-center gap-1">
+          <input
+            :value="entry.key"
+            aria-label="Server workflow argument name"
+            :aria-invalid="errors.argErrors?.has(entry.key) ? 'true' : undefined"
+            data-test-id="lowcode-action-server-workflow-arg-name"
+            spellcheck="false"
+            placeholder="argument"
+            :class="[
+              'w-24 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+              errors.argErrors?.has(entry.key) ? 'border-red-500' : 'border-border'
+            ]"
+            @change="updateInvokeServerArg(i, { key: ($event.target as HTMLInputElement).value })"
+          />
+          <input
+            :value="entry.valueExpr"
+            aria-label="Server workflow argument expression"
+            :aria-invalid="errors.argErrors?.has(entry.key) ? 'true' : undefined"
+            data-test-id="lowcode-action-server-workflow-arg-value"
+            spellcheck="false"
+            placeholder="expression"
+            :class="[
+              'min-w-0 flex-1 rounded border bg-input px-1.5 py-0.5 font-mono text-[11px] text-surface outline-none focus:border-accent',
+              errors.argErrors?.has(entry.key) ? 'border-red-500' : 'border-border'
+            ]"
+            @change="
+              updateInvokeServerArg(i, {
+                valueExpr: ($event.target as HTMLInputElement).value
+              })
+            "
+          />
+          <button
+            type="button"
+            aria-label="Remove server workflow argument"
+            data-test-id="lowcode-action-server-workflow-arg-remove"
+            class="rounded p-0.5 text-muted hover:bg-hover hover:text-surface"
+            @click="removeInvokeServerArg(i)"
+          >
+            <icon-lucide-x class="size-3" />
+          </button>
+        </div>
+        <p
+          v-if="errors.argErrors?.has(entry.key)"
+          data-test-id="lowcode-action-server-workflow-arg-error"
+          class="pl-1 text-[10px] text-red-500"
+        >
+          {{ entry.key }}: {{ errors.argErrors?.get(entry.key) }}
+        </p>
+      </div>
+      <button
+        type="button"
+        data-test-id="lowcode-action-server-workflow-arg-add"
+        class="self-start rounded px-1.5 py-0.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
+        @click="addInvokeServerArg"
+      >
+        + argument
+      </button>
+    </div>
+
     <!-- §10 v11 callWorkflow args: one expression input per formal parameter of
          the selected workflow (caller-scope expressions). -->
     <div
@@ -1309,6 +1471,14 @@ function setArg(param: string, value: string): void {
       class="pl-1 text-[10px] text-red-500"
     >
       workflow: {{ errors.workflow }}
+    </p>
+
+    <p
+      v-if="errors.resultName"
+      data-test-id="lowcode-action-server-workflow-result-error"
+      class="pl-1 text-[10px] text-red-500"
+    >
+      result: {{ errors.resultName }}
     </p>
 
     <p

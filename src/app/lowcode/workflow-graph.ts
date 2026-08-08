@@ -280,6 +280,7 @@ function actionBranches(action: ActionDef): readonly [string, readonly ActionDef
     case 'apiCall':
     case 'supabaseQuery':
     case 'supabaseMutation':
+    case 'invokeServerWorkflow':
       return [
         ['onSuccess', action.onSuccess],
         ['onError', action.onError]

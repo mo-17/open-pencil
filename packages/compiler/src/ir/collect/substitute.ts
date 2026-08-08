@@ -55,9 +55,23 @@ export function substituteHandler(
         ? { ...handler, params: handler.params.map((p) => substituteFilter(p, bindings)) }
         : handler
     case 'apiCall':
-      return { ...handler, url: substituteIdents(handler.url, bindings) }
+      return {
+        ...handler,
+        url: substituteIdents(handler.url, bindings),
+        ...substituteResultBranches(handler, bindings)
+      }
+    case 'invokeServerWorkflow':
+      return {
+        ...handler,
+        args: handler.args.map((entry) => substituteFilter(entry, bindings)),
+        ...substituteResultBranches(handler, bindings)
+      }
     case 'supabaseQuery':
-      return { ...handler, filters: handler.filters.map((f) => substituteFilter(f, bindings)) }
+      return {
+        ...handler,
+        filters: handler.filters.map((f) => substituteFilter(f, bindings)),
+        ...substituteResultBranches(handler, bindings)
+      }
     case 'supabaseMutation':
       return {
         ...handler,
@@ -65,7 +79,8 @@ export function substituteHandler(
           const ast = substituteIdents(e.ast, bindings)
           return { ...e, ast, references: refsOf(ast) }
         }),
-        filters: handler.filters.map((f) => substituteFilter(f, bindings))
+        filters: handler.filters.map((f) => substituteFilter(f, bindings)),
+        ...substituteResultBranches(handler, bindings)
       }
     case 'supabaseAuth': {
       const emailAst =
@@ -100,6 +115,20 @@ export function substituteHandler(
       const _exhaustive: never = handler
       return _exhaustive
     }
+  }
+}
+
+function substituteResultBranches(
+  handler: { onSuccess?: IREventHandler[]; onError?: IREventHandler[] },
+  bindings: ReadonlyMap<string, ExprAst>
+): Pick<typeof handler, 'onSuccess' | 'onError'> {
+  return {
+    ...(handler.onSuccess
+      ? { onSuccess: handler.onSuccess.map((item) => substituteHandler(item, bindings)) }
+      : {}),
+    ...(handler.onError
+      ? { onError: handler.onError.map((item) => substituteHandler(item, bindings)) }
+      : {})
   }
 }
 

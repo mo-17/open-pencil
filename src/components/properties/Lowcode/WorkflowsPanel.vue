@@ -7,7 +7,7 @@ import { useSectionUI } from '@/components/ui/section'
 import Tip from '@/components/ui/Tip.vue'
 
 import { useEditorStore } from '@/app/editor/active-store'
-import { requestLowcodeActionFocus } from '@/app/lowcode/action-focus'
+import { requestLowcodeActionFocus } from '@/app/lowcode/action/focus'
 import { collectMotionActionOptions } from '@/app/lowcode/motion-action-options'
 import {
   analyzeWorkflowGraph,

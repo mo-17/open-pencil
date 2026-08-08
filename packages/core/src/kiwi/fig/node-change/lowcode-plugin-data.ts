@@ -52,6 +52,7 @@ import type {
   ResponsiveOverrides,
   SceneGraph,
   SceneNode,
+  ServerWorkflowDef,
   SeoMetadata,
   StateDef,
   StateOverrides,
@@ -60,7 +61,7 @@ import type {
 } from '@open-pencil/scene-graph'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
-import { compactLowcodeHeadMetadata } from '#core/lowcode-validation'
+import { compactLowcodeHeadMetadata, validateServerWorkflows } from '#core/lowcode-validation'
 
 export const LOWCODE_STATE_KEY = 'lowcode/state'
 export const LOWCODE_BINDINGS_KEY = 'lowcode/bindings'
@@ -138,6 +139,9 @@ export const LOWCODE_TRANSLATIONS_KEY = 'lowcode/translations'
  *  only. Value is the JSON-encoded `WorkflowDef[]` array. Absent ≡ no authored
  *  workflows, so .fig files that never defined a workflow stay byte-identical. */
 export const LOWCODE_WORKFLOWS_KEY = 'lowcode/workflows'
+/** Document-level authenticated server workflows. Kept under a distinct key
+ * so client WorkflowDef documents remain backward-compatible. */
+export const LOWCODE_SERVER_WORKFLOWS_KEY = 'lowcode/serverWorkflows'
 /** Phase 3 §8 v11: per-INSTANCE override table. Descendant overrides use a
  *  stable child-index path (`<path>:<prop>` → snapshot value), since instance
  *  child ids are reassigned on load. Strict Motion owner/interaction overrides
@@ -232,6 +236,7 @@ export const LOWCODE_PLUGIN_KEYS: ReadonlySet<string> = new Set([
   LOWCODE_STATE_OVERRIDES_KEY,
   LOWCODE_TRANSLATIONS_KEY,
   LOWCODE_WORKFLOWS_KEY,
+  LOWCODE_SERVER_WORKFLOWS_KEY,
   LOWCODE_OVERRIDES_KEY,
   LOWCODE_LIBRARY_COMPONENT_KEY,
   LOWCODE_LIBRARIES_KEY,
@@ -312,6 +317,15 @@ export function serializeLowcodeFields(node: SceneNode): PluginDataEntry[] {
   // byte-identical.
   if (isNonEmpty(node.lowcodeWorkflows)) {
     entries.push(makeEntry(LOWCODE_WORKFLOWS_KEY, node.lowcodeWorkflows))
+  }
+  if (isNonEmpty(node.lowcodeServerWorkflows)) {
+    const validated = validateServerWorkflows(
+      node.lowcodeServerWorkflows,
+      LOWCODE_SERVER_WORKFLOWS_KEY
+    )
+    if (validated.ok) {
+      entries.push(makeEntry(LOWCODE_SERVER_WORKFLOWS_KEY, validated.workflows))
+    }
   }
   entries.push(...serializeLibraryFields(node))
   // Phase 4 §16.x: routing (§16.1 route pattern) + auth-guard (§16.3 requiresAuth
@@ -1004,6 +1018,8 @@ export interface ExtractedLowcodeAndPluginData {
    *  onto the root via `assignImportedLowcodeFields`; on regular nodes it flows
    *  through `...lowcodeRest` (harmless — root-only in practice). */
   lowcodeWorkflows?: WorkflowDef[]
+  /** Document-level authenticated server workflows (root node only). */
+  lowcodeServerWorkflows?: ServerWorkflowDef[]
   /** Phase 4 §16.1: page-level route pattern (page node only). Restored onto the
    *  page via `assignImportedLowcodeFields`; on regular nodes it flows through
    *  `...lowcodeRest` (harmless — page-only in practice). */
@@ -1297,6 +1313,13 @@ function assignLowcodeContentField(
     // validated here — the IR collect pass drops malformed actions with a
     // warning. The write path (`set_workflows`) validates strictly.
     if (isLowcodeWorkflows(value)) target.lowcodeWorkflows = value
+    return true
+  }
+  if (key === LOWCODE_SERVER_WORKFLOWS_KEY) {
+    // Server workflows cross a code-execution trust boundary. Unlike client
+    // workflow metadata, malformed/future data is not hydrated into SceneGraph.
+    const validated = validateServerWorkflows(value, LOWCODE_SERVER_WORKFLOWS_KEY)
+    if (validated.ok) target.lowcodeServerWorkflows = validated.workflows
     return true
   }
   return false

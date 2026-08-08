@@ -10,7 +10,7 @@ import type {
   WorkflowDef
 } from '@open-pencil/scene-graph'
 
-import type { MotionActionTargetOption } from './motion-action-options'
+import type { MotionActionTargetOption } from '../motion-action-options'
 
 /**
  * Phase 3 §10 v10 — pure per-action validation for the recursive workflow
@@ -46,6 +46,8 @@ export interface ActionErrors {
   condExpr?: string
   /** §10 v11 — the callWorkflow dropdown (missing / unknown workflow). */
   workflow?: string
+  /** Local success-branch binding created by invokeServerWorkflow. */
+  resultName?: string
   /** Motion track dropdown (specified track no longer exists). */
   track?: string
   /** §10 v11 — per-parameter argument errors (required-missing / invalid expr),
@@ -301,6 +303,29 @@ function callWorkflowErrors(
   return argErrors.size > 0 ? { argErrors } : {}
 }
 
+const ACTION_IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
+
+function invokeServerWorkflowErrors(
+  action: Extract<ActionDef, { kind: 'invokeServerWorkflow' }>
+): ActionErrors {
+  const errors: ActionErrors = {}
+  if (action.workflowId.trim() === '') errors.workflow = 'server workflow required'
+  if (action.resultName && !ACTION_IDENTIFIER_RE.test(action.resultName)) {
+    errors.resultName = 'must be a valid identifier'
+  }
+  const argErrors = new Map<string, string>()
+  for (const [name, expression] of Object.entries(action.args ?? {})) {
+    if (!ACTION_IDENTIFIER_RE.test(name)) {
+      argErrors.set(name, 'argument name must be a valid identifier')
+      continue
+    }
+    const result = validateExpression(expression)
+    if (!result.ok) argErrors.set(name, result.reason ?? 'invalid expression')
+  }
+  if (argErrors.size > 0) errors.argErrors = argErrors
+  return errors
+}
+
 function motionActionErrors(
   action: Extract<
     ActionDef,
@@ -337,6 +362,7 @@ function motionActionErrors(
 
 function referenceActionErrors(action: ActionDef, ctx: ActionValidationCtx): ActionErrors {
   if (action.kind === 'callWorkflow') return callWorkflowErrors(action, ctx)
+  if (action.kind === 'invokeServerWorkflow') return invokeServerWorkflowErrors(action)
   if (
     action.kind === 'playMotion' ||
     action.kind === 'stopMotion' ||

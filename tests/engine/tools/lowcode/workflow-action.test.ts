@@ -22,6 +22,59 @@ function update(
 }
 
 describe('update_lowcode_node — workflow actions (Phase 3 §10)', () => {
+  test('validates and persists invokeServerWorkflow with result branches', () => {
+    const { figma, graph } = setupToolTest()
+    const btn = figma.createRectangle()
+    const action = {
+      id: 'server-1',
+      kind: 'invokeServerWorkflow',
+      workflowId: 'send-message',
+      args: { message: '"hello"' },
+      resultName: 'serverResult',
+      onSuccess: [{ id: 'ok', kind: 'toast', messageExpr: '"Done"' }],
+      onError: [{ id: 'failed', kind: 'toast', messageExpr: '"Failed"', variant: 'error' }]
+    }
+    const result = update(btn.id, { onClick: [action] }, figma)
+    expect(result.ok).toBe(true)
+    expect(graph.getNode(btn.id)?.events?.onClick?.[0]).toEqual(action)
+  })
+
+  test('rejects malformed invokeServerWorkflow args and unknown fields', () => {
+    const { figma } = setupToolTest()
+    const btn = figma.createRectangle()
+    const badExpression = update(
+      btn.id,
+      {
+        onClick: [
+          {
+            id: 'server-1',
+            kind: 'invokeServerWorkflow',
+            workflowId: 'send-message',
+            args: { message: 'a +' }
+          }
+        ]
+      },
+      figma
+    )
+    expect(badExpression.ok).toBe(false)
+    const unknownField = update(
+      btn.id,
+      {
+        onClick: [
+          {
+            id: 'server-2',
+            kind: 'invokeServerWorkflow',
+            workflowId: 'send-message',
+            args: {},
+            secret: 'nope'
+          }
+        ]
+      },
+      figma
+    )
+    expect(unknownField.ok).toBe(false)
+  })
+
   test('persists a condition with nested then / else branches', () => {
     const { figma, graph } = setupToolTest()
     const btn = figma.createRectangle()

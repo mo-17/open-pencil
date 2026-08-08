@@ -166,7 +166,8 @@ function handlerTreeContains(
   if (
     handler.kind === 'apiCall' ||
     handler.kind === 'supabaseQuery' ||
-    handler.kind === 'supabaseMutation'
+    handler.kind === 'supabaseMutation' ||
+    handler.kind === 'invokeServerWorkflow'
   ) {
     return [...(handler.onSuccess ?? []), ...(handler.onError ?? [])].some((candidate) =>
       handlerTreeContains(candidate, predicate)

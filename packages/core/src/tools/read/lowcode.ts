@@ -9,6 +9,7 @@ import type {
   LayoutMode,
   LowcodeTranslations,
   MotionSpec,
+  ServerWorkflowDef,
   SeoMetadata,
   StateDef,
   StateOverrides,
@@ -31,6 +32,7 @@ import type {
  * of `tools/read/**` uses.
  */
 import type { FigmaAPI } from '#core/figma-api'
+import { validateServerWorkflows } from '#core/lowcode-validation'
 import { defineTool } from '#core/tools/schema'
 
 import type { BatchReadResult } from './batch-result'
@@ -96,6 +98,9 @@ export interface LowcodeNodeRead {
    *  undefined on non-root nodes; use `readWorkflows` for the canonical
    *  access. */
   lowcodeWorkflows?: WorkflowDef[]
+  /** Root-only: authenticated document-level server workflows. These are
+   *  deliberately separate from client WorkflowDef chains. */
+  lowcodeServerWorkflows?: ServerWorkflowDef[]
 }
 
 type LowcodeNodeIdentityRead = Pick<LowcodeNodeRead, 'id' | 'type' | 'name' | 'layoutMode'>
@@ -125,7 +130,8 @@ const LOWCODE_NODE_READ_FIELDS = new Set<keyof LowcodeNodeRead>([
   'lowcodeHeadMetadata',
   'lowcodeCustomCss',
   'lowcodeTranslations',
-  'lowcodeWorkflows'
+  'lowcodeWorkflows',
+  'lowcodeServerWorkflows'
 ])
 
 type ReadResult<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -150,6 +156,7 @@ export function buildLowcodeRead(node: {
   lowcodeCustomCss?: string
   lowcodeTranslations?: LowcodeTranslations
   lowcodeWorkflows?: WorkflowDef[]
+  lowcodeServerWorkflows?: ServerWorkflowDef[]
 }): LowcodeNodeRead {
   const out: LowcodeNodeRead = {
     id: node.id,
@@ -177,6 +184,10 @@ export function buildLowcodeRead(node: {
   if (node.lowcodeCustomCss !== undefined) out.lowcodeCustomCss = node.lowcodeCustomCss
   if (node.lowcodeTranslations !== undefined) out.lowcodeTranslations = node.lowcodeTranslations
   if (node.lowcodeWorkflows !== undefined) out.lowcodeWorkflows = node.lowcodeWorkflows
+  if (node.lowcodeServerWorkflows !== undefined) {
+    const validated = validateServerWorkflows(node.lowcodeServerWorkflows)
+    if (validated.ok) out.lowcodeServerWorkflows = validated.workflows
+  }
   return out
 }
 
@@ -298,5 +309,21 @@ export const readWorkflows = defineTool({
   execute: (figma): ReadResult<WorkflowDef[]> => {
     const root = getRoot(figma)
     return { ok: true, data: root?.lowcodeWorkflows ?? [] }
+  }
+})
+
+export const readServerWorkflows = defineTool({
+  name: 'read_server_workflows',
+  description:
+    "Read the root node's authenticated server workflows. These definitions are separate from client lowcodeWorkflows and use the server-only action vocabulary: httpRequest, supabaseQuery, supabaseMutation, condition, return, and callServerWorkflow. Always returns { ok: true, data: [...] }; data is [] when none are authored.",
+  params: {},
+  execute: (figma): ReadResult<ServerWorkflowDef[]> => {
+    const root = getRoot(figma)
+    if (root?.lowcodeServerWorkflows === undefined) return { ok: true, data: [] }
+    const validated = validateServerWorkflows(root.lowcodeServerWorkflows)
+    if (!validated.ok) {
+      return { ok: false, error: 'Stored server workflows are invalid and were not returned' }
+    }
+    return { ok: true, data: validated.workflows }
   }
 })
