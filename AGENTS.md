@@ -16,9 +16,10 @@ Bun workspace with focused packages:
 - `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/core/motion` prepared plans.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
-- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into a framework-neutral IR, then emits runnable Vite + React + TypeScript + Tailwind projects, preview VFS, static builds, and deploy bundles.
+- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React + TypeScript + Tailwind projects or source-only Expo React Native projects. Web output also supports preview VFS, static builds, and deploy bundles; Expo output is an explicit static MVP with native primitives and fail-closed warnings for unsupported web behavior, not a WebView or React Native Web wrapper.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
+- `packages/marketplace` — private self-hostable plugin-marketplace control plane. Owns publisher/key/ownership/submission/release state, SQLite persistence, immutable artifacts, signed publication, public/publisher HTTP APIs, admin CLI, and append-only audit checkpoints.
 - `packages/figma-motion-plugin` — private development Figma plugin that consumes OpenPencil's strict shared Motion envelope and applies the verified official Motion Plugin API subset through the shared `@open-pencil/fig` applicator.
 - `packages/docs` — `@open-pencil/docs`: VitePress documentation site. Run with `bun run docs:dev`.
 - `packages/demos` — demo media/assets only, not a published workspace package.
@@ -102,20 +103,21 @@ Each action module exports a factory: `createXxxActions(ctx: EditorContext) => {
 
 The editor exposes a typed nanoevents emitter for lifecycle events. Defined in `EditorEvents` (`types.ts`), emitted via `emitEditorEvent()` on the context, subscribed via `editor.onEditorEvent(event, handler)` which returns an unbind function.
 
-| Event               | Payload                            | Emitted by                             |
-| ------------------- | ---------------------------------- | -------------------------------------- |
-| `render:requested`  | `{ renderVersion, sceneVersion }`  | `requestRender()`                      |
-| `repaint:requested` | `{ renderVersion, sceneVersion }`  | `requestRepaint()`                     |
-| `graph:replaced`    | `SceneGraph`                       | `replaceGraph()`                       |
-| `node:created`      | `SceneNode`                        | SceneGraph emitter → `graph-events.ts` |
-| `node:updated`      | `id, changes`                      | SceneGraph emitter → `graph-events.ts` |
-| `node:deleted`      | `id`                               | SceneGraph emitter → `graph-events.ts` |
-| `node:reparented`   | `nodeId, oldParentId, newParentId` | SceneGraph emitter → `graph-events.ts` |
-| `node:reordered`    | `nodeId, parentId, index`          | SceneGraph emitter → `graph-events.ts` |
-| `selection:changed` | `selectedIds[], previousIds[]`     | `setSelectedIds()`                     |
-| `tool:changed`      | `tool, previousTool`               | `setActiveTool()`                      |
-| `page:changed`      | `pageId, previousPageId`           | `switchPage()`, `replaceGraph()`       |
-| `viewport:changed`  | `{ panX, panY, zoom }, previous`   | viewport actions                       |
+| Event                | Payload                            | Emitted by                             |
+| -------------------- | ---------------------------------- | -------------------------------------- |
+| `render:requested`   | `{ renderVersion, sceneVersion }`  | `requestRender()`                      |
+| `repaint:requested`  | `{ renderVersion, sceneVersion }`  | `requestRepaint()`                     |
+| `graph:replaced`     | `SceneGraph`                       | `replaceGraph()`                       |
+| `node:created`       | `SceneNode`                        | SceneGraph emitter → `graph-events.ts` |
+| `node:updated`       | `id, changes`                      | SceneGraph emitter → `graph-events.ts` |
+| `node:deleted`       | `id`                               | SceneGraph emitter → `graph-events.ts` |
+| `node:reparented`    | `nodeId, oldParentId, newParentId` | SceneGraph emitter → `graph-events.ts` |
+| `node:reordered`     | `nodeId, parentId, index`          | SceneGraph emitter → `graph-events.ts` |
+| `selection:changed`  | `selectedIds[], previousIds[]`     | `setSelectedIds()`                     |
+| `tool:changed`       | `tool, previousTool`               | `setActiveTool()`                      |
+| `page:changed`       | `pageId, previousPageId`           | `switchPage()`, `replaceGraph()`       |
+| `viewport:changed`   | `{ panX, panY, zoom }, previous`   | viewport actions                       |
+| `font:load-progress` | `FontLoadProgress`                 | `pages.ts`                             |
 
 All selection mutations in core use `ctx.setSelectedIds()` and all tool changes use `ctx.setActiveTool()` so the event bus fires consistently. App-layer code uses `editor.clearSelection()`, `editor.select()`, or `editor.setTool()` — never direct `state.selectedIds =` or `state.activeTool =` assignments.
 
@@ -201,6 +203,16 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil analyze spacing <file>` — gap/padding values
 - `bun open-pencil analyze clusters <file>` — repeated patterns
 - `bun open-pencil eval <file> --code '<js>'` — execute JS with Figma Plugin API
+- `bun open-pencil plugin manifest validate|sign|verify ...` — validate and sign bounded declarative
+  plugin manifests without loading plugin code
+- `bun open-pencil plugin catalog build|verify ...` — build and verify a separately signed catalog
+  index without fetching its entries
+- `bun open-pencil plugin runtime validate|sign|verify ...` — validate, sign, and verify bounded
+  publisher runtime packages without executing them
+- `bun open-pencil plugin runtime-index build|verify ...` — build and verify root-signed executable
+  runtime indexes without fetching their entries
+- `bun run marketplace --help` / `bun run marketplace:serve` — operate or serve the self-hosted
+  marketplace control plane
 - `bun open-pencil motion figma-adapter <file> --node <id> -o <script.js>` — diagnose and generate a safe official Figma Motion Plugin API adapter script
 - `bun open-pencil motion inspect <snapshot.json>` — inspect/import a detached official Figma Motion readback snapshot
 - `bun open-pencil motion apply <file> --node <id>` — compare/plan by default, or explicitly emit a Plugin API script/safe apply snapshot
@@ -323,6 +335,48 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Core prompts (`CODEGEN_PROMPT`, `JSX_REFERENCE`) live as markdown files in `packages/core/src/tools/prompts/`, loaded via raw-md bundler plugin; app chat/ACP prompts live under `src/app/ai/**` markdown files.
 - To add a new tool: add a `defineTool()` in the appropriate domain file, export it from the domain barrel, add it to `CORE_TOOLS` or `EXTENDED_TOOLS` intentionally. MCP and CLI eval see `ALL_TOOLS`; app AI chat sees only `CORE_TOOLS`.
 - `FigmaAPI` (`packages/core/src/figma-api/`) is the execution target for all tools — Figma Plugin API compatible, uses Symbols for hidden internals
+
+## Plugins and modules
+
+- Trusted module adapters remain a startup-only, frozen registry under `packages/core/src/plugins/`.
+  Marketplace manifests never load arbitrary scripts or adapters. Every `adapterId` must resolve to
+  compatible Canvas and Compiler code already shipped by the host; register that code during app
+  construction, then freeze before documents are opened.
+- Phase 3 marketplace snapshot, dynamic publisher directory, stable/beta discovery, rollback checks,
+  and root trust configuration live under `packages/core/src/plugins/marketplace/` and
+  `src/app/plugins/marketplace/`. The self-hosted mutable control plane lives only in
+  `packages/marketplace/`; keep it out of the browser bundle. Publication must write immutable
+  content-addressed artifacts and bind exact catalog/runtime/audit coordinates in the root-signed
+  snapshot.
+- Phase 4 executable packages are a separate trust chain under
+  `packages/core/src/plugins/runtime-{package,index}.ts` and `src/app/plugins/runtime/`. Production
+  execution is import-free WASM compute only, one disposable Worker per invocation, exact
+  digest/capability grants, bounded read-only host context, and local machine-code audit. JavaScript
+  packages remain `runtime-unavailable`; never expose Tauri, DOM, network, filesystem, shell,
+  credentials, document writes, or host functions to a plugin runtime.
+- Remote catalog transport, reverified cache, and build-time public-key configuration live under
+  `src/app/plugins/remote/`. Catalog-root verification and publisher ownership/key
+  rotation/revocation live in `@open-pencil/core/plugins`. Never treat parsed JSON, cached content,
+  or a self-consistent persisted snapshot as verified provenance.
+- `src/app/plugins/store.ts` owns versioned local install state. Publisher updates must remain
+  pending until explicit acceptance, pins block accept/rollback, and accepted/history/pending
+  snapshots are reverified. Check current key validity at every new-module creation boundary instead
+  of relying only on a startup-time blocked flag.
+- Portable dependency metadata uses the strict `openpencil-plugin-lock` record in document-root
+  plugin data. Dependency failures are diagnostic and must not block opening a document or delete an
+  unknown module envelope.
+- A module instance is always a native `FRAME`, never a new SceneGraph `NodeType`. Its strict,
+  versioned JSON envelope lives at `interactiveProps.module` and contains `version`, `pluginId`,
+  `moduleType`, `configVersion`, and `config`. This preserves normal `.fig` behavior and lets an app
+  without the plugin retain and render the frame instead of losing an unknown node type.
+- `@open-pencil/core/plugins` owns the registry and built-in definitions. Canvas renderers must be
+  deterministic and offline; Compiler adapters may emit a trusted local package runtime, but must
+  reject arbitrary script/style URLs, raw executable configuration, credentials, and unsupported
+  config versions.
+- Generic module operations belong in `list_modules`, `create_module`, `read_module`, and
+  `update_module`; module-specific behavior belongs in its validated definition rather than a new
+  one-off MCP tool family. Preserve unknown/uninstalled envelopes unless the user explicitly
+  replaces or removes them.
 
 ## Lowcode compiler
 

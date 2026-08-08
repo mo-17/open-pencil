@@ -26,6 +26,12 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
 - **Lint, convert, and extract tokens** — inspect documents, lint naming/layout/accessibility, convert between supported formats, analyze colors/typography/spacing/clusters, and extract design tokens
 - **Components and variants** — create reusable components, group variants into component sets, insert local assets as instances, and switch variants from the inspector
 - **Image vectorization** — convert image layers into editable vector layers with Recraft or fal.ai
+- **Adaptive canvas performance** — use Automatic mode or choose resource saving, balanced, or
+  smoothness-first rendering. Ordinary pointer, drag, pan, and zoom interaction stays on the native
+  display cadence; the selected level dynamically budgets generated effects, collaboration cursors,
+  retained scene work, decoded-image wrappers, font loading, FIG parsing, and background layout.
+  Longer page font/fallback preparation reports non-blocking canvas progress instead of appearing
+  stuck, while short operations complete without flashing a status
 - **Design-to-code export** — export selections as JSX/Tailwind, generate token outputs, and map designs into component-oriented code workflows
 - **Code-based motion** — author bounded MotionSpec v1/v2/v3 timelines, structured channels, and
   cubic paths; choreograph page/frame scenes; build multi-node recipes, continuous drivers,
@@ -34,7 +40,10 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   deterministic PNG sequences or GIF plus capability-gated WebM/MP4; embed the public SSR-safe
   Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
   native subset
-- **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase actions, workflows, i18n, shadcn/ui output, preview, build, and deploy flows
+- **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Compiler Preview supports Real-time, Auto, and Manual refresh with single-flight latest-change scheduling
+- **Built-in modules** — add versioned modules such as interactive maps without introducing
+  proprietary node types. Modules stay editable as native frames, survive `.fig` round-trips, expose
+  inspector and AI/MCP controls, and compile to local package-based runtimes
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
 - **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence,
   follow mode, and fine-grained MotionSpec v3 timeline merging with remote playheads and selections
@@ -212,7 +221,7 @@ Applicable inspect and report commands support `--json` for machine-readable out
 
 ### Build lowcode apps
 
-OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app. The lowcode compiler preserves layout, resolved web-font assets and script fallbacks, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, Stripe checkout and customer portal redirects through your own server endpoints, i18n catalogs, analytics hooks, controlled custom head/CSS metadata, and optional shadcn/ui components. Button, Input, and Textarea nodes expose per-control text colors, while Input and Textarea also expose placeholder colors; both remain consistent between the CanvasKit canvas, generated Tailwind code, and Figma-compatible exports. Desktop Font settings can also import validated TTF, OTF, or WOFF files for persistent offline use; previews embed the same loaded face bytes as the CanvasKit canvas unless OpenType metadata explicitly restricts embedding. Restricted faces are omitted with a `font-license-embedding-restricted` compiler warning, while unknown or incomplete redistribution evidence remains visible for manual review.
+OpenPencil can compile a `.fig` or `.pen` document into a runnable Vite + React + TypeScript app. The lowcode compiler preserves layout, resolved web-font assets and script fallbacks, routes, interactive state, bindings, validation, workflows, Supabase auth/data actions, authenticated server workflows, Stripe checkout and customer portal redirects through your own server endpoints, i18n catalogs, analytics hooks, controlled custom head/CSS metadata, and optional shadcn/ui components. Button, Input, and Textarea nodes expose per-control text colors, while Input and Textarea also expose placeholder colors; both remain consistent between the CanvasKit canvas, generated Tailwind code, and Figma-compatible exports. Desktop Font settings can also import validated TTF, OTF, or WOFF files for persistent offline use; previews embed the same loaded face bytes as the CanvasKit canvas unless OpenType metadata explicitly restricts embedding. Restricted faces are omitted with a `font-license-embedding-restricted` compiler warning, while unknown or incomplete redistribution evidence remains visible for manual review.
 
 ```sh
 openpencil compile app.fig -o generated-app
@@ -235,7 +244,59 @@ VERCEL_TOKEN=... openpencil deploy app.fig --provider vercel --site my-project
 CLOUDFLARE_API_TOKEN=... openpencil deploy app.fig --provider cloudflare --account-id <account-id> --site my-pages-project
 ```
 
-For Supabase-backed apps, override production credentials at build/deploy time with `--supabase-url` and `--supabase-anon-key`, or set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Stripe checkout actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `checkoutUrl`; Stripe customer portal actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `portalUrl`. Stripe secret keys, webhook handling, subscriptions, and customer lookup stay on your server, never in the document or generated SPA. Lowcode analytics supports GA4, Plausible, and PostHog configuration stored in the document plus `trackEvent` actions, optional page views, Do Not Track, and a generated consent banner with local preference persistence, configurable copy, a configurable Analytics default state, and an EEA-style opt-in starter preset. Custom head/CSS support is limited to structured `<meta>`, `<link>`, `<style>`, and `index.css` output; arbitrary JavaScript is intentionally out of scope. See the [Lowcode Apps guide](https://openpencil.dev/user-guide/lowcode-apps) for the full path from preview to deploy.
+For Supabase-backed apps, override production public runtime values at build/deploy time with `--supabase-url`, `--supabase-anon-key`, and `--supabase-schema`, or the matching `VITE_SUPABASE_*` environment variables. The editor can inspect a normalized schema catalog with a management PAT held only in the credential store; the PAT and raw catalog never enter the design. Server workflows compile to `openpencil-server/` beside the static bundle. Static deploys intentionally exclude that directory and leave function deployment plus server environment values to the operator. Stripe checkout actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `checkoutUrl`; Stripe customer portal actions POST JSON to an author-owned endpoint and redirect to a returned `url` / `portalUrl`. Stripe secret keys, webhook handling, subscriptions, and customer lookup stay on your server, never in the document or generated SPA. Lowcode analytics supports GA4, Plausible, and PostHog configuration stored in the document plus `trackEvent` actions, optional page views, Do Not Track, and a generated consent banner with local preference persistence, configurable copy, a configurable Analytics default state, and an EEA-style opt-in starter preset. Custom head/CSS support is limited to structured `<meta>`, `<link>`, `<style>`, and `index.css` output; arbitrary JavaScript is intentionally out of scope. See the repository's [Lowcode Apps guide](packages/docs/user-guide/lowcode-apps.md) for authoring. For the fork-specific Supabase, RLS, server-workflow, and deployment path, open **Help → Application Runtime Guide** in the app; that complete guide is bundled for offline use.
+
+Open **Settings → Plugins** to manage the bundled offline catalog or a self-hosted marketplace rooted
+in one packaged Ed25519 public key. The marketplace publishes a signed publisher directory,
+stable/beta catalogs, searchable listings, immutable artifact coordinates, an append-only audit
+checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
+digest pins, cache status, and portable document dependency locks remain enforced.
+After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
+the Edit menu, and export Tauri React, Expo React Native, or source-only Flutter projects from File →
+Export. The eleven reviewed built-ins include Map, Chart, Rich Text, sandboxed HTML, public-HTTPS
+Video, structured Table, an accessible four-direction Slide Menu, Clipboard Toolkit, and the three
+source exporters. Rich Text uses a structured
+visual block and inline-format editor in the Design panel. Compiler Preview and exported React/Tauri
+source render Rich Text as a directly editable, dependency-free field with a safe v1 formatting
+toolbar, plain-text paste, a hidden form value, and a change event; runtime values remain application
+data and are not silently written back to the source `.fig` file. Mobile source ZIPs currently omit font
+bytes because the available SPDX IDs do not include the font-specific copyright, full license text,
+or NOTICE files required for safe redistribution; every omission remains visible in the export report.
+Installed and enabled plugin contributions also appear as dynamic MCP tools. Disabling, removing, or
+disconnecting the plugin host removes those tools from discovery, and every call rechecks live plugin
+state before it reaches a reviewed host adapter.
+
+Declarative modules still map only to Canvas/Compiler adapters shipped with the app. An optional
+Phase 4 channel can run a separately publisher-signed and root-indexed, import-free WASM compute
+package after the user grants its exact digest and complete read-only capability list. Every run uses
+a disposable Worker with time, memory, input, and output limits. JavaScript/native execution and
+network, filesystem, shell, DOM, credential, and document-write capabilities remain unavailable.
+See the [Plugin Marketplace guide](packages/docs/user-guide/plugins.md) and
+[Plugin Architecture](packages/docs/development/plugins.md).
+
+Plugin publishers can validate and sign bounded manifests, and catalog maintainers can build a
+separately signed index without downloading or executing plugin code:
+
+```sh
+openpencil plugin manifest validate plugin-payload.json
+openpencil plugin manifest sign plugin-payload.json --private-key publisher.pem -o plugin.json
+openpencil plugin manifest verify plugin.json --public-key publisher-public.pem
+openpencil plugin catalog build catalog-payload.json --private-key catalog.pem -o catalog.json
+openpencil plugin catalog verify catalog.json --public-key catalog-public.pem
+openpencil plugin runtime validate runtime-payload.json
+openpencil plugin runtime sign runtime-payload.json --private-key publisher.pem -o runtime.json
+openpencil plugin runtime verify runtime.json --public-key publisher-public.pem \
+  --plugin-id example-plugin --plugin-version 1.0.0 \
+  --publisher-id example-publisher --key-id publisher-2026 \
+  --manifest-digest <manifest-digest> --digest <runtime-digest> --byte-length <bytes>
+openpencil plugin runtime-index build runtime-index-payload.json --private-key catalog.pem -o runtime-index.json
+openpencil plugin runtime-index verify runtime-index.json --public-key catalog-public.pem \
+  --index-id openpencil.marketplace.runtime --key-id marketplace-root-2026 \
+  --digest <runtime-index-digest>
+```
+
+For CI, signing commands also accept an environment-variable **name** through `--private-key-env`;
+the secret is resolved only for that invocation and is never written into the artifact or output.
 
 For a safe end-to-end example, open or rebuild `packages/demos/lowcode/lowcode-onboarding-demo.fig`; it exercises Supabase, validation, workflows, Stripe checkout redirects through a demo endpoint, analytics hooks, i18n, shadcn/ui, and custom head/CSS using example provider values only.
 

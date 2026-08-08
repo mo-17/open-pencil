@@ -87,6 +87,110 @@
 
 ### Added
 
+- Show delayed, non-blocking canvas progress while page font faces and script fallbacks are prepared.
+  Fast operations never flash a status; visible operations report accessible progress, briefly
+  confirm completion, disappear immediately when cancelled, and ignore stale events from superseded
+  page switches. Existing Missing font diagnostics remain responsible for individual failures.
+- Add Automatic canvas performance alongside resource saving, balanced, and smoothness-first
+  profiles. Automatic mode evaluates active scene-frame cost with downgrade/recovery hysteresis;
+  manual and automatic level changes apply live without reducing ordinary pointer, drag, pan, or
+  zoom input cadence. Profiles bound generated-effect and collaboration-cursor cadence, retained
+  scene work, renderer-owned decoded-image wrappers, font loading, memory-gated FIG worker starts,
+  and cooperative background-layout slices. The decoded-image setting is a wrapper budget, not a
+  hard native/GPU-memory ceiling.
+- Route selection chrome, passive hover, and remote collaboration cursors through the overlay-only
+  repaint path so they no longer invalidate or rebuild the scene backing. Passive hover is coalesced
+  to animation frames and collaboration cursors use profile-specific 15/30/60 Hz caps with exact
+  trailing flushes at interaction and lifecycle boundaries.
+- Add Real-time, Auto, and Manual Compiler Preview refresh policies. Preview compilation is
+  single-flight and latest-change-wins, Auto adapts its trailing delay to recent compile plus ACK
+  time, and Manual still generates the initial preview while deferring later changes until reload.
+
+- Expose installed and enabled declarative plugin modules, commands, and exporters as dynamically
+  registered MCP tools. Plugin store changes update connected clients with
+  `notifications/tools/list_changed`; disconnects remove the dynamic catalog, and execution rechecks
+  current installation, enablement, contribution identity, and reviewed host-adapter compatibility
+  so cached tool names cannot bypass disablement or removal. Stable tool names include the canonical
+  contribution's SHA-256 identity, and exporter cancellation is checked through the final atomic
+  write boundary so an RPC timeout cannot silently complete a reported-failed export.
+
+- Add a trusted Expo React Native source exporter backed by a dedicated Compiler target instead of a
+  WebView or React Native Web wrapper. The installed plugin exports an Expo Router + TypeScript
+  project ZIP from File → Export, maps the supported design subset to native React Native controls,
+  packages static images, omits font bytes until complete copyright/license/NOTICE evidence can
+  accompany them, and
+  records stable warnings for web-only or not-yet-native features in `EXPORT_WARNINGS.md`. Exporter
+  execution now resolves the exact reviewed `adapterId` from a fail-closed host
+  registry; OpenPencil never runs Expo, npm, Gradle, Xcode, or generated project code during export.
+- Add a trusted Flutter source exporter backed by a dedicated Compiler target. After installing and
+  enabling the bundled plugin, File → Export → Flutter Project emits a source-only Dart/Flutter project ZIP
+  with native widgets, router source, portable image assets, fail-closed font-license warnings, and a
+  fail-closed `EXPORT_WARNINGS.md`; OpenPencil never runs Flutter, Dart, Gradle, Xcode, CocoaPods, or
+  generated project code during export.
+- Add a real Simplified Chinese documentation locale at `/zh-cn/`, with translated entry,
+  getting-started, feature, lowcode, plugin, Application Runtime, AI, and MCP guides; untranslated
+  navigation continues to the canonical English pages instead of creating English placeholders.
+  Documentation builds now package only English and Simplified Chinese by default; archived locale
+  sources remain available through an explicit `DOCS_LOCALES` override.
+- Add a detailed Application Runtime operations guide covering Supabase setup, authenticated CRUD,
+  RLS review, readiness audits, environment isolation, static hosting, server-workflow deployment,
+  troubleshooting, and a production checklist. The new Help menu opens a bundled application
+  reader from both the web editor and the Tauri system menu, including fully offline installations
+  with no dependency on the official documentation website. The reader bundles English and
+  Simplified Chinese, follows the application language by default, and remembers an explicit
+  per-guide language override.
+- Add an Application Runtime readiness path for lowcode apps: inspect a Supabase project's
+  normalized schema catalog through a credential-store-backed management token, derive combined
+  client/server RLS requirements, audit deployment readiness from built-in AI/MCP, and keep
+  per-document preview/staging/production targets isolated. Authenticated server workflows now
+  compile into a separately delivered Supabase Edge Function bundle; static deploys exclude server
+  code and print an explicit manual deployment recipe instead of uploading functions or secrets.
+- Add a controlled local plugin store with strict declarative manifests, SHA-256/Ed25519 publisher
+  package verification, engine compatibility checks, IndexedDB-backed install/enable state, exact
+  digest pinning, and explicit app-bundle versus publisher-signature trust labels. Map and the new
+  Chart and Rich Text plugins share generic Canvas, Compiler, property-panel, and AI/MCP dispatch.
+  Clipboard Toolkit adds host-owned copy-as-text/SVG/JSX commands plus browser PNG copy that require
+  an active selection; unsupported native PNG writes fail visibly. Tauri React Exporter packages
+  generated React source and a Tauri scaffold into a
+  ZIP without running `npm`, `bun`, `cargo`, generated code, or exposing filesystem/process access.
+  Enabled modules are available from the canvas toolbar, Clipboard Toolkit actions live in the Edit
+  menu, and Tauri source export lives in File → Export. Rich Text now has a structured visual block
+  and inline-format editor instead of requiring raw JSON edits. Its Compiler runtime is now a real
+  accessible editor with a bounded v1 toolbar, plain-text-only paste/drop, safe links, hidden form
+  value/change-event output, and React-reconciliation isolation across parent re-renders.
+  The opt-in `</> HTML` module adds a bounded source editor with synchronous non-interactive preview
+  and emits the same content through a strict-CSP iframe without script or same-origin privileges.
+  New opt-in Video and Table modules add reviewed public-HTTPS media configuration and bounded
+  plain-text tabular data editing. Editor Compiler Preview requires explicit activation before a
+  Video source or poster can make a remote request; native Expo/Flutter exports keep all three
+  modules fail-closed without adding WebViews.
+  The new opt-in Slide Menu module opens an accessible edge drawer or directional modal from a
+  canvas-authored trigger, with bounded plain-text links, backdrop behavior, Escape dismissal,
+  focus trapping and focus restoration. React/Tauri output uses a local portal runtime while
+  Expo/Flutter output remains an explicit static fallback without a WebView.
+  Schema v1 manifests can describe modules, commands, and exporters, but every contribution must
+  match an exact reviewed host adapter. Plugin disablement blocks discovery and new actions without
+  deleting or breaking existing module frames. Declarative manifests cannot inject JavaScript,
+  HTML, CSS, WASM, native code, or permissions; the separately signed WASM compute channel below
+  does not weaken this adapter boundary.
+- Extend the controlled plugin store with an optional separately signed remote catalog, bounded
+  reverified offline cache, publisher ownership plus key rotation/revocation, explicit update review
+  and verified rollback, versioned local state migration, and portable `.fig` document dependency
+  locks. Add publisher CLI commands for local manifest/catalog validation, Ed25519 signing, and
+  verification while keeping private keys out of artifacts and executable packages outside the
+  declarative catalog contract.
+- Add a self-hostable plugin marketplace control plane with publisher/key/ownership records, signed
+  submissions, explicit moderation and withdrawal/yank states, SQLite persistence, immutable
+  content-addressed artifacts, deterministic stable/beta catalogs, a dynamic root-signed discovery
+  snapshot, rollback protection, publisher-signed HTTP mutations, an admin CLI, and hash-chained
+  audit checkpoints. The app exposes signed marketplace search, publisher trust, channel, cache,
+  audit-head, and runtime-index status without depending on the official OpenPencil website.
+- Add an opt-in executable plugin channel with separately publisher-signed runtime packages, a
+  root-signed runtime index, exact declarative/runtime/capability grants, revocation, and bounded local
+  audit. Production execution is limited to import-free WASM compute in a disposable Worker with
+  signed time/memory/input/output quotas and read-only node/selection snapshots; JavaScript provenance
+  can be verified but JavaScript/native/DOM/network/filesystem/shell/document-write execution remains
+  unavailable. Add CLI validation/signing/verification for runtime packages and indexes.
 - Add native text color for Button, Input, and Textarea nodes plus placeholder color for Input and
   Textarea, with canonical colors shared consistently by the property panel, canvas, Compiler,
   Figma-compatible projection, and AI/MCP tools.
@@ -288,6 +392,9 @@
 
 ### Changed
 
+- Bound VitePress production-build memory by building language partitions in separate processes,
+  streaming LLM-friendly output, and sharing one refresh-aware `vue-component-meta` checker across
+  independently bundled SDK data loaders instead of retaining fourteen full TypeScript programs.
 - Keep generated Motion runtimes in sync with live `prefers-reduced-motion` changes without
   restarting unaffected animations or losing controlled, stopped, or active transient-trigger
   state.
