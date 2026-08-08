@@ -1,14 +1,12 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": [
-    "desktop/target/**",
-    "**/dist/**",
-    "**/node_modules/**"
-  ],
+  "ignore": ["desktop/target/**", "**/dist/**", "**/node_modules/**"],
   "ignoreWorkspaces": ["packages/demos"],
   "ignoreUnresolved": [
     "~icons/*",
     "/src/app/editor/fonts/index.ts",
+    "/src/app/plugins/index.ts",
+    "/src/app/plugins/app.ts",
     "#core/*"
   ],
   "ignoreBinaries": ["figma-use", "identify", "magick", "open", "osascript", "tauri-wd"]
