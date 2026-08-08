@@ -1,0 +1,46 @@
+{
+  "name": "@open-pencil/marketplace",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "bin": {
+    "openpencil-marketplace": "./dist/cli.mjs"
+  },
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "imports": {
+    "#marketplace/*": {
+      "types": "./src/*.ts",
+      "bun": "./src/*.ts",
+      "default": "./dist/*.mjs"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.mjs"
+    },
+    "./cli": {
+      "types": "./src/cli.ts",
+      "bun": "./src/cli.ts",
+      "default": "./dist/cli.mjs"
+    }
+  },
+  "scripts": {
+    "build": "bunx tsdown --config tsdown.config.ts"
+  },
+  "dependencies": {
+    "@open-pencil/core": "workspace:*",
+    "@open-pencil/scene-graph": "workspace:*",
+    "agentfmt": "^0.1.3",
+    "citty": "^0.1.6",
+    "hono": "^4.12.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  }
+}

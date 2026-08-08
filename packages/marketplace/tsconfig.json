@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "types": ["bun"],
+    "paths": {
+      "#marketplace/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

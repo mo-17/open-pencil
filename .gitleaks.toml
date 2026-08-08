@@ -29,6 +29,15 @@ paths = ['''packages/vue/src/editor/commands/registry\.ts''']
 regexes = ['''keybinding:\s*['\"][^'\"]+['\"]''']
 
 [[allowlists]]
+description = "Marketplace publisher-key type identifiers are not secrets"
+regexTarget = "line"
+paths = [
+  '''packages/core/src/plugins/marketplace/directory\.ts''',
+  '''packages/marketplace/src/publication\.ts'''
+]
+regexes = ['''MarketplacePublisherKeyV1''']
+
+[[allowlists]]
 description = "Documented dummy OpenRouter test key"
 regexTarget = "line"
 paths = ['''tests/e2e/chat/panel\.spec\.ts''']
