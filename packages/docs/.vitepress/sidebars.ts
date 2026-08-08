@@ -1,5 +1,6 @@
-import type { ProgrammableLabels, SidebarLabels } from './labels'
 import type { DefaultTheme } from 'vitepress'
+
+import type { ProgrammableLabels, SidebarLabels } from './labels'
 
 export const guideSidebar = (prefix: string, labels: SidebarLabels): DefaultTheme.SidebarItem[] => [
   {
@@ -10,38 +11,38 @@ export const guideSidebar = (prefix: string, labels: SidebarLabels): DefaultThem
       { text: labels.architecture, link: `${prefix}/guide/architecture` },
       { text: labels.techStack, link: `${prefix}/guide/tech-stack` },
       { text: labels.comparison, link: `${prefix}/guide/comparison` },
-      { text: labels.figmaMatrix, link: `${prefix}/guide/figma-comparison` },
-    ],
-  },
+      { text: labels.figmaMatrix, link: `${prefix}/guide/figma-comparison` }
+    ]
+  }
 ]
 
 export const userGuideSidebar = (
   prefix: string,
   labels: SidebarLabels,
-  includeLowcodeApps = false,
+  includeLowcodeApps = false
 ): DefaultTheme.SidebarItem[] => [
   {
     text: labels.gettingAround,
     items: [
       { text: labels.canvasNav, link: `${prefix}/user-guide/canvas-navigation` },
       { text: labels.selection, link: `${prefix}/user-guide/selection-and-manipulation` },
-      { text: labels.contextMenu, link: `${prefix}/user-guide/context-menu` },
-    ],
+      { text: labels.contextMenu, link: `${prefix}/user-guide/context-menu` }
+    ]
   },
   {
     text: labels.creatingContent,
     items: [
       { text: labels.shapes, link: `${prefix}/user-guide/drawing-shapes` },
       { text: labels.text, link: `${prefix}/user-guide/text-editing` },
-      { text: labels.pen, link: `${prefix}/user-guide/pen-tool` },
-    ],
+      { text: labels.pen, link: `${prefix}/user-guide/pen-tool` }
+    ]
   },
   {
     text: labels.organizing,
     items: [
       { text: labels.layers, link: `${prefix}/user-guide/layers-and-pages` },
-      { text: labels.exporting, link: `${prefix}/user-guide/exporting` },
-    ],
+      { text: labels.exporting, link: `${prefix}/user-guide/exporting` }
+    ]
   },
   {
     text: labels.advanced,
@@ -50,15 +51,22 @@ export const userGuideSidebar = (
       { text: labels.components, link: `${prefix}/user-guide/components` },
       { text: labels.variables, link: `${prefix}/user-guide/variables` },
       ...(includeLowcodeApps
-        ? [{ text: 'Lowcode Apps', link: `${prefix}/user-guide/lowcode-apps` }]
-        : []),
-    ],
-  },
+        ? [
+            { text: 'Lowcode Apps', link: `${prefix}/user-guide/lowcode-apps` },
+            { text: 'Plugin Marketplace', link: `${prefix}/user-guide/plugins` },
+            {
+              text: 'Application Runtime',
+              link: `${prefix}/user-guide/application-runtime`
+            }
+          ]
+        : [])
+    ]
+  }
 ]
 
 export const programmableSidebar = (
   prefix: string,
-  labels: ProgrammableLabels,
+  labels: ProgrammableLabels
 ): DefaultTheme.SidebarItem[] => [
   {
     text: labels.overview,
@@ -73,9 +81,9 @@ export const programmableSidebar = (
       { text: labels.mcpServer, link: `${prefix}/programmable/mcp-server` },
       { text: labels.aiChat, link: `${prefix}/programmable/ai-chat` },
       { text: 'Motion Runtime SDK', link: '/programmable/motion-runtime' },
-      { text: labels.collaboration, link: `${prefix}/programmable/collaboration` },
-    ],
-  },
+      { text: labels.collaboration, link: `${prefix}/programmable/collaboration` }
+    ]
+  }
 ]
 
 export const referenceSidebar = (prefix: string, label: string): DefaultTheme.SidebarItem[] => [
@@ -87,9 +95,9 @@ export const referenceSidebar = (prefix: string, label: string): DefaultTheme.Si
       { text: 'Node Types', link: `${prefix}/reference/node-types` },
       { text: 'Scene Graph', link: `${prefix}/reference/scene-graph` },
       { text: 'DOM/CSS Mapping', link: `${prefix}/reference/dom-css-mapping` },
-      { text: 'File Format', link: `${prefix}/reference/file-format` },
-    ],
-  },
+      { text: 'File Format', link: `${prefix}/reference/file-format` }
+    ]
+  }
 ]
 
 export const developmentSidebar = (prefix: string, label: string): DefaultTheme.SidebarItem[] => [
@@ -98,9 +106,10 @@ export const developmentSidebar = (prefix: string, label: string): DefaultTheme.
     items: [
       { text: 'Contributing', link: `${prefix}/development/contributing` },
       { text: 'Testing', link: `${prefix}/development/testing` },
+      { text: 'Plugin Architecture', link: '/development/plugins' },
       { text: 'Roadmap', link: `${prefix}/development/roadmap` },
       { text: 'Renderer Profiler', link: `${prefix}/development/renderer-profiler` },
-      { text: 'Vector Conversion', link: `${prefix}/development/vector-conversion` },
-    ],
-  },
+      { text: 'Vector Conversion', link: `${prefix}/development/vector-conversion` }
+    ]
+  }
 ]

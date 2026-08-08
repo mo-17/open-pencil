@@ -129,7 +129,8 @@ Endpoints are available over both active transports:
    `read_lowcode_nodes` or `read_motions` instead of repeated single-node calls. After changing a
    text font, call `check_font` for one node or `audit_font_rendering` for a bounded page/document
    scan. Use `audit_navigation` before compiling routed pages, `audit_form_controls` before
-   compiling validated forms, and `audit_image_assets` when image fills may be missing or corrupt.
+   compiling validated forms, `audit_application_runtime` before deploying a data-backed app, and
+   `audit_image_assets` when image fills may be missing or corrupt.
    Before commercial use, embedding, redistribution, or modification, call `audit_font_licenses`
    with the matching `intended_use` and manually review every `unknown` result.
 4. **Create** — `create_shape`, `render` (JSX)
@@ -139,6 +140,32 @@ Endpoints are available over both active transports:
 7. **Save** — `save_file` to write back to `.fig`
 
 Most tools accept optional `document_id` and `page_id` fields. Pass them explicitly for agent workflows instead of relying on the visible active tab/page. `create_page` only creates a page; call `switch_page` separately when the workflow should change the active page.
+
+### Dynamic plugin tools
+
+The running app contributes MCP tools for reviewed plugin modules, commands, and exporters only
+while their plugin is both installed and enabled. Their stable names use the
+`plugin__<readable-plugin>__<action>_<readable-contribution>_<sha256>` namespace. The SHA-256 suffix
+is derived from the canonical plugin, contribution kind, and contribution ID, so a later plugin
+whose readable name normalizes to the same text cannot take over a cached tool name. Installing,
+enabling, disabling, or removing a plugin updates `tools/list` and sends
+`notifications/tools/list_changed` to connected MCP sessions.
+
+Streamable HTTP sessions reconcile the catalog from the app connection directly. The standalone
+stdio bridge refreshes on startup and reconnect and also polls every two seconds; after an app
+disconnect, its final failed refresh can additionally include the browser bridge's bounded 10-second
+connection wait. Calls still recheck the live app state and fail closed during that short listing lag.
+
+The bundled catalog currently contributes seven module tools (Map, Chart, Rich Text, HTML, Video,
+Table, and Slide Menu), four Clipboard Toolkit commands, and three source-project exporters (Tauri
+React, Expo React Native, and Flutter) when their corresponding plugins are installed and enabled.
+
+Every plugin-tool call is checked against the live plugin store again before it runs. A client that
+cached an older tool list therefore cannot invoke a disabled or removed contribution. Disconnecting
+the app removes all dynamic plugin tools until the authenticated automation bridge reconnects; the
+built-in MCP tools remain registered but live-document calls still require the app. Plugin manifests
+cannot provide executable MCP handlers: OpenPencil derives bounded schemas and routes calls only to
+reviewed module, command, and exporter adapters shipped by the host.
 
 ### Font license audit
 
@@ -190,31 +217,33 @@ Works with Claude Code, Cursor, Windsurf, Codex, and any agent that supports [sk
 
 ### Read
 
-| Tool                   | Description                                                                 |
-| ---------------------- | --------------------------------------------------------------------------- |
-| `get_selection`        | Get currently selected nodes                                                |
-| `get_page_tree`        | Get the full node tree of the current page                                  |
-| `get_current_page`     | Get the current page name and ID                                            |
-| `get_node`             | Get detailed properties of a node by ID                                     |
-| `find_nodes`           | Find nodes by name pattern and/or type                                      |
-| `get_components`       | List all components in the document                                         |
-| `list_pages`           | List all pages                                                              |
-| `list_variables`       | List design variables                                                       |
-| `list_collections`     | List variable collections                                                   |
-| `list_fonts`           | List fonts used in the current page                                         |
-| `list_available_fonts` | List font families the connected host can render                            |
-| `check_font`           | Verify assignment, exact face loading, fallback readiness, and glyph state  |
-| `audit_font_rendering` | Audit bounded live font effectiveness across subtrees, pages, or a document |
-| `audit_form_controls`  | Audit validated controls with bounded results (50 default, 200 max)         |
-| `read_lowcode_nodes`   | Read projected lowcode metadata for multiple nodes in one bounded call      |
-| `read_motions`         | Read compact or complete Motion metadata for multiple nodes                 |
-| `read_page_route`      | Read the compiler-effective route and collision metadata for one page       |
-| `page_bounds`          | Get bounding box of all objects on the current page                         |
-| `node_bounds`          | Get bounding box of a node                                                  |
-| `node_ancestors`       | Get ancestor chain of a node                                                |
-| `node_children`        | Get direct children of a node                                               |
-| `node_tree`            | Get the subtree rooted at a node                                            |
-| `node_bindings`        | Get variable bindings on a node                                             |
+| Tool                        | Description                                                                 |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `get_selection`             | Get currently selected nodes                                                |
+| `get_page_tree`             | Get the full node tree of the current page                                  |
+| `get_current_page`          | Get the current page name and ID                                            |
+| `get_node`                  | Get detailed properties of a node by ID                                     |
+| `find_nodes`                | Find nodes by name pattern and/or type                                      |
+| `get_components`            | List all components in the document                                         |
+| `list_pages`                | List all pages                                                              |
+| `list_variables`            | List design variables                                                       |
+| `list_collections`          | List variable collections                                                   |
+| `list_fonts`                | List fonts used in the current page                                         |
+| `list_available_fonts`      | List font families the connected host can render                            |
+| `check_font`                | Verify assignment, exact face loading, fallback readiness, and glyph state  |
+| `audit_font_rendering`      | Audit bounded live font effectiveness across subtrees, pages, or a document |
+| `audit_form_controls`       | Audit validated controls with bounded results (50 default, 200 max)         |
+| `audit_application_runtime` | Audit Supabase, schema, RLS, server env names, and deploy readiness         |
+| `read_lowcode_nodes`        | Read projected lowcode metadata for multiple nodes in one bounded call      |
+| `read_server_workflows`     | Read validated document-level authenticated server workflows                |
+| `read_motions`              | Read compact or complete Motion metadata for multiple nodes                 |
+| `read_page_route`           | Read the compiler-effective route and collision metadata for one page       |
+| `page_bounds`               | Get bounding box of all objects on the current page                         |
+| `node_bounds`               | Get bounding box of a node                                                  |
+| `node_ancestors`            | Get ancestor chain of a node                                                |
+| `node_children`             | Get direct children of a node                                               |
+| `node_tree`                 | Get the subtree rooted at a node                                            |
+| `node_bindings`             | Get variable bindings on a node                                             |
 
 ### Create
 
@@ -259,6 +288,7 @@ Works with Claude Code, Cursor, Windsurf, Codex, and any agent that supports [sk
 | `arrange`                    | Align or distribute selected nodes                                           |
 | `update_lowcode_nodes`       | Validate and update multiple lowcode nodes in one undoable transaction       |
 | `ensure_form_value_bindings` | Create up to 199 missing page state/value bindings outside component masters |
+| `set_server_workflows`       | Atomically validate and replace authenticated server workflow definitions    |
 
 `audit_form_controls` includes `total`, `returned`, and `truncated` so callers can detect a bounded
 response. Page/form scopes skip `COMPONENT` and `COMPONENT_SET` master subtrees; a control scope

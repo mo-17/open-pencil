@@ -5,7 +5,9 @@ description: Complete reference for all openpencil commands, options, and flags.
 
 # CLI Reference
 
-All commands accept a `.fig` file as a positional argument. When omitted, the CLI connects to the running desktop app via RPC.
+Document commands accept a `.fig` file as a positional argument. When omitted, those commands connect
+to the running desktop app via RPC. Artifact commands such as `plugin` operate only on explicit local
+JSON and key references.
 
 ## info
 
@@ -155,6 +157,73 @@ openpencil eval [file] [options]
 | `--output` | `-o`  | Write to a different file            |
 | `--json`   |       | Output as JSON                       |
 | `--quiet`  | `-q`  | Suppress output                      |
+
+## plugin
+
+Validate, sign, and verify bounded declarative and compute-runtime plugin artifacts. These commands
+never download a catalog/runtime URL or execute plugin code.
+
+```sh
+# Validate either an unsigned payload or a signed manifest.
+openpencil plugin manifest validate plugin-payload.json --json
+
+# Read the private key only for this invocation and write a signed manifest.
+openpencil plugin manifest sign plugin-payload.json \
+  --private-key publisher-private.pem -o plugin.json
+
+# CI can reference a named environment variable containing PKCS8 PEM instead.
+openpencil plugin manifest sign plugin-payload.json \
+  --private-key-env OPENPENCIL_PLUGIN_SIGNING_KEY -o plugin.json
+
+# Verify the publisher signature, key identity, digest, and engine compatibility.
+openpencil plugin manifest verify plugin.json \
+  --public-key publisher-public.pem --key-id publisher-key-1
+
+# Build and verify a separately signed catalog index.
+openpencil plugin catalog build catalog-payload.json \
+  --private-key catalog-private.pem -o catalog.json
+openpencil plugin catalog verify catalog.json \
+  --public-key catalog-public.pem --catalog-id official
+
+# Validate, sign, and verify a publisher runtime package.
+openpencil plugin runtime validate runtime-payload.json --json
+openpencil plugin runtime sign runtime-payload.json \
+  --private-key publisher-private.pem -o runtime.json
+openpencil plugin runtime verify runtime.json \
+  --public-key publisher-public.pem \
+  --plugin-id example-plugin --plugin-version 1.0.0 \
+  --publisher-id example-publisher --key-id publisher-key-1 \
+  --manifest-digest <manifest-sha256-base64url> \
+  --digest <runtime-sha256-base64url> --byte-length <canonical-byte-length>
+
+# Build and verify the root-signed executable runtime index.
+openpencil plugin runtime-index build runtime-index-payload.json \
+  --private-key marketplace-root-private.pem --key-id marketplace-root-2026 \
+  -o runtime-index.json
+openpencil plugin runtime-index verify runtime-index.json \
+  --public-key marketplace-root-public.pem \
+  --index-id openpencil.marketplace.runtime --key-id marketplace-root-2026 \
+  --digest <runtime-index-sha256-base64url>
+```
+
+`manifest sign`, `catalog build`, `runtime sign`, and `runtime-index build` require exactly one
+private-key source: `--private-key <file>` or `--private-key-env <variable-name>`. The environment
+option is a reference to a variable containing the PEM value, not the PEM value itself. Keys are read
+at invocation time and are never copied into the signed JSON or command output. Verification accepts
+the equivalent `--public-key` and `--public-key-env` forms. `--engine-version` overrides manifest
+compatibility verification when testing a future engine release; otherwise the installed CLI version
+is used. Runtime-package and runtime-index verification are trust-mode commands: every expected
+identity, digest, and canonical runtime byte length is required and should come from the already
+accepted root-signed marketplace snapshot/index rather than the artifact under test.
+
+Catalog payloads contain metadata and manifest URLs only. Building or verifying a catalog does not
+fetch those URLs, verify the referenced plugin packages, or install anything. Runtime ingestion must
+still verify each downloaded manifest against the trusted publisher keyring and exact catalog digest.
+Runtime-package validation performs WASM static checks but does not instantiate or execute the asset.
+When the input already contains an `integrity` field, `runtime validate` still does not verify its
+signature; use the fully pinned `runtime verify` command for trust decisions.
+Runtime-index build/verify does not fetch its package URLs; app ingestion still requires the current
+root-signed marketplace snapshot, exact accepted declarative package, and current publisher keyring.
 
 ## motion inspect
 
@@ -399,11 +468,16 @@ openpencil build <file> -o dist
 | `--base`              |       | Public base path for assets (default: `/`)                   |
 | `--supabase-url`      |       | Override the Supabase URL for this build                     |
 | `--supabase-anon-key` |       | Override the Supabase anon key for this build                |
+| `--supabase-schema`   |       | Override the Supabase database schema for this build         |
 | `--i18n`              |       | Enable the react-intl runtime and locale catalogs            |
 | `--locale`            |       | Target locale; repeatable, implies `--i18n`                  |
 | `--source-locale`     |       | Source locale for authored canvas strings; implies `--i18n`  |
 | `--ui-kit`            |       | Emit supported controls with a code UI kit (`shadcn`)        |
 | `--json`              |       | Output a JSON summary                                        |
+
+When the document contains server workflows, `build` keeps their generated Supabase Edge Function
+bundle under `<out>/openpencil-server/`. The JSON result separates `staticFiles` from `serverFiles`;
+do not upload the server directory to a static host.
 
 ## deploy
 
@@ -425,11 +499,16 @@ openpencil deploy <file> --provider cloudflare --account-id <account-id> --site 
 | `--base`              | Public base path for assets                                                |
 | `--supabase-url`      | Override the Supabase URL for this deploy                                  |
 | `--supabase-anon-key` | Override the Supabase anon key for this deploy                             |
+| `--supabase-schema`   | Override the Supabase database schema for this deploy                      |
 | `--ui-kit`            | Emit supported controls with a code UI kit (`shadcn`)                      |
 | `--i18n`              | Enable the react-intl runtime and locale catalogs                          |
 | `--locale`            | Target locale; repeatable, implies `--i18n`                                |
 | `--source-locale`     | Source locale for authored canvas strings; implies `--i18n`                |
 | `--json`              | Output the deploy result as JSON                                           |
+
+Static deploy uploads browser files only. If server workflows are present, human and JSON output
+include a non-secret manual deployment recipe; the command does not deploy functions, link a
+Supabase project, or configure server environment values.
 
 Token env vars:
 

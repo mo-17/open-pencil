@@ -61,6 +61,30 @@ For a first test, keep the app tiny:
 
 This path proves the core loop before you add Supabase, workflows, multiple pages, or i18n.
 
+## Map Module
+
+Choose **Map** from the Interactive tool group, then click or drag on the canvas. OpenPencil stores
+the result as a normal frame with a versioned module configuration, so it remains visible and its
+data survives when the document is opened without the map runtime or round-tripped through `.fig`.
+
+The canvas draws a deterministic offline preview. Use the Module inspector to choose the fixed map
+style, longitude, latitude, zoom, interactivity, and markers. Attribution is not editable: the
+desktop preview and generated React app always show a visible link to the OpenStreetMap copyright
+page. Generated source uses the locally installed MapLibre GL package and does not inject a CDN
+script or accept arbitrary provider code. Children authored inside the map frame remain editable and
+compile as overlays above the interactive map layer.
+
+The built-in OpenStreetMap raster source supports zoom levels 0–19. Its community tile service is
+best-effort and intended for normal interactive viewing, not bulk download, offline packs, or
+high-volume commercial traffic. Use a future provider adapter or self-hosted tiles for workloads
+that cannot follow the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+
+Built-in AI and MCP expose the same registry through `list_modules`, `create_module`, `read_module`,
+and `update_module`. Installed marketplace modules can use only reviewed Canvas and Compiler
+adapters already shipped by the host. An optional, separately signed runtime channel is limited to
+bounded import-free WASM compute; arbitrary third-party JavaScript, native code, network,
+filesystem, credential, and document-write access remain unavailable.
+
 ### Repair uncontrolled validation fields
 
 Validation only runs on a controlled value. If a validated input, textarea, select, radio,
@@ -337,11 +361,12 @@ For sub-path hosting:
 openpencil build app.fig -o dist --base /my-app/
 ```
 
-For Supabase-backed apps, production credentials should come from the environment or command flags:
+For Supabase-backed apps, production public runtime values should come from the environment or command flags:
 
 ```sh
 VITE_SUPABASE_URL=https://example.supabase.co \
 VITE_SUPABASE_ANON_KEY=... \
+VITE_SUPABASE_SCHEMA=app \
 openpencil build app.fig -o dist
 ```
 
@@ -350,10 +375,73 @@ or:
 ```sh
 openpencil build app.fig -o dist \
   --supabase-url https://example.supabase.co \
-  --supabase-anon-key ...
+  --supabase-anon-key ... \
+  --supabase-schema app
 ```
 
 The emitted app uses design-time Supabase values only as a fallback. Prefer environment-specific values for staging and production.
+
+## Application Runtime Readiness
+
+For the production path from Supabase configuration through RLS verification, environment
+isolation, static hosting, and manual server deployment, follow the dedicated
+[Application Runtime Guide](./application-runtime).
+
+The root **Supabase** panel separates public app configuration from management access:
+
+- The project URL, publishable/legacy anon key, and optional schema are the browser runtime values.
+  Known `sb_secret_*` and legacy `service_role` keys are rejected before they can enter a design or
+  generated client bundle.
+- **Schema Inspector** uses a Supabase personal access token from OpenPencil's unified credential
+  store. The PAT is not written to the `.fig` document or reactive editor state. The local cache
+  contains only a bounded normalized table/column/relation catalog, never the PAT or raw OpenAPI
+  response.
+- The RLS advisor combines event actions, named client workflows, LIST queries, Storage uploads,
+  and server workflow queries/mutations. Its SQL is a reviewable starting point, not proof that the
+  target database has the policy. In particular, UPDATE and DELETE also need matching SELECT
+  visibility for the affected user rows.
+
+Before deployment, the desktop Deploy panel runs the same read-only readiness audit and displays
+errors and warnings. Preview, staging, and production target presets are isolated by document; Save
+As and remote document bindings get distinct histories. Supabase overrides are passed to the child
+build through a private environment channel so unrelated `VITE_SUPABASE_*` values inherited from
+the process cannot silently replace the chosen target.
+
+Built-in AI and MCP can call `audit_application_runtime`. It reports effective configuration
+readiness, required table commands, schema mismatches, server environment variable **names**, and
+whether generated server workflows still need deployment. It never returns secret values and does
+not claim to inspect live RLS or deployment state. Supply `known_tables`, `rls_verified`, or
+`server_workflows_deployed` only from checks you actually performed.
+
+## Authenticated Server Workflows
+
+Document-level server workflows are separate from client `lowcodeWorkflows`. The initial runtime is
+deliberately narrow:
+
+- Every endpoint is an authenticated Supabase-user `POST` request.
+- Actions support bounded expressions, user-scoped Supabase queries/mutations, conditions, returns,
+  calls to other validated server workflows, and outbound HTTPS requests.
+- Secret values are never authored in the document. Sensitive outbound headers and other private
+  values reference server environment variable names.
+- The generated handler rejects oversized or malformed bodies, unsafe workflow/argument shapes,
+  unauthenticated callers, credential-bearing or local/private outbound URLs, long requests, and
+  oversized responses. It does not create a service-role client.
+
+Use `read_server_workflows` and `set_server_workflows` from built-in AI/MCP to inspect or atomically
+replace definitions. Add **Invoke server workflow** to a node event to call one definition and route
+its result through success/error action branches.
+
+`compile` emits these server-only files alongside the React project:
+
+- `supabase/functions/openpencil-runtime/index.ts`
+- `.env.server.example` containing required names only
+- `openpencil-server.manifest.json`
+- `SERVER_DEPLOYMENT.md`
+
+`build` preserves them under `<outDir>/openpencil-server/`. Static `deploy` uploads only browser
+files and prints a manual recipe for rebuilding a durable server bundle and running
+`supabase functions deploy openpencil-runtime`. OpenPencil does not link a Supabase project, upload
+the function, or configure its secrets automatically.
 
 ## Analytics
 
