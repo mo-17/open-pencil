@@ -144,5 +144,6 @@ export const TOOL_TO_NODE: Partial<Record<Tool, NodeType>> = {
   RADIO: 'RADIO',
   TEXTAREA: 'TEXTAREA',
   DATEPICKER: 'DATEPICKER',
-  SWITCH: 'SWITCH'
+  SWITCH: 'SWITCH',
+  MAP: 'FRAME'
 }

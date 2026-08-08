@@ -1,6 +1,7 @@
 export { createPage, createShape, createSlice } from './create/basic'
 export { createComponent, createInstance } from './create/components'
 export { fetchIconsTool, insertIcon, searchIconsTool } from './create/icons'
+export { createModule } from './create/module'
 export { render } from './create/render'
 export { importSvg } from './create/svg'
 export { createVector } from './create/vector'

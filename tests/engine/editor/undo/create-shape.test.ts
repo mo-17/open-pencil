@@ -1,10 +1,57 @@
 import { describe, test, expect } from 'bun:test'
 
 import { createEditor } from '@open-pencil/core/editor'
+import {
+  createMapModuleFrameOverrides,
+  MAP_MODULE_DEFAULT_SIZE,
+  resolveMapModule
+} from '@open-pencil/core/plugins'
 
 import { getNodeOrThrow } from '#tests/helpers/assert'
 
 describe('create shape undo/redo', () => {
+  test('preserves a map module instance across create undo and redo', () => {
+    const editor = createEditor()
+
+    const id = editor.createShape(
+      'FRAME',
+      24,
+      36,
+      0,
+      0,
+      undefined,
+      undefined,
+      createMapModuleFrameOverrides({
+        center: [121.4737, 31.2304],
+        zoom: 11,
+        style: 'dark'
+      })
+    )
+
+    const created = getNodeOrThrow(editor.graph, id)
+    expect(created.type).toBe('FRAME')
+    expect(created.width).toBe(MAP_MODULE_DEFAULT_SIZE.width)
+    expect(created.height).toBe(MAP_MODULE_DEFAULT_SIZE.height)
+    expect(resolveMapModule(created.interactiveProps?.module)).toMatchObject({
+      ok: true,
+      config: {
+        center: [121.4737, 31.2304],
+        zoom: 11,
+        style: 'dark'
+      }
+    })
+
+    editor.undo.undo()
+    expect(editor.graph.getNode(id)).toBeUndefined()
+
+    editor.undo.redo()
+    const restored = getNodeOrThrow(editor.graph, id)
+    expect(restored.type).toBe('FRAME')
+    expect(resolveMapModule(restored.interactiveProps?.module)).toEqual(
+      resolveMapModule(created.interactiveProps?.module)
+    )
+  })
+
   test('batched create+resize undoes in one step', () => {
     const editor = createEditor()
 

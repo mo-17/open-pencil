@@ -1,5 +1,11 @@
 import { DEFAULT_TEXT_HEIGHT, DEFAULT_TEXT_WIDTH } from '@open-pencil/core/constants'
 import type { Editor } from '@open-pencil/core/editor'
+import {
+  createMapModuleFrameOverrides,
+  MAP_MODULE_DEFAULT_SIZE,
+  resolveMapModule
+} from '@open-pencil/core/plugins'
+import type { SceneNode } from '@open-pencil/scene-graph'
 
 import { TOOL_TO_NODE } from '#vue/shared/input/types'
 import type { DragDraw, DragState } from '#vue/shared/input/types'
@@ -27,7 +33,18 @@ export function startShapeDraw(
   if (!nodeType) return
 
   editor.undo.beginBatch('Create shape')
-  const nodeId = editor.createShape(nodeType, cx, cy, 0, 0)
+  let initialOverrides: Partial<SceneNode> | undefined
+  let name: string | undefined
+  if (editor.state.activeTool === 'MAP') {
+    initialOverrides = { ...createMapModuleFrameOverrides() }
+    name = initialOverrides.name
+    delete initialOverrides.x
+    delete initialOverrides.y
+    delete initialOverrides.width
+    delete initialOverrides.height
+    delete initialOverrides.name
+  }
+  const nodeId = editor.createShape(nodeType, cx, cy, 0, 0, undefined, name, initialOverrides)
   editor.select([nodeId])
   setDrag({ type: 'draw', startX: cx, startY: cy, nodeId })
 }
@@ -66,7 +83,13 @@ export function handleDrawUp(d: DragDraw, editor: Editor) {
       textAutoResize: isPointText ? 'WIDTH_AND_HEIGHT' : 'NONE'
     })
   } else if (node && node.width < 2 && node.height < 2) {
-    editor.updateNode(d.nodeId, { width: 100, height: 100 })
+    const map = resolveMapModule(node.interactiveProps?.module)
+    editor.updateNode(
+      d.nodeId,
+      map?.ok
+        ? { width: MAP_MODULE_DEFAULT_SIZE.width, height: MAP_MODULE_DEFAULT_SIZE.height }
+        : { width: 100, height: 100 }
+    )
   }
   if (node?.type === 'SECTION') {
     editor.adoptNodesIntoSection(node.id)

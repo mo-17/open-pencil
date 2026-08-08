@@ -29,6 +29,7 @@ import { drawGeneratedEffect } from './generated-effect'
 import { drawLayoutGrids } from './layout-grids'
 import { renderButtonLabel, renderTextInputContent } from './lowcode'
 import { renderMaskedChildIds } from './masks'
+import { renderModulePreview } from './modules'
 import {
   hasMotionDynamicStroke,
   measurePathLength,
@@ -1203,6 +1204,10 @@ export function renderShapeUncached(
   if (!drawVectorMultiStyleFills(r, canvas, node, graph)) {
     drawVisibleFills(r, node, graph, (fill) => r.drawNodeFill(canvas, node, rect, hasRadius, fill))
   }
+  // Module previews are frame content. Draw them above the authored fallback
+  // fill but below authored strokes and front effects so borders and inner
+  // shadows remain visible in the editor.
+  renderModulePreview(r, canvas, node)
 
   const sg = node.strokeGeometry.length > 0 ? r.getStrokeGeometry(node) : null
   const vectorPaths = node.type === 'VECTOR' ? r.getVectorPaths(node) : null

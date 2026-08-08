@@ -30,7 +30,8 @@ export const EDITOR_TOOLS: EditorToolDef[] = [
       'SWITCH',
       'DATEPICKER',
       'FORM',
-      'LIST'
+      'LIST',
+      'MAP'
     ]
   },
   { key: 'PEN', label: 'Pen', shortcut: 'P' },

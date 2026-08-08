@@ -21,7 +21,8 @@ const TOOL_CURSORS: Record<Tool, string> = {
   RADIO: 'crosshair',
   TEXTAREA: 'crosshair',
   DATEPICKER: 'crosshair',
-  SWITCH: 'crosshair'
+  SWITCH: 'crosshair',
+  MAP: 'crosshair'
 }
 
 export function toolCursor(tool: Tool, override?: string | null): string {

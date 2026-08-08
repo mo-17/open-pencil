@@ -15,6 +15,7 @@ import IconHand from '~icons/lucide/hand'
 import IconSection from '~icons/lucide/layout-grid'
 import IconLayoutList from '~icons/lucide/layout-list'
 import IconList from '~icons/lucide/list'
+import IconMap from '~icons/lucide/map'
 import IconMinus from '~icons/lucide/minus'
 import IconMousePointer from '~icons/lucide/mouse-pointer'
 import IconMousePointerSquare from '~icons/lucide/mouse-pointer-square'
@@ -27,7 +28,9 @@ import IconToggleLeft from '~icons/lucide/toggle-left'
 import IconTriangle from '~icons/lucide/triangle'
 import IconType from '~icons/lucide/type'
 
+import { resolveMapModule } from '@open-pencil/core/plugins'
 import { isAutoLayoutMode, type LayoutMode } from '@open-pencil/scene-graph'
+import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import type { Tool } from '@/app/editor/session'
 
@@ -52,7 +55,8 @@ export const toolIcons: Record<Tool, Component> = {
   RADIO: IconCircleDot,
   TEXTAREA: IconText,
   DATEPICKER: IconCalendar,
-  SWITCH: IconToggleLeft
+  SWITCH: IconToggleLeft,
+  MAP: IconMap
 }
 
 export const NODE_ICONS: Partial<Record<string, typeof IconSquare>> = {
@@ -79,7 +83,16 @@ export const COMPONENT_TYPES = new Set(['COMPONENT', 'COMPONENT_SET', 'INSTANCE'
 
 export { IconFrame, IconSquare }
 
-export function nodeIcon(node: { type: string; layoutMode: LayoutMode }) {
+interface NodeIconSource {
+  type: string
+  layoutMode: LayoutMode
+  interactiveProps?: JsonObject
+}
+
+export function nodeIcon(node: NodeIconSource) {
+  if (node.type === 'FRAME' && resolveMapModule(node.interactiveProps?.module)?.ok) {
+    return IconMap
+  }
   // Phase 2 §6: only auto-layout frames pick from AUTO_LAYOUT_ICONS;
   // FREE (and any future non-auto-layout mode) falls back to IconFrame.
   if (node.type === 'FRAME' && isAutoLayoutMode(node.layoutMode))

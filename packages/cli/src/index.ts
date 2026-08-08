@@ -18,6 +18,7 @@ import lint from './commands/lint'
 import motion from './commands/motion'
 import node from './commands/node'
 import pages from './commands/pages'
+import plugin from './commands/plugin'
 import query from './commands/query'
 import selection from './commands/selection'
 import tree from './commands/tree'
@@ -28,7 +29,7 @@ const { version } = await import('../package.json')
 const main = defineCommand({
   meta: {
     name: 'openpencil',
-    description: 'OpenPencil CLI — inspect, export, and lint OpenPencil design documents',
+    description: 'OpenPencil CLI — inspect, build, and verify OpenPencil artifacts',
     version
   },
   subCommands: {
@@ -50,6 +51,7 @@ const main = defineCommand({
     query,
     node,
     pages,
+    plugin,
     selection,
     tree,
     variables

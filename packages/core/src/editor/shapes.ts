@@ -55,7 +55,8 @@ export function createShapeActions(ctx: EditorContext) {
     w: number,
     h: number,
     parentId?: string,
-    name?: string
+    name?: string,
+    initialOverrides: Partial<SceneNode> = {}
   ): string {
     const pid = parentId ?? ctx.state.currentPageId
     const overrides: Partial<SceneNode> = {
@@ -80,6 +81,7 @@ export function createShapeActions(ctx: EditorContext) {
       overrides.pointCount = 5
       overrides.starInnerRadius = 0.38
     }
+    Object.assign(overrides, initialOverrides)
     const node = ctx.graph.createNode(type, pid, overrides)
     const id = node.id
     const snapshot = { ...node }

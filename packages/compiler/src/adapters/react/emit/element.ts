@@ -18,6 +18,8 @@ import type {
 import { emitExpression } from '@open-pencil/core/lowcode-validation'
 
 import { VALIDATION_ERROR_CLASS, VALIDATION_INVALID_FIELD_CLASS } from '../lowcode/validation'
+import { requireReactModuleAdapter } from '../modules/registry'
+import type { ReactModuleAdapter } from '../modules/types'
 import { motionDriverToken } from '../motion/drivers'
 import { motionToken } from '../motion/key'
 import { instrumentVectorMotionHtml } from '../motion/target'
@@ -137,6 +139,10 @@ function emitTagElementCore(
   const pad = '  '.repeat(indent)
 
   if (node.overlay) return emitOverlayElement(node, indent, devMode, uiKit)
+  if (node.module) {
+    const moduleAdapter = requireReactModuleAdapter(node.module)
+    return emitModuleElement(node, moduleAdapter, indent, devMode, uiKit)
+  }
   if (node.icon) return emitLucideIconElement(node, indent, devMode)
 
   // Phase 3 §15 Phase B: a marked form control (SELECT/CHECKBOX/SWITCH/RADIO)
@@ -181,6 +187,27 @@ function emitTagElementCore(
   for (const child of node.children) lines.push(emitElement(child, indent + 1, devMode, uiKit))
   lines.push(`${pad}</${tagName}>`)
   return lines.join('\n')
+}
+
+/** Emit a validated trusted module through its generated local React component.
+ * Ordinary host attrs preserve layout, events, selection, prototype and Motion. */
+function emitModuleElement(
+  node: IRElement,
+  adapter: ReactModuleAdapter,
+  indent: number,
+  devMode: boolean,
+  uiKit: UiKitAdapter | null
+): string {
+  const pad = '  '.repeat(indent)
+  const { attrsStr } = tagOpenParts(node, devMode, null)
+  const attrs = attrsStr === '' ? '' : ` ${attrsStr}`
+  const opening = `${pad}<${adapter.componentName} config={${JSON.stringify(node.module?.payload)}}${attrs}`
+  if (node.children.length === 0) return `${opening} />`
+  return [
+    `${opening}>`,
+    ...node.children.map((child) => emitElement(child, indent + 1, devMode, uiKit)),
+    `${pad}</${adapter.componentName}>`
+  ].join('\n')
 }
 
 /** §19 follow-up: opt-in FORM-level aggregate over the same field errors used
