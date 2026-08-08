@@ -1,7 +1,22 @@
+import type { CanvasPerformanceMode } from '@open-pencil/core/canvas'
+
 /**
  * Options for {@link useCanvas}.
  */
 export type CanvasRenderLayer = 'full' | 'scene' | 'overlays'
+
+export type CanvasPerformanceModeSource =
+  | CanvasPerformanceMode
+  | (() => CanvasPerformanceMode | undefined)
+
+export interface CanvasActiveFrameSample {
+  /** requestAnimationFrame timestamp for the active render. */
+  timestampMs: number
+  /** Synchronous scene render and flush duration. */
+  renderDurationMs: number
+  /** Interval from the previous active frame; omitted after idle gaps. */
+  frameIntervalMs?: number
+}
 
 export interface UseCanvasOptions {
   /**
@@ -21,6 +36,17 @@ export interface UseCanvasOptions {
    * usage depending on the browser and GPU backend.
    */
   preserveDrawingBuffer?: boolean
+  /**
+   * Selects the canvas resource/animation policy. A getter is observed at runtime,
+   * so changing an application preference does not require recreating the surface.
+   */
+  performanceMode?: CanvasPerformanceModeSource
+  /**
+   * Receives lightweight timing samples only for active scene frames. Static/idle frames and
+   * overlay-only surfaces are excluded so application-level adaptive policies do not mistake an
+   * idle gap for a dropped frame.
+   */
+  onActiveFrameSample?: (sample: CanvasActiveFrameSample) => void
   /**
    * Called once the rendering surface is ready.
    */

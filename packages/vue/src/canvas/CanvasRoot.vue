@@ -5,7 +5,8 @@ import { useEditor } from '#vue/editor/context'
 import { useCanvas, type UseCanvasOptions } from '#vue/canvas/surface/use'
 import { provideCanvas } from '#vue/canvas/context'
 
-const { showRulers, preserveDrawingBuffer } = defineProps<UseCanvasOptions>()
+const { showRulers, preserveDrawingBuffer, performanceMode, onActiveFrameSample } =
+  defineProps<UseCanvasOptions>()
 
 const editor = useEditor()
 const canvasRef = ref<HTMLCanvasElement | null>(null)
@@ -17,6 +18,11 @@ const { renderNow, hitTestSectionTitle, hitTestComponentLabel, hitTestFrameTitle
   {
     showRulers,
     preserveDrawingBuffer,
+    performanceMode: () => {
+      const source = performanceMode
+      return typeof source === 'function' ? source() : source
+    },
+    onActiveFrameSample,
     onReady: () => {
       ready.value = true
     }

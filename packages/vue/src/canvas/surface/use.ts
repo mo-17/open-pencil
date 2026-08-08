@@ -1,6 +1,10 @@
 import type { CanvasKit } from 'canvaskit-wasm'
-import type { Ref } from 'vue'
+import { watch, type Ref } from 'vue'
 
+import {
+  normalizeCanvasPerformanceMode,
+  type CanvasPerformanceMode
+} from '@open-pencil/core/canvas'
 import type { Editor } from '@open-pencil/core/editor'
 
 import {
@@ -10,7 +14,12 @@ import {
 import { createCanvasHitTests, createRulerVisibility } from '#vue/canvas/surface/overlays'
 import type { UseCanvasOptions } from '#vue/canvas/surface/types'
 
-export type { UseCanvasOptions } from '#vue/canvas/surface/types'
+export type { CanvasActiveFrameSample, UseCanvasOptions } from '#vue/canvas/surface/types'
+
+function readPerformanceMode(options: UseCanvasOptions | undefined): CanvasPerformanceMode {
+  const source = options?.performanceMode
+  return normalizeCanvasPerformanceMode(typeof source === 'function' ? source() : source)
+}
 
 /**
  * Connects an OpenPencil editor to a real canvas element using CanvasKit.
@@ -28,6 +37,7 @@ export function useCanvas(
   const lifecycle: { destroyed: boolean } = { destroyed: false }
   const isDestroyed = () => lifecycle.destroyed
   const shouldShowRulers = createRulerVisibility(options)
+  const initialPerformanceMode = readPerformanceMode(options)
 
   const surface = createCanvasSurfaceManager({
     editor,
@@ -35,8 +45,15 @@ export function useCanvas(
     options,
     getCanvasKit: () => ck,
     isDestroyed,
-    shouldShowRulers
+    shouldShowRulers,
+    performanceMode: initialPerformanceMode
   })
+
+  watch(
+    () => readPerformanceMode(options),
+    (mode) => surface.setPerformanceMode(mode),
+    { flush: 'sync' }
+  )
 
   useCanvasSurfaceLifecycle({
     canvasRef,

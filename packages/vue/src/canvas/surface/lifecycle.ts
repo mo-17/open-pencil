@@ -2,7 +2,12 @@ import type { CanvasKit, Surface } from 'canvaskit-wasm'
 import { onMounted, onScopeDispose } from 'vue'
 import type { Ref } from 'vue'
 
-import { SkiaRenderer } from '@open-pencil/core/canvas'
+import {
+  DEFAULT_CANVAS_PERFORMANCE_MODE,
+  SkiaRenderer,
+  normalizeCanvasPerformanceMode,
+  type CanvasPerformanceMode
+} from '@open-pencil/core/canvas'
 import type { Editor } from '@open-pencil/core/editor'
 
 import { makeGLSurface, sizeCanvas, type CanvasGLContext } from '#vue/canvas/surface/gl-surface'
@@ -31,6 +36,7 @@ export function createCanvasSurfaceManager({
   getCanvasKit,
   isDestroyed,
   shouldShowRulers,
+  performanceMode: initialPerformanceMode = DEFAULT_CANVAS_PERFORMANCE_MODE,
   dependencies
 }: {
   editor: Editor
@@ -39,6 +45,7 @@ export function createCanvasSurfaceManager({
   getCanvasKit: () => CanvasKit | null
   isDestroyed: () => boolean
   shouldShowRulers: () => boolean
+  performanceMode?: CanvasPerformanceMode
   dependencies?: {
     makeSurface?: typeof makeGLSurface
     makeRenderer?: (
@@ -58,6 +65,7 @@ export function createCanvasSurfaceManager({
   let sceneBackingRenderTimer: ReturnType<typeof setTimeout> | null = null
   let surfaceRecoveryTimer: ReturnType<typeof setTimeout> | null = null
   let surfaceRecoveryAttempts = 0
+  let performanceMode = normalizeCanvasPerformanceMode(initialPerformanceMode)
 
   function clearSceneBackingRenderTimer() {
     if (sceneBackingRenderTimer === null) return
@@ -116,7 +124,9 @@ export function createCanvasSurfaceManager({
     previousRenderer: SkiaRenderer | null
   ): SkiaRenderer | null {
     try {
-      return createRenderer(ck, surface, canvas.getContext('webgl2') ?? null)
+      const renderer = createRenderer(ck, surface, canvas.getContext('webgl2') ?? null)
+      renderer.setPerformanceMode(performanceMode)
+      return renderer
     } catch (error) {
       surface.delete()
       return reportSurfaceFailure(
@@ -276,7 +286,20 @@ export function createCanvasSurfaceManager({
     }
   }
 
-  const renderLoop = createCanvasRenderLoop(editor, renderNow, { layer: options?.layer })
+  const renderLoop = createCanvasRenderLoop(editor, renderNow, {
+    layer: options?.layer,
+    performanceMode,
+    onActiveFrameSample: options?.onActiveFrameSample
+  })
+
+  function setPerformanceMode(mode: CanvasPerformanceMode) {
+    const normalized = normalizeCanvasPerformanceMode(mode)
+    if (normalized === performanceMode) return
+    performanceMode = normalized
+    clearSceneBackingRenderTimer()
+    state.renderer?.setPerformanceMode(normalized)
+    renderLoop.setPerformanceMode(normalized)
+  }
 
   function resizeCanvas(canvas: HTMLCanvasElement) {
     const ck = getCanvasKit()
@@ -342,6 +365,7 @@ export function createCanvasSurfaceManager({
     handleContextLost,
     handleContextRestored,
     destroy,
+    setPerformanceMode,
     markDirty: renderLoop.markDirty,
     getRenderer: () => state.renderer
   }

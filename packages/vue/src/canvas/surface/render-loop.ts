@@ -1,3 +1,9 @@
+import {
+  canvasPerformanceProfile,
+  normalizeCanvasPerformanceMode,
+  type CanvasPerformanceMode,
+  type CanvasPerformanceProfile
+} from '@open-pencil/core/canvas'
 import type { Editor } from '@open-pencil/core/editor'
 import {
   validateGeneratedEffectSpec,
@@ -6,36 +12,52 @@ import {
   type SceneNode
 } from '@open-pencil/scene-graph'
 
-import type { CanvasRenderLayer } from './types'
+import type { CanvasActiveFrameSample, CanvasRenderLayer } from './types'
 
 type RenderLoopOptions = {
   layer?: CanvasRenderLayer
+  performanceMode?: CanvasPerformanceMode
+  onActiveFrameSample?: (sample: CanvasActiveFrameSample) => void
 }
 
 const MAX_CONSECUTIVE_RENDER_RETRIES = 2
-const SMOOTH_GENERATED_EFFECT_FPS = 30
-const MAX_GENERATED_EFFECT_FPS = 30
+const ACTIVE_FRAME_IDLE_GAP_MS = 250
+const readNow = () => (typeof performance === 'undefined' ? 0 : performance.now())
 
 type GeneratedEffectSchedule = {
   active: boolean
   cadenceHz: number
+  continuous: boolean
 }
 
-function generatedEffectCadenceHz(preset: GeneratedEffectPreset, frequencyHz: number): number {
-  if (preset !== 'noise') return SMOOTH_GENERATED_EFFECT_FPS
-  return Math.min(MAX_GENERATED_EFFECT_FPS, Math.max(1, frequencyHz))
+function generatedEffectCadence(
+  preset: GeneratedEffectPreset,
+  frequencyHz: number,
+  profile: Readonly<CanvasPerformanceProfile>
+): Pick<GeneratedEffectSchedule, 'cadenceHz' | 'continuous'> {
+  if (preset !== 'noise') {
+    return profile.smoothGeneratedEffectCadence === 'animation-frame'
+      ? { cadenceHz: 0, continuous: true }
+      : { cadenceHz: profile.smoothGeneratedEffectCadence, continuous: false }
+  }
+  return {
+    cadenceHz: Math.min(profile.noiseGeneratedEffectFpsCap, Math.max(1, frequencyHz)),
+    continuous: false
+  }
 }
 
 function animatedGeneratedEffectSchedule(
   graph: SceneGraph,
   pageId: string,
-  prefersReducedMotion: boolean
+  prefersReducedMotion: boolean,
+  profile: Readonly<CanvasPerformanceProfile>
 ): GeneratedEffectSchedule {
-  if (prefersReducedMotion) return { active: false, cadenceHz: 0 }
+  if (prefersReducedMotion) return { active: false, cadenceHz: 0, continuous: false }
   const page = graph.getNode(pageId)
-  if (!page) return { active: false, cadenceHz: 0 }
+  if (!page) return { active: false, cadenceHz: 0, continuous: false }
   const pending: SceneNode[] = [page]
   let cadenceHz = 0
+  let continuous = false
   while (pending.length > 0) {
     const node = pending.pop()
     if (!node || !node.visible || node.internalOnly || node.isMask || node.opacity <= 0) continue
@@ -48,12 +70,15 @@ function animatedGeneratedEffectSchedule(
     if (!result.success || result.value.opacity <= 0) continue
     const { time } = result.value.uniforms
     if (time.scale <= 0 || time.frequencyHz <= 0) continue
-    cadenceHz = Math.max(
-      cadenceHz,
-      generatedEffectCadenceHz(result.value.params.preset, time.frequencyHz * time.scale)
+    const cadence = generatedEffectCadence(
+      result.value.params.preset,
+      time.frequencyHz * time.scale,
+      profile
     )
+    cadenceHz = Math.max(cadenceHz, cadence.cadenceHz)
+    continuous ||= cadence.continuous
   }
-  return { active: cadenceHz > 0, cadenceHz }
+  return { active: continuous || cadenceHz > 0, cadenceHz, continuous }
 }
 
 type EditorRenderScheduler = {
@@ -131,8 +156,15 @@ export function createCanvasRenderLoop(
   let generatedEffectTimer: ReturnType<typeof setTimeout> | null = null
   let generatedEffectFrameDue = false
   let generatedEffectCacheKey = ''
-  let generatedEffectSchedule: GeneratedEffectSchedule = { active: false, cadenceHz: 0 }
+  let generatedEffectSchedule: GeneratedEffectSchedule = {
+    active: false,
+    cadenceHz: 0,
+    continuous: false
+  }
+  let performanceMode = normalizeCanvasPerformanceMode(options.performanceMode)
   let consecutiveRenderFailures = 0
+  let activeSamplePending = false
+  let lastActiveFrameTimestamp: number | null = null
   const runtimeDocument: Document | undefined =
     typeof document === 'undefined' ? undefined : document
   let pageVisible = runtimeDocument?.visibilityState !== 'hidden'
@@ -140,14 +172,15 @@ export function createCanvasRenderLoop(
   let disposed = false
 
   function currentGeneratedEffectSchedule(): GeneratedEffectSchedule {
-    if (!drivesMotion) return { active: false, cadenceHz: 0 }
-    const cacheKey = `${editor.state.currentPageId}:${editor.state.sceneVersion}:${prefersReducedMotion}`
+    if (!drivesMotion) return { active: false, cadenceHz: 0, continuous: false }
+    const cacheKey = `${editor.state.currentPageId}:${editor.state.sceneVersion}:${prefersReducedMotion}:${performanceMode}`
     if (cacheKey !== generatedEffectCacheKey) {
       generatedEffectCacheKey = cacheKey
       generatedEffectSchedule = animatedGeneratedEffectSchedule(
         editor.graph,
         editor.state.currentPageId,
-        prefersReducedMotion
+        prefersReducedMotion,
+        canvasPerformanceProfile(performanceMode)
       )
     }
     return generatedEffectSchedule
@@ -171,13 +204,38 @@ export function createCanvasRenderLoop(
     }, 1000 / cadenceHz)
   }
 
-  function renderCurrentFrame(): boolean {
+  function reportActiveFrame(
+    timestampMs: number,
+    renderDurationMs: number,
+    measureFrameInterval: boolean
+  ): void {
+    if (!drivesMotion || !options.onActiveFrameSample) return
+    const interval =
+      measureFrameInterval && lastActiveFrameTimestamp !== null
+        ? timestampMs - lastActiveFrameTimestamp
+        : undefined
+    if (measureFrameInterval) lastActiveFrameTimestamp = timestampMs
+    options.onActiveFrameSample({
+      timestampMs,
+      renderDurationMs,
+      ...(interval !== undefined && interval > 0 && interval <= ACTIVE_FRAME_IDLE_GAP_MS
+        ? { frameIntervalMs: interval }
+        : {})
+    })
+  }
+
+  function renderCurrentFrame(
+    timestampMs: number,
+    activeFrame: boolean,
+    measureFrameInterval: boolean
+  ): boolean {
     const versionChanged = editor.state.renderVersion !== lastRenderVersion
     const selectionChanged = editor.state.selectedIds !== lastSelectedIds
     if (!dirty && !versionChanged && !selectionChanged) return true
 
     dirty = false
     let renderSucceeded = true
+    const renderStartedAt = activeFrame ? readNow() : 0
     try {
       renderSucceeded = renderNow() !== false
     } catch (error) {
@@ -192,6 +250,9 @@ export function createCanvasRenderLoop(
     }
 
     markRendered()
+    if (activeFrame) {
+      reportActiveFrame(timestampMs, Math.max(0, readNow() - renderStartedAt), measureFrameInterval)
+    }
     return true
   }
 
@@ -206,7 +267,9 @@ export function createCanvasRenderLoop(
     } else if (motionWasActive && editor.isMotionPreviewActive()) {
       editor.stopMotionPreview()
     }
-    if (effectSchedule.active && !motionContinues) {
+    if (effectSchedule.continuous && !motionContinues) {
+      scheduleFrame()
+    } else if (effectSchedule.active && !motionContinues) {
       scheduleGeneratedEffectFrame(effectSchedule.cadenceHz)
     }
   }
@@ -225,9 +288,12 @@ export function createCanvasRenderLoop(
     const motionShouldContinue = motionWasActive
       ? editor.updateMotionPreviewFrame(timestampMs)
       : false
-    if (motionWasActive || generatedEffectFrameDue) dirty = true
+    const measureFrameInterval = activeSamplePending || motionWasActive || effectSchedule.continuous
+    const activeFrame = measureFrameInterval || generatedEffectFrameDue
+    activeSamplePending = false
+    if (motionWasActive || effectSchedule.continuous || generatedEffectFrameDue) dirty = true
     generatedEffectFrameDue = false
-    if (!renderCurrentFrame()) return
+    if (!renderCurrentFrame(timestampMs, activeFrame, measureFrameInterval)) return
 
     if (!effectSchedule.active) clearGeneratedEffectTimer()
     continueAnimation(motionWasActive, motionShouldContinue, effectSchedule)
@@ -248,6 +314,12 @@ export function createCanvasRenderLoop(
 
   const scheduleSceneRender = () => {
     generatedEffectCacheKey = ''
+    activeSamplePending = true
+    scheduleRender()
+  }
+
+  const scheduleActiveRender = () => {
+    activeSamplePending = true
     scheduleRender()
   }
 
@@ -270,10 +342,10 @@ export function createCanvasRenderLoop(
 
   const unsubscribe = [
     editor.onEditorEvent('render:requested', scheduleSceneRender),
-    editor.onEditorEvent('viewport:changed', scheduleRender)
+    editor.onEditorEvent('viewport:changed', scheduleActiveRender)
   ]
 
-  unsubscribe.push(editor.onEditorEvent('repaint:requested', scheduleRender))
+  unsubscribe.push(editor.onEditorEvent('repaint:requested', scheduleActiveRender))
 
   if (options.layer !== 'scene') {
     unsubscribe.push(editor.onEditorEvent('overlay:requested', scheduleRender))
@@ -301,6 +373,8 @@ export function createCanvasRenderLoop(
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
     clearGeneratedEffectTimer()
+    activeSamplePending = false
+    lastActiveFrameTimestamp = null
     if (frameScheduled) {
       scheduler.cancel(renderFrame)
       frameScheduled = false
@@ -321,10 +395,20 @@ export function createCanvasRenderLoop(
     scheduleRender()
   }
 
+  function setPerformanceMode(mode: CanvasPerformanceMode) {
+    const normalized = normalizeCanvasPerformanceMode(mode)
+    if (normalized === performanceMode) return
+    performanceMode = normalized
+    generatedEffectCacheKey = ''
+    clearGeneratedEffectTimer()
+    scheduleRender()
+  }
+
   return {
     pause,
     suspend,
     resume,
+    setPerformanceMode,
     markRendered,
     markDirty: scheduleRender
   }

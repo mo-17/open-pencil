@@ -340,6 +340,44 @@ describe('canvas render loop', () => {
     }
   })
 
+  test('reports active scene timing without counting idle or overlay-only frames', () => {
+    const scheduler = createFrameScheduler()
+    try {
+      const { editor, emit } = createEditor()
+      const sceneSamples: Array<{ timestampMs: number; frameIntervalMs?: number }> = []
+      const overlaySamples: Array<{ timestampMs: number }> = []
+      const sceneLoop = createCanvasRenderLoop(editor, () => true, {
+        layer: 'scene',
+        onActiveFrameSample: (sample) => sceneSamples.push(sample)
+      })
+      createCanvasRenderLoop(editor, () => true, {
+        layer: 'overlays',
+        onActiveFrameSample: (sample) => overlaySamples.push(sample)
+      })
+
+      emit('viewport:changed')
+      scheduler.flush(16)
+      expect(sceneSamples).toHaveLength(1)
+      expect(sceneSamples[0]?.timestampMs).toBe(16)
+      expect(sceneSamples[0]?.frameIntervalMs).toBeUndefined()
+      expect(overlaySamples).toEqual([])
+
+      // A lifecycle-driven redraw remains observable but is not an interaction sample.
+      sceneLoop.markDirty()
+      scheduler.flush(1_000)
+      expect(sceneSamples).toHaveLength(1)
+
+      emit('render:requested')
+      scheduler.flush(1_016)
+      emit('render:requested')
+      scheduler.flush(1_032)
+      expect(sceneSamples.at(-2)?.frameIntervalMs).toBeUndefined()
+      expect(sceneSamples.at(-1)?.frameIntervalMs).toBe(16)
+    } finally {
+      scheduler.restore()
+    }
+  })
+
   test('cancels pending renders when paused', () => {
     const scheduler = createFrameScheduler()
     try {
@@ -500,6 +538,118 @@ describe('canvas render loop', () => {
       harness.emit('render:requested')
       scheduler.flush(68)
       expect(graphReads).toBeGreaterThan(firstFrameGraphReads)
+
+      loop.pause()
+    } finally {
+      media.restore()
+      scheduler.restore()
+    }
+  })
+
+  test('resource-saving mode limits smooth generated effects to 15fps', () => {
+    const scheduler = createFrameScheduler()
+    const media = createReducedMotionQuery()
+    try {
+      const harness = createEditor()
+      harness.graph.createNode('RECTANGLE', harness.editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect('shimmer')
+      })
+      const samples: Array<{ frameIntervalMs?: number }> = []
+      const loop = createCanvasRenderLoop(harness.editor, () => true, {
+        performanceMode: 'resource-saving',
+        onActiveFrameSample: (sample) => samples.push(sample)
+      })
+
+      harness.emit('render:requested')
+      scheduler.flush(0)
+      expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.timerCount).toBe(1)
+      expect(scheduler.nextTimerDelay).toBeCloseTo(1000 / 15)
+
+      scheduler.flushTimers()
+      scheduler.flush(1000 / 15)
+      expect(samples).toHaveLength(2)
+      expect(samples.every((sample) => sample.frameIntervalMs === undefined)).toBe(true)
+
+      loop.pause()
+    } finally {
+      media.restore()
+      scheduler.restore()
+    }
+  })
+
+  test('hot mode changes clear the previous effect timer and apply the new cadence immediately', () => {
+    const scheduler = createFrameScheduler()
+    const media = createReducedMotionQuery()
+    try {
+      const harness = createEditor()
+      harness.graph.createNode('RECTANGLE', harness.editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        generatedEffect: generatedEffect('shimmer')
+      })
+      let renders = 0
+      const loop = createCanvasRenderLoop(harness.editor, () => renders++)
+
+      harness.emit('render:requested')
+      scheduler.flush(0)
+      expect(renders).toBe(1)
+      expect(scheduler.nextTimerDelay).toBeCloseTo(1000 / 30)
+
+      loop.setPerformanceMode('resource-saving')
+      expect(scheduler.timerCount).toBe(0)
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.flush(16)
+      expect(renders).toBe(2)
+      expect(scheduler.nextTimerDelay).toBeCloseTo(1000 / 15)
+
+      loop.setPerformanceMode('smooth')
+      expect(scheduler.timerCount).toBe(0)
+      scheduler.flush(32)
+      expect(renders).toBe(3)
+      expect(scheduler.timerCount).toBe(0)
+      expect(scheduler.pendingCount).toBe(1)
+      scheduler.flush(48)
+      expect(renders).toBe(4)
+      expect(scheduler.pendingCount).toBe(1)
+
+      loop.setPerformanceMode('balanced')
+      scheduler.flush(64)
+      expect(renders).toBe(5)
+      expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.nextTimerDelay).toBeCloseTo(1000 / 30)
+
+      loop.pause()
+    } finally {
+      media.restore()
+      scheduler.restore()
+    }
+  })
+
+  test('smooth mode keeps noise discrete and caps its independent redraw timer at 60fps', () => {
+    const scheduler = createFrameScheduler()
+    const media = createReducedMotionQuery()
+    try {
+      const harness = createEditor()
+      const effect = generatedEffect('noise')
+      effect.uniforms.time.frequencyHz = 12
+      effect.uniforms.time.scale = 8
+      harness.graph.createNode('RECTANGLE', harness.editor.state.currentPageId, {
+        width: 100,
+        height: 100,
+        generatedEffect: effect
+      })
+      const loop = createCanvasRenderLoop(harness.editor, () => true, {
+        performanceMode: 'smooth'
+      })
+
+      harness.emit('render:requested')
+      scheduler.flush(0)
+      expect(scheduler.pendingCount).toBe(0)
+      expect(scheduler.timerCount).toBe(1)
+      expect(scheduler.nextTimerDelay).toBeCloseTo(1000 / 60)
 
       loop.pause()
     } finally {

@@ -2,6 +2,7 @@ import { afterEach, expect, mock, test } from 'bun:test'
 
 import type { CanvasKit, Surface } from 'canvaskit-wasm'
 
+import type { CanvasPerformanceMode } from '#core/canvas'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import type { Editor } from '#core/editor'
 import { createCanvasSurfaceManager, surfaceRecoveryDelayMs } from '#vue/canvas/surface/lifecycle'
@@ -56,8 +57,14 @@ function createEditor(events: string[]) {
 function createRenderer(name: string, events: string[]): FakeRenderer {
   const renderer: Partial<FakeRenderer> & { hasLastGoodFrame: boolean } = {
     hasLastGoodFrame: false,
+    performanceMode: 'balanced',
     sceneBackingNeedsCrispRender: false,
     sceneBackingPreviewUntil: 0,
+    setPerformanceMode: mock((mode: CanvasPerformanceMode) => {
+      if (renderer.performanceMode === mode) return false
+      renderer.performanceMode = mode
+      return true
+    }),
     transferLastGoodFrameTo: mock((target: FakeRenderer) => {
       events.push(`transfer:${name}`)
       if (!renderer.hasLastGoodFrame) return false
@@ -187,6 +194,38 @@ test('direct renders wait until the editor loading lease is released', () => {
   editor.state.loading = false
   expect(manager.renderNow()).toBe(true)
   expect(renderer.renderFromEditorState).toHaveBeenCalledTimes(1)
+
+  manager.destroy()
+})
+
+test('performance mode changes update the live renderer without recreating its surface', () => {
+  installWindow()
+  const events: string[] = []
+  const canvas = createCanvas()
+  const editor = createEditor(events)
+  editor.state.loading = true
+  const renderer = createRenderer('performance', events)
+  const makeSurface = mock(() => ({ surface: createSurface(), glContext: null }))
+  const makeRenderer = mock(() => renderer)
+  const manager = createCanvasSurfaceManager({
+    editor,
+    canvasRef: { value: canvas },
+    options: { layer: 'scene' },
+    performanceMode: 'balanced',
+    getCanvasKit: () => ({}) as CanvasKit,
+    isDestroyed: () => false,
+    shouldShowRulers: () => false,
+    dependencies: { makeSurface, makeRenderer }
+  })
+
+  expect(manager.createSurface(canvas)).toBe(true)
+  expect(renderer.setPerformanceMode).toHaveBeenLastCalledWith('balanced')
+
+  manager.setPerformanceMode('smooth')
+  expect(renderer.setPerformanceMode).toHaveBeenLastCalledWith('smooth')
+  expect(renderer.performanceMode).toBe('smooth')
+  expect(makeSurface).toHaveBeenCalledTimes(1)
+  expect(makeRenderer).toHaveBeenCalledTimes(1)
 
   manager.destroy()
 })

@@ -19,7 +19,7 @@ export { provideEditor, useEditor, EDITOR_KEY } from '#vue/editor/context'
 
 /** Canvas and input integration composables. */
 export { useCanvas } from '#vue/canvas/surface/use'
-export type { UseCanvasOptions } from '#vue/canvas/surface/use'
+export type { CanvasActiveFrameSample, UseCanvasOptions } from '#vue/canvas/surface/use'
 export { useCanvasInput } from '#vue/canvas/useCanvasInput'
 export { useCanvasVirtualReference } from '#vue/canvas/overlays/useCanvasVirtualReference'
 export { useTextEdit } from '#vue/canvas/text-edit/use'
