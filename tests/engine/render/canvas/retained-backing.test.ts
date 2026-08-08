@@ -4,6 +4,7 @@ import type { Canvas, Image as CKImage, SkPicture, Surface } from 'canvaskit-was
 
 import { SceneGraph } from '@open-pencil/scene-graph'
 
+import { DEFAULT_CANVAS_PERFORMANCE_MODE } from '#core/canvas'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { recoverLastGoodFrame } from '#core/canvas/renderer/pipeline'
 import {
@@ -50,6 +51,7 @@ function createRenderer(surfaceFactory: (descriptor?: unknown) => Surface | null
     sceneBackingPreviewUntil: 0,
     sceneBackingAverageRecordMs: 40,
     sceneBackingAverageViewportIntervalMs: 80,
+    performanceMode: DEFAULT_CANVAS_PERFORMANCE_MODE,
     scenePictureVersion: 0,
     scenePicturePositionPreviewVersion: 0,
     scenePicturePageId: null,
@@ -111,6 +113,26 @@ test('retained scene backing caps device-pixel allocations on large high-DPI vie
   expect(allocation).not.toBeNull()
   if (!allocation) throw new Error('Expected a retained-backing allocation attempt')
   expect(allocation.width * allocation.height).toBeLessThanOrEqual(12_000_000)
+})
+
+test('resource-saving retained backing reduces coverage and allocation footprint', () => {
+  let allocation: { width: number; height: number } | null = null
+  const r = createRenderer((descriptor) => {
+    allocation = descriptor as { width: number; height: number }
+    return null
+  })
+  r.performanceMode = 'resource-saving'
+  r.viewportWidth = 1_000
+  r.viewportHeight = 800
+  r.dpr = 2
+
+  expect(sceneBackingScaleForViewport(1_000, 800, 2, 'resource-saving')).toBeCloseTo(
+    Math.sqrt(6_000_000 / 3_200_000)
+  )
+  expect(renderSceneBacking(r, createCanvas(), createGraph(), 1)).toBe(false)
+  expect(allocation).not.toBeNull()
+  if (!allocation) throw new Error('Expected a retained-backing allocation attempt')
+  expect(allocation.width * allocation.height).toBeLessThanOrEqual(6_000_000)
 })
 
 test('retained scene backing treats allocation exceptions as a safe live-render fallback', () => {
@@ -176,6 +198,33 @@ test('last-good scene backing can be restored after graph metadata changes', () 
 
   expect(drawLastGoodSceneBacking(r, canvas)).toBe(true)
   expect(canvas.drawImageRectOptions).toHaveBeenCalled()
+})
+
+test('balanced to smooth hot switch reuses identical completed backing geometry', () => {
+  const r = createRenderer(() => null)
+  r.sceneBacking = {
+    image: { delete: mock() } as CKImage,
+    pageId: 'page',
+    sceneVersion: 1,
+    positionPreviewVersion: 0,
+    fontGeneration: 0,
+    panX: 100,
+    panY: 100,
+    zoom: 1,
+    width: 300,
+    height: 300,
+    dpr: 1,
+    worldX: -100,
+    worldY: -100,
+    worldWidth: 300,
+    worldHeight: 300
+  }
+  r.performanceMode = 'smooth'
+  const canvas = createCanvas()
+
+  expect(renderSceneBacking(r, canvas, createGraph(), 1)).toBe(true)
+  expect(r.surface.makeSurface).not.toHaveBeenCalled()
+  expect(canvas.drawImageRectOptions).toHaveBeenCalledTimes(1)
 })
 
 test('scene-version changes rebuild incrementally while presenting the last-good frame', () => {
@@ -314,6 +363,87 @@ test('first retained backing slices one huge top-level root and installs only th
   expect(r.sceneBacking?.image).toBe(snapshot)
   expect(canvas.drawImageRectOptions).toHaveBeenCalledTimes(1)
   expect(r.sceneBackingNeedsCrispRender).toBe(false)
+})
+
+test('smooth mode advances at most four retained tiles in one build step', () => {
+  const partialBuildCanvas: Partial<Canvas> = {
+    clear: mock(),
+    getSaveCount: mock(() => 0),
+    save: mock(),
+    scale: mock(),
+    translate: mock(),
+    clipRect: mock(),
+    restoreToCount: mock()
+  }
+  const partialBuildSurface: Partial<Surface> = {
+    getCanvas: mock(() => partialBuildCanvas as Canvas),
+    flush: mock(),
+    makeImageSnapshot: mock(),
+    delete: mock()
+  }
+  const r = createRenderer(() => partialBuildSurface as Surface)
+  r.performanceMode = 'smooth'
+  r.viewportWidth = 400
+  r.viewportHeight = 400
+  const graph = new SceneGraph()
+  const page = graph.getPages()[0]
+  r.pageId = page.id
+  graph.createNode('FRAME', page.id, {
+    x: -500,
+    y: -500,
+    width: 2_000,
+    height: 2_000
+  })
+
+  expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe(true)
+  expect(r.sceneBackingBuild?.index).toBe(4)
+  expect(r.renderNode).toHaveBeenCalledTimes(4)
+  expect(partialBuildCanvas.clipRect).toHaveBeenCalledTimes(4)
+  expect(partialBuildSurface.flush).toHaveBeenCalledTimes(1)
+  expect(partialBuildSurface.makeImageSnapshot).not.toHaveBeenCalled()
+})
+
+test('smooth mode stops retained tile work when its six millisecond step budget is spent', () => {
+  const originalNow = performance.now
+  let nowCalls = 0
+  performance.now = mock(() => [0, 0, 0, 7][nowCalls++] ?? 7)
+  try {
+    const partialBuildCanvas: Partial<Canvas> = {
+      clear: mock(),
+      getSaveCount: mock(() => 0),
+      save: mock(),
+      scale: mock(),
+      translate: mock(),
+      clipRect: mock(),
+      restoreToCount: mock()
+    }
+    const partialBuildSurface: Partial<Surface> = {
+      getCanvas: mock(() => partialBuildCanvas as Canvas),
+      flush: mock(),
+      makeImageSnapshot: mock(),
+      delete: mock()
+    }
+    const r = createRenderer(() => partialBuildSurface as Surface)
+    r.performanceMode = 'smooth'
+    r.viewportWidth = 400
+    r.viewportHeight = 400
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    r.pageId = page.id
+    graph.createNode('FRAME', page.id, {
+      x: -500,
+      y: -500,
+      width: 2_000,
+      height: 2_000
+    })
+
+    expect(renderSceneBacking(r, createCanvas(), graph, 1)).toBe(true)
+    expect(r.sceneBackingBuild?.index).toBe(1)
+    expect(r.renderNode).toHaveBeenCalledTimes(1)
+    expect(partialBuildSurface.flush).toHaveBeenCalledTimes(1)
+  } finally {
+    performance.now = originalNow
+  }
 })
 
 test('retained backing expands tile culling for effects larger than the default seam padding', () => {

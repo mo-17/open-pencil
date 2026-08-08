@@ -4,18 +4,14 @@ import type { Canvas, Image as CKImage, Surface } from 'canvaskit-wasm'
 import type { SceneGraph } from '@open-pencil/scene-graph'
 import { effectOverflow, strokeOverflow } from '@open-pencil/scene-graph/geometry'
 
+import { canvasPerformanceProfile } from '#core/canvas/performance'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { clearSubtreePictureCache } from '#core/canvas/renderer/state'
 
 import type { RenderLayer } from './pipeline'
 
 const now = typeof performance !== 'undefined' ? () => performance.now() : () => 0
-const SCENE_BACKING_SCALE = 3
-const MAX_SCENE_BACKING_DEVICE_PIXELS = 12_000_000
 const FRAME_BUDGET_60HZ_MS = 1000 / 60
-const MIN_SCENE_BACKING_IDLE_FRAMES = 2
-const MAX_SCENE_BACKING_IDLE_FRAMES = 18
-const MAX_SCENE_BACKING_QUIET_INPUT_INTERVALS = 4
 const SCENE_BACKING_TILE_DEVICE_PX = 512
 const SCENE_BACKING_TILE_CULL_PADDING_DEVICE_PX = 128
 
@@ -42,11 +38,12 @@ function smoothAverage(previous: number, next: number, weight = 0.2): number {
 }
 
 function sceneBackingPreviewIdleMs(r: SkiaRenderer): number {
-  const minDelay = FRAME_BUDGET_60HZ_MS * MIN_SCENE_BACKING_IDLE_FRAMES
-  const maxDelay = FRAME_BUDGET_60HZ_MS * MAX_SCENE_BACKING_IDLE_FRAMES
+  const profile = canvasPerformanceProfile(r.performanceMode)
+  const minDelay = profile.sceneBackingMinCrispDelayMs
+  const maxDelay = profile.sceneBackingMaxCrispDelayMs
   const renderMs = clamp(r.sceneBackingAverageRecordMs, minDelay, maxDelay)
   const inputIntervalMs = clamp(r.sceneBackingAverageViewportIntervalMs, 1, maxDelay)
-  if (inputIntervalMs > FRAME_BUDGET_60HZ_MS * MAX_SCENE_BACKING_QUIET_INPUT_INTERVALS) {
+  if (inputIntervalMs > FRAME_BUDGET_60HZ_MS * profile.sceneBackingMaxQuietInputIntervals) {
     return renderMs
   }
 
@@ -54,7 +51,7 @@ function sceneBackingPreviewIdleMs(r: SkiaRenderer): number {
   const quietInputIntervals = clamp(
     expectedEventsDuringRender,
     1,
-    MAX_SCENE_BACKING_QUIET_INPUT_INTERVALS
+    profile.sceneBackingMaxQuietInputIntervals
   )
   return clamp(Math.max(renderMs, inputIntervalMs * quietInputIntervals), minDelay, maxDelay)
 }
@@ -93,7 +90,9 @@ function backingMetadataMatches(
     backing.sceneVersion === sceneVersion &&
     backing.positionPreviewVersion === positionPreviewVersion &&
     backing.fontGeneration === r.fontGeneration &&
-    Math.abs(backing.dpr - expected.dpr) <= 0.0001
+    Math.abs(backing.dpr - expected.dpr) <= 0.0001 &&
+    backing.width === expected.width &&
+    backing.height === expected.height
   )
 }
 
@@ -196,25 +195,33 @@ export function drawLastGoodSceneBacking(r: SkiaRenderer, canvas: Canvas): boole
 export function sceneBackingScaleForViewport(
   viewportWidth: number,
   viewportHeight: number,
-  dpr: number
+  dpr: number,
+  performanceMode: SkiaRenderer['performanceMode'] = 'balanced'
 ): number {
+  const profile = canvasPerformanceProfile(performanceMode)
   const viewportDevicePixels = Math.max(1, viewportWidth * viewportHeight * dpr * dpr)
   return clamp(
-    Math.sqrt(MAX_SCENE_BACKING_DEVICE_PIXELS / viewportDevicePixels),
+    Math.sqrt(profile.sceneBackingMaxDevicePixels / viewportDevicePixels),
     1,
-    SCENE_BACKING_SCALE
+    profile.sceneBackingCoverageScale
   )
 }
 
 function sceneBackingGeometry(r: SkiaRenderer) {
-  const backingScale = sceneBackingScaleForViewport(r.viewportWidth, r.viewportHeight, r.dpr)
+  const profile = canvasPerformanceProfile(r.performanceMode)
+  const backingScale = sceneBackingScaleForViewport(
+    r.viewportWidth,
+    r.viewportHeight,
+    r.dpr,
+    r.performanceMode
+  )
   const marginX = r.viewportWidth * ((backingScale - 1) / 2)
   const marginY = r.viewportHeight * ((backingScale - 1) / 2)
   const width = Math.max(1, Math.ceil(r.viewportWidth + marginX * 2))
   const height = Math.max(1, Math.ceil(r.viewportHeight + marginY * 2))
   // A single viewport can itself exceed the cap on a large/high-DPI display.
   // Keep CSS coverage intact and lower only the retained preview resolution.
-  const cappedDpr = Math.sqrt(MAX_SCENE_BACKING_DEVICE_PIXELS / (width * height))
+  const cappedDpr = Math.sqrt(profile.sceneBackingMaxDevicePixels / (width * height))
   const dpr = Math.max(0.1, Math.min(r.dpr, cappedDpr))
   const backingPanX = r.panX + marginX
   const backingPanY = r.panY + marginY
@@ -532,10 +539,21 @@ function stepSceneBackingBuild(r: SkiaRenderer, sceneVersion: number): boolean {
     return false
   }
   try {
-    if (build.index < tiles.length) {
+    const profile = canvasPerformanceProfile(r.performanceMode)
+    const stepStartedAt = now()
+    let tilesRendered = 0
+    while (build.index < tiles.length && tilesRendered < profile.sceneBackingMaxTilesPerStep) {
+      if (
+        tilesRendered > 0 &&
+        profile.sceneBackingBuildStepBudgetMs !== null &&
+        now() - stepStartedAt >= profile.sceneBackingBuildStepBudgetMs
+      ) {
+        break
+      }
       const tile = tiles[build.index]
       renderBackingTile(r, build, tile)
       build.index++
+      tilesRendered++
     }
     // Submit only the commands recorded by this bounded tile step. Deferring every GPU command
     // until the final snapshot would merely move the original whole-page stall to the last frame.

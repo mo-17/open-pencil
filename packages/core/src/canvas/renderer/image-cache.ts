@@ -4,7 +4,10 @@ const RGBA_BYTES_PER_PIXEL = 4
 const FULL_MIP_CHAIN_FACTOR = 4 / 3
 
 /**
- * Keep decoded assets bounded independently from the browser's encoded image storage.
+ * Keep renderer-owned decoded-image wrappers bounded independently from the browser's encoded
+ * image storage. Recorded SkPictures and retained snapshots may keep native image references alive
+ * after a wrapper is evicted; this LRU is therefore a steady-state cache budget, not a hard total
+ * GPU-memory ceiling.
  *
  * 128 MiB is large enough to retain a mipmapped 4K RGBA image while staying modest on
  * low-memory machines. Individual images may temporarily exceed the budget for the frame that

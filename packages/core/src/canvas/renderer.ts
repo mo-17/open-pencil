@@ -22,6 +22,12 @@ import type { FontResolutionSnapshot } from '#core/text/resolver'
 
 import { LabelCache } from './labels/cache'
 import * as LabelHitTest from './labels/hit-test'
+import {
+  canvasPerformanceProfile,
+  DEFAULT_CANVAS_PERFORMANCE_MODE,
+  normalizeCanvasPerformanceMode,
+  type CanvasPerformanceMode
+} from './performance'
 import * as RenderColors from './renderer/colors'
 import * as RendererFonts from './renderer/fonts'
 import {
@@ -158,6 +164,7 @@ export class SkiaRenderer {
   sceneBackingAverageViewportIntervalMs = 80
   sceneBackingLastViewportEventAt = 0
   lastSceneViewport: { panX: number; panY: number; zoom: number } | null = null
+  performanceMode = DEFAULT_CANVAS_PERFORMANCE_MODE
   nodePictureCache = new Map<string, SkPicture | null>()
   nodePictureCacheGenerations = new Map<string, number>()
   subtreePictureCache = new Map<string, SubtreePictureCacheEntry>()
@@ -479,6 +486,17 @@ export class SkiaRenderer {
     } catch (error) {
       console.warn('Previous CanvasKit surface cleanup failed', error)
     }
+  }
+
+  setPerformanceMode(mode: CanvasPerformanceMode): boolean {
+    const normalized = normalizeCanvasPerformanceMode(mode)
+    if (normalized === this.performanceMode) return false
+    this.performanceMode = normalized
+    this.imageCacheByteBudget = canvasPerformanceProfile(normalized).decodedImageCacheBudgetBytes
+    this.sceneBackingPreviewUntil = 0
+    this.lastSceneViewport = null
+    this.sceneBackingNeedsCrispRender = !!this.sceneBacking || !!this.sceneBackingBuild
+    return true
   }
 
   invalidateScenePicture(): void {
