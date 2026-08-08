@@ -1,3 +1,16 @@
+import {
+  canonicalManifestJson as canonicalJson,
+  canonicalManifestValue as canonicalValue,
+  compareStableSemver as compareSemver,
+  assertSignedManifestVerificationPolicy,
+  createSignedManifestIntegrity,
+  normalizeStableEngineRange,
+  parseStableSemver,
+  satisfiesStableEngineRange,
+  stableSemverParts,
+  verifySignedManifestIntegrity,
+  type StableSemver as Semver
+} from '../signed-manifest'
 import { createMotionContractValidationHelpers } from './contract-validation'
 import { parseMotionRecipe } from './recipe'
 import { instantiateMotionRecipe } from './recipe/instantiate'
@@ -136,7 +149,6 @@ export class TeamMotionLibraryValidationError extends MotionIssueValidationError
   }
 }
 
-const SAFE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 const SAFE_TOKEN = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/
 const BASE64URL = /^[A-Za-z0-9_-]+$/
 
@@ -184,87 +196,29 @@ function publisher(value: unknown, path: string): TeamMotionPublisher {
   }
 }
 
-interface Semver {
-  major: number
-  minor: number
-  patch: number
-}
+const semverInvalid = (path: string, message: string): never =>
+  invalid(path, 'invalid_value', message)
 
 function semver(value: unknown, path: string): string {
-  if (typeof value !== 'string' || !SAFE_VERSION.test(value)) {
-    return invalid(path, 'invalid_value', 'Expected a stable semantic version (major.minor.patch)')
-  }
-  semverParts(value, path)
-  return value
+  return parseStableSemver(value, path, semverInvalid)
 }
 
 function semverParts(value: string, path = 'version'): Semver {
-  const match = SAFE_VERSION.exec(value)
-  if (!match) return invalid(path, 'invalid_value', 'Expected a stable semantic version')
-  const parts = [Number(match[1]), Number(match[2]), Number(match[3])] as const
-  if (!parts.every(Number.isSafeInteger)) {
-    return invalid(
-      path,
-      'invalid_value',
-      'Semantic version components must be safe non-negative integers'
-    )
-  }
-  return { major: parts[0], minor: parts[1], patch: parts[2] }
-}
-
-function compareSemver(left: Semver, right: Semver): number {
-  return left.major - right.major || left.minor - right.minor || left.patch - right.patch
-}
-
-function validComparator(value: string): boolean {
-  return /^(?:\^|~|>=|<=|>|<|=)?(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(value)
+  return stableSemverParts(value, path, semverInvalid)
 }
 
 function engineRange(value: unknown, path: string): string {
-  if (typeof value !== 'string' || value.length > TEAM_MOTION_LIBRARY_LIMITS.maxRangeLength) {
-    return invalid(path, 'invalid_value', 'Expected a bounded engine version range')
-  }
-  const normalized = value.trim().replace(/\s+/g, ' ')
-  if (normalized === '*') return normalized
-  const comparators = normalized.split(' ')
-  if (comparators.length < 1 || comparators.length > 2 || !comparators.every(validComparator)) {
-    return invalid(
-      path,
-      'invalid_value',
-      'Expected *, exact, ^/~, or one/two semantic-version comparators'
-    )
-  }
-  return normalized
-}
-
-function comparatorMatches(version: Semver, comparator: string): boolean {
-  const match = /^(\^|~|>=|<=|>|<|=)?(.+)$/.exec(comparator)
-  if (!match) return false
-  const operator = match[1] ?? '='
-  const target = semverParts(match[2])
-  const compared = compareSemver(version, target)
-  if (operator === '=') return compared === 0
-  if (operator === '>=') return compared >= 0
-  if (operator === '<=') return compared <= 0
-  if (operator === '>') return compared > 0
-  if (operator === '<') return compared < 0
-  if (operator === '^') {
-    let upper: Semver
-    if (target.major > 0) upper = { major: target.major + 1, minor: 0, patch: 0 }
-    else if (target.minor > 0) upper = { major: 0, minor: target.minor + 1, patch: 0 }
-    else upper = { major: 0, minor: 0, patch: target.patch + 1 }
-    return compared >= 0 && compareSemver(version, upper) < 0
-  }
-  const upper = { major: target.major, minor: target.minor + 1, patch: 0 }
-  return compared >= 0 && compareSemver(version, upper) < 0
+  return normalizeStableEngineRange(value, path, {
+    maxLength: TEAM_MOTION_LIBRARY_LIMITS.maxRangeLength,
+    invalid: semverInvalid
+  })
 }
 
 export function satisfiesTeamMotionEngineRange(version: string, range: string): boolean {
-  const parsedVersion = semverParts(semver(version, 'version'))
-  const parsedRange = engineRange(range, 'engineRange')
-  return parsedRange === '*'
-    ? true
-    : parsedRange.split(' ').every((comparator) => comparatorMatches(parsedVersion, comparator))
+  return satisfiesStableEngineRange(version, range, {
+    maxLength: TEAM_MOTION_LIBRARY_LIMITS.maxRangeLength,
+    invalid: semverInvalid
+  })
 }
 
 function source(value: unknown, path: string): TeamMotionLibrarySource {
@@ -532,61 +486,6 @@ function integrity(
   }
 }
 
-function compareCanonicalKeys(left: string, right: string): number {
-  if (left === right) return 0
-  return left < right ? -1 : 1
-}
-
-function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalValue)
-  if (value === null || typeof value !== 'object') return value
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([, nested]) => nested !== undefined)
-      .sort(([left], [right]) => compareCanonicalKeys(left, right))
-      .map(([key, nested]) => [key, canonicalValue(nested)])
-  )
-}
-
-function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalValue(value))
-}
-
-function canonicalPayloadBytes(payload: TeamMotionLibraryPayload): Uint8Array {
-  return new TextEncoder().encode(canonicalJson(payload))
-}
-
-function signedBytes(payload: TeamMotionLibraryPayload, digest: string): Uint8Array {
-  return new TextEncoder().encode(canonicalJson({ payload, algorithm: 'SHA-256', digest }))
-}
-
-function webCryptoBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength)
-  copy.set(bytes)
-  return copy.buffer
-}
-
-function bytesToBase64Url(bytes: Uint8Array): string {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/g, '')
-}
-
-function base64UrlToBytes(value: string): Uint8Array {
-  const padded =
-    value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - (value.length % 4)) % 4)
-  const binary = atob(padded)
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0))
-}
-
-async function payloadDigest(payload: TeamMotionLibraryPayload): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    webCryptoBuffer(canonicalPayloadBytes(payload))
-  )
-  return bytesToBase64Url(new Uint8Array(digest))
-}
-
 export function parseTeamMotionLibraryPayload(value: unknown): TeamMotionLibraryPayload {
   assertMotionPortableValue(value, 'manifest', { invalid, plainRecord })
   const payload = parsePayload(value)
@@ -647,26 +546,9 @@ export async function signTeamMotionLibraryManifest(
   privateKey: CryptoKey
 ): Promise<TeamMotionLibraryManifest> {
   const payload = parseTeamMotionLibraryPayload(value)
-  if (privateKey.type !== 'private' || privateKey.algorithm.name !== 'Ed25519') {
-    throw new TypeError('Expected an Ed25519 private CryptoKey')
-  }
-  const digest = await payloadDigest(payload)
-  const signature = await crypto.subtle.sign(
-    'Ed25519',
-    privateKey,
-    webCryptoBuffer(signedBytes(payload, digest))
-  )
   return parseTeamMotionLibraryManifest({
     ...payload,
-    integrity: {
-      algorithm: 'SHA-256',
-      digest,
-      signature: {
-        algorithm: 'Ed25519',
-        keyId: payload.publisher.keyId,
-        value: bytesToBase64Url(new Uint8Array(signature))
-      }
-    }
+    integrity: await createSignedManifestIntegrity(payload, payload.publisher.keyId, privateKey)
   })
 }
 
@@ -676,28 +558,20 @@ export async function verifyTeamMotionLibraryManifest(
   options: { engineVersion?: string; expectedKeyId?: string } = {}
 ): Promise<VerifiedTeamMotionLibrarySnapshot> {
   const manifest = parseTeamMotionLibraryManifest(value)
-  if (publicKey.type !== 'public' || publicKey.algorithm.name !== 'Ed25519') {
-    throw new TypeError('Expected an Ed25519 public CryptoKey')
-  }
-  if (options.expectedKeyId && options.expectedKeyId !== manifest.integrity.signature.keyId) {
-    throw new Error('Team Motion signature key id is not trusted')
-  }
-  if (
-    options.engineVersion &&
-    !satisfiesTeamMotionEngineRange(options.engineVersion, manifest.engineRange)
-  ) {
-    throw new Error(`Team Motion library requires OpenPencil ${manifest.engineRange}`)
-  }
+  assertSignedManifestVerificationPolicy(publicKey, manifest.integrity.signature.keyId, options, {
+    engineRange: manifest.engineRange,
+    label: 'Team Motion',
+    engineLabel: 'Team Motion library',
+    invalid: semverInvalid,
+    maxEngineRangeLength: TEAM_MOTION_LIBRARY_LIMITS.maxRangeLength
+  })
   const { integrity: manifestIntegrity, ...payload } = manifest
-  const digest = await payloadDigest(payload)
-  if (digest !== manifestIntegrity.digest) throw new Error('Team Motion library digest mismatch')
-  const verified = await crypto.subtle.verify(
-    'Ed25519',
+  const digest = await verifySignedManifestIntegrity(
+    payload,
+    manifestIntegrity,
     publicKey,
-    webCryptoBuffer(base64UrlToBytes(manifestIntegrity.signature.value)),
-    webCryptoBuffer(signedBytes(payload, digest))
+    'Team Motion library'
   )
-  if (!verified) throw new Error('Team Motion library signature verification failed')
   return {
     manifest,
     verifiedDigest: digest,
@@ -738,14 +612,22 @@ export function diffTeamMotionLibraries(
   const next = snapshot(candidate)
   const before = snapshotEntryMap(accepted)
   const after = snapshotEntryMap(next)
+  const added: string[] = []
+  const removed: string[] = []
+  const updated: string[] = []
+  for (const [id, serialized] of after) {
+    if (!before.has(id)) added.push(id)
+    else if (before.get(id) !== serialized) updated.push(id)
+  }
+  for (const id of before.keys()) {
+    if (!after.has(id)) removed.push(id)
+  }
   return {
     fromVersion: accepted?.manifest.version ?? null,
     toVersion: next.manifest.version,
-    added: [...after.keys()].filter((id) => !before.has(id)).sort(),
-    removed: [...before.keys()].filter((id) => !after.has(id)).sort(),
-    updated: [...after.keys()]
-      .filter((id) => before.has(id) && before.get(id) !== after.get(id))
-      .sort()
+    added: added.sort(),
+    removed: removed.sort(),
+    updated: updated.sort()
   }
 }
 
