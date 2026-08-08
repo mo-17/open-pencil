@@ -44,6 +44,25 @@ describe('validateStateName', () => {
       expect(r.reason).toMatch(/reserved/)
     }
   })
+
+  test('rejects JavaScript, prototype, and generated-runtime bindings', () => {
+    for (const reserved of [
+      'class',
+      'await',
+      'null',
+      '__proto__',
+      'constructor',
+      'prototype',
+      '__fieldErrors',
+      'useState',
+      'router',
+      'Text'
+    ]) {
+      const result = validateStateName(reserved)
+      expect(result.ok).toBe(false)
+      expect(result.reason).toMatch(/reserved/)
+    }
+  })
 })
 
 describe('validateExpression', () => {

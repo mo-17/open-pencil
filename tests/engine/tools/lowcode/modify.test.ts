@@ -587,6 +587,23 @@ describe('update_lowcode_node', () => {
     expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toBeUndefined()
   })
 
+  test('rejects an sb_secret key in lowcodeSupabaseConfig', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('update_lowcode_node').execute(figma, {
+      id: graph.rootId,
+      patch_json: JSON.stringify({
+        lowcodeSupabaseConfig: {
+          url: 'https://x.supabase.co',
+          anonKey: 'sb_secret_example'
+        }
+      })
+    }) as Result<{ id: string; updated: string[] }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('secret')
+    expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toBeUndefined()
+  })
+
   test('rejects $-prefixed names in lowcodeDocumentState', () => {
     const { figma, graph } = setupToolTest()
     const result = getTool('update_lowcode_node').execute(figma, {
@@ -1053,6 +1070,20 @@ describe('set_supabase_config', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error).toContain('service_role')
+    expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toBeUndefined()
+  })
+
+  test('rejects an sb_secret key', () => {
+    const { figma, graph } = setupToolTest()
+    const result = getTool('set_supabase_config').execute(figma, {
+      config_json: JSON.stringify({
+        url: 'https://x.supabase.co',
+        anonKey: 'sb_secret_example'
+      })
+    }) as Result<{ cleared: boolean }>
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toContain('secret')
     expect(graph.getNode(graph.rootId)?.lowcodeSupabaseConfig).toBeUndefined()
   })
 

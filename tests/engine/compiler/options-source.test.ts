@@ -127,6 +127,43 @@ describe('compile — dynamic control options (Phase 4 §17.4)', () => {
     expect(app).toContain('{tag.name}')
   })
 
+  test('unsafe dynamic option iterator names use valid fallbacks and report warnings', () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    graph.updateNode(page.id, {
+      state: [
+        { id: 's-options', name: 'options', type: 'array', defaultValue: [] },
+        { id: 's-choice', name: 'choice', type: 'string', defaultValue: '' }
+      ]
+    })
+    graph.createNode('SELECT', page.id, {
+      interactiveProps: {
+        optionsSource: {
+          kind: 'ref',
+          stateId: 's-options',
+          itemName: 'class',
+          indexName: 'router'
+        }
+      },
+      bindings: { value: { kind: 'ref', stateId: 's-choice' } }
+    })
+
+    const output = compile({
+      graph,
+      pageIds: [page.id],
+      options: withDefaults({ packageName: 'safe-options-source' })
+    })
+    const app = output.files.get('src/App.tsx') as string
+
+    expect(app).toContain('{(options).map((item, index) => (')
+    expect(output.warnings.map(({ code }) => code)).toEqual(
+      expect.arrayContaining([
+        'options-source-invalid-item-name',
+        'options-source-invalid-index-name'
+      ])
+    )
+  })
+
   test('shadcn emits dynamic SelectItem, RadioGroupItem, and Checkbox rows', () => {
     const graph = new SceneGraph()
     const page = graph.getPages()[0]

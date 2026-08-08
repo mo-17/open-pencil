@@ -195,4 +195,64 @@ describe('resolveSetVariable (Phase 2 §2)', () => {
     expect(ir.docStates).toHaveLength(1)
     expect(ir.warnings.some((w) => w.code === 'docstate-duplicate-name')).toBe(true)
   })
+
+  test('drops page states whose generated setter collides with another state', () => {
+    const { graph, pageId } = makeButtonWith(
+      [],
+      [
+        { id: 's1', name: 'count', type: 'number', defaultValue: 0 },
+        { id: 's2', name: 'setCount', type: 'number', defaultValue: 1 }
+      ],
+      []
+    )
+
+    const ir = collectTree(graph, pageId)
+
+    expect(ir.states.map((state) => state.name)).toEqual(['count'])
+    expect(ir.warnings).toContainEqual(
+      expect.objectContaining({
+        code: 'state-invalid',
+        message: expect.stringContaining('generated identifier "setCount" collides')
+      })
+    )
+  })
+
+  test('drops document-state locals that collide with page state bindings', () => {
+    const { graph, pageId } = makeButtonWith(
+      [{ id: 'd1', name: 'value', type: 'string', defaultValue: '' }],
+      [{ id: 's1', name: 'value', type: 'string', defaultValue: '' }],
+      []
+    )
+    graph.createNode('INPUT', pageId, {
+      bindings: { value: { kind: 'docState', docStateName: 'value' } }
+    })
+
+    const ir = collectTree(graph, pageId)
+
+    expect(ir.docStates).toEqual([])
+    expect(ir.docStateReads).toEqual([])
+    expect(ir.warnings.map((warning) => warning.code)).toContain(
+      'docstate-generated-identifier-collision'
+    )
+    expect(ir.warnings.map((warning) => warning.code)).toContain(
+      'binding-value-docstate-unknown-name'
+    )
+  })
+
+  test('invalid and generated-runtime docState names fail closed', () => {
+    const { graph, pageId } = makeButtonWith(
+      [
+        { id: 'd1', name: 'class', type: 'string', defaultValue: '' },
+        { id: 'd2', name: 'constructor', type: 'string', defaultValue: '' },
+        { id: 'd3', name: 'useState', type: 'string', defaultValue: '' },
+        { id: 'd4', name: 'value);globalThis.pwned=true;(', type: 'string', defaultValue: '' }
+      ],
+      [],
+      []
+    )
+    const ir = collectTree(graph, pageId)
+
+    expect(ir.docStates).toEqual([])
+    expect(ir.warnings.filter((warning) => warning.code === 'docstate-invalid')).toHaveLength(4)
+  })
 })

@@ -33,16 +33,25 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   }
 }
 
-/** True when `anonKey` decodes to a JWT whose payload has `role: 'service_role'`.
- *  Used as a hard reject in every code path that would otherwise persist the
- *  key — never log, never partially commit. */
+/** True when `anonKey` decodes to a JWT whose payload has `role: 'service_role'`. */
 export function detectServiceRole(anonKey: string): boolean {
   return decodeJwtPayload(anonKey)?.role === 'service_role'
 }
 
+/** True when a value is any Supabase server-side key that must never be
+ * persisted in a design or emitted client bundle. Covers both the legacy
+ * service_role JWT and the current opaque `sb_secret_*` format. Keep this as
+ * the single persistence-boundary classifier used by editor and app profiles;
+ * unknown/non-JWT values are not classified as secret merely because they are
+ * malformed, while the known elevated formats always fail closed. */
+export function detectSupabaseSecretKey(key: string): boolean {
+  const trimmed = key.trim()
+  return /^sb_secret_/i.test(trimmed) || detectServiceRole(trimmed)
+}
+
 /** Validate a `SupabaseConfig` for persistence. Rejects:
  *  - missing required fields (`url` / `anonKey`)
- *  - `anonKey` that decodes to a service_role JWT
+ *  - a current `sb_secret_*` key or legacy service_role JWT
  *  - obviously malformed `url` (non-http(s) protocol)
  *
  *  Whitespace-only fields count as missing — the editor trims them before
@@ -56,10 +65,11 @@ export function validateSupabaseConfig(config: SupabaseConfig): ValidationResult
   if (!/^https?:\/\//i.test(url)) {
     return { ok: false, reason: 'url must start with http:// or https://' }
   }
-  if (detectServiceRole(anonKey)) {
+  if (detectSupabaseSecretKey(anonKey)) {
     return {
       ok: false,
-      reason: 'anonKey is a service_role JWT; only the anon (public) key is allowed'
+      reason:
+        'anonKey is a Supabase secret/service_role key; only a publishable or legacy anon key is allowed'
     }
   }
   return { ok: true }

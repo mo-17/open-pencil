@@ -1,5 +1,6 @@
 import {
   parseExpression,
+  lowcodeStateSetterName,
   PREV_IDENT,
   validateStateName
 } from '@open-pencil/core/lowcode-validation'
@@ -22,18 +23,31 @@ export function collectPageStates(page: SceneNode | undefined): {
   const invalid: { id: string; name: string; reason: string }[] = []
   if (!page?.state) return { states, invalid }
 
-  const seen = new Set<string>()
+  const seenNames = new Set<string>()
+  const generatedIdentifiers = new Map<string, string>()
   for (const def of page.state) {
     const nameCheck = validateStateName(def.name)
     if (!nameCheck.ok) {
       invalid.push({ id: def.id, name: def.name, reason: nameCheck.reason ?? 'invalid' })
       continue
     }
-    if (seen.has(def.name)) {
+    if (seenNames.has(def.name)) {
       invalid.push({ id: def.id, name: def.name, reason: 'duplicate name' })
       continue
     }
-    seen.add(def.name)
+    const setter = lowcodeStateSetterName(def.name)
+    const collision = [def.name, setter].find((identifier) => generatedIdentifiers.has(identifier))
+    if (collision) {
+      invalid.push({
+        id: def.id,
+        name: def.name,
+        reason: `generated identifier ${JSON.stringify(collision)} collides with state ${JSON.stringify(generatedIdentifiers.get(collision))}`
+      })
+      continue
+    }
+    seenNames.add(def.name)
+    generatedIdentifiers.set(def.name, def.name)
+    generatedIdentifiers.set(setter, def.name)
     states.push(toIRStateDecl(def))
   }
   return { states, invalid }

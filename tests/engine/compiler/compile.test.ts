@@ -79,6 +79,29 @@ describe('compile (public API, end-to-end)', () => {
     expect(appTsx).toContain('>Hello world</p>')
   })
 
+  test('drops malicious document-state identifiers before React source emission', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    const malicious = 'value);globalThis.__openPencilInjected=true;('
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'malicious-state', name: malicious, type: 'string', defaultValue: '' }
+      ]
+    })
+    graph.createNode('INPUT', pageId, {
+      bindings: { value: { kind: 'docState', docStateName: malicious } }
+    })
+
+    const output = compile({ graph, pageIds: [pageId], options: withDefaults() })
+    const appTsx = output.files.get('src/App.tsx') as string
+    const codes = output.warnings.map((warning) => warning.code)
+
+    expect(codes).toContain('docstate-invalid')
+    expect(codes).toContain('binding-value-docstate-unknown-name')
+    expect(appTsx).not.toContain(malicious)
+    expect(() => new Bun.Transpiler({ loader: 'tsx' }).transformSync(appTsx)).not.toThrow()
+  })
+
   test('preserves every authored LIST row when no dynamic datasource is configured', () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)

@@ -6,6 +6,12 @@ import type {
   StateValueType
 } from '@open-pencil/scene-graph'
 
+import {
+  ECMASCRIPT_RESERVED_IDENTIFIERS,
+  LOWCODE_GENERATED_RUNTIME_IDENTIFIERS,
+  lowcodeStateSetterName
+} from './identifiers'
+
 const FORM_CONTROL_TYPES = new Set<SceneNode['type']>([
   'INPUT',
   'TEXTAREA',
@@ -27,74 +33,8 @@ const CONTROL_SUFFIX_RE = /(datepicker|textarea|checkbox|select|radio|switch|inp
 // compiler's page/runtime scaffolding. Dynamic state/doc-state locals and
 // their setters are reserved separately for each audited page below.
 const COMPILER_RESERVED_STATE_IDENTIFIERS = new Set([
-  'arguments',
-  'await',
-  'break',
-  'case',
-  'catch',
-  'class',
-  'const',
-  'continue',
-  'debugger',
-  'default',
-  'delete',
-  'do',
-  'else',
-  'enum',
-  'eval',
-  'export',
-  'extends',
-  'false',
-  'finally',
-  'for',
-  'function',
-  'if',
-  'implements',
-  'import',
-  'in',
-  'instanceof',
-  'interface',
-  'let',
-  'new',
-  'null',
-  'package',
-  'private',
-  'protected',
-  'public',
-  'return',
-  'static',
-  'super',
-  'switch',
-  'this',
-  'throw',
-  'true',
-  'try',
-  'typeof',
-  'var',
-  'void',
-  'while',
-  'with',
-  'yield',
-  'undefined',
-  'NaN',
-  'Infinity',
-  'useState',
-  'useMemo',
-  'useEffect',
-  'useRef',
-  'useNavigate',
-  'generatePath',
-  'useParams',
-  'useSearchParams',
-  'navigate',
-  'useDocState',
-  'setDocState',
-  'getDocStateSnapshot',
-  'getSupabaseClient',
-  'validateValue',
-  'validateRemote',
-  'useIntl',
-  'intl'
+  ...ECMASCRIPT_RESERVED_IDENTIFIERS,
+  ...LOWCODE_GENERATED_RUNTIME_IDENTIFIERS
 ])
 
 export type FormControlBindingStatus = 'missing' | 'valid' | 'invalid'
@@ -527,7 +467,7 @@ function controlBaseName(name: string): string {
 function allocateStateName(base: string, usedIdentifiers: Set<string>): string {
   let candidate = base
   let suffix = 2
-  while (usedIdentifiers.has(candidate) || usedIdentifiers.has(stateSetterName(candidate))) {
+  while (usedIdentifiers.has(candidate) || usedIdentifiers.has(lowcodeStateSetterName(candidate))) {
     candidate = `${base}${suffix++}`
   }
   reserveStateIdentifiers(usedIdentifiers, candidate)
@@ -536,11 +476,7 @@ function allocateStateName(base: string, usedIdentifiers: Set<string>): string {
 
 function reserveStateIdentifiers(usedIdentifiers: Set<string>, name: string): void {
   usedIdentifiers.add(name)
-  usedIdentifiers.add(stateSetterName(name))
-}
-
-function stateSetterName(name: string): string {
-  return `set${name.charAt(0).toUpperCase()}${name.slice(1)}`
+  usedIdentifiers.add(lowcodeStateSetterName(name))
 }
 
 function allocateId(base: string, used: Set<string>): string {

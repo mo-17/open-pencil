@@ -140,6 +140,34 @@ describe('collectTree — LIST directive (Phase 2 §9)', () => {
     expect(directive.indexName).toBe('i')
   })
 
+  test('unsafe or duplicate iterator names fall back to valid distinct identifiers', () => {
+    const unsafe = makeListGraph({ itemName: 'for', indexName: 'View' })
+    const unsafeIr = collectTree(unsafe.graph, unsafe.pageId)
+    const unsafeDirective = (unsafeIr.children[0] as IRElement).children[0] as IRList
+    expect(unsafeDirective.itemName).toBe('item')
+    expect(unsafeDirective.indexName).toBe('index')
+    expect(unsafeIr.warnings.map(({ code }) => code)).toEqual(
+      expect.arrayContaining(['list-invalid-item-name', 'list-invalid-index-name'])
+    )
+
+    const stateCollision = makeListGraph({ itemName: 'users', indexName: 'setUsers' })
+    const stateCollisionIr = collectTree(stateCollision.graph, stateCollision.pageId)
+    const stateCollisionDirective = (stateCollisionIr.children[0] as IRElement)
+      .children[0] as IRList
+    expect(stateCollisionDirective.itemName).toBe('item')
+    expect(stateCollisionDirective.indexName).toBe('index')
+    expect(stateCollisionIr.warnings.map(({ code }) => code)).toEqual(
+      expect.arrayContaining(['list-invalid-item-name', 'list-invalid-index-name'])
+    )
+
+    const duplicate = makeListGraph({ itemName: 'row', indexName: 'row' })
+    const duplicateIr = collectTree(duplicate.graph, duplicate.pageId)
+    const duplicateDirective = (duplicateIr.children[0] as IRElement).children[0] as IRList
+    expect(duplicateDirective.itemName).toBe('row')
+    expect(duplicateDirective.indexName).toBe('index')
+    expect(duplicateIr.warnings.map(({ code }) => code)).toContain('list-duplicate-local-name')
+  })
+
   test('bindings.text = expr(item.name) inside the template resolves via inScope', () => {
     const { graph, pageId } = makeListGraph({
       childTextBinding: { kind: 'expr', expr: 'item.name' }

@@ -1,7 +1,35 @@
+import { stableNameSuffix } from '#compiler/ir/stable-name'
 import { tailwindClassName, type CompilerStyleOptions } from '#compiler/ir/style'
 import type { ComponentProp, VariantAxis } from '#compiler/ir/types'
 
+import { LOWCODE_GENERATED_RUNTIME_IDENTIFIERS } from '@open-pencil/core/lowcode-validation'
 import { parseVariantName, type SceneGraph, type SceneNode } from '@open-pencil/scene-graph'
+
+export const COMPONENT_FIXED_PROP_NAMES = [
+  '__opPrototypeScope',
+  'children',
+  'className',
+  'key',
+  'ref',
+  'style',
+  'testID'
+] as const
+const COMPONENT_PROP_RESERVED_NAMES = [
+  ...COMPONENT_FIXED_PROP_NAMES,
+  ...LOWCODE_GENERATED_RUNTIME_IDENTIFIERS
+] as const
+const COMPONENT_EMIT_RESERVED_NAMES = [
+  ...LOWCODE_GENERATED_RUNTIME_IDENTIFIERS,
+  'CSSProperties',
+  'HTMLAttributes',
+  'ImageStyle',
+  'ReactNode',
+  'StyleProp',
+  'TextStyle',
+  'ViewStyle'
+] as const
+const WINDOWS_DEVICE_COMPONENT_NAME =
+  /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i
 
 /** Phase 3 §8 v2/v3 — the prop(s) a single master descendant is parameterized
  *  by: `text` (`:text` override → `{prop}` content), `className`
@@ -83,7 +111,11 @@ export function isVariantChild(graph: SceneGraph, node: SceneNode): boolean {
  *  v7: the default value is the SET's `componentPropertyDefinitions` VARIANT
  *  default when it names a real option, otherwise the *first* variant's value
  *  for that axis (the v4 fallback). */
-function buildVariants(set: SceneNode, kids: SceneNode[]): ComponentMeta['variants'] {
+function buildVariants(
+  set: SceneNode,
+  kids: SceneNode[],
+  reservedPropNames: ReadonlySet<string> = new Set()
+): ComponentMeta['variants'] {
   const parsed = kids.map((kid) => ({ childId: kid.id, values: parseVariantName(kid.name) }))
   const axisOrder: string[] = []
   const optionsByAxis = new Map<string, string[]>()
@@ -97,7 +129,7 @@ function buildVariants(set: SceneNode, kids: SceneNode[]): ComponentMeta['varian
       if (opts && !opts.includes(value)) opts.push(value)
     }
   }
-  const usedPropNames = new Set<string>()
+  const usedPropNames = new Set<string>([...COMPONENT_PROP_RESERVED_NAMES, ...reservedPropNames])
   const first = parsed[0]?.values ?? {}
   const declaredDefaults = variantDefaultsFromDefinitions(set)
   const axes: VariantAxis[] = axisOrder.map((rawName) => {
@@ -157,7 +189,7 @@ export function buildComponentRegistry(
   }
 
   const registry: ComponentRegistry = new Map()
-  const usedNames = new Set<string>()
+  const usedNames = new Set<string>(COMPONENT_EMIT_RESERVED_NAMES.map(portableComponentNameKey))
   for (const master of masters) {
     const instances = instancesByComponent.get(master.id)
     if (!instances || instances.length === 0) continue
@@ -166,7 +198,7 @@ export function buildComponentRegistry(
     const refable = instances.filter((i) => !instanceHasDeepOverride(graph, i))
     if (refable.length === 0) continue
     registry.set(master.id, {
-      name: uniqueName(componentName(master.name), usedNames),
+      name: uniqueComponentName(componentName(master.name), usedNames),
       propSlots: buildPropSlots(graph, refable, styleOptions),
       prototypeBody: componentBodyUsesPrototype(graph, master.id, prototypeRuntimeNodeIds)
     })
@@ -181,13 +213,19 @@ export function buildComponentRegistry(
       .flatMap((k) => instancesByComponent.get(k.id) ?? [])
       .filter((i) => !instanceHasDeepOverride(graph, i))
     if (variantInstances.length === 0) continue
+    const propSlots = buildSetPropSlots(graph, kids, variantInstances, styleOptions)
+    const reservedPropNames = new Set(
+      [...propSlots.values()].flatMap((slot) =>
+        [slot.text, slot.className, slot.style].flatMap((prop) => (prop ? [prop.name] : []))
+      )
+    )
     registry.set(set.id, {
-      name: uniqueName(componentName(set.name), usedNames),
+      name: uniqueComponentName(componentName(set.name), usedNames),
       // Phase 3 §8 v5: a SET's text/fill prop slots, merged by layer name so
       // the same logical node across variant subtrees shares one prop.
-      propSlots: buildSetPropSlots(graph, kids, variantInstances, styleOptions),
+      propSlots,
       prototypeBody: componentBodyUsesPrototype(graph, set.id, prototypeRuntimeNodeIds),
-      variants: buildVariants(set, kids)
+      variants: buildVariants(set, kids, reservedPropNames)
     })
   }
   return registry
@@ -306,7 +344,7 @@ function accumulateSlots(
   styleOptions: CompilerStyleOptions = {}
 ): Map<string, ComponentSlot> {
   const slots = new Map<string, ComponentSlot>()
-  const usedPropNames = new Set<string>()
+  const usedPropNames = new Set<string>(COMPONENT_PROP_RESERVED_NAMES)
   for (const instance of instances) {
     for (const key of Object.keys(instance.overrides)) {
       const masterChild = resolveMasterChild(graph, key)
@@ -386,8 +424,9 @@ export function instanceHasDeepOverride(graph: SceneGraph, instance: SceneNode):
 function componentName(rawName: string): string {
   const words = rawName.split(/[^a-zA-Z0-9]+/).filter((w) => w !== '')
   const pascal = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('')
-  if (pascal === '' || /^[0-9]/.test(pascal)) return `Component${pascal}`
-  return pascal
+  const identifier = pascal === '' || /^[0-9]/.test(pascal) ? `Component${pascal}` : pascal
+  if (identifier.length <= 96) return identifier
+  return `${identifier.slice(0, 80)}${stableNameSuffix(identifier)}`
 }
 
 /** Turn a layer name into a camelCase prop identifier (first word lowercased).
@@ -409,4 +448,18 @@ function uniqueName(base: string, used: Set<string>): string {
   while (used.has(name)) name = `${base}${n++}`
   used.add(name)
   return name
+}
+
+function uniqueComponentName(base: string, used: Set<string>): string {
+  let name = base
+  let suffix = 2
+  while (used.has(portableComponentNameKey(name)) || WINDOWS_DEVICE_COMPONENT_NAME.test(name)) {
+    name = `${base}${suffix++}`
+  }
+  used.add(portableComponentNameKey(name))
+  return name
+}
+
+function portableComponentNameKey(name: string): string {
+  return name.normalize('NFC').toLowerCase()
 }

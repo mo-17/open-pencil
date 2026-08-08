@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   decodeJwtPayload,
   detectServiceRole,
+  detectSupabaseSecretKey,
   validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
 
@@ -56,6 +57,19 @@ describe('detectServiceRole', () => {
   })
 })
 
+describe('detectSupabaseSecretKey', () => {
+  test('rejects current opaque secret keys and legacy service_role JWTs', () => {
+    expect(detectSupabaseSecretKey('sb_secret_example')).toBe(true)
+    expect(detectSupabaseSecretKey('  SB_SECRET_example  ')).toBe(true)
+    expect(detectSupabaseSecretKey(FAKE_SERVICE_ROLE_JWT)).toBe(true)
+  })
+
+  test('allows current publishable keys and legacy anon JWTs', () => {
+    expect(detectSupabaseSecretKey('sb_publishable_example')).toBe(false)
+    expect(detectSupabaseSecretKey(FAKE_ANON_JWT)).toBe(false)
+  })
+})
+
 describe('validateSupabaseConfig', () => {
   test('rejects missing url', () => {
     const r = validateSupabaseConfig({ url: '', anonKey: FAKE_ANON_JWT })
@@ -91,6 +105,23 @@ describe('validateSupabaseConfig', () => {
     })
     expect(r.ok).toBe(false)
     expect(r.reason).toContain('service_role')
+  })
+
+  test('rejects a current sb_secret key in anonKey', () => {
+    const r = validateSupabaseConfig({
+      url: 'https://x.supabase.co',
+      anonKey: 'sb_secret_example'
+    })
+    expect(r.ok).toBe(false)
+    expect(r.reason).toContain('secret')
+  })
+
+  test('accepts a current sb_publishable key', () => {
+    const r = validateSupabaseConfig({
+      url: 'https://x.supabase.co',
+      anonKey: 'sb_publishable_example'
+    })
+    expect(r.ok).toBe(true)
   })
 
   test('accepts a well-formed anon config', () => {

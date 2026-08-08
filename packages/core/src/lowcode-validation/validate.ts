@@ -7,13 +7,12 @@
  * tighten one side without the other or warnings will diverge.
  */
 import { parseExpression, parseTemplate } from './expression'
+import { isReservedLowcodeStateIdentifier, LOWCODE_IDENTIFIER_RE } from './identifiers'
 
 export interface ValidationResult {
   ok: boolean
   reason?: string
 }
-
-const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /** A state name must be a legal JS identifier — it becomes the `useState`
  *  binding name directly. Empty strings are rejected explicitly so the UI
@@ -31,10 +30,16 @@ export function validateStateName(name: string): ValidationResult {
       reason: 'names starting with $ are reserved for built-in states (e.g. $currentUser)'
     }
   }
-  if (!IDENT_RE.test(name)) {
+  if (!LOWCODE_IDENTIFIER_RE.test(name)) {
     return {
       ok: false,
       reason: 'must start with a letter or _ and contain only letters, digits, _'
+    }
+  }
+  if (isReservedLowcodeStateIdentifier(name)) {
+    return {
+      ok: false,
+      reason: 'name is reserved by JavaScript or the OpenPencil generated runtime'
     }
   }
   return { ok: true }
