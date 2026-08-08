@@ -2,6 +2,7 @@ import type {
   ComponentDef,
   IRAsset,
   IRNode,
+  IRServerWorkflow,
   IRSupabaseConfig,
   IRTranslations,
   IRTree
@@ -51,6 +52,8 @@ import {
   sourceCatalogPath,
   SOURCE_LOCALE
 } from './lowcode/i18n'
+import { buildLowcodeServerClientRuntime } from './lowcode/server-client'
+import { buildServerArtifacts } from './lowcode/server-edge'
 import { buildLowcodeStateRuntime, ZUSTAND_VERSION } from './lowcode/state'
 import {
   buildLowcodeSupabaseRuntime,
@@ -65,6 +68,7 @@ import {
   VALIDATION_ERROR_CLASSES,
   VALIDATION_INVALID_FIELD_CLASSES
 } from './lowcode/validation'
+import { collectReactModuleProject, emitReactModuleRuntimes } from './modules/registry'
 import { buildMotionPlan } from './motion/scan'
 import type { ReactMotionPlan } from './motion/types'
 import { buildPreviewBridge } from './preview-bridge'
@@ -84,6 +88,7 @@ const LUCIDE_REACT_VERSION = '^1.21.0'
 
 const LOWCODE_STATE_FILE = 'src/_lowcode_state.ts'
 const LOWCODE_SUPABASE_FILE = 'src/_lowcode_supabase.ts'
+const LOWCODE_SERVER_FILE = 'src/_lowcode_server.ts'
 const LOWCODE_I18N_FILE = 'src/_lowcode_i18n.tsx'
 const LOWCODE_TOAST_FILE = 'src/_lowcode_toast.tsx'
 const LOWCODE_CONFIRM_FILE = 'src/_lowcode_confirm.tsx'
@@ -292,6 +297,7 @@ function emitSinglePage(
   const componentStrip = stripComponentNavigateForSinglePage(reachable)
   const components = componentStrip.components
   warnings.push(...componentStrip.warnings)
+  const moduleProject = collectReactModuleProject([cleaned.children], components)
   const motion = buildMotionPlan([cleaned], components, options.devMode)
   const generatedEffect = buildGeneratedEffectPlan([cleaned], components)
   const prototype = buildPrototypePlan(derivePagePaths([cleaned]), components)
@@ -308,6 +314,7 @@ function emitSinglePage(
   const confirmActive = pageUsesConfirm(cleaned)
   const validationActive = validationActiveIn([cleaned], components)
   const analyticsActive = analyticsActiveIn([cleaned])
+  const serverWorkflows = cleaned.serverWorkflows ?? []
   const analyticsConsentBanner =
     analyticsActive && analyticsRequiresConsent(cleaned.analyticsConfig)
   const translations = cleaned.translations
@@ -318,6 +325,7 @@ function emitSinglePage(
     ...lowcodeSupabaseExtraDeps(cleaned.supabaseConfig),
     ...i18nExtraDeps(i18nActive),
     ...lucideExtraDeps([cleaned], components),
+    ...moduleProject.dependencies,
     ...kit.deps
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
@@ -340,6 +348,8 @@ function emitSinglePage(
     analyticsConfig: cleaned.analyticsConfig,
     analyticsConsentBanner
   })
+  emitServerWorkflowFiles(files, serverWorkflows)
+  emitReactModuleRuntimes(files, moduleProject, { devMode: options.devMode })
   emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
     motion,
     generatedEffect,
@@ -352,6 +362,7 @@ function emitSinglePage(
       devMode: options.devMode,
       lowcodeStateImportPath: './_lowcode_state',
       lowcodeSupabaseImportPath: './_lowcode_supabase',
+      lowcodeServerImportPath: './_lowcode_server',
       lowcodeToastImportPath: './_lowcode_toast',
       lowcodeConfirmImportPath: './_lowcode_confirm',
       lowcodeValidationImportPath: './_lowcode_validation',
@@ -392,6 +403,10 @@ function emitMultiPage(
   const files = new Map<string, string | Uint8Array>()
   // Phase 3 §8 v10: prune components unreferenced across all pages (see emitSinglePage).
   const components = reachableComponents(irs, allComponents)
+  const moduleProject = collectReactModuleProject(
+    irs.map((ir) => ir.children),
+    components
+  )
   const motion = buildMotionPlan(irs, components, options.devMode)
   const generatedEffect = buildGeneratedEffectPlan(irs, components)
   const prototype = buildPrototypePlan(infos, components)
@@ -409,6 +424,8 @@ function emitMultiPage(
   const confirmActive = irs.some((ir) => pageUsesConfirm(ir))
   const validationActive = validationActiveIn(irs, components)
   const analyticsActive = analyticsActiveIn(irs)
+  const serverWorkflows =
+    irs.find((ir) => (ir.serverWorkflows?.length ?? 0) > 0)?.serverWorkflows ?? []
   const analyticsRouteTracking =
     analyticsConfig !== undefined && analyticsConfig.pageViews !== false && analyticsActive
   const analyticsConsentBanner = analyticsActive && analyticsRequiresConsent(analyticsConfig)
@@ -420,6 +437,7 @@ function emitMultiPage(
     ...lowcodeSupabaseExtraDeps(supabaseConfig),
     ...i18nExtraDeps(i18nActive),
     ...lucideExtraDeps(irs, components),
+    ...moduleProject.dependencies,
     ...kit.deps
   }
   files.set('package.json', buildPackageJson(options, extraDeps))
@@ -440,6 +458,8 @@ function emitMultiPage(
     analyticsRouteTracking,
     analyticsConsentBanner
   })
+  emitServerWorkflowFiles(files, serverWorkflows)
+  emitReactModuleRuntimes(files, moduleProject, { devMode: options.devMode })
   emitRuntimeAndComponentFiles(files, components, options.devMode, uiKit, {
     motion,
     generatedEffect,
@@ -461,6 +481,7 @@ function emitMultiPage(
         devMode: options.devMode,
         lowcodeStateImportPath: '../_lowcode_state',
         lowcodeSupabaseImportPath: '../_lowcode_supabase',
+        lowcodeServerImportPath: '../_lowcode_server',
         lowcodeToastImportPath: '../_lowcode_toast',
         lowcodeConfirmImportPath: '../_lowcode_confirm',
         lowcodeValidationImportPath: '../_lowcode_validation',
@@ -597,6 +618,19 @@ function emitLowcodeRuntimes(files: Map<string, string | Uint8Array>, e: Lowcode
     e.analyticsRouteTracking,
     e.analyticsConsentBanner
   )
+}
+
+function emitServerWorkflowFiles(
+  files: Map<string, string | Uint8Array>,
+  workflows: readonly IRServerWorkflow[]
+): void {
+  if (workflows.length === 0) return
+  const artifacts = buildServerArtifacts(workflows)
+  files.set(LOWCODE_SERVER_FILE, buildLowcodeServerClientRuntime())
+  files.set('supabase/functions/openpencil-runtime/index.ts', artifacts.edgeFunction)
+  files.set('.env.server.example', artifacts.envExample)
+  files.set('openpencil-server.manifest.json', artifacts.manifest)
+  files.set('SERVER_DEPLOYMENT.md', artifacts.readme)
 }
 
 /** Emit runtime artifacts and reusable component modules in their stable order. */

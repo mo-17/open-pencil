@@ -11,6 +11,7 @@ import type { SceneNode } from '@open-pencil/scene-graph'
 import type { Editor } from '#core/editor'
 import type { FigmaAPI, FigmaNodeProxy } from '#core/figma-api'
 import type { MotionAnimationExportResult, MotionExportProgress } from '#core/io/motion-export'
+import type { ModuleDefinition } from '#core/plugins'
 
 export type ParamType = 'string' | 'number' | 'boolean' | 'color' | 'string[]' | 'object' | 'array'
 
@@ -38,6 +39,14 @@ export interface ParamDef {
  *  legacy `figma.graph.updateNode` path (no undo). */
 export interface ToolCtx {
   editor?: Editor
+  /** Host-visible module definitions. Existing nodes keep using this registry even
+   *  when installation policy prevents new instances from being created. */
+  moduleRegistry?: {
+    getModule: (pluginId: string, moduleType: string) => ModuleDefinition | undefined
+    listModules: () => readonly ModuleDefinition[]
+  }
+  /** Optional host installation/enablement gate for discovery and creation only. */
+  canCreateModule?: (pluginId: string, moduleType: string) => boolean
   /** Request-scoped cancellation propagated by AI and MCP adapters. */
   signal?: AbortSignal
   /** Host already owns the page-scoped post-tool layout pass. */

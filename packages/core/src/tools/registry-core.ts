@@ -1,6 +1,6 @@
 import { evalCode } from './analyze'
 import { calc } from './calc'
-import { render } from './create'
+import { createModule, render } from './create'
 import { describe } from './describe'
 import {
   applyMotionPreset,
@@ -18,6 +18,7 @@ import {
   reviewTeamMotionLibraryUpdate,
   setMotionTransitionKey,
   setDocStates,
+  setServerWorkflows,
   setFill,
   setLayout,
   setLayoutChild,
@@ -37,9 +38,11 @@ import {
   updatePrototype,
   updatePageRoute,
   updateNode,
+  updateModule,
   verifyTeamMotionLibrary
 } from './modify'
 import {
+  auditApplicationRuntimeTool,
   auditFormControls,
   findNodes,
   auditNavigation,
@@ -57,6 +60,9 @@ import {
   readMotionScene,
   readMotionTransitionKey,
   readPageRoute,
+  readServerWorkflows,
+  listModules,
+  readModule,
   readPrototype,
   readSupabaseConfig,
   readTranslations,
@@ -77,8 +83,11 @@ export const CORE_TOOLS: ToolDef[] = [
   getNode,
   findNodes,
   getJsx,
+  listModules,
+  readModule,
   readPageRoute,
   auditNavigation,
+  auditApplicationRuntimeTool,
   auditFormControls,
   // Read — lowcode (Phase 3 §3)
   readLowcodeNode,
@@ -87,6 +96,7 @@ export const CORE_TOOLS: ToolDef[] = [
   readSupabaseConfig,
   readTranslations,
   readWorkflows,
+  readServerWorkflows,
   readGeneratedEffect,
   readMotion,
   readMotions,
@@ -97,8 +107,10 @@ export const CORE_TOOLS: ToolDef[] = [
   listMotionPresets,
   // Create
   render,
+  createModule,
   // Modify
   updateNode,
+  updateModule,
   setLayout,
   setLayoutChild,
   setRadius,
@@ -115,6 +127,7 @@ export const CORE_TOOLS: ToolDef[] = [
   setSupabaseConfig,
   setTranslations,
   setWorkflows,
+  setServerWorkflows,
   applyMotionPreset,
   applyMotionRecipe,
   verifyTeamMotionLibrary,

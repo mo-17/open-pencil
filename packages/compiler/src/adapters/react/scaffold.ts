@@ -13,6 +13,7 @@ import {
   pageMotionDriverStateIds,
   pageUsesAnalytics,
   pageUsesConfirm,
+  pageUsesServerWorkflow,
   pageUsesSupabase,
   pageUsesToast,
   referencedComponentNames,
@@ -24,6 +25,7 @@ import {
   validationUsesDocStateSnapshot,
   validationUsesRemote
 } from './lowcode/validation'
+import { buildReactModuleImports } from './modules/registry'
 import { motionDriverToken } from './motion/drivers'
 import { motionToken } from './motion/key'
 import type { PagePathInfo } from './route-paths'
@@ -61,6 +63,8 @@ interface BuildPageOptions {
    *  for multi-page page modules. Only consulted when the page contains
    *  a `supabaseQuery` or `supabaseMutation` handler. */
   lowcodeSupabaseImportPath: string
+  /** Relative path to the generated authenticated server invocation client. */
+  lowcodeServerImportPath: string
   /** Phase 3 §10 v2: relative path the page module uses to reach
    *  `src/_lowcode_toast.tsx`. `'./_lowcode_toast'` for single-page,
    *  `'../_lowcode_toast'` for multi-page. Only consulted when the page fires
@@ -107,6 +111,8 @@ interface BuildAppOptions {
    *  to `'./_lowcode_supabase'` for single-page; multi-page call sites
    *  pass `'../_lowcode_supabase'` explicitly. */
   lowcodeSupabaseImportPath?: string
+  /** See `BuildPageOptions.lowcodeServerImportPath`. */
+  lowcodeServerImportPath?: string
   /** Phase 3 §10 v2: see `BuildPageOptions.lowcodeToastImportPath`. Defaults to
    *  `'./_lowcode_toast'` (single-page); multi-page pages pass
    *  `'../_lowcode_toast'` explicitly. */
@@ -147,6 +153,7 @@ export function buildAppTsx(ir: IRTree, options: BuildAppOptions = { devMode: fa
     exportName: 'App',
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? './_lowcode_state',
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? './_lowcode_supabase',
+    lowcodeServerImportPath: options.lowcodeServerImportPath ?? './_lowcode_server',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? './_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? './_lowcode_confirm',
     lowcodeValidationImportPath: options.lowcodeValidationImportPath ?? './_lowcode_validation',
@@ -171,6 +178,7 @@ export function buildPageModule(info: PagePathInfo, options: BuildAppOptions): s
     exportName: info.component,
     lowcodeStateImportPath: options.lowcodeStateImportPath ?? '../_lowcode_state',
     lowcodeSupabaseImportPath: options.lowcodeSupabaseImportPath ?? '../_lowcode_supabase',
+    lowcodeServerImportPath: options.lowcodeServerImportPath ?? '../_lowcode_server',
     lowcodeToastImportPath: options.lowcodeToastImportPath ?? '../_lowcode_toast',
     lowcodeConfirmImportPath: options.lowcodeConfirmImportPath ?? '../_lowcode_confirm',
     lowcodeValidationImportPath: options.lowcodeValidationImportPath ?? '../_lowcode_validation',
@@ -287,6 +295,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     exportName,
     lowcodeStateImportPath,
     lowcodeSupabaseImportPath,
+    lowcodeServerImportPath,
     lowcodeToastImportPath,
     lowcodeConfirmImportPath,
     lowcodeValidationImportPath,
@@ -315,6 +324,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   // client, toast/confirm prompters, validation helper).
   const lowcodeRuntimeImports = buildLowcodeRuntimeImports(ir, {
     supabase: lowcodeSupabaseImportPath,
+    server: lowcodeServerImportPath,
     toast: lowcodeToastImportPath,
     confirm: lowcodeConfirmImportPath,
     validation: lowcodeValidationImportPath,
@@ -325,6 +335,8 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
   const componentImports = buildComponentImports(componentNames, componentImportPrefix)
   const componentImportBlock = componentImports ? `${componentImports}\n` : ''
   const lucideImport = buildLucideIconImport(referencedLucideIconNames(ir.children))
+  const moduleImports = buildReactModuleImports(ir.children, routerAvailable)
+  const moduleImportBlock = moduleImports ? `${moduleImports}\n` : ''
   // Phase 3 §15: import the kit components this page renders (one per used
   // component, e.g. `import { Button } from '@/components/ui/button'`).
   const kitImportBlock = buildKitImports(ir.children, uiKit)
@@ -344,6 +356,7 @@ function buildPageFile(ir: IRTree, options: BuildPageOptions): string {
     lowcodeRuntimeImports +
     componentImportBlock +
     lucideImport +
+    moduleImportBlock +
     kitImportBlock +
     i18nImport
   const importPrefix = importBlock ? `${importBlock}\n` : ''
@@ -487,12 +500,22 @@ function escapeAttribute(value: string): string {
  *  cyclomatic-complexity gate (each gate is its own branch). */
 function buildLowcodeRuntimeImports(
   ir: IRTree,
-  paths: { supabase: string; toast: string; confirm: string; validation: string; analytics: string }
+  paths: {
+    supabase: string
+    server: string
+    toast: string
+    confirm: string
+    validation: string
+    analytics: string
+  }
 ): string {
   const supabase = pageUsesSupabase(ir)
     ? `import { getSupabaseClient } from '${paths.supabase}'\n`
     : ''
   const toast = pageUsesToast(ir) ? `import { __opToast } from '${paths.toast}'\n` : ''
+  const server = pageUsesServerWorkflow(ir)
+    ? `import { invokeServerWorkflow } from '${paths.server}'\n`
+    : ''
   const confirm = pageUsesConfirm(ir) ? `import { __opConfirm } from '${paths.confirm}'\n` : ''
   const validation =
     (ir.validatedFields?.length ?? 0) > 0
@@ -501,7 +524,7 @@ function buildLowcodeRuntimeImports(
   const analytics = pageUsesAnalytics(ir)
     ? `import { __opTrackEvent } from '${paths.analytics}'\n`
     : ''
-  return supabase + toast + confirm + validation + analytics
+  return supabase + server + toast + confirm + validation + analytics
 }
 
 function validationImportNames(

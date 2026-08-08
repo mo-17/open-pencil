@@ -10,7 +10,7 @@
  * Also exposes `pageHasNavigateHandler` so `scaffold.ts` can decide whether
  * to import `useNavigate` and declare the hook.
  */
-import type { IREventHandler, IRNode, IRTree } from '#compiler/ir/types'
+import type { IREventHandler, IRModule, IRNode, IRTree } from '#compiler/ir/types'
 import type { CompileWarning } from '#compiler/types'
 
 /**
@@ -155,6 +155,29 @@ export function referencedLucideIconNames(nodes: readonly IRNode[]): string[] {
   return [...acc].sort()
 }
 
+/** Distinct trusted modules referenced in a page or reusable-component body. */
+export function referencedModules(nodes: readonly IRNode[]): IRModule[] {
+  const modules = new Map<string, IRModule>()
+  for (const node of nodes) collectReferencedModules(node, modules)
+  return [...modules.values()].sort((a, b) =>
+    `${a.pluginId}/${a.moduleType}`.localeCompare(`${b.pluginId}/${b.moduleType}`)
+  )
+}
+
+function collectReferencedModules(node: IRNode, modules: Map<string, IRModule>): void {
+  if (node.kind === 'conditional') {
+    collectReferencedModules(node.consequent, modules)
+    return
+  }
+  if (node.kind === 'list') {
+    collectReferencedModules(node.template, modules)
+    return
+  }
+  if (node.kind !== 'element') return
+  if (node.module) modules.set(`${node.module.pluginId}/${node.module.moduleType}`, node.module)
+  for (const child of node.children) collectReferencedModules(child, modules)
+}
+
 function collectLucideIconNames(node: IRNode, acc: Set<string>): void {
   if (node.kind === 'conditional') {
     collectLucideIconNames(node.consequent, acc)
@@ -165,7 +188,7 @@ function collectLucideIconNames(node: IRNode, acc: Set<string>): void {
     return
   }
   if (node.kind !== 'element') return
-  if (node.icon) acc.add(node.icon.name)
+  if (node.icon && !node.module) acc.add(node.icon.name)
   for (const child of node.children) collectLucideIconNames(child, acc)
 }
 
@@ -274,6 +297,16 @@ export function pageUsesAnalytics(ir: IRTree): boolean {
   return ir.children.some((c) => treeHasHandler(c, (h) => handlerTreeHasKind(h, 'trackEvent')))
 }
 
+export function nodesUseServerWorkflow(nodes: readonly IRNode[]): boolean {
+  return nodes.some((node) =>
+    treeHasHandler(node, (handler) => handlerTreeHasKind(handler, 'invokeServerWorkflow'))
+  )
+}
+
+export function pageUsesServerWorkflow(ir: IRTree): boolean {
+  return nodesUseServerWorkflow(ir.children)
+}
+
 /** The nested handler chains of a branch-carrying handler, or null for leaf
  *  handlers. Result branches must participate too: a navigate/toast/etc. that
  *  runs after an API/Supabase action still needs its module-level dependency. */
@@ -281,7 +314,12 @@ function handlerBranches(h: IREventHandler): IREventHandler[] | null {
   if (h.kind === 'condition' || h.kind === 'confirm') {
     return [...h.consequent, ...(h.alternate ?? [])]
   }
-  if (h.kind === 'apiCall' || h.kind === 'supabaseQuery' || h.kind === 'supabaseMutation') {
+  if (
+    h.kind === 'apiCall' ||
+    h.kind === 'supabaseQuery' ||
+    h.kind === 'supabaseMutation' ||
+    h.kind === 'invokeServerWorkflow'
+  ) {
     return [...(h.onSuccess ?? []), ...(h.onError ?? [])]
   }
   return null
@@ -401,7 +439,8 @@ function stripNavigateHandler(
   if (
     handler.kind === 'apiCall' ||
     handler.kind === 'supabaseQuery' ||
-    handler.kind === 'supabaseMutation'
+    handler.kind === 'supabaseMutation' ||
+    handler.kind === 'invokeServerWorkflow'
   ) {
     const onSuccess = handler.onSuccess
       ? stripNavigateHandlerList(handler.onSuccess, nodeId, eventName, warnings)

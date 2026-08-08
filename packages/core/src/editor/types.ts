@@ -45,6 +45,7 @@ export type Tool =
   | 'TEXTAREA'
   | 'DATEPICKER'
   | 'SWITCH'
+  | 'MAP'
 
 export interface MotionPreviewTarget {
   readonly nodeId: string

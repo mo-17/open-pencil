@@ -15,6 +15,8 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { createServer, type Update, type ViteDevServer } from 'vite'
 
+import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
+import { createSupabaseBuildDefines } from './build'
 import {
   createPreviewFileDecodeCache,
   deserializePreviewFiles,
@@ -114,6 +116,20 @@ export interface PreviewServer {
   close(): Promise<void>
 }
 
+const PREVIEW_BASE_OPTIMIZE_DEPS = [
+  'react',
+  'react-dom',
+  'react-dom/client',
+  'zustand',
+  'zustand/vanilla'
+] as const
+
+/** Prebundle optional trusted-module runtimes present in the initial VFS.
+ * Modules added later resolve on demand after the topology-triggered reload. */
+export function previewOptimizeDeps(files: PreviewFiles): string[] {
+  return [...PREVIEW_BASE_OPTIMIZE_DEPS, ...reactModuleOptimizeDepsForFiles(files)]
+}
+
 // VFS ids look like `${scanRoot}/src/main.tsx`. Two constraints:
 //   1. No `\0` prefix — Rolldown's plugin filter system skips null-prefixed
 //      ids, so plugin-react would never transform them.
@@ -164,6 +180,9 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     configFile: false,
     envFile: false,
     appType: 'spa',
+    // Preview must use the document-authored fallback in the generated runtime,
+    // never an unrelated VITE_SUPABASE_* value inherited from the editor shell.
+    define: createSupabaseBuildDefines(undefined),
     server: {
       port: chosenPort,
       host: '127.0.0.1',
@@ -172,9 +191,10 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
     },
     optimizeDeps: {
       // Skip Vite's html crawler; we pre-declare the npm deps the emitted
-      // app needs so the depscan has nothing to do.
+      // app needs so the depscan has nothing to do. Optional module runtimes
+      // are included only when their generated VFS file is present.
       entries: [],
-      include: ['react', 'react-dom', 'react-dom/client', 'zustand', 'zustand/vanilla']
+      include: previewOptimizeDeps(state.files)
     },
     // Hard-override JSX so the in-memory tsx parses cleanly (shared with the
     // static build — see VITE_JSX_ESBUILD).

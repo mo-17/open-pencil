@@ -71,6 +71,7 @@ export function createMockRenderer(overrides: Partial<SkiaRenderer> = {}): SkiaR
       setPathEffect: mock(() => undefined),
       setAlphaf: mock(() => undefined),
       setBlendMode: mock(() => undefined),
+      setShader: mock(() => undefined),
       delete: mock(() => undefined)
     },
     fillPaint: {
@@ -152,6 +153,7 @@ export function createMockCanvas() {
     drawOval: mock(() => undefined),
     drawRRect: mock(() => undefined),
     drawCircle: mock(() => undefined),
+    drawLine: mock(() => undefined),
     drawRect: mock(() => undefined),
     drawPath: mock(() => undefined),
     saveLayer: mock(() => undefined),

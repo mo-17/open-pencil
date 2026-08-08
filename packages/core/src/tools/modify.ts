@@ -4,9 +4,11 @@ export { clearGeneratedEffect, updateGeneratedEffect } from './modify/generated-
 export { setMinMax, setOpacity, setRadius, setRotation } from './modify/geometry'
 export { setConstraints, setLayout, setLayoutChild } from './modify/layout'
 export { publishComponent } from './modify/library'
+export { updateModule } from './modify/module'
 export { updatePageRoute } from './modify/navigation'
 export {
   setDocStates,
+  setServerWorkflows,
   setSupabaseConfig,
   setTranslations,
   setWorkflows,

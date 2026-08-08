@@ -26,6 +26,15 @@ export {
 } from './expression'
 
 export {
+  ECMASCRIPT_RESERVED_IDENTIFIERS,
+  LOWCODE_GENERATED_RUNTIME_IDENTIFIERS,
+  LOWCODE_IDENTIFIER_RE,
+  isReservedLowcodeStateIdentifier,
+  isSafeLowcodeIdentifier,
+  lowcodeStateSetterName
+} from './identifiers'
+
+export {
   type ValidationResult,
   normalizeSupabaseMutationPayloadJson,
   validateExpression,
@@ -33,7 +42,32 @@ export {
   validateUrlTemplate
 } from './validate'
 
-export { decodeJwtPayload, detectServiceRole, validateSupabaseConfig } from './supabase-config'
+export {
+  type ServerWorkflowValidationResult,
+  countServerWorkflowActions,
+  validateServerWorkflows
+} from './server'
+export {
+  type ApplicationRuntimeAudit,
+  type ApplicationRuntimeAuditOptions,
+  type ApplicationRuntimeEnvironment,
+  type ApplicationRuntimeGraph,
+  type ApplicationRuntimeIssue,
+  type ApplicationRuntimeIssueSeverity,
+  auditApplicationRuntime
+} from './application-runtime'
+export {
+  type InvokeServerWorkflowValidationResult,
+  type ValidInvokeServerWorkflowAction,
+  validateInvokeServerWorkflowAction
+} from './invoke-server-workflow'
+
+export {
+  decodeJwtPayload,
+  detectServiceRole,
+  detectSupabaseSecretKey,
+  validateSupabaseConfig
+} from './supabase-config'
 
 export { isSafeAnalyticsPolicyUrl, validateAnalyticsConfig } from './analytics-config'
 
@@ -71,6 +105,9 @@ export {
 } from './interactive-props'
 
 export {
+  type RlsCollectionOptions,
+  type RlsListQueryUsage,
+  type RlsStorageUploadUsage,
   type RlsTableRequirement,
   type SqlCommand,
   buildRlsPolicySql,

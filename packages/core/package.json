@@ -76,6 +76,11 @@
       "import": "./dist/motion/index.js",
       "default": "./dist/motion/index.js"
     },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "import": "./dist/plugins/index.js",
+      "default": "./dist/plugins/index.js"
+    },
     "./tools": {
       "types": "./dist/tools/index.d.ts",
       "import": "./dist/tools/index.js",
@@ -100,6 +105,11 @@
       "types": "./dist/lowcode-validation/index.d.ts",
       "import": "./dist/lowcode-validation/index.js",
       "default": "./dist/lowcode-validation/index.js"
+    },
+    "./lowcode-validation/application-runtime": {
+      "types": "./dist/lowcode-validation/application-runtime.d.ts",
+      "import": "./dist/lowcode-validation/application-runtime.js",
+      "default": "./dist/lowcode-validation/application-runtime.js"
     },
     "./lowcode-deployment": {
       "types": "./dist/lowcode-deployment.d.ts",
@@ -147,8 +157,8 @@
       "default": "./dist/clipboard.js"
     },
     "./bytes": {
-      "bun": "./src/bytes/index.ts",
       "types": "./dist/bytes/index.d.ts",
+      "bun": "./src/bytes/index.ts",
       "import": "./dist/bytes/index.js",
       "default": "./dist/bytes/index.js"
     },

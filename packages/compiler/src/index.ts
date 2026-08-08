@@ -1,18 +1,30 @@
 import {
   auditLowcodeNavigation,
   compactLowcodeHeadMetadata,
-  validateLowcodeCustomCss
+  validateLowcodeCustomCss,
+  validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
 import type { LowcodeHeadMetadata, SceneGraph, SeoMetadata } from '@open-pencil/scene-graph'
 
-import { applyCompilerFontManifest } from './font-manifest'
+import {
+  applyCompilerFontManifest,
+  applyExpoCompilerFontManifest,
+  applyFlutterCompilerFontManifest
+} from './font-manifest'
 import { buildComponentRegistry } from './ir/collect/components'
 import type { MotionLoweringCache } from './ir/collect/motion'
+import { collectServerWorkflows } from './ir/collect/server-workflows'
 import { collectComponents, collectTree } from './ir/collect/tree'
 import type { IRMotion } from './ir/motion'
 import { selectAdapter } from './select-adapter'
 import { buildDesignTokenThemeCss } from './theme-css'
-import type { CompilerInput, CompilerOptions, CompilerOutput, HtmlMetadataOptions } from './types'
+import type {
+  CompilerInput,
+  CompilerOptions,
+  CompilerOutput,
+  CompileWarning,
+  HtmlMetadataOptions
+} from './types'
 
 export type {
   CompileWarning,
@@ -28,6 +40,7 @@ export type {
   UiKitName
 } from './types'
 export { resolveCompilerWebFonts } from './resolve-fonts'
+export { dartPackageName as safeFlutterPackageName } from './adapters/flutter/names'
 export {
   createPreviewFileDecodeCache,
   createPreviewFileEncodeCache,
@@ -69,9 +82,8 @@ const DEFAULT_OPTIONS: CompilerOptions = {
 }
 
 /**
- * Compile a SceneGraph page into a runnable project. Phase 0 emits a Vite +
- * React + TS app; Vue is reserved for Phase 5. State, events, and bindings
- * are not yet wired — they land in week 5-6.
+ * Compile SceneGraph pages into a target project. React emits a Vite web app;
+ * Expo emits a source-only native static MVP. Reserved targets fail closed.
  */
 export function compile(input: CompilerInput): CompilerOutput {
   if (input.pageIds.length === 0) {
@@ -99,20 +111,56 @@ export function compile(input: CompilerInput): CompilerOutput {
   // threads into both page walks and component-body walks.
   const i18n = options.i18n === true
   const motionCache: MotionLoweringCache = new Map<string, IRMotion>()
+  const serverWorkflowWarnings: CompileWarning[] = []
+  let serverWorkflows = collectServerWorkflows(
+    input.graph.getNode(input.graph.rootId)?.lowcodeServerWorkflows,
+    serverWorkflowWarnings
+  )
+  const rootSupabase = input.graph.getNode(input.graph.rootId)?.lowcodeSupabaseConfig
+  if (serverWorkflows && (!rootSupabase || !validateSupabaseConfig(rootSupabase).ok)) {
+    serverWorkflowWarnings.push({
+      code: 'server-workflows-supabase-config-required',
+      message: 'Server workflows require a valid Supabase configuration and were omitted.'
+    })
+    serverWorkflows = undefined
+  }
   const { defs: components, warnings: componentWarnings } = collectComponents(
     input.graph,
     registry,
     i18n,
     styleOptions,
-    motionCache
+    motionCache,
+    serverWorkflows ?? null
   )
   const irs = input.pageIds.map((id) =>
-    collectTree(input.graph, id, registry, i18n, styleOptions, motionCache)
+    collectTree(input.graph, id, registry, i18n, styleOptions, motionCache, serverWorkflows ?? null)
   )
   const { files, warnings: adapterWarnings } = adapter.emit(irs, options, components)
-  const fontWarnings = input.fontManifest
-    ? applyCompilerFontManifest(files, input.graph, input.pageIds, input.fontManifest)
-    : []
+  let fontWarnings: CompileWarning[] = []
+  if (input.fontManifest) {
+    if (options.target === 'expo') {
+      fontWarnings = applyExpoCompilerFontManifest(
+        files,
+        input.graph,
+        input.pageIds,
+        input.fontManifest
+      )
+    } else if (options.target === 'flutter') {
+      fontWarnings = applyFlutterCompilerFontManifest(
+        files,
+        input.graph,
+        input.pageIds,
+        input.fontManifest
+      )
+    } else {
+      fontWarnings = applyCompilerFontManifest(
+        files,
+        input.graph,
+        input.pageIds,
+        input.fontManifest
+      )
+    }
+  }
   const navigationWarnings = auditLowcodeNavigation(input.graph, {
     pageIds: input.pageIds
   })
@@ -128,6 +176,7 @@ export function compile(input: CompilerInput): CompilerOutput {
     files,
     warnings: [
       ...selectionWarnings,
+      ...serverWorkflowWarnings,
       ...componentWarnings,
       ...irs.flatMap((ir) => ir.warnings),
       ...adapterWarnings,

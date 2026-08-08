@@ -13,6 +13,10 @@ interface ImportMetaEnv {
   readonly VITE_COLLAB_TURN_URL?: string
   readonly VITE_COLLAB_TURN_USERNAME?: string
   readonly VITE_COLLAB_TURN_CREDENTIAL?: string
+  /** Build-time, non-secret signed plugin catalog trust roots and publisher public keys. */
+  readonly VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?: string
+  /** Build-time root trust anchor for a signed Phase 3 marketplace snapshot. */
+  readonly VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG?: string
 }
 
 declare const __OPENPENCIL_APP_VERSION__: string

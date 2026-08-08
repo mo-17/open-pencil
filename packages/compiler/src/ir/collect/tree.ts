@@ -1,3 +1,5 @@
+import { BUILTIN_COMPILER_MODULE_REGISTRY } from '#compiler/modules/builtin'
+import { collectCompilerModule } from '#compiler/modules/collect'
 import { designTokenCssVariableName } from '#compiler/theme-css'
 import lucideIcons from '@iconify-json/lucide/icons.json' with { type: 'json' }
 
@@ -11,9 +13,11 @@ import {
   parseExpression,
   parseTemplate,
   PREV_IDENT,
+  lowcodeStateSetterName,
   validateAnalyticsConfig,
   validateDatePickerProps,
   validateLowcodeRoutePattern,
+  validateStateName,
   validateSupabaseConfig
 } from '@open-pencil/core/lowcode-validation'
 import {
@@ -57,6 +61,7 @@ import type {
   IRList,
   IRListOrder,
   IRListQuery,
+  IRModule,
   IROverlay,
   IRValidationCustom,
   IRValidationMessages,
@@ -65,6 +70,7 @@ import type {
   IRMessageValue,
   IRNode,
   IRStateDecl,
+  IRServerWorkflow,
   IRText,
   IRTree,
   IRWarning
@@ -80,6 +86,8 @@ import {
   unknownIdentifiers
 } from './bindings'
 import {
+  COMPONENT_FIXED_PROP_NAMES,
+  type ComponentMeta,
   type ComponentRegistry,
   type ComponentSlot,
   instanceHasDeepOverride,
@@ -93,6 +101,7 @@ import {
   collectPrototypeDecoration,
   type PrototypeCollectContext
 } from './prototype'
+import { collectServerWorkflows } from './server-workflows'
 import { collectPageStates, indexStatesById, resolveComputedStates } from './state'
 
 /**
@@ -101,13 +110,44 @@ import { collectPageStates, indexStatesById, resolveComputedStates } from './sta
  * This module belongs to the IR layer — it MUST NOT import from
  * `adapters/**`. Adapters consume IR; IR has no awareness of adapters.
  */
+function collectRootRuntime(
+  graph: SceneGraph,
+  warnings: IRWarning[],
+  prevalidatedServerWorkflows: readonly IRServerWorkflow[] | null | undefined
+): {
+  serverWorkflows: IRServerWorkflow[] | undefined
+  serverWorkflowsById: Map<string, IRServerWorkflow>
+  supabaseConfig: SupabaseConfig | undefined
+  analyticsConfig: IRTree['analyticsConfig']
+  translations: IRTree['translations']
+} {
+  const root = graph.getNode(graph.rootId)
+  let liftedServerWorkflows: readonly IRServerWorkflow[] | undefined
+  if (prevalidatedServerWorkflows === undefined) {
+    liftedServerWorkflows = collectServerWorkflows(root?.lowcodeServerWorkflows, warnings)
+  } else if (prevalidatedServerWorkflows !== null) {
+    liftedServerWorkflows = prevalidatedServerWorkflows
+  }
+  const serverWorkflows = liftedServerWorkflows ? [...liftedServerWorkflows] : undefined
+  return {
+    serverWorkflows,
+    serverWorkflowsById: new Map(
+      (serverWorkflows ?? []).map((workflow) => [workflow.id, workflow])
+    ),
+    supabaseConfig: compactSupabaseConfig(root?.lowcodeSupabaseConfig, warnings),
+    analyticsConfig: compactAnalyticsConfig(root?.lowcodeAnalyticsConfig, warnings),
+    translations: root?.lowcodeTranslations
+  }
+}
+
 export function collectTree(
   graph: SceneGraph,
   pageId: string,
   components: ComponentRegistry = new Map(),
   i18n = false,
   styleOptions: CompilerStyleOptions = {},
-  motionCache: MotionLoweringCache = new Map()
+  motionCache: MotionLoweringCache = new Map(),
+  prevalidatedServerWorkflows?: readonly IRServerWorkflow[] | null
 ): IRTree {
   const page = graph.getNode(pageId)
   const warnings: IRWarning[] = []
@@ -121,9 +161,9 @@ export function collectTree(
       nodeId: pageId
     })
   }
-  const root = graph.getNode(graph.rootId)
-  const supabaseConfig = compactSupabaseConfig(root?.lowcodeSupabaseConfig, warnings)
-  const docStates = collectDocStates(graph, warnings, supabaseConfig !== undefined)
+  const { serverWorkflows, serverWorkflowsById, supabaseConfig, analyticsConfig, translations } =
+    collectRootRuntime(graph, warnings, prevalidatedServerWorkflows)
+  const docStates = collectDocStates(graph, warnings, supabaseConfig !== undefined, states)
   const docStatesByName = indexDocStatesByName(docStates)
   const docStateReads = new Set<string>()
   const docStateWrites = new Set<string>()
@@ -132,10 +172,6 @@ export function collectTree(
   // Phase 3 §2: lift root-level supabaseConfig onto the tree so the React
   // adapter can decide to emit `_lowcode_supabase.ts` without re-reading
   // the SceneGraph (which it doesn't have access to from `emit(irs, opts)`).
-  const analyticsConfig = compactAnalyticsConfig(root?.lowcodeAnalyticsConfig, warnings)
-  // Phase 3 §9 v7: lift root-level translation catalog onto the tree so the
-  // adapter pre-fills `locales/<code>.json` from authored translations.
-  const translations = graph.getNode(graph.rootId)?.lowcodeTranslations
   // Phase 3 §10 v4: index root-level named workflows by id for inline
   // `callWorkflow` expansion in the bindings pass.
   const workflows = liftWorkflows(graph)
@@ -151,6 +187,7 @@ export function collectTree(
       docStates,
       docStateReads: [],
       docStateWrites: [],
+      serverWorkflows,
       supabaseConfig,
       analyticsConfig,
       translations,
@@ -182,6 +219,7 @@ export function collectTree(
     inForm: false,
     components,
     workflows,
+    serverWorkflows: serverWorkflowsById,
     i18n,
     styleOptions,
     listQueries,
@@ -247,6 +285,7 @@ export function collectTree(
     docStates,
     docStateReads: [...docStateReads],
     docStateWrites: [...docStateWrites],
+    serverWorkflows,
     listQueries: listQueries.length > 0 ? listQueries : undefined,
     validatedFields: validatedFields.length > 0 ? validatedFields : undefined,
     supabaseConfig,
@@ -448,12 +487,21 @@ export function collectComponents(
   components: ComponentRegistry,
   i18n = false,
   styleOptions: CompilerStyleOptions = {},
-  motionCache: MotionLoweringCache = new Map()
+  motionCache: MotionLoweringCache = new Map(),
+  prevalidatedServerWorkflows?: readonly IRServerWorkflow[] | null
 ): { defs: ComponentDef[]; warnings: IRWarning[] } {
   const warnings: IRWarning[] = []
   // Discard doc-state warnings here — they're already surfaced per page.
   const root = graph.getNode(graph.rootId)
-  const docStates = indexDocStatesByName(
+  const liftedServerWorkflows =
+    prevalidatedServerWorkflows === undefined
+      ? collectServerWorkflows(root?.lowcodeServerWorkflows, warnings)
+      : (prevalidatedServerWorkflows ?? undefined)
+  const serverWorkflows = liftedServerWorkflows ? [...liftedServerWorkflows] : undefined
+  const serverWorkflowsById = new Map(
+    (serverWorkflows ?? []).map((workflow) => [workflow.id, workflow])
+  )
+  const globalDocStates = indexDocStatesByName(
     collectDocStates(graph, [], hasValidSupabaseConfig(root?.lowcodeSupabaseConfig))
   )
   const workflows = liftWorkflows(graph)
@@ -467,6 +515,16 @@ export function collectComponents(
     const docStateReads = new Set<string>()
     const docStateWrites = new Set<string>()
     const validatedFields: IRFieldValidation[] = []
+    const componentLocalNames = componentGeneratedLocalNames(meta)
+    const docStates = new Map(globalDocStates)
+    for (const name of componentLocalNames) {
+      if (!docStates.delete(name)) continue
+      warnings.push({
+        code: 'component-docstate-identifier-collision',
+        message: `component ${JSON.stringify(meta.name)} document state ${JSON.stringify(name)} collides with a generated prop/local binding and is unavailable in this component`,
+        nodeId: componentId
+      })
+    }
     const baseCtx: WalkCtx = {
       graph,
       states: new Map(),
@@ -478,6 +536,7 @@ export function collectComponents(
       inForm: false,
       components,
       workflows,
+      serverWorkflows: serverWorkflowsById,
       i18n,
       styleOptions,
       assets,
@@ -537,6 +596,17 @@ export function collectComponents(
     })
   }
   return { defs, warnings }
+}
+
+function componentGeneratedLocalNames(meta: ComponentMeta): Set<string> {
+  const names = new Set<string>(COMPONENT_FIXED_PROP_NAMES)
+  for (const slot of meta.propSlots.values()) {
+    for (const prop of [slot.text, slot.className, slot.style]) {
+      if (prop) names.add(prop.name)
+    }
+  }
+  for (const axis of meta.variants?.axes ?? []) names.add(axis.name)
+  return names
 }
 
 function componentLowcodeUsage(
@@ -730,6 +800,7 @@ function refOf(
     ctx.inScope,
     ctx.docStateReads,
     ctx.workflows,
+    ctx.serverWorkflows,
     ctx.graph
   )
   const prototype = collectPrototypeDecoration(
@@ -869,6 +940,8 @@ interface WalkCtx {
    *  `callWorkflow` expansion (the same map for every page / component in a
    *  compile). Empty map ≡ no workflows authored. */
   workflows: ReadonlyMap<string, WorkflowDef>
+  /** Strictly validated server workflows available to invoke actions. */
+  serverWorkflows: ReadonlyMap<string, IRServerWorkflow>
   /** Phase 3 §8 v2/v3: when collecting a component body, the master-descendant
    *  node id → prop slot map for that component. A TEXT node whose id is a key
    *  emits `{prop}` instead of its literal (text slot); an element whose id is a
@@ -920,22 +993,33 @@ interface WalkCtx {
 function collectDocStates(
   graph: SceneGraph,
   warnings: IRWarning[],
-  includeCurrentUser = false
+  includeCurrentUser = false,
+  pageStates: readonly IRStateDecl[] = []
 ): IRDocStateDecl[] {
   const root = graph.getNode(graph.rootId)
   const decls = root?.lowcodeDocumentState ?? []
   const out: IRDocStateDecl[] = []
   const seen = new Set<string>()
+  const pageIdentifiers = new Map<string, string>()
+  for (const state of pageStates) {
+    pageIdentifiers.set(state.name, state.name)
+    pageIdentifiers.set(lowcodeStateSetterName(state.name), state.name)
+  }
   if (includeCurrentUser) {
     const builtIn = currentUserBuiltIn()
     seen.add(builtIn.name)
     out.push(builtIn)
   }
   for (const d of decls) {
-    if (typeof d.name !== 'string' || d.name === '') {
+    const rawName: unknown = d.name
+    const nameCheck =
+      typeof rawName === 'string'
+        ? validateStateName(rawName)
+        : { ok: false, reason: 'name must be a string' }
+    if (!nameCheck.ok) {
       warnings.push({
         code: 'docstate-invalid',
-        message: `document state (id=${d.id}) has no name; dropped`
+        message: `document state (id=${d.id}) has invalid name ${JSON.stringify(rawName)}: ${nameCheck.reason ?? 'invalid'}; dropped`
       })
       continue
     }
@@ -943,6 +1027,15 @@ function collectDocStates(
       warnings.push({
         code: 'docstate-duplicate-name',
         message: `document state name "${d.name}" is declared more than once; the second declaration is dropped`
+      })
+      continue
+    }
+    const collidingPageState = pageIdentifiers.get(d.name)
+    if (collidingPageState) {
+      warnings.push({
+        code: 'docstate-generated-identifier-collision',
+        message: `document state name ${JSON.stringify(d.name)} collides with the generated binding for page state ${JSON.stringify(collidingPageState)}; dropped`,
+        nodeId: graph.rootId
       })
       continue
     }
@@ -1192,13 +1285,16 @@ function stripPaintClasses(className: string): string {
  * for everything else (or a node with no renderable geometry) pass the className
  * through unchanged. Returns `extra` to spread onto the IRElement (`{ rawHtml }`
  * or `{}`) so the caller adds no extra branches.
+ * Registered module hosts preserve their box boundary because their adapter
+ * owns the background layer while authored vector children remain DOM overlays.
  */
 function resolveVectorSvg(
   node: SceneNode,
   graph: SceneGraph,
-  className: string
+  className: string,
+  preserveContainer = false
 ): { className: string; extra: { rawHtml?: string } } {
-  if (!isVectorIcon(node, graph)) return { className, extra: {} }
+  if (preserveContainer || !isVectorIcon(node, graph)) return { className, extra: {} }
   const svg = buildVectorSvg(node, graph)
   if (svg === undefined) return { className, extra: {} }
   return { className: stripPaintClasses(className), extra: { rawHtml: svg } }
@@ -1402,6 +1498,17 @@ function messageKey(value: string): string {
   return `m${(h >>> 0).toString(36)}`
 }
 
+function collectElementChildren(
+  node: SceneNode,
+  ctx: WalkCtx,
+  children: IRNode[],
+  rawHtml: string | undefined,
+  module: IRModule | null
+): void {
+  if (rawHtml !== undefined && !module) return
+  collectChildNodes(node, ctx, children)
+}
+
 function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // Phase 3 §8 — a registered COMPONENT master, or a clean INSTANCE of one,
   // renders as `<Name className="..." />` (the shared subtree lives in the
@@ -1442,6 +1549,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
 
   applyInteractiveProps(node, attrs, children, ctx)
   applyBoundVariableStyles(node, ctx, attrs)
+  const module = collectCompilerModule(node, ctx.warnings, BUILTIN_COMPILER_MODULE_REGISTRY)
 
   // Icon nodes (a vector shape, or an all-vector container — see isVectorIcon)
   // emit their geometry as one inline SVG; the wrapper keeps layout/size classes
@@ -1449,9 +1557,9 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
   // is rendered whole by renderNodesToSVG). The branching lives in
   // resolveVectorSvg / collectChildNodes so nodeToIR stays under the complexity
   // gate.
-  const vector = resolveVectorSvg(node, ctx.graph, className)
+  const vector = resolveVectorSvg(node, ctx.graph, className, module !== null)
   className = vector.className
-  if (vector.extra.rawHtml === undefined) collectChildNodes(node, ctx, children)
+  collectElementChildren(node, ctx, children, vector.extra.rawHtml, module)
 
   const events = resolveEvents(
     node,
@@ -1462,6 +1570,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ctx.inScope,
     ctx.docStateReads,
     ctx.workflows,
+    ctx.serverWorkflows,
     ctx.graph
   )
   const prototype = collectPrototypeDecoration(
@@ -1511,6 +1620,7 @@ function nodeToIR(node: SceneNode, ctx: WalkCtx): IRNode | null {
     ...propOverrides,
     attrs,
     children,
+    ...(module ? { module } : {}),
     ...(events && Object.keys(events).length > 0 ? { events } : {}),
     ...controls,
     ...semantics,
@@ -2945,6 +3055,7 @@ function buildImageElement(
     ctx.inScope,
     ctx.docStateReads,
     ctx.workflows,
+    ctx.serverWorkflows,
     ctx.graph
   )
   const motion = collectNodeMotion(node, ctx.warnings, undefined, ctx.motionCache)
@@ -3579,8 +3690,7 @@ function collectListDirective(node: SceneNode, ctx: WalkCtx): IRList | null {
       : resolveListArrayName(node, ip.dataSourceRef, ctx)
   if (arrayName === null) return null
 
-  const itemName = typeof ip.itemName === 'string' && ip.itemName !== '' ? ip.itemName : 'item'
-  const indexName = typeof ip.indexName === 'string' && ip.indexName !== '' ? ip.indexName : 'index'
+  const { itemName, indexName } = iterationIdentifiers(node, ip.itemName, ip.indexName, 'list', ctx)
 
   const visibleChildren = ctx.graph.getChildren(node.id).filter((c) => c.visible)
   if (visibleChildren.length === 0) {
@@ -4109,9 +4219,13 @@ function dynamicOptionsList(
 ): IRList | null {
   const arrayName = resolveOptionsArrayName(node, src, ctx)
   if (arrayName === null) return null
-  const itemName = typeof src.itemName === 'string' && src.itemName !== '' ? src.itemName : 'item'
-  const indexName =
-    typeof src.indexName === 'string' && src.indexName !== '' ? src.indexName : 'index'
+  const { itemName, indexName } = iterationIdentifiers(
+    node,
+    src.itemName,
+    src.indexName,
+    'options-source',
+    ctx
+  )
   return withOptionScope(ctx, itemName, indexName, () => {
     const expressions = optionSourceExpressions(node, src, itemName, ctx)
     if (expressions === null) return null
@@ -4123,6 +4237,83 @@ function dynamicOptionsList(
       template: makeTemplate(expressions.value, expressions.label)
     }
   })
+}
+
+function iterationIdentifiers(
+  node: SceneNode,
+  rawItemName: unknown,
+  rawIndexName: unknown,
+  warningPrefix: 'list' | 'options-source',
+  ctx: WalkCtx
+): { itemName: string; indexName: string } {
+  const reserved = new Set(ctx.inScope)
+  for (const state of ctx.states.values()) {
+    reserved.add(state.name)
+    reserved.add(lowcodeStateSetterName(state.name))
+  }
+  for (const name of ctx.docStates.keys()) reserved.add(name)
+  const itemName = iterationIdentifier(
+    node,
+    rawItemName,
+    'item',
+    'item',
+    warningPrefix,
+    reserved,
+    ctx
+  )
+  reserved.add(itemName)
+  const rawIndexCandidate =
+    typeof rawIndexName === 'string' && rawIndexName !== '' ? rawIndexName : 'index'
+  if (rawIndexCandidate === itemName) {
+    const indexName = allocateIterationFallback('index', reserved)
+    ctx.warnings.push({
+      code: `${warningPrefix}-duplicate-local-name`,
+      message: `${node.type} ${node.id} item and index names must differ; using ${JSON.stringify(indexName)} for the index`,
+      nodeId: node.id
+    })
+    return { itemName, indexName }
+  }
+  const indexName = iterationIdentifier(
+    node,
+    rawIndexName,
+    'index',
+    'index',
+    warningPrefix,
+    reserved,
+    ctx
+  )
+  return { itemName, indexName }
+}
+
+function iterationIdentifier(
+  node: SceneNode,
+  rawName: unknown,
+  role: 'item' | 'index',
+  fallback: string,
+  warningPrefix: 'list' | 'options-source',
+  reserved: ReadonlySet<string>,
+  ctx: WalkCtx
+): string {
+  const candidate = typeof rawName === 'string' && rawName !== '' ? rawName : fallback
+  const validation = validateStateName(candidate)
+  if (validation.ok && !reserved.has(candidate)) return candidate
+  const replacement = allocateIterationFallback(fallback, reserved)
+  const reason = reserved.has(candidate)
+    ? 'collides with an enclosing state, setter, document state, or iterator'
+    : (validation.reason ?? 'invalid identifier')
+  ctx.warnings.push({
+    code: `${warningPrefix}-invalid-${role}-name`,
+    message: `${node.type} ${node.id} ${role} name ${JSON.stringify(candidate)} is unsafe (${reason}); using ${JSON.stringify(replacement)}`,
+    nodeId: node.id
+  })
+  return replacement
+}
+
+function allocateIterationFallback(base: string, reserved: ReadonlySet<string>): string {
+  if (!reserved.has(base)) return base
+  let suffix = 2
+  while (reserved.has(`${base}${suffix}`)) suffix++
+  return `${base}${suffix}`
 }
 
 /** SELECT — one `<option>` child per string in `interactiveProps.options`. The

@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test'
 
 import {
+  createMapModuleInstance,
   exportFigFile,
   initCodec,
   parseFigFile,
@@ -163,6 +164,34 @@ describe('lowcode-roundtrip — .fig export → parse preserves lowcode fields (
     expect(reimportedBtn.events).toEqual({
       onClick: [{ id: 'a1', kind: 'setState', targetStateId: 's-count', valueExpr: 'count + 1' }]
     })
+  })
+
+  test('map module remains a native FRAME and preserves its versioned config through .fig', async () => {
+    const graph = new SceneGraph()
+    const page = graph.getPages()[0]
+    const module = createMapModuleInstance({
+      center: [121.4737, 31.2304],
+      zoom: 12.5,
+      style: 'dark',
+      interactive: false,
+      markers: [
+        { id: 'the-bund', lng: 121.4904, lat: 31.2417, label: 'The Bund' },
+        { id: 'museum', lng: 121.4752, lat: 31.2303 }
+      ]
+    })
+    graph.createNode('FRAME', page.id, {
+      name: 'Shanghai Map',
+      width: 360,
+      height: 240,
+      interactiveProps: { module }
+    })
+
+    const bytes = await exportFigFile(graph)
+    const reimported = await parseFigFile(bytes.buffer)
+    const importedMap = findByName(reimported, 'Shanghai Map')
+
+    expect(importedMap.type).toBe('FRAME')
+    expect(importedMap.interactiveProps?.module).toEqual(module)
   })
 
   test('motion action node references remap to exported GUIDs across events and workflows', async () => {

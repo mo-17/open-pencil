@@ -10,6 +10,9 @@ export * from './geometry'
 export * from './font-style'
 export * from './shared-styles'
 export * from './motion'
+export * from './module'
+export * from './plugin-lock'
+export * from './signed-manifest'
 export { default as TransformMatrix } from './matrix'
 export type { Mat3 } from './matrix'
 export { UndoManager, type UndoEntry, type UndoManagerOptions } from './undo'
@@ -133,6 +136,9 @@ export class SceneGraph {
   }
   getAllNodes(): Iterable<SceneNode> {
     return this.nodes.values()
+  }
+  getNodeCount(): number {
+    return this.nodes.size
   }
   getNode(id: string): SceneNode | undefined {
     return this.nodes.get(id)

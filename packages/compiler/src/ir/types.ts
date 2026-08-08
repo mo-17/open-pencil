@@ -299,6 +299,10 @@ export interface IRElement extends IRPrototypeDecoration {
    *  literal URL (`srcLiteral`) or an expression (`srcExpr`, e.g. a doc-state
    *  binding to a §18 upload result). */
   image?: IRImage
+  /** Trusted declarative module lowered from `interactiveProps.module`.
+   * Framework adapters dispatch this validated payload by pluginId/moduleType;
+   * raw document module JSON never reaches source emission. */
+  module?: IRModule
   /** Raw inner HTML to emit verbatim via `dangerouslySetInnerHTML` instead of
    *  `children`. Set for vector-shape nodes (VECTOR / BOOLEAN_OPERATION / STAR /
    *  POLYGON / LINE) whose appearance IS the path geometry: the wrapper keeps
@@ -357,6 +361,15 @@ export interface IRImageSource {
   media?: string
   type?: string
   sizes?: string
+}
+
+/** Framework-neutral trusted-module invocation. The payload is produced by a
+ * registered lowerer and therefore contains only the module's bounded data. */
+export interface IRModule {
+  pluginId: string
+  moduleType: string
+  configVersion: number
+  payload: Record<string, unknown>
 }
 
 /** Phase 4 §24 v2: binary asset emitted by the compiler project. */
@@ -663,6 +676,7 @@ export type IREventHandler =
   | IRTrackEventHandler
   | IRStripeCheckoutHandler
   | IRStripeCustomerPortalHandler
+  | IRInvokeServerWorkflowHandler
   | IRPlayMotionHandler
   | IRStopMotionHandler
   | IRToggleMotionHandler
@@ -743,6 +757,18 @@ export interface IRApiCallHandler {
    *  stored (success) / on failure. Nested chains lowered through the same
    *  pipeline so they nest; emitted inside the try success path / catch arm
    *  where `data` / `err` are fresh locals (no render-snapshot staleness). */
+  onSuccess?: IREventHandler[]
+  onError?: IREventHandler[]
+}
+
+/** Authenticated client invocation of a generated server workflow. The
+ *  workflow id and argument names have been matched against the validated
+ *  document-level server IR. `resultName` is a success-branch local. */
+export interface IRInvokeServerWorkflowHandler {
+  kind: 'invokeServerWorkflow'
+  workflowId: string
+  args: IRSupabasePayloadEntry[]
+  resultName?: string
   onSuccess?: IREventHandler[]
   onError?: IREventHandler[]
 }
@@ -1079,6 +1105,9 @@ export interface IRTree {
    *  action. Adapter imports `setDocState` when this list is non-empty;
    *  no hook declaration is needed (setDocState is a plain function). */
   docStateWrites: string[]
+  /** Strictly validated document-level server workflow program. It is lifted
+   *  once from the root and passed through IR so adapters never read SceneGraph. */
+  serverWorkflows?: IRServerWorkflow[]
   /** Phase 4 §17: LIST nodes on this page bound to a Supabase query datasource.
    *  The adapter emits one fetch hook (useState + useEffect) per entry, then the
    *  LIST `.map()` iterates the hook's rows. Empty / absent ≡ no data-bound
@@ -1152,4 +1181,76 @@ export interface IRWarning {
   code: string
   message: string
   nodeId?: string
+}
+
+export type IRServerValueSource =
+  | { kind: 'env'; name: string }
+  | { kind: 'expr'; ast: ExprAst; references: string[] }
+
+export interface IRServerHeader {
+  name: string
+  value: IRServerValueSource
+}
+
+export interface IRServerHttpRequestAction {
+  kind: 'httpRequest'
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  url: IRServerValueSource
+  headers?: IRServerHeader[]
+  body?: IRServerValueSource
+  resultName?: string
+}
+
+export interface IRServerSupabaseQueryAction {
+  kind: 'supabaseQuery'
+  table: string
+  columns: string
+  filters: IRSupabaseFilter[]
+  single: boolean
+  resultName: string
+}
+
+export interface IRServerSupabaseMutationAction {
+  kind: 'supabaseMutation'
+  operation: 'insert' | 'update' | 'delete' | 'upsert'
+  table: string
+  payloadEntries?: IRSupabasePayloadEntry[]
+  filters: IRSupabaseFilter[]
+  resultName?: string
+}
+
+export interface IRServerConditionAction {
+  kind: 'condition'
+  condAst: ExprAst
+  references: string[]
+  consequent: IRServerAction[]
+  alternate?: IRServerAction[]
+}
+
+export interface IRServerReturnAction {
+  kind: 'return'
+  valueAst?: ExprAst
+  references: string[]
+  status: number
+}
+
+export interface IRServerCallWorkflowAction {
+  kind: 'callServerWorkflow'
+  workflowId: string
+  args: IRSupabasePayloadEntry[]
+}
+
+export type IRServerAction =
+  | IRServerHttpRequestAction
+  | IRServerSupabaseQueryAction
+  | IRServerSupabaseMutationAction
+  | IRServerConditionAction
+  | IRServerReturnAction
+  | IRServerCallWorkflowAction
+
+export interface IRServerWorkflow {
+  id: string
+  name: string
+  params: string[]
+  actions: IRServerAction[]
 }

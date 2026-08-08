@@ -3,6 +3,7 @@ import type { ComponentDef, ComponentProp, IRNode, VariantCase } from '#compiler
 import {
   hasIntlAttr,
   hasTranslatableText,
+  nodesUseServerWorkflow,
   nodesHaveNavigateHandler,
   nodesHaveNavigateParams,
   referencedLucideIconNames
@@ -13,6 +14,7 @@ import {
   validationUsesDocStateSnapshot,
   validationUsesRemote
 } from '../lowcode/validation'
+import { buildReactModuleImports } from '../modules/registry'
 import { collectKitImports, kitImportLine } from '../ui-kit/registry'
 import type { UiKitAdapter } from '../ui-kit/types'
 import { emitElement } from './element'
@@ -54,20 +56,27 @@ export function buildComponentModule(
   const kitImportBlock =
     kitImports.length > 0 ? kitImports.map(kitImportLine).join('\n') + '\n' : ''
   const lucideImport = buildLucideIconImport(referencedLucideIconNames(bodyNodes))
+  const moduleImports = buildReactModuleImports(bodyNodes, true)
+  const moduleImportBlock = moduleImports ? `${moduleImports}\n` : ''
+  const serverImport = nodesUseServerWorkflow(bodyNodes)
+    ? `import { invokeServerWorkflow } from '../_lowcode_server'\n`
+    : ''
   const reactImport = buildComponentReactImport(def, rootEventsBoundary)
   const routerImport = buildComponentRouterImport(needsNavigate, nodesHaveNavigateParams(bodyNodes))
   const lowcodeStateImport = buildComponentLowcodeStateImport(def)
   const validationImport = buildComponentValidationImport(def)
-  const importBlock =
-    reactImport ||
-    routerImport ||
-    lowcodeStateImport ||
-    validationImport ||
-    i18nImport ||
-    kitImportBlock ||
-    lucideImport
-      ? `${reactImport}${routerImport}${lowcodeStateImport}${validationImport}${i18nImport}${kitImportBlock}${lucideImport}\n`
-      : ''
+  const imports = [
+    reactImport,
+    routerImport,
+    lowcodeStateImport,
+    validationImport,
+    i18nImport,
+    kitImportBlock,
+    lucideImport,
+    moduleImportBlock,
+    serverImport
+  ].join('')
+  const importBlock = imports ? `${imports}\n` : ''
   return (
     importBlock +
     buildComponentBody(
