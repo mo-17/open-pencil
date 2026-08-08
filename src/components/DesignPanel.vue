@@ -32,6 +32,7 @@ import InteractivePropsPanel from './properties/Lowcode/InteractivePropsPanel.vu
 import { INTERACTIVE_PROP_FIELDS } from './properties/Lowcode/interactive-fields'
 import LibrariesPanel from './properties/Lowcode/LibrariesPanel.vue'
 import ListPanel from './properties/Lowcode/ListPanel.vue'
+import ModulePropsPanel from './properties/Lowcode/ModulePropsPanel.vue'
 import RenderConditionPanel from './properties/Lowcode/RenderConditionPanel.vue'
 import ResponsivePanel from './properties/Lowcode/ResponsivePanel.vue'
 import StatePanel from './properties/Lowcode/StatePanel.vue'
@@ -181,6 +182,26 @@ const SECTION_KEYWORDS: Record<string, string[]> = {
     '按下',
     '禁用'
   ],
+  module: [
+    'module',
+    'plugin',
+    'map',
+    'provider',
+    'marker',
+    'latitude',
+    'longitude',
+    'zoom',
+    '模块',
+    '插件',
+    '地图',
+    '标记',
+    '经度',
+    '纬度',
+    '缩放',
+    'モジュール',
+    'プラグイン',
+    '地図'
+  ],
   motion: ['motion', 'animation', 'transition', 'keyframe', 'preset', '动效', '动画'],
   'lowcode-bindings': [
     'lowcode',
@@ -273,6 +294,12 @@ const showSingleInteractionStates = computed(
     hasInteractionStatePanel.value &&
     sectionMatches('interaction-states', panels.value.lowcodeInteractionStates)
 )
+const hasModulePanel = computed(
+  () => node.value?.type === 'FRAME' && node.value.interactiveProps?.module !== undefined
+)
+const showSingleModule = computed(
+  () => hasModulePanel.value && sectionMatches('module', panels.value.lowcodeModule)
+)
 const showSingleMotion = computed(() => sectionMatches('motion', panels.value.motion))
 const showSingleLowcodeBindings = computed(
   () => hasLowcodeBindings.value && sectionMatches('lowcode-bindings', 'Bindings')
@@ -292,6 +319,7 @@ const singleHasMatches = computed(
     showSingleComponent.value ||
     showSingleAppearance.value ||
     showSingleInteractionStates.value ||
+    showSingleModule.value ||
     showSingleMotion.value ||
     showSingleLowcodeBindings.value ||
     showSingleLowcodeEvents.value ||
@@ -461,6 +489,15 @@ const emptyHasMatches = computed(
       :highlighted="sectionHighlighted('interaction-states', panels.lowcodeInteractionStates)"
     >
       <InteractionStatePanel />
+    </InspectorSection>
+
+    <InspectorSection
+      v-show="showSingleModule"
+      id="module"
+      :label="panels.lowcodeModule"
+      :highlighted="sectionHighlighted('module', panels.lowcodeModule)"
+    >
+      <ModulePropsPanel />
     </InspectorSection>
 
     <InspectorSection

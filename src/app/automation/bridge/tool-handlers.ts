@@ -15,6 +15,7 @@ import type { AutomationRequestContext } from '@/app/automation/bridge/request-c
 import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { pageIdForNode, resolveEditorMutationScope } from '@/app/editor/mutation-scope'
+import { canCreatePluginModule } from '@/app/plugins'
 
 type FigmaFactory = (store: AutomationTarget['store'], pageId?: string) => FigmaAPI
 
@@ -22,6 +23,8 @@ type FigmaFactory = (store: AutomationTarget['store'], pageId?: string) => Figma
  *  participate in `runBatch`). All tools receive request cancellation /
  *  progress context, while only this allowlist receives the editor context. */
 const EDITOR_UNDO_TOOLS = new Set<string>([
+  'create_module',
+  'update_module',
   'update_lowcode_node',
   'update_lowcode_nodes',
   'ensure_form_value_bindings',
@@ -51,6 +54,7 @@ const NON_GRAPH_MUTATION_TOOLS = new Set([
   'select_nodes',
   'switch_page'
 ])
+const MODULE_CREATION_POLICY_TOOLS = new Set(['list_modules', 'create_module'])
 type AutomationMutationSnapshot =
   | { scope: 'document'; snapshot: ReturnType<Editor['snapshotDocument']> }
   | { scope: 'page'; snapshot: ReturnType<Editor['snapshotPage']> }
@@ -197,6 +201,9 @@ export function createAutomationToolHandler(makeFigma: FigmaFactory) {
           async () => {
             const result = await def.execute(figma, toolArgs, {
               ...(EDITOR_UNDO_TOOLS.has(def.name) ? { editor: store } : {}),
+              ...(MODULE_CREATION_POLICY_TOOLS.has(def.name)
+                ? { canCreateModule: canCreatePluginModule }
+                : {}),
               signal: context?.signal,
               onProgress: context?.onProgress,
               deferLayout: def.name === 'render'

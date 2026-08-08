@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Tip from '@/components/ui/Tip.vue'
+import PluginModulesMenu from '@/components/Toolbar/PluginModulesMenu.vue'
 import ToolButton from '@/components/Toolbar/ToolButton.vue'
 import ToolFlyout from '@/components/Toolbar/ToolFlyout.vue'
 import {
@@ -65,6 +66,8 @@ const emit = defineEmits<{
           </Tip>
         </ToolbarItem>
       </template>
+
+      <PluginModulesMenu :ui="ui" />
     </div>
   </div>
 </template>

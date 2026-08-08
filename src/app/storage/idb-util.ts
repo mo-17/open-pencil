@@ -32,3 +32,14 @@ export function txDone(tx: IDBTransaction): Promise<void> {
     tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'))
   })
 }
+
+export async function runIdbReadonlyRequest<T>(
+  database: IDBDatabase,
+  storeName: string,
+  request: (store: IDBObjectStore) => IDBRequest<T>
+): Promise<T> {
+  const transaction = database.transaction(storeName, 'readonly')
+  const value = await reqToPromise(request(transaction.objectStore(storeName)))
+  await txDone(transaction)
+  return value
+}

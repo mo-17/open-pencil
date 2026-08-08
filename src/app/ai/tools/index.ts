@@ -12,12 +12,14 @@ import { getActiveEditorStore } from '@/app/editor/active-store'
 import type { EditorStore } from '@/app/editor/active-store'
 import { ensureGraphFonts } from '@/app/editor/fonts'
 import { resolveEditorMutationScope } from '@/app/editor/mutation-scope'
+import { canCreatePluginModule } from '@/app/plugins'
 
 export const MAX_AGENT_STEPS = 50
 const MAX_TOOL_LOG_ENTRIES = 200
 const MAX_STEP_USAGE_ENTRIES = 500
 const DOCUMENT_SCOPE_TOOLS = new Set(['eval'])
 const NON_GRAPH_MUTATION_TOOLS = new Set(['viewport_zoom_to_fit'])
+const MODULE_CREATION_POLICY_TOOLS = new Set(['list_modules', 'create_module'])
 const POSTPROCESS_FREE_TOOLS = new Set([
   'set_doc_states',
   'set_supabase_config',
@@ -280,6 +282,9 @@ export function createAITools(store: EditorStore) {
         if (def.name === 'render') return { deferLayout: true }
         if (def.name === 'export_motion_animation') {
           return { saveMotionExport: saveMotionAnimationResult }
+        }
+        if (MODULE_CREATION_POLICY_TOOLS.has(def.name)) {
+          return { canCreateModule: canCreatePluginModule }
         }
         return undefined
       },

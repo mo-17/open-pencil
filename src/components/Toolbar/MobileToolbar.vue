@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion-v'
 import IconChevronLeft from '~icons/lucide/chevron-left'
 import IconChevronRight from '~icons/lucide/chevron-right'
 
+import PluginModulesMenu from '@/components/Toolbar/PluginModulesMenu.vue'
 import ToolButton from '@/components/Toolbar/ToolButton.vue'
 import ToolFlyout from '@/components/Toolbar/ToolFlyout.vue'
 import ToolbarActionGroup from '@/components/Toolbar/ToolbarActionGroup.vue'
@@ -138,6 +139,7 @@ function navigationClass(disabled: boolean) {
               />
             </ToolbarItem>
           </template>
+          <PluginModulesMenu mobile :ui="ui" />
         </motion.div>
 
         <motion.div
