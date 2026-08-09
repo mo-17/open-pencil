@@ -55,6 +55,7 @@ describe('saved document identity', () => {
     expect(source.getSourceIdentity()).toEqual({ handle: null, path: '/tmp/local.fig' })
     expect(source.getStorageBinding()).toEqual({
       providerId: 's3-compatible',
+      profileId: 'default',
       documentId: 'remote-1'
     })
   })

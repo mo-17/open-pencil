@@ -1,4 +1,5 @@
 import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
+import type { StorageProfileMutationLease } from '@/app/storage/mutation-drain'
 import { persistStorageCanvasLocally } from '@/app/storage/sync/persist'
 import { isTauri } from '@/app/tauri/env'
 
@@ -11,14 +12,25 @@ export type DocumentWriteTarget =
   | Readonly<{ kind: 'tauri-path'; path: string }>
   | Readonly<{ kind: 'browser-handle'; handle: FileSystemFileHandle }>
 
+export type DocumentWriteOptions = Readonly<{
+  storageMutationLease?: StorageProfileMutationLease
+}>
+
 export function createDocumentWriter() {
-  return async function writeFile(target: DocumentWriteTarget, data: Uint8Array): Promise<void> {
+  return async function writeFile(
+    target: DocumentWriteTarget,
+    data: Uint8Array,
+    options?: DocumentWriteOptions
+  ): Promise<void> {
     if (target.kind === 'storage') {
       await persistStorageCanvasLocally({
         providerId: target.binding.providerId,
+        profileId: target.binding.profileId,
+        ...(target.binding.authority ? { authority: target.binding.authority } : {}),
         canvasId: target.binding.documentId,
         name: target.documentName || 'Untitled',
-        figBytes: data
+        figBytes: data,
+        mutationLease: options?.storageMutationLease
       })
       return
     }

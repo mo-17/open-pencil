@@ -3,7 +3,7 @@
 export function openIdb(
   name: string,
   version: number,
-  upgrade: (db: IDBDatabase) => void
+  upgrade: (db: IDBDatabase, oldVersion: number, transaction: IDBTransaction) => void
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') {
@@ -14,7 +14,10 @@ export function openIdb(
     req.onerror = () => reject(req.error ?? new Error(`Failed to open ${name}`))
     req.onblocked = () => reject(new Error(`Opening ${name} blocked by another tab's connection`))
     req.onsuccess = () => resolve(req.result)
-    req.onupgradeneeded = () => upgrade(req.result)
+    req.onupgradeneeded = (event) => {
+      if (!req.transaction) throw new Error(`Opening ${name} has no upgrade transaction`)
+      upgrade(req.result, event.oldVersion, req.transaction)
+    }
   })
 }
 

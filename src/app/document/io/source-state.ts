@@ -1,5 +1,9 @@
 import type { DocumentSourceIdentity } from '@/app/document/io/types'
-import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
+import {
+  resolveStorageDocumentBinding,
+  type StorageDocumentBinding,
+  type StorageDocumentBindingInput
+} from '@/app/integrations/storage/types'
 
 export function createDocumentSourceState() {
   let fileHandle: FileSystemFileHandle | null = null
@@ -45,8 +49,8 @@ export function createDocumentSourceState() {
       return () => sourceChangeListeners.delete(listener)
     },
     getStorageBinding: () => storageBinding,
-    setStorageBinding: (binding: StorageDocumentBinding | null) => {
-      storageBinding = binding
+    setStorageBinding: (binding: StorageDocumentBindingInput | null) => {
+      storageBinding = binding ? resolveStorageDocumentBinding(binding) : null
     },
     getSavedVersion: () => savedVersion,
     setSavedVersion: (version: number) => {

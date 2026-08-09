@@ -63,7 +63,13 @@ export interface DeployRollbackDraft {
 
 export type DeployDocumentIdentity =
   | { kind: 'path'; path: string }
-  | { kind: 'storage'; providerId: string; documentId: string }
+  | {
+      kind: 'storage'
+      providerId: string
+      profileId?: string
+      accountId?: string
+      documentId: string
+    }
   | { kind: 'transient'; id: string }
 
 export interface DeployTargetPreset {
@@ -120,6 +126,21 @@ const NETLIFY_API = 'https://api.netlify.com/api/v1'
 const VOLATILE_SCOPE_PREFIX = 'volatile:'
 const volatileStorage = new Map<string, string>()
 
+function storageIdentityValue(
+  identity: Extract<DeployDocumentIdentity, { kind: 'storage' }>
+): string | undefined {
+  const providerId = identity.providerId.trim()
+  const profileId = identity.profileId?.trim()
+  const accountId = identity.accountId?.trim()
+  const documentId = identity.documentId.trim()
+  if (!providerId || !documentId) return undefined
+  if (identity.profileId !== undefined && !profileId) return undefined
+  if (identity.accountId !== undefined && !accountId) return undefined
+  return profileId === undefined && accountId === undefined
+    ? `storage\0${providerId}\0${documentId}`
+    : `storage\0${providerId}\0${profileId ?? 'default'}\0${accountId ?? ''}\0${documentId}`
+}
+
 /** Scope deploy metadata without writing a local path or remote document id to
  * localStorage. Saved/remote identities use a collision-resistant SHA-256
  * digest. Unsaved tab identities are process-local and never persisted. */
@@ -140,10 +161,9 @@ export function deployDocumentScope(
     if (!path) return undefined
     value = `path\0${path}`
   } else if (normalizedIdentity.kind === 'storage') {
-    const providerId = normalizedIdentity.providerId.trim()
-    const documentId = normalizedIdentity.documentId.trim()
-    if (!providerId || !documentId) return undefined
-    value = `storage\0${providerId}\0${documentId}`
+    const storageValue = storageIdentityValue(normalizedIdentity)
+    if (!storageValue) return undefined
+    value = storageValue
   } else {
     const id = normalizedIdentity.id.trim()
     if (!id) return undefined

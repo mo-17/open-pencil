@@ -1,4 +1,9 @@
-import { getLocalCanvasStore } from '@/app/storage/local-store'
+import {
+  getLocalCanvasStore,
+  localCanvasBinding,
+  localCanvasKey,
+  type LocalCanvasLocator
+} from '@/app/storage/local-store'
 
 /** Keep at most this much cached fig data on device (metas/thumbs are tiny and stay). */
 export const FIG_CACHE_BUDGET_BYTES = 500 * 1024 * 1024
@@ -10,27 +15,37 @@ export const FIG_CACHE_BUDGET_BYTES = 500 * 1024 * 1024
  * Returns the number of evicted figs.
  */
 export async function evictLocalFigCache(
-  excludeIds: ReadonlySet<string> = new Set(),
+  excludeKeys: ReadonlySet<string> = new Set(),
   budgetBytes = FIG_CACHE_BUDGET_BYTES
 ): Promise<number> {
   const local = getLocalCanvasStore()
   const metas = await local.listMetas(true)
 
   let totalBytes = 0
-  const candidates: { id: string; size: number; lastUsed: string }[] = []
+  const candidates: { binding: LocalCanvasLocator; size: number; lastUsed: string }[] = []
   for (const m of metas) {
     if (!m.hasFig) continue
+    const binding = localCanvasBinding(m)
+    const key = localCanvasKey(binding)
     let size = m.figSize
     if (size == null) {
       // Legacy row from before size tracking — measure once and persist
-      const fig = await local.readFig(m.id)
+      const fig = await local.readFig(binding)
       size = fig?.byteLength ?? 0
-      await local.updateMeta(m.id, { figSize: size })
+      await local.updateMeta(binding, { figSize: size })
     }
     totalBytes += size
-    if (m.tombstoned || m.syncStatus !== 'synced' || excludeIds.has(m.id)) continue
+    // Raw document IDs remain accepted while older S3 callers migrate to full keys.
+    if (
+      m.tombstoned ||
+      m.syncStatus !== 'synced' ||
+      excludeKeys.has(key) ||
+      excludeKeys.has(m.id)
+    ) {
+      continue
+    }
     candidates.push({
-      id: m.id,
+      binding,
       size,
       lastUsed: m.lastOpenedAt ?? m.lastSyncedAt ?? m.updatedAt
     })
@@ -42,7 +57,7 @@ export async function evictLocalFigCache(
   let evicted = 0
   for (const candidate of candidates) {
     if (totalBytes <= budgetBytes) break
-    await local.clearFig(candidate.id)
+    await local.clearFig(candidate.binding)
     totalBytes -= candidate.size
     evicted += 1
   }

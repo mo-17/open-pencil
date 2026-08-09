@@ -87,11 +87,21 @@ describe('AI document session identity', () => {
     const second = documentId('second')
     const path = pathDocumentAlias('/tmp/design.fig')
     const storage = storageDocumentAlias('s3-compatible', 'remote-1')
+    const firstGoogleAccount = storageDocumentAlias('google-drive', 'remote-1', {
+      profileId: 'default',
+      accountId: 'google-sub-1'
+    })
+    const secondGoogleAccount = storageDocumentAlias('google-drive', 'remote-1', {
+      profileId: 'default',
+      accountId: 'google-sub-2'
+    })
 
     expect(await store.resolveDocumentScopeId(null, first, 1)).toBe(first)
     expect(await store.resolveDocumentScopeId(path, first, 2)).toBe(first)
     expect(await store.resolveDocumentScopeId(path, second, 3)).toBe(first)
     expect(await store.resolveDocumentScopeId(storage, second, 4)).toBe(second)
+    expect(documentAliasKey(firstGoogleAccount)).not.toBe(documentAliasKey(secondGoogleAccount))
+    expect(documentAliasKey(storage)).toBe('ai-document:["storage","s3-compatible","remote-1"]')
 
     await store.bindDocumentAlias(path, second, 5)
     expect(await store.resolveDocumentScopeId(path, first, 6)).toBe(second)

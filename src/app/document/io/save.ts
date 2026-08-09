@@ -4,7 +4,11 @@ import { downloadBlob } from '@/app/document/io/browser'
 import { documentNameFromFigPath } from '@/app/document/io/names'
 import { chooseBrowserFigSaveHandle, chooseTauriFigSavePath } from '@/app/document/io/save-targets'
 import type { DocumentSourceAccess } from '@/app/document/io/types'
-import { createDocumentWriter, type DocumentWriteTarget } from '@/app/document/io/write'
+import {
+  createDocumentWriter,
+  type DocumentWriteOptions,
+  type DocumentWriteTarget
+} from '@/app/document/io/write'
 import { IS_TAURI } from '@/constants'
 
 type SaveDocumentState = EditorState & { documentName: string }
@@ -67,7 +71,10 @@ export function createSaveActions({
       const binding = getStorageBinding()
       return (
         binding?.providerId === target.binding.providerId &&
-        binding.documentId === target.binding.documentId
+        binding.profileId === target.binding.profileId &&
+        binding.documentId === target.binding.documentId &&
+        binding.authority?.accountId === target.binding.authority?.accountId &&
+        binding.authority?.authorizationVersion === target.binding.authority?.authorizationVersion
       )
     }
     if (target.kind === 'tauri-path') {
@@ -82,7 +89,7 @@ export function createSaveActions({
     )
   }
 
-  async function saveFigFileNow(sourceRevision: number) {
+  async function saveFigFileNow(sourceRevision: number, options?: DocumentWriteOptions) {
     if (!sourceIsUnchanged(sourceRevision)) return
     const target = getCurrentWriteTarget()
     const downloadName = getDownloadName()
@@ -90,7 +97,7 @@ export function createSaveActions({
       const { data, sceneVersion } = await buildFigFile()
       if (!sourceIsUnchanged(sourceRevision, target)) return
       setLastWriteTime(Date.now())
-      await writeFile(target, data)
+      await writeFile(target, data, options)
       if (!sourceIsUnchanged(sourceRevision, target)) return
       setLastWriteTime(Date.now())
       setSavedVersion(sceneVersion)
@@ -164,9 +171,9 @@ export function createSaveActions({
     setLastWriteTime(0)
   }
 
-  function saveFigFile(): Promise<void> {
+  function saveFigFile(options?: DocumentWriteOptions): Promise<void> {
     const sourceRevision = getSourceRevision()
-    return enqueueSave(() => saveFigFileNow(sourceRevision))
+    return enqueueSave(() => saveFigFileNow(sourceRevision, options))
   }
 
   function saveFigFileAs(): Promise<void> {

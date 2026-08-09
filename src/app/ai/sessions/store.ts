@@ -69,23 +69,47 @@ export function pathDocumentAlias(path: string): AIDocumentAlias {
   return { kind: 'path', path }
 }
 
-export function storageDocumentAlias(providerId: string, documentId: string): AIDocumentAlias {
+export function storageDocumentAlias(
+  providerId: string,
+  documentId: string,
+  authority?: Readonly<{ profileId?: string; accountId?: string }>
+): AIDocumentAlias {
   requiredString(providerId, 'providerId')
   requiredString(documentId, 'documentId')
-  return { kind: 'storage', providerId, documentId }
+  const profileId = authority?.profileId
+  const accountId = authority?.accountId
+  if (profileId !== undefined) requiredString(profileId, 'profileId')
+  if (accountId !== undefined) requiredString(accountId, 'accountId')
+  return {
+    kind: 'storage',
+    providerId,
+    ...(profileId === undefined ? {} : { profileId }),
+    ...(accountId === undefined ? {} : { accountId }),
+    documentId
+  }
 }
 
 function validatedAlias(alias: AIDocumentAlias): AIDocumentAlias {
   if (alias.kind === 'path') return pathDocumentAlias(alias.path)
-  return storageDocumentAlias(alias.providerId, alias.documentId)
+  return storageDocumentAlias(alias.providerId, alias.documentId, {
+    ...(alias.profileId === undefined ? {} : { profileId: alias.profileId }),
+    ...(alias.accountId === undefined ? {} : { accountId: alias.accountId })
+  })
 }
 
 /** Stable, collision-safe serialized key for a local path or storage binding. */
 export function documentAliasKey(alias: AIDocumentAlias): string {
   const valid = validatedAlias(alias)
-  return valid.kind === 'path'
-    ? `ai-document:${JSON.stringify(['path', valid.path])}`
-    : `ai-document:${JSON.stringify(['storage', valid.providerId, valid.documentId])}`
+  if (valid.kind === 'path') return `ai-document:${JSON.stringify(['path', valid.path])}`
+  return valid.profileId === undefined && valid.accountId === undefined
+    ? `ai-document:${JSON.stringify(['storage', valid.providerId, valid.documentId])}`
+    : `ai-document:${JSON.stringify([
+        'storage',
+        valid.providerId,
+        valid.profileId ?? 'default',
+        valid.accountId ?? '',
+        valid.documentId
+      ])}`
 }
 
 function validatedScope(scope: ACPSessionScope): ACPSessionScope {
@@ -130,9 +154,16 @@ function parseAlias(value: unknown): AIDocumentAlias | null {
   if (record.kind === 'path') {
     return validString(record.path, MAX_PATH_LENGTH) ? { kind: 'path', path: record.path } : null
   }
-  return validString(record.providerId) && validString(record.documentId)
-    ? { kind: 'storage', providerId: record.providerId, documentId: record.documentId }
-    : null
+  if (!validString(record.providerId) || !validString(record.documentId)) return null
+  if (record.profileId !== undefined && !validString(record.profileId)) return null
+  if (record.accountId !== undefined && !validString(record.accountId)) return null
+  return {
+    kind: 'storage',
+    providerId: record.providerId,
+    ...(record.profileId === undefined ? {} : { profileId: record.profileId }),
+    ...(record.accountId === undefined ? {} : { accountId: record.accountId }),
+    documentId: record.documentId
+  }
 }
 
 function parseDocumentScopeId(value: unknown): AIDocumentScopeId | null {

@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted } from 'vue'
+import { defineAsyncComponent, onMounted, watch } from 'vue'
 import { useHead } from '@unhead/vue'
 import { TooltipProvider } from 'reka-ui'
 
 import { provideEditor, useI18n } from '@open-pencil/vue'
+import {
+  GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+  storageProviderPluginState
+} from '@/app/integrations/storage'
 import AppToast from '@/components/Shell/AppToast.vue'
 import SettingsDialog from '@/components/settings/SettingsDialog.vue'
 import { useEditorStore } from '@/app/editor/active-store'
@@ -12,7 +16,7 @@ import { useApplicationRuntimeGuideMenu } from '@/app/shell/menu/help-actions'
 import { toast } from '@/app/shell/ui'
 import { useAppTheme } from '@/app/shell/theme'
 import { scheduleStartupUpdateCheck } from '@/app/shell/updater'
-import { kickSyncEngine } from '@/app/storage/sync'
+import { kickSyncEngine, resumeStorageSync } from '@/app/storage/sync'
 
 useHead({ titleTemplate: (title) => (title ? `${title} — OpenPencil` : 'OpenPencil') })
 
@@ -24,6 +28,14 @@ const ApplicationRuntimeGuideDialog = defineAsyncComponent(
 provideEditor(store)
 useAppTheme()
 useApplicationRuntimeGuideMenu()
+
+watch(
+  () => storageProviderPluginState(GOOGLE_DRIVE_STORAGE_PROVIDER_ID),
+  (state, previous) => {
+    if (state === 'enabled' && previous !== 'enabled') void resumeStorageSync()
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   toast.setupGlobalErrorHandler()

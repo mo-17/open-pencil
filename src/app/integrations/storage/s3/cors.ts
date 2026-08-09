@@ -19,7 +19,7 @@ export const CLOUD_CORS_STATIC_ORIGINS = [
 export function collectCloudCorsOrigins(extra?: string | null): string[] {
   const set = new Set<string>(CLOUD_CORS_STATIC_ORIGINS)
   if (extra?.trim()) set.add(extra.trim().replace(/\/+$/, ''))
-  if (IS_BROWSER && window.location.origin) {
+  if (IS_BROWSER && typeof window !== 'undefined' && window.location.origin) {
     set.add(window.location.origin)
   }
   return [...set].filter(Boolean).sort()
@@ -50,6 +50,7 @@ ${originTags}
     <AllowedMethod>HEAD</AllowedMethod>
     <AllowedHeader>*</AllowedHeader>
     <ExposeHeader>ETag</ExposeHeader>
+    <ExposeHeader>Content-Range</ExposeHeader>
     <ExposeHeader>x-amz-request-id</ExposeHeader>
     <ExposeHeader>x-amz-id-2</ExposeHeader>
     <ExposeHeader>x-amz-version-id</ExposeHeader>
@@ -67,7 +68,13 @@ export function buildCorsConfigurationJson(origins: string[]): string {
         AllowedHeaders: ['*'],
         AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
         AllowedOrigins: origins,
-        ExposeHeaders: ['ETag', 'x-amz-request-id', 'x-amz-id-2', 'x-amz-version-id'],
+        ExposeHeaders: [
+          'ETag',
+          'Content-Range',
+          'x-amz-request-id',
+          'x-amz-id-2',
+          'x-amz-version-id'
+        ],
         MaxAgeSeconds: 3600
       }
     ],

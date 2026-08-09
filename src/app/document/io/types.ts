@@ -1,4 +1,7 @@
-import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
+import type {
+  StorageDocumentBinding,
+  StorageDocumentBindingInput
+} from '@/app/integrations/storage/types'
 
 export type DocumentSourceIdentity = Readonly<{
   handle: FileSystemFileHandle | null
@@ -13,7 +16,7 @@ export type DocumentSourceAccess = {
   getDownloadName: () => string | null
   setDownloadName: (name: string | null) => void
   getStorageBinding: () => StorageDocumentBinding | null
-  setStorageBinding: (binding: StorageDocumentBinding | null) => void
+  setStorageBinding: (binding: StorageDocumentBindingInput | null) => void
   setSourceIdentity: (identity: DocumentSourceIdentity) => void
   getSourceRevision: () => number
   markSourceChanged: () => void

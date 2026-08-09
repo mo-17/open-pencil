@@ -7,6 +7,7 @@ import type {
   StorageProviderID,
   StorageProviderRegistration
 } from './types'
+import { DEFAULT_STORAGE_PROFILE_ID, requireStorageProfileID } from './types'
 
 export class StorageProviderRegistry {
   readonly #registrations: ReadonlyMap<StorageProviderID, StorageProviderRegistration>
@@ -31,10 +32,13 @@ export class StorageProviderRegistry {
   createAdapter(id: StorageProviderID, context: StorageAdapterContext): StorageAdapter {
     const registration = this.get(id)
     const credentialFields = new Set(registration.credentialFields.map((field) => field.id))
-    const profileId = context.profileId ?? 'default'
+    const profileId = requireStorageProfileID(context.profileId ?? DEFAULT_STORAGE_PROFILE_ID)
 
     return registration.createAdapter({
       preferences: context.preferences,
+      profileId,
+      credentialManager: context.credentialManager,
+      credentialResolver: context.credentials,
       resolveCredential(field: StorageFieldID) {
         if (!credentialFields.has(field)) {
           return Promise.reject(new Error(`Unknown credential field for ${id}: ${field}`))

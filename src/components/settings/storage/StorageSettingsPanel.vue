@@ -1,228 +1,481 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useClipboard } from '@vueuse/core'
+import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from '@open-pencil/vue'
 
 import {
+  activeStorageProfileID,
   activeStorageProviderID,
-  createActiveStorageAdapter,
+  copyStorageProfilePreferences,
+  createStorageProfile,
+  DEFAULT_STORAGE_PROFILE_ID,
+  deleteStorageProfile,
+  ensureS3StorageAuthority,
+  listStorageProfiles,
+  MAX_STORAGE_PROFILE_NAME_LENGTH,
+  MAX_STORAGE_PROFILES_PER_PROVIDER,
+  renameStorageProfile,
   readStoragePreferences,
-  storageCredentialStatuses,
-  storagePreferencesComplete,
+  S3_COMPATIBLE_STORAGE_PROVIDER_ID,
+  storageProviderPluginState,
   storageProviderRegistry,
-  writeStoragePreference
+  type StorageProfile,
+  type StorageProviderID
 } from '@/app/integrations/storage'
-import {
-  buildCorsConfigurationJson,
-  collectCloudCorsOrigins
-} from '@/app/integrations/storage/s3/cors'
-import { appCredentialServices } from '@/app/settings/credentials/app'
 import { settingsDialogOpen } from '@/app/settings/dialog'
-import { credentialRef } from '@/app/settings/credentials/reference'
-import type { CredentialStatus } from '@/app/settings/credentials/types'
-import { resumeStorageSync } from '@/app/storage/sync'
+import {
+  StorageDurabilityUnavailableError,
+  withDurableStorageProfileMutationDrain
+} from '@/app/storage/durability'
+import {
+  StorageProfileRemovalBlockedError,
+  storageProfileRemovalBlocked
+} from '@/app/storage/profile-removal'
+import { storageProfileHasOpenTabs } from '@/app/storage/mutation-drain'
+import { prepareS3LegacyMigration } from '@/app/storage/sync'
+import { getTabsSnapshot } from '@/app/tabs'
+import GoogleDriveStorageConnection from '@/components/settings/storage/GoogleDriveStorageConnection.vue'
+import S3CompatibleStorageSettings from '@/components/settings/storage/S3CompatibleStorageSettings.vue'
 import AppInput from '@/components/ui/AppInput.vue'
+
+type ProfileEditorMode = 'idle' | 'add' | 'rename' | 'delete'
+type ProfileSettingsHandle = { removeProfile(profileId: string): Promise<void> }
 
 const { dialogs } = useI18n()
 const router = useRouter()
-const { copy, copied } = useClipboard()
+const readiness = ref<Record<string, boolean>>({})
+const profileEditorMode = ref<ProfileEditorMode>('idle')
+const profileNameDraft = ref('')
+const profileActionBusy = ref(false)
+const profileError = ref<string | null>(null)
+const profileComponentGeneration = ref(0)
+const googleSettings = ref<ProfileSettingsHandle | null>(null)
+const s3Settings = ref<ProfileSettingsHandle | null>(null)
 const provider = computed(() => storageProviderRegistry.get(activeStorageProviderID.value))
-const preferenceDrafts = ref<Record<string, string>>({
-  ...readStoragePreferences(provider.value.id)
-})
-const credentialDrafts = ref<Record<string, string>>({})
-const credentialStatuses = ref<Record<string, CredentialStatus>>({})
-const busy = ref(false)
-const result = ref<{ ok: boolean; message: string } | null>(null)
-const configured = computed(
-  () =>
-    storagePreferencesComplete(provider.value.id) &&
-    provider.value.credentialFields.every(
-      (field) => !field.required || credentialStatuses.value[field.id] === 'configured'
-    )
+const activePluginState = computed(() => storageProviderPluginState(activeStorageProviderID.value))
+const providers = computed(() =>
+  storageProviderRegistry
+    .list()
+    .filter((item) => storageProviderPluginState(item.id) !== 'disabled')
 )
+const profiles = computed(() => listStorageProfiles(activeStorageProviderID.value))
+const activeProfile = computed(
+  () =>
+    profiles.value.find((profile) => profile.id === activeStorageProfileID.value) ??
+    profiles.value[0]
+)
+const readinessKey = (providerId: StorageProviderID, profileId: string) =>
+  JSON.stringify([providerId, profileId])
+const profileComponentKey = computed(() =>
+  JSON.stringify([
+    activeStorageProviderID.value,
+    activeStorageProfileID.value,
+    profileComponentGeneration.value
+  ])
+)
+const configured = computed(() => {
+  const key = readinessKey(activeStorageProviderID.value, activeStorageProfileID.value)
+  return activePluginState.value === 'enabled' && readiness.value[key] === true
+})
 
-function preferenceLabel(field: string): string {
-  if (field === 'endpoint') return dialogs.value.storageEndpoint
-  if (field === 'bucket') return dialogs.value.storageBucket
-  if (field === 'region') return dialogs.value.storageRegion
-  return field
+function providerDescription(providerId: StorageProviderID): string {
+  return providerId === 'google-drive'
+    ? dialogs.value.storageGoogleDriveProviderDescription
+    : dialogs.value.storageS3ProviderDescription
 }
 
-function credentialLabel(field: string): string {
-  if (field === 'access-key-id') return dialogs.value.storageAccessKeyID
-  if (field === 'secret-access-key') return dialogs.value.storageSecretAccessKey
-  return field
+function providerLabel(providerId: StorageProviderID): string {
+  return providerId === 'google-drive' ? 'Google Drive' : dialogs.value.storageS3ProviderName
 }
 
-async function refreshStatuses(): Promise<void> {
-  credentialStatuses.value = await storageCredentialStatuses(provider.value.id)
+function selectProvider(providerId: StorageProviderID): void {
+  activeStorageProviderID.value = providerId
 }
 
-function savePreferences(): void {
-  for (const field of provider.value.preferenceFields) {
-    writeStoragePreference(provider.value.id, field.id, preferenceDrafts.value[field.id] ?? '')
+function moveProviderSelection(event: KeyboardEvent, providerId: StorageProviderID): void {
+  const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight'
+  const vertical = event.key === 'ArrowUp' || event.key === 'ArrowDown'
+  if (!horizontal && !vertical && event.key !== 'Home' && event.key !== 'End') return
+  const items = providers.value
+  if (items.length === 0) return
+  event.preventDefault()
+  const currentIndex = Math.max(
+    0,
+    items.findIndex((item) => item.id === providerId)
+  )
+  let nextIndex: number
+  if (event.key === 'Home') nextIndex = 0
+  else if (event.key === 'End') nextIndex = items.length - 1
+  else {
+    const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1
+    nextIndex = (currentIndex + direction + items.length) % items.length
   }
-  void resumeStorageSync()
+  const next = items[nextIndex]
+  if (!next) return
+  selectProvider(next.id)
+  const group = (event.currentTarget as HTMLElement | null)?.parentElement
+  requestAnimationFrame(() => {
+    group?.querySelector<HTMLButtonElement>(`[data-provider-id="${CSS.escape(next.id)}"]`)?.focus()
+  })
 }
 
-async function saveCredential(field: string): Promise<void> {
-  const value = credentialDrafts.value[field]?.trim()
-  if (!value) return
-  await appCredentialServices.manager.set(credentialRef(provider.value.id, field), value)
-  credentialDrafts.value[field] = ''
-  await refreshStatuses()
-  await resumeStorageSync()
+function updateReadiness(providerId: StorageProviderID, ready: boolean): void {
+  const key = readinessKey(providerId, activeStorageProfileID.value)
+  readiness.value = { ...readiness.value, [key]: ready }
 }
 
-async function clearCredential(field: string): Promise<void> {
-  await appCredentialServices.manager.clear(credentialRef(provider.value.id, field))
-  credentialDrafts.value[field] = ''
-  await refreshStatuses()
+function updateS3Readiness(ready: boolean): void {
+  updateReadiness('s3-compatible', ready)
 }
 
 async function openWorkspace(): Promise<void> {
+  if (!configured.value) return
   settingsDialogOpen.value = false
   await router.push('/storage')
 }
 
-function copyCorsConfiguration(): void {
-  void copy(buildCorsConfigurationJson(collectCloudCorsOrigins()))
+function profileLabel(profile: StorageProfile): string {
+  return profile.id === DEFAULT_STORAGE_PROFILE_ID && profile.name === 'Default'
+    ? dialogs.value.storageDefaultProfile
+    : profile.name
 }
 
-async function testConnection(): Promise<void> {
-  busy.value = true
-  result.value = null
+function selectProfile(event: Event): void {
+  const profileId = (event.currentTarget as HTMLSelectElement).value
+  if (!profiles.value.some((profile) => profile.id === profileId)) return
+  activeStorageProfileID.value = profileId
+}
+
+function beginAddProfile(): void {
+  profileError.value = null
+  profileNameDraft.value = dialogs.value.storageNewProfileDefaultName({
+    count: profiles.value.length + 1
+  })
+  profileEditorMode.value = 'add'
+}
+
+function beginRenameProfile(): void {
+  if (!activeProfile.value) return
+  profileError.value = null
+  profileNameDraft.value = profileLabel(activeProfile.value)
+  profileEditorMode.value = 'rename'
+}
+
+function cancelProfileAction(): void {
+  if (profileActionBusy.value) return
+  profileEditorMode.value = 'idle'
+  profileNameDraft.value = ''
+  profileError.value = null
+}
+
+function saveProfile(): void {
   try {
-    savePreferences()
-    for (const field of provider.value.credentialFields) {
-      await saveCredential(field.id)
+    if (profileEditorMode.value === 'add') {
+      const providerId = activeStorageProviderID.value
+      const sourceProfileId = activeStorageProfileID.value
+      const created = createStorageProfile(providerId, profileNameDraft.value)
+      copyStorageProfilePreferences(providerId, sourceProfileId, created.id)
+    } else if (profileEditorMode.value === 'rename') {
+      renameStorageProfile(
+        activeStorageProviderID.value,
+        activeStorageProfileID.value,
+        profileNameDraft.value
+      )
+    } else {
+      return
     }
-    await resumeStorageSync()
-    result.value = await createActiveStorageAdapter(provider.value.id).testConnection()
-  } catch (error) {
-    result.value = {
-      ok: false,
-      message: error instanceof Error ? error.message : String(error)
-    }
-  } finally {
-    busy.value = false
+    profileEditorMode.value = 'idle'
+    profileNameDraft.value = ''
+    profileError.value = null
+  } catch {
+    profileError.value =
+      profiles.value.length >= MAX_STORAGE_PROFILES_PER_PROVIDER
+        ? dialogs.value.storageProfileLimitReached({
+            count: MAX_STORAGE_PROFILES_PER_PROVIDER
+          })
+        : dialogs.value.storageProfileActionFailed
   }
 }
 
-watch(activeStorageProviderID, (providerID) => {
-  preferenceDrafts.value = { ...readStoragePreferences(providerID) }
-  credentialDrafts.value = {}
-  result.value = null
-  void refreshStatuses()
+async function confirmDeleteProfile(): Promise<void> {
+  if (profileActionBusy.value) return
+  const providerId = activeStorageProviderID.value
+  const profileId = activeStorageProfileID.value
+  const handle = providerId === 'google-drive' ? googleSettings.value : s3Settings.value
+  if (!handle) {
+    profileError.value = dialogs.value.storageProfileActionFailed
+    return
+  }
+  profileActionBusy.value = true
+  profileError.value = null
+  try {
+    await withDurableStorageProfileMutationDrain({ providerId, profileId }, async () => {
+      if (
+        storageProfileHasOpenTabs(
+          { providerId, profileId },
+          getTabsSnapshot().map((tab) => tab.store)
+        )
+      ) {
+        profileError.value = dialogs.value.storageProfileDeleteBlockedByOpenDocuments
+        return
+      }
+      if (providerId === S3_COMPATIBLE_STORAGE_PROVIDER_ID) {
+        const legacy = await prepareS3LegacyMigration({
+          profileId,
+          authority: ensureS3StorageAuthority(profileId),
+          preferences: readStoragePreferences(providerId, profileId)
+        })
+        if (legacy.requiresConfirmation) {
+          profileError.value = dialogs.value.storageS3LegacyMigrationRequired
+          return
+        }
+      }
+      if (await storageProfileRemovalBlocked(providerId, profileId)) {
+        profileError.value = dialogs.value.storageProfileDeleteBlockedByUnsyncedWork
+        return
+      }
+      await handle.removeProfile(profileId)
+      deleteStorageProfile(providerId, profileId)
+      profileComponentGeneration.value++
+      const key = readinessKey(providerId, profileId)
+      readiness.value = Object.fromEntries(
+        Object.entries(readiness.value).filter(([candidate]) => candidate !== key)
+      )
+      profileEditorMode.value = 'idle'
+    })
+  } catch (error) {
+    if (error instanceof StorageDurabilityUnavailableError) {
+      profileError.value = dialogs.value.storageDurabilityUnavailable
+    } else if (error instanceof StorageProfileRemovalBlockedError) {
+      profileError.value = dialogs.value.storageProfileDeleteBlockedByUnsyncedWork
+    } else {
+      profileError.value = dialogs.value.storageProfileActionFailed
+    }
+  } finally {
+    profileActionBusy.value = false
+  }
+}
+
+watch([activeStorageProviderID, activeStorageProfileID], () => {
+  const key = readinessKey(activeStorageProviderID.value, activeStorageProfileID.value)
+  readiness.value = { ...readiness.value, [key]: false }
+  profileEditorMode.value = 'idle'
+  profileNameDraft.value = ''
+  profileError.value = null
 })
 
-onMounted(() => void refreshStatuses())
+watch(
+  providers,
+  (items) => {
+    if (!items.some((item) => item.id === activeStorageProviderID.value)) {
+      activeStorageProviderID.value = items[0]?.id ?? 's3-compatible'
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
-  <section class="flex flex-col gap-3" data-test-id="settings-storage-panel">
+  <section class="flex flex-col gap-4" data-test-id="settings-storage-panel">
     <div>
       <h3 class="text-xs font-semibold text-surface">{{ dialogs.settingsStorage }}</h3>
-      <p class="mt-0.5 text-[10px] text-muted">{{ provider.description }}</p>
+      <p class="mt-1 text-[10px] leading-4 text-muted">
+        {{ dialogs.storageProviderChoiceDescription }}
+      </p>
     </div>
 
-    <label
-      v-for="field in provider.preferenceFields"
-      :key="field.id"
-      class="flex flex-col gap-1 text-[10px] text-muted"
-    >
-      {{ preferenceLabel(field.id) }}
-      <AppInput
-        v-model="preferenceDrafts[field.id]"
-        :placeholder="field.placeholder"
-        size="sm"
-        tone="panel"
-        @change="savePreferences"
-      />
-    </label>
+    <div class="grid grid-cols-2 gap-2" role="radiogroup" :aria-label="dialogs.storageProvider">
+      <button
+        v-for="item in providers"
+        :key="item.id"
+        type="button"
+        role="radio"
+        class="relative rounded-lg border border-border bg-panel/30 p-3 text-left transition-colors hover:bg-hover data-[state=active]:border-accent/60 data-[state=active]:bg-accent/5"
+        :aria-checked="item.id === activeStorageProviderID"
+        :tabindex="item.id === activeStorageProviderID ? 0 : -1"
+        :data-provider-id="item.id"
+        :data-state="item.id === activeStorageProviderID ? 'active' : 'inactive'"
+        :data-test-id="`settings-storage-provider-${item.id}`"
+        @click="selectProvider(item.id)"
+        @keydown="moveProviderSelection($event, item.id)"
+      >
+        <div class="flex items-center gap-2">
+          <span
+            class="flex size-6 items-center justify-center rounded bg-hover text-muted data-[state=active]:bg-accent/15 data-[state=active]:text-accent"
+            :data-state="item.id === activeStorageProviderID ? 'active' : 'inactive'"
+          >
+            <icon-lucide-cloud v-if="item.id === 'google-drive'" class="size-3.5" />
+            <icon-lucide-server v-else class="size-3.5" />
+          </span>
+          <span class="text-[11px] font-medium text-surface">{{ providerLabel(item.id) }}</span>
+          <span
+            v-if="item.id === 'google-drive'"
+            class="ml-auto rounded-full bg-accent/10 px-1.5 py-0.5 text-[8px] font-medium text-accent"
+          >
+            {{ dialogs.storageRecommended }}
+          </span>
+        </div>
+        <p class="mt-2 text-[9px] leading-4 text-muted">
+          {{ providerDescription(item.id) }}
+        </p>
+      </button>
+    </div>
 
-    <div
-      v-for="field in provider.credentialFields"
-      :key="field.id"
-      class="flex flex-col gap-1"
-      :data-credential="field.id"
-    >
-      <label :for="`storage-${field.id}`" class="text-[10px] text-muted">
-        {{ credentialLabel(field.id) }}
-      </label>
-      <div class="flex gap-2">
-        <AppInput
-          :id="`storage-${field.id}`"
-          v-model="credentialDrafts[field.id]"
-          type="password"
-          :aria-label="credentialLabel(field.id)"
-          :placeholder="
-            credentialStatuses[field.id] === 'configured'
-              ? dialogs.keySavedReplace
-              : field.placeholder
-          "
-          size="sm"
-          tone="panel"
-          class="min-w-0 flex-1"
-          @enter="saveCredential(field.id)"
-        />
-        <button
-          v-if="credentialDrafts[field.id]?.trim()"
-          type="button"
-          class="rounded bg-hover px-2 text-[10px] text-surface hover:bg-active"
-          @click="saveCredential(field.id)"
+    <div class="rounded-lg border border-border bg-panel/30 p-3" data-test-id="storage-profiles">
+      <div class="flex items-center justify-between gap-2">
+        <label for="storage-profile-selector" class="text-[10px] font-medium text-surface">
+          {{ dialogs.storageProfiles }}
+        </label>
+        <span class="text-[9px] text-muted">
+          {{ profiles.length }}/{{ MAX_STORAGE_PROFILES_PER_PROVIDER }}
+        </span>
+      </div>
+      <div class="mt-2 flex gap-2">
+        <select
+          id="storage-profile-selector"
+          class="min-w-0 flex-1 rounded border border-border bg-panel-field px-2 py-1.5 text-[10px] text-surface outline-none focus:border-panel-focus"
+          :value="activeStorageProfileID"
+          :aria-label="dialogs.storageProfileSelector"
+          :disabled="profileActionBusy"
+          @change="selectProfile"
         >
-          {{ dialogs.save }}
+          <option v-for="profile in profiles" :key="profile.id" :value="profile.id">
+            {{ profileLabel(profile) }}
+          </option>
+        </select>
+        <button
+          type="button"
+          class="rounded bg-hover px-2 text-[10px] text-surface hover:bg-active disabled:opacity-50"
+          :disabled="profileActionBusy || profiles.length >= MAX_STORAGE_PROFILES_PER_PROVIDER"
+          @click="beginAddProfile"
+        >
+          {{ dialogs.storageAddProfile }}
         </button>
         <button
-          v-else-if="credentialStatuses[field.id] === 'configured'"
           type="button"
-          class="rounded px-2 text-[10px] text-muted hover:bg-hover hover:text-surface"
-          @click="clearCredential(field.id)"
+          class="rounded px-2 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
+          :disabled="profileActionBusy"
+          @click="beginRenameProfile"
         >
-          {{ dialogs.clear }}
+          {{ dialogs.storageRenameProfile }}
+        </button>
+        <button
+          type="button"
+          class="rounded px-2 text-[10px] text-danger hover:bg-danger/10 disabled:opacity-50"
+          :disabled="profileActionBusy || activePluginState !== 'enabled'"
+          @click="profileEditorMode = 'delete'"
+        >
+          {{ dialogs.storageDeleteProfile }}
         </button>
       </div>
+
+      <div
+        v-if="profileEditorMode === 'add' || profileEditorMode === 'rename'"
+        class="mt-3 flex items-end gap-2"
+      >
+        <label class="min-w-0 flex-1 text-[9px] text-muted">
+          {{ dialogs.storageProfileName }}
+          <AppInput
+            v-model="profileNameDraft"
+            class="mt-1"
+            size="sm"
+            tone="panel"
+            autofocus
+            :maxlength="MAX_STORAGE_PROFILE_NAME_LENGTH"
+            @enter="saveProfile"
+          />
+        </label>
+        <button
+          type="button"
+          class="rounded bg-accent px-2.5 py-1.5 text-[10px] font-medium text-white hover:bg-accent/90"
+          @click="saveProfile"
+        >
+          {{
+            profileEditorMode === 'add'
+              ? dialogs.storageCreateProfile
+              : dialogs.storageSaveProfileName
+          }}
+        </button>
+        <button
+          type="button"
+          class="rounded px-2.5 py-1.5 text-[10px] text-muted hover:bg-hover"
+          @click="cancelProfileAction"
+        >
+          {{ dialogs.cancel }}
+        </button>
+      </div>
+
+      <div
+        v-else-if="profileEditorMode === 'delete'"
+        class="mt-3 rounded border border-warning/30 bg-warning/10 p-2.5"
+        role="alert"
+      >
+        <p class="text-[10px] font-medium text-surface">
+          {{
+            dialogs.storageDeleteProfileConfirm({
+              name: activeProfile ? profileLabel(activeProfile) : activeStorageProfileID
+            })
+          }}
+        </p>
+        <p class="mt-1 text-[9px] leading-4 text-muted">
+          {{ dialogs.storageDeleteProfileWarning }}
+        </p>
+        <div class="mt-2 flex gap-2">
+          <button
+            type="button"
+            class="rounded bg-danger px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
+            :disabled="profileActionBusy"
+            @click="confirmDeleteProfile"
+          >
+            {{ profileActionBusy ? dialogs.storageDeletingProfile : dialogs.storageDeleteProfile }}
+          </button>
+          <button
+            type="button"
+            class="rounded px-2.5 py-1 text-[10px] text-muted hover:bg-hover"
+            :disabled="profileActionBusy"
+            @click="cancelProfileAction"
+          >
+            {{ dialogs.cancel }}
+          </button>
+        </div>
+      </div>
+      <p v-if="profileError" class="mt-2 text-[9px] text-danger" role="alert">
+        {{ profileError }}
+      </p>
     </div>
 
-    <button
-      type="button"
-      class="mt-1 rounded bg-accent px-3 py-1.5 text-[11px] font-medium text-white hover:bg-accent/90 disabled:opacity-50"
-      :disabled="busy"
-      data-test-id="settings-storage-test"
-      @click="testConnection"
+    <div class="h-px bg-border/70" />
+
+    <div
+      v-if="activePluginState === 'loading'"
+      class="flex items-center gap-2 rounded border border-border bg-panel/40 px-3 py-2 text-[10px] text-muted"
+      role="status"
+      aria-live="polite"
     >
-      {{ dialogs.testConnection }}
-    </button>
+      <icon-lucide-loader-circle class="size-3 animate-spin" />
+      {{ dialogs.storageCheckingConnection }}
+    </div>
+    <GoogleDriveStorageConnection
+      v-else-if="provider.id === 'google-drive'"
+      :key="profileComponentKey"
+      ref="googleSettings"
+      @ready="updateReadiness"
+    />
+    <S3CompatibleStorageSettings
+      v-else
+      :key="profileComponentKey"
+      ref="s3Settings"
+      @ready="updateS3Readiness"
+    />
 
     <button
-      v-if="provider.id === 's3-compatible'"
       type="button"
-      class="rounded px-3 py-1.5 text-[11px] text-muted hover:bg-hover hover:text-surface"
-      @click="copyCorsConfiguration"
-    >
-      {{ copied ? dialogs.copied : dialogs.copyStorageCors }}
-    </button>
-
-    <button
-      type="button"
-      class="rounded border border-border px-3 py-1.5 text-[11px] font-medium text-surface hover:bg-hover disabled:text-muted disabled:opacity-50"
+      class="rounded border border-border px-3 py-2 text-[11px] font-medium text-surface hover:bg-hover disabled:text-muted disabled:opacity-50"
       :disabled="!configured"
       data-test-id="settings-storage-open-workspace"
       @click="openWorkspace"
     >
       {{ dialogs.openStorageWorkspace }}
     </button>
-
-    <p
-      v-if="result"
-      class="rounded border border-border bg-panel px-2 py-1.5 text-[10px] text-muted data-[state=success]:text-success data-[state=error]:text-danger"
-      :data-state="result.ok ? 'success' : 'error'"
-      role="status"
-    >
-      {{ result.message }}
-    </p>
   </section>
 </template>

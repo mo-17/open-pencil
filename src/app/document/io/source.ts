@@ -10,7 +10,10 @@ import {
 import { createSaveActions } from '@/app/document/io/save'
 import { createDocumentSourceState } from '@/app/document/io/source-state'
 import type { DocumentSourceAccess } from '@/app/document/io/types'
-import type { StorageDocumentBinding } from '@/app/integrations/storage/types'
+import {
+  resolveStorageDocumentBinding,
+  type StorageDocumentBindingInput
+} from '@/app/integrations/storage/types'
 
 type DocumentSourceState = EditorState & {
   documentName: string
@@ -107,13 +110,13 @@ export function createDocumentSourceActions({
     }
   }
 
-  function setStorageDocumentSource(binding: StorageDocumentBinding, documentName: string) {
+  function setStorageDocumentSource(binding: StorageDocumentBindingInput, documentName: string) {
     stopWatchingFile()
     setFileHandle(null)
     setFilePath(null)
     setDownloadName(`${documentName}.fig`)
     setSourceIdentity({ handle: null, path: null })
-    setStorageBinding(binding)
+    setStorageBinding(resolveStorageDocumentBinding(binding))
     state.documentName = documentName
     state.autosaveEnabled = true
     markSourceChanged()

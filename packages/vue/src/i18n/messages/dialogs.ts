@@ -389,7 +389,7 @@ export const dialogMessageDefaults = {
   pluginDisabledHint:
     'Enable this plugin to add new modules. Existing modules remain unchanged when it is disabled.',
   pluginNoModules: 'This plugin does not contribute any modules.',
-  pluginNoCompatibleModules: 'No compatible modules',
+  pluginNoCompatibleContributions: 'No compatible contributions',
   pluginAdapterCompatible: 'Host adapter compatible',
   pluginAdapterUntrusted: 'Adapter not trusted by this app',
   pluginAdapterPluginIdentityMismatch: 'Adapter is not authorized for this plugin',
@@ -440,6 +440,164 @@ export const dialogMessageDefaults = {
     'Send image layers to Recraft or fal.ai and return editable vectors. Provider charges may apply.',
   vectorizeProvider: 'Vectorization service',
   settingsStorage: 'Cloud storage',
+  storageProvider: 'Storage provider',
+  storageProviderChoiceDescription:
+    'Connect Google Drive for the smoothest personal-cloud workflow, or use an S3-compatible service for advanced control.',
+  storageRecommended: 'Recommended',
+  storageGoogleDriveProviderDescription: 'One-click personal cloud with your Google account.',
+  storageS3ProviderName: 'S3-compatible storage',
+  storageS3ProviderDescription: 'Bring your own S3, R2, B2, or MinIO bucket.',
+  storageS3AdvancedTitle: 'Advanced S3-compatible storage',
+  storageS3AdvancedDescription:
+    'For teams that manage their own bucket, endpoint, access policy, and CORS configuration.',
+  storageConnected: 'Connected',
+  storageCheckConnection: 'Check connection',
+  storageCheckingConnection: 'Checking…',
+  storageGoogleDriveConnect: 'Connect Google Drive',
+  storageGoogleDriveReconnect: 'Reconnect',
+  storageGoogleDriveReconnectWorkTitle: 'Recover pending work before reconnecting?',
+  storageGoogleDriveReconnectWorkDescription: params(
+    'This account has {documents} unfinished documents and {jobs} queued operations. Confirm to reconnect and move them to the new authorization.'
+  ),
+  storageGoogleDriveReconnectWorkConfirm: params('Reconnect and recover {count} items'),
+  storageGoogleDriveDisconnect: 'Disconnect',
+  storageGoogleDriveDisconnectBlockedByUnsyncedWork:
+    'This account still has unsynced, conflicted, or pending-deletion files. Finish syncing and resolve conflicts before disconnecting it.',
+  storageGoogleDriveAuthorizationBlockedByOpenDocuments:
+    'Close every open document from this Google Drive account before reconnecting, repairing, or disconnecting it.',
+  storageGoogleDriveWaitingForBrowser: 'Waiting for Google…',
+  storageGoogleDriveConnectedAs: params('Connected as {account}'),
+  storageGoogleDriveNotConnected: 'Google Drive is not connected',
+  storageGoogleDriveSetupRequired: 'Google Drive needs an OAuth client ID',
+  storageGoogleDriveConnectDescription:
+    'A system-browser sign-in gives OpenPencil access only to files it creates or you explicitly open.',
+  storageGoogleDriveConnectedDetail:
+    'Your documents stay visible in Google Drive. Changes are cached locally and uploaded safely in the background.',
+  storageGoogleDriveDesktopOnly: 'Google Drive requires the desktop app',
+  storageGoogleDriveDesktopOnlyDetail:
+    'Use the OpenPencil desktop app for secure system-browser sign-in and background token refresh.',
+  storageGoogleDriveCredentialLocked: 'System credential store is locked',
+  storageGoogleDriveCredentialLockedDetail:
+    'Unlock your device credential store, then try again. OpenPencil will not fall back to plaintext storage.',
+  storageGoogleDriveCredentialUnavailable: 'System credential store is unavailable',
+  storageGoogleDriveCredentialUnavailableDetail:
+    'Google Drive remains disconnected until secure credential storage is available.',
+  storageGoogleDriveConnectionNeedsRepair: 'Google Drive connection needs repair',
+  storageGoogleDriveConnectionNeedsRepairDetail:
+    'The saved account metadata and credential no longer match. Remove the local connection, then connect again.',
+  storageGoogleDriveConnectedSuccess: 'Google Drive connected. Cloud sync is ready.',
+  storageGoogleDriveConnectionHealthy: 'Google Drive connection is healthy.',
+  storageGoogleDriveVerificationFailed:
+    'The account is connected, but OpenPencil could not verify Drive access. Check your connection and try again.',
+  storageGoogleDriveCancelled: 'Google Drive connection was cancelled.',
+  storageGoogleDriveDifferentAccount:
+    'This profile belongs to another Google account. Use a different storage profile to connect that account.',
+  storageGoogleDriveOperationFailed: 'Google Drive could not complete the operation. Try again.',
+  storageGoogleDriveRevokeFailed:
+    'Google could not confirm revocation, so the saved connection was kept. Retry, or remove it from this device only.',
+  storageGoogleDriveLocalOnlyWarning:
+    'Removing locally deletes the saved credential from this device but may leave the Google grant active. You can revoke it later in your Google Account.',
+  storageGoogleDriveRemoveFromDevice: 'Remove from this device only',
+  storageGoogleDriveRemovedLocally: 'Google Drive was removed from this device.',
+  storageGoogleDriveDisconnected: 'Google Drive was disconnected and its grant was revoked.',
+  storageGoogleDriveStaleWorkDescription: params(
+    'Found {count} local items still bound to an earlier authorization for this account. Repair them before disconnecting.'
+  ),
+  storageGoogleDriveRepairAuthorizationWork: params('Repair {count} items'),
+  storageGoogleDriveAuthorizationWorkRecovered:
+    'Pending storage work was safely moved to the current authorization.',
+  storageGoogleDriveAuthorizationWorkRepairFailed:
+    'The account is connected, but pending work still needs repair. Keep it connected and try repair again.',
+  storageGoogleDriveAdvanced: 'Advanced setup',
+  storageGoogleDriveClientID: 'Google OAuth client ID',
+  storageGoogleDriveClientIDHint:
+    'Public desktop OAuth configuration. Production builds should provide VITE_GOOGLE_DRIVE_CLIENT_ID; no client secret is stored here.',
+  storageProfileID: params('Storage profile: {profile}'),
+  storageProfiles: 'Accounts and profiles',
+  storageProfileSelector: 'Active storage profile',
+  storageAddProfile: 'Add',
+  storageRenameProfile: 'Rename',
+  storageDeleteProfile: 'Delete',
+  storageProfileName: 'Profile name',
+  storageDefaultProfile: 'Default account',
+  storageNewProfileDefaultName: params('Account {count}'),
+  storageCreateProfile: 'Create',
+  storageSaveProfileName: 'Save name',
+  storageDeleteProfileConfirm: params('Delete {name}?'),
+  storageDeleteProfileWarning:
+    'Only this profile’s saved connection and settings are removed. Other accounts are untouched; cached documents stay on this device.',
+  storageDeletingProfile: 'Deleting…',
+  storageProfileActionFailed: 'The storage profile could not be updated. Try again.',
+  storageProfileDeleteBlockedByUnsyncedWork:
+    'This account still has unsynced, conflicted, or pending-deletion files. Finish syncing and resolve conflicts before deleting it.',
+  storageProfileDeleteBlockedByOpenDocuments:
+    'Close every document open from this storage profile before deleting it.',
+  storageS3MutationBlockedByUnsyncedWork:
+    'This profile has unsynced, conflicted, or pending-deletion files. Finish syncing and resolve conflicts before changing its S3 destination or credentials, or create a new profile.',
+  storageS3MutationBlockedByOpenDocuments:
+    'Close every document open from this S3 profile before changing its destination or credentials, or create a new profile.',
+  storageS3LegacyMigrationTitle: 'Review legacy S3 work',
+  storageS3LegacyMigrationDescription: params(
+    'Found {documents} cached document(s) and {jobs} queued operation(s) from an earlier OpenPencil version. Confirm that they belong to the destination below before migrating them.'
+  ),
+  storageS3LegacyMigrationTarget: params('Endpoint: {endpoint} · Bucket: {bucket}'),
+  storageS3LegacyMigrationRequired:
+    'Review and migrate the legacy S3 work shown above before changing this profile or connecting to its bucket.',
+  storageS3LegacyMigrationConfirm: 'Confirm destination and migrate',
+  storageS3LegacyMigrationMigrating: 'Migrating…',
+  storageS3LegacyMigrationComplete: 'Legacy S3 work was safely migrated.',
+  storageS3LegacyMigrationFailed:
+    'Legacy S3 work could not be migrated safely. Check the destination, close its documents, and try again.',
+  storageProfileLimitReached: params('You can keep up to {count} profiles for each provider.'),
+  storageConnectionReady: 'Connected. The storage workspace is ready.',
+  storageConnectionFailed:
+    'The connection could not be verified. Check the settings and try again.',
+  storageS3CorsFailure:
+    'The browser could not reach this bucket. Apply the generated CORS configuration, then try again.',
+  storageOperationCancelled: 'The storage operation was cancelled.',
+  storageStatusSynced: 'Synced',
+  storageStatusPending: 'Waiting to sync',
+  storageStatusError: 'Sync needs attention',
+  storageStatusConflict: 'Conflict preserved',
+  storageUploadingPercent: params('Uploading {percent}%'),
+  storageSyncOffline: 'Offline · changes stay on this device',
+  storageSyncNeedsAttention: 'Sync needs attention',
+  storageSyncingCount: params('Syncing {count} item(s)'),
+  storageCreatingDocument: 'Creating…',
+  storageDeleteDocumentButton: params('Delete {name}'),
+  storageDeleteDocumentTitle: params('Delete {name}?'),
+  storageDeleteDocumentDriveDescription:
+    'OpenPencil will hide this document now and move it to Google Drive trash when synchronization runs. You can restore it from Drive trash.',
+  storageDeleteDocumentPermanentDescription: params(
+    'OpenPencil will hide this document now and permanently delete it from {provider} when synchronization runs.'
+  ),
+  storageDeleteDocumentOpenWarning:
+    'Close this document’s editor tab before deleting it so unsaved edits are not discarded.',
+  storageDeleteDocumentOfflineNote:
+    'The delete intent is saved on this device first. If you are offline, synchronization resumes automatically later.',
+  storageDeletingDocument: 'Deleting…',
+  storageMoveDocumentToTrash: 'Move to trash',
+  storageDeleteDocument: 'Delete permanently',
+  storageDeleteDocumentQueued: 'Deletion queued. It will finish in the background.',
+  storageDeleteDocumentRecoveryPending:
+    'Deletion was saved on this device and will resume automatically.',
+  storageDeleteDocumentFailed:
+    'The document could not be prepared for deletion. Refresh and try again.',
+  storageConflictCount: params(
+    '{count} document(s) have a preserved conflict copy. Open the document to review it.'
+  ),
+  storageLocalFirstHint: 'Documents open from the local cache while cloud changes refresh quietly.',
+  storageDurabilityUnavailable:
+    'Durable browser storage is unavailable, so cloud editing is paused and no cloud document was changed. Continue with local .fig files and use Save As or Export.',
+  storageContinueLocally: 'Continue with local files',
+  storageGoogleDriveReconnectRequired: 'Reconnect Google Drive to continue syncing.',
+  storageGoogleDrivePermissionDenied:
+    'Google Drive denied access to this file. Check the account and file permissions.',
+  storageGoogleDriveRateLimited: 'Google Drive is busy. OpenPencil will retry shortly.',
+  storageTemporaryNetworkError:
+    'The cloud service is temporarily unavailable. Your local documents are safe.',
+  storageDocumentTooLarge: 'This document exceeds the configured cloud transfer limit.',
+  storageWorkspaceLoadFailed: 'The cloud workspace could not be refreshed. Try again.',
   storageWorkspace: 'Storage workspace',
   openStorageWorkspace: 'Open workspace',
   newStoredDocument: 'New document',

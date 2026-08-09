@@ -592,8 +592,23 @@ describe('lowcode deploy history', () => {
       providerId: 'second-provider',
       documentId: 'shared-document'
     })
+    const firstAccount = deployDocumentScope({
+      kind: 'storage',
+      providerId: 'google-drive',
+      profileId: 'default',
+      accountId: 'google-sub-1',
+      documentId: 'shared-document'
+    })
+    const secondAccount = deployDocumentScope({
+      kind: 'storage',
+      providerId: 'google-drive',
+      profileId: 'default',
+      accountId: 'google-sub-2',
+      documentId: 'shared-document'
+    })
 
     expect(new Set([path, firstStorage, secondStorage]).size).toBe(3)
+    expect(firstAccount).not.toBe(secondAccount)
     expect(deployDocumentScope({ kind: 'path', path: '   ' })).toBeUndefined()
     expect(
       deployDocumentScope({ kind: 'storage', providerId: '   ', documentId: 'document' })

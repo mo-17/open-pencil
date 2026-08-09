@@ -16,6 +16,7 @@ import type {
   AISessionStore
 } from '@/app/ai/sessions'
 import type { getActiveEditorStore } from '@/app/editor/active-store'
+import { DEFAULT_STORAGE_PROFILE_ID } from '@/app/integrations/storage/types'
 
 type EditorStore = ReturnType<typeof getActiveEditorStore>
 
@@ -57,7 +58,16 @@ export type ACPDocumentIdentityTransition = 'unchanged' | 'preserved' | 'new-doc
 function documentIdentity(store: EditorStore): DocumentIdentity {
   const binding = store.getStorageBinding()
   const alias = binding
-    ? storageDocumentAlias(binding.providerId, binding.documentId)
+    ? storageDocumentAlias(
+        binding.providerId,
+        binding.documentId,
+        binding.profileId === DEFAULT_STORAGE_PROFILE_ID && !binding.authority
+          ? undefined
+          : {
+              profileId: binding.profileId,
+              ...(binding.authority ? { accountId: binding.authority.accountId } : {})
+            }
+      )
     : (() => {
         const path = store.getSourceIdentity().path
         return path ? pathDocumentAlias(path) : null

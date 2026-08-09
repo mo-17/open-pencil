@@ -1,7 +1,17 @@
 import { AwsClient } from 'aws4fetch'
 
 import { storageFetch } from '@/app/integrations/storage/s3/fetch'
+import {
+  S3_RANGE_CHUNK_BYTES,
+  downloadS3ObjectByRange,
+  type S3RangeRequest
+} from '@/app/integrations/storage/s3/range-download'
 import { inferS3Region } from '@/app/integrations/storage/s3/region'
+import {
+  S3_RESPONSE_LIMITS,
+  assertS3ListObjectsXml,
+  assertS3ListPagination
+} from '@/app/integrations/storage/s3/response'
 import type { S3CompatibleConfig } from '@/app/integrations/storage/s3/types'
 import {
   parseListObjectsV2Page,
@@ -83,23 +93,65 @@ function xhrSend(
   method: string,
   headers: Headers,
   body: BodyInit | undefined,
-  onUploadProgress: (progress: UploadProgress) => void
+  onUploadProgress: (progress: UploadProgress) => void,
+  maxResponseBytes: number,
+  signal?: AbortSignal | null
 ): Promise<Response> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
+    let settled = false
+    const cleanup = () => signal?.removeEventListener('abort', abort)
+    const rejectOnce = (error: unknown) => {
+      if (settled) return
+      settled = true
+      cleanup()
+      reject(error instanceof Error ? error : new Error('S3 request failed', { cause: error }))
+    }
+    const abort = () => {
+      xhr.abort()
+      const reason = signal?.reason
+      rejectOnce(
+        reason instanceof Error
+          ? reason
+          : new DOMException('The operation was aborted', 'AbortError')
+      )
+    }
+    if (signal?.aborted) {
+      abort()
+      return
+    }
+    signal?.addEventListener('abort', abort, { once: true })
     xhr.open(method, url)
     headers.forEach((value, key) => {
       // Forbidden request headers are set by the browser itself
       if (/^(content-length|host)$/i.test(key)) return
       xhr.setRequestHeader(key, value)
     })
-    xhr.responseType = 'text'
+    xhr.responseType = 'arraybuffer'
     xhr.upload.onprogress = (e) => {
       onUploadProgress({ sentBytes: e.loaded, totalBytes: e.lengthComputable ? e.total : null })
     }
-    xhr.onload = () => resolve(new Response(xhr.responseText, { status: xhr.status }))
+    xhr.onprogress = (event) => {
+      if (event.loaded <= maxResponseBytes) return
+      rejectOnce(new Error(`S3 response exceeds the ${maxResponseBytes}-byte limit`))
+      xhr.abort()
+    }
+    xhr.onload = () => {
+      if (settled) return
+      settled = true
+      cleanup()
+      const bytes = xhr.response instanceof ArrayBuffer ? xhr.response : new ArrayBuffer(0)
+      if (bytes.byteLength > maxResponseBytes) {
+        reject(new Error(`S3 response exceeds the ${maxResponseBytes}-byte limit`))
+        return
+      }
+      resolve(new Response(bytes.byteLength > 0 ? bytes : null, { status: xhr.status }))
+    }
     // Same shape the fetch path throws so CORS/network detection keeps working
-    xhr.onerror = () => reject(new TypeError('Failed to fetch'))
+    xhr.onerror = () => {
+      rejectOnce(new TypeError('Failed to fetch'))
+    }
+    xhr.onabort = cleanup
     xhr.send(body as XMLHttpRequestBodyInit)
   })
 }
@@ -108,7 +160,8 @@ export async function s3Request(
   config: S3CompatibleConfig,
   url: string,
   init: RequestInit = {},
-  onUploadProgress?: (progress: UploadProgress) => void
+  onUploadProgress?: (progress: UploadProgress) => void,
+  maxResponseBytes: number = S3_RESPONSE_LIMITS.metadataBytes
 ): Promise<Response> {
   const client = createAwsClient(config)
   const length = bodyByteLength(init.body ?? null)
@@ -134,15 +187,23 @@ export async function s3Request(
         signed.method,
         signed.headers,
         init.body ?? undefined,
-        onUploadProgress
+        onUploadProgress,
+        maxResponseBytes,
+        init.signal
       )
     } else {
-      res = await storageFetch(signed.url, {
-        method: signed.method,
-        headers: signed.headers,
-        body: init.body ?? undefined,
-        credentials: 'omit'
-      })
+      res = await storageFetch(
+        signed.url,
+        {
+          method: signed.method,
+          headers: signed.headers,
+          body: init.body ?? undefined,
+          credentials: 'omit',
+          signal: init.signal
+        },
+        maxResponseBytes,
+        S3_RESPONSE_LIMITS.errorBytes
+      )
     }
   } catch (error) {
     // Re-export as a typed error so UI can detect CORS/network blocks.
@@ -153,13 +214,27 @@ export async function s3Request(
     }
     throw error
   }
-  if (res.ok || res.status === 404) return res
+  if (res.status === 404) {
+    await res.body?.cancel().catch(() => undefined)
+    return res
+  }
+  if (res.ok) return res
   const { message, code } = await readErrorBody(res)
   throw new S3HttpError(res.status, message, code)
 }
 
-export async function headObject(config: S3CompatibleConfig, key: string): Promise<boolean> {
-  const res = await s3Request(config, objectUrl(config, key), { method: 'HEAD' })
+export async function headObject(
+  config: S3CompatibleConfig,
+  key: string,
+  signal?: AbortSignal
+): Promise<boolean> {
+  const res = await s3Request(
+    config,
+    objectUrl(config, key),
+    { method: 'HEAD', signal },
+    undefined,
+    S3_RESPONSE_LIMITS.metadataBytes
+  )
   if (res.status === 404) return false
   return true
 }
@@ -169,7 +244,8 @@ export async function putObject(
   key: string,
   body: Uint8Array | string,
   contentType: string,
-  onUploadProgress?: (progress: UploadProgress) => void
+  onUploadProgress?: (progress: UploadProgress) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   const bytes = typeof body === 'string' ? new TextEncoder().encode(body) : body
   // Exact ArrayBuffer so fetch/UA can set Content-Length (required by B2 for large PUTs).
@@ -185,23 +261,61 @@ export async function putObject(
       headers: {
         'Content-Type': contentType
       },
-      body: payload
+      body: payload,
+      signal
     },
-    onUploadProgress
+    onUploadProgress,
+    S3_RESPONSE_LIMITS.metadataBytes
   )
   if (!res.ok) {
+    await res.body?.cancel().catch(() => undefined)
     throw new S3HttpError(res.status, `Failed to upload ${key}`)
   }
+  await res.body?.cancel().catch(() => undefined)
 }
 
 export type DownloadProgress = { receivedBytes: number; totalBytes: number | null }
 
+export function s3ObjectResponseLimit(key: string): number {
+  if (key.endsWith('.fig')) return S3_RESPONSE_LIMITS.documentBytes
+  if (key.endsWith('.thumb.jpg')) return S3_RESPONSE_LIMITS.thumbnailBytes
+  return S3_RESPONSE_LIMITS.metadataBytes
+}
+
 export async function getObject(
   config: S3CompatibleConfig,
   key: string,
-  onProgress?: (progress: DownloadProgress) => void
+  onProgress?: (progress: DownloadProgress) => void,
+  signal?: AbortSignal
 ): Promise<Uint8Array | null> {
-  const res = await s3Request(config, objectUrl(config, key), { method: 'GET' })
+  const maxResponseBytes = s3ObjectResponseLimit(key)
+  const url = objectUrl(config, key)
+  if (maxResponseBytes === S3_RESPONSE_LIMITS.documentBytes) {
+    return downloadS3ObjectByRange(
+      (range: S3RangeRequest) => {
+        const headers = new Headers({
+          Range: `bytes=${range.start}-${range.endInclusive}`
+        })
+        if (range.ifMatch) headers.set('If-Match', range.ifMatch)
+        return s3Request(
+          config,
+          url,
+          { method: 'GET', headers, signal: range.signal },
+          undefined,
+          S3_RANGE_CHUNK_BYTES
+        )
+      },
+      {
+        signal,
+        onProgress: onProgress
+          ? (receivedBytes, totalBytes) => onProgress({ receivedBytes, totalBytes })
+          : undefined,
+        maxBytes: maxResponseBytes,
+        chunkBytes: S3_RANGE_CHUNK_BYTES
+      }
+    )
+  }
+  const res = await s3Request(config, url, { method: 'GET', signal }, undefined, maxResponseBytes)
   if (res.status === 404) return null
   if (!onProgress || !res.body) {
     return new Uint8Array(await res.arrayBuffer())
@@ -214,6 +328,7 @@ export async function getObject(
   const chunks: Uint8Array[] = []
   let receivedBytes = 0
   for (;;) {
+    signal?.throwIfAborted()
     const { done, value } = await reader.read()
     if (done) break
     chunks.push(value)
@@ -229,8 +344,19 @@ export async function getObject(
   return out
 }
 
-export async function deleteObject(config: S3CompatibleConfig, key: string): Promise<void> {
-  const res = await s3Request(config, objectUrl(config, key), { method: 'DELETE' })
+export async function deleteObject(
+  config: S3CompatibleConfig,
+  key: string,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await s3Request(
+    config,
+    objectUrl(config, key),
+    { method: 'DELETE', signal },
+    undefined,
+    S3_RESPONSE_LIMITS.metadataBytes
+  )
+  await res.body?.cancel().catch(() => undefined)
   if (!res.ok && res.status !== 404) {
     throw new S3HttpError(res.status, `Failed to delete ${key}`)
   }
@@ -238,13 +364,15 @@ export async function deleteObject(config: S3CompatibleConfig, key: string): Pro
 
 export async function listObjects(
   config: S3CompatibleConfig,
-  prefix: string
+  prefix: string,
+  signal?: AbortSignal
 ): Promise<ListedObject[]> {
   const base = normalizeEndpoint(config.endpoint)
   const all: ListedObject[] = []
   let continuationToken: string | null = null
 
   for (let page = 0; page < 50; page++) {
+    signal?.throwIfAborted()
     const params = new URLSearchParams({
       'list-type': '2',
       prefix,
@@ -252,14 +380,22 @@ export async function listObjects(
     })
     if (continuationToken) params.set('continuation-token', continuationToken)
     const url = `${base}/${encodeURIComponent(config.bucket)}?${params.toString()}`
-    const res = await s3Request(config, url, { method: 'GET' })
+    const res = await s3Request(
+      config,
+      url,
+      { method: 'GET', signal },
+      undefined,
+      S3_RESPONSE_LIMITS.listBytes
+    )
     if (!res.ok) {
       throw new S3HttpError(res.status, 'Failed to list objects')
     }
     const xml = await res.text()
+    assertS3ListObjectsXml(xml)
     const parsed = parseListObjectsV2Page(xml)
     all.push(...parsed.objects)
-    if (!parsed.isTruncated || !parsed.nextContinuationToken) break
+    assertS3ListPagination(parsed.isTruncated, parsed.nextContinuationToken)
+    if (!parsed.isTruncated) break
     if (page === 49) {
       throw new Error('S3 listing exceeded the 50,000-object safety limit')
     }

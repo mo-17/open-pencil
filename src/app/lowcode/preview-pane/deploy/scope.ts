@@ -1,4 +1,5 @@
 import type { EditorStore } from '@/app/editor/session'
+import { DEFAULT_STORAGE_PROFILE_ID } from '@/app/integrations/storage/types'
 
 import { deployDocumentScope } from './history'
 
@@ -21,6 +22,12 @@ export function deployScopeForStore(store: EditorStore): string | undefined {
     return deployDocumentScope({
       kind: 'storage',
       providerId: binding.providerId,
+      ...(binding.profileId === DEFAULT_STORAGE_PROFILE_ID && !binding.authority
+        ? {}
+        : {
+            profileId: binding.profileId,
+            ...(binding.authority ? { accountId: binding.authority.accountId } : {})
+          }),
       documentId: binding.documentId
     })
   }

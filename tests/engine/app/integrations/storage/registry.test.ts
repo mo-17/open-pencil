@@ -9,7 +9,19 @@ import {
 } from '@/app/integrations/storage'
 import { appCredentialRefs } from '@/app/settings/credentials/persistence'
 import { credentialKey } from '@/app/settings/credentials/reference'
-import type { CredentialRef, CredentialResolver } from '@/app/settings/credentials/types'
+import type {
+  CredentialManager,
+  CredentialRef,
+  CredentialResolver
+} from '@/app/settings/credentials/types'
+
+const credentialManager: CredentialManager = {
+  backend: 'memory',
+  availability: () => Promise.resolve('available'),
+  status: () => Promise.resolve('missing'),
+  set: () => Promise.resolve(),
+  clear: () => Promise.resolve()
+}
 
 class TestStorageAdapter implements StorageAdapter {
   constructor(private readonly runtime: StorageProviderRuntime) {}
@@ -24,11 +36,15 @@ class TestStorageAdapter implements StorageAdapter {
   }
 
   getDocument() {
-    return Promise.resolve(new Uint8Array())
+    return Promise.resolve({
+      bytes: new Uint8Array(),
+      metadata: { name: 'Test', updatedAt: new Date(0).toISOString() },
+      remoteRevision: null
+    })
   }
 
   putDocument() {
-    return Promise.resolve()
+    return Promise.resolve({ outcome: 'updated' as const, remoteRevision: null })
   }
 
   deleteDocument() {
@@ -69,6 +85,14 @@ describe('storage provider registry', () => {
     )
   })
 
+  test('registers Google Drive as a reviewed OAuth provider without secret fields', () => {
+    const provider = storageProviderRegistry.get('google-drive')
+
+    expect(provider.preferenceFields.map((field) => field.id)).toEqual(['client-id'])
+    expect(provider.credentialFields).toEqual([])
+    expect(provider.description).toContain('Google Drive')
+  })
+
   test('lists provider schemas without resolving credentials', () => {
     let resolutionCount = 0
     const credentials: CredentialResolver = {
@@ -82,7 +106,8 @@ describe('storage provider registry', () => {
     expect(registry.list().map((provider) => provider.id)).toEqual(['test-storage'])
     const adapter = registry.createAdapter('test-storage', {
       preferences: { endpoint: 'https://storage.example.com' },
-      credentials
+      credentials,
+      credentialManager
     })
 
     expect(resolutionCount).toBe(0)
@@ -101,6 +126,7 @@ describe('storage provider registry', () => {
     const adapter = registry.createAdapter('test-storage', {
       preferences: { endpoint: 'https://storage.example.com' },
       credentials,
+      credentialManager,
       profileId: 'work'
     })
 
@@ -126,7 +152,8 @@ describe('storage provider registry', () => {
     const registry = new StorageProviderRegistry([invalidProvider])
     const adapter = registry.createAdapter('test-storage', {
       preferences: {},
-      credentials: { resolve: () => Promise.resolve('secret-value') }
+      credentials: { resolve: () => Promise.resolve('secret-value') },
+      credentialManager
     })
 
     await expect(adapter.testConnection()).rejects.toThrow(

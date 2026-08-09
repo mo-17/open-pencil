@@ -11,7 +11,13 @@ export type AIDocumentScopeId = `ai-doc-${string}`
 
 export type AIDocumentAlias =
   | Readonly<{ kind: 'path'; path: string }>
-  | Readonly<{ kind: 'storage'; providerId: string; documentId: string }>
+  | Readonly<{
+      kind: 'storage'
+      providerId: string
+      profileId?: string
+      accountId?: string
+      documentId: string
+    }>
 
 export type ACPSessionScope = Readonly<{
   documentScopeId: AIDocumentScopeId

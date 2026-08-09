@@ -1,19 +1,50 @@
-import type { StorageProviderID } from '@/app/integrations/storage/types'
+import { readStoredStorageAuthority } from '@/app/integrations/storage/runtime'
+import {
+  resolveStorageDocumentBinding,
+  storageDocumentAuthorityMatches,
+  type StorageDocumentAuthority,
+  type StorageDocumentBinding,
+  type StorageProviderID,
+  type StorageRemoteRevision
+} from '@/app/integrations/storage/types'
 import { evictLocalFigCache } from '@/app/storage/cache-eviction'
-import { getLocalCanvasStore } from '@/app/storage/local-store'
-import type { LocalCanvasStore } from '@/app/storage/local-store/store'
+import { assertCloudStorageDurability } from '@/app/storage/durability'
+import {
+  getLocalCanvasStore,
+  localCanvasKey,
+  type LocalCanvasLocator,
+  type LocalCanvasStore
+} from '@/app/storage/local-store'
+import {
+  withStorageProfileMutationLease,
+  type StorageProfileMutationLease
+} from '@/app/storage/mutation-drain'
 import { enqueuePutCanvas } from '@/app/storage/sync/engine'
 
 export type StoragePersistenceDependencies = {
   store: LocalCanvasStore
-  enqueueCanvas(canvasId: string, revision: number): Promise<void>
+  readCurrentAuthority?(binding: StorageDocumentBinding): Promise<StorageDocumentAuthority | null>
+  enqueueCanvas(
+    locator: LocalCanvasLocator,
+    revision: number,
+    expectedRemoteRevision: StorageRemoteRevision | null
+  ): Promise<void>
+}
+
+async function readCurrentAuthority(
+  binding: StorageDocumentBinding
+): Promise<StorageDocumentAuthority | null> {
+  return readStoredStorageAuthority(binding.providerId, binding.profileId)
 }
 
 export type PersistStorageCanvasOptions = {
   providerId: StorageProviderID
+  profileId?: string
+  authority?: StorageDocumentAuthority
   canvasId: string
   name: string
   figBytes: Uint8Array
+  mutationLease?: StorageProfileMutationLease
 }
 
 /** Write locally before scheduling remote synchronization. */
@@ -21,48 +52,87 @@ export async function persistStorageCanvasLocally(
   options: PersistStorageCanvasOptions,
   dependencies?: StoragePersistenceDependencies
 ): Promise<{ revision: number }> {
+  // Supplying dependencies is an explicit test seam; production persistence must survive restart.
+  if (!dependencies) await assertCloudStorageDurability()
   const runtime = dependencies ?? {
     store: getLocalCanvasStore(),
     enqueueCanvas: enqueuePutCanvas
   }
-  const metadata = await runtime.store.writeCanvas({
-    id: options.canvasId,
+  const binding = resolveStorageDocumentBinding({
     providerId: options.providerId,
-    name: options.name,
-    figBytes: options.figBytes,
-    syncStatus: 'pending'
+    profileId: options.profileId,
+    documentId: options.canvasId,
+    ...(options.authority ? { authority: options.authority } : {})
   })
-  await runtime.enqueueCanvas(options.canvasId, metadata.revision)
-  return { revision: metadata.revision }
+  return withStorageProfileMutationLease(
+    binding,
+    async () => {
+      if (binding.authority) {
+        const currentAuthority = runtime.readCurrentAuthority
+          ? await runtime.readCurrentAuthority(binding)
+          : await readCurrentAuthority(binding)
+        if (!storageDocumentAuthorityMatches(binding.authority, currentAuthority)) {
+          throw new Error(
+            'Storage authorization changed. Reopen the document before saving to this account.'
+          )
+        }
+      }
+      const metadata = await runtime.store.writeCanvas({
+        id: binding.documentId,
+        providerId: binding.providerId,
+        profileId: binding.profileId,
+        authority: binding.authority,
+        name: options.name,
+        figBytes: options.figBytes,
+        syncStatus: 'pending'
+      })
+      await runtime.enqueueCanvas(binding, metadata.revision, metadata.remoteRevision)
+      return { revision: metadata.revision }
+    },
+    options.mutationLease
+  )
 }
 
 export type SeedStorageCanvasOptions = {
   providerId: StorageProviderID
+  profileId?: string
+  authority?: StorageDocumentAuthority
   canvasId: string
   name: string
   updatedAt: string
   figBytes: Uint8Array
   thumbnailBytes?: Uint8Array | null
   markSynced?: boolean
+  remoteRevision?: StorageRemoteRevision | null
 }
 
 export async function seedStorageCanvasFromRemote(
   options: SeedStorageCanvasOptions
 ): Promise<void> {
-  await getLocalCanvasStore().writeCanvas({
-    id: options.canvasId,
+  await assertCloudStorageDurability()
+  const binding = resolveStorageDocumentBinding({
     providerId: options.providerId,
+    profileId: options.profileId,
+    documentId: options.canvasId,
+    ...(options.authority ? { authority: options.authority } : {})
+  })
+  await getLocalCanvasStore().writeCanvas({
+    id: binding.documentId,
+    providerId: binding.providerId,
+    profileId: binding.profileId,
+    authority: binding.authority,
     name: options.name,
     updatedAt: options.updatedAt,
     figBytes: options.figBytes,
     thumbBytes: options.thumbnailBytes,
-    syncStatus: options.markSynced === false ? 'pending' : 'synced'
+    syncStatus: options.markSynced === false ? 'pending' : 'synced',
+    remoteRevision: options.remoteRevision ?? null
   })
   if (options.markSynced === false) return
-  await getLocalCanvasStore().updateMeta(options.canvasId, {
+  await getLocalCanvasStore().updateMeta(binding, {
     lastSyncedAt: options.updatedAt || new Date().toISOString(),
     syncStatus: 'synced',
     lastSyncError: null
   })
-  await evictLocalFigCache(new Set([options.canvasId]))
+  await evictLocalFigCache(new Set([localCanvasKey(binding)]))
 }

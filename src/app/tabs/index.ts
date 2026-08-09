@@ -12,9 +12,16 @@ import type { EditorStore } from '@/app/editor/session'
 import {
   activeStorageProviderID,
   createActiveStorageAdapter,
-  type StorageDocument
+  readActiveStorageProfileID,
+  resolveStorageDocumentBinding,
+  storageDocumentAuthorityMatches,
+  type StorageDocumentBindingInput,
+  type StorageDocument,
+  type StorageTransferOptions
 } from '@/app/integrations/storage'
+import { assertCloudStorageDurability } from '@/app/storage/durability'
 import { getLocalCanvasStore } from '@/app/storage/local-store'
+import { withStorageProfileMutationLease } from '@/app/storage/mutation-drain'
 import { seedStorageCanvasFromRemote } from '@/app/storage/sync/persist'
 import { createFileOpenCoordinator } from '@/app/tabs/open/coordinator'
 import {
@@ -149,17 +156,31 @@ function reusableTabStore(): EditorStore {
   return isUntouched ? current.store : createTab().store
 }
 
-function findStorageTab(providerId: string, documentId: string): Tab | undefined {
+function storageOpenPath(binding: StorageDocumentBindingInput): string {
+  const resolved = resolveStorageDocumentBinding(binding)
+  return `storage://${[
+    resolved.providerId,
+    resolved.profileId,
+    resolved.authority?.accountId ?? '',
+    resolved.authority?.authorizationVersion ?? '',
+    resolved.documentId
+  ]
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')}`
+}
+
+function findStorageTab(binding: StorageDocumentBindingInput): Tab | undefined {
+  const path = storageOpenPath(binding)
   return tabsRef.value.find((tab) => {
-    const binding = tab.store.getStorageBinding()
-    return binding?.providerId === providerId && binding.documentId === documentId
+    const current = tab.store.getStorageBinding()
+    return current ? storageOpenPath(current) === path : false
   })
 }
 
-function storageOpenIdentity(providerId: string, documentId: string): DocumentSourceIdentity {
+function storageOpenIdentity(binding: StorageDocumentBindingInput): DocumentSourceIdentity {
   return {
     handle: null,
-    path: `storage://${encodeURIComponent(providerId)}/${encodeURIComponent(documentId)}`
+    path: storageOpenPath(binding)
   }
 }
 
@@ -234,52 +255,86 @@ async function finishImportedGraphOpen(
   await store.fitCurrentPageToViewport()
 }
 
-export async function openStorageDocumentInNewTab(document: StorageDocument): Promise<void> {
-  const providerId = activeStorageProviderID.value
-  const identity = storageOpenIdentity(providerId, document.id)
-  const decision = await decideDocumentOpen(identity, document.name, () =>
-    findStorageTab(providerId, document.id)
-  )
-
-  await completeDocumentOpen(decision, async (store) => {
-    const local = getLocalCanvasStore()
-    const localMetadata = await local.getMeta(document.id)
-    const localBytes = localMetadata?.hasFig ? await local.readFig(document.id) : null
-    const localIsAuthoritative =
-      localMetadata?.syncStatus !== 'synced' ||
-      !document.metadataAuthoritative ||
-      localMetadata.updatedAt >= document.updatedAt
-    let bytes = localBytes && localIsAuthoritative ? localBytes : null
-
-    if (!bytes) {
-      bytes = await createActiveStorageAdapter(providerId).getDocument(document.id)
-      await seedStorageCanvasFromRemote({
-        providerId,
-        canvasId: document.id,
-        name: document.name,
-        updatedAt: document.updatedAt,
-        figBytes: bytes
-      })
-    }
-
-    let initialBytes: Uint8Array | null = bytes
-    const imported = await readFigSource(
-      {
-        async read() {
-          if (initialBytes) {
-            const current = initialBytes
-            initialBytes = null
-            return current
-          }
-          const cached = await local.readFig(document.id)
-          if (!cached) throw new Error('Cached .fig data is unavailable for parser recovery')
-          return cached
-        }
-      },
-      { populate: 'first-page' }
+export async function openStorageDocumentInNewTab(
+  document: StorageDocument,
+  bindingInput?: StorageDocumentBindingInput,
+  options: Pick<StorageTransferOptions, 'signal'> = {}
+): Promise<void> {
+  options.signal?.throwIfAborted()
+  await assertCloudStorageDurability()
+  options.signal?.throwIfAborted()
+  const providerId = bindingInput?.providerId ?? activeStorageProviderID.value
+  const profileId = bindingInput?.profileId ?? readActiveStorageProfileID(providerId)
+  await withStorageProfileMutationLease({ providerId, profileId }, async () => {
+    const adapter = createActiveStorageAdapter(providerId, profileId)
+    const authority =
+      bindingInput?.authority ??
+      (await adapter.getAuthority?.({ signal: options.signal })) ??
+      undefined
+    const binding = resolveStorageDocumentBinding({
+      providerId,
+      profileId,
+      documentId: document.id,
+      ...(authority ? { authority } : {})
+    })
+    const identity = storageOpenIdentity(binding)
+    const decision = await decideDocumentOpen(identity, document.name, () =>
+      findStorageTab(binding)
     )
-    await finishImportedGraphOpen(store, imported, () => {
-      store.setStorageDocumentSource({ providerId, documentId: document.id }, document.name)
+
+    await completeDocumentOpen(decision, async (store) => {
+      options.signal?.throwIfAborted()
+      const local = getLocalCanvasStore()
+      const localMetadata = await local.getMeta(binding)
+      const localBytes = localMetadata?.hasFig ? await local.readFig(binding) : null
+      const localIsAuthoritative =
+        localMetadata?.syncStatus !== 'synced' || localMetadata.updatedAt >= document.updatedAt
+      let bytes = localBytes && localIsAuthoritative ? localBytes : null
+
+      if (!bytes) {
+        const currentAuthority = (await adapter.getAuthority?.({ signal: options.signal })) ?? null
+        if (!storageDocumentAuthorityMatches(binding.authority, currentAuthority)) {
+          throw new Error('Storage authorization changed while opening the document')
+        }
+        const downloaded = await adapter.getDocument(document.id, {
+          ...options,
+          ...(binding.authority ? { expectedAuthority: binding.authority } : {})
+        })
+        options.signal?.throwIfAborted()
+        bytes = downloaded.bytes
+        await seedStorageCanvasFromRemote({
+          providerId: binding.providerId,
+          profileId: binding.profileId,
+          ...(binding.authority ? { authority: binding.authority } : {}),
+          canvasId: document.id,
+          name: downloaded.metadata.name,
+          updatedAt: downloaded.metadata.updatedAt,
+          figBytes: bytes,
+          remoteRevision: downloaded.remoteRevision
+        })
+      }
+
+      options.signal?.throwIfAborted()
+      let initialBytes: Uint8Array | null = bytes
+      const imported = await readFigSource(
+        {
+          async read() {
+            if (initialBytes) {
+              const current = initialBytes
+              initialBytes = null
+              return current
+            }
+            const cached = await local.readFig(binding)
+            if (!cached) throw new Error('Cached .fig data is unavailable for parser recovery')
+            return cached
+          }
+        },
+        { populate: 'first-page' }
+      )
+      options.signal?.throwIfAborted()
+      await finishImportedGraphOpen(store, imported, () => {
+        store.setStorageDocumentSource(binding, document.name)
+      })
     })
   })
 }

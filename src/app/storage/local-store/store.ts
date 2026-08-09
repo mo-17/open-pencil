@@ -1,34 +1,56 @@
+import type { StorageDocumentAuthority } from '@/app/integrations/storage/types'
 import { createIdbLocalCanvasStore } from '@/app/storage/local-store/idb'
+import type { LocalCanvasLocator } from '@/app/storage/local-store/identity'
 import { createMemoryLocalCanvasStore } from '@/app/storage/local-store/memory'
 import type {
+  AdoptLocalCanvasAuthorityOptions,
+  LocalCanvasConflictCopyInput,
+  LocalCanvasConflictCopyRecord,
   LocalCanvasIndexInput,
   LocalCanvasMeta,
-  LocalCanvasWriteInput
+  LocalCanvasWriteInput,
+  MigrateLegacyLocalCanvasAuthorityOptions,
+  UpdateLocalCanvasMetaOptions
 } from '@/app/storage/local-store/types'
 
-export type UpdateLocalCanvasMetaOptions = {
-  /** Apply only if the row still has this revision. */
-  expectedRevision?: number
-}
+export type { UpdateLocalCanvasMetaOptions } from '@/app/storage/local-store/types'
 
 export type LocalCanvasStore = {
   listMetas(includeTombstones?: boolean): Promise<LocalCanvasMeta[]>
-  getMeta(id: string): Promise<LocalCanvasMeta | null>
-  readFig(id: string): Promise<Uint8Array | null>
-  readThumb(id: string): Promise<Uint8Array | null>
+  getMeta(locator: LocalCanvasLocator): Promise<LocalCanvasMeta | null>
+  readFig(locator: LocalCanvasLocator): Promise<Uint8Array | null>
+  readThumb(locator: LocalCanvasLocator): Promise<Uint8Array | null>
   writeCanvas(input: LocalCanvasWriteInput): Promise<LocalCanvasMeta>
   /** Index-only row for remote canvases not yet downloaded (no fig body). */
   upsertIndexMeta(meta: LocalCanvasIndexInput): Promise<LocalCanvasMeta>
-  writeThumb(id: string, thumbBytes: Uint8Array): Promise<LocalCanvasMeta | null>
+  /** Record a provider-created copy without fabricating local .fig bytes. */
+  recordConflictCopy(
+    original: LocalCanvasLocator,
+    input: LocalCanvasConflictCopyInput,
+    options?: UpdateLocalCanvasMetaOptions
+  ): Promise<LocalCanvasConflictCopyRecord | null>
+  writeThumb(locator: LocalCanvasLocator, thumbBytes: Uint8Array): Promise<LocalCanvasMeta | null>
   updateMeta(
-    id: string,
+    locator: LocalCanvasLocator,
     patch: Partial<LocalCanvasMeta>,
     options?: UpdateLocalCanvasMetaOptions
   ): Promise<LocalCanvasMeta | null>
-  tombstone(id: string): Promise<LocalCanvasMeta | null>
+  /** Explicitly rebind one same-account row to a newly confirmed authorization grant. */
+  adoptAuthority(
+    locator: LocalCanvasLocator,
+    nextAuthority: StorageDocumentAuthority,
+    options: AdoptLocalCanvasAuthorityOptions
+  ): Promise<LocalCanvasMeta | null>
+  /** Atomically move one authority-less row and its blobs into an S3 generation key. */
+  migrateLegacyAuthority(
+    locator: LocalCanvasLocator,
+    nextAuthority: StorageDocumentAuthority,
+    options: MigrateLegacyLocalCanvasAuthorityOptions
+  ): Promise<LocalCanvasMeta | null>
+  tombstone(locator: LocalCanvasLocator): Promise<LocalCanvasMeta | null>
   /** Drop only the cached fig blob (eviction) — meta and thumb stay. */
-  clearFig(id: string): Promise<LocalCanvasMeta | null>
-  remove(id: string): Promise<void>
+  clearFig(locator: LocalCanvasLocator): Promise<LocalCanvasMeta | null>
+  remove(locator: LocalCanvasLocator): Promise<void>
   clearAll(): Promise<void>
 }
 
@@ -37,6 +59,12 @@ let usingMemoryFallback = false
 
 export function isLocalCanvasStoreMemoryFallback(): boolean {
   return usingMemoryFallback
+}
+
+/** Test-injected stores count as durable; only the production memory fallback is unavailable. */
+export function isLocalCanvasStoreDurable(): boolean {
+  getLocalCanvasStore()
+  return !usingMemoryFallback
 }
 
 /** Reset singleton (tests). */

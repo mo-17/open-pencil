@@ -4,6 +4,7 @@ import { evictLocalFigCache } from '@/app/storage/cache-eviction'
 import {
   createMemoryLocalCanvasStore,
   getLocalCanvasStore,
+  localCanvasKey,
   resetLocalCanvasStoreForTests
 } from '@/app/storage/local-store'
 import type { LocalSyncStatus } from '@/app/storage/local-store'
@@ -72,5 +73,41 @@ describe('evictLocalFigCache', () => {
     await local.updateMeta('legacy', { figSize: undefined })
     const evicted = await evictLocalFigCache(new Set(), 1 * MB)
     expect(evicted).toBe(1)
+  })
+
+  test('protects only the full provider/profile/account key when document IDs collide', async () => {
+    const local = getLocalCanvasStore()
+    const protectedBinding = {
+      providerId: 'google-drive',
+      profileId: 'work',
+      documentId: 'shared',
+      authority: { accountId: 'account-a', authorizationVersion: 'grant-a' }
+    }
+    const evictableBinding = {
+      ...protectedBinding,
+      authority: { accountId: 'account-b', authorizationVersion: 'grant-b' }
+    }
+    await local.writeCanvas({
+      id: 'shared',
+      providerId: 'google-drive',
+      profileId: 'work',
+      authority: protectedBinding.authority,
+      name: 'Protected',
+      figBytes: new Uint8Array(4 * MB),
+      syncStatus: 'synced'
+    })
+    await local.writeCanvas({
+      id: 'shared',
+      providerId: 'google-drive',
+      profileId: 'work',
+      authority: evictableBinding.authority,
+      name: 'Evictable',
+      figBytes: new Uint8Array(4 * MB),
+      syncStatus: 'synced'
+    })
+
+    expect(await evictLocalFigCache(new Set([localCanvasKey(protectedBinding)]), 4 * MB)).toBe(1)
+    expect((await local.getMeta(protectedBinding))?.hasFig).toBe(true)
+    expect((await local.getMeta(evictableBinding))?.hasFig).toBe(false)
   })
 })

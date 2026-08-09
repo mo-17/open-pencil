@@ -13,11 +13,24 @@ import {
 import type {
   StorageAdapter,
   StorageDocument,
+  StorageDocumentAuthority,
   StorageDocumentMetadata,
-  StorageProviderRuntime
+  StorageProviderRuntime,
+  StorageTransferOptions
 } from '../types'
-import { S3HttpError, deleteObject, getObject, headObject, listObjects, putObject } from './client'
+import { assertS3StorageAuthority, ensureS3StorageAuthority } from './authority'
+import {
+  S3HttpError,
+  deleteObject,
+  getObject,
+  headObject,
+  listObjects,
+  putObject,
+  type DownloadProgress,
+  type UploadProgress
+} from './client'
 import { CloudCorsError, formatBrowserCorsHelpMessage, isLikelyCorsOrNetworkError } from './cors'
+import { assertS3LegacyMigrationComplete } from './legacy-migration-state'
 import type { S3CompatibleConfig, S3ConnectionResult } from './types'
 
 const ENDPOINT_FIELD = 'endpoint'
@@ -32,11 +45,19 @@ function requiredPreference(runtime: StorageProviderRuntime, field: string): str
   return value
 }
 
-async function resolveConfig(runtime: StorageProviderRuntime): Promise<S3CompatibleConfig> {
+async function resolveConfig(
+  runtime: StorageProviderRuntime,
+  expectedAuthority?: StorageDocumentAuthority,
+  authorityRequired = false
+): Promise<S3CompatibleConfig> {
+  assertS3StorageAuthority(runtime.profileId, expectedAuthority, authorityRequired)
   const [accessKeyId, secretAccessKey] = await Promise.all([
     runtime.resolveCredential(ACCESS_KEY_FIELD),
     runtime.resolveCredential(SECRET_KEY_FIELD)
   ])
+  // Credential replacement rotates before the secret write. Recheck after resolution so
+  // a job cannot combine a stale profile snapshot with a replacement credential.
+  assertS3StorageAuthority(runtime.profileId, expectedAuthority, authorityRequired)
   if (!accessKeyId || !secretAccessKey) throw new Error('S3 credentials are required')
 
   const region = runtime.preferences[REGION_FIELD]?.trim()
@@ -76,10 +97,43 @@ function connectionErrorMessage(error: unknown, isCors: boolean): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-async function ensureNamespace(config: S3CompatibleConfig): Promise<void> {
-  if (await headObject(config, STORAGE_NAMESPACE_MARKER)) return
+function forwardProgress<T extends { totalBytes: number | null }>(
+  options: StorageTransferOptions | undefined,
+  transferredBytes: (progress: T) => number
+): ((progress: T) => void) | undefined {
+  const onProgress = options?.onProgress
+  return onProgress
+    ? (progress) =>
+        onProgress({
+          transferredBytes: transferredBytes(progress),
+          totalBytes: progress.totalBytes
+        })
+    : undefined
+}
+
+async function getMetadataBytes(
+  config: S3CompatibleConfig,
+  id: string,
+  signal?: AbortSignal
+): Promise<Uint8Array | null> {
+  return getObject(config, documentMetaKey(id), undefined, signal).catch((error: unknown) => {
+    if (signal?.aborted) throw error
+    console.warn('[Storage] Document metadata fetch failed:', id, error)
+    return null
+  })
+}
+
+async function ensureNamespace(config: S3CompatibleConfig, signal?: AbortSignal): Promise<void> {
+  if (await headObject(config, STORAGE_NAMESPACE_MARKER, signal)) return
   try {
-    await putObject(config, STORAGE_NAMESPACE_MARKER, NAMESPACE_MARKER_BODY, 'application/json')
+    await putObject(
+      config,
+      STORAGE_NAMESPACE_MARKER,
+      NAMESPACE_MARKER_BODY,
+      'application/json',
+      undefined,
+      signal
+    )
   } catch (error) {
     if (error instanceof S3HttpError && (error.status === 403 || error.status === 401)) {
       throw new Error('Cannot write to this bucket. Check access permissions and bucket name.')
@@ -89,17 +143,25 @@ async function ensureNamespace(config: S3CompatibleConfig): Promise<void> {
 }
 
 export interface S3StorageAdapter extends StorageAdapter {
-  testConnection(): Promise<S3ConnectionResult>
+  testConnection(options?: Pick<StorageTransferOptions, 'signal'>): Promise<S3ConnectionResult>
 }
 
 export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3StorageAdapter {
   return {
-    async testConnection() {
+    async getAuthority(options) {
+      options?.signal?.throwIfAborted()
+      return ensureS3StorageAuthority(runtime.profileId)
+    },
+
+    async testConnection(options) {
+      const authority = ensureS3StorageAuthority(runtime.profileId)
+      assertS3LegacyMigrationComplete(runtime.profileId, authority)
       const config = await resolveConfig(runtime)
       try {
-        await ensureNamespace(config)
-        await listObjects(config, STORAGE_DOCUMENTS_PREFIX)
+        await ensureNamespace(config, options?.signal)
+        await listObjects(config, STORAGE_DOCUMENTS_PREFIX, options?.signal)
       } catch (error) {
+        if (options?.signal?.aborted) throw error
         const isCors =
           error instanceof CloudCorsError || (!isTauri() && isLikelyCorsOrNetworkError(error))
         return {
@@ -120,9 +182,9 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
       }
     },
 
-    async listDocuments() {
+    async listDocuments(options) {
       const config = await resolveConfig(runtime)
-      const objects = await listObjects(config, STORAGE_DOCUMENTS_PREFIX)
+      const objects = await listObjects(config, STORAGE_DOCUMENTS_PREFIX, options?.signal)
       const entries = objects
         .map((object) => {
           const id = documentIdFromFigKey(object.key)
@@ -141,12 +203,7 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
                 name: id,
                 updatedAt: lastModified ?? new Date(0).toISOString()
               }
-              const metadataBytes = await getObject(config, documentMetaKey(id)).catch(
-                (error: unknown) => {
-                  console.warn('[Storage] Document metadata fetch failed:', id, error)
-                  return null
-                }
-              )
+              const metadataBytes = await getMetadataBytes(config, id, options?.signal)
               const { metadata, authoritative } = parseMetadata(metadataBytes, fallback)
               return {
                 id,
@@ -160,38 +217,39 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
       return documents.sort((first, second) => second.updatedAt.localeCompare(first.updatedAt))
     },
 
-    async getDocument(id, onProgress) {
-      const config = await resolveConfig(runtime)
+    async getDocument(id, options) {
+      const config = await resolveConfig(runtime, options?.expectedAuthority)
       const bytes = await getObject(
         config,
         documentFigKey(id),
-        onProgress
-          ? (progress) =>
-              onProgress({
-                transferredBytes: progress.receivedBytes,
-                totalBytes: progress.totalBytes
-              })
-          : undefined
+        forwardProgress<DownloadProgress>(options, (progress) => progress.receivedBytes),
+        options?.signal
       )
       if (!bytes) throw new Error(`Document not found: ${id}`)
-      return bytes
+      const metadataBytes = await getMetadataBytes(config, id, options?.signal)
+      const { metadata } = parseMetadata(metadataBytes, {
+        name: id,
+        updatedAt: new Date(0).toISOString()
+      })
+      return { bytes, metadata, remoteRevision: null }
     },
 
-    async putDocument(id, bytes, metadata, onProgress) {
-      const config = await resolveConfig(runtime)
+    async putDocument(id, bytes, metadata, options) {
+      const config = await resolveConfig(runtime, options?.expectedAuthority, true)
+      if (options?.expectedRemoteRevision) {
+        throw new Error('S3-compatible storage does not support remote revision preconditions')
+      }
+      const existed = await headObject(config, documentFigKey(id), options?.signal)
+      assertS3StorageAuthority(runtime.profileId, options?.expectedAuthority, true)
       await putObject(
         config,
         documentFigKey(id),
         bytes,
         'application/octet-stream',
-        onProgress
-          ? (progress) =>
-              onProgress({
-                transferredBytes: progress.sentBytes,
-                totalBytes: progress.totalBytes
-              })
-          : undefined
+        forwardProgress<UploadProgress>(options, (progress) => progress.sentBytes),
+        options?.signal
       )
+      assertS3StorageAuthority(runtime.profileId, options?.expectedAuthority, true)
       await putObject(
         config,
         documentMetaKey(id),
@@ -199,27 +257,30 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
           name: metadata.name,
           updatedAt: metadata.updatedAt || new Date().toISOString()
         }),
-        'application/json'
+        'application/json',
+        undefined,
+        options?.signal
       )
+      return { outcome: existed ? 'updated' : 'created', remoteRevision: null }
     },
 
-    async getDocumentMetadata(id) {
-      const config = await resolveConfig(runtime)
-      const bytes = await getObject(config, documentMetaKey(id))
+    async getDocumentMetadata(id, options) {
+      const config = await resolveConfig(runtime, options?.expectedAuthority)
+      const bytes = await getObject(config, documentMetaKey(id), undefined, options?.signal)
       if (!bytes) return null
       const parsed = parseMetadata(bytes, {
         name: id,
         updatedAt: new Date(0).toISOString()
       })
-      return parsed.authoritative ? parsed.metadata : null
+      return parsed.authoritative ? { ...parsed.metadata, remoteRevision: null } : null
     },
 
-    async deleteDocument(id) {
-      const config = await resolveConfig(runtime)
+    async deleteDocument(id, options) {
+      const config = await resolveConfig(runtime, options?.expectedAuthority, true)
       const results = await Promise.allSettled([
-        deleteObject(config, documentFigKey(id)),
-        deleteObject(config, documentMetaKey(id)),
-        deleteObject(config, documentThumbnailKey(id))
+        deleteObject(config, documentFigKey(id), options?.signal),
+        deleteObject(config, documentMetaKey(id), options?.signal),
+        deleteObject(config, documentThumbnailKey(id), options?.signal)
       ])
       const failure = results.find(
         (result): result is PromiseRejectedResult => result.status === 'rejected'
@@ -227,9 +288,9 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
       if (failure) throw failure.reason
     },
 
-    async getUsage() {
+    async getUsage(options) {
       const config = await resolveConfig(runtime)
-      const objects = await listObjects(config, `${STORAGE_NAMESPACE}/`)
+      const objects = await listObjects(config, `${STORAGE_NAMESPACE}/`, options?.signal)
       return {
         bytesUsed: objects.reduce((total, object) => total + (object.size ?? 0), 0),
         objectCount: objects.length,
@@ -237,14 +298,27 @@ export function createS3StorageAdapter(runtime: StorageProviderRuntime): S3Stora
       }
     },
 
-    async putThumbnail(id, bytes) {
-      const config = await resolveConfig(runtime)
-      await putObject(config, documentThumbnailKey(id), bytes, 'image/jpeg')
+    async putThumbnail(id, bytes, options) {
+      const config = await resolveConfig(runtime, options?.expectedAuthority, true)
+      await putObject(
+        config,
+        documentThumbnailKey(id),
+        bytes,
+        'image/jpeg',
+        options?.onProgress
+          ? (progress) =>
+              options.onProgress?.({
+                transferredBytes: progress.sentBytes,
+                totalBytes: progress.totalBytes
+              })
+          : undefined,
+        options?.signal
+      )
     },
 
-    async getThumbnail(id) {
-      const config = await resolveConfig(runtime)
-      return getObject(config, documentThumbnailKey(id))
+    async getThumbnail(id, options) {
+      const config = await resolveConfig(runtime, options?.expectedAuthority)
+      return getObject(config, documentThumbnailKey(id), undefined, options?.signal)
     }
   }
 }

@@ -1,0 +1,6 @@
+export { createGoogleDriveStorageAdapter, revisionsMatch } from './adapter'
+export type { GoogleDriveStorageAdapter, GoogleDriveStorageAdapterOptions } from './adapter'
+export { GoogleDriveClient } from './client'
+export { GoogleDriveError } from './errors'
+export { nextOffsetFromRange, uploadResumable, validateUploadChunkBytes } from './transfer'
+export * from './types'

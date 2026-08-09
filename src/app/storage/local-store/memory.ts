@@ -1,4 +1,17 @@
-import { buildIndexMeta, buildWriteMeta, sortAndFilterMetas } from '@/app/storage/local-store/meta'
+import {
+  legacyAuthorityMigrationKeys,
+  localCanvasBinding,
+  localCanvasKey,
+  resolveLocalCanvasLocator
+} from '@/app/storage/local-store/identity'
+import {
+  buildAdoptedAuthorityMeta,
+  buildConflictCopyMetas,
+  buildIndexMeta,
+  buildWriteMeta,
+  localCanvasMetaMatchesUpdateOptions,
+  sortAndFilterMetas
+} from '@/app/storage/local-store/meta'
 import type { LocalCanvasStore } from '@/app/storage/local-store/store'
 import type { LocalCanvasMeta, LocalCanvasWriteInput } from '@/app/storage/local-store/types'
 
@@ -13,75 +26,141 @@ export function createMemoryLocalCanvasStore(): LocalCanvasStore {
       return sortAndFilterMetas([...metas.values()], includeTombstones)
     },
 
-    async getMeta(id: string) {
-      return metas.get(id) ?? null
+    async getMeta(locator) {
+      return metas.get(localCanvasKey(locator)) ?? null
     },
 
-    async readFig(id: string) {
-      const bytes = figs.get(id)
+    async readFig(locator) {
+      const bytes = figs.get(localCanvasKey(locator))
       return bytes ? new Uint8Array(bytes) : null
     },
 
-    async readThumb(id: string) {
-      const bytes = thumbs.get(id)
+    async readThumb(locator) {
+      const bytes = thumbs.get(localCanvasKey(locator))
       return bytes ? new Uint8Array(bytes) : null
     },
 
     async writeCanvas(input: LocalCanvasWriteInput) {
-      const existing = metas.get(input.id) ?? null
-      figs.set(input.id, new Uint8Array(input.figBytes))
+      const key = localCanvasKey(localCanvasBinding(input))
+      const existing = metas.get(key) ?? null
+      figs.set(key, new Uint8Array(input.figBytes))
 
       let hasThumb = existing?.hasThumb ?? false
       if (input.thumbBytes != null) {
         if (input.thumbBytes.byteLength > 0) {
-          thumbs.set(input.id, new Uint8Array(input.thumbBytes))
+          thumbs.set(key, new Uint8Array(input.thumbBytes))
           hasThumb = true
         } else {
-          thumbs.delete(input.id)
+          thumbs.delete(key)
           hasThumb = false
         }
       }
 
       const meta = buildWriteMeta(input, existing, hasThumb)
-      metas.set(input.id, meta)
+      metas.set(key, meta)
       return meta
     },
 
     async upsertIndexMeta(input) {
-      const meta = buildIndexMeta(input, metas.get(input.id) ?? null)
-      metas.set(input.id, meta)
+      const key = localCanvasKey(localCanvasBinding(input))
+      const meta = buildIndexMeta(input, metas.get(key) ?? null)
+      metas.set(key, meta)
       return meta
     },
 
-    async writeThumb(id: string, thumbBytes: Uint8Array) {
-      const existing = metas.get(id)
+    async recordConflictCopy(originalLocator, input, options) {
+      const originalBinding = resolveLocalCanvasLocator(originalLocator)
+      const originalKey = localCanvasKey(originalBinding)
+      const copyKey = localCanvasKey({ ...originalBinding, documentId: input.copy.id })
+      const existingOriginal = metas.get(originalKey) ?? null
+      if (
+        options !== undefined &&
+        !localCanvasMetaMatchesUpdateOptions(existingOriginal, options)
+      ) {
+        return null
+      }
+      const record = buildConflictCopyMetas(
+        originalBinding,
+        input,
+        existingOriginal,
+        metas.get(copyKey) ?? null
+      )
+      if (record.original) metas.set(originalKey, record.original)
+      metas.set(copyKey, record.copy)
+      return record
+    },
+
+    async writeThumb(locator, thumbBytes: Uint8Array) {
+      const key = localCanvasKey(locator)
+      const existing = metas.get(key)
       if (!existing) return null
-      thumbs.set(id, new Uint8Array(thumbBytes))
+      thumbs.set(key, new Uint8Array(thumbBytes))
       // Thumb freshness is tracked by its own outbox job — never demote the
       // document's syncStatus here (it orphaned rows as 'pending' forever).
       const meta: LocalCanvasMeta = {
         ...existing,
         hasThumb: true
       }
-      metas.set(id, meta)
+      metas.set(key, meta)
       return meta
     },
 
-    async updateMeta(id: string, patch: Partial<LocalCanvasMeta>, options) {
-      const existing = metas.get(id)
-      if (
-        !existing ||
-        (options?.expectedRevision != null && existing.revision !== options.expectedRevision)
-      ) {
+    async updateMeta(locator, patch: Partial<LocalCanvasMeta>, options) {
+      const key = localCanvasKey(locator)
+      const existing = metas.get(key)
+      if (!localCanvasMetaMatchesUpdateOptions(existing, options)) {
         return null
       }
-      const next = { ...existing, ...patch, id: existing.id }
-      metas.set(id, next)
+      const next = {
+        ...existing,
+        ...patch,
+        key: existing.key,
+        id: existing.id,
+        providerId: existing.providerId,
+        profileId: existing.profileId,
+        authority: existing.authority
+      }
+      metas.set(key, next)
       return next
     },
 
-    async tombstone(id: string) {
-      const existing = metas.get(id)
+    async adoptAuthority(locator, nextAuthority, options) {
+      const key = localCanvasKey(locator)
+      const next = buildAdoptedAuthorityMeta(metas.get(key), nextAuthority, options)
+      if (!next) return null
+      metas.set(key, next)
+      return next
+    },
+
+    async migrateLegacyAuthority(locator, nextAuthority, options) {
+      const { sourceKey, targetKey } = legacyAuthorityMigrationKeys(locator, nextAuthority)
+      const existing = metas.get(sourceKey)
+      if (existing?.authority !== null || existing.revision !== options.expectedRevision) {
+        return null
+      }
+      if (metas.has(targetKey) || figs.has(targetKey) || thumbs.has(targetKey)) {
+        throw new Error('Legacy storage migration target already exists')
+      }
+
+      const next: LocalCanvasMeta = {
+        ...existing,
+        key: targetKey,
+        authority: { ...nextAuthority }
+      }
+      const fig = figs.get(sourceKey)
+      const thumb = thumbs.get(sourceKey)
+      metas.set(targetKey, next)
+      if (fig) figs.set(targetKey, new Uint8Array(fig))
+      if (thumb) thumbs.set(targetKey, new Uint8Array(thumb))
+      metas.delete(sourceKey)
+      figs.delete(sourceKey)
+      thumbs.delete(sourceKey)
+      return next
+    },
+
+    async tombstone(locator) {
+      const key = localCanvasKey(locator)
+      const existing = metas.get(key)
       if (!existing) return null
       const next: LocalCanvasMeta = {
         ...existing,
@@ -89,23 +168,25 @@ export function createMemoryLocalCanvasStore(): LocalCanvasStore {
         syncStatus: 'pending',
         updatedAt: new Date().toISOString()
       }
-      metas.set(id, next)
+      metas.set(key, next)
       return next
     },
 
-    async clearFig(id: string) {
-      const existing = metas.get(id)
+    async clearFig(locator) {
+      const key = localCanvasKey(locator)
+      const existing = metas.get(key)
       if (!existing) return null
-      figs.delete(id)
+      figs.delete(key)
       const meta: LocalCanvasMeta = { ...existing, hasFig: false, figSize: 0 }
-      metas.set(id, meta)
+      metas.set(key, meta)
       return meta
     },
 
-    async remove(id: string) {
-      metas.delete(id)
-      figs.delete(id)
-      thumbs.delete(id)
+    async remove(locator) {
+      const key = localCanvasKey(locator)
+      metas.delete(key)
+      figs.delete(key)
+      thumbs.delete(key)
     },
 
     async clearAll() {

@@ -1,27 +1,58 @@
 import { IS_BROWSER } from '@open-pencil/core/constants'
 
 import {
-  activeStorageProviderID,
   createActiveStorageAdapter,
+  ensureS3StorageAuthority,
+  S3_COMPATIBLE_STORAGE_PROVIDER_ID,
   storageCredentialStatuses,
+  storageDocumentAuthorityMatches,
   storagePreferencesComplete,
-  storageProviderRegistry
+  storageProviderRegistry,
+  type StorageAdapter,
+  type StorageDocumentBinding,
+  type StoragePutDocumentResult,
+  type StorageRemoteRevision
 } from '@/app/integrations/storage'
+import { assertS3LegacyMigrationComplete } from '@/app/integrations/storage/s3/legacy-migration-state'
 import { evictLocalFigCache } from '@/app/storage/cache-eviction'
-import { getLocalCanvasStore } from '@/app/storage/local-store'
+import {
+  getLocalCanvasStore,
+  localCanvasBinding,
+  localCanvasKey,
+  resolveLocalCanvasLocator,
+  type LocalCanvasLocator,
+  type LocalCanvasMeta,
+  type LocalCanvasStore
+} from '@/app/storage/local-store'
+import {
+  currentStorageSyncJobMeta,
+  readStorageSyncPutSnapshot,
+  storageSyncAuthorityOptions,
+  storageSyncMetaHasExactAuthority,
+  updateStorageSyncMetaForJob
+} from '@/app/storage/sync/job-guard'
 import { getOutbox } from '@/app/storage/sync/outbox'
 import { setUploadProgress } from '@/app/storage/sync/progress'
 import { setPendingSyncCount, setSyncUi } from '@/app/storage/sync/status'
-import type { OutboxJob } from '@/app/storage/sync/types'
+import type { OutboxJob, OutboxJobType } from '@/app/storage/sync/types'
 
 const MAX_ATTEMPTS = 8
 const BASE_BACKOFF_MS = 1500
 const MAX_BACKOFF_MS = 60_000
+const MAX_CONFLICT_COPY_NAME_BYTES = 512
+const CONFLICT_COPY_NAME_SUFFIX = ' (preserved conflict copy).fig'
 
 class StorageSyncBlockedError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'StorageSyncBlockedError'
+  }
+}
+
+class StorageSyncConflictError extends Error {
+  constructor(readonly remoteRevision: StorageRemoteRevision | null) {
+    super('The remote document changed. Resolve the storage conflict before retrying.')
+    this.name = 'StorageSyncConflictError'
   }
 }
 
@@ -38,6 +69,70 @@ function backoffMs(attempts: number): number {
   const exp = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** Math.max(0, attempts - 1))
   const jitter = Math.floor(exp * 0.2 * ((crypto.getRandomValues(new Uint8Array(1))[0] ?? 0) / 255))
   return exp + jitter
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+  const encoder = new TextEncoder()
+  let output = ''
+  let usedBytes = 0
+  for (const character of value) {
+    const size = encoder.encode(character).byteLength
+    if (usedBytes + size > maxBytes) break
+    output += character
+    usedBytes += size
+  }
+  return output
+}
+
+/** Bounded local label used until Drive reconciliation supplies the provider-owned name. */
+export function conflictCopyIndexName(originalName: string): string {
+  const cleaned = Array.from(originalName.trim(), (character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127 || character === '/' || character === '\\' ? '' : character
+  }).join('')
+  const base = (cleaned || 'Untitled').replace(/\.fig$/i, '') || 'Untitled'
+  const suffixBytes = new TextEncoder().encode(CONFLICT_COPY_NAME_SUFFIX).byteLength
+  return `${truncateUtf8(base, MAX_CONFLICT_COPY_NAME_BYTES - suffixBytes)}${CONFLICT_COPY_NAME_SUFFIX}`
+}
+
+type ConflictCopyResult = Extract<StoragePutDocumentResult, { outcome: 'conflict-copy' }>
+
+export async function recordStorageConflictCopy(
+  store: LocalCanvasStore,
+  binding: StorageDocumentBinding,
+  original: Pick<LocalCanvasMeta, 'name'>,
+  result: ConflictCopyResult,
+  now = new Date(),
+  expectedRevision?: number
+): Promise<boolean> {
+  const updatedAt = now.toISOString()
+  const record = await store.recordConflictCopy(
+    binding,
+    {
+      copy: {
+        id: result.conflictDocumentId,
+        providerId: binding.providerId,
+        profileId: binding.profileId,
+        authority: binding.authority ?? null,
+        name: conflictCopyIndexName(original.name),
+        updatedAt,
+        syncStatus: 'synced',
+        lastSyncedAt: updatedAt,
+        lastSyncError: null,
+        remoteRevision: result.conflictCopyRevision ?? null,
+        hasFig: false
+      },
+      originalRemoteRevision: result.remoteRevision,
+      originalLastSyncError: `Remote conflict preserved as ${result.conflictDocumentId}`
+    },
+    expectedRevision === undefined
+      ? undefined
+      : {
+          expectedRevision,
+          expectedAuthority: binding.authority ?? null
+        }
+  )
+  return record !== null
 }
 
 export function nextSyncWakeDelay(jobs: OutboxJob[], now = Date.now()): number | null {
@@ -58,81 +153,161 @@ function isPermanentError(error: unknown): boolean {
   )
 }
 
-async function runJob(job: OutboxJob): Promise<void> {
-  const store = getLocalCanvasStore()
-  const meta = await store.getMeta(job.canvasId)
-  const providerID = meta?.providerId ?? activeStorageProviderID.value
-  if (!storagePreferencesComplete(providerID)) {
+async function createAuthorizedStorageAdapter(
+  binding: StorageDocumentBinding
+): Promise<StorageAdapter> {
+  const providerID = binding.providerId
+  if (providerID === S3_COMPATIBLE_STORAGE_PROVIDER_ID) {
+    try {
+      assertS3LegacyMigrationComplete(
+        binding.profileId,
+        ensureS3StorageAuthority(binding.profileId)
+      )
+    } catch (error) {
+      throw new StorageSyncBlockedError(
+        error instanceof Error ? error.message : 'Legacy S3 storage migration is required'
+      )
+    }
+  }
+  if (!storagePreferencesComplete(providerID, binding.profileId)) {
     throw new StorageSyncBlockedError('Storage is not configured')
   }
   const provider = storageProviderRegistry.get(providerID)
-  const statuses = await storageCredentialStatuses(providerID)
+  const statuses = await storageCredentialStatuses(providerID, binding.profileId)
   const missingCredential = provider.credentialFields.some(
     (field) => field.required && statuses[field.id] !== 'configured'
   )
   if (missingCredential) {
     throw new StorageSyncBlockedError('Storage credentials are unavailable')
   }
-  const adapter = createActiveStorageAdapter(providerID)
+  const adapter = createActiveStorageAdapter(providerID, binding.profileId)
+  if (!adapter.getAuthority) {
+    if (!binding.authority) return adapter
+    throw new StorageSyncBlockedError('Storage provider cannot verify document authorization')
+  }
+  const currentAuthority = await adapter.getAuthority()
+  if (!binding.authority) {
+    if (!currentAuthority) return adapter
+    throw new StorageSyncBlockedError(
+      'Legacy storage work is not bound to the current profile authorization.'
+    )
+  }
+  if (!storageDocumentAuthorityMatches(binding.authority, currentAuthority)) {
+    throw new StorageSyncBlockedError(
+      'Storage authorization changed. Reconnect the original account before syncing.'
+    )
+  }
+  return adapter
+}
 
-  if (job.type === 'deleteCanvas') {
-    await adapter.deleteDocument(job.canvasId)
-    // Keep the tombstoned row: reconcile purges it once the remote listing
-    // confirms the object is gone. Removing it here opened a race where a
-    // concurrent reconcile re-seeded the canvas from a stale remote listing.
-    await store.updateMeta(job.canvasId, { syncStatus: 'synced', lastSyncError: null })
+async function runDeleteJob(store: LocalCanvasStore, job: OutboxJob): Promise<void> {
+  const binding = job.binding
+  const before = await store.getMeta(binding)
+  if (before && (!before.tombstoned || !storageSyncMetaHasExactAuthority(before, binding))) return
+  const adapter = await createAuthorizedStorageAdapter(binding)
+  const current = await store.getMeta(binding)
+  if (
+    before &&
+    (!current ||
+      !current.tombstoned ||
+      current.revision !== before.revision ||
+      !storageSyncMetaHasExactAuthority(current, binding))
+  ) {
     return
   }
+  if (!before && current) return
+  await adapter.deleteDocument(binding.documentId, storageSyncAuthorityOptions(binding))
+  // Keep the tombstoned row until reconcile confirms the remote object is gone.
+  if (!before) return
+  await store.updateMeta(
+    binding,
+    { syncStatus: 'synced', lastSyncError: null },
+    {
+      expectedRevision: before.revision,
+      expectedAuthority: binding.authority ?? null
+    }
+  )
+}
 
-  if (!meta || meta.tombstoned) {
-    // Nothing to put
-    return
-  }
-
-  if (job.type === 'putCanvas') {
-    // Superseded by a newer local revision already on disk
-    if (meta.revision > job.revision) return
-    if (!meta.hasFig) return
-    const fig = await store.readFig(job.canvasId)
-    if (!fig || fig.byteLength === 0) throw new Error('Local document missing for sync')
-    setUploadProgress(job.canvasId, 0)
-    try {
-      await adapter.putDocument(
-        job.canvasId,
-        fig,
-        {
-          name: meta.name,
-          updatedAt: meta.updatedAt
-        },
-        ({ transferredBytes, totalBytes }) => {
-          if (totalBytes) setUploadProgress(job.canvasId, transferredBytes / totalBytes)
+async function runPutCanvasJob(store: LocalCanvasStore, job: OutboxJob): Promise<void> {
+  const binding = job.binding
+  const snapshot = await readStorageSyncPutSnapshot(store, job)
+  if (!snapshot) return
+  const adapter = await createAuthorizedStorageAdapter(binding)
+  const current = await currentStorageSyncJobMeta(store, job)
+  if (!current || current.tombstoned || !current.hasFig) return
+  const progressKey = localCanvasKey(binding)
+  setUploadProgress(progressKey, 0)
+  try {
+    const result = await adapter.putDocument(
+      binding.documentId,
+      snapshot.fig,
+      {
+        name: snapshot.meta.name,
+        updatedAt: snapshot.meta.updatedAt
+      },
+      {
+        expectedRemoteRevision: job.expectedRemoteRevision,
+        ...storageSyncAuthorityOptions(binding),
+        onProgress: ({ transferredBytes, totalBytes }) => {
+          if (totalBytes) setUploadProgress(progressKey, transferredBytes / totalBytes)
         }
-      )
-    } finally {
-      setUploadProgress(job.canvasId, null)
+      }
+    )
+    if (result.outcome === 'conflict') {
+      throw new StorageSyncConflictError(result.remoteRevision)
     }
-    // Only mark synced if still on this revision and no other pending work for newer rev
-    const latest = await store.getMeta(job.canvasId)
-    if (latest && latest.revision === job.revision && !latest.tombstoned) {
-      await store.updateMeta(
-        job.canvasId,
-        {
-          syncStatus: 'synced',
-          lastSyncedAt: new Date().toISOString(),
-          lastSyncError: null
-        },
-        { expectedRevision: job.revision }
+    if (result.outcome === 'conflict-copy') {
+      await recordStorageConflictCopy(
+        store,
+        binding,
+        snapshot.meta,
+        result,
+        new Date(),
+        job.revision
       )
-      await evictLocalFigCache(new Set([job.canvasId]))
+      return
     }
-    return
-  }
 
-  // Remaining job type: putThumb
-  if (!adapter.putThumbnail) return
-  const thumb = await store.readThumb(job.canvasId)
-  if (!thumb) return
-  await adapter.putThumbnail(job.canvasId, thumb)
+    const updated = await store.updateMeta(
+      binding,
+      {
+        syncStatus: 'synced',
+        lastSyncedAt: new Date().toISOString(),
+        lastSyncError: null,
+        remoteRevision: result.remoteRevision
+      },
+      {
+        expectedRevision: job.revision,
+        expectedAuthority: binding.authority ?? null
+      }
+    )
+    if (updated && !updated.tombstoned) {
+      await evictLocalFigCache(new Set([progressKey]))
+    }
+  } finally {
+    setUploadProgress(progressKey, null)
+  }
+}
+
+async function runPutThumbJob(store: LocalCanvasStore, job: OutboxJob): Promise<void> {
+  const binding = job.binding
+  const before = await currentStorageSyncJobMeta(store, job)
+  if (!before || before.tombstoned || !before.hasThumb) return
+  const thumb = await store.readThumb(binding)
+  const after = await currentStorageSyncJobMeta(store, job)
+  if (!thumb || !after || after.tombstoned || !after.hasThumb) return
+  const adapter = await createAuthorizedStorageAdapter(binding)
+  const current = await currentStorageSyncJobMeta(store, job)
+  if (!current || current.tombstoned || !current.hasThumb || !adapter.putThumbnail) return
+  await adapter.putThumbnail(binding.documentId, thumb, storageSyncAuthorityOptions(binding))
+}
+
+async function runJob(job: OutboxJob): Promise<void> {
+  const store = getLocalCanvasStore()
+  if (job.type === 'deleteCanvas') return runDeleteJob(store, job)
+  if (job.type === 'putCanvas') return runPutCanvasJob(store, job)
+  return runPutThumbJob(store, job)
 }
 
 async function pumpOnce(): Promise<void> {
@@ -170,6 +345,25 @@ async function pumpOnce(): Promise<void> {
     else scheduleWake(50)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
+    // A newer enqueue may have superseded this in-flight job. Never resurrect
+    // its durable record or let its late result mutate the replacement row.
+    if (!(await outbox.list()).some((queued) => queued.id === job.id)) {
+      const remaining = await outbox.list()
+      setPendingSyncCount(remaining.length)
+      if (remaining.length > 0) scheduleWake(50)
+      else setSyncUi('idle')
+      return
+    }
+    if (error instanceof StorageSyncConflictError) {
+      await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
+        syncStatus: 'conflict',
+        remoteRevision: error.remoteRevision,
+        lastSyncError: message
+      })
+      await outbox.update({ ...job, nextAttemptAt: Number.MAX_SAFE_INTEGER })
+      setSyncUi('error', message)
+      return
+    }
     if (error instanceof StorageSyncBlockedError) {
       await outbox.update({
         ...job,
@@ -181,13 +375,13 @@ async function pumpOnce(): Promise<void> {
 
     const attempts = job.attempts + 1
     const permanent = isPermanentError(error) || attempts >= MAX_ATTEMPTS
-    console.warn('[Storage sync] job failed:', job.type, job.canvasId, message)
+    console.warn('[Storage sync] job failed:', job.type, job.binding.documentId, message)
 
     if (permanent) {
       // A failed thumbnail upload must not poison the document's sync status —
       // only canvas/delete jobs reflect into the meta row.
       if (job.type !== 'putThumb') {
-        await getLocalCanvasStore().updateMeta(job.canvasId, {
+        await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
           syncStatus: 'error',
           lastSyncError: message
         })
@@ -195,7 +389,7 @@ async function pumpOnce(): Promise<void> {
       } else {
         // Keep a record without touching syncStatus so the stale remote
         // thumbnail is at least diagnosable.
-        await getLocalCanvasStore().updateMeta(job.canvasId, { lastSyncError: message })
+        await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, { lastSyncError: message })
       }
       if (job.type === 'putThumb') {
         await outbox.remove(job.id)
@@ -222,7 +416,7 @@ async function pumpOnce(): Promise<void> {
     }
     await outbox.update(updated)
     if (job.type !== 'putThumb') {
-      await getLocalCanvasStore().updateMeta(job.canvasId, {
+      await updateStorageSyncMetaForJob(getLocalCanvasStore(), job, {
         syncStatus: 'pending',
         lastSyncError: message
       })
@@ -255,6 +449,47 @@ function ensureOnlineListeners() {
   })
 }
 
+/** Repair non-atomic v1 local-write/outbox gaps without discarding document mutations. */
+export async function recoverStorageSyncJobs(): Promise<number> {
+  const store = getLocalCanvasStore()
+  const outbox = getOutbox()
+  const [metas, jobs] = await Promise.all([store.listMetas(true), outbox.list()])
+  const queued = new Set(jobs.map((job) => recoveryJobKey(job.binding, job.type)))
+  let recovered = 0
+
+  for (const meta of metas) {
+    const binding = localCanvasBinding(meta)
+    const type = recoveryJobType(meta)
+    const key = type ? recoveryJobKey(binding, type) : null
+    if (!type || !key || queued.has(key)) continue
+    await outbox.enqueue({
+      binding,
+      type,
+      revision: type === 'putCanvas' ? meta.revision : 0,
+      expectedRemoteRevision: meta.remoteRevision
+    })
+    queued.add(key)
+    recovered++
+  }
+
+  if (recovered > 0) setPendingSyncCount((await outbox.list()).length)
+  return recovered
+}
+
+function recoveryJobType(meta: LocalCanvasMeta): OutboxJobType | null {
+  if (meta.tombstoned) return 'deleteCanvas'
+  if (meta.syncStatus === 'pending' && meta.hasFig) return 'putCanvas'
+  return null
+}
+
+function recoveryJobKey(binding: StorageDocumentBinding, type: OutboxJobType): string {
+  return JSON.stringify([
+    localCanvasKey(binding),
+    binding.authority?.authorizationVersion ?? null,
+    type
+  ])
+}
+
 /** Start or continue draining the outbox. Safe to call often. */
 export async function kickSyncEngine(): Promise<void> {
   ensureOnlineListeners()
@@ -262,6 +497,9 @@ export async function kickSyncEngine(): Promise<void> {
   pumping = true
   let pumpFailed = false
   try {
+    // Re-scan on every kick: an enqueue failure can leave new pending/tombstone
+    // work after a previous successful recovery pass in the same process.
+    await recoverStorageSyncJobs()
     // Drain a few jobs per kick to avoid long tight loops blocking the tab.
     for (let i = 0; i < 3; i++) {
       const before = (await getOutbox().list()).length
@@ -286,23 +524,44 @@ export async function kickSyncEngine(): Promise<void> {
   if (jobs.some((job) => job.nextAttemptAt <= Date.now())) scheduleWake(250)
 }
 
-export async function enqueuePutCanvas(canvasId: string, revision: number): Promise<void> {
-  await getOutbox().enqueue({ canvasId, type: 'putCanvas', revision })
+export async function enqueuePutCanvas(
+  locator: LocalCanvasLocator,
+  revision: number,
+  expectedRemoteRevision: StorageRemoteRevision | null = null
+): Promise<void> {
+  await getOutbox().enqueue({
+    binding: resolveLocalCanvasLocator(locator),
+    type: 'putCanvas',
+    revision,
+    expectedRemoteRevision
+  })
   void kickSyncEngine()
 }
 
-export async function enqueuePutThumb(canvasId: string, revision: number): Promise<void> {
-  await getOutbox().enqueue({ canvasId, type: 'putThumb', revision })
+export async function enqueuePutThumb(
+  locator: LocalCanvasLocator,
+  revision: number
+): Promise<void> {
+  await getOutbox().enqueue({
+    binding: resolveLocalCanvasLocator(locator),
+    type: 'putThumb',
+    revision
+  })
   void kickSyncEngine()
 }
 
-export async function enqueueDeleteCanvas(canvasId: string): Promise<void> {
-  await getOutbox().enqueue({ canvasId, type: 'deleteCanvas', revision: 0 })
+export async function enqueueDeleteCanvas(locator: LocalCanvasLocator): Promise<void> {
+  await getOutbox().enqueue({
+    binding: resolveLocalCanvasLocator(locator),
+    type: 'deleteCanvas',
+    revision: 0
+  })
   void kickSyncEngine()
 }
 
 /** Retry durable work immediately after storage settings or credentials change. */
 export async function resumeStorageSync(): Promise<void> {
+  await recoverStorageSyncJobs()
   const outbox = getOutbox()
   const jobs = await outbox.list()
   const now = Date.now()

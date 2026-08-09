@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { StorageDocument } from '@/app/integrations/storage'
+import { storageDocumentKey, type StorageDocument } from '@/app/integrations/storage'
 import type { LocalCanvasMeta } from '@/app/storage/local-store'
 import { reconcileStorageDocuments } from '@/app/storage/reconcile'
 
@@ -10,14 +10,18 @@ function localMeta(
   tombstoned = false
 ): LocalCanvasMeta {
   return {
+    key: storageDocumentKey({ providerId: 's3-compatible', documentId: id }),
     id,
     providerId: 's3-compatible',
+    profileId: 'default',
+    authority: null,
     name: `Local ${id}`,
     updatedAt: '2026-01-02T00:00:00.000Z',
     revision: 1,
     syncStatus,
     lastSyncedAt: null,
     lastSyncError: null,
+    remoteRevision: null,
     tombstoned,
     hasFig: true,
     hasThumb: false,
@@ -59,5 +63,12 @@ describe('storage workspace reconciliation', () => {
 
     const confirmed = reconcileStorageDocuments([localMeta('deleted', 'synced', true)], [])
     expect(confirmed.localIdsToPurge).toEqual(['deleted'])
+    expect(confirmed.localBindingsToPurge).toEqual([
+      {
+        providerId: 's3-compatible',
+        profileId: 'default',
+        documentId: 'deleted'
+      }
+    ])
   })
 })

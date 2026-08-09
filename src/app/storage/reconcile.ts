@@ -1,9 +1,12 @@
-import type { StorageDocument } from '@/app/integrations/storage'
-import type { LocalCanvasMeta } from '@/app/storage/local-store'
+import type { StorageDocument, StorageDocumentBinding } from '@/app/integrations/storage'
+import { localCanvasBinding, type LocalCanvasMeta } from '@/app/storage/local-store'
 
 export type StorageReconciliation = {
   documents: StorageDocument[]
   remoteDocumentsToSeed: StorageDocument[]
+  /** Full identities safe to purge when providers/profiles reuse document IDs. */
+  localBindingsToPurge: StorageDocumentBinding[]
+  /** @deprecated Migrate callers to localBindingsToPurge. */
   localIdsToPurge: string[]
 }
 
@@ -30,6 +33,7 @@ export function reconcileStorageDocuments(
       id: metadata.id,
       name: metadata.name,
       updatedAt: metadata.updatedAt,
+      remoteRevision: metadata.remoteRevision,
       metadataAuthoritative: true
     })
   }
@@ -39,6 +43,9 @@ export function reconcileStorageDocuments(
       second.updatedAt.localeCompare(first.updatedAt)
     ),
     remoteDocumentsToSeed: remote.filter((document) => !localById.has(document.id)),
+    localBindingsToPurge: local
+      .filter((metadata) => metadata.tombstoned && !remoteIds.has(metadata.id))
+      .map(localCanvasBinding),
     localIdsToPurge: local
       .filter((metadata) => metadata.tombstoned && !remoteIds.has(metadata.id))
       .map((metadata) => metadata.id)
