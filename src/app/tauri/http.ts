@@ -1,4 +1,4 @@
-interface ProxyHttpHeader {
+export interface TauriHttpHeader {
   name: string
   value: string
 }
@@ -6,22 +6,30 @@ interface ProxyHttpHeader {
 interface ProxyHttpRequest {
   url: string
   method?: string
-  headers?: ProxyHttpHeader[]
+  headers?: TauriHttpHeader[]
   body?: number[]
   max_response_bytes?: number
+  max_error_response_bytes?: number
   follow_redirects?: boolean
   timeout_ms?: number
 }
 
 interface ProxyHttpResponse {
   status: number
-  headers: ProxyHttpHeader[]
+  headers: TauriHttpHeader[]
   body: number[]
   url: string
 }
 
-function headersToProxyHeaders(headers: Headers): ProxyHttpHeader[] {
+function headersToProxyHeaders(headers: Headers): TauriHttpHeader[] {
   return [...headers.entries()].map(([name, value]) => ({ name, value }))
+}
+
+export function tauriResponseBody(status: number, body: number[]): Uint8Array<ArrayBuffer> | null {
+  if (status === 204 || status === 205 || status === 304) return null
+  const bytes = new Uint8Array(body.length)
+  bytes.set(body)
+  return bytes
 }
 
 function abortReason(signal: AbortSignal): Error {
@@ -30,7 +38,15 @@ function abortReason(signal: AbortSignal): Error {
     : new DOMException('The operation was aborted', 'AbortError')
 }
 
-export function withAbortSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+function desktopHttpError(error: unknown): Error {
+  return error instanceof Error ? error : new Error('Desktop HTTP request failed', { cause: error })
+}
+
+export function withAbortSignal<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+  mapError: (error: unknown) => Error = desktopHttpError
+): Promise<T> {
   if (signal.aborted) {
     void promise.catch(() => undefined)
     return Promise.reject(abortReason(signal))
@@ -50,11 +66,7 @@ export function withAbortSignal<T>(promise: Promise<T>, signal: AbortSignal): Pr
         resolve(value)
       } catch (error) {
         cleanup()
-        reject(
-          error instanceof Error
-            ? error
-            : new Error('Desktop HTTP request failed', { cause: error })
-        )
+        reject(mapError(error))
       }
     })()
   })
@@ -64,7 +76,9 @@ export async function tauriFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   maxResponseBytes?: number,
-  timeoutMs?: number
+  timeoutMs?: number,
+  onDispatch?: () => void,
+  maxErrorResponseBytes?: number
 ): Promise<Response> {
   const request = new Request(input, init)
   request.signal.throwIfAborted()
@@ -75,15 +89,19 @@ export async function tauriFetch(
     headers: headersToProxyHeaders(request.headers),
     body: request.body == null ? undefined : [...new Uint8Array(await request.arrayBuffer())],
     max_response_bytes: maxResponseBytes,
+    max_error_response_bytes: maxErrorResponseBytes,
     follow_redirects: request.redirect === 'follow',
     timeout_ms: timeoutMs
   }
   request.signal.throwIfAborted()
+  // Tauri invoke cannot cancel the native command once dispatched. Callers use this exact
+  // boundary to avoid claiming that a dispatched mutation was cancelled remotely.
+  onDispatch?.()
   const response = await withAbortSignal(
     invoke<ProxyHttpResponse>('proxy_http_request', { request: payload }),
     request.signal
   )
-  const proxiedResponse = new Response(new Uint8Array(response.body), {
+  const proxiedResponse = new Response(tauriResponseBody(response.status, response.body), {
     status: response.status,
     headers: response.headers.map(({ name, value }): [string, string] => [name, value])
   })

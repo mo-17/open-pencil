@@ -4,9 +4,11 @@ import {
   type MarketplacePublisherV1,
   type PluginExporterOutputV2,
   type PluginHostPermissionV2,
-  type PluginManifestPayload
+  type PluginManifestPayload,
+  type PluginStorageProviderCapabilityV2
 } from '@open-pencil/core/plugins'
 
+import { bundledPluginLocalizedSearchText } from './localization'
 import type { MarketplaceSnapshotLoadResult, MarketplaceSnapshotLoadStatus } from './marketplace'
 import type { AppPluginCatalogItem } from './types'
 
@@ -41,12 +43,17 @@ export interface PluginMarketplaceSnapshotView {
 }
 
 export interface PluginV2ContractSummary {
-  readonly kind: 'command' | 'exporter'
+  readonly kind: 'command' | 'exporter' | 'connector' | 'storage-provider'
   readonly contributionId: string
-  readonly permissions: readonly PluginHostPermissionV2[]
+  readonly permissions: readonly (PluginHostPermissionV2 | `network.${string}`)[]
   readonly outputs: readonly PluginExporterOutputV2[]
   readonly parameterMaxBytes: number
   readonly resultMaxBytes: number
+  readonly networkOrigins?: readonly string[]
+  readonly networkMethods?: readonly string[]
+  readonly credentialSlots?: readonly string[]
+  readonly capabilities?: readonly PluginStorageProviderCapabilityV2[]
+  readonly configVersion?: number
 }
 
 /**
@@ -82,6 +89,41 @@ export function pluginV2ContractSummaries(
       resultMaxBytes: contribution.result.maxBytes
     })
   }
+  for (const connector of manifest.contributions.connectors ?? []) {
+    for (const operation of connector.operations) {
+      summaries.push({
+        kind: 'connector',
+        contributionId: `${connector.connectorId}/${operation.operationId}`,
+        permissions: Object.freeze([`network.${operation.kind}`]),
+        outputs: Object.freeze([]),
+        parameterMaxBytes: operation.parameters.maxBytes,
+        resultMaxBytes: operation.result.maxBytes,
+        networkOrigins: Object.freeze([
+          ...connector.network.origins,
+          ...(connector.network.originTemplates ?? [])
+        ]),
+        networkMethods: Object.freeze([...connector.network.methods]),
+        credentialSlots: Object.freeze(
+          operation.credentialSlots.map((slotId) => {
+            const slot = connector.credentialSlots.find((candidate) => candidate.slotId === slotId)
+            return slot ? `${slot.slotId}:${slot.kind}` : slotId
+          })
+        )
+      })
+    }
+  }
+  for (const provider of manifest.contributions.storageProviders ?? []) {
+    summaries.push({
+      kind: 'storage-provider',
+      contributionId: provider.providerId,
+      permissions: Object.freeze([]),
+      outputs: Object.freeze([]),
+      parameterMaxBytes: 0,
+      resultMaxBytes: 0,
+      capabilities: Object.freeze([...provider.capabilities]),
+      configVersion: provider.configVersion
+    })
+  }
   return Object.freeze(summaries.map((summary) => Object.freeze(summary)))
 }
 
@@ -94,6 +136,7 @@ function localCatalogSearchText(item: AppPluginCatalogItem): string {
   return [
     manifest.plugin.id,
     manifest.plugin.name,
+    bundledPluginLocalizedSearchText(manifest.plugin.id),
     ...manifest.contributions.modules.flatMap((module) => [
       module.moduleType,
       module.name,
@@ -111,7 +154,32 @@ function localCatalogSearchText(item: AppPluginCatalogItem): string {
       'fileExtension' in exporter
         ? exporter.fileExtension
         : exporter.outputs.map((output) => `${output.extension} ${output.mimeType}`).join(' ')
-    ])
+    ]),
+    ...(manifest.schemaVersion === 2
+      ? (manifest.contributions.connectors ?? []).flatMap((connector) => [
+          connector.connectorId,
+          connector.name,
+          connector.description,
+          connector.network.origins.join(' '),
+          connector.network.originTemplates?.join(' ') ?? '',
+          connector.network.methods.join(' '),
+          ...connector.operations.flatMap((operation) => [
+            operation.operationId,
+            operation.name,
+            operation.description,
+            operation.kind
+          ])
+        ])
+      : []),
+    ...(manifest.schemaVersion === 2
+      ? (manifest.contributions.storageProviders ?? []).flatMap((provider) => [
+          provider.providerId,
+          provider.name,
+          provider.description,
+          provider.adapterId,
+          provider.capabilities.join(' ')
+        ])
+      : [])
   ]
     .join('\n')
     .toLocaleLowerCase('en-US')

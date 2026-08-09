@@ -3,6 +3,8 @@ import { shallowRef } from 'vue'
 import { getActiveEditorStoreOrNull, type EditorStore } from '@/app/editor/active-store'
 
 import { createBundledPluginCatalog } from './catalog'
+import { appConnectorHostAdapters, reconcileConnectorAuthorizations } from './connectors/app'
+import { inspectConnectorManifestCompatibility } from './connectors/registry'
 import { inspectPluginHostContributionsCompatibility } from './host'
 import {
   createMarketplaceSnapshotClient,
@@ -227,11 +229,16 @@ const activationCompatibilityPolicy: AppPluginActivationCompatibilityPolicy = (m
     manifest.plugin.id,
     manifest.contributions
   )
+  const connectorCompatibility = inspectConnectorManifestCompatibility(
+    manifest,
+    appConnectorHostAdapters
+  )
   const failures = [
     ...moduleFailures.map(({ moduleType, reason }) => `${moduleType}: ${reason}`),
     ...hostFailures.map(
       ({ kind, contributionId, reason }) => `${kind} ${contributionId}: ${reason}`
-    )
+    ),
+    ...(connectorCompatibility.ok ? [] : [`connector: ${connectorCompatibility.reason}`])
   ]
   return failures.length === 0
     ? { ok: true }
@@ -259,6 +266,7 @@ export const appPluginStoreSnapshot = shallowRef(appPluginStore.snapshot())
 
 appPluginStore.subscribe((snapshot) => {
   appPluginStoreSnapshot.value = snapshot
+  reconcileConnectorAuthorizations(snapshot.installed)
 })
 
 export const appPluginStoreReady = appPluginStore.load()

@@ -16,6 +16,7 @@ import {
   type VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
 
+import { GOOGLE_DRIVE_STORAGE_PLUGIN_ID } from '@/app/integrations/storage/google-drive/config'
 import {
   appPluginStoreReady,
   createAppPluginStore as createAppPluginStoreBase,
@@ -97,11 +98,18 @@ describe('app plugin store', () => {
 
     const loaded = await store.load()
     expect(loaded.error).toBeNull()
-    expect(loaded.installed).toHaveLength(1)
-    expect(loaded.installed[0]).toMatchObject({
+    expect(loaded.installed).toHaveLength(2)
+    expect(
+      loaded.installed.find(({ package: value }) => value.manifest.plugin.id === MAP_PLUGIN_ID)
+    ).toMatchObject({
       enabled: true,
       package: { manifest: { plugin: { id: MAP_PLUGIN_ID } } }
     })
+    expect(
+      loaded.installed.find(
+        ({ package: value }) => value.manifest.plugin.id === GOOGLE_DRIVE_STORAGE_PLUGIN_ID
+      )
+    ).toMatchObject({ enabled: true })
     expect(store.canCreateModule(MAP_PLUGIN_ID, MAP_MODULE_TYPE)).toBe(true)
     expect(store.canCreateModule(CHART_PLUGIN_ID, CHART_MODULE_TYPE)).toBe(false)
 
@@ -130,13 +138,13 @@ describe('app plugin store', () => {
     await store.uninstall(CHART_PLUGIN_ID)
     expect(
       store.snapshot().installed.map(({ package: value }) => value.manifest.plugin.id)
-    ).toEqual([MAP_PLUGIN_ID])
+    ).toEqual([GOOGLE_DRIVE_STORAGE_PLUGIN_ID, MAP_PLUGIN_ID])
 
     const reloaded = createAppPluginStore({ storage, catalog, engineVersion: ENGINE_VERSION })
     await reloaded.load()
     expect(
       reloaded.snapshot().installed.map(({ package: value }) => value.manifest.plugin.id)
-    ).toEqual([MAP_PLUGIN_ID])
+    ).toEqual([GOOGLE_DRIVE_STORAGE_PLUGIN_ID, MAP_PLUGIN_ID])
   })
 
   test('migrates an unpinned app-bundle digest without changing installed or enabled state', async () => {
@@ -268,7 +276,9 @@ describe('app plugin store', () => {
     const retried = await store.load()
     expect(retried.error).toBeNull()
     expect(retried.catalog).toHaveLength(createBundledPluginCatalog().length)
-    expect(retried.installed[0]).toMatchObject({
+    expect(
+      retried.installed.find(({ package: value }) => value.manifest.plugin.id === MAP_PLUGIN_ID)
+    ).toMatchObject({
       enabled: true,
       package: { manifest: { plugin: { id: MAP_PLUGIN_ID } } }
     })
@@ -295,7 +305,8 @@ describe('app plugin store', () => {
     const loaded = await store.load()
     expect(loaded.error?.message).toContain('unsupported schema version')
     expect(loaded.recordIssues).toEqual([{ pluginId: MAP_PLUGIN_ID, kind: 'unsupported-schema' }])
-    expect(loaded.installed).toHaveLength(0)
+    expect(loaded.installed).toHaveLength(1)
+    expect(loaded.installed[0]?.package.manifest.plugin.id).toBe(GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
 
     const reset = await store.resetLocalState(MAP_PLUGIN_ID)
     expect(reset.error).toBeNull()
@@ -368,7 +379,10 @@ describe('app plugin store', () => {
     })
     await current.load()
     await current.uninstall(MAP_PLUGIN_ID)
-    const [mapTombstone] = await currentStorage.list()
+    const mapTombstone = (await currentStorage.list()).find(
+      (record) => record.pluginId === MAP_PLUGIN_ID
+    )
+    if (!mapTombstone) throw new Error('Expected persisted Map uninstall record')
     const staleRecords = Array.from({ length: 64 }, (_, index) => ({
       schemaVersion: 1,
       pluginId: `retired.plugin-${index}`,
@@ -388,7 +402,8 @@ describe('app plugin store', () => {
     const loaded = await store.load()
 
     expect(loaded.error).toBeNull()
-    expect(loaded.installed).toHaveLength(0)
+    expect(loaded.installed).toHaveLength(1)
+    expect(loaded.installed[0]?.package.manifest.plugin.id).toBe(GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
     expect(store.canCreateModule(MAP_PLUGIN_ID, MAP_MODULE_TYPE)).toBe(false)
   })
 

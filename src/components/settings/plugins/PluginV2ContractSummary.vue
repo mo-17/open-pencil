@@ -16,6 +16,10 @@ function outputsText(contract: PluginV2ContractSummary): string {
     ? contract.outputs.map(({ extension, mimeType }) => `${extension} (${mimeType})`).join(', ')
     : '[]'
 }
+
+function joined(values: readonly string[] | undefined): string {
+  return values?.length ? values.join(', ') : '[]'
+}
 </script>
 
 <template>
@@ -33,11 +37,22 @@ function outputsText(contract: PluginV2ContractSummary): string {
       <p class="break-all font-mono text-surface">
         {{ contract.kind }}:{{ contract.contributionId }}
       </p>
-      <p class="break-words font-mono">permissions: {{ permissionsText(contract) }}</p>
+      <p v-if="contract.kind !== 'storage-provider'" class="break-words font-mono">
+        permissions: {{ permissionsText(contract) }}
+      </p>
       <p v-if="contract.kind === 'exporter'" class="break-words font-mono">
         outputs: {{ outputsText(contract) }}
       </p>
-      <p class="font-mono">
+      <template v-if="contract.kind === 'connector'">
+        <p class="break-all font-mono">origins: {{ joined(contract.networkOrigins) }}</p>
+        <p class="break-words font-mono">methods: {{ joined(contract.networkMethods) }}</p>
+        <p class="break-words font-mono">credentials: {{ joined(contract.credentialSlots) }}</p>
+      </template>
+      <template v-if="contract.kind === 'storage-provider'">
+        <p class="break-words font-mono">capabilities: {{ joined(contract.capabilities) }}</p>
+        <p class="font-mono">configVersion: {{ contract.configVersion }}</p>
+      </template>
+      <p v-else class="font-mono">
         parameters.maxBytes: {{ contract.parameterMaxBytes }} B · result.maxBytes:
         {{ contract.resultMaxBytes }} B
       </p>

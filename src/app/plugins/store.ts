@@ -38,8 +38,10 @@ import {
   type AppPluginStoreSnapshot,
   type InstalledAppPlugin,
   type InstalledPluginCommand,
+  type InstalledPluginConnector,
   type InstalledPluginExporter,
   type InstalledPluginModule,
+  type InstalledPluginStorageProvider,
   type PersistedAppPluginState,
   type PersistedAppPluginStateV1,
   type PersistedAppPluginStateV2,
@@ -1283,6 +1285,34 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
     })
   }
 
+  function installedConnectors(): InstalledPluginConnector[] {
+    if (!ready) return []
+    return [...installed.values()].flatMap((plugin) => {
+      const runtimePlugin = runtimePluginState(plugin)
+      if (!runtimePlugin.enabled || runtimePlugin.package.manifest.schemaVersion !== 2) return []
+      return (runtimePlugin.package.manifest.contributions.connectors ?? []).map(
+        (contribution) => ({
+          plugin: structuredClone(runtimePlugin),
+          contribution: structuredClone(contribution)
+        })
+      )
+    })
+  }
+
+  function installedStorageProviders(): InstalledPluginStorageProvider[] {
+    if (!ready) return []
+    return [...installed.values()].flatMap((plugin) => {
+      const runtimePlugin = runtimePluginState(plugin)
+      if (!runtimePlugin.enabled || runtimePlugin.package.manifest.schemaVersion !== 2) return []
+      return (runtimePlugin.package.manifest.contributions.storageProviders ?? []).map(
+        (contribution) => ({
+          plugin: structuredClone(runtimePlugin),
+          contribution: structuredClone(contribution)
+        })
+      )
+    })
+  }
+
   function canCreateModule(pluginId: string, moduleType: string): boolean {
     return installedModules().some(
       ({ plugin, contribution }) =>
@@ -1317,6 +1347,27 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
     )
   }
 
+  function connector(pluginId: string, connectorId: string): InstalledPluginConnector | null {
+    return (
+      installedConnectors().find(
+        ({ plugin, contribution }) =>
+          plugin.package.manifest.plugin.id === pluginId && contribution.connectorId === connectorId
+      ) ?? null
+    )
+  }
+
+  function storageProvider(
+    pluginId: string,
+    providerId: string
+  ): InstalledPluginStorageProvider | null {
+    return (
+      installedStorageProviders().find(
+        ({ plugin, contribution }) =>
+          plugin.package.manifest.plugin.id === pluginId && contribution.providerId === providerId
+      ) ?? null
+    )
+  }
+
   return {
     snapshot,
     subscribe(listener: StoreListener) {
@@ -1337,9 +1388,13 @@ export function createAppPluginStore(options: CreateAppPluginStoreOptions) {
     installedModules,
     installedCommands,
     installedExporters,
+    installedConnectors,
+    installedStorageProviders,
     canCreateModule,
     module,
     command,
-    exporter
+    exporter,
+    connector,
+    storageProvider
   }
 }

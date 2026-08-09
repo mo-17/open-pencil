@@ -5,8 +5,10 @@ import type {
   DeclarativeExporterContributionV2,
   DeclarativeModuleContributionV1,
   InstalledPluginStateV1,
+  PluginConnectorContractV1,
   PluginManifest,
   PluginManifestPayload,
+  PluginStorageProviderContributionV2,
   VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
 
@@ -140,4 +142,14 @@ export type InstalledPluginCommand = Readonly<{
 export type InstalledPluginExporter = Readonly<{
   plugin: InstalledAppPlugin
   contribution: AppPluginExporterContribution
+}>
+
+export type InstalledPluginConnector = Readonly<{
+  plugin: InstalledAppPlugin
+  contribution: PluginConnectorContractV1
+}>
+
+export type InstalledPluginStorageProvider = Readonly<{
+  plugin: InstalledAppPlugin
+  contribution: PluginStorageProviderContributionV2
 }>

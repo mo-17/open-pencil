@@ -10,19 +10,41 @@ import {
 import { digestCanonicalManifest, exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
 import {
+  GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+  GOOGLE_DRIVE_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/google-drive/config'
+import {
+  AIRTABLE_RECORDS_CONNECTOR_ID,
+  AIRTABLE_RECORDS_PLUGIN_ID,
   createBundledPluginCatalog,
+  RESEND_EMAIL_CONNECTOR_ID,
+  RESEND_EMAIL_PLUGIN_ID,
+  STRIPE_BILLING_CONNECTOR_ID,
+  STRIPE_BILLING_PLUGIN_ID,
+  SUPABASE_BUSINESS_CONNECTOR_ID,
+  SUPABASE_BUSINESS_PLUGIN_ID,
+  SUPABASE_SCHEMA_INSPECTOR_CONNECTOR_ID,
+  SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID,
   type AppPluginCatalogItem,
   type MarketplaceSnapshotLoadResult
 } from '@/app/plugins'
 import {
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
-  DESIGN_TOKENS_EXPORTER_PLUGIN_ID
+  DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+  GOOGLE_DRIVE_STORAGE_CAPABILITIES,
+  GOOGLE_DRIVE_STORAGE_CONFIG_VERSION
 } from '@/app/plugins/host/ids'
+import {
+  localizedAppPluginContributionText,
+  localizedAppPluginText
+} from '@/app/plugins/localization'
 import {
   filterPluginDiscoverCatalog,
   pluginMarketplaceListingViews,
   pluginV2ContractSummaries
 } from '@/app/plugins/settings-view-model'
+
+import { pluginConnectorContract, pluginPayloadV2 } from '#tests/engine/plugins/helpers'
 
 const ROOT_KEY_ID = 'marketplace.root.2026'
 const PLUGIN_ID = 'open-pencil.map'
@@ -159,6 +181,32 @@ describe('plugin settings marketplace view model', () => {
       }
     ])
     expect(pluginV2ContractSummaries(manifest(PLUGIN_ID))).toEqual([])
+    expect(pluginV2ContractSummaries(manifest(GOOGLE_DRIVE_STORAGE_PLUGIN_ID))).toEqual([
+      {
+        kind: 'storage-provider',
+        contributionId: GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+        permissions: [],
+        outputs: [],
+        parameterMaxBytes: 0,
+        resultMaxBytes: 0,
+        capabilities: GOOGLE_DRIVE_STORAGE_CAPABILITIES,
+        configVersion: GOOGLE_DRIVE_STORAGE_CONFIG_VERSION
+      }
+    ])
+
+    const connectorManifest = pluginPayloadV2()
+    connectorManifest.contributions.connectors = [pluginConnectorContract()]
+    expect(pluginV2ContractSummaries(connectorManifest)).toContainEqual({
+      kind: 'connector',
+      contributionId: 'analytics.records/list-records',
+      permissions: ['network.query'],
+      outputs: [],
+      parameterMaxBytes: 256,
+      resultMaxBytes: 2,
+      networkOrigins: ['https://api.example.com'],
+      networkMethods: ['GET'],
+      credentialSlots: ['access-token:bearer-token']
+    })
   })
 
   test('searches name, summary, category, and keyword from a verified signed snapshot', async () => {
@@ -177,6 +225,64 @@ describe('plugin settings marketplace view model', () => {
       ownershipStatus: 'active',
       keyStatus: 'active',
       channels: ['stable']
+    })
+  })
+
+  test('keeps signed manifests unchanged while exposing reviewed Simplified Chinese copy', () => {
+    expect(localizedAppPluginText(PLUGIN_ID, 'zh-CN')).toMatchObject({
+      name: 'OpenPencil 地图'
+    })
+    expect(localizedAppPluginContributionText(PLUGIN_ID, 'map', 'zh-CN')).toMatchObject({
+      name: '地图'
+    })
+    expect(localizedAppPluginText(PLUGIN_ID, 'en')).toBeUndefined()
+    expect(filterPluginDiscoverCatalog(mapCatalog(), null, '可编辑地图')).toHaveLength(1)
+    expect(localizedAppPluginText(SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID, 'zh-CN')).toMatchObject({
+      name: 'Supabase 架构检查器'
+    })
+    expect(
+      localizedAppPluginContributionText(
+        AIRTABLE_RECORDS_PLUGIN_ID,
+        AIRTABLE_RECORDS_CONNECTOR_ID,
+        'zh-CN'
+      )
+    ).toMatchObject({ name: 'Airtable 记录' })
+    expect(
+      localizedAppPluginContributionText(
+        SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID,
+        SUPABASE_SCHEMA_INSPECTOR_CONNECTOR_ID,
+        'zh-CN'
+      )
+    ).toMatchObject({ name: 'Supabase 架构检查器' })
+    expect(
+      localizedAppPluginContributionText(
+        SUPABASE_BUSINESS_PLUGIN_ID,
+        SUPABASE_BUSINESS_CONNECTOR_ID,
+        'zh-CN'
+      )
+    ).toMatchObject({ name: 'Supabase 数据表' })
+    expect(
+      localizedAppPluginContributionText(
+        STRIPE_BILLING_PLUGIN_ID,
+        STRIPE_BILLING_CONNECTOR_ID,
+        'zh-CN'
+      )
+    ).toMatchObject({ name: 'Stripe 结账与计费' })
+    expect(
+      localizedAppPluginContributionText(RESEND_EMAIL_PLUGIN_ID, RESEND_EMAIL_CONNECTOR_ID, 'zh-CN')
+    ).toMatchObject({ name: 'Resend 邮件' })
+    expect(localizedAppPluginText(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, 'zh-CN')).toMatchObject({
+      name: 'Google Drive 存储'
+    })
+    expect(
+      localizedAppPluginContributionText(
+        GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+        GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+        'zh-CN'
+      )
+    ).toMatchObject({
+      name: 'Google Drive',
+      description: expect.stringContaining('OAuth 和网络请求仅由宿主管理')
     })
   })
 
