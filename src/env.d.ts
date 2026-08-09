@@ -17,6 +17,8 @@ interface ImportMetaEnv {
   readonly VITE_OPENPENCIL_PLUGIN_TRUST_CONFIG?: string
   /** Build-time root trust anchor for a signed Phase 3 marketplace snapshot. */
   readonly VITE_OPENPENCIL_MARKETPLACE_TRUST_CONFIG?: string
+  /** Public OAuth client ID for the reviewed desktop Google Drive integration. */
+  readonly VITE_GOOGLE_DRIVE_CLIENT_ID?: string
 }
 
 declare const __OPENPENCIL_APP_VERSION__: string

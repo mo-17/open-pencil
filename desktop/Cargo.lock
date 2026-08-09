@@ -3242,12 +3242,15 @@ dependencies = [
 name = "open_pencil"
 version = "0.13.2"
 dependencies = [
+ "base64 0.22.1",
  "fix-path-env",
  "font-kit",
  "keyring",
+ "rand 0.8.5",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",

@@ -1,6 +1,7 @@
 mod credentials;
 mod fig_container;
 mod fonts;
+mod google_drive;
 mod http;
 mod menu;
 mod menu_events;
@@ -14,6 +15,10 @@ use credentials::{
 };
 use fig_container::build_fig_file;
 use fonts::{list_system_fonts, load_system_font};
+use google_drive::{
+    google_drive_oauth_authorize, google_drive_oauth_cancel, google_drive_oauth_refresh,
+    google_drive_oauth_revoke, google_drive_transfer, GoogleDriveOAuthOperations,
+};
 use http::proxy_http_request;
 use menu::install_app_menu;
 use menu_events::handle_menu_event;
@@ -130,6 +135,7 @@ pub fn run() {
 
     builder
         .manage(PendingOpen(Mutex::new(Vec::new())))
+        .manage(GoogleDriveOAuthOperations::default())
         .invoke_handler(tauri::generate_handler![
             build_fig_file,
             credential_read,
@@ -137,6 +143,11 @@ pub fn run() {
             credential_status,
             credential_store_availability,
             credential_write,
+            google_drive_oauth_authorize,
+            google_drive_oauth_cancel,
+            google_drive_oauth_refresh,
+            google_drive_oauth_revoke,
+            google_drive_transfer,
             list_system_fonts,
             load_system_font,
             proxy_http_request,

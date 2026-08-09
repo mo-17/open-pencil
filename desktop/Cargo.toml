@@ -19,6 +19,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+base64 = "0.22"
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
@@ -37,6 +38,8 @@ tauri-plugin-mcp-bridge = "0.11.0"
 tauri-plugin-webdriver-automation = "0.1.3"
 tauri-plugin-clipboard-manager = "2"
 keyring = "4.1.5"
+rand = "0.8"
+sha2 = "0.10"
 tempfile = "3.27.0"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]

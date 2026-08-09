@@ -1,6 +1,6 @@
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
-    Method,
+    Method, StatusCode,
 };
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -18,6 +18,7 @@ pub struct ProxyHttpRequest {
     headers: Option<Vec<ProxyHttpHeader>>,
     body: Option<Vec<u8>>,
     max_response_bytes: Option<usize>,
+    max_error_response_bytes: Option<usize>,
     follow_redirects: Option<bool>,
     timeout_ms: Option<u64>,
 }
@@ -47,6 +48,22 @@ fn request_headers(headers: Option<Vec<ProxyHttpHeader>>) -> HeaderMap {
 fn request_method(method: Option<String>) -> Result<Method, String> {
     let raw = method.unwrap_or_else(|| "GET".into());
     Method::from_bytes(raw.as_bytes()).map_err(|e| e.to_string())
+}
+
+fn response_limit(
+    status: StatusCode,
+    success_limit: Option<usize>,
+    error_limit: Option<usize>,
+) -> Option<usize> {
+    if status.is_success() {
+        success_limit
+    } else {
+        error_limit.or(success_limit)
+    }
+}
+
+fn response_chunk_exceeds_limit(current: usize, chunk: usize, limit: usize) -> bool {
+    chunk > limit.saturating_sub(current)
 }
 
 #[tauri::command]
@@ -86,18 +103,20 @@ pub async fn proxy_http_request(request: ProxyHttpRequest) -> Result<ProxyHttpRe
             })
         })
         .collect();
-    if let (Some(limit), Some(content_length)) =
-        (request.max_response_bytes, response.content_length())
-    {
+    let response_limit = response_limit(
+        response.status(),
+        request.max_response_bytes,
+        request.max_error_response_bytes,
+    );
+    if let (Some(limit), Some(content_length)) = (response_limit, response.content_length()) {
         if content_length > limit as u64 {
             return Err("HTTP response exceeds the configured size limit".into());
         }
     }
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-        if request
-            .max_response_bytes
-            .is_some_and(|limit| body.len() + chunk.len() > limit)
+        if response_limit
+            .is_some_and(|limit| response_chunk_exceeds_limit(body.len(), chunk.len(), limit))
         {
             return Err("HTTP response exceeds the configured size limit".into());
         }
@@ -110,4 +129,65 @@ pub async fn proxy_http_request(request: ProxyHttpRequest) -> Result<ProxyHttpRe
         body,
         url,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(success_limit: Option<usize>, error_limit: Option<usize>) -> ProxyHttpRequest {
+        ProxyHttpRequest {
+            url: "https://example.com".into(),
+            method: None,
+            headers: None,
+            body: None,
+            max_response_bytes: success_limit,
+            max_error_response_bytes: error_limit,
+            follow_redirects: None,
+            timeout_ms: None,
+        }
+    }
+
+    #[test]
+    fn proxy_request_deserializes_the_separate_error_limit() {
+        let parsed: ProxyHttpRequest = serde_json::from_str(
+            r#"{"url":"https://example.com","max_response_bytes":1024,"max_error_response_bytes":64}"#,
+        )
+        .expect("request should deserialize");
+        assert_eq!(parsed.max_response_bytes, Some(1024));
+        assert_eq!(parsed.max_error_response_bytes, Some(64));
+    }
+
+    #[test]
+    fn proxy_request_keeps_legacy_requests_compatible() {
+        let parsed: ProxyHttpRequest = serde_json::from_str(r#"{"url":"https://example.com"}"#)
+            .expect("legacy request should deserialize");
+        assert_eq!(parsed.max_response_bytes, None);
+        assert_eq!(parsed.max_error_response_bytes, None);
+        let constructed = request(Some(1024), Some(64));
+        assert_eq!(constructed.max_response_bytes, Some(1024));
+    }
+
+    #[test]
+    fn error_responses_use_the_smaller_error_limit() {
+        assert_eq!(
+            response_limit(StatusCode::OK, Some(1024), Some(64)),
+            Some(1024)
+        );
+        assert_eq!(
+            response_limit(StatusCode::BAD_REQUEST, Some(1024), Some(64)),
+            Some(64)
+        );
+        assert_eq!(
+            response_limit(StatusCode::BAD_REQUEST, Some(1024), None),
+            Some(1024)
+        );
+    }
+
+    #[test]
+    fn chunk_limit_is_overflow_safe_and_allows_the_exact_boundary() {
+        assert!(!response_chunk_exceeds_limit(4, 6, 10));
+        assert!(response_chunk_exceeds_limit(4, 7, 10));
+        assert!(response_chunk_exceeds_limit(usize::MAX, 1, 10));
+    }
 }
