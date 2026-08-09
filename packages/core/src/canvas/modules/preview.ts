@@ -50,6 +50,18 @@ export function resolveModulePreviewFrame<TConfig>(
   return { ...frame, config: resolved.config }
 }
 
+export function renderResolvedModulePreview<TConfig>(
+  node: SceneNode,
+  resolve: (value: unknown) => ModulePreviewResolution<TConfig> | { ok: false } | null,
+  draw: (frame: ResolvedModulePreviewFrame<TConfig>) => void
+): boolean {
+  const frame = resolveModulePreviewFrame(node, resolve)
+  if (!frame) return false
+  if (frame.empty) return true
+  draw(frame)
+  return true
+}
+
 export function modulePreviewMediaLayout(width: number, height: number): ModulePreviewMediaLayout {
   return {
     inset: Math.min(24, Math.max(8, Math.min(width, height) * 0.06)),
@@ -69,6 +81,35 @@ export function withModulePreviewClip(
     draw()
   } finally {
     canvas.restore()
+  }
+}
+
+export function withModulePreviewSurface(
+  renderer: SkiaRenderer,
+  canvas: Canvas,
+  frame: ModulePreviewFrame,
+  backgroundColor: string,
+  draw: () => void
+): void {
+  withModulePreviewClip(renderer, canvas, frame.node, () => {
+    configureModulePreviewPaint(renderer, backgroundColor)
+    canvas.drawRect(renderer.ck.LTRBRect(0, 0, frame.width, frame.height), renderer.fillPaint)
+    draw()
+  })
+}
+
+export function withModulePreviewFont(
+  renderer: SkiaRenderer,
+  fontSize: number,
+  draw: () => void
+): void {
+  const font = renderer.labelFont
+  const previousFontSize = font?.getSize()
+  try {
+    font?.setSize(fontSize)
+    draw()
+  } finally {
+    if (font && previousFontSize !== undefined) font.setSize(previousFontSize)
   }
 }
 

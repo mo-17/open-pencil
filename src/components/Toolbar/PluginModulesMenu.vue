@@ -10,9 +10,15 @@ import {
 } from 'reka-ui'
 
 import IconChartColumn from '~icons/lucide/chart-column'
+import IconCode2 from '~icons/lucide/code-2'
+import IconFileAudio from '~icons/lucide/file-audio'
+import IconFileText from '~icons/lucide/file-text'
+import IconListCollapse from '~icons/lucide/list-collapse'
 import IconMap from '~icons/lucide/map'
 import IconPanelLeftOpen from '~icons/lucide/panel-left-open'
 import IconPuzzle from '~icons/lucide/puzzle'
+import IconQrCode from '~icons/lucide/qr-code'
+import IconRows3 from '~icons/lucide/rows-3'
 import IconType from '~icons/lucide/type'
 
 import {
@@ -21,16 +27,27 @@ import {
   appPluginStoreSnapshot,
   inspectInstalledPluginModuleCompatibility
 } from '@/app/plugins'
+import {
+  localizedAppPluginContributionText,
+  localizedAppPluginText
+} from '@/app/plugins/localization'
 import { useEditorStore } from '@/app/editor/active-store'
 import { useActionToast } from '@/app/shell/toast/action'
 import Tip from '@/components/ui/Tip.vue'
 import { menu, useMenuUI } from '@/components/ui/menu'
 import toolbarTheme from '@/theme/toolbar'
 import {
+  ACCORDION_MODULE_TYPE,
+  AUDIO_PLAYER_MODULE_TYPE,
   CHART_MODULE_TYPE,
+  CODE_BLOCK_MODULE_TYPE,
   MAP_MODULE_TYPE,
+  MARKDOWN_MODULE_TYPE,
+  PDF_VIEWER_MODULE_TYPE,
+  QR_BARCODE_MODULE_TYPE,
   RICH_TEXT_MODULE_TYPE,
-  SLIDE_MENU_MODULE_TYPE
+  SLIDE_MENU_MODULE_TYPE,
+  TABS_MODULE_TYPE
 } from '@open-pencil/core/plugins'
 import { useI18n } from '@open-pencil/vue'
 
@@ -45,7 +62,7 @@ const { ui, mobile = false } = defineProps<{
 
 const editor = useEditorStore()
 const { showActionToast } = useActionToast()
-const { dialogs } = useI18n()
+const { dialogs, locale } = useI18n()
 const toolbar = tv(toolbarTheme)
 const styles = computed(() => toolbar({ mobile }))
 const menuCls = useMenuUI({ content: 'min-w-48' })
@@ -57,13 +74,30 @@ const modules = computed(() => {
     .installedModules()
     .filter((module) => inspectInstalledPluginModuleCompatibility(module).ok)
     .sort((left, right) => {
-      const byName = left.contribution.name.localeCompare(right.contribution.name)
+      const byName = moduleDisplayName(left).localeCompare(moduleDisplayName(right), locale.value)
       return byName || pluginId(left).localeCompare(pluginId(right))
     })
 })
 
 function pluginId(module: InstalledPluginModule): string {
   return module.plugin.package.manifest.plugin.id
+}
+
+function moduleDisplayName(module: InstalledPluginModule): string {
+  return (
+    localizedAppPluginContributionText(
+      pluginId(module),
+      module.contribution.moduleType,
+      locale.value
+    )?.name ?? module.contribution.name
+  )
+}
+
+function pluginDisplayName(module: InstalledPluginModule): string {
+  return (
+    localizedAppPluginText(pluginId(module), locale.value)?.name ??
+    module.plugin.package.manifest.plugin.name
+  )
 }
 
 function itemTestId(module: InstalledPluginModule): string {
@@ -76,6 +110,13 @@ function moduleIcon(moduleType: string): Component {
   if (moduleType === CHART_MODULE_TYPE) return IconChartColumn
   if (moduleType === RICH_TEXT_MODULE_TYPE) return IconType
   if (moduleType === SLIDE_MENU_MODULE_TYPE) return IconPanelLeftOpen
+  if (moduleType === TABS_MODULE_TYPE) return IconRows3
+  if (moduleType === ACCORDION_MODULE_TYPE) return IconListCollapse
+  if (moduleType === QR_BARCODE_MODULE_TYPE) return IconQrCode
+  if (moduleType === MARKDOWN_MODULE_TYPE) return IconFileText
+  if (moduleType === CODE_BLOCK_MODULE_TYPE) return IconCode2
+  if (moduleType === PDF_VIEWER_MODULE_TYPE) return IconFileText
+  if (moduleType === AUDIO_PLAYER_MODULE_TYPE) return IconFileAudio
   return IconPuzzle
 }
 
@@ -88,7 +129,7 @@ function addModule(module: InstalledPluginModule): void {
     const compatibility = inspectInstalledPluginModuleCompatibility(current)
     if (!compatibility.ok) throw new Error(compatibility.reason)
     addInstalledPluginModuleToCanvas(editor, current)
-    showActionToast(`${dialogs.value.pluginAddToCanvas}: ${current.contribution.name}`)
+    showActionToast(`${dialogs.value.pluginAddToCanvas}: ${moduleDisplayName(current)}`)
   } catch (cause) {
     showActionToast(
       dialogs.value.pluginOperationFailed({
@@ -124,9 +165,9 @@ function addModule(module: InstalledPluginModule): void {
           >
             <component :is="moduleIcon(module.contribution.moduleType)" class="size-3.5 shrink-0" />
             <span class="min-w-0 flex-1">
-              <span class="block truncate">{{ module.contribution.name }}</span>
+              <span class="block truncate">{{ moduleDisplayName(module) }}</span>
               <span class="block truncate text-[9px] text-muted">
-                {{ module.plugin.package.manifest.plugin.name }}
+                {{ pluginDisplayName(module) }}
               </span>
             </span>
           </DropdownMenuItem>

@@ -41,7 +41,7 @@ describe('core plugin registry and modules', () => {
       moduleType: CHART_MODULE_DEFINITION.moduleType,
       configVersion: CHART_MODULE_DEFINITION.configVersion
     })
-    expect(BUILTIN_PLUGIN_REGISTRY.listModules()).toHaveLength(10)
+    expect(BUILTIN_PLUGIN_REGISTRY.listModules()).toHaveLength(17)
     expect(() =>
       BUILTIN_PLUGIN_REGISTRY.register({
         id: 'late.plugin',

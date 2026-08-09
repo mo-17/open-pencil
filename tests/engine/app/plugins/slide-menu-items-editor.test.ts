@@ -13,6 +13,13 @@ const panelSource = readFileSync(
   resolve(import.meta.dir, '../../../../src/components/properties/Lowcode/ModulePropsPanel.vue'),
   'utf8'
 )
+const controllerSource = readFileSync(
+  resolve(
+    import.meta.dir,
+    '../../../../src/components/properties/Lowcode/module-props-panel-controller.ts'
+  ),
+  'utf8'
+)
 
 describe('Slide Menu module item editor', () => {
   test('edits link labels and destinations as structured plain text', () => {
@@ -41,9 +48,10 @@ describe('Slide Menu module item editor', () => {
 
   test('renders validation once and clears stale errors when the selected module changes', () => {
     expect(source).not.toContain('slide-menu-items-error')
-    expect(panelSource).toContain(
+    expect(panelSource).toContain('useModulePropsPanelController')
+    expect(controllerSource).toContain(
       '() => [selectedNode.value?.id, instance.value?.pluginId, instance.value?.moduleType]'
     )
-    expect(panelSource).toContain('for (const key of Object.keys(jsonErrors))')
+    expect(controllerSource).toContain('for (const key of Object.keys(jsonErrors))')
   })
 })

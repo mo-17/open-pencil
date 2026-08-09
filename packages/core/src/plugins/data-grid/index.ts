@@ -6,14 +6,24 @@ import {
 } from '@open-pencil/scene-graph'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
-import { createModuleFrameOverrides } from './module-frame'
+import { createModuleFrameOverrides } from '#core/plugins/module-frame'
 import {
   assertBoundedPluginConfigBytes,
   hasExactPluginKeys,
   mergePluginConfigWithDefaults,
   parseCanonicalPluginColor as canonicalColor
-} from './parse-helpers'
-import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
+} from '#core/plugins/parse-helpers'
+import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from '#core/plugins/types'
+
+import {
+  exportDataGridCsvWithContract,
+  parseDataGridCsvWithContract,
+  type DataGridCsvExportResult,
+  type DataGridCsvImportResult
+} from './csv'
+import { DEFAULT_DATA_GRID_COLUMNS, DEFAULT_DATA_GRID_ROWS } from './defaults'
+
+export type { DataGridCsvExportResult, DataGridCsvImportResult } from './csv'
 
 export const DATA_GRID_PLUGIN_ID = 'open-pencil.data-grid'
 export const DATA_GRID_MODULE_TYPE = 'data-grid'
@@ -35,6 +45,13 @@ export const DATA_GRID_MODULE_LIMITS = Object.freeze({
   fontSizeMin: 8,
   fontSizeMax: 32,
   configBytes: 48 * 1024
+})
+export const DATA_GRID_CSV_LIMITS = Object.freeze({
+  bytes: 192 * 1024,
+  records: DATA_GRID_MODULE_LIMITS.rows + 1,
+  fieldsPerRecord: DATA_GRID_MODULE_LIMITS.columns,
+  fields: DATA_GRID_MODULE_LIMITS.cells + DATA_GRID_MODULE_LIMITS.columns,
+  fieldText: DATA_GRID_MODULE_LIMITS.cellText
 })
 
 export type DataGridColumnTypeV1 = 'text' | 'number' | 'date' | 'boolean'
@@ -93,52 +110,11 @@ export interface DataGridModuleConfigV1 extends JsonObject {
   fontSize: number
 }
 
-const DEFAULT_COLUMNS: DataGridColumnV1[] = [
-  {
-    id: 'name',
-    label: 'Name',
-    type: 'text',
-    align: 'start',
-    width: 240,
-    sortable: true,
-    filterable: true
-  },
-  {
-    id: 'status',
-    label: 'Status',
-    type: 'text',
-    align: 'start',
-    width: 160,
-    sortable: true,
-    filterable: true
-  },
-  {
-    id: 'score',
-    label: 'Score',
-    type: 'number',
-    align: 'end',
-    width: 120,
-    sortable: true,
-    filterable: false
-  }
-]
-const DEFAULT_ROWS: DataGridRowV1[] = [
-  { id: 'landing', cells: ['Landing page', 'Ready', 98] },
-  { id: 'mobile', cells: ['Mobile app', 'Review', 84] },
-  { id: 'system', cells: ['Design system', 'Draft', 72] }
-]
 const DEFAULT_FILTERS: DataGridFilterV1[] = []
-DEFAULT_COLUMNS.forEach(Object.freeze)
-DEFAULT_ROWS.forEach((row) => {
-  Object.freeze(row.cells)
-  Object.freeze(row)
-})
-Object.freeze(DEFAULT_COLUMNS)
-Object.freeze(DEFAULT_ROWS)
 Object.freeze(DEFAULT_FILTERS)
 
 export const DATA_GRID_MODULE_DEFAULT_CONFIG: Readonly<DataGridModuleConfigV1> = Object.freeze({
-  data: Object.freeze({ columns: DEFAULT_COLUMNS, rows: DEFAULT_ROWS }),
+  data: Object.freeze({ columns: DEFAULT_DATA_GRID_COLUMNS, rows: DEFAULT_DATA_GRID_ROWS }),
   initialSort: null,
   filters: DEFAULT_FILTERS,
   pageSize: 20,
@@ -338,6 +314,24 @@ function parseData(value: unknown): DataGridDataV1 {
   }
   const columns = parseColumns(value.columns)
   return { columns, rows: parseRows(value.rows, columns) }
+}
+
+const DATA_GRID_CSV_CONTRACT = Object.freeze({
+  limits: DATA_GRID_CSV_LIMITS,
+  parseColumns,
+  parseData,
+  parseCell
+})
+
+export function parseDataGridCsv(
+  source: string,
+  columns: readonly DataGridColumnV1[]
+): DataGridCsvImportResult {
+  return parseDataGridCsvWithContract(source, columns, DATA_GRID_CSV_CONTRACT)
+}
+
+export function exportDataGridCsv(value: DataGridDataV1): DataGridCsvExportResult {
+  return exportDataGridCsvWithContract(value, DATA_GRID_CSV_CONTRACT)
 }
 
 function columnById(columns: DataGridColumnV1[], value: unknown, path: string): DataGridColumnV1 {

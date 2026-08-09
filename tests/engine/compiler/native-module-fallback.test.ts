@@ -2,9 +2,16 @@ import { describe, expect, test } from 'bun:test'
 
 import { compile, withDefaults, type CompilerOutput } from '@open-pencil/compiler'
 import {
+  createAccordionModuleInstance,
+  createAudioPlayerModuleInstance,
   createCarouselModuleInstance,
+  createCodeBlockModuleInstance,
   createDataGridModuleInstance,
-  createLottieModuleInstance
+  createLottieModuleInstance,
+  createMarkdownModuleInstance,
+  createPdfViewerModuleInstance,
+  createQrBarcodeModuleInstance,
+  createTabsModuleInstance
 } from '@open-pencil/core/plugins'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
@@ -15,13 +22,26 @@ const LOTTIE_SOURCE = 'https://media.example.com/open-pencil/native-animation.js
 const CAROUSEL_IMAGE = 'https://media.example.com/open-pencil/native-carousel.webp'
 const CAROUSEL_DESTINATION = 'https://example.com/native-carousel-destination'
 const GRID_PRIVATE_VALUE = 'grid-module-payload-must-not-leak'
+const TABS_PRIVATE_VALUE = 'tabs-module-payload-must-not-leak'
+const ACCORDION_PRIVATE_VALUE = 'accordion-module-payload-must-not-leak'
+const QR_PRIVATE_VALUE = 'qr-module-payload-must-not-leak'
+const MARKDOWN_PRIVATE_VALUE = 'markdown-module-payload-must-not-leak'
+const CODE_PRIVATE_VALUE = 'code-module-payload-must-not-leak'
+const PDF_PRIVATE_URL = 'https://media.example.com/private-native-fallback.pdf'
+const AUDIO_PRIVATE_URL = 'https://media.example.com/private-native-fallback.mp3'
+
+interface AdditionalModuleFallback {
+  nodeId: string
+  identity: string
+  authoredText: string
+}
 
 interface NativeModuleFixture {
   output: CompilerOutput
   slideMenuNodeId: string
   tableNodeId: string
   videoNodeId: string
-  additionalModuleNodeIds: string[]
+  additionalModules: AdditionalModuleFallback[]
 }
 
 function compileNativeModuleFixture(target: 'expo' | 'flutter'): NativeModuleFixture {
@@ -153,6 +173,82 @@ function compileNativeModuleFixture(target: 'expo' | 'flutter'): NativeModuleFix
   })
   graph.createNode('TEXT', dataGrid.id, { text: 'Authored data grid fallback' })
 
+  function addFallback(
+    identity: string,
+    module: ReturnType<typeof createTabsModuleInstance>,
+    authoredText: string
+  ): AdditionalModuleFallback {
+    const node = graph.createNode('FRAME', pageId, {
+      width: 560,
+      height: 240,
+      interactiveProps: { module }
+    })
+    graph.createNode('TEXT', node.id, { text: authoredText })
+    return { nodeId: node.id, identity, authoredText }
+  }
+
+  const additionalModules = [
+    {
+      nodeId: lottie.id,
+      identity: 'open-pencil.lottie/lottie',
+      authoredText: 'Authored Lottie fallback'
+    },
+    {
+      nodeId: carousel.id,
+      identity: 'open-pencil.carousel/carousel',
+      authoredText: 'Authored carousel fallback'
+    },
+    {
+      nodeId: dataGrid.id,
+      identity: 'open-pencil.data-grid/data-grid',
+      authoredText: 'Authored data grid fallback'
+    },
+    addFallback(
+      'open-pencil.tabs/tabs',
+      createTabsModuleInstance({
+        tabs: [
+          { id: 'private', label: 'Private', content: TABS_PRIVATE_VALUE },
+          { id: 'public', label: 'Public', content: 'Public fallback tab' }
+        ],
+        initialTabId: 'private'
+      }),
+      'Authored tabs fallback'
+    ),
+    addFallback(
+      'open-pencil.accordion/accordion',
+      createAccordionModuleInstance({
+        items: [{ id: 'private', title: 'Private', content: ACCORDION_PRIVATE_VALUE }],
+        initialOpenIds: ['private']
+      }),
+      'Authored accordion fallback'
+    ),
+    addFallback(
+      'open-pencil.qr-barcode/qr-barcode',
+      createQrBarcodeModuleInstance({ value: QR_PRIVATE_VALUE }),
+      'Authored QR fallback'
+    ),
+    addFallback(
+      'open-pencil.markdown/markdown',
+      createMarkdownModuleInstance({ source: MARKDOWN_PRIVATE_VALUE }),
+      'Authored Markdown fallback'
+    ),
+    addFallback(
+      'open-pencil.code-block/code-block',
+      createCodeBlockModuleInstance({ code: CODE_PRIVATE_VALUE }),
+      'Authored code fallback'
+    ),
+    addFallback(
+      'open-pencil.pdf-viewer/pdf-viewer',
+      createPdfViewerModuleInstance({ sourceUrl: PDF_PRIVATE_URL }),
+      'Authored PDF fallback'
+    ),
+    addFallback(
+      'open-pencil.audio-player/audio-player',
+      createAudioPlayerModuleInstance({ src: AUDIO_PRIVATE_URL }),
+      'Authored audio fallback'
+    )
+  ]
+
   return {
     output: compile({
       graph,
@@ -167,7 +263,7 @@ function compileNativeModuleFixture(target: 'expo' | 'flutter'): NativeModuleFix
     slideMenuNodeId: slideMenu.id,
     tableNodeId: table.id,
     videoNodeId: video.id,
-    additionalModuleNodeIds: [lottie.id, carousel.id, dataGrid.id]
+    additionalModules
   }
 }
 
@@ -184,14 +280,14 @@ function nativeSources(output: CompilerOutput, target: 'expo' | 'flutter'): stri
 
 describe('native compiler plugin-module fallback', () => {
   test('Expo warns for reviewed modules while preserving authored static fallbacks', () => {
-    const { output, slideMenuNodeId, tableNodeId, videoNodeId, additionalModuleNodeIds } =
+    const { output, slideMenuNodeId, tableNodeId, videoNodeId, additionalModules } =
       compileNativeModuleFixture('expo')
     const source = nativeSources(output, 'expo')
     const moduleWarnings = output.warnings.filter(
       (warning) => warning.code === 'expo-module-unsupported'
     )
 
-    expect(moduleWarnings).toHaveLength(6)
+    expect(moduleWarnings).toHaveLength(3 + additionalModules.length)
     expect(moduleWarnings).toContainEqual({
       code: 'expo-module-unsupported',
       message:
@@ -210,11 +306,7 @@ describe('native compiler plugin-module fallback', () => {
         'Expo static MVP emitted a static native fallback and dropped open-pencil.slide-menu/slide-menu module',
       nodeId: slideMenuNodeId
     })
-    for (const [nodeId, identity] of [
-      [additionalModuleNodeIds[0], 'open-pencil.lottie/lottie'],
-      [additionalModuleNodeIds[1], 'open-pencil.carousel/carousel'],
-      [additionalModuleNodeIds[2], 'open-pencil.data-grid/data-grid']
-    ] as const) {
+    for (const { nodeId, identity } of additionalModules) {
       expect(moduleWarnings).toContainEqual({
         code: 'expo-module-unsupported',
         message: `Expo static MVP emitted a static native fallback and dropped ${identity} module`,
@@ -224,9 +316,7 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).toContain('Authored video fallback')
     expect(source).toContain('Authored table fallback')
     expect(source).toContain('Authored slide menu fallback')
-    expect(source).toContain('Authored Lottie fallback')
-    expect(source).toContain('Authored carousel fallback')
-    expect(source).toContain('Authored data grid fallback')
+    for (const { authoredText } of additionalModules) expect(source).toContain(authoredText)
     expect(source).not.toContain('WebView')
     expect(source).not.toContain(VIDEO_SOURCE)
     expect(source).not.toContain(VIDEO_POSTER)
@@ -235,17 +325,24 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).not.toContain(CAROUSEL_IMAGE)
     expect(source).not.toContain(CAROUSEL_DESTINATION)
     expect(source).not.toContain(GRID_PRIVATE_VALUE)
+    expect(source).not.toContain(TABS_PRIVATE_VALUE)
+    expect(source).not.toContain(ACCORDION_PRIVATE_VALUE)
+    expect(source).not.toContain(QR_PRIVATE_VALUE)
+    expect(source).not.toContain(MARKDOWN_PRIVATE_VALUE)
+    expect(source).not.toContain(CODE_PRIVATE_VALUE)
+    expect(source).not.toContain(PDF_PRIVATE_URL)
+    expect(source).not.toContain(AUDIO_PRIVATE_URL)
   })
 
   test('Flutter warns for reviewed modules while preserving authored static fallbacks', () => {
-    const { output, slideMenuNodeId, tableNodeId, videoNodeId, additionalModuleNodeIds } =
+    const { output, slideMenuNodeId, tableNodeId, videoNodeId, additionalModules } =
       compileNativeModuleFixture('flutter')
     const source = nativeSources(output, 'flutter')
     const moduleWarnings = output.warnings.filter(
       (warning) => warning.code === 'flutter-element-feature-unsupported'
     )
 
-    expect(moduleWarnings).toHaveLength(6)
+    expect(moduleWarnings).toHaveLength(3 + additionalModules.length)
     expect(moduleWarnings).toContainEqual({
       code: 'flutter-element-feature-unsupported',
       message: 'Flutter static MVP emitted a static fallback and omitted: plugin module',
@@ -261,7 +358,7 @@ describe('native compiler plugin-module fallback', () => {
       message: 'Flutter static MVP emitted a static fallback and omitted: plugin module',
       nodeId: slideMenuNodeId
     })
-    for (const nodeId of additionalModuleNodeIds) {
+    for (const { nodeId } of additionalModules) {
       expect(moduleWarnings).toContainEqual({
         code: 'flutter-element-feature-unsupported',
         message: 'Flutter static MVP emitted a static fallback and omitted: plugin module',
@@ -271,9 +368,7 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).toContain('Authored video fallback')
     expect(source).toContain('Authored table fallback')
     expect(source).toContain('Authored slide menu fallback')
-    expect(source).toContain('Authored Lottie fallback')
-    expect(source).toContain('Authored carousel fallback')
-    expect(source).toContain('Authored data grid fallback')
+    for (const { authoredText } of additionalModules) expect(source).toContain(authoredText)
     expect(source).not.toContain('WebView')
     expect(source).not.toContain(VIDEO_SOURCE)
     expect(source).not.toContain(VIDEO_POSTER)
@@ -282,5 +377,12 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).not.toContain(CAROUSEL_IMAGE)
     expect(source).not.toContain(CAROUSEL_DESTINATION)
     expect(source).not.toContain(GRID_PRIVATE_VALUE)
+    expect(source).not.toContain(TABS_PRIVATE_VALUE)
+    expect(source).not.toContain(ACCORDION_PRIVATE_VALUE)
+    expect(source).not.toContain(QR_PRIVATE_VALUE)
+    expect(source).not.toContain(MARKDOWN_PRIVATE_VALUE)
+    expect(source).not.toContain(CODE_PRIVATE_VALUE)
+    expect(source).not.toContain(PDF_PRIVATE_URL)
+    expect(source).not.toContain(AUDIO_PRIVATE_URL)
   })
 })

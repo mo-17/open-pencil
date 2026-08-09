@@ -1,23 +1,37 @@
 import {
+  ACCORDION_MODULE_TYPE,
+  ACCORDION_PLUGIN_ID,
+  AUDIO_PLAYER_MODULE_TYPE,
+  AUDIO_PLAYER_PLUGIN_ID,
   BUILTIN_PLUGIN_REGISTRY,
   CAROUSEL_MODULE_TYPE,
   CAROUSEL_PLUGIN_ID,
   CHART_MODULE_TYPE,
   CHART_PLUGIN_ID,
+  CODE_BLOCK_MODULE_TYPE,
+  CODE_BLOCK_PLUGIN_ID,
   DATA_GRID_MODULE_TYPE,
   DATA_GRID_PLUGIN_ID,
   HTML_MODULE_TYPE,
   HTML_PLUGIN_ID,
   MAP_MODULE_TYPE,
   MAP_PLUGIN_ID,
+  MARKDOWN_MODULE_TYPE,
+  MARKDOWN_PLUGIN_ID,
   LOTTIE_MODULE_TYPE,
   LOTTIE_PLUGIN_ID,
+  PDF_VIEWER_MODULE_TYPE,
+  PDF_VIEWER_PLUGIN_ID,
+  QR_BARCODE_MODULE_TYPE,
+  QR_BARCODE_PLUGIN_ID,
   RICH_TEXT_MODULE_TYPE,
   RICH_TEXT_PLUGIN_ID,
   SLIDE_MENU_MODULE_TYPE,
   SLIDE_MENU_PLUGIN_ID,
   TABLE_MODULE_TYPE,
   TABLE_PLUGIN_ID,
+  TABS_MODULE_TYPE,
+  TABS_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID,
   type DeclarativeModuleContributionV1,
@@ -41,7 +55,26 @@ const TRUSTED_MODULE_ADAPTERS = new Map([
   ],
   ['open-pencil.lottie', { pluginId: LOTTIE_PLUGIN_ID, moduleType: LOTTIE_MODULE_TYPE }],
   ['open-pencil.carousel', { pluginId: CAROUSEL_PLUGIN_ID, moduleType: CAROUSEL_MODULE_TYPE }],
-  ['open-pencil.data-grid', { pluginId: DATA_GRID_PLUGIN_ID, moduleType: DATA_GRID_MODULE_TYPE }]
+  ['open-pencil.data-grid', { pluginId: DATA_GRID_PLUGIN_ID, moduleType: DATA_GRID_MODULE_TYPE }],
+  ['open-pencil.tabs', { pluginId: TABS_PLUGIN_ID, moduleType: TABS_MODULE_TYPE }],
+  ['open-pencil.accordion', { pluginId: ACCORDION_PLUGIN_ID, moduleType: ACCORDION_MODULE_TYPE }],
+  [
+    'open-pencil.qr-barcode',
+    { pluginId: QR_BARCODE_PLUGIN_ID, moduleType: QR_BARCODE_MODULE_TYPE }
+  ],
+  ['open-pencil.markdown', { pluginId: MARKDOWN_PLUGIN_ID, moduleType: MARKDOWN_MODULE_TYPE }],
+  [
+    'open-pencil.code-block',
+    { pluginId: CODE_BLOCK_PLUGIN_ID, moduleType: CODE_BLOCK_MODULE_TYPE }
+  ],
+  [
+    'open-pencil.pdf-viewer',
+    { pluginId: PDF_VIEWER_PLUGIN_ID, moduleType: PDF_VIEWER_MODULE_TYPE }
+  ],
+  [
+    'open-pencil.audio-player',
+    { pluginId: AUDIO_PLAYER_PLUGIN_ID, moduleType: AUDIO_PLAYER_MODULE_TYPE }
+  ]
 ])
 
 export type AppPluginModuleCompatibilityStatus =

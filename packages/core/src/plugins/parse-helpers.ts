@@ -55,13 +55,60 @@ export function parseCanonicalPluginColor(value: unknown, path: string): string 
   return value.toUpperCase()
 }
 
-function containsUnsafePluginHrefCharacter(value: string): boolean {
-  if (value.includes('\\')) return true
+export function parsePluginBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw new TypeError(`${path} must be a boolean`)
+  return value
+}
+
+export function parseBoundedPluginNumber(
+  value: unknown,
+  path: string,
+  minimum: number,
+  maximum: number
+): number {
+  if (typeof value !== 'number') {
+    throw new TypeError(`${path} must be between ${minimum} and ${maximum}`)
+  }
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new TypeError(`${path} must be between ${minimum} and ${maximum}`)
+  }
+  return value
+}
+
+export function parseBoundedPluginInteger(
+  value: unknown,
+  path: string,
+  minimum: number,
+  maximum: number
+): number {
+  if (!Number.isSafeInteger(value) || (value as number) < minimum || (value as number) > maximum) {
+    throw new TypeError(`${path} must be an integer between ${minimum} and ${maximum}`)
+  }
+  return value as number
+}
+
+export function parsePluginStringEnum<Value extends string>(
+  value: unknown,
+  path: string,
+  allowed: ReadonlySet<Value>,
+  description: string
+): Value {
+  if (typeof value !== 'string' || !allowed.has(value as Value)) {
+    throw new TypeError(`${path} must be ${description}`)
+  }
+  return value as Value
+}
+
+function containsPluginControlCharacter(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index)
     if (code <= 31 || code === 127) return true
   }
   return false
+}
+
+function containsUnsafePluginHrefCharacter(value: string): boolean {
+  return value.includes('\\') || containsPluginControlCharacter(value)
 }
 
 export function isSafePluginHref(
@@ -202,6 +249,74 @@ export function parseCanonicalPublicHttpsUrl(
     )
   }
   return value
+}
+
+function decodedPathSegment(value: string, path: string): string {
+  let decoded = value
+  for (let pass = 0; pass < 4; pass += 1) {
+    let next: string
+    try {
+      next = decodeURIComponent(decoded)
+    } catch {
+      throw new TypeError(`${path} must use valid percent encoding`)
+    }
+    if (next === decoded) return decoded
+    decoded = next
+  }
+  if (decoded.includes('%')) {
+    throw new TypeError(`${path} must not contain recursively encoded path segments`)
+  }
+  return decoded
+}
+
+function parseCanonicalRootRelativePath(value: string, path: string): string {
+  if (
+    !value.startsWith('/') ||
+    value.startsWith('//') ||
+    value.includes('//') ||
+    value.includes('\\') ||
+    value.includes('#') ||
+    containsPluginControlCharacter(value) ||
+    /%(?:2f|5c|00|0[1-9a-f]|1[\da-f]|7f)/i.test(value)
+  ) {
+    throw new TypeError(`${path} must be a safe canonical root-relative path`)
+  }
+  const parsed = new URL(value, 'https://openpencil.invalid')
+  if (`${parsed.pathname}${parsed.search}` !== value) {
+    throw new TypeError(`${path} must be a canonical root-relative path`)
+  }
+  const pathOnly = value.split('?', 1)[0]
+  for (const segment of pathOnly.split('/')) {
+    const decoded = decodedPathSegment(segment, path)
+    if (
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      containsPluginControlCharacter(decoded)
+    ) {
+      throw new TypeError(`${path} must not contain encoded separators or control characters`)
+    }
+    if (decoded === '.' || decoded === '..') {
+      throw new TypeError(`${path} must not contain plain or encoded dot segments`)
+    }
+  }
+  return value
+}
+
+export function parseSafePluginAssetSource(
+  value: unknown,
+  path: string,
+  maximumLength: number,
+  allowEmpty = true
+): string {
+  if (typeof value !== 'string' || value.length > maximumLength) {
+    throw new TypeError(`${path} must be a bounded asset source`)
+  }
+  if (value === '') {
+    if (allowEmpty) return ''
+    throw new TypeError(`${path} must not be empty`)
+  }
+  if (value.startsWith('/')) return parseCanonicalRootRelativePath(value, path)
+  return parseCanonicalPublicHttpsUrl(value, path, maximumLength)
 }
 
 export function comparePluginVersionCoordinates(

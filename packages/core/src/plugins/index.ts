@@ -1,5 +1,8 @@
 export { BUILTIN_PLUGIN_REGISTRY } from './builtin'
+export * from './accordion'
+export * from './audio-player'
 export * from './carousel'
+export * from './code-block'
 export * from './catalog'
 export {
   CHART_MODULE_CONFIG_VERSION,
@@ -61,6 +64,9 @@ export {
   type MapModuleConfigV1
 } from './map'
 export * from './lottie'
+export * from './markdown'
+export * from './pdf-viewer'
+export * from './qr-barcode'
 export { PluginRegistry } from './registry'
 export {
   RICH_TEXT_MODULE_CONFIG_VERSION,
@@ -127,6 +133,7 @@ export {
   type TableModuleConfig,
   type TableModuleConfigV1
 } from './table'
+export * from './tabs'
 export {
   VIDEO_MODULE_CONFIG_VERSION,
   VIDEO_MODULE_DEFAULT_CONFIG,

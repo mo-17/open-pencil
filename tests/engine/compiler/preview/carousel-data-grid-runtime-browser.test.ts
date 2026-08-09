@@ -342,4 +342,46 @@ describe('preview browser — carousel and data grid runtimes', () => {
     },
     timeoutMs
   )
+
+  test(
+    'imports bounded pasted CSV locally and prepares formula-safe CSV text without permissions',
+    async () => {
+      if (!server || !page) throw new Error('Missing module preview runtime')
+      await page.goto(server.url, { waitUntil: 'networkidle' })
+
+      const firstGrid = page.locator('[data-openpencil-data-grid]').first()
+      const csvTools = firstGrid.getByRole('region', { name: 'Data grid CSV tools' })
+      await csvTools.getByRole('button', { name: 'Paste CSV (local session)' }).click()
+      const importSource = csvTools.getByRole('textbox', { name: 'CSV import text' })
+
+      await importSource.fill('Name,Score\rBroken,1')
+      await csvTools.getByRole('button', { name: 'Import pasted CSV' }).click()
+      expect(await csvTools.getByRole('alert').textContent()).toContain('malformed CR')
+
+      await importSource.fill('\uFEFFName,Score\n"=SUM(A1:A2)",10\nGamma,3')
+      await csvTools.getByRole('button', { name: 'Import pasted CSV' }).click()
+      expect(await csvTools.getByText('local running session only').textContent()).toContain(
+        'Imported 2 rows'
+      )
+      expect(await firstGrid.getByText('=SUM(A1:A2)', { exact: true }).count()).toBe(1)
+      expect(await firstGrid.getByText('Alpha', { exact: true }).count()).toBe(0)
+
+      await csvTools.getByRole('button', { name: 'Prepare CSV text' }).click()
+      const prepared = csvTools.getByRole('textbox', { name: 'Prepared CSV text' })
+      // HTML textarea values normalize CRLF to LF; the generated helper itself emits CRLF.
+      expect(await prepared.inputValue()).toBe("Name,Score\n'=SUM(A1:A2),10\nGamma,3\n")
+      expect(await csvTools.getByText('1 formula-like text fields were neutralized.').count()).toBe(
+        1
+      )
+
+      await page.getByRole('button', { name: 'Rerender host', exact: true }).click()
+      expect(await firstGrid.getByText('=SUM(A1:A2)', { exact: true }).count()).toBe(1)
+
+      await page.reload({ waitUntil: 'networkidle' })
+      const reloadedGrid = page.locator('[data-openpencil-data-grid]').first()
+      expect(await reloadedGrid.getByText('Alpha', { exact: true }).count()).toBe(1)
+      expect(await reloadedGrid.getByText('=SUM(A1:A2)', { exact: true }).count()).toBe(0)
+    },
+    timeoutMs
+  )
 })

@@ -1,13 +1,20 @@
-import { CHART_COMPILER_MODULE_LOWERER } from './chart'
+import { ACCORDION_COMPILER_MODULE_LOWERER } from './accordion'
+import { AUDIO_PLAYER_COMPILER_MODULE_LOWERER } from './audio-player'
 import { CAROUSEL_COMPILER_MODULE_LOWERER } from './carousel'
+import { CHART_COMPILER_MODULE_LOWERER } from './chart'
+import { CODE_BLOCK_COMPILER_MODULE_LOWERER } from './code-block'
 import { DATA_GRID_COMPILER_MODULE_LOWERER } from './data-grid'
 import { HTML_COMPILER_MODULE_LOWERER } from './html'
-import { MAP_COMPILER_MODULE_LOWERER } from './map'
 import { LOTTIE_COMPILER_MODULE_LOWERER } from './lottie'
+import { MAP_COMPILER_MODULE_LOWERER } from './map'
+import { MARKDOWN_COMPILER_MODULE_LOWERER } from './markdown'
+import { PDF_VIEWER_COMPILER_MODULE_LOWERER } from './pdf-viewer'
+import { QR_BARCODE_COMPILER_MODULE_LOWERER } from './qr-barcode'
 import { CompilerModuleRegistry } from './registry'
 import { RICH_TEXT_COMPILER_MODULE_LOWERER } from './rich-text'
 import { SLIDE_MENU_COMPILER_MODULE_LOWERER } from './slide-menu'
 import { TABLE_COMPILER_MODULE_LOWERER } from './table'
+import { TABS_COMPILER_MODULE_LOWERER } from './tabs'
 import { VIDEO_COMPILER_MODULE_LOWERER } from './video'
 
 /** Framework-neutral installation manifest for trusted compiler modules.
@@ -54,4 +61,11 @@ export const BUILTIN_COMPILER_MODULE_REGISTRY = new CompilerModuleRegistry()
     lowerer: DATA_GRID_COMPILER_MODULE_LOWERER,
     targets: {}
   })
+  .register({ lowerer: TABS_COMPILER_MODULE_LOWERER, targets: {} })
+  .register({ lowerer: ACCORDION_COMPILER_MODULE_LOWERER, targets: {} })
+  .register({ lowerer: QR_BARCODE_COMPILER_MODULE_LOWERER, targets: {} })
+  .register({ lowerer: MARKDOWN_COMPILER_MODULE_LOWERER, targets: {} })
+  .register({ lowerer: CODE_BLOCK_COMPILER_MODULE_LOWERER, targets: {} })
+  .register({ lowerer: PDF_VIEWER_COMPILER_MODULE_LOWERER, targets: {} })
+  .register({ lowerer: AUDIO_PLAYER_COMPILER_MODULE_LOWERER, targets: {} })
   .freeze()

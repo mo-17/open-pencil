@@ -11,14 +11,21 @@ import { renderMapModulePreview } from '#core/canvas/lowcode'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { MAP_MODULE_TYPE, MAP_PLUGIN_ID } from '#core/plugins/map'
 
+import { ACCORDION_MODULE_CANVAS_ADAPTER, renderAccordionModulePreview } from './accordion'
+import { AUDIO_PLAYER_MODULE_CANVAS_ADAPTER, renderAudioPlayerModulePreview } from './audio-player'
 import { CAROUSEL_MODULE_CANVAS_ADAPTER, renderCarouselModulePreview } from './carousel'
 import { CHART_MODULE_CANVAS_ADAPTER, renderChartModulePreview } from './chart'
+import { CODE_BLOCK_MODULE_CANVAS_ADAPTER, renderCodeBlockModulePreview } from './code-block'
 import { DATA_GRID_MODULE_CANVAS_ADAPTER, renderDataGridModulePreview } from './data-grid'
 import { HTML_MODULE_CANVAS_ADAPTER, renderHtmlModulePreview } from './html'
 import { LOTTIE_MODULE_CANVAS_ADAPTER, renderLottieModulePreview } from './lottie'
+import { MARKDOWN_MODULE_CANVAS_ADAPTER, renderMarkdownModulePreview } from './markdown'
+import { PDF_VIEWER_MODULE_CANVAS_ADAPTER, renderPdfViewerModulePreview } from './pdf-viewer'
+import { QR_BARCODE_MODULE_CANVAS_ADAPTER, renderQrBarcodeModulePreview } from './qr-barcode'
 import { RICH_TEXT_MODULE_CANVAS_ADAPTER, renderRichTextModulePreview } from './rich-text'
 import { SLIDE_MENU_MODULE_CANVAS_ADAPTER, renderSlideMenuModulePreview } from './slide-menu'
 import { TABLE_MODULE_CANVAS_ADAPTER, renderTableModulePreview } from './table'
+import { TABS_MODULE_CANVAS_ADAPTER, renderTabsModulePreview } from './tabs'
 import type { ModuleCanvasAdapter } from './types'
 import { VIDEO_MODULE_CANVAS_ADAPTER, renderVideoModulePreview } from './video'
 
@@ -74,6 +81,13 @@ export const BUILTIN_MODULE_CANVAS_ADAPTERS = new ModuleCanvasAdapterRegistry()
   .register(LOTTIE_MODULE_CANVAS_ADAPTER)
   .register(CAROUSEL_MODULE_CANVAS_ADAPTER)
   .register(DATA_GRID_MODULE_CANVAS_ADAPTER)
+  .register(TABS_MODULE_CANVAS_ADAPTER)
+  .register(ACCORDION_MODULE_CANVAS_ADAPTER)
+  .register(QR_BARCODE_MODULE_CANVAS_ADAPTER)
+  .register(MARKDOWN_MODULE_CANVAS_ADAPTER)
+  .register(CODE_BLOCK_MODULE_CANVAS_ADAPTER)
+  .register(PDF_VIEWER_MODULE_CANVAS_ADAPTER)
+  .register(AUDIO_PLAYER_MODULE_CANVAS_ADAPTER)
   .freeze()
 
 export function renderModulePreview(
@@ -85,13 +99,20 @@ export function renderModulePreview(
 }
 
 export {
+  renderAccordionModulePreview,
+  renderAudioPlayerModulePreview,
   renderChartModulePreview,
   renderCarouselModulePreview,
+  renderCodeBlockModulePreview,
   renderDataGridModulePreview,
   renderHtmlModulePreview,
   renderLottieModulePreview,
+  renderMarkdownModulePreview,
+  renderPdfViewerModulePreview,
+  renderQrBarcodeModulePreview,
   renderRichTextModulePreview,
   renderSlideMenuModulePreview,
   renderTableModulePreview,
+  renderTabsModulePreview,
   renderVideoModulePreview
 }
