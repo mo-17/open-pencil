@@ -7,20 +7,29 @@ import {
   createMemoryAppPluginStateStorage
 } from '@/app/plugins'
 import {
+  CAPACITOR_EXPORTER,
+  CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  ELECTRON_EXPORTER,
+  ELECTRON_EXPORTER_PLUGIN_ID,
   EXPO_REACT_NATIVE_EXPORTER,
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
+  NEXTJS_EXPORTER,
+  NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import {
   createPluginMenuActions,
+  executeCapacitorPluginMenuExporter,
   executeClipboardPluginMenuCommand,
+  executeElectronPluginMenuExporter,
   executeExpoReactNativePluginMenuExporter,
   executeFlutterPluginMenuExporter,
+  executeNextJsPluginMenuExporter,
   executeTauriReactPluginMenuExporter,
   type PluginMenuExecutionDependencies
 } from '@/app/shell/menu/plugin-actions'
@@ -86,6 +95,12 @@ describe('plugin system menu actions', () => {
     await store.setEnabled(EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID, true)
     await store.install(FLUTTER_EXPORTER_PLUGIN_ID)
     await store.setEnabled(FLUTTER_EXPORTER_PLUGIN_ID, true)
+    await store.install(NEXTJS_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(NEXTJS_EXPORTER_PLUGIN_ID, true)
+    await store.install(CAPACITOR_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(CAPACITOR_EXPORTER_PLUGIN_ID, true)
+    await store.install(ELECTRON_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(ELECTRON_EXPORTER_PLUGIN_ID, true)
 
     await expect(
       executeClipboardPluginMenuCommand(EDITOR, CLIPBOARD_COMMANDS.svg.commandId, dependencies)
@@ -102,11 +117,26 @@ describe('plugin system menu actions', () => {
       status: 'completed',
       message: `ran ${FLUTTER_EXPORTER.exporterId}`
     })
+    await expect(executeNextJsPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
+      status: 'completed',
+      message: `ran ${NEXTJS_EXPORTER.exporterId}`
+    })
+    await expect(executeCapacitorPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
+      status: 'completed',
+      message: `ran ${CAPACITOR_EXPORTER.exporterId}`
+    })
+    await expect(executeElectronPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
+      status: 'completed',
+      message: `ran ${ELECTRON_EXPORTER.exporterId}`
+    })
     expect(calls).toEqual([
       `${CLIPBOARD_TOOLKIT_PLUGIN_ID}:${CLIPBOARD_COMMANDS.svg.commandId}`,
       `${TAURI_REACT_EXPORTER_PLUGIN_ID}:${TAURI_REACT_EXPORTER.exporterId}`,
       `${EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID}:${EXPO_REACT_NATIVE_EXPORTER.exporterId}`,
-      `${FLUTTER_EXPORTER_PLUGIN_ID}:${FLUTTER_EXPORTER.exporterId}`
+      `${FLUTTER_EXPORTER_PLUGIN_ID}:${FLUTTER_EXPORTER.exporterId}`,
+      `${NEXTJS_EXPORTER_PLUGIN_ID}:${NEXTJS_EXPORTER.exporterId}`,
+      `${CAPACITOR_EXPORTER_PLUGIN_ID}:${CAPACITOR_EXPORTER.exporterId}`,
+      `${ELECTRON_EXPORTER_PLUGIN_ID}:${ELECTRON_EXPORTER.exporterId}`
     ])
   })
 
@@ -173,6 +203,21 @@ describe('plugin system menu actions', () => {
     expect(notifications.at(-1)).toEqual({
       tone: 'info',
       message: `ran ${FLUTTER_EXPORTER.exporterId}`
+    })
+
+    await actions[PLUGIN_MENU_ACTION_IDS.exportNextJs]()
+    expect(notifications.at(-1)).toEqual({
+      tone: 'error',
+      message:
+        'Plugin operation failed: Next.js Exporter is not installed. Install it in Settings → Plugins.'
+    })
+
+    await store.install(NEXTJS_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(NEXTJS_EXPORTER_PLUGIN_ID, true)
+    await actions[PLUGIN_MENU_ACTION_IDS.exportNextJs]()
+    expect(notifications.at(-1)).toEqual({
+      tone: 'info',
+      message: `ran ${NEXTJS_EXPORTER.exporterId}`
     })
   })
 })

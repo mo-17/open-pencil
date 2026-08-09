@@ -11,7 +11,10 @@ import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
 import type { EditorStore } from '@/app/editor/active-store'
 import { appPluginStore } from '@/app/plugins/app'
+import { appConnectorAuthorization, isAppConnectorMcpExposed } from '@/app/plugins/connectors/app'
 import { listAppPluginMcpTools } from '@/app/plugins/mcp'
+
+const PLUGIN_MCP_OPTIONS = Object.freeze({ connectorExposure: isAppConnectorMcpExposed })
 
 export function connectAutomation(getStore: () => EditorStore, authToken: string | null = null) {
   const token = authToken ?? randomHex(32)
@@ -27,7 +30,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
   function announcePluginTools(socket: WebSocket): void {
     if (socket !== ws || socket.readyState !== WebSocket.OPEN) return
     try {
-      const revision = listAppPluginMcpTools(appPluginStore).revision
+      const revision = listAppPluginMcpTools(appPluginStore, PLUGIN_MCP_OPTIONS).revision
       if (revision === lastPluginToolsRevision) return
       lastPluginToolsRevision = revision
       socket.send(JSON.stringify({ type: 'plugin_tools_changed', revision }))
@@ -40,6 +43,10 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
   }
 
   const unsubscribePluginTools = appPluginStore.subscribe(() => {
+    const socket = ws
+    if (socket) announcePluginTools(socket)
+  })
+  const unsubscribeConnectorTools = appConnectorAuthorization.subscribe(() => {
     const socket = ws
     if (socket) announcePluginTools(socket)
   })
@@ -157,6 +164,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     intentionalDisconnect = true
     clearTimeout(reconnectTimer)
     unsubscribePluginTools()
+    unsubscribeConnectorTools()
     for (const controller of activeRequests.values()) controller.abort()
     activeRequests.clear()
     ws?.close()

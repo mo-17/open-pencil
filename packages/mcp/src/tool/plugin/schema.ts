@@ -182,7 +182,7 @@ export function parsePluginMcpInputSchema(
   path: string,
   kind: PluginMcpToolKind
 ): Readonly<Record<string, unknown>> {
-  if (kind !== 'module') {
+  if (kind === 'command' || kind === 'exporter' || kind === 'connector') {
     const parsed = parsePluginObjectParameterSchema(value, path, {
       reserveAutomationTargets: true
     })

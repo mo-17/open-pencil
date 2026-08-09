@@ -1,22 +1,36 @@
 import {
+  ACCORDION_MODULE_DEFINITION,
+  ACCORDION_PLUGIN,
+  AUDIO_PLAYER_MODULE_DEFINITION,
+  AUDIO_PLAYER_PLUGIN,
   CAROUSEL_MODULE_DEFINITION,
   CAROUSEL_PLUGIN,
   CHART_MODULE_DEFINITION,
   CHART_PLUGIN,
+  CODE_BLOCK_MODULE_DEFINITION,
+  CODE_BLOCK_PLUGIN,
   DATA_GRID_MODULE_DEFINITION,
   DATA_GRID_PLUGIN,
   HTML_MODULE_DEFINITION,
   HTML_PLUGIN,
   MAP_MODULE_DEFINITION,
   MAP_PLUGIN,
+  MARKDOWN_MODULE_DEFINITION,
+  MARKDOWN_PLUGIN,
   LOTTIE_MODULE_DEFINITION,
   LOTTIE_PLUGIN,
+  PDF_VIEWER_MODULE_DEFINITION,
+  PDF_VIEWER_PLUGIN,
+  QR_BARCODE_MODULE_DEFINITION,
+  QR_BARCODE_PLUGIN,
   RICH_TEXT_MODULE_DEFINITION,
   RICH_TEXT_PLUGIN,
   SLIDE_MENU_MODULE_DEFINITION,
   SLIDE_MENU_PLUGIN,
   TABLE_MODULE_DEFINITION,
   TABLE_PLUGIN,
+  TABS_MODULE_DEFINITION,
+  TABS_PLUGIN,
   VIDEO_MODULE_DEFINITION,
   VIDEO_PLUGIN,
   type DeclarativeCommandContributionV1,
@@ -26,24 +40,59 @@ import {
   type ModuleDefinition,
   type PluginDefinition,
   type PluginContributionDataContractV2,
+  type PluginConnectorContractV1,
   type PluginManifestPayloadV1,
   type PluginManifestPayloadV2,
-  type PluginObjectParameterSchemaV2
+  type PluginObjectParameterSchemaV2,
+  type PluginStorageProviderContributionV2
 } from '@open-pencil/core/plugins'
 
 import {
+  GOOGLE_DRIVE_STORAGE_ADAPTER_ID,
+  GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+  GOOGLE_DRIVE_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/google-drive/config'
+
+import {
+  AIRTABLE_RECORDS_CONNECTOR_CONTRACT,
+  AIRTABLE_RECORDS_PLUGIN_ID
+} from './connectors/airtable-records'
+import { RESEND_EMAIL_CONNECTOR_CONTRACT, RESEND_EMAIL_PLUGIN_ID } from './connectors/resend-email'
+import {
+  STRIPE_BILLING_CONNECTOR_CONTRACT,
+  STRIPE_BILLING_PLUGIN_ID
+} from './connectors/stripe-billing'
+import {
+  SUPABASE_BUSINESS_CONNECTOR_CONTRACT,
+  SUPABASE_BUSINESS_PLUGIN_ID
+} from './connectors/supabase-business'
+import {
+  SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
+  SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID
+} from './connectors/supabase-schema-inspector'
+import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  CAPACITOR_EXPORTER,
+  CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+  DESIGN_SYSTEM_AUDIT_COMMAND,
+  DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
+  ELECTRON_EXPORTER,
+  ELECTRON_EXPORTER_PLUGIN_ID,
   EXPO_REACT_NATIVE_EXPORTER,
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
   FIGMA_PROJECTION_EXPORTER,
   FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
+  GOOGLE_DRIVE_STORAGE_CAPABILITIES,
+  GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
+  NEXTJS_EXPORTER,
+  NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID
 } from './host/ids'
@@ -54,6 +103,9 @@ const APP_BUNDLE_PUBLISHER = Object.freeze({
   name: 'OpenPencil',
   keyId: 'app-bundle-v1'
 })
+
+const NON_NEGATIVE_INTEGER_SCHEMA = Object.freeze({ type: 'integer' as const, minimum: 0 })
+const BOOLEAN_SCHEMA = Object.freeze({ type: 'boolean' as const })
 
 type BundledPluginIdentity = Readonly<{ id: string; name: string; version: string }>
 
@@ -129,6 +181,8 @@ function bundledUtilityManifestV2(
   contributions: Readonly<{
     commands?: readonly DeclarativeCommandContributionV2[]
     exporters?: readonly DeclarativeExporterContributionV2[]
+    connectors?: readonly PluginConnectorContractV1[]
+    storageProviders?: readonly PluginStorageProviderContributionV2[]
   }>
 ): PluginManifestPayloadV2 {
   return {
@@ -140,6 +194,14 @@ function bundledUtilityManifestV2(
         : {}),
       ...(contributions.exporters
         ? { exporters: contributions.exporters.map((value) => structuredClone(value)) }
+        : {}),
+      ...(contributions.connectors
+        ? { connectors: contributions.connectors.map((value) => structuredClone(value)) }
+        : {}),
+      ...(contributions.storageProviders
+        ? {
+            storageProviders: contributions.storageProviders.map((value) => structuredClone(value))
+          }
         : {})
     }
   }
@@ -184,11 +246,11 @@ const ACCESSIBILITY_RESULT_CONTRACT: PluginContributionDataContractV2 = Object.f
     properties: Object.freeze({
       kind: Object.freeze({ type: 'string', enum: Object.freeze(['static-accessibility-audit']) }),
       scope: Object.freeze({ type: 'string', enum: Object.freeze(['document']) }),
-      errorCount: Object.freeze({ type: 'integer', minimum: 0 }),
-      warningCount: Object.freeze({ type: 'integer', minimum: 0 }),
-      infoCount: Object.freeze({ type: 'integer', minimum: 0 }),
-      issueCount: Object.freeze({ type: 'integer', minimum: 0 }),
-      truncated: Object.freeze({ type: 'boolean' }),
+      errorCount: NON_NEGATIVE_INTEGER_SCHEMA,
+      warningCount: NON_NEGATIVE_INTEGER_SCHEMA,
+      infoCount: NON_NEGATIVE_INTEGER_SCHEMA,
+      issueCount: NON_NEGATIVE_INTEGER_SCHEMA,
+      truncated: BOOLEAN_SCHEMA,
       issues: Object.freeze({
         type: 'array',
         items: ACCESSIBILITY_ISSUE_SCHEMA,
@@ -214,6 +276,102 @@ const ACCESSIBILITY_RESULT_CONTRACT: PluginContributionDataContractV2 = Object.f
     additionalProperties: false,
     minProperties: 9,
     maxProperties: 9
+  }),
+  maxBytes: 512 * 1024
+})
+
+const DESIGN_SYSTEM_ISSUE_SCHEMA: PluginObjectParameterSchemaV2 = Object.freeze({
+  type: 'object',
+  properties: Object.freeze({
+    category: Object.freeze({
+      type: 'string',
+      enum: Object.freeze(['tokens', 'components', 'spacing', 'typography'])
+    }),
+    code: Object.freeze({ type: 'string', minLength: 1, maxLength: 96 }),
+    severity: Object.freeze({ type: 'string', enum: Object.freeze(['warning', 'info']) }),
+    message: Object.freeze({ type: 'string', maxLength: 800 }),
+    nodeId: Object.freeze({ type: 'string', maxLength: 256 }),
+    nodeName: Object.freeze({ type: 'string', maxLength: 256 })
+  }),
+  required: Object.freeze(['category', 'code', 'severity', 'message']),
+  additionalProperties: false,
+  minProperties: 4,
+  maxProperties: 6
+})
+
+const DESIGN_SYSTEM_SUMMARY_SCHEMA: PluginObjectParameterSchemaV2 = Object.freeze({
+  type: 'object',
+  properties: Object.freeze({
+    visitedNodeCount: Object.freeze({ type: 'integer', minimum: 0 }),
+    variableCount: Object.freeze({ type: 'integer', minimum: 0 }),
+    collectionCount: Object.freeze({ type: 'integer', minimum: 0 }),
+    componentSetCount: Object.freeze({ type: 'integer', minimum: 0 }),
+    spacingValueCount: Object.freeze({ type: 'integer', minimum: 0 }),
+    fontFamilyCount: Object.freeze({ type: 'integer', minimum: 0 }),
+    fontSizeCount: Object.freeze({ type: 'integer', minimum: 0 }),
+    textStyleCount: Object.freeze({ type: 'integer', minimum: 0 })
+  }),
+  required: Object.freeze([
+    'visitedNodeCount',
+    'variableCount',
+    'collectionCount',
+    'componentSetCount',
+    'spacingValueCount',
+    'fontFamilyCount',
+    'fontSizeCount',
+    'textStyleCount'
+  ]),
+  additionalProperties: false,
+  minProperties: 8,
+  maxProperties: 8
+})
+
+const DESIGN_SYSTEM_RESULT_CONTRACT: PluginContributionDataContractV2 = Object.freeze({
+  schema: Object.freeze({
+    type: 'object',
+    properties: Object.freeze({
+      kind: Object.freeze({ type: 'string', enum: Object.freeze(['static-design-system-audit']) }),
+      scope: Object.freeze({ type: 'string', enum: Object.freeze(['document']) }),
+      pluginId: Object.freeze({
+        type: 'string',
+        enum: Object.freeze([DESIGN_SYSTEM_AUDIT_PLUGIN_ID])
+      }),
+      commandId: Object.freeze({
+        type: 'string',
+        enum: Object.freeze([DESIGN_SYSTEM_AUDIT_COMMAND.commandId])
+      }),
+      warningCount: NON_NEGATIVE_INTEGER_SCHEMA,
+      infoCount: NON_NEGATIVE_INTEGER_SCHEMA,
+      issueCount: NON_NEGATIVE_INTEGER_SCHEMA,
+      truncated: BOOLEAN_SCHEMA,
+      summary: DESIGN_SYSTEM_SUMMARY_SCHEMA,
+      issues: Object.freeze({
+        type: 'array',
+        items: DESIGN_SYSTEM_ISSUE_SCHEMA,
+        maxItems: 1_000
+      }),
+      notEvaluated: Object.freeze({
+        type: 'array',
+        items: Object.freeze({ type: 'string', maxLength: 1_000 }),
+        maxItems: 8
+      })
+    }),
+    required: Object.freeze([
+      'kind',
+      'scope',
+      'pluginId',
+      'commandId',
+      'warningCount',
+      'infoCount',
+      'issueCount',
+      'truncated',
+      'summary',
+      'issues',
+      'notEvaluated'
+    ]),
+    additionalProperties: false,
+    minProperties: 11,
+    maxProperties: 11
   }),
   maxBytes: 512 * 1024
 })
@@ -305,6 +463,13 @@ function flutterExporterManifest(): PluginManifestPayloadV1 {
   )
 }
 
+function additionalReactSourceExporterManifest(
+  plugin: BundledPluginIdentity,
+  exporter: DeclarativeExporterContributionV1
+): PluginManifestPayloadV1 {
+  return bundledUtilityManifest(plugin, { exporters: [exporter] })
+}
+
 function accessibilityAuditManifest(): PluginManifestPayloadV2 {
   return bundledUtilityManifestV2(
     {
@@ -321,6 +486,28 @@ function accessibilityAuditManifest(): PluginManifestPayloadV2 {
             'Inspect the current document with OpenPencil static accessibility rules and return a bounded report.',
           parameters: EMPTY_DATA_CONTRACT,
           result: ACCESSIBILITY_RESULT_CONTRACT
+        }
+      ]
+    }
+  )
+}
+
+function designSystemAuditManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
+      name: 'Static Design System Audit',
+      version: '1.0.0'
+    },
+    {
+      commands: [
+        {
+          ...DESIGN_SYSTEM_AUDIT_COMMAND,
+          name: 'Run static design-system audit',
+          description:
+            'Inspect token, component-variant, spacing, and typography consistency with bounded static checks.',
+          parameters: EMPTY_DATA_CONTRACT,
+          result: DESIGN_SYSTEM_RESULT_CONTRACT
         }
       ]
     }
@@ -365,6 +552,35 @@ function figmaProjectionExporterManifest(): PluginManifestPayloadV2 {
             'Create a derived .fig projection with editable native layers; OpenPencil runtime behavior is not preserved.',
           parameters: EMPTY_DATA_CONTRACT,
           result: EMPTY_DATA_CONTRACT
+        }
+      ]
+    }
+  )
+}
+
+function bundledConnectorManifest(
+  plugin: BundledPluginIdentity,
+  connector: PluginConnectorContractV1
+): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(plugin, { connectors: [connector] })
+}
+
+function googleDriveStorageManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+      name: 'Google Drive Storage',
+      version: '1.0.0'
+    },
+    {
+      storageProviders: [
+        {
+          providerId: GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+          name: 'Google Drive',
+          description: 'Store private OpenPencil documents in the connected Google Drive account.',
+          adapterId: GOOGLE_DRIVE_STORAGE_ADAPTER_ID,
+          configVersion: GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
+          capabilities: GOOGLE_DRIVE_STORAGE_CAPABILITIES
         }
       ]
     }
@@ -433,6 +649,58 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(TABS_PLUGIN, TABS_MODULE_DEFINITION, 'open-pencil.tabs')
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        ACCORDION_PLUGIN,
+        ACCORDION_MODULE_DEFINITION,
+        'open-pencil.accordion'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        QR_BARCODE_PLUGIN,
+        QR_BARCODE_MODULE_DEFINITION,
+        'open-pencil.qr-barcode'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        MARKDOWN_PLUGIN,
+        MARKDOWN_MODULE_DEFINITION,
+        'open-pencil.markdown'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        CODE_BLOCK_PLUGIN,
+        CODE_BLOCK_MODULE_DEFINITION,
+        'open-pencil.code-block'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        PDF_VIEWER_PLUGIN,
+        PDF_VIEWER_MODULE_DEFINITION,
+        'open-pencil.pdf-viewer'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        AUDIO_PLAYER_PLUGIN,
+        AUDIO_PLAYER_MODULE_DEFINITION,
+        'open-pencil.audio-player'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
       manifest: clipboardToolkitManifest()
     },
     {
@@ -453,11 +721,101 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
+      manifest: designSystemAuditManifest()
+    },
+    {
+      trustSource: 'app-bundle',
       manifest: designTokensExporterManifest()
     },
     {
       trustSource: 'app-bundle',
       manifest: figmaProjectionExporterManifest()
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalReactSourceExporterManifest(
+        { id: NEXTJS_EXPORTER_PLUGIN_ID, name: 'Next.js Exporter', version: '1.0.0' },
+        {
+          ...NEXTJS_EXPORTER,
+          name: 'Export Next.js source',
+          description: 'Package the current document as a Next.js + React source project.'
+        }
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalReactSourceExporterManifest(
+        { id: CAPACITOR_EXPORTER_PLUGIN_ID, name: 'Capacitor Exporter', version: '1.0.0' },
+        {
+          ...CAPACITOR_EXPORTER,
+          name: 'Export Capacitor source',
+          description: 'Package the current document as a Capacitor + React source project.'
+        }
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalReactSourceExporterManifest(
+        { id: ELECTRON_EXPORTER_PLUGIN_ID, name: 'Electron Exporter', version: '1.0.0' },
+        {
+          ...ELECTRON_EXPORTER,
+          name: 'Export Electron source',
+          description: 'Package the current document as an Electron + React source project.'
+        }
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledConnectorManifest(
+        {
+          id: SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID,
+          name: 'Supabase Schema Inspector',
+          version: '1.0.0'
+        },
+        SUPABASE_SCHEMA_INSPECTOR_CONTRACT
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledConnectorManifest(
+        { id: AIRTABLE_RECORDS_PLUGIN_ID, name: 'Airtable Records', version: '1.0.0' },
+        AIRTABLE_RECORDS_CONNECTOR_CONTRACT
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledConnectorManifest(
+        {
+          id: SUPABASE_BUSINESS_PLUGIN_ID,
+          name: 'Supabase Tables',
+          version: '1.0.0'
+        },
+        SUPABASE_BUSINESS_CONNECTOR_CONTRACT
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledConnectorManifest(
+        {
+          id: STRIPE_BILLING_PLUGIN_ID,
+          name: 'Stripe Checkout & Billing',
+          version: '1.0.0'
+        },
+        STRIPE_BILLING_CONNECTOR_CONTRACT
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledConnectorManifest(
+        { id: RESEND_EMAIL_PLUGIN_ID, name: 'Resend Email', version: '1.0.0' },
+        RESEND_EMAIL_CONNECTOR_CONTRACT
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: googleDriveStorageManifest(),
+      installedByDefault: true,
+      enabledByDefault: true
     }
   ])
 }

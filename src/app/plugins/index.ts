@@ -14,6 +14,24 @@ export {
 } from './app'
 export { createBundledPluginCatalog } from './catalog'
 export {
+  appConnectorAudit,
+  appConnectorAuthorization,
+  appConnectorExecutionBroker,
+  appConnectorHostAdapters,
+  appConnectorOutcomeUnknownNotices
+} from './connectors/app'
+export * from './connectors/airtable-records'
+export * from './connectors/audit'
+export * from './connectors/authorization'
+export * from './connectors/broker'
+export * from './connectors/outcome-notices'
+export * from './connectors/registry'
+export * from './connectors/resend-email'
+export * from './connectors/stripe-billing'
+export * from './connectors/supabase-business'
+export * from './connectors/supabase-schema-inspector'
+export * from './connectors/types'
+export {
   APP_PLUGIN_DOCUMENT_DATA_ID,
   APP_PLUGIN_DOCUMENT_LOCK_KEY,
   createAppPluginDocumentLock,
@@ -52,6 +70,7 @@ export {
   inspectPluginExporterCompatibility,
   inspectPluginExporterMcpExposure,
   inspectPluginHostContributionsCompatibility,
+  inspectPluginStorageProviderCompatibility,
   resolveTrustedPluginExporterExecutor,
   runInstalledPluginCommand,
   runInstalledPluginExporter,
@@ -60,7 +79,9 @@ export {
   type AppPluginHostContributionCompatibilityStatus,
   type AppPluginHostContributionKind,
   type AppPluginHostExecutionResult,
-  type AppPluginHostExecutors
+  type AppPluginHostExecutors,
+  type AppPluginStorageProviderCompatibility,
+  type AppPluginStorageProviderCompatibilityStatus
 } from './host'
 export * from './remote'
 export * from './marketplace'
@@ -88,8 +109,10 @@ export type {
   AppPluginTrustSource,
   InstalledAppPlugin,
   InstalledPluginCommand,
+  InstalledPluginConnector,
   InstalledPluginExporter,
   InstalledPluginModule,
+  InstalledPluginStorageProvider,
   PersistedAppPluginState,
   PersistedAppPluginStateV1,
   PersistedAppPluginStateV2,

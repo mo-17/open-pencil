@@ -34,7 +34,10 @@ export const PLUGIN_MENU_ACTION_IDS = Object.freeze({
   clipboardPng: 'plugin.clipboard.copy-as-png',
   exportTauriReact: 'plugin.export.tauri-react',
   exportExpoReactNative: 'plugin.export.expo-react-native',
-  exportFlutter: 'plugin.export.flutter'
+  exportFlutter: 'plugin.export.flutter',
+  exportNextJs: 'plugin.export.nextjs',
+  exportCapacitor: 'plugin.export.capacitor',
+  exportElectron: 'plugin.export.electron'
 })
 
 export const APP_MENU_SCHEMA = [
@@ -69,6 +72,18 @@ export const APP_MENU_SCHEMA = [
           {
             id: PLUGIN_MENU_ACTION_IDS.exportFlutter,
             label: 'Flutter Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportNextJs,
+            label: 'Next.js Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportCapacitor,
+            label: 'Capacitor Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportElectron,
+            label: 'Electron Project…'
           }
         ]
       },

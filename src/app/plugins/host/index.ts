@@ -4,7 +4,8 @@ import type {
   DeclarativeExporterContributionV2,
   PluginExporterOutputV2,
   PluginHostPermissionV2,
-  PluginObjectParameterSchemaV2
+  PluginObjectParameterSchemaV2,
+  PluginStorageProviderContributionV2
 } from '@open-pencil/core/plugins'
 import { parsePluginObjectParameterValue } from '@open-pencil/core/plugins'
 import type { JsonObject, JsonValue } from '@open-pencil/scene-graph/primitives'
@@ -17,37 +18,59 @@ import type {
   InstalledAppPlugin
 } from '../types'
 import { runStaticAccessibilityAudit } from './accessibility-audit'
+import { exportCurrentDocumentAsCapacitorSource } from './capacitor-exporter'
 import { executeClipboardCommand } from './clipboard'
 import {
   plainDataContribution,
   sameJsonAuthority,
   type PluginContributionDataRecord
 } from './contribution-authority'
+import { runStaticDesignSystemAudit } from './design-system-audit'
 import { exportCurrentDocumentDesignTokens } from './design-tokens-exporter'
+import { exportCurrentDocumentAsElectronSource } from './electron-exporter'
 import { exportCurrentDocumentAsExpoReactNativeSource } from './expo-react-native-exporter'
 import { throwIfPluginExportAborted } from './exporter-abort'
 import type { AppPluginExporterExecutionResult } from './exporter-types'
 import { exportCurrentDocumentAsFigmaProjection } from './figma-projection-exporter'
 import { exportCurrentDocumentAsFlutterSource } from './flutter-exporter'
 import {
+  CAPACITOR_EXPORTER,
+  CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  DESIGN_SYSTEM_AUDIT_COMMAND,
+  DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+  ELECTRON_EXPORTER,
+  ELECTRON_EXPORTER_PLUGIN_ID,
   EXPO_REACT_NATIVE_EXPORTER,
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
   FIGMA_PROJECTION_EXPORTER,
   FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
+  NEXTJS_EXPORTER,
+  NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID
 } from './ids'
+import { exportCurrentDocumentAsNextJsSource } from './nextjs-exporter'
+import {
+  inspectPluginStorageProviderCompatibility,
+  type AppPluginStorageProviderCompatibilityStatus
+} from './storage-provider'
 import { exportCurrentDocumentAsTauriReactSource } from './tauri-react-exporter'
 
-export type AppPluginHostContributionKind = 'command' | 'exporter'
+export {
+  inspectPluginStorageProviderCompatibility,
+  type AppPluginStorageProviderCompatibility,
+  type AppPluginStorageProviderCompatibilityStatus
+} from './storage-provider'
+
+export type AppPluginHostContributionKind = 'command' | 'exporter' | 'storage-provider'
 export type { AppPluginExporterExecutionResult } from './exporter-types'
 export type AppPluginHostContributionCompatibilityStatus =
   | 'compatible'
@@ -59,6 +82,7 @@ export type AppPluginHostContributionCompatibilityStatus =
   | 'permissions-mismatch'
   | 'outputs-mismatch'
   | 'mcp-exposure-disabled'
+  | Exclude<AppPluginStorageProviderCompatibilityStatus, 'compatible'>
 
 export type AppPluginHostContributionCompatibility =
   | Readonly<{ ok: true; status: 'compatible' }>
@@ -108,13 +132,20 @@ export type AppPluginExporterExecutor = (
 
 export type AppPluginCommandExecutor = (
   editor: EditorStore,
-  args: JsonObject
+  args: JsonObject,
+  signal?: AbortSignal
 ) => Promise<AppPluginHostExecutionResult> | AppPluginHostExecutionResult
 
 export interface AppPluginHostExecutors {
   clipboard(editor: EditorStore, commandId: string): Promise<string>
   resolveCommand?(adapterId: string): AppPluginCommandExecutor | undefined
   resolveExporter(adapterId: string): AppPluginExporterExecutor | undefined
+}
+
+function sourceProjectExporterExecutor(
+  execute: (editor: EditorStore, signal?: AbortSignal) => Promise<AppPluginExporterExecutionResult>
+): AppPluginExporterExecutor {
+  return (editor, signal) => execute(editor, signal)
 }
 
 const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
@@ -129,6 +160,15 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
       commandId: ACCESSIBILITY_AUDIT_COMMAND.commandId,
       schemaVersion: 2,
       permissions: ACCESSIBILITY_AUDIT_COMMAND.permissions
+    }
+  ] as const,
+  [
+    DESIGN_SYSTEM_AUDIT_COMMAND.adapterId,
+    {
+      pluginId: DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
+      commandId: DESIGN_SYSTEM_AUDIT_COMMAND.commandId,
+      schemaVersion: 2,
+      permissions: DESIGN_SYSTEM_AUDIT_COMMAND.permissions
     }
   ] as const
 ])
@@ -199,22 +239,70 @@ const TRUSTED_EXPORTER_ADAPTERS = new Map<string, TrustedExporterAdapter>([
       supportsCancellation: false,
       execute: (editor, signal) => exportCurrentDocumentAsFigmaProjection(editor, signal)
     }
+  ],
+  [
+    NEXTJS_EXPORTER.adapterId,
+    {
+      pluginId: NEXTJS_EXPORTER_PLUGIN_ID,
+      exporterId: NEXTJS_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: NEXTJS_EXPORTER.fileExtension,
+      mcpExposure: 'disabled',
+      supportsCancellation: false,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsNextJsSource)
+    }
+  ],
+  [
+    CAPACITOR_EXPORTER.adapterId,
+    {
+      pluginId: CAPACITOR_EXPORTER_PLUGIN_ID,
+      exporterId: CAPACITOR_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: CAPACITOR_EXPORTER.fileExtension,
+      mcpExposure: 'disabled',
+      supportsCancellation: false,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsCapacitorSource)
+    }
+  ],
+  [
+    ELECTRON_EXPORTER.adapterId,
+    {
+      pluginId: ELECTRON_EXPORTER_PLUGIN_ID,
+      exporterId: ELECTRON_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: ELECTRON_EXPORTER.fileExtension,
+      mcpExposure: 'disabled',
+      supportsCancellation: false,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsElectronSource)
+    }
   ]
 ])
 
 function resolveTrustedPluginCommandExecutor(
   adapterId: string
 ): AppPluginCommandExecutor | undefined {
-  if (adapterId !== ACCESSIBILITY_AUDIT_COMMAND.adapterId) return undefined
-  return (editor) => {
-    const data = runStaticAccessibilityAudit(editor)
-    const evaluated = data.errorCount + data.warningCount + data.infoCount
-    return {
-      status: 'completed',
-      message: `Static accessibility audit found ${evaluated} issue(s): ${data.errorCount} error(s), ${data.warningCount} warning(s), and ${data.infoCount} info message(s).`,
-      data
+  if (adapterId === ACCESSIBILITY_AUDIT_COMMAND.adapterId) {
+    return (editor) => {
+      const data = runStaticAccessibilityAudit(editor)
+      const evaluated = data.errorCount + data.warningCount + data.infoCount
+      return {
+        status: 'completed',
+        message: `Static accessibility audit found ${evaluated} issue(s): ${data.errorCount} error(s), ${data.warningCount} warning(s), and ${data.infoCount} info message(s).`,
+        data
+      }
     }
   }
+  if (adapterId === DESIGN_SYSTEM_AUDIT_COMMAND.adapterId) {
+    return async (editor, _args, signal) => {
+      const data = await runStaticDesignSystemAudit(editor, { signal })
+      return {
+        status: 'completed',
+        message: `Static design-system audit found ${data.issueCount} issue(s): ${data.warningCount} warning(s) and ${data.infoCount} info message(s).`,
+        data
+      }
+    }
+  }
+  return undefined
 }
 
 export function resolveTrustedPluginExporterExecutor(
@@ -359,6 +447,7 @@ export function inspectPluginHostContributionsCompatibility(
   contributions: Readonly<{
     commands?: readonly AppPluginCommandContribution[]
     exporters?: readonly AppPluginExporterContribution[]
+    storageProviders?: readonly PluginStorageProviderContributionV2[]
   }>
 ): readonly AppPluginHostContributionCompatibilityFailure[] {
   const failures: AppPluginHostContributionCompatibilityFailure[] = []
@@ -379,6 +468,17 @@ export function inspectPluginHostContributionsCompatibility(
       failures.push({
         kind: 'exporter',
         contributionId: contribution.exporterId,
+        status: compatibility.status,
+        reason: compatibility.reason
+      })
+    }
+  }
+  for (const contribution of contributions.storageProviders ?? []) {
+    const compatibility = inspectPluginStorageProviderCompatibility(pluginId, contribution)
+    if (!compatibility.ok) {
+      failures.push({
+        kind: 'storage-provider',
+        contributionId: contribution.providerId,
         status: compatibility.status,
         reason: compatibility.reason
       })
@@ -529,7 +629,8 @@ export async function runInstalledPluginCommand(
   plugin: InstalledAppPlugin,
   contribution: AppPluginCommandContribution,
   executors: AppPluginHostExecutors = DEFAULT_EXECUTORS,
-  args: unknown = {}
+  args: unknown = {},
+  signal?: AbortSignal
 ): Promise<AppPluginHostExecutionResult> {
   const pluginId = requireRunnable(plugin)
   const declared = requireDeclaredCommand(plugin, contribution)
@@ -538,7 +639,7 @@ export async function runInstalledPluginCommand(
   const validatedArgs = contributionArguments(declared, args)
   const execute = executors.resolveCommand?.(declared.adapterId)
   if (execute) {
-    return validatedExecutionResult(declared, await execute(editor, validatedArgs))
+    return validatedExecutionResult(declared, await execute(editor, validatedArgs, signal))
   }
   if (commandSchemaVersion(declared) === 2) {
     throw new Error(`Plugin command executor is unavailable: ${declared.adapterId}`)

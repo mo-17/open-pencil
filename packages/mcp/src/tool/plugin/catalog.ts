@@ -37,7 +37,7 @@ const DESCRIPTOR_REQUIRED_KEYS = Object.freeze([
   'contributionId'
 ])
 const DESCRIPTOR_OPTIONAL_KEYS = Object.freeze(['title'])
-const PLUGIN_TOOL_NAME = /^plugin__[a-z0-9_]+__(add|run|export)_[a-z0-9_]+_([a-f0-9]{64})$/
+const PLUGIN_TOOL_NAME = /^plugin__[a-z0-9_]+__(add|run|export|query)_[a-z0-9_]+_([a-f0-9]{64})$/
 const IDENTITY = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/i
 const AUTOMATION_TARGET_PROPERTIES = Object.freeze({
   document_id: Object.freeze({
@@ -124,7 +124,7 @@ function parseDescriptor(value: unknown, index: number): PluginMcpToolDescriptor
   const path = `pluginMcpCatalog.tools[${index}]`
   const source = exactRecord(value, path, DESCRIPTOR_REQUIRED_KEYS, DESCRIPTOR_OPTIONAL_KEYS)
   const kind = source.kind
-  if (kind !== 'module' && kind !== 'command' && kind !== 'exporter') {
+  if (kind !== 'module' && kind !== 'command' && kind !== 'exporter' && kind !== 'connector') {
     throw new TypeError(`${path}.kind is not supported`)
   }
   const pluginId = identity(source.pluginId, `${path}.pluginId`)
@@ -136,7 +136,12 @@ function parseDescriptor(value: unknown, index: number): PluginMcpToolDescriptor
       `${path}.name must use the reserved plugin tool namespace with a SHA-256 identity suffix`
     )
   }
-  const expectedAction = { module: 'add', command: 'run', exporter: 'export' }[kind]
+  const expectedAction = {
+    module: 'add',
+    command: 'run',
+    exporter: 'export',
+    connector: 'query'
+  }[kind]
   if (nameMatch[1] !== expectedAction) {
     throw new TypeError(`${path}.name action does not match ${path}.kind`)
   }

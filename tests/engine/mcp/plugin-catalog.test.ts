@@ -6,7 +6,19 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
 
-import { appPluginMcpToolName } from '@/app/plugins/mcp'
+import { createBundledPluginCatalog } from '@/app/plugins/catalog'
+import {
+  AIRTABLE_LIST_RECORDS_OPERATION_ID,
+  AIRTABLE_RECORDS_CONNECTOR_ID,
+  AIRTABLE_RECORDS_PLUGIN_ID
+} from '@/app/plugins/connectors/airtable-records'
+import {
+  appPluginMcpConnectorContributionId,
+  appPluginMcpToolName,
+  listAppPluginMcpTools
+} from '@/app/plugins/mcp'
+import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
+import { createAppPluginStore } from '@/app/plugins/store'
 
 import {
   PLUGIN_MCP_CATALOG_LIMITS,
@@ -20,6 +32,15 @@ const SLIDE_MENU_TOOL_NAME = appPluginMcpToolName('open-pencil.slide-menu', 'mod
 const VIDEO_TOOL_NAME = appPluginMcpToolName('open-pencil.video', 'module', 'video')
 const AUDIT_TOOL_NAME = appPluginMcpToolName('acme.analytics', 'command', 'accessibility-audit')
 const TOKENS_TOOL_NAME = appPluginMcpToolName('acme.analytics', 'exporter', 'design-tokens')
+const AIRTABLE_CONNECTOR_CONTRIBUTION_ID = appPluginMcpConnectorContributionId(
+  AIRTABLE_RECORDS_CONNECTOR_ID,
+  AIRTABLE_LIST_RECORDS_OPERATION_ID
+)
+const AIRTABLE_TOOL_NAME = appPluginMcpToolName(
+  AIRTABLE_RECORDS_PLUGIN_ID,
+  'connector',
+  AIRTABLE_CONNECTOR_CONTRIBUTION_ID
+)
 
 function descriptor(overrides: Record<string, unknown> = {}) {
   return {
@@ -88,6 +109,38 @@ function exporterDescriptor(inputSchema: unknown = commandInputSchema()) {
   })
 }
 
+function connectorInputSchema(pageSizeType: 'integer' | 'string' = 'integer') {
+  return {
+    type: 'object',
+    properties: {
+      baseId: { type: 'string', minLength: 4, maxLength: 64 },
+      tableId: { type: 'string', minLength: 4, maxLength: 64 },
+      pageSize:
+        pageSizeType === 'integer'
+          ? { type: 'integer', minimum: 1, maximum: 100 }
+          : { type: 'string', minLength: 1, maxLength: 3 }
+    },
+    required: ['baseId', 'tableId'],
+    additionalProperties: false
+  }
+}
+
+function connectorDescriptor(
+  inputSchema: unknown = connectorInputSchema(),
+  overrides: Record<string, unknown> = {}
+) {
+  return descriptor({
+    name: AIRTABLE_TOOL_NAME,
+    title: 'Query Airtable Records',
+    description: 'Query bounded records through the installed Airtable connector.',
+    inputSchema,
+    pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
+    kind: 'connector',
+    contributionId: AIRTABLE_CONNECTOR_CONTRIBUTION_ID,
+    ...overrides
+  })
+}
+
 function nestedArraySchema(depth: number): Record<string, unknown> {
   if (depth === 0) return { type: 'boolean' }
   return { type: 'array', items: nestedArraySchema(depth - 1) }
@@ -141,21 +194,55 @@ describe('plugin MCP catalog validation', () => {
     })
   })
 
-  test('accepts strict bounded v2 command and exporter parameter schemas', () => {
+  test('accepts strict bounded v2 command, exporter, and connector parameter schemas', () => {
     const parsed = parsePluginMcpCatalogResponse(
-      response([commandDescriptor(), exporterDescriptor()])
+      response([commandDescriptor(), exporterDescriptor(), connectorDescriptor()])
     )
 
-    expect(parsed.tools.map(({ name }) => name).sort()).toEqual(
-      [AUDIT_TOOL_NAME, TOKENS_TOOL_NAME].sort()
+    expect(
+      parsed.tools.map(({ name }) => name).sort((left, right) => left.localeCompare(right))
+    ).toEqual(
+      [AIRTABLE_TOOL_NAME, AUDIT_TOOL_NAME, TOKENS_TOOL_NAME].sort((left, right) =>
+        left.localeCompare(right)
+      )
     )
-    for (const tool of parsed.tools) {
+    for (const tool of parsed.tools.filter(({ kind }) => kind !== 'connector')) {
       expect(tool.inputSchema).toMatchObject({
         type: 'object',
         required: ['scope'],
         additionalProperties: false
       })
     }
+    expect(parsed.tools.find(({ kind }) => kind === 'connector')).toMatchObject({
+      name: AIRTABLE_TOOL_NAME,
+      pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
+      contributionId: AIRTABLE_CONNECTOR_CONTRIBUTION_ID,
+      inputSchema: {
+        type: 'object',
+        required: ['baseId', 'tableId'],
+        additionalProperties: false
+      }
+    })
+  })
+
+  test('accepts the live app catalog for an authorized connector without clearing other tools', async () => {
+    const store = createAppPluginStore({
+      storage: createMemoryAppPluginStateStorage(),
+      catalog: createBundledPluginCatalog(),
+      activationCompatibilityPolicy: () => ({ ok: true }),
+      engineVersion: '0.0.0'
+    })
+    await store.load()
+    await store.install(AIRTABLE_RECORDS_PLUGIN_ID)
+    await store.setEnabled(AIRTABLE_RECORDS_PLUGIN_ID, true)
+
+    const live = listAppPluginMcpTools(store, { connectorExposure: () => true })
+    const parsed = parsePluginMcpCatalogResponse(response(live.tools, live.revision))
+    expect(parsed.tools.some(({ kind }) => kind === 'module')).toBe(true)
+    expect(parsed.tools.find(({ kind }) => kind === 'connector')).toMatchObject({
+      pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
+      contributionId: AIRTABLE_CONNECTOR_CONTRIBUTION_ID
+    })
   })
 
   test('rejects duplicate names, static-name collisions, reserved targets, and unsafe schemas', () => {
@@ -172,6 +259,36 @@ describe('plugin MCP catalog validation', () => {
     ).toThrow('identity suffix does not match its canonical contribution')
     expect(() =>
       parsePluginMcpCatalogResponse(response([descriptor({ kind: 'command' })]))
+    ).toThrow('name action does not match')
+    expect(() =>
+      parsePluginMcpCatalogResponse(
+        response([
+          connectorDescriptor({
+            ...connectorInputSchema(),
+            additionalProperties: true
+          })
+        ])
+      )
+    ).toThrow()
+    expect(() =>
+      parsePluginMcpCatalogResponse(
+        response([
+          connectorDescriptor({
+            type: 'object',
+            properties: { document_id: { type: 'string' } },
+            additionalProperties: false
+          })
+        ])
+      )
+    ).toThrow('reserved automation target')
+    expect(() =>
+      parsePluginMcpCatalogResponse(
+        response([
+          connectorDescriptor(connectorInputSchema(), {
+            name: AIRTABLE_TOOL_NAME.replace('__query_', '__run_')
+          })
+        ])
+      )
     ).toThrow('name action does not match')
     expect(() =>
       parsePluginMcpCatalogResponse(
@@ -382,11 +499,56 @@ describe('dynamic plugin MCP registration', () => {
       args: { args: { scope: 4 } }
     })
 
+    catalog.replace(response([connectorDescriptor()], 'connector-integer'))
+    expect(
+      (await client.listTools()).tools
+        .map(({ name }) => name)
+        .sort((left, right) => left.localeCompare(right))
+    ).toEqual([AIRTABLE_TOOL_NAME, 'static_tool'])
+    await client.callTool({
+      name: AIRTABLE_TOOL_NAME,
+      arguments: {
+        baseId: 'appBase123',
+        tableId: 'tblTable123',
+        pageSize: 25,
+        document_id: 'document-3'
+      }
+    })
+    expect(rpcCalls.at(-1)).toEqual({
+      command: 'plugin_mcp_tool',
+      args: {
+        document_id: 'document-3',
+        name: AIRTABLE_TOOL_NAME,
+        pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
+        args: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: 25 }
+      }
+    })
+
+    catalog.replace(
+      response([connectorDescriptor(connectorInputSchema('string'))], 'connector-string')
+    )
+    const callsBeforeConnectorStaleValidation = rpcCalls.length
+    const staleConnectorCall = await client.callTool({
+      name: AIRTABLE_TOOL_NAME,
+      arguments: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: 25 }
+    })
+    expect(staleConnectorCall.isError).toBe(true)
+    expect(JSON.stringify(staleConnectorCall.content)).toContain('Input validation error')
+    expect(rpcCalls).toHaveLength(callsBeforeConnectorStaleValidation)
+    await client.callTool({
+      name: AIRTABLE_TOOL_NAME,
+      arguments: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: '25' }
+    })
+    expect(rpcCalls.at(-1)).toMatchObject({
+      command: 'plugin_mcp_tool',
+      args: { args: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: '25' } }
+    })
+
     catalog.clear()
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual(['static_tool'])
     const removedCall = await client.callTool({
-      name: AUDIT_TOOL_NAME,
-      arguments: { scope: 4 }
+      name: AIRTABLE_TOOL_NAME,
+      arguments: { baseId: 'appBase123', tableId: 'tblTable123', pageSize: '25' }
     })
     expect(removedCall.isError).toBe(true)
     await new Promise<void>((resolve) => {

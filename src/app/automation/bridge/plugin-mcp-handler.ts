@@ -1,7 +1,8 @@
 import {
   parsePluginObjectParameterValue,
   type DeclarativeCommandContributionV2,
-  type DeclarativeExporterContributionV2
+  type DeclarativeExporterContributionV2,
+  type PluginConnectorOperationV1
 } from '@open-pencil/core/plugins'
 import { canonicalManifestValue } from '@open-pencil/scene-graph'
 import type { JsonObject, JsonValue } from '@open-pencil/scene-graph/primitives'
@@ -11,6 +12,11 @@ import { isUnknownRecord, type AutomationTarget } from '@/app/automation/bridge/
 import type { EditorStore } from '@/app/editor/active-store'
 import { appPluginStore } from '@/app/plugins/app'
 import {
+  executeInstalledAppConnector,
+  isAppConnectorMcpExposed
+} from '@/app/plugins/connectors/app'
+import type { ConnectorParameterObject } from '@/app/plugins/connectors/types'
+import {
   runInstalledPluginCommand,
   runInstalledPluginExporter,
   type AppPluginHostExecutionResult
@@ -19,12 +25,14 @@ import {
   listAppPluginMcpTools,
   PLUGIN_MCP_LIMITS,
   resolveAppPluginMcpTool,
+  type AppPluginMcpOptions,
   type AppPluginMcpStore
 } from '@/app/plugins/mcp'
 import type {
   AppPluginCommandContribution,
   AppPluginExporterContribution,
   InstalledPluginCommand,
+  InstalledPluginConnector,
   InstalledPluginExporter
 } from '@/app/plugins/types'
 
@@ -42,11 +50,13 @@ type AutomationToolHandler = (
 
 export interface AutomationPluginMcpDependencies {
   store: AppPluginMcpStore
+  mcpOptions?: AppPluginMcpOptions
   runCommand(
     editor: EditorStore,
     plugin: InstalledPluginCommand['plugin'],
     contribution: InstalledPluginCommand['contribution'],
-    args: JsonObject
+    args: JsonObject,
+    signal?: AbortSignal
   ): Promise<AppPluginHostExecutionResult>
   runExporter(
     editor: EditorStore,
@@ -55,6 +65,12 @@ export interface AutomationPluginMcpDependencies {
     signal?: AbortSignal,
     args?: JsonObject
   ): Promise<AppPluginHostExecutionResult>
+  runConnector?(
+    connector: InstalledPluginConnector,
+    operation: PluginConnectorOperationV1,
+    args: ConnectorParameterObject,
+    signal?: AbortSignal
+  ): ReturnType<typeof executeInstalledAppConnector>
 }
 
 const runDefaultExporter: AutomationPluginMcpDependencies['runExporter'] = (
@@ -69,13 +85,23 @@ const runDefaultCommand: AutomationPluginMcpDependencies['runCommand'] = (
   editor,
   plugin,
   contribution,
-  args
-) => runInstalledPluginCommand(editor, plugin, contribution, undefined, args)
+  args,
+  signal
+) => runInstalledPluginCommand(editor, plugin, contribution, undefined, args, signal)
+
+const runDefaultConnector: NonNullable<AutomationPluginMcpDependencies['runConnector']> = (
+  connector,
+  operation,
+  args,
+  signal
+) => executeInstalledAppConnector(connector, operation.operationId, args, { signal })
 
 const DEFAULT_DEPENDENCIES: AutomationPluginMcpDependencies = Object.freeze({
   store: appPluginStore,
+  mcpOptions: Object.freeze({ connectorExposure: isAppConnectorMcpExposed }),
   runCommand: runDefaultCommand,
-  runExporter: runDefaultExporter
+  runExporter: runDefaultExporter,
+  runConnector: runDefaultConnector
 })
 
 interface PluginMcpRequestRecord {
@@ -267,7 +293,10 @@ export function createAutomationPluginMcpHandlers(
   dependencies: AutomationPluginMcpDependencies = DEFAULT_DEPENDENCIES
 ) {
   function handleList(): { ok: true; result: ReturnType<typeof listAppPluginMcpTools> } {
-    return { ok: true, result: listAppPluginMcpTools(dependencies.store) }
+    return {
+      ok: true,
+      result: listAppPluginMcpTools(dependencies.store, dependencies.mcpOptions)
+    }
   }
 
   async function handleCall(
@@ -279,7 +308,12 @@ export function createAutomationPluginMcpHandlers(
     const call = request(rawRequest)
     // Rebuild and resolve from current installed state for every invocation. A descriptor cached by
     // an MCP client cannot outlive disable/uninstall or a trust/compatibility change.
-    const resolved = resolveAppPluginMcpTool(dependencies.store, call.name, call.pluginId)
+    const resolved = resolveAppPluginMcpTool(
+      dependencies.store,
+      call.name,
+      call.pluginId,
+      dependencies.mcpOptions
+    )
     if (resolved.kind === 'module') {
       return handleAutomationTool(
         target,
@@ -295,6 +329,34 @@ export function createAutomationPluginMcpHandlers(
       )
     }
 
+    if (resolved.kind === 'connector') {
+      if (!dependencies.runConnector) {
+        throw new Error('Plugin connector MCP execution is unavailable')
+      }
+      const args = parsePluginObjectParameterValue(
+        call.args,
+        resolved.operation.parameters.schema,
+        resolved.operation.parameters.maxBytes,
+        'Plugin MCP connector arguments'
+      )
+      const execution = await dependencies.runConnector(
+        resolved.value,
+        resolved.operation,
+        args,
+        context?.signal
+      )
+      throwIfAborted(context?.signal)
+      return {
+        ok: true,
+        result: {
+          pluginId: resolved.descriptor.pluginId,
+          kind: resolved.kind,
+          contributionId: resolved.descriptor.contributionId,
+          ...execution
+        }
+      }
+    }
+
     const args = contributionArguments(resolved.value.contribution, call.args)
     const execution =
       resolved.kind === 'command'
@@ -302,7 +364,8 @@ export function createAutomationPluginMcpHandlers(
             target.store,
             resolved.value.plugin,
             resolved.value.contribution,
-            args
+            args,
+            context?.signal
           )
         : await dependencies.runExporter(
             target.store,

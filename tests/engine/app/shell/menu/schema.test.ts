@@ -81,6 +81,15 @@ describe('APP_MENU_SCHEMA', () => {
     expect(fileEntries).toContainEqual(
       expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportFlutter })
     )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportNextJs })
+    )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportCapacitor })
+    )
+    expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportElectron })
+    )
     expect(editEntries.map((entry) => ('type' in entry ? null : entry.id))).toEqual(
       expect.arrayContaining([
         PLUGIN_MENU_ACTION_IDS.clipboardText,
@@ -104,6 +113,9 @@ describe('APP_MENU_SCHEMA', () => {
         PLUGIN_MENU_ACTION_IDS.exportTauriReact,
         PLUGIN_MENU_ACTION_IDS.exportExpoReactNative,
         PLUGIN_MENU_ACTION_IDS.exportFlutter,
+        PLUGIN_MENU_ACTION_IDS.exportNextJs,
+        PLUGIN_MENU_ACTION_IDS.exportCapacitor,
+        PLUGIN_MENU_ACTION_IDS.exportElectron,
         PLUGIN_MENU_ACTION_IDS.clipboardText,
         PLUGIN_MENU_ACTION_IDS.clipboardSvg,
         PLUGIN_MENU_ACTION_IDS.clipboardJsx,

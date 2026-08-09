@@ -67,6 +67,18 @@
           {
             "id": "plugin.export.flutter",
             "label": "Flutter Project…"
+          },
+          {
+            "id": "plugin.export.nextjs",
+            "label": "Next.js Project…"
+          },
+          {
+            "id": "plugin.export.capacitor",
+            "label": "Capacitor Project…"
+          },
+          {
+            "id": "plugin.export.electron",
+            "label": "Electron Project…"
           }
         ]
       },

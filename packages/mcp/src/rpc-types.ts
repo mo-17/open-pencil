@@ -1,6 +1,5 @@
-export interface RpcSendOptions {
+export type RpcSendOptions = Partial<Pick<AbortController, 'signal'>> & {
   onProgress?: (progress: unknown) => void
-  signal?: AbortSignal
 }
 
 export type PendingRequest = {

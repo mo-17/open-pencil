@@ -12,7 +12,7 @@ export const PLUGIN_MCP_CATALOG_LIMITS = Object.freeze({
   maxSchemaStringLength: 4_096
 })
 
-export type PluginMcpToolKind = 'module' | 'command' | 'exporter'
+export type PluginMcpToolKind = 'module' | 'command' | 'exporter' | 'connector'
 
 export interface PluginMcpToolDescriptor {
   readonly name: string

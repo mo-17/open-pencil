@@ -10,12 +10,18 @@ import {
   type InstalledPluginExporter
 } from '@/app/plugins'
 import {
+  CAPACITOR_EXPORTER,
+  CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
+  ELECTRON_EXPORTER,
+  ELECTRON_EXPORTER_PLUGIN_ID,
   EXPO_REACT_NATIVE_EXPORTER,
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
+  NEXTJS_EXPORTER,
+  NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
@@ -108,18 +114,26 @@ export async function executeTauriReactPluginMenuExporter(
   editor: EditorStore,
   dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
 ): Promise<AppPluginHostExecutionResult> {
-  await dependencies.ready
-  const installed = dependencies.store.exporter(
+  return executePluginMenuExporter(
+    editor,
     TAURI_REACT_EXPORTER_PLUGIN_ID,
-    TAURI_REACT_EXPORTER.exporterId
+    TAURI_REACT_EXPORTER.exporterId,
+    'Tauri React Exporter',
+    dependencies
   )
+}
+
+async function executePluginMenuExporter(
+  editor: EditorStore,
+  pluginId: string,
+  exporterId: string,
+  pluginName: string,
+  dependencies: PluginMenuExecutionDependencies
+): Promise<AppPluginHostExecutionResult> {
+  await dependencies.ready
+  const installed = dependencies.store.exporter(pluginId, exporterId)
   if (!installed) {
-    throw pluginUnavailableError(
-      dependencies.store,
-      TAURI_REACT_EXPORTER_PLUGIN_ID,
-      'Tauri React Exporter',
-      'exporter'
-    )
+    throw pluginUnavailableError(dependencies.store, pluginId, pluginName, 'exporter')
   }
   return dependencies.runExporter(editor, installed.plugin, installed.contribution)
 }
@@ -128,40 +142,65 @@ export async function executeExpoReactNativePluginMenuExporter(
   editor: EditorStore,
   dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
 ): Promise<AppPluginHostExecutionResult> {
-  await dependencies.ready
-  const installed = dependencies.store.exporter(
+  return executePluginMenuExporter(
+    editor,
     EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
-    EXPO_REACT_NATIVE_EXPORTER.exporterId
+    EXPO_REACT_NATIVE_EXPORTER.exporterId,
+    'Expo React Native Exporter',
+    dependencies
   )
-  if (!installed) {
-    throw pluginUnavailableError(
-      dependencies.store,
-      EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
-      'Expo React Native Exporter',
-      'exporter'
-    )
-  }
-  return dependencies.runExporter(editor, installed.plugin, installed.contribution)
 }
 
 export async function executeFlutterPluginMenuExporter(
   editor: EditorStore,
   dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
 ): Promise<AppPluginHostExecutionResult> {
-  await dependencies.ready
-  const installed = dependencies.store.exporter(
+  return executePluginMenuExporter(
+    editor,
     FLUTTER_EXPORTER_PLUGIN_ID,
-    FLUTTER_EXPORTER.exporterId
+    FLUTTER_EXPORTER.exporterId,
+    'Flutter Exporter',
+    dependencies
   )
-  if (!installed) {
-    throw pluginUnavailableError(
-      dependencies.store,
-      FLUTTER_EXPORTER_PLUGIN_ID,
-      'Flutter Exporter',
-      'exporter'
-    )
-  }
-  return dependencies.runExporter(editor, installed.plugin, installed.contribution)
+}
+
+export async function executeNextJsPluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    NEXTJS_EXPORTER_PLUGIN_ID,
+    NEXTJS_EXPORTER.exporterId,
+    'Next.js Exporter',
+    dependencies
+  )
+}
+
+export async function executeCapacitorPluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    CAPACITOR_EXPORTER_PLUGIN_ID,
+    CAPACITOR_EXPORTER.exporterId,
+    'Capacitor Exporter',
+    dependencies
+  )
+}
+
+export async function executeElectronPluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    ELECTRON_EXPORTER_PLUGIN_ID,
+    ELECTRON_EXPORTER.exporterId,
+    'Electron Exporter',
+    dependencies
+  )
 }
 
 async function reportPluginMenuResult(
@@ -213,6 +252,24 @@ export function createPluginMenuActions(
     [PLUGIN_MENU_ACTION_IDS.exportFlutter]: () =>
       reportPluginMenuResult(
         executeFlutterPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportNextJs]: () =>
+      reportPluginMenuResult(
+        executeNextJsPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportCapacitor]: () =>
+      reportPluginMenuResult(
+        executeCapacitorPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportElectron]: () =>
+      reportPluginMenuResult(
+        executeElectronPluginMenuExporter(editor, execution),
         notifications,
         formatError
       )

@@ -7,16 +7,25 @@ import type {
   DeclarativeExporterContributionV2,
   PluginManifestPayload,
   PluginManifestPayloadV1,
-  PluginManifestPayloadV2
+  PluginManifestPayloadV2,
+  PluginStorageProviderContributionV2
 } from '@open-pencil/core/plugins'
+import { SceneGraph } from '@open-pencil/scene-graph'
 import type { JsonValue } from '@open-pencil/scene-graph/primitives'
 
 import type { EditorStore } from '@/app/editor/active-store'
+import {
+  GOOGLE_DRIVE_STORAGE_ADAPTER_ID,
+  GOOGLE_DRIVE_STORAGE_PLUGIN_ID,
+  GOOGLE_DRIVE_STORAGE_PROVIDER_ID
+} from '@/app/integrations/storage/google-drive/config'
 import {
   createBundledPluginCatalog,
   inspectPluginCommandCompatibility,
   inspectPluginExporterCompatibility,
   inspectPluginExporterMcpExposure,
+  inspectPluginHostContributionsCompatibility,
+  inspectPluginStorageProviderCompatibility,
   resolveTrustedPluginExporterExecutor,
   runInstalledPluginCommand,
   runInstalledPluginExporter,
@@ -26,15 +35,25 @@ import {
 import { exportCurrentDocumentAsExpoReactNativeSource } from '@/app/plugins/host/expo-react-native-exporter'
 import { exportCurrentDocumentAsFlutterSource } from '@/app/plugins/host/flutter-exporter'
 import {
+  CAPACITOR_EXPORTER,
+  CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_COMMANDS,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+  DESIGN_SYSTEM_AUDIT_COMMAND,
+  DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
+  ELECTRON_EXPORTER,
+  ELECTRON_EXPORTER_PLUGIN_ID,
   EXPO_REACT_NATIVE_EXPORTER,
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
+  GOOGLE_DRIVE_STORAGE_CAPABILITIES,
+  GOOGLE_DRIVE_STORAGE_CONFIG_VERSION,
+  NEXTJS_EXPORTER,
+  NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
@@ -66,10 +85,23 @@ function accessibilityContribution(): DeclarativeCommandContributionV2 {
   return contribution
 }
 
+function designSystemContribution(): DeclarativeCommandContributionV2 {
+  const contribution = bundledManifestV2(DESIGN_SYSTEM_AUDIT_PLUGIN_ID).contributions.commands?.[0]
+  if (!contribution) throw new Error('Missing bundled design-system command')
+  return contribution
+}
+
 function designTokensContribution(): DeclarativeExporterContributionV2 {
   const contribution = bundledManifestV2(DESIGN_TOKENS_EXPORTER_PLUGIN_ID).contributions
     .exporters?.[0]
   if (!contribution) throw new Error('Missing bundled design tokens exporter')
+  return contribution
+}
+
+function googleDriveStorageContribution(): PluginStorageProviderContributionV2 {
+  const contribution = bundledManifestV2(GOOGLE_DRIVE_STORAGE_PLUGIN_ID).contributions
+    .storageProviders?.[0]
+  if (!contribution) throw new Error('Missing bundled Google Drive storage provider')
   return contribution
 }
 
@@ -106,6 +138,17 @@ function flutterExporterContribution(): DeclarativeExporterContributionV1 {
     (candidate) => candidate.exporterId === FLUTTER_EXPORTER.exporterId
   )
   if (!contribution) throw new Error('Missing bundled Flutter exporter')
+  return contribution
+}
+
+function bundledV1ExporterContribution(
+  pluginId: string,
+  exporterId: string
+): DeclarativeExporterContributionV1 {
+  const contribution = bundledManifest(pluginId).contributions.exporters?.find(
+    (candidate) => candidate.exporterId === exporterId
+  )
+  if (!contribution) throw new Error(`Missing bundled exporter: ${pluginId}/${exporterId}`)
   return contribution
 }
 
@@ -151,6 +194,9 @@ describe('app plugin host contribution trust', () => {
     expect(resolveTrustedPluginExporterExecutor(FLUTTER_EXPORTER.adapterId)).toBe(
       exportCurrentDocumentAsFlutterSource
     )
+    expect(resolveTrustedPluginExporterExecutor(NEXTJS_EXPORTER.adapterId)).toBeFunction()
+    expect(resolveTrustedPluginExporterExecutor(CAPACITOR_EXPORTER.adapterId)).toBeFunction()
+    expect(resolveTrustedPluginExporterExecutor(ELECTRON_EXPORTER.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor('publisher.unreviewed-exporter')).toBeUndefined()
   })
 
@@ -177,6 +223,97 @@ describe('app plugin host contribution trust', () => {
         adapterId: 'publisher.unreviewed-command'
       })
     ).toMatchObject({ ok: false, status: 'untrusted-adapter' })
+
+    expect(
+      inspectPluginCommandCompatibility(DESIGN_SYSTEM_AUDIT_PLUGIN_ID, designSystemContribution())
+    ).toEqual({ ok: true, status: 'compatible' })
+    expect(
+      inspectPluginCommandCompatibility(ACCESSIBILITY_AUDIT_PLUGIN_ID, designSystemContribution())
+    ).toMatchObject({ ok: false, status: 'plugin-identity-mismatch' })
+  })
+
+  test('binds storage providers to the exact host-owned adapter contract', () => {
+    const contribution = googleDriveStorageContribution()
+
+    expect(
+      inspectPluginStorageProviderCompatibility(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, contribution)
+    ).toEqual({ ok: true, status: 'compatible' })
+    expect(
+      inspectPluginStorageProviderCompatibility('publisher.other', contribution)
+    ).toMatchObject({ ok: false, status: 'plugin-identity-mismatch' })
+    expect(
+      inspectPluginStorageProviderCompatibility(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, {
+        ...contribution,
+        providerId: 'different-provider'
+      })
+    ).toMatchObject({ ok: false, status: 'contribution-identity-mismatch' })
+    expect(
+      inspectPluginStorageProviderCompatibility(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, {
+        ...contribution,
+        adapterId: 'publisher.unreviewed-storage'
+      })
+    ).toMatchObject({ ok: false, status: 'untrusted-adapter' })
+    expect(
+      inspectPluginStorageProviderCompatibility(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, {
+        ...contribution,
+        configVersion: GOOGLE_DRIVE_STORAGE_CONFIG_VERSION + 1
+      })
+    ).toMatchObject({ ok: false, status: 'config-version-mismatch' })
+    expect(
+      inspectPluginStorageProviderCompatibility(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, {
+        ...contribution,
+        capabilities: GOOGLE_DRIVE_STORAGE_CAPABILITIES.slice(0, -1)
+      })
+    ).toMatchObject({ ok: false, status: 'capabilities-mismatch' })
+
+    expect(
+      inspectPluginHostContributionsCompatibility(GOOGLE_DRIVE_STORAGE_PLUGIN_ID, {
+        storageProviders: [
+          {
+            ...contribution,
+            adapterId: GOOGLE_DRIVE_STORAGE_ADAPTER_ID,
+            providerId: GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+            capabilities: GOOGLE_DRIVE_STORAGE_CAPABILITIES.slice(1)
+          }
+        ]
+      })
+    ).toEqual([
+      expect.objectContaining({
+        kind: 'storage-provider',
+        contributionId: GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
+        status: 'capabilities-mismatch'
+      })
+    ])
+  })
+
+  test('runs and cooperatively cancels the reviewed design-system audit executor', async () => {
+    const manifest = bundledManifestV2(DESIGN_SYSTEM_AUDIT_PLUGIN_ID)
+    const contribution = designSystemContribution()
+    const editor = { graph: new SceneGraph() } as EditorStore
+
+    await expect(
+      runInstalledPluginCommand(editor, installedPlugin(manifest, true), contribution)
+    ).resolves.toMatchObject({
+      status: 'completed',
+      data: {
+        kind: 'static-design-system-audit',
+        pluginId: DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
+        commandId: DESIGN_SYSTEM_AUDIT_COMMAND.commandId
+      }
+    })
+
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      runInstalledPluginCommand(
+        editor,
+        installedPlugin(manifest, true),
+        contribution,
+        undefined,
+        {},
+        controller.signal
+      )
+    ).rejects.toMatchObject({ name: 'AbortError' })
   })
 
   test('binds exporter adapters to the exact plugin, contribution, and file extension', () => {
@@ -227,7 +364,19 @@ describe('app plugin host contribution trust', () => {
     for (const [pluginId, contribution] of [
       [TAURI_REACT_EXPORTER_PLUGIN_ID, exporterContribution()],
       [EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID, expoExporterContribution()],
-      [FLUTTER_EXPORTER_PLUGIN_ID, flutterExporterContribution()]
+      [FLUTTER_EXPORTER_PLUGIN_ID, flutterExporterContribution()],
+      [
+        NEXTJS_EXPORTER_PLUGIN_ID,
+        bundledV1ExporterContribution(NEXTJS_EXPORTER_PLUGIN_ID, NEXTJS_EXPORTER.exporterId)
+      ],
+      [
+        CAPACITOR_EXPORTER_PLUGIN_ID,
+        bundledV1ExporterContribution(CAPACITOR_EXPORTER_PLUGIN_ID, CAPACITOR_EXPORTER.exporterId)
+      ],
+      [
+        ELECTRON_EXPORTER_PLUGIN_ID,
+        bundledV1ExporterContribution(ELECTRON_EXPORTER_PLUGIN_ID, ELECTRON_EXPORTER.exporterId)
+      ]
     ] as const) {
       expect(inspectPluginExporterMcpExposure(pluginId, contribution)).toMatchObject({
         ok: false,

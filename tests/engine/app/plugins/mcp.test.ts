@@ -1,22 +1,36 @@
 import { describe, expect, test } from 'bun:test'
 
-import { MAP_PLUGIN_ID } from '@open-pencil/core/plugins'
+import { MAP_PLUGIN_ID, parsePluginConnectorContract } from '@open-pencil/core/plugins'
 
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
 import {
+  AIRTABLE_LIST_RECORDS_OPERATION_ID,
+  AIRTABLE_RECORDS_CONNECTOR_ID,
+  AIRTABLE_RECORDS_PLUGIN_ID
+} from '@/app/plugins/connectors/airtable-records'
+import {
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
+  CAPACITOR_EXPORTER,
+  CAPACITOR_EXPORTER_PLUGIN_ID,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+  DESIGN_SYSTEM_AUDIT_COMMAND,
+  DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
+  ELECTRON_EXPORTER,
+  ELECTRON_EXPORTER_PLUGIN_ID,
   EXPO_REACT_NATIVE_EXPORTER,
   EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
   FLUTTER_EXPORTER,
   FLUTTER_EXPORTER_PLUGIN_ID,
   FIGMA_PROJECTION_EXPORTER,
   FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
+  NEXTJS_EXPORTER,
+  NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
   TAURI_REACT_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import {
+  appPluginMcpConnectorContributionId,
   appPluginMcpToolName,
   listAppPluginMcpTools,
   PLUGIN_MCP_LIMITS,
@@ -39,7 +53,7 @@ function createStore() {
 describe('app plugin MCP catalog', () => {
   test('exposes all bundled contributions after all bundled plugins are enabled', async () => {
     const catalog = createBundledPluginCatalog()
-    expect(catalog).toHaveLength(17)
+    expect(catalog).toHaveLength(34)
 
     const store = createStore()
     await store.load()
@@ -53,9 +67,9 @@ describe('app plugin MCP catalog', () => {
     }
 
     const tools = listAppPluginMcpTools(store).tools
-    expect(tools).toHaveLength(16)
-    expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(10)
-    expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(5)
+    expect(tools).toHaveLength(24)
+    expect(tools.filter((tool) => tool.kind === 'module')).toHaveLength(17)
+    expect(tools.filter((tool) => tool.kind === 'command')).toHaveLength(6)
     expect(tools.filter((tool) => tool.kind === 'exporter')).toHaveLength(1)
   })
 
@@ -170,6 +184,134 @@ describe('app plugin MCP catalog', () => {
     ).toBe(false)
   })
 
+  test('dynamically exposes and revokes the cooperative design-system audit', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(DESIGN_SYSTEM_AUDIT_PLUGIN_ID)
+    expect(
+      listAppPluginMcpTools(store).tools.some(
+        (tool) => tool.pluginId === DESIGN_SYSTEM_AUDIT_PLUGIN_ID
+      )
+    ).toBe(false)
+
+    await store.setEnabled(DESIGN_SYSTEM_AUDIT_PLUGIN_ID, true)
+    const audit = listAppPluginMcpTools(store).tools.find(
+      (tool) => tool.pluginId === DESIGN_SYSTEM_AUDIT_PLUGIN_ID
+    )
+    expect(audit).toMatchObject({
+      kind: 'command',
+      contributionId: DESIGN_SYSTEM_AUDIT_COMMAND.commandId,
+      inputSchema: { type: 'object', additionalProperties: false, maxProperties: 0 }
+    })
+    if (!audit) throw new Error('Expected design-system MCP descriptor')
+    expect(resolveAppPluginMcpTool(store, audit.name, DESIGN_SYSTEM_AUDIT_PLUGIN_ID).kind).toBe(
+      'command'
+    )
+
+    await store.setEnabled(DESIGN_SYSTEM_AUDIT_PLUGIN_ID, false)
+    expect(
+      listAppPluginMcpTools(store).tools.some(
+        (tool) => tool.pluginId === DESIGN_SYSTEM_AUDIT_PLUGIN_ID
+      )
+    ).toBe(false)
+  })
+
+  test('exposes read-only connectors only after explicit live authorization', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(AIRTABLE_RECORDS_PLUGIN_ID)
+    await store.setEnabled(AIRTABLE_RECORDS_PLUGIN_ID, true)
+
+    let authorized = false
+    const options = {
+      connectorExposure: () => authorized
+    }
+    const before = listAppPluginMcpTools(store, options)
+    expect(before.tools.some((tool) => tool.kind === 'connector')).toBe(false)
+
+    authorized = true
+    const enabled = listAppPluginMcpTools(store, options)
+    const connector = enabled.tools.find((tool) => tool.kind === 'connector')
+    expect(connector).toMatchObject({
+      pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
+      kind: 'connector',
+      contributionId: appPluginMcpConnectorContributionId(
+        AIRTABLE_RECORDS_CONNECTOR_ID,
+        AIRTABLE_LIST_RECORDS_OPERATION_ID
+      ),
+      inputSchema: {
+        type: 'object',
+        required: ['baseId', 'tableId'],
+        additionalProperties: false
+      }
+    })
+    if (!connector) throw new Error('Expected authorized connector MCP descriptor')
+    expect(connector.contributionId).toMatch(/^connector_[a-f0-9]{64}$/)
+    expect(connector.name).toMatch(/^plugin__.+__query_.+_[a-f0-9]{64}$/)
+    const resolved = resolveAppPluginMcpTool(
+      store,
+      connector.name,
+      AIRTABLE_RECORDS_PLUGIN_ID,
+      options
+    )
+    expect(resolved.kind).toBe('connector')
+    if (resolved.kind !== 'connector') throw new Error('Expected connector resolution')
+    expect(resolved.operation.operationId).toBe(AIRTABLE_LIST_RECORDS_OPERATION_ID)
+
+    authorized = false
+    expect(listAppPluginMcpTools(store, options).revision).not.toBe(enabled.revision)
+    expect(() =>
+      resolveAppPluginMcpTool(store, connector.name, AIRTABLE_RECORDS_PLUGIN_ID, options)
+    ).toThrow('is unavailable')
+  })
+
+  test('never registers a query operation that uses a mutating HTTP method', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(AIRTABLE_RECORDS_PLUGIN_ID)
+    await store.setEnabled(AIRTABLE_RECORDS_PLUGIN_ID, true)
+    const installed = store
+      .installedConnectors()
+      .find(({ plugin }) => plugin.package.manifest.plugin.id === AIRTABLE_RECORDS_PLUGIN_ID)
+    if (!installed) throw new Error('Expected installed Airtable connector')
+
+    const postQueryContract = parsePluginConnectorContract({
+      ...structuredClone(installed.contribution),
+      network: {
+        ...structuredClone(installed.contribution.network),
+        methods: ['GET', 'POST']
+      },
+      operations: installed.contribution.operations.map((operation) => ({
+        ...structuredClone(operation),
+        request: operation.request
+          ? {
+              ...structuredClone(operation.request),
+              method: 'POST'
+            }
+          : undefined
+      }))
+    })
+    const fakeStore: AppPluginMcpStore = {
+      installedModules: () => [],
+      installedCommands: () => [],
+      installedExporters: () => [],
+      installedConnectors: () => [
+        {
+          plugin: installed.plugin,
+          contribution: postQueryContract
+        }
+      ]
+    }
+
+    const catalog = listAppPluginMcpTools(fakeStore, { connectorExposure: () => true })
+    expect(catalog.tools).toEqual([])
+    expect(
+      catalog.tools.some(
+        (tool) => tool.kind === 'connector' && tool.pluginId === AIRTABLE_RECORDS_PLUGIN_ID
+      )
+    ).toBe(false)
+  })
+
   test('projects a compatible v2 contribution parameter schema into the dynamic descriptor', async () => {
     const store = createStore()
     await store.load()
@@ -200,7 +342,8 @@ describe('app plugin MCP catalog', () => {
     const fakeStore: AppPluginMcpStore = {
       installedModules: () => [],
       installedCommands: () => [{ plugin: installed.plugin, contribution }],
-      installedExporters: () => []
+      installedExporters: () => [],
+      installedConnectors: () => []
     }
 
     const [descriptor] = listAppPluginMcpTools(fakeStore).tools
@@ -217,7 +360,10 @@ describe('app plugin MCP catalog', () => {
       FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
       TAURI_REACT_EXPORTER_PLUGIN_ID,
       EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID,
-      FLUTTER_EXPORTER_PLUGIN_ID
+      FLUTTER_EXPORTER_PLUGIN_ID,
+      NEXTJS_EXPORTER_PLUGIN_ID,
+      CAPACITOR_EXPORTER_PLUGIN_ID,
+      ELECTRON_EXPORTER_PLUGIN_ID
     ]) {
       await store.install(pluginId)
       await store.setEnabled(pluginId, true)
@@ -231,7 +377,10 @@ describe('app plugin MCP catalog', () => {
       [FIGMA_PROJECTION_EXPORTER_PLUGIN_ID, FIGMA_PROJECTION_EXPORTER],
       [TAURI_REACT_EXPORTER_PLUGIN_ID, TAURI_REACT_EXPORTER],
       [EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID, EXPO_REACT_NATIVE_EXPORTER],
-      [FLUTTER_EXPORTER_PLUGIN_ID, FLUTTER_EXPORTER]
+      [FLUTTER_EXPORTER_PLUGIN_ID, FLUTTER_EXPORTER],
+      [NEXTJS_EXPORTER_PLUGIN_ID, NEXTJS_EXPORTER],
+      [CAPACITOR_EXPORTER_PLUGIN_ID, CAPACITOR_EXPORTER],
+      [ELECTRON_EXPORTER_PLUGIN_ID, ELECTRON_EXPORTER]
     ] as const) {
       const unavailableName = appPluginMcpToolName(pluginId, 'exporter', exporter.exporterId)
       expect(() => resolveAppPluginMcpTool(store, unavailableName, pluginId)).toThrow(
@@ -264,7 +413,8 @@ describe('app plugin MCP catalog', () => {
     const fakeStore: AppPluginMcpStore = {
       installedModules: () => [poisonedModule],
       installedCommands: () => [poisonedCommand],
-      installedExporters: () => []
+      installedExporters: () => [],
+      installedConnectors: () => []
     }
 
     const serialized = JSON.stringify(listAppPluginMcpTools(fakeStore))
@@ -279,7 +429,8 @@ describe('app plugin MCP catalog', () => {
     const oversized: AppPluginMcpStore = {
       installedModules: () => Array.from({ length: PLUGIN_MCP_LIMITS.maxTools + 1 }, () => module),
       installedCommands: () => [],
-      installedExporters: () => []
+      installedExporters: () => [],
+      installedConnectors: () => []
     }
     expect(() => listAppPluginMcpTools(oversized)).toThrow('tool limit')
   })

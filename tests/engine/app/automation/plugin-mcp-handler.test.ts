@@ -10,6 +10,10 @@ import type { AutomationTarget } from '@/app/automation/bridge/target'
 import { createEditorStore } from '@/app/editor/session'
 import { createBundledPluginCatalog } from '@/app/plugins/catalog'
 import {
+  AIRTABLE_LIST_RECORDS_OPERATION_ID,
+  AIRTABLE_RECORDS_PLUGIN_ID
+} from '@/app/plugins/connectors/airtable-records'
+import {
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
   DESIGN_TOKENS_EXPORTER_PLUGIN_ID
@@ -152,10 +156,12 @@ describe('automation plugin MCP handler', () => {
     await store.setEnabled(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, true)
     const executions: string[] = []
     const controller = new AbortController()
+    let commandSignal: AbortSignal | undefined
     let exporterSignal: AbortSignal | undefined
     const dependencies: AutomationPluginMcpDependencies = {
       store,
-      runCommand: async (_editor, plugin, contribution) => {
+      runCommand: async (_editor, plugin, contribution, _args, signal) => {
+        commandSignal = signal
         executions.push(`command:${plugin.package.manifest.plugin.id}:${contribution.commandId}`)
         return { status: 'completed', message: 'Copied' }
       },
@@ -183,11 +189,15 @@ describe('automation plugin MCP handler', () => {
     expect(executions).toEqual([])
 
     expect(
-      await handlers.handleCall(target(), {
-        name: command.name,
-        pluginId: command.pluginId,
-        args: {}
-      })
+      await handlers.handleCall(
+        target(),
+        {
+          name: command.name,
+          pluginId: command.pluginId,
+          args: {}
+        },
+        { signal: controller.signal }
+      )
     ).toMatchObject({
       ok: true,
       result: {
@@ -220,6 +230,7 @@ describe('automation plugin MCP handler', () => {
       `command:${command.pluginId}:${command.contributionId}`,
       `exporter:${exporter.pluginId}:${exporter.contributionId}`
     ])
+    expect(commandSignal).toBe(controller.signal)
     expect(exporterSignal).toBe(controller.signal)
 
     await store.setEnabled(CLIPBOARD_TOOLKIT_PLUGIN_ID, false)
@@ -287,6 +298,83 @@ describe('automation plugin MCP handler', () => {
         name: descriptor.name,
         pluginId: descriptor.pluginId,
         args: {}
+      })
+    ).rejects.toThrow('is unavailable')
+    expect(received).toHaveLength(1)
+  })
+
+  test('routes an authorized connector query through the broker dependency and revokes live', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(AIRTABLE_RECORDS_PLUGIN_ID)
+    await store.setEnabled(AIRTABLE_RECORDS_PLUGIN_ID, true)
+    let authorized = true
+    const received: unknown[] = []
+    const controller = new AbortController()
+    const dependencies: AutomationPluginMcpDependencies = {
+      store,
+      mcpOptions: { connectorExposure: () => authorized },
+      runCommand: async () => ({ status: 'cancelled', message: 'unused' }),
+      runExporter: async () => ({ status: 'cancelled', message: 'unused' }),
+      runConnector: async (connector, operation, args, signal) => {
+        received.push({ connectorId: connector.contribution.connectorId, operation, args, signal })
+        return {
+          data: { records: [], hasMore: false },
+          httpStatus: 200,
+          requestBytes: 0,
+          responseBytes: 32
+        }
+      }
+    }
+    const handlers = createAutomationPluginMcpHandlers(async () => {
+      throw new Error('Connector query must not dispatch a core module tool')
+    }, dependencies)
+    const descriptor = handlers
+      .handleList()
+      .result.tools.find((tool) => tool.pluginId === AIRTABLE_RECORDS_PLUGIN_ID)
+    if (!descriptor) throw new Error('Expected Airtable connector MCP descriptor')
+
+    await expect(
+      handlers.handleCall(
+        target(),
+        {
+          name: descriptor.name,
+          pluginId: descriptor.pluginId,
+          args: { baseId: 'app1234', tableId: 'tbl5678', pageSize: 25 }
+        },
+        { signal: controller.signal }
+      )
+    ).resolves.toMatchObject({
+      ok: true,
+      result: {
+        pluginId: AIRTABLE_RECORDS_PLUGIN_ID,
+        kind: 'connector',
+        httpStatus: 200,
+        data: { records: [], hasMore: false }
+      }
+    })
+    expect(received).toHaveLength(1)
+    expect(received[0]).toMatchObject({
+      operation: { operationId: AIRTABLE_LIST_RECORDS_OPERATION_ID },
+      args: { baseId: 'app1234', tableId: 'tbl5678', pageSize: 25 },
+      signal: controller.signal
+    })
+
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: { baseId: 'app1234', tableId: 'tbl5678', secret: 'forbidden' }
+      })
+    ).rejects.toThrow('not supported')
+    expect(received).toHaveLength(1)
+
+    authorized = false
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: descriptor.pluginId,
+        args: { baseId: 'app1234', tableId: 'tbl5678' }
       })
     ).rejects.toThrow('is unavailable')
     expect(received).toHaveLength(1)

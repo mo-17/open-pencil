@@ -4,10 +4,12 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils'
 import type {
   DeclarativeCommandContributionV2,
   DeclarativeExporterContributionV2,
-  ModuleDefinition
+  ModuleDefinition,
+  PluginConnectorOperationV1
 } from '@open-pencil/core/plugins'
 import type { PluginMcpCatalogSnapshot } from '@open-pencil/mcp/plugin-contract'
-import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import { canonicalManifestValue } from '@open-pencil/scene-graph'
+import type { JsonObject, JsonValue } from '@open-pencil/scene-graph/primitives'
 
 import { inspectPluginCommandCompatibility, inspectPluginExporterMcpExposure } from './host'
 import { inspectInstalledPluginModuleCompatibility } from './modules'
@@ -16,6 +18,7 @@ import type {
   AppPluginCommandContribution,
   AppPluginExporterContribution,
   InstalledPluginCommand,
+  InstalledPluginConnector,
   InstalledPluginExporter,
   InstalledPluginModule
 } from './types'
@@ -35,7 +38,7 @@ export const PLUGIN_MCP_LIMITS = Object.freeze({
   maxCatalogBytes: 512 * 1024
 })
 
-export type AppPluginMcpToolKind = 'module' | 'command' | 'exporter'
+export type AppPluginMcpToolKind = 'module' | 'command' | 'exporter' | 'connector'
 
 export interface AppPluginMcpToolDescriptor {
   name: string
@@ -51,8 +54,15 @@ export type AppPluginMcpToolCatalog = PluginMcpCatalogSnapshot
 
 export type AppPluginMcpStore = Pick<
   ReturnType<typeof createAppPluginStore>,
-  'installedModules' | 'installedCommands' | 'installedExporters'
+  'installedModules' | 'installedCommands' | 'installedExporters' | 'installedConnectors'
 >
+
+export interface AppPluginMcpOptions {
+  readonly connectorExposure?: (
+    connector: InstalledPluginConnector,
+    operation: PluginConnectorOperationV1
+  ) => boolean
+}
 
 export type ResolvedAppPluginMcpTool =
   | Readonly<{
@@ -70,6 +80,17 @@ export type ResolvedAppPluginMcpTool =
       kind: 'exporter'
       value: InstalledPluginExporter
     }>
+  | Readonly<{
+      descriptor: AppPluginMcpToolDescriptor
+      kind: 'connector'
+      value: InstalledPluginConnector
+      operation: PluginConnectorOperationV1
+    }>
+
+interface InstalledPluginConnectorOperation {
+  connector: InstalledPluginConnector
+  operation: PluginConnectorOperationV1
+}
 
 type PluginMcpCandidate =
   | Readonly<{
@@ -93,11 +114,22 @@ type PluginMcpCandidate =
       kind: 'exporter'
       value: InstalledPluginExporter
     }>
+  | Readonly<{
+      baseName: string
+      identity: string
+      descriptor: Omit<AppPluginMcpToolDescriptor, 'name'>
+      kind: 'connector'
+      value: InstalledPluginConnectorOperation
+    }>
 
 interface NamedPluginMcpCandidate {
   descriptor: AppPluginMcpToolDescriptor
   kind: PluginMcpCandidate['kind']
-  value: InstalledPluginModule | InstalledPluginCommand | InstalledPluginExporter
+  value:
+    | InstalledPluginModule
+    | InstalledPluginCommand
+    | InstalledPluginExporter
+    | InstalledPluginConnectorOperation
 }
 
 const EMPTY_INPUT_SCHEMA: JsonObject = Object.freeze({
@@ -111,6 +143,32 @@ function contributionInputSchema(
 ): JsonObject {
   if (!isV2Contribution(contribution)) return EMPTY_INPUT_SCHEMA
   return { ...structuredClone(contribution.parameters.schema) }
+}
+
+function connectorInputSchema(operation: PluginConnectorOperationV1): JsonObject {
+  const schema = canonicalManifestValue(operation.parameters.schema)
+  if (!isJsonObject(schema)) {
+    throw new TypeError('Connector input schema must be an object')
+  }
+  return schema
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean' ||
+    (typeof value === 'number' && Number.isFinite(value))
+  ) {
+    return true
+  }
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  return isJsonObject(value)
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  return Object.values(value).every(isJsonValue)
 }
 
 function isV2Contribution(
@@ -209,7 +267,7 @@ export function appPluginMcpToolName(
   kind: AppPluginMcpToolKind,
   contributionId: string
 ): string {
-  const action = { module: 'add', command: 'run', exporter: 'export' }[kind]
+  const action = { module: 'add', command: 'run', exporter: 'export', connector: 'query' }[kind]
   const plugin = normalizedToolSegment(pluginId).slice(0, 24)
   const contribution = normalizedToolSegment(contributionId).slice(0, 24)
   const readable = `plugin__${plugin}__${action}_${contribution}`
@@ -218,6 +276,16 @@ export function appPluginMcpToolName(
   // so a readable-slug collision cannot transfer an old MCP name to new authority.
   const suffix = `_${sha256Hex(candidateIdentity(pluginId, kind, contributionId))}`
   return `${readable.slice(0, PLUGIN_MCP_LIMITS.maxToolNameLength - suffix.length)}${suffix}`
+}
+
+export function appPluginMcpConnectorContributionId(
+  connectorId: string,
+  operationId: string
+): string {
+  // Connector and operation IDs can both contain every identity separator. Use a
+  // full digest so the composite remains unambiguous and valid for the MCP wire
+  // identity grammar without weakening that grammar for every contribution kind.
+  return `connector_${sha256Hex(`${connectorId}\0${operationId}`)}`
 }
 
 function pluginMetadata(
@@ -239,7 +307,10 @@ function pluginMetadata(
   }
 }
 
-function activeCandidates(store: AppPluginMcpStore): PluginMcpCandidate[] {
+function activeCandidates(
+  store: AppPluginMcpStore,
+  options: AppPluginMcpOptions
+): PluginMcpCandidate[] {
   const candidates: PluginMcpCandidate[] = []
   for (const module of store.installedModules()) {
     const compatibility = inspectInstalledPluginModuleCompatibility(module)
@@ -299,6 +370,38 @@ function activeCandidates(store: AppPluginMcpStore): PluginMcpCandidate[] {
       value: exporter
     })
   }
+  for (const connector of store.installedConnectors()) {
+    const pluginId = connector.plugin.package.manifest.plugin.id
+    for (const operation of connector.contribution.operations) {
+      if (
+        operation.kind !== 'query' ||
+        operation.request?.method !== 'GET' ||
+        options.connectorExposure?.(connector, operation) !== true
+      ) {
+        continue
+      }
+      const contributionId = appPluginMcpConnectorContributionId(
+        connector.contribution.connectorId,
+        operation.operationId
+      )
+      const origin = operation.request.origin ?? operation.request.originTemplate
+      const authority = `${operation.request.method} ${origin}${operation.request.pathTemplate}`
+      candidates.push({
+        baseName: appPluginMcpToolName(pluginId, 'connector', contributionId),
+        identity: candidateIdentity(pluginId, 'connector', contributionId),
+        descriptor: pluginMetadata(
+          pluginId,
+          'connector',
+          contributionId,
+          `Query ${connector.contribution.connectorId}`,
+          `Run reviewed read-only connector query ${operation.operationId} with fixed network authority ${authority}.`,
+          connectorInputSchema(operation)
+        ),
+        kind: 'connector',
+        value: { connector, operation }
+      })
+    }
+  }
   candidates.sort((left, right) => left.identity.localeCompare(right.identity))
   if (candidates.length > PLUGIN_MCP_LIMITS.maxTools) {
     throw new Error(`Enabled plugin MCP tools exceed the ${PLUGIN_MCP_LIMITS.maxTools} tool limit`)
@@ -306,8 +409,11 @@ function activeCandidates(store: AppPluginMcpStore): PluginMcpCandidate[] {
   return candidates
 }
 
-function namedCandidates(store: AppPluginMcpStore): NamedPluginMcpCandidate[] {
-  const candidates = activeCandidates(store)
+function namedCandidates(
+  store: AppPluginMcpStore,
+  options: AppPluginMcpOptions
+): NamedPluginMcpCandidate[] {
+  const candidates = activeCandidates(store, options)
   const identityCounts = new Map<string, number>()
   for (const candidate of candidates) {
     identityCounts.set(candidate.identity, (identityCounts.get(candidate.identity) ?? 0) + 1)
@@ -339,8 +445,11 @@ function catalogRevision(tools: readonly AppPluginMcpToolDescriptor[]): string {
   return `plugin-mcp-v2-${sha256Hex(serialized)}`
 }
 
-export function listAppPluginMcpTools(store: AppPluginMcpStore): AppPluginMcpToolCatalog {
-  const tools = namedCandidates(store).map(({ descriptor }) => structuredClone(descriptor))
+export function listAppPluginMcpTools(
+  store: AppPluginMcpStore,
+  options: AppPluginMcpOptions = {}
+): AppPluginMcpToolCatalog {
+  const tools = namedCandidates(store, options).map(({ descriptor }) => structuredClone(descriptor))
   const bytes = new TextEncoder().encode(JSON.stringify(tools)).byteLength
   if (bytes > PLUGIN_MCP_LIMITS.maxCatalogBytes) {
     throw new Error(
@@ -353,9 +462,12 @@ export function listAppPluginMcpTools(store: AppPluginMcpStore): AppPluginMcpToo
 export function resolveAppPluginMcpTool(
   store: AppPluginMcpStore,
   name: string,
-  pluginId: string
+  pluginId: string,
+  options: AppPluginMcpOptions = {}
 ): ResolvedAppPluginMcpTool {
-  const candidate = namedCandidates(store).find(({ descriptor }) => descriptor.name === name)
+  const candidate = namedCandidates(store, options).find(
+    ({ descriptor }) => descriptor.name === name
+  )
   if (!candidate) throw new Error(`Plugin MCP tool is unavailable: ${name}`)
   if (candidate.descriptor.pluginId !== pluginId) {
     throw new Error(`Plugin MCP tool ${name} does not belong to plugin ${pluginId}`)
@@ -372,6 +484,15 @@ export function resolveAppPluginMcpTool(
       descriptor: structuredClone(candidate.descriptor),
       kind: 'command',
       value: candidate.value as InstalledPluginCommand
+    }
+  }
+  if (candidate.kind === 'connector') {
+    const value = candidate.value as InstalledPluginConnectorOperation
+    return {
+      descriptor: structuredClone(candidate.descriptor),
+      kind: 'connector',
+      value: value.connector,
+      operation: value.operation
     }
   }
   return {

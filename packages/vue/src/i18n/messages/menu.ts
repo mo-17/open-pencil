@@ -19,6 +19,9 @@ export const menuMessageDefaults = {
   exportTauriReactProject: 'Tauri React Project…',
   exportExpoReactNativeProject: 'Expo React Native Project…',
   exportFlutterProject: 'Flutter Project…',
+  exportNextJsProject: 'Next.js Project…',
+  exportCapacitorProject: 'Capacitor Project…',
+  exportElectronProject: 'Electron Project…',
   autosave: 'Auto-save to local file',
   closeTab: 'Close tab',
 

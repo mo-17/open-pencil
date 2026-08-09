@@ -16,9 +16,11 @@ import {
   appPluginRuntimeSnapshot,
   appPluginStore,
   appPluginStoreSnapshot,
+  appConnectorHostAdapters,
   inspectPluginCommandCompatibility,
   inspectPluginExporterCompatibility,
   inspectPluginHostContributionsCompatibility,
+  inspectConnectorManifestCompatibility,
   inspectPluginModuleContributionsCompatibility,
   inspectPluginModuleCompatibility,
   resolveAppPluginDocumentDependencies,
@@ -38,6 +40,10 @@ import {
   type PluginRuntimeReview
 } from '@/app/plugins'
 import {
+  localizedAppPluginContributionText,
+  localizedAppPluginText
+} from '@/app/plugins/localization'
+import {
   filterPluginDiscoverCatalog,
   pluginMarketplaceListingViews,
   pluginV2ContractSummaries,
@@ -49,10 +55,12 @@ import AppSwitch from '@/components/ui/AppSwitch.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
 import AccessibilityAuditReport from './AccessibilityAuditReport.vue'
+import PluginConnectorControls from './PluginConnectorControls.vue'
+import PluginConnectorOutcomeUnknownNotices from './PluginConnectorOutcomeUnknownNotices.vue'
 import PluginMarketplaceSummary from './PluginMarketplaceSummary.vue'
 import PluginV2ContractSummary from './PluginV2ContractSummary.vue'
 
-const { dialogs } = useI18n()
+const { dialogs, locale } = useI18n()
 const editor = useEditorStore()
 const view = ref<'browse' | 'installed'>('browse')
 const busyPluginId = ref<string | null>(null)
@@ -160,6 +168,21 @@ const canWriteDocumentLock = computed(
 
 function pluginId(plugin: InstalledAppPlugin): string {
   return plugin.package.manifest.plugin.id
+}
+
+function pluginDisplayName(plugin: InstalledAppPlugin['package']['manifest']): string {
+  return localizedAppPluginText(plugin.plugin.id, locale.value)?.name ?? plugin.plugin.name
+}
+
+function contributionDisplayName(
+  pluginIdValue: string,
+  contributionId: string,
+  fallback: string
+): string {
+  return (
+    localizedAppPluginContributionText(pluginIdValue, contributionId, locale.value)?.name ??
+    fallback
+  )
 }
 
 function trustLabel(trustSource: InstalledAppPlugin['package']['trustSource']): string {
@@ -341,22 +364,30 @@ function hasCompatibleModules(
 }
 
 function manifestDescription(plugin: InstalledAppPlugin['package']['manifest']): string {
+  const localized = localizedAppPluginText(plugin.plugin.id, locale.value)
+  if (localized) return localized.description
   return (
     plugin.contributions.modules[0]?.description ??
     plugin.contributions.commands?.[0]?.description ??
     plugin.contributions.exporters?.[0]?.description ??
+    (plugin.schemaVersion === 2 ? plugin.contributions.connectors?.[0]?.description : undefined) ??
     ''
   )
 }
 
-function hasCompatibleContributions(
-  pluginIdValue: string,
-  contributions: InstalledAppPlugin['package']['manifest']['contributions']
-): boolean {
+function hasCompatibleContributions(manifest: InstalledAppPlugin['package']['manifest']): boolean {
+  const pluginIdValue = manifest.plugin.id
+  const contributions = manifest.contributions
   return (
     hasCompatibleModules(pluginIdValue, contributions.modules) &&
-    inspectPluginHostContributionsCompatibility(pluginIdValue, contributions).length === 0
+    inspectPluginHostContributionsCompatibility(pluginIdValue, contributions).length === 0 &&
+    inspectConnectorManifestCompatibility(manifest, appConnectorHostAdapters).ok
   )
+}
+
+function connectorCompatibilityReason(manifest: InstalledAppPlugin['package']['manifest']): string {
+  const compatibility = inspectConnectorManifestCompatibility(manifest, appConnectorHostAdapters)
+  return compatibility.ok ? '' : compatibility.reason
 }
 
 function commandCompatibility(
@@ -392,7 +423,12 @@ function hostContributionKey(
 function pendingUpdateCompatibilityFailures(plugin: InstalledAppPlugin) {
   const pending = plugin.installedState?.pending
   if (!pending) return []
-  const contributions = pending.candidate.manifest.contributions
+  const manifest = pending.candidate.manifest
+  const contributions = manifest.contributions
+  const connectorCompatibility = inspectConnectorManifestCompatibility(
+    manifest,
+    appConnectorHostAdapters
+  )
   return [
     ...inspectPluginModuleContributionsCompatibility(pluginId(plugin), contributions.modules).map(
       (failure) => ({ id: failure.moduleType, status: failure.status, reason: failure.reason })
@@ -403,7 +439,16 @@ function pendingUpdateCompatibilityFailures(plugin: InstalledAppPlugin) {
         status: failure.status,
         reason: failure.reason
       })
-    )
+    ),
+    ...(connectorCompatibility.ok
+      ? []
+      : [
+          {
+            id: 'connector',
+            status: 'connector-incompatible',
+            reason: connectorCompatibility.reason
+          }
+        ])
   ]
 }
 
@@ -648,6 +693,8 @@ function confirmResetLocalState(): void {
       {{ dialogs.pluginBundleOnlyNotice }}
     </div>
 
+    <PluginConnectorOutcomeUnknownNotices />
+
     <div
       class="rounded border border-border bg-panel-field px-2.5 py-2"
       data-test-id="plugin-remote-catalog"
@@ -756,7 +803,7 @@ function confirmResetLocalState(): void {
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-1.5">
                 <h4 class="text-[11px] font-medium text-surface">
-                  {{ item.package.manifest.plugin.name }}
+                  {{ pluginDisplayName(item.package.manifest) }}
                 </h4>
                 <AppBadge :tone="item.installed ? 'success' : 'neutral'">
                   {{
@@ -824,7 +871,14 @@ function confirmResetLocalState(): void {
                   class="mt-1 text-[9px] text-error"
                   :data-test-id="`plugin-adapter-compatibility-${item.package.manifest.plugin.id}-${contribution.moduleType}`"
                 >
-                  {{ contribution.name }} ·
+                  {{
+                    contributionDisplayName(
+                      item.package.manifest.plugin.id,
+                      contribution.moduleType,
+                      contribution.name
+                    )
+                  }}
+                  ·
                   {{
                     moduleCompatibilityLabel(
                       moduleCompatibility(item.package.manifest.plugin.id, contribution).status
@@ -843,6 +897,13 @@ function confirmResetLocalState(): void {
               >
                 {{ failure.contributionId }} · {{ failure.reason }}
               </p>
+              <p
+                v-if="connectorCompatibilityReason(item.package.manifest)"
+                class="mt-1 text-[9px] text-error"
+                :data-test-id="`plugin-connector-compatibility-${item.package.manifest.plugin.id}`"
+              >
+                {{ connectorCompatibilityReason(item.package.manifest) }}
+              </p>
             </div>
             <button
               type="button"
@@ -850,10 +911,7 @@ function confirmResetLocalState(): void {
               :disabled="
                 item.installed ||
                 busyPluginId === item.package.manifest.plugin.id ||
-                !hasCompatibleContributions(
-                  item.package.manifest.plugin.id,
-                  item.package.manifest.contributions
-                )
+                !hasCompatibleContributions(item.package.manifest)
               "
               :data-test-id="`plugin-install-${item.package.manifest.plugin.id}`"
               @click="install(item.package.manifest.plugin.id)"
@@ -865,12 +923,9 @@ function confirmResetLocalState(): void {
                         (issue) => issue.pluginId === item.package.manifest.plugin.id
                       )
                     ? dialogs.pluginReplacePin
-                    : hasCompatibleContributions(
-                          item.package.manifest.plugin.id,
-                          item.package.manifest.contributions
-                        )
+                    : hasCompatibleContributions(item.package.manifest)
                       ? dialogs.pluginInstall
-                      : dialogs.pluginNoCompatibleModules
+                      : dialogs.pluginNoCompatibleContributions
               }}
             </button>
           </div>
@@ -905,7 +960,7 @@ function confirmResetLocalState(): void {
             <div class="min-w-0 flex-1">
               <div class="flex flex-wrap items-center gap-1.5">
                 <h4 class="text-[11px] font-medium text-surface">
-                  {{ plugin.package.manifest.plugin.name }}
+                  {{ pluginDisplayName(plugin.package.manifest) }}
                 </h4>
                 <AppBadge :tone="plugin.enabled ? 'success' : 'neutral'">
                   {{ plugin.enabled ? dialogs.enabled : dialogs.disabled }}
@@ -920,6 +975,9 @@ function confirmResetLocalState(): void {
                   {{ dialogs.pluginBlocked }}
                 </AppBadge>
               </div>
+              <p class="mt-1 text-[10px] text-muted">
+                {{ manifestDescription(plugin.package.manifest) }}
+              </p>
               <div class="mt-1 text-[9px] text-muted">
                 <p>
                   {{ dialogs.pluginVersion({ version: plugin.package.manifest.plugin.version }) }} ·
@@ -965,6 +1023,8 @@ function confirmResetLocalState(): void {
           >
             {{ dialogs.pluginBlockedReason({ reason: plugin.blockedReason }) }}
           </p>
+
+          <PluginConnectorControls :plugin="plugin" />
 
           <div
             v-if="plugin.installedState?.pending"
@@ -1057,6 +1117,48 @@ function confirmResetLocalState(): void {
                 class="rounded bg-accent/10 px-1.5 py-0.5 text-accent"
               >
                 ~ exporter:{{ exporterId }}
+              </span>
+              <span
+                v-for="connectorId in plugin.installedState.pending.diff.addedConnectors"
+                :key="`added-connector:${connectorId}`"
+                class="rounded bg-success/10 px-1.5 py-0.5 text-success"
+              >
+                + connector:{{ connectorId }}
+              </span>
+              <span
+                v-for="connectorId in plugin.installedState.pending.diff.removedConnectors"
+                :key="`removed-connector:${connectorId}`"
+                class="rounded bg-error/10 px-1.5 py-0.5 text-error"
+              >
+                − connector:{{ connectorId }}
+              </span>
+              <span
+                v-for="connectorId in plugin.installedState.pending.diff.updatedConnectors"
+                :key="`updated-connector:${connectorId}`"
+                class="rounded bg-accent/10 px-1.5 py-0.5 text-accent"
+              >
+                ~ connector:{{ connectorId }}
+              </span>
+              <span
+                v-for="providerId in plugin.installedState.pending.diff.addedStorageProviders"
+                :key="`added-storage-provider:${providerId}`"
+                class="rounded bg-success/10 px-1.5 py-0.5 text-success"
+              >
+                + storage-provider:{{ providerId }}
+              </span>
+              <span
+                v-for="providerId in plugin.installedState.pending.diff.removedStorageProviders"
+                :key="`removed-storage-provider:${providerId}`"
+                class="rounded bg-error/10 px-1.5 py-0.5 text-error"
+              >
+                − storage-provider:{{ providerId }}
+              </span>
+              <span
+                v-for="providerId in plugin.installedState.pending.diff.updatedStorageProviders"
+                :key="`updated-storage-provider:${providerId}`"
+                class="rounded bg-accent/10 px-1.5 py-0.5 text-accent"
+              >
+                ~ storage-provider:{{ providerId }}
               </span>
             </div>
             <p class="mt-1 break-all text-[9px] text-muted">
@@ -1278,7 +1380,14 @@ function confirmResetLocalState(): void {
                 @click="addModule(plugin, contribution)"
               >
                 <icon-lucide-plus class="mr-1 inline size-3" />
-                {{ dialogs.pluginAddToCanvas }} · {{ contribution.name }}
+                {{ dialogs.pluginAddToCanvas }} ·
+                {{
+                  contributionDisplayName(
+                    pluginId(plugin),
+                    contribution.moduleType,
+                    contribution.name
+                  )
+                }}
               </button>
               <span
                 v-if="!moduleCompatibility(pluginId(plugin), contribution).ok"
@@ -1311,7 +1420,13 @@ function confirmResetLocalState(): void {
                 @click="runCommand(plugin, contribution)"
               >
                 <icon-lucide-clipboard-copy class="mr-1 inline size-3" />
-                {{ contribution.name }}
+                {{
+                  contributionDisplayName(
+                    pluginId(plugin),
+                    contribution.commandId,
+                    contribution.name
+                  )
+                }}
               </button>
               <span
                 v-if="!commandCompatibility(pluginId(plugin), contribution).ok"
@@ -1339,7 +1454,13 @@ function confirmResetLocalState(): void {
                 @click="runExporter(plugin, contribution)"
               >
                 <icon-lucide-package-open class="mr-1 inline size-3" />
-                {{ contribution.name }}
+                {{
+                  contributionDisplayName(
+                    pluginId(plugin),
+                    contribution.exporterId,
+                    contribution.name
+                  )
+                }}
               </button>
               <span
                 v-if="!exporterCompatibility(pluginId(plugin), contribution).ok"
@@ -1540,7 +1661,7 @@ function confirmResetLocalState(): void {
       <AlertDialogDescription class="text-xs text-muted">
         {{
           dialogs.pluginUninstallDescription({
-            name: pendingUninstall?.package.manifest.plugin.name ?? ''
+            name: pendingUninstall ? pluginDisplayName(pendingUninstall.package.manifest) : ''
           })
         }}
       </AlertDialogDescription>
@@ -1660,7 +1781,9 @@ function confirmResetLocalState(): void {
       <AlertDialogDescription class="text-xs text-muted">
         {{
           dialogs.pluginRollbackDescription({
-            name: pendingRollbackPlugin?.plugin.package.manifest.plugin.name ?? '',
+            name: pendingRollbackPlugin
+              ? pluginDisplayName(pendingRollbackPlugin.plugin.package.manifest)
+              : '',
             version: pendingRollbackPlugin?.target.manifest.plugin.version ?? ''
           })
         }}
