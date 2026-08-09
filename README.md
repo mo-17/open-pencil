@@ -41,10 +41,20 @@ Or download from the [releases page](https://github.com/open-pencil/open-pencil/
   Motion Runtime SDK; and generate a fail-closed Figma Motion Plugin API adapter for the verified
   native subset
 - **Lowcode app publishing** — turn pages into React/Tailwind apps with state, bindings, form validation, Supabase schema inspection and RLS guidance, authenticated client/server workflows, environment-scoped runtime configuration, i18n, shadcn/ui output, preview diagnostics, build, and deploy flows. Compiler Preview supports Real-time, Auto, and Manual refresh with single-flight latest-change scheduling
-- **Built-in plugin marketplace** — manage 17 reviewed plugins with 20 module, command, and exporter
-  contributions. Ten versioned modules—including Map, Rich Text, Lottie, Carousel, and Advanced Data
-  Grid—stay editable as native frames, survive `.fig` round-trips, expose inspector and dynamic MCP
-  controls, and compile through reviewed host adapters
+- **Built-in plugin marketplace** — manage 34 reviewed plugins with 37 module, command, exporter,
+  connector, and storage-provider contributions. Seventeen versioned modules—including Map, Rich
+  Text, Lottie, Tabs, Markdown, and Advanced Data Grid—stay editable as native frames, five
+  host-reviewed business connectors provide bounded workflows through the Phase 2 Broker, and the
+  default-enabled Google Drive Storage declaration binds only to the app-owned storage adapter
+- **Local-first cloud documents** — connect the Tauri desktop app to Google Drive through the system
+  browser and OAuth PKCE with the narrow `drive.file` scope. OpenPencil keeps visible `.fig` files in
+  Drive. After the local document index and Outbox pass live durable IndexedDB probes, it saves
+  locally before queuing background uploads, resumes pending work after restart, uses resumable
+  transfers and incremental change cursors, and preserves concurrent edits as conflict copies. A
+  production memory fallback blocks cloud operations and directs users to export open work as a
+  local `.fig`; it never claims offline or restart safety. Resumable session URLs are process-local,
+  so an ambiguous remote success followed by an app crash is preserved as a conflict copy instead of
+  risking a silent overwrite. Self-managed S3-compatible storage remains an advanced alternative
 - **Vue SDK for custom editors** — headless components and composables for embedding OpenPencil into other apps or building workflow-specific editing surfaces. [Read the SDK docs →](https://openpencil.dev/programmable/sdk/)
 - **Real-time collaboration** — peer-to-peer collaboration via WebRTC, with cursors, presence,
   follow mode, and fine-grained MotionSpec v3 timeline merging with remote playheads and selections
@@ -253,26 +263,65 @@ stable/beta catalogs, searchable listings, immutable artifact coordinates, an ap
 checkpoint, and an optional executable-runtime index. Explicit update review, verified rollback,
 digest pins, cache status, and portable document dependency locks remain enforced.
 After enablement, insert module plugins from the canvas toolbar, run Clipboard Toolkit commands from
-the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 17
-reviewed built-ins expose 20 contributions: ten modules (Map, Chart, Rich Text, sandboxed HTML,
-public-HTTPS Video, structured Table, an accessible four-direction Slide Menu, Lottie, Carousel, and
-Advanced Data Grid), five commands (four Clipboard Toolkit actions plus Static Accessibility Audit),
-and five exporters (Tauri React, Expo React Native, Flutter, Design Tokens JSON, and Figma Editable
-Projection). Only Map is installed and enabled by default; all other built-ins are opt-in. Rich Text
-uses a structured visual block and inline-format editor in the Design panel. Compiler Preview and
+the Edit menu, and use reviewed exporters from File → Export or the installed-plugin card. The 34
+reviewed built-ins expose 37 contributions: seventeen modules (including Map, Rich Text, sandboxed
+HTML, Video, Lottie, Carousel, Advanced Data Grid, Tabs, Accordion, QR/Code 128, Markdown, Code
+Block, PDF Viewer, and Audio Player), six commands (four Clipboard Toolkit actions plus Static
+Accessibility Audit and Static Design System Audit), and eight exporters (Tauri React, Expo React
+Native, Flutter, Next.js, Capacitor, Electron, Design Tokens JSON, and Figma Editable Projection),
+plus five connectors (Supabase Schema Inspector, Airtable Records, Supabase Tables, Stripe Checkout
+& Billing, and Resend Email), plus one Google Drive storage provider.
+Map and the host-owned Google Drive Storage declaration are installed and enabled by default; all
+other built-ins are opt-in. Advanced Data Grid can
+round-trip bounded RFC 4180 CSV in the property panel and generated web runtime without requesting
+file or clipboard privileges. Rich Text uses a structured visual block and inline-format editor in
+the Design panel. Compiler Preview and
 exported React/Tauri source render Rich Text as a directly editable, dependency-free field with a
 safe v1 formatting toolbar, plain-text paste, a hidden form value, and a change event; runtime values
 remain application data and are not silently written back to the source `.fig` file. Mobile source
 ZIPs currently omit font bytes because the available SPDX IDs do not include the font-specific
 copyright, full license text, or NOTICE files required for safe redistribution; every omission
 remains visible in the export report.
+
+For cloud documents, open **Settings → Storage → Google Drive** in the desktop app, enter the fork's
+Google OAuth desktop-client ID when the build does not provide one, and complete consent in the
+system browser. The app requests `openid`, `email`, and `drive.file`; refresh tokens stay in the
+native credential store. Google Drive stores ordinary, user-visible `.fig` files rather than hidden
+app-data blobs. Up to eight named profiles keep accounts, provider settings, local indexes, cursors,
+and durable work isolated. Reconnecting the same Google account checks unfinished work before OAuth,
+asks for confirmation when needed, then rebinds cached documents and queued jobs to the new grant;
+an interrupted handoff remains repairable from Settings. Before cloud open, create, refresh, save,
+delete, account disconnect, profile removal, or S3 configuration rotation, both the local document
+index and Outbox must pass live durable IndexedDB probes. A production memory fallback puts cloud
+storage into read-only recovery: those actions stay blocked, the UI directs users to export any open
+work as a local `.fig`, and no offline/restart guarantee is made.
+
+S3 profiles rotate an exact configuration generation when their endpoint, bucket, region, or
+credentials change, and block such changes while unfinished work exists so an old job cannot run
+against a new bucket. When a legacy authority-less S3 profile first adopts an exact generation,
+Settings shows its endpoint, bucket, and affected workload and requires explicit confirmation before
+running a restartable migration that atomically rekeys metadata, `.fig` bytes, and thumbnails and
+atomically replaces matching Outbox jobs. A collision or cross-generation target fails closed, and
+configuration or credential changes remain blocked until migration completes. Synchronization is
+whole-document, local-first storage with resumable
+transfers, polling, trash-backed deletion, and conflict copies—not a strongly consistent multi-user
+collaboration backend. Pending jobs survive restart only after the durable probes succeed, but
+resumable session URLs do not: if Drive may have committed an upload before the app could record its
+result, recovery preserves another conflict copy rather than guessing that an overwrite is safe. The
+implementation has automated contract coverage, but real Google authorization, restart,
+interrupted-transfer, multi-account, trash, and conflict checks remain a manual release gate. See
+[Cloud documents with Google Drive](packages/docs/user-guide/plugins.md#cloud-documents-with-google-drive).
+
 Installed and enabled plugin contributions that the host explicitly marks MCP-safe also appear as
 dynamic MCP tools. Disabling, removing, or disconnecting the plugin host removes those tools from
 discovery, and every call rechecks live plugin state before it reaches a reviewed host adapter.
-Modules, commands, and cancellable exporters map to add, run, and export tools respectively. The
-Tauri, Expo, Flutter, and Figma source/projection exporters remain UI-only until their synchronous
-Compiler/encoder stages support cooperative cancellation; uninstalled, disabled, host-incompatible,
-or non-cancellable contributions are never exposed.
+Modules, commands, cancellable exporters, and explicitly session-authorized read-only connector
+queries whose fixed method is `GET` map to add, run, export, and query tools respectively. Connector
+mutations remain UI-only and require a new human confirmation for every invocation. The
+Tauri, Next.js, Capacitor, Electron, Expo, Flutter, and Figma source/projection exporters remain
+UI-only until their synchronous Compiler/encoder stages support cooperative cancellation;
+uninstalled, disabled, or host-incompatible contributions and non-cancellable exporters are never
+exposed.
 
 The Static Accessibility Audit is a bounded design-time lint report, not a complete WCAG conformance
 test or runtime assistive-technology audit. Design Tokens JSON excludes variables hidden from
@@ -286,6 +335,53 @@ Manifest API v2 adds strict parameter/result JSON schemas, a fixed host-permissi
 explicit exporter extension/MIME contracts. It is a safety-contract foundation, not a general plugin
 runtime: it does not open arbitrary JavaScript, generic network access, unrestricted document writes,
 or custom UI. Contributions still resolve only to reviewed adapters shipped by the host.
+
+The Phase 2 connector Broker executes only the five bundled connector contracts through exact,
+host-reviewed adapters. In **Settings → Plugins**, install and enable a connector, save its secret in
+the centralized credential store, authorize the exact connector/package digest for the current
+session, and run a listed operation from its installed-plugin card. Request preparation receives
+bounded parameters rather than credentials; only a reviewed host validator may inspect an ephemeral
+credential before the Broker injects it at request time. Eligible read-only `GET` queries are also
+available to connected MCP/AI clients after that explicit session authorization; mutations remain
+UI-only. The Broker enforces
+the reviewed exact HTTPS origin or origin template, method, path template, `credentials: 'omit'`,
+redirect rejection, timeout, and request/response limits; Tauri requests use the bounded native
+proxy. Results are normalized through closed schemas, and audit records contain metadata rather than
+parameters, response bodies, or secrets. Disable, uninstall, digest change, or authorization
+revocation stops local in-flight work. A query can report cancellation, but once a mutation crosses
+the transport dispatch boundary, any later abort, timeout, or local response failure is reported as
+an unknown remote outcome and the UI asks the user to verify the service before retrying. Supabase
+updates/deletes require a filter and enforce strict `max-affected=100`; Stripe Checkout and Resend
+send operations reuse their reviewed UUID `mutationAttemptId` as the provider `Idempotency-Key` when
+retrying the same unknown-outcome review. Session grants, pending state, and notices are not durable
+across a hard crash, so always verify the provider after a crash or unknown outcome.
+
+These are local design-time operator integrations, not generated-app or server-side connectors.
+Credentials stay out of documents, Compiler output, audit logs, and long-lived UI state, but the
+reviewed renderer request path resolves them into memory at dispatch time; the Tauri credential store
+and proxy do not claim server-side secret isolation from a compromised renderer. Use least-privilege
+development credentials and keep production secrets on infrastructure you operate. Generated-app
+server connectors, Supabase Auth/Storage, connector OAuth, and connector binary streaming remain
+future work. This
+host-owned lane does not grant arbitrary publisher manifests, JavaScript, native code, or WASM
+packages generic network access.
+
+| Connector operation              | Parameters                                                                     | Paste-ready example                                                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supabase Schema `inspect-schema` | required `projectRef`; optional `schema`                                       | `{"projectRef":"project-ref","schema":"public"}`                                                                                                         |
+| Airtable `list-records`          | required `baseId`, `tableId`; optional `pageSize` (1–100), `offset`            | `{"baseId":"appBase123","tableId":"tblTable123","pageSize":25}`                                                                                          |
+| Supabase Tables `query-rows`     | required `projectRef`, `table`; optional `columns`, `filters`, `limit` (1–100) | `{"projectRef":"project-ref","table":"tasks","limit":10}`                                                                                                |
+| Supabase Tables `insert-rows`    | required `projectRef`, `table`, `records` (1–100)                              | `{"projectRef":"project-ref","table":"tasks","records":[{"fields":[{"name":"done","valueJson":"false"}]}]}`                                              |
+| Supabase Tables `update-rows`    | required `projectRef`, `table`, `fields`, non-empty `filters`                  | `{"projectRef":"project-ref","table":"tasks","fields":[{"name":"done","valueJson":"true"}],"filters":[{"column":"id","operator":"eq","valueJson":"7"}]}` |
+| Supabase Tables `delete-rows`    | required `projectRef`, `table`, non-empty `filters`                            | `{"projectRef":"project-ref","table":"tasks","filters":[{"column":"done","operator":"is","valueJson":"false"}]}`                                         |
+| Stripe `get-product`             | required canonical `productId`                                                 | `{"productId":"prod_Product123"}`                                                                                                                        |
+| Stripe `get-price`               | required canonical `priceId`                                                   | `{"priceId":"price_Price123"}`                                                                                                                           |
+| Stripe `create-checkout-session` | required `priceId`, `quantity`, `mode`, `successUrl`, `cancelUrl`              | `{"priceId":"price_Price123","quantity":1,"mode":"payment","successUrl":"https://shop.acme.com/success","cancelUrl":"https://shop.acme.com/cancel"}`     |
+| Resend `get-email`               | required `emailId`                                                             | `{"emailId":"4ef9a417-02e9-4d39-ad75-9611e0fcc33c"}`                                                                                                     |
+| Resend `send-email`              | required `from`, `to`, `subject`, plus `text` or `html`; optional `cc`, `bcc`  | `{"from":"sender@example.com","to":["reader@example.com"],"subject":"Hello","text":"Ready."}`                                                            |
+
+See the [Plugin Marketplace guide](packages/docs/user-guide/plugins.md#business-connectors) for field
+bounds, filter operators, formatted copyable examples, idempotency behavior, and crash boundaries.
 
 Declarative modules still map only to Canvas/Compiler adapters shipped with the app. An optional
 Phase 4 channel can run a separately publisher-signed and root-indexed, import-free WASM compute

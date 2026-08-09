@@ -106,25 +106,90 @@
   single-flight and latest-change-wins, Auto adapts its trailing delay to recent compile plus ACK
   time, and Manual still generates the initial preview while deferring later changes until reload.
 
-- Expose installed and enabled declarative plugin modules, commands, and cancellable exporters as
+- Expose installed and enabled declarative plugin modules, commands, cancellable exporters, and
+  explicitly authorized read-only connector queries whose fixed method is `GET` as
   dynamically registered MCP tools. Plugin store changes update connected clients with
   `notifications/tools/list_changed`; disconnects remove the dynamic catalog, and execution rechecks
   current installation, enablement, contribution identity, and reviewed host-adapter compatibility
   so cached tool names cannot bypass disablement or removal. Stable tool names include the canonical
   contribution's SHA-256 identity, and exporter cancellation is checked through the final atomic
   write boundary so an RPC timeout cannot silently complete a reported-failed export. Module,
-  command, and exporter contributions map to add, run, and export tools; uninstalled, disabled,
-  host-incompatible, or host-declared non-cancellable contributions are omitted. Tauri, Expo,
-  Flutter, and Figma source/projection exporters remain available from plugin UI and menus but stay
-  out of MCP until their synchronous Compiler/encoder stages support cooperative cancellation.
+  command, exporter, and connector-query contributions map to add, run, export, and query tools;
+  connector mutations remain UI-only and require a fresh human confirmation for each invocation;
+  uninstalled, disabled,
+  host-incompatible contributions and host-declared non-cancellable exporters are omitted. Tauri, Expo,
+  Next.js, Capacitor, Electron, Flutter, and Figma source/projection exporters remain available from
+  plugin UI and menus but stay out of MCP until their synchronous Compiler/encoder stages support
+  cooperative cancellation.
 
-- Expand the bundled catalog to 17 reviewed plugins with 20 contributions. New opt-in Lottie,
-  Carousel, and Advanced Data Grid modules use offline deterministic Canvas previews and reviewed
-  interactive Web/React adapters; Expo and Flutter retain authored static fallbacks with explicit
-  warnings. Add a bounded Static Accessibility Audit command (a design-time lint report, not complete
-  WCAG conformance), deterministic Design Tokens JSON export that excludes hidden variables while
-  preserving valid aliases, and a derived Figma editable projection that keeps native editable layers
-  without claiming OpenPencil runtime behavior in Figma.
+- Expand the bundled catalog to 34 reviewed plugins with 37 contributions: 17 modules, six commands,
+  eight exporters, five connectors, and one storage provider. Add opt-in Tabs,
+  Accordion, QR/Code 128, Markdown, Code Block, PDF Viewer, and Audio Player modules with strict
+  bounded configuration, deterministic offline Canvas previews, reviewed Web/React adapters, and
+  explicit Expo/Flutter static fallbacks. Advanced Data Grid gains bounded RFC 4180 CSV import/export
+  in the editor and generated runtime. Add a cooperatively cancellable Static Design System Audit for
+  token, component-variant, spacing, and typography consistency, plus source-only Next.js,
+  Capacitor, and Electron exporters that never install dependencies or execute generated projects.
+  Plugin cards, Canvas module headings, and contribution search now include reviewed Simplified
+  Chinese names and descriptions without changing signed manifest bytes. The executable connector
+  set is Supabase Schema Inspector, Airtable Records, Supabase Tables, Stripe Checkout & Billing,
+  and Resend Email.
+
+- Add the default-installed, default-enabled, host-owned **Google Drive Storage** plugin declaration
+  through Manifest v2 `storageProviders`. Its exact provider, adapter, configuration version, and
+  bounded read/write/delete/change/resumable capabilities must match the application registry; a
+  publisher manifest cannot supply OAuth, network configuration, native code, or an adapter.
+  The Tauri-first provider uses the system browser, a loopback callback, Authorization Code + PKCE,
+  the narrow `drive.file` scope, OIDC account binding, and the native credential store. It writes
+  ordinary user-visible `.fig` files, saves locally before a durable outbox upload, recovers pending
+  saves and tombstones, uses resumable transfers and incremental Drive changes, and applies ETag
+  conditions when Drive supplies them. Upload-session URLs remain process-local; an ambiguous remote
+  success followed by a crash recovers through a timestamped conflict copy instead of risking a
+  silent overwrite. Named profiles isolate accounts, credentials, provider preferences, cursors,
+  caches, and durable jobs; fresh installs start on the recommended Google Drive provider. Every
+  cloud open, create, refresh, save, delete, disconnect, profile removal, and configuration rotation
+  requires the local document index and Outbox to pass live durable IndexedDB probes. Production
+  memory fallback blocks these operations and points users to local `.fig` export instead of claiming
+  offline/restart safety.
+  Reauthorization inspects unfinished work before launching OAuth, requires explicit confirmation
+  when necessary, adopts same-account cached documents and queued jobs into the new random grant,
+  and exposes a repair action if the app stops between authorization and adoption. Disconnect and
+  profile removal fail closed while unfinished work remains. S3-compatible profiles now bind every
+  cache row and durable job to a stable profile incarnation plus a random configuration generation;
+  endpoint, bucket, region, or credential changes rotate that generation and are blocked while
+  pending, conflicting, or deletion work exists, so old jobs cannot execute against a new bucket.
+  Legacy authority-less profiles show their endpoint, bucket, and affected workload and require
+  confirmation before a restartable migration atomically rekeys metadata, `.fig` bytes, and
+  thumbnails and atomically replaces matching Outbox jobs in the first exact generation. Collisions
+  or cross-generation targets fail closed, and configuration or credential changes stay blocked
+  until migration completes.
+  The Storage workspace records deletes locally before moving Drive files to trash, blocks deletion
+  while a document is open, and resumes interrupted ranged downloads against one strong ETag.
+  S3-compatible storage remains the advanced self-managed alternative.
+  Google Drive synchronization is whole-document and eventually reconciled, not a strongly
+  consistent collaboration backend. Automated contracts are covered; a real Google OAuth client,
+  account consent, restart, upload, changes, and conflict E2E remains a manual release check.
+
+- Add the Phase 2 connector Broker for bounded data-source and action operations. **Settings →
+  Plugins** now owns connector credential status, central credential replacement/clearing,
+  session-scoped exact-digest authorization and revocation, and the operation launch surface. The
+  Broker resolves credentials only at execution time, keeps raw values outside manifests, documents,
+  logs, MCP results, and plugin data, and enforces the reviewed exact HTTPS origin or origin template, method, path template,
+  `credentials: 'omit'`, redirect rejection, timeout, and request/response limits. Tauri uses a
+  bounded native request proxy; results pass closed normalized schemas; audit entries retain only
+  redacted metadata. Disable, uninstall, package-digest change, and authorization revocation stop
+  local in-flight work. Queries retain cancellation semantics; a dispatched mutation whose result
+  is interrupted or cannot be validated is explicitly reported as an unknown remote outcome so the
+  user can verify the service before retrying. Supabase update/delete requests use strict
+  `max-affected=100`; Stripe Checkout and Resend Send bind a reviewed UUID `mutationAttemptId` to the
+  provider `Idempotency-Key` and reuse it for the same unknown-outcome retry. Dynamic MCP exposes only
+  explicitly authorized read-only queries whose fixed method is `GET`; mutations remain UI-only with
+  per-invocation confirmation. Grants and outcome notices are session-only, so a hard crash still
+  requires manual provider verification. These are local design-time operator integrations: the
+  reviewed renderer request path resolves credentials into memory at dispatch time and does not claim
+  server-side secret isolation. Supabase Auth/Storage, connector OAuth, connector binary streaming,
+  and generated-app server connectors remain future work, and arbitrary publisher code or network access remains
+  unavailable.
 - Add manifest API v2 validation for bounded parameter/result JSON schemas, the fixed
   `document.read`, `document.selection.read`, `document.variables.read`, and `file.save` permission
   vocabulary, and explicit exporter extension/MIME contracts. API v2 establishes a fail-closed host

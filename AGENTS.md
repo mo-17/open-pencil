@@ -137,6 +137,10 @@ Tauri stores secrets in the native system credential store through `desktop/src/
 
 Storage-provider schemas and runtime adapters live under `src/app/integrations/storage/`; non-secret preferences and credential references stay separate, and adapters resolve secrets at operation time. Local-first document caching and outbox synchronization live under `src/app/storage/`. A remote storage binding augments document source state and must not replace local file identity.
 
+Google Drive is exposed by the default-installed/default-enabled app-bundled `open-pencil.google-drive-storage` Manifest v2 `storageProviders` declaration, but its implementation is host-owned. The manifest may contain only `providerId`, `name`, `description`, `adapterId`, `configVersion`, and bounded `capabilities` from `documents.read`, `documents.write`, `documents.delete`, `changes.read`, and `uploads.resumable`; it must never carry OAuth, endpoint, request, or executable configuration. The desktop authorization path stays Tauri-first: open the system browser, use a loopback callback with Authorization Code + PKCE, request only `openid`, `email`, and `drive.file`, bind authority to the OIDC subject plus a random authorization version, and keep refresh tokens in the native credential store. Browser-only Google Drive authorization remains unsupported.
+
+Google Drive documents are ordinary user-visible `.fig` files marked with closed OpenPencil app properties, not hidden `appDataFolder` blobs. Preserve local-first writes, durable outbox recovery, account/grant-bound jobs, resumable uploads, bounded incremental `changes` cursors, and trash semantics. When Drive supplies an ETag, updates use `If-Match`; a revision mismatch, missing conditional authority, or concurrent write must preserve a timestamped conflict copy rather than overwrite the remote file. Treat Drive as whole-document, eventually reconciled storage—not a strongly consistent or CRDT collaboration backend. Same-account OAuth replacement must inspect unfinished work before authorization, explicitly adopt every cached row and durable job into the new grant, and leave crash-gap work discoverable for repair. S3-compatible storage remains the advanced self-managed fallback and does not inherit Drive revision/change-feed claims; bind its cache and jobs to a profile incarnation plus configuration generation, rotate that generation before preference or credential mutation, and block mutation while unfinished work exists. Unit/native bridge tests do not prove a real OAuth client/account flow; keep real consent, restart, upload, changes, and conflict-copy verification as an explicit manual release gate until performed.
+
 ACP continuity persistence lives under `src/app/ai/sessions/`. It owns the versioned local schema, IndexedDB and in-memory backends, strict record validation, document aliases, retention, and durable deletion behavior. The allowed persisted categories are the ACP session/thread ID and non-secret routing metadata: the local path or storage provider/document IDs, isolated scope, SHA-256 effective-configuration identity, and timestamps. Never put prompts, attachments, visible transcripts, agent history, credential secrets, or this metadata into a design document. Session records expire after 90 days and cleanup retains at most 8 per document and 200 globally; aliases without a retained session are eligible for cleanup after 90 days.
 
 ACP `session/list` results are Agent-owned and not document-scoped. Classify a candidate as exact or same-document only by joining its session ID to a validated local binding for the current document; titles, timestamps, working directories, and `_meta` are never identity evidence. Keep unmatched entries visibly unverified and confirmation-gated, and do not persist the discovered Agent catalog.
@@ -373,6 +377,18 @@ Release commits are the exception: keep using `Release v0.x.y`.
   deterministic and offline; Compiler adapters may emit a trusted local package runtime, but must
   reject arbitrary script/style URLs, raw executable configuration, credentials, and unsupported
   config versions.
+- Phase 2 connector declarations live in `packages/core/src/plugins/connector-contract.ts`. The
+  contract registry is descriptive and host-reviewed only: it owns no executor, performs no network
+  request, and resolves no secret. Future connector adapters must keep credential references in the
+  centralized settings store, resolve them at operation time through `CredentialResolver`, and route
+  bounded requests through a host-owned origin/method allowlist proxy.
+- App execution lives in `src/app/plugins/connectors/`: exact host adapters, package-digest session
+  authorization, the bounded Broker, metadata-only audit/outcome notices, and Settings controls.
+  Dynamic MCP may expose only authorized reviewed `query` operations whose fixed method is `GET`;
+  every mutation needs a fresh human confirmation. Keep provider idempotency identities bound to the
+  reviewed attempt, and report a post-dispatch cancellation or timeout as an unknown remote outcome.
+  These are local design-time operator integrations, not server-side secret isolation or generated-app
+  connectors; credentials are resolved into the trusted renderer request path at dispatch time.
 - Generic module operations belong in `list_modules`, `create_module`, `read_module`, and
   `update_module`; module-specific behavior belongs in its validated definition rather than a new
   one-off MCP tool family. Preserve unknown/uninstalled envelopes unless the user explicitly

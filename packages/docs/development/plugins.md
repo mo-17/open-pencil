@@ -17,11 +17,13 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
-The current application bundle contains 17 reviewed plugins and 20 contributions: ten module
-contributions; five commands (four Clipboard Toolkit commands plus Static Accessibility Audit); and
-five exporters (Tauri React, Expo React Native, Flutter, Design Tokens JSON, and Figma Editable
-Projection). Only Map is installed and enabled by default. Catalog count is an application snapshot,
-not a promise that a signed remote manifest can introduce a new host implementation.
+The current **Unreleased** source line contains 33 reviewed plugins and 36 contributions: 17 module
+contributions; six commands (four Clipboard Toolkit commands, Static Accessibility Audit, and Static
+Design System Audit); eight exporters (Tauri React, Next.js, Capacitor, Electron, Expo React Native,
+Flutter, Design Tokens JSON, and Figma Editable Projection); and five connectors (Supabase Schema
+Inspector, Airtable Records, Supabase Tables, Stripe Checkout & Billing, and Resend Email). Only Map
+is installed and enabled by default. Catalog count is an application snapshot, not a promise that a
+signed remote manifest can introduce a new host implementation.
 
 ## Package and trust model
 
@@ -66,7 +68,8 @@ the application has registered the exact reviewed host adapter for that plugin a
 ### Manifest API v2 safety contract
 
 Schema v2 keeps module contributions declarative and adds closed parameter/result JSON schemas,
-declared host permissions, and explicit output extension/MIME pairs to commands and exporters. The
+declared host permissions, explicit output extension/MIME pairs to commands and exporters, and
+bounded connector contracts under `contributions.connectors`. The
 only permission strings are `document.read`, `document.selection.read`, `document.variables.read`,
 and `file.save`. Object schemas must reject additional properties, result sizes are bounded,
 and safe MIME values cannot include parameters. Unknown keys, permissions, automation targets, and
@@ -79,8 +82,75 @@ allows only the reviewed exporter path to publish its bounded output; there is n
 unrestricted document mutation, custom UI, DOM/Tauri/process access, or an implementation supplied
 by the package. Exact startup-frozen host adapter compatibility remains mandatory. The bundled
 catalog is mixed-version: legacy contributions stay on schema v1, while the reviewed Static
-Accessibility Audit, Design Tokens Exporter, and Figma Editable Projection contributions exercise
-the v2 contract. Their implementation still ships only in the host build.
+Accessibility Audit, Unreleased Static Design System Audit, Design Tokens Exporter, and Figma
+Editable Projection contributions exercise the v2 contract. Their implementation still ships only
+in the host build.
+
+### Phase 2 business connector Broker
+
+Schema v2 can contribute a `PluginConnectorContractV1`. The strict, maximum-64-KiB descriptor binds
+one `pluginId`/`connectorId` to an exact reviewed `adapterId`, one connector kind, a network
+authority, named credential slots, and bounded operation parameter/result contracts. A descriptor is
+still not executable by itself: activation also requires a matching adapter in the startup-frozen
+`ConnectorHostAdapterRegistry`, and execution always passes through the host-owned Broker.
+
+The vocabulary is intentionally closed:
+
+- Connector kinds are `data-source`, `action`, and `asset-provider`.
+- Operation kinds are `query`, `mutation`, `asset-search`, and `asset-read`; each connector kind may
+  use only its compatible operations.
+- Network authority contains one to 16 canonical public HTTPS origins or reviewed origin templates,
+  allowed methods from `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`, `credentials: 'omit'`, and
+  `redirects: 'error'`. Each executable operation further binds one exact method and path template.
+- Credential-slot kinds are `api-key`, `bearer-token`, and `oauth2`. OAuth policy requires canonical
+  public HTTPS authorization/token origins and `pkceRequired: true`.
+- At most 32 operations and 16 credential slots are accepted. Parameter and result shapes reuse the
+  closed plugin object schema and byte limits; `document_id` and `page_id` remain reserved automation
+  targets.
+
+`PluginConnectorContractRegistry` parses, freezes, and compares the normalized authority exactly; it
+still stores no executor. The separate Broker re-resolves the installed/enabled plugin, accepted
+package digest, complete frozen contract, operation, and exact host adapter on every invocation. It
+accepts only the declared bounded parameter object: document, manifest, MCP, and adapter data cannot
+supply a free-form URL, method, header map, raw body, or callback.
+
+The current execution boundary is:
+
+1. **Settings → Plugins** stores only a stable `CredentialRef` in plugin settings. Replacement and
+   clearing go through the central credential manager. `CredentialResolver` supplies a credential to
+   the Broker only for one invocation. Request preparation never receives it; an optional reviewed
+   host validator may inspect the ephemeral value and return only a decision. Raw values never enter
+   the manifest, document, Compiler output, logs, MCP result, or adapter-owned state. The current five
+   connectors use reviewed bearer or API-key injection; generic OAuth execution is not implemented.
+2. The user explicitly authorizes the exact `pluginId`, `connectorId`, `adapterId`, and accepted
+   package digest for the current process/session. Authorization does not survive as an ambient
+   network capability, and revocation invalidates the exact grant.
+3. The adapter prepares only the reviewed path variables, query values, and request fields. The
+   Broker verifies the exact HTTPS origin or origin template, method, and path again, injects only the
+   reviewed bearer or API-key header, sets `credentials: 'omit'` and `redirect: 'error'`, and enforces
+   per-operation timeout and request/raw-response byte budgets. Desktop execution uses the bounded
+   Tauri proxy.
+4. The host adapter normalizes provider JSON into the operation's closed result schema, which is
+   checked again with its own byte budget. Binary and streaming responses are not accepted.
+5. A redacted audit sink records outcome, transport-dispatch state, duration, byte counts, and
+   connector/operation identity, not parameters, request/response bodies, or credentials. Disable,
+   uninstall, accepted-digest change, and authorization revocation abort matching local work. Once
+   a mutation crosses the transport dispatch boundary, any later cancellation, timeout, or local
+   response failure is recorded as `outcome-unknown`; callers must not treat it as a safe retry.
+6. Connector `query` operations may enter the dynamic MCP catalog only after that exact session
+   authorization. Mutations are never exposed through dynamic MCP; the installed-plugin UI requests
+   a fresh human confirmation for every mutation invocation.
+
+The bundled executable set is deliberately small: Supabase Schema Inspector, Airtable Records,
+Supabase Tables, Stripe Checkout & Billing, and Resend Email. Supabase Schema Inspector and Airtable
+Records provide bounded reads. Supabase Tables adds reviewed table read/write operations; Stripe adds
+bounded product/price queries and checkout-session creation; Resend adds bounded email lookup and
+send operations. Every write remains subject to the per-invocation mutation confirmation above.
+Supabase Auth/Storage, OAuth, and binary streaming remain future work.
+
+This Broker is a reviewed host capability, not a generic plugin network API. Publisher manifests and
+runtime packages still cannot add an origin, adapter, request shape, executable handler, arbitrary
+JavaScript/native code, or background network access.
 
 Publisher packages add a SHA-256 digest and Ed25519 signature. Verification requires a public key
 selected by the host trust store; a key embedded in package content is never sufficient. Parsing is
@@ -459,8 +529,8 @@ that generated host adapter; declarative plugin data cannot provide code or arbi
 Expo and Flutter retain the authored static frame and emit an unsupported-module warning instead of
 introducing a WebView.
 
-Lottie, Carousel, and Advanced Data Grid complete the ten-module bundled set. Lottie Canvas rendering
-is offline and deterministic. Its React adapter accepts bounded embedded vector JSON or performs a
+Lottie, Carousel, and Advanced Data Grid extend the same module set. Lottie Canvas rendering is
+offline and deterministic. Its React adapter accepts bounded embedded vector JSON or performs a
 bounded canonical-public-HTTPS fetch only after explicit user activation; expressions, external
 images/audio/fonts, oversized payloads, and unsupported structures fail closed. Carousel accepts
 bounded slides, safe destinations, and optional canonical public HTTPS media; its generated React
@@ -469,10 +539,40 @@ media activation. Advanced Data Grid accepts bounded typed cells and host-valida
 selection settings; the generated React adapter owns its accessible table behavior and does not add a
 remote-data capability.
 
+Data Grid CSV is a helper over that same static module configuration, not a connector. Core parses
+bounded UTF-8 comma-delimited input while retaining the existing typed column schema. Headers must
+match each column label or ID, every row must have the exact column count, and number/boolean/date
+cells use strict locale-independent representations. Editor imports commit through the existing
+undoable module-property path. Export returns read-only text for manual copying, requests neither
+file nor clipboard authority, emits CRLF records, and prefixes formula-like text fields. The generated
+React runtime reimplements the same bounds, but imported rows are component-local session state only
+and are not written to the design or persisted across reloads.
+
+The seven Unreleased content modules expand the reviewed module set to 17:
+
+- Tabs and Accordion keep bounded plain-text item arrays in the module contract. Their React adapters
+  implement the expected ARIA relationships and keyboard focus behavior without accepting DOM or
+  callbacks from configuration.
+- QR / Barcode Canvas rendering is explicitly a deterministic placeholder, not an encoder. The
+  React adapter performs actual local QR and Code 128 generation through pinned `qrcode` and
+  `jsbarcode` dependencies and performs no fetch.
+- Markdown Canvas rendering strips formatting to bounded text. The React adapter uses
+  `react-markdown` with optional `remark-gfm`, skips raw HTML, and applies a fail-closed link transform
+  for anchors, root-relative paths, and canonical public HTTPS URLs. Markdown image syntax renders an
+  inert alt-text placeholder instead of attaching a remote `src`, so Compiler Preview cannot make an
+  implicit tracking request.
+- Code Block renders source as text. The language value is a bounded presentation label; there is no
+  syntax engine or code execution. Clipboard access exists only in the generated React copy button
+  and fails visibly when unavailable.
+- PDF Viewer and Audio Player accept only an empty source, a safe canonical root-relative path, or a
+  canonical public HTTPS URL. Canvas draws inert metadata placeholders and never loads bytes. Dev-mode
+  Compiler Preview requires explicit activation before attaching a source; production React output
+  delegates to a sandboxed browser PDF iframe or native `<audio>` element. Autoplay audio must be
+  muted.
+
 Web/React and Tauri output use those reviewed interactive adapters. Expo and Flutter do not execute
-plugin module runtimes or insert a WebView: for every module, including these three, they emit an
-unsupported-module warning and retain the authored static fallback until a reviewed native adapter
-exists.
+plugin module runtimes or insert a WebView: for all 17 modules they emit an unsupported-module warning
+and retain the authored static fallback until a reviewed native adapter exists.
 
 The Clipboard Toolkit is a command-only built-in. Its reviewed host adapters copy the active
 selection as text, SVG, JSX, or PNG and reject invocation when no selection is active. The manifest
@@ -493,10 +593,32 @@ produce a deterministic warning or an explicit authored-frame fallback; it must 
 React Native Web or a WebView. The host archives and saves the generated files but never installs
 dependencies, launches Expo, or invokes Android/iOS build tools.
 
+The Unreleased Next.js, Capacitor, and Electron exporters instead transform a copy of the reviewed
+React Compiler file map and then pass it through the same bounded archive/save boundary. Next.js
+removes the Vite entry, adapts public environment names, and mounts the authored runtime client-side
+inside an App Router catch-all route; it does not claim a Server Component or SSR translation.
+Capacitor retains the Vite React output, switches multi-page navigation to hash routing, and uses a
+relative asset base for a native WebView origin; it does not create Android/iOS platform projects.
+Electron also uses hash routing/relative assets and emits a minimal main process with context
+isolation and sandboxing enabled, Node integration disabled, and external navigation constrained to
+HTTP(S). None of the three installs dependencies, starts its runtime, invokes native tooling, packages
+binaries, or configures signing. Their synchronous Compiler stage is not cooperatively cancellable,
+so their reviewed host registry keeps MCP exposure disabled and makes them UI/menu exporters only.
+
 The Static Accessibility Audit command runs the host accessibility lint preset and returns a bounded
 report. It is not complete WCAG conformance or certification: screen-reader naming/alternatives,
 runtime focus order, form announcements/dynamic state, and contrast that depends on variables,
 images, gradients, or complex compositing remain explicitly unevaluated.
+
+The Unreleased Static Design System Audit walks the current graph cooperatively with an
+`AbortSignal`. It reports token collection/mode/reference/alias/binding inconsistencies; component-set
+variant definition, option, and combination issues; advisory four-pixel spacing-scale drift; text
+style divergence; and broad font-family/font-size scales. Hard limits include 25,000 nodes, 10,000
+variables, 1,000 collections, 1,000 issue details, and a 512-KiB report. The result marks truncation and
+lists what was not evaluated. It does not certify semantic naming/governance, runtime theme values,
+visual interaction states, nested overrides, font licensing/availability/glyph coverage, responsive
+typography, or final rendering. The engine alone is not availability: the command must also be present
+in the bundled manifest and startup-frozen host command registry.
 
 The Design Tokens exporter emits deterministic, bounded JSON for published variables. Variables with
 `hiddenFromPublishing` are excluded, while aliases between exported variables are preserved as alias
@@ -521,12 +643,17 @@ operation.
 
 The application projects each installed, enabled, host-compatible declarative contribution that the
 host explicitly marks MCP-safe into the MCP catalog: modules become add tools, commands become run
-tools, and cancellable exporters become export tools. The Tauri, Expo, Flutter, and Figma
-source/projection exporters remain UI-only until their synchronous Compiler/encoder stages support
-cooperative cancellation. Tool names contain a canonical contribution SHA-256 identity. Store changes trigger
+tools, cancellable exporters become export tools, and explicitly session-authorized connector
+queries become query tools. Connector mutations stay out of MCP and require a fresh confirmation in
+the installed-plugin UI. The Tauri, Next.js, Capacitor, Electron, Expo,
+Flutter, and Figma source/projection exporters remain UI-only until their synchronous
+Compiler/encoder stages support cooperative cancellation. Static Design System Audit can become a
+run tool only after its cancellable implementation and exact v2 manifest are both centrally
+registered. Tool names contain a canonical contribution SHA-256 identity. Store changes trigger
 `notifications/tools/list_changed`; disablement, removal, or host disconnect removes the descriptor,
 and execution rechecks live state so a client-cached name cannot bypass revocation. Manifests cannot
-supply arbitrary MCP handlers, and an installed-but-disabled contribution remains absent.
+supply arbitrary MCP handlers, and an installed-but-disabled contribution remains absent. Revoking a
+connector grant removes its query descriptor and aborts matching in-flight calls.
 
 ## Publisher and catalog workflow
 
@@ -591,6 +718,12 @@ Adding a usable module still requires all of the following in the application re
 3. A framework-neutral Compiler lowerer and target adapter under the same identity.
 4. A bundled or publisher-signed manifest whose `adapterId` maps to that exact trusted definition.
 5. Canvas, Compiler, AI/MCP, store lifecycle, compatibility, and fail-closed regression tests.
+
+Adding a usable connector similarly requires a strict schema v2 contract, an exact reviewed host
+adapter, central registry/Broker wiring, credential-slot and Settings controls, normalized bounded
+results, redacted audit behavior, lifecycle cancellation, and fail-closed tests. Query operations are
+eligible for dynamic MCP only when the host marks them safe and the user authorizes the exact current
+package identity; mutation operations remain UI-only with per-call confirmation.
 
 Do not dynamically import a path or URL taken from a manifest. A compute runtime additionally needs
 a publisher-signed runtime package, exact declarative digest, root-index entry, static WASM safety
