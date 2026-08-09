@@ -1,11 +1,79 @@
 import {
+  PLUGIN_CONNECTOR_CONTRACT_FORMAT,
+  PLUGIN_CONNECTOR_CONTRACT_SCHEMA_VERSION,
   PLUGIN_MANIFEST_FORMAT,
   PLUGIN_MANIFEST_SCHEMA_VERSION,
   PLUGIN_MANIFEST_SCHEMA_VERSION_V2,
   type PluginContributionDataContractV2,
+  type PluginConnectorContractV1,
   type PluginManifestPayloadV1,
-  type PluginManifestPayloadV2
+  type PluginManifestPayloadV2,
+  type PluginStorageProviderContributionV2
 } from '@open-pencil/core/plugins'
+
+export function pluginConnectorContract(
+  description = 'Reads bounded analytics records.'
+): PluginConnectorContractV1 {
+  return {
+    format: PLUGIN_CONNECTOR_CONTRACT_FORMAT,
+    schemaVersion: PLUGIN_CONNECTOR_CONTRACT_SCHEMA_VERSION,
+    pluginId: 'acme.analytics',
+    connectorId: 'analytics.records',
+    adapterId: 'acme.connector.analytics',
+    name: 'Analytics records',
+    description,
+    kind: 'data-source',
+    network: {
+      origins: ['https://api.example.com'],
+      methods: ['GET'],
+      credentials: 'omit',
+      redirects: 'error'
+    },
+    credentialSlots: [
+      { slotId: 'access-token', label: 'Access token', kind: 'bearer-token', required: true }
+    ],
+    operations: [
+      {
+        operationId: 'list-records',
+        name: 'List records',
+        description: 'Lists a bounded record page.',
+        kind: 'query',
+        credentialSlots: ['access-token'],
+        request: {
+          origin: 'https://api.example.com',
+          method: 'GET',
+          pathTemplate: '/v1/{workspaceId}/records'
+        },
+        parameters: {
+          schema: {
+            type: 'object',
+            properties: { workspaceId: { type: 'string', minLength: 1, maxLength: 64 } },
+            required: ['workspaceId'],
+            additionalProperties: false
+          },
+          maxBytes: 256
+        },
+        result: {
+          schema: { type: 'object', properties: {}, additionalProperties: false },
+          maxBytes: 2
+        }
+      }
+    ]
+  }
+}
+
+export function pluginStorageProviderContribution(
+  description = 'Stores bounded analytics documents.'
+): PluginStorageProviderContributionV2 {
+  return {
+    providerId: 'acme-cloud',
+    name: 'Acme Cloud',
+    description,
+    adapterId: 'acme.storage.cloud',
+    configVersion: 1,
+    capabilities: ['documents.read', 'documents.write']
+  }
+}
 
 export function pluginPayload(version = '1.0.0', moduleName = 'Chart'): PluginManifestPayloadV1 {
   return {

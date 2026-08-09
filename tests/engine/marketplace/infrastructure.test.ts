@@ -71,9 +71,10 @@ describe('publisher request authentication', () => {
       resolvePublicKey: async () => pair.publicKey
     }
 
-    await expect(
-      verifyMarketplaceRequest({ ...input, headers }, options)
-    ).resolves.toEqual({ publisherId: input.publisherId, keyId: input.keyId })
+    await expect(verifyMarketplaceRequest({ ...input, headers }, options)).resolves.toEqual({
+      publisherId: input.publisherId,
+      keyId: input.keyId
+    })
     await expect(verifyMarketplaceRequest({ ...input, headers }, options)).rejects.toThrow(
       'already been used'
     )

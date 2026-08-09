@@ -3,6 +3,7 @@ export * from './accordion'
 export * from './audio-player'
 export * from './carousel'
 export * from './code-block'
+export * from './connector-contract'
 export * from './catalog'
 export {
   CHART_MODULE_CONFIG_VERSION,

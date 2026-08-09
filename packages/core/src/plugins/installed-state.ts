@@ -30,6 +30,12 @@ export interface PluginUpdateDiff {
   addedExporters: string[]
   removedExporters: string[]
   updatedExporters: string[]
+  addedConnectors: string[]
+  removedConnectors: string[]
+  updatedConnectors: string[]
+  addedStorageProviders: string[]
+  removedStorageProviders: string[]
+  updatedStorageProviders: string[]
 }
 
 export interface PluginUpdateReview {
@@ -63,7 +69,13 @@ const DIFF_KEYS = new Set([
   'updatedCommands',
   'addedExporters',
   'removedExporters',
-  'updatedExporters'
+  'updatedExporters',
+  'addedConnectors',
+  'removedConnectors',
+  'updatedConnectors',
+  'addedStorageProviders',
+  'removedStorageProviders',
+  'updatedStorageProviders'
 ])
 const LEGACY_DIFF_KEYS = new Set([
   'fromVersion',
@@ -122,7 +134,25 @@ function updateDiff(value: unknown): PluginUpdateDiff {
     updatedCommands: optionalContributionList(source, 'updatedCommands', 'command ID'),
     addedExporters: optionalContributionList(source, 'addedExporters', 'exporter ID'),
     removedExporters: optionalContributionList(source, 'removedExporters', 'exporter ID'),
-    updatedExporters: optionalContributionList(source, 'updatedExporters', 'exporter ID')
+    updatedExporters: optionalContributionList(source, 'updatedExporters', 'exporter ID'),
+    addedConnectors: optionalContributionList(source, 'addedConnectors', 'connector ID'),
+    removedConnectors: optionalContributionList(source, 'removedConnectors', 'connector ID'),
+    updatedConnectors: optionalContributionList(source, 'updatedConnectors', 'connector ID'),
+    addedStorageProviders: optionalContributionList(
+      source,
+      'addedStorageProviders',
+      'storage provider ID'
+    ),
+    removedStorageProviders: optionalContributionList(
+      source,
+      'removedStorageProviders',
+      'storage provider ID'
+    ),
+    updatedStorageProviders: optionalContributionList(
+      source,
+      'updatedStorageProviders',
+      'storage provider ID'
+    )
   }
 }
 
@@ -187,7 +217,7 @@ function requireConsistentHistoricalVersion(
 
 function contributionMap(
   entries: readonly object[] | undefined,
-  identityKey: 'moduleType' | 'commandId' | 'exporterId'
+  identityKey: 'moduleType' | 'commandId' | 'exporterId' | 'connectorId' | 'providerId'
 ): Map<string, string> {
   return new Map(
     entries?.map((entry) => [
@@ -222,9 +252,33 @@ export function diffPluginPackages(
   const afterCommands = contributionMap(candidate.manifest.contributions.commands, 'commandId')
   const beforeExporters = contributionMap(current?.manifest.contributions.exporters, 'exporterId')
   const afterExporters = contributionMap(candidate.manifest.contributions.exporters, 'exporterId')
+  const beforeConnectors = contributionMap(
+    current?.manifest.schemaVersion === 2 ? current.manifest.contributions.connectors : undefined,
+    'connectorId'
+  )
+  const afterConnectors = contributionMap(
+    candidate.manifest.schemaVersion === 2
+      ? candidate.manifest.contributions.connectors
+      : undefined,
+    'connectorId'
+  )
+  const beforeStorageProviders = contributionMap(
+    current?.manifest.schemaVersion === 2
+      ? current.manifest.contributions.storageProviders
+      : undefined,
+    'providerId'
+  )
+  const afterStorageProviders = contributionMap(
+    candidate.manifest.schemaVersion === 2
+      ? candidate.manifest.contributions.storageProviders
+      : undefined,
+    'providerId'
+  )
   const modules = contributionDiff(beforeModules, afterModules)
   const commands = contributionDiff(beforeCommands, afterCommands)
   const exporters = contributionDiff(beforeExporters, afterExporters)
+  const connectors = contributionDiff(beforeConnectors, afterConnectors)
+  const storageProviders = contributionDiff(beforeStorageProviders, afterStorageProviders)
   return {
     fromVersion: current?.manifest.plugin.version ?? null,
     toVersion: candidate.manifest.plugin.version,
@@ -236,7 +290,13 @@ export function diffPluginPackages(
     updatedCommands: commands.updated,
     addedExporters: exporters.added,
     removedExporters: exporters.removed,
-    updatedExporters: exporters.updated
+    updatedExporters: exporters.updated,
+    addedConnectors: connectors.added,
+    removedConnectors: connectors.removed,
+    updatedConnectors: connectors.updated,
+    addedStorageProviders: storageProviders.added,
+    removedStorageProviders: storageProviders.removed,
+    updatedStorageProviders: storageProviders.updated
   }
 }
 

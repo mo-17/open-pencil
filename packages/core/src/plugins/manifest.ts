@@ -10,9 +10,10 @@ import {
 } from '@open-pencil/scene-graph'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
+import { parsePluginConnectorContract, type PluginConnectorContractV1 } from './connector-contract'
 import {
   parsePluginObjectParameterSchema,
-  type PluginObjectParameterSchemaV2
+  type PluginContributionDataContractV2
 } from './parameter-schema'
 import type { ModulePropertyFieldKind } from './types'
 
@@ -26,6 +27,7 @@ export {
   type ParsePluginParameterSchemaOptions,
   type PluginArrayParameterSchemaV2,
   type PluginBooleanParameterSchemaV2,
+  type PluginContributionDataContractV2,
   type PluginNumberParameterSchemaV2,
   type PluginObjectParameterSchemaV2,
   type PluginParameterSchemaPrimitive,
@@ -46,6 +48,8 @@ export const PLUGIN_MANIFEST_LIMITS = Object.freeze({
   maxModules: 64,
   maxCommands: 64,
   maxExporters: 64,
+  maxConnectors: 64,
+  maxStorageProviders: 16,
   maxFieldsPerModule: 64,
   maxFieldPathDepth: 8,
   maxOptionsPerField: 128,
@@ -139,11 +143,6 @@ export type PluginHostPermissionV2 =
   | 'document.variables.read'
   | 'file.save'
 
-export interface PluginContributionDataContractV2 {
-  schema: PluginObjectParameterSchemaV2
-  maxBytes: number
-}
-
 export interface DeclarativeCommandContributionV2 {
   commandId: string
   name: string
@@ -170,6 +169,27 @@ export interface DeclarativeExporterContributionV2 {
   outputs: readonly PluginExporterOutputV2[]
 }
 
+export const PLUGIN_STORAGE_PROVIDER_CAPABILITIES = Object.freeze([
+  'documents.read',
+  'documents.write',
+  'documents.delete',
+  'changes.read',
+  'uploads.resumable'
+] as const)
+
+export type PluginStorageProviderCapabilityV2 =
+  (typeof PLUGIN_STORAGE_PROVIDER_CAPABILITIES)[number]
+
+/** Declarative binding to an app-owned storage adapter; never executable publisher code. */
+export interface PluginStorageProviderContributionV2 {
+  providerId: string
+  name: string
+  description: string
+  adapterId: string
+  configVersion: number
+  capabilities: readonly PluginStorageProviderCapabilityV2[]
+}
+
 export interface PluginManifestPayloadV2 extends Omit<
   PluginManifestPayloadV1,
   'schemaVersion' | 'contributions'
@@ -179,6 +199,8 @@ export interface PluginManifestPayloadV2 extends Omit<
     modules: readonly DeclarativeModuleContributionV1[]
     commands?: readonly DeclarativeCommandContributionV2[]
     exporters?: readonly DeclarativeExporterContributionV2[]
+    connectors?: readonly PluginConnectorContractV1[]
+    storageProviders?: readonly PluginStorageProviderContributionV2[]
   }
 }
 
@@ -210,6 +232,13 @@ const MANIFEST_KEYS = new Set([...PAYLOAD_KEYS, 'integrity'])
 const PLUGIN_KEYS = new Set(['id', 'name', 'version'])
 const PUBLISHER_KEYS = new Set(['id', 'name', 'keyId'])
 const CONTRIBUTIONS_KEYS = new Set(['modules', 'commands', 'exporters'])
+const CONTRIBUTIONS_KEYS_V2 = new Set([
+  'modules',
+  'commands',
+  'exporters',
+  'connectors',
+  'storageProviders'
+])
 const REQUIRED_CONTRIBUTIONS_KEYS = new Set(['modules'])
 const MODULE_KEYS = new Set([
   'moduleType',
@@ -244,6 +273,14 @@ const EXPORTER_KEYS_V2 = new Set([
 ])
 const DATA_CONTRACT_KEYS = new Set(['schema', 'maxBytes'])
 const OUTPUT_KEYS = new Set(['extension', 'mimeType'])
+const STORAGE_PROVIDER_KEYS = new Set([
+  'providerId',
+  'name',
+  'description',
+  'adapterId',
+  'configVersion',
+  'capabilities'
+])
 const SIZE_KEYS = new Set(['width', 'height'])
 const FIELD_KEYS = new Set(['path', 'kind', 'label', 'min', 'max', 'step', 'options'])
 const FIELD_KINDS = new Set<ModulePropertyFieldKind>([
@@ -261,6 +298,9 @@ const HOST_PERMISSIONS_V2 = new Set<PluginHostPermissionV2>([
   'document.variables.read',
   'file.save'
 ])
+const STORAGE_PROVIDER_CAPABILITIES_V2 = new Set<PluginStorageProviderCapabilityV2>(
+  PLUGIN_STORAGE_PROVIDER_CAPABILITIES
+)
 
 function identity(value: unknown, path: string): string {
   const reason = validateModuleIdentity(value, path)
@@ -620,6 +660,36 @@ function exporterContributionV2(value: unknown, index: number): DeclarativeExpor
   }
 }
 
+function storageProviderContribution(
+  value: unknown,
+  index: number
+): PluginStorageProviderContributionV2 {
+  const path = `manifest.contributions.storageProviders[${index}]`
+  const source = record(value, path, STORAGE_PROVIDER_KEYS)
+  const capabilities = array(
+    source.capabilities,
+    `${path}.capabilities`,
+    PLUGIN_STORAGE_PROVIDER_CAPABILITIES.length
+  ).map((capability, capabilityIndex) => {
+    if (
+      typeof capability !== 'string' ||
+      !STORAGE_PROVIDER_CAPABILITIES_V2.has(capability as PluginStorageProviderCapabilityV2)
+    ) {
+      throw new TypeError(`${path}.capabilities[${capabilityIndex}] is not supported`)
+    }
+    return capability as PluginStorageProviderCapabilityV2
+  })
+  if (new Set(capabilities).size !== capabilities.length) {
+    throw new TypeError(`${path}.capabilities must not contain duplicates`)
+  }
+  return {
+    providerId: identity(source.providerId, `${path}.providerId`),
+    ...contributionMetadata(source, path),
+    configVersion: positiveInteger(source.configVersion, `${path}.configVersion`),
+    capabilities
+  }
+}
+
 function publisher(value: unknown): PluginManifestPublisherV1 {
   const source = record(value, 'manifest.publisher', PUBLISHER_KEYS)
   return {
@@ -646,8 +716,13 @@ function emptyCapabilities(value: unknown, schemaVersion: 1 | 2): readonly [] {
   return []
 }
 
-function contributionRecord(value: unknown): Record<string, unknown> {
-  return record(value, 'manifest.contributions', CONTRIBUTIONS_KEYS, REQUIRED_CONTRIBUTIONS_KEYS)
+function contributionRecord(value: unknown, includeConnectors: boolean): Record<string, unknown> {
+  return record(
+    value,
+    'manifest.contributions',
+    includeConnectors ? CONTRIBUTIONS_KEYS_V2 : CONTRIBUTIONS_KEYS,
+    REQUIRED_CONTRIBUTIONS_KEYS
+  )
 }
 
 function moduleContributions(value: unknown): readonly DeclarativeModuleContributionV1[] {
@@ -666,7 +741,7 @@ type ContributionParser<TContribution> = (value: unknown, index: number) => TCon
 
 function optionalContributions<TContribution>(
   source: Record<string, unknown>,
-  key: 'commands' | 'exporters',
+  key: 'commands' | 'exporters' | 'storageProviders',
   maximum: number,
   parser: ContributionParser<TContribution>,
   identityOf: (contribution: TContribution) => string,
@@ -681,14 +756,36 @@ function optionalContributions<TContribution>(
   return contributions
 }
 
+function connectorContributions(
+  source: Record<string, unknown>,
+  pluginId: string
+): readonly PluginConnectorContractV1[] | undefined {
+  if (!Object.hasOwn(source, 'connectors')) return undefined
+  const path = 'manifest.contributions.connectors'
+  const connectors = array(source.connectors, path, PLUGIN_MANIFEST_LIMITS.maxConnectors).map(
+    (value, index) => {
+      const contract = parsePluginConnectorContract(value)
+      if (contract.pluginId !== pluginId) {
+        throw new TypeError(`${path}[${index}].pluginId must match manifest.plugin.id`)
+      }
+      return contract
+    }
+  )
+  if (new Set(connectors.map((entry) => entry.connectorId)).size !== connectors.length) {
+    throw new TypeError(`${path} contains duplicate connector IDs`)
+  }
+  return connectors
+}
+
 function parsedContributions<TCommand, TExporter>(
   value: unknown,
   commandParser: ContributionParser<TCommand>,
   exporterParser: ContributionParser<TExporter>,
   commandIdentity: (command: TCommand) => string,
-  exporterIdentity: (exporter: TExporter) => string
+  exporterIdentity: (exporter: TExporter) => string,
+  connectorPluginId?: string
 ) {
-  const source = contributionRecord(value)
+  const source = contributionRecord(value, connectorPluginId !== undefined)
   const modules = moduleContributions(source.modules)
   const commands = optionalContributions(
     source,
@@ -706,13 +803,35 @@ function parsedContributions<TCommand, TExporter>(
     exporterIdentity,
     'exporter IDs'
   )
-  if (modules.length + (commands?.length ?? 0) + (exporters?.length ?? 0) === 0) {
+  const connectors =
+    connectorPluginId === undefined ? undefined : connectorContributions(source, connectorPluginId)
+  const storageProviders =
+    connectorPluginId === undefined
+      ? undefined
+      : optionalContributions(
+          source,
+          'storageProviders',
+          PLUGIN_MANIFEST_LIMITS.maxStorageProviders,
+          storageProviderContribution,
+          (provider) => provider.providerId,
+          'provider IDs'
+        )
+  if (
+    modules.length +
+      (commands?.length ?? 0) +
+      (exporters?.length ?? 0) +
+      (connectors?.length ?? 0) +
+      (storageProviders?.length ?? 0) ===
+    0
+  ) {
     throw new TypeError('manifest must declare at least one contribution')
   }
   return {
     modules,
     ...(commands ? { commands } : {}),
-    ...(exporters ? { exporters } : {})
+    ...(exporters ? { exporters } : {}),
+    ...(connectors ? { connectors } : {}),
+    ...(storageProviders ? { storageProviders } : {})
   }
 }
 
@@ -753,14 +872,16 @@ function parsePayloadRecord(source: Record<string, unknown>): PluginManifestPayl
 }
 
 function parsePayloadRecordV2(source: Record<string, unknown>): PluginManifestPayloadV2 {
+  const header = payloadIdentity(source, PLUGIN_MANIFEST_SCHEMA_VERSION_V2)
   return {
-    ...payloadIdentity(source, PLUGIN_MANIFEST_SCHEMA_VERSION_V2),
+    ...header,
     contributions: parsedContributions(
       source.contributions,
       commandContributionV2,
       exporterContributionV2,
       (command) => command.commandId,
-      (exporter) => exporter.exporterId
+      (exporter) => exporter.exporterId,
+      header.plugin.id
     )
   }
 }

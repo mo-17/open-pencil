@@ -20,7 +20,12 @@ import {
   type VerifiedPluginPackage
 } from '@open-pencil/core/plugins'
 
-import { pluginPayload, pluginPayloadV2 } from './helpers'
+import {
+  pluginConnectorContract,
+  pluginPayload,
+  pluginPayloadV2,
+  pluginStorageProviderContribution
+} from './helpers'
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
@@ -67,7 +72,13 @@ describe('installed plugin state', () => {
       updatedCommands: [],
       addedExporters: [],
       removedExporters: [],
-      updatedExporters: []
+      updatedExporters: [],
+      addedConnectors: [],
+      removedConnectors: [],
+      updatedConnectors: [],
+      addedStorageProviders: [],
+      removedStorageProviders: [],
+      updatedStorageProviders: []
     })
     const accepted = acceptPluginUpdate(reviewing)
     expect(accepted.accepted.manifest.plugin.version).toBe('1.1.0')
@@ -234,8 +245,62 @@ describe('installed plugin state', () => {
         'update-exporter-description',
         'update-exporter-extension',
         'update-exporter-name'
+      ],
+      addedConnectors: [],
+      removedConnectors: [],
+      updatedConnectors: [],
+      addedStorageProviders: [],
+      removedStorageProviders: [],
+      updatedStorageProviders: []
+    })
+  })
+
+  test('reviews added, removed, and changed connector authority', async () => {
+    const keyPair = await keys()
+    const initial = await verifiedV2(keyPair, '2.0.0', (payload) => {
+      payload.contributions.connectors = [pluginConnectorContract()]
+    })
+    const changed = await verifiedV2(keyPair, '2.1.0', (payload) => {
+      payload.contributions.connectors = [
+        pluginConnectorContract('Reads reviewed analytics records.')
       ]
     })
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(initial), changed).pending?.diff
+        .updatedConnectors
+    ).toEqual(['analytics.records'])
+
+    const removed = await verifiedV2(keyPair, '2.2.0', (payload) => {
+      payload.contributions.connectors = []
+    })
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(changed), removed).pending?.diff
+    ).toMatchObject({ removedConnectors: ['analytics.records'] })
+  })
+
+  test('reviews added, removed, and changed storage-provider authority', async () => {
+    const keyPair = await keys()
+    const initial = await verifiedV2(keyPair, '2.0.0')
+    const added = await verifiedV2(keyPair, '2.1.0', (payload) => {
+      payload.contributions.storageProviders = [pluginStorageProviderContribution()]
+    })
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(initial), added).pending?.diff
+    ).toMatchObject({ addedStorageProviders: ['acme-cloud'] })
+
+    const changed = await verifiedV2(keyPair, '2.2.0', (payload) => {
+      payload.contributions.storageProviders = [
+        pluginStorageProviderContribution('Stores reviewed analytics documents.')
+      ]
+    })
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(added), changed).pending?.diff
+    ).toMatchObject({ updatedStorageProviders: ['acme-cloud'] })
+
+    const removed = await verifiedV2(keyPair, '2.3.0')
+    expect(
+      reviewPluginUpdate(createInstalledPluginState(changed), removed).pending?.diff
+    ).toMatchObject({ removedStorageProviders: ['acme-cloud'] })
   })
 
   test('reviews a v1-to-v2 migration and preserves the accepted versioned snapshot', async () => {
@@ -330,7 +395,13 @@ describe('installed plugin state', () => {
       updatedCommands: [],
       addedExporters: [],
       removedExporters: [],
-      updatedExporters: []
+      updatedExporters: [],
+      addedConnectors: [],
+      removedConnectors: [],
+      updatedConnectors: [],
+      addedStorageProviders: [],
+      removedStorageProviders: [],
+      updatedStorageProviders: []
     })
   })
 

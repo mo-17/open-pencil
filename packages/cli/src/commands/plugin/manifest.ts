@@ -36,6 +36,9 @@ function manifestDetails(manifest: PluginManifestPayload, digest?: string) {
     keyId: manifest.publisher.keyId,
     engineRange: manifest.engineRange,
     modules: manifest.contributions.modules.length,
+    commands: manifest.contributions.commands?.length ?? 0,
+    exporters: manifest.contributions.exporters?.length ?? 0,
+    connectors: manifest.schemaVersion === 2 ? (manifest.contributions.connectors?.length ?? 0) : 0,
     ...(digest ? { digest } : {})
   }
 }

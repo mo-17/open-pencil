@@ -65,6 +65,17 @@ export interface PluginObjectParameterSchemaV2 extends PluginParameterSchemaBase
   readonly maxProperties?: number
 }
 
+/**
+ * Shared bounded JSON object contract used by manifest contributions and connector operations.
+ *
+ * This lives beside the schema parser so connector contracts can be embedded in a manifest
+ * without introducing a manifest <-> connector-contract module cycle.
+ */
+export interface PluginContributionDataContractV2 {
+  readonly schema: PluginObjectParameterSchemaV2
+  readonly maxBytes: number
+}
+
 export type PluginParameterSchemaV2 =
   | PluginStringParameterSchemaV2
   | PluginNumberParameterSchemaV2

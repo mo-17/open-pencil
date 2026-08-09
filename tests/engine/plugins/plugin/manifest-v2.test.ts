@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 
 import {
   PLUGIN_MANIFEST_SCHEMA_VERSION_V2,
+  PLUGIN_MANIFEST_LIMITS,
   parsePluginManifestPayload,
   parseVersionedPluginPackageBytes,
   parseVersionedPluginPackageJson,
@@ -14,7 +15,12 @@ import {
   type PluginManifestPayloadV2
 } from '@open-pencil/core/plugins'
 
-import { pluginPayloadV2 } from '../helpers'
+import {
+  pluginConnectorContract,
+  pluginPayload,
+  pluginPayloadV2,
+  pluginStorageProviderContribution
+} from '../helpers'
 
 async function keys(): Promise<CryptoKeyPair> {
   return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])
@@ -45,9 +51,85 @@ describe('plugin manifest schema version 2', () => {
     expect(() => parsePluginManifestPayload(payload)).toThrow('schemaVersion')
   })
 
+  test('binds connector contracts to the signed v2 plugin identity', () => {
+    const payload = pluginPayloadV2()
+    payload.contributions.connectors = [pluginConnectorContract()]
+    expect(parseVersionedPluginManifestPayload(payload).contributions.connectors).toEqual(
+      payload.contributions.connectors
+    )
+
+    const mismatched = structuredClone(payload)
+    const connector = mismatched.contributions.connectors?.[0]
+    if (!connector) throw new Error('Expected connector fixture')
+    Reflect.set(connector, 'pluginId', 'acme.other')
+    expect(() => parseVersionedPluginManifestPayload(mismatched)).toThrow(
+      'must match manifest.plugin.id'
+    )
+
+    const duplicated = structuredClone(payload)
+    duplicated.contributions.connectors = [pluginConnectorContract(), pluginConnectorContract()]
+    expect(() => parseVersionedPluginManifestPayload(duplicated)).toThrow('duplicate connector IDs')
+
+    const legacy = pluginPayload()
+    Reflect.set(legacy.contributions, 'connectors', [pluginConnectorContract()])
+    expect(() => parsePluginManifestPayload(legacy)).toThrow('unsupported fields')
+    Reflect.deleteProperty(legacy.contributions, 'connectors')
+    Reflect.set(legacy.contributions, 'storageProviders', [pluginStorageProviderContribution()])
+    expect(() => parsePluginManifestPayload(legacy)).toThrow('unsupported fields')
+  })
+
+  test('strictly bounds storage-provider declarations without accepting implementation config', () => {
+    const payload = pluginPayloadV2()
+    payload.contributions.storageProviders = [pluginStorageProviderContribution()]
+    expect(parseVersionedPluginManifestPayload(payload).contributions.storageProviders).toEqual(
+      payload.contributions.storageProviders
+    )
+
+    const duplicateProvider = structuredClone(payload)
+    duplicateProvider.contributions.storageProviders = [
+      pluginStorageProviderContribution(),
+      pluginStorageProviderContribution('Duplicate')
+    ]
+    expect(() => parseVersionedPluginManifestPayload(duplicateProvider)).toThrow(
+      'duplicate provider IDs'
+    )
+
+    const duplicateCapability = structuredClone(payload)
+    Reflect.set(duplicateCapability.contributions.storageProviders?.[0] ?? {}, 'capabilities', [
+      'documents.read',
+      'documents.read'
+    ])
+    expect(() => parseVersionedPluginManifestPayload(duplicateCapability)).toThrow(
+      'must not contain duplicates'
+    )
+
+    const unsupportedCapability = structuredClone(payload)
+    Reflect.set(unsupportedCapability.contributions.storageProviders?.[0] ?? {}, 'capabilities', [
+      'network.configure'
+    ])
+    expect(() => parseVersionedPluginManifestPayload(unsupportedCapability)).toThrow(
+      'is not supported'
+    )
+
+    for (const forbidden of ['oauth', 'network', 'code'] as const) {
+      const unsafe = structuredClone(payload)
+      Reflect.set(unsafe.contributions.storageProviders?.[0] ?? {}, forbidden, {})
+      expect(() => parseVersionedPluginManifestPayload(unsafe)).toThrow('unsupported fields')
+    }
+
+    const tooMany = structuredClone(payload)
+    tooMany.contributions.storageProviders = Array.from(
+      { length: PLUGIN_MANIFEST_LIMITS.maxStorageProviders + 1 },
+      (_, index) => ({ ...pluginStorageProviderContribution(), providerId: `provider-${index}` })
+    )
+    expect(() => parseVersionedPluginManifestPayload(tooMany)).toThrow('may not contain more than')
+  })
+
   test('signs, serializes, parses, and verifies v2 bytes', async () => {
     const keyPair = await keys()
-    const manifest = await signVersionedPluginManifest(pluginPayloadV2(), keyPair.privateKey)
+    const payload = pluginPayloadV2()
+    payload.contributions.storageProviders = [pluginStorageProviderContribution()]
+    const manifest = await signVersionedPluginManifest(payload, keyPair.privateKey)
     if (manifest.schemaVersion !== PLUGIN_MANIFEST_SCHEMA_VERSION_V2) {
       throw new Error('Expected schema-v2 manifest')
     }

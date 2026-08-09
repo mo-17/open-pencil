@@ -19,7 +19,11 @@ import {
 } from '@open-pencil/marketplace'
 import { exportEd25519PublicKeyPem } from '@open-pencil/scene-graph'
 
-import { pluginPayload, pluginPayloadV2 } from '../plugins/helpers'
+import {
+  pluginPayload,
+  pluginPayloadV2,
+  pluginStorageProviderContribution
+} from '../plugins/helpers'
 
 const NOW = '2026-08-05T12:00:00.000Z'
 const BEFORE_OWNERSHIP_GRANT = '2026-08-05T11:59:00.000Z'
@@ -188,7 +192,9 @@ describe('marketplace service publication pipeline', () => {
 
   test('submits and publishes schema-v2 manifests while unknown versions fail closed', async () => {
     const { artifacts, publisher, service } = await marketplaceFixture()
-    const manifest = await signVersionedPluginManifest(pluginPayloadV2(), publisher.privateKey)
+    const payload = pluginPayloadV2()
+    payload.contributions.storageProviders = [pluginStorageProviderContribution()]
+    const manifest = await signVersionedPluginManifest(payload, publisher.privateKey)
     const submission = await service.submit(
       {
         id: 'submission-v2',
@@ -207,9 +213,12 @@ describe('marketplace service publication pipeline', () => {
       { actor: 'publisher:acme', time: NOW }
     )
     const artifact = await artifacts.get(submission.artifactDigest)
-    expect(
-      parseVersionedPluginPackageBytes(artifact?.bytes ?? new Uint8Array()).schemaVersion
-    ).toBe(2)
+    const parsedArtifact = parseVersionedPluginPackageBytes(artifact?.bytes ?? new Uint8Array())
+    expect(parsedArtifact.schemaVersion).toBe(2)
+    if (parsedArtifact.schemaVersion !== 2) throw new Error('Expected schema-v2 artifact')
+    expect(parsedArtifact.contributions.storageProviders).toEqual(
+      payload.contributions.storageProviders
+    )
 
     await service.transitionSubmission(submission.id, 'approved', {
       actor: 'admin:test',
