@@ -114,9 +114,9 @@ test('blocks deletion while the same remote document is open', async ({ page }) 
 
   await page.locator('[data-document-id="remote-1"]').click()
   await expect(page).toHaveURL(/\/$/, { timeout: 15_000 })
-  await page.evaluate(async () => {
-    const { default: router } = await import('/src/router.ts')
-    await router.push('/storage?test')
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/storage?test')
+    window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }))
   })
 
   const openButton = page.locator('[data-document-id="remote-1"]')
