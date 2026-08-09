@@ -1,11 +1,10 @@
+import type { JsonTraversalState } from '@/app/plugins/json-data'
+
 export interface PluginContributionDataRecord {
   [key: string]: unknown
 }
 
-interface JsonAuthorityComparisonState {
-  nodes: number
-  readonly ancestors: WeakSet<object>
-}
+type JsonAuthorityComparisonState = JsonTraversalState
 
 export function plainDataContribution(
   value: unknown,

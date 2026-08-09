@@ -5,6 +5,19 @@ export const FLUTTER_EXPORTER_PLUGIN_ID = 'open-pencil.flutter-exporter'
 export const ACCESSIBILITY_AUDIT_PLUGIN_ID = 'open-pencil.accessibility-audit'
 export const DESIGN_TOKENS_EXPORTER_PLUGIN_ID = 'open-pencil.design-tokens-exporter'
 export const FIGMA_PROJECTION_EXPORTER_PLUGIN_ID = 'open-pencil.figma-projection-exporter'
+export const DESIGN_SYSTEM_AUDIT_PLUGIN_ID = 'open-pencil.design-system-audit'
+export const NEXTJS_EXPORTER_PLUGIN_ID = 'open-pencil.nextjs-exporter'
+export const CAPACITOR_EXPORTER_PLUGIN_ID = 'open-pencil.capacitor-exporter'
+export const ELECTRON_EXPORTER_PLUGIN_ID = 'open-pencil.electron-exporter'
+
+export const GOOGLE_DRIVE_STORAGE_CONFIG_VERSION = 1
+export const GOOGLE_DRIVE_STORAGE_CAPABILITIES = Object.freeze([
+  'documents.read',
+  'documents.write',
+  'documents.delete',
+  'changes.read',
+  'uploads.resumable'
+] as const)
 
 export const CLIPBOARD_COMMANDS = Object.freeze({
   text: {
@@ -49,6 +62,12 @@ export const ACCESSIBILITY_AUDIT_COMMAND = Object.freeze({
   permissions: Object.freeze(['document.read'] as const)
 })
 
+export const DESIGN_SYSTEM_AUDIT_COMMAND = Object.freeze({
+  commandId: 'run-design-system-audit',
+  adapterId: 'open-pencil.audit.design-system',
+  permissions: Object.freeze(['document.read', 'document.variables.read'] as const)
+})
+
 export const DESIGN_TOKENS_EXPORTER = Object.freeze({
   exporterId: 'design-tokens-json',
   adapterId: 'open-pencil.export.design-tokens-json',
@@ -63,4 +82,22 @@ export const FIGMA_PROJECTION_EXPORTER = Object.freeze({
   outputs: Object.freeze([
     Object.freeze({ extension: '.fig', mimeType: 'application/octet-stream' })
   ])
+})
+
+export const NEXTJS_EXPORTER = Object.freeze({
+  exporterId: 'nextjs-source',
+  adapterId: 'open-pencil.export.nextjs-source',
+  fileExtension: '.zip'
+})
+
+export const CAPACITOR_EXPORTER = Object.freeze({
+  exporterId: 'capacitor-source',
+  adapterId: 'open-pencil.export.capacitor-source',
+  fileExtension: '.zip'
+})
+
+export const ELECTRON_EXPORTER = Object.freeze({
+  exporterId: 'electron-source',
+  adapterId: 'open-pencil.export.electron-source',
+  fileExtension: '.zip'
 })
