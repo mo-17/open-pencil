@@ -19,9 +19,19 @@ export const CLOUD_CORS_STATIC_ORIGINS = [
 export function collectCloudCorsOrigins(extra?: string | null): string[] {
   const set = new Set<string>(CLOUD_CORS_STATIC_ORIGINS)
   if (extra?.trim()) set.add(extra.trim().replace(/\/+$/, ''))
-  if (IS_BROWSER && typeof window !== 'undefined' && window.location.origin) {
-    set.add(window.location.origin)
+  let browserOrigin: string | undefined
+  if (IS_BROWSER) {
+    const runtimeLocation: unknown = Reflect.get(globalThis, 'location')
+    if (
+      typeof runtimeLocation === 'object' &&
+      runtimeLocation !== null &&
+      'origin' in runtimeLocation &&
+      typeof runtimeLocation.origin === 'string'
+    ) {
+      browserOrigin = runtimeLocation.origin
+    }
   }
+  if (browserOrigin) set.add(browserOrigin)
   return [...set].filter(Boolean).sort()
 }
 
