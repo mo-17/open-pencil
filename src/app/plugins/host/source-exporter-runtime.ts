@@ -15,6 +15,7 @@ import type { EditorStore } from '@/app/editor/active-store'
 import { isTauri } from '@/app/tauri/env'
 import { tauriFetch } from '@/app/tauri/http'
 
+import { updateActiveAppPluginExportStage } from './export-session'
 import { throwIfPluginExportAborted } from './exporter-abort'
 import type { AppPluginExporterExecutionResult } from './exporter-types'
 import { archiveProjectFiles } from './project-archive'
@@ -47,6 +48,8 @@ export interface RunPluginFileExportOptions<TWarning> {
 export interface SourceProjectFontPolicyResult {
   manifest: CompilerFontManifest
   warnings: CompileWarning[]
+  /** Reviewed notices or other policy-owned files added without replacing compiler output. */
+  additionalFiles?: ReadonlyMap<string, string | Uint8Array>
 }
 
 export interface SourceProjectExporterDependencies<TEditor extends SourceExporterEditor> {
@@ -55,7 +58,7 @@ export interface SourceProjectExporterDependencies<TEditor extends SourceExporte
     pageIds: readonly string[],
     signal?: AbortSignal
   ): Promise<CompilerFontManifest>
-  compile(input: CompilerInput): CompilerOutput
+  compile(input: CompilerInput, signal?: AbortSignal): CompilerOutput | Promise<CompilerOutput>
   archive(
     files: ReadonlyMap<string, string | Uint8Array>,
     signal?: AbortSignal
@@ -73,12 +76,15 @@ export async function runPluginFileExport<TWarning>(
 ): Promise<AppPluginExporterExecutionResult<TWarning>> {
   const { fileName, signal } = options
   throwIfPluginExportAborted(signal)
+  updateActiveAppPluginExportStage('choosing-destination')
   const destination = await options.chooseDestination(fileName, signal)
   throwIfPluginExportAborted(signal)
   if (!destination) return { fileName, fileCount: 0, warnings: [], saved: false }
 
+  updateActiveAppPluginExportStage('compiling')
   const bytes = await options.createBytes()
   throwIfPluginExportAborted(signal)
+  updateActiveAppPluginExportStage('saving')
   const saved = (await destination.write(bytes, signal)) ?? true
   return { fileName, fileCount: 1, warnings: options.warnings, saved }
 }
@@ -95,7 +101,9 @@ export interface RunSourceProjectExportOptions<TEditor extends SourceExporterEdi
   fileName: string
   signal?: AbortSignal
   compilerTargetName?: string
-  applyFontPolicy?: (manifest: CompilerFontManifest) => SourceProjectFontPolicyResult
+  applyFontPolicy?: (
+    manifest: CompilerFontManifest
+  ) => SourceProjectFontPolicyResult | Promise<SourceProjectFontPolicyResult>
   createCompilerInput(context: SourceProjectCompilerInputContext<TEditor>): CompilerInput
   buildProject(
     compiledFiles: ReadonlyMap<string, string | Uint8Array>,
@@ -144,26 +152,39 @@ export async function runSourceProjectExport<TEditor extends SourceExporterEdito
   const pageIds = editor.graph.getPages().map(({ id }) => id)
   if (pageIds.length === 0) throw new Error('The current document has no pages to export')
 
+  updateActiveAppPluginExportStage('choosing-destination')
   const destination = await dependencies.chooseDestination(fileName, signal)
   throwIfPluginExportAborted(signal)
   if (!destination) return { fileName, fileCount: 0, warnings: [], saved: false }
 
+  updateActiveAppPluginExportStage('preparing')
   const resolvedFontManifest = await dependencies.resolveFontManifest(editor, pageIds, signal)
   throwIfPluginExportAborted(signal)
-  const fontPolicy = options.applyFontPolicy?.(resolvedFontManifest) ?? {
-    manifest: resolvedFontManifest,
-    warnings: []
-  }
-  const compiled = dependencies.compile(
-    options.createCompilerInput({ editor, pageIds, fontManifest: fontPolicy.manifest })
+  const fontPolicy = options.applyFontPolicy
+    ? await options.applyFontPolicy(resolvedFontManifest)
+    : { manifest: resolvedFontManifest, warnings: [] }
+  throwIfPluginExportAborted(signal)
+  updateActiveAppPluginExportStage('compiling')
+  const compiled = await dependencies.compile(
+    options.createCompilerInput({ editor, pageIds, fontManifest: fontPolicy.manifest }),
+    signal
   )
   throwIfPluginExportAborted(signal)
   requireSourceProjectCompilerFiles(compiled, options.compilerTargetName)
 
   const warnings = [...fontPolicy.warnings, ...compiled.warnings]
-  const project = options.buildProject(compiled.files, warnings)
+  const compiledFiles = new Map(compiled.files)
+  for (const [path, content] of fontPolicy.additionalFiles ?? []) {
+    if (compiledFiles.has(path)) {
+      throw new Error(`Font policy file conflicts with compiler output: ${path}`)
+    }
+    compiledFiles.set(path, content)
+  }
+  const project = options.buildProject(compiledFiles, warnings)
+  updateActiveAppPluginExportStage('archiving')
   const archive = await dependencies.archive(project, signal)
   throwIfPluginExportAborted(signal)
+  updateActiveAppPluginExportStage('saving')
   const saved = (await destination.write(archive, signal)) ?? true
   return { fileName, fileCount: project.size, warnings, saved }
 }
@@ -188,22 +209,54 @@ export function sourceProjectNames(documentName: string): { package: string; pro
   }
 }
 
-async function writeTauriPluginFileAtomically(
+export type TauriSourceExportCommitInvoker = <T>(
+  command: string,
+  args: { temporaryPath: string; targetPath: string }
+) => Promise<T>
+
+export async function commitTauriSourceExportTemporaryFile(
+  temporaryPath: string,
+  targetPath: string,
+  invoker?: TauriSourceExportCommitInvoker
+): Promise<void> {
+  const invoke = invoker ?? (await import('@tauri-apps/api/core')).invoke
+  await invoke('commit_source_export_file', { temporaryPath, targetPath })
+}
+
+export interface TauriSourceExportAtomicWriteDependencies {
+  randomUUID(): string
+  writeFile(path: string, data: Uint8Array): Promise<void>
+  remove(path: string): Promise<void>
+  commit(temporaryPath: string, targetPath: string): Promise<void>
+}
+
+async function defaultTauriSourceExportAtomicWriteDependencies(): Promise<TauriSourceExportAtomicWriteDependencies> {
+  const { remove } = await import('@tauri-apps/plugin-fs')
+  return {
+    randomUUID: () => crypto.randomUUID(),
+    writeFile: writeTauriExportFile,
+    remove,
+    commit: commitTauriSourceExportTemporaryFile
+  }
+}
+
+export async function writeTauriPluginFileAtomically(
   path: string,
   data: Uint8Array,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  dependencies?: TauriSourceExportAtomicWriteDependencies
 ): Promise<void> {
-  const { remove, rename } = await import('@tauri-apps/plugin-fs')
-  const temporaryPath = `${path}.openpencil-${crypto.randomUUID()}.tmp`
+  const operations = dependencies ?? (await defaultTauriSourceExportAtomicWriteDependencies())
+  const temporaryPath = `${path}.openpencil-${operations.randomUUID()}.tmp`
   try {
     throwIfPluginExportAborted(signal)
-    await writeTauriExportFile(temporaryPath, data)
+    await operations.writeFile(temporaryPath, data)
     // The temporary file is not user-visible output. Commit it only while the
     // request is still live so an RPC timeout cannot land a completed archive.
     throwIfPluginExportAborted(signal)
-    await rename(temporaryPath, path)
+    await operations.commit(temporaryPath, path)
   } catch (cause) {
-    await remove(temporaryPath).catch(() => undefined)
+    await operations.remove(temporaryPath).catch(() => undefined)
     throw cause
   }
 }

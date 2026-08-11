@@ -6,6 +6,7 @@ mod http;
 mod menu;
 mod menu_events;
 mod motion_export;
+mod source_export;
 #[cfg(target_os = "macos")]
 mod window;
 
@@ -23,6 +24,7 @@ use http::proxy_http_request;
 use menu::install_app_menu;
 use menu_events::handle_menu_event;
 use motion_export::write_motion_export_noclobber;
+use source_export::commit_source_export_file;
 use std::{
     path::{Path, PathBuf},
     sync::Mutex,
@@ -143,6 +145,7 @@ pub fn run() {
             credential_status,
             credential_store_availability,
             credential_write,
+            commit_source_export_file,
             google_drive_oauth_authorize,
             google_drive_oauth_cancel,
             google_drive_oauth_refresh,

@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'bun:test'
 
-import { BUNDLED_FONT_LICENSE_MANIFEST, fontManager } from '@open-pencil/core/text'
+import {
+  BUNDLED_FONT_LICENSE_MANIFEST,
+  buildBundledFontRedistributionNotice,
+  fontManager
+} from '@open-pencil/core/text'
 
 import { getTool, setupToolTest } from '#tests/helpers/tools'
 
@@ -60,6 +64,16 @@ describe('bundled font license manifest', () => {
       BUNDLED_FONT_LICENSE_MANIFEST.fonts.map((face) => face.copyright)
     )) {
       expect(webNotice).toContain(copyright)
+    }
+
+    const generatedNotice = buildBundledFontRedistributionNotice(
+      BUNDLED_FONT_LICENSE_MANIFEST.fonts.map(({ family, style }) => ({ family, style }))
+    )
+    expect(generatedNotice).toContain('SIL OPEN FONT LICENSE Version 1.1')
+    for (const copyright of new Set(
+      BUNDLED_FONT_LICENSE_MANIFEST.fonts.map((face) => face.copyright)
+    )) {
+      expect(generatedNotice).toContain(copyright)
     }
   })
 })

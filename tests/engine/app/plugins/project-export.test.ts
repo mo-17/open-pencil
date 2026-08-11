@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { unzipSync } from 'fflate'
+import { unzipSync, unzlibSync } from 'fflate'
 
 import { compile, type CompilerFontManifest } from '@open-pencil/compiler'
 import { SceneGraph } from '@open-pencil/scene-graph'
@@ -22,6 +22,74 @@ import {
 import { buildTauriReactProjectFiles } from '@/app/plugins/host/tauri-react-exporter'
 
 const decoder = new TextDecoder()
+const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+function readUint32(bytes: Uint8Array, offset: number): number {
+  return new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0)
+}
+
+function pngCrc32(type: Uint8Array, data: Uint8Array): number {
+  let crc = 0xffffffff
+  for (const bytes of [type, data]) {
+    for (const byte of bytes) {
+      crc ^= byte
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+      }
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+function concatenateBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  const result = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0))
+  let offset = 0
+  for (const chunk of chunks) {
+    result.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return result
+}
+
+function decodeGeneratedRgbaPng(bytes: Uint8Array): { width: number; height: number } {
+  expect(bytes.subarray(0, PNG_SIGNATURE.byteLength)).toEqual(PNG_SIGNATURE)
+  const imageData: Uint8Array[] = []
+  let width = 0
+  let height = 0
+  let offset = PNG_SIGNATURE.byteLength
+  let sawHeader = false
+  let sawEnd = false
+  while (offset < bytes.byteLength) {
+    const length = readUint32(bytes, offset)
+    const type = bytes.subarray(offset + 4, offset + 8)
+    const data = bytes.subarray(offset + 8, offset + 8 + length)
+    const expectedCrc = readUint32(bytes, offset + 8 + length)
+    expect(pngCrc32(type, data)).toBe(expectedCrc)
+    const typeName = decoder.decode(type)
+    if (typeName === 'IHDR') {
+      expect(sawHeader).toBe(false)
+      expect(length).toBe(13)
+      width = readUint32(data, 0)
+      height = readUint32(data, 4)
+      expect([...data.subarray(8)]).toEqual([8, 6, 0, 0, 0])
+      sawHeader = true
+    } else if (typeName === 'IDAT') {
+      imageData.push(data)
+    } else if (typeName === 'IEND') {
+      expect(length).toBe(0)
+      sawEnd = true
+    }
+    offset += length + 12
+  }
+  expect(offset).toBe(bytes.byteLength)
+  expect(sawHeader).toBe(true)
+  expect(sawEnd).toBe(true)
+  const pixels = unzlibSync(concatenateBytes(imageData))
+  const rowBytes = width * 4 + 1
+  expect(pixels.byteLength).toBe(rowBytes * height)
+  for (let y = 0; y < height; y += 1) expect(pixels[y * rowBytes]).toBe(0)
+  return { width, height }
+}
 
 function expoExportEditor(documentName = 'Mobile Demo'): ExpoReactNativeExportEditor {
   return {
@@ -51,7 +119,7 @@ function text(files: Record<string, Uint8Array>, path: string): string {
 }
 
 describe('plugin project archive', () => {
-  test('grants the desktop rename permission required by atomic Expo ZIP saves', () => {
+  test('keeps source-export replacement host-owned instead of granting renderer rename', () => {
     const capability = JSON.parse(
       readFileSync(
         resolve(import.meta.dir, '../../../../desktop/capabilities/default.json'),
@@ -59,7 +127,7 @@ describe('plugin project archive', () => {
       )
     ) as DesktopCapabilityConfig
 
-    expect(capability.permissions).toContainEqual({
+    expect(capability.permissions).not.toContainEqual({
       identifier: 'fs:allow-rename',
       allow: [{ path: '**' }]
     })
@@ -148,7 +216,7 @@ describe('plugin project archive', () => {
 })
 
 describe('Tauri React project builder', () => {
-  test('preserves compiled files, merges package.json, and adds a safe Tauri 2 scaffold', () => {
+  test('preserves compiled files, merges package.json, and adds a safe Tauri 2 scaffold', async () => {
     const sourcePackage = {
       name: 'compiled-app',
       private: true,
@@ -201,6 +269,7 @@ describe('Tauri React project builder', () => {
         'src-tauri/.gitignore',
         'src-tauri/Cargo.toml',
         'src-tauri/build.rs',
+        'src-tauri/icons/icon.png',
         'src-tauri/src/lib.rs',
         'src-tauri/src/main.rs',
         'src-tauri/tauri.conf.json'
@@ -215,6 +284,7 @@ describe('Tauri React project builder', () => {
       identifier: string
       productName: string
       build: Record<string, unknown>
+      bundle: { icon: string[] }
     }
     expect(tauriConfig).toMatchObject({
       productName: 'Demo Desktop App',
@@ -223,8 +293,27 @@ describe('Tauri React project builder', () => {
         beforeDevCommand: 'npm run dev',
         beforeBuildCommand: 'npm run build',
         frontendDist: '../dist'
-      }
+      },
+      bundle: { icon: ['icons/icon.png'] }
     })
+
+    const iconPath = `src-tauri/${tauriConfig.bundle.icon[0]}`
+    const icon = files.get(iconPath)
+    expect(icon).toBeInstanceOf(Uint8Array)
+    if (!(icon instanceof Uint8Array)) throw new Error('Expected a binary Tauri icon')
+    expect(icon.byteLength).toBeLessThan(64 * 1024)
+    expect(decodeGeneratedRgbaPng(icon)).toEqual({ width: 512, height: 512 })
+    expect(
+      buildTauriReactProjectFiles(
+        new Map([['package.json', `${JSON.stringify(sourcePackage)}\n`]]),
+        'demo-desktop-app',
+        'Demo Desktop App'
+      ).get(iconPath)
+    ).toEqual(icon)
+
+    const archived = unzipSync(await archiveProjectFiles(files))
+    expect(archived[iconPath]).toEqual(icon)
+    expect(decodeGeneratedRgbaPng(archived[iconPath])).toEqual({ width: 512, height: 512 })
   })
 
   test('requires compiler output to include a text package.json', () => {

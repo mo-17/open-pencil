@@ -57,6 +57,18 @@ jobs:
         env:
           BUN_HEAVY_TESTS: 'false'
 
+      - name: Run Vue source Worker browser E2E
+        if: matrix.group == 'compiler-browser'
+        run: >-
+          bunx playwright test tests/e2e/export/vue-source-worker.spec.ts
+          --project=openpencil --workers=1 --timeout=90000 --trace=retain-on-failure
+
+      - name: Run Preview target and bridge app E2E
+        if: matrix.group == 'compiler-browser'
+        run: >-
+          bunx playwright test tests/e2e/code/preview-pane-tauri.spec.ts
+          --project=openpencil --workers=1 --timeout=90000 --trace=retain-on-failure
+
   p2-motion-e2e:
     name: P2 Motion Playwright
     runs-on: ubuntu-24.04

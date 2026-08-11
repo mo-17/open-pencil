@@ -9,6 +9,7 @@ export const DESIGN_SYSTEM_AUDIT_PLUGIN_ID = 'open-pencil.design-system-audit'
 export const NEXTJS_EXPORTER_PLUGIN_ID = 'open-pencil.nextjs-exporter'
 export const CAPACITOR_EXPORTER_PLUGIN_ID = 'open-pencil.capacitor-exporter'
 export const ELECTRON_EXPORTER_PLUGIN_ID = 'open-pencil.electron-exporter'
+export const VUE_EXPORTER_PLUGIN_ID = 'open-pencil.vue-exporter'
 
 export const GOOGLE_DRIVE_STORAGE_CONFIG_VERSION = 1
 export const GOOGLE_DRIVE_STORAGE_CAPABILITIES = Object.freeze([
@@ -99,5 +100,11 @@ export const CAPACITOR_EXPORTER = Object.freeze({
 export const ELECTRON_EXPORTER = Object.freeze({
   exporterId: 'electron-source',
   adapterId: 'open-pencil.export.electron-source',
+  fileExtension: '.zip'
+})
+
+export const VUE_EXPORTER = Object.freeze({
+  exporterId: 'vue-source',
+  adapterId: 'open-pencil.export.vue-source',
   fileExtension: '.zip'
 })

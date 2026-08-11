@@ -1,3 +1,5 @@
+import { zlibSync } from 'fflate'
+
 import { withDefaults } from '@open-pencil/compiler'
 import { isPlainJsonObject } from '@open-pencil/scene-graph'
 
@@ -16,6 +18,103 @@ import {
 } from './source-exporter-runtime'
 
 export type TauriReactExportResult = SourceProjectExportResult
+
+const TAURI_ICON_PATH = 'icons/icon.png'
+const TAURI_ICON_ARCHIVE_PATH = `src-tauri/${TAURI_ICON_PATH}`
+const TAURI_ICON_SIZE = 512
+const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const PNG_IHDR = new Uint8Array([0x49, 0x48, 0x44, 0x52])
+const PNG_IDAT = new Uint8Array([0x49, 0x44, 0x41, 0x54])
+const PNG_IEND = new Uint8Array([0x49, 0x45, 0x4e, 0x44])
+
+function writeUint32(output: Uint8Array, offset: number, value: number): void {
+  output[offset] = (value >>> 24) & 0xff
+  output[offset + 1] = (value >>> 16) & 0xff
+  output[offset + 2] = (value >>> 8) & 0xff
+  output[offset + 3] = value & 0xff
+}
+
+function pngCrc32(type: Uint8Array, data: Uint8Array): number {
+  let crc = 0xffffffff
+  for (const bytes of [type, data]) {
+    for (const byte of bytes) {
+      crc ^= byte
+      for (let bit = 0; bit < 8; bit += 1) {
+        crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
+      }
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+function pngChunk(type: Uint8Array, data: Uint8Array): Uint8Array {
+  const output = new Uint8Array(data.byteLength + 12)
+  writeUint32(output, 0, data.byteLength)
+  output.set(type, 4)
+  output.set(data, 8)
+  writeUint32(output, data.byteLength + 8, pngCrc32(type, data))
+  return output
+}
+
+function concatenateBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  const output = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0))
+  let offset = 0
+  for (const chunk of chunks) {
+    output.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return output
+}
+
+function isInsideRoundedIcon(x: number, y: number): boolean {
+  const inset = 24
+  const farEdge = TAURI_ICON_SIZE - inset - 1
+  const radius = 104
+  if (x < inset || x > farEdge || y < inset || y > farEdge) return false
+  if (
+    (x >= inset + radius && x <= farEdge - radius) ||
+    (y >= inset + radius && y <= farEdge - radius)
+  ) {
+    return true
+  }
+  const centerX = x < inset + radius ? inset + radius : farEdge - radius
+  const centerY = y < inset + radius ? inset + radius : farEdge - radius
+  return (x - centerX) ** 2 + (y - centerY) ** 2 <= radius ** 2
+}
+
+/** Build a deterministic 512px RGBA PNG without relying on a data URL or an external file. */
+function createDefaultTauriIconPng(): Uint8Array {
+  const rowBytes = TAURI_ICON_SIZE * 4 + 1
+  const pixels = new Uint8Array(rowBytes * TAURI_ICON_SIZE)
+  for (let y = 0; y < TAURI_ICON_SIZE; y += 1) {
+    const rowOffset = y * rowBytes
+    pixels[rowOffset] = 0 // PNG filter: None
+    for (let x = 0; x < TAURI_ICON_SIZE; x += 1) {
+      if (!isInsideRoundedIcon(x, y)) continue
+      const offset = rowOffset + 1 + x * 4
+      const pencilBody = x + y >= 476 && x + y <= 548 && x - y >= -248 && x - y <= 248
+      const pencilTip = x + y >= 476 && x + y <= 548 && x - y < -248 && x - y >= -312
+      if (pencilBody) {
+        pixels.set([0xf8, 0xfa, 0xfc, 0xff], offset)
+      } else if (pencilTip) {
+        pixels.set([0xfd, 0xba, 0x74, 0xff], offset)
+      } else {
+        pixels.set([0x25, 0x63, 0xeb, 0xff], offset)
+      }
+    }
+  }
+
+  const header = new Uint8Array(13)
+  writeUint32(header, 0, TAURI_ICON_SIZE)
+  writeUint32(header, 4, TAURI_ICON_SIZE)
+  header.set([8, 6, 0, 0, 0], 8) // 8-bit RGBA, deflate, adaptive filtering, no interlace
+  return concatenateBytes([
+    PNG_SIGNATURE,
+    pngChunk(PNG_IHDR, header),
+    pngChunk(PNG_IDAT, zlibSync(pixels, { level: 9 })),
+    pngChunk(PNG_IEND, new Uint8Array())
+  ])
+}
 
 function rustCrateName(packageName: string): string {
   const crate = packageName.replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '')
@@ -58,6 +157,7 @@ export function buildTauriReactProjectFiles(
   const crateName = rustCrateName(packageName)
   const files = new Map(compiledFiles)
   files.set('package.json', updatePackageJson(packageJson, productName))
+  files.set(TAURI_ICON_ARCHIVE_PATH, createDefaultTauriIconPng())
   files.set(
     'src-tauri/Cargo.toml',
     `[package]\nname = "${crateName}"\nversion = "0.1.0"\ndescription = "Tauri desktop project exported from OpenPencil"\nauthors = []\nedition = "2021"\n\n[lib]\nname = "${crateName}_lib"\ncrate-type = ["staticlib", "cdylib", "rlib"]\n\n[build-dependencies]\ntauri-build = { version = "2", features = [] }\n\n[dependencies]\nserde = { version = "1", features = ["derive"] }\nserde_json = "1"\ntauri = { version = "2", features = [] }\n`
@@ -89,7 +189,7 @@ export function buildTauriReactProjectFiles(
           windows: [{ title: productName, width: 1280, height: 800, resizable: true }],
           security: { csp: null }
         },
-        bundle: { active: true, targets: 'all' }
+        bundle: { active: true, targets: 'all', icon: [TAURI_ICON_PATH] }
       },
       null,
       2
