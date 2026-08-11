@@ -25,6 +25,7 @@ import type {
 
 import { compactLowcodeHeadMetadata } from '@open-pencil/core/lowcode-validation'
 
+import { buildPreviewBridge } from '../preview-bridge'
 import type { AdapterEmission, FrameworkAdapter } from '../types'
 import { buildComponentModule } from './emit/component'
 import { OVERLAY_RUNTIME_CLASSES } from './emit/element'
@@ -71,7 +72,6 @@ import {
 import { collectReactModuleProject, emitReactModuleRuntimes } from './modules/registry'
 import { buildMotionPlan } from './motion/scan'
 import type { ReactMotionPlan } from './motion/types'
-import { buildPreviewBridge } from './preview-bridge'
 import { buildPrototypePlan } from './prototype/scan'
 import { derivePagePaths, type PagePathInfo } from './route-paths'
 import { buildAppTsx, buildPageModule, buildRouterApp, PAGE_WRAPPER_CLASSES } from './scaffold'

@@ -71,6 +71,34 @@ describe('resolveApiCall — apiCall IR collect (Phase 2 §3)', () => {
     expect(handler?.onError?.[0]).toMatchObject({ kind: 'toast', variant: 'error' })
   })
 
+  test('result branches resolve fresh data and error locals without an outer binding', () => {
+    const { graph, pageId } = makeGraph([
+      {
+        id: 'a1',
+        kind: 'apiCall',
+        method: 'GET',
+        url: 'https://x.test/users',
+        targetName: 'users',
+        onSuccess: [{ id: 'copy-data', kind: 'clipboard', valueExpr: 'data.profile.name' }],
+        onError: [
+          { id: 'copy-error', kind: 'clipboard', valueExpr: 'error.message' },
+          { id: 'copy-err', kind: 'clipboard', valueExpr: 'err.message' }
+        ]
+      }
+    ])
+    const ir = collectTree(graph, pageId)
+    const handler = onlyHandler(graph, pageId)
+
+    expect(handler?.onSuccess?.[0]).toMatchObject({ kind: 'clipboard', references: ['data'] })
+    expect(handler?.onError).toEqual([
+      expect.objectContaining({ kind: 'clipboard', references: ['error'] }),
+      expect.objectContaining({ kind: 'clipboard', references: ['err'] })
+    ])
+    expect(ir.warnings.map((warning) => warning.code)).not.toContain(
+      'action-clipboard-unknown-identifier'
+    )
+  })
+
   test('Phase 3 §10 v9: unknown errorTarget → warn + handler dropped', () => {
     const { graph, pageId } = makeGraph([
       {

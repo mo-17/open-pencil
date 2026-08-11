@@ -17,7 +17,7 @@ import {
   type PreviewRefreshPolicy
 } from './compile-scheduler'
 import DeployControls from './DeployControls.vue'
-import { useCompileOnChange, type PreviewUiKit } from './use-compile-on-change'
+import { useCompileOnChange, type PreviewTarget, type PreviewUiKit } from './use-compile-on-change'
 
 const emit = defineEmits<{ close: [] }>()
 
@@ -29,6 +29,7 @@ const emit = defineEmits<{ close: [] }>()
 const INBOUND_SOURCE = 'op-lowcode-preview'
 const OUTBOUND_SOURCE = 'op-lowcode-editor'
 
+const previewTarget = ref<PreviewTarget>('react')
 const previewUiKit = ref<PreviewUiKit>('none')
 const previewI18nEnabled = ref(false)
 const previewLocalesInput = ref('')
@@ -60,6 +61,7 @@ const {
   motionCompileError,
   forceRecompile
 } = useCompileOnChange({
+  target: previewTarget,
   uiKit: previewUiKit,
   i18nEnabled: previewI18nEnabled,
   localesInput: previewLocalesInput,
@@ -497,6 +499,19 @@ watch([previewUiKit, previewI18nEnabled, previewLocalesInput], () => {
   recompilePreviewOptions()
 })
 
+watch(previewTarget, (target) => {
+  // Vue v1 has no React UI-kit or react-intl runtime. Clear incompatible
+  // controls as the sidecar restarts so the visible settings match the
+  // compiler request instead of silently preserving ignored values.
+  if (target === 'vue') {
+    previewUiKit.value = 'none'
+    previewI18nEnabled.value = false
+    previewLocalesInput.value = ''
+  }
+  resetMotionDebugForReload()
+  iframeKey.value++
+})
+
 watch(previewTheme, () => {
   postTheme()
 })
@@ -527,11 +542,25 @@ onBeforeUnmount(() => {
     <div class="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border px-2">
       <span class="truncate text-xs text-muted">Preview · {{ statusLabel }}</span>
       <div class="flex shrink-0 items-center gap-1">
+        <Tip label="Compiler preview framework">
+          <label class="flex items-center gap-1 text-xs text-muted">
+            <span>Target</span>
+            <select
+              v-model="previewTarget"
+              data-test-id="lowcode-preview-target"
+              class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
+            >
+              <option value="react">React</option>
+              <option value="vue">Vue 3</option>
+            </select>
+          </label>
+        </Tip>
         <Tip label="Preview UI components">
           <label class="flex items-center gap-1 text-xs text-muted">
             <span>UI</span>
             <select
               v-model="previewUiKit"
+              :disabled="previewTarget === 'vue'"
               data-test-id="lowcode-preview-uikit"
               class="h-6 rounded border border-border bg-input px-1 text-xs text-surface"
             >
@@ -557,6 +586,7 @@ onBeforeUnmount(() => {
           <label class="flex h-6 items-center gap-1 rounded px-1 text-xs text-muted hover:bg-hover">
             <input
               v-model="previewI18nEnabled"
+              :disabled="previewTarget === 'vue'"
               type="checkbox"
               data-test-id="lowcode-preview-i18n"
             />

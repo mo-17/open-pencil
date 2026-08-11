@@ -316,7 +316,7 @@ function emitApiCall(h: IRApiCallHandler, motionScope?: string): string {
     `const data = await res.json(); ` +
     `if (!res.ok) throw data; ` +
     `${store};${successTail} ` +
-    `} catch (err) { ${errorWrite}console.error("apiCall failed:", err);${errorTail} }`
+    `} catch (err) { const error = err; ${errorWrite}console.error("apiCall failed:", err);${errorTail} }`
   )
 }
 

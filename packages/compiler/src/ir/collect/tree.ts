@@ -4247,6 +4247,10 @@ function iterationIdentifiers(
   ctx: WalkCtx
 ): { itemName: string; indexName: string } {
   const reserved = new Set(ctx.inScope)
+  // Functional setState/setVariable expressions lower `$prev` to the formal
+  // identifier `prev`. Keeping that name out of iterator scope prevents an
+  // authored row local from becoming indistinguishable from the updater value.
+  reserved.add('prev')
   for (const state of ctx.states.values()) {
     reserved.add(state.name)
     reserved.add(lowcodeStateSetterName(state.name))

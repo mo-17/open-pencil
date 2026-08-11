@@ -190,7 +190,7 @@ describe('compile (public API, end-to-end)', () => {
     expect(appTsx).not.toContain('border-5')
   })
 
-  test("target='vue' returns target-not-implemented warning, no files", () => {
+  test("target='vue' emits the Vue v1 project contract", () => {
     const graph = makeSceneGraph()
     const pageId = firstPageId(graph)
 
@@ -200,8 +200,14 @@ describe('compile (public API, end-to-end)', () => {
       options: withDefaults({ target: 'vue', router: 'vue-router-v4' })
     })
 
-    expect(out.files.size).toBe(0)
-    expect(out.warnings.map((w) => w.code)).toContain('target-not-implemented')
+    expect(out.files.has('package.json')).toBe(true)
+    expect(out.files.has('vite.config.ts')).toBe(true)
+    expect(out.files.has('index.html')).toBe(true)
+    expect(out.files.has('src/main.ts')).toBe(true)
+    expect(out.files.has('src/App.vue')).toBe(true)
+    expect(out.files.has('src/pages/index.vue')).toBe(true)
+    expect(out.files.has('src/index.css')).toBe(true)
+    expect(out.warnings.map((w) => w.code)).not.toContain('target-not-implemented')
   })
 
   test('returns no-pages warning when pageIds is empty', () => {

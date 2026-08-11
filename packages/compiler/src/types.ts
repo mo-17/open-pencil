@@ -69,7 +69,8 @@ export interface CompilerOptions {
   productName?: string
   /**
    * Output target. React emits the web/Vite project, while Expo and Flutter
-   * emit source-only native static MVPs. Vue remains reserved and fails closed.
+   * emit source-only native static MVPs. Vue emits a Vite + Vue 3 web project
+   * with an explicit v1 capability/degradation contract.
    */
   target: 'react' | 'vue' | 'expo' | 'flutter'
   /** React major version to target. Applies when `target === 'react'`. */

@@ -504,21 +504,24 @@ function withResultBranches<
   handler: H | null,
   action: { onSuccess?: ActionDef[]; onError?: ActionDef[] },
   ctx: ResolveCtx,
-  successLocal?: string
+  successLocals: readonly string[] = [],
+  errorLocals: readonly string[] = []
 ): H | null {
   if (!handler) return null
   if (action.onSuccess && action.onSuccess.length > 0) {
-    const successCtx = successLocal
-      ? { ...ctx, inScope: new Set([...ctx.inScope, successLocal]) }
-      : ctx
+    const successCtx = branchContext(ctx, successLocals)
     const branch = resolveBranch(action.onSuccess, successCtx)
     if (branch.length > 0) handler.onSuccess = branch
   }
   if (action.onError && action.onError.length > 0) {
-    const branch = resolveBranch(action.onError, ctx)
+    const branch = resolveBranch(action.onError, branchContext(ctx, errorLocals))
     if (branch.length > 0) handler.onError = branch
   }
   return handler
+}
+
+function branchContext(ctx: ResolveCtx, locals: readonly string[]): ResolveCtx {
+  return locals.length === 0 ? ctx : { ...ctx, inScope: new Set([...ctx.inScope, ...locals]) }
 }
 
 /** Phase 3 §10 v4: expand a `callWorkflow` inline. Looks the workflow up by id,
@@ -724,11 +727,18 @@ function dispatchResultBranchAction(
           ctx.warnings
         ),
         action,
-        ctx
+        ctx,
+        ['data'],
+        ['err', 'error']
       )
     case 'invokeServerWorkflow': {
       const handler = resolveInvokeServerWorkflow(action, ctx)
-      return withResultBranches(handler, action, ctx, handler?.resultName)
+      return withResultBranches(
+        handler,
+        action,
+        ctx,
+        handler?.resultName ? [handler.resultName] : []
+      )
     }
     case 'supabaseQuery':
       return withResultBranches(
@@ -743,7 +753,9 @@ function dispatchResultBranchAction(
           ctx.warnings
         ),
         action,
-        ctx
+        ctx,
+        ['data'],
+        ['error']
       )
     case 'supabaseMutation':
       return withResultBranches(
@@ -758,7 +770,9 @@ function dispatchResultBranchAction(
           ctx.warnings
         ),
         action,
-        ctx
+        ctx,
+        ['data'],
+        ['error']
       )
   }
   const exhaustive: never = action
@@ -773,7 +787,16 @@ function dispatchAction(action: ActionDef, ctx: ResolveCtx): IREventHandler | nu
   if (isResultBranchAction(action)) return dispatchResultBranchAction(action, ctx)
   switch (action.kind) {
     case 'setState':
-      return resolveSetState(ctx.node, ctx.eventName, action, ctx.states, ctx.warnings)
+      return resolveSetState(
+        ctx.node,
+        ctx.eventName,
+        action,
+        ctx.states,
+        ctx.inScope,
+        ctx.docStates,
+        ctx.docStateReads,
+        ctx.warnings
+      )
     case 'navigate':
       return resolveNavigate(
         ctx.node,
@@ -1169,11 +1192,29 @@ function buildValueUpdate(parsed: { ast: ExprAst; references: Set<string> }): {
   }
 }
 
+function hasAmbiguousFunctionalPrevious(
+  node: SceneNode,
+  eventName: EventName,
+  update: ReturnType<typeof buildValueUpdate>,
+  warnings: IRWarning[]
+): boolean {
+  if (update.mode !== 'functional' || !update.references.includes(PREV_FORMAL)) return false
+  warnings.push({
+    code: 'action-functional-prev-ambiguous',
+    message: `node ${node.id} ${eventName} valueExpr cannot reference both ${PREV_IDENT} and an in-scope identifier named "${PREV_FORMAL}"`,
+    nodeId: node.id
+  })
+  return true
+}
+
 function resolveSetState(
   node: SceneNode,
   eventName: EventName,
   action: Extract<ActionDef, { kind: 'setState' }>,
   states: Map<string, IRStateDecl>,
+  inScope: ReadonlySet<string>,
+  docStates: ReadonlyMap<string, IRDocStateDecl>,
+  docStateReads: Set<string> | undefined,
   warnings: IRWarning[]
 ): IREventHandler | null {
   if (!action.targetStateId) {
@@ -1211,7 +1252,21 @@ function resolveSetState(
     })
     return null
   }
-  const { ast, references, mode } = buildValueUpdate(parsed)
+  const readableReferences = new Set(parsed.references)
+  readableReferences.delete(PREV_IDENT)
+  const unknown = unknownIdentifiers(readableReferences, states, inScope, docStates)
+  if (unknown.length > 0) {
+    warnings.push({
+      code: 'action-setstate-unknown-identifier',
+      message: `node ${node.id} ${eventName} setState valueExpr references unknown identifier(s): ${unknown.join(', ')}`,
+      nodeId: node.id
+    })
+    return null
+  }
+  registerDocStateReads(readableReferences, docStates, docStateReads)
+  const update = buildValueUpdate(parsed)
+  if (hasAmbiguousFunctionalPrevious(node, eventName, update, warnings)) return null
+  const { ast, references, mode } = update
   return {
     kind: 'setState',
     stateName: target.name,
@@ -1282,7 +1337,9 @@ function resolveSetVariable(
     })
     return null
   }
-  const { ast, references, mode } = buildValueUpdate(parsed)
+  const update = buildValueUpdate(parsed)
+  if (hasAmbiguousFunctionalPrevious(node, eventName, update, warnings)) return null
+  const { ast, references, mode } = update
   return {
     kind: 'setVariable',
     docStateName: name,

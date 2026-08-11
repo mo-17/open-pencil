@@ -2,6 +2,7 @@ import { expoAdapter } from './adapters/expo'
 import { flutterAdapter } from './adapters/flutter'
 import { reactAdapter } from './adapters/react'
 import type { FrameworkAdapter } from './adapters/types'
+import { vueAdapter } from './adapters/vue'
 import type { CompileWarning, CompilerOptions } from './types'
 
 export interface AdapterSelection {
@@ -17,14 +18,16 @@ export interface AdapterSelection {
  * without emitting a misleading partial project.
  */
 export function selectAdapter(options: CompilerOptions): AdapterSelection {
-  if (options.target === 'react') {
-    return { adapter: reactAdapter, warnings: [] }
-  }
-  if (options.target === 'expo') {
-    return { adapter: expoAdapter, warnings: [] }
-  }
-  if (options.target === 'flutter') {
-    return { adapter: flutterAdapter, warnings: [] }
+  const target: unknown = options.target
+  switch (target) {
+    case 'react':
+      return { adapter: reactAdapter, warnings: [] }
+    case 'vue':
+      return { adapter: vueAdapter, warnings: [] }
+    case 'expo':
+      return { adapter: expoAdapter, warnings: [] }
+    case 'flutter':
+      return { adapter: flutterAdapter, warnings: [] }
   }
   // Reserved targets reject at runtime so callers get an explicit diagnostic
   // instead of a silently empty or partially generated project.
@@ -33,7 +36,7 @@ export function selectAdapter(options: CompilerOptions): AdapterSelection {
     warnings: [
       {
         code: 'target-not-implemented',
-        message: `target '${options.target}' is not implemented; supported targets are 'react', 'expo', and 'flutter'`
+        message: `target '${String(target)}' is not implemented; supported targets are 'react', 'vue', 'expo', and 'flutter'`
       }
     ]
   }

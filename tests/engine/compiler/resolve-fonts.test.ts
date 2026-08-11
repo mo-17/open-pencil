@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { resolveCompilerWebFonts } from '@open-pencil/compiler'
+import { resolveCompilerLocalFonts, resolveCompilerWebFonts } from '@open-pencil/compiler'
 import {
   fontCoverageDemand,
   fontFaceDemand,
@@ -14,6 +14,55 @@ import { fontBytesWithFsType } from '#tests/helpers/font-fixtures'
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
 describe('resolveCompilerWebFonts', () => {
+  test('resolves an exact packaged font without an online provider or prior retained bytes', async () => {
+    const bytes = await Bun.file('packages/core/assets/Inter-Regular.ttf').arrayBuffer()
+    const key = 'Inter|Regular'
+    const loadedFamilies = Reflect.get(fontManager, 'loadedFamilies') as Map<string, ArrayBuffer>
+    const supplementalFamilyData = Reflect.get(fontManager, 'supplementalFamilyData') as Map<
+      string,
+      ArrayBuffer[]
+    >
+    const previousLoaded = loadedFamilies.get(key)
+    const previousSupplemental = supplementalFamilyData.get(key)
+    loadedFamilies.delete(key)
+    supplementalFamilyData.delete(key)
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('TEXT', pageId, { text: 'Local export', fontFamily: 'Inter', fontWeight: 400 })
+    const originalFetch = Object.getOwnPropertyDescriptor(globalThis, 'fetch')
+    let fetches = 0
+    Object.defineProperty(globalThis, 'fetch', {
+      configurable: true,
+      value() {
+        fetches += 1
+        throw new Error('Unexpected network access')
+      }
+    })
+
+    try {
+      const manifest = await resolveCompilerLocalFonts({ graph, pageIds: [pageId] })
+      expect(manifest.faces).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            family: 'Inter',
+            weight: 400,
+            style: 'normal',
+            content: new Uint8Array(bytes),
+            licenseEvidence: { kind: 'verified_open', licenseIds: ['OFL-1.1'] }
+          })
+        ])
+      )
+      expect(fetches).toBe(0)
+    } finally {
+      if (originalFetch) Object.defineProperty(globalThis, 'fetch', originalFetch)
+      else Reflect.deleteProperty(globalThis, 'fetch')
+      if (previousLoaded) loadedFamilies.set(key, previousLoaded)
+      else loadedFamilies.delete(key)
+      if (previousSupplemental) supplementalFamilyData.set(key, previousSupplemental)
+      else supplementalFamilyData.delete(key)
+    }
+  })
+
   test('reuses the canvas resolver synthetic Regular result without network access', async () => {
     const family = 'OpenPencil Compiler Resolver Fixture'
     const previousProviders = new Set(fontManager.enabledOnlineFontProviders())

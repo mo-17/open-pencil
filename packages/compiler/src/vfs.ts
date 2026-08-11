@@ -3,7 +3,7 @@
 // The compiler emits a project as a `Map<path, content>`; both the preview
 // dev-server (`dev-server.ts`, Vite `createServer`) and the static build
 // (`build.ts`, Vite `build`) feed that Map to Vite through this plugin instead
-// of writing it to disk. Vite resolves npm deps (react / tailwind / …) by
+// of writing it to disk. Vite resolves framework/Tailwind npm deps by
 // walking up from a real `scanRoot` dir to the workspace's hoisted
 // `node_modules`, so emitted files never touch the filesystem.
 //
@@ -19,6 +19,7 @@ import { dirname, join, posix } from 'node:path'
 import type { ESBuildOptions, Plugin } from 'vite'
 
 export type PreviewFiles = Map<string, string | Uint8Array>
+export type WebVfsTarget = 'react' | 'vue'
 
 /**
  * The Vite `esbuild` JSX override shared by the dev-server and the static
@@ -47,29 +48,36 @@ export const VITE_JSX_ESBUILD: ESBuildOptions = {
  * node_modules. The VFS prefix sits *inside* scanRoot so npm-package resolution
  * from any virtual file walks up to that node_modules chain (trailing + leading
  * slash make the prefix look like an absolute directory path). Plants the
- * JSX-mode tsconfig that wins the upward search Vite/esbuild does (the workspace
- * root sets jsx:preserve for Vue — see VITE_JSX_ESBUILD).
+ * target-specific tsconfig that wins the upward search Vite/esbuild does (the
+ * workspace root sets jsx:preserve for Vue — see VITE_JSX_ESBUILD).
  */
-const PREVIEW_TSCONFIG = JSON.stringify(
-  {
-    compilerOptions: {
-      target: 'ES2022',
-      module: 'ESNext',
-      moduleResolution: 'bundler',
-      jsx: 'react-jsx',
-      allowImportingTsExtensions: false,
-      isolatedModules: true,
-      strict: true,
-      skipLibCheck: true,
-      useDefineForClassFields: true
-    }
-  },
-  null,
-  2
-)
+function previewTsconfig(target: WebVfsTarget): string {
+  return JSON.stringify(
+    {
+      compilerOptions: {
+        target: 'ES2022',
+        module: 'ESNext',
+        moduleResolution: 'bundler',
+        ...(target === 'react' ? { jsx: 'react-jsx' } : {}),
+        allowImportingTsExtensions: false,
+        isolatedModules: true,
+        strict: true,
+        skipLibCheck: true,
+        useDefineForClassFields: true
+      }
+    },
+    null,
+    2
+  )
+}
 
-export function prepareVfsRoot(workspaceRoot: string): { scanRoot: string; vfsPrefix: string } {
-  const scanRoot = join(workspaceRoot, 'packages/compiler/.preview-root')
+export function prepareVfsRoot(
+  workspaceRoot: string,
+  target: WebVfsTarget = 'react'
+): { scanRoot: string; vfsPrefix: string } {
+  // Keep framework roots isolated: plugin-vue and plugin-react maintain
+  // transform caches keyed by absolute ids and must never share one id space.
+  const scanRoot = join(workspaceRoot, `packages/compiler/.preview-root/${target}`)
   mkdirSync(scanRoot, { recursive: true })
   // Idempotent write: this tsconfig lives inside the host app's Vite root, so
   // rewriting it (even with identical content, since mtime changes) trips
@@ -83,7 +91,8 @@ export function prepareVfsRoot(workspaceRoot: string): { scanRoot: string; vfsPr
   } catch {
     current = null
   }
-  if (current !== PREVIEW_TSCONFIG) writeFileSync(tsconfigPath, PREVIEW_TSCONFIG)
+  const expected = previewTsconfig(target)
+  if (current !== expected) writeFileSync(tsconfigPath, expected)
   return { scanRoot, vfsPrefix: `${scanRoot}/` }
 }
 
@@ -98,13 +107,13 @@ export function resolveRelative(source: string, importerRel: string): string {
 }
 
 /**
- * Look up a file by stem — tries `.tsx`, `.ts`, `.jsx`, `.js`, `.css`,
- * then `${stem}/index.{tsx,ts,jsx,js}`. Mirrors Vite's default extension
- * resolution so import statements without extensions work.
+ * Look up a file by stem — tries Vue SFC, TypeScript/JavaScript, then CSS
+ * extensions and matching `index.*` files. Mirrors the generated projects'
+ * extensionless imports for both web targets.
  */
 export function lookupFile(files: PreviewFiles, stem: string): string | null {
   if (files.has(stem)) return stem
-  const exts = ['.tsx', '.ts', '.jsx', '.js', '.css']
+  const exts = ['.vue', '.tsx', '.ts', '.jsx', '.js', '.css']
   for (const ext of exts) {
     if (files.has(stem + ext)) return stem + ext
   }
@@ -127,14 +136,18 @@ interface BinaryBuildAsset {
   bytes: Uint8Array
 }
 
+function binaryOutputRelativePath(path: string): string {
+  const normalized = posix.normalize(path).replace(/^(\.\.\/)+/, '')
+  return normalized.startsWith('src/assets/')
+    ? normalized.slice('src/assets/'.length)
+    : posix.basename(normalized)
+}
+
 function binaryBuildAssets(files: PreviewFiles): BinaryBuildAsset[] {
   const assets: BinaryBuildAsset[] = []
   for (const [path, content] of files) {
     if (!(content instanceof Uint8Array)) continue
-    const normalized = posix.normalize(path).replace(/^(\.\.\/)+/, '')
-    const relative = normalized.startsWith('src/assets/')
-      ? normalized.slice('src/assets/'.length)
-      : posix.basename(normalized)
+    const relative = binaryOutputRelativePath(path)
     assets.push({
       sourceUrl: `./assets/${relative}`,
       outputPath: `assets/${relative}`,
@@ -193,15 +206,24 @@ export function inMemoryVFS(state: { files: PreviewFiles }, vfsPrefix: string): 
 
     load(id) {
       if (!id.startsWith(vfsPrefix)) return null
+      // plugin-vue owns its generated SFC submodules. Returning the original
+      // .vue source for `?vue&type=script|template|style` would bypass that
+      // plugin and make Rollup parse an SFC as JavaScript.
+      const query = id.slice(id.indexOf('?') + 1)
+      if (id.includes('?') && new URLSearchParams(query).has('vue')) return null
       // Strip any HMR / asset-hint query so the VFS lookup matches the keys
       // emitted by the compiler (`src/App.tsx`, not `src/App.tsx?t=12345`).
       const rel = stripQuery(id.slice(vfsPrefix.length))
       const content = state.files.get(rel)
       if (content === undefined) return null
       if (typeof content === 'string') return content
-      // Binary assets are served by the dev middleware and emitted during builds,
-      // but they are not JavaScript modules that Rollup should parse.
-      return null
+      // Imported VFS binaries cannot fall through to Vite's disk asset plugin
+      // because no source file exists on disk. Emit a tiny URL module; the
+      // middleware serves that stable path in dev and generateBundle writes the
+      // byte-identical asset at the same path for static builds.
+      return `export default import.meta.env.BASE_URL + ${JSON.stringify(
+        `assets/${binaryOutputRelativePath(rel)}`
+      )}\n`
     },
 
     generateBundle(_options, bundle) {

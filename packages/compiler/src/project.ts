@@ -150,7 +150,7 @@ ${meta}  </head>
 `
 }
 
-function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
+export function buildMetadataTags(metadata: HtmlMetadata | undefined): string {
   if (!metadata) return ''
   const title = cleanMetadataText(metadata.title)
   const description = cleanMetadataText(metadata.description)

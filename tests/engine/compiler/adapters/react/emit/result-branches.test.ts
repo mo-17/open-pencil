@@ -56,7 +56,7 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
     }
     const out = emitEventHandler([handler])
     expect(out).toContain(
-      'catch (err) { setDocState("lastError", err); console.error("apiCall failed:", err); __opToast("Failed", "error"); }'
+      'catch (err) { const error = err; setDocState("lastError", err); console.error("apiCall failed:", err); __opToast("Failed", "error"); }'
     )
   })
 
@@ -73,7 +73,9 @@ describe('emit API result branches (Phase 3 §10 v9)', () => {
     expect(out).toContain('if (!res.ok) throw data;')
     expect(out).toContain('setDocState("result", data); __opToast("OK");')
     // catch has no error tail (no onError), just the logged failure.
-    expect(out).toContain('catch (err) { console.error("apiCall failed:", err); }')
+    expect(out).toContain(
+      'catch (err) { const error = err; console.error("apiCall failed:", err); }'
+    )
   })
 
   test('supabaseMutation with onSuccess/onError → toast in else / if(error) arms', () => {

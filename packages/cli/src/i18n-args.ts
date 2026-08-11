@@ -10,8 +10,7 @@ import type { ArgsDef } from 'citty'
 export const i18nArgs: ArgsDef = {
   i18n: {
     type: 'boolean',
-    description:
-      'Enable the react-intl i18n runtime (externalize text, emit locale catalogs + LocaleSwitcher).',
+    description: 'Enable the React react-intl runtime (not supported by the Vue v1 target).',
     required: false
   },
   locale: {

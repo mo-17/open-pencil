@@ -1,6 +1,7 @@
 import { DEFAULT_FONT_FAMILY } from '@open-pencil/core/constants'
 import {
   assessFontLicenseBytes,
+  BUNDLED_FONT_URLS,
   collectGraphFontRequirements,
   embeddedFontLicenseMetadata,
   fontCoverageDemand,
@@ -38,6 +39,11 @@ export interface ResolveCompilerWebFontsInput {
   preferLoaded?: boolean
   /** Bypass the per-graph resolution cache (used by the preview reload action). */
   refresh?: boolean
+}
+
+export interface ResolveCompilerLocalFontsInput {
+  graph: SceneGraph
+  pageIds: readonly string[]
 }
 
 interface FontPlanRequirements {
@@ -221,6 +227,97 @@ async function loadedFaceAssets(family: string, style: string): Promise<Compiler
       }
     })
   )
+}
+
+function localRequestStyles(request: WebFontFaceRequest): string[] {
+  const requested = weightToStyle(request.weight, request.style === 'italic')
+  const regular = request.style === 'italic' ? 'Regular Italic' : 'Regular'
+  return [...new Set([requested, regular, ...(request.style === 'italic' ? ['Regular'] : [])])]
+}
+
+async function locallyAvailableFaceAssets(
+  family: string,
+  style: string,
+  characters: string
+): Promise<CompilerFontFaceAsset[]> {
+  const loaded = await loadedFaceAssets(family, style)
+  if (loaded.length > 0) return loaded
+  await fontManager.loadCachedFont(family, style, characters)
+  const cached = await loadedFaceAssets(family, style)
+  if (cached.length > 0) return cached
+
+  const bundledUrl = BUNDLED_FONT_URLS[`${family}|${style}`]
+  if (!bundledUrl) return []
+  try {
+    const bundled = await fontManager.fetchBundledFont(bundledUrl)
+    if (bundled) fontManager.markLoaded(family, style, bundled)
+    return await loadedFaceAssets(family, style)
+  } catch {
+    return []
+  }
+}
+
+async function resolveLocalRequest(
+  request: WebFontFaceRequest,
+  characters: string
+): Promise<CompilerFontFaceAsset[]> {
+  for (const style of localRequestStyles(request)) {
+    const faces = await locallyAvailableFaceAssets(request.family, style, characters)
+    if (faces.length > 0) return faces
+  }
+  return []
+}
+
+function localFallbackCandidates(
+  script: FontFallbackScript,
+  configuredCandidates: readonly string[]
+): string[] {
+  const alreadySelected =
+    script === 'arabic'
+      ? fontManager.getArabicFallbackFamilies()
+      : fontManager.getCJKFallbackFamilies()
+  return [...new Set([...configuredCandidates, ...alreadySelected])]
+}
+
+/**
+ * Resolve only bytes already retained by the renderer, available in its
+ * imported/downloaded cache, or shipped in the reviewed bundled-font assets.
+ * This path never asks an online font provider or local system-font provider
+ * to load new bytes; browser reads of packaged assets stay same-origin.
+ */
+export async function resolveCompilerLocalFonts({
+  graph,
+  pageIds
+}: ResolveCompilerLocalFontsInput): Promise<CompilerFontManifest> {
+  const requirements = buildRequirements(graph, pageIds)
+  const faces = new Map<string, CompilerFontFaceAsset>()
+
+  for (const request of requirements.primary) {
+    for (const face of await resolveLocalRequest(request, requirements.cacheCharacters)) {
+      faces.set(face.path, preserveRestrictedEmbedding(face))
+    }
+  }
+
+  const fallbackFamilies: string[] = []
+  for (const [index, script] of requirements.scripts.entries()) {
+    const candidates = localFallbackCandidates(script, requirements.fallbackCandidates[index] ?? [])
+    for (const family of candidates) {
+      const assets = await locallyAvailableFaceAssets(
+        family,
+        'Regular',
+        requirements.cacheCharacters
+      )
+      if (assets.length === 0) continue
+      for (const face of assets) faces.set(face.path, preserveRestrictedEmbedding(face))
+      fallbackFamilies.push(family)
+      break
+    }
+  }
+
+  return {
+    faces: [...faces.values()],
+    ...(fallbackFamilies.length > 0 ? { fallbackFamilies } : {})
+  }
 }
 
 async function resolveLoadedFontPlan(requirements: FontPlanRequirements): Promise<LoadedFontPlan> {

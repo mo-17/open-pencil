@@ -14,6 +14,11 @@ import type { BuildOptions } from '@open-pencil/compiler/build'
 import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
 import type { SceneNode } from '@open-pencil/scene-graph'
 
+import {
+  routerForCodegenTarget,
+  validateCodegenTargetFeatures,
+  type CodegenWebTarget
+} from '#cli/codegen-target'
 import { bold, fmtList, ok, printError } from '#cli/format'
 import { loadDocument } from '#cli/headless'
 
@@ -124,8 +129,8 @@ export type PageResolution = { ok: true; pageIds: string[] } | { ok: false; mess
 
 /**
  * Resolve which page ids to compile. With `--page`, restrict to the single
- * matching page (error if absent); otherwise compile every page — the React
- * adapter emits a react-router-dom shell when more than one is present.
+ * matching page (error if absent); otherwise compile every page. Each web
+ * adapter emits its matching router shell when more than one is present.
  */
 export function resolvePageIds(pages: readonly SceneNode[], page?: string): PageResolution {
   if (page) {
@@ -145,6 +150,7 @@ export function resolvePageIds(pages: readonly SceneNode[], page?: string): Page
 export interface CompiledDocument {
   compiled: CompilerOutput
   packageName: string
+  target: CodegenWebTarget
 }
 
 /**
@@ -170,6 +176,8 @@ export async function loadAndCompile(opts: {
   /** Phase 3 §15: emit interactive nodes with a code UI kit (e.g. 'shadcn')
    *  instead of hand-rolled Tailwind HTML. Undefined → plain HTML. */
   uiKit?: UiKitName
+  /** Web framework target. Defaults to React for CLI compatibility. */
+  target?: CodegenWebTarget
 }): Promise<CompiledDocument> {
   if (!opts.file) {
     printError('A document file path is required.')
@@ -192,13 +200,26 @@ export async function loadAndCompile(opts: {
   const packageName = sanitizePackageName(
     opts.packageName ?? basename(opts.file, extname(opts.file))
   )
+  const target = opts.target ?? 'react'
+  try {
+    validateCodegenTargetFeatures({ target, i18n: opts.i18n === true, uiKit: opts.uiKit })
+  } catch (e) {
+    printError(e)
+    process.exit(1)
+  }
 
   let compiled: CompilerOutput
   try {
-    const fontManifest = await resolveCompilerWebFonts({
-      graph,
-      pageIds: resolved.pageIds
-    })
+    // Vue source export follows the same fail-closed redistribution policy as
+    // the editor exporter: do not start an online resolver only to publish
+    // font bytes without complete family-specific license/NOTICE material.
+    const fontManifest =
+      target === 'vue'
+        ? { faces: [] }
+        : await resolveCompilerWebFonts({
+            graph,
+            pageIds: resolved.pageIds
+          })
     compiled = compile({
       graph,
       pageIds: resolved.pageIds,
@@ -206,6 +227,8 @@ export async function loadAndCompile(opts: {
       options: withDefaults({
         packageName,
         devMode: false,
+        target,
+        router: routerForCodegenTarget(target, resolved.pageIds.length),
         // Phase 3 §9 v13: i18n is opt-in via CLI flags (else byte-identical to before).
         i18n: opts.i18n === true,
         ...(opts.locales && opts.locales.length > 0 ? { locales: [...opts.locales] } : {}),
@@ -214,6 +237,19 @@ export async function loadAndCompile(opts: {
         ...(opts.uiKit ? { uiKit: opts.uiKit } : {})
       })
     })
+    if (target === 'vue') {
+      compiled = {
+        ...compiled,
+        warnings: [
+          {
+            code: 'vue-font-assets-omitted',
+            message:
+              'Vue v1 preserves authored font-family CSS but does not download or embed font binaries; add reviewed font assets and complete redistribution notices to the generated project.'
+          },
+          ...compiled.warnings
+        ]
+      }
+    }
   } catch (e) {
     printError(e)
     process.exit(1)
@@ -228,7 +264,13 @@ export async function loadAndCompile(opts: {
     if (opts.json) {
       console.log(
         JSON.stringify(
-          { outDir: opts.outDir, files: [], warnings: compiled.warnings, packageName },
+          {
+            outDir: opts.outDir,
+            files: [],
+            warnings: compiled.warnings,
+            packageName,
+            target
+          },
           null,
           2
         )
@@ -237,7 +279,7 @@ export async function loadAndCompile(opts: {
     process.exit(1)
   }
 
-  return { compiled, packageName }
+  return { compiled, packageName, target }
 }
 
 /**
@@ -253,6 +295,7 @@ export function reportCodegenResult(opts: {
   warnings: CompileWarning[]
   verb: string
   nextLine: string
+  target?: CodegenWebTarget
 }): void {
   if (opts.json) {
     console.log(
@@ -260,6 +303,7 @@ export function reportCodegenResult(opts: {
         {
           outDir: opts.outDir,
           packageName: opts.packageName,
+          ...(opts.target ? { target: opts.target } : {}),
           files: opts.files,
           warnings: opts.warnings
         },

@@ -134,6 +134,29 @@ describe('resolveSetVariable (Phase 2 §2)', () => {
     expect(handler.references).toEqual(['pageStep'])
   })
 
+  test('$prev mixed with an in-scope prev identifier is dropped as ambiguous', () => {
+    const { graph, pageId } = makeButtonWith(
+      [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }],
+      [{ id: 's1', name: 'prev', type: 'number', defaultValue: 1 }],
+      [
+        {
+          id: 'a1',
+          kind: 'setVariable',
+          targetName: 'cartCount',
+          valueExpr: '$prev + prev'
+        }
+      ]
+    )
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    if (button.kind !== 'element') throw new Error('expected element')
+
+    expect(button.events?.onClick).toBeUndefined()
+    expect(ir.warnings).toContainEqual(
+      expect.objectContaining({ code: 'action-functional-prev-ambiguous' })
+    )
+  })
+
   test('invalid valueExpr → warning, handler dropped', () => {
     const { graph, pageId } = makeButtonWith(
       [{ id: 'd1', name: 'cartCount', type: 'number', defaultValue: 0 }],

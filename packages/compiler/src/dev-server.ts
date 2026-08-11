@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// Bun-only. Imports `vite`, `@vitejs/plugin-react`, `@tailwindcss/vite` — none
+// Bun-only. Imports Vite, its React/Vue framework plugins, and Tailwind — none
 // safe to load in a browser bundle. The Vue editor talks to this over stdio
 // after spawning it via @tauri-apps/plugin-shell.
 //
@@ -13,7 +13,8 @@ import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { createServer, type Update, type ViteDevServer } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import { createServer, type PluginOption, type Update, type ViteDevServer } from 'vite'
 
 import { reactModuleOptimizeDepsForFiles } from './adapters/react/modules/registry'
 import { createSupabaseBuildDefines } from './build'
@@ -23,7 +24,13 @@ import {
   type PreviewFileDecodeCache,
   type SerializedPreviewFile
 } from './preview-protocol'
-import { inMemoryVFS, prepareVfsRoot, VITE_JSX_ESBUILD, type PreviewFiles } from './vfs'
+import {
+  inMemoryVFS,
+  prepareVfsRoot,
+  VITE_JSX_ESBUILD,
+  type PreviewFiles,
+  type WebVfsTarget
+} from './vfs'
 
 export type { PreviewFiles }
 
@@ -36,9 +43,8 @@ export type UpdateMode = 'full-reload' | 'hmr' | 'noop'
  * - `full-reload` — index.html changed, the VFS module topology changed, or
  *   not every changed file maps to a loaded module (Vite can't HMR imports it
  *   does not know about yet).
- * - `hmr` — broadcast Vite's native `update` event so plugin-react's auto-
- *   injected `import.meta.hot.accept(...)` boundaries can swap modules in
- *   place and preserve `useState`.
+ * - `hmr` — broadcast Vite's native `update` event so the selected framework
+ *   plugin's injected HMR boundaries can swap loaded modules in place.
  */
 export function classifyUpdate(
   changes: readonly string[],
@@ -104,6 +110,8 @@ export interface PreviewServerOptions {
    * Defaults to `process.cwd()`.
    */
   fsRoot?: string
+  /** Framework plugin used for the immutable lifetime of this Vite server. */
+  target?: WebVfsTarget
 }
 
 export interface PreviewServer {
@@ -126,7 +134,10 @@ const PREVIEW_BASE_OPTIMIZE_DEPS = [
 
 /** Prebundle optional trusted-module runtimes present in the initial VFS.
  * Modules added later resolve on demand after the topology-triggered reload. */
-export function previewOptimizeDeps(files: PreviewFiles): string[] {
+export function previewOptimizeDeps(files: PreviewFiles, target: WebVfsTarget = 'react'): string[] {
+  if (target === 'vue') {
+    return files.has('src/router.ts') ? ['vue', 'vue-router'] : ['vue']
+  }
   return [...PREVIEW_BASE_OPTIMIZE_DEPS, ...reactModuleOptimizeDepsForFiles(files)]
 }
 
@@ -161,15 +172,18 @@ function pickFreePort(): Promise<number> {
 export async function createPreviewServer(opts: PreviewServerOptions = {}): Promise<PreviewServer> {
   const state = { files: opts.initialFiles ?? new Map() }
   const workspaceRoot = opts.fsRoot ?? process.cwd()
+  const target = opts.target ?? 'react'
   // Use a quiet sub-directory as Vite's root so its default `**/*.html`
   // scan and dep discovery don't crawl the editor's source tree. Node
   // module resolution still walks up from this dir to the workspace's
-  // hoisted `node_modules`, so react / tailwind resolve cleanly.
+  // hoisted `node_modules`, so framework and Tailwind imports resolve cleanly.
   // Shared with the static build: scanRoot for dep resolution + the planted
   // JSX-mode tsconfig (the VFS prefix sits inside scanRoot so npm resolution
   // walks up to the workspace's hoisted node_modules).
-  const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot)
+  const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot, target)
   const vfs = inMemoryVFS(state, vfsPrefix)
+  const frameworkPlugins: PluginOption[] =
+    target === 'vue' ? [vue() as PluginOption] : (react() as PluginOption[])
   // Pre-pick a free port instead of letting Vite scan 5173 → 5174 → … when
   // its defaults clash with zombie preview servers from prior sessions.
   const chosenPort = opts.port && opts.port > 0 ? opts.port : await pickFreePort()
@@ -194,12 +208,12 @@ export async function createPreviewServer(opts: PreviewServerOptions = {}): Prom
       // app needs so the depscan has nothing to do. Optional module runtimes
       // are included only when their generated VFS file is present.
       entries: [],
-      include: previewOptimizeDeps(state.files)
+      include: previewOptimizeDeps(state.files, target)
     },
-    // Hard-override JSX so the in-memory tsx parses cleanly (shared with the
-    // static build — see VITE_JSX_ESBUILD).
-    esbuild: VITE_JSX_ESBUILD,
-    plugins: [vfs, react(), tailwindcss()]
+    // React's in-memory TSX needs an explicit JSX override (shared with the
+    // static build — see VITE_JSX_ESBUILD). Vue SFCs stay on plugin-vue's path.
+    ...(target === 'react' ? { esbuild: VITE_JSX_ESBUILD } : {}),
+    plugins: [vfs, ...frameworkPlugins, ...tailwindcss()]
   })
 
   trace('listen…')
@@ -285,6 +299,7 @@ function emit(event: OutgoingEvent): void {
 async function runCli(): Promise<void> {
   let portArg = 0
   let rootArg: string | undefined
+  let targetArg: WebVfsTarget = 'react'
   const argv = process.argv.slice(2)
   for (let i = 0; i < argv.length - 1; i++) {
     if (argv[i] === '--port') {
@@ -293,13 +308,23 @@ async function runCli(): Promise<void> {
     } else if (argv[i] === '--root') {
       rootArg = argv[i + 1]
       i++
+    } else if (argv[i] === '--target') {
+      const value = argv[i + 1]
+      if (value !== 'react' && value !== 'vue') {
+        emit({ type: 'error', message: `invalid preview target: ${String(value)}` })
+        process.exit(1)
+      }
+      targetArg = value
+      i++
     }
   }
-  trace(`CLI start: cwd=${process.cwd()} root=${rootArg ?? '(cwd)'} port=${portArg}`)
+  trace(
+    `CLI start: cwd=${process.cwd()} root=${rootArg ?? '(cwd)'} port=${portArg} target=${targetArg}`
+  )
 
   let server: PreviewServer
   try {
-    server = await createPreviewServer({ port: portArg, fsRoot: rootArg })
+    server = await createPreviewServer({ port: portArg, fsRoot: rootArg, target: targetArg })
   } catch (e) {
     const message = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e)
     trace(`createPreviewServer failed: ${message}`)

@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { defineCommand } from 'citty'
 
 import { loadAndCompile, reportCodegenResult } from '#cli/codegen'
+import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 import { resolveUiKitFlag, uiKitArgs } from '#cli/ui-kit-args'
 
@@ -16,6 +17,7 @@ interface CompileArgs {
   'source-locale'?: string
   'ui-kit'?: string
   json?: boolean
+  target?: string
 }
 
 async function writeFiles(
@@ -33,7 +35,7 @@ async function writeFiles(
 
 export default defineCommand({
   meta: {
-    description: 'Compile a .pen document into a runnable Vite + React + TS project'
+    description: 'Compile a .pen document into a runnable Vite + React or Vue 3 + TS project'
   },
   args: {
     file: {
@@ -55,9 +57,10 @@ export default defineCommand({
     page: {
       type: 'string',
       description:
-        'Restrict output to a single page by name. Default: all pages compiled (multi-page projects use react-router-dom).',
+        'Restrict output to one page. Default: all pages (multi-page output uses the target router).',
       required: false
     },
+    ...codegenTargetArgs,
     ...i18nArgs,
     ...uiKitArgs,
     json: { type: 'boolean', description: 'Output a JSON summary instead of human-friendly text' }
@@ -67,6 +70,7 @@ export default defineCommand({
     const outDir = resolve(out)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as CompileArgs)
     const uiKit = resolveUiKitFlag(args as CompileArgs)
+    const target = resolveCodegenTarget(args as CompileArgs)
 
     const { compiled, packageName } = await loadAndCompile({
       file,
@@ -77,7 +81,8 @@ export default defineCommand({
       i18n,
       locales,
       sourceLocale,
-      uiKit
+      uiKit,
+      target
     })
 
     const written = await writeFiles(outDir, compiled.files)
@@ -89,7 +94,8 @@ export default defineCommand({
       files: written,
       warnings: compiled.warnings,
       verb: 'Compiled',
-      nextLine: `Done. Next: cd ${outDir} && npm install && npm run dev`
+      nextLine: `Done. Next: cd ${outDir} && npm install && npm run dev`,
+      target
     })
   }
 })

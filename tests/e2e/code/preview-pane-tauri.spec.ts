@@ -18,12 +18,14 @@ type TauriInternals = {
 type TauriWindow = Window & {
   __TAURI_INTERNALS__?: TauriInternals
   __OP_PREVIEW_STDIN__?: string[]
+  __OP_PREVIEW_SPAWNS__?: unknown[]
 }
 
 async function installTauriPreviewMock(page: Page) {
   await page.addInitScript(() => {
     const tauriWindow = window as TauriWindow
     tauriWindow.__OP_PREVIEW_STDIN__ = []
+    tauriWindow.__OP_PREVIEW_SPAWNS__ = []
     tauriWindow.__TAURI_INTERNALS__ ??= {}
     const internals = tauriWindow.__TAURI_INTERNALS__
     internals.metadata = {
@@ -45,28 +47,46 @@ async function installTauriPreviewMock(page: Page) {
     internals.runCallback = (id: number, value: unknown) => {
       callbacks.get(id)?.(value)
     }
+    let previewEventChannelId: number | null = null
+    const previewEventIndexes = new Map<number, number>()
+    const emitPreviewStdout = (callbackId: number, payload: string): void => {
+      const index = previewEventIndexes.get(callbackId) ?? 0
+      previewEventIndexes.set(callbackId, index + 1)
+      internals.runCallback?.(callbackId, {
+        index,
+        message: { event: 'Stdout', payload }
+      })
+    }
     internals.invoke = async (cmd: string, args?: Record<string, unknown>) => {
       if (cmd === 'plugin:shell|spawn') {
+        tauriWindow.__OP_PREVIEW_SPAWNS__?.push(args)
         const onEvent = args?.onEvent as { id?: number } | undefined
         if (!onEvent?.id) throw new Error('Missing shell event channel')
+        previewEventChannelId = onEvent.id
+        previewEventIndexes.set(onEvent.id, 0)
         window.setTimeout(() => {
-          internals.runCallback?.(onEvent.id, {
-            index: 0,
-            message: {
-              event: 'Stdout',
-              payload:
-                JSON.stringify({
-                  type: 'ready',
-                  url: 'http://127.0.0.1:60140/',
-                  port: 60140
-                }) + '\n'
-            }
-          })
+          emitPreviewStdout(
+            onEvent.id,
+            JSON.stringify({
+              type: 'ready',
+              url: 'http://127.0.0.1:60140/',
+              port: 60140
+            }) + '\n'
+          )
         }, 0)
         return 1
       }
       if (cmd === 'plugin:shell|stdin_write') {
-        if (typeof args?.buffer === 'string') tauriWindow.__OP_PREVIEW_STDIN__?.push(args.buffer)
+        if (typeof args?.buffer === 'string') {
+          tauriWindow.__OP_PREVIEW_STDIN__?.push(args.buffer)
+          const command = JSON.parse(args.buffer) as { type?: unknown }
+          if (command.type === 'update' && previewEventChannelId !== null) {
+            const callbackId = previewEventChannelId
+            window.setTimeout(() => {
+              emitPreviewStdout(callbackId, JSON.stringify({ type: 'updated' }) + '\n')
+            }, 0)
+          }
+        }
         return null
       }
       if (cmd === 'plugin:shell|kill') return null
@@ -80,9 +100,33 @@ async function installTauriPreviewMock(page: Page) {
   })
 }
 
+async function installPreviewIframeRoute(page: Page): Promise<void> {
+  await page.route('http://127.0.0.1:60140/**', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: `<!doctype html>
+<html>
+  <body>Preview theme bridge fixture</body>
+  <script>
+    window.addEventListener('message', (event) => {
+      const data = event.data
+      if (data?.source !== 'op-lowcode-editor' || data.type !== 'theme') return
+      if (data.theme !== 'light' && data.theme !== 'dark') return
+      document.documentElement.dataset.theme = data.theme
+      document.documentElement.classList.toggle('light', data.theme === 'light')
+      document.documentElement.classList.toggle('dark', data.theme === 'dark')
+      document.documentElement.style.colorScheme = data.theme
+    })
+  </script>
+</html>`
+    })
+  )
+}
+
 test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser }) => {
   const page = await browser.newPage()
   await installTauriPreviewMock(page)
+  await installPreviewIframeRoute(page)
   await page.goto('/')
   await page.getByTestId('canvas-element').and(page.locator('[data-ready="1"]')).waitFor()
   await page.getByTestId('canvas-loading').waitFor({ state: 'hidden' })
@@ -90,6 +134,9 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
   const pane = page.getByTestId('lowcode-preview-pane')
   await expect(pane).toBeVisible()
   await expect(pane).toContainText('Preview')
+
+  const target = page.getByTestId('lowcode-preview-target')
+  await expect(target).toHaveValue('react')
 
   const uiKit = page.getByTestId('lowcode-preview-uikit')
   await expect(uiKit).toBeVisible()
@@ -101,6 +148,11 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
   await expect(theme).toHaveValue('light')
   await theme.selectOption('dark')
   await expect(theme).toHaveValue('dark')
+  const previewRoot = page.frameLocator('iframe[aria-label="lowcode preview"]').locator('html')
+  await expect(previewRoot).toHaveAttribute('data-theme', 'dark')
+  await expect(previewRoot).toHaveClass(/dark/)
+  await expect(previewRoot).not.toHaveClass(/light/)
+  await expect.poll(() => previewRoot.evaluate((element) => element.style.colorScheme)).toBe('dark')
 
   const i18n = page.getByTestId('lowcode-preview-i18n')
   await expect(i18n).toBeVisible()
@@ -110,6 +162,42 @@ test('Tauri preview toolbar exposes ui kit and i18n controls', async ({ browser 
   await expect(locales).toBeVisible()
   await locales.fill('en,zh-CN')
   await expect(locales).toHaveValue('en,zh-CN')
+
+  await target.selectOption('vue')
+  await expect(target).toHaveValue('vue')
+  await expect(uiKit).toBeDisabled()
+  await expect(uiKit).toHaveValue('none')
+  await expect(i18n).toBeDisabled()
+  await expect(locales).toHaveCount(0)
+  await expect(previewRoot).toHaveAttribute('data-theme', 'dark')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const spawns = (window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []
+        return spawns.some((entry) => {
+          const args = (entry as { args?: unknown }).args
+          return Array.isArray(args) && args.at(-2) === '--target' && args.at(-1) === 'vue'
+        })
+      })
+    )
+    .toBe(true)
+
+  await target.selectOption('react')
+  await expect(uiKit).toBeEnabled()
+  await expect(i18n).toBeEnabled()
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const spawns = (window as TauriWindow).__OP_PREVIEW_SPAWNS__ ?? []
+        return spawns.flatMap((entry) => {
+          const args = (entry as { args?: unknown }).args
+          if (!Array.isArray(args)) return []
+          const targetIndex = args.indexOf('--target')
+          return typeof args[targetIndex + 1] === 'string' ? [args[targetIndex + 1]] : []
+        })
+      })
+    )
+    .toEqual(['react', 'vue', 'react'])
 
   const status = await pane.textContent()
   expect(status).toContain('http://127.0.0.1:60140/')

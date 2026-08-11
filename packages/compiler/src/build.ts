@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-// Bun-only. Imports `vite`, `@vitejs/plugin-react`, `@tailwindcss/vite` — none
+// Bun-only. Imports Vite, its React/Vue framework plugins, and Tailwind — none
 // safe to load in a browser bundle. The CLI `build` command calls this after
-// `compile()` to turn the emitted `Map<path, content>` into a deployable
-// static `dist/`.
+// `compile()` to turn the emitted `Map<path, content>` into a deployable static
+// `dist/`.
 //
 // Phase 3 §5 step 2: the static-build counterpart of `dev-server.ts`. Both feed
 // the compiled VFS to Vite through the shared `inMemoryVFS` plugin (./vfs) and
@@ -10,17 +10,24 @@
 // zero `npm install`. Unlike the dev-server (Vite `createServer` + HMR), this
 // runs Vite `build` once and writes a hashed static SPA bundle to a real dir.
 
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import process from 'node:process'
 
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { build } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import { build, type PluginOption } from 'vite'
 
 import { detectSupabaseSecretKey } from '@open-pencil/core/lowcode-validation'
 
-import { inMemoryVFS, prepareVfsRoot, VITE_JSX_ESBUILD, type PreviewFiles } from './vfs'
+import {
+  inMemoryVFS,
+  prepareVfsRoot,
+  VITE_JSX_ESBUILD,
+  type PreviewFiles,
+  type WebVfsTarget
+} from './vfs'
 
 export interface BuildOptions {
   /** Compiled project files — `CompilerOutput.files` (emit with devMode:false
@@ -29,13 +36,15 @@ export interface BuildOptions {
   /** Real directory the static `dist/` is written into. */
   outDir: string
   /**
-   * Workspace root Vite uses to resolve npm deps (react / tailwind / …). Must
+   * Workspace root Vite uses to resolve framework/Tailwind npm deps. Must
    * be a real path so node_modules resolution works. Defaults to
    * `process.cwd()`.
    */
   fsRoot?: string
   /** Public base path for assets. Defaults to '/' (root hosting). */
   base?: string
+  /** Framework emitted into `files`. Defaults to React for compatibility. */
+  target?: WebVfsTarget
   /**
    * Build-time Supabase env override (§5). Each present key is fed to Vite as a
    * `define` for `import.meta.env.VITE_SUPABASE_*`; omitted keys fall back to
@@ -70,6 +79,11 @@ export interface ServerDeploymentInstructions {
 }
 
 export const OPENPENCIL_SERVER_OUTPUT_DIR = 'openpencil-server'
+export const OPENPENCIL_BUILD_OUTPUT_MANIFEST = '.openpencil-build-output.json'
+
+const BUILD_OUTPUT_MANIFEST_VERSION = 1
+const MAX_BUILD_OUTPUT_FILES = 100_000
+const MAX_BUILD_OUTPUT_MANIFEST_BYTES = 4 * 1024 * 1024
 
 const SERVER_ARTIFACT_FILES = new Set([
   '.env.server.example',
@@ -130,10 +144,15 @@ function browserPreviewFiles(files: PreviewFiles): PreviewFiles {
 }
 
 /** Recursively list files under `dir`, returning `dir`-relative POSIX-ish paths. */
-function listFiles(dir: string): string[] {
+function listFiles(dir: string, maximumEntries = MAX_BUILD_OUTPUT_FILES): string[] {
   const out: string[] = []
+  let entryCount = 0
   const walk = (abs: string): void => {
     for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      entryCount += 1
+      if (entryCount > maximumEntries) {
+        throw new Error(`Build output exceeds the ${maximumEntries} entry limit: ${dir}`)
+      }
       const child = join(abs, entry.name)
       if (entry.isDirectory()) walk(child)
       else out.push(relative(dir, child))
@@ -141,6 +160,94 @@ function listFiles(dir: string): string[] {
   }
   walk(dir)
   return out
+}
+
+function portableBuildPath(path: string): string {
+  return path.replaceAll('\\', '/')
+}
+
+function isSafeBuildPath(path: unknown): path is string {
+  if (
+    typeof path !== 'string' ||
+    path.length === 0 ||
+    path.startsWith('/') ||
+    path.includes('\\')
+  ) {
+    return false
+  }
+  const segments = path.split('/')
+  return segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..')
+}
+
+function managedBuildOutputFiles(outDir: string): string[] {
+  const markerPath = join(outDir, OPENPENCIL_BUILD_OUTPUT_MANIFEST)
+  const marker = lstatSync(markerPath)
+  if (!marker.isFile() || marker.isSymbolicLink()) {
+    throw new Error(`Refusing untrusted OpenPencil build marker in ${outDir}`)
+  }
+  if (marker.size > MAX_BUILD_OUTPUT_MANIFEST_BYTES) {
+    throw new Error(`Refusing oversized OpenPencil build marker in ${outDir}`)
+  }
+
+  let candidate: unknown
+  try {
+    candidate = JSON.parse(readFileSync(markerPath, 'utf8'))
+  } catch {
+    throw new Error(`Refusing invalid OpenPencil build marker in ${outDir}`)
+  }
+  if (
+    typeof candidate !== 'object' ||
+    candidate === null ||
+    Array.isArray(candidate) ||
+    Reflect.get(candidate, 'version') !== BUILD_OUTPUT_MANIFEST_VERSION ||
+    !Array.isArray(Reflect.get(candidate, 'files'))
+  ) {
+    throw new Error(`Refusing invalid OpenPencil build marker in ${outDir}`)
+  }
+  const files = Reflect.get(candidate, 'files') as unknown[]
+  if (files.length > MAX_BUILD_OUTPUT_FILES || !files.every(isSafeBuildPath)) {
+    throw new Error(`Refusing invalid OpenPencil build marker in ${outDir}`)
+  }
+  const normalized = [...files].sort()
+  if (new Set(normalized).size !== normalized.length) {
+    throw new Error(`Refusing duplicate paths in OpenPencil build marker for ${outDir}`)
+  }
+  return normalized
+}
+
+/**
+ * Vite's `emptyOutDir` is intentionally destructive. Only an empty directory or
+ * a byte-independent path set recorded by a previous successful OpenPencil
+ * build may be replaced. Any extra user file makes the build fail closed.
+ */
+export function assertSafeBuildOutputDirectory(outDir: string): void {
+  if (!existsSync(outDir)) return
+  const output = lstatSync(outDir)
+  if (!output.isDirectory() || output.isSymbolicLink()) {
+    throw new Error(`Build output must be a real directory: ${outDir}`)
+  }
+  const rootEntries = readdirSync(outDir)
+  if (rootEntries.length === 0) return
+  if (!rootEntries.includes(OPENPENCIL_BUILD_OUTPUT_MANIFEST)) {
+    throw new Error(
+      `Refusing to empty non-OpenPencil build directory: ${outDir}. Choose an empty output directory.`
+    )
+  }
+  const expected = managedBuildOutputFiles(outDir)
+  const current = listFiles(outDir).map(portableBuildPath).sort()
+  const actual = current.filter((path) => path !== OPENPENCIL_BUILD_OUTPUT_MANIFEST)
+  if (actual.length !== expected.length || actual.some((path, index) => path !== expected[index])) {
+    throw new Error(
+      `Refusing to empty build directory with files not owned by its OpenPencil manifest: ${outDir}`
+    )
+  }
+}
+
+function writeBuildOutputManifest(outDir: string, files: readonly string[]): void {
+  writeFileSync(
+    join(outDir, OPENPENCIL_BUILD_OUTPUT_MANIFEST),
+    JSON.stringify({ version: BUILD_OUTPUT_MANIFEST_VERSION, files }, null, 2) + '\n'
+  )
 }
 
 /**
@@ -152,6 +259,9 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
   const { files, outDir } = opts
   const workspaceRoot = opts.fsRoot ?? process.cwd()
   const base = opts.base ?? '/'
+  const target = opts.target ?? 'react'
+
+  assertSafeBuildOutputDirectory(outDir)
 
   if (
     opts.env?.VITE_SUPABASE_ANON_KEY !== undefined &&
@@ -165,10 +275,12 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
   // Shared with the dev-server: a quiet workspace sub-dir as Vite's root (deps
   // resolve up to the hoisted node_modules; the VFS plugin supplies all source)
   // plus the planted JSX-mode tsconfig.
-  const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot)
+  const { scanRoot, vfsPrefix } = prepareVfsRoot(workspaceRoot, target)
   // Server sources are never visible to Vite, even if a malformed browser
   // entry tries to import one. They are copied to the separate bundle below.
   const vfs = inMemoryVFS({ files: browserPreviewFiles(files) }, vfsPrefix)
+  const frameworkPlugins: PluginOption[] =
+    target === 'vue' ? [vue() as PluginOption] : (react() as PluginOption[])
 
   // §5: explicit CLI/app overrides win. Missing keys are pinned to undefined
   // instead of letting Vite inherit an unrelated build-process VITE_* value.
@@ -183,8 +295,8 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
     // Surface real build problems (no-swallow, 经验 C); suppress info spam so
     // the CLI owns the human-facing output.
     logLevel: 'warn',
-    plugins: [vfs, react(), tailwindcss()],
-    esbuild: VITE_JSX_ESBUILD,
+    plugins: [vfs, ...frameworkPlugins, ...tailwindcss()],
+    ...(target === 'react' ? { esbuild: VITE_JSX_ESBUILD } : {}),
     build: {
       outDir,
       emptyOutDir: true,
@@ -199,7 +311,8 @@ export async function buildPreviewProject(opts: BuildOptions): Promise<BuildResu
   // separate operator-owned bundle instead.
   copyServerArtifacts(files, outDir)
 
-  const written = listFiles(outDir).sort()
+  const written = listFiles(outDir).map(portableBuildPath).sort()
+  writeBuildOutputManifest(outDir, written)
   const serverFiles = written.filter(isServerArtifactOutputPath)
   return {
     outDir,

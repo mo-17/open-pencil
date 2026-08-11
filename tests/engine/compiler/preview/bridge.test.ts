@@ -1,14 +1,6 @@
-// Phase 2 §7 — string-level coverage for the canvas↔preview bridge runtime.
-// The bridge is a template literal that Vite compiles inside the iframe build,
-// so we can't import + evaluate it here without spinning up jsdom (not in the
-// compiler test rig). Coverage is therefore by `toContain` on the emitted
-// source — enough to pin the protocol changes that wired §7's navigate channel
-// and prevent silent regressions on the suppress-loop guard or the pushState
-// monkeypatch.
-//
-// Behavioural verification (inbound navigate → pushState replay, outbound on
-// router-internal nav, echo suppression) is covered by the §7.5 #4 Tauri user
-// test — the bridge has to run in a real iframe with react-router-dom mounted.
+// Fast source-contract coverage for the canvas↔preview bridge runtime. Real
+// iframe/message/DOM behavior for both web targets is covered by the browser
+// runtime suite next to this file.
 
 import { describe, expect, test } from 'bun:test'
 
@@ -52,7 +44,7 @@ describe('preview-bridge — navigate channel (Phase 2 §7)', () => {
   test('inbound message type is widened to a select | navigate union', () => {
     expect(bridge).toContain('interface InboundSelect')
     expect(bridge).toContain('interface InboundNavigate')
-    expect(bridge).toContain('type Inbound = InboundSelect | InboundNavigate')
+    expect(bridge).toMatch(/type Inbound =\s*\| InboundSelect\s*\| InboundNavigate/)
   })
 
   test('inbound navigate replays into history.pushState + a synthetic popstate', () => {
@@ -103,8 +95,8 @@ describe('preview-bridge — runtime docState channel (Phase 3 §4.6)', () => {
   test('inbound union is widened with a docState member', () => {
     expect(bridge).toContain('interface InboundDocState')
     expect(bridge).toContain('interface InboundMotionDebug')
-    expect(bridge).toContain(
-      'type Inbound = InboundSelect | InboundNavigate | InboundDocState | InboundMotionDebug'
+    expect(bridge).toMatch(
+      /type Inbound =\s*\| InboundSelect\s*\| InboundNavigate\s*\| InboundDocState\s*\| InboundTheme\s*\| InboundMotionDebug/
     )
   })
 
@@ -122,6 +114,7 @@ describe('preview-bridge — runtime docState channel (Phase 3 §4.6)', () => {
 
   test('inbound docState applies via setState', () => {
     expect(bridge).toContain("if (data.type === 'docState')")
+    expect(bridge).toContain('if (!Object.hasOwn(store.getState(), data.name)) return')
     expect(bridge).toContain('store.setState({ [data.name]: data.value })')
   })
 
@@ -129,6 +122,17 @@ describe('preview-bridge — runtime docState channel (Phase 3 §4.6)', () => {
     expect(bridge).toContain('let suppressDocStateOutbound = false')
     expect(bridge).toContain('if (suppressDocStateOutbound) return')
     expect(bridge).toContain('suppressDocStateOutbound = true')
+  })
+})
+
+describe('preview-bridge — Theme channel', () => {
+  test('validates and applies one explicit DOM theme contract', () => {
+    expect(bridge).toContain('interface InboundTheme')
+    expect(bridge).toContain("if (data.theme !== 'light' && data.theme !== 'dark') return")
+    expect(bridge).toContain('root.dataset.theme = theme')
+    expect(bridge).toContain("root.classList.toggle('light', theme === 'light')")
+    expect(bridge).toContain("root.classList.toggle('dark', theme === 'dark')")
+    expect(bridge).toContain('root.style.colorScheme = theme')
   })
 })
 

@@ -80,8 +80,10 @@ const READY_TIMEOUT_MS = 15_000
 const NOOP = (): void => undefined
 
 export type PreviewUiKit = 'none' | 'shadcn'
+export type PreviewTarget = 'react' | 'vue'
 
 export interface PreviewCompileSettings {
+  target?: Ref<PreviewTarget>
   uiKit: Ref<PreviewUiKit>
   i18nEnabled: Ref<boolean>
   localesInput: Ref<string>
@@ -95,14 +97,22 @@ export function parsePreviewLocales(raw: string): string[] {
     .filter((s) => s !== '')
 }
 
-function previewCompilerOverrides(settings?: PreviewCompileSettings): Partial<CompilerOptions> {
+export function previewCompilerOverrides(
+  settings?: PreviewCompileSettings,
+  pageCount = 1
+): Partial<CompilerOptions> {
   if (!settings) return {}
+  const target = settings.target?.value ?? 'react'
   const locales = parsePreviewLocales(settings.localesInput.value)
   return {
-    ...(settings.uiKit.value === 'shadcn' ? { uiKit: 'shadcn' as const } : {}),
-    ...(settings.i18nEnabled.value
+    target,
+    router: pageCount > 1 ? (target === 'vue' ? 'vue-router-v4' : 'react-router-v6') : 'none',
+    ...(target === 'react' && settings.uiKit.value === 'shadcn'
+      ? { uiKit: 'shadcn' as const }
+      : {}),
+    ...(target === 'react' && settings.i18nEnabled.value
       ? { i18n: true, ...(locales.length > 0 ? { locales } : {}) }
-      : {})
+      : { i18n: false })
   }
 }
 
@@ -112,11 +122,15 @@ interface PreviewSidecar {
   dispose(): Promise<void>
 }
 
-async function startPreviewSidecar(): Promise<PreviewSidecar> {
+export function previewSidecarCommandArgs(projectRoot: string, target: PreviewTarget): string[] {
+  return [SIDECAR_ENTRY, '--root', projectRoot, '--target', target]
+}
+
+async function startPreviewSidecar(target: PreviewTarget): Promise<PreviewSidecar> {
   const { Command } = await import('@tauri-apps/plugin-shell')
   // PROJECT_ROOT is injected by Vite via `define` (see vite.config.ts).
   const projectRoot: string = __OPENPENCIL_PROJECT_ROOT__
-  const command = Command.create(SIDECAR_NAME, [SIDECAR_ENTRY, '--root', projectRoot], {
+  const command = Command.create(SIDECAR_NAME, previewSidecarCommandArgs(projectRoot, target), {
     cwd: projectRoot
   })
 
@@ -305,6 +319,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   const store = useEditorStore()
   let sidecar: PreviewSidecar | null = null
   let cancelled = false
+  let sidecarGeneration = 0
 
   async function compileAndPush(request: PreviewCompileRun) {
     const activeSidecar = sidecar
@@ -335,7 +350,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         fontManifest,
         options: withDefaults({
           packageName: 'openpencil-preview',
-          ...previewCompilerOverrides(settings)
+          ...previewCompilerOverrides(settings, pageIds.length)
         })
       })
       // `compile` is synchronous. Re-check the scheduler revision before the
@@ -373,11 +388,17 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     }
   })
 
-  status.value = { kind: 'starting' }
-  async function launchPreviewSidecar(): Promise<void> {
+  async function launchPreviewSidecar(target: PreviewTarget): Promise<void> {
+    const generation = ++sidecarGeneration
+    const launchIsStale = (): boolean => cancelled || generation !== sidecarGeneration
+    status.value = { kind: 'starting' }
+    const previous = sidecar
+    sidecar = null
+    if (previous) await previous.dispose()
+    if (launchIsStale()) return
     try {
-      const handle = await startPreviewSidecar()
-      if (cancelled) {
+      const handle = await startPreviewSidecar(target)
+      if (launchIsStale()) {
         await handle.dispose()
       } else {
         sidecar = handle
@@ -385,11 +406,12 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
         scheduler.requestInitial()
       }
     } catch (e: unknown) {
+      if (launchIsStale()) return
       const message = e instanceof Error ? e.message : String(e)
       status.value = { kind: 'error', message }
     }
   }
-  void launchPreviewSidecar()
+  void launchPreviewSidecar(settings?.target?.value ?? 'react')
 
   const stopSceneWatch = watch(
     () => [store.state.sceneVersion, importedFontRevision.value] as const,
@@ -400,6 +422,15 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
   )
   const stopPolicyWatch = settings?.refreshPolicy
     ? watch(settings.refreshPolicy, (policy) => scheduler.setPolicy(policy))
+    : NOOP
+  const stopTargetWatch = settings?.target
+    ? watch(settings.target, (target) => {
+        compileWarnings.value = []
+        compileError.value = null
+        motionWarnings.value = []
+        motionCompileError.value = null
+        void launchPreviewSidecar(target)
+      })
     : NOOP
 
   // §7 decision #4: switching `currentPageId` no longer rebuilds the
@@ -412,6 +443,7 @@ export function useCompileOnChange(settings?: PreviewCompileSettings): UseCompil
     cancelled = true
     stopSceneWatch()
     stopPolicyWatch()
+    stopTargetWatch()
     scheduler.dispose()
     if (sidecar) {
       void sidecar.dispose()

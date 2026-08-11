@@ -160,6 +160,18 @@ describe('collectTree — LIST directive (Phase 2 §9)', () => {
       expect.arrayContaining(['list-invalid-item-name', 'list-invalid-index-name'])
     )
 
+    const functionalPreviousCollision = makeListGraph({ itemName: 'prev', indexName: 'i' })
+    const functionalPreviousIr = collectTree(
+      functionalPreviousCollision.graph,
+      functionalPreviousCollision.pageId
+    )
+    const functionalPreviousDirective = (functionalPreviousIr.children[0] as IRElement)
+      .children[0] as IRList
+    expect(functionalPreviousDirective.itemName).toBe('item')
+    expect(functionalPreviousIr.warnings.map(({ code }) => code)).toContain(
+      'list-invalid-item-name'
+    )
+
     const duplicate = makeListGraph({ itemName: 'row', indexName: 'row' })
     const duplicateIr = collectTree(duplicate.graph, duplicate.pageId)
     const duplicateDirective = (duplicateIr.children[0] as IRElement).children[0] as IRList

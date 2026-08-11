@@ -39,7 +39,12 @@ export type {
   CompilerOutput,
   UiKitName
 } from './types'
-export { resolveCompilerWebFonts } from './resolve-fonts'
+export {
+  resolveCompilerLocalFonts,
+  resolveCompilerWebFonts,
+  type ResolveCompilerLocalFontsInput,
+  type ResolveCompilerWebFontsInput
+} from './resolve-fonts'
 export { dartPackageName as safeFlutterPackageName } from './adapters/flutter/names'
 export {
   createPreviewFileDecodeCache,
@@ -82,8 +87,8 @@ const DEFAULT_OPTIONS: CompilerOptions = {
 }
 
 /**
- * Compile SceneGraph pages into a target project. React emits a Vite web app;
- * Expo emits a source-only native static MVP. Reserved targets fail closed.
+ * Compile SceneGraph pages into a target project. React and Vue emit Vite web
+ * apps; Expo and Flutter emit source-only native static MVPs.
  */
 export function compile(input: CompilerInput): CompilerOutput {
   if (input.pageIds.length === 0) {

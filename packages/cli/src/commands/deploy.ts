@@ -13,6 +13,7 @@ import {
 } from '@open-pencil/core/lowcode-deployment'
 
 import { loadAndCompile, resolveBuildEnv } from '#cli/codegen'
+import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
 import { bold, dim, ok, printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 import {
@@ -38,6 +39,7 @@ interface DeployArgs {
   locale?: string | string[]
   'source-locale'?: string
   json?: boolean
+  target?: string
 }
 
 const PROVIDERS = ['netlify', 'vercel', 'cloudflare'] as const
@@ -126,10 +128,10 @@ export default defineCommand({
     },
     page: {
       type: 'string',
-      description:
-        'Restrict to a single page by name. Default: all pages (multi-page uses react-router-dom).',
+      description: 'Restrict to one page. Default: all pages (multi-page uses the target router).',
       required: false
     },
+    ...codegenTargetArgs,
     base: {
       type: 'string',
       description: 'Public base path for assets (default: /).',
@@ -160,6 +162,7 @@ export default defineCommand({
   async run({ args }) {
     const { file, page, base } = args as DeployArgs
     const uiKit = resolveUiKitFlag(args as DeployArgs)
+    const target = resolveCodegenTarget(args as DeployArgs)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as DeployArgs)
     let provider: DeployProvider
     try {
@@ -195,7 +198,8 @@ export default defineCommand({
         uiKit,
         i18n,
         locales,
-        sourceLocale
+        sourceLocale,
+        target
       })
 
       let env: ReturnType<typeof resolveBuildEnv>
@@ -215,7 +219,8 @@ export default defineCommand({
         files: compiled.files,
         outDir: buildDir,
         base,
-        env
+        env,
+        target
       })
       // `openpencil-server/` is an operator-owned Edge Function bundle. Static
       // providers receive browser assets only; this command never deploys the
@@ -246,7 +251,7 @@ export default defineCommand({
       }
 
       if (args.json) {
-        console.log(JSON.stringify({ ...result, environment, serverDeployment }, null, 2))
+        console.log(JSON.stringify({ ...result, environment, target, serverDeployment }, null, 2))
         return
       }
 

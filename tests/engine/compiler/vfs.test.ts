@@ -49,7 +49,8 @@ describe('lookupFile (Phase 3 §5)', () => {
     ['src/App.tsx', 'export default () => null'],
     ['src/index.css', '@import "tailwindcss";'],
     ['src/util.ts', 'export const x = 1'],
-    ['src/pages/index.tsx', 'export default () => null']
+    ['src/pages/index.tsx', 'export default () => null'],
+    ['src/VuePage.vue', '<template><p>Vue</p></template>']
   ])
 
   test('exact key hits without extension probing', () => {
@@ -62,6 +63,10 @@ describe('lookupFile (Phase 3 §5)', () => {
 
   test('extensionless stem resolves .ts', () => {
     expect(lookupFile(files, 'src/util')).toBe('src/util.ts')
+  })
+
+  test('extensionless stem resolves Vue SFCs', () => {
+    expect(lookupFile(files, 'src/VuePage')).toBe('src/VuePage.vue')
   })
 
   test('extensionless stem resolves .css', () => {
@@ -125,5 +130,26 @@ describe('inMemoryVFS @/ alias (Phase 3 §15)', () => {
 
   test('an unknown @/ path returns null (no phantom module)', () => {
     expect(resolveId('@/components/ui/missing')).toBeNull()
+  })
+})
+
+describe('inMemoryVFS Vue and binary modules', () => {
+  const PREFIX = '/scan-root/'
+  const files: PreviewFiles = new Map([
+    ['src/App.vue', '<template><p>Vue</p></template>'],
+    ['src/assets/pixel.png', new Uint8Array([1, 2, 3])]
+  ])
+  const plugin = inMemoryVFS({ files }, PREFIX)
+  const load = plugin.load as (id: string) => string | null
+
+  test('leaves plugin-vue SFC submodules to plugin-vue', () => {
+    expect(load(PREFIX + 'src/App.vue')).toContain('<template>')
+    expect(load(PREFIX + 'src/App.vue?vue&type=template&lang.js')).toBeNull()
+  })
+
+  test('turns imported VFS binaries into stable base-aware URL modules', () => {
+    expect(load(PREFIX + 'src/assets/pixel.png')).toBe(
+      'export default import.meta.env.BASE_URL + "assets/pixel.png"\n'
+    )
   })
 })

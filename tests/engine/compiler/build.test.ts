@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test } from 'bun:test'
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -7,6 +15,8 @@ import process from 'node:process'
 import {
   buildPreviewProject,
   createSupabaseBuildDefines,
+  assertSafeBuildOutputDirectory,
+  OPENPENCIL_BUILD_OUTPUT_MANIFEST,
   type PreviewFiles
 } from '@open-pencil/compiler/build'
 
@@ -55,11 +65,93 @@ const fixture: PreviewFiles = new Map([
 
 const outDir = mkdtempSync(join(tmpdir(), 'op-build-'))
 
+const vueFixture: PreviewFiles = new Map([
+  [
+    'index.html',
+    '<!doctype html><html><body><div id="app"></div>' +
+      '<script type="module" src="/src/main.ts"></script></body></html>'
+  ],
+  [
+    'src/main.ts',
+    "import { createApp } from 'vue'\n" +
+      "import App from './App.vue'\n" +
+      "import './index.css'\n" +
+      "createApp(App).mount('#app')\n"
+  ],
+  [
+    'src/App.vue',
+    '<script setup lang="ts">\n' +
+      "import imageUrl from './assets/vue-vfs.png'\n" +
+      "const message: string = 'Vue VFS build'\n" +
+      '</script>\n' +
+      '<template><main class="p-4"><p>{{ message }}</p><img :src="imageUrl" /></main></template>\n'
+  ],
+  ['src/index.css', '@import "tailwindcss";\n@source inline("p-4");\n'],
+  ['src/assets/vue-vfs.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4])]
+])
+
 afterAll(() => {
   rmSync(outDir, { recursive: true, force: true })
 })
 
 describe('buildPreviewProject (Phase 3 §5)', () => {
+  test('refuses to empty unowned output directories or managed directories with extra files', () => {
+    const unowned = mkdtempSync(join(tmpdir(), 'op-build-unowned-'))
+    const managed = mkdtempSync(join(tmpdir(), 'op-build-managed-'))
+    try {
+      writeFileSync(join(unowned, 'DO-NOT-DELETE.txt'), 'user data')
+      expect(() => assertSafeBuildOutputDirectory(unowned)).toThrow(
+        'Refusing to empty non-OpenPencil build directory'
+      )
+
+      writeFileSync(join(managed, 'index.html'), '<!doctype html>')
+      writeFileSync(
+        join(managed, OPENPENCIL_BUILD_OUTPUT_MANIFEST),
+        JSON.stringify({ version: 1, files: ['index.html'] })
+      )
+      expect(() => assertSafeBuildOutputDirectory(managed)).not.toThrow()
+      writeFileSync(join(managed, 'DO-NOT-DELETE.txt'), 'user data')
+      expect(() => assertSafeBuildOutputDirectory(managed)).toThrow('files not owned')
+    } finally {
+      rmSync(unowned, { recursive: true, force: true })
+      rmSync(managed, { recursive: true, force: true })
+    }
+  })
+
+  test('rejects output and marker symlinks or malformed ownership markers', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'op-build-symlink-'))
+    const realOutput = join(sandbox, 'real-output')
+    const outputLink = join(sandbox, 'output-link')
+    const markerLinkOutput = join(sandbox, 'marker-link-output')
+    const externalMarker = join(sandbox, 'external-marker.json')
+    const malformedOutput = join(sandbox, 'malformed-output')
+    try {
+      mkdirSync(realOutput)
+      symlinkSync(realOutput, outputLink, 'dir')
+      expect(() => assertSafeBuildOutputDirectory(outputLink)).toThrow(
+        'Build output must be a real directory'
+      )
+
+      mkdirSync(markerLinkOutput)
+      writeFileSync(externalMarker, JSON.stringify({ version: 1, files: [] }))
+      symlinkSync(externalMarker, join(markerLinkOutput, OPENPENCIL_BUILD_OUTPUT_MANIFEST))
+      expect(() => assertSafeBuildOutputDirectory(markerLinkOutput)).toThrow(
+        'Refusing untrusted OpenPencil build marker'
+      )
+
+      mkdirSync(malformedOutput)
+      writeFileSync(
+        join(malformedOutput, OPENPENCIL_BUILD_OUTPUT_MANIFEST),
+        JSON.stringify({ version: 2, files: [] })
+      )
+      expect(() => assertSafeBuildOutputDirectory(malformedOutput)).toThrow(
+        'Refusing invalid OpenPencil build marker'
+      )
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true })
+    }
+  })
+
   test('pins all Supabase Vite defines instead of inheriting ambient build values', () => {
     expect(createSupabaseBuildDefines(undefined)).toEqual({
       'import.meta.env.VITE_SUPABASE_URL': 'undefined',
@@ -84,6 +176,7 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
 
     expect(result.outDir).toBe(outDir)
     expect(result.files).toContain('index.html')
+    expect(result.files).not.toContain(OPENPENCIL_BUILD_OUTPUT_MANIFEST)
 
     const js = result.files.filter((f) => f.startsWith('assets/') && f.endsWith('.js'))
     const css = result.files.filter((f) => f.startsWith('assets/') && f.endsWith('.css'))
@@ -101,6 +194,38 @@ describe('buildPreviewProject (Phase 3 §5)', () => {
     )
     // Hashed filenames so the bundle is CDN cacheable.
     expect(js[0]).toMatch(/assets\/index-[\w-]+\.js$/)
+
+    const repeated = await buildPreviewProject({ files: fixture, outDir })
+    expect(repeated.files).toContain('index.html')
+    expect(readFileSync(join(outDir, OPENPENCIL_BUILD_OUTPUT_MANIFEST), 'utf8')).toContain(
+      '"version": 1'
+    )
+  }, 30_000)
+
+  test('selects plugin-vue and preserves imported binary assets for a Vue VFS build', async () => {
+    const vueOutDir = mkdtempSync(join(tmpdir(), 'op-build-vue-'))
+    try {
+      const result = await buildPreviewProject({
+        files: vueFixture,
+        outDir: vueOutDir,
+        base: '/nested/',
+        target: 'vue'
+      })
+      expect(result.files).toContain('index.html')
+      expect(result.files).toContain('assets/vue-vfs.png')
+      const javascript = result.files.find(
+        (path) => path.startsWith('assets/') && path.endsWith('.js')
+      )
+      expect(javascript).toBeDefined()
+      const bundle = javascript ? readFileSync(join(vueOutDir, javascript), 'utf8') : ''
+      expect(bundle).toContain('Vue VFS build')
+      expect(bundle).toContain('/nested/assets/vue-vfs.png')
+      expect(readFileSync(join(vueOutDir, 'assets/vue-vfs.png'))).toEqual(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4])
+      )
+    } finally {
+      rmSync(vueOutDir, { recursive: true, force: true })
+    }
   }, 30_000)
 
   test('delivers server artifacts separately and excludes them from static deploy files', async () => {

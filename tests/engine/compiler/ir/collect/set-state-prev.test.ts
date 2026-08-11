@@ -78,6 +78,24 @@ describe('resolveSetState — $prev functional updater (Phase 2 §2)', () => {
     expect(handler.references).toEqual(['step'])
   })
 
+  test('$prev mixed with an in-scope prev identifier is dropped as ambiguous', () => {
+    const { graph, pageId } = makeButton(
+      [
+        { id: 's1', name: 'count', type: 'number', defaultValue: 0 },
+        { id: 's2', name: 'prev', type: 'number', defaultValue: 10 }
+      ],
+      '$prev + prev'
+    )
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    if (button.kind !== 'element') throw new Error('expected element')
+
+    expect(button.events?.onClick).toBeUndefined()
+    expect(ir.warnings).toContainEqual(
+      expect.objectContaining({ code: 'action-functional-prev-ambiguous' })
+    )
+  })
+
   test('$prev in plain ident position (`$prev`) is the simplest functional form', () => {
     const { graph, pageId } = makeButton(
       [{ id: 's1', name: 'flag', type: 'boolean', defaultValue: false }],
@@ -94,5 +112,43 @@ describe('resolveSetState — $prev functional updater (Phase 2 §2)', () => {
       op: '!',
       arg: { kind: 'ident', name: 'prev' }
     })
+  })
+
+  test('registers document-state reads used by a setState expression', () => {
+    const { graph, pageId } = makeButton(
+      [{ id: 'items', name: 'items', type: 'array', defaultValue: [] }],
+      'incoming'
+    )
+    graph.updateNode(graph.rootId, {
+      lowcodeDocumentState: [
+        { id: 'incoming', name: 'incoming', type: 'array', defaultValue: ['ready'] }
+      ]
+    })
+
+    const ir = collectTree(graph, pageId)
+
+    expect(ir.docStateReads).toContain('incoming')
+    const button = ir.children[0]
+    if (button.kind !== 'element') throw new Error('expected element')
+    expect(button.events?.onClick?.[0]).toMatchObject({
+      kind: 'setState',
+      references: ['incoming']
+    })
+  })
+
+  test('drops a setState expression with an unknown identifier', () => {
+    const { graph, pageId } = makeButton(
+      [{ id: 'count', name: 'count', type: 'number', defaultValue: 0 }],
+      'missing + 1'
+    )
+
+    const ir = collectTree(graph, pageId)
+    const button = ir.children[0]
+    if (button.kind !== 'element') throw new Error('expected element')
+
+    expect(button.events?.onClick).toBeUndefined()
+    expect(ir.warnings).toContainEqual(
+      expect.objectContaining({ code: 'action-setstate-unknown-identifier' })
+    )
   })
 })

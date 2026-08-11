@@ -75,6 +75,7 @@
     "@open-pencil/scene-graph": "workspace:*",
     "@tailwindcss/vite": "^4.2.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-vue": "^6.0.5",
     "vite": "^8.0.0"
   },
   "devDependencies": {

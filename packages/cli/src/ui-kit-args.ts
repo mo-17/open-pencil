@@ -15,7 +15,7 @@ export const uiKitArgs: ArgsDef = {
   'ui-kit': {
     type: 'string',
     description:
-      'Emit interactive nodes with a code UI kit instead of hand-rolled Tailwind (supported: shadcn).',
+      'Emit React interactive nodes with a code UI kit (supported: shadcn; unavailable for Vue v1).',
     required: false
   }
 }

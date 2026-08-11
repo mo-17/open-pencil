@@ -6,6 +6,7 @@ import { buildPreviewProject } from '@open-pencil/compiler/build'
 import type { BuildResult } from '@open-pencil/compiler/build'
 
 import { loadAndCompile, reportCodegenResult, resolveBuildEnv } from '#cli/codegen'
+import { codegenTargetArgs, resolveCodegenTarget } from '#cli/codegen-target'
 import { printError } from '#cli/format'
 import { i18nArgs, resolveI18nFlags } from '#cli/i18n-args'
 import {
@@ -28,11 +29,12 @@ interface BuildArgs {
   'source-locale'?: string
   'ui-kit'?: string
   json?: boolean
+  target?: string
 }
 
 export default defineCommand({
   meta: {
-    description: 'Build a .pen document into a deployable static SPA bundle (Vite + React)'
+    description: 'Build a .pen document into a deployable Vite + React or Vue 3 static SPA bundle'
   },
   args: {
     file: {
@@ -54,9 +56,10 @@ export default defineCommand({
     page: {
       type: 'string',
       description:
-        'Restrict output to a single page by name. Default: all pages built (multi-page projects use react-router-dom — host with an SPA fallback).',
+        'Restrict output to one page. Default: all pages (multi-page output uses the target router and needs an SPA fallback).',
       required: false
     },
+    ...codegenTargetArgs,
     base: {
       type: 'string',
       description: 'Public base path for assets (default: /). Set e.g. /app/ for sub-path hosting.',
@@ -89,6 +92,7 @@ export default defineCommand({
     const outDir = resolve(out)
     const { i18n, locales, sourceLocale } = resolveI18nFlags(args as BuildArgs)
     const uiKit = resolveUiKitFlag(args as BuildArgs)
+    const target = resolveCodegenTarget(args as BuildArgs)
 
     const { compiled, packageName } = await loadAndCompile({
       file,
@@ -99,7 +103,8 @@ export default defineCommand({
       i18n,
       locales,
       sourceLocale,
-      uiKit
+      uiKit,
+      target
     })
 
     let env: ReturnType<typeof resolveBuildEnv>
@@ -116,7 +121,7 @@ export default defineCommand({
 
     let result: BuildResult
     try {
-      result = await buildPreviewProject({ files: compiled.files, outDir, base, env })
+      result = await buildPreviewProject({ files: compiled.files, outDir, base, env, target })
     } catch (e) {
       // Surface the Vite/build failure rather than swallowing it (经验 C).
       printError(e)
@@ -134,7 +139,8 @@ export default defineCommand({
       nextLine: serverNotice
         ? `Done. Deploy the browser files in ${outDir} to any static host ` +
           '(exclude openpencil-server/; multi-page apps need an SPA fallback to index.html).'
-        : `Done. Deploy ${outDir} to any static host (multi-page apps need an SPA fallback to index.html).`
+        : `Done. Deploy ${outDir} to any static host (multi-page apps need an SPA fallback to index.html).`,
+      target
     })
 
     if (serverNotice && !args.json) printManualServerDeploymentNotice(serverNotice)
