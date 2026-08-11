@@ -17,6 +17,7 @@
   "exportExpoReactNativeProject": "Expo React Native プロジェクトを書き出す…",
   "exportFlutterProject": "Flutter プロジェクトを書き出す…",
   "exportNextJsProject": "Next.js プロジェクトを書き出す…",
+  "exportVueProject": "Vue プロジェクトを書き出す…",
   "exportCapacitorProject": "Capacitor プロジェクトを書き出す…",
   "exportElectronProject": "Electron プロジェクトを書き出す…",
   "autosave": "ファイルに自動保存",

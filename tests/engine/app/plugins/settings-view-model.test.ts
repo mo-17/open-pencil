@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   MARKETPLACE_SNAPSHOT_FORMAT,
   MARKETPLACE_SNAPSHOT_SCHEMA_VERSION,
+  MODAL_PLUGIN_ID,
   signMarketplaceSnapshot,
   verifyMarketplaceSnapshot,
   type MarketplaceSnapshotPayloadV1
@@ -236,6 +237,12 @@ describe('plugin settings marketplace view model', () => {
       name: '地图'
     })
     expect(localizedAppPluginText(PLUGIN_ID, 'en')).toBeUndefined()
+    expect(localizedAppPluginText(MODAL_PLUGIN_ID, 'zh-CN')).toMatchObject({
+      name: 'OpenPencil 模态弹窗'
+    })
+    expect(localizedAppPluginContributionText(MODAL_PLUGIN_ID, 'modal', 'zh-CN')).toMatchObject({
+      name: '模态弹窗'
+    })
     expect(filterPluginDiscoverCatalog(mapCatalog(), null, '可编辑地图')).toHaveLength(1)
     expect(localizedAppPluginText(SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID, 'zh-CN')).toMatchObject({
       name: 'Supabase 架构检查器'

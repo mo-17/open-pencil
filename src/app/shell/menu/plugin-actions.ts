@@ -23,7 +23,9 @@ import {
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
-  TAURI_REACT_EXPORTER_PLUGIN_ID
+  TAURI_REACT_EXPORTER_PLUGIN_ID,
+  VUE_EXPORTER,
+  VUE_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import { PLUGIN_MENU_ACTION_IDS } from '@/app/shell/menu/schema'
 import { toast } from '@/app/shell/ui'
@@ -177,6 +179,19 @@ export async function executeNextJsPluginMenuExporter(
   )
 }
 
+export async function executeVuePluginMenuExporter(
+  editor: EditorStore,
+  dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
+): Promise<AppPluginHostExecutionResult> {
+  return executePluginMenuExporter(
+    editor,
+    VUE_EXPORTER_PLUGIN_ID,
+    VUE_EXPORTER.exporterId,
+    'Vue Exporter',
+    dependencies
+  )
+}
+
 export async function executeCapacitorPluginMenuExporter(
   editor: EditorStore,
   dependencies: PluginMenuExecutionDependencies = DEFAULT_EXECUTION
@@ -258,6 +273,12 @@ export function createPluginMenuActions(
     [PLUGIN_MENU_ACTION_IDS.exportNextJs]: () =>
       reportPluginMenuResult(
         executeNextJsPluginMenuExporter(editor, execution),
+        notifications,
+        formatError
+      ),
+    [PLUGIN_MENU_ACTION_IDS.exportVue]: () =>
+      reportPluginMenuResult(
+        executeVuePluginMenuExporter(editor, execution),
         notifications,
         formatError
       ),

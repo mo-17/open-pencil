@@ -16,6 +16,7 @@ export { createBundledPluginCatalog } from './catalog'
 export {
   appConnectorAudit,
   appConnectorAuthorization,
+  appConnectorCredentialReadiness,
   appConnectorExecutionBroker,
   appConnectorHostAdapters,
   appConnectorOutcomeUnknownNotices
@@ -24,9 +25,12 @@ export * from './connectors/airtable-records'
 export * from './connectors/audit'
 export * from './connectors/authorization'
 export * from './connectors/broker'
+export * from './connectors/credential-readiness'
 export * from './connectors/outcome-notices'
 export * from './connectors/registry'
+export * from './connectors/reviewed-rest'
 export * from './connectors/resend-email'
+export * from './connectors/services'
 export * from './connectors/stripe-billing'
 export * from './connectors/supabase-business'
 export * from './connectors/supabase-schema-inspector'
@@ -74,6 +78,7 @@ export {
   resolveTrustedPluginExporterExecutor,
   runInstalledPluginCommand,
   runInstalledPluginExporter,
+  supportsPluginExporterCancellation,
   type AppPluginHostContributionCompatibility,
   type AppPluginHostContributionCompatibilityFailure,
   type AppPluginHostContributionCompatibilityStatus,

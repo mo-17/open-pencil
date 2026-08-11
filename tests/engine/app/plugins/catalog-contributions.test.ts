@@ -12,11 +12,17 @@ import {
   CODE_BLOCK_PLUGIN_ID,
   DATA_GRID_MODULE_TYPE,
   DATA_GRID_PLUGIN_ID,
+  DROPDOWN_MENU_MODULE_TYPE,
+  DROPDOWN_MENU_PLUGIN_ID,
   HTML_MODULE_TYPE,
   HTML_PLUGIN_ID,
   MAP_PLUGIN_ID,
   MARKDOWN_MODULE_TYPE,
   MARKDOWN_PLUGIN_ID,
+  MODAL_MODULE_CONFIG_VERSION,
+  MODAL_MODULE_DEFAULT_CONFIG,
+  MODAL_MODULE_TYPE,
+  MODAL_PLUGIN_ID,
   LOTTIE_MODULE_TYPE,
   LOTTIE_PLUGIN_ID,
   PDF_VIEWER_MODULE_TYPE,
@@ -24,12 +30,15 @@ import {
   QR_BARCODE_MODULE_TYPE,
   QR_BARCODE_PLUGIN_ID,
   RICH_TEXT_PLUGIN_ID,
+  SLIDE_MENU_MODULE_CONFIG_VERSION,
+  SLIDE_MENU_MODULE_DEFAULT_CONFIG,
   SLIDE_MENU_MODULE_TYPE,
   SLIDE_MENU_PLUGIN_ID,
   TABLE_MODULE_TYPE,
   TABLE_PLUGIN_ID,
   TABS_MODULE_TYPE,
   TABS_PLUGIN_ID,
+  UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID
 } from '@open-pencil/core/plugins'
@@ -46,6 +55,7 @@ import {
   createAppPluginStore,
   createBundledPluginCatalog,
   createMemoryAppPluginStateStorage,
+  REVIEWED_EXTERNAL_SERVICE_CATALOG,
   RESEND_EMAIL_CONNECTOR_CONTRACT,
   RESEND_EMAIL_CONNECTOR_ID,
   RESEND_EMAIL_PLUGIN_ID,
@@ -59,6 +69,8 @@ import {
   SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
   SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID
 } from '@/app/plugins'
+import { APPLICATION_SECURITY_READINESS_PLUGIN_ID } from '@/app/plugins/host/application-security-readiness'
+import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
@@ -83,7 +95,9 @@ import {
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
-  TAURI_REACT_EXPORTER_PLUGIN_ID
+  TAURI_REACT_EXPORTER_PLUGIN_ID,
+  VUE_EXPORTER,
+  VUE_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 
 const ENGINE_VERSION = '0.13.2'
@@ -97,7 +111,7 @@ function bundledManifest(pluginId: string) {
 }
 
 describe('bundled plugin catalog contributions', () => {
-  test('publishes the thirty-four reviewed built-in plugin identities', () => {
+  test('publishes the fifty-eight reviewed built-in plugin identities', () => {
     const catalog = createBundledPluginCatalog()
     const ids = catalog.map((entry) => entry.manifest.plugin.id)
 
@@ -109,6 +123,9 @@ describe('bundled plugin catalog contributions', () => {
       VIDEO_PLUGIN_ID,
       TABLE_PLUGIN_ID,
       SLIDE_MENU_PLUGIN_ID,
+      DROPDOWN_MENU_PLUGIN_ID,
+      UPLOAD_BUTTON_PLUGIN_ID,
+      MODAL_PLUGIN_ID,
       LOTTIE_PLUGIN_ID,
       CAROUSEL_PLUGIN_ID,
       DATA_GRID_PLUGIN_ID,
@@ -125,16 +142,22 @@ describe('bundled plugin catalog contributions', () => {
       FLUTTER_EXPORTER_PLUGIN_ID,
       ACCESSIBILITY_AUDIT_PLUGIN_ID,
       DESIGN_SYSTEM_AUDIT_PLUGIN_ID,
+      APPLICATION_SECURITY_READINESS_PLUGIN_ID,
       DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
       FIGMA_PROJECTION_EXPORTER_PLUGIN_ID,
       NEXTJS_EXPORTER_PLUGIN_ID,
       CAPACITOR_EXPORTER_PLUGIN_ID,
       ELECTRON_EXPORTER_PLUGIN_ID,
+      VUE_EXPORTER_PLUGIN_ID,
       SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID,
       AIRTABLE_RECORDS_PLUGIN_ID,
       SUPABASE_BUSINESS_PLUGIN_ID,
       STRIPE_BILLING_PLUGIN_ID,
       RESEND_EMAIL_PLUGIN_ID,
+      ...REVIEWED_EXTERNAL_SERVICE_CATALOG.map(
+        (descriptor) => descriptor.connector.contract.pluginId
+      ),
+      ...REVIEWED_DEPLOYMENT_PLUGINS.map((definition) => definition.pluginId),
       GOOGLE_DRIVE_STORAGE_PLUGIN_ID
     ])
     expect(
@@ -150,7 +173,20 @@ describe('bundled plugin catalog contributions', () => {
             : 0),
         0
       )
-    ).toBe(37)
+    ).toBe(61)
+    for (const descriptor of REVIEWED_EXTERNAL_SERVICE_CATALOG) {
+      const entry = catalog.find(
+        (candidate) => candidate.manifest.plugin.id === descriptor.connector.contract.pluginId
+      )
+      expect(entry).toMatchObject({
+        trustSource: 'app-bundle',
+        installedByDefault: false,
+        enabledByDefault: false,
+        manifest: {
+          contributions: { connectors: [descriptor.connector.contract] }
+        }
+      })
+    }
     expect(
       catalog.find((entry) => entry.manifest.plugin.id === GOOGLE_DRIVE_STORAGE_PLUGIN_ID)
     ).toMatchObject({ installedByDefault: true, enabledByDefault: true })
@@ -196,6 +232,16 @@ describe('bundled plugin catalog contributions', () => {
         pluginId: SLIDE_MENU_PLUGIN_ID,
         moduleType: SLIDE_MENU_MODULE_TYPE,
         adapterId: 'open-pencil.slide-menu'
+      },
+      {
+        pluginId: DROPDOWN_MENU_PLUGIN_ID,
+        moduleType: DROPDOWN_MENU_MODULE_TYPE,
+        adapterId: 'open-pencil.dropdown-menu'
+      },
+      {
+        pluginId: MODAL_PLUGIN_ID,
+        moduleType: MODAL_MODULE_TYPE,
+        adapterId: 'open-pencil.modal'
       },
       {
         pluginId: LOTTIE_PLUGIN_ID,
@@ -270,6 +316,37 @@ describe('bundled plugin catalog contributions', () => {
     }
   })
 
+  test('publishes the current Slide Menu config and independent trigger fields', () => {
+    const slideMenu = bundledManifest(SLIDE_MENU_PLUGIN_ID).contributions.modules[0]
+    if (!slideMenu) throw new Error('Expected bundled Slide Menu contribution')
+
+    expect(slideMenu.configVersion).toBe(SLIDE_MENU_MODULE_CONFIG_VERSION)
+    expect(slideMenu.defaultConfig).toEqual(SLIDE_MENU_MODULE_DEFAULT_CONFIG)
+    expect(
+      slideMenu.fields.filter(({ path }) =>
+        path.some((segment) => segment === 'showTriggerIcon' || segment === 'showTriggerLabel')
+      )
+    ).toEqual([
+      { path: ['showTriggerIcon'], kind: 'boolean', label: 'Show trigger icon' },
+      { path: ['showTriggerLabel'], kind: 'boolean', label: 'Show trigger label' }
+    ])
+  })
+
+  test('publishes the bounded opt-in Modal config and reviewed adapter', () => {
+    const modal = bundledManifest(MODAL_PLUGIN_ID).contributions.modules[0]
+    if (!modal) throw new Error('Expected bundled Modal contribution')
+
+    expect(modal).toMatchObject({
+      moduleType: MODAL_MODULE_TYPE,
+      adapterId: 'open-pencil.modal',
+      configVersion: MODAL_MODULE_CONFIG_VERSION,
+      defaultConfig: MODAL_MODULE_DEFAULT_CONFIG
+    })
+    expect(
+      modal.fields.find(({ path }) => path.length === 1 && path[0] === 'content')
+    ).toMatchObject({ kind: 'text', label: 'Content' })
+  })
+
   test('declares the clipboard commands and project exporters without executable modules', () => {
     const clipboard = bundledManifest(CLIPBOARD_TOOLKIT_PLUGIN_ID)
     const tauriExporter = bundledManifest(TAURI_REACT_EXPORTER_PLUGIN_ID)
@@ -282,6 +359,7 @@ describe('bundled plugin catalog contributions', () => {
     const nextJsExporter = bundledManifest(NEXTJS_EXPORTER_PLUGIN_ID)
     const capacitorExporter = bundledManifest(CAPACITOR_EXPORTER_PLUGIN_ID)
     const electronExporter = bundledManifest(ELECTRON_EXPORTER_PLUGIN_ID)
+    const vueExporter = bundledManifest(VUE_EXPORTER_PLUGIN_ID)
     const supabaseSchema = bundledManifest(SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID)
     const airtableRecords = bundledManifest(AIRTABLE_RECORDS_PLUGIN_ID)
     const supabaseBusiness = bundledManifest(SUPABASE_BUSINESS_PLUGIN_ID)
@@ -365,7 +443,8 @@ describe('bundled plugin catalog contributions', () => {
     for (const [manifest, exporter] of [
       [nextJsExporter, NEXTJS_EXPORTER],
       [capacitorExporter, CAPACITOR_EXPORTER],
-      [electronExporter, ELECTRON_EXPORTER]
+      [electronExporter, ELECTRON_EXPORTER],
+      [vueExporter, VUE_EXPORTER]
     ] as const) {
       expect(manifest.contributions.modules).toEqual([])
       expect(manifest.contributions.commands).toBeUndefined()
@@ -482,6 +561,15 @@ describe('bundled plugin catalog contributions', () => {
       store.exporter(FLUTTER_EXPORTER_PLUGIN_ID, FLUTTER_EXPORTER.exporterId)?.contribution
     ).toMatchObject(FLUTTER_EXPORTER)
     await store.setEnabled(FLUTTER_EXPORTER_PLUGIN_ID, false)
+    expect(store.installedExporters()).toEqual([])
+
+    await store.install(VUE_EXPORTER_PLUGIN_ID)
+    expect(store.installedExporters()).toEqual([])
+    await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, true)
+    expect(
+      store.exporter(VUE_EXPORTER_PLUGIN_ID, VUE_EXPORTER.exporterId)?.contribution
+    ).toMatchObject(VUE_EXPORTER)
+    await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, false)
     expect(store.installedExporters()).toEqual([])
 
     await store.install(SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID)

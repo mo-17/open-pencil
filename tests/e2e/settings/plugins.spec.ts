@@ -11,6 +11,7 @@ const CHART_PLUGIN_ID = 'open-pencil.chart'
 const CHART_MODULE_TYPE = 'chart'
 const CLIPBOARD_PLUGIN_ID = 'open-pencil.clipboard-toolkit'
 const TAURI_EXPORTER_PLUGIN_ID = 'open-pencil.tauri-react-exporter'
+const VUE_EXPORTER_PLUGIN_ID = 'open-pencil.vue-exporter'
 
 interface StoredPluginState {
   schemaVersion: number
@@ -271,6 +272,7 @@ async function injectMarketplaceSnapshot(page: Page): Promise<void> {
 test('installs and manages offline plugins without changing existing canvas modules', async ({
   page
 }) => {
+  test.setTimeout(30_000)
   await page.goto('/?test')
   const canvas = new CanvasHelper(page)
   await canvas.waitForInit()
@@ -298,7 +300,7 @@ test('installs and manages offline plugins without changing existing canvas modu
 
   await selectPluginView(page, 'Browse')
   await page.getByTestId(`plugin-install-${CHART_PLUGIN_ID}`).click()
-  await expect(page.getByTestId(`plugin-install-${CHART_PLUGIN_ID}`)).toBeDisabled()
+  await expect(page.getByTestId(`plugin-installed-${CHART_PLUGIN_ID}`)).toBeVisible()
 
   await selectPluginView(page, 'Installed')
   const chartCard = page.getByTestId(`plugin-installed-${CHART_PLUGIN_ID}`)
@@ -355,15 +357,17 @@ test('exposes reviewed command and exporter actions only after enabling their pl
   await new CanvasHelper(page).waitForInit()
   await openPlugins(page)
 
-  for (const pluginId of [CLIPBOARD_PLUGIN_ID, TAURI_EXPORTER_PLUGIN_ID]) {
+  for (const pluginId of [CLIPBOARD_PLUGIN_ID, TAURI_EXPORTER_PLUGIN_ID, VUE_EXPORTER_PLUGIN_ID]) {
+    await selectPluginView(page, 'Browse')
     await expect(page.getByTestId(`plugin-catalog-${pluginId}`)).toBeVisible()
     await page.getByTestId(`plugin-install-${pluginId}`).click()
-    await expect(page.getByTestId(`plugin-install-${pluginId}`)).toBeDisabled()
+    await expect(page.getByTestId(`plugin-installed-${pluginId}`)).toBeVisible()
   }
 
   await selectPluginView(page, 'Installed')
   const clipboardSwitch = page.getByTestId(`plugin-enabled-${CLIPBOARD_PLUGIN_ID}`)
   const exporterSwitch = page.getByTestId(`plugin-enabled-${TAURI_EXPORTER_PLUGIN_ID}`)
+  const vueExporterSwitch = page.getByTestId(`plugin-enabled-${VUE_EXPORTER_PLUGIN_ID}`)
   const copyText = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-text`)
   const copySvg = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-svg`)
   const copyJsx = page.getByTestId(`plugin-command-${CLIPBOARD_PLUGIN_ID}-copy-as-jsx`)
@@ -371,18 +375,22 @@ test('exposes reviewed command and exporter actions only after enabling their pl
   const exportProject = page.getByTestId(
     `plugin-exporter-${TAURI_EXPORTER_PLUGIN_ID}-tauri-react-source`
   )
+  const exportVueProject = page.getByTestId(`plugin-exporter-${VUE_EXPORTER_PLUGIN_ID}-vue-source`)
 
   await expect(clipboardSwitch).not.toBeChecked()
   await expect(exporterSwitch).not.toBeChecked()
-  for (const action of [copyText, copySvg, copyJsx, copyPng, exportProject]) {
+  await expect(vueExporterSwitch).not.toBeChecked()
+  for (const action of [copyText, copySvg, copyJsx, copyPng, exportProject, exportVueProject]) {
     await expect(action).toBeDisabled()
   }
 
   await clipboardSwitch.click()
   await exporterSwitch.click()
+  await vueExporterSwitch.click()
   await expect(clipboardSwitch).toBeChecked()
   await expect(exporterSwitch).toBeChecked()
-  for (const action of [copyText, copySvg, copyJsx, copyPng, exportProject]) {
+  await expect(vueExporterSwitch).toBeChecked()
+  for (const action of [copyText, copySvg, copyJsx, copyPng, exportProject, exportVueProject]) {
     await expect(action).toBeEnabled()
   }
 })
@@ -705,7 +713,9 @@ test('blocks a pending update with a host-incompatible module contribution', asy
   await openPlugins(page)
   await selectPluginView(page, 'Installed')
   const compatibility = page.getByTestId(`plugin-update-compatibility-${MAP_PLUGIN_ID}`)
-  await expect(compatibility).toContainText('map: Config version is not supported by this app')
+  await expect(compatibility).toContainText(
+    'map: Plugin module config version 2 is incompatible with host version 1'
+  )
   await expect(page.getByTestId(`plugin-update-accept-${MAP_PLUGIN_ID}`)).toBeDisabled()
   canvas.assertNoErrors()
 })

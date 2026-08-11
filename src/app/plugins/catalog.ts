@@ -11,12 +11,16 @@ import {
   CODE_BLOCK_PLUGIN,
   DATA_GRID_MODULE_DEFINITION,
   DATA_GRID_PLUGIN,
+  DROPDOWN_MENU_MODULE_DEFINITION,
+  DROPDOWN_MENU_PLUGIN,
   HTML_MODULE_DEFINITION,
   HTML_PLUGIN,
   MAP_MODULE_DEFINITION,
   MAP_PLUGIN,
   MARKDOWN_MODULE_DEFINITION,
   MARKDOWN_PLUGIN,
+  MODAL_MODULE_DEFINITION,
+  MODAL_PLUGIN,
   LOTTIE_MODULE_DEFINITION,
   LOTTIE_PLUGIN,
   PDF_VIEWER_MODULE_DEFINITION,
@@ -31,6 +35,8 @@ import {
   TABLE_PLUGIN,
   TABS_MODULE_DEFINITION,
   TABS_PLUGIN,
+  UPLOAD_BUTTON_MODULE_DEFINITION,
+  UPLOAD_BUTTON_PLUGIN,
   VIDEO_MODULE_DEFINITION,
   VIDEO_PLUGIN,
   type DeclarativeCommandContributionV1,
@@ -58,6 +64,7 @@ import {
   AIRTABLE_RECORDS_PLUGIN_ID
 } from './connectors/airtable-records'
 import { RESEND_EMAIL_CONNECTOR_CONTRACT, RESEND_EMAIL_PLUGIN_ID } from './connectors/resend-email'
+import { REVIEWED_EXTERNAL_SERVICE_CATALOG } from './connectors/services'
 import {
   STRIPE_BILLING_CONNECTOR_CONTRACT,
   STRIPE_BILLING_PLUGIN_ID
@@ -70,6 +77,8 @@ import {
   SUPABASE_SCHEMA_INSPECTOR_CONTRACT,
   SUPABASE_SCHEMA_INSPECTOR_PLUGIN_ID
 } from './connectors/supabase-schema-inspector'
+import { APPLICATION_SECURITY_READINESS_HOST_CONTRACT } from './host/application-security-readiness'
+import { REVIEWED_DEPLOYMENT_PLUGINS } from './host/deployment/contract'
 import {
   ACCESSIBILITY_AUDIT_COMMAND,
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
@@ -94,7 +103,9 @@ import {
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
-  TAURI_REACT_EXPORTER_PLUGIN_ID
+  TAURI_REACT_EXPORTER_PLUGIN_ID,
+  VUE_EXPORTER,
+  VUE_EXPORTER_PLUGIN_ID
 } from './host/ids'
 import type { AppPluginCatalogEntry } from './types'
 
@@ -463,7 +474,7 @@ function flutterExporterManifest(): PluginManifestPayloadV1 {
   )
 }
 
-function additionalReactSourceExporterManifest(
+function additionalWebSourceExporterManifest(
   plugin: BundledPluginIdentity,
   exporter: DeclarativeExporterContributionV1
 ): PluginManifestPayloadV1 {
@@ -508,6 +519,26 @@ function designSystemAuditManifest(): PluginManifestPayloadV2 {
             'Inspect token, component-variant, spacing, and typography consistency with bounded static checks.',
           parameters: EMPTY_DATA_CONTRACT,
           result: DESIGN_SYSTEM_RESULT_CONTRACT
+        }
+      ]
+    }
+  )
+}
+
+function applicationSecurityReadinessManifest(): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: APPLICATION_SECURITY_READINESS_HOST_CONTRACT.pluginId,
+      name: 'Application Security Readiness',
+      version: '1.0.0'
+    },
+    {
+      commands: [
+        {
+          ...APPLICATION_SECURITY_READINESS_HOST_CONTRACT.command,
+          name: 'Run application security readiness audit',
+          description:
+            'Run a bounded, local, static production-readiness review without returning document content or secrets.'
         }
       ]
     }
@@ -587,6 +618,19 @@ function googleDriveStorageManifest(): PluginManifestPayloadV2 {
   )
 }
 
+function deploymentPlanManifest(
+  definition: (typeof REVIEWED_DEPLOYMENT_PLUGINS)[number]
+): PluginManifestPayloadV2 {
+  return bundledUtilityManifestV2(
+    {
+      id: definition.pluginId,
+      name: definition.name,
+      version: '1.0.0'
+    },
+    { commands: [definition.mcpSafePlan] }
+  )
+}
+
 export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
   return Object.freeze([
     {
@@ -626,6 +670,26 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
         SLIDE_MENU_MODULE_DEFINITION,
         'open-pencil.slide-menu'
       )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        DROPDOWN_MENU_PLUGIN,
+        DROPDOWN_MENU_MODULE_DEFINITION,
+        'open-pencil.dropdown-menu'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(
+        UPLOAD_BUTTON_PLUGIN,
+        UPLOAD_BUTTON_MODULE_DEFINITION,
+        'open-pencil.upload-button'
+      )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: bundledModuleManifest(MODAL_PLUGIN, MODAL_MODULE_DEFINITION, 'open-pencil.modal')
     },
     {
       trustSource: 'app-bundle',
@@ -725,6 +789,10 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
+      manifest: applicationSecurityReadinessManifest()
+    },
+    {
+      trustSource: 'app-bundle',
       manifest: designTokensExporterManifest()
     },
     {
@@ -733,7 +801,7 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
-      manifest: additionalReactSourceExporterManifest(
+      manifest: additionalWebSourceExporterManifest(
         { id: NEXTJS_EXPORTER_PLUGIN_ID, name: 'Next.js Exporter', version: '1.0.0' },
         {
           ...NEXTJS_EXPORTER,
@@ -744,7 +812,7 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
-      manifest: additionalReactSourceExporterManifest(
+      manifest: additionalWebSourceExporterManifest(
         { id: CAPACITOR_EXPORTER_PLUGIN_ID, name: 'Capacitor Exporter', version: '1.0.0' },
         {
           ...CAPACITOR_EXPORTER,
@@ -755,7 +823,7 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
     },
     {
       trustSource: 'app-bundle',
-      manifest: additionalReactSourceExporterManifest(
+      manifest: additionalWebSourceExporterManifest(
         { id: ELECTRON_EXPORTER_PLUGIN_ID, name: 'Electron Exporter', version: '1.0.0' },
         {
           ...ELECTRON_EXPORTER,
@@ -763,6 +831,19 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
           description: 'Package the current document as an Electron + React source project.'
         }
       )
+    },
+    {
+      trustSource: 'app-bundle',
+      manifest: additionalWebSourceExporterManifest(
+        { id: VUE_EXPORTER_PLUGIN_ID, name: 'Vue Exporter', version: '1.0.0' },
+        {
+          ...VUE_EXPORTER,
+          name: 'Export Vue source',
+          description: 'Package the current document as a Vite + Vue 3 source project.'
+        }
+      ),
+      installedByDefault: false,
+      enabledByDefault: false
     },
     {
       trustSource: 'app-bundle',
@@ -811,6 +892,25 @@ export function createBundledPluginCatalog(): readonly AppPluginCatalogEntry[] {
         RESEND_EMAIL_CONNECTOR_CONTRACT
       )
     },
+    ...REVIEWED_EXTERNAL_SERVICE_CATALOG.map((descriptor) => ({
+      trustSource: 'app-bundle' as const,
+      manifest: bundledConnectorManifest(
+        {
+          id: descriptor.connector.contract.pluginId,
+          name: descriptor.connector.contract.name,
+          version: '1.0.0'
+        },
+        descriptor.connector.contract
+      ),
+      installedByDefault: descriptor.defaultInstalled,
+      enabledByDefault: false
+    })),
+    ...REVIEWED_DEPLOYMENT_PLUGINS.map((definition) => ({
+      trustSource: 'app-bundle' as const,
+      manifest: deploymentPlanManifest(definition),
+      installedByDefault: definition.installation.installedByDefault,
+      enabledByDefault: definition.installation.enabledByDefault
+    })),
     {
       trustSource: 'app-bundle',
       manifest: googleDriveStorageManifest(),

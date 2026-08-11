@@ -18,6 +18,10 @@ import type {
   InstalledAppPlugin
 } from '../types'
 import { runStaticAccessibilityAudit } from './accessibility-audit'
+import {
+  APPLICATION_SECURITY_READINESS_HOST_CONTRACT,
+  runApplicationSecurityReadiness
+} from './application-security-readiness'
 import { exportCurrentDocumentAsCapacitorSource } from './capacitor-exporter'
 import { executeClipboardCommand } from './clipboard'
 import {
@@ -25,10 +29,14 @@ import {
   sameJsonAuthority,
   type PluginContributionDataRecord
 } from './contribution-authority'
+import { REVIEWED_DEPLOYMENT_PLUGINS } from './deployment/contract'
+import { buildDeploymentPluginPlan } from './deployment/provider'
 import { runStaticDesignSystemAudit } from './design-system-audit'
 import { exportCurrentDocumentDesignTokens } from './design-tokens-exporter'
 import { exportCurrentDocumentAsElectronSource } from './electron-exporter'
 import { exportCurrentDocumentAsExpoReactNativeSource } from './expo-react-native-exporter'
+import { createPluginExportResultData } from './export-result'
+import { runAppPluginExportSession } from './export-session'
 import { throwIfPluginExportAborted } from './exporter-abort'
 import type { AppPluginExporterExecutionResult } from './exporter-types'
 import { exportCurrentDocumentAsFigmaProjection } from './figma-projection-exporter'
@@ -55,7 +63,9 @@ import {
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
-  TAURI_REACT_EXPORTER_PLUGIN_ID
+  TAURI_REACT_EXPORTER_PLUGIN_ID,
+  VUE_EXPORTER,
+  VUE_EXPORTER_PLUGIN_ID
 } from './ids'
 import { exportCurrentDocumentAsNextJsSource } from './nextjs-exporter'
 import {
@@ -63,6 +73,7 @@ import {
   type AppPluginStorageProviderCompatibilityStatus
 } from './storage-provider'
 import { exportCurrentDocumentAsTauriReactSource } from './tauri-react-exporter'
+import { exportCurrentDocumentAsVueSource } from './vue/source-exporter'
 
 export {
   inspectPluginStorageProviderCompatibility,
@@ -110,6 +121,7 @@ interface TrustedCommandAdapter {
   commandId: string
   schemaVersion: 1 | 2
   permissions?: readonly PluginHostPermissionV2[]
+  mcpText?: Readonly<{ title: string; description: string }>
 }
 
 interface TrustedExporterAdapter {
@@ -170,7 +182,37 @@ const TRUSTED_COMMAND_ADAPTERS = new Map<string, TrustedCommandAdapter>([
       schemaVersion: 2,
       permissions: DESIGN_SYSTEM_AUDIT_COMMAND.permissions
     }
-  ] as const
+  ] as const,
+  [
+    APPLICATION_SECURITY_READINESS_HOST_CONTRACT.command.adapterId,
+    {
+      pluginId: APPLICATION_SECURITY_READINESS_HOST_CONTRACT.pluginId,
+      commandId: APPLICATION_SECURITY_READINESS_HOST_CONTRACT.command.commandId,
+      schemaVersion: 2,
+      permissions: APPLICATION_SECURITY_READINESS_HOST_CONTRACT.command.permissions,
+      mcpText: Object.freeze({
+        title: 'Run application security readiness audit',
+        description:
+          'Run a bounded, local, read-only static production-readiness review. It does not modify the document or any remote system and does not return document content or secrets.'
+      })
+    }
+  ] as const,
+  ...REVIEWED_DEPLOYMENT_PLUGINS.map(
+    (definition) =>
+      [
+        definition.mcpSafePlan.adapterId,
+        {
+          pluginId: definition.pluginId,
+          commandId: definition.mcpSafePlan.commandId,
+          schemaVersion: 2 as const,
+          permissions: definition.mcpSafePlan.permissions,
+          mcpText: Object.freeze({
+            title: definition.mcpSafePlan.name,
+            description: definition.mcpSafePlan.description
+          })
+        }
+      ] as const
+  )
 ])
 
 const TRUSTED_EXPORTER_ADAPTERS = new Map<string, TrustedExporterAdapter>([
@@ -275,6 +317,20 @@ const TRUSTED_EXPORTER_ADAPTERS = new Map<string, TrustedExporterAdapter>([
       supportsCancellation: false,
       execute: sourceProjectExporterExecutor(exportCurrentDocumentAsElectronSource)
     }
+  ],
+  [
+    VUE_EXPORTER.adapterId,
+    {
+      pluginId: VUE_EXPORTER_PLUGIN_ID,
+      exporterId: VUE_EXPORTER.exporterId,
+      schemaVersion: 1,
+      fileExtension: VUE_EXPORTER.fileExtension,
+      // Vue compilation and ZIP compression run in bounded module Workers.
+      // Abort terminates the active isolate; the final write is signal-aware and atomic.
+      mcpExposure: 'enabled',
+      supportsCancellation: true,
+      execute: sourceProjectExporterExecutor(exportCurrentDocumentAsVueSource)
+    }
   ]
 ])
 
@@ -301,6 +357,26 @@ function resolveTrustedPluginCommandExecutor(
         data
       }
     }
+  }
+  if (adapterId === APPLICATION_SECURITY_READINESS_HOST_CONTRACT.command.adapterId) {
+    return async (editor, _args, signal) => {
+      const data = await runApplicationSecurityReadiness(editor, { signal })
+      return {
+        status: 'completed',
+        message: `Application security readiness: ${data.status}; ${data.errorCount} error(s) and ${data.warningCount} warning(s).`,
+        data
+      }
+    }
+  }
+  const deployment = REVIEWED_DEPLOYMENT_PLUGINS.find(
+    (definition) => definition.mcpSafePlan.adapterId === adapterId
+  )
+  if (deployment) {
+    return (editor, args) => ({
+      status: 'completed',
+      message: `${deployment.name} plan is ready for review; no build, credential read, or remote deployment was performed.`,
+      data: buildDeploymentPluginPlan(editor, deployment, args)
+    })
   }
   return undefined
 }
@@ -367,6 +443,22 @@ export function inspectPluginCommandCompatibility(
     )
   }
   return { ok: true, status: 'compatible' }
+}
+
+export function trustedPluginCommandMcpText(
+  pluginId: string,
+  contribution: AppPluginCommandContribution
+): Readonly<{ title: string; description: string }> | null {
+  const adapter = TRUSTED_COMMAND_ADAPTERS.get(contribution.adapterId)
+  if (
+    !adapter ||
+    adapter.pluginId !== pluginId ||
+    adapter.commandId !== contribution.commandId ||
+    commandSchemaVersion(contribution) !== adapter.schemaVersion
+  ) {
+    return null
+  }
+  return adapter.mcpText ?? null
 }
 
 export function inspectPluginExporterCompatibility(
@@ -440,6 +532,14 @@ export function inspectPluginExporterMcpExposure(
     )
   }
   return { ok: true, status: 'compatible' }
+}
+
+export function supportsPluginExporterCancellation(
+  pluginId: string,
+  contribution: AppPluginExporterContribution
+): boolean {
+  if (!inspectPluginExporterCompatibility(pluginId, contribution).ok) return false
+  return TRUSTED_EXPORTER_ADAPTERS.get(contribution.adapterId)?.supportsCancellation === true
 }
 
 export function inspectPluginHostContributionsCompatibility(
@@ -669,14 +769,21 @@ export async function runInstalledPluginExporter(
     throw new Error(`Plugin exporter executor is unavailable: ${declared.adapterId}`)
   }
   throwIfPluginExportAborted(signal)
-  const result = await execute(editor, signal, validatedArgs)
+  const result = await runAppPluginExportSession({
+    pluginId,
+    exporterId: declared.exporterId,
+    signal,
+    operation: (sessionSignal) => execute(editor, sessionSignal, validatedArgs)
+  })
+  const data = createPluginExportResultData(result)
   const execution: AppPluginHostExecutionResult = result.saved
     ? {
         status: 'completed',
         message: `Exported ${result.fileCount} files to ${result.fileName}${
           result.warnings.length > 0 ? ` with ${result.warnings.length} warning(s)` : ''
-        }`
+        }`,
+        data
       }
-    : { status: 'cancelled', message: 'Export cancelled' }
+    : { status: 'cancelled', message: 'Export cancelled', data }
   return validatedExecutionResult(declared, execution)
 }

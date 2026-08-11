@@ -53,6 +53,7 @@ export function useAppMenu() {
     'plugin.export.expo-react-native': 'exportExpoReactNativeProject',
     'plugin.export.flutter': 'exportFlutterProject',
     'plugin.export.nextjs': 'exportNextJsProject',
+    'plugin.export.vue': 'exportVueProject',
     'plugin.export.capacitor': 'exportCapacitorProject',
     'plugin.export.electron': 'exportElectronProject',
     autosave: 'autosave',

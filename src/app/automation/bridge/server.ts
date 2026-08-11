@@ -11,10 +11,18 @@ import { makeFigmaFromStore } from '@/app/automation/bridge/figma-factory'
 import { createAutomationCommandHandlers } from '@/app/automation/bridge/handlers'
 import type { EditorStore } from '@/app/editor/active-store'
 import { appPluginStore } from '@/app/plugins/app'
-import { appConnectorAuthorization, isAppConnectorMcpExposed } from '@/app/plugins/connectors/app'
+import {
+  appConnectorAuthorization,
+  appConnectorCredentialReadiness,
+  isAppConnectorMcpExposed,
+  refreshAppConnectorCredentialReadiness
+} from '@/app/plugins/connectors/app'
 import { listAppPluginMcpTools } from '@/app/plugins/mcp'
 
-const PLUGIN_MCP_OPTIONS = Object.freeze({ connectorExposure: isAppConnectorMcpExposed })
+const PLUGIN_MCP_OPTIONS = Object.freeze({
+  connectorExposure: isAppConnectorMcpExposed,
+  connectorNonGetReadOnlyExposure: isAppConnectorMcpExposed
+})
 
 export function connectAutomation(getStore: () => EditorStore, authToken: string | null = null) {
   const token = authToken ?? randomHex(32)
@@ -42,11 +50,28 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     }
   }
 
+  function refreshConnectorCredentialStatuses(): void {
+    void refreshAppConnectorCredentialReadiness(appPluginStore.installedConnectors()).catch(
+      (error) => {
+        console.warn(
+          '[Automation] Failed to refresh connector credential status:',
+          error instanceof Error ? error.message : error
+        )
+      }
+    )
+  }
+
   const unsubscribePluginTools = appPluginStore.subscribe(() => {
+    refreshConnectorCredentialStatuses()
     const socket = ws
     if (socket) announcePluginTools(socket)
   })
   const unsubscribeConnectorTools = appConnectorAuthorization.subscribe(() => {
+    refreshConnectorCredentialStatuses()
+    const socket = ws
+    if (socket) announcePluginTools(socket)
+  })
+  const unsubscribeConnectorCredentialReadiness = appConnectorCredentialReadiness.subscribe(() => {
     const socket = ws
     if (socket) announcePluginTools(socket)
   })
@@ -99,6 +124,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
       socket.send(JSON.stringify({ type: 'register', token }))
       lastPluginToolsRevision = null
       announcePluginTools(socket)
+      refreshConnectorCredentialStatuses()
     }
 
     socket.onmessage = async (event) => {
@@ -165,6 +191,7 @@ export function connectAutomation(getStore: () => EditorStore, authToken: string
     clearTimeout(reconnectTimer)
     unsubscribePluginTools()
     unsubscribeConnectorTools()
+    unsubscribeConnectorCredentialReadiness()
     for (const controller of activeRequests.values()) controller.abort()
     activeRequests.clear()
     ws?.close()

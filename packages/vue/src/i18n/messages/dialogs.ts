@@ -388,6 +388,21 @@ export const dialogMessageDefaults = {
   pluginAddToCanvas: 'Add to canvas',
   pluginDisabledHint:
     'Enable this plugin to add new modules. Existing modules remain unchanged when it is disabled.',
+  pluginDisabledContributionHint:
+    'Enable this plugin to use its commands, exporters, connectors, or storage providers.',
+  pluginExportChoosingDestination: 'Choose where to save…',
+  pluginExportPreparing: 'Preparing export…',
+  pluginExportCompiling: 'Compiling project…',
+  pluginExportArchiving: 'Creating archive…',
+  pluginExportSaving: 'Saving archive…',
+  pluginExportCancelling: 'Cancelling export…',
+  pluginExportCancel: 'Cancel export',
+  pluginExportCancelled: 'Export cancelled.',
+  pluginExportResultSummary: params('{fileName} · {count} generated files'),
+  pluginExportWarnings: params('{count} export warnings'),
+  pluginExportWarningsTruncated: 'Additional export warnings were omitted.',
+  pluginExportLifecycleBlocked:
+    'This plugin is exporting. Cancel the export or wait for it to finish before disabling, updating, rolling back, or uninstalling it.',
   pluginNoModules: 'This plugin does not contribute any modules.',
   pluginNoCompatibleContributions: 'No compatible contributions',
   pluginAdapterCompatible: 'Host adapter compatible',
@@ -465,23 +480,28 @@ export const dialogMessageDefaults = {
     'This account still has unsynced, conflicted, or pending-deletion files. Finish syncing and resolve conflicts before disconnecting it.',
   storageGoogleDriveAuthorizationBlockedByOpenDocuments:
     'Close every open document from this Google Drive account before reconnecting, repairing, or disconnecting it.',
-  storageGoogleDriveWaitingForBrowser: 'Waiting for Google…',
+  storageGoogleDriveWaitingForBrowser:
+    'Complete authorization in your browser. OpenPencil will finish connecting afterward…',
   storageGoogleDriveConnectedAs: params('Connected as {account}'),
   storageGoogleDriveNotConnected: 'Google Drive is not connected',
-  storageGoogleDriveSetupRequired: 'Google Drive needs an OAuth client ID',
+  storageGoogleDriveSetupRequired: 'This build is missing Google Drive OAuth configuration',
+  storageGoogleDriveBuildConfigurationMissing:
+    'Ask the app publisher for a build configured with a Google Desktop OAuth client ID.',
   storageGoogleDriveConnectDescription:
     'A system-browser sign-in gives OpenPencil access only to files it creates or you explicitly open.',
   storageGoogleDriveConnectedDetail:
     'Your documents stay visible in Google Drive. Changes are cached locally and uploaded safely in the background.',
+  storageGoogleDriveCredentialStorage:
+    'Your refresh token is encrypted in app-local storage on this device. On macOS, OpenPencil does not use Keychain.',
   storageGoogleDriveDesktopOnly: 'Google Drive requires the desktop app',
   storageGoogleDriveDesktopOnlyDetail:
     'Use the OpenPencil desktop app for secure system-browser sign-in and background token refresh.',
-  storageGoogleDriveCredentialLocked: 'System credential store is locked',
+  storageGoogleDriveCredentialLocked: 'Encrypted local credential storage is locked',
   storageGoogleDriveCredentialLockedDetail:
-    'Unlock your device credential store, then try again. OpenPencil will not fall back to plaintext storage.',
-  storageGoogleDriveCredentialUnavailable: 'System credential store is unavailable',
+    'Restore access to OpenPencil’s encrypted local credential storage, then try again. OpenPencil will not fall back to plaintext storage.',
+  storageGoogleDriveCredentialUnavailable: 'Encrypted local credential storage is unavailable',
   storageGoogleDriveCredentialUnavailableDetail:
-    'Google Drive remains disconnected until secure credential storage is available.',
+    'Google Drive remains disconnected until OpenPencil’s encrypted local credential storage is available.',
   storageGoogleDriveConnectionNeedsRepair: 'Google Drive connection needs repair',
   storageGoogleDriveConnectionNeedsRepairDetail:
     'The saved account metadata and credential no longer match. Remove the local connection, then connect again.',
@@ -492,6 +512,27 @@ export const dialogMessageDefaults = {
   storageGoogleDriveCancelled: 'Google Drive connection was cancelled.',
   storageGoogleDriveDifferentAccount:
     'This profile belongs to another Google account. Use a different storage profile to connect that account.',
+  storageGoogleDriveAuthorizationDenied: 'Google authorization was denied.',
+  storageGoogleDriveAuthorizationTimedOut:
+    'Google authorization timed out. Start the connection again.',
+  storageGoogleDriveBrowserOpenFailed:
+    'OpenPencil could not open the system browser. Check your browser settings and try again.',
+  storageGoogleDriveScopeMismatch:
+    'Not all required permissions were granted. Reconnect and allow access to files OpenPencil creates or opens.',
+  storageGoogleDriveNetworkFailed:
+    'OpenPencil could not reach Google. Check your network connection and try again.',
+  storageGoogleDriveDesktopClientRequired:
+    'Google rejected this build’s publisher-configured Desktop OAuth client ID. Ask the app publisher for a corrected build.',
+  storageGoogleDriveRedirectUriMismatch:
+    'Google rejected OpenPencil’s local OAuth callback. Ask the app publisher to verify this build’s Desktop OAuth configuration.',
+  storageGoogleDriveTokenRequestInvalid:
+    'Google rejected the token request. Start the connection again; if it still fails, ask the app publisher to verify the build’s Desktop OAuth credentials.',
+  storageGoogleDriveAuthorizationCodeRejected:
+    'Google rejected the authorization code or PKCE verification. Start the connection again.',
+  storageGoogleDriveTokenExchangeFailed:
+    'Google could not finish the authorization exchange. Try again; if it continues, ask the app publisher to verify this build’s Desktop OAuth configuration.',
+  storageGoogleDriveAccountVerificationFailed:
+    'OpenPencil could not verify the authorized Google account. Try connecting again.',
   storageGoogleDriveOperationFailed: 'Google Drive could not complete the operation. Try again.',
   storageGoogleDriveRevokeFailed:
     'Google could not confirm revocation, so the saved connection was kept. Retry, or remove it from this device only.',
@@ -510,8 +551,9 @@ export const dialogMessageDefaults = {
     'The account is connected, but pending work still needs repair. Keep it connected and try repair again.',
   storageGoogleDriveAdvanced: 'Advanced setup',
   storageGoogleDriveClientID: 'Google OAuth client ID',
+  storageGoogleDriveClientIDUnavailable: 'Not configured in this build',
   storageGoogleDriveClientIDHint:
-    'Public desktop OAuth configuration. Production builds should provide VITE_GOOGLE_DRIVE_CLIENT_ID; no client secret is stored here.',
+    'Configured by the app publisher and shown read-only. End users cannot replace this build value; request a corrected build if it is unavailable or rejected.',
   storageProfileID: params('Storage profile: {profile}'),
   storageProfiles: 'Accounts and profiles',
   storageProfileSelector: 'Active storage profile',
@@ -613,7 +655,7 @@ export const dialogMessageDefaults = {
   save: 'Save',
   credentialStorage: params('Credentials: {backend}'),
   credentialBackendNative: 'system credential store',
-  credentialBackendBrowser: 'encrypted browser storage',
+  credentialBackendBrowser: 'encrypted app storage',
   credentialBackendMemory: 'this session only',
   rememberCredentials: 'Remember credentials on this browser',
   done: 'Done',

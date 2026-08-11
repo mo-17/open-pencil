@@ -14,7 +14,9 @@ import type {
 
 export const APP_PLUGIN_STATE_SCHEMA_VERSION = 2 as const
 export const APP_PLUGIN_STATE_LEGACY_SCHEMA_VERSION = 1 as const
-export const MAX_APP_PLUGINS = 64
+// Keep a bounded catalog while leaving room beyond the app-bundled integrations for signed
+// marketplace entries. The reviewed service rollout brings the built-in catalog close to 64.
+export const MAX_APP_PLUGINS = 128
 
 export type AppPluginTrustSource = 'app-bundle' | 'publisher-signature'
 

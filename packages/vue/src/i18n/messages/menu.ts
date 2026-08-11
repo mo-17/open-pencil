@@ -20,6 +20,7 @@ export const menuMessageDefaults = {
   exportExpoReactNativeProject: 'Expo React Native Project…',
   exportFlutterProject: 'Flutter Project…',
   exportNextJsProject: 'Next.js Project…',
+  exportVueProject: 'Vue Project…',
   exportCapacitorProject: 'Capacitor Project…',
   exportElectronProject: 'Electron Project…',
   autosave: 'Auto-save to local file',

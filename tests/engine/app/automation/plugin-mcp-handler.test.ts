@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { MAP_PLUGIN_ID } from '@open-pencil/core/plugins'
+import {
+  DROPDOWN_MENU_MODULE_DEFAULT_CONFIG,
+  DROPDOWN_MENU_PLUGIN_ID,
+  MAP_PLUGIN_ID,
+  UPLOAD_BUTTON_MODULE_DEFAULT_CONFIG,
+  UPLOAD_BUTTON_PLUGIN_ID
+} from '@open-pencil/core/plugins'
 
 import {
   createAutomationPluginMcpHandlers,
@@ -16,7 +22,8 @@ import {
 import {
   ACCESSIBILITY_AUDIT_PLUGIN_ID,
   CLIPBOARD_TOOLKIT_PLUGIN_ID,
-  DESIGN_TOKENS_EXPORTER_PLUGIN_ID
+  DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+  VUE_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
@@ -61,7 +68,7 @@ describe('automation plugin MCP handler', () => {
       runExporter: async () => ({ status: 'completed', message: 'export' })
     }
     const handlers = createAutomationPluginMcpHandlers(handleAutomationTool, dependencies)
-    const descriptor = handlers.handleList().result.tools[0]
+    const descriptor = (await handlers.handleList()).result.tools[0]
 
     const response = await handlers.handleCall(target(), {
       name: descriptor.name,
@@ -147,6 +154,175 @@ describe('automation plugin MCP handler', () => {
     expect(dispatches).toHaveLength(1)
   })
 
+  test('dispatches Dropdown Menu only through its live installed-and-enabled MCP authority', async () => {
+    const store = createStore()
+    await store.load()
+    const dispatches: unknown[] = []
+    const handlers = createAutomationPluginMcpHandlers(
+      async (_target, args) => {
+        dispatches.push(args)
+        return { ok: true, result: { created: true } }
+      },
+      {
+        store,
+        runCommand: async () => ({ status: 'completed', message: 'unused' }),
+        runExporter: async () => ({ status: 'completed', message: 'unused' })
+      }
+    )
+
+    expect(
+      (await handlers.handleList()).result.tools.some(
+        (tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID
+      )
+    ).toBe(false)
+    await store.install(DROPDOWN_MENU_PLUGIN_ID)
+    expect(
+      (await handlers.handleList()).result.tools.some(
+        (tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID
+      )
+    ).toBe(false)
+
+    await store.setEnabled(DROPDOWN_MENU_PLUGIN_ID, true)
+    const descriptor = (await handlers.handleList()).result.tools.find(
+      (tool) => tool.pluginId === DROPDOWN_MENU_PLUGIN_ID
+    )
+    if (!descriptor) throw new Error('Expected Dropdown Menu MCP descriptor')
+    const config = {
+      ...structuredClone(DROPDOWN_MENU_MODULE_DEFAULT_CONFIG),
+      triggerLabel: 'Open account menu'
+    }
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: DROPDOWN_MENU_PLUGIN_ID,
+        args: { x: 48, y: 64, name: 'Account menu', config }
+      })
+    ).resolves.toEqual({ ok: true, result: { created: true } })
+    expect(dispatches).toEqual([
+      {
+        name: 'create_module',
+        args: {
+          x: 48,
+          y: 64,
+          name: 'Account menu',
+          config,
+          plugin_id: DROPDOWN_MENU_PLUGIN_ID,
+          module_type: descriptor.contributionId
+        }
+      }
+    ])
+
+    await store.setEnabled(DROPDOWN_MENU_PLUGIN_ID, false)
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: DROPDOWN_MENU_PLUGIN_ID,
+        args: { config }
+      })
+    ).rejects.toThrow('is unavailable')
+    expect(dispatches).toHaveLength(1)
+  })
+
+  test('dispatches only declarative Upload Button config and revokes stale authority', async () => {
+    const store = createStore()
+    await store.load()
+    const dispatches: unknown[] = []
+    const handlers = createAutomationPluginMcpHandlers(
+      async (_target, args) => {
+        dispatches.push(args)
+        return { ok: true, result: { created: true } }
+      },
+      {
+        store,
+        runCommand: async () => ({ status: 'completed', message: 'unused' }),
+        runExporter: async () => ({ status: 'completed', message: 'unused' })
+      }
+    )
+
+    expect(
+      (await handlers.handleList()).result.tools.some(
+        (tool) => tool.pluginId === UPLOAD_BUTTON_PLUGIN_ID
+      )
+    ).toBe(false)
+    await store.install(UPLOAD_BUTTON_PLUGIN_ID)
+    expect(
+      (await handlers.handleList()).result.tools.some(
+        (tool) => tool.pluginId === UPLOAD_BUTTON_PLUGIN_ID
+      )
+    ).toBe(false)
+    await store.setEnabled(UPLOAD_BUTTON_PLUGIN_ID, true)
+    const descriptor = (await handlers.handleList()).result.tools.find(
+      (tool) => tool.pluginId === UPLOAD_BUTTON_PLUGIN_ID
+    )
+    if (!descriptor) throw new Error('Expected Upload Button MCP descriptor')
+
+    const config = {
+      ...structuredClone(UPLOAD_BUTTON_MODULE_DEFAULT_CONFIG),
+      triggerLabel: 'Choose local images',
+      accept: ['image/*'],
+      multiple: true,
+      maxFiles: 3
+    }
+    const response = await handlers.handleCall(target(), {
+      name: descriptor.name,
+      pluginId: UPLOAD_BUTTON_PLUGIN_ID,
+      args: { x: 48, y: 64, name: 'Local image picker', config }
+    })
+    expect(response).toEqual({ ok: true, result: { created: true } })
+    expect(dispatches).toEqual([
+      {
+        name: 'create_module',
+        args: {
+          x: 48,
+          y: 64,
+          name: 'Local image picker',
+          config,
+          plugin_id: UPLOAD_BUTTON_PLUGIN_ID,
+          module_type: descriptor.contributionId
+        }
+      }
+    ])
+    expect(JSON.stringify(dispatches)).not.toContain('fileNames')
+    expect(JSON.stringify(dispatches)).not.toContain('fileBytes')
+    expect(JSON.stringify(response)).not.toContain('fileNames')
+    expect(JSON.stringify(response)).not.toContain('fileBytes')
+
+    for (const forbidden of [
+      { fileNames: ['private.png'] },
+      { fileBytes: 'cHJpdmF0ZQ==' },
+      { selectedFiles: [{ name: 'private.png' }] }
+    ]) {
+      await expect(
+        handlers.handleCall(target(), {
+          name: descriptor.name,
+          pluginId: UPLOAD_BUTTON_PLUGIN_ID,
+          args: { config: { ...config, ...forbidden } }
+        })
+      ).rejects.toThrow('must contain exactly')
+    }
+    expect(dispatches).toHaveLength(1)
+
+    await store.setEnabled(UPLOAD_BUTTON_PLUGIN_ID, false)
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: UPLOAD_BUTTON_PLUGIN_ID,
+        args: { config }
+      })
+    ).rejects.toThrow('is unavailable')
+
+    await store.setEnabled(UPLOAD_BUTTON_PLUGIN_ID, true)
+    await store.uninstall(UPLOAD_BUTTON_PLUGIN_ID)
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: UPLOAD_BUTTON_PLUGIN_ID,
+        args: { config }
+      })
+    ).rejects.toThrow('is unavailable')
+    expect(dispatches).toHaveLength(1)
+  })
+
   test('routes command and exporter tools only through trusted host executors', async () => {
     const store = createStore()
     await store.load()
@@ -174,7 +350,7 @@ describe('automation plugin MCP handler', () => {
     const handlers = createAutomationPluginMcpHandlers(async () => {
       throw new Error('Host contribution must not dispatch a core module tool')
     }, dependencies)
-    const tools = handlers.handleList().result.tools
+    const tools = (await handlers.handleList()).result.tools
     const command = tools.find((tool) => tool.pluginId === CLIPBOARD_TOOLKIT_PLUGIN_ID)
     const exporter = tools.find((tool) => tool.pluginId === DESIGN_TOKENS_EXPORTER_PLUGIN_ID)
     if (!command || !exporter) throw new Error('Expected command and exporter descriptors')
@@ -243,6 +419,65 @@ describe('automation plugin MCP handler', () => {
     ).rejects.toThrow('is unavailable')
   })
 
+  test('dispatches the enabled Vue exporter through MCP and revokes its cached tool name', async () => {
+    const store = createStore()
+    await store.load()
+    await store.install(VUE_EXPORTER_PLUGIN_ID)
+    const calls: string[] = []
+    const dependencies: AutomationPluginMcpDependencies = {
+      store,
+      runCommand: async () => ({ status: 'completed', message: 'command' }),
+      runExporter: async (_editor, plugin, contribution, signal, args) => {
+        calls.push(
+          `${plugin.package.manifest.plugin.id}:${contribution.exporterId}:${signal?.aborted === false}:${JSON.stringify(args)}`
+        )
+        return { status: 'completed', message: 'Vue project exported' }
+      }
+    }
+    const handlers = createAutomationPluginMcpHandlers(async () => {
+      throw new Error('Vue export must not dispatch a core module tool')
+    }, dependencies)
+
+    expect(
+      (await handlers.handleList()).result.tools.some(
+        ({ pluginId }) => pluginId === VUE_EXPORTER_PLUGIN_ID
+      )
+    ).toBe(false)
+    await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, true)
+    const descriptor = (await handlers.handleList()).result.tools.find(
+      ({ pluginId }) => pluginId === VUE_EXPORTER_PLUGIN_ID
+    )
+    if (!descriptor) throw new Error('Expected enabled Vue exporter MCP descriptor')
+    const controller = new AbortController()
+
+    await expect(
+      handlers.handleCall(
+        target(),
+        { name: descriptor.name, pluginId: VUE_EXPORTER_PLUGIN_ID, args: {} },
+        { signal: controller.signal }
+      )
+    ).resolves.toMatchObject({
+      ok: true,
+      result: {
+        pluginId: VUE_EXPORTER_PLUGIN_ID,
+        kind: 'exporter',
+        contributionId: 'vue-source',
+        status: 'completed'
+      }
+    })
+    expect(calls).toEqual([`${VUE_EXPORTER_PLUGIN_ID}:vue-source:true:{}`])
+
+    await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, false)
+    await expect(
+      handlers.handleCall(target(), {
+        name: descriptor.name,
+        pluginId: VUE_EXPORTER_PLUGIN_ID,
+        args: {}
+      })
+    ).rejects.toThrow('is unavailable')
+    expect(calls).toHaveLength(1)
+  })
+
   test('revalidates v2 arguments, forwards the normalized object, and observes live disable', async () => {
     const store = createStore()
     await store.load()
@@ -260,9 +495,9 @@ describe('automation plugin MCP handler', () => {
     const handlers = createAutomationPluginMcpHandlers(async () => {
       throw new Error('Command must not dispatch a core module tool')
     }, dependencies)
-    const descriptor = handlers
-      .handleList()
-      .result.tools.find((tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID)
+    const descriptor = (await handlers.handleList()).result.tools.find(
+      (tool) => tool.pluginId === ACCESSIBILITY_AUDIT_PLUGIN_ID
+    )
     if (!descriptor) throw new Error('Expected accessibility MCP descriptor')
 
     await expect(
@@ -329,9 +564,9 @@ describe('automation plugin MCP handler', () => {
     const handlers = createAutomationPluginMcpHandlers(async () => {
       throw new Error('Connector query must not dispatch a core module tool')
     }, dependencies)
-    const descriptor = handlers
-      .handleList()
-      .result.tools.find((tool) => tool.pluginId === AIRTABLE_RECORDS_PLUGIN_ID)
+    const descriptor = (await handlers.handleList()).result.tools.find(
+      (tool) => tool.pluginId === AIRTABLE_RECORDS_PLUGIN_ID
+    )
     if (!descriptor) throw new Error('Expected Airtable connector MCP descriptor')
 
     await expect(

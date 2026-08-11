@@ -29,6 +29,7 @@ import {
   resolveTrustedPluginExporterExecutor,
   runInstalledPluginCommand,
   runInstalledPluginExporter,
+  supportsPluginExporterCancellation,
   type AppPluginHostExecutors,
   type InstalledAppPlugin
 } from '@/app/plugins'
@@ -55,7 +56,9 @@ import {
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
-  TAURI_REACT_EXPORTER_PLUGIN_ID
+  TAURI_REACT_EXPORTER_PLUGIN_ID,
+  VUE_EXPORTER,
+  VUE_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import { exportCurrentDocumentAsTauriReactSource } from '@/app/plugins/host/tauri-react-exporter'
 
@@ -183,6 +186,21 @@ function executors(
   } satisfies AppPluginHostExecutors
 }
 
+function completedExportResult() {
+  return {
+    status: 'completed' as const,
+    message: 'Exported 9 files to demo.zip',
+    data: {
+      kind: 'plugin-export',
+      fileName: 'demo.zip',
+      fileCount: 9,
+      warningCount: 0,
+      warnings: [],
+      warningsTruncated: false
+    }
+  }
+}
+
 describe('app plugin host contribution trust', () => {
   test('registers each bundled exporter adapter with its exact host executor', () => {
     expect(resolveTrustedPluginExporterExecutor(TAURI_REACT_EXPORTER.adapterId)).toBe(
@@ -197,6 +215,7 @@ describe('app plugin host contribution trust', () => {
     expect(resolveTrustedPluginExporterExecutor(NEXTJS_EXPORTER.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor(CAPACITOR_EXPORTER.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor(ELECTRON_EXPORTER.adapterId)).toBeFunction()
+    expect(resolveTrustedPluginExporterExecutor(VUE_EXPORTER.adapterId)).toBeFunction()
     expect(resolveTrustedPluginExporterExecutor('publisher.unreviewed-exporter')).toBeUndefined()
   })
 
@@ -358,6 +377,12 @@ describe('app plugin host contribution trust', () => {
     expect(
       inspectPluginExporterCompatibility(EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID, flutterContribution)
     ).toMatchObject({ ok: false, status: 'plugin-identity-mismatch' })
+    expect(
+      inspectPluginExporterCompatibility(
+        VUE_EXPORTER_PLUGIN_ID,
+        bundledV1ExporterContribution(VUE_EXPORTER_PLUGIN_ID, VUE_EXPORTER.exporterId)
+      )
+    ).toEqual({ ok: true, status: 'compatible' })
   })
 
   test('keeps synchronous project exporters out of MCP until cancellation is cooperative', () => {
@@ -382,10 +407,29 @@ describe('app plugin host contribution trust', () => {
         ok: false,
         status: 'mcp-exposure-disabled'
       })
+      expect(supportsPluginExporterCancellation(pluginId, contribution)).toBe(false)
     }
     expect(
       inspectPluginExporterMcpExposure(DESIGN_TOKENS_EXPORTER_PLUGIN_ID, designTokensContribution())
     ).toEqual({ ok: true, status: 'compatible' })
+    expect(
+      supportsPluginExporterCancellation(
+        DESIGN_TOKENS_EXPORTER_PLUGIN_ID,
+        designTokensContribution()
+      )
+    ).toBe(true)
+    expect(
+      inspectPluginExporterMcpExposure(
+        VUE_EXPORTER_PLUGIN_ID,
+        bundledV1ExporterContribution(VUE_EXPORTER_PLUGIN_ID, VUE_EXPORTER.exporterId)
+      )
+    ).toEqual({ ok: true, status: 'compatible' })
+    expect(
+      supportsPluginExporterCancellation(
+        VUE_EXPORTER_PLUGIN_ID,
+        bundledV1ExporterContribution(VUE_EXPORTER_PLUGIN_ID, VUE_EXPORTER.exporterId)
+      )
+    ).toBe(true)
   })
 
   test('fails disabled and blocked commands before invoking the injected host executor', async () => {
@@ -522,7 +566,8 @@ describe('app plugin host contribution trust', () => {
     await expect(
       runInstalledPluginExporter(EDITOR, plugin, contribution, host, controller.signal)
     ).resolves.toMatchObject({ status: 'completed' })
-    expect(receivedSignal).toBe(controller.signal)
+    expect(receivedSignal).not.toBe(controller.signal)
+    expect(receivedSignal?.aborted).toBe(false)
     expect(resolveCount).toBe(1)
 
     controller.abort()
@@ -555,10 +600,7 @@ describe('app plugin host contribution trust', () => {
         exporter,
         host
       )
-    ).resolves.toEqual({
-      status: 'completed',
-      message: 'Exported 9 files to demo.zip'
-    })
+    ).resolves.toEqual(completedExportResult())
     await expect(
       runInstalledPluginExporter(
         EDITOR,
@@ -566,10 +608,7 @@ describe('app plugin host contribution trust', () => {
         flutterExporter,
         host
       )
-    ).resolves.toEqual({
-      status: 'completed',
-      message: 'Exported 9 files to demo.zip'
-    })
+    ).resolves.toEqual(completedExportResult())
     await expect(
       runInstalledPluginExporter(
         EDITOR,
@@ -577,10 +616,7 @@ describe('app plugin host contribution trust', () => {
         expoExporter,
         host
       )
-    ).resolves.toEqual({
-      status: 'completed',
-      message: 'Exported 9 files to demo.zip'
-    })
+    ).resolves.toEqual(completedExportResult())
     expect(calls).toEqual([
       `clipboard:${command.commandId}`,
       `exporter-resolve:${exporter.adapterId}`,

@@ -13,7 +13,8 @@ import type { EditorStore } from '@/app/editor/active-store'
 import { appPluginStore } from '@/app/plugins/app'
 import {
   executeInstalledAppConnector,
-  isAppConnectorMcpExposed
+  isAppConnectorMcpExposed,
+  refreshAppConnectorCredentialReadiness
 } from '@/app/plugins/connectors/app'
 import type { ConnectorParameterObject } from '@/app/plugins/connectors/types'
 import {
@@ -28,6 +29,7 @@ import {
   type AppPluginMcpOptions,
   type AppPluginMcpStore
 } from '@/app/plugins/mcp'
+import { inspectInstalledPluginModuleCompatibility } from '@/app/plugins/modules'
 import type {
   AppPluginCommandContribution,
   AppPluginExporterContribution,
@@ -71,6 +73,7 @@ export interface AutomationPluginMcpDependencies {
     args: ConnectorParameterObject,
     signal?: AbortSignal
   ): ReturnType<typeof executeInstalledAppConnector>
+  refreshConnectorCredentialReadiness?(): Promise<void>
 }
 
 const runDefaultExporter: AutomationPluginMcpDependencies['runExporter'] = (
@@ -98,10 +101,17 @@ const runDefaultConnector: NonNullable<AutomationPluginMcpDependencies['runConne
 
 const DEFAULT_DEPENDENCIES: AutomationPluginMcpDependencies = Object.freeze({
   store: appPluginStore,
-  mcpOptions: Object.freeze({ connectorExposure: isAppConnectorMcpExposed }),
+  mcpOptions: Object.freeze({
+    connectorExposure: isAppConnectorMcpExposed,
+    connectorNonGetReadOnlyExposure: isAppConnectorMcpExposed
+  }),
   runCommand: runDefaultCommand,
   runExporter: runDefaultExporter,
-  runConnector: runDefaultConnector
+  runConnector: runDefaultConnector,
+  refreshConnectorCredentialReadiness: () =>
+    refreshAppConnectorCredentialReadiness(appPluginStore.installedConnectors()).then(
+      () => undefined
+    )
 })
 
 interface PluginMcpRequestRecord {
@@ -292,7 +302,11 @@ export function createAutomationPluginMcpHandlers(
   handleAutomationTool: AutomationToolHandler,
   dependencies: AutomationPluginMcpDependencies = DEFAULT_DEPENDENCIES
 ) {
-  function handleList(): { ok: true; result: ReturnType<typeof listAppPluginMcpTools> } {
+  async function handleList(): Promise<{
+    ok: true
+    result: ReturnType<typeof listAppPluginMcpTools>
+  }> {
+    await dependencies.refreshConnectorCredentialReadiness?.()
     return {
       ok: true,
       result: listAppPluginMcpTools(dependencies.store, dependencies.mcpOptions)
@@ -306,6 +320,8 @@ export function createAutomationPluginMcpHandlers(
   ): Promise<unknown> {
     throwIfAborted(context?.signal)
     const call = request(rawRequest)
+    await dependencies.refreshConnectorCredentialReadiness?.()
+    throwIfAborted(context?.signal)
     // Rebuild and resolve from current installed state for every invocation. A descriptor cached by
     // an MCP client cannot outlive disable/uninstall or a trust/compatibility change.
     const resolved = resolveAppPluginMcpTool(
@@ -315,12 +331,18 @@ export function createAutomationPluginMcpHandlers(
       dependencies.mcpOptions
     )
     if (resolved.kind === 'module') {
+      const args = moduleArguments(call.args)
+      if (args.config !== undefined) {
+        const compatibility = inspectInstalledPluginModuleCompatibility(resolved.value)
+        if (!compatibility.ok) throw new Error(compatibility.reason)
+        compatibility.definition.createInstance(args.config)
+      }
       return handleAutomationTool(
         target,
         {
           name: 'create_module',
           args: {
-            ...moduleArguments(call.args),
+            ...args,
             plugin_id: resolved.descriptor.pluginId,
             module_type: resolved.descriptor.contributionId
           }

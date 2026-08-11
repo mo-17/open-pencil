@@ -73,6 +73,10 @@
             "label": "Next.js Project…"
           },
           {
+            "id": "plugin.export.vue",
+            "label": "Vue Project…"
+          },
+          {
             "id": "plugin.export.capacitor",
             "label": "Capacitor Project…"
           },

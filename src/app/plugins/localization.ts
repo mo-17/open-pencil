@@ -72,6 +72,30 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
     'open-pencil.slide-menu': plugin('OpenPencil 滑出菜单', '从上下左右弹出边缘菜单或模态窗口。', {
       'slide-menu': contribution('滑出菜单', '添加带安全跳转项、遮罩和关闭行为的弹出菜单。')
     }),
+    'open-pencil.dropdown-menu': plugin(
+      'OpenPencil 下拉菜单',
+      '提供可配置触发方式、弹出位置、项目状态与安全链接的无障碍下拉菜单。',
+      {
+        'dropdown-menu': contribution(
+          '下拉菜单',
+          '添加支持键盘、分隔线、快捷键提示、禁用项和危险项的扁平菜单。'
+        )
+      }
+    ),
+    'open-pencil.upload-button': plugin(
+      'OpenPencil 上传按钮',
+      '仅在用户设备上选择并校验文件，不会上传或持久化。',
+      {
+        'upload-button': contribution('上传按钮', '添加支持类型、数量和大小校验的本地文件选择器。')
+      }
+    ),
+    'open-pencil.modal': plugin(
+      'OpenPencil 模态弹窗',
+      '打开可配置关闭规则、底部操作和响应式宽度的无障碍对话框。',
+      {
+        modal: contribution('模态弹窗', '添加有界纯文本标题、正文、遮罩、关闭按钮与底部操作。')
+      }
+    ),
     'open-pencil.lottie': plugin(
       'OpenPencil Lottie 动画',
       '展示受限的内嵌 Lottie JSON 或经确认加载的公共 HTTPS 动画。',
@@ -260,6 +284,16 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         )
       }
     ),
+    'open-pencil.vue-exporter': plugin(
+      'Vue 导出器',
+      '将当前文档打包为 Vite、Vue 3 与 TypeScript 源码项目。',
+      {
+        'vue-source': contribution(
+          '导出 Vue 源码',
+          '生成源码 ZIP，不安装依赖、不启动服务器，也不执行生成代码；降级项会写入导出警告。'
+        )
+      }
+    ),
     'open-pencil.supabase-schema-inspector': plugin(
       'Supabase 架构检查器',
       '通过受审核的只读连接器读取 Supabase 项目的有界数据库架构，不会修改数据。',
@@ -366,6 +400,288 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
         )
       }
     ),
+    'open-pencil.neon-postgres': plugin(
+      'Neon Postgres 项目',
+      '通过受审核的只读连接器列出或搜索一页有界的 Neon 项目，不会更改数据库资源。',
+      {
+        'neon.projects': contribution('Neon 项目', '使用固定的 Neon API 域名读取有界项目列表。'),
+        'list-projects': contribution(
+          '列出 Neon 项目',
+          '列出或搜索一页 Neon 项目，不会创建、修改或删除数据库资源。'
+        ),
+        'api-key': contribution(
+          'Neon API 密钥',
+          '请在 Neon 创建个人、组织或项目级 API 密钥并粘贴一次；无需额外 scope。密钥由系统凭据存储保管，仅在调用固定 Neon API 时注入。'
+        )
+      }
+    ),
+    'open-pencil.sentry': plugin(
+      'Sentry 问题',
+      '通过受审核的只读连接器列出指定 Sentry 组织的问题摘要。',
+      {
+        'sentry.issues': contribution(
+          'Sentry 问题',
+          '使用固定的 Sentry API 域名读取指定组织的有界问题列表。'
+        ),
+        'list-issues': contribution(
+          '列出组织问题',
+          '按组织标识列出一页问题摘要，不会读取事件载荷。'
+        ),
+        'access-token': contribution(
+          'Sentry 身份验证令牌',
+          '请粘贴仅具事件读取权限的 Sentry 内部集成令牌；最小 scope：event:read。令牌由系统凭据存储保管，仅在调用固定 Sentry API 时注入。'
+        )
+      }
+    ),
+    'open-pencil.hubspot': plugin(
+      'HubSpot 联系人',
+      '通过受审核的只读连接器读取 HubSpot CRM 联系人的基本信息。',
+      {
+        'hubspot.contacts': contribution(
+          'HubSpot 联系人',
+          '使用固定的 HubSpot API 域名读取有界联系人列表。'
+        ),
+        'list-contacts': contribution(
+          '列出联系人',
+          '列出一页仅包含基本身份字段的 HubSpot 联系人。'
+        ),
+        'access-token': contribution(
+          'HubSpot 访问令牌',
+          '请使用 HubSpot 私有应用令牌或 OAuth 访问令牌；最小 scope：crm.objects.contacts.read。令牌由系统凭据存储保管，仅在调用固定 HubSpot API 时注入。'
+        )
+      }
+    ),
+    'open-pencil.apollo': plugin(
+      'Apollo 名单',
+      '通过受审核的只读连接器读取 Apollo 中已保存的联系人和账户名单。',
+      {
+        'apollo.lists': contribution('Apollo 名单', '使用固定的 Apollo API 域名读取有界名单列表。'),
+        'list-lists': contribution(
+          '列出 Apollo 名单',
+          '列出已保存的 Apollo 名单，不会消耗数据补全额度。'
+        ),
+        'api-key': contribution(
+          'Apollo API 密钥',
+          '请创建仅具名单读取权限的 Apollo API 密钥并粘贴一次；最小 OAuth scope：tags_list。密钥由系统凭据存储保管，仅作为 x-api-key 调用固定 Apollo API。'
+        )
+      }
+    ),
+    'open-pencil.posthog': plugin(
+      'PostHog 洞察（美国区）',
+      '通过受审核的只读连接器列出一个 PostHog 美国云项目中已保存的洞察。',
+      {
+        'posthog.insights-us': contribution(
+          'PostHog 洞察（美国区）',
+          '仅访问固定的 PostHog 美国云 API，不授予欧洲区或自托管域名网络权限。'
+        ),
+        'list-insights': contribution(
+          '列出洞察',
+          '列出指定 PostHog 美国云项目的一页缓存洞察元数据。'
+        ),
+        'personal-api-key': contribution(
+          'PostHog 个人 API 密钥',
+          '请粘贴 PostHog 个人 API 密钥；最小 scope：insight:read。此连接器仅适用于美国云，欧洲区和自托管来源需要单独审核。'
+        )
+      }
+    ),
+    'open-pencil.asana': plugin(
+      'Asana 工作区',
+      '通过受审核的只读连接器列出当前 Asana 用户可见的工作区。',
+      {
+        'asana.workspaces': contribution(
+          'Asana 工作区',
+          '使用固定的 Asana API 域名读取有界工作区列表。'
+        ),
+        'list-workspaces': contribution('列出工作区', '列出一页有界的 Asana 工作区标识和名称。'),
+        'access-token': contribution(
+          'Asana 访问令牌',
+          '请粘贴具工作区读取权限的 Asana OAuth 令牌或个人访问令牌；最小 scope：workspaces:read。令牌仅在调用固定 Asana API 时注入。'
+        )
+      }
+    ),
+    'open-pencil.zotero': plugin(
+      'Zotero 顶层条目',
+      '通过受审核的只读连接器列出指定 Zotero 用户文库中的顶层书目条目。',
+      {
+        'zotero.top-items': contribution(
+          'Zotero 顶层条目',
+          '使用固定的 Zotero API 域名读取有界书目条目列表。'
+        ),
+        'list-top-items': contribution(
+          '列出顶层条目',
+          '列出一页最近修改的顶层书目条目，不读取子笔记或附件。'
+        ),
+        'api-key': contribution(
+          'Zotero API 密钥',
+          '请创建专用的只读 Zotero API 密钥，并单独填写数字用户 ID；最小 scope：library:read。密钥仅作为 Zotero-API-Key 调用固定 API。'
+        )
+      }
+    ),
+    'open-pencil.heygen': plugin(
+      'HeyGen 虚拟人',
+      '通过受审核的只读连接器列出当前 HeyGen 账户可用的虚拟人，不会启动视频生成。',
+      {
+        'heygen.avatars': contribution(
+          'HeyGen 虚拟人',
+          '使用固定的 HeyGen API 域名读取有界虚拟人目录。'
+        ),
+        'list-avatars': contribution(
+          '列出虚拟人',
+          '列出当前 HeyGen 账户可用的虚拟人目录，不会创建视频。'
+        ),
+        'api-key': contribution(
+          'HeyGen API 密钥',
+          '请粘贴 HeyGen API 密钥；无需额外 scope。此连接器只列出可用虚拟人，密钥仅作为 x-api-key 调用固定 HeyGen API。'
+        )
+      }
+    ),
+    'open-pencil.linear': plugin(
+      'Linear 问题',
+      '通过宿主审核的固定只读 GraphQL 查询列出 Linear 问题。',
+      {
+        'linear.issues': contribution(
+          'Linear 问题',
+          '仅向固定的 Linear GraphQL API 提交宿主审核的只读查询。'
+        ),
+        'list-issues': contribution(
+          '列出问题',
+          '通过固定的只读 GraphQL 文档列出一页 Linear 问题摘要。'
+        ),
+        'access-token': contribution(
+          'Linear OAuth 访问令牌',
+          '请使用 Linear OAuth 访问令牌，以确保 Authorization Bearer 格式明确；最小 scope：read。令牌由系统凭据存储保管。'
+        )
+      }
+    ),
+    'open-pencil.openai-developers': plugin(
+      'OpenAI 模型',
+      '通过受审核的只读连接器列出一个 OpenAI API 项目密钥可用的模型。',
+      {
+        'openai.models': contribution('OpenAI 模型', '仅访问固定的 OpenAI API 模型列表端点。'),
+        'list-models': contribution('列出模型', '列出模型标识和基本所有权元数据，不发起模型推理。'),
+        'api-key': contribution(
+          'OpenAI API 密钥',
+          '请粘贴 OpenAI 项目 API 密钥；最小权限：models.read。此连接器只调用模型列表端点，密钥由系统凭据存储保管。'
+        )
+      }
+    ),
+    'open-pencil.box': plugin(
+      'Box 根目录项目',
+      '通过受审核的只读连接器列出已授权 Box 根目录中的文件、文件夹和网页链接。',
+      {
+        'box.root-items': contribution(
+          'Box 根目录项目',
+          '使用固定的 Box API 域名读取根文件夹中的有界项目列表。'
+        ),
+        'list-root-items': contribution(
+          '列出根目录项目',
+          '从 Box 文件夹 0 列出一页使用标记分页的项目。'
+        ),
+        'access-token': contribution(
+          'Box OAuth 访问令牌',
+          '请手动完成 Box OAuth，并粘贴具根目录读取权限的访问令牌；最小 scope：root_readonly。令牌仅在调用固定 Box API 时注入。'
+        )
+      }
+    ),
+    'open-pencil.slack': plugin(
+      'Slack 公开频道',
+      '通过受审核的只读连接器列出 Slack 公开频道，不会读取消息或私密会话。',
+      {
+        'slack.public-channels': contribution(
+          'Slack 公开频道',
+          '使用固定的 Slack API 域名读取公开频道列表。'
+        ),
+        'list-public-channels': contribution(
+          '列出公开频道',
+          '列出一页明确为公开且未归档的 Slack 频道。'
+        ),
+        'access-token': contribution(
+          'Slack 机器人或用户令牌',
+          '请手动安装具 channels:read 权限的 Slack 应用，并粘贴机器人或用户令牌；最小 scope：channels:read。令牌仅在调用固定 Slack API 时注入。'
+        )
+      }
+    ),
+    'open-pencil.google-calendar': plugin(
+      'Google 日历事件',
+      '通过受审核的只读连接器列出 Google 主日历中时间范围明确的事件元数据。',
+      {
+        'google-calendar.events': contribution(
+          'Google 日历事件',
+          '使用固定的 Google Calendar API 域名读取主日历事件。'
+        ),
+        'list-events': contribution(
+          '列出事件',
+          '在明确的时间窗口内列出一页展开后的主日历事件实例。'
+        ),
+        'access-token': contribution(
+          'Google 日历 OAuth 访问令牌',
+          '请手动完成生产 OAuth 同意流程和敏感 scope 验证后粘贴访问令牌；最小 scope：https://www.googleapis.com/auth/calendar.events.readonly。发布验证仍是人工 TODO。'
+        )
+      }
+    ),
+    'open-pencil.sharepoint': plugin(
+      'SharePoint 根站点',
+      '通过受审核的只读连接器读取 Microsoft Graph 中 SharePoint 根站点的基本元数据。',
+      {
+        'sharepoint.root-site': contribution(
+          'SharePoint 根站点',
+          '仅使用固定的 Microsoft Graph API 读取租户根站点身份。'
+        ),
+        'get-root-site': contribution('读取根站点', '读取租户根站点的基本身份，不遍历文档库。'),
+        'access-token': contribution(
+          'Microsoft Graph 访问令牌',
+          '请手动完成 Microsoft Entra 应用注册和租户同意后粘贴令牌；最小 scope：Sites.Read.All。首版仅读取根站点元数据。'
+        )
+      }
+    ),
+    'open-pencil.outlook-email': plugin(
+      'Outlook 邮件文件夹',
+      '通过受审核的只读连接器列出 Outlook 邮件文件夹元数据，不会读取或发送邮件正文。',
+      {
+        'outlook.mail-folders': contribution(
+          'Outlook 邮件文件夹',
+          '使用固定的 Microsoft Graph API 读取顶层邮件文件夹。'
+        ),
+        'list-mail-folders': contribution(
+          '列出邮件文件夹',
+          '列出当前用户的顶层邮件文件夹及有界数量元数据。'
+        ),
+        'access-token': contribution(
+          'Microsoft Graph 访问令牌',
+          '请粘贴 Microsoft Graph OAuth 访问令牌；最小 scope：Mail.ReadBasic。首版仅列出文件夹元数据，邮件正文和发送能力不会进入 MCP。'
+        )
+      }
+    ),
+    'open-pencil.outlook-calendar': plugin(
+      'Outlook 日历事件',
+      '通过受审核的只读连接器列出明确时间窗口内的 Outlook 基本事件实例。',
+      {
+        'outlook-calendar.events': contribution(
+          'Outlook 日历事件',
+          '使用固定的 Microsoft Graph API 读取默认日历事件。'
+        ),
+        'list-events': contribution('列出日历事件', '列出一页默认日历中的基本事件实例。'),
+        'access-token': contribution(
+          'Microsoft Graph 访问令牌',
+          '请粘贴 Microsoft Graph OAuth 访问令牌；最小 scope：Calendars.ReadBasic。更丰富的日历内容不在此连接器授权范围内。'
+        )
+      }
+    ),
+    'open-pencil.teams': plugin(
+      'Microsoft Teams 团队',
+      '通过受审核的只读连接器列出当前工作或学校账户直接加入的团队。',
+      {
+        'teams.joined-teams': contribution(
+          'Microsoft Teams 团队',
+          '使用固定的 Microsoft Graph API 读取当前用户直接加入的团队。'
+        ),
+        'list-joined-teams': contribution('列出已加入团队', '列出当前用户直接加入的团队基本身份。'),
+        'access-token': contribution(
+          'Microsoft Graph 访问令牌',
+          '请使用工作或学校 Microsoft 账户完成委托授权并粘贴令牌；最小 scope：Team.ReadBasic.All。此 scope 不适用于个人 Microsoft 账户。'
+        )
+      }
+    ),
     'open-pencil.google-drive-storage': plugin(
       'Google Drive 存储',
       '通过宿主审核的 Google Drive 适配器保存和同步 OpenPencil 文档。',
@@ -387,6 +703,56 @@ const ZH_CN_BUNDLED_PLUGIN_TEXT: Readonly<Partial<Record<string, AppPluginLocali
  */
 const ZH_CN_BUNDLED_MODULE_PROPERTY_TEXT: Readonly<Partial<Record<string, string>>> = Object.freeze(
   {
+    'lowcodeModuleFieldModalFooterAlign:left': '左对齐',
+    'lowcodeModuleFieldModalFooterAlign:center': '居中对齐',
+    'lowcodeModuleFieldModalFooterAlign:right': '右对齐',
+
+    lowcodeModuleFieldDropdownMenuTriggerLabel: '触发文字',
+    lowcodeModuleFieldDropdownMenuShowTriggerLabel: '显示触发文字',
+    lowcodeModuleFieldDropdownMenuShowTriggerChevron: '显示触发箭头',
+    lowcodeModuleFieldDropdownMenuTriggerMode: '触发方式',
+    lowcodeModuleFieldDropdownMenuPlacement: '弹出位置',
+    lowcodeModuleFieldDropdownMenuItems: '菜单条目',
+    lowcodeModuleFieldDropdownMenuCloseOnSelect: '选择后关闭',
+    lowcodeModuleFieldDropdownMenuCloseOnEscape: '按 Escape 关闭',
+    lowcodeModuleFieldDropdownMenuCloseOnOutsidePress: '点击外部关闭',
+    lowcodeModuleFieldDropdownMenuMenuWidth: '菜单宽度',
+    lowcodeModuleFieldDropdownMenuTriggerBackground: '触发按钮背景',
+    lowcodeModuleFieldDropdownMenuTriggerTextColor: '触发按钮文字颜色',
+    lowcodeModuleFieldDropdownMenuMenuBackground: '菜单背景',
+    lowcodeModuleFieldDropdownMenuItemTextColor: '菜单项文字颜色',
+    lowcodeModuleFieldDropdownMenuAccentColor: '强调颜色',
+    lowcodeModuleFieldDropdownMenuDangerColor: '危险项颜色',
+    lowcodeModuleFieldUploadButtonTriggerLabel: '触发文字',
+    lowcodeModuleFieldUploadButtonShowTriggerIcon: '显示触发图标',
+    lowcodeModuleFieldUploadButtonShowTriggerLabel: '显示触发文字',
+    lowcodeModuleFieldUploadButtonAccept: '允许的文件类型',
+    lowcodeModuleFieldUploadButtonMultiple: '允许多个文件',
+    lowcodeModuleFieldUploadButtonMaxFiles: '最大文件数',
+    lowcodeModuleFieldUploadButtonMaxFileBytes: '单文件最大字节数',
+    lowcodeModuleFieldUploadButtonAllowDrop: '允许拖放',
+    lowcodeModuleFieldUploadButtonShowFileList: '显示已选文件',
+    lowcodeModuleFieldUploadButtonHelperText: '帮助文字',
+    lowcodeModuleFieldUploadButtonButtonBackground: '按钮背景',
+    lowcodeModuleFieldUploadButtonButtonTextColor: '按钮文字颜色',
+    lowcodeModuleFieldUploadButtonAccentColor: '强调颜色',
+    lowcodeModuleFieldUploadButtonErrorColor: '错误颜色',
+
+    'lowcodeModuleFieldDropdownMenuTriggerMode:click': '点击',
+    'lowcodeModuleFieldDropdownMenuTriggerMode:hover': '悬停',
+    'lowcodeModuleFieldDropdownMenuPlacement:bottomLeft': '下方左对齐',
+    'lowcodeModuleFieldDropdownMenuPlacement:bottom': '下方居中',
+    'lowcodeModuleFieldDropdownMenuPlacement:bottomRight': '下方右对齐',
+    'lowcodeModuleFieldDropdownMenuPlacement:topLeft': '上方左对齐',
+    'lowcodeModuleFieldDropdownMenuPlacement:top': '上方居中',
+    'lowcodeModuleFieldDropdownMenuPlacement:topRight': '上方右对齐',
+    'lowcodeModuleFieldDropdownMenuPlacement:leftTop': '左侧顶部对齐',
+    'lowcodeModuleFieldDropdownMenuPlacement:left': '左侧居中',
+    'lowcodeModuleFieldDropdownMenuPlacement:leftBottom': '左侧底部对齐',
+    'lowcodeModuleFieldDropdownMenuPlacement:rightTop': '右侧顶部对齐',
+    'lowcodeModuleFieldDropdownMenuPlacement:right': '右侧居中',
+    'lowcodeModuleFieldDropdownMenuPlacement:rightBottom': '右侧底部对齐',
+
     lowcodeModuleFieldTabsLabel: '无障碍标签',
     lowcodeModuleFieldTabsItems: '标签页项目',
     lowcodeModuleFieldTabsInitialTab: '初始标签页',
@@ -523,7 +889,7 @@ const ZH_CN_MODULE_EDITOR_TEXT: AppPluginModuleEditorText = Object.freeze({
 
 export function localizedAppPluginText(
   pluginId: string,
-  locale: Locale
+  locale: Locale | 'en-US'
 ): AppPluginLocalizedText | undefined {
   return locale === 'zh-CN' ? ZH_CN_BUNDLED_PLUGIN_TEXT[pluginId] : undefined
 }
@@ -531,7 +897,7 @@ export function localizedAppPluginText(
 export function localizedAppPluginContributionText(
   pluginId: string,
   contributionId: string,
-  locale: Locale
+  locale: Locale | 'en-US'
 ): AppPluginLocalizedContributionText | undefined {
   return localizedAppPluginText(pluginId, locale)?.contributions[contributionId]
 }

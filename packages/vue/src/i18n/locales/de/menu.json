@@ -17,6 +17,7 @@
   "exportExpoReactNativeProject": "Expo-React-Native-Projekt exportieren…",
   "exportFlutterProject": "Flutter-Projekt exportieren…",
   "exportNextJsProject": "Next.js-Projekt exportieren…",
+  "exportVueProject": "Vue-Projekt exportieren…",
   "exportCapacitorProject": "Capacitor-Projekt exportieren…",
   "exportElectronProject": "Electron-Projekt exportieren…",
   "autosave": "Automatisch in Datei speichern",

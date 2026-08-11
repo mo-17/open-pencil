@@ -85,6 +85,9 @@ describe('APP_MENU_SCHEMA', () => {
       expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportNextJs })
     )
     expect(fileEntries).toContainEqual(
+      expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportVue })
+    )
+    expect(fileEntries).toContainEqual(
       expect.objectContaining({ id: PLUGIN_MENU_ACTION_IDS.exportCapacitor })
     )
     expect(fileEntries).toContainEqual(
@@ -114,6 +117,7 @@ describe('APP_MENU_SCHEMA', () => {
         PLUGIN_MENU_ACTION_IDS.exportExpoReactNative,
         PLUGIN_MENU_ACTION_IDS.exportFlutter,
         PLUGIN_MENU_ACTION_IDS.exportNextJs,
+        PLUGIN_MENU_ACTION_IDS.exportVue,
         PLUGIN_MENU_ACTION_IDS.exportCapacitor,
         PLUGIN_MENU_ACTION_IDS.exportElectron,
         PLUGIN_MENU_ACTION_IDS.clipboardText,

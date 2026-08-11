@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /* eslint-disable max-lines -- Plugin settings coordinates lifecycle, runtime, host actions, and dependency review. */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { AlertDialogCancel, AlertDialogDescription, AlertDialogTitle } from 'reka-ui'
 import type { JsonValue } from '@open-pencil/scene-graph/primitives'
 import { useI18n, useSceneComputed } from '@open-pencil/vue'
@@ -26,6 +26,7 @@ import {
   resolveAppPluginDocumentDependencies,
   runInstalledPluginCommand,
   runInstalledPluginExporter,
+  supportsPluginExporterCancellation,
   uninstallAppPlugin,
   writeAppPluginDocumentLock,
   type AppPluginDocumentDependency,
@@ -43,6 +44,16 @@ import {
   localizedAppPluginContributionText,
   localizedAppPluginText
 } from '@/app/plugins/localization'
+import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
+import {
+  clearDeploymentPluginSession,
+  isDeploymentPluginSessionActive
+} from '@/app/plugins/host/deployment/session'
+import {
+  appPluginExportSessionSnapshot,
+  cancelAppPluginExport,
+  type AppPluginExportStage
+} from '@/app/plugins/host/export-session'
 import {
   filterPluginDiscoverCatalog,
   pluginMarketplaceListingViews,
@@ -55,7 +66,10 @@ import AppSwitch from '@/components/ui/AppSwitch.vue'
 import SegmentedControl from '@/components/ui/SegmentedControl.vue'
 import { AppAlertDialogRoot, AppDialogBody, AppDialogFooter } from '@/components/ui/dialog'
 import AccessibilityAuditReport from './AccessibilityAuditReport.vue'
+import ApplicationSecurityReadinessReport from './ApplicationSecurityReadinessReport.vue'
 import PluginConnectorControls from './PluginConnectorControls.vue'
+import PluginDeploymentControls from './PluginDeploymentControls.vue'
+import PluginExporterResult from './PluginExporterResult.vue'
 import PluginConnectorOutcomeUnknownNotices from './PluginConnectorOutcomeUnknownNotices.vue'
 import PluginMarketplaceSummary from './PluginMarketplaceSummary.vue'
 import PluginV2ContractSummary from './PluginV2ContractSummary.vue'
@@ -80,6 +94,7 @@ const hostBusyKey = ref<string | null>(null)
 const hostActionMessage = ref<string | null>(null)
 const hostActionStatus = ref<'completed' | 'cancelled' | null>(null)
 const hostActionData = ref<JsonValue>()
+const hostActionResult = ref<HTMLElement | null>(null)
 
 const viewOptions = computed(() => [
   { value: 'browse', label: dialogs.value.pluginsBrowse },
@@ -397,6 +412,15 @@ function commandCompatibility(
   return inspectPluginCommandCompatibility(pluginIdValue, contribution)
 }
 
+function visibleCommands(plugin: InstalledAppPlugin) {
+  const deployment = REVIEWED_DEPLOYMENT_PLUGINS.find(
+    (definition) => definition.pluginId === pluginId(plugin)
+  )
+  return (plugin.package.manifest.contributions.commands ?? []).filter(
+    (contribution) => contribution.commandId !== deployment?.mcpSafePlan.commandId
+  )
+}
+
 function exporterCompatibility(
   pluginIdValue: string,
   contribution: InstalledPluginExporter['contribution']
@@ -512,6 +536,54 @@ async function mutate(pluginIdValue: string, operation: () => Promise<unknown>):
   }
 }
 
+function rejectActiveDeployment(pluginIdValue: string): boolean {
+  if (!isDeploymentPluginSessionActive(pluginIdValue)) return false
+  operationError.value =
+    locale.value === 'zh-CN'
+      ? '此插件仍在部署。请等待远程操作完成后再禁用、更新、回滚或卸载。'
+      : 'This plugin is still deploying. Wait for the remote operation to finish before disabling, updating, rolling back, or uninstalling it.'
+  return true
+}
+
+function isPluginExportActive(pluginIdValue: string): boolean {
+  return appPluginExportSessionSnapshot.value?.pluginId === pluginIdValue
+}
+
+function rejectActiveExport(pluginIdValue: string): boolean {
+  if (!isPluginExportActive(pluginIdValue)) return false
+  operationError.value = dialogs.value.pluginExportLifecycleBlocked
+  return true
+}
+
+function rejectActivePluginOperation(pluginIdValue: string): boolean {
+  return rejectActiveDeployment(pluginIdValue) || rejectActiveExport(pluginIdValue)
+}
+
+function pluginExportStageLabel(stage: AppPluginExportStage): string {
+  const labels: Record<AppPluginExportStage, string> = {
+    'choosing-destination': dialogs.value.pluginExportChoosingDestination,
+    preparing: dialogs.value.pluginExportPreparing,
+    compiling: dialogs.value.pluginExportCompiling,
+    archiving: dialogs.value.pluginExportArchiving,
+    saving: dialogs.value.pluginExportSaving,
+    cancelling: dialogs.value.pluginExportCancelling
+  }
+  return labels[stage]
+}
+
+function pluginExporterStageLabel(pluginIdValue: string, exporterId: string): string | null {
+  const session = appPluginExportSessionSnapshot.value
+  return session?.pluginId === pluginIdValue && session.exporterId === exporterId
+    ? pluginExportStageLabel(session.stage)
+    : null
+}
+
+function pluginDisabledExplanation(plugin: InstalledAppPlugin): string {
+  return plugin.package.manifest.contributions.modules.length > 0
+    ? dialogs.value.pluginDisabledHint
+    : dialogs.value.pluginDisabledContributionHint
+}
+
 function install(pluginIdValue: string): void {
   if (
     appPluginStoreSnapshot.value.pinnedDigestMismatches.some(
@@ -521,7 +593,10 @@ function install(pluginIdValue: string): void {
     pendingPinReplacementId.value = pluginIdValue
     return
   }
-  void mutate(pluginIdValue, () => appPluginStore.install(pluginIdValue))
+  void mutate(pluginIdValue, async () => {
+    await appPluginStore.install(pluginIdValue)
+    view.value = 'installed'
+  })
 }
 
 function retryLoad(): void {
@@ -530,6 +605,7 @@ function retryLoad(): void {
 }
 
 function setEnabled(plugin: InstalledAppPlugin, enabled: boolean): void {
+  if (!enabled && rejectActivePluginOperation(pluginId(plugin))) return
   void mutate(pluginId(plugin), () => appPluginStore.setEnabled(pluginId(plugin), enabled))
 }
 
@@ -540,7 +616,12 @@ function setPinned(plugin: InstalledAppPlugin): void {
 }
 
 function acceptUpdate(plugin: InstalledAppPlugin): void {
-  if (pendingUpdateCompatibilityFailures(plugin).length > 0) return
+  if (
+    pendingUpdateCompatibilityFailures(plugin).length > 0 ||
+    rejectActivePluginOperation(pluginId(plugin))
+  ) {
+    return
+  }
   void mutate(pluginId(plugin), () => appPluginStore.acceptUpdate(pluginId(plugin)))
 }
 
@@ -549,6 +630,7 @@ function rejectUpdate(plugin: InstalledAppPlugin): void {
 }
 
 function requestRollback(plugin: InstalledAppPlugin): void {
+  if (rejectActivePluginOperation(pluginId(plugin))) return
   const target = plugin.installedState?.history[0]
   if (!target) return
   pendingRollback.value = {
@@ -560,6 +642,10 @@ function requestRollback(plugin: InstalledAppPlugin): void {
 function confirmRollback(): void {
   const request = pendingRollback.value
   if (!request) return
+  if (rejectActivePluginOperation(request.pluginId)) {
+    pendingRollback.value = null
+    return
+  }
   pendingRollback.value = null
   void mutate(request.pluginId, () =>
     appPluginStore.rollback(request.pluginId, request.targetDigest)
@@ -603,7 +689,8 @@ async function runHostContribution(
     status: 'completed' | 'cancelled'
     message: string
     data?: JsonValue
-  }>
+  }>,
+  cancelledMessage?: string
 ): Promise<void> {
   hostBusyKey.value = key
   hostActionMessage.value = null
@@ -616,11 +703,19 @@ async function runHostContribution(
     hostActionStatus.value = result.status
     hostActionData.value = result.data
   } catch (error) {
-    operationError.value = dialogs.value.pluginOperationFailed({
-      error: error instanceof Error ? error.message : String(error)
-    })
+    if (cancelledMessage !== undefined && error instanceof Error && error.name === 'AbortError') {
+      hostActionMessage.value = cancelledMessage
+      hostActionStatus.value = 'cancelled'
+    } else {
+      operationError.value = dialogs.value.pluginOperationFailed({
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
   } finally {
     hostBusyKey.value = null
+    await nextTick()
+    hostActionResult.value?.focus({ preventScroll: true })
+    hostActionResult.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }
 }
 
@@ -637,7 +732,11 @@ function runExporter(
   contribution: InstalledPluginExporter['contribution']
 ): void {
   const key = hostContributionKey(plugin, 'exporter', contribution.exporterId)
-  void runHostContribution(key, () => runInstalledPluginExporter(editor, plugin, contribution))
+  void runHostContribution(
+    key,
+    () => runInstalledPluginExporter(editor, plugin, contribution),
+    dialogs.value.pluginExportCancelled
+  )
 }
 
 function withoutPluginRuntimeValue<Value>(
@@ -658,9 +757,14 @@ function confirmUninstall(): void {
   const plugin = pendingUninstall.value
   if (!plugin) return
   const id = pluginId(plugin)
+  if (rejectActivePluginOperation(id)) {
+    pendingUninstallId.value = null
+    return
+  }
   pendingUninstallId.value = null
   void mutate(id, async () => {
     await uninstallAppPlugin(id)
+    clearDeploymentPluginSession(id)
     clearPluginRuntimeUi(id)
   })
 }
@@ -677,6 +781,10 @@ function confirmPinReplacement(): void {
 function confirmResetLocalState(): void {
   const issue = pendingResetIssue.value
   if (!issue) return
+  if (rejectActivePluginOperation(issue.pluginId)) {
+    pendingResetPluginId.value = null
+    return
+  }
   pendingResetPluginId.value = null
   void mutate(issue.pluginId, () => appPluginStore.resetLocalState(issue.pluginId))
 }
@@ -995,7 +1103,12 @@ function confirmResetLocalState(): void {
               <AppSwitch
                 :model-value="plugin.enabled"
                 :label="plugin.enabled ? dialogs.disable : dialogs.enable"
-                :disabled="Boolean(plugin.blockedReason) || busyPluginId === pluginId(plugin)"
+                :disabled="
+                  Boolean(plugin.blockedReason) ||
+                  busyPluginId === pluginId(plugin) ||
+                  isDeploymentPluginSessionActive(pluginId(plugin)) ||
+                  isPluginExportActive(pluginId(plugin))
+                "
                 :data-test-id="`plugin-enabled-${pluginId(plugin)}`"
                 @update:model-value="setEnabled(plugin, $event)"
               />
@@ -1013,7 +1126,7 @@ function confirmResetLocalState(): void {
           />
 
           <p v-if="!plugin.enabled" class="mt-2 text-[9px] text-muted">
-            {{ dialogs.pluginDisabledHint }}
+            {{ pluginDisabledExplanation(plugin) }}
           </p>
 
           <p
@@ -1025,6 +1138,7 @@ function confirmResetLocalState(): void {
           </p>
 
           <PluginConnectorControls :plugin="plugin" />
+          <PluginDeploymentControls :plugin="plugin" />
 
           <div
             v-if="plugin.installedState?.pending"
@@ -1208,6 +1322,8 @@ function confirmResetLocalState(): void {
                 :disabled="
                   Boolean(plugin.pinnedDigest) ||
                   busyPluginId === pluginId(plugin) ||
+                  isDeploymentPluginSessionActive(pluginId(plugin)) ||
+                  isPluginExportActive(pluginId(plugin)) ||
                   pendingUpdateCompatibilityFailures(plugin).length > 0
                 "
                 :data-test-id="`plugin-update-accept-${pluginId(plugin)}`"
@@ -1402,7 +1518,7 @@ function confirmResetLocalState(): void {
               </span>
             </div>
             <div
-              v-for="contribution in plugin.package.manifest.contributions.commands ?? []"
+              v-for="contribution in visibleCommands(plugin)"
               :key="contribution.commandId"
               class="flex flex-col items-start gap-1"
             >
@@ -1442,12 +1558,13 @@ function confirmResetLocalState(): void {
             >
               <button
                 type="button"
-                class="rounded bg-accent px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
+                class="min-h-11 rounded bg-accent px-2.5 py-1 text-[10px] font-medium text-white disabled:opacity-50"
                 :disabled="
                   !plugin.enabled ||
                   Boolean(plugin.blockedReason) ||
                   !exporterCompatibility(pluginId(plugin), contribution).ok ||
                   hostBusyKey !== null ||
+                  appPluginExportSessionSnapshot !== null ||
                   busyPluginId === pluginId(plugin)
                 "
                 :data-test-id="`plugin-exporter-${pluginId(plugin)}-${contribution.exporterId}`"
@@ -1468,6 +1585,34 @@ function confirmResetLocalState(): void {
               >
                 {{ hostCompatibilityReason(exporterCompatibility(pluginId(plugin), contribution)) }}
               </span>
+              <div
+                v-if="pluginExporterStageLabel(pluginId(plugin), contribution.exporterId)"
+                class="flex min-h-11 w-full min-w-64 items-center justify-between gap-2 rounded border border-accent/30 bg-accent/5 px-2"
+                :data-test-id="`plugin-export-progress-${pluginId(plugin)}-${contribution.exporterId}`"
+              >
+                <p
+                  class="flex min-w-0 items-center gap-1.5 text-[10px] text-surface"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <icon-lucide-loader-circle
+                    class="size-3.5 shrink-0 animate-spin motion-reduce:animate-none"
+                  />
+                  <span class="truncate">
+                    {{ pluginExporterStageLabel(pluginId(plugin), contribution.exporterId) }}
+                  </span>
+                </p>
+                <button
+                  v-if="supportsPluginExporterCancellation(pluginId(plugin), contribution)"
+                  type="button"
+                  class="min-h-11 shrink-0 rounded px-2 text-[10px] font-medium text-danger hover:bg-danger/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+                  :disabled="appPluginExportSessionSnapshot?.stage === 'cancelling'"
+                  :data-test-id="`plugin-export-cancel-${pluginId(plugin)}-${contribution.exporterId}`"
+                  @click="cancelAppPluginExport(pluginId(plugin))"
+                >
+                  {{ dialogs.pluginExportCancel }}
+                </button>
+              </div>
             </div>
             <button
               type="button"
@@ -1482,7 +1627,12 @@ function confirmResetLocalState(): void {
               v-if="plugin.installedState?.history.length"
               type="button"
               class="rounded border border-border px-2 py-1 text-[10px] text-muted hover:bg-hover hover:text-surface disabled:opacity-50"
-              :disabled="Boolean(plugin.pinnedDigest) || busyPluginId === pluginId(plugin)"
+              :disabled="
+                Boolean(plugin.pinnedDigest) ||
+                busyPluginId === pluginId(plugin) ||
+                isDeploymentPluginSessionActive(pluginId(plugin)) ||
+                isPluginExportActive(pluginId(plugin))
+              "
               :data-test-id="`plugin-rollback-${pluginId(plugin)}`"
               @click="requestRollback(plugin)"
             >
@@ -1492,7 +1642,11 @@ function confirmResetLocalState(): void {
             <button
               type="button"
               class="ml-auto rounded px-2 py-1 text-[10px] text-danger hover:bg-danger/10 disabled:opacity-50"
-              :disabled="busyPluginId === pluginId(plugin)"
+              :disabled="
+                busyPluginId === pluginId(plugin) ||
+                isDeploymentPluginSessionActive(pluginId(plugin)) ||
+                isPluginExportActive(pluginId(plugin))
+              "
               :data-test-id="`plugin-uninstall-${pluginId(plugin)}`"
               @click="pendingUninstallId = pluginId(plugin)"
             >
@@ -1633,18 +1787,28 @@ function confirmResetLocalState(): void {
       </section>
     </template>
 
-    <p
-      v-if="hostActionMessage"
-      class="text-[10px]"
-      :class="hostActionStatus === 'completed' ? 'text-success' : 'text-muted'"
-      role="status"
+    <div
+      v-if="hostActionMessage || hostActionData !== undefined || operationError"
+      ref="hostActionResult"
+      class="flex flex-col gap-2 outline-none"
+      tabindex="-1"
+      data-test-id="plugin-host-action-result"
     >
-      {{ hostActionMessage }}
-    </p>
-    <AccessibilityAuditReport :data="hostActionData" />
-    <p v-if="operationError" class="text-[10px] text-danger" role="alert">
-      {{ operationError }}
-    </p>
+      <p
+        v-if="hostActionMessage"
+        class="text-[10px]"
+        :class="hostActionStatus === 'completed' ? 'text-success' : 'text-muted'"
+        role="status"
+      >
+        {{ hostActionMessage }}
+      </p>
+      <AccessibilityAuditReport :data="hostActionData" />
+      <ApplicationSecurityReadinessReport :data="hostActionData" />
+      <PluginExporterResult :data="hostActionData" />
+      <p v-if="operationError" class="text-[10px] text-danger" role="alert">
+        {{ operationError }}
+      </p>
+    </div>
   </section>
 
   <AppAlertDialogRoot
@@ -1673,7 +1837,13 @@ function confirmResetLocalState(): void {
         </button>
       </AlertDialogCancel>
       <button
-        class="rounded bg-danger px-3 py-1.5 text-xs text-white"
+        class="rounded bg-danger px-3 py-1.5 text-xs text-white disabled:opacity-50"
+        :disabled="
+          pendingUninstall
+            ? isDeploymentPluginSessionActive(pluginId(pendingUninstall)) ||
+              isPluginExportActive(pluginId(pendingUninstall))
+            : false
+        "
         data-test-id="plugin-uninstall-confirm"
         @click="confirmUninstall"
       >
@@ -1711,7 +1881,13 @@ function confirmResetLocalState(): void {
         </button>
       </AlertDialogCancel>
       <button
-        class="rounded bg-danger px-3 py-1.5 text-xs text-white"
+        class="rounded bg-danger px-3 py-1.5 text-xs text-white disabled:opacity-50"
+        :disabled="
+          pendingResetIssue
+            ? isDeploymentPluginSessionActive(pendingResetIssue.pluginId) ||
+              isPluginExportActive(pendingResetIssue.pluginId)
+            : false
+        "
         data-test-id="plugin-reset-local-state-confirm"
         @click="confirmResetLocalState"
       >
@@ -1803,7 +1979,13 @@ function confirmResetLocalState(): void {
         </button>
       </AlertDialogCancel>
       <button
-        class="rounded bg-danger px-3 py-1.5 text-xs text-white"
+        class="rounded bg-danger px-3 py-1.5 text-xs text-white disabled:opacity-50"
+        :disabled="
+          pendingRollbackPlugin
+            ? isDeploymentPluginSessionActive(pluginId(pendingRollbackPlugin.plugin)) ||
+              isPluginExportActive(pluginId(pendingRollbackPlugin.plugin))
+            : false
+        "
         data-test-id="plugin-rollback-confirm"
         @click="confirmRollback"
       >

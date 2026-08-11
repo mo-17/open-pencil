@@ -20,7 +20,9 @@ import {
   NEXTJS_EXPORTER,
   NEXTJS_EXPORTER_PLUGIN_ID,
   TAURI_REACT_EXPORTER,
-  TAURI_REACT_EXPORTER_PLUGIN_ID
+  TAURI_REACT_EXPORTER_PLUGIN_ID,
+  VUE_EXPORTER,
+  VUE_EXPORTER_PLUGIN_ID
 } from '@/app/plugins/host/ids'
 import {
   createPluginMenuActions,
@@ -31,6 +33,7 @@ import {
   executeFlutterPluginMenuExporter,
   executeNextJsPluginMenuExporter,
   executeTauriReactPluginMenuExporter,
+  executeVuePluginMenuExporter,
   type PluginMenuExecutionDependencies
 } from '@/app/shell/menu/plugin-actions'
 import { PLUGIN_MENU_ACTION_IDS } from '@/app/shell/menu/schema'
@@ -101,6 +104,8 @@ describe('plugin system menu actions', () => {
     await store.setEnabled(CAPACITOR_EXPORTER_PLUGIN_ID, true)
     await store.install(ELECTRON_EXPORTER_PLUGIN_ID)
     await store.setEnabled(ELECTRON_EXPORTER_PLUGIN_ID, true)
+    await store.install(VUE_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, true)
 
     await expect(
       executeClipboardPluginMenuCommand(EDITOR, CLIPBOARD_COMMANDS.svg.commandId, dependencies)
@@ -121,6 +126,10 @@ describe('plugin system menu actions', () => {
       status: 'completed',
       message: `ran ${NEXTJS_EXPORTER.exporterId}`
     })
+    await expect(executeVuePluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
+      status: 'completed',
+      message: `ran ${VUE_EXPORTER.exporterId}`
+    })
     await expect(executeCapacitorPluginMenuExporter(EDITOR, dependencies)).resolves.toEqual({
       status: 'completed',
       message: `ran ${CAPACITOR_EXPORTER.exporterId}`
@@ -135,6 +144,7 @@ describe('plugin system menu actions', () => {
       `${EXPO_REACT_NATIVE_EXPORTER_PLUGIN_ID}:${EXPO_REACT_NATIVE_EXPORTER.exporterId}`,
       `${FLUTTER_EXPORTER_PLUGIN_ID}:${FLUTTER_EXPORTER.exporterId}`,
       `${NEXTJS_EXPORTER_PLUGIN_ID}:${NEXTJS_EXPORTER.exporterId}`,
+      `${VUE_EXPORTER_PLUGIN_ID}:${VUE_EXPORTER.exporterId}`,
       `${CAPACITOR_EXPORTER_PLUGIN_ID}:${CAPACITOR_EXPORTER.exporterId}`,
       `${ELECTRON_EXPORTER_PLUGIN_ID}:${ELECTRON_EXPORTER.exporterId}`
     ])
@@ -218,6 +228,21 @@ describe('plugin system menu actions', () => {
     expect(notifications.at(-1)).toEqual({
       tone: 'info',
       message: `ran ${NEXTJS_EXPORTER.exporterId}`
+    })
+
+    await actions[PLUGIN_MENU_ACTION_IDS.exportVue]()
+    expect(notifications.at(-1)).toEqual({
+      tone: 'error',
+      message:
+        'Plugin operation failed: Vue Exporter is not installed. Install it in Settings → Plugins.'
+    })
+
+    await store.install(VUE_EXPORTER_PLUGIN_ID)
+    await store.setEnabled(VUE_EXPORTER_PLUGIN_ID, true)
+    await actions[PLUGIN_MENU_ACTION_IDS.exportVue]()
+    expect(notifications.at(-1)).toEqual({
+      tone: 'info',
+      message: `ran ${VUE_EXPORTER.exporterId}`
     })
   })
 })

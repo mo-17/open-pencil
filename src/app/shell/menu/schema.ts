@@ -36,6 +36,7 @@ export const PLUGIN_MENU_ACTION_IDS = Object.freeze({
   exportExpoReactNative: 'plugin.export.expo-react-native',
   exportFlutter: 'plugin.export.flutter',
   exportNextJs: 'plugin.export.nextjs',
+  exportVue: 'plugin.export.vue',
   exportCapacitor: 'plugin.export.capacitor',
   exportElectron: 'plugin.export.electron'
 })
@@ -76,6 +77,10 @@ export const APP_MENU_SCHEMA = [
           {
             id: PLUGIN_MENU_ACTION_IDS.exportNextJs,
             label: 'Next.js Project…'
+          },
+          {
+            id: PLUGIN_MENU_ACTION_IDS.exportVue,
+            label: 'Vue Project…'
           },
           {
             id: PLUGIN_MENU_ACTION_IDS.exportCapacitor,
