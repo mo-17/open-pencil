@@ -194,9 +194,6 @@ function manifestModuleValidation(
   for (const [moduleType, instances] of modules) {
     const contribution = contributions.get(moduleType)
     if (!contribution) return { status: 'unsupported-module', invalidModuleConfigs }
-    if (instances.some(({ instance }) => instance.configVersion !== contribution.configVersion)) {
-      return { status: 'config-version-mismatch', invalidModuleConfigs }
-    }
     const compatibility = inspectPluginModuleCompatibility(pluginId, contribution)
     if (!compatibility.ok) {
       return { status: 'unsupported-host-adapter', invalidModuleConfigs }
@@ -204,11 +201,23 @@ function manifestModuleValidation(
     for (const { nodeId, instance } of instances) {
       const resolution = compatibility.definition.resolve(instance)
       if (!resolution?.ok) {
+        if (instance.configVersion !== contribution.configVersion) {
+          return { status: 'config-version-mismatch', invalidModuleConfigs }
+        }
         invalidModuleConfigs.push({
           nodeId,
           moduleType,
           reason: resolution?.reason ?? 'Host adapter did not resolve the module instance'
         })
+        continue
+      }
+      if (
+        resolution.instance.pluginId !== pluginId ||
+        resolution.instance.moduleType !== contribution.moduleType ||
+        resolution.instance.configVersion !== compatibility.definition.configVersion ||
+        resolution.instance.configVersion !== contribution.configVersion
+      ) {
+        return { status: 'config-version-mismatch', invalidModuleConfigs }
       }
     }
   }

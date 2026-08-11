@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createMapModuleFrameOverrides } from '@open-pencil/core/plugins'
+import {
+  createMapModuleFrameOverrides,
+  createSlideMenuModuleFrameOverrides
+} from '@open-pencil/core/plugins'
 import {
   PLUGIN_DOCUMENT_LOCK_LIMITS,
   readModuleInstance,
@@ -74,6 +77,62 @@ describe('app plugin document lock', () => {
         )
     ).toBe(true)
     expect(resolveAppPluginDocumentDependencies(graph, store.snapshot().installed).ok).toBe(true)
+  })
+
+  test('accepts a legacy Slide Menu through its canonical resolver without rewriting the node', async () => {
+    const graph = new SceneGraph()
+    const node = graph.createNode(
+      'FRAME',
+      graph.getPages()[0].id,
+      createSlideMenuModuleFrameOverrides()
+    )
+    const current = readModuleInstance(node.interactiveProps?.module)
+    if (!current) throw new Error('Expected valid Slide Menu module instance')
+    const legacyConfig = structuredClone(current.config)
+    Reflect.deleteProperty(legacyConfig, 'showTriggerIcon')
+    Reflect.deleteProperty(legacyConfig, 'showTriggerLabel')
+    graph.updateNode(node.id, {
+      interactiveProps: {
+        ...node.interactiveProps,
+        module: { ...current, configVersion: 1, config: legacyConfig }
+      }
+    })
+
+    const store = createAppPluginStore({
+      storage: createMemoryAppPluginStateStorage(),
+      catalog: createBundledPluginCatalog(),
+      activationCompatibilityPolicy: () => ({ ok: true }),
+      engineVersion: ENGINE_VERSION
+    })
+    await store.load()
+    await store.install('open-pencil.slide-menu')
+    await store.setEnabled('open-pencil.slide-menu', true)
+    const installed = store.snapshot().installed
+
+    expect(resolveAppPluginDocumentDependencies(graph, installed)).toMatchObject({
+      ok: false,
+      lock: { status: 'absent' },
+      dependencies: [
+        {
+          pluginId: 'open-pencil.slide-menu',
+          status: 'lock-missing',
+          modules: [{ moduleType: 'slide-menu', configVersions: [1] }],
+          invalidModuleConfigs: []
+        }
+      ]
+    })
+
+    const lock = writeAppPluginDocumentLock(graph, installed)
+    expect(lock.plugins).toEqual([expect.objectContaining({ pluginId: 'open-pencil.slide-menu' })])
+    expect(resolveAppPluginDocumentDependencies(graph, installed)).toMatchObject({
+      ok: true,
+      dependencies: [{ status: 'ready', modules: [{ configVersions: [1] }] }]
+    })
+    expect(readModuleInstance(graph.getNode(node.id)?.interactiveProps?.module)).toEqual({
+      ...current,
+      configVersion: 1,
+      config: legacyConfig
+    })
   })
 
   test('reports missing, disabled, mismatched, and malformed dependencies without blocking reads', async () => {
