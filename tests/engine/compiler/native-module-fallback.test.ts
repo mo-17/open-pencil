@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 
+import { trustedNativeSlideMenuTrigger } from '#compiler/adapters/native-shared'
+import type { IRElement } from '#compiler/ir/types'
+
 import { compile, withDefaults, type CompilerOutput } from '@open-pencil/compiler'
 import {
   createAccordionModuleInstance,
@@ -11,6 +14,7 @@ import {
   createMarkdownModuleInstance,
   createPdfViewerModuleInstance,
   createQrBarcodeModuleInstance,
+  createSlideMenuModuleFrameOverrides,
   createTabsModuleInstance
 } from '@open-pencil/core/plugins'
 
@@ -29,6 +33,24 @@ const MARKDOWN_PRIVATE_VALUE = 'markdown-module-payload-must-not-leak'
 const CODE_PRIVATE_VALUE = 'code-module-payload-must-not-leak'
 const PDF_PRIVATE_URL = 'https://media.example.com/private-native-fallback.pdf'
 const AUDIO_PRIVATE_URL = 'https://media.example.com/private-native-fallback.mp3'
+const STATIC_SLIDE_MENU_LABEL = 'Open static navigation'
+const FORGED_SLIDE_MENU_LABEL = 'forged-slide-menu-config-must-not-leak'
+const LEGACY_SLIDE_MENU_LABEL = 'Open migrated legacy navigation'
+
+const SLIDE_MENU_TRIGGER_VISIBILITIES = [
+  { label: 'Native icon and label', showTriggerIcon: true, showTriggerLabel: true },
+  {
+    label: 'native-icon-only-label-must-not-render',
+    showTriggerIcon: true,
+    showTriggerLabel: false
+  },
+  { label: 'Native label only', showTriggerIcon: false, showTriggerLabel: true },
+  {
+    label: 'native-hidden-label-must-not-render',
+    showTriggerIcon: false,
+    showTriggerLabel: false
+  }
+] as const
 
 interface AdditionalModuleFallback {
   nodeId: string
@@ -38,10 +60,48 @@ interface AdditionalModuleFallback {
 
 interface NativeModuleFixture {
   output: CompilerOutput
+  emptySlideMenuNodeId: string
   slideMenuNodeId: string
   tableNodeId: string
   videoNodeId: string
   additionalModules: AdditionalModuleFallback[]
+}
+
+function legacySlideMenuConfig(triggerLabel: string) {
+  return {
+    presentation: 'menu',
+    direction: 'left',
+    triggerLabel,
+    title: 'Navigation',
+    description: 'Choose a destination.',
+    items: [{ label: 'Settings', href: 'https://example.com/settings' }],
+    closeOnBackdrop: true,
+    showCloseButton: true,
+    panelSize: 320,
+    panelBackground: '#FFFFFF',
+    textColor: '#111827',
+    overlayOpacity: 0.45
+  }
+}
+
+function slideMenuTriggerElement(
+  configVersion: number,
+  payload: Record<string, unknown>
+): IRElement {
+  return {
+    kind: 'element',
+    sourceId: `slide-menu-v${configVersion}`,
+    tag: 'div',
+    className: '',
+    attrs: {},
+    children: [],
+    module: {
+      pluginId: 'open-pencil.slide-menu',
+      moduleType: 'slide-menu',
+      configVersion,
+      payload
+    }
+  }
 }
 
 function compileNativeModuleFixture(target: 'expo' | 'flutter'): NativeModuleFixture {
@@ -102,24 +162,29 @@ function compileNativeModuleFixture(target: 'expo' | 'flutter'): NativeModuleFix
         pluginId: 'open-pencil.slide-menu',
         moduleType: 'slide-menu',
         configVersion: 1,
-        config: {
-          presentation: 'menu',
-          direction: 'left',
-          triggerLabel: 'Open navigation',
-          title: 'Navigation',
-          description: 'Choose a destination.',
-          items: [{ label: 'Settings', href: 'https://example.com/settings' }],
-          closeOnBackdrop: true,
-          showCloseButton: true,
-          panelSize: 320,
-          panelBackground: '#FFFFFF',
-          textColor: '#111827',
-          overlayOpacity: 0.45
-        }
+        config: legacySlideMenuConfig('Open navigation')
       }
     }
   })
   graph.createNode('TEXT', slideMenu.id, { text: 'Authored slide menu fallback' })
+
+  const emptySlideMenu = graph.createNode('FRAME', pageId, {
+    ...createSlideMenuModuleFrameOverrides({ triggerLabel: STATIC_SLIDE_MENU_LABEL })
+  })
+
+  graph.createNode('FRAME', pageId, {
+    width: 180,
+    height: 48,
+    interactiveProps: {
+      module: {
+        version: 1,
+        pluginId: 'open-pencil.slide-menu',
+        moduleType: 'slide-menu',
+        configVersion: 1,
+        config: { triggerLabel: FORGED_SLIDE_MENU_LABEL }
+      }
+    }
+  })
 
   const lottie = graph.createNode('FRAME', pageId, {
     width: 360,
@@ -260,11 +325,62 @@ function compileNativeModuleFixture(target: 'expo' | 'flutter'): NativeModuleFix
         packageName: target === 'flutter' ? 'native_module_fallback' : 'native-module-fallback'
       })
     }),
+    emptySlideMenuNodeId: emptySlideMenu.id,
     slideMenuNodeId: slideMenu.id,
     tableNodeId: table.id,
     videoNodeId: video.id,
     additionalModules
   }
+}
+
+function compileNativeSlideMenuTrigger(
+  target: 'expo' | 'flutter',
+  visibility: (typeof SLIDE_MENU_TRIGGER_VISIBILITIES)[number] | 'legacy'
+): CompilerOutput {
+  const graph = makeSceneGraph('Native Slide Menu trigger visibility')
+  const pageId = firstPageId(graph)
+  graph.createNode(
+    'FRAME',
+    pageId,
+    visibility === 'legacy'
+      ? {
+          width: 180,
+          height: 48,
+          fills: [
+            {
+              type: 'SOLID',
+              color: { r: 0.15, g: 0.39, b: 0.92, a: 1 },
+              opacity: 1,
+              visible: true
+            }
+          ],
+          interactiveProps: {
+            module: {
+              version: 1,
+              pluginId: 'open-pencil.slide-menu',
+              moduleType: 'slide-menu',
+              configVersion: 1,
+              config: legacySlideMenuConfig(LEGACY_SLIDE_MENU_LABEL)
+            }
+          }
+        }
+      : createSlideMenuModuleFrameOverrides({
+          triggerLabel: visibility.label,
+          showTriggerIcon: visibility.showTriggerIcon,
+          showTriggerLabel: visibility.showTriggerLabel
+        })
+  )
+  return compile({
+    graph,
+    pageIds: [pageId],
+    options: withDefaults({
+      target,
+      router: 'none',
+      devMode: false,
+      packageName:
+        target === 'flutter' ? 'native_slide_menu_visibility' : 'native-slide-menu-visibility'
+    })
+  })
 }
 
 function nativeSources(output: CompilerOutput, target: 'expo' | 'flutter'): string {
@@ -279,15 +395,40 @@ function nativeSources(output: CompilerOutput, target: 'expo' | 'flutter'): stri
 }
 
 describe('native compiler plugin-module fallback', () => {
+  test('accepts only complete typed v2 trigger payloads while safely defaulting legacy v1', () => {
+    const label = 'Trusted trigger'
+    expect(
+      trustedNativeSlideMenuTrigger(slideMenuTriggerElement(1, { triggerLabel: label }))
+    ).toEqual({ label, showIcon: true, showLabel: true })
+
+    const rejected: [number, Record<string, unknown>][] = [
+      [2, { triggerLabel: label, showTriggerLabel: true }],
+      [2, { triggerLabel: label, showTriggerIcon: true }],
+      [1, { triggerLabel: label, showTriggerIcon: 'true' }],
+      [2, { triggerLabel: label, showTriggerIcon: true, showTriggerLabel: 1 }]
+    ]
+    for (const [configVersion, payload] of rejected) {
+      expect(
+        trustedNativeSlideMenuTrigger(slideMenuTriggerElement(configVersion, payload))
+      ).toBeUndefined()
+    }
+  })
+
   test('Expo warns for reviewed modules while preserving authored static fallbacks', () => {
-    const { output, slideMenuNodeId, tableNodeId, videoNodeId, additionalModules } =
-      compileNativeModuleFixture('expo')
+    const {
+      output,
+      emptySlideMenuNodeId,
+      slideMenuNodeId,
+      tableNodeId,
+      videoNodeId,
+      additionalModules
+    } = compileNativeModuleFixture('expo')
     const source = nativeSources(output, 'expo')
     const moduleWarnings = output.warnings.filter(
       (warning) => warning.code === 'expo-module-unsupported'
     )
 
-    expect(moduleWarnings).toHaveLength(3 + additionalModules.length)
+    expect(moduleWarnings).toHaveLength(4 + additionalModules.length)
     expect(moduleWarnings).toContainEqual({
       code: 'expo-module-unsupported',
       message:
@@ -306,6 +447,12 @@ describe('native compiler plugin-module fallback', () => {
         'Expo static MVP emitted a static native fallback and dropped open-pencil.slide-menu/slide-menu module',
       nodeId: slideMenuNodeId
     })
+    expect(moduleWarnings).toContainEqual({
+      code: 'expo-module-unsupported',
+      message:
+        'Expo static MVP emitted a static native fallback and dropped open-pencil.slide-menu/slide-menu module',
+      nodeId: emptySlideMenuNodeId
+    })
     for (const { nodeId, identity } of additionalModules) {
       expect(moduleWarnings).toContainEqual({
         code: 'expo-module-unsupported',
@@ -316,6 +463,11 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).toContain('Authored video fallback')
     expect(source).toContain('Authored table fallback')
     expect(source).toContain('Authored slide menu fallback')
+    expect(source).toContain(STATIC_SLIDE_MENU_LABEL)
+    expect(source).not.toContain('Open navigation')
+    expect(source).toContain('pointerEvents="none"')
+    expect(source).toContain('"width":18,"height":14,"justifyContent":"space-between"')
+    expect(source.match(/"width":18,"height":2,"backgroundColor":"#FFFFFF"/g)).toHaveLength(3)
     for (const { authoredText } of additionalModules) expect(source).toContain(authoredText)
     expect(source).not.toContain('WebView')
     expect(source).not.toContain(VIDEO_SOURCE)
@@ -332,17 +484,24 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).not.toContain(CODE_PRIVATE_VALUE)
     expect(source).not.toContain(PDF_PRIVATE_URL)
     expect(source).not.toContain(AUDIO_PRIVATE_URL)
+    expect(source).not.toContain(FORGED_SLIDE_MENU_LABEL)
   })
 
   test('Flutter warns for reviewed modules while preserving authored static fallbacks', () => {
-    const { output, slideMenuNodeId, tableNodeId, videoNodeId, additionalModules } =
-      compileNativeModuleFixture('flutter')
+    const {
+      output,
+      emptySlideMenuNodeId,
+      slideMenuNodeId,
+      tableNodeId,
+      videoNodeId,
+      additionalModules
+    } = compileNativeModuleFixture('flutter')
     const source = nativeSources(output, 'flutter')
     const moduleWarnings = output.warnings.filter(
       (warning) => warning.code === 'flutter-element-feature-unsupported'
     )
 
-    expect(moduleWarnings).toHaveLength(3 + additionalModules.length)
+    expect(moduleWarnings).toHaveLength(4 + additionalModules.length)
     expect(moduleWarnings).toContainEqual({
       code: 'flutter-element-feature-unsupported',
       message: 'Flutter static MVP emitted a static fallback and omitted: plugin module',
@@ -358,6 +517,11 @@ describe('native compiler plugin-module fallback', () => {
       message: 'Flutter static MVP emitted a static fallback and omitted: plugin module',
       nodeId: slideMenuNodeId
     })
+    expect(moduleWarnings).toContainEqual({
+      code: 'flutter-element-feature-unsupported',
+      message: 'Flutter static MVP emitted a static fallback and omitted: plugin module',
+      nodeId: emptySlideMenuNodeId
+    })
     for (const { nodeId } of additionalModules) {
       expect(moduleWarnings).toContainEqual({
         code: 'flutter-element-feature-unsupported',
@@ -368,6 +532,11 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).toContain('Authored video fallback')
     expect(source).toContain('Authored table fallback')
     expect(source).toContain('Authored slide menu fallback')
+    expect(source).toContain(STATIC_SLIDE_MENU_LABEL)
+    expect(source).not.toContain('Open navigation')
+    expect(source).toContain('mainAxisAlignment: MainAxisAlignment.spaceBetween')
+    expect(source.match(/width: 18\.0,\n\s+height: 2\.0,/g)).toHaveLength(3)
+    expect(source).toContain('const SizedBox(width: 8.0)')
     for (const { authoredText } of additionalModules) expect(source).toContain(authoredText)
     expect(source).not.toContain('WebView')
     expect(source).not.toContain(VIDEO_SOURCE)
@@ -384,5 +553,48 @@ describe('native compiler plugin-module fallback', () => {
     expect(source).not.toContain(CODE_PRIVATE_VALUE)
     expect(source).not.toContain(PDF_PRIVATE_URL)
     expect(source).not.toContain(AUDIO_PRIVATE_URL)
+    expect(source).not.toContain(FORGED_SLIDE_MENU_LABEL)
   })
+
+  for (const target of ['expo', 'flutter'] as const) {
+    test(`${target} keeps Slide Menu trigger icon and label visibility independent`, () => {
+      const barPattern =
+        target === 'expo'
+          ? /"width":18,"height":2,"backgroundColor":"#FFFFFF"/g
+          : /width: 18\.0,\n\s+height: 2\.0,/g
+      for (const visibility of SLIDE_MENU_TRIGGER_VISIBILITIES) {
+        const source = nativeSources(compileNativeSlideMenuTrigger(target, visibility), target)
+        expect(source.includes(visibility.label)).toBe(visibility.showTriggerLabel)
+        expect(source.match(barPattern) ?? []).toHaveLength(visibility.showTriggerIcon ? 3 : 0)
+        if (target === 'expo') {
+          expect(source).toContain('pointerEvents="none"')
+          expect(source.includes('"marginLeft":8')).toBe(
+            visibility.showTriggerIcon && visibility.showTriggerLabel
+          )
+          expect(source).toContain('"height":48')
+          expect(source).toContain('"backgroundColor":"#2663EB"')
+          if (!visibility.showTriggerIcon && !visibility.showTriggerLabel) {
+            expect(source).toMatch(/<View pointerEvents="none" style=\{[^\n]+\}><\/View>/)
+          }
+        } else {
+          expect(source.includes('const SizedBox(width: 8.0)')).toBe(
+            visibility.showTriggerIcon && visibility.showTriggerLabel
+          )
+          expect(source).toContain('height: 48')
+          expect(source).toContain('Color(0xFF2663EB)')
+          expect(source).not.toContain('GestureDetector(')
+          if (!visibility.showTriggerIcon && !visibility.showTriggerLabel) {
+            expect(source).toContain('children: [],')
+          }
+        }
+      }
+
+      const legacySource = nativeSources(compileNativeSlideMenuTrigger(target, 'legacy'), target)
+      expect(legacySource).toContain(LEGACY_SLIDE_MENU_LABEL)
+      expect(legacySource.match(barPattern) ?? []).toHaveLength(3)
+      expect(legacySource).toContain(
+        target === 'expo' ? '"marginLeft":8' : 'const SizedBox(width: 8.0)'
+      )
+    })
+  }
 })

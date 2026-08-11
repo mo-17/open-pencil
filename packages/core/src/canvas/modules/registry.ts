@@ -17,9 +17,14 @@ import { CAROUSEL_MODULE_CANVAS_ADAPTER, renderCarouselModulePreview } from './c
 import { CHART_MODULE_CANVAS_ADAPTER, renderChartModulePreview } from './chart'
 import { CODE_BLOCK_MODULE_CANVAS_ADAPTER, renderCodeBlockModulePreview } from './code-block'
 import { DATA_GRID_MODULE_CANVAS_ADAPTER, renderDataGridModulePreview } from './data-grid'
+import {
+  DROPDOWN_MENU_MODULE_CANVAS_ADAPTER,
+  renderDropdownMenuModulePreview
+} from './dropdown-menu'
 import { HTML_MODULE_CANVAS_ADAPTER, renderHtmlModulePreview } from './html'
 import { LOTTIE_MODULE_CANVAS_ADAPTER, renderLottieModulePreview } from './lottie'
 import { MARKDOWN_MODULE_CANVAS_ADAPTER, renderMarkdownModulePreview } from './markdown'
+import { MODAL_MODULE_CANVAS_ADAPTER, renderModalModulePreview } from './modal'
 import { PDF_VIEWER_MODULE_CANVAS_ADAPTER, renderPdfViewerModulePreview } from './pdf-viewer'
 import { QR_BARCODE_MODULE_CANVAS_ADAPTER, renderQrBarcodeModulePreview } from './qr-barcode'
 import { RICH_TEXT_MODULE_CANVAS_ADAPTER, renderRichTextModulePreview } from './rich-text'
@@ -27,6 +32,10 @@ import { SLIDE_MENU_MODULE_CANVAS_ADAPTER, renderSlideMenuModulePreview } from '
 import { TABLE_MODULE_CANVAS_ADAPTER, renderTableModulePreview } from './table'
 import { TABS_MODULE_CANVAS_ADAPTER, renderTabsModulePreview } from './tabs'
 import type { ModuleCanvasAdapter } from './types'
+import {
+  UPLOAD_BUTTON_MODULE_CANVAS_ADAPTER,
+  renderUploadButtonModulePreview
+} from './upload-button'
 import { VIDEO_MODULE_CANVAS_ADAPTER, renderVideoModulePreview } from './video'
 
 const MAP_MODULE_CANVAS_ADAPTER: ModuleCanvasAdapter = Object.freeze({
@@ -78,6 +87,9 @@ export const BUILTIN_MODULE_CANVAS_ADAPTERS = new ModuleCanvasAdapterRegistry()
   .register(VIDEO_MODULE_CANVAS_ADAPTER)
   .register(TABLE_MODULE_CANVAS_ADAPTER)
   .register(SLIDE_MENU_MODULE_CANVAS_ADAPTER)
+  .register(MODAL_MODULE_CANVAS_ADAPTER)
+  .register(DROPDOWN_MENU_MODULE_CANVAS_ADAPTER)
+  .register(UPLOAD_BUTTON_MODULE_CANVAS_ADAPTER)
   .register(LOTTIE_MODULE_CANVAS_ADAPTER)
   .register(CAROUSEL_MODULE_CANVAS_ADAPTER)
   .register(DATA_GRID_MODULE_CANVAS_ADAPTER)
@@ -105,14 +117,17 @@ export {
   renderCarouselModulePreview,
   renderCodeBlockModulePreview,
   renderDataGridModulePreview,
+  renderDropdownMenuModulePreview,
   renderHtmlModulePreview,
   renderLottieModulePreview,
   renderMarkdownModulePreview,
+  renderModalModulePreview,
   renderPdfViewerModulePreview,
   renderQrBarcodeModulePreview,
   renderRichTextModulePreview,
   renderSlideMenuModulePreview,
   renderTableModulePreview,
   renderTabsModulePreview,
+  renderUploadButtonModulePreview,
   renderVideoModulePreview
 }

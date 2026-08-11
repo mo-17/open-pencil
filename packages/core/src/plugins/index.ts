@@ -21,6 +21,7 @@ export {
   type ChartModuleConfigV1
 } from './chart'
 export * from './data-grid'
+export * from './dropdown-menu'
 export {
   HTML_MODULE_CONFIG_VERSION,
   HTML_MODULE_DEFAULT_CONFIG,
@@ -66,6 +67,7 @@ export {
 } from './map'
 export * from './lottie'
 export * from './markdown'
+export * from './modal'
 export * from './pdf-viewer'
 export * from './qr-barcode'
 export { PluginRegistry } from './registry'
@@ -135,6 +137,7 @@ export {
   type TableModuleConfigV1
 } from './table'
 export * from './tabs'
+export * from './upload-button'
 export {
   VIDEO_MODULE_CONFIG_VERSION,
   VIDEO_MODULE_DEFAULT_CONFIG,

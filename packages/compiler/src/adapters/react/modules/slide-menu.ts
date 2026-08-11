@@ -9,8 +9,8 @@ import {
   useId,
   useRef,
   useState,
+  type ButtonHTMLAttributes,
   type CSSProperties,
-  type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
 } from 'react'
@@ -25,6 +25,8 @@ export interface OpenPencilSlideMenuConfig {
   presentation: 'menu' | 'dialog'
   direction: 'left' | 'right' | 'top' | 'bottom'
   triggerLabel: string
+  showTriggerIcon?: boolean
+  showTriggerLabel?: boolean
   title: string
   description: string
   items: readonly OpenPencilSlideMenuItem[]
@@ -36,8 +38,14 @@ export interface OpenPencilSlideMenuConfig {
   overlayOpacity: number
 }
 
-export interface OpenPencilSlideMenuProps extends HTMLAttributes<HTMLDivElement> {
+export interface OpenPencilSlideMenuProps
+  extends Omit<
+    ButtonHTMLAttributes<HTMLButtonElement>,
+    'onClick' | 'onKeyDown' | 'type'
+  > {
   config: OpenPencilSlideMenuConfig
+  onClick?: (event: ReactMouseEvent<HTMLButtonElement>) => void
+  onKeyDown?: (event: ReactKeyboardEvent<HTMLButtonElement>) => void
 }
 
 const FOCUSABLE_SELECTOR = [
@@ -49,6 +57,88 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(',')
 const TRANSITION_MS = 220
+const TRIGGER_BUTTON_STYLE: CSSProperties = {
+  alignItems: 'center',
+  appearance: 'none',
+  boxSizing: 'border-box',
+  color: '#FFFFFF',
+  cursor: 'pointer',
+  display: 'flex',
+  font: 'inherit',
+  justifyContent: 'center',
+  minHeight: 44,
+  minWidth: 44,
+  outlineOffset: 2,
+  padding: '0 12px',
+  textAlign: 'center',
+  touchAction: 'manipulation'
+}
+const TRIGGER_ICON_STYLE: CSSProperties = {
+  alignItems: 'center',
+  display: 'inline-flex',
+  flexDirection: 'column',
+  flexShrink: 0,
+  height: 14,
+  justifyContent: 'space-between',
+  width: 18
+}
+const TRIGGER_ICON_BAR_STYLE: CSSProperties = {
+  background: 'currentColor',
+  display: 'block',
+  height: 2,
+  width: 18
+}
+const TRIGGER_LABEL_STYLE: CSSProperties = {
+  color: 'inherit',
+  lineHeight: 1.2,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap'
+}
+const TRIGGER_AUTHORED_CONTENT_STYLE: CSSProperties = {
+  alignItems: 'center',
+  display: 'inline-flex',
+  justifyContent: 'center',
+  maxWidth: '100%',
+  minWidth: 0,
+  pointerEvents: 'none'
+}
+const TRIGGER_AUTHORED_BUTTON_STYLE: CSSProperties = {
+  appearance: 'none',
+  background: 'transparent',
+  border: 0,
+  color: 'inherit',
+  cursor: 'pointer',
+  inset: 0,
+  outlineOffset: 2,
+  padding: 0,
+  position: 'absolute',
+  touchAction: 'manipulation',
+  zIndex: 1
+}
+const PANEL_HEADER_STYLE: CSSProperties = {
+  columnGap: 16,
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1fr) auto',
+  marginBottom: 16
+}
+const PANEL_HEADER_COPY_STYLE: CSSProperties = {
+  minWidth: 0,
+  overflowWrap: 'anywhere'
+}
+const PANEL_TITLE_STYLE: CSSProperties = { margin: '0 0 8px' }
+const PANEL_DESCRIPTION_STYLE: CSSProperties = { margin: 0 }
+const CLOSE_BUTTON_STYLE: CSSProperties = {
+  ...TRIGGER_BUTTON_STYLE,
+  background: 'transparent',
+  border: 0,
+  borderRadius: 8,
+  color: 'inherit',
+  height: 44,
+  padding: 10,
+  width: 44
+}
 let bodyScrollLockCount = 0
 let previousBodyOverflow: string | null = null
 
@@ -177,7 +267,7 @@ export default function OpenPencilSlideMenu({
   tabIndex,
   ...hostProps
 }: OpenPencilSlideMenuProps) {
-  const triggerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const closeTimerRef = useRef<number | null>(null)
   const openFrameRef = useRef<number | null>(null)
@@ -315,15 +405,9 @@ export default function OpenPencilSlideMenu({
     [clearCloseTimer, clearOpenFrame]
   )
 
-  const handleTriggerClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleTriggerClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
     onClick?.(event)
     if (!event.defaultPrevented) openPanel()
-  }
-  const handleTriggerKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    onKeyDown?.(event)
-    if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return
-    event.preventDefault()
-    openPanel()
   }
   const positionedByClass = className
     ?.split(' ')
@@ -333,6 +417,15 @@ export default function OpenPencilSlideMenu({
     positionedByClass || positionedByStyle
       ? style
       : { ...style, position: 'relative' as const }
+  const hasAuthoredTrigger = children !== undefined && children !== null
+  const showTriggerIcon = config.showTriggerIcon !== false
+  const showTriggerLabel = config.showTriggerLabel !== false
+  const triggerStyle: CSSProperties = {
+    ...hostStyle,
+    ...TRIGGER_BUTTON_STYLE,
+    color: hostStyle?.color ?? TRIGGER_BUTTON_STYLE.color,
+    gap: !hasAuthoredTrigger && showTriggerIcon && showTriggerLabel ? 8 : 0
+  }
   const accessibleLabel = config.triggerLabel || 'Open slide menu'
 
   const portal =
@@ -342,6 +435,7 @@ export default function OpenPencilSlideMenu({
             data-openpencil-slide-menu-overlay=""
             style={{ inset: 0, pointerEvents: visible ? 'auto' : 'none', position: 'fixed', zIndex: 2147483647 }}
           >
+            <style>{'[data-openpencil-slide-menu-close]:focus-visible{outline:2px solid currentColor}'}</style>
             <div
               data-openpencil-slide-menu-backdrop=""
               onMouseDown={() => {
@@ -370,12 +464,41 @@ export default function OpenPencilSlideMenu({
               style={panelStyle(config, visible, reducedMotion)}
               tabIndex={-1}
             >
-              {config.title ? <h2 id={titleId}>{config.title}</h2> : null}
-              {config.description ? <p id={descriptionId}>{config.description}</p> : null}
-              {config.showCloseButton ? (
-                <button aria-label="Close" onClick={closePanel} type="button">
-                  Close
-                </button>
+              {config.title || config.description || config.showCloseButton ? (
+                <header data-openpencil-slide-menu-header="" style={PANEL_HEADER_STYLE}>
+                  <div style={PANEL_HEADER_COPY_STYLE}>
+                    {config.title ? <h2 id={titleId} style={PANEL_TITLE_STYLE}>{config.title}</h2> : null}
+                    {config.description ? (
+                      <p id={descriptionId} style={PANEL_DESCRIPTION_STYLE}>{config.description}</p>
+                    ) : null}
+                  </div>
+                  {config.showCloseButton ? (
+                    <button
+                      aria-label="Close"
+                      data-openpencil-slide-menu-close=""
+                      onClick={closePanel}
+                      style={CLOSE_BUTTON_STYLE}
+                      type="button"
+                    >
+                      <svg
+                        aria-hidden="true"
+                        data-openpencil-slide-menu-close-icon=""
+                        focusable="false"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        width="20"
+                      >
+                        <path
+                          d="M6 6L18 18M18 6L6 18"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeLinecap="round"
+                          strokeWidth="2"
+                        />
+                      </svg>
+                    </button>
+                  ) : null}
+                </header>
               ) : null}
               <nav aria-label={config.title || accessibleLabel}>
                 <ul>
@@ -394,23 +517,67 @@ export default function OpenPencilSlideMenu({
 
   return (
     <>
-      <div
-        {...hostProps}
-        aria-controls={panelId}
-        aria-expanded={mounted && visible}
-        aria-haspopup="dialog"
-        aria-label={accessibleLabel}
-        className={className}
-        data-openpencil-slide-menu-trigger=""
-        onClick={handleTriggerClick}
-        onKeyDown={handleTriggerKeyDown}
-        ref={triggerRef}
-        role="button"
-        style={hostStyle}
-        tabIndex={tabIndex ?? 0}
-      >
-        {children ?? config.triggerLabel}
-      </div>
+      {hasAuthoredTrigger ? (
+        <div
+          className={className}
+          data-openpencil-slide-menu-trigger-host=""
+          style={triggerStyle}
+        >
+          <div
+            aria-hidden="true"
+            data-openpencil-slide-menu-trigger-authored=""
+            inert
+            style={TRIGGER_AUTHORED_CONTENT_STYLE}
+          >
+            {children}
+          </div>
+          <button
+            {...hostProps}
+            aria-controls={panelId}
+            aria-expanded={mounted && visible}
+            aria-haspopup="dialog"
+            aria-label={accessibleLabel}
+            data-openpencil-slide-menu-trigger=""
+            onClick={handleTriggerClick}
+            onKeyDown={onKeyDown}
+            ref={triggerRef}
+            style={TRIGGER_AUTHORED_BUTTON_STYLE}
+            tabIndex={tabIndex ?? 0}
+            type="button"
+          />
+        </div>
+      ) : (
+        <button
+          {...hostProps}
+          aria-controls={panelId}
+          aria-expanded={mounted && visible}
+          aria-haspopup="dialog"
+          aria-label={accessibleLabel}
+          className={className}
+          data-openpencil-slide-menu-trigger=""
+          onClick={handleTriggerClick}
+          onKeyDown={onKeyDown}
+          ref={triggerRef}
+          style={triggerStyle}
+          tabIndex={tabIndex ?? 0}
+          type="button"
+        >
+          <>
+            {showTriggerIcon ? (
+              <span aria-hidden="true" data-openpencil-slide-menu-trigger-icon="" style={TRIGGER_ICON_STYLE}>
+                <span data-openpencil-slide-menu-trigger-icon-bar="" style={TRIGGER_ICON_BAR_STYLE} />
+                <span data-openpencil-slide-menu-trigger-icon-bar="" style={TRIGGER_ICON_BAR_STYLE} />
+                <span data-openpencil-slide-menu-trigger-icon-bar="" style={TRIGGER_ICON_BAR_STYLE} />
+              </span>
+            ) : null}
+            {showTriggerLabel ? (
+              <span data-openpencil-slide-menu-trigger-label="" style={TRIGGER_LABEL_STYLE}>
+                {config.triggerLabel}
+              </span>
+            ) : null}
+          </>
+        </button>
+      )}
       {portal}
     </>
   )

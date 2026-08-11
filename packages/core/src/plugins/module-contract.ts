@@ -39,6 +39,10 @@ export interface ModuleDefinitionMetadata<TConfig extends JsonObject> {
   resolve: (value: unknown) => ModuleResolution<TConfig>
 }
 
+interface MutableModuleDataRecord {
+  [key: string]: unknown
+}
+
 export function parseExactModuleConfig<TConfig extends JsonObject>(
   value: unknown,
   keys: ReadonlySet<string>,
@@ -66,9 +70,26 @@ export function parseBoundedModuleObjectArray<TValue>(
   if (!Array.isArray(value) || value.length < minimumLength || value.length > maximumLength) {
     throw new TypeError(lengthReason)
   }
-  return Array.from(value, (entry, index) => {
-    if (!Object.hasOwn(value, index) || !isPlainJsonObject(entry)) {
+  return Array.from({ length: value.length }, (_, index) => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index))
+    if (
+      !descriptor?.enumerable ||
+      !('value' in descriptor) ||
+      !isPlainJsonObject(descriptor.value)
+    ) {
       throw new TypeError(itemReason(index))
+    }
+    const entry = Object.create(null) as MutableModuleDataRecord
+    for (const key of Reflect.ownKeys(descriptor.value)) {
+      if (typeof key !== 'string') throw new TypeError(itemReason(index))
+      const field = Object.getOwnPropertyDescriptor(descriptor.value, key)
+      if (!field?.enumerable || !('value' in field)) throw new TypeError(itemReason(index))
+      Object.defineProperty(entry, key, {
+        configurable: true,
+        enumerable: true,
+        value: field.value,
+        writable: true
+      })
     }
     return parse(entry, index)
   })

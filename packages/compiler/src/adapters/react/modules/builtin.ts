@@ -4,10 +4,12 @@ import { CAROUSEL_COMPILER_MODULE_LOWERER } from '#compiler/modules/carousel'
 import { CHART_COMPILER_MODULE_LOWERER } from '#compiler/modules/chart'
 import { CODE_BLOCK_COMPILER_MODULE_LOWERER } from '#compiler/modules/code-block'
 import { DATA_GRID_COMPILER_MODULE_LOWERER } from '#compiler/modules/data-grid'
+import { DROPDOWN_MENU_COMPILER_MODULE_LOWERER } from '#compiler/modules/dropdown-menu'
 import { HTML_COMPILER_MODULE_LOWERER } from '#compiler/modules/html'
 import { LOTTIE_COMPILER_MODULE_LOWERER } from '#compiler/modules/lottie'
 import { MAP_COMPILER_MODULE_LOWERER } from '#compiler/modules/map'
 import { MARKDOWN_COMPILER_MODULE_LOWERER } from '#compiler/modules/markdown'
+import { MODAL_COMPILER_MODULE_LOWERER } from '#compiler/modules/modal'
 import { PDF_VIEWER_COMPILER_MODULE_LOWERER } from '#compiler/modules/pdf-viewer'
 import { QR_BARCODE_COMPILER_MODULE_LOWERER } from '#compiler/modules/qr-barcode'
 import { CompilerModuleRegistry } from '#compiler/modules/registry'
@@ -15,6 +17,7 @@ import { RICH_TEXT_COMPILER_MODULE_LOWERER } from '#compiler/modules/rich-text'
 import { SLIDE_MENU_COMPILER_MODULE_LOWERER } from '#compiler/modules/slide-menu'
 import { TABLE_COMPILER_MODULE_LOWERER } from '#compiler/modules/table'
 import { TABS_COMPILER_MODULE_LOWERER } from '#compiler/modules/tabs'
+import { UPLOAD_BUTTON_COMPILER_MODULE_LOWERER } from '#compiler/modules/upload-button'
 import { VIDEO_COMPILER_MODULE_LOWERER } from '#compiler/modules/video'
 
 import { ACCORDION_REACT_MODULE_ADAPTER } from './accordion'
@@ -23,16 +26,19 @@ import { CAROUSEL_REACT_MODULE_ADAPTER } from './carousel'
 import { CHART_REACT_MODULE_ADAPTER } from './chart'
 import { CODE_BLOCK_REACT_MODULE_ADAPTER } from './code-block'
 import { DATA_GRID_REACT_MODULE_ADAPTER } from './data-grid'
+import { DROPDOWN_MENU_REACT_MODULE_ADAPTER } from './dropdown-menu'
 import { HTML_REACT_MODULE_ADAPTER } from './html'
 import { LOTTIE_REACT_MODULE_ADAPTER } from './lottie'
 import { MAP_REACT_MODULE_ADAPTER } from './map'
 import { MARKDOWN_REACT_MODULE_ADAPTER } from './markdown'
+import { MODAL_REACT_MODULE_ADAPTER } from './modal'
 import { PDF_VIEWER_REACT_MODULE_ADAPTER } from './pdf-viewer'
 import { QR_BARCODE_REACT_MODULE_ADAPTER } from './qr-barcode'
 import { RICH_TEXT_REACT_MODULE_ADAPTER } from './rich-text'
 import { SLIDE_MENU_REACT_MODULE_ADAPTER } from './slide-menu'
 import { TABLE_REACT_MODULE_ADAPTER } from './table'
 import { TABS_REACT_MODULE_ADAPTER } from './tabs'
+import { UPLOAD_BUTTON_REACT_MODULE_ADAPTER } from './upload-button'
 import { VIDEO_REACT_MODULE_ADAPTER } from './video'
 
 /** React-owned target registry. It deliberately mirrors the neutral lowerer
@@ -57,6 +63,14 @@ export const BUILTIN_REACT_MODULE_REGISTRY = new CompilerModuleRegistry()
   .register({
     lowerer: SLIDE_MENU_COMPILER_MODULE_LOWERER,
     targets: { react: SLIDE_MENU_REACT_MODULE_ADAPTER }
+  })
+  .register({
+    lowerer: MODAL_COMPILER_MODULE_LOWERER,
+    targets: { react: MODAL_REACT_MODULE_ADAPTER }
+  })
+  .register({
+    lowerer: DROPDOWN_MENU_COMPILER_MODULE_LOWERER,
+    targets: { react: DROPDOWN_MENU_REACT_MODULE_ADAPTER }
   })
   .register({
     lowerer: VIDEO_COMPILER_MODULE_LOWERER,
@@ -105,5 +119,9 @@ export const BUILTIN_REACT_MODULE_REGISTRY = new CompilerModuleRegistry()
   .register({
     lowerer: AUDIO_PLAYER_COMPILER_MODULE_LOWERER,
     targets: { react: AUDIO_PLAYER_REACT_MODULE_ADAPTER }
+  })
+  .register({
+    lowerer: UPLOAD_BUTTON_COMPILER_MODULE_LOWERER,
+    targets: { react: UPLOAD_BUTTON_REACT_MODULE_ADAPTER }
   })
   .freeze()

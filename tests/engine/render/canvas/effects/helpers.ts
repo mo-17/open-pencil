@@ -3,6 +3,13 @@ import { mock } from 'bun:test'
 import type { SkiaRenderer } from '#core/canvas/renderer'
 import { renderEffects } from '#core/canvas/shadows'
 
+export interface MockCanvasPath {
+  moveTo: ReturnType<typeof mock>
+  lineTo: ReturnType<typeof mock>
+  close: ReturnType<typeof mock>
+  delete: ReturnType<typeof mock>
+}
+
 export function mockCalls(fn: ReturnType<typeof mock>): unknown[][] {
   return (fn as { mock: { calls: unknown[][] } }).mock.calls
 }

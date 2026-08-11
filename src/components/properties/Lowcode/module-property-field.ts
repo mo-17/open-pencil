@@ -5,10 +5,14 @@ import {
   CODE_BLOCK_PLUGIN_ID,
   DATA_GRID_MODULE_TYPE,
   DATA_GRID_PLUGIN_ID,
+  DROPDOWN_MENU_MODULE_TYPE,
+  DROPDOWN_MENU_PLUGIN_ID,
   HTML_MODULE_TYPE,
   HTML_PLUGIN_ID,
   MARKDOWN_MODULE_TYPE,
   MARKDOWN_PLUGIN_ID,
+  MODAL_MODULE_TYPE,
+  MODAL_PLUGIN_ID,
   RICH_TEXT_MODULE_TYPE,
   RICH_TEXT_PLUGIN_ID,
   SLIDE_MENU_MODULE_TYPE,
@@ -17,6 +21,8 @@ import {
   TABLE_PLUGIN_ID,
   TABS_MODULE_TYPE,
   TABS_PLUGIN_ID,
+  UPLOAD_BUTTON_MODULE_TYPE,
+  UPLOAD_BUTTON_PLUGIN_ID,
   type ModuleDefinition,
   type ModulePropertyField
 } from '@open-pencil/core/plugins'
@@ -25,12 +31,15 @@ export type SpecializedModuleFieldKind =
   | 'accordion-items'
   | 'code-block-code'
   | 'data-grid-data'
+  | 'dropdown-menu-items'
   | 'html-content'
   | 'markdown-source'
+  | 'modal-content'
   | 'rich-text-content'
   | 'slide-menu-items'
   | 'table-content'
   | 'tabs-items'
+  | 'upload-accept'
 
 interface SpecializedFieldIdentity {
   readonly pluginId: string
@@ -60,10 +69,28 @@ const SPECIALIZED_FIELDS: readonly SpecializedFieldIdentity[] = Object.freeze([
     kind: 'data-grid-data'
   },
   {
+    pluginId: DROPDOWN_MENU_PLUGIN_ID,
+    moduleType: DROPDOWN_MENU_MODULE_TYPE,
+    path: 'items',
+    kind: 'dropdown-menu-items'
+  },
+  {
+    pluginId: UPLOAD_BUTTON_PLUGIN_ID,
+    moduleType: UPLOAD_BUTTON_MODULE_TYPE,
+    path: 'accept',
+    kind: 'upload-accept'
+  },
+  {
     pluginId: SLIDE_MENU_PLUGIN_ID,
     moduleType: SLIDE_MENU_MODULE_TYPE,
     path: 'items',
     kind: 'slide-menu-items'
+  },
+  {
+    pluginId: MODAL_PLUGIN_ID,
+    moduleType: MODAL_MODULE_TYPE,
+    path: 'content',
+    kind: 'modal-content'
   },
   {
     pluginId: TABS_PLUGIN_ID,

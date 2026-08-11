@@ -18,6 +18,10 @@ import {
   isNativeSwitch as isSwitch,
   isNativeTextInput as isTextInput,
   staticNativeAttr as staticAttr,
+  trustedNativeDropdownMenuTrigger,
+  trustedNativeModalTrigger,
+  trustedNativeSlideMenuTrigger,
+  trustedNativeUploadButtonTrigger,
   walkNativeNodes as walkNodes
 } from '../native-shared'
 import { emitExpoEventHandler, setterName } from './event'
@@ -409,6 +413,19 @@ function emitElement(node: IRElement, indent: number, environment: ElementEnviro
   validateBackgroundAsset(style, node.sourceId, environment)
   Object.assign(style.style, nativeInlineStyle(node.attrs.style))
   warnInlineStyle(node.attrs.style, node.sourceId, environment.warn)
+  const modalTrigger = trustedNativeModalTrigger(node)
+  const dropdownTrigger = trustedNativeDropdownMenuTrigger(node)
+  const uploadTrigger = trustedNativeUploadButtonTrigger(node)
+  const slideMenuTrigger = trustedNativeSlideMenuTrigger(node)
+  const staticModuleTrigger = modalTrigger ?? dropdownTrigger ?? uploadTrigger ?? slideMenuTrigger
+  if (staticModuleTrigger !== undefined) {
+    warnDroppedEvents(node, new Set(), environment.warn)
+    let icon: 'menu' | 'modal' | 'chevron' | 'upload' = 'menu'
+    if (modalTrigger) icon = 'modal'
+    else if (dropdownTrigger) icon = 'chevron'
+    else if (uploadTrigger) icon = 'upload'
+    return emitStaticModuleTrigger(node, style, staticModuleTrigger, icon, indent, environment)
+  }
   if (node.image) {
     warnDroppedEvents(node, new Set(['onClick']), environment.warn)
     return emitImage(node, style, indent, environment)
@@ -424,6 +441,169 @@ function emitElement(node: IRElement, indent: number, environment: ElementEnviro
   warnDroppedEvents(node, new Set(['onClick']), environment.warn)
   const component = nativeContainer(node, style)
   return emitContainer(node, component, style, indent, environment)
+}
+
+function emitStaticModuleTrigger(
+  node: IRElement,
+  style: ExpoStyleResult,
+  trigger: { label: string; showIcon: boolean; showLabel: boolean },
+  icon: 'menu' | 'modal' | 'chevron' | 'upload',
+  indent: number,
+  environment: ElementEnvironment
+): string {
+  const pad = '  '.repeat(indent)
+  const triggerStyle = { ...style.style }
+  triggerStyle.minHeight = Math.max(
+    44,
+    typeof triggerStyle.minHeight === 'number' ? triggerStyle.minHeight : 0
+  )
+  triggerStyle.flexDirection = 'row'
+  triggerStyle.alignItems = 'center'
+  triggerStyle.justifyContent = 'center'
+  if (icon === 'upload') triggerStyle.opacity = 0.62
+  if (!triggerStyle.backgroundColor && !style.backgroundAsset) {
+    triggerStyle.backgroundColor = icon === 'upload' ? '#64748B' : '#2663EB'
+  }
+  const component = style.backgroundAsset ? 'ImageBackground' : 'View'
+  const attrs = [`pointerEvents="none"`]
+  if (icon === 'upload') {
+    attrs.push(
+      `accessible={true}`,
+      `accessibilityRole="button"`,
+      `accessibilityState={{ disabled: true }}`,
+      `accessibilityLabel=${JSON.stringify(trigger.label)}`,
+      `accessibilityHint="File selection is unavailable in this static Expo export."`
+    )
+  }
+  attrs.push(`style={${serializeStyle(triggerStyle)}}`)
+  if (style.backgroundAsset) {
+    attrs.unshift(
+      `source={require(${JSON.stringify(`${environment.assetPrefix}${style.backgroundAsset}`)})}`
+    )
+    attrs.push(`resizeMode=${JSON.stringify(style.resizeMode ?? 'cover')}`)
+  }
+  if (environment.devMode) {
+    attrs.push(`testID=${JSON.stringify(`openpencil-node-${node.sourceId}`)}`)
+  }
+  const iconStyle = serializeStyle({
+    width: 18,
+    height: 14,
+    justifyContent: 'space-between'
+  })
+  const lineStyle = serializeStyle({
+    width: 18,
+    height: 2,
+    backgroundColor: '#FFFFFF'
+  })
+  const labelStyle = serializeStyle({
+    ...(trigger.showIcon ? { marginLeft: 8 } : {}),
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    flexShrink: 1
+  })
+  const children: string[] = []
+  if (trigger.showIcon) {
+    let source: string
+    if (icon === 'menu') {
+      source = `<View style={${iconStyle}}>
+  <View style={${lineStyle}} />
+  <View style={${lineStyle}} />
+  <View style={${lineStyle}} />
+</View>`
+    } else if (icon === 'modal') {
+      source = `<View style={${serializeStyle({
+        width: 18,
+        height: 16,
+        borderColor: '#FFFFFF',
+        borderRadius: 2,
+        borderWidth: 2
+      })}}>
+  <View style={${serializeStyle({
+    borderTopColor: '#FFFFFF',
+    borderTopWidth: 2,
+    marginTop: 3
+  })}} />
+</View>`
+    } else if (icon === 'chevron') {
+      source = `<View style={${serializeStyle({
+        width: 11,
+        height: 11,
+        borderBottomColor: '#FFFFFF',
+        borderBottomWidth: 2,
+        borderRightColor: '#FFFFFF',
+        borderRightWidth: 2,
+        transform: [{ rotate: '45deg' }]
+      })}} />`
+    } else {
+      source = `<View style={${serializeStyle({ width: 18, height: 18 })}}>
+  <View style={${serializeStyle({
+    position: 'absolute',
+    left: 8,
+    top: 1,
+    width: 2,
+    height: 11,
+    backgroundColor: '#FFFFFF'
+  })}} />
+  <View style={${serializeStyle({
+    position: 'absolute',
+    left: 4,
+    top: 1,
+    width: 10,
+    height: 10,
+    borderLeftColor: '#FFFFFF',
+    borderLeftWidth: 2,
+    borderTopColor: '#FFFFFF',
+    borderTopWidth: 2,
+    transform: [{ rotate: '45deg' }]
+  })}} />
+  <View style={${serializeStyle({
+    position: 'absolute',
+    left: 1,
+    bottom: 0,
+    width: 16,
+    height: 6,
+    borderBottomColor: '#FFFFFF',
+    borderBottomWidth: 2,
+    borderLeftColor: '#FFFFFF',
+    borderLeftWidth: 2,
+    borderRightColor: '#FFFFFF',
+    borderRightWidth: 2
+  })}} />
+</View>`
+    }
+    children.push(source)
+  }
+  if (trigger.showLabel) {
+    children.push(
+      `<Text numberOfLines={1} ellipsizeMode="tail" style={${labelStyle}}>${escapeJsxText(trigger.label)}</Text>`
+    )
+  }
+  if (icon === 'upload') {
+    children.push(
+      `<Text style={${serializeStyle({
+        color: '#FFFFFF',
+        fontSize: 11,
+        fontWeight: '600',
+        marginLeft: 8,
+        opacity: 0.9
+      })}}>Unavailable</Text>`
+    )
+  }
+  const content =
+    children.length > 0
+      ? `\n${children.map((child) => indentSource(child, indent + 1)).join('\n')}\n${pad}`
+      : ''
+  return `${pad}<${component} ${attrs.join(' ')}>${content}</${component}>`
+}
+
+function indentSource(value: string, depth: number): string {
+  const prefix = '  '.repeat(depth)
+  return value
+    .split('\n')
+    .map((line) => `${prefix}${line}`)
+    .join('\n')
 }
 
 function emitImage(

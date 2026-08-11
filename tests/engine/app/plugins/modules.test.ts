@@ -5,14 +5,24 @@ import {
   CAROUSEL_PLUGIN_ID,
   DATA_GRID_MODULE_TYPE,
   DATA_GRID_PLUGIN_ID,
+  DROPDOWN_MENU_MODULE_CONFIG_VERSION,
+  DROPDOWN_MENU_MODULE_TYPE,
+  DROPDOWN_MENU_PLUGIN_ID,
   HTML_MODULE_TYPE,
   HTML_PLUGIN_ID,
   LOTTIE_MODULE_TYPE,
   LOTTIE_PLUGIN_ID,
+  MODAL_MODULE_CONFIG_VERSION,
+  MODAL_MODULE_TYPE,
+  MODAL_PLUGIN_ID,
+  SLIDE_MENU_MODULE_CONFIG_VERSION,
   SLIDE_MENU_MODULE_TYPE,
   SLIDE_MENU_PLUGIN_ID,
   TABLE_MODULE_TYPE,
   TABLE_PLUGIN_ID,
+  UPLOAD_BUTTON_MODULE_CONFIG_VERSION,
+  UPLOAD_BUTTON_MODULE_TYPE,
+  UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID,
   type DeclarativeModuleContributionV1
@@ -81,20 +91,23 @@ describe('app plugin module adapter compatibility', () => {
 
   test('accepts only reviewed non-default module host adapter identities', () => {
     const cases = [
-      [VIDEO_PLUGIN_ID, VIDEO_MODULE_TYPE],
-      [TABLE_PLUGIN_ID, TABLE_MODULE_TYPE],
-      [SLIDE_MENU_PLUGIN_ID, SLIDE_MENU_MODULE_TYPE],
-      [LOTTIE_PLUGIN_ID, LOTTIE_MODULE_TYPE],
-      [CAROUSEL_PLUGIN_ID, CAROUSEL_MODULE_TYPE],
-      [DATA_GRID_PLUGIN_ID, DATA_GRID_MODULE_TYPE]
+      [VIDEO_PLUGIN_ID, VIDEO_MODULE_TYPE, 1],
+      [TABLE_PLUGIN_ID, TABLE_MODULE_TYPE, 1],
+      [SLIDE_MENU_PLUGIN_ID, SLIDE_MENU_MODULE_TYPE, SLIDE_MENU_MODULE_CONFIG_VERSION],
+      [DROPDOWN_MENU_PLUGIN_ID, DROPDOWN_MENU_MODULE_TYPE, DROPDOWN_MENU_MODULE_CONFIG_VERSION],
+      [UPLOAD_BUTTON_PLUGIN_ID, UPLOAD_BUTTON_MODULE_TYPE, UPLOAD_BUTTON_MODULE_CONFIG_VERSION],
+      [MODAL_PLUGIN_ID, MODAL_MODULE_TYPE, MODAL_MODULE_CONFIG_VERSION],
+      [LOTTIE_PLUGIN_ID, LOTTIE_MODULE_TYPE, 1],
+      [CAROUSEL_PLUGIN_ID, CAROUSEL_MODULE_TYPE, 1],
+      [DATA_GRID_PLUGIN_ID, DATA_GRID_MODULE_TYPE, 1]
     ] as const
 
-    for (const [pluginId, moduleType] of cases) {
+    for (const [pluginId, moduleType, configVersion] of cases) {
       const contribution = contributionFor(pluginId)
       expect(inspectPluginModuleCompatibility(pluginId, contribution)).toMatchObject({
         ok: true,
         status: 'compatible',
-        definition: { pluginId, moduleType, configVersion: 1 }
+        definition: { pluginId, moduleType, configVersion }
       })
       expect(
         inspectPluginModuleCompatibility('publisher.untrusted-module', contribution)

@@ -7,7 +7,11 @@ import {
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
 
 import { createModuleFrameOverrides } from './module-frame'
-import { hasExactPluginKeys, parseCanonicalPublicHttpsUrl } from './parse-helpers'
+import {
+  hasDensePluginArrayKeys,
+  hasExactPluginKeys,
+  parseCanonicalPublicHttpsUrl
+} from './parse-helpers'
 import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './types'
 
 export const LOTTIE_PLUGIN_ID = 'open-pencil.lottie'
@@ -156,13 +160,7 @@ function validateJsonArray(
   depth: number,
   budget: JsonBudget
 ): string | null {
-  const ownKeys = Reflect.ownKeys(value)
-  if (
-    ownKeys.length !== value.length + 1 ||
-    ownKeys.some(
-      (key) => typeof key !== 'string' || (key !== 'length' && !/^(0|[1-9]\d*)$/.test(key))
-    )
-  ) {
+  if (!hasDensePluginArrayKeys(value)) {
     return `${path} must be a dense JSON array without custom properties`
   }
   budget.arrayItems += value.length

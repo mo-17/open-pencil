@@ -3,7 +3,7 @@ import type { NodeType, SceneNode } from '@open-pencil/scene-graph'
 export type CompilerModulePayload = Record<string, unknown>
 
 export type CompilerModuleLoweringResult =
-  | { ok: true; payload: CompilerModulePayload }
+  | { ok: true; payload: CompilerModulePayload; configVersion?: number }
   | { ok: false; reason: string }
 
 /** SceneGraph -> framework-neutral module payload. The resolver remains owned

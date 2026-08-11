@@ -17,6 +17,10 @@ import {
   isNativeTextInput as isTextInput,
   safeNativeStateDefault,
   staticNativeAttr as staticAttr,
+  trustedNativeDropdownMenuTrigger,
+  trustedNativeModalTrigger,
+  trustedNativeSlideMenuTrigger,
+  trustedNativeUploadButtonTrigger,
   walkNativeNodes as walkNodes
 } from '../native-shared'
 import { dartLiteral, emitDartCondition, emitDartExpression } from './expression'
@@ -352,7 +356,10 @@ function emitElement(node: IRElement, environment: NodeEnvironment): string {
     style.backgroundAsset = undefined
   }
   let widget: string
-  if (unsupportedControl(node)) {
+  const moduleTriggerFallback = emitStaticModuleTriggerFallback(node, style, environment)
+  if (moduleTriggerFallback !== undefined) {
+    widget = moduleTriggerFallback
+  } else if (unsupportedControl(node)) {
     environment.warn({
       code: 'flutter-form-control-unsupported',
       message: `Flutter omitted unsupported ${unsupportedControlLabel(node)} control instead of emitting misleading behavior`,
@@ -372,6 +379,142 @@ function emitElement(node: IRElement, environment: NodeEnvironment): string {
     widget = `KeyedSubtree(key: ValueKey(${dartString(`openpencil-node-${node.sourceId}`)}), child: ${widget})`
   }
   return widget
+}
+
+function emitStaticModuleTriggerFallback(
+  node: IRElement,
+  style: FlutterStyle,
+  environment: NodeEnvironment
+): string | undefined {
+  const modalTrigger = trustedNativeModalTrigger(node)
+  const dropdownTrigger = trustedNativeDropdownMenuTrigger(node)
+  const uploadTrigger = trustedNativeUploadButtonTrigger(node)
+  const trigger =
+    modalTrigger ?? dropdownTrigger ?? uploadTrigger ?? trustedNativeSlideMenuTrigger(node)
+  if (trigger === undefined) return undefined
+  let displayName = 'Slide Menu'
+  let icon: 'menu' | 'modal' | 'chevron' | 'upload' = 'menu'
+  if (modalTrigger) {
+    displayName = 'Modal'
+    icon = 'modal'
+  } else if (dropdownTrigger) {
+    displayName = 'Dropdown Menu'
+    icon = 'chevron'
+  } else if (uploadTrigger) {
+    displayName = 'Upload Button'
+    icon = 'upload'
+  }
+  if (node.events?.onClick?.length) {
+    environment.warn({
+      code: 'flutter-event-unsupported',
+      message: `Flutter static ${displayName} trigger dropped onClick behavior`,
+      nodeId: node.sourceId
+    })
+  }
+  style.minHeight = Math.max(44, style.minHeight ?? 0)
+  if (style.height !== undefined) style.height = Math.max(44, style.height)
+  if (!style.backgroundColor && !style.backgroundAsset) {
+    style.backgroundColor = icon === 'upload' ? '#64748B' : '#2663EB'
+  }
+  return emitStaticModuleTrigger(trigger.label, trigger.showIcon, trigger.showLabel, icon)
+}
+
+function emitStaticModuleTrigger(
+  label: string,
+  showIcon: boolean,
+  showLabel: boolean,
+  icon: 'menu' | 'modal' | 'chevron' | 'upload'
+): string {
+  const line = `Container(
+  width: 18.0,
+  height: 2.0,
+  decoration: const BoxDecoration(
+    color: Color(0xFFFFFFFF),
+  ),
+)`
+  const children: string[] = []
+  if (showIcon) {
+    let source: string
+    if (icon === 'menu') {
+      source = `SizedBox(
+  width: 18.0,
+  height: 14.0,
+  child: Column(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+${indent(`${line},\n${line},\n${line},`, 3)}
+    ],
+  ),
+)`
+    } else if (icon === 'modal') {
+      source = `Container(
+  width: 18.0,
+  height: 16.0,
+  decoration: BoxDecoration(
+    border: Border.all(color: const Color(0xFFFFFFFF), width: 2.0),
+    borderRadius: BorderRadius.circular(2.0),
+  ),
+  child: Align(
+    alignment: Alignment.topCenter,
+    child: Container(
+      margin: const EdgeInsets.only(top: 3.0),
+      height: 2.0,
+      color: const Color(0xFFFFFFFF),
+    ),
+  ),
+)`
+    } else if (icon === 'chevron') {
+      source = `const Icon(
+  Icons.keyboard_arrow_down,
+  color: Color(0xFFFFFFFF),
+  size: 20.0,
+)`
+    } else {
+      source = `const Icon(
+  Icons.file_upload_outlined,
+  color: Color(0xFFFFFFFF),
+  size: 20.0,
+)`
+    }
+    children.push(source)
+  }
+  if (showIcon && showLabel) children.push('const SizedBox(width: 8.0)')
+  if (showLabel) {
+    children.push(`Flexible(
+  child: Text(
+    ${dartString(label)},
+    maxLines: 1,
+    overflow: TextOverflow.ellipsis,
+    textAlign: TextAlign.center,
+    style: const TextStyle(color: Color(0xFFFFFFFF), fontWeight: FontWeight.w600),
+  ),
+)`)
+  }
+  if (icon === 'upload') {
+    children.push(`const Padding(
+  padding: EdgeInsets.only(left: 8.0),
+  child: Text(
+    'Unavailable',
+    style: TextStyle(color: Color(0xFFFFFFFF), fontSize: 11.0, fontWeight: FontWeight.w600),
+  ),
+)`)
+  }
+  const content = children.length > 0 ? `\n${indent(`${children.join(',\n')},`, 2)}\n  ` : ''
+  const row = `Row(
+  mainAxisAlignment: MainAxisAlignment.center,
+  crossAxisAlignment: CrossAxisAlignment.center,
+  children: [${content}],
+)`
+  if (icon !== 'upload') return row
+  return `Semantics(
+  button: true,
+  enabled: false,
+  label: ${dartString(`${label}. File selection unavailable in this static Flutter export.`)},
+  child: Opacity(
+    opacity: 0.62,
+    child: ${row},
+  ),
+)`
 }
 
 function emitImage(node: IRElement, style: FlutterStyle, environment: NodeEnvironment): string {

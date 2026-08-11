@@ -12,12 +12,16 @@ import {
   CODE_BLOCK_PLUGIN_ID,
   DATA_GRID_MODULE_TYPE,
   DATA_GRID_PLUGIN_ID,
+  DROPDOWN_MENU_MODULE_TYPE,
+  DROPDOWN_MENU_PLUGIN_ID,
   HTML_MODULE_TYPE,
   HTML_PLUGIN_ID,
   MAP_MODULE_TYPE,
   MAP_PLUGIN_ID,
   MARKDOWN_MODULE_TYPE,
   MARKDOWN_PLUGIN_ID,
+  MODAL_MODULE_TYPE,
+  MODAL_PLUGIN_ID,
   LOTTIE_MODULE_TYPE,
   LOTTIE_PLUGIN_ID,
   PDF_VIEWER_MODULE_TYPE,
@@ -32,6 +36,8 @@ import {
   TABLE_PLUGIN_ID,
   TABS_MODULE_TYPE,
   TABS_PLUGIN_ID,
+  UPLOAD_BUTTON_MODULE_TYPE,
+  UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID,
   type DeclarativeModuleContributionV1,
@@ -53,6 +59,15 @@ const TRUSTED_MODULE_ADAPTERS = new Map([
     'open-pencil.slide-menu',
     { pluginId: SLIDE_MENU_PLUGIN_ID, moduleType: SLIDE_MENU_MODULE_TYPE }
   ],
+  [
+    'open-pencil.dropdown-menu',
+    { pluginId: DROPDOWN_MENU_PLUGIN_ID, moduleType: DROPDOWN_MENU_MODULE_TYPE }
+  ],
+  [
+    'open-pencil.upload-button',
+    { pluginId: UPLOAD_BUTTON_PLUGIN_ID, moduleType: UPLOAD_BUTTON_MODULE_TYPE }
+  ],
+  ['open-pencil.modal', { pluginId: MODAL_PLUGIN_ID, moduleType: MODAL_MODULE_TYPE }],
   ['open-pencil.lottie', { pluginId: LOTTIE_PLUGIN_ID, moduleType: LOTTIE_MODULE_TYPE }],
   ['open-pencil.carousel', { pluginId: CAROUSEL_PLUGIN_ID, moduleType: CAROUSEL_MODULE_TYPE }],
   ['open-pencil.data-grid', { pluginId: DATA_GRID_PLUGIN_ID, moduleType: DATA_GRID_MODULE_TYPE }],

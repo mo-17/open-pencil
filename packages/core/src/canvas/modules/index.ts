@@ -7,9 +7,11 @@ export {
   renderChartModulePreview,
   renderCodeBlockModulePreview,
   renderDataGridModulePreview,
+  renderDropdownMenuModulePreview,
   renderHtmlModulePreview,
   renderLottieModulePreview,
   renderMarkdownModulePreview,
+  renderModalModulePreview,
   renderModulePreview,
   renderPdfViewerModulePreview,
   renderQrBarcodeModulePreview,
@@ -17,6 +19,7 @@ export {
   renderSlideMenuModulePreview,
   renderTableModulePreview,
   renderTabsModulePreview,
+  renderUploadButtonModulePreview,
   renderVideoModulePreview
 } from './registry'
 export { markdownPreviewLines } from './markdown'

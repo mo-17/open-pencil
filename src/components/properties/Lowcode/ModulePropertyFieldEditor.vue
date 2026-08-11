@@ -2,12 +2,15 @@
 import { computed } from 'vue'
 
 import {
+  UPLOAD_BUTTON_MODULE_TYPE,
+  UPLOAD_BUTTON_PLUGIN_ID,
   type AccordionItemV1,
   type ModuleDefinition,
   type ModulePropertyField,
   type TabsItemV1
 } from '@open-pencil/core/plugins'
 import type { JsonObject } from '@open-pencil/scene-graph/primitives'
+import { useI18n } from '@open-pencil/vue'
 
 import type { AppPluginModuleEditorText } from '@/app/plugins/localization'
 import NumberField from '@/components/inputs/NumberField.vue'
@@ -35,6 +38,23 @@ const emit = defineEmits<{
 }>()
 
 const specializedKind = computed(() => specializedModuleFieldKind(definition, field))
+const { panels } = useI18n()
+
+const isUploadModule = computed(
+  () =>
+    definition?.pluginId === UPLOAD_BUTTON_PLUGIN_ID &&
+    definition.moduleType === UPLOAD_BUTTON_MODULE_TYPE
+)
+const isUploadMaxFiles = computed(
+  () => isUploadModule.value && field.path.length === 1 && field.path[0] === 'maxFiles'
+)
+const isUploadBooleanField = computed(() => isUploadModule.value && field.kind === 'boolean')
+const isUploadNumberField = computed(() => isUploadModule.value && field.kind === 'number')
+const uploadSingleFileMode = computed(() => isUploadMaxFiles.value && config.multiple !== true)
+const numberMin = computed(() =>
+  isUploadMaxFiles.value && config.multiple === true ? Math.max(2, field.min ?? 2) : field.min
+)
+const uploadNumberFieldUi = { root: 'h-11 min-h-11' }
 
 function currentValue(): unknown {
   return valueAtPath(config, field.path)
@@ -65,19 +85,47 @@ function jsonValue(): string {
     :data-module-path="field.path.map(String).join('.')"
     class="mb-2 flex flex-col gap-1"
   >
-    <label class="text-[10px] text-muted">{{ label }}</label>
+    <label v-if="!isUploadBooleanField" class="text-[10px] text-muted">{{ label }}</label>
 
-    <NumberField
-      v-if="field.kind === 'number'"
-      :model-value="numberValue()"
-      :min="field.min"
-      :max="field.max"
-      :step="field.step"
-      :label="label"
-      data-test-id="module-property-input"
+    <template v-if="field.kind === 'number'">
+      <NumberField
+        :model-value="numberValue()"
+        :min="numberMin"
+        :max="field.max"
+        :step="field.step"
+        :label="label"
+        :disabled="uploadSingleFileMode"
+        :ui="isUploadNumberField ? uploadNumberFieldUi : undefined"
+        data-test-id="module-property-input"
+        :data-module-path="field.path.map(String).join('.')"
+        @commit="emit('commit', $event)"
+      />
+      <p
+        v-if="uploadSingleFileMode"
+        data-test-id="upload-single-file-max-hint"
+        class="text-[10px] leading-relaxed text-muted"
+      >
+        {{ panels.lowcodeUploadSingleFileMaxHint }}
+      </p>
+    </template>
+
+    <label
+      v-else-if="isUploadBooleanField"
+      data-test-id="upload-boolean-control"
       :data-module-path="field.path.map(String).join('.')"
-      @commit="emit('commit', $event)"
-    />
+      class="flex min-h-11 cursor-pointer items-center gap-2 rounded border border-border bg-input px-3 py-2 text-xs text-surface focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/40"
+    >
+      <input
+        type="checkbox"
+        :checked="booleanValue()"
+        :aria-label="label"
+        data-test-id="module-property-input"
+        :data-module-path="field.path.map(String).join('.')"
+        class="size-4 shrink-0 accent-accent outline-none"
+        @change="emit('commitBoolean', $event)"
+      />
+      <span>{{ label }}</span>
+    </label>
 
     <input
       v-else-if="field.kind === 'boolean'"

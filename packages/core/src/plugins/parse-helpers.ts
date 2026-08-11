@@ -21,6 +21,10 @@ export interface PluginTrustValidityWindow {
   notAfter: string
 }
 
+interface MutablePluginConfigRecord {
+  [key: string]: unknown
+}
+
 export function hasExactPluginKeys(
   value: Readonly<Record<string, unknown>>,
   allowed: ReadonlySet<string>
@@ -147,13 +151,98 @@ export function assertBoundedPluginConfigBytes(
   }
 }
 
+const PLUGIN_CONFIG_CLONE_MAX_DEPTH = 64
+const ARRAY_INDEX_KEY = /^(0|[1-9]\d*)$/
+
+export function hasDensePluginArrayKeys(value: readonly unknown[]): boolean {
+  const ownKeys = Reflect.ownKeys(value)
+  return (
+    ownKeys.length === value.length + 1 &&
+    ownKeys.every(
+      (key) => typeof key === 'string' && (key === 'length' || ARRAY_INDEX_KEY.test(key))
+    )
+  )
+}
+
+function clonePluginConfigValue(
+  value: unknown,
+  path: string,
+  ancestors: WeakSet<object>,
+  depth: number
+): unknown {
+  if (value === null || typeof value !== 'object') return value
+  if (depth > PLUGIN_CONFIG_CLONE_MAX_DEPTH) {
+    throw new TypeError(`${path} exceeds the maximum JSON depth`)
+  }
+  if (ancestors.has(value)) throw new TypeError(`${path} contains a circular reference`)
+  ancestors.add(value)
+  try {
+    if (Array.isArray(value)) {
+      const cloned: unknown[] = []
+      cloned.length = value.length
+      for (const key of Reflect.ownKeys(value)) {
+        if (key === 'length') continue
+        if (typeof key !== 'string' || !ARRAY_INDEX_KEY.test(key)) {
+          throw new TypeError(`${path} must be a JSON array without custom or symbol keys`)
+        }
+        const descriptor = Object.getOwnPropertyDescriptor(value, key)
+        if (!descriptor?.enumerable || !('value' in descriptor)) {
+          throw new TypeError(`${path}[${key}] must be an enumerable data property`)
+        }
+        cloned[Number(key)] = clonePluginConfigValue(
+          descriptor.value,
+          `${path}[${key}]`,
+          ancestors,
+          depth + 1
+        )
+      }
+      return cloned
+    }
+    if (!isPlainJsonObject(value)) throw new TypeError(`${path} must be a plain JSON object`)
+    const cloned = Object.create(Object.getPrototypeOf(value)) as MutablePluginConfigRecord
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string') throw new TypeError(`${path} must not contain symbol keys`)
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      if (!descriptor?.enumerable || !('value' in descriptor)) {
+        throw new TypeError(`${path}.${key} must be an enumerable data property`)
+      }
+      Object.defineProperty(cloned, key, {
+        configurable: true,
+        enumerable: true,
+        value: clonePluginConfigValue(descriptor.value, `${path}.${key}`, ancestors, depth + 1),
+        writable: true
+      })
+    }
+    return cloned
+  } finally {
+    ancestors.delete(value)
+  }
+}
+
 export function mergePluginConfigWithDefaults(
   defaults: Readonly<Record<string, unknown>>,
   config: unknown
 ): unknown {
-  if (config === undefined) return structuredClone(defaults)
+  const merged = structuredClone(defaults)
+  if (config === undefined) return merged
   if (!isPlainJsonObject(config)) return config
-  return { ...structuredClone(defaults), ...config }
+  const ancestors = new WeakSet<object>([config])
+  for (const key of Reflect.ownKeys(config)) {
+    if (typeof key !== 'string') {
+      throw new TypeError('plugin config must not contain symbol keys')
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(config, key)
+    if (!descriptor?.enumerable || !('value' in descriptor)) {
+      throw new TypeError(`plugin config.${key} must be an enumerable data property`)
+    }
+    Object.defineProperty(merged, key, {
+      configurable: true,
+      enumerable: true,
+      value: clonePluginConfigValue(descriptor.value, `plugin config.${key}`, ancestors, 1),
+      writable: true
+    })
+  }
+  return merged
 }
 
 const CANONICAL_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/

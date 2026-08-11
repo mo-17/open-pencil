@@ -13,6 +13,13 @@ const panelSource = readFileSync(
   resolve(import.meta.dir, '../../../../src/components/properties/Lowcode/ModulePropsPanel.vue'),
   'utf8'
 )
+const fieldSource = readFileSync(
+  resolve(
+    import.meta.dir,
+    '../../../../src/components/properties/Lowcode/ModulePropertyFieldEditor.vue'
+  ),
+  'utf8'
+)
 const controllerSource = readFileSync(
   resolve(
     import.meta.dir,
@@ -34,6 +41,19 @@ describe('Slide Menu module item editor', () => {
     expect(source).toContain('draft.value.length >= SLIDE_MENU_MODULE_LIMITS.items')
     expect(source).toContain(':maxlength="SLIDE_MENU_MODULE_LIMITS.itemLabel"')
     expect(source).toContain(':maxlength="SLIDE_MENU_MODULE_LIMITS.itemHref"')
+  })
+
+  test('pairs module input surfaces with theme-aware foreground colors', () => {
+    expect(source).toMatch(
+      /data-test-id="slide-menu-item-label"[\s\S]*?class="[^"]*bg-surface[^"]*text-input[^"]*placeholder:text-input\/60[^"]*focus:border-accent[^"]*"/
+    )
+    expect(source).toMatch(
+      /data-test-id="slide-menu-item-href"[\s\S]*?class="[^"]*bg-surface[^"]*text-input[^"]*placeholder:text-input\/60[^"]*focus:border-accent[^"]*"/
+    )
+    expect(source).not.toMatch(/bg-surface[^"\n]*text-surface/)
+    expect(fieldSource).toMatch(
+      /v-else-if="field\.kind === 'select'"[\s\S]*?class="[^"]*bg-input[^"]*text-surface[^"]*focus:border-accent[^"]*"/
+    )
   })
 
   test('commits defensive copies on blur, explicit shortcut, add, and delete', () => {

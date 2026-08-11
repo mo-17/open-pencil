@@ -2,6 +2,8 @@ import { computed, reactive, watch } from 'vue'
 
 import {
   BUILTIN_PLUGIN_REGISTRY,
+  UPLOAD_BUTTON_MODULE_TYPE,
+  UPLOAD_BUTTON_PLUGIN_ID,
   VIDEO_MODULE_TYPE,
   VIDEO_PLUGIN_ID,
   type AccordionItemV1,
@@ -22,6 +24,7 @@ import {
   filterReferencedModuleItemIds,
   reconcileInitialModuleItemId
 } from '@/app/plugins/module-items-editor-model'
+import { dropdownMenuOptionPanelKey } from '@/app/plugins/module-option-localization'
 
 function fieldKey(field: ModulePropertyField): string {
   return field.path.map(String).join('.')
@@ -88,10 +91,14 @@ export function useModulePropsPanelController() {
     return ''
   })
 
-  function localizedPanelText(key: string | undefined, fallback: string): string {
-    if (!key) return fallback
+  function localizedPanelValue(key: string | undefined): string | undefined {
+    if (!key) return undefined
     const localized = Reflect.get(panels.value, key)
-    return typeof localized === 'string' ? localized : fallback
+    return typeof localized === 'string' ? localized : undefined
+  }
+
+  function localizedPanelText(key: string | undefined, fallback: string): string {
+    return localizedPanelValue(key) ?? fallback
   }
 
   const moduleName = computed(() => {
@@ -122,7 +129,12 @@ export function useModulePropsPanelController() {
 
   function optionLabel(field: ModulePropertyField, option: string): string {
     const key = field.i18nLabelKey ? `${field.i18nLabelKey}:${option}` : ''
-    return (key ? localizedAppPluginModulePropertyText(key, locale.value) : undefined) ?? option
+    const panelKey = dropdownMenuOptionPanelKey(field.i18nLabelKey, option)
+    return (
+      localizedPanelValue(panelKey) ??
+      (key ? localizedAppPluginModulePropertyText(key, locale.value) : undefined) ??
+      option
+    )
   }
 
   function commitConfig(field: ModulePropertyField, nextConfig: JsonObject): boolean {
@@ -151,6 +163,14 @@ export function useModulePropsPanelController() {
         Reflect.deleteProperty(jsonErrors, 'muted')
         Reflect.deleteProperty(jsonErrors, 'autoplay')
       }
+      if (
+        moduleDefinition.pluginId === UPLOAD_BUTTON_PLUGIN_ID &&
+        moduleDefinition.moduleType === UPLOAD_BUTTON_MODULE_TYPE &&
+        (committedFieldKey === 'multiple' || committedFieldKey === 'maxFiles')
+      ) {
+        Reflect.deleteProperty(jsonErrors, 'multiple')
+        Reflect.deleteProperty(jsonErrors, 'maxFiles')
+      }
       return true
     } catch (error) {
       jsonErrors[fieldKey(field)] = error instanceof Error ? error.message : String(error)
@@ -169,7 +189,21 @@ export function useModulePropsPanelController() {
 
   function commitBooleanField(field: ModulePropertyField, event: Event): void {
     const input = event.target as HTMLInputElement
-    if (!commitField(field, input.checked)) {
+    const moduleDefinition = definition.value
+    const isUploadMultiple =
+      moduleDefinition?.pluginId === UPLOAD_BUTTON_PLUGIN_ID &&
+      moduleDefinition.moduleType === UPLOAD_BUTTON_MODULE_TYPE &&
+      fieldKey(field) === 'multiple'
+    const committed = isUploadMultiple
+      ? commitConfig(field, {
+          ...config.value,
+          multiple: input.checked,
+          maxFiles: input.checked
+            ? Math.max(2, typeof config.value.maxFiles === 'number' ? config.value.maxFiles : 2)
+            : 1
+        })
+      : commitField(field, input.checked)
+    if (!committed) {
       input.checked = valueAtPath(config.value, field.path) === true
     }
   }

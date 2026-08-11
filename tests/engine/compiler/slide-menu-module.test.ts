@@ -7,6 +7,7 @@ import { compile, withDefaults } from '@open-pencil/compiler'
 import { buildPreviewProject } from '@open-pencil/compiler/build'
 import { collectTree } from '@open-pencil/compiler/ir/collect/tree'
 import type { IRElement } from '@open-pencil/compiler/ir/types'
+import { createSlideMenuModuleInstance } from '@open-pencil/core/plugins'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
@@ -56,8 +57,12 @@ describe('compiler trusted slide-menu module adapter', () => {
     expect(element.module).toEqual({
       pluginId: 'open-pencil.slide-menu',
       moduleType: 'slide-menu',
-      configVersion: 1,
-      payload: SLIDE_MENU_CONFIG
+      configVersion: 2,
+      payload: {
+        ...SLIDE_MENU_CONFIG,
+        showTriggerIcon: true,
+        showTriggerLabel: true
+      }
     })
     expect(element.module?.payload).not.toBe(SLIDE_MENU_CONFIG)
     expect(element.module?.payload.items).not.toBe(SLIDE_MENU_CONFIG.items)
@@ -95,6 +100,12 @@ describe('compiler trusted slide-menu module adapter', () => {
     expect(runtime).toContain('triggerRef.current?.focus')
     expect(runtime).toContain('if (config.closeOnBackdrop) closePanel()')
     expect(runtime).toContain('config.showCloseButton ?')
+    expect(runtime).toContain('data-openpencil-slide-menu-close=""')
+    expect(runtime).toContain('data-openpencil-slide-menu-close-icon=""')
+    expect(runtime).toContain('height: 44,\n  padding: 10,\n  width: 44')
+    expect(runtime).toContain('d="M6 6L18 18M18 6L6 18"')
+    expect(runtime).toContain('slide-menu-close]:focus-visible{outline:2px solid currentColor}')
+    expect(runtime).not.toContain('>Close</button>')
     expect(runtime).toContain('<a href={item.href} onClick={closePanel}>{item.label}</a>')
     expect(runtime).toContain("window.matchMedia('(prefers-reduced-motion: reduce)')")
     expect(runtime).toContain("transition: reducedMotion\n      ? 'none'")
@@ -105,6 +116,36 @@ describe('compiler trusted slide-menu module adapter', () => {
     expect(pkg.dependencies['focus-trap-react']).toBeUndefined()
     expect(pkg.dependencies['@radix-ui/react-dialog']).toBeUndefined()
     expect(out.warnings).toEqual([])
+  })
+
+  test('lowers the two trigger visibility controls independently in v2', () => {
+    const graph = makeSceneGraph()
+    const pageId = firstPageId(graph)
+    graph.createNode('FRAME', pageId, {
+      width: 220,
+      height: 56,
+      interactiveProps: {
+        module: createSlideMenuModuleInstance({
+          ...SLIDE_MENU_CONFIG,
+          showTriggerIcon: false,
+          showTriggerLabel: true
+        })
+      }
+    })
+
+    const ir = collectTree(graph, pageId)
+    const element = ir.children[0] as IRElement
+    expect(element.module).toMatchObject({
+      pluginId: 'open-pencil.slide-menu',
+      moduleType: 'slide-menu',
+      configVersion: 2,
+      payload: {
+        triggerLabel: 'Open navigation',
+        showTriggerIcon: false,
+        showTriggerLabel: true
+      }
+    })
+    expect(ir.warnings).toEqual([])
   })
 
   test('keeps authored fallback content when a link URL is unsafe', () => {

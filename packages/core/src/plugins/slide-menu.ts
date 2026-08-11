@@ -18,7 +18,7 @@ import type { ModuleDefinition, ModulePropertyField, ModuleResolution } from './
 
 export const SLIDE_MENU_PLUGIN_ID = 'open-pencil.slide-menu'
 export const SLIDE_MENU_MODULE_TYPE = 'slide-menu'
-export const SLIDE_MENU_MODULE_CONFIG_VERSION = 1
+export const SLIDE_MENU_MODULE_CONFIG_VERSION = 2
 export const SLIDE_MENU_MODULE_DEFAULT_SIZE = Object.freeze({ width: 180, height: 48 })
 export const SLIDE_MENU_MODULE_LIMITS = Object.freeze({
   triggerLabel: 80,
@@ -56,7 +56,12 @@ export interface SlideMenuModuleConfigV1 extends JsonObject {
   overlayOpacity: number
 }
 
-export type SlideMenuModuleConfig = SlideMenuModuleConfigV1
+export interface SlideMenuModuleConfigV2 extends SlideMenuModuleConfigV1 {
+  showTriggerIcon: boolean
+  showTriggerLabel: boolean
+}
+
+export type SlideMenuModuleConfig = SlideMenuModuleConfigV2
 
 const DEFAULT_ITEMS: SlideMenuItemV1[] = [
   { label: 'Home', href: '/' },
@@ -66,10 +71,12 @@ const DEFAULT_ITEMS: SlideMenuItemV1[] = [
 DEFAULT_ITEMS.forEach(Object.freeze)
 Object.freeze(DEFAULT_ITEMS)
 
-export const SLIDE_MENU_MODULE_DEFAULT_CONFIG: Readonly<SlideMenuModuleConfigV1> = Object.freeze({
+export const SLIDE_MENU_MODULE_DEFAULT_CONFIG: Readonly<SlideMenuModuleConfigV2> = Object.freeze({
   presentation: 'menu',
   direction: 'left',
   triggerLabel: 'Open menu',
+  showTriggerIcon: true,
+  showTriggerLabel: true,
   title: 'Navigation',
   description: 'Choose a destination.',
   items: DEFAULT_ITEMS,
@@ -81,7 +88,7 @@ export const SLIDE_MENU_MODULE_DEFAULT_CONFIG: Readonly<SlideMenuModuleConfigV1>
   overlayOpacity: 0.45
 })
 
-const CONFIG_KEYS = new Set([
+const LEGACY_CONFIG_KEYS = new Set([
   'presentation',
   'direction',
   'triggerLabel',
@@ -95,10 +102,12 @@ const CONFIG_KEYS = new Set([
   'textColor',
   'overlayOpacity'
 ])
+const CONFIG_KEYS = new Set([...LEGACY_CONFIG_KEYS, 'showTriggerIcon', 'showTriggerLabel'])
 const ITEM_KEYS = new Set(['label', 'href'])
 const PRESENTATIONS = new Set<SlideMenuPresentationV1>(['menu', 'dialog'])
 const DIRECTIONS = new Set<SlideMenuDirectionV1>(['left', 'right', 'top', 'bottom'])
-type ParseResult = { ok: true; config: SlideMenuModuleConfigV1 } | { ok: false; reason: string }
+type SupportedConfigVersion = 1 | typeof SLIDE_MENU_MODULE_CONFIG_VERSION
+type ParseResult = { ok: true; config: SlideMenuModuleConfigV2 } | { ok: false; reason: string }
 
 function boundedNumber(value: unknown, path: string, minimum: number, maximum: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum || value > maximum) {
@@ -140,12 +149,15 @@ function parseItems(value: unknown): SlideMenuItemV1[] {
   return items
 }
 
-function parseSlideMenuConfig(value: unknown): ParseResult {
-  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, CONFIG_KEYS)) {
+function parseSlideMenuConfig(value: unknown, configVersion: SupportedConfigVersion): ParseResult {
+  const keys = configVersion === 1 ? LEGACY_CONFIG_KEYS : CONFIG_KEYS
+  if (!isPlainJsonObject(value) || !hasExactPluginKeys(value, keys)) {
     return {
       ok: false,
       reason:
-        'slide menu config must contain exactly presentation, direction, triggerLabel, title, description, items, closeOnBackdrop, showCloseButton, panelSize, panelBackground, textColor, and overlayOpacity'
+        configVersion === 1
+          ? 'slide menu config v1 must contain exactly presentation, direction, triggerLabel, title, description, items, closeOnBackdrop, showCloseButton, panelSize, panelBackground, textColor, and overlayOpacity'
+          : 'slide menu config v2 must contain exactly presentation, direction, triggerLabel, showTriggerIcon, showTriggerLabel, title, description, items, closeOnBackdrop, showCloseButton, panelSize, panelBackground, textColor, and overlayOpacity'
     }
   }
   try {
@@ -180,6 +192,14 @@ function parseSlideMenuConfig(value: unknown): ParseResult {
       SLIDE_MENU_MODULE_LIMITS.description
     )
     const items = parseItems(value.items)
+    const showTriggerIcon = configVersion === 1 ? true : value.showTriggerIcon
+    if (typeof showTriggerIcon !== 'boolean') {
+      throw new TypeError('slide menu config showTriggerIcon must be a boolean')
+    }
+    const showTriggerLabel = configVersion === 1 ? true : value.showTriggerLabel
+    if (typeof showTriggerLabel !== 'boolean') {
+      throw new TypeError('slide menu config showTriggerLabel must be a boolean')
+    }
     if (typeof value.closeOnBackdrop !== 'boolean') {
       throw new TypeError('slide menu config closeOnBackdrop must be a boolean')
     }
@@ -209,6 +229,8 @@ function parseSlideMenuConfig(value: unknown): ParseResult {
         presentation: value.presentation as SlideMenuPresentationV1,
         direction: value.direction as SlideMenuDirectionV1,
         triggerLabel,
+        showTriggerIcon,
+        showTriggerLabel,
         title,
         description,
         items,
@@ -227,7 +249,8 @@ function parseSlideMenuConfig(value: unknown): ParseResult {
 
 export function createSlideMenuModuleInstance(config?: unknown): ModuleInstanceV1 {
   const parsed = parseSlideMenuConfig(
-    mergePluginConfigWithDefaults(SLIDE_MENU_MODULE_DEFAULT_CONFIG, config)
+    mergePluginConfigWithDefaults(SLIDE_MENU_MODULE_DEFAULT_CONFIG, config),
+    SLIDE_MENU_MODULE_CONFIG_VERSION
   )
   if (!parsed.ok) throw new TypeError(parsed.reason)
   return {
@@ -249,7 +272,7 @@ export function createSlideMenuModuleFrameOverrides(config?: unknown): Partial<S
   })
 }
 
-export function resolveSlideMenuModule(value: unknown): ModuleResolution<SlideMenuModuleConfigV1> {
+export function resolveSlideMenuModule(value: unknown): ModuleResolution<SlideMenuModuleConfigV2> {
   if (value === null || value === undefined) return null
   const instance = validateModuleInstance(value)
   if (!instance.ok) return { ok: false, reason: instance.reason }
@@ -259,17 +282,24 @@ export function resolveSlideMenuModule(value: unknown): ModuleResolution<SlideMe
   ) {
     return null
   }
-  if (instance.value.configVersion !== SLIDE_MENU_MODULE_CONFIG_VERSION) {
+  if (
+    instance.value.configVersion !== 1 &&
+    instance.value.configVersion !== SLIDE_MENU_MODULE_CONFIG_VERSION
+  ) {
     return {
       ok: false,
       reason: `unsupported slide menu config version ${instance.value.configVersion}`
     }
   }
-  const config = parseSlideMenuConfig(instance.value.config)
+  const config = parseSlideMenuConfig(instance.value.config, instance.value.configVersion)
   if (!config.ok) return config
   return {
     ok: true,
-    instance: { ...instance.value, config: config.config },
+    instance: {
+      ...instance.value,
+      configVersion: SLIDE_MENU_MODULE_CONFIG_VERSION,
+      config: config.config
+    },
     config: config.config
   }
 }
@@ -294,6 +324,18 @@ const SLIDE_MENU_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
     kind: 'text',
     label: 'Trigger label',
     i18nLabelKey: 'lowcodeModuleFieldSlideMenuTriggerLabel'
+  },
+  {
+    path: ['showTriggerIcon'],
+    kind: 'boolean',
+    label: 'Show trigger icon',
+    i18nLabelKey: 'lowcodeModuleFieldSlideMenuShowTriggerIcon'
+  },
+  {
+    path: ['showTriggerLabel'],
+    kind: 'boolean',
+    label: 'Show trigger label',
+    i18nLabelKey: 'lowcodeModuleFieldSlideMenuShowTriggerLabel'
   },
   {
     path: ['title'],
@@ -357,7 +399,7 @@ const SLIDE_MENU_MODULE_FIELDS: readonly ModulePropertyField[] = Object.freeze([
   }
 ])
 
-export const SLIDE_MENU_MODULE_DEFINITION: ModuleDefinition<SlideMenuModuleConfigV1> =
+export const SLIDE_MENU_MODULE_DEFINITION: ModuleDefinition<SlideMenuModuleConfigV2> =
   Object.freeze({
     pluginId: SLIDE_MENU_PLUGIN_ID,
     moduleType: SLIDE_MENU_MODULE_TYPE,

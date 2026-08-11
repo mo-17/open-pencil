@@ -21,10 +21,13 @@ export const SLIDE_MENU_COMPILER_MODULE_LOWERER: CompilerModuleLowerer = Object.
     const { config } = resolved
     return {
       ok: true as const,
+      configVersion: resolved.instance.configVersion,
       payload: {
         presentation: config.presentation,
         direction: config.direction,
         triggerLabel: config.triggerLabel,
+        showTriggerIcon: config.showTriggerIcon,
+        showTriggerLabel: config.showTriggerLabel,
         title: config.title,
         description: config.description,
         items: config.items.map((item) => ({ label: item.label, href: item.href })),

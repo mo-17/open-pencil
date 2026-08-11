@@ -30,7 +30,7 @@ describe('built-in slide menu plugin', () => {
     const resolved = resolveSlideMenuModule(instance)
 
     expect(definition?.name).toBe('Slide Menu')
-    expect(definition?.configVersion).toBe(1)
+    expect(definition?.configVersion).toBe(2)
     expect(definition?.defaultSize).toEqual(SLIDE_MENU_MODULE_DEFAULT_SIZE)
     expect(definition?.i18nNameKey).toBe('lowcodeModuleSlideMenuName')
     expect(definition?.i18nDescriptionKey).toBe('lowcodeModuleSlideMenuDescription')
@@ -38,6 +38,8 @@ describe('built-in slide menu plugin', () => {
       [['presentation'], 'select'],
       [['direction'], 'select'],
       [['triggerLabel'], 'text'],
+      [['showTriggerIcon'], 'boolean'],
+      [['showTriggerLabel'], 'boolean'],
       [['title'], 'text'],
       [['description'], 'text'],
       [['items'], 'json'],
@@ -52,6 +54,8 @@ describe('built-in slide menu plugin', () => {
       'lowcodeModuleFieldSlideMenuPresentation',
       'lowcodeModuleFieldSlideMenuDirection',
       'lowcodeModuleFieldSlideMenuTriggerLabel',
+      'lowcodeModuleFieldSlideMenuShowTriggerIcon',
+      'lowcodeModuleFieldSlideMenuShowTriggerLabel',
       'lowcodeModuleFieldSlideMenuTitle',
       'lowcodeModuleFieldSlideMenuDescription',
       'lowcodeModuleFieldSlideMenuItems',
@@ -66,6 +70,8 @@ describe('built-in slide menu plugin', () => {
       'presentation',
       'direction',
       'triggerLabel',
+      'showTriggerIcon',
+      'showTriggerLabel',
       'title',
       'description',
       'items',
@@ -88,7 +94,7 @@ describe('built-in slide menu plugin', () => {
         module: {
           pluginId: SLIDE_MENU_PLUGIN_ID,
           moduleType: SLIDE_MENU_MODULE_TYPE,
-          configVersion: 1
+          configVersion: 2
         }
       }
     })
@@ -234,6 +240,8 @@ describe('built-in slide menu plugin', () => {
     )
     expect(() => createSlideMenuModuleInstance({ closeOnBackdrop: 'yes' })).toThrow('boolean')
     expect(() => createSlideMenuModuleInstance({ showCloseButton: 1 })).toThrow('boolean')
+    expect(() => createSlideMenuModuleInstance({ showTriggerIcon: 'yes' })).toThrow('boolean')
+    expect(() => createSlideMenuModuleInstance({ showTriggerLabel: 1 })).toThrow('boolean')
     expect(() =>
       createSlideMenuModuleInstance({ panelSize: SLIDE_MENU_MODULE_LIMITS.panelSizeMin - 1 })
     ).toThrow('between 160 and 720')
@@ -274,7 +282,7 @@ describe('built-in slide menu plugin', () => {
     ).toMatchObject({ ok: true, config: { panelSize: 720, overlayOpacity: 0.9 } })
   })
 
-  test('returns defensive item copies and rejects unsupported versions', () => {
+  test('returns defensive item copies, migrates v1, and rejects unsupported versions', () => {
     const items = [{ label: 'Docs', href: '/docs' }]
     const instance = createSlideMenuModuleInstance({ items, panelBackground: '#abcdef' })
     items[0].label = 'Changed'
@@ -284,9 +292,25 @@ describe('built-in slide menu plugin', () => {
     if (!resolved?.ok) throw new Error('expected slide menu module to resolve')
     expect(resolved.config.items).toEqual([{ label: 'Docs', href: '/docs' }])
     expect(resolved.config.panelBackground).toBe('#ABCDEF')
-    expect(resolveSlideMenuModule({ ...instance, configVersion: 2 })).toEqual({
+    expect(instance.configVersion).toBe(2)
+
+    const legacy = structuredClone(instance)
+    legacy.configVersion = 1
+    Reflect.deleteProperty(legacy.config, 'showTriggerIcon')
+    Reflect.deleteProperty(legacy.config, 'showTriggerLabel')
+    const migrated = resolveSlideMenuModule(legacy)
+    expect(migrated).toMatchObject({
+      ok: true,
+      instance: {
+        configVersion: 2,
+        config: { showTriggerIcon: true, showTriggerLabel: true }
+      },
+      config: { showTriggerIcon: true, showTriggerLabel: true }
+    })
+
+    expect(resolveSlideMenuModule({ ...instance, configVersion: 3 })).toEqual({
       ok: false,
-      reason: 'unsupported slide menu config version 2'
+      reason: 'unsupported slide menu config version 3'
     })
   })
 })

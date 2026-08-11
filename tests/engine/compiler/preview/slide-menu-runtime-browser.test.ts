@@ -4,18 +4,15 @@ import { chromium, expect as playwrightExpect, type Browser, type Page } from '@
 
 import { compile, withDefaults } from '@open-pencil/compiler'
 import { createPreviewServer, type PreviewServer } from '@open-pencil/compiler/dev-server'
+import {
+  createSlideMenuModuleFrameOverrides,
+  createSlideMenuModuleInstance
+} from '@open-pencil/core/plugins'
 
 import { firstPageId, makeSceneGraph } from '#tests/helpers/scene'
 
-declare global {
-  interface Window {
-    __openPencilSlideMenuExecuted?: boolean
-  }
-}
-
 type SlideMenuPresentation = 'menu' | 'dialog'
 type SlideMenuDirection = 'left' | 'right' | 'top' | 'bottom'
-
 const BASE_CONFIG = {
   presentation: 'menu' as SlideMenuPresentation,
   direction: 'left' as SlideMenuDirection,
@@ -34,50 +31,73 @@ const BASE_CONFIG = {
   overlayOpacity: 0.45
 }
 
-function buildSlideMenuFiles(overrides: Partial<typeof BASE_CONFIG> = {}, instanceCount = 1) {
+type SlideMenuConfigOverrides = Partial<typeof BASE_CONFIG> & {
+  showTriggerIcon?: boolean
+  showTriggerLabel?: boolean
+}
+function buildSlideMenuFiles(
+  overrides: SlideMenuConfigOverrides = {},
+  instanceCount = 1,
+  includeAuthoredTrigger = true,
+  useDefaultFrameOverrides = false
+) {
   const graph = makeSceneGraph()
   const pageId = firstPageId(graph)
   for (let index = 0; index < instanceCount; index += 1) {
-    const frame = graph.createNode('FRAME', pageId, {
-      name: `Slide menu trigger ${index + 1}`,
-      x: 40,
-      y: 40 + index * 88,
-      width: 240,
-      height: 64,
-      interactiveProps: {
-        module: {
-          version: 1,
-          pluginId: 'open-pencil.slide-menu',
-          moduleType: 'slide-menu',
-          configVersion: 1,
-          config: {
-            ...BASE_CONFIG,
-            ...overrides,
-            triggerLabel: `${overrides.triggerLabel ?? BASE_CONFIG.triggerLabel} ${index + 1}`
+    const config = {
+      ...BASE_CONFIG,
+      ...overrides,
+      triggerLabel: `${overrides.triggerLabel ?? BASE_CONFIG.triggerLabel} ${index + 1}`
+    }
+    const frame = graph.createNode(
+      'FRAME',
+      pageId,
+      useDefaultFrameOverrides
+        ? {
+            ...createSlideMenuModuleFrameOverrides(config),
+            x: 40,
+            y: 40 + index * 88
           }
-        }
-      }
-    })
-    graph.createNode('TEXT', frame.id, { text: `Authored trigger ${index + 1}`, x: 12, y: 12 })
+        : {
+            name: `Slide menu trigger ${index + 1}`,
+            x: 40,
+            y: 40 + index * 88,
+            width: 240,
+            height: 64,
+            fills: [
+              { type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 }, opacity: 1, visible: true }
+            ],
+            interactiveProps: {
+              module: createSlideMenuModuleInstance(config)
+            }
+          }
+    )
+    if (includeAuthoredTrigger) {
+      graph.createNode('BUTTON', frame.id, {
+        height: 40,
+        interactiveProps: { text: `Authored trigger ${index + 1}` },
+        width: 180,
+        x: 12,
+        y: 12
+      })
+    }
   }
-
   return compile({
     graph,
     pageIds: [pageId],
     options: withDefaults({ packageName: 'slide-menu-runtime-browser', devMode: false })
   }).files
 }
-
 async function loadFixture(
   server: PreviewServer,
   page: Page,
-  overrides: Partial<typeof BASE_CONFIG> = {},
-  instanceCount = 1
+  overrides: SlideMenuConfigOverrides = {},
+  instanceCount = 1,
+  includeAuthoredTrigger = true
 ): Promise<void> {
-  server.updateFiles(buildSlideMenuFiles(overrides, instanceCount))
+  server.updateFiles(buildSlideMenuFiles(overrides, instanceCount, includeAuthoredTrigger))
   await page.goto(server.url, { waitUntil: 'networkidle' })
 }
-
 async function openPanel(page: Page) {
   const trigger = page.locator('[data-openpencil-slide-menu-trigger]')
   await trigger.click()
@@ -86,7 +106,6 @@ async function openPanel(page: Page) {
   await playwrightExpect(panel).toHaveAttribute('data-state', 'open')
   return { panel, trigger }
 }
-
 async function waitForOverlayToClose(page: Page): Promise<void> {
   await page.locator('[data-openpencil-slide-menu-overlay]').waitFor({ state: 'detached' })
 }
@@ -141,6 +160,164 @@ describe('preview browser — compiled Slide Menu module', () => {
       }
     }
   }, timeoutMs)
+
+  test(
+    'shows the intrinsic trigger icon and label independently without weakening the button',
+    async () => {
+      if (!server || !page) throw new Error('Missing Slide Menu preview runtime')
+      const cases = [
+        ['icon and label', true, true, '8px'],
+        ['icon only', true, false, '0px'],
+        ['label only', false, true, '0px'],
+        ['neither icon nor label', false, false, '0px']
+      ] as const
+
+      for (const [name, showTriggerIcon, showTriggerLabel, expectedGap] of cases) {
+        const triggerLabel = `Open ${name}`
+        server.updateFiles(
+          buildSlideMenuFiles(
+            {
+              showTriggerIcon,
+              showTriggerLabel,
+              triggerLabel
+            },
+            1,
+            false,
+            true
+          )
+        )
+        await page.goto(server.url, { waitUntil: 'networkidle' })
+
+        const accessibleLabel = `${triggerLabel} 1`
+        const trigger = page.getByRole('button', { name: accessibleLabel })
+        await playwrightExpect(trigger).toBeVisible()
+        const metrics = await trigger.evaluate((element) => {
+          const button = element as HTMLButtonElement
+          const icon = button.querySelector<HTMLElement>(
+            '[data-openpencil-slide-menu-trigger-icon]'
+          )
+          const label = button.querySelector<HTMLElement>(
+            '[data-openpencil-slide-menu-trigger-label]'
+          )
+          const bars = [
+            ...button.querySelectorAll<HTMLElement>('[data-openpencil-slide-menu-trigger-icon-bar]')
+          ]
+          const content = [icon, label].filter((candidate): candidate is HTMLElement => !!candidate)
+          const buttonRect = button.getBoundingClientRect()
+          const contentRects = content.map((candidate) => candidate.getBoundingClientRect())
+          const style = getComputedStyle(button)
+          return {
+            ariaLabel: button.getAttribute('aria-label'),
+            backgroundColor: style.backgroundColor,
+            barColors: bars.map((bar) => getComputedStyle(bar).backgroundColor),
+            barHeights: bars.map((bar) => bar.getBoundingClientRect().height),
+            barRadii: bars.map((bar) => getComputedStyle(bar).borderRadius),
+            barWidths: bars.map((bar) => bar.getBoundingClientRect().width),
+            color: style.color,
+            contentHorizontalCenterDelta:
+              contentRects.length > 0
+                ? (Math.min(...contentRects.map((rect) => rect.left)) +
+                    Math.max(...contentRects.map((rect) => rect.right))) /
+                    2 -
+                  (buttonRect.left + buttonRect.right) / 2
+                : null,
+            contentVerticalCenterDelta:
+              contentRects.length > 0
+                ? (Math.min(...contentRects.map((rect) => rect.top)) +
+                    Math.max(...contentRects.map((rect) => rect.bottom))) /
+                    2 -
+                  (buttonRect.top + buttonRect.bottom) / 2
+                : null,
+            gap: style.gap,
+            height: buttonRect.height,
+            labelText: label?.textContent,
+            minHeight: style.minHeight,
+            tagName: button.tagName,
+            text: button.textContent?.trim(),
+            type: button.type,
+            width: buttonRect.width
+          }
+        })
+
+        expect(metrics).toMatchObject({
+          ariaLabel: accessibleLabel,
+          backgroundColor: 'rgb(38, 99, 235)',
+          color: 'rgb(255, 255, 255)',
+          gap: expectedGap,
+          height: 48,
+          minHeight: '44px',
+          tagName: 'BUTTON',
+          type: 'button',
+          width: 180
+        })
+        expect(metrics.labelText).toBe(showTriggerLabel ? accessibleLabel : undefined)
+        expect(metrics.barColors).toEqual(
+          showTriggerIcon ? ['rgb(255, 255, 255)', 'rgb(255, 255, 255)', 'rgb(255, 255, 255)'] : []
+        )
+        expect(metrics.barHeights).toEqual(showTriggerIcon ? [2, 2, 2] : [])
+        expect(metrics.barRadii).toEqual(showTriggerIcon ? ['0px', '0px', '0px'] : [])
+        expect(metrics.barWidths).toEqual(showTriggerIcon ? [18, 18, 18] : [])
+        if (showTriggerIcon || showTriggerLabel) {
+          expect(Math.abs(metrics.contentHorizontalCenterDelta ?? Infinity)).toBeLessThanOrEqual(1)
+          expect(Math.abs(metrics.contentVerticalCenterDelta ?? Infinity)).toBeLessThanOrEqual(1)
+        } else {
+          expect(metrics.text).toBe('')
+          await trigger.focus()
+          expect(await trigger.evaluate((candidate) => document.activeElement === candidate)).toBe(
+            true
+          )
+          const focusStyle = await trigger.evaluate((candidate) => {
+            const style = getComputedStyle(candidate)
+            return { style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) }
+          })
+          expect(focusStyle.style).not.toBe('none')
+          expect(focusStyle.width).toBeGreaterThan(0)
+          await trigger.press('Enter')
+          await playwrightExpect(
+            page.locator('[data-openpencil-slide-menu-panel]')
+          ).toHaveAttribute('data-state', 'open')
+          await playwrightExpect(trigger).toHaveAttribute('aria-expanded', 'true')
+          await page.keyboard.press('Escape')
+          await waitForOverlayToClose(page)
+          await playwrightExpect(trigger).toHaveAttribute('aria-expanded', 'false')
+          expect(await trigger.evaluate((candidate) => document.activeElement === candidate)).toBe(
+            true
+          )
+        }
+      }
+
+      await loadFixture(server, page, { showTriggerIcon: false, showTriggerLabel: false })
+      const authoredTrigger = page.getByRole('button', { name: 'Open navigation 1' })
+      const authoredHost = page.locator('[data-openpencil-slide-menu-trigger-host]')
+      const authoredContent = authoredHost.locator('[data-openpencil-slide-menu-trigger-authored]')
+      await playwrightExpect(authoredContent).toHaveText('Authored trigger 1')
+      await playwrightExpect(authoredContent.locator('button')).toHaveCount(1)
+      await playwrightExpect(page.locator('button button')).toHaveCount(0)
+      await playwrightExpect(authoredContent).toHaveAttribute('inert', '')
+      await playwrightExpect(authoredTrigger).toHaveCount(1)
+      await playwrightExpect(
+        authoredTrigger.locator(
+          '[data-openpencil-slide-menu-trigger-icon], [data-openpencil-slide-menu-trigger-label]'
+        )
+      ).toHaveCount(0)
+      const authoredMetrics = await authoredHost.evaluate((element) => {
+        const content = element.querySelector<HTMLElement>(
+          '[data-openpencil-slide-menu-trigger-authored]'
+        )
+        if (!content) throw new Error('Missing authored Slide Menu trigger content')
+        const buttonRect = element.getBoundingClientRect()
+        const contentRect = content.getBoundingClientRect()
+        return {
+          centerDelta:
+            (contentRect.left + contentRect.right) / 2 - (buttonRect.left + buttonRect.right) / 2,
+          gap: getComputedStyle(element).gap
+        }
+      })
+      expect(authoredMetrics.gap).toBe('0px')
+      expect(Math.abs(authoredMetrics.centerDelta)).toBeLessThanOrEqual(1)
+    },
+    timeoutMs
+  )
 
   test(
     'renders both presentations from all four directions and transitions closed',
@@ -223,9 +400,9 @@ describe('preview browser — compiled Slide Menu module', () => {
 
       await loadFixture(server, page, { direction: 'bottom', panelSize: 720 })
       opened = await openPanel(page)
-      expect(await opened.panel.evaluate((element) => element.getBoundingClientRect().height)).toBe(
-        464
-      )
+      expect(
+        await opened.panel.evaluate((element) => element.getBoundingClientRect().height)
+      ).toBeCloseTo(464, 3)
       await page.keyboard.press('Escape')
       await waitForOverlayToClose(page)
 
@@ -334,7 +511,7 @@ describe('preview browser — compiled Slide Menu module', () => {
     async () => {
       if (!server || !page) throw new Error('Missing Slide Menu preview runtime')
       await page.addInitScript(() => {
-        window.__openPencilSlideMenuExecuted = false
+        Reflect.set(window, '__openPencilSlideMenuExecuted', false)
       })
       await loadFixture(server, page, {
         title: '<img src=x onerror="window.__openPencilSlideMenuExecuted=true">',
@@ -355,7 +532,9 @@ describe('preview browser — compiled Slide Menu module', () => {
       await playwrightExpect(closeButton).toBeFocused()
       expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
       expect(await panel.locator('img, script, b').count()).toBe(0)
-      expect(await page.evaluate(() => Boolean(window.__openPencilSlideMenuExecuted))).toBe(false)
+      expect(
+        await page.evaluate(() => Boolean(Reflect.get(window, '__openPencilSlideMenuExecuted')))
+      ).toBe(false)
       expect(await panel.getByText('<b>First destination</b>', { exact: true }).count()).toBe(1)
 
       const links = panel.locator('a')

@@ -88,11 +88,12 @@ export function collectCompilerModule(
     warnInvalid(warnings, node, lowerer.warningCodePrefix, lowerer.displayName, lowered.reason)
     return null
   }
+  const configVersion = lowered.configVersion ?? instance.configVersion
   const payload = validateModuleInstance({
     version: 1,
     pluginId: instance.pluginId,
     moduleType: instance.moduleType,
-    configVersion: instance.configVersion,
+    configVersion,
     config: lowered.payload
   })
   if (!payload.ok) {
@@ -108,7 +109,7 @@ export function collectCompilerModule(
   return {
     pluginId: instance.pluginId,
     moduleType: instance.moduleType,
-    configVersion: instance.configVersion,
+    configVersion: payload.value.configVersion,
     payload: payload.value.config
   }
 }

@@ -2,8 +2,10 @@
 import {
   CODE_BLOCK_MODULE_LIMITS,
   MARKDOWN_MODULE_LIMITS,
+  MODAL_MODULE_LIMITS,
   type AccordionItemV1,
   type DataGridDataV1,
+  type DropdownMenuEntryV1,
   type ModulePropertyField,
   type RichTextDocumentV1,
   type SlideMenuItemV1,
@@ -16,12 +18,14 @@ import type { AppPluginModuleEditorText } from '@/app/plugins/localization'
 
 import AccordionItemsEditor from './AccordionItemsEditor.vue'
 import DataGridCsvEditor from './DataGridCsvEditor.vue'
+import DropdownMenuItemsEditor from './DropdownMenuItemsEditor.vue'
 import HtmlContentEditor from './HtmlContentEditor.vue'
 import MultilineModuleTextEditor from './MultilineModuleTextEditor.vue'
 import RichTextContentEditor from './RichTextContentEditor.vue'
 import SlideMenuItemsEditor from './SlideMenuItemsEditor.vue'
 import TableContentEditor from './TableContentEditor.vue'
 import TabsItemsEditor from './TabsItemsEditor.vue'
+import UploadAcceptEditor from './UploadAcceptEditor.vue'
 import { valueAtPath } from './module-props-panel-controller'
 import type { SpecializedModuleFieldKind } from './module-property-field'
 
@@ -59,6 +63,18 @@ function tableData(): TableDataV1 {
 
 function dataGridData(): DataGridDataV1 {
   return fieldValue() as DataGridDataV1
+}
+
+function dropdownMenuItems(): DropdownMenuEntryV1[] {
+  const value = fieldValue()
+  return Array.isArray(value) ? (value as DropdownMenuEntryV1[]) : []
+}
+
+function uploadAcceptTokens(): string[] {
+  const value = fieldValue()
+  return Array.isArray(value)
+    ? value.filter((token): token is string => typeof token === 'string')
+    : []
 }
 
 function slideMenuItems(): SlideMenuItemV1[] {
@@ -115,6 +131,22 @@ function accordionItems(): AccordionItemV1[] {
     @commit="emit('commit', $event)"
   />
 
+  <DropdownMenuItemsEditor
+    v-else-if="kind === 'dropdown-menu-items'"
+    :model-value="dropdownMenuItems()"
+    :label="label"
+    :invalid="Boolean(error)"
+    @commit="emit('commit', $event)"
+  />
+
+  <UploadAcceptEditor
+    v-else-if="kind === 'upload-accept'"
+    :model-value="uploadAcceptTokens()"
+    :label="label"
+    :invalid="Boolean(error)"
+    @commit="emit('commit', $event)"
+  />
+
   <TabsItemsEditor
     v-else-if="kind === 'tabs-items'"
     :model-value="tabsItems()"
@@ -147,6 +179,17 @@ function accordionItems(): AccordionItemV1[] {
     :invalid="Boolean(error)"
     :error="error"
     @commit="emit('commitAccordion', $event)"
+  />
+
+  <MultilineModuleTextEditor
+    v-else-if="kind === 'modal-content'"
+    :model-value="textValue()"
+    :label="label"
+    :max-length="MODAL_MODULE_LIMITS.content"
+    :rows="8"
+    wrap="soft"
+    :error="error"
+    @commit="emit('commit', $event)"
   />
 
   <MultilineModuleTextEditor
