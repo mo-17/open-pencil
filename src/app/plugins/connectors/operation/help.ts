@@ -7,6 +7,7 @@ import type {
 } from '@open-pencil/core/plugins'
 import type { Locale } from '@open-pencil/vue'
 
+import { REVIEWED_EXTERNAL_SERVICE_CATALOG } from '../services'
 import {
   BUNDLED_CONNECTOR_OPERATION_HELP,
   bundledConnectorOperationHelpKey,
@@ -171,11 +172,17 @@ export function connectorOperationHelp(
     BUNDLED_CONNECTOR_OPERATION_HELP[
       bundledConnectorOperationHelpKey(pluginId, operation.operationId)
     ]
+  const reviewedServiceExample = REVIEWED_EXTERNAL_SERVICE_CATALOG.find(
+    (descriptor) => descriptor.connector.contract.pluginId === pluginId
+  )?.connector.metadata.operations.find(
+    (candidate) => candidate.operationId === operation.operationId
+  )?.example
   const flattened = flattenObjectSchema(
     operation.parameters.schema,
     definition?.fields ?? Object.freeze({}),
     locale
   )
-  const exampleJson = definition ? JSON.stringify(definition.example, null, 2) : null
+  const example = definition?.example ?? reviewedServiceExample
+  const exampleJson = example ? JSON.stringify(example, null, 2) : null
   return Object.freeze({ ...flattened, exampleJson })
 }

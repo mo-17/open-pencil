@@ -8,6 +8,7 @@ import {
 } from '@/app/plugins/connectors/airtable-records'
 import {
   appConnectorAuthorization,
+  appConnectorCredentialReadiness,
   appConnectorHostAdapters,
   appConnectorOutcomeUnknownNotices,
   createAppConnectorFetch,
@@ -35,6 +36,7 @@ import {
 } from '@/app/plugins/connectors/supabase-schema-inspector'
 import { createMemoryAppPluginStateStorage } from '@/app/plugins/storage'
 import { createAppPluginStore } from '@/app/plugins/store'
+import { credentialRef } from '@/app/settings/credentials'
 
 const CONNECTORS = Object.freeze([
   {
@@ -66,6 +68,7 @@ const CONNECTORS = Object.freeze([
 
 afterEach(() => {
   appConnectorAuthorization.clear()
+  appConnectorCredentialReadiness.clear()
   appConnectorOutcomeUnknownNotices.clear()
 })
 
@@ -140,6 +143,14 @@ describe('app connector integration', () => {
           (operation) => !isAppConnectorMcpExposed(connector, operation)
         )
       ).toBe(true)
+      appConnectorCredentialReadiness.update(
+        candidate.contract.credentialSlots
+          .filter((slot) => slot.required)
+          .map((slot) => ({
+            reference: credentialRef(candidate.pluginId, slot.slotId),
+            status: 'configured' as const
+          }))
+      )
       appConnectorAuthorization.authorize(candidate.contract, connector.plugin.package.digest)
 
       for (const operation of candidate.contract.operations) {

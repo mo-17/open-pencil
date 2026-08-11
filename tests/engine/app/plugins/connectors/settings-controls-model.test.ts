@@ -176,6 +176,7 @@ describe('plugin connector settings controls model', () => {
       'Supabase 访问令牌'
     ])
     expect(stripe?.credentials[0]?.label).toBe('Stripe 密钥')
+    expect(stripe?.credentials[0]?.description).toContain('凭据存储')
     expect(resend?.credentials[0]?.label).toBe('Resend API 密钥')
   })
 
@@ -351,6 +352,7 @@ describe('plugin connector settings controls model', () => {
     expect(english.stopWaiting).toBe('Stop waiting')
     expect(english.mutationAttemptId).toBe('Mutation attempt ID')
     expect(english.originTemplate).toBe('Template origin')
+    expect(english.configureRequiredCredentials).toContain('required credential')
     expect(chinese.sessionAuthorization).toContain('本次应用会话')
     expect(chinese.sessionAuthorization).toContain('已连接的 MCP/AI 客户端')
     expect(chinese.sessionAuthorization).toContain('已保存的凭据')
@@ -360,6 +362,7 @@ describe('plugin connector settings controls model', () => {
     expect(chinese.stopWaiting).toBe('停止等待')
     expect(chinese.mutationAttemptId).toBe('变更操作标识')
     expect(chinese.originTemplate).toBe('模板来源')
+    expect(chinese.configureRequiredCredentials).toContain('必填凭据')
     expect(chinese.save).toBe('保存凭据')
   })
 
@@ -379,6 +382,19 @@ describe('plugin connector settings controls model', () => {
     expect(source).toContain(
       'appConnectorAuthorization.revoke(connector.contract.pluginId, connector.connectorId)'
     )
+    const saveBlock = source.slice(
+      source.indexOf('async function saveCredential'),
+      source.indexOf('async function clearCredential')
+    )
+    expect(saveBlock).toContain('await saveConnectorCredential')
+    expect(saveBlock).toContain(
+      'appConnectorAuthorization.revoke(connector.contract.pluginId, connector.connectorId)'
+    )
+    expect(source).toContain(':disabled="!requiredCredentialsConfigured(connector)"')
+    expect(source).toContain(':aria-describedby=')
+    expect(source).toContain('authorizationHelpId(connector)')
+    expect(source).toContain('{{ copy.configureRequiredCredentials }}')
+    expect(source).toContain('if (!requiredCredentialsConfigured(connector))')
     expect(source).toContain('role="alert"')
   })
 })

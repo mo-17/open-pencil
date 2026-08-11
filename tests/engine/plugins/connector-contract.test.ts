@@ -140,6 +140,14 @@ describe('plugin connector preparation contract', () => {
     request.method = 'GET'
     request.pathTemplate = '/v0/{unknown}'
     expect(() => parsePluginConnectorContract(value)).toThrow('must reference a scalar parameter')
+    request.pathTemplate = '/v0/{baseId}/{tableId}/'
+    expect(parsePluginConnectorContract(value).operations[0].request?.pathTemplate).toBe(
+      '/v0/{baseId}/{tableId}/'
+    )
+    request.pathTemplate = '/v0//{tableId}/'
+    expect(() => parsePluginConnectorContract(value)).toThrow('canonical root-relative')
+    request.pathTemplate = '//'
+    expect(() => parsePluginConnectorContract(value)).toThrow('canonical root-relative')
     request.pathTemplate = '/v0/{baseId}/{tableId}'
     request.maxResponseBytes = 4 * 1024 * 1024 + 1
     expect(() => parsePluginConnectorContract(value)).toThrow('maxResponseBytes')

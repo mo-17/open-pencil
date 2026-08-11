@@ -89,6 +89,12 @@ export interface ConnectorHostAdapter {
   readonly connectorId: string
   readonly adapterId: string
   readonly contract: PluginConnectorContractV1
+  /**
+   * Exact host-reviewed query operations that are semantically read-only even when an upstream
+   * API requires POST (for example, a fixed GraphQL query). This is host code, never manifest
+   * authority; mutation operations are rejected when adapters are registered.
+   */
+  readonly mcpReadOnlyOperationIds?: readonly string[]
   /** Optional host-owned, fail-closed credential classifier. It must not retain the value. */
   validateCredential?(context: ValidateConnectorCredentialContext): boolean | Promise<boolean>
   prepare(context: PrepareConnectorRequestContext): Promise<PreparedConnectorRequest>

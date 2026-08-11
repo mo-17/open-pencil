@@ -3,7 +3,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { useI18n } from '@open-pencil/vue'
 
-import { appConnectorAuthorization, appConnectorHostAdapters } from '@/app/plugins/connectors/app'
+import {
+  appConnectorAuthorization,
+  appConnectorCredentialReadiness,
+  appConnectorHostAdapters
+} from '@/app/plugins/connectors/app'
 import {
   clearConnectorCredential,
   connectorCredentialControlKey,
@@ -69,15 +73,25 @@ async function refreshCredentialStatuses(): Promise<void> {
     connector.credentials.map((credential) => ({ connector, credential }))
   )
   const statuses = await Promise.all(
-    entries.map(
-      async ({ connector, credential }) =>
-        [
-          credentialKey(connector, credential),
-          await connectorCredentialStatus(appCredentialServices.manager, credential.reference)
-        ] as const
-    )
+    entries.map(async ({ connector, credential }) => ({
+      key: credentialKey(connector, credential),
+      reference: credential.reference,
+      status: await connectorCredentialStatus(appCredentialServices.manager, credential.reference)
+    }))
   )
-  if (revision === statusRevision) credentialStatuses.value = new Map(statuses)
+  if (revision !== statusRevision) return
+  credentialStatuses.value = new Map(statuses.map(({ key, status }) => [key, status]))
+  appConnectorCredentialReadiness.update(
+    statuses.map(({ reference, status }) => ({ reference, status }))
+  )
+  let revoked = false
+  for (const connector of connectors.value) {
+    if (requiredCredentialsConfigured(connector)) continue
+    revoked =
+      appConnectorAuthorization.revoke(connector.contract.pluginId, connector.connectorId) ||
+      revoked
+  }
+  if (revoked) authorizationVersion.value += 1
 }
 
 function credentialStatus(
@@ -93,6 +107,16 @@ function credentialStatusTone(status: CredentialStatus): 'success' | 'warning' |
   return 'error'
 }
 
+function requiredCredentialsConfigured(connector: PluginConnectorControl): boolean {
+  return connector.credentials
+    .filter((credential) => credential.required)
+    .every((credential) => credentialStatus(connector, credential) === 'configured')
+}
+
+function authorizationHelpId(connector: PluginConnectorControl): string {
+  return `connector-authorization-help-${connector.connectorId}`
+}
+
 async function saveCredential(
   event: Event,
   connector: PluginConnectorControl,
@@ -105,9 +129,14 @@ async function saveCredential(
   const key = credentialKey(connector, credential)
   credentialErrors.value = setMapValue(credentialErrors.value, key)
   setBusy(key, true)
+  appConnectorAuthorization.revoke(connector.contract.pluginId, connector.connectorId)
+  authorizationVersion.value += 1
   try {
     await saveConnectorCredential(appCredentialServices.manager, credential.reference, input)
     credentialStatuses.value = setMapValue(credentialStatuses.value, key, 'configured')
+    appConnectorCredentialReadiness.update([
+      { reference: credential.reference, status: 'configured' }
+    ])
   } catch {
     credentialErrors.value = setMapValue(
       credentialErrors.value,
@@ -126,11 +155,12 @@ async function clearCredential(
   const key = credentialKey(connector, credential)
   credentialErrors.value = setMapValue(credentialErrors.value, key)
   setBusy(key, true)
+  appConnectorAuthorization.revoke(connector.contract.pluginId, connector.connectorId)
+  authorizationVersion.value += 1
   try {
     await clearConnectorCredential(appCredentialServices.manager, credential.reference)
     credentialStatuses.value = setMapValue(credentialStatuses.value, key, 'missing')
-    appConnectorAuthorization.revoke(connector.contract.pluginId, connector.connectorId)
-    authorizationVersion.value += 1
+    appConnectorCredentialReadiness.update([{ reference: credential.reference, status: 'missing' }])
   } catch {
     credentialErrors.value = setMapValue(
       credentialErrors.value,
@@ -144,6 +174,14 @@ async function clearCredential(
 
 function authorize(connector: PluginConnectorControl): void {
   authorizationErrors.value = setMapValue(authorizationErrors.value, connector.connectorId)
+  if (!requiredCredentialsConfigured(connector)) {
+    authorizationErrors.value = setMapValue(
+      authorizationErrors.value,
+      connector.connectorId,
+      copy.value.configureRequiredCredentials
+    )
+    return
+  }
   if (!plugin.enabled || plugin.blockedReason) {
     authorizationErrors.value = setMapValue(
       authorizationErrors.value,
@@ -227,6 +265,18 @@ onBeforeUnmount(() => {
         <dd class="break-all text-surface">{{ connector.adapterId }}</dd>
       </dl>
 
+      <aside
+        v-if="connector.manualSetup"
+        class="mt-1.5 rounded border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-1.5 py-1 text-[var(--color-warning-text)]"
+      >
+        <p class="font-medium">{{ copy.manualSetup }}</p>
+        <p>{{ connector.manualSetup.note }}</p>
+        <p v-if="connector.manualSetup.scopes.length" class="mt-0.5">
+          {{ copy.requiredScopes }}:
+          <span class="font-mono">{{ connector.manualSetup.scopes.join(', ') }}</span>
+        </p>
+      </aside>
+
       <div class="mt-1.5 space-y-1">
         <div
           v-for="operation in connector.operations"
@@ -290,6 +340,9 @@ onBeforeUnmount(() => {
               {{ connectorCredentialStatusLabel(credentialStatus(connector, credential), copy) }}
             </AppBadge>
           </div>
+          <p v-if="credential.description" class="mt-0.5 text-muted">
+            {{ credential.description }}
+          </p>
           <div class="mt-1 flex gap-1">
             <input
               :id="`connector-credential-${connector.connectorId}-${credential.slotId}`"
@@ -332,7 +385,11 @@ onBeforeUnmount(() => {
         <button
           v-if="!connector.authorized"
           type="button"
-          class="rounded bg-accent px-2 py-1 font-medium text-white"
+          class="rounded bg-accent px-2 py-1 font-medium text-white disabled:opacity-50"
+          :disabled="!requiredCredentialsConfigured(connector)"
+          :aria-describedby="
+            requiredCredentialsConfigured(connector) ? undefined : authorizationHelpId(connector)
+          "
           @click="authorize(connector)"
         >
           {{ copy.authorize }}
@@ -346,6 +403,14 @@ onBeforeUnmount(() => {
           {{ copy.revoke }}
         </button>
       </div>
+      <p
+        v-if="!connector.authorized && !requiredCredentialsConfigured(connector)"
+        :id="authorizationHelpId(connector)"
+        class="mt-1 text-warning"
+        role="status"
+      >
+        {{ copy.configureRequiredCredentials }}
+      </p>
       <p v-if="authorizationErrors.get(connector.connectorId)" class="mt-1 text-error" role="alert">
         {{ authorizationErrors.get(connector.connectorId) }}
       </p>

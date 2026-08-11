@@ -32,6 +32,20 @@ export class ConnectorHostAdapterRegistry {
     ) {
       throw new Error('Connector host adapter identity does not match its reviewed contract')
     }
+    const mcpReadOnlyOperationIds = adapter.mcpReadOnlyOperationIds ?? []
+    if (new Set(mcpReadOnlyOperationIds).size !== mcpReadOnlyOperationIds.length) {
+      throw new Error('Connector host adapter MCP read-only operation IDs must be unique')
+    }
+    for (const operationId of mcpReadOnlyOperationIds) {
+      const operation = compatibility.contract.operations.find(
+        (candidate) => candidate.operationId === operationId
+      )
+      if (operation?.kind !== 'query' || operation.request?.method !== 'POST') {
+        throw new Error(
+          `Connector host adapter MCP read-only operation is not a reviewed fixed POST query: ${operationId}`
+        )
+      }
+    }
     const key = adapterKey(adapter.pluginId, adapter.connectorId)
     if (this.#adapters.has(key)) {
       throw new Error(

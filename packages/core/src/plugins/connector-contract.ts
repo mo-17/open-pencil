@@ -178,6 +178,7 @@ const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
 const ORIGIN_TEMPLATE_PARAMETER_LABEL = /^\{([A-Za-z][A-Za-z0-9_]{0,63})\}$/
 const PATH_LITERAL_SEGMENT = /^[A-Za-z0-9](?:[A-Za-z0-9._~-]{0,126}[A-Za-z0-9_~-])?$/
 const PATH_PARAMETER_SEGMENT = /^\{([A-Za-z][A-Za-z0-9_]{0,63})\}$/
+const UNSAFE_PATH_TEMPLATE_FRAGMENTS = Object.freeze(['\\', '//', '?', '#'])
 const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9a-z-]+$/
 const FORBIDDEN_CREDENTIAL_HEADERS = new Set([
   'authorization',
@@ -537,15 +538,15 @@ function reviewedPathTemplate(
   const pathTemplate = boundedText(value, path, 2_048)
   if (
     !pathTemplate.startsWith('/') ||
-    pathTemplate.includes('\\') ||
-    pathTemplate.includes('?') ||
-    pathTemplate.includes('#') ||
-    (pathTemplate.length > 1 && pathTemplate.endsWith('/'))
+    UNSAFE_PATH_TEMPLATE_FRAGMENTS.some((fragment) => pathTemplate.includes(fragment))
   ) {
     throw new TypeError(`${path} must be a canonical root-relative path template`)
   }
   const placeholders = new Set<string>()
-  const segments = pathTemplate === '/' ? [] : pathTemplate.slice(1).split('/')
+  const pathWithoutTrailingSlash =
+    pathTemplate.length > 1 && pathTemplate.endsWith('/') ? pathTemplate.slice(0, -1) : pathTemplate
+  const segments =
+    pathWithoutTrailingSlash === '/' ? [] : pathWithoutTrailingSlash.slice(1).split('/')
   for (const segment of segments) {
     const parameter = PATH_PARAMETER_SEGMENT.exec(segment)?.[1]
     if (parameter) {

@@ -18,10 +18,12 @@ import type {
 import type { InstalledAppPlugin } from '../types'
 import type { ConnectorAuthorizationRegistry } from './authorization'
 import { connectorOperationHelp, type ConnectorOperationHelp } from './operation/help'
+import { REVIEWED_EXTERNAL_SERVICE_CATALOG } from './services'
 
 export type PluginConnectorCredentialControl = Readonly<{
   slotId: string
   label: string
+  description: string
   kind: 'api-key' | 'bearer-token' | 'oauth2'
   required: boolean
   reference: CredentialRef
@@ -48,6 +50,7 @@ export type PluginConnectorControl = Readonly<{
   origins: readonly string[]
   originTemplates: readonly string[]
   methods: readonly string[]
+  manualSetup: Readonly<{ note: string; scopes: readonly string[] }> | null
   credentials: readonly PluginConnectorCredentialControl[]
   operations: readonly PluginConnectorOperationControl[]
   hasMutation: boolean
@@ -81,12 +84,15 @@ export type PluginConnectorControlsCopy = Readonly<{
   authorized: string
   notAuthorized: string
   sessionAuthorization: string
+  manualSetup: string
+  requiredScopes: string
   mutationWarning: string
   adapterUnavailable: string
   pluginUnavailable: string
   credentialPlaceholder: string
   credentialActionFailed: string
   authorizationActionFailed: string
+  configureRequiredCredentials: string
   requestUnavailable: string
   parametersJson: string
   requiredFields: string
@@ -148,7 +154,9 @@ const ENGLISH_COPY: PluginConnectorControlsCopy = Object.freeze({
   authorized: 'Authorized',
   notAuthorized: 'Not authorized',
   sessionAuthorization:
-    'Authorization applies to this app session. Eligible read-only GET queries also become available to connected MCP/AI clients using the saved credential.',
+    'Authorization applies to this app session. Eligible fixed GET queries and explicitly reviewed read-only fixed POST queries also become available to connected MCP/AI clients using the saved credential.',
+  manualSetup: 'Manual setup required',
+  requiredScopes: 'Minimum scopes',
   mutationWarning:
     'Mutation operations can change remote data and require confirmation on every run.',
   adapterUnavailable: 'The reviewed host adapter is unavailable.',
@@ -156,6 +164,7 @@ const ENGLISH_COPY: PluginConnectorControlsCopy = Object.freeze({
   credentialPlaceholder: 'Paste token or API key',
   credentialActionFailed: 'Credential operation failed.',
   authorizationActionFailed: 'Connector authorization failed.',
+  configureRequiredCredentials: 'Configure every required credential before authorizing.',
   requestUnavailable: 'No executable request authority is declared.',
   parametersJson: 'Parameters (JSON)',
   requiredFields: 'Required fields',
@@ -218,13 +227,16 @@ const SIMPLIFIED_CHINESE_COPY: PluginConnectorControlsCopy = Object.freeze({
   authorized: '已授权',
   notAuthorized: '未授权',
   sessionAuthorization:
-    '授权仅在本次应用会话中有效。符合条件的只读 GET 查询也会使用已保存的凭据向已连接的 MCP/AI 客户端开放。',
+    '授权仅在本次应用会话中有效。符合条件的固定 GET 查询，以及明确审核为只读的固定 POST 查询，也会使用已保存的凭据向已连接的 MCP/AI 客户端开放。',
+  manualSetup: '需要手工配置',
+  requiredScopes: '最小权限范围',
   mutationWarning: '变更操作可以修改远程数据，并且每次运行都需要再次确认。',
   adapterUnavailable: '经过审核的宿主适配器不可用。',
   pluginUnavailable: '请先启用并解除此插件的阻止状态，再授权连接器。',
   credentialPlaceholder: '粘贴令牌或 API 密钥',
   credentialActionFailed: '凭据操作失败。',
   authorizationActionFailed: '连接器授权失败。',
+  configureRequiredCredentials: '请先配置全部必填凭据，再授权连接器。',
   requestUnavailable: '未声明可执行的请求权限。',
   parametersJson: '参数（JSON）',
   requiredFields: '必填字段',
@@ -322,17 +334,17 @@ export function pluginConnectorControls(
       if (contract.pluginId !== manifest.plugin.id) {
         throw new TypeError('Connector plugin identity does not match the installed manifest')
       }
-      const credentials = contract.credentialSlots.map((slot) =>
-        Object.freeze({
+      const credentials = contract.credentialSlots.map((slot) => {
+        const localized = localizedAppPluginContributionText(contract.pluginId, slot.slotId, locale)
+        return Object.freeze({
           slotId: slot.slotId,
-          label:
-            localizedAppPluginContributionText(contract.pluginId, slot.slotId, locale)?.name ??
-            slot.label,
+          label: localized?.name ?? slot.label,
+          description: localized?.description ?? '',
           kind: slot.kind,
           required: slot.required,
           reference: credentialRef(contract.pluginId, slot.slotId)
         })
-      )
+      })
       const localized = localizedAppPluginContributionText(
         contract.pluginId,
         contract.connectorId,
@@ -341,6 +353,12 @@ export function pluginConnectorControls(
       const operations = contract.operations.map((operation) =>
         operationControl(contract.pluginId, operation, locale)
       )
+      const reviewedService = REVIEWED_EXTERNAL_SERVICE_CATALOG.find(
+        (descriptor) =>
+          descriptor.connector.contract.pluginId === contract.pluginId &&
+          descriptor.connector.contract.connectorId === contract.connectorId
+      )
+      const localizedSetupNote = credentials.find((credential) => credential.required)?.description
       return Object.freeze({
         contract,
         packageDigest: plugin.package.digest,
@@ -351,6 +369,15 @@ export function pluginConnectorControls(
         origins: Object.freeze([...contract.network.origins]),
         originTemplates: Object.freeze([...(contract.network.originTemplates ?? [])]),
         methods: Object.freeze([...contract.network.methods]),
+        manualSetup: reviewedService
+          ? Object.freeze({
+              note:
+                locale === 'zh-CN' && localizedSetupNote
+                  ? localizedSetupNote
+                  : reviewedService.manualSetup.note,
+              scopes: Object.freeze([...reviewedService.manualSetup.scopes])
+            })
+          : null,
         credentials: Object.freeze(credentials),
         operations: Object.freeze(operations),
         hasMutation: operations.some((operation) => operation.kind === 'mutation'),
