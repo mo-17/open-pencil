@@ -11,20 +11,39 @@ import {
   createGoogleDriveOAuthSession,
   GOOGLE_DRIVE_OAUTH_SCOPES,
   googleDriveRefreshTokenCredentialRef,
-  type GoogleDriveOAuthError
+  type GoogleDriveOAuthError,
+  type GoogleDriveOAuthErrorCode
 } from '@/app/integrations/storage/google-drive/oauth/session'
 import { MemoryCredentialStore } from '@/app/settings/credentials/memory'
 import { createCredentialServices } from '@/app/settings/credentials/services'
-import type {
-  GoogleDriveNativeAuthorizeResult,
-  GoogleDriveNativeBridge,
-  GoogleDriveNativeRefreshResult
+import {
+  GoogleDriveNativeError,
+  type GoogleDriveNativeAuthorizeResult,
+  type GoogleDriveNativeBridge,
+  type GoogleDriveNativeErrorCode,
+  type GoogleDriveNativeRefreshResult
 } from '@/app/tauri/google-drive'
 
 const CLIENT_ID = '1234567890-test.apps.googleusercontent.com'
 const VERSION_A = 'a'.repeat(32)
 const VERSION_B = 'b'.repeat(32)
 const VERSION_C = 'c'.repeat(32)
+
+const NATIVE_OAUTH_ERROR_CASES = [
+  ['scope-mismatch', 'scope-mismatch'],
+  ['subject-mismatch', 'subject-mismatch'],
+  ['network-failed', 'network-failed'],
+  ['timeout', 'authorization-timeout'],
+  ['browser-open-failed', 'browser-open-failed'],
+  ['oauth-denied', 'authorization-denied'],
+  ['oauth-client-invalid', 'oauth-client-invalid'],
+  ['authorization-grant-invalid', 'authorization-grant-invalid'],
+  ['redirect-uri-mismatch', 'redirect-uri-mismatch'],
+  ['token-request-invalid', 'token-request-invalid'],
+  ['token-exchange-failed', 'token-exchange-failed'],
+  ['token-response-invalid', 'token-response-invalid'],
+  ['userinfo-failed', 'userinfo-failed']
+] as const satisfies readonly (readonly [GoogleDriveNativeErrorCode, GoogleDriveOAuthErrorCode])[]
 
 function authorizationResult(
   subject = 'google-subject-a',
@@ -103,6 +122,53 @@ function testSession(options?: {
 }
 
 describe('Google Drive OAuth session', () => {
+  for (const [nativeCode, expectedCode] of NATIVE_OAUTH_ERROR_CASES) {
+    test(`preserves native ${nativeCode} authorization failures`, async () => {
+      const native = nativeBridge()
+      const nativeError = new GoogleDriveNativeError(nativeCode, `Native ${nativeCode}`)
+      native.bridge.authorize = async () => {
+        throw nativeError
+      }
+      const { session } = testSession({ native })
+
+      await expect(session.connect()).rejects.toMatchObject({
+        code: expectedCode,
+        message: nativeError.message,
+        cause: nativeError
+      } satisfies Partial<GoogleDriveOAuthError>)
+    })
+  }
+
+  test('preserves semantic native failures while refreshing access tokens', async () => {
+    let now = 0
+    const native = nativeBridge()
+    const { session } = testSession({ native, now: () => now })
+    await session.connect()
+    now = 3_600_000
+    const nativeError = new GoogleDriveNativeError('userinfo-failed', 'Userinfo request failed')
+    native.bridge.refresh = async () => {
+      throw nativeError
+    }
+
+    await expect(session.getAccessToken()).rejects.toMatchObject({
+      code: 'userinfo-failed',
+      message: nativeError.message,
+      cause: nativeError
+    } satisfies Partial<GoogleDriveOAuthError>)
+  })
+
+  test('keeps native cancellation distinct from generic native failures', async () => {
+    const native = nativeBridge()
+    native.bridge.authorize = async () => {
+      throw new GoogleDriveNativeError('cancelled', 'Native authorization cancelled')
+    }
+    const { session } = testSession({ native })
+
+    await expect(session.connect()).rejects.toMatchObject({
+      code: 'cancelled'
+    } satisfies Partial<GoogleDriveOAuthError>)
+  })
+
   test('stores refresh tokens separately from independently readable public metadata', async () => {
     const { session, credentials, metadata } = testSession()
 

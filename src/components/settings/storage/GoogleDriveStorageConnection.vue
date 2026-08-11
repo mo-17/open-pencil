@@ -70,7 +70,7 @@ const emit = defineEmits<{
   ready: [providerId: typeof GOOGLE_DRIVE_STORAGE_PROVIDER_ID, ready: boolean]
 }>()
 const { dialogs } = useI18n()
-const clientIdDraft = ref('')
+const buildClientId = resolveGoogleDriveClientId({})
 const connectionState = ref<ConnectionState>({
   state: 'setup',
   profileId: activeStorageProfileID.value
@@ -89,8 +89,9 @@ let mounted = false
 
 const connected = computed(() => connectionState.value.state === 'connected')
 const busy = computed(() => operation.value !== 'idle')
-const canConnect = computed(
-  () => Boolean(clientIdDraft.value.trim()) && !busy.value && !pendingReconnect.value
+const canConnect = computed(() => Boolean(buildClientId) && !busy.value && !pendingReconnect.value)
+const maskedBuildClientId = computed(() =>
+  buildClientId ? maskClientId(buildClientId) : dialogs.value.storageGoogleDriveClientIDUnavailable
 )
 const showLocalOnly = computed(
   () => localOnlyAvailable.value || connectionState.value.state === 'invalid'
@@ -127,15 +128,15 @@ const statusDetail = computed(() => {
   if (state.state === 'unavailable')
     return dialogs.value.storageGoogleDriveCredentialUnavailableDetail
   if (state.state === 'invalid') return dialogs.value.storageGoogleDriveConnectionNeedsRepairDetail
+  if (state.state === 'setup') return dialogs.value.storageGoogleDriveBuildConfigurationMissing
   return dialogs.value.storageGoogleDriveConnectDescription
 })
 
-function readClientID(profileId: string): string {
-  return (
-    resolveGoogleDriveClientId(
-      readStoragePreferences(GOOGLE_DRIVE_STORAGE_PROVIDER_ID, profileId)
-    ) ?? ''
-  )
+function maskClientId(clientId: string): string {
+  const suffix = '.apps.googleusercontent.com'
+  const identifier = clientId.endsWith(suffix) ? clientId.slice(0, -suffix.length) : clientId
+  if (identifier.length <= 8) return `${identifier.slice(0, 2)}…${identifier.slice(-2)}${suffix}`
+  return `${identifier.slice(0, 6)}…${identifier.slice(-4)}${suffix}`
 }
 
 function authorityFromConnection(state: GoogleDriveOAuthStatus): StorageDocumentAuthority | null {
@@ -229,22 +230,13 @@ async function inspectAuthorizationPreflight(profileId: string): Promise<Authori
   }
 }
 
-function persistClientId(profileId = activeStorageProfileID.value): void {
+function clearLegacyClientIdOverride(profileId = activeStorageProfileID.value): void {
   writeStoragePreference(
     GOOGLE_DRIVE_STORAGE_PROVIDER_ID,
     GOOGLE_DRIVE_CLIENT_ID_FIELD,
-    clientIdDraft.value,
+    '',
     profileId
   )
-}
-
-function saveClientId(): void {
-  controller?.abort(new DOMException('Google Drive configuration changed', 'AbortError'))
-  pendingReconnect.value = null
-  staleAuthorizationWork.value = []
-  persistClientId()
-  feedback.value = null
-  void refreshStatus()
 }
 
 function services(profileId = activeStorageProfileID.value) {
@@ -271,13 +263,27 @@ function operationError(error: unknown, signal: AbortSignal): string {
     return dialogs.value.storageGoogleDriveAuthorizationBlockedByOpenDocuments
   }
   if (error instanceof GoogleDriveOAuthError) {
-    if (error.code === 'profile-account-mismatch') {
-      return dialogs.value.storageGoogleDriveDifferentAccount
+    const messageByCode: Partial<Record<GoogleDriveOAuthError['code'], string>> = {
+      'profile-account-mismatch': dialogs.value.storageGoogleDriveDifferentAccount,
+      'authorization-denied': dialogs.value.storageGoogleDriveAuthorizationDenied,
+      'authorization-timeout': dialogs.value.storageGoogleDriveAuthorizationTimedOut,
+      'browser-open-failed': dialogs.value.storageGoogleDriveBrowserOpenFailed,
+      'scope-mismatch': dialogs.value.storageGoogleDriveScopeMismatch,
+      'network-failed': dialogs.value.storageGoogleDriveNetworkFailed,
+      'invalid-client-id': dialogs.value.storageGoogleDriveDesktopClientRequired,
+      'oauth-client-invalid': dialogs.value.storageGoogleDriveDesktopClientRequired,
+      'redirect-uri-mismatch': dialogs.value.storageGoogleDriveRedirectUriMismatch,
+      'token-request-invalid': dialogs.value.storageGoogleDriveTokenRequestInvalid,
+      'authorization-grant-invalid': dialogs.value.storageGoogleDriveAuthorizationCodeRejected,
+      'token-exchange-failed': dialogs.value.storageGoogleDriveTokenExchangeFailed,
+      'token-response-invalid': dialogs.value.storageGoogleDriveTokenExchangeFailed,
+      'userinfo-failed': dialogs.value.storageGoogleDriveAccountVerificationFailed,
+      'subject-mismatch': dialogs.value.storageGoogleDriveAccountVerificationFailed,
+      'credential-locked': dialogs.value.storageGoogleDriveCredentialLocked,
+      'credential-unavailable': dialogs.value.storageGoogleDriveCredentialUnavailable
     }
-    if (error.code === 'credential-locked') return dialogs.value.storageGoogleDriveCredentialLocked
-    if (error.code === 'credential-unavailable') {
-      return dialogs.value.storageGoogleDriveCredentialUnavailable
-    }
+    const message = messageByCode[error.code]
+    if (message) return message
     if (/cancelled/i.test(error.message)) return dialogs.value.storageGoogleDriveCancelled
   }
   return dialogs.value.storageGoogleDriveOperationFailed
@@ -315,7 +321,7 @@ async function refreshStaleAuthorizationWork(
 async function refreshStatus(): Promise<void> {
   const generation = ++asyncGeneration
   const profileId = activeStorageProfileID.value
-  if (!clientIdDraft.value.trim()) {
+  if (!buildClientId) {
     if (!currentGeneration(generation, profileId)) return
     connectionState.value = { state: 'setup', profileId }
     emitReadiness(false)
@@ -439,7 +445,6 @@ async function connect(): Promise<void> {
         profileId: activeOperation.profileId
       },
       async () => {
-        persistClientId(activeOperation.profileId)
         const preflight = await inspectAuthorizationPreflight(activeOperation.profileId)
         if (!currentGeneration(activeOperation.generation, activeOperation.profileId)) return null
         const accountIds = new Set(preflight.authorities.map((authority) => authority.accountId))
@@ -694,13 +699,13 @@ watch(activeStorageProfileID, (profileId) => {
   localOnlyAvailable.value = false
   pendingReconnect.value = null
   staleAuthorizationWork.value = []
-  clientIdDraft.value = readClientID(profileId)
+  clearLegacyClientIdOverride(profileId)
   void refreshStatus()
 })
 
 onMounted(() => {
   mounted = true
-  clientIdDraft.value = readClientID(activeStorageProfileID.value)
+  clearLegacyClientIdOverride(activeStorageProfileID.value)
   void refreshStatus()
 })
 onBeforeUnmount(() => {
@@ -889,16 +894,21 @@ onBeforeUnmount(() => {
         <label class="flex flex-col gap-1 text-[10px] text-muted">
           {{ dialogs.storageGoogleDriveClientID }}
           <AppInput
-            v-model="clientIdDraft"
-            placeholder="000000000000-example.apps.googleusercontent.com"
+            :model-value="maskedBuildClientId"
+            :aria-label="dialogs.storageGoogleDriveClientID"
+            readonly
             size="sm"
             tone="panel"
-            @change="saveClientId"
-            @enter="saveClientId"
           />
         </label>
         <p class="text-[9px] leading-4 text-muted">
           {{ dialogs.storageGoogleDriveClientIDHint }}
+        </p>
+        <p
+          class="text-[9px] leading-4 text-muted"
+          data-test-id="settings-storage-google-credential-storage"
+        >
+          {{ dialogs.storageGoogleDriveCredentialStorage }}
         </p>
         <p class="text-[9px] text-muted">
           {{ dialogs.storageProfileID({ profile: activeStorageProfileID }) }}

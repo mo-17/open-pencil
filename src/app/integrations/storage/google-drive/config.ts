@@ -10,12 +10,12 @@ function text(value: unknown): string | null {
 }
 
 /**
- * OAuth client IDs are public application identifiers. Production builds provide one at build
- * time; developers may override it in the non-secret provider preferences without rebuilding.
+ * Google Drive desktop OAuth uses a public installed-app client ID bundled at build time.
+ * Profile preferences must never replace the publisher-configured client identity.
  */
 export function resolveGoogleDriveClientId(
-  preferences: Readonly<Record<StorageFieldID, string>>,
+  _preferences: Readonly<Record<StorageFieldID, string>>,
   buildTimeClientId: string | undefined = import.meta.env.VITE_GOOGLE_DRIVE_CLIENT_ID
 ): string | null {
-  return text(preferences[GOOGLE_DRIVE_CLIENT_ID_FIELD]) ?? text(buildTimeClientId)
+  return text(buildTimeClientId)
 }

@@ -3,19 +3,21 @@ import { describe, expect, test } from 'bun:test'
 import { resolveGoogleDriveClientId } from '@/app/integrations/storage/google-drive/config'
 
 describe('Google Drive storage configuration', () => {
-  test('prefers an explicit developer override over the bundled public client ID', () => {
+  test('always uses the bundled client ID and ignores profile overrides', () => {
     expect(
       resolveGoogleDriveClientId(
         { 'client-id': 'override.apps.googleusercontent.com' },
         'bundled.apps.googleusercontent.com'
       )
-    ).toBe('override.apps.googleusercontent.com')
+    ).toBe('bundled.apps.googleusercontent.com')
   })
 
-  test('uses the bundled client ID and treats blank values as missing', () => {
+  test('trims the bundled client ID and never falls back to a profile override', () => {
     expect(resolveGoogleDriveClientId({}, ' bundled.apps.googleusercontent.com ')).toBe(
       'bundled.apps.googleusercontent.com'
     )
-    expect(resolveGoogleDriveClientId({ 'client-id': '   ' }, undefined)).toBeNull()
+    expect(
+      resolveGoogleDriveClientId({ 'client-id': 'override.apps.googleusercontent.com' }, undefined)
+    ).toBeNull()
   })
 })

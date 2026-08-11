@@ -47,6 +47,17 @@ export type GoogleDriveOAuthErrorCode =
   | 'metadata-invalid'
   | 'inconsistent-state'
   | 'profile-account-mismatch'
+  | 'authorization-denied'
+  | 'authorization-timeout'
+  | 'oauth-client-invalid'
+  | 'authorization-grant-invalid'
+  | 'redirect-uri-mismatch'
+  | 'token-request-invalid'
+  | 'browser-open-failed'
+  | 'network-failed'
+  | 'token-exchange-failed'
+  | 'token-response-invalid'
+  | 'userinfo-failed'
   | 'scope-mismatch'
   | 'subject-mismatch'
   | 'persistence-failed'
@@ -61,6 +72,24 @@ export class GoogleDriveOAuthError extends Error {
     super(message, options)
     this.name = 'GoogleDriveOAuthError'
   }
+}
+
+const SEMANTIC_NATIVE_ERROR_CODES: Readonly<
+  Partial<Record<GoogleDriveNativeError['code'], GoogleDriveOAuthErrorCode>>
+> = {
+  'oauth-denied': 'authorization-denied',
+  timeout: 'authorization-timeout',
+  'oauth-client-invalid': 'oauth-client-invalid',
+  'authorization-grant-invalid': 'authorization-grant-invalid',
+  'redirect-uri-mismatch': 'redirect-uri-mismatch',
+  'token-request-invalid': 'token-request-invalid',
+  'browser-open-failed': 'browser-open-failed',
+  'network-failed': 'network-failed',
+  'token-exchange-failed': 'token-exchange-failed',
+  'token-response-invalid': 'token-response-invalid',
+  'userinfo-failed': 'userinfo-failed',
+  'scope-mismatch': 'scope-mismatch',
+  'subject-mismatch': 'subject-mismatch'
 }
 
 export type GoogleDriveOAuthConnection = {
@@ -195,13 +224,18 @@ function nativeFailure(error: unknown): GoogleDriveOAuthError {
   const cancelled =
     (error instanceof GoogleDriveNativeError && error.code === 'cancelled') ||
     (error instanceof Error && error.name === 'AbortError')
-  return new GoogleDriveOAuthError(
-    cancelled ? 'cancelled' : 'native-failed',
-    cancelled
-      ? 'Google Drive authorization was cancelled'
-      : 'Google Drive native authorization failed',
-    { cause: error }
-  )
+  if (cancelled) {
+    return new GoogleDriveOAuthError('cancelled', 'Google Drive authorization was cancelled', {
+      cause: error
+    })
+  }
+  if (error instanceof GoogleDriveNativeError) {
+    const code = SEMANTIC_NATIVE_ERROR_CODES[error.code]
+    if (code) return new GoogleDriveOAuthError(code, error.message, { cause: error })
+  }
+  return new GoogleDriveOAuthError('native-failed', 'Google Drive native authorization failed', {
+    cause: error
+  })
 }
 
 function connection(metadata: GoogleDriveOAuthPublicMetadata): GoogleDriveOAuthConnection {
@@ -400,8 +434,7 @@ export function createGoogleDriveOAuthSession(options: CreateGoogleDriveOAuthSes
   const reference = googleDriveRefreshTokenCredentialRef(options.profileId)
   const metadataStore = options.metadataStore ?? new LocalGoogleDriveOAuthMetadataStore()
   const native = options.native ?? googleDriveNativeBridge
-  const supported =
-    options.native !== undefined || (IS_TAURI && options.manager.backend === 'native')
+  const supported = options.native !== undefined || IS_TAURI
   const now = options.now ?? Date.now
   const createVersion = options.randomAuthorizationVersion ?? randomAuthorizationVersion
   let cachedAccessToken: GoogleDriveAccessToken | null = null
@@ -520,12 +553,12 @@ export function createGoogleDriveOAuthSession(options: CreateGoogleDriveOAuthSes
   async function previousAuthorization(): Promise<PreviousAuthorization> {
     const credentialStatus = await observeCredentialStatus()
     if (credentialStatus === 'locked') {
-      throw new GoogleDriveOAuthError('credential-locked', 'The system credential store is locked')
+      throw new GoogleDriveOAuthError('credential-locked', 'The credential store is locked')
     }
     if (credentialStatus === 'unavailable') {
       throw new GoogleDriveOAuthError(
         'credential-unavailable',
-        'The system credential store is unavailable'
+        'The encrypted credential store is unavailable'
       )
     }
     const metadataObservation = await observeMetadata()
@@ -537,15 +570,13 @@ export function createGoogleDriveOAuthSession(options: CreateGoogleDriveOAuthSes
         credential = await options.resolver.resolve(reference)
       } catch (cause) {
         if (cause instanceof CredentialStoreError && cause.code === 'locked') {
-          throw new GoogleDriveOAuthError(
-            'credential-locked',
-            'The system credential store is locked',
-            { cause }
-          )
+          throw new GoogleDriveOAuthError('credential-locked', 'The credential store is locked', {
+            cause
+          })
         }
         throw new GoogleDriveOAuthError(
           'credential-unavailable',
-          'The system credential store is unavailable',
+          'The encrypted credential store is unavailable',
           { cause }
         )
       }

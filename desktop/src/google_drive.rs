@@ -3,7 +3,7 @@ use rand::{rngs::OsRng, RngCore};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     redirect::Policy,
-    Client, Method, Url,
+    Client, Method, StatusCode, Url,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -41,8 +41,10 @@ const MAX_HEADER_BYTES: usize = 32 * 1024;
 const MAX_URL_LENGTH: usize = 8 * 1024;
 const MAX_TOKEN_LENGTH: usize = 16 * 1024;
 const MAX_CONCURRENT_OAUTH_OPERATIONS: usize = 8;
+const AUTHORIZATION_RECEIVED_MESSAGE: &str =
+    "Authorization received. Return to OpenPencil while it finishes connecting.";
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum GoogleDriveNativeErrorCode {
     InvalidRequest,
@@ -52,6 +54,13 @@ pub enum GoogleDriveNativeErrorCode {
     BrowserOpenFailed,
     OauthDenied,
     OauthFailed,
+    OauthClientInvalid,
+    AuthorizationGrantInvalid,
+    RedirectUriMismatch,
+    TokenRequestInvalid,
+    TokenExchangeFailed,
+    TokenResponseInvalid,
+    UserinfoFailed,
     ScopeMismatch,
     SubjectMismatch,
     NetworkFailed,
@@ -88,6 +97,62 @@ impl GoogleDriveNativeError {
         Self::new(
             GoogleDriveNativeErrorCode::OauthFailed,
             "Google authorization failed",
+        )
+    }
+
+    fn token_exchange_failed() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::TokenExchangeFailed,
+            "Google token exchange failed",
+        )
+    }
+
+    fn oauth_client_invalid() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::OauthClientInvalid,
+            "Google OAuth client is invalid",
+        )
+    }
+
+    fn authorization_grant_invalid() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::AuthorizationGrantInvalid,
+            "Google authorization grant is invalid",
+        )
+    }
+
+    fn redirect_uri_mismatch() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::RedirectUriMismatch,
+            "Google redirect URI did not match",
+        )
+    }
+
+    fn token_request_invalid() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::TokenRequestInvalid,
+            "Google token request is invalid",
+        )
+    }
+
+    fn token_response_invalid() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::TokenResponseInvalid,
+            "Google returned an invalid token response",
+        )
+    }
+
+    fn userinfo_failed() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::UserinfoFailed,
+            "Google user information could not be verified",
+        )
+    }
+
+    fn response_too_large() -> Self {
+        Self::new(
+            GoogleDriveNativeErrorCode::ResponseTooLarge,
+            "Google Drive response exceeded the byte limit",
         )
     }
 }
@@ -229,6 +294,11 @@ struct OAuthTokenResponse {
     expires_in: Option<u64>,
     token_type: Option<String>,
     scope: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OAuthErrorResponse {
+    error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -490,11 +560,7 @@ fn wait_for_callback(
                         browser_response(&mut stream, "400 Bad Request", "Authorization failed.");
                     }
                     CallbackDecision::Success(code) => {
-                        browser_response(
-                            &mut stream,
-                            "200 OK",
-                            "Authorization complete. You can return to OpenPencil.",
-                        );
+                        browser_response(&mut stream, "200 OK", AUTHORIZATION_RECEIVED_MESSAGE);
                         return Ok(code);
                     }
                     CallbackDecision::Failed(error) => {
@@ -527,10 +593,7 @@ async fn bounded_response_body(
         .content_length()
         .is_some_and(|length| length > max_bytes as u64)
     {
-        return Err(GoogleDriveNativeError::new(
-            GoogleDriveNativeErrorCode::ResponseTooLarge,
-            "Google Drive response exceeded the byte limit",
-        ));
+        return Err(GoogleDriveNativeError::response_too_large());
     }
     let mut body = Vec::new();
     while let Some(chunk) = response
@@ -539,10 +602,7 @@ async fn bounded_response_body(
         .map_err(|_| GoogleDriveNativeError::network_failed())?
     {
         if body.len().saturating_add(chunk.len()) > max_bytes {
-            return Err(GoogleDriveNativeError::new(
-                GoogleDriveNativeErrorCode::ResponseTooLarge,
-                "Google Drive response exceeded the byte limit",
-            ));
+            return Err(GoogleDriveNativeError::response_too_large());
         }
         body.extend_from_slice(&chunk);
     }
@@ -593,24 +653,30 @@ fn parsed_token_response(
     require_refresh_token: bool,
     require_scopes: bool,
 ) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
-    let parsed: OAuthTokenResponse =
-        serde_json::from_slice(body).map_err(|_| GoogleDriveNativeError::oauth_failed())?;
+    let parsed: OAuthTokenResponse = serde_json::from_slice(body)
+        .map_err(|_| GoogleDriveNativeError::token_response_invalid())?;
     if parsed.token_type.as_deref() != Some("Bearer") {
-        return Err(GoogleDriveNativeError::oauth_failed());
+        return Err(GoogleDriveNativeError::token_response_invalid());
     }
     if require_scopes {
         validate_granted_scopes(parsed.scope)?;
     }
     let expires_in = parsed
         .expires_in
-        .ok_or_else(GoogleDriveNativeError::oauth_failed)?;
+        .ok_or_else(GoogleDriveNativeError::token_response_invalid)?;
     if expires_in == 0 || expires_in > 86_400 {
-        return Err(GoogleDriveNativeError::oauth_failed());
+        return Err(GoogleDriveNativeError::token_response_invalid());
     }
-    let access_token = validate_token(parsed.access_token)?;
+    let access_token = validate_token(parsed.access_token)
+        .map_err(|_| GoogleDriveNativeError::token_response_invalid())?;
     let refresh_token = match parsed.refresh_token {
-        Some(value) => Some(validate_token(Some(value))?),
-        None if require_refresh_token => return Err(GoogleDriveNativeError::oauth_failed()),
+        Some(value) => Some(
+            validate_token(Some(value))
+                .map_err(|_| GoogleDriveNativeError::token_response_invalid())?,
+        ),
+        None if require_refresh_token => {
+            return Err(GoogleDriveNativeError::token_response_invalid());
+        }
         None => None,
     };
     Ok(ValidatedTokenResponse {
@@ -618,6 +684,75 @@ fn parsed_token_response(
         refresh_token,
         expires_in,
     })
+}
+
+fn classified_token_exchange_error(
+    status: StatusCode,
+    body: &[u8],
+) -> Option<GoogleDriveNativeError> {
+    if status.is_success() {
+        return None;
+    }
+    let response = serde_json::from_slice::<OAuthErrorResponse>(body).ok();
+    let error = match response
+        .as_ref()
+        .and_then(|response| response.error.as_deref())
+    {
+        Some("invalid_client") | Some("unauthorized_client") => {
+            GoogleDriveNativeError::oauth_client_invalid()
+        }
+        Some("invalid_grant") => GoogleDriveNativeError::authorization_grant_invalid(),
+        Some("redirect_uri_mismatch") => GoogleDriveNativeError::redirect_uri_mismatch(),
+        Some("invalid_request") => GoogleDriveNativeError::token_request_invalid(),
+        _ => GoogleDriveNativeError::token_exchange_failed(),
+    };
+    Some(error)
+}
+
+async fn validate_token_exchange_response(
+    response: &mut reqwest::Response,
+) -> Result<(), GoogleDriveNativeError> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    let body = bounded_response_body(response, MAX_OAUTH_RESPONSE_BYTES).await?;
+    Err(classified_token_exchange_error(status, &body)
+        .unwrap_or_else(GoogleDriveNativeError::token_exchange_failed))
+}
+
+fn validate_userinfo_status(status: StatusCode) -> Result<(), GoogleDriveNativeError> {
+    if status.is_success() {
+        Ok(())
+    } else {
+        Err(GoogleDriveNativeError::userinfo_failed())
+    }
+}
+
+fn authorization_code_token_form<'a>(
+    client_id: &'a str,
+    code: &'a str,
+    verifier: &'a str,
+    redirect_uri: &'a str,
+) -> [(&'static str, &'a str); 5] {
+    [
+        ("client_id", client_id),
+        ("code", code),
+        ("code_verifier", verifier),
+        ("grant_type", "authorization_code"),
+        ("redirect_uri", redirect_uri),
+    ]
+}
+
+fn refresh_token_form<'a>(
+    client_id: &'a str,
+    refresh_token: &'a str,
+) -> [(&'static str, &'a str); 3] {
+    [
+        ("client_id", client_id),
+        ("refresh_token", refresh_token),
+        ("grant_type", "refresh_token"),
+    ]
 }
 
 async fn exchange_authorization_code(
@@ -629,19 +764,16 @@ async fn exchange_authorization_code(
 ) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
     let mut response = client
         .post(GOOGLE_TOKEN_URL)
-        .form(&[
-            ("client_id", client_id),
-            ("code", code),
-            ("code_verifier", verifier),
-            ("grant_type", "authorization_code"),
-            ("redirect_uri", redirect_uri),
-        ])
+        .form(&authorization_code_token_form(
+            client_id,
+            code,
+            verifier,
+            redirect_uri,
+        ))
         .send()
         .await
         .map_err(|_| GoogleDriveNativeError::network_failed())?;
-    if !response.status().is_success() {
-        return Err(GoogleDriveNativeError::oauth_failed());
-    }
+    validate_token_exchange_response(&mut response).await?;
     let body = bounded_response_body(&mut response, MAX_OAUTH_RESPONSE_BYTES).await?;
     parsed_token_response(&body, true, true)
 }
@@ -653,43 +785,26 @@ async fn refresh_access_token(
 ) -> Result<ValidatedTokenResponse, GoogleDriveNativeError> {
     let mut response = client
         .post(GOOGLE_TOKEN_URL)
-        .form(&[
-            ("client_id", client_id),
-            ("refresh_token", refresh_token),
-            ("grant_type", "refresh_token"),
-        ])
+        .form(&refresh_token_form(client_id, refresh_token))
         .send()
         .await
         .map_err(|_| GoogleDriveNativeError::network_failed())?;
-    if !response.status().is_success() {
-        return Err(GoogleDriveNativeError::oauth_failed());
-    }
+    validate_token_exchange_response(&mut response).await?;
     let body = bounded_response_body(&mut response, MAX_OAUTH_RESPONSE_BYTES).await?;
     parsed_token_response(&body, false, false)
 }
 
-async fn verified_user(
-    client: &Client,
-    access_token: &str,
+fn parsed_userinfo_response(
+    body: &[u8],
     expected_subject: Option<&str>,
 ) -> Result<VerifiedUser, GoogleDriveNativeError> {
-    let mut response = client
-        .get(GOOGLE_USERINFO_URL)
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(|_| GoogleDriveNativeError::network_failed())?;
-    if !response.status().is_success() {
-        return Err(GoogleDriveNativeError::oauth_failed());
-    }
-    let body = bounded_response_body(&mut response, MAX_OAUTH_RESPONSE_BYTES).await?;
     let parsed: UserInfoResponse =
-        serde_json::from_slice(&body).map_err(|_| GoogleDriveNativeError::oauth_failed())?;
+        serde_json::from_slice(body).map_err(|_| GoogleDriveNativeError::userinfo_failed())?;
     let subject = parsed
         .sub
-        .ok_or_else(GoogleDriveNativeError::oauth_failed)?;
+        .ok_or_else(GoogleDriveNativeError::userinfo_failed)?;
     if subject.is_empty() || subject.len() > 256 || subject.chars().any(char::is_control) {
-        return Err(GoogleDriveNativeError::oauth_failed());
+        return Err(GoogleDriveNativeError::userinfo_failed());
     }
     if expected_subject.is_some_and(|expected| expected != subject) {
         return Err(GoogleDriveNativeError::new(
@@ -706,6 +821,22 @@ async fn verified_user(
         _ => None,
     };
     Ok(VerifiedUser { subject, email })
+}
+
+async fn verified_user(
+    client: &Client,
+    access_token: &str,
+    expected_subject: Option<&str>,
+) -> Result<VerifiedUser, GoogleDriveNativeError> {
+    let mut response = client
+        .get(GOOGLE_USERINFO_URL)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|_| GoogleDriveNativeError::network_failed())?;
+    validate_userinfo_status(response.status())?;
+    let body = bounded_response_body(&mut response, MAX_OAUTH_RESPONSE_BYTES).await?;
+    parsed_userinfo_response(&body, expected_subject)
 }
 
 async fn revoke_token(client: &Client, token: &str) -> Result<(), GoogleDriveNativeError> {
@@ -1183,6 +1314,229 @@ pub async fn google_drive_transfer(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn result_error_code<T>(
+        result: Result<T, GoogleDriveNativeError>,
+    ) -> GoogleDriveNativeErrorCode {
+        match result {
+            Ok(_) => panic!("expected Google Drive native error"),
+            Err(error) => error.code,
+        }
+    }
+
+    #[test]
+    fn oauth_diagnostic_errors_serialize_exactly() {
+        let errors = [
+            (
+                GoogleDriveNativeError::oauth_client_invalid(),
+                r#"{"code":"oauth-client-invalid","message":"Google OAuth client is invalid"}"#,
+            ),
+            (
+                GoogleDriveNativeError::authorization_grant_invalid(),
+                r#"{"code":"authorization-grant-invalid","message":"Google authorization grant is invalid"}"#,
+            ),
+            (
+                GoogleDriveNativeError::redirect_uri_mismatch(),
+                r#"{"code":"redirect-uri-mismatch","message":"Google redirect URI did not match"}"#,
+            ),
+            (
+                GoogleDriveNativeError::token_request_invalid(),
+                r#"{"code":"token-request-invalid","message":"Google token request is invalid"}"#,
+            ),
+            (
+                GoogleDriveNativeError::token_exchange_failed(),
+                r#"{"code":"token-exchange-failed","message":"Google token exchange failed"}"#,
+            ),
+            (
+                GoogleDriveNativeError::token_response_invalid(),
+                r#"{"code":"token-response-invalid","message":"Google returned an invalid token response"}"#,
+            ),
+            (
+                GoogleDriveNativeError::userinfo_failed(),
+                r#"{"code":"userinfo-failed","message":"Google user information could not be verified"}"#,
+            ),
+            (
+                GoogleDriveNativeError::network_failed(),
+                r#"{"code":"network-failed","message":"Google Drive network request failed"}"#,
+            ),
+            (
+                GoogleDriveNativeError::response_too_large(),
+                r#"{"code":"response-too-large","message":"Google Drive response exceeded the byte limit"}"#,
+            ),
+        ];
+        for (error, expected) in errors {
+            assert_eq!(serde_json::to_string(&error).unwrap(), expected);
+        }
+    }
+
+    #[test]
+    fn callback_success_message_describes_pending_connection() {
+        assert_eq!(
+            AUTHORIZATION_RECEIVED_MESSAGE,
+            "Authorization received. Return to OpenPencil while it finishes connecting."
+        );
+    }
+
+    #[test]
+    fn token_forms_use_public_client_id_without_client_secret() {
+        let authorization_names = authorization_code_token_form(
+            "desktop-test.apps.googleusercontent.com",
+            "test-code",
+            "test-verifier",
+            "http://127.0.0.1:12345",
+        )
+        .map(|(name, _)| name);
+        assert_eq!(
+            authorization_names,
+            [
+                "client_id",
+                "code",
+                "code_verifier",
+                "grant_type",
+                "redirect_uri"
+            ]
+        );
+
+        let refresh_names = refresh_token_form(
+            "desktop-test.apps.googleusercontent.com",
+            "test-refresh-token",
+        )
+        .map(|(name, _)| name);
+        assert_eq!(refresh_names, ["client_id", "refresh_token", "grant_type"]);
+        assert!(!authorization_names.contains(&"client_secret"));
+        assert!(!refresh_names.contains(&"client_secret"));
+    }
+
+    #[test]
+    fn token_exchange_errors_use_only_the_top_level_error_identifier() {
+        assert!(
+            classified_token_exchange_error(StatusCode::OK, br#"{"error":"invalid_grant"}"#)
+                .is_none()
+        );
+
+        let cases: &[(StatusCode, &[u8], GoogleDriveNativeErrorCode)] = &[
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":"invalid_client","error_description":"must-not-leak","code":"must-not-leak","access_token":"must-not-leak","refresh_token":"must-not-leak"}"#,
+                GoogleDriveNativeErrorCode::OauthClientInvalid,
+            ),
+            (
+                StatusCode::UNAUTHORIZED,
+                br#"{"error":"unauthorized_client"}"#,
+                GoogleDriveNativeErrorCode::OauthClientInvalid,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":"invalid_grant"}"#,
+                GoogleDriveNativeErrorCode::AuthorizationGrantInvalid,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":"redirect_uri_mismatch"}"#,
+                GoogleDriveNativeErrorCode::RedirectUriMismatch,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":"invalid_request"}"#,
+                GoogleDriveNativeErrorCode::TokenRequestInvalid,
+            ),
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                br#"{"error":"temporarily_unavailable"}"#,
+                GoogleDriveNativeErrorCode::TokenExchangeFailed,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                br#"{"error":{"code":"invalid_grant"}}"#,
+                GoogleDriveNativeErrorCode::TokenExchangeFailed,
+            ),
+            (
+                StatusCode::BAD_REQUEST,
+                b"not-json",
+                GoogleDriveNativeErrorCode::TokenExchangeFailed,
+            ),
+        ];
+        for (status, body, expected) in cases {
+            let error = classified_token_exchange_error(*status, body)
+                .expect("non-success token status must produce a safe error");
+            assert_eq!(error.code, *expected);
+            let serialized = serde_json::to_string(&error).unwrap();
+            assert!(!serialized.contains("must-not-leak"));
+            assert!(!serialized.contains("error_description"));
+            assert!(!serialized.contains("access_token"));
+            assert!(!serialized.contains("refresh_token"));
+        }
+    }
+
+    #[test]
+    fn token_responses_are_classified_without_response_data() {
+        let valid = parsed_token_response(
+            br#"{"access_token":"test-access","refresh_token":"test-refresh","expires_in":3600,"token_type":"Bearer","scope":"openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/drive.file"}"#,
+            true,
+            true,
+        )
+        .unwrap();
+        assert_eq!(valid.access_token, "test-access");
+        assert_eq!(valid.refresh_token.as_deref(), Some("test-refresh"));
+        assert_eq!(valid.expires_in, 3600);
+
+        let invalid_responses: &[&[u8]] = &[
+            b"not-json",
+            br#"{"access_token":"test-access","refresh_token":"test-refresh","expires_in":3600,"token_type":"bearer","scope":"openid email https://www.googleapis.com/auth/drive.file"}"#,
+            br#"{"access_token":"test-access","refresh_token":"test-refresh","expires_in":0,"token_type":"Bearer","scope":"openid email https://www.googleapis.com/auth/drive.file"}"#,
+            br#"{"access_token":"test-access","expires_in":3600,"token_type":"Bearer","scope":"openid email https://www.googleapis.com/auth/drive.file"}"#,
+        ];
+        for body in invalid_responses {
+            assert_eq!(
+                result_error_code(parsed_token_response(body, true, true)),
+                GoogleDriveNativeErrorCode::TokenResponseInvalid
+            );
+        }
+
+        assert_eq!(
+            result_error_code(parsed_token_response(
+                br#"{"access_token":"test-access","refresh_token":"test-refresh","expires_in":3600,"token_type":"Bearer","scope":"openid email"}"#,
+                true,
+                true,
+            )),
+            GoogleDriveNativeErrorCode::ScopeMismatch
+        );
+    }
+
+    #[test]
+    fn userinfo_failures_preserve_subject_and_network_diagnostics() {
+        assert!(validate_userinfo_status(StatusCode::OK).is_ok());
+        assert_eq!(
+            result_error_code(validate_userinfo_status(StatusCode::UNAUTHORIZED)),
+            GoogleDriveNativeErrorCode::UserinfoFailed
+        );
+        assert_eq!(
+            result_error_code(parsed_userinfo_response(b"not-json", None)),
+            GoogleDriveNativeErrorCode::UserinfoFailed
+        );
+        assert_eq!(
+            result_error_code(parsed_userinfo_response(
+                br#"{"email":"test@example.com"}"#,
+                None
+            )),
+            GoogleDriveNativeErrorCode::UserinfoFailed
+        );
+        assert_eq!(
+            result_error_code(parsed_userinfo_response(
+                br#"{"sub":"different-subject"}"#,
+                Some("expected-subject"),
+            )),
+            GoogleDriveNativeErrorCode::SubjectMismatch
+        );
+
+        let user = parsed_userinfo_response(
+            br#"{"sub":"expected-subject","email":"test@example.com","email_verified":true}"#,
+            Some("expected-subject"),
+        )
+        .unwrap();
+        assert_eq!(user.subject, "expected-subject");
+        assert_eq!(user.email.as_deref(), Some("test@example.com"));
+    }
 
     #[test]
     fn pkce_uses_s256_and_bounded_verifier() {

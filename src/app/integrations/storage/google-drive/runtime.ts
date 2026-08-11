@@ -39,7 +39,7 @@ const liveEntries = new Set<RuntimeEntry>()
 
 function missingClientId(): never {
   throw new Error(
-    'Google Drive OAuth client ID is not configured. Set VITE_GOOGLE_DRIVE_CLIENT_ID or the advanced provider client ID.'
+    'Google Drive OAuth client ID is not configured. The app publisher must set VITE_GOOGLE_DRIVE_CLIENT_ID when building OpenPencil.'
   )
 }
 

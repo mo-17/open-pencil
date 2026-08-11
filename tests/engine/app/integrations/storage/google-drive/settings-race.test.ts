@@ -3,6 +3,19 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const componentRoot = resolve(import.meta.dir, '../../../../../../src/components/settings/storage')
+const envSource = readFileSync(resolve(componentRoot, '../../../env.d.ts'), 'utf8')
+const nativeBridgeSource = readFileSync(
+  resolve(componentRoot, '../../../app/tauri/google-drive.ts'),
+  'utf8'
+)
+const oauthSessionSource = readFileSync(
+  resolve(componentRoot, '../../../app/integrations/storage/google-drive/oauth/session.ts'),
+  'utf8'
+)
+const dialogsSource = readFileSync(
+  resolve(componentRoot, '../../../../packages/vue/src/i18n/messages/dialogs.ts'),
+  'utf8'
+)
 const panelSource = readFileSync(resolve(componentRoot, 'StorageSettingsPanel.vue'), 'utf8')
 const googleSource = readFileSync(
   resolve(componentRoot, 'GoogleDriveStorageConnection.vue'),
@@ -18,6 +31,50 @@ function functionSource(source: string, start: string, end: string): string {
 }
 
 describe('storage settings async identity guards', () => {
+  test('surfaces actionable native OAuth failures instead of a generic refresh error', () => {
+    const errorMapping = functionSource(
+      googleSource,
+      'function operationError(',
+      'function repairOperationError('
+    )
+
+    const mappings = [
+      ['scope-mismatch', 'storageGoogleDriveScopeMismatch'],
+      ['token-exchange-failed', 'storageGoogleDriveTokenExchangeFailed'],
+      ['oauth-client-invalid', 'storageGoogleDriveDesktopClientRequired'],
+      ['redirect-uri-mismatch', 'storageGoogleDriveRedirectUriMismatch'],
+      ['token-request-invalid', 'storageGoogleDriveTokenRequestInvalid'],
+      ['authorization-grant-invalid', 'storageGoogleDriveAuthorizationCodeRejected'],
+      ['network-failed', 'storageGoogleDriveNetworkFailed'],
+      ['userinfo-failed', 'storageGoogleDriveAccountVerificationFailed']
+    ] as const
+    for (const [code, key] of mappings) {
+      expect(errorMapping).toContain(`'${code}': dialogs.value.${key}`)
+    }
+    expect(envSource).not.toContain('VITE_GOOGLE_DRIVE_CLIENT_SECRET')
+    expect(googleSource).not.toContain('clientSecretDraft')
+    expect(nativeBridgeSource).not.toContain('clientSecret:')
+    for (const removedCode of [
+      'oauth-client-secret-missing',
+      'oauth-client-pair-mismatch'
+    ] as const) {
+      expect(nativeBridgeSource).not.toContain(`'${removedCode}'`)
+      expect(oauthSessionSource).not.toContain(`'${removedCode}'`)
+      expect(errorMapping).not.toContain(`'${removedCode}'`)
+    }
+    expect(dialogsSource).not.toContain('storageGoogleDriveClientSecretMissing')
+    expect(dialogsSource).not.toContain('storageGoogleDriveClientPairMismatch')
+    expect(dialogsSource).not.toContain('OAuth compatibility value')
+  })
+
+  test('keeps desktop OAuth available with encrypted app-local credentials', () => {
+    expect(oauthSessionSource).toContain(
+      'const supported = options.native !== undefined || IS_TAURI'
+    )
+    expect(oauthSessionSource).not.toContain("options.manager.backend === 'native'")
+    expect(googleSource).toContain('dialogs.storageGoogleDriveCredentialStorage')
+  })
+
   test('attributes readiness to the emitting provider rather than the active provider', () => {
     expect(panelSource).toContain(
       'function updateReadiness(providerId: StorageProviderID, ready: boolean)'
@@ -52,7 +109,7 @@ describe('storage settings async identity guards', () => {
 
     expect(refresh).toContain('const generation = ++asyncGeneration')
     expect(refresh).toContain('if (!currentGeneration(generation, profileId)) return')
-    expect(connect).toContain('persistClientId(activeOperation.profileId)')
+    expect(connect).not.toContain('persistClientId(')
     expect(connect).not.toContain('saveClientId()')
     expect(connect).toContain("beginOperation('connecting')")
     expect(
@@ -74,7 +131,7 @@ describe('storage settings async identity guards', () => {
     expect(googleSource).toContain('metadataStore.remove(profileId)')
     expect(googleSource).not.toContain('resolver.resolve(googleDriveRefreshTokenCredentialRef')
     expect(googleSource).toContain('defineExpose({ removeProfile })')
-    expect(googleSource).toContain('clientIdDraft.value = readClientID(profileId)')
+    expect(googleSource).toContain('clearLegacyClientIdOverride(profileId)')
     expect(panelSource).toContain('readinessKey(providerId, activeStorageProfileID.value)')
     expect(panelSource).toContain('await handle.removeProfile(profileId)')
     expect(panelSource).toContain('deleteStorageProfile(providerId, profileId)')
@@ -85,11 +142,11 @@ describe('storage settings async identity guards', () => {
     expect(s3Source).not.toContain('resolver.resolve(credentialRef(PROVIDER_ID, field, profileId))')
   })
 
-  test('uses the bundled client ID and pre-confirms unfinished work before opening OAuth', () => {
-    const readClientID = functionSource(
+  test('uses only the publisher build client ID and pre-confirms work before OAuth', () => {
+    const clearLegacyOverride = functionSource(
       googleSource,
-      'function readClientID',
-      'function authorityFromConnection'
+      'function clearLegacyClientIdOverride',
+      'function services'
     )
     const connect = functionSource(
       googleSource,
@@ -99,7 +156,7 @@ describe('storage settings async identity guards', () => {
     const preflight = functionSource(
       googleSource,
       'async function inspectAuthorizationPreflight(',
-      'function persistClientId'
+      'function clearLegacyClientIdOverride'
     )
     const confirm = functionSource(
       googleSource,
@@ -112,10 +169,16 @@ describe('storage settings async identity guards', () => {
       'async function checkConnection()'
     )
 
-    expect(readClientID).toContain('resolveGoogleDriveClientId(')
-    expect(readClientID).toContain(
-      'readStoragePreferences(GOOGLE_DRIVE_STORAGE_PROVIDER_ID, profileId)'
-    )
+    expect(googleSource).toContain('const buildClientId = resolveGoogleDriveClientId({})')
+    expect(clearLegacyOverride).toContain('GOOGLE_DRIVE_CLIENT_ID_FIELD')
+    expect(clearLegacyOverride).toContain("''")
+    expect(connect).not.toContain('writeStoragePreference(')
+    expect(googleSource).not.toContain('clientIdDraft')
+    expect(googleSource).not.toContain('v-model=')
+    expect(googleSource).toContain(':model-value="maskedBuildClientId"')
+    expect(googleSource).toContain('readonly')
+    expect(googleSource).not.toContain('@change="saveClientId"')
+    expect(googleSource).not.toContain('@enter="saveClientId"')
     expect(preflight).toContain('for (const authority of seeds)')
     expect(preflight).toContain('inspectStorageAuthorizationWork(authorizationScope(')
     expect(preflight).toContain('listStaleStorageAuthorizationWork(authorizationScope(')
@@ -184,7 +247,7 @@ describe('storage settings async identity guards', () => {
     const preflight = functionSource(
       googleSource,
       'async function inspectAuthorizationPreflight(',
-      'function persistClientId'
+      'function clearLegacyClientIdOverride'
     )
     const connect = functionSource(
       googleSource,
