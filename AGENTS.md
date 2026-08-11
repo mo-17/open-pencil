@@ -16,7 +16,7 @@ Bun workspace with focused packages:
 - `packages/motion-runtime` — `@open-pencil/motion-runtime`: public SSR-safe Motion playback SDK. Owns the shared scheduler, manual clock, reversible DOM projection, and Vanilla/Vue lifecycle adapters while reusing `@open-pencil/core/motion` prepared plans.
 - `packages/dom-css` — `@open-pencil/dom-css`: DOM/CSS/Tailwind/JSX import and HTML export pipelines.
 - `packages/vue` — `@open-pencil/vue`: headless Vue 3 SDK (Reka UI-style) for custom editor shells and embedded editing surfaces. Renderless components and composables. The app is one consumer of the SDK.
-- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React + TypeScript + Tailwind projects or source-only Expo React Native projects. Web output also supports preview VFS, static builds, and deploy bundles; Expo output is an explicit static MVP with native primitives and fail-closed warnings for unsupported web behavior, not a WebView or React Native Web wrapper.
+- `packages/compiler` — `@open-pencil/compiler`: private design-to-code compiler. Converts SceneGraph pages into shared IR, then uses target adapters to emit runnable Vite + React or Vite + Vue 3 TypeScript + Tailwind projects, plus source-only Expo React Native and Flutter projects. Both web targets support the preview VFS, static builds, and deploy bundles; Vue v1 emits editable SFCs, Vue Router v4, route/query bindings, a bounded lowcode subset, and explicit warnings for unsupported advanced runtimes. Expo and Flutter remain explicit static native MVPs with fail-closed warnings, not WebViews or React Native Web wrappers.
 - `packages/cli` — `@open-pencil/cli`: headless CLI for `.fig`/`.pen` inspection, conversion, export, linting, XPath query, and compiler build/deploy flows. Uses `citty` + `agentfmt`.
 - `packages/mcp` — `@open-pencil/mcp`: MCP server for AI coding tools. Stdio + Streamable HTTP (Hono) + browser WebSocket RPC. Reuses core ToolDefs.
 - `packages/marketplace` — private self-hostable plugin-marketplace control plane. Owns publisher/key/ownership/submission/release state, SQLite persistence, immutable artifacts, signed publication, public/publisher HTTP APIs, admin CLI, and append-only audit checkpoints.
@@ -133,11 +133,11 @@ Property-panel anatomy in `packages/vue/src/primitives/PropertySection/`, `Segme
 
 Credential persistence lives under `src/app/settings/credentials/`. Settings components receive `CredentialManager` and may inspect status, replace, or clear credentials; runtime adapters receive `CredentialResolver`. Components must not read saved secrets or keep them in long-lived reactive refs. Non-secret provider preferences remain in normal settings storage.
 
-Tauri stores secrets in the native system credential store through `desktop/src/credentials.rs`; browsers default to WebCrypto-encrypted IndexedDB storage and may explicitly opt out to session-only memory. Native failures must never silently fall back to browser or plaintext storage. New integration credentials use stable `CredentialRef` values and join the unified Settings surface rather than adding feature-local key forms.
+Remembered credentials in Tauri and the browser use app-local IndexedDB records encrypted with AES-GCM by a non-extractable WebCrypto key; browser users may explicitly opt out to session-only memory. Tauri development and release builds select this backend directly and do not read macOS Keychain by default; it is not a fallback after a native credential-store failure. Existing Keychain items are neither migrated nor deleted, so users must reconnect integrations or enter their credentials once after upgrading. Credential failures must never silently fall back to memory or plaintext storage. New integration credentials use stable `CredentialRef` values and join the unified Settings surface rather than adding feature-local key forms.
 
 Storage-provider schemas and runtime adapters live under `src/app/integrations/storage/`; non-secret preferences and credential references stay separate, and adapters resolve secrets at operation time. Local-first document caching and outbox synchronization live under `src/app/storage/`. A remote storage binding augments document source state and must not replace local file identity.
 
-Google Drive is exposed by the default-installed/default-enabled app-bundled `open-pencil.google-drive-storage` Manifest v2 `storageProviders` declaration, but its implementation is host-owned. The manifest may contain only `providerId`, `name`, `description`, `adapterId`, `configVersion`, and bounded `capabilities` from `documents.read`, `documents.write`, `documents.delete`, `changes.read`, and `uploads.resumable`; it must never carry OAuth, endpoint, request, or executable configuration. The desktop authorization path stays Tauri-first: open the system browser, use a loopback callback with Authorization Code + PKCE, request only `openid`, `email`, and `drive.file`, bind authority to the OIDC subject plus a random authorization version, and keep refresh tokens in the native credential store. Browser-only Google Drive authorization remains unsupported.
+Google Drive is exposed by the default-installed/default-enabled app-bundled `open-pencil.google-drive-storage` Manifest v2 `storageProviders` declaration, but its implementation is host-owned. The manifest may contain only `providerId`, `name`, `description`, `adapterId`, `configVersion`, and bounded `capabilities` from `documents.read`, `documents.write`, `documents.delete`, `changes.read`, and `uploads.resumable`; it must never carry OAuth, endpoint, request, or executable configuration. The desktop authorization path stays Tauri-first: open the system browser, use a loopback callback with Authorization Code + PKCE, request only `openid`, `email`, and `drive.file`, bind authority to the OIDC subject plus a random authorization version, and keep refresh tokens in encrypted app-local credential storage. Google Desktop OAuth is a public installed-app client: configure only its public Client ID through the publisher's build environment, never permit a per-profile client-identity override, and never bundle a client secret. Browser-only Google Drive authorization remains unsupported.
 
 Google Drive documents are ordinary user-visible `.fig` files marked with closed OpenPencil app properties, not hidden `appDataFolder` blobs. Preserve local-first writes, durable outbox recovery, account/grant-bound jobs, resumable uploads, bounded incremental `changes` cursors, and trash semantics. When Drive supplies an ETag, updates use `If-Match`; a revision mismatch, missing conditional authority, or concurrent write must preserve a timestamped conflict copy rather than overwrite the remote file. Treat Drive as whole-document, eventually reconciled storage—not a strongly consistent or CRDT collaboration backend. Same-account OAuth replacement must inspect unfinished work before authorization, explicitly adopt every cached row and durable job into the new grant, and leave crash-gap work discoverable for repair. S3-compatible storage remains the advanced self-managed fallback and does not inherit Drive revision/change-feed claims; bind its cache and jobs to a profile incarnation plus configuration generation, rotate that generation before preference or credential mutation, and block mutation while unfinished work exists. Unit/native bridge tests do not prove a real OAuth client/account flow; keep real consent, restart, upload, changes, and conflict-copy verification as an explicit manual release gate until performed.
 
@@ -199,9 +199,9 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 - `bun open-pencil variables <file>` — list design variables
 - `bun open-pencil lint <file>` — run design linter rules
 - `bun open-pencil export <file>` — headless render to PNG/JPG/WEBP
-- `bun open-pencil compile <file> -o <dir>` — compile `.pen`/`.fig` to a runnable Vite + React + TypeScript project
-- `bun open-pencil build <file> -o <dir>` — compile and Vite-build a static SPA bundle
-- `bun open-pencil deploy <file> --provider netlify|vercel` — build and deploy a static SPA; token comes from CLI arg or provider env var
+- `bun open-pencil compile <file> -o <dir> [--target react|vue]` — compile `.pen`/`.fig` to a runnable Vite + React or Vue 3 + TypeScript project; React is the default
+- `bun open-pencil build <file> -o <dir> [--target react|vue]` — compile and Vite-build a static SPA bundle for either web target
+- `bun open-pencil deploy <file> --provider netlify|vercel|cloudflare [--target react|vue]` — build and deploy either web target; token comes from a CLI arg or provider environment variable
 - `bun open-pencil analyze colors <file>` — color palette usage
 - `bun open-pencil analyze typography <file>` — font/size/weight stats
 - `bun open-pencil analyze spacing <file>` — gap/padding values
@@ -232,7 +232,7 @@ App dialogs compose the Reka-backed components under `src/components/ui/dialog/`
 2. Update `CHANGELOG.md` — move "Unreleased" items under new version heading with date
 3. Commit: `Release v0.x.y`
 4. Tag: `git tag v0.x.y && git push --tags`
-5. Ensure GitHub release secrets include `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the updater key is password-protected); the public updater key is configured in `desktop/tauri.conf.json`.
+5. Ensure GitHub Actions has repository variable `VITE_GOOGLE_DRIVE_CLIENT_ID` for the public Google Desktop OAuth client. Also configure `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the updater key is password-protected); the public updater key is configured in `desktop/tauri.conf.json`.
 6. The `build.yml` workflow triggers on `v*` tags and:
    - Builds Tauri binaries for macOS (arm64 + x64), Windows (x64 + arm64), Linux (x64)
    - Creates a draft GitHub Release with all platform binaries
@@ -306,7 +306,8 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - Don't hand-roll `console.log` formatting — use the helpers from `packages/cli/src/format.ts` which re-exports agentfmt with project-specific adapters (`nodeToData`, `nodeDetails`, `nodeToTreeNode`, `nodeToListItem`)
 - Inspect/report commands should support `--json` when practical. Do not add `--json` to pure write-only commands unless there is a useful structured result.
 - Document format operations go through `@open-pencil/core/io` and `IORegistry`; do not duplicate `.fig`/`.pen`/SVG/raster read-write logic in CLI commands.
-- Design-to-code commands (`compile`, `build`, `deploy`) share `packages/cli/src/codegen.ts`, `i18n-args.ts`, and `ui-kit-args.ts`. Keep option parsing there when flags must remain consistent across all three commands.
+- Design-to-code commands (`compile`, `build`, `deploy`) share `packages/cli/src/codegen.ts`, `codegen-target.ts`, `i18n-args.ts`, and `ui-kit-args.ts`. Keep `--target react|vue` and other shared option parsing there when flags must remain consistent across all three commands. Vue must reject React-only i18n/UI-kit flags at the CLI boundary instead of silently ignoring them.
+- Static builds may write only to a nonexistent/empty output directory or replace one whose valid regular-file `.openpencil-build-output.json` marker came from a preceding OpenPencil build and whose complete path set still exactly matches that manifest. Keep unmarked non-empty directories, untrusted markers, and directories with missing/extra paths fail closed; do not delegate destructive cleanup to Vite's `emptyOutDir` default.
 
 ## Tools (AI / MCP / CLI)
 
@@ -377,6 +378,33 @@ Release commits are the exception: keep using `Release v0.x.y`.
   deterministic and offline; Compiler adapters may emit a trusted local package runtime, but must
   reject arbitrary script/style URLs, raw executable configuration, credentials, and unsupported
   config versions.
+- The bundled catalog currently contains 58 reviewed plugins with 61 contributions: 20 modules,
+  nine commands, nine exporters, 22 connectors, and one storage provider. Map and Google Drive
+  Storage are installed and enabled for a new profile; all other bundled entries, including the 17
+  external-service connectors, Application Security Readiness, Vercel, and Cloudflare Pages, are
+  opt-in. Keep this aggregate and both user-guide translations synchronized when adding or removing
+  a bundled manifest or contribution.
+- Vue source export is opt-in and emits Vite + Vue 3 SFCs through `target: 'vue'` with
+  `vue-router-v4` for multiple pages, `$params`/`$query` bindings, and real Modal, Dropdown Menu,
+  Slide Menu, and local-only Upload Button runtimes. Other plugin modules, Motion, prototypes,
+  Supabase/auth/server workflows, Stripe, analytics, i18n, React UI kits, and persisted state must
+  stay explicit `vue-*-unsupported` warnings. UI and MCP must use the same no-fallback
+  compiler/archive Worker pipeline, terminate the active Worker on abort, never transfer/detach live
+  graph buffers, and fail closed above 25,000 nodes, 4,096 images, or the 32-MiB snapshot budget
+  (counting complete binary backings); bound Worker output before the independent path-safe 64-MiB
+  archive check. The installed-plugin UI owns the global choosing/preparing/compiling/archiving/saving
+  status, cancellation, and lifecycle lock; do not allow disable, update, rollback, or uninstall of
+  that plugin while its export is active. The plugin exporter must resolve only retained, cached, or
+  bundled local font bytes without starting an online/system-font request, copy only exact bytes whose
+  digest and redistribution license are reviewed, generate `FONT-LICENSES.txt`, and warn while
+  preserving authored family CSS for every omitted or restricted face. Its dynamic MCP descriptor
+  must disappear immediately on disable or uninstall.
+- Upload Button v1 is a local file-selection module, not a storage or upload integration. Its
+  generated runtime may validate selected file type, count, and per-file size, but must not transfer,
+  persist, or claim successful upload. The HTML `accept` attribute is only a chooser hint, so runtime
+  validation remains mandatory. For server uploads, keep using the existing low-code `INPUT` plus
+  Supabase upload path. Dynamic MCP exposes only its declarative add-module tool while the plugin is
+  installed and enabled; file names and bytes never belong in MCP arguments or results.
 - Phase 2 connector declarations live in `packages/core/src/plugins/connector-contract.ts`. The
   contract registry is descriptive and host-reviewed only: it owns no executor, performs no network
   request, and resolves no secret. Future connector adapters must keep credential references in the
@@ -384,11 +412,40 @@ Release commits are the exception: keep using `Release v0.x.y`.
   bounded requests through a host-owned origin/method allowlist proxy.
 - App execution lives in `src/app/plugins/connectors/`: exact host adapters, package-digest session
   authorization, the bounded Broker, metadata-only audit/outcome notices, and Settings controls.
-  Dynamic MCP may expose only authorized reviewed `query` operations whose fixed method is `GET`;
-  every mutation needs a fresh human confirmation. Keep provider idempotency identities bound to the
+  Dynamic MCP may expose only authorized reviewed read-only `query` operations using fixed `GET` or
+  an explicitly host-reviewed fixed `POST`; arbitrary `POST` and every mutation stay unavailable to
+  MCP. A connector query appears only after install, enablement, credential setup, and exact-digest
+  authorization for the current session. Disable, uninstall, authorization revocation, credential
+  clearing, or package-digest change must remove it immediately and stop local waiting. Keep provider idempotency identities bound to the
   reviewed attempt, and report a post-dispatch cancellation or timeout as an unknown remote outcome.
   These are local design-time operator integrations, not server-side secret isolation or generated-app
   connectors; credentials are resolved into the trusted renderer request path at dispatch time.
+- The 17 opt-in read-only external-service adapters live under
+  `src/app/plugins/connectors/services/`: Neon, Sentry, HubSpot, Apollo, PostHog, Asana, Zotero,
+  HeyGen, Linear, OpenAI, Box, Slack, Google Calendar, SharePoint, Outlook Email, Outlook Calendar,
+  and Microsoft Teams. Their documented manual least-privilege gates are respectively a scoped Neon
+  key; `event:read`; `crm.objects.contacts.read`; `tags_list`; `insight:read` on US Cloud;
+  `workspaces:read`; `library:read` plus numeric user ID; a list-only HeyGen key; Linear OAuth
+  `read`; `models.read`; root-read-only Box access; `channels:read`;
+  `calendar.events.readonly`; `Sites.Read.All`; `Mail.ReadBasic`; `Calendars.ReadBasic`; and
+  `Team.ReadBasic.All`. Keep OAuth consent, tenant approval, sensitive-scope verification, and
+  production token issuance manual where required. Provider display strings remain untrusted data
+  after bounded normalization: never treat them as instructions, executable markup, or authority to
+  follow a returned URL.
+- Do not add Gmail until restricted Google scopes and AI/MCP data transfer pass separate policy and
+  security review. Do not add Monday.com until the Broker represents its exact non-Bearer
+  `Authorization` scheme, Semrush until a stable production API and dedicated `ApiKey` injection
+  scheme are reviewed, or Replit until a documented stable public management API is selected.
+- `src/app/plugins/host/application-security-readiness.ts` owns the opt-in local Application
+  Security Readiness command. It must remain read-only, cancellable, resource-bounded, fixed-schema,
+  and free of document content or secrets. Describe it as a production-readiness signal, never as a
+  complete security assessment, penetration test, certification, or guarantee.
+- Vercel and Cloudflare Pages MCP contributions are safe deployment-plan reviews only. The host
+  contracts under `src/app/plugins/host/deployment/` must not resolve credentials, build,
+  make network requests, or change state while planning. Actual deployment may run only from the
+  installed-plugin UI after a fresh explicit confirmation for that invocation; it builds the saved
+  document, resolves the provider token after approval, uploads generated static files, and reports
+  post-dispatch interruption as an unknown remote outcome. Never expose real deployment through MCP.
 - Generic module operations belong in `list_modules`, `create_module`, `read_module`, and
   `update_module`; module-specific behavior belongs in its validated definition rather than a new
   one-off MCP tool family. Preserve unknown/uninstalled envelopes unless the user explicitly
@@ -400,7 +457,10 @@ Release commits are the exception: keep using `Release v0.x.y`.
 - `packages/compiler/src/ir/**` must not import adapters. `packages/compiler/src/adapters/**` must not import `@open-pencil/scene-graph`; adapters consume only IR types. Steiger enforces this with `open-pencil/no-cross-layer-in-compiler`.
 - Public compiler entrypoints: `compile()`, `withDefaults()`, lowcode validators re-exported from `@open-pencil/core/lowcode-validation`, route helpers, VFS/dev-server/build/deploy subpaths.
 - React adapter output is Vite + React + TypeScript + Tailwind. It supports multi-page `react-router-dom`, preview bridge `data-node-id` wiring, i18n via `react-intl`, optional shadcn UI kit emission, Supabase auth/data helpers, workflows, validation, uploads, and static builds.
-- Preview pane code lives in `src/app/lowcode/preview-pane/`. In Tauri, it spawns `bun packages/compiler/src/dev-server.ts --root <repo>` through the shell allowlist name `lowcode-preview`; the browser bundle must not statically import compiler dev-server/build/deploy code.
+- Vue adapter output is Vite + Vue 3 + TypeScript + Tailwind. It supports Vue Router v4, dynamic route/query bindings, basic state/events, and the reviewed Vue lowcode/module subset while failing closed with deterministic warnings for React-only or server-backed features.
+- The reviewed Vue lowcode subset includes Toast (`info`/`success`/`error`, six positions, bounded/deduplicated accessible stacks), focus-managed two-branch Confirm, and local `required`/`pattern`/length/range/custom-expression form validation with inline/summary errors and invalid-submit blocking. Remote asynchronous validation must never emit a URL or `fetch`; it blocks submission and emits `vue-validation-async-unsupported`.
+- Vue `rawHtml` must fail closed to an empty static shell with `vue-raw-html-unsupported`; never emit the authored payload or a `v-html` injection surface.
+- Preview pane code lives in `src/app/lowcode/preview-pane/`. Its target selector restarts an isolated React or Vue sidecar and disables React-only shadcn/i18n controls for Vue. The shared `devMode` bridge provides selection/Alt-click round trips, echo-suppressed page navigation, collaborative document-state mirroring, and `data-theme`/class/`color-scheme` synchronization for both targets; it must stay absent from source/static exports. Vue Motion Debug must report `unavailable` immediately while Vue lacks a Motion runtime. In Tauri, Preview spawns `bun packages/compiler/src/dev-server.ts --root <repo> --target <react|vue>` through the shell allowlist name `lowcode-preview`; the browser bundle must not statically import compiler dev-server/build/deploy code.
 - One-click deploy shells out to `bun packages/cli/src/index.ts deploy ... --json` with provider tokens passed through env (`NETLIFY_AUTH_TOKEN` / `VERCEL_TOKEN`), never as process args or persisted document data.
 - Lowcode document/page/node fields live on `SceneNode` (`state`, `bindings`, `events`, `interactiveProps`, `lowcodeDocumentState`, `lowcodeSupabaseConfig`, translations, workflows, route/auth fields) and round-trip through `.fig` pluginData keys in `packages/core/src/kiwi/fig/node-change/lowcode-plugin-data.ts`.
 - Personal Motion preset definitions and favorites are user-scoped app settings, not SceneGraph fields. The local settings envelope stores both; portable JSON contains the versioned library metadata and preset definitions but deliberately omits favorites. The portable library format and strict migration/parser helpers live under `packages/scene-graph/src/motion/`; app persistence, browser/native file exchange, and UI state live under `src/app/motion-presets/`. Applied nodes always receive a complete expanded `MotionSpec` snapshot, so `.fig`, clipboard, collaboration, instances, and compiler behavior never require the source library. Imported `.pen` sources use the versioned `metadata.openPencil` envelope; the Pen writer updates Motion-only edits and rejects all other edits.

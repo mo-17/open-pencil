@@ -21,8 +21,8 @@ OpenPencil 插件系统分为两个明确隔离的层级：
 
 配置远程市场根之后，页面还会显示 stable/beta 渠道、发布者与密钥身份、快照状态、审计头，以及该快照是否授权可执行运行时索引。搜索只匹配签名内容中的名称、摘要、分类、关键词、插件 ID 和发布者元数据，不会信任未签名搜索服务返回的身份信息。
 
-当前 **Unreleased** 源码线包含 34 个经过审查的插件、37 项 contribution：17 个模块、
-6 个命令、8 个导出器、5 个连接器与 1 个存储服务商。只有定义、渲染器、合同或导出源码
+当前 **Unreleased** 源码线包含 58 个经过审查的插件、61 项 contribution：20 个模块、
+9 个命令、9 个导出器、22 个连接器与 1 个存储服务商。只有定义、渲染器、合同或导出源码
 文件，并不代表插件已经可以使用；该 contribution 还必须完成中央主机注册。新配置中 Map 与
 Google Drive Storage 默认安装并启用，其余内置插件都需要用户选择安装并启用。
 
@@ -40,6 +40,14 @@ Google Drive Storage 默认安装并启用，其余内置插件都需要用户�
   始终是有界纯文本，不会执行 HTML。
 - **Slide Menu（滑出菜单）**：可安装的触发器模块，可以从左、右、上、下打开边缘菜单或
   模态弹窗。菜单项使用有界纯文本，只允许安全的文档路径、锚点或公开 HTTPS 地址。
+- **Dropdown Menu（下拉菜单）**：可选择安装的扁平菜单，支持点击/悬停触发、12 种经过审查的
+  弹出位置、项目/分隔线、快捷键提示，以及明确的禁用项和危险项。跳转地址可留空，或使用安全的
+  文档路径、锚点或公开 HTTPS URL；v1 不支持子菜单或业务回调。
+- **Upload Button（上传按钮）**：可选择安装的本地文件选择器，支持有界文件类型 token、
+  文件数量与单文件大小限制、拖放和可选已选文件列表。它仅校验本地选择，不会上传或持久化文件内容。
+- **Modal（模态弹窗）**：可安装的对话框触发器，提供有界纯文本标题和正文、可分别
+  显示的触发图标/文字，以及可配置的关闭规则、底部操作、颜色和响应式宽度。
+  它不接受 HTML、脚本、远程内容或凭据。
 - **Lottie**：可安装的矢量动画模块，接受有界的内嵌 JSON 或规范公开 HTTPS 来源。画布
   始终离线；内嵌数据在本地加载，生成的 Web/React 只有在用户明确点击后才会请求 URL，
   并拒绝表达式、外部图片、音频和外部字体。
@@ -90,6 +98,14 @@ Google Drive Storage 默认安装并启用，其余内置插件都需要用户�
   Figma 中执行，因此这不代表运行时可无损往返。
 - **Next.js Exporter**：生成 source-only 的 Next.js + React App Router 工程。现有 React
   运行时在 catch-all 路由中以客户端方式挂载，不代表已经转换为 Server Component 或 SSR。
+- **Vue Exporter**：生成 source-only 的 Vite + Vue 3 + TypeScript + Tailwind 工程，包括可编辑
+  `.vue` SFC、多页面 Vue Router v4、本地 `src/assets/**` 图片，以及基础响应式状态、绑定和
+  事件、路由/查询参数、Toast/Confirm 反馈、本地表单校验，以及 Modal、Dropdown Menu、Slide
+  Menu 和仅限本地的 Upload Button 真实运行时。Vue v1 会把高级运行时缺口写入
+  `EXPORT_WARNINGS.md`，不会宣称与
+  React 完全等价。UI 与 MCP 共用一次性编译与 ZIP Worker；取消会终止当前 Worker，同时不会
+  detach 编辑器仍在使用的图片缓冲区。插件导出器只会在精确摘要与再分发许可证审查通过后复用
+  已保留、缓存或内置的字体字节，并在包含字体时生成 `FONT-LICENSES.txt`。
 - **Capacitor Exporter**：生成使用相对资源与 Hash Router 的 Capacitor + React 源码工程，
   以适配原生 WebView 来源；不会生成 Android/iOS 平台工程，也不会调用 Gradle 或 Xcode。
 - **Electron Exporter**：生成采用 Hash Router 的 Electron + React 源码工程，默认启用
@@ -106,6 +122,17 @@ Google Drive Storage 默认安装并启用，其余内置插件都需要用户�
   在每次重新确认后创建 Checkout Session。成功与取消地址必须是规范的公开 HTTPS URL。
 - **Resend Email（Resend 邮件）**：读取有界的邮件状态，并可在每次重新确认后发送有界邮件；
   不支持任意端点、请求头、附件或流式请求体。
+- 17 个**外部服务连接器**均为可选安装且只读：Neon Projects、Sentry Issues、HubSpot
+  Contacts、Apollo Lists、PostHog Insights、Asana Workspaces、Zotero Top Items、HeyGen
+  Avatars、Linear Issues、OpenAI Models、Box Root Items、Slack Public Channels、Google
+  Calendar Events、SharePoint Root Site、Outlook Mail Folders、Outlook Calendar Events 与
+  Microsoft Teams。每个连接器都只使用固定的主机审查请求和封闭结果 Schema；启用前请检查
+  下方的凭据与最小 Scope 表。
+- **Application Security Readiness（应用安全就绪检查）**：可选安装的本地命令，以只读、
+  可取消、资源有界方式执行静态生产就绪检查。它只返回固定问题代码、数量和修复建议，不返回
+  文档内容或秘密；它不是完整安全评估、渗透测试、认证或安全保证。
+- **Vercel Deployment** 与 **Cloudflare Pages Deployment**：MCP 只会看到安全的部署计划
+  审查命令。真实部署是单独的已安装插件 UI 操作，每次都必须重新人工确认；MCP 不能执行部署。
 
 通常的操作顺序是：
 
@@ -113,20 +140,32 @@ Google Drive Storage 默认安装并启用，其余内置插件都需要用户�
 2. 安装插件。新安装的插件默认保持禁用。
 3. 完成人工审查后启用插件。
 4. 从编辑器使用对应入口：画布底部工具栏的 **插件** 菜单插入模块；**编辑 → Clipboard
-   Toolkit** 执行复制命令；在插件启用后，从 **文件 → 导出** 选择 Tauri、Next.js、
+   Toolkit** 执行复制命令；在插件启用后，从 **文件 → 导出** 选择 Tauri、Next.js、Vue、
    Capacitor、Electron、Expo React Native 或 Flutter 源码导出。当前构建完成相应中央注册后，
    审计和导出器也可从已启用插件卡片运行。已启用模块、Clipboard 命令、静态无障碍审计、
-   静态设计系统审计和 Design Tokens 会暴露动态 MCP 工具。连接器卡片还会显示中央凭据状态、
-   当前会话授权/撤销和经过审查的操作入口；只有固定方法为 `GET` 且明确授权的只读连接器查询
-   会暴露动态 MCP `query` 工具，连接器变更始终只能从 UI 执行，并且每次都要求人工确认。Tauri、Next.js、Capacitor、
+   静态设计系统审计、Application Security Readiness、两个安全部署计划审查、Design Tokens 与 Vue Exporter
+   会暴露动态 MCP 工具。连接器卡片还会显示中央凭据状态、当前会话授权/撤销和经过审查的操作
+   入口；只有同时完成安装、启用、保存凭据，并为当前会话授权精确的连接器/适配器/包摘要，
+   对应只读查询才会进入 MCP。允许的合同只能是固定 `GET` 或主机明确审查的固定 `POST`；任意
+   `POST` 与连接器变更都不能进入 MCP。撤权、清除凭据、禁用或卸载会立即移除工具。连接器变更
+   始终只能从 UI 执行，并且每次都要求人工确认。Tauri、Next.js、Capacitor、
    Electron、Expo、Flutter 与 Figma 的同步 Compiler/编码阶段尚不能协作式取消，因此暂时只
-   允许从 UI 运行，避免 MCP 超时后仍继续占用编辑器。
+   允许从 UI 运行，避免 MCP 超时后仍继续占用编辑器。Vue 源码导出在取消时会终止当前有界
+   编译或 ZIP Worker，并把取消检查延伸到最终原子写入边界；只有插件已安装并启用时才进入 MCP，禁用或
+   卸载后会立即撤销。Worker 快照超过 25,000 个节点、4,096 张图片或 32 MiB（包括每个完整
+   二进制 backing buffer）会安全失败；Worker 输出和路径安全 ZIP 均保留 4,096 文件/64 MiB
+   上限。
 5. 对模块，在画布中编辑生成的原生 `FRAME` 与受控属性。
+
+任何插件导出运行时，已安装插件卡片都会显示“选择位置、准备、编译、归档、保存或取消中”状态；
+支持协作式取消的适配器还会提供可键盘操作的**取消**按钮。同一时间只允许一个插件导出。
+导出结束前，OpenPencil 会阻止对当前插件执行禁用、更新、回滚和卸载；关闭后重新打开设置仍会
+读取同一个主机导出会话，不会重复启动任务。
 
 当前 Expo 静态 MVP 支持原生 `View`、`Text`、`Image`、`ImageBackground`、`Pressable`、
 `TextInput` 与 `Switch` 外壳，基础行内布局和视觉样式，单页或 Expo Router 多页面文件，
 以及静态图片。出现原生控件外壳不代表画布中编写的 Web 状态/动作
-运行时已经完成移动端翻译。全部 17 个插件模块、Motion 与
+运行时已经完成移动端翻译。全部 20 个插件模块、Motion 与
 原型效果、原始 SVG、上传、Supabase/服务端工作流、分析与 Stripe、持久化、高级表单校验、Overlay、响应式、
 Hover、Custom CSS 以及其他只适用于 DOM/Tailwind 的行为，目前都会留下明确警告，等待
 后续原生适配。
@@ -194,11 +233,39 @@ HTTPS 协议，但 DNS 与重定向仍由媒体服务器和访问者浏览器控
 纯文本显示，绝不会作为标记或脚本执行。
 
 安装 **Slide Menu（滑出菜单）** 后，可在 **设计 → 模块** 中选择 **menu** 或 **dialog**，
-设置从左、右、上、下进入，并编辑触发文字、标题、说明、菜单项、面板尺寸、颜色、遮罩透明度、
-点击遮罩关闭和关闭按钮。Compiler 预览与导出的 React/Tauri 项目会在点击画布中的触发器后，
+设置从左、右、上、下进入，并编辑触发文字、标题、说明和菜单项；三横线矢量图标与触发文字可
+分别显示或隐藏，同时还可设置面板尺寸、颜色、遮罩透明度、点击遮罩关闭和关闭按钮。即使两项
+都隐藏，生成的 React 与 Vue 按钮仍会把配置的触发文字保留为无障碍名称。Compiler 预览与导出的
+React/Vue/Tauri 项目会在点击画布中的触发器后，
 通过本地 `document.body` portal 打开面板。Escape 始终可以关闭；打开时键盘焦点限制在面板内，
 关闭后回到触发器；用户启用减少动态效果时会取消滑动过渡。菜单地址只接受以 `/` 开头的文档
 路径、以 `#` 开头的页面锚点或规范的公开 HTTPS URL，所有文字都按纯文本显示。
+
+安装 **Dropdown Menu（下拉菜单）** 后，可在 **设计 → 模块** 中配置点击或悬停触发、
+12 种弹出位置、关闭规则、宽度、颜色，以及触发文字/箭头。专用项目编辑器使用可折叠分组，
+把 **添加项目** 与 **添加分隔线** 分开，并可编辑纯文本标签、跳转地址、快捷键提示、禁用状态和
+危险状态。必须至少保留一个真实项目，总条目最多 20 个；禁用和危险状态同时使用文字与复选框，
+不会只依赖颜色。v1 明确为扁平菜单，不接受子菜单树、HTML、脚本、业务回调或凭据。只有插件
+已经安装并启用时，MCP 才会显示添加模块工具；停用或移除后会立即撤销。Compiler 预览与导出的
+React/Vue/Tauri 项目会生成真实菜单运行时，支持方向键、Escape/Tab/外部点击关闭，以及安全的
+本地或公开链接。
+
+安装 **Upload Button（上传按钮）** 后，可在 **设计 → 模块** 中编辑触发器、允许的文件类型、
+单选/多选、数量与单文件大小限制、拖放、已选文件列表、帮助文字和颜色。文件类型按 token 逐项编辑，
+例如 `.png`、`image/*` 或 `application/pdf`；重复项和无效项不会写入文档。浏览器的 `accept`
+属性只是文件选择器提示，生成的运行时仍会逐个校验类型、数量和大小。该模块只在用户设备上选择文件：
+它不会上传、持久化、显示传输进度或宣称成功。需要服务器存储时，请使用现有的低代码 **INPUT + Supabase 上传**
+路径。只有插件已安装并启用时，MCP 才会显示添加模块工具，且参数与结果仅包含声明式配置，绝不包含已选文件名或文件字节。
+生成的 React/Vue/Tauri 项目使用相同的本地校验与“尚未上传”明确状态。
+
+安装 **Modal（模态弹窗）** 后，可在 **设计 → 模块** 中编辑触发器、标题、多行正文、
+关闭按钮/Escape/遮罩关闭规则、取消与确认文字、底部对齐、颜色、遮罩透明度和
+面板宽度。Compiler 预览与导出的 React/Vue/Tauri 项目会通过本地 `document.body` portal
+打开响应式弹窗；打开时限制键盘焦点，关闭后将焦点还给触发器，并在用户启用
+减少动效时取消过渡。右上角关闭控件和底部操作都是可键盘操作的原生按钮；
+v1 中的取消和确认只会关闭弹窗，不暗示已执行应用变更或回调。Canvas 保持离线且确定；
+Expo/Flutter 在原生弹窗实现前只输出明确不可交互的静态触发器。所有配置文字均按有界
+纯文本显示，绝不会被当作 HTML。
 
 安装 **Lottie** 后，在 **设计 → 模块** 中选择 `url` 或 `json`，并配置循环、自动播放、速度、
 方向与填充方式。Canvas 占位预览绝不请求网络。有界内嵌 JSON 会在本地加载；Compiler 预览与
@@ -272,6 +339,42 @@ Unreleased 的 **Next.js**、**Capacitor** 和 **Electron** 导出器只生成�
 平台工程；Electron 虽然默认隔离渲染器，发布前仍需按具体应用审查打包、权限、更新和签名流程。
 开始构建前请阅读归档内的 `README.md` 和 `EXPORT_WARNINGS.md`。
 
+**Vue Exporter** 同样只创建源码 ZIP，不安装依赖、不运行生成应用，也不启动 Vite。Vue v1
+输出可移植图片、可编辑组件、Vue Router v4 页面、路由/查询读取和安全的参数化导航、基础响应式
+状态/绑定/事件、Toast/Confirm 反馈、本地表单校验，以及 Modal、Dropdown Menu、Slide Menu
+和仅限本地的 Upload Button 真实运行时。Toast 支持 info/success/error、六个位置、持续时间、
+去重、关闭和具有无障碍语义的有界消息栈；Confirm 保留自定义按钮文字与两个结果分支，支持点击
+遮罩或 Escape 取消、键盘焦点约束及关闭后的焦点恢复。本地校验支持 required、pattern、长度与
+数值上下限和自定义表达式，提供行内/汇总错误与 `aria-invalid`、`aria-describedby`，无效提交不会
+执行已编写的 submit handler。远程异步校验不会请求配置的 URL，而是显示通用不可用错误、阻止
+提交，并在 `EXPORT_WARNINGS.md` 中加入 `vue-validation-async-unsupported`。无路由的单页面
+导出会把路由/查询上下文保持为空并给出警告。作者提供的原始 HTML 会被替换为空静态外壳，并
+生成 `vue-raw-html-unsupported`；导出器不会把这段内容写入 `v-html`。其他插件模块、Motion、
+Prototype 与 Overlay、Supabase/Auth/服务端工作流、Stripe、i18n、Analytics、React UI Kit、
+主题切换和文档状态持久化仍会被省略或降级，并生成确定性的 `vue-*-unsupported` 警告。
+
+插件导出器的无网络字体阶段只复用渲染器已保留、导入/下载缓存中已有，或作为经过审查资源随包
+提供的精确字节。每个候选都会检查 OpenType 嵌入标志与 SHA-256 摘要；只有再分发许可证、版权
+声明和完整 NOTICE 都通过审查的字体才会复制到工程，并同时生成 `FONT-LICENSES.txt`。受限、
+不匹配或材料不完整的字体会留下明确警告并被省略，原有字体族 CSS 保持不变。在把工程视为生产
+完成前必须审查 `EXPORT_WARNINGS.md`。超过 Worker 边界的文档需要先缩小或拆分；导出器不会
+静默回退到同步编译。
+
+开发或自动化场景可在 `openpencil compile`、`openpencil build` 和 `openpencil deploy` 上使用
+`--target vue`；默认仍是 React。桌面 Compiler 预览的 **Target** 控件可在 React 与 Vue 3 间
+切换，并重启对应 sidecar。Vue 支持静态 Vite 构建以及 Netlify、Vercel 或 Cloudflare Pages
+部署，但 React 专属的 `--i18n`、locale 与 `--ui-kit` 选项会被明确拒绝，不会静默忽略。
+
+在编辑器 Preview 中，React 与 Vue 都会高亮画布选区，支持用 Alt/Option 点击预览元素后在
+画布中选中它，双向同步页面导航且抑制回声，同步协作文档状态，并立即应用 Light/Dark 主题。
+该桥接只存在于编辑器 Preview，源码/静态导出不会包含它。Vue 仍没有 Motion runtime，因此
+Motion Debug 会立即显示**不可用**，不会一直停在等待状态。
+
+静态构建只会写入不存在/为空的输出目录，或替换带有上一次 OpenPencil 成功构建所写入的有效
+普通文件 `.openpencil-build-output.json` 标记，且当前完整文件集合仍与该清单完全一致的目录。
+非空且未标记的目录、不受信标记，以及存在缺失或额外文件的已标记目录都会被拒绝，不会删除其中
+内容；请改用空目录，或人工审查后自行处理无关文件。
+
 Expo 与 Flutter 源码导出不会为任何插件模块引入 WebView，包括 **Lottie**、**Carousel**
 、**Advanced Data Grid** 以及上面七个 Unreleased 内容模块。在经过审查的原生适配器就绪前，
 它们会生成明确的不支持功能警告，并保留不包含交互模块行为的静态原生 fallback，不会在移动
@@ -312,12 +415,20 @@ Schema v2，将参数、结果、权限和输出绑定到已审查的主机适�
 ## 使用 Google Drive 的云文档
 
 **Google Drive Storage** 在新配置中默认安装并启用，但实际行为全部由经过审查的主机自有
-适配器提供。在桌面应用打开 **设置 → 存储 → Google Drive**。如果 Client ID 为空，请展开
-**高级**，输入这个 Fork 的 Google OAuth Desktop application Client ID，再选择**连接**。
-OpenPencil 会打开系统浏览器，通过临时 Loopback 回调完成带 PKCE 的 Authorization Code
+适配器提供。Fork 发布者通过 `VITE_GOOGLE_DRIVE_CLIENT_ID` 在构建时提供公开的
+Google Desktop OAuth Client ID。在桌面应用打开 **设置 → 存储 → Google Drive**，再选择
+**连接**。Desktop OAuth Client 是
+[公开的已安装应用客户端](https://developers.google.com/identity/protocols/oauth2/native-app)：
+OpenPencil 只需要 Client ID，不会内置 Client Secret。应用会打开系统浏览器，通过临时 Loopback
+回调完成带 PKCE 的 Authorization Code
 流程，并且只请求 `openid`、`email` 与 `drive.file`。`drive.file` 只允许适配器访问由本应用
-创建或用户明确用它打开的文件，并不是整个 Drive 的访问权。Refresh Token 保存在原生系统
-凭据库中；绑定只记录非秘密的账号身份与授权版本。浏览器版暂不支持 Google Drive 授权。
+创建或用户明确用它打开的文件，并不是整个 Drive 的访问权。Refresh Token 保存在应用本地
+IndexedDB 中，并使用 AES-GCM 与不可提取的 WebCrypto 密钥加密；绑定只记录非秘密的账号身份与
+授权版本。Tauri 开发版和正式版都会直接选用这一加密应用存储，它不是原生凭据库失败后的回退，
+并且不使用 macOS 钥匙串。浏览器版暂不支持 Google Drive 授权。
+
+从使用钥匙串的旧构建升级时，OpenPencil 不会自动迁移或删除原有的 macOS 钥匙串项目。首次使用
+时请重新连接 Google Drive，并重新录入其他已保存凭据；旧项目会保持不变，直至你另行移除。
 
 每个存储服务最多可保存 8 个具名配置。每个配置都有独立的 OAuth 账号或 S3 凭据、非秘密服务
 设置、本地文档索引、Change Cursor 与持久同步权限。切换配置时会先取消旧界面的异步工作，再
@@ -378,21 +489,54 @@ Bucket、Region 或凭据会旋转世代。存在待同步、冲突或待删除�
 5. 用另一客户端修改同一远程文档；OpenPencil 必须创建带时间戳的冲突副本，而不是覆盖任一方。
 6. 关闭编辑标签页后从存储工作区删除文档，覆盖离线队列与重启恢复，再确认文件进入 Drive
    回收站并可从回收站恢复。
-7. 在 Google 端撤销授权；OpenPencil 应提示重新连接而不是盲目重试，并确认日志和系统凭据库
-   不含 Access Token、Refresh Token 或可恢复上传 Session URL 的明文。
+7. 在 Google 端撤销授权；OpenPencil 应提示重新连接而不是盲目重试，并检查日志与应用本地
+   IndexedDB，确认其中不含 Access Token、Refresh Token 或可恢复上传 Session URL 的明文；
+   在 macOS 上还应确认 OpenPencil 没有新建钥匙串项目。
    :::
+
+## Application Security Readiness（应用安全就绪检查）
+
+安装并启用 **Application Security Readiness** 后，可从插件卡片或动态注册的 MCP 命令运行
+本地静态检查。命令只扫描公开的低代码结构和有界运行时就绪信号，覆盖配置、数据访问、传输与
+服务端形态、隐私和自定义代码。它只读、支持协作式取消，并限制扫描资源。固定结果只包含问题
+代码、严重级别、数量与静态修复建议，不回显文档内容、输入值、凭据或其他秘密。
+
+这只是早期生产就绪信号，并不是完整应用安全评估、渗透测试、依赖或基础设施扫描、合规认证，
+也不是安全保证。本地 MCP 命令只要求安装并启用插件，不需要凭据或连接器会话授权；禁用或卸载
+后，MCP 命令会立即消失。
+
+## 经过审查的部署插件
+
+可选安装的 **Vercel Deployment** 与 **Cloudflare Pages Deployment** 刻意把计划与部署隔离：
+
+- 动态 MCP 命令 `review-vercel-deployment-plan` 与
+  `review-cloudflare-pages-deployment-plan` 只校验并展示有界计划，不解析 Token、不构建文档、
+  不发送网络请求，也不改变本地或远端状态。
+- 真实部署只能从已安装插件卡片运行。每次都必须重新人工确认服务商、目标、环境和审核文档；
+  OpenPencil 会在确认后及凭据读取后再次核对文档身份，只有核对通过才会构建并上传静态文件。
+- Vercel 需要人工创建账号 Token；Cloudflare Pages 需要人工创建 API Token，并填写目标
+  Account ID 与 Project Name。首次验证请使用最小权限 Token 和非生产目标。
+- MCP 不能调用真实部署适配器。UI 在上传发出后被中断时，远端结果可能未知；重试前必须到服务商
+  控制台核验。
+- 关闭或切换设置页不会丢失部署进度和有界结果。远端部署进行中不能禁用、更新、回滚或卸载插件；
+  若部署中执行 Save As，结果与历史仍归属审核时的原文档，不会静默记到新文档。
+
+安装并启用任一插件只会把安全计划命令加入 MCP；禁用或卸载会立即移除。计划审查不读取凭据，
+但真实 UI 部署必须存在凭据；清除凭据后，后续部署不会开始。
 
 ## 业务连接器
 
-Phase 2 Broker 已让 5 个内置连接器可以执行：**Supabase Schema Inspector**、**Airtable
-Records**、**Supabase Tables**、**Stripe Checkout & Billing** 与 **Resend Email**。它们是
-经过主机审查的窄集成能力，不是任何发布者都能申请的通用网络权限。
+Phase 2 Broker 已让 22 个内置连接器可以执行：原有的 **Supabase Schema Inspector**、
+**Airtable Records**、**Supabase Tables**、**Stripe Checkout & Billing**、**Resend Email**，
+以及 17 个可选安装的只读外部服务连接器。它们是经过主机审查的窄集成能力，不是任何发布者
+都能申请的通用网络权限。
 
 这些连接器是 OpenPencil 编辑器中的本地、设计时操作者工具；它们不会被编译进生成应用，
 也不是服务端连接器运行时。凭据不会进入插件清单、设计文档、Compiler 输出、审计日志或长期
 响应式 UI 状态，但 renderer 侧经过审查的请求路径会在发出调用时把凭据解析到内存。桌面端使用
-系统凭据库持久化，并通过有界的 Tauri 代理传输；这**不等于服务端秘密隔离**，也不声称能抵御已受损的
-renderer。请使用最小权限的开发凭据（Stripe 优先使用受限密钥），生产应用秘密应留在你自己运维的
+AES-GCM 与不可提取的 WebCrypto 密钥加密应用本地 IndexedDB 记录，并通过有界的 Tauri 代理
+传输；这**不等于服务端秘密隔离**，也不声称能抵御已受损的 renderer。请使用最小权限的开发
+凭据（Stripe 优先使用受限密钥），生产应用秘密应留在你自己运维的
 基础设施中。生成应用的服务端连接器属于后续阶段。
 
 使用步骤如下：
@@ -402,13 +546,55 @@ renderer。请使用最小权限的开发凭据（Stripe 优先使用受限密�
    清单、设计文档、Compiler 输出和长期 UI 状态都不会保留原始 Token。
 3. 检查连接器身份与权限范围，然后为**当前会话**选择**授权**。授权会绑定精确的插件 ID、
    连接器 ID、经过审查的适配器 ID 与已安装包摘要；版本或摘要变化后必须重新授权。授权存在时，
-   符合条件的只读 `GET` 查询也会使用同一份已保存凭据向已连接的 MCP/AI 客户端开放。
+   符合条件的固定 `GET`，或经过主机明确审查的固定 `POST` 只读查询，也会使用同一份已保存
+   凭据向已连接的 MCP/AI 客户端开放。任意 `POST` 不允许进入 MCP。
 4. 从连接器卡片启动列出的操作。明确授权后的查询也可以显示为动态 MCP `query` 工具。
    变更操作不会进入 MCP，只能从 UI 发起，而且每次执行都必须重新人工确认。
-5. 使用完毕后选择**撤销授权**、禁用或卸载。这些操作会移除相应 MCP 查询工具，并停止本地
+5. 使用完毕后选择**撤销授权**、清除凭据、禁用或卸载。这些操作会移除相应 MCP 查询工具，并停止本地
    等待仍在执行的匹配请求。已接受包摘要发生变化时，旧授权同样会失效，并停止使用旧身份启动
    的本地在途工作。查询可以记为已取消；但变更请求一旦发出，之后若发生取消、超时、撤权或
    本地响应处理失败，远端结果会明确标记为未知，重试前必须先到对应服务中核验。
+
+### 可选安装的外部只读服务
+
+对于新增的 17 项能力，OpenPencil 不会自动完成服务商 OAuth Consent、Token Exchange、Refresh、
+租户批准或敏感 Scope 验证。请先在服务商控制台创建最小权限 Token/Key，人工完成服务商或管理员
+审批，再把当前值粘贴到插件卡片。表单接受 Token 不代表服务商 Scope 一定正确；第一次有界读取
+才是实际连通性检查。
+
+| 插件 / 只读结果                                  | 手工凭据与最低权限                                                                  | 仍需人工完成的门禁                                                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Neon Projects** — 有界项目列表                 | 有 Scope 限制的 Neon API Key；没有具名 OAuth Scope                                  | 按测试账号选择尽可能窄的个人、组织或项目 Key。                                            |
+| **Sentry Issues** — 有界 Issue 列表              | Auth Token 或 Internal Integration Token，包含 `event:read`                         | 在 Sentry 选择组织/项目，并确认 Token 没有写权限。                                        |
+| **HubSpot Contacts** — 有界联系人元数据          | Private App 或 OAuth Access Token，包含 `crm.objects.contacts.read`                 | 在 HubSpot 人工创建/批准应用并签发 Token。                                                |
+| **Apollo Lists** — 有界列表目录                  | Apollo API Key，具备已审查的 `tags_list` 权限                                       | 确认账号与套餐开放已审查的列表端点。                                                      |
+| **PostHog Insights** — 有界 Insight 列表         | Personal API Key，包含 `insight:read`                                               | 当前适配器只审查了 PostHog US Cloud；EU Cloud 与自托管来源需另行审查。                    |
+| **Asana Workspaces** — 有界 Workspace 列表       | OAuth Access Token 或 PAT，包含 `workspaces:read`                                   | 人工完成 Asana App/PAT 设置。                                                             |
+| **Zotero Top Items** — 有界条目元数据            | 专用只读 Key，包含 `library:read`；数字 User ID 是单独的非秘密配置                  | 创建 Library Read-only Key，并复制数字 User ID。                                          |
+| **HeyGen Avatars** — 有界 Avatar 列表            | HeyGen API Key；没有具名服务商 Scope                                                | 使用测试 Workspace Key；适配器只能列出 Avatar。                                           |
+| **Linear Issues** — 有界 Issue 列表              | OAuth Access Token，包含 `read`                                                     | 人工完成 Linear OAuth。这是已审查的固定 GraphQL `POST`，调用方不能更改 Document 或 Body。 |
+| **OpenAI Models** — 有界模型列表                 | Project API Key，包含 `models.read`                                                 | 创建最小权限 Project Key；适配器不能提交 Prompt 或 Response。                             |
+| **Box Root Items** — 有界根文件夹条目            | OAuth Access Token，具备已审查的根目录只读权限（主机标签 `root_readonly`）          | 人工完成 Box OAuth，并避免给测试 App 添加写 Scope。                                       |
+| **Slack Public Channels** — 有界公开频道列表     | Bot 或 User Token，包含 `channels:read`                                             | 人工安装/批准 Slack App；不会请求私有频道或历史记录 Scope。                               |
+| **Google Calendar Events** — 有界事件元数据      | OAuth Access Token，包含 `https://www.googleapis.com/auth/calendar.events.readonly` | Google Consent、敏感 Scope 验证与生产 OAuth 审查仍是人工发布门。                          |
+| **SharePoint Root Site** — 只返回根站点元数据    | Microsoft Graph Token，包含 `Sites.Read.All`                                        | Entra App 注册与租户/管理员 Consent 需人工完成。                                          |
+| **Outlook Mail Folders** — 只返回文件夹元数据    | Microsoft Graph Token，包含 `Mail.ReadBasic`                                        | Entra Consent 需人工完成；适配器不读取邮件正文，也不发送邮件。                            |
+| **Outlook Calendar Events** — 有界基础事件元数据 | Microsoft Graph Token，包含 `Calendars.ReadBasic`                                   | Entra Consent 需人工完成。                                                                |
+| **Microsoft Teams** — 有界已加入 Team 列表       | Microsoft Graph Token，包含 `Team.ReadBasic.All`                                    | Entra Consent 需人工完成；支持工作/学校账号，不支持个人 Microsoft 账号。                  |
+
+服务商返回的名称、描述、标题、地址、URL 等显示字符串始终是**不可信外部数据**。Broker 会通过
+封闭结果 Schema 做规范化和长度限制，但这不会把它们变成指令。只能把它们作为文本渲染；不得
+执行其中的标记、把内容回送为权限依据，也不得自动打开返回 URL。审计仍不会记录请求参数、
+响应正文或秘密。
+
+另外四个看似合适的候选目前有意延后：
+
+| 候选           | 当前不启用的原因                                                                    | 必须完成的门禁                                                    |
+| -------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| **Gmail**      | Google Restricted Scope 与 AI/MCP 数据传输组合需要独立的政策和安全审查。            | 完成 Restricted Scope 验证，并批准 AI 数据传输政策。              |
+| **Monday.com** | 其稳定 Token 流程使用原始/非 Bearer 的 `Authorization` 形式，当前 Broker 不会注入。 | 增加并审查精确的非 Bearer 授权 Scheme，且不能由此开放任意请求头。 |
+| **Semrush**    | 候选 API 仍属 Early Access，当前审查注入合同也未表达其 `ApiKey` 凭据 Scheme。       | 确认稳定生产 API，并增加专用、经过审查的 `ApiKey` Scheme。        |
+| **Replit**     | 尚未为目标操作验证稳定的公开管理 API。                                              | 先选定并审查有正式文档的公开 API，再授予网络权限。                |
 
 ### 操作参数与可粘贴示例
 
@@ -579,7 +765,8 @@ renderer。请使用最小权限的开发凭据（Stripe 优先使用受限密�
 UI 或 MCP。
 
 连接器审计只保留操作身份、结果状态、耗时和字节数等元数据，不记录参数、请求/响应正文或
-凭据。Supabase Auth/Storage、连接器 OAuth 授权流程与二进制流式传输尚未实现。发布者仍不能提供任意
+凭据。Supabase Auth/Storage、这些连接器由服务商管理的 OAuth Consent/Refresh 流程与二进制
+流式传输尚未实现；目前必须人工签发并录入 Access Token。发布者仍不能提供任意
 JavaScript/原生代码、后台服务、端点、请求头或通用网络访问。
 
 会话授权、待处理操作状态和“远端结果未知”提示都是本地且仅在当前会话中保留的。请求发出后如果
@@ -628,9 +815,11 @@ OpenPencil 会拒绝已签名快照的回滚，并按当前时间重新验证缓
 中。规范身份摘要可防止另一个可读名称归一化后相同的插件复用客户端缓存的旧工具名。安装、
 启用、禁用或移除插件时，MCP 会刷新工具列表；执行每次调用前还会再次检查实时插件状态，
 因此客户端缓存的旧工具不能绕过禁用或卸载。这里只暴露软件内置且经过审查的模块、命令和
-导出适配器，以及固定方法为 `GET` 且明确授权的只读连接器查询；插件清单不能增加任意可执行
-MCP 处理器。兼容模块、命令与导出器会分别投影为 add、run、export 工具；符合上述条件的连接器
-查询会投影为 query 工具。连接器变更保持 UI-only 并要求逐次确认；仅安装或启用并不会自动授权连接器 MCP 工具。
+导出适配器，以及使用固定 `GET` 或主机明确审查的固定 `POST` 且已授权的只读连接器查询；
+插件清单不能增加任意可执行 MCP 处理器。兼容模块、命令与导出器会分别投影为 add、run、export
+工具；符合上述条件的连接器查询会投影为 query 工具。任意 `POST` 与连接器变更都不能进入 MCP，
+变更只能在 UI 中逐次确认。仅安装或启用并不会自动授权连接器 MCP 工具；还必须保存凭据并授予
+当前会话的精确摘要权限。撤权或清除凭据会立即移除工具。
 
 ## 更新与回滚
 
@@ -790,8 +979,8 @@ bun run marketplace:serve
 - 可执行通道只支持文档规定的无导入 WASM 计算 ABI。
 - 发布者 WASM 执行通道仍不开放 JavaScript、原生代码、DOM、网络、文件系统、命令行、文档
   写入、后台服务、跨插件通信或自动接受更新。
-- 5 个内置连接器使用独立且有界的主机 Broker，不会放宽发布者运行时边界。Supabase
-  Auth/Storage、连接器 OAuth 授权流程和二进制流式传输仍属于后续工作；发布者清单与 WASM 包仍不能
+- 22 个内置连接器使用独立且有界的主机 Broker，不会放宽发布者运行时边界。Supabase
+  Auth/Storage、由服务商管理的 OAuth Consent/Refresh 流程和二进制流式传输仍属于后续工作；发布者清单与 WASM 包仍不能
   增加任意网络来源、请求处理器、JavaScript/原生代码或后台服务。
 - 声明式模块、命令与导出器仍需要 OpenPencil 构建中随附的已审查主机适配器。WASM
   不能安装新渲染器，也不能绕过主机注册表。

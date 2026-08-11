@@ -31,12 +31,12 @@ flowchart LR
   F --> B
 ```
 
-| Artifact | Contains | Deployment owner |
-| --- | --- | --- |
-| Browser SPA | React UI, routes, public Supabase configuration, client workflows, and static assets | OpenPencil deploy command or your static host |
-| Supabase project | Auth users, Postgres tables, grants, RLS policies, and Storage buckets | Your database migrations or Supabase Dashboard |
-| `openpencil-server/` | Authenticated server workflows and a manifest of required environment names | You, through the Supabase CLI |
-| Provider and server secrets | Hosting tokens and third-party API credentials | Your credential store, CI secret store, or Supabase Edge Function secrets |
+| Artifact                    | Contains                                                                             | Deployment owner                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Browser SPA                 | React UI, routes, public Supabase configuration, client workflows, and static assets | OpenPencil deploy command or your static host                             |
+| Supabase project            | Auth users, Postgres tables, grants, RLS policies, and Storage buckets               | Your database migrations or Supabase Dashboard                            |
+| `openpencil-server/`        | Authenticated server workflows and a manifest of required environment names          | You, through the Supabase CLI                                             |
+| Provider and server secrets | Hosting tokens and third-party API credentials                                       | Your credential store, CI secret store, or Supabase Edge Function secrets |
 
 The browser and server artifacts can be released separately. A successful static deployment does
 not mean the server workflows are live.
@@ -145,14 +145,14 @@ values; they do not retroactively add a runtime that was omitted from an unconfi
 
 ### Configuration and secret locations
 
-| Value | Public? | Stored in the design? | Correct location |
-| --- | --- | --- | --- |
-| Supabase project URL | Yes | Yes | Document Supabase panel or per-environment build override |
-| Publishable / legacy `anon` key | Yes | Yes | Document Supabase panel or per-environment build override |
-| Supabase personal access token | No | No | OpenPencil credential store, for Schema Inspector only |
-| `sb_secret_...` / `service_role` key | No | Never | Not used by the generated OpenPencil runtime |
-| Static-host provider token | No | No | Deploy dialog for the current operation, CLI environment, or CI secret store |
-| Third-party server credential | No | Name only | Supabase Edge Function secrets; the document stores only its environment-variable name |
+| Value                                | Public? | Stored in the design? | Correct location                                                                       |
+| ------------------------------------ | ------- | --------------------- | -------------------------------------------------------------------------------------- |
+| Supabase project URL                 | Yes     | Yes                   | Document Supabase panel or per-environment build override                              |
+| Publishable / legacy `anon` key      | Yes     | Yes                   | Document Supabase panel or per-environment build override                              |
+| Supabase personal access token       | No      | No                    | OpenPencil credential store, for Schema Inspector only                                 |
+| `sb_secret_...` / `service_role` key | No      | Never                 | Not used by the generated OpenPencil runtime                                           |
+| Static-host provider token           | No      | No                    | Deploy dialog for the current operation, CLI environment, or CI secret store           |
+| Third-party server credential        | No      | Name only             | Supabase Edge Function secrets; the document stores only its environment-variable name |
 
 ### Inspect the live schema safely
 
@@ -180,14 +180,14 @@ The PAT is separate from the browser key:
 
 Build one complete flow before expanding the application.
 
-| Action | Required database access | Authoring constraints |
-| --- | --- | --- |
-| Query / LIST | `SELECT` | Static table and columns; optional filters; single row or array result |
-| Insert | `INSERT` | Payload entries or static JSON payload |
-| Update | `SELECT` + `UPDATE` | Payload plus at least one filter |
-| Delete | `SELECT` + `DELETE` | At least one filter and no payload |
-| Upsert | `SELECT` + `INSERT` + `UPDATE` | Payload entries or static JSON payload |
-| Storage upload | Bucket-specific `SELECT` + `INSERT` + `UPDATE` | Controlled file Input and reviewed Storage policy |
+| Action         | Required database access                       | Authoring constraints                                                  |
+| -------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| Query / LIST   | `SELECT`                                       | Static table and columns; optional filters; single row or array result |
+| Insert         | `INSERT`                                       | Payload entries or static JSON payload                                 |
+| Update         | `SELECT` + `UPDATE`                            | Payload plus at least one filter                                       |
+| Delete         | `SELECT` + `DELETE`                            | At least one filter and no payload                                     |
+| Upsert         | `SELECT` + `INSERT` + `UPDATE`                 | Payload entries or static JSON payload                                 |
+| Storage upload | Bucket-specific `SELECT` + `INSERT` + `UPDATE` | Controlled file Input and reviewed Storage policy                      |
 
 Supabase filters support `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `like`, and `in`. Table and column
 names are static configuration, and values use OpenPencil's bounded expression language rather than
@@ -501,24 +501,24 @@ After deployment:
 
 ## Troubleshooting
 
-| Symptom | Likely cause | What to check |
-| --- | --- | --- |
-| **Test connection** fails | Invalid URL, wrong public key, offline project, or network/CORS failure | Copy the URL and publishable/anon key from the same Supabase project; never substitute a secret key |
-| Schema Inspector says the credential is missing | PAT was not saved or credential storage is locked/unavailable | Save a Supabase personal access token and unlock the operating-system credential store |
-| Schema inspection returns forbidden/not found | PAT cannot access the project or the URL points to another project | Confirm the PAT account, organization membership, and project reference |
-| Query succeeds but returns zero rows | RLS hides the rows, the user is signed out, or the filter is wrong | Test `$currentUser`, policy `USING`, grants, and the same query as the affected user |
-| INSERT is rejected | Missing grant, RLS `WITH CHECK`, required column, or invalid payload | Inspect the Supabase error target and test the final row against the INSERT policy |
-| UPDATE changes nothing | Missing SELECT visibility, UPDATE policy, or matching filter | Add the required SELECT policy and confirm the filter selects an owned row |
-| OpenPencil rejects the key | An elevated `sb_secret_...` or `service_role` key was entered | Replace it with a publishable or legacy `anon` key and rotate the elevated key if it was exposed |
-| Preview works but production uses the wrong project | Production overrides were omitted or point to a different project | Supply URL and public key together through flags or the matching `VITE_SUPABASE_*` variables |
-| Preview is unavailable | The browser app cannot start the local compiler sidecar | Use the desktop app or build through the CLI |
-| Server action returns 401 | No valid signed-in Supabase session reached the function | Sign in, verify the session, and keep JWT verification enabled for this generated contract |
-| Server action returns 400 | Workflow ID/arguments do not match, or the request exceeds 64 KiB | Compare the invocation with the generated manifest and reduce the payload |
-| Server action returns a generic 500 | Missing environment name, rejected outbound target, timeout, or downstream error | Compare Edge Function secrets with the manifest and inspect sanitized function logs |
-| No server bundle was generated | Invalid server definitions or missing design-level Supabase config | Resolve compiler warnings, configure the document, and rebuild |
-| Static deploy succeeds but server action fails | Static hosting never deployed `openpencil-server/` | Deploy `openpencil-runtime` separately and then mark the audit flag |
-| A routed page 404s after refresh | The host lacks SPA fallback | Rewrite unknown paths to `index.html` |
-| Cloudflare deploy stops before upload | Account or Pages project target is missing | Pass `--account-id`, set `CLOUDFLARE_ACCOUNT_ID`, or use an account/project target supported by the CLI |
+| Symptom                                             | Likely cause                                                                     | What to check                                                                                           |
+| --------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Test connection** fails                           | Invalid URL, wrong public key, offline project, or network/CORS failure          | Copy the URL and publishable/anon key from the same Supabase project; never substitute a secret key     |
+| Schema Inspector says the credential is missing     | PAT was not saved or credential storage is locked/unavailable                    | Save a Supabase personal access token and unlock the operating-system credential store                  |
+| Schema inspection returns forbidden/not found       | PAT cannot access the project or the URL points to another project               | Confirm the PAT account, organization membership, and project reference                                 |
+| Query succeeds but returns zero rows                | RLS hides the rows, the user is signed out, or the filter is wrong               | Test `$currentUser`, policy `USING`, grants, and the same query as the affected user                    |
+| INSERT is rejected                                  | Missing grant, RLS `WITH CHECK`, required column, or invalid payload             | Inspect the Supabase error target and test the final row against the INSERT policy                      |
+| UPDATE changes nothing                              | Missing SELECT visibility, UPDATE policy, or matching filter                     | Add the required SELECT policy and confirm the filter selects an owned row                              |
+| OpenPencil rejects the key                          | An elevated `sb_secret_...` or `service_role` key was entered                    | Replace it with a publishable or legacy `anon` key and rotate the elevated key if it was exposed        |
+| Preview works but production uses the wrong project | Production overrides were omitted or point to a different project                | Supply URL and public key together through flags or the matching `VITE_SUPABASE_*` variables            |
+| Preview is unavailable                              | The browser app cannot start the local compiler sidecar                          | Use the desktop app or build through the CLI                                                            |
+| Server action returns 401                           | No valid signed-in Supabase session reached the function                         | Sign in, verify the session, and keep JWT verification enabled for this generated contract              |
+| Server action returns 400                           | Workflow ID/arguments do not match, or the request exceeds 64 KiB                | Compare the invocation with the generated manifest and reduce the payload                               |
+| Server action returns a generic 500                 | Missing environment name, rejected outbound target, timeout, or downstream error | Compare Edge Function secrets with the manifest and inspect sanitized function logs                     |
+| No server bundle was generated                      | Invalid server definitions or missing design-level Supabase config               | Resolve compiler warnings, configure the document, and rebuild                                          |
+| Static deploy succeeds but server action fails      | Static hosting never deployed `openpencil-server/`                               | Deploy `openpencil-runtime` separately and then mark the audit flag                                     |
+| A routed page 404s after refresh                    | The host lacks SPA fallback                                                      | Rewrite unknown paths to `index.html`                                                                   |
+| Cloudflare deploy stops before upload               | Account or Pages project target is missing                                       | Pass `--account-id`, set `CLOUDFLARE_ACCOUNT_ID`, or use an account/project target supported by the CLI |
 
 ## Production Checklist
 

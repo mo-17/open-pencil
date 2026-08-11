@@ -31,8 +31,8 @@ or beta channel, publisher/key identity, snapshot status, the audit head, and wh
 authorizes an executable runtime index. Search matches the signed name, summary, category, keyword,
 plugin ID, and publisher metadata; it does not trust an unsigned search-service response.
 
-The current **Unreleased** source line contains 34 reviewed plugins with 37 contributions: 17
-modules, six commands, eight exporters, five connectors, and one storage provider. A definition,
+The current **Unreleased** source line contains 58 reviewed plugins with 61 contributions: 20
+modules, nine commands, nine exporters, 22 connectors, and one storage provider. A definition,
 renderer, contract, or exporter source file alone does not make a plugin available; the contribution
 must also have its reviewed central host registration. Map and Google Drive Storage are installed and
 enabled on a new profile; every other bundled plugin is opt-in.
@@ -56,6 +56,15 @@ enabled on a new profile; every other bundled plugin is opt-in.
 - **Slide Menu** is an installable trigger module that opens either an edge menu or a modal from the
   left, right, top, or bottom. Its links are bounded plain text with safe document, anchor, or public
   HTTPS destinations.
+- **Dropdown Menu** is an opt-in flat menu with click or hover activation, 12 reviewed placements,
+  item/divider rows, shortcut hints, and explicit disabled and danger states. Destinations may be
+  empty or use a safe document path, anchor, or public HTTPS URL; v1 has no submenus or callbacks.
+- **Upload Button** is an opt-in local file picker with bounded accepted-type tokens, file-count and
+  per-file-size limits, drag-and-drop, and an optional selected-file list. It validates local
+  selections but never uploads or persists their contents.
+- **Modal** is an installable dialog trigger with a bounded plain-text title and body, independently
+  visible trigger icon/text, configurable dismissal controls, footer actions, colors, and responsive
+  panel width. It does not accept HTML, script, remote content, or credentials.
 - **Lottie** is an installable vector-animation module for bounded embedded JSON or a canonical
   public HTTPS source. Canvas stays offline; embedded data loads locally, while generated Web/React
   output requires an explicit user action before fetching a URL. Expressions, external images,
@@ -115,6 +124,16 @@ enabled on a new profile; every other bundled plugin is opt-in.
   round-trip promise.
 - **Next.js Exporter** packages a source-only Next.js + React App Router project. The authored React
   runtime mounts client-side in a catch-all route; this is not a Server Component or SSR conversion.
+- **Vue Exporter** packages a source-only Vite + Vue 3 + TypeScript + Tailwind project. It emits
+  editable `.vue` SFCs, Vue Router v4 for multiple pages, local images under `src/assets/**`, and
+  basic reactive state, bindings, events, route/query parameters, Toast/Confirm feedback, local form
+  validation, and real Modal, Dropdown Menu, Slide Menu, and local-only Upload Button runtimes. Vue
+  v1 records unsupported
+  advanced runtimes in `EXPORT_WARNINGS.md` instead of claiming React feature parity. Its UI and MCP
+  paths share disposable compiler and ZIP Workers; cancellation terminates the active Worker without
+  detaching live image buffers. The plugin exporter can reuse retained, cached, or bundled font bytes
+  only after exact digest and redistribution-license review, and writes `FONT-LICENSES.txt` when it
+  includes them.
 - **Capacitor Exporter** packages a source-only Capacitor + React project with relative assets and
   hash routing for the native WebView origin. It does not generate Android/iOS platform projects or
   invoke Gradle or Xcode.
@@ -134,26 +153,54 @@ enabled on a new profile; every other bundled plugin is opt-in.
   HTTPS URLs.
 - **Resend Email** reads bounded email status and can send a bounded message after a fresh mutation
   confirmation. It does not support arbitrary endpoints, headers, attachments, or streaming bodies.
+- Seventeen **external-service connectors** are opt-in and read-only: Neon Projects, Sentry Issues,
+  HubSpot Contacts, Apollo Lists, PostHog Insights, Asana Workspaces, Zotero Top Items, HeyGen
+  Avatars, Linear Issues, OpenAI Models, Box Root Items, Slack Public Channels, Google Calendar
+  Events, SharePoint Root Site, Outlook Mail Folders, Outlook Calendar Events, and Microsoft Teams.
+  Each one uses a fixed host-reviewed request and closed result schema; see the credential and scope
+  table below before enabling one.
+- **Application Security Readiness** is an opt-in local command that performs a read-only,
+  cancellable, resource-bounded static production-readiness review. It returns fixed issue codes,
+  counts, and remediation without document content or secrets. It is not a complete security
+  assessment, penetration test, certification, or guarantee.
+- **Vercel Deployment** and **Cloudflare Pages Deployment** expose only safe deployment-plan review
+  commands to MCP. Actual deployment is a separate installed-plugin UI action that requires a fresh
+  human confirmation for every invocation; MCP cannot execute it.
 
 Install and enable a plugin, then use its editor entry point. Insert modules from the **Plugins**
 menu in the canvas toolbar, run copy commands from **Edit → Clipboard Toolkit**, and use the enabled
-entries under **File → Export** for Tauri, Next.js, Capacitor, Electron, Expo React Native, or Flutter
+entries under **File → Export** for Tauri, Next.js, Vue, Capacitor, Electron, Expo React Native, or Flutter
 source. Audits and exporters also remain available from their enabled installed-plugin cards when the
 current build has registered their reviewed host adapters. Enabled modules, Clipboard commands,
-Static Accessibility Audit, Static Design System Audit, and Design Tokens Exporter expose dynamic MCP
-tools. A connector card also shows its central credential status, current-session authorization,
-revocation, and reviewed operation launch controls. Explicitly authorized read-only connector queries
-whose fixed method is `GET` expose dynamic MCP query tools; connector mutations remain UI-only and ask
-for confirmation on every run.
+Static Accessibility Audit, Static Design System Audit, Application Security Readiness, the two safe
+deployment-plan reviews, Design Tokens Exporter, and Vue Exporter expose dynamic MCP tools after their plugin is
+installed and enabled. A connector card also shows its central credential status, current-session
+authorization, revocation, and reviewed operation launch controls. A connector query appears in MCP
+only after the plugin is installed, enabled, has a saved credential, and is authorized for the exact
+connector/adapter/package digest in the current session. Eligible read-only contracts use fixed
+`GET` or an explicitly host-reviewed fixed `POST`; arbitrary `POST` and connector mutations remain
+unavailable to MCP. Disable, uninstall, revoke, or clear the credential and the tool disappears
+immediately. UI mutations continue to ask for confirmation on every run.
 Source/projection exporters whose Compiler or encoder stage cannot cooperatively
 cancel—including Tauri, Next.js, Capacitor, Electron, Expo, Flutter, and Figma—remain UI-only so an
 MCP timeout cannot leave an export occupying the editor. These actions still use the same reviewed
-host adapters, and modules create native editable `FRAME` nodes rather than opaque browser surfaces.
+host adapters. Vue source export terminates its bounded compiler or ZIP Worker on cancellation and keeps
+checking through the final atomic write boundary, so its tool appears only while the opt-in plugin is
+installed and enabled and disappears immediately on disable or uninstall. The Worker snapshot fails
+closed above 25,000 nodes, 4,096 images, or 32 MiB including complete binary backing buffers; Worker
+output and the path-safe ZIP retain 4,096-file/64-MiB ceilings. Modules create native editable
+`FRAME` nodes rather than opaque browser surfaces.
+
+While any plugin exporter runs, its installed-plugin card shows choosing, preparing, compiling,
+archiving, saving, or cancelling status and provides a keyboard-accessible **Cancel** action when the
+adapter supports it. Only one plugin export runs at a time. OpenPencil blocks disable, update,
+rollback, and uninstall for the exporting plugin until the session finishes; reopening Settings
+continues to show the host-owned session instead of starting a duplicate export.
 
 The current Expo static MVP supports native `View`, `Text`, `Image`, `ImageBackground`, `Pressable`,
 `TextInput`, and `Switch` shells; basic inline layout and visual styles; single-page output or
 Expo Router page files; and static images. The presence of a native control
-shell does not mean its authored web state/action runtime has been translated. All 17 plugin
+shell does not mean its authored web state/action runtime has been translated. All 20 plugin
 modules; Motion and prototype effects; raw SVG; upload;
 Supabase/server workflows;
 analytics and Stripe; persistence; advanced form validation; overlays; responsive/hover/custom CSS;
@@ -233,13 +280,48 @@ The committed value is structured table data, not HTML; tags typed into a cell a
 text and are never evaluated as markup or script.
 
 After installing **Slide Menu**, use **Design → Module** to choose **menu** or **dialog**, select the
-left, right, top, or bottom entrance, edit the trigger/title/description and destinations, and set
-the panel size, colors, backdrop opacity, backdrop dismissal, and close-button visibility. In
-Compiler Preview and exported React/Tauri projects, activating the authored trigger renders the
+left, right, top, or bottom entrance, edit the trigger/title/description and destinations,
+independently show or hide the vector menu icon and trigger text, and set the panel size, colors,
+backdrop opacity, backdrop dismissal, and close-button visibility. Even when both trigger visuals
+are hidden, generated React and Vue keep the configured trigger text as the button's accessible name.
+In Compiler Preview and exported React/Vue/Tauri projects, activating the authored trigger renders the
 panel in a local `document.body` portal. Escape always dismisses it, keyboard focus stays inside
 while open and returns to the trigger after close, and reduced-motion preferences suppress the
 sliding transition. Menu links accept only document paths beginning with `/`, local anchors
 beginning with `#`, or canonical public HTTPS URLs; labels and descriptions remain plain text.
+
+After installing **Dropdown Menu**, use **Design → Module** to configure click or hover activation,
+one of 12 placements, dismissal rules, width, colors, and the trigger label/chevron. The dedicated
+item editor keeps entries in collapsible groups, offers separate **Add item** and **Add divider**
+actions, and edits plain-text label, destination, shortcut hint, disabled state, and danger state.
+At least one real item must remain and the menu accepts at most 20 total entries. Disabled and danger
+states are shown with text and checkboxes rather than color alone. In v1 the menu is deliberately
+flat: it accepts no submenu tree, HTML, script, business callback, or credential. The MCP add-module
+tool appears only while the plugin is both installed and enabled and is revoked immediately when the
+plugin is disabled or removed. Compiler Preview and exported React/Vue/Tauri projects emit the real
+menu runtime with arrow-key navigation, Escape/Tab/outside dismissal, and safe local/public links.
+
+After installing **Upload Button**, use **Design → Module** to edit the trigger, accepted file
+types, single- or multi-file mode, count and per-file-size limits, drag-and-drop, selected-file list,
+helper copy, and colors. Accepted types are edited one token at a time, for example `.png`,
+`image/*`, or `application/pdf`; duplicates and invalid tokens are rejected without changing the
+document. The browser's `accept` attribute is only a chooser hint, so the generated runtime still
+validates every selected file against the authored type, count, and size limits. This module selects
+files only on the user's device: it does not upload, persist, report transfer progress, or claim
+success. Use the existing low-code **INPUT + Supabase upload** workflow for server storage. Its MCP
+add-module tool exists only while the plugin is installed and enabled and carries declarative
+configuration only—never selected file names or file bytes. The same local-only validation and clear
+not-uploaded status run in generated React/Vue/Tauri projects.
+
+After installing **Modal**, edit its trigger, title, multiline body, close/Escape/backdrop rules,
+cancel and confirm labels, footer alignment, colors, opacity, and panel width under
+**Design → Module**. Compiler Preview and exported React/Vue/Tauri projects open a responsive local
+`document.body` portal, trap focus while open, restore it to the trigger after close, and suppress
+transitions for reduced-motion users. The top-right close control and footer actions use native
+buttons with keyboard focus; cancel and confirm close the v1 dialog and do not imply an application
+mutation or callback. Canvas stays deterministic and offline, while Expo/Flutter exports emit an
+explicitly non-interactive static trigger until native modal behavior is implemented. All configured
+copy is rendered as bounded text, never HTML.
 
 After installing **Lottie**, choose `url` or `json` under **Design → Module**, then configure loop,
 autoplay, speed, direction, and fit. The Canvas placeholder never fetches a URL. Bounded embedded JSON
@@ -328,6 +410,51 @@ Electron keeps its renderer sandboxed but still needs an application-specific pa
 update, and signing review before distribution. Read each generated `README.md` and
 `EXPORT_WARNINGS.md` before building.
 
+The **Vue Exporter** also creates a source ZIP only and never installs packages, runs the generated
+application, or starts Vite. Vue v1 emits portable image assets, editable components, Vue Router v4
+pages, route/query reads and safe parameterized navigation, basic reactive state/bindings/events,
+Toast/Confirm feedback, local form validation, and real Modal, Dropdown Menu, Slide Menu, and
+local-only Upload Button runtimes. Toast supports info/success/error feedback, six positions,
+duration, duplicate suppression, dismissal, and an accessible bounded stack. Confirm uses authored
+button labels and both branches, supports backdrop/Escape cancellation, traps keyboard focus, and
+restores focus after closing. Local validation covers required, pattern, minimum/maximum length or
+value, and custom-expression rules; it exposes inline/summary errors, updates `aria-invalid` and
+`aria-describedby`, and prevents invalid submit handlers from running. Remote asynchronous validation
+does not contact its configured URL: it blocks submission with a generic unavailable error and adds
+`vue-validation-async-unsupported` to `EXPORT_WARNINGS.md`. Routerless single-page exports leave
+route/query context empty and warn. Authored raw HTML is replaced by an empty static shell with
+`vue-raw-html-unsupported`; the exporter never places that payload in a `v-html` binding. Other
+plugin modules, Motion, prototypes and overlays, Supabase/auth/server workflows, Stripe, i18n,
+analytics, React UI kits, theme switching, and persisted document state remain omitted or reduced
+with deterministic `vue-*-unsupported` warnings.
+
+The plugin exporter's no-network font pass reuses only exact bytes already retained by the renderer,
+present in its imported/downloaded cache, or shipped as a reviewed bundled asset. It audits every
+candidate's OpenType embedding flag and SHA-256 digest. A face is copied only when its redistribution
+license, copyright, and full notice are all reviewed; the archive then contains
+`FONT-LICENSES.txt`. Restricted, mismatched, or incomplete faces are omitted with explicit warnings
+while authored family CSS stays intact. Review `EXPORT_WARNINGS.md` before treating the generated app
+as production-complete. Documents outside the bounded Worker limits must be reduced or split before
+export; the exporter does not silently fall back to synchronous compilation.
+
+For development or automation, `openpencil compile`, `openpencil build`, and `openpencil deploy` all
+accept `--target vue`; React remains the default. The desktop Compiler Preview **Target** control can
+switch between React and Vue 3 and restarts the matching sidecar. Vue supports static Vite builds and
+Netlify, Vercel, or Cloudflare Pages deployment, but React-only `--i18n`, locale, and `--ui-kit`
+options are rejected rather than ignored.
+
+In editor Preview, React and Vue both highlight the canvas selection, let Alt/Option-click select a
+preview element back on the canvas, synchronize page navigation in both directions without echoing,
+mirror collaborative document-state changes, and apply Light/Dark theme changes immediately. This
+bridge exists only in editor Preview; source/static exports do not include it. Vue still has no
+Motion runtime, so Motion Debug reports **unavailable** immediately rather than waiting forever.
+
+Static builds write only to a nonexistent/empty output directory or replace a directory whose valid,
+regular-file `.openpencil-build-output.json` marker came from a preceding OpenPencil build and whose
+complete file set still exactly matches that manifest. A non-empty unmarked directory, untrusted
+marker, or any missing/extra file is rejected instead of being deleted; choose another empty output
+directory or remove the unrelated files yourself after reviewing them.
+
 Expo and Flutter source exports do not add a WebView for any plugin module, including **Lottie**,
 **Carousel**, **Advanced Data Grid**, and the seven Unreleased content modules above. They emit
 explicit unsupported-feature warnings and retain authored static native fallbacks without the
@@ -372,14 +499,22 @@ schema v2 storage-provider declaration.
 ## Cloud documents with Google Drive
 
 **Google Drive Storage** is installed and enabled on new profiles, but all behavior remains in a
-reviewed, host-owned adapter. In the desktop app, open **Settings → Storage → Google Drive**. If the
-client ID field is empty, expand **Advanced** and enter the OAuth client ID for this fork's Google
-Desktop application, then choose **Connect**. OpenPencil opens the system browser, completes an
-Authorization Code flow with PKCE through a temporary loopback callback, and requests only
+reviewed, host-owned adapter. Fork publishers provide the public Google Desktop OAuth Client ID at
+build time through `VITE_GOOGLE_DRIVE_CLIENT_ID`. In the desktop app, open
+**Settings → Storage → Google Drive**, then choose **Connect**. A Desktop
+OAuth client is a [public installed-app client](https://developers.google.com/identity/protocols/oauth2/native-app):
+OpenPencil needs only its Client ID and does not bundle a client secret. It opens the system browser,
+completes an Authorization Code flow with PKCE through a temporary loopback callback, and requests only
 `openid`, `email`, and `drive.file`. The `drive.file` scope limits the adapter to files the application
-created or that the user explicitly opened with it; it is not full-Drive access. Refresh tokens stay
-in the native system credential store, while the binding records only non-secret account identity and
-grant version. Browser-only Google Drive authorization is not supported.
+created or that the user explicitly opened with it; it is not full-Drive access. Refresh tokens are
+stored in app-local IndexedDB and encrypted with AES-GCM using a non-extractable WebCrypto key, while
+the binding records only non-secret account identity and grant version. Tauri development and release
+builds select this encrypted app backend directly—it is not a fallback after a native credential-store
+failure—and do not use macOS Keychain. Browser-only Google Drive authorization is not supported.
+
+When upgrading from a Keychain-backed build, OpenPencil neither imports nor deletes the old macOS
+Keychain items. Connect Google Drive again and enter other saved credentials once; the old items stay
+untouched until you remove them separately.
 
 Each provider can keep up to eight named storage profiles. A profile has its own OAuth account or S3
 credentials, non-secret provider settings, local document index, change cursor, and durable sync
@@ -459,21 +594,65 @@ manual checklist:
 6. Delete a closed document from the Storage workspace, test the offline queue and restart path, then
    verify the file appears in Google Drive trash and can be restored there.
 7. Revoke access in Google, confirm OpenPencil requests a reconnect without blind retries, and inspect
-   logs/keychain storage to ensure access tokens, refresh tokens, and resumable session URLs are absent.
+   logs and app-local IndexedDB to ensure access tokens, refresh tokens, and resumable session URLs are
+   absent in plaintext. On macOS, verify OpenPencil does not create a new Keychain item.
    :::
+
+## Application Security Readiness
+
+Install and enable **Application Security Readiness** to run a local static review from its plugin
+card or from the dynamically registered MCP command. The command inspects only the public low-code
+structure and bounded runtime-readiness signals for configuration, data access, transport/server
+posture, privacy, and custom code. It is read-only, cooperatively cancellable, and resource-bounded.
+Its fixed result contains issue codes, severities, counts, and static remediation; it does not echo
+document content, input values, credentials, or other secrets.
+
+This is an early production-readiness signal, not a complete application-security assessment,
+penetration test, dependency or infrastructure scan, compliance certification, or guarantee of
+security. Installation and enablement are sufficient for its local MCP command; it does not request
+a credential or network/session connector grant. Disabling or uninstalling the plugin removes the
+MCP command immediately.
+
+## Reviewed deployment plugins
+
+The opt-in **Vercel Deployment** and **Cloudflare Pages Deployment** plugins deliberately separate
+planning from deployment:
+
+- Their dynamic MCP commands, `review-vercel-deployment-plan` and
+  `review-cloudflare-pages-deployment-plan`, only validate and disclose a bounded plan. They do not
+  resolve a token, build the document, perform a network request, or change local or remote state.
+- Actual deployment is available only from the installed-plugin card. Every invocation requires a
+  new human confirmation that shows the provider, target, environment, and reviewed document.
+  OpenPencil rechecks that document after confirmation and after credential lookup, before any
+  remote dispatch. Only then does it build the saved document and upload the generated static files.
+- Vercel requires a manually created account token. Cloudflare Pages requires a manually created API
+  token plus the target account ID and project name. Keep both tokens least-privilege and use a
+  non-production target for initial validation.
+- MCP cannot invoke the real deployment adapter. If the UI is interrupted after upload dispatch,
+  the remote result can be unknown; inspect the provider before retrying.
+- Deployment progress and its bounded result survive closing or switching Settings. While a remote
+  deployment is active, the plugin cannot be disabled, updated, rolled back, or uninstalled. Save As
+  during an in-flight deployment keeps the result and history attached to the document that was
+  reviewed instead of silently assigning it to the new document.
+
+Installing and enabling either plugin adds only its safe plan command to MCP. Disabling or
+uninstalling removes it immediately. The credential is required for the confirmed UI deployment,
+not for plan review, and clearing it prevents a later UI deployment from starting.
 
 ## Business connectors
 
-The Phase 2 Broker makes five bundled connectors executable: **Supabase Schema Inspector**,
-**Airtable Records**, **Supabase Tables**, **Stripe Checkout & Billing**, and **Resend Email**. They
-remain reviewed host integrations, not a generic network capability that any publisher can request.
+The Phase 2 Broker makes 22 bundled connectors executable: the existing **Supabase Schema
+Inspector**, **Airtable Records**, **Supabase Tables**, **Stripe Checkout & Billing**, and **Resend
+Email** integrations plus 17 opt-in, read-only external-service connectors. They remain reviewed host
+integrations, not a generic network capability that any publisher can request.
 
 These connectors are local, design-time operator tools inside the OpenPencil editor. They are not
 compiled into generated applications and are not a server-side connector runtime. A credential is
 kept out of the manifest, design document, Compiler output, audit log, and long-lived reactive UI
 state, but the renderer-side reviewed request path resolves it into memory when a call is dispatched.
-On desktop, persistence uses the system credential store and transport uses the bounded Tauri proxy;
-this does **not** provide server-side secret isolation or claim to withstand a compromised renderer.
+On desktop, persistence uses app-local IndexedDB records encrypted with AES-GCM and a non-extractable
+WebCrypto key, while transport uses the bounded Tauri proxy. This does **not** provide server-side
+secret isolation or claim to withstand a compromised renderer.
 Use least-privilege development credentials (for Stripe, prefer a restricted key) and keep production
 application secrets in infrastructure you operate. Generated-app server connectors are a later phase.
 
@@ -485,17 +664,61 @@ To use one:
    long-lived UI state keep no raw token.
 3. Review the connector identity and authority, then choose **Authorize** for the current session.
    The grant binds the exact plugin, connector, reviewed adapter, and installed package digest. A
-   version/digest change requires another authorization. Eligible read-only `GET` queries become
-   available to connected MCP/AI clients and use the same saved credential while this grant exists.
+   version/digest change requires another authorization. Eligible read-only fixed `GET` or explicitly
+   host-reviewed fixed `POST` queries become available to connected MCP/AI clients and use the same
+   saved credential while this grant exists. Arbitrary `POST` is not allowed.
 4. Launch one of the listed operations from the connector card. Queries may also appear as dynamic
    MCP `query` tools after this explicit authorization. Mutations never appear in MCP and ask for a
    new human confirmation every time they are run from the UI.
-5. Choose **Revoke**, disable, or uninstall when finished. These actions remove the query tool and
+5. Choose **Revoke**, clear the credential, disable, or uninstall when finished. These actions remove the query tool and
    stop matching local requests that are still in flight. An accepted package-digest change also
    invalidates the grant and stops work started under the old identity. A query can be reported as
    cancelled. If a mutation was already dispatched, however, an abort, timeout, authorization
    change, or local response-processing failure makes the remote outcome unknown; verify the
    service before retrying.
+
+### Opt-in external read-only services
+
+For these 17 additions, OpenPencil does not automate provider OAuth consent, token exchange, refresh,
+tenant approval, or sensitive-scope verification. Create the least-privilege token or key in the
+provider console, complete any provider/administrator approval manually, and paste the current value
+into the plugin card. A token being accepted by the form does not prove that its provider scopes are
+correct; the first bounded read is the operational check.
+
+| Plugin / read-only result                                  | Manual credential and minimum authority                                                                  | Remaining manual gate                                                                                                       |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **Neon Projects** — bounded project list                   | Scoped Neon API key; no named OAuth scope                                                                | Choose the narrowest personal, organization, or project key suitable for the test account.                                  |
+| **Sentry Issues** — bounded issue list                     | Auth token or internal-integration token with `event:read`                                               | Select the organization/project in Sentry and verify the token is not write-enabled.                                        |
+| **HubSpot Contacts** — bounded contact metadata            | Private-app or OAuth access token with `crm.objects.contacts.read`                                       | Create/approve the app and issue the token in HubSpot.                                                                      |
+| **Apollo Lists** — bounded list catalog                    | Apollo API key with the reviewed `tags_list` authority                                                   | Confirm the account/plan exposes the reviewed list endpoint.                                                                |
+| **PostHog Insights** — bounded insight list                | Personal API key with `insight:read`                                                                     | The reviewed adapter targets PostHog US Cloud only; EU Cloud and self-hosted origins need separate review.                  |
+| **Asana Workspaces** — bounded workspace list              | OAuth access token or PAT with `workspaces:read`                                                         | Complete the Asana app/PAT setup manually.                                                                                  |
+| **Zotero Top Items** — bounded item metadata               | Dedicated read-only key with `library:read`; numeric Zotero user ID is separate non-secret configuration | Create a library read-only key and copy the numeric user ID.                                                                |
+| **HeyGen Avatars** — bounded avatar list                   | HeyGen API key; no named provider scope                                                                  | Use a test-workspace key; the adapter can only list avatars.                                                                |
+| **Linear Issues** — bounded issue list                     | OAuth access token with `read`                                                                           | Complete Linear OAuth manually. This is the reviewed fixed GraphQL `POST`; its document and body are not caller-controlled. |
+| **OpenAI Models** — bounded model list                     | Project API key with `models.read`                                                                       | Create a least-privilege project key; the adapter cannot submit prompts or responses.                                       |
+| **Box Root Items** — bounded root-folder item list         | OAuth access token with the reviewed root-read-only authority (`root_readonly` host label)               | Complete Box OAuth manually and keep write scopes out of the test app.                                                      |
+| **Slack Public Channels** — bounded public-channel list    | Bot or user token with `channels:read`                                                                   | Install/approve the Slack app manually; private-channel/history scopes are not requested.                                   |
+| **Google Calendar Events** — bounded event metadata        | OAuth access token with `https://www.googleapis.com/auth/calendar.events.readonly`                       | Google consent, sensitive-scope verification, and production OAuth review remain manual release gates.                      |
+| **SharePoint Root Site** — root-site metadata only         | Microsoft Graph token with `Sites.Read.All`                                                              | Entra app registration and tenant/admin consent remain manual.                                                              |
+| **Outlook Mail Folders** — folder metadata only            | Microsoft Graph token with `Mail.ReadBasic`                                                              | Entra consent remains manual; the adapter does not read message content or send mail.                                       |
+| **Outlook Calendar Events** — bounded basic event metadata | Microsoft Graph token with `Calendars.ReadBasic`                                                         | Entra consent remains manual.                                                                                               |
+| **Microsoft Teams** — bounded joined-team list             | Microsoft Graph token with `Team.ReadBasic.All`                                                          | Entra consent remains manual; work/school accounts are supported, personal Microsoft accounts are not.                      |
+
+Provider-returned names, descriptions, titles, addresses, URLs, and other display strings are
+**untrusted external data**. The Broker normalizes and bounds them through a closed result schema, but
+that does not make them instructions. Render them as text; do not execute markup, feed them back as
+authority, or automatically open a returned URL. Audit output continues to omit request parameters,
+response bodies, and secrets.
+
+Four otherwise attractive candidates remain intentionally deferred:
+
+| Candidate      | Why it is not enabled yet                                                                                                           | Required gate                                                                              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **Gmail**      | Restricted Google scopes combined with AI/MCP data transfer need a separate policy and security review.                             | Complete restricted-scope verification and approve the AI data-transfer policy.            |
+| **Monday.com** | Its stable token flow uses a raw/non-Bearer `Authorization` form that the current Broker does not inject.                           | Add and review an exact non-Bearer authorization scheme without opening arbitrary headers. |
+| **Semrush**    | The candidate API is early-access and its `ApiKey` credential scheme is not represented by the current reviewed injection contract. | Confirm a stable production API and add a dedicated reviewed `ApiKey` scheme.              |
+| **Replit**     | No stable public management API has been verified for the intended operations.                                                      | Select and review a documented public API before granting network authority.               |
 
 ### Operation parameters and paste-ready examples
 
@@ -673,8 +896,9 @@ Desktop calls go through a bounded Tauri proxy. Provider JSON is normalized and 
 closed result schema before it reaches the UI or MCP.
 
 Connector audit entries retain operation identity, outcome, timing, and byte counts, but not request
-parameters, response bodies, or credentials. Supabase Auth/Storage, connector OAuth authorization flows, and
-binary streaming are not implemented yet. Arbitrary publisher JavaScript/native code, background
+parameters, response bodies, or credentials. Supabase Auth/Storage, provider-managed OAuth
+consent/refresh flows for these connectors, and binary streaming are not implemented; manually
+issued access tokens are the current integration gate. Arbitrary publisher JavaScript/native code, background
 services, endpoints, headers, and general network access remain unavailable.
 
 Session grants, pending-operation state, and unknown-outcome notices are intentionally local and
@@ -742,9 +966,11 @@ operations. It checks the current plugin state again at execution time, so a too
 client stops working immediately after its plugin is disabled or removed. Only host-reviewed module,
 command, and exporter adapters are exposed; a plugin manifest cannot add an arbitrary executable MCP
 handler. Compatible modules, commands, and exporters project to add, run, and export tools
-respectively. An explicitly authorized read-only connector query whose fixed method is `GET` projects
-to a query tool; connector mutations stay UI-only with per-invocation confirmation. Installation or
-enablement alone does not authorize a connector tool.
+respectively. An explicitly authorized read-only connector query using fixed `GET` or an explicitly
+host-reviewed fixed `POST` projects to a query tool; arbitrary `POST` and connector mutations stay
+unavailable to MCP. Installation or enablement alone does not authorize a connector tool: a saved
+credential and current-session exact-digest grant are also required. Revocation or credential
+clearing removes the tool immediately.
 
 ## Review updates and roll back
 
@@ -882,9 +1108,9 @@ automatic update acceptance remain unavailable. Declarative modules, commands, a
 require reviewed host adapters shipped by OpenPencil; the WASM channel is for bounded computation,
 not for installing a new renderer or bypassing the host registry.
 
-The five bundled connectors use a separate, bounded host Broker and do not relax the publisher
-runtime boundary. Supabase Auth/Storage, connector OAuth authorization flows, and binary streaming remain
-future connector work. Publisher manifests and WASM packages still cannot add arbitrary network
+The 22 bundled connectors use a separate, bounded host Broker and do not relax the publisher runtime
+boundary. Supabase Auth/Storage, provider-managed OAuth consent/refresh flows, and binary streaming
+remain future connector work. Publisher manifests and WASM packages still cannot add arbitrary network
 origins, request handlers, JavaScript/native code, or background services.
 
 The WASM channel does not expose Tauri IPC, and remote marketplace data is rendered as text rather

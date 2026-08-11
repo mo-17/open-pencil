@@ -87,6 +87,37 @@
 
 ### Added
 
+- Add an opt-in Vue source exporter backed by the Compiler's Vue adapter. Installed and enabled
+  users can export a source-only Vite + Vue 3 + TypeScript + Tailwind ZIP with editable SFCs,
+  multi-page Vue Router v4 routes, live route/query bindings and safe parameterized navigation,
+  reactive state/bindings/events, accessible bounded Toast feedback, focus-managed two-branch
+  Confirm, local required/pattern/length/range/custom-expression form validation, components, and
+  byte-exact image assets. Invalid forms prevent authored submit handlers from running; remote
+  asynchronous validation performs no request, blocks submission, and emits
+  `vue-validation-async-unsupported`. Authored raw HTML now becomes an empty static shell with
+  `vue-raw-html-unsupported` instead of entering an injectable `v-html` binding.
+  Modal, Dropdown Menu, Slide Menu, and local-only Upload Button now emit real accessible Vue
+  runtimes; other modules, Motion, prototypes, Supabase/auth/server workflows, Stripe, i18n,
+  analytics, React UI kits, and persistent document state remain explicit in `EXPORT_WARNINGS.md`.
+  UI and MCP compile and compress in disposable module Workers that terminate on cancellation without
+  detaching live graph buffers, fail closed above a 25,000-node/4,096-image/32-MiB snapshot, and bound
+  output before the independent 64-MiB archive check. The plugin UI reports every export stage,
+  provides cancellation, permits one active export, and blocks disable/update/rollback/uninstall of
+  the exporting plugin until completion. Its no-network font pass reuses retained, cached, or bundled
+  bytes only after exact digest, embedding, and redistribution-license review, adds
+  `FONT-LICENSES.txt` for included faces, and warns while preserving family CSS for omissions. Its
+  cancellable exporter MCP tool exists only while the plugin is installed and enabled and is revoked
+  immediately when disabled or removed. The CLI `compile`, `build`, and `deploy` commands accept
+  `--target vue`, and Compiler Preview can switch its isolated sidecar between React and Vue 3.
+  Both Preview targets now share selection/Alt-click round trips, echo-suppressed two-way page
+  navigation, collaborative document-state mirroring, and Light/Dark DOM theme synchronization. The
+  bridge remains `devMode`-only and absent from static output; Vue Motion Debug reports unavailable
+  immediately while its Motion runtime remains unsupported.
+  Static builds now write only to nonexistent/empty output directories or replace directories whose
+  valid regular-file `.openpencil-build-output.json` marker and complete file set still match the
+  preceding OpenPencil build; unmarked/untrusted, missing, or extra files fail closed instead of being
+  deleted.
+
 - Show delayed, non-blocking canvas progress while page font faces and script fallbacks are prepared.
   Fast operations never flash a status; visible operations report accessible progress, briefly
   confirm completion, disappear immediately when cancelled, and ignore stale events from superseded
@@ -107,7 +138,8 @@
   time, and Manual still generates the initial preview while deferring later changes until reload.
 
 - Expose installed and enabled declarative plugin modules, commands, cancellable exporters, and
-  explicitly authorized read-only connector queries whose fixed method is `GET` as
+  explicitly authorized read-only connector queries whose contract uses fixed `GET` or an
+  explicitly reviewed fixed `POST` as
   dynamically registered MCP tools. Plugin store changes update connected clients with
   `notifications/tools/list_changed`; disconnects remove the dynamic catalog, and execution rechecks
   current installation, enablement, contribution identity, and reviewed host-adapter compatibility
@@ -117,13 +149,14 @@
   command, exporter, and connector-query contributions map to add, run, export, and query tools;
   connector mutations remain UI-only and require a fresh human confirmation for each invocation;
   uninstalled, disabled,
-  host-incompatible contributions and host-declared non-cancellable exporters are omitted. Tauri, Expo,
+  host-incompatible contributions and host-declared non-cancellable exporters are omitted. Vue source
+  export is dynamically available after opt-in installation and enablement. Tauri, Expo,
   Next.js, Capacitor, Electron, Flutter, and Figma source/projection exporters remain available from
   plugin UI and menus but stay out of MCP until their synchronous Compiler/encoder stages support
   cooperative cancellation.
 
-- Expand the bundled catalog to 34 reviewed plugins with 37 contributions: 17 modules, six commands,
-  eight exporters, five connectors, and one storage provider. Add opt-in Tabs,
+- Expand the bundled catalog to 58 reviewed plugins with 61 contributions: 20 modules, nine commands,
+  nine exporters, 22 connectors, and one storage provider. Add opt-in Tabs,
   Accordion, QR/Code 128, Markdown, Code Block, PDF Viewer, and Audio Player modules with strict
   bounded configuration, deterministic offline Canvas previews, reviewed Web/React adapters, and
   explicit Expo/Flutter static fallbacks. Advanced Data Grid gains bounded RFC 4180 CSV import/export
@@ -131,16 +164,50 @@
   token, component-variant, spacing, and typography consistency, plus source-only Next.js,
   Capacitor, and Electron exporters that never install dependencies or execute generated projects.
   Plugin cards, Canvas module headings, and contribution search now include reviewed Simplified
-  Chinese names and descriptions without changing signed manifest bytes. The executable connector
-  set is Supabase Schema Inspector, Airtable Records, Supabase Tables, Stripe Checkout & Billing,
-  and Resend Email.
+  Chinese names and descriptions without changing signed manifest bytes. Slide Menu triggers now
+  render as a centered vector hamburger plus label across Canvas, React/Vue previews, and Expo/Flutter
+  static fallbacks, with independent visibility controls for the icon and trigger text. Its nested
+  item fields now keep readable foreground/background contrast in both editor themes, while generated
+  panels place an accessible vector close control in the top-right corner with a 44-pixel target.
+  React and Vue keep an accessible name even when both trigger parts are hidden and use a semantic button
+  with a 44-pixel minimum target and visible keyboard focus; native static fallbacks remain explicitly
+  non-interactive. Add an opt-in Modal module with independently visible trigger icon/text, bounded
+  plain-text title and body, configurable close/Escape/backdrop/footer behavior, responsive colors
+  and sizing, a deterministic offline Canvas trigger, accessible portalled React and Vue dialogs, and
+  explicit non-interactive Expo/Flutter fallbacks. Add an opt-in Dropdown Menu module with a
+  flat-only v1 item/divider contract, safe optional links, explicit disabled/danger/shortcut states,
+  12 reviewed placements, separate trigger label/chevron controls, a compact accessible property
+  editor, accessible React/Vue runtimes, and install-and-enable-gated MCP exposure with immediate revocation. Add an opt-in Upload
+  Button module with bounded local file selection, per-type token editing, count/size/type validation,
+  accessible React/Vue drag-and-drop and keyboard behavior, and explicit not-uploaded messaging. It never
+  transfers or persists selected files; its MCP surface adds only declarative module configuration
+  while installed and enabled and never carries file names or bytes. The executable
+  connector set retains Supabase Schema Inspector, Airtable Records, Supabase Tables, Stripe Checkout & Billing,
+  and Resend Email and adds 17 opt-in, read-only external-service integrations: Neon,
+  Sentry, HubSpot, Apollo, PostHog, Asana, Zotero, HeyGen, Linear, OpenAI, Box, Slack, Google
+  Calendar, SharePoint, Outlook Email, Outlook Calendar, and Microsoft Teams.
+
+- Add opt-in **Application Security Readiness**, a local, read-only, cancellable, resource-bounded
+  production-readiness command with fixed issue codes, counts, and remediation. It does not return
+  document content or secrets and is explicitly not a complete security assessment, penetration
+  test, certification, or guarantee.
+
+- Add opt-in Vercel and Cloudflare Pages deployment plugins. Their MCP-safe commands only review a
+  bounded deployment plan and cannot read credentials, build, perform network requests, or change
+  state. Real deployment remains available only from the installed-plugin UI after a fresh human
+  confirmation for every invocation; MCP cannot invoke it, and interruption after dispatch can leave
+  an unknown remote outcome. Bind confirmation and history to the reviewed document, preserve
+  in-flight status across Settings lifecycles, and block plugin lifecycle changes until deployment
+  settles.
 
 - Add the default-installed, default-enabled, host-owned **Google Drive Storage** plugin declaration
   through Manifest v2 `storageProviders`. Its exact provider, adapter, configuration version, and
   bounded read/write/delete/change/resumable capabilities must match the application registry; a
   publisher manifest cannot supply OAuth, network configuration, native code, or an adapter.
   The Tauri-first provider uses the system browser, a loopback callback, Authorization Code + PKCE,
-  the narrow `drive.file` scope, OIDC account binding, and the native credential store. It writes
+  the narrow `drive.file` scope, OIDC account binding, and encrypted app-local credential storage.
+  The public installed-app client needs only a publisher-supplied Google Desktop OAuth Client ID
+  bundled at build time; no client secret is bundled. It writes
   ordinary user-visible `.fig` files, saves locally before a durable outbox upload, recovers pending
   saves and tombstones, uses resumable transfers and incremental Drive changes, and applies ETag
   conditions when Drive supplies them. Upload-session URLs remain process-local; an ambiguous remote
@@ -170,7 +237,7 @@
   consistent collaboration backend. Automated contracts are covered; a real Google OAuth client,
   account consent, restart, upload, changes, and conflict E2E remains a manual release check.
 
-- Add the Phase 2 connector Broker for bounded data-source and action operations. **Settings →
+- Add the Phase 2 connector Broker for 22 bounded data-source and action integrations. **Settings →
   Plugins** now owns connector credential status, central credential replacement/clearing,
   session-scoped exact-digest authorization and revocation, and the operation launch surface. The
   Broker resolves credentials only at execution time, keeps raw values outside manifests, documents,
@@ -183,13 +250,28 @@
   user can verify the service before retrying. Supabase update/delete requests use strict
   `max-affected=100`; Stripe Checkout and Resend Send bind a reviewed UUID `mutationAttemptId` to the
   provider `Idempotency-Key` and reuse it for the same unknown-outcome retry. Dynamic MCP exposes only
-  explicitly authorized read-only queries whose fixed method is `GET`; mutations remain UI-only with
-  per-invocation confirmation. Grants and outcome notices are session-only, so a hard crash still
+  explicitly authorized read-only queries using fixed `GET` or an explicitly host-reviewed fixed
+  `POST`; arbitrary `POST` and mutations remain unavailable to MCP. Grants and outcome notices are session-only, so a hard crash still
   requires manual provider verification. These are local design-time operator integrations: the
   reviewed renderer request path resolves credentials into memory at dispatch time and does not claim
-  server-side secret isolation. Supabase Auth/Storage, connector OAuth, connector binary streaming,
-  and generated-app server connectors remain future work, and arbitrary publisher code or network access remains
-  unavailable.
+  server-side secret isolation. A connector MCP tool appears only after install, enablement, a saved
+  credential, and exact-digest session authorization; disable, uninstall, revoke, or credential
+  clearing removes it immediately. Provider strings remain untrusted data after normalization and
+  must never be interpreted as instructions or authority to open URLs. Supabase Auth/Storage,
+  provider-managed OAuth consent/refresh, connector binary streaming, and generated-app server
+  connectors remain future work, and arbitrary publisher code or network access remains unavailable.
+
+- Document the manual least-privilege credential gates for the 17 new connectors: scoped Neon API
+  key; Sentry `event:read`; HubSpot `crm.objects.contacts.read`; Apollo `tags_list`; PostHog
+  `insight:read` on US Cloud; Asana `workspaces:read`; Zotero `library:read` plus numeric user ID;
+  HeyGen list-only API key; Linear OAuth `read`; OpenAI `models.read`; Box root-read-only access;
+  Slack `channels:read`; Google Calendar `calendar.events.readonly`; SharePoint `Sites.Read.All`;
+  Outlook Email `Mail.ReadBasic`; Outlook Calendar `Calendars.ReadBasic`; and Teams
+  `Team.ReadBasic.All`. OAuth consent, tenant approval, sensitive-scope verification, and production
+  token issuance remain manual release gates where the provider requires them. Gmail is deferred for
+  restricted-scope and AI data-transfer review, Monday.com for its non-Bearer authorization scheme,
+  Semrush for a stable production API and dedicated `ApiKey` injection scheme, and Replit until a
+  documented stable public management API is selected.
 - Add manifest API v2 validation for bounded parameter/result JSON schemas, the fixed
   `document.read`, `document.selection.read`, `document.variables.read`, and `file.save` permission
   vocabulary, and explicit exporter extension/MIME contracts. API v2 establishes a fail-closed host
@@ -248,7 +330,7 @@
   modules fail-closed without adding WebViews.
   The new opt-in Slide Menu module opens an accessible edge drawer or directional modal from a
   canvas-authored trigger, with bounded plain-text links, backdrop behavior, Escape dismissal,
-  focus trapping and focus restoration. React/Tauri output uses a local portal runtime while
+  focus trapping and focus restoration. React/Vue/Tauri output uses a local portal runtime while
   Expo/Flutter output remains an explicit static fallback without a WebView.
   Schema v1 manifests can describe modules, commands, and exporters, but every contribution must
   match an exact reviewed host adapter. Plugin disablement blocks discovery and new actions without
@@ -464,7 +546,12 @@
 - Connect local MCP clients through automatically discovered private Unix sockets on macOS and Linux, with localhost TCP fallback. (#338)
 - Test OpenAI-compatible provider connections from AI settings with clearer setup errors.
 - Configure separate Design, Review, Fast, and Vision models, providers, endpoints, and credentials from AI settings.
-- Manage AI, agent, media, and storage credentials from unified Settings, using the system credential store on desktop and encrypted browser storage by default, with a session-only browser option.
+- Manage AI, agent, media, and storage credentials from unified Settings. Remembered credentials use
+  app-local IndexedDB records encrypted with AES-GCM and a non-extractable WebCrypto key; browsers
+  can still choose session-only memory. Tauri development and release builds select encrypted app
+  storage directly rather than falling back after a native-store failure, and do not read macOS
+  Keychain by default. Existing Keychain items are neither migrated nor deleted, so users must
+  reconnect integrations or enter their credentials once after upgrading.
 - Connect an S3-compatible storage workspace with local-first saves and background synchronization.
 - Add Japanese localization and improve menu translations across the existing supported languages. (#367)
 - Author richer Design JSX with components, instances, variables, gradients, structured fills, shadows, blur effects, masks, and inline SVG vectors.

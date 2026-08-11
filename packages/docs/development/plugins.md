@@ -17,13 +17,14 @@ publishes root-signed discovery state. The optional executable channel runs only
 root-indexed, import-free WASM compute packages after an exact local grant. No manifest path or URL
 is dynamically imported as JavaScript, HTML, CSS, native code, or privileged host functionality.
 
-The current **Unreleased** source line contains 33 reviewed plugins and 36 contributions: 17 module
-contributions; six commands (four Clipboard Toolkit commands, Static Accessibility Audit, and Static
-Design System Audit); eight exporters (Tauri React, Next.js, Capacitor, Electron, Expo React Native,
-Flutter, Design Tokens JSON, and Figma Editable Projection); and five connectors (Supabase Schema
-Inspector, Airtable Records, Supabase Tables, Stripe Checkout & Billing, and Resend Email). Only Map
-is installed and enabled by default. Catalog count is an application snapshot, not a promise that a
-signed remote manifest can introduce a new host implementation.
+The current **Unreleased** source line contains 58 reviewed plugins and 61 contributions: 20 module
+contributions; nine commands (four Clipboard Toolkit commands, Static Accessibility Audit, Static
+Design System Audit, Application Security Readiness, and safe Vercel and Cloudflare deployment-plan
+reviews); nine exporters (Tauri React, Next.js, Vue, Capacitor, Electron, Expo React Native, Flutter,
+Design Tokens JSON, and Figma Editable Projection); 22 connectors; and one Google Drive storage
+provider. Map and Google Drive Storage are installed and enabled by default. Catalog count is an
+application snapshot, not a promise that a signed remote manifest can introduce a new host
+implementation.
 
 ## Package and trust model
 
@@ -513,7 +514,8 @@ only, links repeat the core protocol/control-character checks, and runtime chang
 hidden form value plus `openpencil:rich-text-change`. This is an application-data boundary, not a
 write-back channel to the source design document.
 
-The HTML, Video, Table, and Slide Menu modules keep the same reviewed-adapter boundary. HTML uses a
+The HTML, Video, Table, Slide Menu, Modal, Dropdown Menu, and Upload Button modules keep the same
+reviewed-adapter boundary. HTML uses a
 script-free, opaque-origin iframe with strict CSP. Video accepts only empty or canonical public HTTPS
 source and poster URLs, requires muted autoplay, draws an offline Canvas placeholder, and requires an
 explicit load action in dev-mode Compiler Preview before attaching either remote URL. Generated
@@ -522,12 +524,29 @@ data and renders cells through React text nodes in a semantic `<table>`; cell co
 interpreted as markup.
 
 Slide Menu accepts only bounded plain-text content plus document paths, anchors, or canonical public
-HTTPS link targets. Its React adapter emits a dependency-free portal runtime with two reviewed
+HTTPS link targets. Its React and Vue adapters emit dependency-free portal runtimes with two reviewed
 presentation modes and four entrance directions. Escape dismissal, focus trapping, trigger-focus
 restoration, scroll locking, reduced-motion handling, and the configured backdrop policy live in
-that generated host adapter; declarative plugin data cannot provide code or arbitrary styles.
+those generated host adapters; declarative plugin data cannot provide code or arbitrary styles.
 Expo and Flutter retain the authored static frame and emit an unsupported-module warning instead of
 introducing a WebView.
+
+Dropdown Menu v1 is a flat-only discriminated union of bounded item and separator entries. Items
+carry plain-text labels, optional safe destinations, shortcut hints, and explicit disabled/danger
+booleans; configuration cannot supply submenus, DOM, callbacks, or business actions. The reviewed
+React and Vue adapters own keyboard focus, Escape/outside dismissal, click or hover activation, and
+12 fixed placements. App catalog and MCP registration remain opt-in: only a currently installed and enabled
+plugin contributes the add-module tool, and disable or uninstall revokes both lookup and execution.
+Expo and Flutter retain the authored static frame with an explicit unsupported-module warning.
+
+Upload Button v1 stores only bounded declarative selection constraints. Its generated browser
+runtime may use a local file input and drop target, but it validates accepted type tokens, count,
+and per-file size after selection because the HTML `accept` attribute is only a chooser hint. It
+does not transfer or persist contents, expose progress, or claim upload success. Server storage
+continues to use the separate low-code `INPUT` plus Supabase upload path. Dynamic MCP contributes
+only the add-module tool while the plugin is installed and enabled; neither selected file names nor
+file bytes are valid MCP arguments or results. Native targets keep a clearly non-interactive static
+fallback until a reviewed local picker exists.
 
 Lottie, Carousel, and Advanced Data Grid extend the same module set. Lottie Canvas rendering is
 offline and deterministic. Its React adapter accepts bounded embedded vector JSON or performs a
@@ -548,7 +567,7 @@ file nor clipboard authority, emits CRLF records, and prefixes formula-like text
 React runtime reimplements the same bounds, but imported rows are component-local session state only
 and are not written to the design or persisted across reloads.
 
-The seven Unreleased content modules expand the reviewed module set to 17:
+Seven bounded content modules form a reviewed group within the current module set:
 
 - Tabs and Accordion keep bounded plain-text item arrays in the module contract. Their React adapters
   implement the expected ARIA relationships and keyboard focus behavior without accepting DOM or
@@ -570,9 +589,13 @@ The seven Unreleased content modules expand the reviewed module set to 17:
   delegates to a sandboxed browser PDF iframe or native `<audio>` element. Autoplay audio must be
   muted.
 
-Web/React and Tauri output use those reviewed interactive adapters. Expo and Flutter do not execute
-plugin module runtimes or insert a WebView: for all 17 modules they emit an unsupported-module warning
-and retain the authored static fallback until a reviewed native adapter exists.
+Web/React and Tauri output use the complete reviewed interactive adapter set. Vue v1 now emits real,
+local runtimes for Modal, Dropdown Menu, Slide Menu, and Upload Button: the first three retain their
+reviewed keyboard, focus, dismissal, reduced-motion, and safe-link behavior, while Upload Button
+validates local file selection without transferring or persisting bytes. Other plugin modules keep
+their authored shell and an explicit `vue-module-unsupported` warning. Expo and Flutter do not
+execute plugin module runtimes or insert a WebView: for all 20 modules they emit an unsupported-module
+warning and retain the authored static fallback until a reviewed native adapter exists.
 
 The Clipboard Toolkit is a command-only built-in. Its reviewed host adapters copy the active
 selection as text, SVG, JSX, or PNG and reject invocation when no selection is active. The manifest
@@ -604,6 +627,69 @@ isolation and sandboxing enabled, Node integration disabled, and external naviga
 HTTP(S). None of the three installs dependencies, starts its runtime, invokes native tooling, packages
 binaries, or configures signing. Their synchronous Compiler stage is not cooperatively cancellable,
 so their reviewed host registry keeps MCP exposure disabled and makes them UI/menu exporters only.
+
+The opt-in Vue Exporter dispatches the shared IR through the dedicated Vue adapter and the common
+path-safe, 64-MiB source archive boundary. It emits Vite + Vue 3 + TypeScript + Tailwind source,
+editable SFC pages/components, Vue Router v4 for multiple pages, basic reactive state/bindings/events,
+route/query expressions backed by `useRoute()`, safe optional/repeated/splat navigation parameters,
+query/hash suffixes, the four reviewed module runtimes above, and byte-preserved assets. The exporter
+does not install dependencies or execute generated code. Routerless single-page exports keep route
+and query context empty and warn instead of inventing browser state.
+
+The reviewed Vue lowcode runtime includes bounded Toast and Confirm actions plus local form
+validation. Toast supports `info`/`success`/`error`, six viewport positions, authored duration,
+duplicate suppression, dismissal, a five-item cap, timer cleanup, and `aria-live`/`alert`/`status`
+semantics. Confirm preserves authored confirm/cancel labels and consequent/alternate branches, treats
+the backdrop and Escape as cancel, traps Tab, restores focus, and emits a named `role="dialog"`.
+Local validation covers `required`, `pattern`, `minLength`, `maxLength`, `min`, `max`, and
+`customExpr`; input/blur updates drive `aria-invalid`, `aria-describedby`, inline errors, and an
+optional summary. Invalid submit prevents every authored submit handler. Remote asynchronous
+validation deliberately emits no URL or `fetch`: it returns a generic unavailable error, blocks
+submission, and records `vue-validation-async-unsupported`. Other modules, Motion,
+prototypes/overlays, Supabase/auth/query/mutation/upload, server workflows, Stripe, i18n, analytics,
+theme switching, React UI kits, and persistent document state remain omitted or reduced with
+explicit `vue-*-unsupported` warnings. Authored `rawHtml` is a separate fail-closed boundary: Vue
+emits an empty static shell plus `vue-raw-html-unsupported`, never the payload or a `v-html` binding.
+
+Its trusted adapter observes cancellation through the atomic write boundary, so the MCP export
+descriptor exists only while the plugin is installed and enabled. UI and MCP both run the same
+no-fallback Worker pipeline: compilation and ZIP compression use separate disposable module Workers,
+and abort terminates the active isolate. The main thread snapshots only public `SceneGraph` data
+without transferring or detaching live buffers, and fails closed above 25,000 nodes, 4,096 images, or
+a conservative 32-MiB structured-clone budget that counts every complete unique binary backing
+buffer. The Worker bounds its response to 4,096 files, 4,096 warnings, and 64 MiB before posting it
+back; the archive independently rechecks its path safety, file count, and 64-MiB source ceiling before
+the atomic write. The installed-plugin UI reports choosing, preparing, compiling, archiving, saving,
+and cancelling as text-backed live status, provides an accessible cancellation action, permits only
+one active plugin export, and blocks disabling, updating, rolling back, or uninstalling the exporting
+plugin until the session finishes. Leaving and reopening Settings reads the same host-owned session.
+
+The plugin exporter's Vue font stage is intentionally local and bounded: it may reuse exact bytes
+already retained by the renderer, present in the imported/downloaded cache, or shipped as reviewed
+bundled assets, but it never starts an online provider or a new system-font request. Each candidate is
+audited against its OpenType embedding flags and the reviewed family/style SHA-256 manifest. Only an
+exact `verified_open` match with complete copyright, license, and notice material is copied; the ZIP
+then receives `FONT-LICENSES.txt`. Restricted, mismatched, unknown, or incomplete faces are omitted
+with explicit warnings while generated CSS retains the authored family names.
+
+The CLI exposes the same adapter on `compile`, `build`, and `deploy` through `--target vue` (React
+remains the default), and the compiler Preview **Target** switch restarts a framework-specific
+React/Vue sidecar. Vue static builds use `@vitejs/plugin-vue`; multi-page builds and deployments still
+require the host's SPA fallback. React-only shadcn and i18n controls are disabled in Preview and their
+CLI flags fail closed for Vue instead of being ignored.
+
+The framework-neutral preview bridge gives both React and Vue selection overlays, Alt/Option-click
+selection back to the canvas, echo-suppressed bidirectional page navigation, bidirectional
+collaborative document-state updates, and immediate Light/Dark synchronization across `data-theme`,
+the `light`/`dark` classes, and `color-scheme`. It is emitted only under compiler `devMode` for the
+editor Preview and is absent from source/static exports. Vue still emits no Motion runtime; enabling
+Motion Debug receives `unavailable` immediately instead of leaving the panel waiting.
+
+For either web target, the static builder writes only to a nonexistent/empty output directory or
+replaces a directory whose valid, regular-file `.openpencil-build-output.json` marker came from a
+preceding OpenPencil build and whose complete path set still exactly matches that manifest. An
+unmarked non-empty directory, untrusted marker, or any missing/extra path fails closed; never weaken
+this check or rely on Vite's destructive `emptyOutDir` default.
 
 The Static Accessibility Audit command runs the host accessibility lint preset and returns a bounded
 report. It is not complete WCAG conformance or certification: screen-reader naming/alternatives,
@@ -645,7 +731,8 @@ The application projects each installed, enabled, host-compatible declarative co
 host explicitly marks MCP-safe into the MCP catalog: modules become add tools, commands become run
 tools, cancellable exporters become export tools, and explicitly session-authorized connector
 queries become query tools. Connector mutations stay out of MCP and require a fresh confirmation in
-the installed-plugin UI. The Tauri, Next.js, Capacitor, Electron, Expo,
+the installed-plugin UI. Vue source export is MCP-visible only while its opt-in plugin is installed
+and enabled. The Tauri, Next.js, Capacitor, Electron, Expo,
 Flutter, and Figma source/projection exporters remain UI-only until their synchronous
 Compiler/encoder stages support cooperative cancellation. Static Design System Audit can become a
 run tool only after its cancellable implementation and exact v2 manifest are both centrally
