@@ -3,8 +3,12 @@ import { describe, expect, test } from 'bun:test'
 
 import { openDB } from 'idb'
 
+import { REVIEWED_EXTERNAL_SERVICE_CONNECTORS } from '@/app/plugins/connectors/services'
+import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import { BrowserCredentialStore } from '@/app/settings/credentials/browser'
+import { createRuntimeCredentialStore } from '@/app/settings/credentials/factory'
 import { MemoryCredentialStore } from '@/app/settings/credentials/memory'
+import { appCredentialRefs } from '@/app/settings/credentials/persistence'
 import { credentialKey, credentialRef } from '@/app/settings/credentials/reference'
 import { createCredentialServices } from '@/app/settings/credentials/services'
 import { SwitchableCredentialStore } from '@/app/settings/credentials/switchable'
@@ -63,9 +67,39 @@ describe('credential references', () => {
       'Credential reference is invalid'
     )
   })
+
+  test('includes every reviewed external-service and deployment credential in persistence moves', () => {
+    const persistentKeys = new Set(appCredentialRefs().map(credentialKey))
+    for (const connector of REVIEWED_EXTERNAL_SERVICE_CONNECTORS) {
+      for (const reference of Object.values(connector.credentialRefs())) {
+        expect(persistentKeys.has(credentialKey(reference))).toBe(true)
+      }
+    }
+    for (const definition of REVIEWED_DEPLOYMENT_PLUGINS) {
+      expect(persistentKeys.has(credentialKey(definition.credentialRef))).toBe(true)
+    }
+  })
 })
 
 describe('credential service roles', () => {
+  test('uses encrypted app-local storage for Tauri without a native Keychain fallback', () => {
+    expect(
+      createRuntimeCredentialStore({ isTauri: true, browserPersistence: 'session' }).backend
+    ).toBe('browser')
+    expect(
+      createRuntimeCredentialStore({ isTauri: true, browserPersistence: 'remembered' }).backend
+    ).toBe('browser')
+  })
+
+  test('keeps the browser session-only choice in memory', () => {
+    expect(
+      createRuntimeCredentialStore({ isTauri: false, browserPersistence: 'session' }).backend
+    ).toBe('memory')
+    expect(
+      createRuntimeCredentialStore({ isTauri: false, browserPersistence: 'remembered' }).backend
+    ).toBe('browser')
+  })
+
   test('settings can manage status without receiving read access', async () => {
     const { manager, resolver } = createCredentialServices(new MemoryCredentialStore())
 

@@ -5,6 +5,8 @@ import { aiModelSettings, modelConnectionCredentialRef } from '@/app/ai/models'
 import { VECTORIZE_CREDENTIAL_REFS } from '@/app/editor/vectorize/credentials'
 import { storageCredentialRefs, storageProviderRegistry } from '@/app/integrations/storage'
 import { SUPABASE_MANAGEMENT_PAT_CREDENTIAL } from '@/app/lowcode/supabase/credentials'
+import { REVIEWED_EXTERNAL_SERVICE_CONNECTORS } from '@/app/plugins/connectors/services'
+import { REVIEWED_DEPLOYMENT_PLUGINS } from '@/app/plugins/host/deployment/contract'
 import {
   PEXELS_CREDENTIAL,
   UNSPLASH_CREDENTIAL,
@@ -29,6 +31,12 @@ export function appCredentialRefs(): CredentialRef[] {
   const storageCredentials = storageProviderRegistry
     .list()
     .flatMap((provider) => storageCredentialRefs(provider.id))
+  const deploymentCredentials = REVIEWED_DEPLOYMENT_PLUGINS.map(
+    (definition) => definition.credentialRef
+  )
+  const externalServiceCredentials = REVIEWED_EXTERNAL_SERVICE_CONNECTORS.flatMap((connector) =>
+    Object.values(connector.credentialRefs())
+  )
   return uniqueCredentialRefs([
     ...legacyAIRefs,
     ...modelConnectionRefs,
@@ -37,7 +45,9 @@ export function appCredentialRefs(): CredentialRef[] {
     SUPABASE_MANAGEMENT_PAT_CREDENTIAL,
     ...VECTORIZE_CREDENTIAL_REFS,
     ...remoteMcpCredentialRefs(),
-    ...storageCredentials
+    ...storageCredentials,
+    ...deploymentCredentials,
+    ...externalServiceCredentials
   ])
 }
 

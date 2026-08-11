@@ -3,8 +3,8 @@ import { ref } from 'vue'
 import { IS_TAURI } from '@open-pencil/core/constants'
 
 import { BrowserCredentialStore } from '@/app/settings/credentials/browser'
+import { createRuntimeCredentialStore } from '@/app/settings/credentials/factory'
 import { MemoryCredentialStore } from '@/app/settings/credentials/memory'
-import { NativeCredentialStore } from '@/app/settings/credentials/native'
 import { createCredentialServices } from '@/app/settings/credentials/services'
 import {
   browserRemembersCredentials,
@@ -22,9 +22,10 @@ export const browserCredentialsRemembered = ref(
 )
 
 function initialCredentialStore(): CredentialStore {
-  if (IS_TAURI) return new NativeCredentialStore()
-  if (browserCredentialsRemembered.value) return new BrowserCredentialStore()
-  return new MemoryCredentialStore()
+  return createRuntimeCredentialStore({
+    isTauri: IS_TAURI,
+    browserPersistence: browserCredentialsRemembered.value ? 'remembered' : 'session'
+  })
 }
 
 export const appCredentialStore = new SwitchableCredentialStore(initialCredentialStore())
